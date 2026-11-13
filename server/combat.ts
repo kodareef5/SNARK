@@ -23,6 +23,7 @@ import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
 import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
 import { rayCreature } from "../shared/anim/creature.ts";
+import { youngScale } from "../shared/sim/breeding.ts";
 import type { Rig } from "../shared/anim/rigs.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
@@ -499,15 +500,21 @@ export class Combat {
       } else if (this.rig[kind]) {
         st.unpack(past.anim);
         st.seed = bodySeed(i);
-        const zone = rayCreature(this.rig[kind]!, st, tick, reg.runAt[kind]!, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach);
-        if (zone !== ZONE_NONE && zoneHit.t < reach) {
-          this.t = zoneHit.t * scale;
+        // A young one is its kind's shape made small about where it stands. The ray is made large about there instead, and what it meets made small again.
+        const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.born[i]!, world.ents.grown[i]!, tick) : 1;
+        const zone =
+          size === 1
+            ? rayCreature(this.rig[kind]!, st, tick, reg.runAt[kind]!, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach)
+            : rayCreature(this.rig[kind]!, st, tick, reg.runAt[kind]!, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size);
+        if (zone !== ZONE_NONE && zoneHit.t * size < reach) {
+          this.t = zoneHit.t * size * scale;
           this.zone = zone;
           best = i;
         }
       } else {
-        const r = reg.bodyRadius[kind]!;
-        const t = rayBox(rx, ry, rz, ux, uy, uz, past.x - r, past.y, past.z - r, past.x + r, past.y + reg.bodyHeight[kind]!, past.z + r);
+        const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.born[i]!, world.ents.grown[i]!, tick) : 1;
+        const r = reg.bodyRadius[kind]! * size;
+        const t = rayBox(rx, ry, rz, ux, uy, uz, past.x - r, past.y, past.z - r, past.x + r, past.y + reg.bodyHeight[kind]! * size, past.z + r);
         if (t < reach) {
           this.t = t * scale;
           this.zone = ZONE_TORSO;

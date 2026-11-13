@@ -25,6 +25,11 @@ export const RULE_DEFAULTS = {
   globalVoice: 0,
   /** What every piece of food is worth to a creature being tamed is multiplied by this. */
   tamingSpeed: 1,
+  /** How fast an egg hatches, and how fast what hatches grows up: each divides the time its species takes. */
+  hatchSpeed: 1,
+  matureSpeed: 1,
+  /** What the time a female waits before she may mate again is multiplied by. */
+  matingInterval: 1,
   /** Seconds after it is set down that a piece may be taken back into the hands. 0: at any time. Only ever while it is unharmed. */
   pickupSeconds: 0,
   /** What the time something built lasts unvisited is multiplied by. 0: nothing decays. */
@@ -32,6 +37,9 @@ export const RULE_DEFAULTS = {
   /** 1: what has decayed is taken down by the server. 0: it stands until someone demolishes it, as anyone then may. */
   decayDestroy: 0,
 } as const;
+
+/** The most any rule may be set to. */
+export const RULE_MAX = 1000;
 
 export type RuleName = keyof typeof RULE_DEFAULTS;
 export const RULE_NAMES = Object.keys(RULE_DEFAULTS) as RuleName[];
@@ -41,9 +49,17 @@ export class Rules {
   /** Counts every change, for sending and for saving. */
   version = 0;
 
-  /** Set a rule. False if there is no such rule or the value is not a number from 0 to 100. */
+  /** Rules begin as their defaults, or as `first` gives them: a development server starts with some turned up. */
+  constructor(first: Partial<Record<RuleName, number>> = {}) {
+    for (const name of RULE_NAMES) {
+      const v = first[name];
+      if (typeof v === "number" && v >= 0 && v <= RULE_MAX) this.values[name] = v;
+    }
+  }
+
+  /** Set a rule. False if there is no such rule or the value is not a number from 0 to RULE_MAX. */
   set(name: string, value: number): boolean {
-    if (!(RULE_NAMES as string[]).includes(name) || !(value >= 0 && value <= 100)) return false;
+    if (!(RULE_NAMES as string[]).includes(name) || !(value >= 0 && value <= RULE_MAX)) return false;
     this.values[name as RuleName] = value;
     this.version++;
     return true;
@@ -65,7 +81,7 @@ export class Rules {
     if (typeof parsed !== "object" || parsed === null) return;
     for (const name of RULE_NAMES) {
       const v = (parsed as Record<string, unknown>)[name];
-      if (typeof v === "number" && v >= 0 && v <= 100) this.values[name] = v;
+      if (typeof v === "number" && v >= 0 && v <= RULE_MAX) this.values[name] = v;
     }
   }
 }

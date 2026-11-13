@@ -1,4 +1,4 @@
-// What to call a creature that has just been tamed.
+// What to call a creature that has just been tamed, or taken as young.
 //
 // The server says a creature is this survivor's; this asks for its name: a
 // small panel with a field. Enter sends what was typed (nothing typed leaves
@@ -15,6 +15,8 @@ export const KEY_NAME_PANEL = 2460;
 export const KEY_NAME_TITLE = 2461;
 export const KEY_NAME_HINT = 2462;
 export const KEY_NAME_INPUT = 2463;
+/** In what the server says of a creature that is now this survivor's, the mark of one that was taken as young and not tamed. */
+const CLAIMED = 255;
 
 export class NamePrompt {
   /** The panel is up, asking about the first of those waiting. */
@@ -63,8 +65,10 @@ export class NamePrompt {
     const x = Math.round((f.width - w) / 2);
     const y = Math.round(f.height * 0.3);
     f.add(KEY_NAME_PANEL, K_PANEL, x, y, w, h, S_PANEL);
-    f.text(KEY_NAME_TITLE, x + pad, y + pad, w - pad * 2, S_TITLE, `Tamed: a ${what}, level ${which.level}`);
-    f.text(KEY_NAME_HINT, x + pad, y + pad + titleH, w - pad * 2, S_LABEL, `${which.te}% well. Name it and press Enter.`);
+    // One taken as young was not tamed: there is no "how well" to it.
+    const young = which.te === CLAIMED;
+    f.text(KEY_NAME_TITLE, x + pad, y + pad, w - pad * 2, S_TITLE, young ? `Yours: a young ${what}, level ${which.level}` : `Tamed: a ${what}, level ${which.level}`);
+    f.text(KEY_NAME_HINT, x + pad, y + pad + titleH, w - pad * 2, S_LABEL, young ? "It is hungry. Name it and press Enter." : `${which.te}% well. Name it and press Enter.`);
     const field = f.add(KEY_NAME_INPUT, K_INPUT, x + pad, y + pad + titleH + labelH + 8, w - pad * 2, fieldH, S_INPUT);
     field.text = this.text;
     field.interactive = true;

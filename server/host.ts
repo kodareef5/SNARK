@@ -9,10 +9,13 @@ import { addAdminCommands } from "./commands/admin.ts";
 import { addCombatCommands } from "./commands/combat.ts";
 import { addCoreCommands } from "./commands/core.ts";
 import { addSocialCommands } from "./commands/social.ts";
+import { addCreatureCommands } from "./commands/creatures.ts";
 import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
+import { Breeding, DEADLINE_BREED } from "./breeding.ts";
+import { growthStep, youngShare } from "../shared/sim/breeding.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
@@ -39,7 +42,7 @@ import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
-import { Rules } from "./rules.ts";
+import { Rules, type RuleName } from "./rules.ts";
 import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
@@ -75,6 +78,8 @@ export interface HostOptions {
   clips?: ClipSet;
   /** The rigs of that pack: those that are skeletons in themselves are what creatures are posed and hit on. */
   rigs?: readonly PackRig[];
+  /** Rules a new world begins with in place of their defaults: a development server turns taming, hatching and growing up. What a save holds comes first. */
+  rules?: Partial<Record<RuleName, number>>;
 }
 
 /** Ticks between console lines accepted from one session. */
@@ -112,6 +117,7 @@ export interface Host {
   readonly stations: Stations;
   readonly taming: Taming;
   readonly riding: Riding;
+  readonly breeding: Breeding;
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
@@ -188,7 +194,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const progression = new Progression(world, records, items, deadlines);
   const harvest = world.nodeField ? new Harvest(world, game, records, items, progression, deadlines, (opts.seed ?? 1) + 31) : null;
   const buffs = new Buffs(world, records, survival, deadlines);
-  const rules = new Rules();
+  const rules = new Rules(opts.rules);
   if (persistence && !loaded!.fresh) rules.restore(persistence.store.meta("rules"));
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, harvest }, (opts.seed ?? 1) + 53);
   // A creature's bite is a blow like any other.
@@ -212,10 +218,16 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec) });
   death.riding = (c) => riding.riding(c);
   death.offMount = (c) => riding.dismount(c);
+  // Breeding: pairs among the creatures that are somebody's, what they lay, and what hatches and grows up.
+  const breeding = new Breeding({ world, game, records, rules, deadlines, creatures, persistence, place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
+  taming.onMate = (rec, what) => breeding.order(rec, what);
+  taming.bred = (rec) => breeding.subject(rec);
   death.onRide = (c, e) => {
     const rec = records.byPid.get(world.ents.pid[e]!);
-    // Only what is saddled, awake, and theirs is something to ride; anything else is whatever it was.
-    if (!rec || rec.keyHash !== null || rec.saddle === 0 || rec.out || !tribes.may(records.byPid.get(c.pid), rec.team)) return -1;
+    // A young one that is nobody's: whoever uses it takes it.
+    if (rec && breeding.unclaimed(rec)) return breeding.claim(c, rec);
+    // Only what is saddled, grown, awake, and theirs is something to ride; anything else is whatever it was.
+    if (!rec || rec.keyHash !== null || rec.saddle === 0 || rec.out || rec.grown !== 0 || !tribes.may(records.byPid.get(c.pid), rec.team)) return -1;
     return riding.mount(c, e);
   };
   combat.riderOf = (mount) => {
@@ -288,16 +300,17 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
         survival.restore(rec, false);
         continue;
       }
-      // The state of something built has no body of its own: the structure is its body.
-      if (rec.at >= 0 || reg.defs[rec.kind]?.type === "structure") continue;
+      // The state of something built has no body of its own: the structure is its body. Nor have young that are carried.
+      if (rec.at >= 0 || reg.defs[rec.kind]?.type === "structure" || (rec.egg !== null && rec.egg.carrier !== 0)) continue;
       if (reg.defs[rec.kind]?.type === "prop") death.place(rec);
       else {
         const e = creatures.adopt(rec);
         if (e >= 0) persistence!.attach(rec, e);
       }
     }
-    // Whatever was being made goes on being made.
+    // Whatever was being made goes on being made; eggs wait to hatch, and the young go on growing.
     for (const rec of records.byPid.values()) progression.resume(rec);
+    breeding.resume();
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
     // Scatter the herd north of the spawn point; positions inside structures are skipped and retried.
@@ -410,6 +423,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       else if (kind === DEADLINE_BUFF) buffs.due(pid, stamp);
       else if (kind === DEADLINE_FIRE) stations.due(pid, stamp);
       else if (kind === DEADLINE_TAME) taming.due(pid, stamp);
+      else if (kind === DEADLINE_BREED) breeding.due(pid, stamp);
     });
     death.step();
     // Riders go where their mounts went this tick, before anything is aimed at either.
@@ -420,6 +434,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     creatures.step(tick);
     build.step();
     taming.step();
+    breeding.step(tick);
     voice.step(tick);
     // Who was last near what: saved now and then, not with every step somebody takes.
     if (persistence && build.decay.dirty && tick % DECAY_SAVE_TICKS === 0) persistence.store.setMeta("decay", build.decay.serialize());
@@ -481,7 +496,9 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     // What it carries; and, for a mount, what its rider carries too.
     const rider = riding.riderOf(e);
     const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0);
-    refreshMods(reg, world.ents, e, rec.genome, load, buffs.speedOf(rec), buffs.rooted(rec), rec.out);
+    // A young one can carry a share of what a grown one can: the same load is that much more of it.
+    const strength = youngShare(growthStep(rec.born, rec.grown, world.tick));
+    refreshMods(reg, world.ents, e, rec.genome, load / strength, buffs.speedOf(rec), buffs.rooted(rec), rec.out);
     // A survivor's level is what its experience has earned; a creature's is its points.
     const level = rec.kind === survivor ? progression.levelOf(rec.xp) : rec.genome ? rec.genome.level : 1;
     world.ents.setLook(e, level, rec.genome ? rec.genome.colors : null, rec.name);
@@ -522,6 +539,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   addAdminCommands(con);
   addCombatCommands(con);
   addSocialCommands(con);
+  addCreatureCommands(con);
   const host: Host = {
     world,
     records,
@@ -541,6 +559,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     stations,
     taming,
     riding,
+    breeding,
     online: (pid) => sessionOf(pid) !== null,
     setRule(name, value) {
       if (!rules.set(name, value)) return false;

@@ -191,7 +191,10 @@ export const CORE_CONTENT: readonly Def[] = [
     // The reference's taming numbers for a parasaur; a herbivore, it eats berries.
     taming: { a0: 1500, a1: 75, foodBase: 0.001929, proneMult: 864.01, k: 0.4 },
     eats: [{ item: "core:berry", food: 20, affinity: 20 }],
-    food: { max: 1500, perHour: 40 },
+    // Awake it hungers at the reference's rate for it (0.001929 a second): little, and its young 510 times that.
+    food: { max: 1500, perHour: 0.27 },
+    // The reference's times: an egg hatches in 5,142 seconds, and what hatches is grown in 95,238.
+    breeds: { egg: "core:egg_parasaur", incubate: 5142, mature: 95238 },
     drops: [{ item: "core:hide", min: 8, max: 16 }, { item: "core:meat", min: 8, max: 14 }],
     zones: { head: 1.5 },
     killXp: 6,
@@ -222,7 +225,9 @@ export const CORE_CONTENT: readonly Def[] = [
     // The reference's taming numbers for a raptor; it eats meat, raw before cooked.
     taming: { a0: 1200, a1: 60, foodBase: 0.001543, proneMult: 648.09, k: 3.125 },
     eats: [{ item: "core:meat", food: 50, affinity: 50 }, { item: "core:meat_cooked", food: 25, affinity: 25 }],
-    food: { max: 1200, perHour: 36 },
+    // The reference's rate again: 0.001543 a second.
+    food: { max: 1200, perHour: 0.216 },
+    breeds: { egg: "core:egg_raptor", incubate: 7199, mature: 133333 },
     drops: [{ item: "core:hide", min: 5, max: 10 }, { item: "core:meat", min: 4, max: 8 }],
     zones: { head: 3 },
     killXp: 8,
@@ -273,6 +278,9 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "prop", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // What is dropped on the ground lies in one of these.
   { type: "prop", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
+  // What a female lays, one prop for each species that lays: it lies where it was laid until it hatches.
+  { type: "prop", id: "core:egg_parasaur", mesh: "core:egg", color: 9, radius: 0.3, height: 0.7 },
+  { type: "prop", id: "core:egg_raptor", mesh: "core:egg", color: 5, radius: 0.3, height: 0.7 },
   // What can act on a body for a time.
   { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8 },
   { type: "buff", id: "core:tranquilized", label: "Tranquilized", color: 9, seconds: 5, again: "stack" },

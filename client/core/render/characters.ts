@@ -189,13 +189,13 @@ export class Characters {
   }
 
   /** A creature: one mesh on its own skeleton, in its own colours. */
-  private addCreature(p: FramePacket, c: { rig: Rig; mesh: number; color: number; runAt: number }, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number): boolean {
+  private addCreature(p: FramePacket, c: { rig: Rig; mesh: number; color: number; runAt: number }, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number): boolean {
     const rig = c.rig;
     if (p.boneCount + rig.bones > MAX_BONES || this.count + 1 > MAX_SKINNED) return false;
     creaturePose(rig, st, tick, c.runAt, rig.a);
     solve(rig, rig.a, rig.solved);
     const first = p.boneCount;
-    writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw);
+    writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
     p.boneCount = first + rig.bones;
     this.posed++;
     const n = this.count++;
@@ -221,12 +221,13 @@ export class Characters {
    * none and is drawn in the six colour regions of `colors` at `colorAt`. `gear`
    * holds what it has in hand and what it wears at `gearAt` (see
    * `EntityStore.gear`), or is null. `own` draws it in the near pass; `headless`
-   * leaves out the head and what is on it, for looking out of it. Returns false
-   * when the frame has no room left.
+   * leaves out the head and what is on it, for looking out of it. `size` is
+   * how big a creature is drawn, as a share of its kind's size: less than 1
+   * for one that is young. Returns false when the frame has no room left.
    */
-  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean): boolean {
+  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1): boolean {
     const creature = this.creatures[kind];
-    if (creature) return this.addCreature(p, creature, x, y, z, yaw, st, tick, colors, colorAt, id);
+    if (creature) return this.addCreature(p, creature, x, y, z, yaw, st, tick, colors, colorAt, id, size);
     const k = this.kinds[kind];
     if (!k || p.boneCount + HUMAN_BONES > MAX_BONES || this.count + PARTS > MAX_SKINNED) return false;
     // A modelled body that was given no look gets the plain one, so its regions have colours.
@@ -375,8 +376,9 @@ export class Characters {
  * Write one body's bones at `at`: for each, three rows that take a vertex of a
  * mesh made on `rest` to where the posed, stretched, turned and placed body has
  * it. `scale` is each bone's stretch along its own axes, or null for none.
+ * `size` makes the whole body larger or smaller about where it stands.
  */
-export function writeBones(out: Float32Array, at: number, solved: Solved, rest: Float32Array, scale: Float32Array | null, x: number, y: number, z: number, yaw: number): void {
+export function writeBones(out: Float32Array, at: number, solved: Solved, rest: Float32Array, scale: Float32Array | null, x: number, y: number, z: number, yaw: number, size = 1): void {
   const s = Math.sin(yaw);
   const c = Math.cos(yaw);
   const rot = solved.rot;
@@ -384,16 +386,16 @@ export function writeBones(out: Float32Array, at: number, solved: Solved, rest: 
   const bones = rot.length >> 2;
   for (let b = 0; b < bones; b++) {
     const qx = rot[b * 4]!, qy = rot[b * 4 + 1]!, qz = rot[b * 4 + 2]!, qw = rot[b * 4 + 3]!;
-    const sx = scale ? scale[b * 3]! : 1, sy = scale ? scale[b * 3 + 1]! : 1, sz = scale ? scale[b * 3 + 2]! : 1;
+    const sx = (scale ? scale[b * 3]! : 1) * size, sy = (scale ? scale[b * 3 + 1]! : 1) * size, sz = (scale ? scale[b * 3 + 2]! : 1) * size;
     // The bone's rotation as a matrix with its stretch applied first: columns scaled. Rows r0 r1 r2.
     const r00 = (1 - 2 * (qy * qy + qz * qz)) * sx, r01 = 2 * (qx * qy - qz * qw) * sy, r02 = 2 * (qx * qz + qy * qw) * sz;
     const r10 = 2 * (qx * qy + qz * qw) * sx, r11 = (1 - 2 * (qx * qx + qz * qz)) * sy, r12 = 2 * (qy * qz - qx * qw) * sz;
     const r20 = 2 * (qx * qz - qy * qw) * sx, r21 = 2 * (qy * qz + qx * qw) * sy, r22 = (1 - 2 * (qx * qx + qy * qy)) * sz;
-    // A vertex v goes to pos + R S (v - rest): translation t = pos - R S rest.
+    // A vertex v goes to size * pos + R S (v - rest): translation t = size * pos - R S rest. The whole body's size is in S already.
     const bx = rest[b * 3]!, by = rest[b * 3 + 1]!, bz = rest[b * 3 + 2]!;
-    const tx = pos[b * 3]! - (r00 * bx + r01 * by + r02 * bz);
-    const ty = pos[b * 3 + 1]! - (r10 * bx + r11 * by + r12 * bz);
-    const tz = pos[b * 3 + 2]! - (r20 * bx + r21 * by + r22 * bz);
+    const tx = pos[b * 3]! * size - (r00 * bx + r01 * by + r02 * bz);
+    const ty = pos[b * 3 + 1]! * size - (r10 * bx + r11 * by + r12 * bz);
+    const tz = pos[b * 3 + 2]! * size - (r20 * bx + r21 * by + r22 * bz);
     // Then the body's yaw about +Y and its place: x' = c x + s z, z' = c z - s x.
     const o = at + b * BONE_FLOATS;
     out[o] = c * r00 + s * r20;

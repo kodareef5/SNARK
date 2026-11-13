@@ -2,6 +2,7 @@
 // writes it into the body's columns; clients receive the result with their own
 // body and never compute it, so prediction steps with the server's numbers.
 
+import { GROWN, growthStep, youngHunger, youngShare } from "../shared/sim/breeding.ts";
 import { proneHunger } from "../shared/sim/taming.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
@@ -9,7 +10,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { EntityStore } from "../shared/sim/entities.ts";
 import { STAT_NAMES, statValue, type Genome, type StatName } from "../shared/sim/genome.ts";
-import { MICRO, ratePerTick } from "../shared/sim/lazy.ts";
+import { GAME_HOUR_TICKS, MICRO, ratePerTick } from "../shared/sim/lazy.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER, Vitals } from "../shared/sim/vitals.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -168,9 +169,15 @@ export class Survival {
     this.records.dirty.add(rec.pid);
   }
 
-  /** The most of each vital a body of this species with these points has; 0 for one it does not have. */
-  private maxima(def: SpeciesDef, g: Genome | null): number[] {
-    return [statOf(def, g, STAT_HEALTH, 0), statOf(def, g, STAT_FOOD, def.food?.max ?? 0), def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0), torporMax(def, g)];
+  /**
+   * The most of each vital this body has, by its species and its points; 0
+   * for one it does not have. A young one has a share of a grown one's health
+   * and food, by how far grown it is.
+   */
+  private maxima(def: SpeciesDef, rec: EntityRecord): number[] {
+    const g = rec.genome;
+    const share = youngShare(growthStep(rec.born, rec.grown, this.world.tick));
+    return [statOf(def, g, STAT_HEALTH, 0) * share, statOf(def, g, STAT_FOOD, def.food?.max ?? 0) * share, def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0), torporMax(def, g)];
   }
 
   /**
@@ -187,7 +194,7 @@ export class Survival {
   init(rec: EntityRecord): void {
     const def = this.world.reg.defs[rec.kind];
     if (def?.type !== "species") return;
-    const max = this.maxima(def, rec.genome);
+    const max = this.maxima(def, rec);
     if (max.every((m) => m <= 0)) return;
     const fresh = !rec.vitals;
     const v = (rec.vitals ??= new Vitals());
@@ -211,7 +218,7 @@ export class Survival {
     const v = rec.vitals;
     const def = this.world.reg.defs[rec.kind];
     if (!v || def?.type !== "species") return;
-    const max = this.maxima(def, rec.genome);
+    const max = this.maxima(def, rec);
     for (let i = 0; i < V_COUNT; i++) v.max[i] = Math.round(max[i]! * MICRO);
     if (!inWorld) {
       // Saved with its clock running (the server stopped while it was in the world): stop it, and save that.
@@ -335,7 +342,9 @@ export class Survival {
       return;
     }
     // Lying unconscious, a creature that can be tamed hungers at the reference's rate for that, which is fast.
-    v.rate[V_FOOD] = eats ? -(rec.out && def.taming ? ratePerSecond(proneHunger(def.taming)) : ratePerTick(def.food!.perHour)) : 0;
+    // A young one hungers many times as fast as a grown one, less so the more grown it is.
+    const step = growthStep(rec.born, rec.grown, tick);
+    v.rate[V_FOOD] = eats ? -(step < GROWN ? Math.round((def.food!.perHour * MICRO * youngHunger(step)) / GAME_HOUR_TICKS) : rec.out && def.taming ? ratePerSecond(proneHunger(def.taming)) : ratePerTick(def.food!.perHour)) : 0;
     v.rate[V_WATER] = drinks ? -ratePerTick(def.waterPerHour!) : 0;
     v.rate[V_OXYGEN] = breathes ? (under ? -OXYGEN_DRAIN : OXYGEN_REFILL) : 0;
     const god = this.gods.has(rec.pid);

@@ -14,6 +14,7 @@
 import { BitWriter } from "../shared/net/codec.ts";
 import { MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../shared/sim/character.ts";
+import { youngScale } from "../shared/sim/breeding.ts";
 import { F_PROP } from "../shared/sim/entities.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { TICK_RATE, chunkCx, chunkCz } from "../shared/coords.ts";
@@ -317,8 +318,10 @@ export class Death {
         if (cx < 0 || cz < 0 || cx >= dims.chunksX || cz >= dims.chunksZ) continue;
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
           if (i === e) continue;
-          const r = reg.bodyRadius[ents.kind[i]!]!;
-          const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[ents.kind[i]!]!, ents.z[i]! + r);
+          // A young one is as small as it is drawn: what the client says is looked at is what is.
+          const size = ents.grown[i] !== 0 && (ents.flags[i]! & F_PROP) === 0 ? youngScale(reg.birthScale[ents.kind[i]!]!, ents.born[i]!, ents.grown[i]!, world.tick) : 1;
+          const r = reg.bodyRadius[ents.kind[i]!]! * size;
+          const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[ents.kind[i]!]! * size, ents.z[i]! + r);
           if (t < best) {
             best = t;
             hit = i;
@@ -346,7 +349,8 @@ export class Death {
     }
     // A cache or a bag; or a creature lying unconscious, which can be looked into where it lies.
     const there = hit >= 0 ? this.ctx.records.byPid.get(ents.pid[hit]!) : undefined;
-    const pid = hit >= 0 && ((ents.flags[hit]! & F_PROP) !== 0 || (there !== undefined && there.keyHash === null && (there.out || (this.canOpen?.(c, there) ?? false)))) ? ents.pid[hit]! : 0;
+    // An egg is not something to look into.
+    const pid = hit >= 0 && there?.egg == null && ((ents.flags[hit]! & F_PROP) !== 0 || (there !== undefined && there.keyHash === null && (there.out || (this.canOpen?.(c, there) ?? false)))) ? ents.pid[hit]! : 0;
     const box = pid !== 0 ? there : undefined;
     if (box && c.open !== pid) {
       c.open = pid;

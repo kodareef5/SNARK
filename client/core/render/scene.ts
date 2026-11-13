@@ -12,6 +12,7 @@ import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
+import { youngScale } from "../../../shared/sim/breeding.ts";
 import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
 import { AnimState, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
 import type { Falling } from "../rubble.ts";
@@ -100,6 +101,8 @@ export class Scene {
   readonly colorOfKind: Uint8Array;
   /** 1 for kinds drawn tilted to their pitch as well as turned to their facing. */
   private readonly pitched: Uint8Array;
+  /** Per species: how big a newborn of it is drawn, as a share of a grown one. */
+  private readonly birthScale: Float32Array;
   /** Shots in the air, drawn with the bodies; and the moment to draw them at, in ticks. Set by the app. */
   shots: Shots | null = null;
   shotTick = 0;
@@ -139,6 +142,7 @@ export class Scene {
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
     this.colorOfKind = new Uint8Array(reg.defs.length);
     this.pitched = Uint8Array.from(reg.defs, (d) => (d?.type === "prop" && d.pitched ? 1 : 0));
+    this.birthScale = reg.birthScale;
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
@@ -258,7 +262,9 @@ export class Scene {
         st.unpack(remote.anim[i]!);
         st.seed = bodySeed(remote.id[i]!);
         const look = remote.hasLook[i] !== 0 ? remote.look : null;
-        if (!ch.add(p, kind, x, y, z, yaw, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false)) break;
+        // A young one is drawn small, and larger as it grows.
+        const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.born[i]!, remote.grown[i]!, remote.tick) : 1;
+        if (!ch.add(p, kind, x, y, z, yaw, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size)) break;
       }
     }
     // Things that lie tilted as well as turned (an arrow where it landed), and whatever is in the air.

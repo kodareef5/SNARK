@@ -87,6 +87,15 @@ export interface SpeciesDef {
   readonly eats?: readonly { readonly item: string; readonly food: number; readonly affinity: number }[];
   /** Torpor it loses each second. Defaults to 1. Its most is its torpidity stat; a species without that stat cannot be knocked out. */
   readonly torporDrain?: number;
+  /**
+   * It breeds (shared/sim/breeding.ts): a female and a male of it, both
+   * somebody's and both willing, make young. `egg` is the prop she lays, which
+   * hatches after `incubate` seconds; without one she carries her young for
+   * that long and bears them where she then stands. A young one is grown
+   * `mature` seconds after it is born, and is drawn `scale` of a grown one's
+   * size at birth (a quarter where not given). Omitted: it does not breed.
+   */
+  readonly breeds?: { readonly egg?: string; readonly incubate: number; readonly mature: number; readonly scale?: number };
 }
 
 /** One box of a shape: its centre, measured from the piece's own origin, and its half extents, in metres. */

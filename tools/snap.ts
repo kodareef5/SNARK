@@ -7,6 +7,7 @@
 //   bun run snap -- --ui --chat               with the chat box open (--chat shut: only what was said)
 //   bun run snap -- --poses 2 --face 90       a line-up of bodies in motion: kinds 2 and 3, seen from the side
 //   bun run snap -- --creatures --face 60     the creatures that came as models: standing, walking, running, striking
+//   bun run snap -- --creatures --young       each of them grown, newborn, a third and three quarters grown, and its egg
 //   bun run snap -- --looks                   a line-up of looks: both sexes, every hair, every slider at its ends
 //   bun run snap -- --creator 1               what a new survivor sees: the creator, on its first or second tab
 //   bun run snap -- --gear                    a line-up of armor tiers and held weapons
@@ -211,6 +212,7 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
     r.flags[n] = 1;
     r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
     for (let q = 0; q < 6; q++) r.colors[n * 6 + q] = colors[q] ?? 0;
+    r.born[n] = r.grown[n] = r.seat[n] = 0;
     st.speed = 0;
     st.dir = 0;
     st.pitch = 0;
@@ -249,6 +251,31 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
   cam.fovY = 0.6;
   cam.yaw = 0;
   cam.pitch = -0.19;
+  // Or the young: each kind grown, then newborn, a third grown and three quarters grown, its egg, and a survivor for size.
+  if (process.argv.includes("--young")) {
+    r.count = 0;
+    // Late enough that one three quarters grown was born after the world began.
+    const now = tick + 1000;
+    r.tick = now;
+    kinds.forEach((kind, j) => {
+      const z = 232 + j * 7;
+      const gap = j === 0 ? 4.2 : 2.6;
+      [1, 0, 0.3, 0.75].forEach((m, i) => {
+        const n = put(kind, 250 + i * gap, z, j === 0 ? [9, 16, 13, 8] : [5, 15, 11]);
+        r.born[n] = m < 1 ? now - m * 1000 : 0;
+        r.grown[n] = m < 1 ? now - m * 1000 + 1000 : 0;
+      });
+      const egg = put(view.reg.index.get(j === 0 ? "core:egg_parasaur" : "core:egg_raptor")!, 250 + 4 * gap - 1, z, []);
+      r.flags[egg] = 1 | 8;
+      put(view.reg.index.get("core:survivor")!, 250 + 4 * gap + 0.2, z, []);
+    });
+    cam.x = 258.5;
+    cam.z = 212;
+    cam.y = view.hf.heightAt(cam.x, cam.z) + 5.5;
+    cam.fovY = 0.7;
+    cam.pitch = -0.2;
+    return;
+  }
   // Or close to the raptors' row, for a look at feet and jaws.
   if (process.argv.includes("--near")) {
     cam.x = 259;

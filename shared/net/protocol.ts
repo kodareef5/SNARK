@@ -151,8 +151,8 @@ export const CMD_STRUCT = 19;
 /**
  * Tell a creature of one's tribe what to do: which (its entity index, u32, or
  * 0xffffffff for every one within a whistle's reach) and what (u8): stay,
- * follow me, be passive, neutral or aggressive; or 16 plus a stat, to put one
- * of its unspent levels there.
+ * follow me, be passive, neutral or aggressive, take its saddle off, mate or
+ * do not; or 16 plus a stat, to put one of its unspent levels there.
  */
 export const CMD_ORDER = 20;
 export const ORDER_STAY = 0;
@@ -160,6 +160,9 @@ export const ORDER_FOLLOW = 1;
 export const ORDER_STANCE = 2;
 /** Take its saddle off: it goes into what the creature carries. */
 export const ORDER_UNSADDLE = 5;
+/** It may mate, with one of its kind and tribe that also may; and it may not. Neither can be whistled. */
+export const ORDER_MATE = 6;
+export const ORDER_UNMATE = 7;
 export const ORDER_LEVEL = 16;
 /** In an order, the creature that means every one near. */
 export const ORDER_ALL = 0xffffffff;
@@ -264,7 +267,12 @@ export const OWN_VOICE = 13;
  * its level (u16), how far its taming has got and how well, and its torpor
  * and food as shares of their most: each in thousandths, 10 bits. Then which
  * it is (its entity index, u32), the levels it has to spend (u8), its stance
- * (2 bits) and whether it is following someone (1 bit).
+ * (2 bits), whether it is following someone and whether it wears a saddle (1
+ * bit each). Then its breeding: whether its kind breeds, whether it may mate
+ * and whether it is female (1 bit each); how grown it is (2 bits: baby,
+ * juvenile, adolescent, grown) and how far (thousandths, 10 bits); how far
+ * the pair it is one of has got (thousandths, 10 bits); and the seconds until
+ * a female may mate again (varint).
  */
 export const OWN_SUBJECT = 14;
 
@@ -295,7 +303,8 @@ export const EVENT_BLAST = 6;
 /**
  * TAMED, to whoever tamed it: a creature is theirs. Which (its entity handle,
  * u32), what it is (content index, u16), its level now (u16) and how well it
- * was done (percent, u8). The client asks what to call it.
+ * was done (percent, u8; or 255 for one that was not tamed but taken as
+ * young). The client asks what to call it.
  */
 export const EVENT_TAMED = 7;
 

@@ -31,7 +31,9 @@ import { ARMOR_SLOTS } from "../../shared/sim/items.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { RemoteSample, type ClientSession } from "./session.ts";
 import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
-import { STRUCT_UNITS } from "../../shared/coords.ts";
+import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
+import { youngScale } from "../../shared/sim/breeding.ts";
+import { waitWords } from "./ui/inventory.ts";
 import { voicePan } from "./voice/place.ts";
 import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
@@ -283,6 +285,12 @@ export class App {
     this.ui.pointer(kind, key, x, y, button, this.session);
   }
 
+  /** How big body `i` of those in view is, as a share of its kind's size: less than 1 for one that is young. */
+  private sizeOf(i: number): number {
+    const r = this.remote;
+    return r.grown[i] !== 0 && (r.flags[i]! & VIEW_FLAG_PROP) === 0 ? youngScale(this.reg.birthScale[r.kind[i]!]!, r.born[i]!, r.grown[i]!, r.tick) : 1;
+  }
+
   /**
    * Who the crosshair is on, out to where a name can be read: a survivor's
    * name and level, and whether it is of this survivor's tribe.
@@ -298,8 +306,9 @@ export class App {
     let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, NAME_RANGE) === HIT_NONE ? NAME_RANGE : rayHit.t;
     let hit = -1;
     for (let i = 0; i < r.count; i++) {
-      const rad = this.reg.bodyRadius[r.kind[i]!]!;
-      const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + this.reg.bodyHeight[r.kind[i]!]!, r.z[i]! + rad);
+      const size = this.sizeOf(i);
+      const rad = this.reg.bodyRadius[r.kind[i]!]! * size;
+      const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + this.reg.bodyHeight[r.kind[i]!]! * size, r.z[i]! + rad);
       if (t < best) {
         best = t;
         hit = i;
@@ -352,14 +361,27 @@ export class App {
     const node = struck === HIT_NODE ? rayHit.ref : -1;
     let hit = -1;
     for (let i = 0; i < r.count; i++) {
-      const rad = this.reg.bodyRadius[r.kind[i]!]!;
-      const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + this.reg.bodyHeight[r.kind[i]!]!, r.z[i]! + rad);
+      const size = this.sizeOf(i);
+      const rad = this.reg.bodyRadius[r.kind[i]!]! * size;
+      const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + this.reg.bodyHeight[r.kind[i]!]! * size, r.z[i]! + rad);
       if (t < best) {
         best = t;
         hit = i;
       }
     }
-    if (hit >= 0) return (r.flags[hit]! & VIEW_FLAG_PROP) !== 0 ? `E  ${s.open ? "close" : "open"} ${r.name[hit]}` : "";
+    if (hit >= 0) {
+      if ((r.flags[hit]! & VIEW_FLAG_PROP) !== 0) {
+        // An egg says when it will hatch; anything else lying there is something to look into.
+        if (r.grown[hit] !== 0) return `${r.name[hit]}  hatches in ${waitWords(Math.max(0, Math.ceil((r.grown[hit]! - s.serverTick) / TICK_RATE)))}`;
+        return `E  ${s.open ? "close" : "open"} ${r.name[hit]}`;
+      }
+      // A young one that is nobody's is anybody's to take.
+      if (r.team[hit] === 0 && r.grown[hit] !== 0) {
+        const id = this.reg.ids[r.kind[hit]!] ?? "";
+        return `E  take the young ${id.slice(id.indexOf(":") + 1)}`;
+      }
+      return "";
+    }
     if (node < 0 || !world.nodes) return "";
     // A tree or rock is struck with the primary button; a bush is picked with the use key.
     const kind = world.nodes.chunks[Math.floor(node / 65536)]?.kind[node & 0xffff] ?? 0;

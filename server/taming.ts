@@ -19,7 +19,7 @@
 
 import { TICK_RATE } from "../shared/coords.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { EVENT_TAMED, MAX_NAME_BYTES, ORDER_ALL, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, ORDER_UNSADDLE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_STALE, S_EVENT, WHISTLE_RANGE } from "../shared/net/protocol.ts";
+import { EVENT_TAMED, MAX_NAME_BYTES, ORDER_ALL, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_STALE, S_EVENT, WHISTLE_RANGE } from "../shared/net/protocol.ts";
 import type { Creatures } from "./creatures.ts";
 import type { Progression } from "./progression.ts";
 import { Rng } from "../shared/rng.ts";
@@ -77,7 +77,23 @@ export interface Subject {
   points: number;
   stance: number;
   following: boolean;
+  /**
+   * Its breeding: whether its kind breeds, whether it may mate, whether it is
+   * female; how grown it is (a stage of shared/sim/breeding.ts) and how far,
+   * 0 to 1; how far the pair it is one of has got, 0 to 1; and the seconds
+   * until a female may mate again.
+   */
+  breeds: boolean;
+  mating: boolean;
+  female: boolean;
+  stage: number;
+  maturity: number;
+  mate: number;
+  wait: number;
 }
+
+/** What is shown of the breeding of a creature nobody has said anything about: grown, and no more. */
+const NO_BREEDING = { mating: false, female: false, stage: 3, maturity: 1, mate: 0, wait: 0 };
 
 export class Taming {
   /** Creatures tamed, pieces eaten, tames lost to waking, and narcotics fed; orders obeyed, and meals a creature that is somebody's ate of what it carries. */
@@ -87,6 +103,13 @@ export class Taming {
   doses = 0;
   orders = 0;
   meals = 0;
+  /**
+   * Breeding, given by whoever knows of it. `onMate`: a creature of the
+   * tribe of whoever asks is told it may mate, or may not (an ORDER_); the
+   * answer is a result code. `bred`: what to show of a creature's breeding.
+   */
+  onMate: ((rec: EntityRecord, what: number) => number) | null = null;
+  bred: ((rec: EntityRecord) => typeof NO_BREEDING) | null = null;
   private readonly ctx: TamingContext;
   private readonly rng: Rng;
   /** The creatures lying there being tamed: few at any time. */
@@ -142,7 +165,8 @@ export class Taming {
   }
 
   private wild(rec: EntityRecord): boolean {
-    return rec.team === 0 && rec.keyHash === null && this.ctx.world.reg.taming[rec.kind] !== null && this.ctx.world.reg.taming[rec.kind] !== undefined;
+    // Not one that is young: that is taken, not tamed.
+    return rec.team === 0 && rec.keyHash === null && rec.grown === 0 && this.ctx.world.reg.taming[rec.kind] !== null && this.ctx.world.reg.taming[rec.kind] !== undefined;
   }
 
   /** A body went under, or came round. */
@@ -284,7 +308,7 @@ export class Taming {
 
   /** It has been given what it needs: it is whoever's last looked into it, better for how well it was done, and awake. */
   private finish(rec: EntityRecord): void {
-    const { world, records, survival, game } = this.ctx;
+    const { world, records } = this.ctx;
     const tame = rec.tame!;
     const owner = records.byPid.get(tame.by);
     // Nobody to belong to (fed by no hand): it waits, full of what it was given, for someone to look into it.
@@ -303,6 +327,17 @@ export class Taming {
         if (g.wild[s]! < POINT_CAP) g.wild[s]!++;
       }
     }
+    this.give(rec, owner, te);
+  }
+
+  /**
+   * Creature `rec` is the tribe of `owner`'s from now, tamed this well (0 to
+   * 1), and awake. If it was being tamed, that is over. Its levels are as
+   * they are: whoever calls has given it what it earned.
+   */
+  give(rec: EntityRecord, owner: EntityRecord, te: number): void {
+    const { world, records, survival, game } = this.ctx;
+    const g = rec.genome;
     rec.tame = null;
     rec.te = te;
     rec.team = owner.team;
@@ -348,6 +383,8 @@ export class Taming {
     // A saddle that fits it, on a creature of one's tribe that has none: it is put on, and is no longer among what it carries.
     if (world.reg.saddleFits[item] !== 0) {
       if (world.reg.saddleFits[item] !== box.kind || box.saddle !== 0) return RESULT_INVALID;
+      // Nothing young is saddled.
+      if (box.grown !== 0) return RESULT_DENIED;
       if (box.team === 0 || !this.ctx.tribes.may(this.ctx.records.byPid.get(c.pid), box.team)) return RESULT_NOT_YOURS;
       if (!items.burn(box, slot, 1)) return RESULT_STALE;
       box.saddle = item;
@@ -401,7 +438,8 @@ export class Taming {
     const me = records.byPid.get(c.pid);
     if (!me || c.ent < 0 || me.dead) return RESULT_DENIED;
     const stance = what - ORDER_STANCE;
-    if (what !== ORDER_STAY && what !== ORDER_FOLLOW && what !== ORDER_UNSADDLE && !(stance >= 0 && stance < 3) && what < ORDER_LEVEL) return RESULT_INVALID;
+    const mate = what === ORDER_MATE || what === ORDER_UNMATE;
+    if (what !== ORDER_STAY && what !== ORDER_FOLLOW && what !== ORDER_UNSADDLE && !mate && !(stance >= 0 && stance < 3) && what < ORDER_LEVEL) return RESULT_INVALID;
     const obey = (e: number, rec: EntityRecord): number => {
       if (what === ORDER_UNSADDLE) {
         // Its saddle comes off into what it carries: not while someone sits on it, and not if there is no room.
@@ -410,6 +448,9 @@ export class Taming {
         if (this.ctx.items.mint(rec, rec.saddle, 1) === 0) return RESULT_FULL;
         rec.saddle = 0;
         this.ctx.refresh(rec);
+      } else if (mate) {
+        const done = this.onMate ? this.onMate(rec, what) : RESULT_INVALID;
+        if (done !== RESULT_OK) return done;
       } else if (what === ORDER_STAY || what === ORDER_FOLLOW) {
         rec.follow = what === ORDER_FOLLOW ? c.pid : 0;
         creatures.mind.follow(e, what === ORDER_FOLLOW ? c.ent : -1);
@@ -426,8 +467,8 @@ export class Taming {
       return RESULT_OK;
     };
     if (which === ORDER_ALL) {
-      // A whistle: every one of the tribe's that hears it. Levels are not given by whistling, nor saddles taken off.
-      if (what >= ORDER_LEVEL || what === ORDER_UNSADDLE) return RESULT_INVALID;
+      // A whistle: every one of the tribe's that hears it. Levels are not given by whistling, nor saddles taken off, nor anything told to mate.
+      if (what >= ORDER_LEVEL || what === ORDER_UNSADDLE || mate) return RESULT_INVALID;
       for (const e of creatures.mind.owned) {
         const rec = records.byPid.get(ents.pid[e]!);
         if (!rec || !tribes.may(me, rec.team)) continue;
@@ -477,6 +518,8 @@ export class Taming {
     const level = rec.genome ? rec.genome.level : 1;
     const e = this.ctx.records.entOf.get(rec.pid);
     return {
+      ...(this.bred ? this.bred(rec) : NO_BREEDING),
+      breeds: world.reg.breedEgg[rec.kind] !== 0xffff,
       saddled: rec.saddle !== 0,
       id: e ?? -1,
       points: rec.team !== 0 ? Math.min(255, this.ctx.progression.statPoints(rec)) : 0,

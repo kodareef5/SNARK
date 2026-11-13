@@ -68,6 +68,14 @@ interface Socket {
   isVoice: boolean;
 }
 
+/**
+ * What a development server's rules begin as. At the reference's rates a
+ * parasaur's egg takes an hour and a half and what hatches a day more; with
+ * these the egg takes under two minutes, growing up about five, and a female
+ * will mate again within a few minutes.
+ */
+export const DEV_RULES = { tamingSpeed: 10, hatchSpeed: 50, matureSpeed: 300, matingInterval: 0.002 } as const;
+
 export function startServer(opts: ServerOptions = {}): RunningServer {
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error("content errors:\n" + errors.join("\n"));
@@ -77,7 +85,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   if (!existsSync(packFile)) throw new Error(`${packFile} is missing: build the client first (bun run build)`);
   const pack = parsePack(new Uint8Array(readFileSync(packFile)));
   const clips = pack.clips;
-  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}) };
+  // A development server starts a new world with taming, hatching and growing up turned up, so that the whole of raising a creature takes minutes.
+  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.dev ? { rules: DEV_RULES } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
   if (opts.probeScene) {
     const ents = host.world.ents;

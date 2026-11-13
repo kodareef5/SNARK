@@ -213,7 +213,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
       c.sentSubject = -1;
     }
   } else if (ctx.world.tick - c.sentSubjectAt >= 6) {
-    const q = [subject.taming ? 1 : 0, subject.owned ? 1 : 0, subject.level, Math.round(subject.progress * 1000), Math.round(subject.te * 1000), Math.round(subject.torpor * 1000), Math.round(subject.food * 1000), subject.id, subject.points, subject.stance, subject.following ? 1 : 0, subject.saddled ? 1 : 0];
+    const q = [subject.taming ? 1 : 0, subject.owned ? 1 : 0, subject.level, Math.round(subject.progress * 1000), Math.round(subject.te * 1000), Math.round(subject.torpor * 1000), Math.round(subject.food * 1000), subject.id, subject.points, subject.stance, subject.following ? 1 : 0, subject.saddled ? 1 : 0, (subject.breeds ? 1 : 0) | (subject.mating ? 2 : 0) | (subject.female ? 4 : 0) | (subject.stage << 3), Math.round(subject.maturity * 1000), Math.round(subject.mate * 1000), subject.wait];
     const sum = q.reduce((h, v) => (Math.imul(h, 31) + v) | 0, 7) >>> 0;
     if (sum !== c.sentSubject) {
       const w = game.beginOwn(OWN_SUBJECT);
@@ -230,6 +230,13 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
       w.bits(subject.stance, 2);
       w.bool(subject.following);
       w.bool(subject.saddled);
+      w.bool(subject.breeds);
+      w.bool(subject.mating);
+      w.bool(subject.female);
+      w.bits(subject.stage, 2);
+      w.bits(q[13]!, 10);
+      w.bits(q[14]!, 10);
+      w.varint(subject.wait);
       game.endOwn(c);
       c.sentSubject = sum;
       c.sentSubjectAt = ctx.world.tick;

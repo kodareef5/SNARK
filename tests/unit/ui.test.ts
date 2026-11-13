@@ -12,9 +12,9 @@ import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR
 import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
-import { KEY_OPEN_LEVEL, KEY_OPEN_ORDER, KEY_OPEN_PAGE, KEY_OPEN_SLOT, KEY_OPEN_SUBJECT } from "../../client/core/ui/inventory.ts";
+import { KEY_OPEN_LEVEL, KEY_OPEN_MATE, KEY_OPEN_ORDER, KEY_OPEN_PAGE, KEY_OPEN_SLOT, KEY_OPEN_SUBJECT, KEY_OPEN_UNSADDLE, waitWords } from "../../client/core/ui/inventory.ts";
 import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
-import { CMD_FEED, CMD_NAME, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
+import { CMD_FEED, CMD_NAME, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
@@ -914,6 +914,9 @@ test("a container with more slots than there is room for is turned through a pag
   }
 });
 
+/** What is said of the breeding of a creature whose kind does not breed. */
+const GROWN_ONE = { saddled: false, breeds: false, mating: false, female: false, stage: 3, maturity: 1, mate: 0, wait: 0 };
+
 test("a creature looked into says how its taming goes; one just tamed is asked a name for, and Enter sends it", () => {
   const narcotic = reg.index.get("core:narcotic")!;
   for (const [name, aspect] of ASPECTS) {
@@ -935,7 +938,7 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     const r = new BitReader(sent[0]!.bytes);
     expect([sent.length, sent[0]!.op, r.varint(), r.u16()]).toEqual([1, CMD_FEED, 2, narcotic]);
     // Awake and somebody's, the line says how it is.
-    Object.assign(session, { subject: { taming: false, owned: true, level: 42, progress: 0, te: 0.81, torpor: 0, food: 0.5 } });
+    Object.assign(session, { subject: { taming: false, owned: true, level: 42, progress: 0, te: 0.81, torpor: 0, food: 0.5, ...GROWN_ONE } });
     ui.build(aspect, fullHud(), session);
     expect(f.find(KEY_OPEN_SUBJECT)!.text).toBe("level 42  torpor 0%  food 50%");
 
@@ -972,7 +975,7 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
 test("a creature of one's own, looked into, is told to follow or stay, to change its stance, and where to put its levels, by buttons that fit every window", () => {
   for (const [name, aspect] of ASPECTS) {
     const { session, sent } = fakeSession(fullInventory());
-    const subject = { taming: false, owned: true, level: 12, progress: 0, te: 0.8, torpor: 0, food: 0.7, id: 77, points: 2, stance: 1, following: false };
+    const subject = { taming: false, owned: true, level: 12, progress: 0, te: 0.8, torpor: 0, food: 0.7, id: 77, points: 2, stance: 1, following: false, ...GROWN_ONE };
     Object.assign(session, { sessionState: SESSION_ALIVE, open: { name: "Blue", inventory: new Inventory(20) }, subject });
     const ui = new Ui();
     ui.registry = reg;
@@ -1002,5 +1005,53 @@ test("a creature of one's own, looked into, is told to follow or stay, to change
     Object.assign(subject, { owned: false, taming: true });
     ui.build(aspect, fullHud(), session);
     expect(f.find(KEY_OPEN_ORDER)).toBeNull();
+  }
+});
+
+test("one that breeds says its sex and how its mating goes, and has a button for whether it may; a young one says how grown it is and has none; one taken as young is asked a name for", () => {
+  expect([waitWords(45), waitWords(12 * 60 + 5), waitWords(5 * 3600 + 12 * 60 + 59)]).toEqual(["45s", "12m", "5h 12m"]);
+  for (const [name, aspect] of ASPECTS) {
+    const { session, sent } = fakeSession(fullInventory());
+    const subject = { taming: false, owned: true, level: 12, progress: 0, te: 0.8, torpor: 0, food: 0.7, id: 77, points: 0, stance: 1, following: false, saddled: true, breeds: true, mating: false, female: true, stage: 3, maturity: 1, mate: 0, wait: 0 };
+    Object.assign(session, { sessionState: SESSION_ALIVE, open: { name: "Blue", inventory: new Inventory(20) }, subject });
+    const ui = new Ui();
+    ui.registry = reg;
+    ui.build(aspect, fullHud(), session);
+    const f = ui.frame;
+    const said = (): string => f.find(KEY_OPEN_SUBJECT)!.text;
+    expect(said(), name).toBe("level 12  female  torpor 0%  food 70%".slice(0, said().length));
+    // Saddled and able to mate, it has four buttons in its row: each fits, and none lies on another.
+    expect([f.find(KEY_OPEN_MATE)!.text, f.find(KEY_OPEN_UNSADDLE) !== null], name).toEqual(["Mating off".slice(0, f.find(KEY_OPEN_MATE)!.text.length), true]);
+    for (let i = 0; i < f.count; i++) {
+      const n = f.nodes[i]!;
+      if (!n.interactive) continue;
+      expect(n.x + n.w, `${name} ${n.key}`).toBeLessThanOrEqual(f.width + 0.01);
+      if (n.key === KEY_OPEN_MATE || n.key === KEY_OPEN_UNSADDLE || n.key === KEY_OPEN_ORDER || n.key === KEY_OPEN_ORDER + 1) expect(textWidth(n.text, n.style), `${name} ${n.key} "${n.text}"`).toBeLessThanOrEqual(n.w + 0.01);
+      for (let j = i + 1; j < f.count; j++) if (f.nodes[j]!.interactive) expect(overlaps(f, i, j), `${name} ${n.key} ${f.nodes[j]!.key}`).toBe(false);
+    }
+    // Pressed, it is told it may; told so, the button says so, and pressed again it is told it may not.
+    ui.pointer(0, KEY_OPEN_MATE, 0, 0, 0, session);
+    Object.assign(subject, { mating: true, mate: 0.43 });
+    ui.build(aspect, fullHud(), session);
+    expect([f.find(KEY_OPEN_MATE)!.text, said()], name).toEqual(["Mating on".slice(0, f.find(KEY_OPEN_MATE)!.text.length), "level 12  female  torpor 0%  food 70%  mating 43%".slice(0, said().length)]);
+    ui.pointer(0, KEY_OPEN_MATE, 0, 0, 0, session);
+    expect(sent.map((c) => [c.op, new BitReader(c.bytes).u32(), c.bytes[4]])).toEqual([[CMD_ORDER, 77, ORDER_MATE], [CMD_ORDER, 77, ORDER_UNMATE]]);
+    // After an egg, she rests; the line says for how long.
+    Object.assign(subject, { mate: 0, wait: 5 * 3600 + 12 * 60 });
+    ui.build(aspect, fullHud(), session);
+    expect(said(), name).toBe("level 12  female  torpor 0%  food 70%  rests 5h 12m".slice(0, said().length));
+    // A young one says how grown it is, and is not asked whether it may mate.
+    Object.assign(subject, { saddled: false, mating: false, female: false, stage: 1, maturity: 0.34, wait: 0 });
+    ui.build(aspect, fullHud(), session);
+    expect([said(), f.find(KEY_OPEN_MATE), f.find(KEY_OPEN_ORDER)!.text], name).toEqual(["level 12  male  juvenile 34%  torpor 0%  food 70%".slice(0, said().length), null, "Follow me"]);
+
+    // Taken as young, not tamed: the panel that asks its name says so.
+    ui.key("Escape", true, false, session);
+    Object.assign(session, { open: null, subject: null });
+    session.tamed.push({ handle: 0x77, kind: reg.index.get("core:parasaur")!, level: 9, te: 255 });
+    ui.build(aspect, fullHud(), session);
+    const title = f.find(KEY_NAME_TITLE)!;
+    expect([ui.naming.open, title.text], name).toEqual([true, "Yours: a young parasaur, level 9"]);
+    expect(textWidth(title.text, title.style), name).toBeLessThanOrEqual(title.w + 0.01);
   }
 });

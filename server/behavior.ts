@@ -191,6 +191,8 @@ export class Behavior {
     const ents = this.world.ents;
     const tick = this.world.tick;
     const team = ents.team[e]!;
+    // Young and nobody's: it does nothing about anything.
+    if (team === 0 && ents.grown[e] !== 0) return;
     if (team !== 0) {
       // Somebody's: by its stance, whatever its kind would do wild. It does nothing about its own.
       if (this.stance[e] !== STANCE_PASSIVE && by >= 0 && by !== e && ents.team[by] !== team) this.hunt(e, by, tick);
@@ -261,7 +263,8 @@ export class Behavior {
     let near = sight * sight;
     const team = ents.team[e]!;
     const look = (o: number): void => {
-      if (o === e || (ents.flags[o]! & F_ALIVE) === 0 || (team !== 0 && ents.team[o] === team)) return;
+      // Not itself, not its own, and not a young one that is nobody's yet: that is no wild creature.
+      if (o === e || (ents.flags[o]! & F_ALIVE) === 0 || (team !== 0 && ents.team[o] === team) || (ents.team[o] === 0 && ents.grown[o] !== 0)) return;
       const dx = ents.x[o]! - ex;
       const dz = ents.z[o]! - ez;
       const d2 = dx * dx + dz * dz;
@@ -344,6 +347,12 @@ export class Behavior {
       const near = FOLLOW_NEAR + this.reg.bodyRadius[ents.kind[e]!]! + this.reg.bodyRadius[ents.kind[whom]!]!;
       this.move[e] = flat <= near ? 0 : flat > FOLLOW_RUN ? 127 : 90;
       this.buttons[e] = flat > FOLLOW_RUN ? BTN_SPRINT : 0;
+      return;
+    }
+    // Young and nobody's: it waits where it hatched for someone to take it.
+    if (ents.grown[e] !== 0) {
+      this.move[e] = 0;
+      this.buttons[e] = 0;
       return;
     }
     if (!turn && tick < this.until[e]!) return;

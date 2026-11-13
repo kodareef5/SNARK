@@ -31,12 +31,42 @@ function waterMesh(): SourceMesh {
   };
 }
 
+export const EGG_MESH = "core:egg";
+
+/** An egg: a rounded shape standing on its blunt end, 0.6 across and 0.7 tall, its base at y = 0. */
+function eggMesh(): SourceMesh {
+  const around = 10;
+  const up = 7;
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let j = 0; j <= up; j++) {
+    const v = j / up;
+    // Fatter below the middle than above it, as an egg is.
+    const r = 0.3 * Math.sin(Math.PI * v) * (1.12 - 0.3 * v);
+    const y = 0.35 - 0.35 * Math.cos(Math.PI * v);
+    for (let i = 0; i < around; i++) {
+      const a = (i / around) * Math.PI * 2;
+      positions.push(Math.sin(a) * r, y, Math.cos(a) * r);
+    }
+  }
+  for (let j = 0; j < up; j++) {
+    for (let i = 0; i < around; i++) {
+      const a = j * around + i;
+      const b = j * around + ((i + 1) % around);
+      // The first ring and the last are points: one triangle there, two between.
+      if (j > 0) indices.push(a, b, a + around);
+      if (j < up - 1) indices.push(b, b + around, a + around);
+    }
+  }
+  return { id: EGG_MESH, lods: [{ positions: Float32Array.from(positions), colors: new Uint8Array(positions.length / 3).fill(REGION_BASE), indices: Uint32Array.from(indices) }] };
+}
+
 /** Graybox meshes for content. Their single colour is region 0, so the definition's colour applies per instance. */
 export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
   // The beam marks a place from far off: where a survivor died.
   const beam = boxMesh([0.15, 40, 0.15], REGION_BASE);
   for (let i = 1; i < beam.positions.length; i += 3) beam.positions[i]! += 40;
-  const meshes: SourceMesh[] = [{ id: MISSING_MESH, lods: [boxMesh([0.5, 0.5, 0.5], 0)] }, waterMesh(), { id: BEAM_MESH, lods: [beam] }];
+  const meshes: SourceMesh[] = [{ id: MISSING_MESH, lods: [boxMesh([0.5, 0.5, 0.5], 0)] }, waterMesh(), { id: BEAM_MESH, lods: [beam] }, eggMesh()];
   for (const d of defs) {
     if (d.type === "structure" && d.mesh === "shape") {
       // Its shape's boxes, each where it stands in the piece.

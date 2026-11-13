@@ -54,6 +54,8 @@ const COMP_VITALS8 = 12;
 const COMP_TEAM = 13;
 /** Taming: how well a tamed creature was tamed; and, for one lying there being tamed, what it has been given so far and for whom. */
 const COMP_TAME = 15;
+/** Breeding: whether a creature is willing to mate and when a female may again; when a young one was born and will be grown; and, for an egg, what will hatch from it and when. */
+const COMP_BREED = 16;
 /** The state of something built: the ref of the structure it belongs to, whether it is locked, and its PIN plus one. */
 const COMP_FIXTURE = 14;
 /** Experience, learned engrams, crafting jobs. */
@@ -246,7 +248,24 @@ export class WorldStore {
     const used = inv ? inv.used() : 0;
     const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + rec.extra.size);
+    const hasBreed = rec.mating || rec.mateReadyAt !== 0 || rec.grown !== 0 || rec.egg !== null;
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + (hasBreed ? 1 : 0) + rec.extra.size);
+    if (hasBreed) {
+      c.reset();
+      c.bool(rec.mating);
+      c.uint53(rec.mateReadyAt);
+      c.uint53(rec.born);
+      c.uint53(rec.grown);
+      c.bool(rec.egg !== null);
+      if (rec.egg) {
+        c.varint(this.toSaved[rec.egg.species]!);
+        c.uint53(rec.egg.laidAt);
+        c.uint53(rec.egg.hatchAt);
+        c.uint53(rec.egg.carrier);
+      }
+      w.varint(COMP_BREED);
+      w.blob(c.bytes());
+    }
     if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0) {
       c.reset();
       c.f32(rec.te);
@@ -527,6 +546,15 @@ export class WorldStore {
               const saved = c.varint();
               rec.saddle = saved === 0 ? 0 : (this.toRuntime[saved] ?? 0);
             }
+          }
+        } else if (component === COMP_BREED) {
+          rec.mating = c.bool();
+          rec.mateReadyAt = c.uint53();
+          rec.born = c.uint53();
+          rec.grown = c.uint53();
+          if (c.bool()) {
+            const species = this.toRuntime[c.varint()] ?? 0;
+            rec.egg = { species, laidAt: c.uint53(), hatchAt: c.uint53(), carrier: c.uint53() };
           }
         } else if (component === COMP_FIXTURE) {
           rec.at = c.u32();

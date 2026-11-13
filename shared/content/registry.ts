@@ -4,6 +4,7 @@
 // definitions gets the same indices and the same hash. Index 0 is reserved: it
 // marks an empty structure slot and stands in for content that no longer exists.
 
+import { BIRTH_SCALE } from "../sim/breeding.ts";
 import type { TameParams } from "../sim/taming.ts";
 import { TICK_RATE } from "../coords.ts";
 import { hashString } from "../hash.ts";
@@ -104,6 +105,16 @@ export interface Registry {
   /** Per species: its taming numbers, or null if it cannot be tamed; and what it eats, best first, as triples of item, food and affinity. */
   readonly taming: readonly (TameParams | null)[];
   readonly eats: readonly (readonly number[] | null)[];
+  /**
+   * Per species that breeds: the prop a female lays (0: she bears her young
+   * alive), the ticks that takes to hatch and the ticks a young one takes to
+   * grow up, at the reference's rates; and the size of a newborn as a share
+   * of a grown one. `breedEgg` is 0xffff, and the ticks 0, for one that does not.
+   */
+  readonly breedEgg: Uint16Array;
+  readonly incubateTicks: Uint32Array;
+  readonly matureTicks: Uint32Array;
+  readonly birthScale: Float32Array;
   /** Per item: the species it is a saddle for (0: it is no saddle), and the armor that gives. */
   readonly saddleFits: Uint16Array;
   readonly saddleArmor: Float32Array;
@@ -271,6 +282,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
     else if (d.type === "species") {
       for (const drop of d.drops ?? []) want(d, drop.item, "item");
       for (const f of d.eats ?? []) want(d, f.item, "item");
+      if (d.breeds?.egg !== undefined) want(d, d.breeds.egg, "prop");
+      if (d.breeds && !(d.breeds.incubate > 0 && d.breeds.mature > 0)) errors.push(`${d.id}: breeds needs incubate and mature above 0`);
     } else if (d.type === "structure") {
       if (d.material !== undefined) want(d, d.material, "material");
       if (d.opens !== undefined) want(d, d.opens, "structure");
@@ -345,6 +358,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const runAt = new Float32Array(n);
   const taming: (TameParams | null)[] = new Array(n).fill(null);
   const eats: (number[] | null)[] = new Array(n).fill(null);
+  const breedEgg = new Uint16Array(n).fill(0xffff);
+  const incubateTicks = new Uint32Array(n);
+  const matureTicks = new Uint32Array(n);
+  const birthScale = new Float32Array(n).fill(1);
   const saddleFits = new Uint16Array(n);
   const saddleArmor = new Float32Array(n);
   const doseTorpor = new Float32Array(n);
@@ -461,6 +478,12 @@ export function compileContent(input: readonly Def[]): CompileResult {
       taming[i] = d.taming ?? null;
       if (d.eats) eats[i] = d.eats.flatMap((f) => [index.get(f.item)!, f.food, f.affinity]);
       leash[i] = d.leash ?? 60;
+      if (d.breeds) {
+        breedEgg[i] = d.breeds.egg !== undefined ? index.get(d.breeds.egg)! : 0;
+        incubateTicks[i] = Math.round(d.breeds.incubate * TICK_RATE);
+        matureTicks[i] = Math.round(d.breeds.mature * TICK_RATE);
+        birthScale[i] = d.breeds.scale ?? BIRTH_SCALE;
+      }
       // Its jaws are what it swings: one bite a blow, as long as its clip, landing part way through.
       if (d.bite) {
         reach[i] = d.bite.reach;
@@ -492,7 +515,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
   for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
   // And a fire that is burning, as the fire it is.
   for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

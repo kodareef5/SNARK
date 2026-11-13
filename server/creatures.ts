@@ -105,8 +105,9 @@ export class Creatures {
     this.records.entOf.set(rec.pid, e);
     this.mind.reset(e);
     this.mind.stance[e] = rec.stance;
-    // Whose it is, if it is anyone's, is on its body from the start.
+    // Whose it is, if it is anyone's, is on its body from the start; and so is how young it is.
     ents.setTeam(e, rec.team);
+    if (rec.grown !== 0) ents.setYoung(e, rec.born, rec.grown);
     // New bodies start full; loaded ones keep their numbers and get their deadline back.
     if (rec.vitals) this.survival.restore(rec, true);
     else this.survival.init(rec);

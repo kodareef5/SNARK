@@ -14,7 +14,7 @@
 
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, ORDER_UNSADDLE, CMD_USE } from "../../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, CMD_USE } from "../../../shared/net/protocol.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, type Inventory } from "../../../shared/sim/items.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
@@ -46,9 +46,19 @@ export const KEY_OPEN_ORDER = 270;
 export const KEY_OPEN_LEVEL = 272;
 /** And, on one that wears a saddle, a button that takes it off. */
 export const KEY_OPEN_UNSADDLE = 279;
+/** And, on one that is grown and of a kind that breeds, a button that says whether it may mate. */
+export const KEY_OPEN_MATE = 295;
 /** The stats a creature's levels go in, and what each button is marked with. */
 const LEVEL_STATS: readonly [stat: number, mark: string][] = [[0, "health"], [1, "stam"], [2, "oxy"], [3, "food"], [5, "weight"], [6, "melee"], [7, "speed"]];
 const STANCE_WORDS: readonly string[] = ["passive", "neutral", "aggressive"];
+const STAGE_WORDS: readonly string[] = ["baby", "juvenile", "adolescent"];
+
+/** A wait in seconds as a few characters: "45s", "12m", "5h 12m". */
+export function waitWords(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
 /** Rows of the open container shown at once. */
 const OPEN_ROWS = 6;
 /** Labels of the hotbar and armor rows, and the four buttons that act on the picked-up stack. */
@@ -121,6 +131,10 @@ export class InventoryScreen {
       // What a creature of one's own is told: follow or stay, the next stance round, its saddle off, or a level into a stat.
       const what = key === KEY_OPEN_UNSADDLE ? ORDER_UNSADDLE : key === KEY_OPEN_ORDER ? (subject.following ? ORDER_STAY : ORDER_FOLLOW) : key === KEY_OPEN_ORDER + 1 ? ORDER_STANCE + ((subject.stance + 1) % STANCE_WORDS.length) : ORDER_LEVEL + LEVEL_STATS[key - KEY_OPEN_LEVEL]![0];
       session.command(CMD_ORDER, (w) => (w.u32(subject.id), w.u8(what)));
+      return;
+    }
+    if (kind === 0 && subject?.owned && subject.id >= 0 && key === KEY_OPEN_MATE) {
+      session.command(CMD_ORDER, (w) => (w.u32(subject.id), w.u8(subject.mating ? ORDER_UNMATE : ORDER_MATE)));
       return;
     }
     if (kind === 0 && (key === KEY_OPEN_PAGE || key === KEY_OPEN_PAGE + 2)) {
@@ -266,14 +280,20 @@ export class InventoryScreen {
       }
       if (subject) {
         const pct = (v: number): string => `${Math.round(v * 100)}%`;
-        const line = subject.taming ? `taming ${pct(subject.progress)}  well ${pct(subject.te)}  torpor ${pct(subject.torpor)}  food ${pct(subject.food)}` : `level ${subject.level}  torpor ${pct(subject.torpor)}  food ${pct(subject.food)}`;
+        // How it is: its taming, if it is being tamed; else its level, its sex if its kind breeds, how grown it is if it is young, and how its mating goes.
+        const grown = subject.stage >= STAGE_WORDS.length;
+        const sex = subject.breeds ? (subject.female ? "  female" : "  male") : "";
+        const age = grown ? "" : `  ${STAGE_WORDS[subject.stage]} ${pct(subject.maturity)}`;
+        const mate = !subject.mating ? "" : subject.mate > 0 ? `  mating ${pct(subject.mate)}` : subject.wait > 0 ? `  rests ${waitWords(subject.wait)}` : "";
+        const line = subject.taming ? `taming ${pct(subject.progress)}  well ${pct(subject.te)}  torpor ${pct(subject.torpor)}  food ${pct(subject.food)}` : `level ${subject.level}${sex}${age}  torpor ${pct(subject.torpor)}  food ${pct(subject.food)}${mate}`;
         f.text(KEY_OPEN_SUBJECT, x0 + PAD, y + PAD + titleH, w - PAD * 2, S_LABEL, line.slice(0, Math.floor((w - PAD * 2) / 7.2)));
         if (subject.owned) {
           const top = y + PAD + titleH + infoH + 2;
-          // Two buttons, or three on one that wears a saddle.
-          const across = subject.saddled ? 3 : 2;
+          // Two buttons; one more on one that wears a saddle, and one more on one that can be told to mate.
+          const mates = subject.breeds && grown;
+          const across = 2 + (subject.saddled ? 1 : 0) + (mates ? 1 : 0);
           const half = (w - PAD * 2 - GAP * (across - 1)) / across;
-          for (const [n, label] of [[0, subject.following ? "Stay here" : "Follow me"], [1, subject.saddled ? (STANCE_WORDS[subject.stance] ?? "neutral") : `It is ${STANCE_WORDS[subject.stance] ?? "neutral"}`]] as const) {
+          for (const [n, label] of [[0, subject.following ? "Stay here" : "Follow me"], [1, across > 2 ? (STANCE_WORDS[subject.stance] ?? "neutral") : `It is ${STANCE_WORDS[subject.stance] ?? "neutral"}`]] as const) {
             const b = f.add(KEY_OPEN_ORDER + n, K_BUTTON, x0 + PAD + n * (half + GAP), top, half, 24, S_BUTTON);
             b.text = label.slice(0, Math.max(4, Math.floor((half - 6) / 8.4)));
             b.interactive = true;
@@ -281,6 +301,11 @@ export class InventoryScreen {
           if (subject.saddled) {
             const b = f.add(KEY_OPEN_UNSADDLE, K_BUTTON, x0 + PAD + 2 * (half + GAP), top, half, 24, S_BUTTON);
             b.text = "Unsaddle".slice(0, Math.max(4, Math.floor((half - 6) / 8.4)));
+            b.interactive = true;
+          }
+          if (mates) {
+            const b = f.add(KEY_OPEN_MATE, K_BUTTON, x0 + PAD + (across - 1) * (half + GAP), top, half, 24, S_BUTTON);
+            b.text = (subject.mating ? "Mating on" : "Mating off").slice(0, Math.max(4, Math.floor((half - 6) / 8.4)));
             b.interactive = true;
           }
           if (subject.points > 0) {
