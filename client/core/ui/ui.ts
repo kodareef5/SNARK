@@ -17,6 +17,7 @@ import { buildMap, buildRespawn, respawnClick } from "./screens.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsClick } from "./settings.ts";
 import { StructMenu } from "./structure.ts";
+import { KEY_NAME_INPUT, NamePrompt } from "./tame.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 
 /** The keys that open the chat box, and the channel each opens it on. */
@@ -31,6 +32,8 @@ export class Ui {
   readonly sheet = new CharacterScreen();
   /** What can be done to the thing built that is being looked at. */
   readonly structure = new StructMenu();
+  /** What to call a creature that has just been tamed. */
+  readonly naming = new NamePrompt();
   /** The session has no survivor yet and is making one: the creator is the whole interface. */
   creating = false;
   /** The full map is up. */
@@ -48,12 +51,12 @@ export class Ui {
 
   /** A text field has the keyboard: keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    return this.console.open || this.chat.open;
+    return this.console.open || this.chat.open || this.naming.open;
   }
 
   /** The mouse should steer the camera (the shell holds pointer lock) rather than move a cursor. */
   get wantsPointerLock(): boolean {
-    return !this.console.open && !this.chat.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.dead && !this.creating && !this.structure.open;
+    return !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.dead && !this.creating && !this.structure.open;
   }
 
   /**
@@ -64,6 +67,8 @@ export class Ui {
   key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
     const con = this.console;
     const chat = this.chat;
+    // Naming a creature has the keyboard until it is answered: Enter and Escape are its own, and every other key is typing.
+    if (this.naming.open && !con.open) return this.naming.key(code, down, repeat, session);
     if (chat.open && !con.open) {
       // The box has the keyboard: these three are its own, and every other key is typing.
       if (code !== "Enter" && code !== "NumpadEnter" && code !== "Escape" && code !== "Tab") return false;
@@ -154,7 +159,8 @@ export class Ui {
 
   /** A text field's content changed. */
   input(key: number, value: string): void {
-    if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
+    if (key === KEY_NAME_INPUT) this.naming.edit(value);
+    else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
   }
 
@@ -188,6 +194,11 @@ export class Ui {
         this.inventory.build(f, session, this.registry, this.palette);
         if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
       }
+    }
+    // A creature just tamed is asked about over whatever else is up, but under the console.
+    if (session && this.registry && !this.creating) {
+      this.naming.absorb(session);
+      if (!this.console.open) this.naming.build(f, session, this.registry);
     }
     if (session) this.console.absorb(session);
     this.console.build(f);

@@ -78,6 +78,13 @@ export interface SpeciesDef {
    * through.
    */
   readonly bite?: { readonly reach: number; readonly ticks?: number; readonly lands?: number };
+  /**
+   * It can be tamed by knocking it out and feeding it: the reference's five
+   * numbers for its species (shared/sim/taming.ts). Omitted: it cannot.
+   */
+  readonly taming?: { readonly a0: number; readonly a1: number; readonly foodBase: number; readonly proneMult: number; readonly k: number };
+  /** What it will eat, the food it likes best first: each an item, the food a piece is worth to it, and its affinity. */
+  readonly eats?: readonly { readonly item: string; readonly food: number; readonly affinity: number }[];
   /** Torpor it loses each second. Defaults to 1. Its most is its torpidity stat; a species without that stat cannot be knocked out. */
   readonly torporDrain?: number;
 }
@@ -164,6 +171,8 @@ export interface ItemDef {
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
   /** It burns: seconds one of it keeps a fire going. */
   readonly fuel?: number;
+  /** Fed to something unconscious it deepens its sleep: so much torpor, over so many seconds. */
+  readonly dose?: { readonly torpor: number; readonly seconds: number };
   /** Over a fire it becomes another item, in so many seconds. */
   readonly cooks?: { readonly into: string; readonly seconds: number };
   /** Name shown in the interface. Defaults to the id without its namespace. */

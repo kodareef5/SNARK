@@ -23,6 +23,8 @@ export const RULE_DEFAULTS = {
   globalChat: 1,
   /** 1: a voice is heard by everyone, wherever they are. 0: only by those it carries to. */
   globalVoice: 0,
+  /** What every piece of food is worth to a creature being tamed is multiplied by this. */
+  tamingSpeed: 1,
   /** Seconds after it is set down that a piece may be taken back into the hands. 0: at any time. Only ever while it is unharmed. */
   pickupSeconds: 0,
   /** What the time something built lasts unvisited is multiplied by. 0: nothing decays. */

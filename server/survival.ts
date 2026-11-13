@@ -2,6 +2,7 @@
 // writes it into the body's columns; clients receive the result with their own
 // body and never compute it, so prediction steps with the server's numbers.
 
+import { proneHunger } from "../shared/sim/taming.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
@@ -333,7 +334,8 @@ export class Survival {
       v.rate.fill(0);
       return;
     }
-    v.rate[V_FOOD] = eats ? -ratePerTick(def.food!.perHour) : 0;
+    // Lying unconscious, a creature that can be tamed hungers at the reference's rate for that, which is fast.
+    v.rate[V_FOOD] = eats ? -(rec.out && def.taming ? ratePerSecond(proneHunger(def.taming)) : ratePerTick(def.food!.perHour)) : 0;
     v.rate[V_WATER] = drinks ? -ratePerTick(def.waterPerHour!) : 0;
     v.rate[V_OXYGEN] = breathes ? (under ? -OXYGEN_DRAIN : OXYGEN_REFILL) : 0;
     const god = this.gods.has(rec.pid);

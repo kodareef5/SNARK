@@ -37,7 +37,7 @@ const GEAR: Def[] = [
   { type: "item", id: id("ore"), stack: 200, weight: 1, label: "metal ore", color: 4 },
   { type: "item", id: id("ingot"), stack: 200, weight: 1, label: "metal ingot", color: 2 },
   { type: "item", id: id("gunpowder"), stack: 100, weight: 0.1, color: 11 },
-  { type: "item", id: id("narcotic"), stack: 100, weight: 0.1, color: 9 },
+  { type: "item", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, dose: { torpor: 40, seconds: 8 } },
 
   { type: "item", id: id("spear"), stack: 1, weight: 2, color: 3, weapon: { kind: "melee", damage: 30, type: "pierce", reach: 3, uses: 20, mesh: id("spear"), hold: "spear" } },
   // A bow gives its arrow more the longer it is drawn: a quarter of the damage undrawn, all of it after 1.2 s.
@@ -187,6 +187,10 @@ export const CORE_CONTENT: readonly Def[] = [
     strafe: false,
     fists: 12,
     bite: { reach: 4.6 },
+    slots: 30,
+    // The reference's taming numbers for a parasaur; a herbivore, it eats berries.
+    taming: { a0: 1500, a1: 75, foodBase: 0.001929, proneMult: 864.01, k: 0.4 },
+    eats: [{ item: "core:berry", food: 20, affinity: 20 }],
     food: { max: 1500, perHour: 40 },
     drops: [{ item: "core:hide", min: 8, max: 16 }, { item: "core:meat", min: 8, max: 14 }],
     zones: { head: 1.5 },
@@ -214,6 +218,10 @@ export const CORE_CONTENT: readonly Def[] = [
     sight: 22,
     leash: 60,
     bite: { reach: 2.6 },
+    slots: 20,
+    // The reference's taming numbers for a raptor; it eats meat, raw before cooked.
+    taming: { a0: 1200, a1: 60, foodBase: 0.001543, proneMult: 648.09, k: 3.125 },
+    eats: [{ item: "core:meat", food: 50, affinity: 50 }, { item: "core:meat_cooked", food: 25, affinity: 25 }],
     food: { max: 1200, perHour: 36 },
     drops: [{ item: "core:hide", min: 5, max: 10 }, { item: "core:meat", min: 4, max: 8 }],
     zones: { head: 3 },
@@ -268,6 +276,8 @@ export const CORE_CONTENT: readonly Def[] = [
   // What can act on a body for a time.
   { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8 },
   { type: "buff", id: "core:tranquilized", label: "Tranquilized", color: 9, seconds: 5, again: "stack" },
+  // A narcotic at work: one after another, each begins when the last has done.
+  { type: "buff", id: "core:drugged", label: "Drugged", color: 9, seconds: 8 },
   { type: "buff", id: "core:stunned", label: "Stunned", color: 6, seconds: 3, root: true },
   { type: "buff", id: "core:injured", label: "Injured", color: 8, speed: 0.8 },
   { type: "buff", id: "core:god", label: "God", color: 14, immune: true, good: true },

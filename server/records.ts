@@ -86,6 +86,15 @@ export class EntityRecord {
   at = -1;
   lock = 0;
   pin = -1;
+  /**
+   * For a creature lying unconscious and being tamed (server/taming.ts): the
+   * affinity it has been given, the sum its effectiveness is made from, who
+   * last looked into it (a persistent id: the tame will be theirs), and what
+   * was last seen of its inventory and when it is next due to eat. Null for
+   * anything else. And for a creature that has been tamed, how well: 0 to 1.
+   */
+  tame: { affinity: number; sum: number; by: number; seen: number; due: number } | null = null;
+  te = 0;
   /** For a bed: the tick from which someone may next return to life at it. */
   readyAt = 0;
   /** For a fire that is burning: how far it has been worked out (shared/sim/station.ts), and the tick it is next due to be looked at. Null when it is out. */

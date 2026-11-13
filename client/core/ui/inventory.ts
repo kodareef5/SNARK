@@ -14,7 +14,7 @@
 
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_USE } from "../../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_USE } from "../../../shared/net/protocol.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, type Inventory } from "../../../shared/sim/items.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
@@ -35,6 +35,8 @@ export const KEY_INV_SLOT = 300;
 export const KEY_OPEN_SLOT = 600;
 /** The buttons that turn the page back and on, and the line between them that says which page it is. */
 export const KEY_OPEN_PAGE = 296;
+/** The line that says how the creature looked into is. */
+export const KEY_OPEN_SUBJECT = 299;
 /** Rows of the open container shown at once. */
 const OPEN_ROWS = 6;
 /** Labels of the hotbar and armor rows, and the four buttons that act on the picked-up stack. */
@@ -122,8 +124,9 @@ export class InventoryScreen {
     const inv = this.box(session, box);
     if (kind !== 0 || slot < 0 || !inv) return;
     if (button === 2) {
-      // Use what is here. Only what you carry can be used.
+      // Use what is here. Only what you carry can be used; but a dose lying in an unconscious creature can be fed to it.
       if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
+      else if (box === BOX_OPEN && session.subject && inv.item[slot] !== 0 && (this.registry?.doseTorpor[inv.item[slot]!] ?? 0) > 0) session.command(CMD_FEED, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
       this.held = -1;
       return;
     }
@@ -191,7 +194,10 @@ export class InventoryScreen {
     this.pages = other ? Math.max(1, Math.ceil(other.bag / this.pageSize)) : 1;
     if (this.page >= this.pages) this.page = this.pages - 1;
     const onPage = other ? Math.min(this.pageSize, other.bag - this.page * this.pageSize) : 0;
-    const otherH = other ? titleH + rows(this.pages > 1 ? this.pageSize : other.bag) + PAD * 2 : 0;
+    // A creature looked into has a line of its own under its name: how its taming goes, or how it is.
+    const subject = other ? session.subject : null;
+    const subjectH = subject ? infoH + 2 : 0;
+    const otherH = other ? titleH + subjectH + rows(this.pages > 1 ? this.pageSize : other.bag) + PAD * 2 : 0;
     const x0 = Math.round((f.width - w) / 2);
     let y = Math.max(4, Math.round((f.height - ownH - otherH - (other ? 8 : 0)) / 2));
     const tick = session.serverTick;
@@ -237,7 +243,12 @@ export class InventoryScreen {
         }
         f.text(KEY_OPEN_PAGE + 1, px + 34, y + PAD + 2, pagerW - 68, S_LABEL, `${this.page + 1} / ${this.pages}`);
       }
-      grid(other, BOX_OPEN, KEY_OPEN_SLOT, y + PAD + titleH + 4, this.page * this.pageSize, onPage);
+      if (subject) {
+        const pct = (v: number): string => `${Math.round(v * 100)}%`;
+        const line = subject.taming ? `taming ${pct(subject.progress)}  well ${pct(subject.te)}  torpor ${pct(subject.torpor)}  food ${pct(subject.food)}` : `level ${subject.level}  torpor ${pct(subject.torpor)}  food ${pct(subject.food)}`;
+        f.text(KEY_OPEN_SUBJECT, x0 + PAD, y + PAD + titleH, w - PAD * 2, S_LABEL, line.slice(0, Math.floor((w - PAD * 2) / 7.2)));
+      }
+      grid(other, BOX_OPEN, KEY_OPEN_SLOT, y + PAD + titleH + subjectH + 4, this.page * this.pageSize, onPage);
       y += otherH + 8;
     }
     f.add(KEY_INV_PANEL, K_PANEL, x0, y, w, ownH, S_PANEL);

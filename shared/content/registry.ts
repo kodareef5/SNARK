@@ -4,6 +4,7 @@
 // definitions gets the same indices and the same hash. Index 0 is reserved: it
 // marks an empty structure slot and stands in for content that no longer exists.
 
+import type { TameParams } from "../sim/taming.ts";
 import { TICK_RATE } from "../coords.ts";
 import { hashString } from "../hash.ts";
 import { STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
@@ -100,6 +101,12 @@ export interface Registry {
   readonly isBed: Uint8Array;
   /** Per species: the speed from which it is seen to run and not walk, metres per second. */
   readonly runAt: Float32Array;
+  /** Per species: its taming numbers, or null if it cannot be tamed; and what it eats, best first, as triples of item, food and affinity. */
+  readonly taming: readonly (TameParams | null)[];
+  readonly eats: readonly (readonly number[] | null)[];
+  /** Per item: the torpor a dose of it gives and the seconds it takes to (0: it is no dose). */
+  readonly doseTorpor: Float32Array;
+  readonly doseSeconds: Float32Array;
   /** Per species: its temper (0 flees, 1 defends, 2 hunts), how far it sees what it hunts and how far it will be led, metres. */
   readonly temper: Uint8Array;
   readonly sight: Float32Array;
@@ -258,8 +265,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
       want(d, d.makes, "item");
       for (const n of d.needs) want(d, n.item, "item");
     } else if (d.type === "engram") for (const r of d.unlocks) want(d, r, "recipe");
-    else if (d.type === "species") for (const drop of d.drops ?? []) want(d, drop.item, "item");
-    else if (d.type === "structure") {
+    else if (d.type === "species") {
+      for (const drop of d.drops ?? []) want(d, drop.item, "item");
+      for (const f of d.eats ?? []) want(d, f.item, "item");
+    } else if (d.type === "structure") {
       if (d.material !== undefined) want(d, d.material, "material");
       if (d.opens !== undefined) want(d, d.opens, "structure");
       if (d.lights !== undefined) want(d, d.lights, "structure");
@@ -330,6 +339,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const burning = new Uint8Array(n);
   const isBed = new Uint8Array(n);
   const runAt = new Float32Array(n);
+  const taming: (TameParams | null)[] = new Array(n).fill(null);
+  const eats: (number[] | null)[] = new Array(n).fill(null);
+  const doseTorpor = new Float32Array(n);
+  const doseSeconds = new Float32Array(n);
   const temper = new Uint8Array(n);
   const sight = new Float32Array(n);
   const leash = new Float32Array(n);
@@ -439,12 +452,18 @@ export function compileContent(input: readonly Def[]): CompileResult {
       runAt[i] = d.walkSpeed * 1.5;
       temper[i] = Math.max(0, ["flees", "defends", "hunts"].indexOf(d.temper ?? "flees"));
       sight[i] = d.sight ?? 20;
+      taming[i] = d.taming ?? null;
+      if (d.eats) eats[i] = d.eats.flatMap((f) => [index.get(f.item)!, f.food, f.affinity]);
       leash[i] = d.leash ?? 60;
       // Its jaws are what it swings: one bite a blow, as long as its clip, landing part way through.
       if (d.bite) {
         reach[i] = d.bite.reach;
         weapon[i] = { kind: W_MELEE, hold: HOLD_HANDS, swingTicks: d.bite.ticks ?? 27, strikeTick: d.bite.lands ?? 11, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true };
       }
+    }
+    if (d.type === "item" && d.dose) {
+      doseTorpor[i] = d.dose.torpor;
+      doseSeconds[i] = d.dose.seconds;
     }
     if (d.type === "item") {
       fuelTicks[i] = Math.round((d.fuel ?? 0) * TICK_RATE);
@@ -463,7 +482,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
   for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
   // And a fire that is burning, as the fire it is.
   for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

@@ -200,6 +200,9 @@ export class Client {
   sentInv = -1;
   sentMarkers = -1;
   sentRespawn = false;
+  /** What was last sent of the creature it is looking into, as one number to compare, and when. */
+  sentSubject = -1;
+  sentSubjectAt = 0;
   /** The places this session was told it may return to life at, in the order told: where, facing which way, and for a bed its ref (else -1). */
   readonly respawnAt: { x: number; y: number; z: number; yaw: number; bed: number }[] = [];
   /** The look this connection has been told is its own (by reference), or null. */

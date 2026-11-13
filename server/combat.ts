@@ -140,6 +140,8 @@ export class Combat {
   onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number) => void) | null = null;
   /** Hits landed on things built, and the last of them: which, how much it took, and what it has left (0: it is gone). */
   structureHits = 0;
+  /** Called with a body that was harmed and how much health that took. */
+  onHarm: ((victim: EntityRecord, points: number) => void) | null = null;
   /** Called with something built that was harmed and still stands. */
   onStructureHurt: ((ref: number) => void) | null = null;
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
@@ -569,6 +571,7 @@ export class Combat {
     this.died = false;
     const taken = survival.hurt(victim, harm.health, by ? by.pid : 0);
     const killed = this.died;
+    if (taken > 0 && !killed) this.onHarm?.(victim, taken);
     this.hits++;
     const last = this.last;
     last.by = by ? by.pid : 0;

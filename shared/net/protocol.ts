@@ -149,7 +149,9 @@ export const CMD_PLACE = 18;
  */
 export const CMD_STRUCT = 19;
 export const CMD_ORDER = 20;
+/** Name a creature of one's tribe: which (its entity handle, u32) and what (a string of at most 24 bytes). */
 export const CMD_NAME = 21;
+/** Feed the creature whose inventory is open something out of that inventory: its slot (varint) and what the client believes is there (u16). */
 export const CMD_FEED = 22;
 export const CMD_OPEN = 23;
 
@@ -239,6 +241,12 @@ export const OWN_TRIBE = 12;
  * The creature opened or ridden (14) is reserved.
  */
 export const OWN_VOICE = 13;
+/**
+ * SUBJECT: the creature whose inventory the session has open. Present 1 bit;
+ * then whether it is being tamed and whether it is somebody's (1 bit each),
+ * its level (u16), how far its taming has got and how well, and its torpor
+ * and food as shares of their most: each in thousandths, 10 bits.
+ */
 export const OWN_SUBJECT = 14;
 
 export const MARKER_DEATH = 1;
@@ -265,6 +273,12 @@ export const EVENT_KILL = 4;
 export const EVENT_SHOT = 5;
 /** BLAST, to whoever is near: something went off. Where (3 x f32) and how far it reached (f32, metres). */
 export const EVENT_BLAST = 6;
+/**
+ * TAMED, to whoever tamed it: a creature is theirs. Which (its entity handle,
+ * u32), what it is (content index, u16), its level now (u16) and how well it
+ * was done (percent, u8). The client asks what to call it.
+ */
+export const EVENT_TAMED = 7;
 
 /** A removal a client is told of with its cause is one that happened within this many ticks: older ones are only the fact. */
 export const REMOVAL_NEWS_TICKS = 60;

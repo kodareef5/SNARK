@@ -12,8 +12,9 @@ import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR
 import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
-import { KEY_OPEN_PAGE, KEY_OPEN_SLOT } from "../../client/core/ui/inventory.ts";
-import { RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
+import { KEY_OPEN_PAGE, KEY_OPEN_SLOT, KEY_OPEN_SUBJECT } from "../../client/core/ui/inventory.ts";
+import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
+import { CMD_FEED, CMD_NAME, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
@@ -66,6 +67,8 @@ function fakeSession(inv: Inventory) {
     log: [] as { channel: number; text: string }[],
     state: "active",
     globalChat: true,
+    tamed: [] as { handle: number; kind: number; level: number; te: number }[],
+    subject: null,
     tribe: { team: 7, name: "", rank: 0, members: [], invite: "", inviteBy: "", version: 0 },
     chat(channel: number, words: string): number {
       said.push({ channel, words });
@@ -908,5 +911,60 @@ test("a container with more slots than there is room for is turned through a pag
     ui.inventory.page = 3;
     ui.build(aspect, fullHud(), session);
     expect([f.find(KEY_OPEN_PAGE), ui.inventory.page]).toEqual([null, 0]);
+  }
+});
+
+test("a creature looked into says how its taming goes; one just tamed is asked a name for, and Enter sends it", () => {
+  const narcotic = reg.index.get("core:narcotic")!;
+  for (const [name, aspect] of ASPECTS) {
+    const { session, sent } = fakeSession(fullInventory());
+    const inside = new Inventory(20);
+    inside.set(2, narcotic, 3, 0, 0, 0);
+    inside.set(3, stone, 1, 0, 0, 0);
+    Object.assign(session, { sessionState: SESSION_ALIVE, open: { name: "", inventory: inside }, subject: { taming: true, owned: false, level: 30, progress: 0.4, te: 0.946, torpor: 0.61, food: 0.9 } });
+    const ui = new Ui();
+    ui.registry = reg;
+    ui.build(aspect, fullHud(), session);
+    const f = ui.frame;
+    const line = f.find(KEY_OPEN_SUBJECT)!;
+    expect(line.text, name).toBe("taming 40%  well 95%  torpor 61%  food 90%".slice(0, line.text.length));
+    expect(line.x + line.w).toBeLessThanOrEqual(f.width + 0.01);
+    // A right click on a narcotic lying in it feeds it; on anything else in it, nothing.
+    ui.pointer(0, KEY_OPEN_SLOT + 2 * 3, 0, 0, 2, session);
+    ui.pointer(0, KEY_OPEN_SLOT + 3 * 3, 0, 0, 2, session);
+    const r = new BitReader(sent[0]!.bytes);
+    expect([sent.length, sent[0]!.op, r.varint(), r.u16()]).toEqual([1, CMD_FEED, 2, narcotic]);
+    // Awake and somebody's, the line says how it is.
+    Object.assign(session, { subject: { taming: false, owned: true, level: 42, progress: 0, te: 0.81, torpor: 0, food: 0.5 } });
+    ui.build(aspect, fullHud(), session);
+    expect(f.find(KEY_OPEN_SUBJECT)!.text).toBe("level 42  torpor 0%  food 50%");
+
+    // Tamed: the panel asks, over everything, with the keyboard. What is typed is the name; Enter sends it for that creature.
+    ui.key("Escape", true, false, session);
+    Object.assign(session, { open: null, subject: null });
+    session.tamed.push({ handle: 0x1234, kind: reg.index.get("core:raptor")!, level: 42, te: 81 }, { handle: 0x99, kind: reg.index.get("core:parasaur")!, level: 3, te: 100 });
+    ui.build(aspect, fullHud(), session);
+    expect([ui.naming.open, ui.captureKeyboard, ui.wantsPointerLock]).toEqual([true, true, false]);
+    expect([f.find(KEY_NAME_TITLE)!.text, f.find(KEY_NAME_INPUT)!.focus]).toEqual(["Tamed: a raptor, level 42", true]);
+    for (const key of [KEY_NAME_PANEL, KEY_NAME_TITLE, KEY_NAME_INPUT]) {
+      const n = f.find(key)!;
+      expect(n.x, name).toBeGreaterThanOrEqual(-0.01);
+      expect(n.x + n.w, name).toBeLessThanOrEqual(f.width + 0.01);
+      if (n.kind === K_TEXT) expect(textWidth(n.text, n.style), name).toBeLessThanOrEqual(n.w + 0.01);
+    }
+    // A letter key is typing, not the body's and not another screen's.
+    expect(ui.key("KeyI", true, false, session)).toBe(false);
+    expect(ui.inventory.open).toBe(false);
+    ui.input(KEY_NAME_INPUT, "Blue");
+    expect(ui.key("Enter", true, false, session)).toBe(true);
+    // (Putting the inventory away told the server the creature was shut: that was the second thing sent.)
+    const named = new BitReader(sent[2]!.bytes);
+    expect([sent[2]!.op, named.u32(), named.string(24)]).toEqual([CMD_NAME, 0x1234, "Blue"]);
+    // The next is asked about in turn; Escape leaves it without a name, and then there is nothing to ask.
+    ui.build(aspect, fullHud(), session);
+    expect([ui.naming.open, f.find(KEY_NAME_TITLE)!.text]).toEqual([true, "Tamed: a parasaur, level 3"]);
+    ui.key("Escape", true, false, session);
+    ui.build(aspect, fullHud(), session);
+    expect([ui.naming.open, sent.length, session.tamed.length, f.find(KEY_NAME_PANEL)]).toEqual([false, 3, 0, null]);
   }
 });

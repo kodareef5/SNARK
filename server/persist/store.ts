@@ -52,6 +52,8 @@ const COMP_SLOTS2 = 11;
 const COMP_VITALS8 = 12;
 /** The team that owns it, and its rank there. */
 const COMP_TEAM = 13;
+/** Taming: how well a tamed creature was tamed; and, for one lying there being tamed, what it has been given so far and for whom. */
+const COMP_TAME = 15;
 /** The state of something built: the ref of the structure it belongs to, whether it is locked, and its PIN plus one. */
 const COMP_FIXTURE = 14;
 /** Experience, learned engrams, crafting jobs. */
@@ -244,7 +246,19 @@ export class WorldStore {
     const used = inv ? inv.used() : 0;
     const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + rec.extra.size);
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 ? 1 : 0) + rec.extra.size);
+    if (rec.tame || rec.te > 0) {
+      c.reset();
+      c.f32(rec.te);
+      c.bool(rec.tame !== null);
+      if (rec.tame) {
+        c.f64(rec.tame.affinity);
+        c.f64(rec.tame.sum);
+        c.uint53(rec.tame.by);
+      }
+      w.varint(COMP_TAME);
+      w.blob(c.bytes());
+    }
     if (rec.at >= 0) {
       c.reset();
       c.u32(rec.at);
@@ -498,6 +512,9 @@ export class WorldStore {
         } else if (component === COMP_TEAM) {
           rec.team = c.varint();
           rec.rank = c.u8();
+        } else if (component === COMP_TAME) {
+          rec.te = c.f32();
+          if (c.bool()) rec.tame = { affinity: c.f64(), sum: c.f64(), by: c.uint53(), seen: -1, due: 0 };
         } else if (component === COMP_FIXTURE) {
           rec.at = c.u32();
           rec.lock = c.bits(2);

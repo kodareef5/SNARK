@@ -2,7 +2,7 @@
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -11,6 +11,7 @@ import { addCoreCommands } from "./commands/core.ts";
 import { addSocialCommands } from "./commands/social.ts";
 import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
+import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
@@ -108,6 +109,7 @@ export interface Host {
   readonly build: Build;
   readonly fixtures: Fixtures;
   readonly stations: Stations;
+  readonly taming: Taming;
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
@@ -191,6 +193,14 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
+  // Taming: what a creature lying unconscious is given, and whose it becomes.
+  const taming = new Taming({ world, game, records, items, survival, buffs, rules, tribes, deadlines, openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
+    const e = records.entOf.get(rec.pid);
+    // Somebody's now: until it is told otherwise it stands where it woke.
+    if (e !== undefined) creatures.mind.stay(e, 0xffffffff);
+  } }, (opts.seed ?? 1) + 71);
+  taming.resume();
+  combat.onHarm = (victim, points) => taming.harmed(victim, points);
   const chat = new Chat({ game, records, rules, tribes });
   // What has state among the things built: found again among the records that were loaded.
   const fixtures = new Fixtures(world, records, items);
@@ -225,7 +235,10 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   };
   // Going under, coming round, an injury, and anything else that begins or ends acting on a body change how it moves.
   const injured = reg.index.get("core:injured") ?? 0;
-  survival.onOut = (rec) => refreshBody(rec);
+  survival.onOut = (rec, out) => {
+    refreshBody(rec);
+    taming.out(rec, out);
+  };
   survival.onInjured = (rec, on) => void (on ? buffs.give(rec, injured) : buffs.take(rec, injured));
   buffs.onChange = (rec) => refreshBody(rec);
   if (harvest) {
@@ -374,6 +387,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       else if (kind === DEADLINE_NODE) harvest?.due(pid, stamp);
       else if (kind === DEADLINE_BUFF) buffs.due(pid, stamp);
       else if (kind === DEADLINE_FIRE) stations.due(pid, stamp);
+      else if (kind === DEADLINE_TAME) taming.due(pid, stamp);
     });
     death.step();
     // Swings that landed and shots that left on this tick, now that every body has moved.
@@ -381,6 +395,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     projectiles.step();
     creatures.step(tick);
     build.step();
+    taming.step();
     voice.step(tick);
     // Who was last near what: saved now and then, not with every step somebody takes.
     if (persistence && build.decay.dirty && tick % DECAY_SAVE_TICKS === 0) persistence.store.setMeta("decay", build.decay.serialize());
@@ -412,6 +427,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       }
       return code;
     },
+    subject: (rec) => taming.subject(rec),
     beds: (rec) => {
       const out: BedPoint[] = [];
       fixtures.each((ref, bed) => {
@@ -496,6 +512,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     build,
     fixtures,
     stations,
+    taming,
     online: (pid) => sessionOf(pid) !== null,
     setRule(name, value) {
       if (!rules.set(name, value)) return false;
@@ -525,6 +542,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   };
   game.handle(CMD_PLACE, (c, r) => build.place(c, r));
   game.handle(CMD_STRUCT, (c, r) => build.act(c, r));
+  game.handle(CMD_FEED, (c, r) => taming.feed(c, r));
+  game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
   game.handle(CMD_CHAT, (c, r) => {
     const channel = r.bits(3);
     const words = r.string(MAX_TEXT_BYTES);

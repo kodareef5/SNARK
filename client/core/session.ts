@@ -50,6 +50,8 @@ import {
   S_NODES,
   EVENT_DEATH,
   EVENT_HIT,
+  EVENT_TAMED,
+  OWN_SUBJECT,
   EVENT_HURT,
   EVENT_KILL,
   EVENT_NAME_BYTES,
@@ -284,6 +286,10 @@ export class ClientSession {
   private firedTick = 0;
   /** Hits landed and harm taken, as the server reported them, oldest first. Whoever shows them empties this. */
   readonly events: CombatEvent[] = [];
+  /** Creatures this survivor has just tamed and not yet been asked about: which, what it is, its level, and how well (percent). */
+  readonly tamed: { handle: number; kind: number; level: number; te: number }[] = [];
+  /** The creature whose inventory is open, as the server last said it is; null when what is open is no creature. Shares are 0 to 1. */
+  subject: { taming: boolean; owned: boolean; level: number; progress: number; te: number; torpor: number; food: number } | null = null;
   /** A mirror of the survivor's own inventory; null until the server sends it. */
   inventory: Inventory | null = null;
   /** The container the server says this survivor has open, and a mirror of what is in it. */
@@ -677,6 +683,12 @@ export class ClientSession {
         inv.set(slot, item, n, quality, dur, spoilAt);
         if (holds) inv.setGear(slot, ammo, loaded, attach);
       }
+    } else if (component === OWN_SUBJECT) {
+      if (!r.bool()) this.subject = null;
+      else {
+        const next = { taming: r.bool(), owned: r.bool(), level: r.u16(), progress: r.bits(10) / 1000, te: r.bits(10) / 1000, torpor: r.bits(10) / 1000, food: r.bits(10) / 1000 };
+        if (!r.overflow) this.subject = next;
+      }
     } else if (component === OWN_OPEN) {
       if (!r.bool()) this.open = null;
       else {
@@ -814,6 +826,11 @@ export class ClientSession {
       ev.name = r.string(EVENT_NAME_BYTES);
       ev.level = r.u16();
       ev.xp = r.u16() / 10;
+    } else if (kind === EVENT_TAMED) {
+      // Not a blow: a creature is this survivor's. Kept for whoever asks what to call it.
+      const won = { handle: r.u32(), kind: r.u16(), level: r.u16(), te: r.u8() };
+      if (!r.overflow && this.tamed.length < 8) this.tamed.push(won);
+      return;
     } else return;
     if (r.overflow) return;
     this.events.push(ev);

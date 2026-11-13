@@ -5,7 +5,7 @@
 
 import type { ItemDef, RecipeDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
@@ -17,6 +17,7 @@ import type { Progression } from "./progression.ts";
 import type { Rules } from "./rules.ts";
 import type { Survival } from "./survival.ts";
 import type { Tribes } from "./tribes.ts";
+import type { Subject } from "./taming.ts";
 import type { Voice } from "./voice.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -47,6 +48,8 @@ export interface OwnContext {
   openOf(c: Client): EntityRecord | null;
   closeOpen(c: Client): void;
   respawn(c: Client, index: number): number;
+  /** What a session looking into a record is shown of it, if it is a creature. */
+  subject(rec: EntityRecord): Subject | null;
   /** The beds a survivor's tribe has, for returning to life at. */
   beds(rec: EntityRecord): BedPoint[];
   readonly progression: Progression;
@@ -200,6 +203,32 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     game.endOwn(c);
     c.sentOpen = openPid;
     c.sentOpenVersion = -1;
+  }
+  // A creature looked into: how it is, a few times a second while that changes.
+  const subject = open ? ctx.subject(open) : null;
+  if (!subject) {
+    if (c.sentSubject !== -1) {
+      game.beginOwn(OWN_SUBJECT).bool(false);
+      game.endOwn(c);
+      c.sentSubject = -1;
+    }
+  } else if (ctx.world.tick - c.sentSubjectAt >= 6) {
+    const q = [subject.taming ? 1 : 0, subject.owned ? 1 : 0, subject.level, Math.round(subject.progress * 1000), Math.round(subject.te * 1000), Math.round(subject.torpor * 1000), Math.round(subject.food * 1000)];
+    const sum = q.reduce((h, v) => (Math.imul(h, 31) + v) | 0, 7) >>> 1;
+    if (sum !== c.sentSubject) {
+      const w = game.beginOwn(OWN_SUBJECT);
+      w.bool(true);
+      w.bool(subject.taming);
+      w.bool(subject.owned);
+      w.u16(subject.level);
+      w.bits(q[3]!, 10);
+      w.bits(q[4]!, 10);
+      w.bits(q[5]!, 10);
+      w.bits(q[6]!, 10);
+      game.endOwn(c);
+      c.sentSubject = sum;
+      c.sentSubjectAt = ctx.world.tick;
+    }
   }
   if (open) {
     const box = ctx.items.inv(open);
