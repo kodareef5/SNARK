@@ -8,7 +8,9 @@
 //   replication  every table has a version; every slot records the version that
 //                last changed it. "What changed since version v" is a scan, so a
 //                client can always be brought up to date without an op log.
-//   collision    a world-wide 4 m grid of linked cells, updated incrementally.
+//   collision    a 4 m grid of linked cells, updated incrementally. Cell tables
+//                exist only for chunks that something stands in, so memory
+//                follows built-up area, not map size.
 //
 // The server, the client's prediction and the save file all use this one class.
 
@@ -16,6 +18,8 @@ import { CHUNK_SIZE, STRUCT_UNITS, YAW_UNITS, chunkAt, chunkCount, type MapDims 
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 
 export const GRID_CELL = 4;
+/** Grid cells per chunk side (64 m / 4 m). */
+const CELLS = 16;
 export const MAX_SLOTS_PER_CHUNK = 65535;
 const YAW_TO_RAD = TAU / YAW_UNITS;
 
@@ -87,8 +91,8 @@ export class StructureStore {
 
   private readonly gridX: number;
   private readonly gridZ: number;
-  /** Per cell: first node + 1, or 0. */
-  private readonly head: Int32Array;
+  /** Per chunk, allocated on first use: per cell, first node + 1, or 0. */
+  private readonly heads: (Int32Array | null)[];
   private nodeRef: Uint32Array;
   /** Per node: next node + 1, or 0. */
   private nodeNext: Int32Array;
@@ -109,7 +113,7 @@ export class StructureStore {
     this.chunks = new Array(chunkCount(dims)).fill(null);
     this.gridX = (dims.chunksX * CHUNK_SIZE) / GRID_CELL;
     this.gridZ = (dims.chunksZ * CHUNK_SIZE) / GRID_CELL;
-    this.head = new Int32Array(this.gridX * this.gridZ);
+    this.heads = new Array(chunkCount(dims)).fill(null);
     this.nodeRef = new Uint32Array(1024);
     this.nodeNext = new Int32Array(1024);
   }
@@ -198,9 +202,12 @@ export class StructureStore {
     if (cz1 >= this.gridZ) cz1 = this.gridZ - 1;
     const single = cx0 === cx1 && cz0 === cz1;
     let n = 0;
+    const chunksX = this.dims.chunksX;
     for (let cz = cz0; cz <= cz1; cz++) {
       for (let cx = cx0; cx <= cx1; cx++) {
-        let node = this.head[cz * this.gridX + cx]!;
+        const cells = this.heads[(cz >> 4) * chunksX + (cx >> 4)];
+        if (!cells) continue;
+        let node = cells[(cz & 15) * CELLS + (cx & 15)]!;
         while (node !== 0) {
           const ref = this.nodeRef[node - 1]!;
           node = this.nodeNext[node - 1]!;
@@ -251,11 +258,12 @@ export class StructureStore {
     const ref = chunk * 65536 + slot;
     for (let cz = this.fz0; cz <= this.fz1; cz++) {
       for (let cx = this.fx0; cx <= this.fx1; cx++) {
-        const cell = cz * this.gridX + cx;
+        const cells = (this.heads[(cz >> 4) * this.dims.chunksX + (cx >> 4)] ??= new Int32Array(CELLS * CELLS));
+        const cell = (cz & 15) * CELLS + (cx & 15);
         const node = this.allocNode();
         this.nodeRef[node] = ref;
-        this.nodeNext[node] = this.head[cell]!;
-        this.head[cell] = node + 1;
+        this.nodeNext[node] = cells[cell]!;
+        cells[cell] = node + 1;
       }
     }
   }
@@ -265,16 +273,18 @@ export class StructureStore {
     const ref = chunk * 65536 + slot;
     for (let cz = this.fz0; cz <= this.fz1; cz++) {
       for (let cx = this.fx0; cx <= this.fx1; cx++) {
-        const cell = cz * this.gridX + cx;
+        const cells = this.heads[(cz >> 4) * this.dims.chunksX + (cx >> 4)];
+        if (!cells) continue;
+        const cell = (cz & 15) * CELLS + (cx & 15);
         let prev = 0;
-        let node = this.head[cell]!;
+        let node = cells[cell]!;
         while (node !== 0 && this.nodeRef[node - 1] !== ref) {
           prev = node;
           node = this.nodeNext[node - 1]!;
         }
         if (node === 0) continue;
         const next = this.nodeNext[node - 1]!;
-        if (prev === 0) this.head[cell] = next;
+        if (prev === 0) cells[cell] = next;
         else this.nodeNext[prev - 1] = next;
         this.nodeNext[node - 1] = this.nodeFree;
         this.nodeFree = node;

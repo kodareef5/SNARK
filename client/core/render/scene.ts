@@ -45,6 +45,8 @@ export class Scene {
   readonly terrain: TerrainLod;
   /** Metres. Terrain beyond this is not drawn and fog reaches full strength here. */
   viewDistance = 4000;
+  /** Structures farther than this are not drawn. Distant bases need merged stand-ins, not instances. */
+  structureDistance = Infinity;
   /** Distances at which structure batches switch to lower levels of detail. */
   lodNear = 96;
   lodFar = 256;
@@ -146,7 +148,7 @@ export class Scene {
       const dy = ay > 0 ? ay : by < 0 ? -by : 0;
       const dz = az > 0 ? az : bz < 0 ? -bz : 0;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (dist > this.viewDistance) continue;
+      if (dist > this.viewDistance || dist > this.structureDistance) continue;
       if (!batch.uploaded) {
         p.uploads.push({ buffer: chunk, data: batch.data, slots: batch.slots });
         batch.uploaded = true;

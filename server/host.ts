@@ -22,6 +22,8 @@ export interface HostOptions {
   startingCreatures?: number;
   /** Chunks around a player in which creatures are simulated. */
   wakeRadius?: number;
+  /** Use this world instead of creating the proving ground. Its structures are kept only if the save is new. */
+  world?: ServerWorld;
   seed?: number;
 }
 
@@ -41,7 +43,7 @@ export interface Host {
 export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, opts.store) : null;
   // A save supplies its own structures; only a new world gets the proving ground's.
-  const world = createProvingWorld(reg, { populate: !store || store.fresh });
+  const world = opts.world ?? createProvingWorld(reg, { populate: !store || store.fresh });
   const records = new Records(opts.worldId ?? 1);
   const game = new GameServer(world, opts.game);
   const persistence = store ? new Persistence(world, records, store) : null;

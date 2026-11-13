@@ -2,6 +2,7 @@
 // Colours are palette indices; see shared/pack/palette.ts.
 
 import type { Def } from "../shared/content/defs.ts";
+import type { ContentPack } from "../shared/content/packs.ts";
 
 export const CORE_CONTENT: readonly Def[] = [
   {
@@ -16,6 +17,7 @@ export const CORE_CONTENT: readonly Def[] = [
     sprintMul: 1.6,
     jumpSpeed: 7,
     food: { max: 100, perHour: 6 },
+    stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015] },
   },
   {
     type: "species",
@@ -29,6 +31,7 @@ export const CORE_CONTENT: readonly Def[] = [
     sprintMul: 2.2,
     jumpSpeed: 5,
     food: { max: 400, perHour: 12 },
+    stats: { health: [220, 0.2, 0.054], stamina: [180, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [400, 0.1, 0.1], weight: [200, 0.02, 0.04], melee: [1, 0.05, 0.1], speed: [1, 0, 0.01] },
   },
   { type: "structure", id: "core:block", mesh: "box", color: 2, half: [1, 1, 1], hp: 1000 },
   { type: "structure", id: "core:crate", mesh: "box", color: 3, half: [0.5, 0.5, 0.5], hp: 200 },
@@ -41,3 +44,6 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "item", id: "core:fiber", stack: 200 },
   { type: "item", id: "core:stone", stack: 100 },
 ];
+
+/** The same definitions as a pack, for stacking other packs on top. */
+export const CORE_PACK: ContentPack = { name: "core", defs: CORE_CONTENT as readonly Def[] as unknown as ContentPack["defs"] };

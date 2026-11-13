@@ -105,6 +105,11 @@ export class Creatures {
     return e;
   }
 
+  /** Whether a player is keeping this chunk simulated. */
+  isChunkAwake(chunk: number): boolean {
+    return this.chunkRefs[chunk]! > 0;
+  }
+
   /** Food right now, in whole points. */
   foodOf(rec: EntityRecord): number {
     return lazyValue(rec.food0, rec.foodTick, this.foodRate[rec.kind]!, this.foodMax[rec.kind]!, this.world.tick) / MICRO;

@@ -6,6 +6,7 @@
 
 import { hashString } from "../hash.ts";
 import type { MoveParams } from "../sim/character.ts";
+import { STAT_NAMES } from "../sim/genome.ts";
 import type { Def, SpeciesDef } from "./defs.ts";
 
 export const MISSING = 0;
@@ -57,6 +58,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
       if (d.food) {
         positive(d, "food.max", d.food.max, 1e6);
         positive(d, "food.perHour", d.food.perHour, 1e6);
+      }
+      for (const [stat, curve] of Object.entries(d.stats ?? {})) {
+        if (!(STAT_NAMES as readonly string[]).includes(stat)) errors.push(`${d.id}: unknown stat "${stat}"`);
+        else if (!Array.isArray(curve) || curve.length !== 3 || !(curve[0] > 0) || !(curve[1] >= 0) || !(curve[2] >= 0)) errors.push(`${d.id}: stats.${stat} must be [base > 0, perWild >= 0, perTamed >= 0]`);
       }
     } else if (d.type === "structure") {
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
