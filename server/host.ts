@@ -4,6 +4,8 @@
 import type { Registry } from "../shared/content/registry.ts";
 import { CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
+import { Genome } from "../shared/sim/genome.ts";
+import { addAdminCommands } from "./commands/admin.ts";
 import { addCoreCommands } from "./commands/core.ts";
 import { Console } from "./console.ts";
 import { Creatures } from "./creatures.ts";
@@ -11,6 +13,7 @@ import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records } from "./records.ts";
+import { refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 
 export interface HostOptions {
@@ -127,6 +130,9 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       rec.keyHash = hashKey(c.key);
       records.dirty.add(rec.pid);
     }
+    // A survivor has stat points like any body, all of them its own to place.
+    rec.genome ??= new Genome();
+    refreshMods(reg, world.ents, c.ent, rec.genome);
     c.pid = rec.pid;
     if (persistence) persistence.attach(rec, c.ent);
     else {
@@ -169,6 +175,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
 
   const con = new Console();
   addCoreCommands(con);
+  addAdminCommands(con);
   const host: Host = {
     world,
     records,

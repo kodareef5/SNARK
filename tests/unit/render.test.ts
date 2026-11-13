@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import { Camera } from "../../client/core/render/camera.ts";
-import { FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, FramePacket } from "../../client/core/render/packet.ts";
+import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
 import { TerrainLod } from "../../client/core/render/terrain.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { PROVING_POOL, PROVING_SEA_LEVEL } from "../../shared/world/proving.ts";
 import { provingView } from "../../tools/snap.ts";
 import { PICK_ENTITY, PICK_SKY, PICK_STRUCTURE, PICK_TERRAIN } from "../../tools/snap/raster.ts";
 
@@ -85,7 +87,9 @@ test("nothing behind the camera or beyond the view distance is submitted", () =>
   const view = provingView(W, H);
   view.cam.yaw = Math.PI; // facing south, away from every structure
   const south = view.render();
-  expect(south.drawCount).toBe(0);
+  // Only the water surface, which lies over the whole map, is left to draw.
+  expect(south.drawCount).toBe(1);
+  expect(south.drawFlags[0]).toBe(DRAW_BLEND);
   expect(south.tileCount).toBeGreaterThan(0);
 
   view.cam.yaw = 0;
@@ -127,4 +131,39 @@ test("terrain cost follows the view, not the map: a 2 km map selects a bounded s
   }
   expect(nearestStride).toBe(1);
   expect(coarsest).toBeGreaterThanOrEqual(8);
+});
+
+test("water lies over the pool, tints what is under it, and changes the view from below", () => {
+  const view = provingView(W, H);
+  const at = (x: number, y: number): number => Math.floor(y * H) * W + Math.floor(x * W);
+  const rgb = (i: number): number[] => [...view.raster.color.subarray(i * 4, i * 4 + 3)];
+
+  // Standing on the dry plaza looking at the plaza: the surface is below the floor and hides nothing.
+  view.cam.pitch = -0.5;
+  view.render();
+  const dry = rgb(at(0.5, 0.8));
+  expect(Math.abs(dry[0]! - dry[2]!)).toBeLessThan(12); // grey, not blue
+
+  // Above the pool looking down: the bottom shows through, tinted blue. Picking still finds the ground.
+  view.cam.x = PROVING_POOL.x;
+  view.cam.z = PROVING_POOL.z;
+  view.cam.y = 4;
+  view.cam.pitch = -1.3;
+  const above = view.render();
+  const wet = rgb(at(0.5, 0.5));
+  expect(wet[2]! - wet[0]!).toBeGreaterThan(40);
+  expect(view.raster.pickKind[at(0.5, 0.5)]).toBe(PICK_TERRAIN);
+  expect(above.drawFlags[above.drawCount - 1]).toBe(DRAW_BLEND);
+  for (let d = 0; d < above.drawCount - 1; d++) expect(above.drawFlags[d]).toBe(0);
+  expect(above.fogEnd).toBe(4000);
+
+  // Below the surface: a short, dim view, and the surface is still drawn overhead.
+  view.cam.y = PROVING_SEA_LEVEL - 3;
+  view.cam.pitch = 1.3;
+  const below = view.render();
+  expect(below.fogEnd).toBe(UNDERWATER_VIEW);
+  expect(below.sky[2]!).toBeLessThan(0.45);
+  const up = rgb(at(0.5, 0.5));
+  expect(up[2]!).toBeGreaterThan(up[0]! + 30);
+  expect(below.drawFlags[below.drawCount - 1]).toBe(DRAW_BLEND);
 });

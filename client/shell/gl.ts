@@ -2,8 +2,8 @@
 // batches, which level of detail and which colours all arrive in the packet.
 // Keep it that way; logic added here cannot be tested.
 
-import { FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../core/render/packet.ts";
-import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "../core/render/shading.ts";
+import { DRAW_BLEND, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../core/render/packet.ts";
+import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../core/render/shading.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES, lodIndices, lodVertices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -16,7 +16,7 @@ in vec3 vRel;
 flat in vec3 vColor;
 uniform vec3 uSun, uSky, uCamMod;
 uniform vec2 uFog;
-uniform float uSolid;
+uniform float uSolid, uAlpha;
 out vec4 o;
 void main() {
   vec3 n = normalize(cross(dFdx(vRel), dFdy(vRel)));
@@ -30,7 +30,7 @@ void main() {
   vec3 b = floor(w / ${f(CHECK_COARSE_SIZE)});
   if (mod(b.x + b.y + b.z, 2.0) > 0.5) shade -= ${f(1 - CHECK_COARSE)} * max(0.0, 1.0 - d / ${f(CHECK_COARSE_FADE)});
   float fog = clamp((d - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
-  o = vec4(mix(vColor * light * shade, uSky, fog * fog), 1.0);
+  o = vec4(mix(vColor * light * shade, uSky, fog * fog), uAlpha);
 }`;
 
 const MESH_VERTEX = `#version 300 es
@@ -219,6 +219,7 @@ export class GlRenderer {
       // Checker parity repeats every 16 m, so a small remainder keeps float precision.
       gl.uniform3f(prog.uniform("uCamMod"), p.camX % 16, p.camY % 16, p.camZ % 16);
       gl.uniform1f(prog.uniform("uSolid"), solid);
+      gl.uniform1f(prog.uniform("uAlpha"), 1);
       gl.uniform1i(prog.uniform("uPalette"), 0);
     };
 
@@ -263,8 +264,18 @@ export class GlRenderer {
     const offset = this.mesh.uniform("uOffset");
     const center = this.mesh.uniform("uCenter");
     const half = this.mesh.uniform("uHalf");
+    let blending = false;
     for (let d = 0; d < p.drawCount; d++) {
       const m = p.drawMesh[d]!;
+      // See-through draws come last: blended, both faces, leaving depth alone.
+      if (!blending && (p.drawFlags[d]! & DRAW_BLEND) !== 0) {
+        blending = true;
+        gl.enable(gl.BLEND);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+        gl.depthMask(false);
+        gl.disable(gl.CULL_FACE);
+        gl.uniform1f(this.mesh.uniform("uAlpha"), WATER_ALPHA);
+      }
       const lods = this.meshLods[m]!;
       const lod = lods[Math.min(p.drawLod[d]!, lods.length - 1)]!;
       const buffer = p.drawBuffer[d] === TRANSIENT_BUFFER ? this.transient : this.buffers.get(p.drawBuffer[d]!);
@@ -283,6 +294,10 @@ export class GlRenderer {
       gl.vertexAttribIPointer(5, 2, gl.UNSIGNED_BYTE, INSTANCE_BYTES, at + 18);
       gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, gl.UNSIGNED_SHORT, 0, p.drawInstances[d]!);
       this.drawCalls++;
+    }
+    if (blending) {
+      gl.disable(gl.BLEND);
+      gl.depthMask(true);
     }
     gl.bindVertexArray(null);
   }

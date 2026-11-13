@@ -7,15 +7,26 @@ import { mkdirSync, readFileSync, readdirSync, statSync, existsSync, writeFileSy
 import { basename, dirname, join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
-import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
+import { WATER_TILE } from "../../client/core/render/shading.ts";
+import { REGION_BASE, WATER_COLOR, defaultPalette } from "../../shared/pack/palette.ts";
 import { importGlb } from "./glb.ts";
 import { boxMesh, buildPack, type SourceMesh } from "./write.ts";
 
 export const MISSING_MESH = "core:missing";
+export const WATER_MESH = "core:water";
+
+/** One tile of water surface: a flat square facing up, centred on its origin. */
+function waterMesh(): SourceMesh {
+  const h = WATER_TILE / 2;
+  return {
+    id: WATER_MESH,
+    lods: [{ positions: Float32Array.from([-h, 0, -h, h, 0, -h, h, 0, h, -h, 0, h]), colors: new Uint8Array(4).fill(WATER_COLOR), indices: Uint32Array.from([0, 2, 1, 0, 3, 2]) }],
+  };
+}
 
 /** Graybox meshes for content. Their single colour is region 0, so the definition's colour applies per instance. */
 export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
-  const meshes: SourceMesh[] = [{ id: MISSING_MESH, lods: [boxMesh([0.5, 0.5, 0.5], 0)] }];
+  const meshes: SourceMesh[] = [{ id: MISSING_MESH, lods: [boxMesh([0.5, 0.5, 0.5], 0)] }, waterMesh()];
   for (const d of defs) {
     if (d.type === "item" || d.mesh !== "box") continue;
     if (d.type === "structure") meshes.push({ id: d.id, lods: [boxMesh(d.half, REGION_BASE)] });

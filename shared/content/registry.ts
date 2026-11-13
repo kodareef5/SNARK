@@ -4,8 +4,9 @@
 // definitions gets the same indices and the same hash. Index 0 is reserved: it
 // marks an empty structure slot and stands in for content that no longer exists.
 
+import { TICK_RATE } from "../coords.ts";
 import { hashString } from "../hash.ts";
-import type { MoveParams } from "../sim/character.ts";
+import { STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
 import { STAT_NAMES } from "../sim/genome.ts";
 import type { Def, SpeciesDef } from "./defs.ts";
 
@@ -53,6 +54,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
       positive(d, "walkSpeed", d.walkSpeed, 40);
       positive(d, "sprintMul", d.sprintMul, 4);
       positive(d, "jumpSpeed", d.jumpSpeed, 30);
+      if (d.swimSpeed !== undefined) positive(d, "swimSpeed", d.swimSpeed, 40);
+      if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
       if (d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
       if (!(d.eyeHeight > 0 && d.eyeHeight <= d.height)) errors.push(`${d.id}: eyeHeight must be within the body`);
       if (d.food) {
@@ -115,6 +118,13 @@ function moveParams(d: SpeciesDef): MoveParams {
     slopeCos: SLOPE_COS,
     stepUp: 0.5,
     stepDown: 0.4,
+    swimSpeed: d.swimSpeed ?? d.walkSpeed * 0.6,
+    swimSprintMul: 1.5,
+    accelSwim: d.walkSpeed * 3,
+    // Whole stamina units per tick, so both sides count the same integers.
+    staminaSprint: Math.round(((d.stamina?.sprint ?? 5) * STAMINA_UNITS) / TICK_RATE),
+    staminaRegen: Math.round(((d.stamina?.regen ?? 8) * STAMINA_UNITS) / TICK_RATE),
+    staminaJump: Math.round((d.stamina?.jump ?? 6) * STAMINA_UNITS),
   };
 }
 

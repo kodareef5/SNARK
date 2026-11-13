@@ -77,6 +77,9 @@ const INITIAL_LEAD = 4;
 /** Inputs the server should have in hand when it needs one. */
 const TARGET_MARGIN = 2;
 const MAX_STEPS_PER_UPDATE = 8;
+/** Time constant of the fade that hides a correction, and the largest correction worth hiding. */
+const SMOOTH_MS = 90;
+const SMOOTH_LIMIT = 3;
 const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
 /** Lines of server text kept for the console. */
@@ -122,7 +125,20 @@ export class ClientSession {
   renderClock = 0;
   latestSnapshot = 0;
 
-  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0 };
+  /**
+   * `corrections` counts snapshots that moved the predicted body.
+   * `stateCorrections` counts those that only changed other predicted state
+   * (a modifier, the mode), which is how a server-side change normally arrives.
+   */
+  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0 };
+  /**
+   * What is left to hide of the last correction: add it to the body's position
+   * when drawing. It fades to zero in about a third of a second, so a corrected
+   * body glides to where it belongs instead of jumping.
+   */
+  smoothX = 0;
+  smoothY = 0;
+  smoothZ = 0;
 
   private readonly conn: Connection;
   private readonly opts: SessionOptions;
@@ -197,6 +213,13 @@ export class ClientSession {
     const ticks = (dt / 1000) * TICK_RATE;
     this.tickClock += ticks * this.dilation;
     this.renderClock += ticks;
+    if (this.smoothX !== 0 || this.smoothY !== 0 || this.smoothZ !== 0) {
+      const keep = Math.exp(-dt / SMOOTH_MS);
+      this.smoothX *= keep;
+      this.smoothY *= keep;
+      this.smoothZ *= keep;
+      if (this.smoothX * this.smoothX + this.smoothY * this.smoothY + this.smoothZ * this.smoothZ < 1e-8) this.smoothX = this.smoothY = this.smoothZ = 0;
+    }
 
     const qx = Math.round(clamp1(moveX) * 127);
     const qz = Math.round(clamp1(moveZ) * 127);
@@ -436,12 +459,19 @@ export class ClientSession {
     const slot = tick & (HISTORY - 1);
     const predicted = this.bodyTick[slot] === tick;
     if (predicted && this.bodies[slot]!.equals(sb)) return;
-    if (predicted) this.stats.corrections++;
+    const moved = !predicted || !this.bodies[slot]!.samePosition(sb);
+    if (predicted) {
+      if (moved) this.stats.corrections++;
+      else this.stats.stateCorrections++;
+    }
     if (this.simTick - tick >= HISTORY) {
       this.own.copy(sb);
       this.ownPrev.copy(sb);
       return;
     }
+    const wasX = this.own.x;
+    const wasY = this.own.y;
+    const wasZ = this.own.z;
     this.own.copy(sb);
     this.bodies[slot]!.copy(sb);
     this.bodyTick[slot] = tick;
@@ -457,6 +487,16 @@ export class ClientSession {
       if (t === this.simTick) this.ownPrev.copy(this.own);
       this.step(t);
     }
+    // Keep drawing from where the body appeared to be, and let that fade. A
+    // large jump (a teleport) is shown at once.
+    const dx = wasX - this.own.x + this.smoothX;
+    const dy = wasY - this.own.y + this.smoothY;
+    const dz = wasZ - this.own.z + this.smoothZ;
+    if (predicted && dx * dx + dy * dy + dz * dz < SMOOTH_LIMIT * SMOOTH_LIMIT) {
+      this.smoothX = dx;
+      this.smoothY = dy;
+      this.smoothZ = dz;
+    } else this.smoothX = this.smoothY = this.smoothZ = 0;
   }
 
   private chunk(r: BitReader): void {

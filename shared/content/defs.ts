@@ -18,6 +18,10 @@ export interface SpeciesDef {
   readonly walkSpeed: number;
   readonly sprintMul: number;
   readonly jumpSpeed: number;
+  /** Metres per second in water. Defaults to 60% of the walk speed. */
+  readonly swimSpeed?: number;
+  /** Stamina points: per second of sprinting, per second of rest, per jump. Defaults to 5, 8 and 6. */
+  readonly stamina?: { readonly sprint: number; readonly regen: number; readonly jump: number };
   /** Food capacity and loss per in-game hour. Omitted for species that do not eat. */
   readonly food?: { readonly max: number; readonly perHour: number };
   /** How points become values, per stat: [base, gain per wild point, gain per tamed point]. */

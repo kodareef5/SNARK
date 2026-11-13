@@ -36,6 +36,7 @@ const FIXED: readonly (readonly [number, number, number])[] = [
 ];
 
 export const SKY_COLOR = 13;
+export const WATER_COLOR = 14;
 
 /** RGBA bytes for all 256 entries. Entries 22..239 are a hue and lightness ramp for dyes. */
 export function defaultPalette(): Uint8Array {

@@ -91,7 +91,10 @@ test("the console is typed into, answered by the server, and holds the keyboard 
   expect(app.ui.frame.find(KEY_BANNER)!.text).toBe("SPECTATING");
   expect(app.ui.frame.find(KEY_CROSS)).toBeNull();
   expect(app.session.admin).toBe(true);
-  // The camera is the ghost body itself, with no eye height added.
+  // The camera is the ghost body itself, with no eye height added, once the
+  // change of viewpoint has finished gliding (a correction is smoothed, not snapped).
+  expect(Math.abs(app.cam.y - app.session.own.y)).toBeLessThan(0.2);
+  run(900);
   expect(app.cam.y).toBe(app.session.own.y);
 
   // History: up recalls the last line.

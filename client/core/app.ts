@@ -110,9 +110,9 @@ export class App {
     const cam = this.cam;
     const a = session.alpha;
     const eye = session.sessionState === SESSION_ALIVE ? ((this.reg.defs[session.ownKind] as SpeciesDef | null)?.eyeHeight ?? 1.6) : 0;
-    cam.x = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a;
-    cam.y = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + eye;
-    cam.z = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a;
+    cam.x = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX;
+    cam.y = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY + eye;
+    cam.z = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
     cam.yaw = c.yaw;
     cam.pitch = c.pitch;
     cam.aspect = aspect;

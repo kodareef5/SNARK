@@ -18,6 +18,10 @@ export const MAX_TILES = 1024;
 export const TILE_QUADS = 32;
 /** Buffer id for the per-frame instance data carried in the packet itself. */
 export const TRANSIENT_BUFFER = 0xffffffff;
+/** Instances of water surface a frame may carry besides entities. */
+export const MAX_WATER_TILES = 64;
+/** Draw flag: see-through. Drawn after everything opaque, blended, both faces, without writing depth. */
+export const DRAW_BLEND = 1;
 
 export interface BufferUpload {
   /** Chunk index the instances belong to. */
@@ -53,6 +57,8 @@ export class FramePacket {
   readonly drawInstances = new Uint32Array(MAX_DRAWS);
   /** Camera-relative origin of the buffer's coordinates: x, y, z per draw. */
   readonly drawOffset = new Float32Array(MAX_DRAWS * 3);
+  /** DRAW_ bits. Draws with DRAW_BLEND come last. */
+  readonly drawFlags = new Uint8Array(MAX_DRAWS);
 
   tileCount = 0;
   /** Per tile: camera-relative x and z of its corner, metres per quad, sample stride. */
@@ -61,9 +67,9 @@ export class FramePacket {
   readonly tileOrigin = new Int32Array(MAX_TILES * 2);
 
   transientCount = 0;
-  readonly transient = new Uint8Array((MAX_VIEW + 1) * INSTANCE_BYTES);
+  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 1) * INSTANCE_BYTES);
   /** Entity slot index of each transient instance, for picking. */
-  readonly transientIds = new Uint32Array(MAX_VIEW + 1);
+  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 1);
 
   /** Triangles submitted, for budgets and benchmarks. */
   triangles = 0;

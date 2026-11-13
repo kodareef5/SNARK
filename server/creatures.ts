@@ -11,7 +11,7 @@
 //     the creature is awake.
 
 import { TICK_DT, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
-import { Body, stepBody } from "../shared/sim/character.ts";
+import { Body, MODE_SWIM, stepBody } from "../shared/sim/character.ts";
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER } from "../shared/sim/entities.ts";
 import { rollWild } from "../shared/sim/genome.ts";
 import { MICRO, lazyValue, lazyZeroTick, ratePerTick } from "../shared/sim/lazy.ts";
@@ -19,6 +19,7 @@ import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Rng } from "../shared/rng.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
 import type { EntityRecord, Records } from "./records.ts";
+import { refreshMods } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
 export const DEADLINE_STARVE = 1;
@@ -97,6 +98,7 @@ export class Creatures {
     if (e < 0) return -1;
     ents.yaw[e] = rec.yaw;
     ents.pid[e] = rec.pid;
+    refreshMods(this.world.reg, ents, e, rec.genome);
     this.records.entOf.set(rec.pid, e);
     this.aiNext[e] = 0;
     this.aiMove[e] = 0;
@@ -159,7 +161,8 @@ export class Creatures {
       }
       const flags = ents.flags[e]!;
       const move = this.aiMove[e]!;
-      if (move === 0 && (flags & F_GROUNDED) !== 0 && ents.vx[e] === 0 && ents.vz[e] === 0) continue;
+      // At rest on the ground or afloat: nothing would change, so nothing is computed.
+      if (move === 0 && ents.vx[e] === 0 && ents.vz[e] === 0 && ((flags & F_GROUNDED) !== 0 || (ents.mode[e] === MODE_SWIM && ents.vy[e] === 0))) continue;
       ents.loadBody(e, b);
       stepBody(world, b, 0, move, ents.yaw[e]!, 0, 0, world.reg.move[ents.kind[e]!]!, TICK_DT);
       stepped++;

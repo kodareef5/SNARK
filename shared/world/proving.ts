@@ -19,6 +19,10 @@ export const PROVING_ID = "proving:1";
 export const PROVING_DIMS: MapDims = { chunksX: 8, chunksZ: 8 };
 export const PROVING_SPAWN = { x: 256, z: 240, yaw: 0 };
 /** Where the boot probe stands one creature: in clear view of the spawn point, hiding nothing else it checks. */
+/** Half a metre below the plaza, so the bowl is a pool and low ground beyond the plaza holds ponds. */
+export const PROVING_SEA_LEVEL = -0.5;
+/** Centre of the bowl: 8 m deep, the place to swim and to drown. */
+export const PROVING_POOL = { x: 172, z: 256 };
 export const PROBE_CREATURE = { x: 259, z: 254 };
 
 /** Slope strips, west to east: 10 to 60 degrees. Entries are tan(angle). */
@@ -84,6 +88,7 @@ function provingHeight(x: number, z: number): number {
 
 export function buildProvingHeightfield(): Heightfield {
   const hf = new Heightfield(PROVING_DIMS, TERRAIN_CELL, -32, 1 / 256);
+  hf.seaLevel = PROVING_SEA_LEVEL;
   for (let j = 0; j < hf.nz; j++) {
     for (let i = 0; i < hf.nx; i++) {
       const x = i * hf.cell;
@@ -101,7 +106,8 @@ export function buildProvingHeightfield(): Heightfield {
 }
 
 export function provingMapHash(hf: Heightfield): number {
-  return hashBytes(new Uint8Array(hf.heights.buffer, hf.heights.byteOffset, hf.heights.byteLength));
+  const heights = hashBytes(new Uint8Array(hf.heights.buffer, hf.heights.byteOffset, hf.heights.byteLength));
+  return hashBytes(new Uint8Array(new Float64Array([hf.seaLevel]).buffer), heights);
 }
 
 /** Place the proving ground's structures. Server side; clients receive them by replication. */

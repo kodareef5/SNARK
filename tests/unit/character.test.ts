@@ -141,8 +141,10 @@ test("fuzz: no input sequence leaves a sealed room or enters solid space", () =>
 test("fuzz: bodies roaming the proving ground are always in free space", () => {
   const w = provingWorld();
   const p = survivor(w);
-  const rng = new Rng(77);
   const spawns: [number, number][] = [[256, 240], [239, 268], [285, 280], [263, 274], [252, 305], [248, 260], [220, 286], [300, 258]];
+  // Several seeds: one found a body a micrometre past the tolerance on a 40 degree slope.
+  for (const seed of [77, 78, 79, 80]) {
+  const rng = new Rng(seed);
   for (const [sx, sz] of spawns) {
     const b = bodyAt(w, sx, sz);
     expect(capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)).toBe(true);
@@ -164,6 +166,7 @@ test("fuzz: bodies roaming the proving ground are always in free space", () => {
       // Sprint speed is 7.2 m/s: 0.24 m per tick. Nothing may move a body faster sideways.
       expect(Math.hypot(b.x - px, b.z - pz)).toBeLessThan(0.3);
     }
+  }
   }
 });
 

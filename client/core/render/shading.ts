@@ -17,3 +17,11 @@ export const CHECK_INSET = 0.01;
 /** Distances over which the 1 m and 8 m checkers fade out, so far ground does not shimmer. */
 export const CHECK_FINE_FADE = 90;
 export const CHECK_COARSE_FADE = 900;
+
+/** Opacity of the water surface. */
+export const WATER_ALPHA = 0.62;
+/** Side of one water surface tile, metres. The mesh "core:water" is one tile. */
+export const WATER_TILE = 1024;
+/** How far one can see under water, and how much darker than the surface colour the depths are. */
+export const UNDERWATER_VIEW = 45;
+export const UNDERWATER_DIM = 0.55;

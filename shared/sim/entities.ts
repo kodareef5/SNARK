@@ -136,6 +136,7 @@ export class EntityStore {
     this.flags[i] = b.grounded ? this.flags[i]! | F_GROUNDED : this.flags[i]! & ~F_GROUNDED;
     this.mode[i] = b.mode;
     this.stamina[i] = b.stamina;
+    this.mflags[i] = b.mflags;
     return this.setPosition(i, b.x, b.y, b.z);
   }
 

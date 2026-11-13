@@ -26,6 +26,11 @@ export class Heightfield {
   readonly heights: Uint16Array;
   /** Palette index per sample, used only for drawing. */
   readonly tint: Uint8Array;
+  /**
+   * Height of the water surface. Ground below it is under water. Map data, set
+   * by whoever builds the map; -Infinity for a map with no water.
+   */
+  seaLevel = -Infinity;
 
   /**
    * `stepY` is the height of one stored unit. Use a power-of-two fraction such

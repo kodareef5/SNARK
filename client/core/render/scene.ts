@@ -8,12 +8,13 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { INSTANCE_BYTES, type Pack } from "../../../shared/pack/pack.ts";
-import { SKY_COLOR } from "../../../shared/pack/palette.ts";
+import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
-import { FramePacket, InstanceWriter, MAX_DRAWS, TRANSIENT_BUFFER } from "./packet.ts";
+import { DRAW_BLEND, FramePacket, InstanceWriter, MAX_DRAWS, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
+import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { TerrainLod } from "./terrain.ts";
 
 export interface RenderWorld {
@@ -23,6 +24,7 @@ export interface RenderWorld {
 }
 
 const MISSING_MESH = "core:missing";
+const WATER_MESH = "core:water";
 
 interface ChunkBatch {
   /** Table version the instances were built from; -1 forces a rebuild. */
@@ -62,6 +64,10 @@ export class Scene {
   private readonly counts: Uint32Array;
   private readonly cursor: Uint32Array;
   private readonly transient: InstanceWriter;
+  private readonly waterMesh: number;
+  /** Linear RGB of the open sky and of deep water. */
+  private readonly skyColor = new Float32Array(3);
+  private readonly deepColor = new Float32Array(3);
 
   constructor(world: RenderWorld, reg: Registry, pack: Pack) {
     this.world = world;
@@ -82,8 +88,11 @@ export class Scene {
     this.cursor = new Uint32Array(meshes.length);
     this.transient = new InstanceWriter(this.packet.transient);
 
-    const sky = pack.palette.subarray(SKY_COLOR * 4, SKY_COLOR * 4 + 3);
-    this.packet.sky.set([sky[0]! / 255, sky[1]! / 255, sky[2]! / 255]);
+    this.waterMesh = pack.meshIndex.get(WATER_MESH) ?? -1;
+    for (let k = 0; k < 3; k++) {
+      this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
+      this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
+    }
     const sun = [0.42, 0.8, 0.43];
     const len = Math.hypot(sun[0]!, sun[1]!, sun[2]!);
     this.packet.sun.set(sun.map((v) => v / len));
@@ -102,13 +111,48 @@ export class Scene {
     p.camX = cam.x;
     p.camY = cam.y;
     p.camZ = cam.z;
-    p.fogStart = this.viewDistance * 0.45;
-    p.fogEnd = this.viewDistance;
+    // Under water the world is a short, dim view of the water's own colour.
+    const sea = this.world.hf.seaLevel;
+    if (cam.y < sea) {
+      p.sky.set(this.deepColor);
+      p.fogStart = 0;
+      p.fogEnd = UNDERWATER_VIEW;
+    } else {
+      p.sky.set(this.skyColor);
+      p.fogStart = this.viewDistance * 0.45;
+      p.fogEnd = this.viewDistance;
+    }
 
     this.terrain.select(cam, p, this.viewDistance);
     this.structures(cam);
     if (remote) this.entities(cam, remote);
+    if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
     return p;
+  }
+
+  /** The water surface: tiles of one flat mesh over the map, drawn last because they are see-through. */
+  private water(cam: Camera, sea: number): void {
+    const p = this.packet;
+    const hf = this.world.hf;
+    const first = p.transientCount;
+    let n = 0;
+    const half = WATER_TILE / 2;
+    for (let tz = 0; tz * WATER_TILE < hf.sizeZ; tz++) {
+      for (let tx = 0; tx * WATER_TILE < hf.sizeX; tx++) {
+        const x = tx * WATER_TILE + half - cam.x;
+        const z = tz * WATER_TILE + half - cam.z;
+        const y = sea - cam.y;
+        if (n === MAX_WATER_TILES || !cam.boxVisible(x - half, y - 0.1, z - half, x + half, y + 0.1, z + half)) continue;
+        this.transient.set(first + n, x, y, z, 0, WATER_COLOR);
+        p.transientIds[first + n] = 0;
+        n++;
+      }
+    }
+    if (n === 0) return;
+    const d = p.drawCount;
+    this.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0);
+    if (p.drawCount > d) p.drawFlags[d] = DRAW_BLEND;
+    p.transientCount = first + n;
   }
 
   private structures(cam: Camera): void {
@@ -249,6 +293,7 @@ export class Scene {
     p.drawOffset[n * 3] = ox;
     p.drawOffset[n * 3 + 1] = oy;
     p.drawOffset[n * 3 + 2] = oz;
+    p.drawFlags[n] = 0;
     p.drawCount = n + 1;
     const tris = this.trisOfMesh[mesh]!;
     p.triangles += tris[lod < tris.length ? lod : tris.length - 1]! * count;

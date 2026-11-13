@@ -9,8 +9,8 @@
 // It is not fast and does not try to be: z-buffered triangles, flat shading,
 // near-plane clipping, perspective-correct checker.
 
-import { FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
-import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "../../client/core/render/shading.ts";
+import { DRAW_BLEND, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES, lodIndices, lodVertices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -150,7 +150,7 @@ export class Rasterizer {
         const last = lod.indices[t + 2]!;
         let color = lod.colors[last]!;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
-        this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id);
+        this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0);
       }
     }
   }
@@ -179,7 +179,7 @@ export class Rasterizer {
   }
 
   /** Draw one triangle given camera-relative positions. Counter-clockwise faces the viewer. */
-  private triangle(pos: Float32Array, ia: number, ib: number, ic: number, colorIndex: number, solid: boolean, pickKind: number, pickId: number): void {
+  private triangle(pos: Float32Array, ia: number, ib: number, ic: number, colorIndex: number, solid: boolean, pickKind: number, pickId: number, blend = false): void {
     const p = this.packet;
     const ax = pos[ia * 3]!, ay = pos[ia * 3 + 1]!, az = pos[ia * 3 + 2]!;
     const bx = pos[ib * 3]!, by = pos[ib * 3 + 1]!, bz = pos[ib * 3 + 2]!;
@@ -187,7 +187,13 @@ export class Rasterizer {
     let nx = (by - ay) * (cz - az) - (bz - az) * (cy - ay);
     let ny = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
     let nz = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-    if (nx * ax + ny * ay + nz * az >= 0) return; // faces away from the camera at the origin
+    if (nx * ax + ny * ay + nz * az >= 0) {
+      if (!blend) return; // faces away from the camera at the origin
+      // A see-through surface is drawn from behind too, lit as the face seen.
+      nx = -nx;
+      ny = -ny;
+      nz = -nz;
+    }
     const nl = Math.hypot(nx, ny, nz);
     if (nl === 0) return;
     nx /= nl;
@@ -268,9 +274,11 @@ export class Rasterizer {
           const z = e0 * poly[v0 + 6]! + e1 * poly[v1 + 6]! + e2 * poly[v2 + 6]!;
           const at = py * W + px;
           if (z >= this.depth[at]!) continue;
-          this.depth[at] = z;
-          this.pickKind[at] = pickKind;
-          this.pickId[at] = pickId;
+          if (!blend) {
+            this.depth[at] = z;
+            this.pickKind[at] = pickKind;
+            this.pickId[at] = pickId;
+          }
           // Perspective-correct position for the checker and fog.
           const q0 = e0 * poly[v0 + 5]!, q1 = e1 * poly[v1 + 5]!, q2 = e2 * poly[v2 + 5]!;
           const qs = 1 / (q0 + q1 + q2);
@@ -286,9 +294,18 @@ export class Rasterizer {
           let fog = (dist - p.fogStart) / fogSpan;
           fog = fog < 0 ? 0 : fog > 1 ? 1 : fog * fog;
           const o = at * 4;
-          this.color[o] = r * shade * (1 - fog) + p.sky[0]! * 255 * fog;
-          this.color[o + 1] = g * shade * (1 - fog) + p.sky[1]! * 255 * fog;
-          this.color[o + 2] = b * shade * (1 - fog) + p.sky[2]! * 255 * fog;
+          const cr = r * shade * (1 - fog) + p.sky[0]! * 255 * fog;
+          const cg = g * shade * (1 - fog) + p.sky[1]! * 255 * fog;
+          const cb = b * shade * (1 - fog) + p.sky[2]! * 255 * fog;
+          if (blend) {
+            this.color[o] = this.color[o]! + (cr - this.color[o]!) * WATER_ALPHA;
+            this.color[o + 1] = this.color[o + 1]! + (cg - this.color[o + 1]!) * WATER_ALPHA;
+            this.color[o + 2] = this.color[o + 2]! + (cb - this.color[o + 2]!) * WATER_ALPHA;
+          } else {
+            this.color[o] = cr;
+            this.color[o + 1] = cg;
+            this.color[o + 2] = cb;
+          }
         }
       }
     }
