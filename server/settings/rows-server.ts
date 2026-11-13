@@ -9,9 +9,9 @@ import { Sheet, live, none, plan, todo, type Row } from "./row.ts";
 export const SERVER_ROWS: Row[] = [];
 
 const s = new Sheet(SERVER_ROWS, "server", "Rates and world");
-s.f("XPMultiplier", 1, "Experience gained by survivors and tames. Higher is more. Each gain is also multiplied by its source's own multiplier.", todo(3, { live: true }))
+s.f("XPMultiplier", 1, "Experience gained by survivors and tames. Higher is more. Each gain is also multiplied by its source's own multiplier.", live({ live: true }))
   .f("TamingSpeedMultiplier", 1, "What each piece of food is worth to a creature being tamed. Higher is faster.", live({ live: true }))
-  .f("HarvestAmountMultiplier", 1, "What each harvesting blow yields. Higher is more.", todo(3, { live: true }))
+  .f("HarvestAmountMultiplier", 1, "What each harvesting blow yields. Higher is more.", live({ live: true }))
   .f("HarvestHealthMultiplier", 1, "Health of trees, rocks and bushes. Higher takes more blows and gives more in all.", todo(5, { min: 0.01 }))
   .f("ResourcesRespawnPeriodMultiplier", 1, "Time before a harvested node grows back. Lower is sooner.", todo(6, { retime: "period", min: 0.001 }))
   .f("ItemStackSizeMultiplier", 1, "Stack sizes. What stacks to 1 is left alone.", todo(5, { client: true, min: 0.01 }))
@@ -64,8 +64,8 @@ s.under("Harvesting")
   .f("StructurePreventResourceRadiusMultiplier", 1, "How far from something built nodes will not grow back. Higher is further.", plan("regrowth"));
 
 s.under("Creatures")
-  .i("MaxTamedDinos", 5000, "Tamed creatures the whole server may hold.", todo(3, { live: true }))
-  .i("MaxPersonalTamedDinos", 0, "Tamed creatures one tribe may hold. 0 is no limit.", todo(3, { live: true, note: "Official servers use 500 in PvE and 300 in PvP." }))
+  .i("MaxTamedDinos", 5000, "Tamed creatures the whole server may hold.", live({ live: true }))
+  .i("MaxPersonalTamedDinos", 0, "Tamed creatures one tribe may hold. 0 is no limit.", live({ live: true, note: "Official servers use 500 in PvE and 300 in PvP." }))
   .b("AllowAnyoneBabyImprintCuddle", false, "Anyone of the tribe may care for a baby, not only whoever it is imprinted on.", plan("imprinting"))
   .b("DisableImprintDinoBuff", false, "No bonus for riding a creature one is imprinted on.", plan("imprinting"))
   .b("PreventMateBoost", false, "No boost for standing near a mate.", plan("tameBonus"))
@@ -91,9 +91,9 @@ s.under("Creatures")
 s.under("Decay")
   .b("DisableStructureDecayPvE", false, "Nothing built decays.", live({ live: true }))
   .f("PvEStructureDecayPeriodMultiplier", 1, "Time before something built that its tribe has not come near decays. Higher is longer.", live({ live: true, note: "Applies in PvP too when decay is on there, despite the name." }))
-  .b("PvPStructureDecay", false, "Things built decay on a PvP server too.", todo(3, { live: true }))
+  .b("PvPStructureDecay", false, "Things built decay on a PvP server too.", live({ live: true }))
   .f("AutoDestroyOldStructuresMultiplier", 0, "What has decayed is taken down by the server after this many decay periods. 0 leaves it standing for anyone to demolish. Needs -AutoDestroyStructures.", live({ live: true }))
-  .b("FastDecayUnsnappedCoreStructures", false, "A foundation or pillar joined to nothing decays in FastDecayInterval.", todo(3, { live: true }))
+  .b("FastDecayUnsnappedCoreStructures", false, "A foundation or pillar joined to nothing decays in FastDecayInterval.", live({ live: true }))
   .b("OnlyAutoDestroyCoreStructures", false, "Only core pieces are taken down by the server.", plan("decay"))
   .b("OnlyDecayUnsnappedCoreStructures", false, "Only core pieces joined to nothing decay.", plan("decay"))
   .b("ClampItemSpoilingTimes", false, "Spoil times are held to the most each thing may have.", plan("polish"))
@@ -107,8 +107,8 @@ s.under("Decay")
 s.under("Structures")
   .b("AlwaysAllowStructurePickup", false, "A piece may be taken back into the hands at any time while it is whole.", live({ live: true }))
   .f("StructurePickupTimeAfterPlacement", 30, "Seconds after it is set down that a piece may be taken back.", live({ live: true }))
-  .b("ForceAllStructureLocking", false, "Everything that can be locked is locked when it is built.", todo(3, { live: true }))
-  .b("PreventOutOfTribePinCodeUse", false, "A PIN opens nothing for those outside the tribe.", todo(3, { live: true }))
+  .b("ForceAllStructureLocking", false, "Everything that can be locked is locked when it is built.", live({ live: true }))
+  .b("PreventOutOfTribePinCodeUse", false, "A PIN opens nothing for those outside the tribe.", live({ live: true }))
   .f("StructurePickupHoldDuration", 0.5, "Seconds the key is held to take a piece back.", plan("polish"))
   .i("TheMaxStructuresInRange", 10500, "The most things built within a set distance of each other.", plan("limits"))
   .b("IgnoreLimitMaxStructuresInRangeTypeFlag", false, "No separate limit on decorations.", plan("limits"))
@@ -192,9 +192,9 @@ s.under("Chat")
   .i("ChatLogMaxAgeInDays", 5, "Days a chat log is kept.", plan("ops"));
 
 s.under("Admin and session")
-  .t("ServerPassword", "", "Asked of everyone who joins.", todo(3))
-  .t("ServerAdminPassword", "", "Asked of whoever would use cheats.", todo(3))
-  .f("KickIdlePlayersPeriod", 3600, "Seconds without doing anything before a survivor is put off the server. Needs -EnableIdlePlayerKick.", todo(3, { live: true }))
+  .t("ServerPassword", "", "Asked of everyone who joins.", todo(5))
+  .t("ServerAdminPassword", "", "Asked of whoever would use cheats.", live())
+  .f("KickIdlePlayersPeriod", 3600, "Seconds without doing anything before a survivor is put off the server. Needs -EnableIdlePlayerKick.", live({ live: true }))
   .f("AutoSavePeriodMinutes", 15, "Minutes between saves. Here the world is saved continuously; this is how often the live file is read again.", todo(6, { min: 0.1 }))
   .t("SpectatorPassword", "", "Asked of whoever would only watch.", plan("ops"))
   .b("RCONEnabled", false, "The server may be commanded from outside.", plan("ops"))
@@ -231,16 +231,16 @@ s.under("Admin and session")
   .f("PvEStructureDecayDestructionPeriod", 0, "An older decay setting.", none("deprecated"));
 
 new Sheet(SERVER_ROWS, "session", "Admin and session")
-  .t("SessionName", "", "The server's name, as those who join are told it.", todo(3))
+  .t("SessionName", "", "The server's name, as those who join are told it.", live())
   .i("Port", 8787, "The port the server listens on.", live({ min: 1, max: 65535, note: "ARK's default is 7777." }))
   .i("QueryPort", 27015, "The port a store asks about the server on.", none("platform"))
   .t("MultiHome", "", "The address to listen on.", none("platform"));
 
-new Sheet(SERVER_ROWS, "gamesession", "Admin and session").i("MaxPlayers", 70, "The most survivors at once.", todo(3, { min: 1, max: 1000 }));
+new Sheet(SERVER_ROWS, "gamesession", "Admin and session").i("MaxPlayers", 70, "The most survivors at once.", live({ min: 1, max: 1000 }));
 
 new Sheet(SERVER_ROWS, "motd", "Admin and session")
-  .t("Message", "", "Said to each survivor who joins. \\n begins a new line.", todo(3))
-  .i("Duration", 20, "Seconds it is shown.", todo(3, { client: true }));
+  .t("Message", "", "Said to each survivor who joins. \\n begins a new line.", live())
+  .i("Duration", 20, "Seconds it is shown.", todo(5, { client: true }));
 
 new Sheet(SERVER_ROWS, "map", "Other")
   .b("AllowMultipleTamedUnicorns", false, "One of ARK's maps.", none("expansion", { game: "E" }))
@@ -256,11 +256,11 @@ new Sheet(SERVER_ROWS, "snark", "Damage")
 
 const c = new Sheet(SERVER_ROWS, "cli", "Command line");
 c.flag("UseDynamicConfig", "The live file is read, and read again while the server runs.", todo(6))
-  .flag("AutoDestroyStructures", "What has decayed is taken down by the server (see AutoDestroyOldStructuresMultiplier).", todo(3))
-  .flag("EnableIdlePlayerKick", "The idle are put off the server (see KickIdlePlayersPeriod).", todo(3))
+  .flag("AutoDestroyStructures", "What has decayed is taken down by the server (see AutoDestroyOldStructuresMultiplier).", live())
+  .flag("EnableIdlePlayerKick", "The idle are put off the server (see KickIdlePlayersPeriod).", live())
   .flag("port", "The port the server listens on.", live({ game: "A", min: 1, max: 65535 }), true)
-  .flag("WinLiveMaxPlayers", "The most survivors at once.", todo(3, { game: "A", min: 1, max: 1000 }), true)
-  .flag("NoDinos", "No wild creatures are put in the world.", todo(3))
+  .flag("WinLiveMaxPlayers", "The most survivors at once.", live({ game: "A", min: 1, max: 1000 }), true)
+  .flag("NoDinos", "No wild creatures are put in the world.", live())
   .flags(["ForceRespawnDinos", "NoWildBabies", "NoDinosExceptForcedSpawn", "NoDinosExceptStreamingSpawn", "NoDinosExceptManualSpawn", "NoDinosExceptWaterSpawn"], "Which wild creatures spawn, and whether they are replaced at a start.", plan("spawner"))
   .flags(["ForceAllowCaveFlyers", "AllowFlyerSpeedLeveling"], "Flyers.", plan("flyers"))
   .flag("imprintlimit", "Creatures imprinted beyond this are removed.", plan("imprinting"), true)

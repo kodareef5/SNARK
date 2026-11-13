@@ -73,10 +73,22 @@ test("the two files are read as ARK's are: each key in its own section of its ow
   const { rules, report } = loadConfig({ gus: GUS, game: GAME });
   // What takes effect has the values the files gave, whatever the case of the key.
   expect([rules.num("TamingSpeedMultiplier"), rules.on("ProximityChat"), rules.num("EggHatchSpeedMultiplier"), rules.num("MatingIntervalMultiplier")]).toEqual([3, false, 25, 0.1]);
-  expect(report.applied.map((a) => [a.row.name, a.where])).toEqual([["TamingSpeedMultiplier", gusAt("TamingSpeedMultiplier=3")], ["Port", gusAt("Port")], ["EggHatchSpeedMultiplier", gameAt("EggHatch")], ["MatingIntervalMultiplier", gameAt("MatingInterval")]]);
+  expect(report.applied.map((a) => [a.row.name, a.where])).toEqual([
+    ["TamingSpeedMultiplier", gusAt("TamingSpeedMultiplier=3")],
+    ["XPMultiplier", gusAt("xpmultiplier")],
+    ["ServerAdminPassword", gusAt("ServerAdminPassword")],
+    ["MaxTamedDinos", gusAt("MaxTamedDinos")],
+    ["SessionName", gusAt("SessionName")],
+    ["Port", gusAt("Port")],
+    ["Message", gusAt("Message")],
+    ["MaxPlayers", gusAt("MaxPlayers")],
+    ["EggHatchSpeedMultiplier", gameAt("EggHatch")],
+    ["MatingIntervalMultiplier", gameAt("MatingInterval")],
+    ["PreventDinoTameClassNames", gameAt("PreventDinoTame")],
+  ]);
   // What is not effective yet, or waits for a feature, is read and checked all the same, and holds its value for when it is.
   expect([rules.num("XPMultiplier"), rules.on("serverPVE"), rules.text("ServerAdminPassword"), rules.num("DinoCountMultiplier"), rules.num("MaxTamedDinos"), rules.text("SessionName"), rules.num("Port"), rules.text("Message"), rules.num("Duration"), rules.num("MaxPlayers"), rules.num("BabyCuddleIntervalMultiplier")]).toEqual([2.5, true, "hunter2", 2, 5000, "The Proving Ground", 9000, "Welcome\\nBe kind", 30, 40, 0.1]);
-  expect(report.waiting.map((w) => w.row.name)).toEqual(["XPMultiplier", "serverPVE", "ServerAdminPassword", "DinoCountMultiplier", "MaxTamedDinos", "SessionName", "Message", "Duration", "MaxPlayers", "BabyCuddleIntervalMultiplier", "PerLevelStatsMultiplier_DinoTamed", "OverridePlayerLevelEngramPoints", "PreventDinoTameClassNames", "OverrideNamedEngramEntries"]);
+  expect(report.waiting.map((w) => w.row.name)).toEqual(["serverPVE", "DinoCountMultiplier", "Duration", "BabyCuddleIntervalMultiplier", "PerLevelStatsMultiplier_DinoTamed", "OverridePlayerLevelEngramPoints", "OverrideNamedEngramEntries"]);
   expect(report.nothing.map((x) => x.row.name)).toEqual(["ActiveMods"]);
   // An indexed setting changes at its index and nowhere else; a list is its lines in order.
   expect(rules.indexed("PerLevelStatsMultiplier_DinoTamed")).toEqual([0.4, 1, 1, 1, 1, 1, 1, 1, 0.17, 1, 1, 1]);
@@ -95,7 +107,8 @@ test("the two files are read as ARK's are: each key in its own section of its ow
   ]);
   // The report, as whoever starts the server reads it. A password is never shown.
   const lines = formatReport(report, rules);
-  expect(lines[0]).toBe("settings: 4 applied, 14 not yet effective, 1 of no meaning here, 2 unknown, 7 refused");
+  expect(lines[0]).toBe("settings: 11 applied, 7 not yet effective, 1 of no meaning here, 2 unknown, 7 refused");
+  expect(lines).toContain(`  applied   ServerAdminPassword=****  (${gusAt("ServerAdminPassword")})`);
   expect(lines).toContain(`  applied   TamingSpeedMultiplier=3  (${gusAt("TamingSpeedMultiplier=3")})`);
   expect(lines).toContain(`  not yet   DinoCountMultiplier  (${gusAt("DinoCount")}): waits for: wild creatures that spawn and respawn by region`);
   expect(lines).toContain(`  no use    ActiveMods  (${gusAt("ActiveMods")}): ARK's mods`);
@@ -150,7 +163,7 @@ test("a folder is read from disk, any of its files missing; a server started on 
   expect(h.say(ada, "setting eggHatchSpeedMultiplier")).toEqual(["EggHatchSpeedMultiplier=40  (file; may be changed while the server runs)", "How fast an egg hatches, or young are carried. Higher is faster."]);
   expect(h.say(ada, "setting EggHatchSpeedMultiplier 80")).toEqual(["EggHatchSpeedMultiplier=80  (until the server is started again)"]);
   expect(h.say(ada, "setting EggHatchSpeedMultiplier 0")[0]).toMatch(/wants a number from 0.001/);
-  expect(h.say(ada, "setting XPMultiplier 4")).toEqual(["XPMultiplier does not take effect yet"]);
+  expect(h.say(ada, "setting DinoCountMultiplier 2")).toEqual(["DinoCountMultiplier does not take effect yet"]);
   expect(h.say(ada, "setting DinoCountMultiplier")[0]).toBe("DinoCountMultiplier=1  (default; waits for: wild creatures that spawn and respawn by region)");
   expect(h.say(ada, "setting Gravity 2")).toEqual(["there is no setting called Gravity"]);
   // A password is read when the server starts and cannot be set here; trying says so, and what was typed is not kept.

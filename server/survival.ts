@@ -14,6 +14,7 @@ import { GAME_HOUR_TICKS, MICRO, ratePerTick } from "../shared/sim/lazy.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER, Vitals } from "../shared/sim/vitals.ts";
 import type { EntityRecord, Records } from "./records.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 
 export const STAT_HEALTH = STAT_NAMES.indexOf("health");
@@ -131,6 +132,8 @@ const LANDING_DAMAGE = 7;
  */
 export class Survival {
   readonly deadlines: DeadlineHeap;
+  /** The server's rules, given by whoever assembles the world. */
+  rules: Rules | null = null;
   /** Records whose food has run out. */
   readonly starving = new Set<number>();
   /** Called when a body's health reaches zero. `by` is the persistent id of whoever did it, or 0. */
@@ -291,7 +294,9 @@ export class Survival {
 
   /** A body landed at `speed` metres per second. */
   landed(rec: EntityRecord, speed: number): void {
-    if (speed > SAFE_LANDING) this.add(rec, V_HEALTH, -(speed - SAFE_LANDING) * LANDING_DAMAGE, CAUSE_FALL);
+    // By the server's rule, how fast a fall must be before it hurts.
+    const safe = SAFE_LANDING * (this.rules ? this.rules.num("MaxFallSpeedMultiplier") : 1);
+    if (speed > safe) this.add(rec, V_HEALTH, -(speed - safe) * LANDING_DAMAGE, CAUSE_FALL);
   }
 
   /** Forget a record that is being deleted. */

@@ -11,6 +11,7 @@
 //
 // Tribes are managed from the console in this round; the screen comes later.
 
+import type { Rules } from "./settings/rules.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { MAX_TRIBE_NAME } from "../shared/net/protocol.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -53,6 +54,8 @@ export function cleanTribeName(name: string): string {
 }
 
 export class Tribes {
+  /** The server's rules, given by whoever assembles the world: how many a tribe may hold. */
+  rules: Rules | null = null;
   readonly byId = new Map<number, Tribe>();
   /** Counts every change to any tribe or invitation, for sending. */
   version = 0;
@@ -133,6 +136,9 @@ export class Tribes {
     if (!inv) return "nobody has invited you";
     if (this.of(rec)) return "you are in a tribe already; leave it first";
     const tribe = inv.tribe;
+    // No more members than the server allows.
+    const most = this.rules ? this.rules.num("MaxNumberOfPlayersInTribe") : 0;
+    if (most > 0 && tribe.members.length >= most) return `${tribe.name} has as many members as a tribe may here (${most})`;
     this.invites.delete(rec.pid);
     const was = rec.team;
     // What it built and tamed goes with it, and stays if it later leaves.

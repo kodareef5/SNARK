@@ -17,12 +17,23 @@ import { STAT_COUNT, STAT_NAMES, spendPoint } from "../shared/sim/genome.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 
 export const DEADLINE_CRAFT = 4;
 const MAX_JOBS = 8;
 
+/** How experience was come by: given outright (a cheat), or earned by a kill, by harvesting, by making something. */
+export const XP_GIVEN = 0;
+export const XP_KILL = 1;
+export const XP_HARVEST = 2;
+export const XP_CRAFT = 3;
+/** The server's rule for each way of earning it. */
+const XP_RULES = ["", "KillXPMultiplier", "HarvestXPMultiplier", "CraftXPMultiplier"];
+
 export class Progression {
+  /** The server's rules, given by whoever assembles the world: experience earned is multiplied by them. */
+  rules: Rules | null = null;
   /** Called after anything that changes a record's stat points or level. */
   onChange: ((rec: EntityRecord) => void) | null = null;
   private readonly world: ServerWorld;
@@ -71,13 +82,22 @@ export class Progression {
     return Math.max(0, have);
   }
 
-  addXp(rec: EntityRecord, amount: number): void {
-    if (!(amount > 0)) return;
+  /**
+   * Give experience. What is earned (`source` a kill, a harvest, a thing
+   * made) is multiplied by the server's rule for all experience and by its
+   * rule for that way of earning it; what is given outright is given as it
+   * is. Returns what was added.
+   */
+  addXp(rec: EntityRecord, amount: number, source = XP_GIVEN): number {
+    if (!(amount > 0)) return 0;
+    if (source !== XP_GIVEN && this.rules) amount *= this.rules.num("XPMultiplier") * this.rules.num(XP_RULES[source]!);
+    if (!(amount > 0)) return 0;
     const before = this.levelOf(rec.xp);
     rec.xp += amount;
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
     if (this.levelOf(rec.xp) !== before) this.onChange?.(rec);
+    return amount;
   }
 
   /** Put one unspent point into a stat. */
@@ -140,7 +160,7 @@ export class Progression {
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
     if (job.left <= 0) rec.jobs.shift();
-    this.addXp(rec, def.xp);
+    this.addXp(rec, def.xp, XP_CRAFT);
     this.start(rec);
   }
 

@@ -185,7 +185,8 @@ record(`place ${STRUCTURES} structures in ${BASES} bases`, performance.now() - t
 record("structures placed", world.structs.count, "");
 
 const dbPath = join(dir, "world.db");
-const host: Host = createHost(reg, { dbPath, world, commitEvery: 6 });
+// More seats than ARK's seventy: the sizing target is a hundred players, and a dozen more come to watch a house fall.
+const host: Host = createHost(reg, { dbPath, world, commitEvery: 6, game: { maxClients: 128 } });
 const persistence = host.persistence!;
 t0 = performance.now();
 persistence.commit();

@@ -27,7 +27,7 @@
 // has its own.
 
 import { TICK_RATE } from "../shared/coords.ts";
-import { EVENT_TAMED, ORDER_MATE, RESULT_DENIED, RESULT_INVALID, RESULT_OK, S_EVENT } from "../shared/net/protocol.ts";
+import { EVENT_TAMED, ORDER_MATE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { GROWN, MATE_RANGE, MATE_TICKS, growthStep, litter, mateWait, stageOf, stepTick } from "../shared/sim/breeding.ts";
 import { MF_NO_SPRINT } from "../shared/sim/character.ts";
@@ -40,6 +40,7 @@ import type { Client, GameServer } from "./game.ts";
 import type { Persistence } from "./persist/persistence.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Rules } from "./rules.ts";
+import type { Lists } from "./settings/lists.ts";
 import type { ServerWorld } from "./world.ts";
 
 export const DEADLINE_BREED = 8;
@@ -64,6 +65,12 @@ export interface BreedingContext {
   refresh(rec: EntityRecord): void;
   /** Work out again when a creature that is somebody's next eats of what it carries. */
   meal(rec: EntityRecord): void;
+  /** The server's lists that name classes. */
+  readonly lists: Lists;
+  /** Why a team may have no more tamed creatures; "" if it may. */
+  full(team: number): string;
+  /** Tell a survivor something, if they are here. */
+  notice(pid: number, text: string): void;
 }
 
 /** A rule that speeds something: what it divides a time by. Turned to nothing, it is as slow as a rule can make it. */
@@ -111,6 +118,8 @@ export class Breeding {
   private able(rec: EntityRecord, e: number): boolean {
     const { world } = this.ctx;
     const ents = world.ents;
+    // Not if the server says nothing breeds, or not its kind.
+    if (this.ctx.rules.on("bDisableDinoBreeding") || this.ctx.lists.kinds("PreventBreedingForClassNames").has(rec.kind)) return false;
     // Somebody's, told it may, grown, awake to the world, standing where it was left, nobody on it, and not weighed down.
     return rec.mating && rec.team !== 0 && rec.grown === 0 && rec.egg === null && !rec.out && !rec.dead && rec.follow === 0 && rec.genome !== null && world.reg.breedEgg[rec.kind] !== 0xffff && ents.driven[e] === 0 && (ents.mflags[e]! & MF_NO_SPRINT) === 0;
   }
@@ -369,6 +378,12 @@ export class Breeding {
     const me = records.byPid.get(c.pid);
     if (!me || me.team === 0 || me.dead || me.out) return RESULT_DENIED;
     if (!this.unclaimed(rec)) return RESULT_INVALID;
+    // Not if the tribe, or the server, has as many tamed creatures as it may.
+    const full = this.ctx.full(me.team);
+    if (full !== "") {
+      this.ctx.notice(c.pid, full);
+      return RESULT_FULL;
+    }
     rec.team = me.team;
     records.dirty.add(rec.pid);
     this.ctx.refresh(rec);
@@ -401,6 +416,7 @@ export class Breeding {
     const { world, records } = this.ctx;
     if (world.reg.breedEgg[rec.kind] === 0xffff || rec.grown !== 0 || rec.team === 0) return RESULT_INVALID;
     const on = what === ORDER_MATE;
+    if (on && (this.ctx.rules.on("bDisableDinoBreeding") || this.ctx.lists.kinds("PreventBreedingForClassNames").has(rec.kind))) return RESULT_DENIED;
     if (rec.mating === on) return RESULT_OK;
     rec.mating = on;
     records.dirty.add(rec.pid);

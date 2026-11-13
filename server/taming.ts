@@ -32,6 +32,7 @@ import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Rules } from "./rules.ts";
+import type { Lists } from "./settings/lists.ts";
 import type { Survival } from "./survival.ts";
 import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
@@ -56,6 +57,10 @@ export interface TamingContext {
   refresh(rec: EntityRecord): void;
   /** A creature has been tamed: it is somebody's now. */
   onTamed?(rec: EntityRecord): void;
+  /** The server's lists that name classes. */
+  readonly lists: Lists;
+  /** Tell a survivor something, if they are here. */
+  onNotice?(pid: number, text: string): void;
 }
 
 /** What a session looking into a creature is shown of it. */
@@ -165,7 +170,8 @@ export class Taming {
   }
 
   private wild(rec: EntityRecord): boolean {
-    // Not one that is young: that is taken, not tamed.
+    // Not one that is young: that is taken, not tamed. And not if the server says nothing is to be, or not its kind.
+    if (this.ctx.rules.on("bDisableDinoTaming") || this.ctx.lists.kinds("PreventDinoTameClassNames").has(rec.kind)) return false;
     return rec.team === 0 && rec.keyHash === null && rec.grown === 0 && this.ctx.world.reg.taming[rec.kind] !== null && this.ctx.world.reg.taming[rec.kind] !== undefined;
   }
 
@@ -317,6 +323,15 @@ export class Taming {
       tame.seen = -1;
       return;
     }
+    // The tribe, or the server, has as many as it may: it waits, as one fed by no hand does, until someone looks into it again.
+    const full = this.full(owner.team);
+    if (full !== "") {
+      tame.by = 0;
+      tame.due = 0;
+      tame.seen = -1;
+      this.ctx.onNotice?.(owner.pid, full);
+      return;
+    }
     const p = world.reg.taming[rec.kind]!;
     const te = effectiveness(p, tame.sum);
     const g = rec.genome;
@@ -328,6 +343,30 @@ export class Taming {
       }
     }
     this.give(rec, owner, te);
+  }
+
+  /** How many tamed creatures there are: in all, and of one team. */
+  count(team: number): { all: number; ours: number } {
+    const reg = this.ctx.world.reg;
+    let all = 0;
+    let ours = 0;
+    for (const r of this.ctx.records.byPid.values()) {
+      if (r.team === 0 || r.keyHash !== null || r.egg !== null || r.dead || reg.defs[r.kind]?.type !== "species" || !r.vitals) continue;
+      all++;
+      if (r.team === team) ours++;
+    }
+    return { all, ours };
+  }
+
+  /** Why `team` may have no more tamed creatures, by the server's rules; "" if it may. */
+  full(team: number): string {
+    const rules = this.ctx.rules;
+    const most = rules.num("MaxTamedDinos");
+    const each = rules.num("MaxPersonalTamedDinos");
+    const n = this.count(team);
+    if (n.all >= most) return `This server has as many tamed creatures as it may (${most}).`;
+    if (each > 0 && n.ours >= each) return `Your tribe has as many tamed creatures as it may (${each}).`;
+    return "";
   }
 
   /**

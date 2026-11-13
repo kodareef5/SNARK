@@ -2,7 +2,7 @@
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -45,6 +45,7 @@ import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
 import { Rules, type RuleName } from "./rules.ts";
 import { rowOf } from "./settings/catalog.ts";
+import { Lists } from "./settings/lists.ts";
 import { timersOf } from "./settings/rules.ts";
 import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
@@ -127,6 +128,8 @@ export interface Host {
   readonly taming: Taming;
   readonly riding: Riding;
   readonly breeding: Breeding;
+  /** The server's settings that are lists naming classes, as tables; and what they named that this build lacks. */
+  readonly lists: Lists;
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
@@ -176,7 +179,12 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   if (opts.clips && opts.rigs) world.rigs = buildRigs(opts.rigs, opts.clips);
   let settingsAt: { dirty: boolean; version: number } | null = null;
   const records = new Records(opts.worldId ?? 1);
-  const game = new GameServer(world, opts.game);
+  // The files are the truth at every start (D88): nothing of the rules is read from the save.
+  const rules = opts.config ?? new Rules(opts.rules);
+  const lists = new Lists(rules, reg);
+  // The most survivors at once: what whoever assembles the world says, else ARK's command-line flag, else its file's setting.
+  const seats = rules.flag("WinLiveMaxPlayers");
+  const game = new GameServer(world, { ...opts.game, maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")) });
   const persistence = store ? new Persistence(world, records, store) : null;
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
@@ -186,6 +194,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   // One heap for everything that happens at a tick; entries are dispatched by kind in onStep.
   const deadlines = new DeadlineHeap();
   const survival = new Survival(world, records, deadlines);
+  survival.rules = rules;
   const items = new Items(world, records);
   // A save's ledger must match what the save holds, or the save is not trusted.
   if (persistence) {
@@ -210,10 +219,13 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   };
   const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines });
   const progression = new Progression(world, records, items, deadlines);
+  progression.rules = rules;
   const harvest = world.nodeField ? new Harvest(world, game, records, items, progression, deadlines, (opts.seed ?? 1) + 31) : null;
+  if (harvest) {
+    harvest.rules = rules;
+    harvest.lists = lists;
+  }
   const buffs = new Buffs(world, records, survival, deadlines);
-  // The files are the truth at every start (D88): nothing of the rules is read from the save.
-  const rules = opts.config ?? new Rules(opts.rules);
   // What is kept with the world is what its timers were worked out under, so that they can be re-timed under other rules.
   const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at"), persistence.store.meta("rules")) : null;
   if (persistence) {
@@ -225,9 +237,10 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   // A creature's bite is a blow like any other.
   creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
+  tribes.rules = rules;
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   // Taming: what a creature lying unconscious is given, and whose it becomes.
-  const taming = new Taming({ world, game, records, items, survival, buffs, rules, tribes, deadlines, creatures, progression, openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
+  const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     // Somebody's now: until it is told otherwise it stands where it woke.
     if (e !== undefined) {
@@ -243,14 +256,15 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   death.riding = (c) => riding.riding(c);
   death.offMount = (c) => riding.dismount(c);
   // Breeding: pairs among the creatures that are somebody's, what they lay, and what hatches and grows up.
-  const breeding = new Breeding({ world, game, records, rules, deadlines, creatures, persistence, place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
+  const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
   taming.bred = (rec) => breeding.subject(rec);
   death.onRide = (c, e) => {
     const rec = records.byPid.get(world.ents.pid[e]!);
     // A young one that is nobody's: whoever uses it takes it.
     if (rec && breeding.unclaimed(rec)) return breeding.claim(c, rec);
-    // Only what is saddled, grown, awake, and theirs is something to ride; anything else is whatever it was.
+    // Only what is saddled, grown, awake, and theirs is something to ride, and nothing is if the server says so; anything else is whatever it was.
+    if (rules.on("bDisableDinoRiding")) return -1;
     if (!rec || rec.keyHash !== null || rec.saddle === 0 || rec.out || rec.grown !== 0 || !tribes.may(records.byPid.get(c.pid), rec.team)) return -1;
     return riding.mount(c, e);
   };
@@ -262,6 +276,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const chat = new Chat({ game, records, rules, tribes });
   // What has state among the things built: found again among the records that were loaded.
   const fixtures = new Fixtures(world, records, items);
+  fixtures.rules = rules;
   fixtures.index();
   const stations = new Stations(world, records, items, fixtures, deadlines);
   const build = new Build({ world, game, records, items, tribes, rules, fixtures, light: (ref) => stations.toggle(ref), spill: (x, y, z, name) => death.spill(x, y, z, name) });
@@ -271,12 +286,14 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.values.globalVoice !== 0 }, (out) => void crypto.getRandomValues(out));
   /** The session a survivor has here now, lingering bodies not counted. */
   const sessionOf = (pid: number) => game.clients.find((c) => c?.active && !c.closed && c.pid === pid) ?? null;
-  tribes.onSave = () => persistence?.store.setMeta("tribes", tribes.serialize());
-  tribes.onTeam = (rec) => refreshBody(rec);
-  tribes.onNotice = (pid, text) => {
+  /** Tell a survivor something, if they are here. */
+  function notice(pid: number, text: string): void {
     const to = sessionOf(pid);
     if (to) game.sendText(to, TEXT_NOTICE, text);
-  };
+  }
+  tribes.onSave = () => persistence?.store.setMeta("tribes", tribes.serialize());
+  tribes.onTeam = (rec) => refreshBody(rec);
+  tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 71);
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   combat.onThrow = (c, rec, item, quality) => projectiles.lob(c, rec, item, quality);
@@ -340,12 +357,14 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
     // Scatter the herd north of the spawn point; positions inside structures are skipped and retried.
-    let wanted = opts.startingCreatures ?? 0;
+    // None at all if the server was started so (ARK's -NoDinos).
+    const none = rules.flag("NoDinos") === true;
+    let wanted = none ? 0 : (opts.startingCreatures ?? 0);
     for (let tries = wanted * 20; wanted > 0 && tries > 0; tries--) {
       if (spawnCreature(opts.startingSpecies ?? "core:grazer", rng.range(226, 286), rng.range(244, 300), 1 + rng.int(30)) >= 0) wanted--;
     }
     // Hunters at the far edge of that ground: near enough to be found, too far to see who has just arrived.
-    let hunters = opts.startingHunters ?? 0;
+    let hunters = none ? 0 : (opts.startingHunters ?? 0);
     for (let tries = hunters * 20; hunters > 0 && tries > 0; tries--) {
       if (spawnCreature("core:raptor", rng.range(226, 286), rng.range(288, 300), 1 + rng.int(30)) >= 0) hunters--;
     }
@@ -415,6 +434,10 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     moved(-1, c.chunk);
     // Its tribe sees it arrive.
     tribes.version++;
+    // The server's name and its message of the day, if it has them: each line of the message its own.
+    const name = rules.text("SessionName");
+    if (name !== "") game.sendText(c, TEXT_NOTICE, name);
+    for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_NOTICE, line.trim());
   };
   game.onPresence = (c) => {
     tribes.version++;
@@ -462,6 +485,11 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     taming.step();
     breeding.step(tick);
     voice.step(tick);
+    // Whoever has done nothing for as long as the server's rule allows is put off it, if it was started to (ARK's -EnableIdlePlayerKick).
+    if (tick % TICK_RATE === 0 && rules.flag("EnableIdlePlayerKick") === true) {
+      const most = Math.round(rules.num("KickIdlePlayersPeriod") * TICK_RATE);
+      for (const c of game.clients) if (c?.active && !c.closed && tick - c.activeAt > most) game.reject(c, REJECT_KICKED);
+    }
     // A rule has changed: what the world's timers are worked out under goes into the next commit with them.
     if (settingsAt && settingsAt.version !== rules.version) {
       settingsAt.version = rules.version;
@@ -611,7 +639,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     persistence,
     loaded,
     console: con,
-    adminPassword: opts.adminPassword || null,
+    adminPassword: opts.adminPassword || rules.text("ServerAdminPassword") || null,
+    lists,
     dev: opts.dev ?? false,
     spawnCreature,
     refreshBody,

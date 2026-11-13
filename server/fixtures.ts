@@ -9,6 +9,7 @@
 // The rows know nothing of this. Whoever removes a structure asks here for
 // its record and decides what becomes of it (server/build.ts).
 
+import type { Rules } from "./settings/rules.ts";
 import type { ItemDef } from "../shared/content/defs.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -19,6 +20,8 @@ export class Fixtures {
   private readonly records: Records;
   private readonly items: Items;
   private readonly byRef = new Map<number, number>();
+  /** The server's rules, given by whoever assembles the world. */
+  rules: Rules | null = null;
 
   constructor(world: ServerWorld, records: Records, items: Items) {
     this.world = world;
@@ -107,6 +110,7 @@ export class Fixtures {
   /** Whether the structure at `ref` is locked: as its record says, or if that says nothing, as its kind starts out. */
   locked(ref: number): boolean {
     const lock = this.find(ref)?.lock ?? 0;
-    return lock === 1 || (lock === 0 && this.world.reg.lockedAtFirst[this.kindAt(ref)] === 1);
+    // By the server's rule, everything that can be locked starts out so.
+    return lock === 1 || (lock === 0 && (this.world.reg.lockedAtFirst[this.kindAt(ref)] === 1 || (this.rules?.on("ForceAllStructureLocking") ?? false)));
   }
 }

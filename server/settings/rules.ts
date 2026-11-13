@@ -220,7 +220,7 @@ export class Rules {
       pickupSeconds: this.on("AlwaysAllowStructurePickup") ? 0 : this.num("StructurePickupTimeAfterPlacement"),
       // 0 was "nothing decays".
       decayTime: this.on("DisableStructureDecayPvE") ? 0 : this.num("PvEStructureDecayPeriodMultiplier"),
-      decayDestroy: this.num("AutoDestroyOldStructuresMultiplier") > 0 ? 1 : 0,
+      decayDestroy: this.num("AutoDestroyOldStructuresMultiplier") > 0 && this.flag("AutoDestroyStructures") === true ? 1 : 0,
     };
     return this.old;
   }
@@ -255,7 +255,11 @@ export class Rules {
         to("DisableStructureDecayPvE", value === 0);
         if (value !== 0) to("PvEStructureDecayPeriodMultiplier", value);
         break;
-      case "decayDestroy": to("AutoDestroyOldStructuresMultiplier", value !== 0 ? 1 : 0); break;
+      case "decayDestroy":
+        // The old rule was one switch; ARK's is a multiplier that also needs its command-line flag.
+        to("AutoDestroyOldStructuresMultiplier", value !== 0 ? 1 : 0);
+        this.put(rowOf("AutoDestroyStructures", true)!, value !== 0, "console");
+        break;
     }
     return true;
   }

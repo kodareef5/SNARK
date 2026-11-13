@@ -34,7 +34,7 @@ import { BUILD_REACH, ON_TOP, ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, freePo
 import { Collapse } from "../shared/world/collapse.ts";
 import { GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
-import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, REPAIR_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
+import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
 import type { Fixtures } from "./fixtures.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Decay } from "./decay.ts";
@@ -236,7 +236,8 @@ export class Build {
     const state = fixtures.find(ref);
     // Its tribe's to use. Anyone else's only if it is unlocked, or they give its PIN.
     if (!tribes.may(rec, t.owner[slot]!) && fixtures.locked(ref)) {
-      const need = state ? state.pin : -1;
+      // By the server's rule a PIN may open nothing for those outside the tribe.
+      const need = state && !this.ctx.rules.on("PreventOutOfTribePinCodeUse") ? state.pin : -1;
       if (need < 0) return RESULT_LOCKED;
       const tick = world.tick;
       let strike = this.strikes.get(c.id);
@@ -273,7 +274,12 @@ export class Build {
   /** Something built was harmed (at tick `at`, now unless said): it cannot be mended for a while. */
   hurt(ref: number, at = this.ctx.world.tick): void {
     this.hurtAt.set(ref, at);
-    if (this.hurtAt.size > 8192) this.forget(this.hurtAt, REPAIR_WAIT_TICKS);
+    if (this.hurtAt.size > 8192) this.forget(this.hurtAt, this.repairWait());
+  }
+
+  /** How long after harm a thing built cannot be mended, by the server's rule: ticks. */
+  private repairWait(): number {
+    return Math.round(this.ctx.rules.num("StructureDamageRepairCooldown") * TICK_RATE);
   }
 
   private forget(times: Map<number, number>, after: number): void {
@@ -383,7 +389,7 @@ export class Build {
     if (action === STRUCT_REPAIR) {
       if (!mine) return RESULT_NOT_YOURS;
       if (!repairCostOf(reg, kind, t.hp[slot]!)) return RESULT_INVALID;
-      if (tick - (this.hurtAt.get(ref) ?? -Infinity) < REPAIR_WAIT_TICKS) return RESULT_WAIT;
+      if (tick - (this.hurtAt.get(ref) ?? -Infinity) < this.repairWait()) return RESULT_WAIT;
       const inv = items.inv(rec);
       for (let k = 0; k < cost.n; k++) if (inv.total(cost.item[k]!) < cost.count[k]!) return RESULT_SHORT;
       for (let k = 0; k < cost.n; k++) if (!items.burnItem(rec, cost.item[k]!, cost.count[k]!)) throw new Error("the ingredients were counted");

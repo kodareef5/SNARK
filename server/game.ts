@@ -135,6 +135,8 @@ export class Client {
   state = SESSION_ALIVE;
   /** Cheats enabled. Belongs to the connection, never saved. */
   admin = false;
+  /** The tick its inputs last changed, or it last sent a command: for putting off those who do nothing. */
+  activeAt = 0;
   cheatAttempts = 0;
   /** Entity index of the visible body, or -1 (spectating, dead). */
   ent = -1;
@@ -360,6 +362,8 @@ export class GameServer {
         c.heldX = c.heldZ = c.heldButtons = 0;
       } else if (inputs.has(T)) {
         const i = T & inputs.mask;
+        // Anything other than what it was already doing is the session doing something: it is not idle.
+        if (c.heldX !== inputs.moveX[i] || c.heldZ !== inputs.moveZ[i] || c.heldYaw !== inputs.yaw[i] || c.heldPitch !== inputs.pitch[i] || c.heldButtons !== inputs.buttons[i]) c.activeAt = T;
         c.heldX = inputs.moveX[i]!;
         c.heldZ = inputs.moveZ[i]!;
         c.heldYaw = inputs.yaw[i]!;
@@ -708,6 +712,7 @@ export class GameServer {
     r.u8();
     if (r.overflow || seq !== ((c.cmdSeq + 1) & 0xffff)) return false;
     c.cmdSeq = seq;
+    c.activeAt = this.world.tick;
     if (c.queue.length >= COMMAND_QUEUE) this.result(c, seq, RESULT_BUSY);
     else c.queue.push(data);
     return true;
@@ -814,6 +819,7 @@ export class GameServer {
       } else if (!this.spawnBody(c)) return this.refuse(c, REJECT_FULL);
     }
     c.active = true;
+    c.activeAt = this.world.tick;
     this.onEnter?.(c);
     this.welcome(c);
     return true;

@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 515 of them: 20 take effect, 94 more will by the end of round 5,
+is listed here, 515 of them: 52 take effect, 62 more will by the end of round 5,
 207 wait for a feature that is not built yet, and 194 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -20,24 +20,47 @@ may change a setting without a restart.
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
+| `XPMultiplier` | 1 | Experience gained by survivors and tames. Higher is more. Each gain is also multiplied by its source's own multiplier. | yes |
 | `TamingSpeedMultiplier` | 1 | What each piece of food is worth to a creature being tamed. Higher is faster. | yes |
+| `HarvestAmountMultiplier` | 1 | What each harvesting blow yields. Higher is more. | yes |
 | `PlayerResistanceMultiplier` | 1 | Damage survivors take. Higher takes more: 0.5 halves it. | yes |
 | `DinoResistanceMultiplier` | 1 | Damage wild creatures take. Higher takes more. | yes |
 | `StructureResistanceMultiplier` | 1 | Damage things built take. Higher takes more. | yes |
 | `ShowFloatingDamageText` | False | The damage of a hit is shown as a number where it landed. | yes; clients are told |
+| `MaxTamedDinos` | 5000 | Tamed creatures the whole server may hold. | yes |
+| `MaxPersonalTamedDinos` | 0 | Tamed creatures one tribe may hold. 0 is no limit. *Official servers use 500 in PvE and 300 in PvP.* | yes |
 | `DisableStructureDecayPvE` | False | Nothing built decays. | yes |
 | `PvEStructureDecayPeriodMultiplier` | 1 | Time before something built that its tribe has not come near decays. Higher is longer. *Applies in PvP too when decay is on there, despite the name.* | yes |
+| `PvPStructureDecay` | False | Things built decay on a PvP server too. | yes |
 | `AutoDestroyOldStructuresMultiplier` | 0 | What has decayed is taken down by the server after this many decay periods. 0 leaves it standing for anyone to demolish. Needs -AutoDestroyStructures. | yes |
+| `FastDecayUnsnappedCoreStructures` | False | A foundation or pillar joined to nothing decays in FastDecayInterval. | yes |
 | `AlwaysAllowStructurePickup` | False | A piece may be taken back into the hands at any time while it is whole. | yes |
 | `StructurePickupTimeAfterPlacement` | 30 | Seconds after it is set down that a piece may be taken back. | yes |
+| `ForceAllStructureLocking` | False | Everything that can be locked is locked when it is built. | yes |
+| `PreventOutOfTribePinCodeUse` | False | A PIN opens nothing for those outside the tribe. | yes |
 | `globalVoiceChat` | False | A voice is heard by everyone, wherever they are. | yes |
 | `ProximityChat` | False | What is written reaches only those near. | yes; clients are told |
+| `ServerAdminPassword` | none | Asked of whoever would use cheats. | no |
+| `KickIdlePlayersPeriod` | 3600 | Seconds without doing anything before a survivor is put off the server. Needs -EnableIdlePlayerKick. | yes |
 
 ### GameUserSettings.ini `[SessionSettings]`
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
+| `SessionName` | none | The server's name, as those who join are told it. | no |
 | `Port` | 8787 | The port the server listens on. *ARK's default is 7777.* | no |
+
+### GameUserSettings.ini `[MessageOfTheDay]`
+
+| Setting | Default | What it does | While running |
+| --- | --- | --- | --- |
+| `Message` | none | Said to each survivor who joins. \n begins a new line. | no |
+
+### GameUserSettings.ini `[/Script/Engine.GameSession]`
+
+| Setting | Default | What it does | While running |
+| --- | --- | --- | --- |
+| `MaxPlayers` | 70 | The most survivors at once. | no |
 
 ### GameUserSettings.ini `[SnarkSettings]`
 
@@ -54,12 +77,31 @@ may change a setting without a restart.
 | `MatingIntervalMultiplier` | 1 | The wait before a female may mate again. Lower is sooner. | yes |
 | `EggHatchSpeedMultiplier` | 1 | How fast an egg hatches, or young are carried. Higher is faster. | yes |
 | `BabyMatureSpeedMultiplier` | 1 | How fast the young grow up. Higher is faster. Their hunger each second is as it was. | yes |
+| `bDisableDinoBreeding` | False | Nothing breeds. | yes |
+| `PreventBreedingForClassNames` | none | Species that do not breed. | no |
+| `KillXPMultiplier` | 1 | Experience from kills. Higher is more. | yes |
+| `HarvestXPMultiplier` | 1 | Experience from harvesting. Higher is more. | yes |
+| `CraftXPMultiplier` | 1 | Experience from making things. Higher is more. | yes |
+| `PlayerHarvestingDamageMultiplier` | 1 | What a survivor's blow does to a tree or a rock. Higher fells it sooner. | yes |
+| `HarvestResourceItemAmountClassMultipliers` | none | Yield of one resource: `(ClassName="core:thatch",Multiplier=2.0)`. | yes |
+| `ResourceNoReplenishRadiusPlayers` | 1 | How far from a survivor nodes will not grow back. Higher is further. | yes |
+| `PreventDinoTameClassNames` | none | Species that cannot be tamed. | no |
+| `bDisableDinoTaming` | False | Nothing can be tamed. | yes |
+| `bDisableDinoRiding` | False | Nothing can be ridden. | yes |
+| `StructureDamageRepairCooldown` | 180 | Seconds after it is damaged before something built may be mended. 0 is at once. | yes |
+| `MaxNumberOfPlayersInTribe` | 0 | The most members a tribe may have. 0 is no limit. | yes |
+| `MaxFallSpeedMultiplier` | 1 | The speed of a fall at which it begins to hurt. Higher survives longer falls. | yes |
+| `FastDecayInterval` | 43200 | Seconds before a foundation or pillar joined to nothing decays. Needs FastDecayUnsnappedCoreStructures. | yes |
 
 ### Command line
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
+| `-AutoDestroyStructures` | not given | What has decayed is taken down by the server (see AutoDestroyOldStructuresMultiplier). | no |
+| `-EnableIdlePlayerKick` | not given | The idle are put off the server (see KickIdlePlayersPeriod). | no |
 | `-port=` | none | The port the server listens on. | no |
+| `-WinLiveMaxPlayers=` | none | The most survivors at once. | no |
+| `-NoDinos` | not given | No wild creatures are put in the world. | no |
 
 ## What will take effect this round
 
@@ -67,8 +109,6 @@ may change a setting without a restart.
 
 | Setting | Default | What it does | From |
 | --- | --- | --- | --- |
-| `XPMultiplier` | 1 | Experience gained by survivors and tames. Higher is more. Each gain is also multiplied by its source's own multiplier. | phase 3 |
-| `HarvestAmountMultiplier` | 1 | What each harvesting blow yields. Higher is more. | phase 3 |
 | `HarvestHealthMultiplier` | 1 | Health of trees, rocks and bushes. Higher takes more blows and gives more in all. | phase 5 |
 | `ResourcesRespawnPeriodMultiplier` | 1 | Time before a harvested node grows back. Lower is sooner. | phase 6 |
 | `ItemStackSizeMultiplier` | 1 | Stack sizes. What stacks to 1 is left alone. | phase 5 |
@@ -90,39 +130,18 @@ may change a setting without a restart.
 | `DinoCharacterStaminaDrainMultiplier` | 1 | How fast creatures tire. Higher is faster. | phase 5 |
 | `DinoCharacterHealthRecoveryMultiplier` | 1 | How fast creatures mend. Higher is faster. | phase 6 |
 | `OxygenSwimSpeedStatMultiplier` | 1 | Swimming speed gained by each level of oxygen. Higher is more. | phase 6 |
-| `MaxTamedDinos` | 5000 | Tamed creatures the whole server may hold. | phase 3 |
-| `MaxPersonalTamedDinos` | 0 | Tamed creatures one tribe may hold. 0 is no limit. *Official servers use 500 in PvE and 300 in PvP.* | phase 3 |
-| `PvPStructureDecay` | False | Things built decay on a PvP server too. | phase 3 |
-| `FastDecayUnsnappedCoreStructures` | False | A foundation or pillar joined to nothing decays in FastDecayInterval. | phase 3 |
-| `ForceAllStructureLocking` | False | Everything that can be locked is locked when it is built. | phase 3 |
-| `PreventOutOfTribePinCodeUse` | False | A PIN opens nothing for those outside the tribe. | phase 3 |
 | `serverPVE` | False | Survivors, their tames and what they build cannot be harmed by other tribes. | phase 4 |
 | `AllowThirdPersonPlayer` | True | The body may be looked at from behind. | phase 5 |
 | `ServerCrosshair` | True | A crosshair is shown. | phase 5 |
 | `ShowMapPlayerLocation` | True | The map shows where its reader is. | phase 5 |
-| `ServerPassword` | none | Asked of everyone who joins. | phase 3 |
-| `ServerAdminPassword` | none | Asked of whoever would use cheats. | phase 3 |
-| `KickIdlePlayersPeriod` | 3600 | Seconds without doing anything before a survivor is put off the server. Needs -EnableIdlePlayerKick. | phase 3 |
+| `ServerPassword` | none | Asked of everyone who joins. | phase 5 |
 | `AutoSavePeriodMinutes` | 15 | Minutes between saves. Here the world is saved continuously; this is how often the live file is read again. | phase 6 |
-
-### GameUserSettings.ini `[SessionSettings]`
-
-| Setting | Default | What it does | From |
-| --- | --- | --- | --- |
-| `SessionName` | none | The server's name, as those who join are told it. | phase 3 |
 
 ### GameUserSettings.ini `[MessageOfTheDay]`
 
 | Setting | Default | What it does | From |
 | --- | --- | --- | --- |
-| `Message` | none | Said to each survivor who joins. \n begins a new line. | phase 3 |
-| `Duration` | 20 | Seconds it is shown. | phase 3 |
-
-### GameUserSettings.ini `[/Script/Engine.GameSession]`
-
-| Setting | Default | What it does | From |
-| --- | --- | --- | --- |
-| `MaxPlayers` | 70 | The most survivors at once. | phase 3 |
+| `Duration` | 20 | Seconds it is shown. | phase 5 |
 
 ### Game.ini `[/script/shootergame.shootergamemode]`
 
@@ -130,11 +149,6 @@ may change a setting without a restart.
 | --- | --- | --- | --- |
 | `MatingSpeedMultiplier` | 1 | How fast a pair's mating goes. Higher is faster. | phase 6 |
 | `BabyFoodConsumptionSpeedMultiplier` | 1 | How fast the young hunger. Lower eats less. | phase 6 |
-| `bDisableDinoBreeding` | False | Nothing breeds. | phase 3 |
-| `PreventBreedingForClassNames` | none | Species that do not breed. | phase 3 |
-| `KillXPMultiplier` | 1 | Experience from kills. Higher is more. | phase 3 |
-| `HarvestXPMultiplier` | 1 | Experience from harvesting. Higher is more. | phase 3 |
-| `CraftXPMultiplier` | 1 | Experience from making things. Higher is more. | phase 3 |
 | `OverrideMaxExperiencePointsPlayer` | 0 | The most experience a survivor may have. 0 leaves it to the level table. | phase 5 |
 | `OverrideMaxExperiencePointsDino` | 0 | The most experience a tame may have. 0 leaves it to the level table. | phase 5 |
 | `LevelExperienceRampOverrides` | none | The level table: `(ExperiencePointsForLevel[0]=5,ExperiencePointsForLevel[1]=20,…)`, each the total needed. The first line is survivors', the second tames'. | phase 5 |
@@ -143,9 +157,6 @@ may change a setting without a restart.
 | `EngramEntryAutoUnlocks` | none | An engram learned without asking at a level: `(EngramClassName="…",LevelToAutoUnlock=0)`. | phase 5 |
 | `bAutoUnlockAllEngrams` | False | Every engram is learned as its level is reached. | phase 5 |
 | `bOnlyAllowSpecifiedEngrams` | False | Only the engrams named in OverrideNamedEngramEntries are offered. | phase 5 |
-| `PlayerHarvestingDamageMultiplier` | 1 | What a survivor's blow does to a tree or a rock. Higher fells it sooner. | phase 3 |
-| `HarvestResourceItemAmountClassMultipliers` | none | Yield of one resource: `(ClassName="core:thatch",Multiplier=2.0)`. | phase 3 |
-| `ResourceNoReplenishRadiusPlayers` | 1 | How far from a survivor nodes will not grow back. Higher is further. | phase 3 |
 | `GlobalSpoilingTimeMultiplier` | 1 | How long things keep before they spoil. Higher is longer. *ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied.* | phase 5 |
 | `GlobalItemDecompositionTimeMultiplier` | 1 | How long a dropped bag lies. Higher is longer. | phase 6 |
 | `GlobalCorpseDecompositionTimeMultiplier` | 1 | How long what a dead survivor leaves lies. Higher is longer. | phase 6 |
@@ -161,19 +172,12 @@ may change a setting without a restart.
 | `TamedDinoClassDamageMultipliers` | none | Damage one tamed species deals. | phase 4 |
 | `DinoClassResistanceMultipliers` | none | Damage one wild species takes. *The reference says higher takes less here, the reverse of the global settings. To be checked before it is built.* | phase 4 |
 | `TamedDinoClassResistanceMultipliers` | none | Damage one tamed species takes. *As above.* | phase 4 |
-| `PreventDinoTameClassNames` | none | Species that cannot be tamed. | phase 3 |
-| `bDisableDinoTaming` | False | Nothing can be tamed. | phase 3 |
-| `bDisableDinoRiding` | False | Nothing can be ridden. | phase 3 |
 | `PerLevelStatsMultiplier_Player[n]` | 1 each | What a survivor gains from each level put in a stat. ARK's index: 0 health, 1 stamina, 2 torpidity, 3 oxygen, 4 food, 5 water, 6 temperature, 7 weight, 8 melee, 9 speed, 10 fortitude, 11 crafting. A 0 is read as 1. | phase 8 |
 | `PerLevelStatsMultiplier_DinoWild[n]` | 1 each | What a creature gains from each level it was born or found with. | phase 8 |
 | `PerLevelStatsMultiplier_DinoTamed[n]` | 1 each; [0] 0.2, [8] 0.17 | What a tamed creature gains from each level its owner gives it. | phase 8 |
 | `PlayerBaseStatMultipliers[n]` | 1 each; [6] 0, [8] 0, [9] 0, [10] 0, [11] 0 | What a new survivor's stats begin at. Those at 0 cannot be raised. | phase 8 |
-| `StructureDamageRepairCooldown` | 180 | Seconds after it is damaged before something built may be mended. 0 is at once. | phase 3 |
 | `bDisableFriendlyFire` | False | Nothing of a tribe's own can be harmed by its own, not even by their blasts. | phase 4 |
 | `bPvEDisableFriendlyFire` | False | The same on a PvE server. | phase 4 |
-| `MaxNumberOfPlayersInTribe` | 0 | The most members a tribe may have. 0 is no limit. | phase 3 |
-| `MaxFallSpeedMultiplier` | 1 | The speed of a fall at which it begins to hurt. Higher survives longer falls. | phase 3 |
-| `FastDecayInterval` | 43200 | Seconds before a foundation or pillar joined to nothing decays. Needs FastDecayUnsnappedCoreStructures. | phase 3 |
 | `bUseCorpseLocator` | True | A beam marks where a survivor died. | phase 5 |
 | `bUseSingleplayerSettings` | False | ARK's single-player factors are applied on top of what the files give. | phase 9 |
 
@@ -182,10 +186,6 @@ may change a setting without a restart.
 | Setting | Default | What it does | From |
 | --- | --- | --- | --- |
 | `-UseDynamicConfig` | not given | The live file is read, and read again while the server runs. | phase 6 |
-| `-AutoDestroyStructures` | not given | What has decayed is taken down by the server (see AutoDestroyOldStructuresMultiplier). | phase 3 |
-| `-EnableIdlePlayerKick` | not given | The idle are put off the server (see KickIdlePlayersPeriod). | phase 3 |
-| `-WinLiveMaxPlayers=` | none | The most survivors at once. | phase 3 |
-| `-NoDinos` | not given | No wild creatures are put in the world. | phase 3 |
 
 ## What waits for a feature
 

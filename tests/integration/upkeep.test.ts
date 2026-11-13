@@ -193,9 +193,17 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   const wall = join(ada, "wall", f, 2).ref;
   const alone = found(made, ada, 6, 5);
   h.say(bob, `tp ${(made.at.x + 5).toFixed(3)} ${(made.at.z + 2).toFixed(3)}`);
-  // Wood lasts eight days unvisited, and a foundation with nothing joined to it half a day. Here, a ten-thousandth of that: 69 s and 4.3 s.
+  // As ARK has it, nothing decays on a server that is not PvE unless it is switched on; and a foundation joined to nothing
+  // decays no sooner than anything else unless that is switched on, and then in a time of its own.
+  expect([decay().active(), decay().period(id("foundation_wood"), true) === decay().period(id("foundation_wood"), false)]).toEqual([false, true]);
+  expect(h.say(ada, "setting PvPStructureDecay True")[0]).toContain("PvPStructureDecay=True");
+  expect(decay().active()).toBe(true);
+  h.say(ada, "setting FastDecayUnsnappedCoreStructures True");
+  expect(decay().period(id("foundation_wood"), true)).toBe(43200 * TICK_RATE);
+  // Wood lasts eight days unvisited. Here, a ten-thousandth of that, 69 s; and a foundation by itself, four seconds.
   h.say(ada, "rule decayTime 0.0001");
-  expect([decay().period(id("wall_wood"), false), decay().period(id("foundation_wood"), true), decay().period(id("wall_thatch"), false), decay().period(id("wall_stone"), false), decay().period(id("wall_metal"), true)]).toEqual([2074, 130, 1037, 3110, 130]);
+  h.say(ada, "setting FastDecayInterval 4");
+  expect([decay().period(id("wall_wood"), false), decay().period(id("foundation_wood"), true), decay().period(id("wall_thatch"), false), decay().period(id("wall_stone"), false), decay().period(id("wall_metal"), true)]).toEqual([2074, 120, 1037, 3110, 120]);
   // While she is there, nothing of hers decays, however long.
   h.run(8000);
   expect([decay().expired(alone, h.world.tick), act(bob, alone, STRUCT_DEMOLISH)]).toEqual([false, RESULT_NOT_YOURS]);
@@ -242,7 +250,7 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   expect([decay().destroyed, h.host.build.fallen]).toEqual([2, 0]);
   // With decay turned off nothing is ever decayed.
   h.say(bob, "rule decayTime 0");
-  expect(decay().period(id("wall_wood"), false)).toBe(0);
+  expect([decay().active(), h.host.rules.on("DisableStructureDecayPvE")]).toEqual([false, true]);
   expect(h.host.items.audit()).toEqual([]);
   h.host.shutdown();
   rmSync(dir, { recursive: true, force: true });

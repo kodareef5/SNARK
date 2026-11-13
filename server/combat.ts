@@ -42,7 +42,7 @@ import { DID_FIRE, DID_RELOAD, DID_BITE, DID_STRIKE, type Client, type GameServe
 import type { Harvest } from "./harvest.ts";
 import { Past } from "./history.ts";
 import type { Items } from "./items.ts";
-import type { Progression } from "./progression.ts";
+import { XP_KILL, type Progression } from "./progression.ts";
 import type { Rules } from "./rules.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { STAT_MELEE, statOf, type Survival } from "./survival.ts";
@@ -788,11 +788,12 @@ export class Combat {
     const reg = world.reg;
     const def = reg.defs[rec.kind] as SpeciesDef;
     const level = rec.kind === this.survivor ? progression.levelOf(rec.xp) : (rec.genome?.level ?? 1);
-    const xp = Math.round((def.killXp ?? 0) * (1 + 0.1 * (level - 1)) * 10) / 10;
-    progression.addXp(killer, xp);
+    // What a kill is worth, by the server's rules for experience; the killer is told what it gained.
+    const base = Math.round((def.killXp ?? 0) * (1 + 0.1 * (level - 1)) * 10) / 10;
+    const xp = progression.addXp(killer, base, XP_KILL);
     // Ridden, half as much again goes to whoever rides it.
     const rider = this.riderOf?.(killer) ?? null;
-    if (rider) progression.addXp(rider, xp / 2);
+    if (rider) progression.addXp(rider, base / 2, XP_KILL);
     for (const drop of def.drops ?? []) {
       const n = drop.min + this.rng.int(drop.max - drop.min + 1);
       if (n > 0) items.mint(killer, reg.index.get(drop.item)!, n);
