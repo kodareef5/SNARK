@@ -2,12 +2,14 @@
   "name": "snark",
   "private": true,
   "type": "module",
-  "engines": { "bun": "1.4.3" },
+  "engines": {
+    "bun": "1.4.3"
+  },
   "scripts": {
     "check": "bun tools/check.ts",
     "test": "bun test",
     "bench": "bun tools/bench.ts",
-    "dev": "bun --watch server/main.ts --dev",
+    "dev": "bun --watch tools/dev.ts",
     "build": "bun tools/build-client.ts",
     "snap": "bun tools/snap.ts",
     "probe": "bun tools/probe.ts"
