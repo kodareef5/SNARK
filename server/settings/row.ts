@@ -110,11 +110,12 @@ export interface Row {
   /**
    * What is already under way when it changes: a timer whose time is divided
    * by the value ("speed") or multiplied by it ("period"), re-timed from that
-   * moment; or a rate a body was given ("rate"), worked out again. The value
-   * a world was saved under is kept with it, so that a save loaded under
+   * moment; a rate a body was given ("rate"), worked out again; or the pace
+   * of the clock ("clock"), where the hour is kept as it was. The value a
+   * world was saved under is kept with it, so that a save loaded under
    * another is brought to it once (D91).
    */
-  readonly retime: "" | "speed" | "period" | "rate";
+  readonly retime: "" | "speed" | "period" | "rate" | "clock";
   /** Heading it is listed under in the reference. */
   readonly group: string;
   /** What it scales or switches, and which way. */
@@ -131,7 +132,7 @@ export interface Extra {
   max?: number;
   live?: boolean;
   client?: boolean;
-  retime?: "speed" | "period" | "rate";
+  retime?: "speed" | "period" | "rate" | "clock";
   game?: "E" | "A";
   note?: string;
 }

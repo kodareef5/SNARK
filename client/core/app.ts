@@ -574,7 +574,7 @@ export class App {
     const beams = this.scene.beams;
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
-    this.scene.hour = hourOfDay(session.serverTick, session.dayOffset);
+    this.scene.hour = hourOfDay(session.serverTick, session.dayOffset, session.clock);
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps);
     this.feedback.absorb(session, this.reg, nowMs);

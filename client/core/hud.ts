@@ -235,7 +235,7 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
     model.vitals[5]!.fraction = v.max[V_TORPOR]! > 0 ? v.at(V_TORPOR, tick) / v.max[V_TORPOR]! : 0;
   }
   model.out = session.sessionState === SESSION_ALIVE && (b.mflags & MF_OUT) !== 0;
-  model.clock = formatHour(hourOfDay(session.latestSnapshot, session.dayOffset));
+  model.clock = formatHour(hourOfDay(session.latestSnapshot, session.dayOffset, session.clock));
   model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? "DEAD" : model.out ? "UNCONSCIOUS" : "";
   model.crosshair = model.banner === "" && session.crosshair;
   if (model.readoutDue(6)) model.formatReadout();

@@ -6,7 +6,7 @@ import { HumanAnim } from "../shared/anim/pose.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import type { MapDims } from "../shared/coords.ts";
 import { EntityStore } from "../shared/sim/entities.ts";
-import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
+import { offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_SPAWN, PROVING_SPAWNS, provingNodes, buildProvingHeightfield, populateProving, provingMapHash } from "../shared/world/proving.ts";
@@ -17,7 +17,7 @@ import { History } from "./history.ts";
 export interface ServerWorld extends CollisionWorld {
   /** Content as this server has it: what its settings make of the definitions (shared/content/tuning.ts). */
   readonly reg: Registry;
-  /** How fast the clock runs, as multiples of its own pace: the whole cycle, and the day and the night within it. */
+  /** How fast the clock runs (shared/sim/clock.ts): the server's three rules for it, set by whoever assembles the world. */
   readonly clock: { cycle: number; day: number; night: number };
   readonly dims: MapDims;
   readonly hf: Heightfield;
@@ -74,7 +74,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     spawns: spawns ?? [{ name: "Spawn", ...spawn }],
     tick: 0,
     // A new world begins at nine in the morning.
-    dayOffset: 9 * GAME_HOUR_TICKS,
+    dayOffset: offsetForHour(0, 9),
   };
 }
 

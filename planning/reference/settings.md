@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 515 of them: 104 take effect, 10 more will by the end of round 5,
+is listed here, 515 of them: 107 take effect, 7 more will by the end of round 5,
 207 wait for a feature that is not built yet, and 194 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -26,6 +26,9 @@ may change a setting without a restart.
 | `HarvestHealthMultiplier` | 1 | Health of trees, rocks and bushes. Higher takes more blows and gives more in all. | no |
 | `ResourcesRespawnPeriodMultiplier` | 1 | Time before a harvested node grows back. Lower is sooner. | no |
 | `ItemStackSizeMultiplier` | 1 | Stack sizes. What stacks to 1 is left alone. | no; clients are told |
+| `DayCycleSpeedScale` | 1 | Speed of the game clock through the whole day. Higher is faster; about 0.035 is a day as long as a real one. | no; clients are told |
+| `DayTimeSpeedScale` | 1 | Speed of the clock by day. Higher is a shorter day. | no; clients are told |
+| `NightTimeSpeedScale` | 1 | Speed of the clock by night. Higher is a shorter night. | no; clients are told |
 | `PlayerDamageMultiplier` | 1 | Damage survivors deal. Higher is more. | yes |
 | `PlayerResistanceMultiplier` | 1 | Damage survivors take. Higher takes more: 0.5 halves it. | yes |
 | `DinoDamageMultiplier` | 1 | Damage wild creatures deal. Higher is more. | yes |
@@ -161,9 +164,6 @@ may change a setting without a restart.
 
 | Setting | Default | What it does | From |
 | --- | --- | --- | --- |
-| `DayCycleSpeedScale` | 1 | Speed of the game clock through the whole day. Higher is faster; about 0.035 is a day as long as a real one. | phase 7 |
-| `DayTimeSpeedScale` | 1 | Speed of the clock by day. Higher is a shorter day. | phase 7 |
-| `NightTimeSpeedScale` | 1 | Speed of the clock by night. Higher is a shorter night. | phase 7 |
 | `DifficultyOffset` | 1 | Difficulty is offset x (map difficulty - 0.5) + 0.5. Wild creatures are levelled in 30 steps of the difficulty. Ignored when OverrideOfficialDifficulty is set. *One host gives the default as 0.2.* | phase 8 |
 | `OverrideOfficialDifficulty` | 0 | The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150. *A patch note says the most is 5; hosts recommend up to 6. Not verified.* | phase 8 |
 

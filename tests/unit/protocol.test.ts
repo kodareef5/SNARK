@@ -6,8 +6,7 @@ import { readBody, writeBody } from "../../shared/net/protocol.ts";
 import { EntityView, MAX_VIEW, readViewDelta, writeViewDelta } from "../../shared/net/view.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_JUMP, BTN_SPRINT, Body, MODE_GHOST, MODE_NONE, STAMINA_UNITS, stepBody } from "../../shared/sim/character.ts";
-import { DAY_TICKS, dayTick, formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts";
-import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
+import { CLOCK_HOUR_TICKS, DAY_TICKS, UNIT_CLOCK, cycleTicks, dayTick, formatHour, hourOfDay, isDay, offsetForHour } from "../../shared/sim/clock.ts";
 import { provingWorld } from "../fixtures/world.ts";
 
 test("every field of a body survives the wire exactly", () => {
@@ -96,9 +95,10 @@ test("console lines split into words, with quotes grouping", () => {
 });
 
 test("the time of day is the world clock plus an offset, and setting it changes only the offset", () => {
-  expect(DAY_TICKS).toBe(24 * GAME_HOUR_TICKS);
+  // A day of 50.4 minutes at the clock's own pace: 2.1 seconds to the game minute.
+  expect([DAY_TICKS, CLOCK_HOUR_TICKS / 60 / 30, DAY_TICKS / 30 / 60, cycleTicks()]).toEqual([24 * CLOCK_HOUR_TICKS, 2.1, 50.4, DAY_TICKS]);
   expect(hourOfDay(0, 0)).toBe(0);
-  expect(formatHour(hourOfDay(GAME_HOUR_TICKS * 13 + GAME_HOUR_TICKS / 2, 0))).toBe("13:30");
+  expect(formatHour(hourOfDay(CLOCK_HOUR_TICKS * 13 + CLOCK_HOUR_TICKS / 2, 0))).toBe("13:30");
   const rng = new Rng(2);
   for (let i = 0; i < 200; i++) {
     const tick = rng.int(2 ** 31);
@@ -107,10 +107,64 @@ test("the time of day is the world clock plus an offset, and setting it changes 
     expect(offset).toBeGreaterThanOrEqual(0);
     expect(offset).toBeLessThan(DAY_TICKS);
     const got = hourOfDay(tick, offset);
-    expect(Math.min(Math.abs(got - hour), 24 - Math.abs(got - hour))).toBeLessThan(1 / GAME_HOUR_TICKS);
+    expect(Math.min(Math.abs(got - hour), 24 - Math.abs(got - hour))).toBeLessThan(1 / CLOCK_HOUR_TICKS);
     // A day later it is the same time.
     expect(dayTick(tick + DAY_TICKS, offset)).toBe(dayTick(tick, offset));
   }
+});
+
+test("the clock at the server's three scales: a closed form that is what stepping it would give, with a day part and a night part, and an hour that can be asked for", () => {
+  const rng = new Rng(7);
+  for (let n = 0; n < 60; n++) {
+    const c = n === 0 ? UNIT_CLOCK : { cycle: Math.exp((rng.float() - 0.5) * 6), day: Math.exp((rng.float() - 0.5) * 4), night: Math.exp((rng.float() - 0.5) * 4) };
+    const whole = cycleTicks(c);
+    // The day is from six to eighteen, and takes twelve of the clock's hours at the cycle's pace times the day's; the night the same at the night's.
+    const day = (12 * CLOCK_HOUR_TICKS) / (c.cycle * c.day);
+    const night = (12 * CLOCK_HOUR_TICKS) / (c.cycle * c.night);
+    expect(whole).toBeCloseTo(day + night, 6);
+    // A tick is worth what the hour it falls in says: the cycle's pace times the day's between sunrise and sunset, times the
+    // night's outside them, and something between the two in the one tick that crosses from one to the other. Nothing else:
+    // that is all stepping a clock would do.
+    const byDay = (c.cycle * c.day) / CLOCK_HOUR_TICKS;
+    const byNight = (c.cycle * c.night) / CLOCK_HOUR_TICKS;
+    const span = Math.min(40000, Math.floor(whole) - 1);
+    let crossings = 0;
+    for (let tick = 0; tick < span; tick++) {
+      const from = hourOfDay(tick, 0, c);
+      const to = hourOfDay(tick + 1, 0, c);
+      const gain = to - from;
+      if (isDay(from) && isDay(to)) expect(Math.abs(gain - byDay)).toBeLessThan(1e-9);
+      else if (!isDay(from) && !isDay(to) && (from < 6) === (to < 6)) expect(Math.abs(gain - byNight)).toBeLessThan(1e-9);
+      else {
+        crossings++;
+        expect([gain >= Math.min(byDay, byNight) - 1e-9, gain <= Math.max(byDay, byNight) + 1e-9]).toEqual([true, true]);
+      }
+    }
+    expect(crossings).toBeLessThanOrEqual(2);
+    // It never runs backwards, is the same a whole day and night later, and passes sunrise and sunset where it should.
+    const dawn = (6 * CLOCK_HOUR_TICKS) / (c.cycle * c.night);
+    expect([hourOfDay(dawn, 0, c), hourOfDay(dawn + day, 0, c)].map((h) => Math.round(h * 1e6) / 1e6)).toEqual([6, 18]);
+    let last = -1;
+    for (let k = 0; k < 500; k++) {
+      const h = hourOfDay((k / 500) * whole * 0.999999, 0, c);
+      expect(h).toBeGreaterThanOrEqual(last);
+      last = h;
+    }
+    // Any hour can be asked for at any tick: the offset is a whole number of ticks, and the hour is then that, to within half a tick's worth.
+    for (let k = 0; k < 20; k++) {
+      const tick = rng.int(2 ** 31);
+      const want = rng.range(0, 24);
+      const offset = offsetForHour(tick, want, c);
+      const got = hourOfDay(tick, offset, c);
+      expect([Number.isInteger(offset), offset >= 0, offset < whole + 1]).toEqual([true, true, true]);
+      expect(Math.min(Math.abs(got - want), 24 - Math.abs(got - want))).toBeLessThanOrEqual((0.51 * c.cycle * Math.max(c.day, c.night)) / CLOCK_HOUR_TICKS);
+    }
+  }
+  // The cycle ten times as fast is a day of five minutes; the day alone twice as fast is a short day and the same night.
+  expect([cycleTicks({ cycle: 10, day: 1, night: 1 }) / 30 / 60, cycleTicks({ cycle: 1, day: 2, night: 1 }) / 30 / 60, cycleTicks({ cycle: 1, day: 1, night: 4 }) / 30 / 60].map((m) => Math.round(m * 100) / 100)).toEqual([5.04, 37.8, 31.5]);
+  // About 0.035 is a day as long as a real one.
+  expect(cycleTicks({ cycle: 0.035, day: 1, night: 1 }) / 30 / 3600).toBeCloseTo(24, 0);
+  expect([isDay(5.99), isDay(6), isDay(17.99), isDay(18)]).toEqual([false, true, true, false]);
 });
 
 test("whose an entity is, what it sits on and how old it is travel when it appears, stay with it as it moves, and are sent again when they change", () => {

@@ -50,6 +50,8 @@ import { timersOf } from "./settings/rules.ts";
 import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/config.ts";
 import { tuningOf } from "./settings/tune.ts";
 import { deriveRegistry } from "../shared/content/tuning.ts";
+import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
+import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
@@ -209,6 +211,12 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, opts.store) : null;
   // A save supplies its own structures; only a new world gets the proving ground's.
   const world = opts.world ?? createProvingWorld(reg, { populate: !store || store.fresh });
+  // How fast its clock runs: the server's three rules for it. Clients are told as they are welcomed.
+  world.clock.cycle = rules.num("DayCycleSpeedScale");
+  world.clock.day = rules.num("DayTimeSpeedScale");
+  world.clock.night = rules.num("NightTimeSpeedScale");
+  // A new world begins at nine in the morning, by that clock.
+  world.dayOffset = offsetForHour(world.tick, 9, world.clock);
   if (opts.clips) world.anim = new HumanAnim(opts.clips);
   if (opts.clips && opts.rigs) world.rigs = buildRigs(opts.rigs, opts.clips);
   let settingsAt: { dirty: boolean; version: number } | null = null;
@@ -450,6 +458,15 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       }
     }
     survival.rerate = false;
+    // The hour is what it was when the world was stopped, whatever pace the clock keeps now: the offset is worked out
+    // again for the new pace. A save from before the clock had a pace of its own counted 140 seconds to the hour.
+    const paced = loadedUnder !== null && loadedUnder.DayCycleSpeedScale !== undefined;
+    const pace = { cycle: wasAt("DayCycleSpeedScale"), day: wasAt("DayTimeSpeedScale"), night: wasAt("NightTimeSpeedScale") };
+    if (!paced || pace.cycle !== world.clock.cycle || pace.day !== world.clock.day || pace.night !== world.clock.night) {
+      const hour = paced ? hourOfDay(world.tick, world.dayOffset, pace) : ((world.tick + world.dayOffset) % (24 * GAME_HOUR_TICKS)) / GAME_HOUR_TICKS;
+      world.dayOffset = offsetForHour(world.tick, hour, world.clock);
+      if (settingsAt) settingsAt.dirty = true;
+    }
     // A save made under other settings is brought to this server's, once: its timers from the values kept with it.
     retime(true);
     // With every body back and its limits known, whatever was under way goes on: what was being made, fires,

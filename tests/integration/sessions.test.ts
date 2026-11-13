@@ -30,7 +30,8 @@ import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
 
 /** A new world's day offset: nine in the morning. */
-const MORNING = 9 * 4200;
+/** Nine in the morning, as a new world begins: nine of the clock's hours, 126 seconds each. */
+const MORNING = 9 * 3780;
 const dir = mkdtempSync(join(tmpdir(), "snark-sessions-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
