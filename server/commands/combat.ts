@@ -18,7 +18,7 @@ const TIERS: readonly string[] = ["cloth", "hide", "chitin", "flak"];
 const PIECES: readonly string[] = ["hat", "shirt", "gloves", "pants", "boots"];
 
 /** Create one of an item and put it in the armor slot it is worn in. False if the record has no such slot. */
-function dress(host: Host, rec: EntityRecord, item: number): boolean {
+export function dress(host: Host, rec: EntityRecord, item: number): boolean {
   const inv = host.items.inv(rec);
   const slot = host.world.reg.wearSlot[item]!;
   if (inv.armor < 0 || slot < 0 || host.items.mint(rec, item, 1) !== 1) return false;

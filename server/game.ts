@@ -37,6 +37,7 @@ import {
   S_CHUNK,
   S_CHUNK_DROP,
   S_OWN,
+  VIEW_STEPS,
   S_REJECT,
   S_RESULT,
   S_SNAPSHOT,
@@ -608,7 +609,8 @@ export class GameServer {
 
   private input(c: Client, r: BitReader): boolean {
     const ack = r.u32();
-    const newest = readInputs(r, c.inputs, this.world.tick);
+    const behind = r.u8() / VIEW_STEPS;
+    const newest = readInputs(r, c.inputs, this.world.tick, ack, behind);
     if (newest === 0) return false;
     if (newest <= this.world.tick) this.stats.lateInputs++;
     // Remember the newest tick named even when it is too far ahead to buffer:

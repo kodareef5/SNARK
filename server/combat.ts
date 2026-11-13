@@ -35,6 +35,7 @@ import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "..
 import type { Creatures } from "./creatures.ts";
 import { DID_FIRE, DID_RELOAD, DID_STRIKE, type Client, type GameServer } from "./game.ts";
 import type { Harvest } from "./harvest.ts";
+import { Past } from "./history.ts";
 import type { Items } from "./items.ts";
 import type { Progression } from "./progression.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -46,7 +47,9 @@ const CHUNK_METRES = 64;
 /** A swing is not a line: rays this far to each side of where it looks also land. */
 const SWING_WIDTH = 0.14;
 /** Bodies near enough to a ray to be worth posing, at most. */
-const MAX_NEAR = 64;
+const MAX_NEAR = 256;
+/** From a chunk's middle to its corner. */
+const CHUNK_REACH = CHUNK_METRES * Math.SQRT1_2;
 
 export interface CombatContext {
   readonly world: ServerWorld;
@@ -57,6 +60,33 @@ export interface CombatContext {
   readonly progression: Progression;
   readonly creatures: Creatures;
   readonly harvest: Harvest | null;
+}
+
+/** How far behind the newest snapshot it has a client draws everyone else, in ticks, when it has not said (client/core/session.ts says with each input). */
+const VIEW_BEHIND = 2;
+/** The farthest back a shot is judged: beyond this the shooter must lead. */
+export const REWIND_TICKS = 12;
+/** How far a body can have moved in that time, for finding the bodies a rewound ray might touch; and in the tick a piece of a flight takes. */
+const REWIND_REACH = 5;
+const SWEEP_REACH = 1;
+
+/** What a blow or a shot brings with it: who, from where, with what, and how hard. */
+export interface Source {
+  /** Who did it, or null if they are no longer there to be credited. */
+  by: EntityRecord | null;
+  /** Where it came from, for the side the victim is shown. */
+  x: number;
+  z: number;
+  /** What it was done with: the weapon's content index, or 0 for bare hands. */
+  item: number;
+  /** As `hit` of shared/sim/damage.ts has them. */
+  base: number;
+  type: number;
+  quality: number;
+  draw: number;
+  attack: number;
+  torporInstant: number;
+  torporOver: number;
 }
 
 /** One blow as it was resolved, for tests, the console and measurement. */
@@ -86,9 +116,13 @@ export class Combat {
   private readonly dir = [0, 0, 0];
   private readonly st = new AnimState();
   private readonly near = new Int32Array(MAX_NEAR);
+  private readonly past = new Past();
+  private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0 };
   /** Where the last `castBodies` hit: the part, and how far along the ray. */
-  private zone = ZONE_NONE;
-  private t = 0;
+  zone = ZONE_NONE;
+  t = 0;
+  /** A shot left `c`'s weapon: `weapon` at `quality` fired a round of `ammo`, drawn `draw` (0 to 1). Set by whoever flies it. */
+  onFire: ((c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number) => void) | null = null;
   /** Set by `killed`, which the hurt in progress may call. */
   private died = false;
 
@@ -141,7 +175,18 @@ export class Combat {
     const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : rayHit.t, SWING_WIDTH);
     if (target >= 0) {
       const t = this.t;
-      this.land(rec, e, target, this.zone, item, item !== 0 ? inv.quality[slot]! : 0, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
+      const src = this.src;
+      src.by = rec;
+      src.x = ox;
+      src.z = oz;
+      src.item = item;
+      src.base = reg.damage[item !== 0 ? item : kind]!;
+      src.type = item !== 0 ? reg.damageType[item]! : DMG_MELEE;
+      src.quality = item !== 0 ? (QUALITY_MUL[inv.quality[slot]!] ?? 1) : 1;
+      src.draw = 1;
+      src.attack = statOf(reg.defs[kind] as SpeciesDef, rec.genome, STAT_MELEE, 1);
+      src.torporInstant = src.torporOver = 0;
+      this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
       // A blow wears what struck it.
       if (item !== 0 && reg.uses[item]! > 0) items.wear(rec, slot, 1);
     } else if (what === HIT_NODE && harvest) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
@@ -160,14 +205,39 @@ export class Combat {
     world.ents.rounds[c.ent] = slot >= 0 ? items.inv(rec).loaded[slot]! : 0;
   }
 
-  /** A shot left: the round is spent and the weapon is worn by it. */
+  /** A shot left: the round is spent, the weapon is worn by it, and what was fired is on its way. */
   private fire(c: Client): void {
     const { world, records, items } = this.ctx;
     const rec = records.byPid.get(c.pid);
     if (!rec) return;
     const slot = this.heldSlot(rec);
-    if (slot < 0 || !items.spend(rec, slot)) return;
-    if (world.reg.uses[items.inv(rec).item[slot]!]! > 0) items.wear(rec, slot, 1);
+    const inv = items.inv(rec);
+    if (slot < 0 || !items.spend(rec, slot)) {
+      // The step supposed a round that the weapon does not have.
+      world.ents.rounds[c.ent] = slot >= 0 ? inv.loaded[slot]! : 0;
+      return;
+    }
+    const weapon = inv.item[slot]!;
+    if (world.reg.uses[weapon]! > 0) items.wear(rec, slot, 1);
+    this.onFire?.(c, rec, weapon, inv.quality[slot]!, inv.ammo[slot]!, c.drawn);
+  }
+
+  /**
+   * The moment `c` was looking at when it sampled the input being stepped
+   * now: a tick, perhaps between two, no later than now and no earlier than
+   * the rewind allows. It is what the client said it was drawing, which
+   * cannot be later than the last snapshot it was sent. Now, if that moment
+   * is not remembered.
+   */
+  viewTick(c: Client): number {
+    const world = this.ctx.world;
+    const now = world.tick;
+    const inputs = c.inputs;
+    let view = inputs.has(now) ? inputs.view[now & inputs.mask]! : c.ackTick - VIEW_BEHIND;
+    if (view > c.lastSnapshot) view = c.lastSnapshot;
+    if (view < now - REWIND_TICKS) view = now - REWIND_TICKS;
+    if (view >= now || !world.history.has(Math.floor(view))) return now;
+    return view;
   }
 
   /**
@@ -193,34 +263,52 @@ export class Combat {
    * The nearest body a ray hits within `maxT`, other than `self`: its entity
    * index, or -1. `this.zone` and `this.t` say where. With a `width`, rays that
    * far to each side are tried when the middle one finds nothing, so that a
-   * swing lands on what it visibly passes through.
+   * swing lands on what it visibly passes through. `at` is the moment to test
+   * bodies at: now, or a moment the history remembers, for a shot judged as
+   * its shooter saw it. `sweep` is the ticks the ray took to cover `maxT`, for
+   * a piece of a flight: each body is then met where it was along the way.
    */
-  castBodies(self: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, width = 0): number {
+  castBodies(self: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, width = 0, at = this.ctx.world.tick, sweep = 0): number {
     const world = this.ctx.world;
     const ents = world.ents;
     const reg = world.reg;
     const dims = world.dims;
-    // Every body whose farthest reach could touch the ray.
+    this.at = at >= world.tick ? -1 : at;
+    this.sweep = sweep;
+    this.span = maxT;
+    // Every body whose farthest reach could touch the ray. A body judged in the past may since have moved.
     let n = 0;
     const near = this.near;
-    const pad = maxT + BODY_REACH + width;
-    const x0 = Math.max(0, Math.floor((ox - pad) / CHUNK_METRES));
-    const x1 = Math.min(dims.chunksX - 1, Math.floor((ox + pad) / CHUNK_METRES));
-    const z0 = Math.max(0, Math.floor((oz - pad) / CHUNK_METRES));
-    const z1 = Math.min(dims.chunksZ - 1, Math.floor((oz + pad) / CHUNK_METRES));
+    const slack = width + (this.at < 0 ? 0 : REWIND_REACH) + (sweep > 0 ? SWEEP_REACH : 0);
+    const pad = BODY_REACH + slack;
+    const ex = ox + dx * maxT;
+    const ez = oz + dz * maxT;
+    const x0 = Math.max(0, Math.floor((Math.min(ox, ex) - pad) / CHUNK_METRES));
+    const x1 = Math.min(dims.chunksX - 1, Math.floor((Math.max(ox, ex) + pad) / CHUNK_METRES));
+    const z0 = Math.max(0, Math.floor((Math.min(oz, ez) - pad) / CHUNK_METRES));
+    const z1 = Math.min(dims.chunksZ - 1, Math.floor((Math.max(oz, ez) + pad) / CHUNK_METRES));
+    const flat2 = dx * dx + dz * dz;
     for (let cz = z0; cz <= z1; cz++) {
       for (let cx = x0; cx <= x1; cx++) {
+        // A long ray crosses few of the chunks its bounds cover: skip those it passes nowhere near.
+        const mx = (cx + 0.5) * CHUNK_METRES - ox;
+        const mz = (cz + 0.5) * CHUNK_METRES - oz;
+        let along = flat2 > 1e-9 ? (mx * dx + mz * dz) / flat2 : 0;
+        along = along < 0 ? 0 : along > maxT ? maxT : along;
+        const fx = mx - dx * along;
+        const fz = mz - dz * along;
+        if (fx * fx + fz * fz > (CHUNK_REACH + pad) * (CHUNK_REACH + pad)) continue;
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
           if (i === self || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
           const kind = ents.kind[i]!;
           // A sphere about the body that holds it whatever it does; a box that is larger has a larger one.
           const h = reg.bodyHeight[kind]!;
-          const r = Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!) + width;
+          const r = Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!) + slack;
           const px = ents.x[i]! - ox;
           const py = ents.y[i]! + (this.human[kind] ? BODY_REACH_Y : h * 0.5) - oy;
           const pz = ents.z[i]! - oz;
-          const along = px * dx + py * dy + pz * dz;
-          if (along < -r || along > maxT + r || px * px + py * py + pz * pz - along * along > r * r) continue;
+          const t = px * dx + py * dy + pz * dz;
+          if (t < -r || t > maxT + r || px * px + py * py + pz * pz - t * t > r * r) continue;
           if (n < MAX_NEAR) near[n++] = i;
         }
       }
@@ -253,30 +341,100 @@ export class Combat {
     return best;
   }
 
+  /** The moment `castNear` tests bodies at: a remembered tick, or -1 for now. */
+  private at = -1;
+  /** For a piece of a flight: the ticks it took, and its length. 0 for a ray that takes no time. */
+  private sweep = 0;
+  private span = 0;
+  private readonly before = new Past();
+
+  /**
+   * Where body `i` was at `tick`: now, a tick the history remembers, or a
+   * moment between two of those. False if it was not there then.
+   */
+  private where(i: number, tick: number, out: Past): boolean {
+    const world = this.ctx.world;
+    const ents = world.ents;
+    const now = world.tick;
+    const whole = Math.floor(tick);
+    if (whole < now - 1 || (whole < now && whole === tick)) return world.history.sample(tick, i, out);
+    if (whole >= now) {
+      out.x = ents.x[i]!;
+      out.y = ents.y[i]!;
+      out.z = ents.z[i]!;
+      out.yaw = ents.yaw[i]!;
+      out.anim = ents.anim[i]!;
+      return true;
+    }
+    // Between the last tick remembered and this one, which is not remembered yet: blended as a client blends.
+    if (!world.history.at(whole, i, out)) return false;
+    const k = tick - whole;
+    out.x += (ents.x[i]! - out.x) * k;
+    out.y += (ents.y[i]! - out.y) * k;
+    out.z += (ents.z[i]! - out.z) * k;
+    let turn = ents.yaw[i]! - out.yaw;
+    if (turn > 32768) turn -= 65536;
+    else if (turn < -32768) turn += 65536;
+    out.yaw = (out.yaw + Math.round(turn * k)) & 0xffff;
+    if (k >= 0.5) out.anim = ents.anim[i]!;
+    return true;
+  }
+
   /** The nearest of the first `n` bodies in `near` that a ray hits nearer than `this.t`, or -1. Moves `this.t` and `this.zone` up to it. */
   private castNear(n: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): number {
     const world = this.ctx.world;
-    const ents = world.ents;
     const reg = world.reg;
     const st = this.st;
+    const past = this.past;
+    const before = this.before;
+    const tick = this.at < 0 ? world.tick : this.at;
+    const span = this.span;
     let best = -1;
     for (let k = 0; k < n; k++) {
       const i = this.near[k]!;
-      const kind = ents.kind[i]!;
+      const kind = world.ents.kind[i]!;
+      // Where it was then. A body that was not there then cannot have been hit.
+      if (!this.where(i, tick, past)) continue;
+      // A piece of a flight took time, and the body moved in that time. Seen from the body, the piece
+      // began further back by as much as the body has come forward: tested so, nothing slips between ticks.
+      let rx = ox, ry = oy, rz = oz, ux = dx, uy = dy, uz = dz;
+      let scale = 1;
+      if (this.sweep > 0 && this.where(i, tick - this.sweep, before)) {
+        const mx = past.x - before.x;
+        const my = past.y - before.y;
+        const mz = past.z - before.z;
+        if (mx !== 0 || my !== 0 || mz !== 0) {
+          rx += mx;
+          ry += my;
+          rz += mz;
+          const ex = ox + dx * span - rx;
+          const ey = oy + dy * span - ry;
+          const ez = oz + dz * span - rz;
+          const length = Math.sqrt(ex * ex + ey * ey + ez * ez);
+          if (length > 1e-9) {
+            ux = ex / length;
+            uy = ey / length;
+            uz = ez / length;
+            // Distances along this ray, as distances along the piece.
+            scale = span / length;
+          }
+        }
+      }
+      const reach = this.t / scale;
       if (this.human[kind] && world.anim) {
-        st.unpack(ents.anim[i]!);
+        st.unpack(past.anim);
         st.seed = bodySeed(i);
-        const zone = rayBody(world.anim, st, world.tick, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.yaw[i]!, ox, oy, oz, dx, dy, dz, this.t);
-        if (zone !== ZONE_NONE && zoneHit.t < this.t) {
-          this.t = zoneHit.t;
+        const zone = rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach);
+        if (zone !== ZONE_NONE && zoneHit.t < reach) {
+          this.t = zoneHit.t * scale;
           this.zone = zone;
           best = i;
         }
       } else {
         const r = reg.bodyRadius[kind]!;
-        const t = rayBox(ox, oy, oz, dx, dy, dz, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[kind]!, ents.z[i]! + r);
-        if (t < this.t) {
-          this.t = t;
+        const t = rayBox(rx, ry, rz, ux, uy, uz, past.x - r, past.y, past.z - r, past.x + r, past.y + reg.bodyHeight[kind]!, past.z + r);
+        if (t < reach) {
+          this.t = t * scale;
           this.zone = ZONE_TORSO;
           best = i;
         }
@@ -286,23 +444,27 @@ export class Combat {
   }
 
   /**
-   * A blow from `by` (whose body is entity `from`) lands on entity `target`,
-   * on `zone`, at (x, y, z), `far` metres from where it came. `item` is the
-   * weapon (0 for bare hands) and `quality` its quality.
+   * What `src` brings lands on entity `target`, on `zone`, at (x, y, z),
+   * `far` metres from where it came. The harm is done now, to the body as it
+   * is now, whatever moment the hit was judged at.
    */
-  private land(by: EntityRecord, from: number, target: number, zone: number, item: number, quality: number, x: number, y: number, z: number, far: number): void {
+  land(src: Source, target: number, zone: number, x: number, y: number, z: number, far: number): void {
     const { world, records, items, survival, creatures } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
     const victim = records.byPid.get(ents.pid[target]!);
     if (!victim) return;
+    const by = src.by;
+    const item = src.item;
     const vkind = ents.kind[target]!;
-    const akind = ents.kind[from]!;
     resetHit();
-    hit.base = reg.damage[item !== 0 ? item : akind]!;
-    hit.type = item !== 0 ? reg.damageType[item]! : DMG_MELEE;
-    hit.quality = QUALITY_MUL[quality] ?? 1;
-    hit.attack = statOf(reg.defs[akind] as SpeciesDef, by.genome, STAT_MELEE, 1);
+    hit.base = src.base;
+    hit.type = src.type;
+    hit.quality = src.quality;
+    hit.draw = src.draw;
+    hit.attack = src.attack;
+    hit.torporInstant = src.torporInstant;
+    hit.torporOver = src.torporOver;
     hit.takes = reg.takes[vkind]?.[hit.type] ?? 1;
     hit.zone = reg.zoneMul[vkind]?.[zone] ?? 1;
     // The piece worn over the part hit, if it is not worn out.
@@ -313,16 +475,16 @@ export class Combat {
     if (harm.wear > 0 && hit.armor > 0) items.wear(victim, piece, harm.wear);
 
     const vc = this.clientOf(victim.pid);
-    const ax = ents.x[from]!;
-    const az = ents.z[from]!;
+    const ax = src.x;
+    const az = src.z;
     const vx = ents.x[target]!;
     const vz = ents.z[target]!;
     this.died = false;
-    const taken = survival.hurt(victim, harm.health, by.pid);
+    const taken = survival.hurt(victim, harm.health, by ? by.pid : 0);
     const killed = this.died;
     this.hits++;
     const last = this.last;
-    last.by = by.pid;
+    last.by = by ? by.pid : 0;
     last.victim = victim.pid;
     last.zone = zone;
     last.damage = taken;
@@ -333,7 +495,7 @@ export class Combat {
 
     const game = this.ctx.game;
     const shown = Math.min(65535, Math.max(taken > 0 ? 1 : 0, Math.round(taken)));
-    const ac = this.clientOf(by.pid);
+    const ac = by ? this.clientOf(by.pid) : null;
     if (ac) {
       const w = game.begin(S_EVENT);
       w.u8(EVENT_HIT);
@@ -354,7 +516,7 @@ export class Combat {
       w.u8(Math.round((Math.atan2(ax - vx, az - vz) / (Math.PI * 2)) * 256) & 255);
       w.bits(zone, 4);
       if (killed) {
-        w.string(by.name !== "" ? by.name.slice(0, 24) : speciesLabel(reg.ids[akind]!));
+        w.string(!by ? "someone" : by.name !== "" ? by.name.slice(0, 24) : speciesLabel(reg.ids[by.kind]!));
         w.u16(item);
         w.u16(Math.min(65535, Math.round(far * 10)));
       }

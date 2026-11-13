@@ -61,6 +61,12 @@ export interface Registry {
   /** Per species: what it takes of each DMG_ type, and what a hit on each zone is multiplied by. Null for everything else. */
   readonly takes: readonly (Float32Array | null)[];
   readonly zoneMul: readonly (Float32Array | null)[];
+  /** What a bow or gun multiplies its ammunition's damage by. */
+  readonly power: Float32Array;
+  /** Ammunition: metres per second at full power (0 for a round that arrives the tick it is fired), its fall, and the chance a spent one can be picked up. */
+  readonly ammoSpeed: Float32Array;
+  readonly ammoGravity: Float32Array;
+  readonly ammoRecover: Float32Array;
 }
 
 /** How far bare hands and a melee weapon reach unless content says otherwise. */
@@ -156,6 +162,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
         }
       }
       if (d.ammo && !(d.ammo.damage >= 0)) errors.push(`${d.id}: ammo.damage must not be negative`);
+      if (d.ammo?.speed !== undefined && !(d.ammo.speed > 0 && d.ammo.speed <= 1000)) errors.push(`${d.id}: ammo.speed must be above 0 and at most 1000`);
       if (d.ammo?.recover !== undefined && !(d.ammo.recover >= 0 && d.ammo.recover <= 1)) errors.push(`${d.id}: ammo.recover must be from 0 to 1`);
       if (d.wear) {
         if (!WEAR_SLOTS.includes(d.wear.slot)) errors.push(`${d.id}: wear.slot must be one of ${WEAR_SLOTS.join(", ")}`);
@@ -214,6 +221,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const armor = new Float32Array(n);
   const takes: (Float32Array | null)[] = new Array(n).fill(null);
   const zoneMul: (Float32Array | null)[] = new Array(n).fill(null);
+  const power = new Float32Array(n);
+  const ammoSpeed = new Float32Array(n);
+  const ammoGravity = new Float32Array(n);
+  const ammoRecover = new Float32Array(n);
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
@@ -249,6 +260,12 @@ export function compileContent(input: readonly Def[]): CompileResult {
       if (d.weapon) {
         weapon[i] = weaponParams(d.weapon);
         reach[i] = d.weapon.reach ?? MELEE_REACH;
+        power[i] = d.weapon.power ?? 1;
+      }
+      if (d.ammo) {
+        ammoSpeed[i] = d.ammo.speed ?? 0;
+        ammoGravity[i] = d.ammo.gravity ?? 0;
+        ammoRecover[i] = d.ammo.recover ?? 0;
       }
       const hits = d.ammo ?? d.weapon;
       if (hits?.damage !== undefined) {
@@ -257,7 +274,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       }
     }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */
@@ -268,8 +285,8 @@ const HOLDS: Readonly<Record<WeaponFacet["hold"], number>> = { tool: HOLD_TOOL, 
 function weaponParams(w: WeaponFacet): WeaponParams {
   const ticks = (seconds: number | undefined, fallback: number): number => (seconds === undefined ? fallback : Math.max(1, Math.round(seconds * TICK_RATE)));
   const kind = w.kind === "melee" ? W_MELEE : w.kind === "bow" ? W_BOW : w.kind === "gun" ? W_GUN : W_THROWN;
-  // A swing, or the pause after a shot. A bow's pause is short: nocking the next arrow is its reload.
-  const swingTicks = ticks(w.interval, kind === W_BOW ? 6 : SWING_TICKS);
+  // A swing, or the pause after a shot. For a bow, and for a gun that holds one round, the pause is short: the reload that follows is the wait.
+  const swingTicks = ticks(w.interval, kind === W_BOW ? 6 : kind === W_GUN && (w.clip ?? 1) === 1 ? 3 : SWING_TICKS);
   const drawTicks = kind === W_BOW ? ticks(w.draw, 1) : 0;
   return {
     kind,

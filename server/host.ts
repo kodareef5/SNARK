@@ -21,6 +21,7 @@ import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
+import { Projectiles } from "./projectiles.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
 import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
@@ -81,6 +82,7 @@ export interface Host {
   readonly survival: Survival;
   readonly death: Death;
   readonly combat: Combat;
+  readonly projectiles: Projectiles;
   readonly progression: Progression;
   /** Null for a world whose map has no resource nodes. */
   readonly harvest: Harvest | null;
@@ -146,6 +148,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const progression = new Progression(world, records, items, deadlines);
   const harvest = world.nodeField ? new Harvest(world, game, records, items, progression, deadlines, (opts.seed ?? 1) + 31) : null;
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, harvest }, (opts.seed ?? 1) + 53);
+  const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 71);
+  combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   // Whoever killed it has what a kill gives, while it is still there to be asked about; then it dies.
   survival.onDeath = (rec, cause, by) => {
     // Taking the body out of the world looks at its vitals again: it dies once.
@@ -280,6 +284,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     death.step();
     // Swings that landed and shots that left on this tick, now that every body has moved.
     combat.step();
+    projectiles.step();
     creatures.step(tick);
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };
@@ -354,6 +359,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     survival,
     death,
     combat,
+    projectiles,
     progression,
     harvest,
     deadlines,

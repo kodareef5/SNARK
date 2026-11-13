@@ -233,6 +233,8 @@ export interface PropDef {
   readonly height: number;
   /** Inventory slots of its record. */
   readonly slots?: number;
+  /** It is drawn tilted to its pitch as well as turned to its facing, its mesh's +Z leading: an arrow stuck where it landed. */
+  readonly pitched?: boolean;
 }
 
 export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef;

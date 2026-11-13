@@ -47,6 +47,7 @@ import {
   EVENT_HURT,
   EVENT_KILL,
   EVENT_NAME_BYTES,
+  EVENT_SHOT,
   S_OWN,
   S_REJECT,
   S_RESULT,
@@ -118,6 +119,8 @@ export class RemoteSample {
 }
 
 const HISTORY = 128;
+/** Ticks behind the render clock at which everyone else is drawn, so that there are two snapshots to blend between. */
+export const REMOTE_DELAY = 2;
 /** Ticks the client starts ahead of the server before any feedback. */
 const INITIAL_LEAD = 4;
 /** Inputs the server should have in hand when it needs one. */
@@ -159,6 +162,16 @@ export interface CombatEvent {
   /** What was killed: its level, and the experience that gave. */
   level: number;
   xp: number;
+  /**
+   * A shot fired near by: (x, y, z) is where from and `item` the ammunition.
+   * If it `flies`, (vx, vy, vz) is its velocity and `back` how many ticks ago
+   * it left; if not, (vx, vy, vz) is where it ended.
+   */
+  flies: boolean;
+  vx: number;
+  vy: number;
+  vz: number;
+  back: number;
 }
 
 export interface TextLine {
@@ -228,6 +241,8 @@ export class ClientSession {
   tickClock = 0;
   /** Smoothed estimate of the newest server tick received. */
   renderClock = 0;
+  /** The moment everyone else was last drawn at (`sampleRemote`): what was on the screen when the next input is sampled. 0 before anything is drawn. */
+  shown = 0;
   latestSnapshot = 0;
 
   /**
@@ -362,10 +377,11 @@ export class ClientSession {
   }
 
   /** Fill `out` with remote entities interpolated to the current render time. */
-  sampleRemote(out: RemoteSample, delayTicks = 2): void {
+  sampleRemote(out: RemoteSample, delayTicks = REMOTE_DELAY): void {
     out.count = 0;
     const at = this.renderClock - delayTicks;
     out.tick = at;
+    this.shown = at;
     let a: EntityView | null = null;
     let b: EntityView | null = null;
     for (let i = 0; i < VIEW_RING; i++) {
@@ -438,7 +454,8 @@ export class ClientSession {
     while (count < INPUT_REDUNDANCY && this.inputs.has(this.simTick - count)) count++;
     const w = this.w;
     w.reset();
-    writeInputs(w, this.inputs, this.needFull ? 0 : this.latestSnapshot, this.simTick, count);
+    // With the inputs goes what the body was looking at when the newest was sampled: how far behind the newest snapshot everyone else is drawn.
+    writeInputs(w, this.inputs, this.needFull ? 0 : this.latestSnapshot, this.simTick, count, this.latestSnapshot - (this.shown > 0 ? this.shown : this.renderClock - REMOTE_DELAY));
     this.conn.send(CH_UNRELIABLE, w.bytes());
   }
 
@@ -620,8 +637,18 @@ export class ClientSession {
   /** Something the server tells this client once: a hit it landed, harm it took, a death. */
   private event(r: BitReader): void {
     const kind = r.u8();
-    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0 };
-    if (kind === EVENT_HIT) {
+    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0 };
+    if (kind === EVENT_SHOT) {
+      ev.x = r.f32();
+      ev.y = r.f32();
+      ev.z = r.f32();
+      ev.item = r.u16();
+      ev.flies = r.bool();
+      ev.vx = r.f32();
+      ev.vy = r.f32();
+      ev.vz = r.f32();
+      if (ev.flies) ev.back = r.u8();
+    } else if (kind === EVENT_HIT) {
       ev.x = r.f32();
       ev.y = r.f32();
       ev.z = r.f32();

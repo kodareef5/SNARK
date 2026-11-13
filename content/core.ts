@@ -195,6 +195,8 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "prop", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // What is dropped on the ground lies in one of these.
   { type: "prop", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
+  // An arrow that missed and did not break, standing where it landed until someone walks over it.
+  { type: "prop", id: "core:arrow_stuck", mesh: "core:arrow", color: 15, radius: 0.1, height: 0.1, pitched: true },
   { type: "item", id: "core:fiber", stack: 200, weight: 0.01, color: 7 },
   { type: "item", id: "core:stone", stack: 100, weight: 0.5, color: 15 },
   { type: "item", id: "core:berry", stack: 100, weight: 0.1, spoilHours: 4, eat: { food: 4, water: 2 }, color: 8 },

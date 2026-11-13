@@ -5,7 +5,8 @@
 //   client -> server
 //     HELLO     reliable     version u16, content hash u32, clip hash u32, name string,
 //                            flags u8, device key (16 bytes), and with HELLO_LOOK a look (28 bytes)
-//     INPUT     unreliable   ack tick u32, newest tick u32, count-1 (3 bits),
+//     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths),
+//                            newest tick u32, count-1 (3 bits),
 //                            then inputs newest first; each after the first is
 //                            preceded by one bit: 1 = same as the one before
 //     COMMAND   reliable     sequence u16, op u8, arguments by op
@@ -22,6 +23,8 @@
 //     RESULT    reliable     command sequence u16, code u8
 //     TEXT      reliable     channel u8, text string
 //     OWN       reliable     component u8, then that component's fields
+//     NODES     reliable     chunk u16, version u32, count u8, used-up slots
+//     EVENT     reliable     kind u8, then that kind's fields (see EVENT_*)
 //
 // The server never trusts a position or a target. A client can say what it
 // presses, one input per tick, and what it asks the interface to do, one
@@ -178,6 +181,13 @@ export const EVENT_NAME_BYTES = 72;
 export const EVENT_HURT = 2;
 export const EVENT_DEATH = 3;
 export const EVENT_KILL = 4;
+/**
+ * SHOT, to whoever is near: something was fired. Where from (3 x f32), then
+ * the ammunition (u16 content index), then whether it flies. If it flies: its
+ * velocity (3 x f32) and how many ticks ago it left (u8). If not: where it
+ * ended (3 x f32).
+ */
+export const EVENT_SHOT = 5;
 
 export const TEXT_CONSOLE = 0;
 export const TEXT_NOTICE = 1;
@@ -211,6 +221,13 @@ export class InputBuffer {
   readonly yaw: Uint16Array;
   readonly pitch: Int16Array;
   readonly buttons: Uint16Array;
+  /**
+   * On the server: the moment of the world the client was drawing when it
+   * sampled this input, in ticks, as the client said: the newest snapshot it
+   * had, less how far behind that it draws. It is what the client was looking
+   * at when it pressed the button. Unchecked; whoever uses it bounds it.
+   */
+  readonly view: Float64Array;
 
   /** `size` must be a power of two. */
   constructor(size: number) {
@@ -221,6 +238,7 @@ export class InputBuffer {
     this.yaw = new Uint16Array(size);
     this.pitch = new Int16Array(size);
     this.buttons = new Uint16Array(size);
+    this.view = new Float64Array(size);
   }
 
   has(tick: number): boolean {
@@ -304,9 +322,19 @@ export function writeCommand(w: BitWriter, seq: number, op: number): void {
 }
 
 /** Write an INPUT message carrying the newest `count` inputs ending at `newest`. */
-export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newest: number, count: number): void {
+/** Steps to a tick in which a client says how far behind its newest snapshot it draws the world. */
+export const VIEW_STEPS = 16;
+
+/**
+ * Write an INPUT: the newest snapshot decoded (`ack`), how many ticks behind
+ * it the client is drawing everyone else (`behind`, up to 15), then the newest
+ * `count` inputs.
+ */
+export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newest: number, count: number, behind = 0): void {
   w.bits(C_INPUT, 4);
   w.u32(ack);
+  const steps = Math.round(behind * VIEW_STEPS);
+  w.u8(steps < 0 ? 0 : steps > 255 ? 255 : steps);
   w.u32(newest);
   w.bits(count - 1, 3);
   let prev = -1;
@@ -336,7 +364,8 @@ export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newe
  * only ticks in (serverTick, serverTick + INPUT_WINDOW) not already present.
  * Returns the newest tick named by the packet, or 0 if it was malformed.
  */
-export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number): number {
+/** Read the inputs of an INPUT whose `ack` and `behind` (in ticks) have been read already. Returns the newest tick named, or 0. */
+export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number, ack = 0, behind = 0): number {
   const newest = r.u32();
   const count = r.bits(3) + 1;
   let moveX = 0;
@@ -355,6 +384,8 @@ export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number
     const tick = newest - k;
     if (tick > serverTick && tick < serverTick + INPUT_WINDOW && !inputs.has(tick)) {
       inputs.set(tick, moveX, moveZ, yaw, pitch, buttons);
+      // The message speaks of the moment its newest input was sampled; an older input was sampled that much earlier.
+      inputs.view[tick & inputs.mask] = ack - behind - k;
     }
   }
   return r.overflow ? 0 : newest;
