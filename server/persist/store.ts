@@ -32,6 +32,8 @@ const RECORD_FORMAT = 1;
 const COMP_INVENTORY = 1;
 const COMP_VITALS = 2;
 const COMP_GENOME = 3;
+// 4 (progression) and 5 (markers) are reserved; see planning/architecture/gameplay-model.md.
+const COMP_IDENTITY = 6;
 /** Bytes per structure slot in a chunk blob. */
 const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
 
@@ -206,7 +208,7 @@ export class WorldStore {
     w.reset();
     w.u8(RECORD_FORMAT);
     w.string(rec.name);
-    w.varint((rec.items.size > 0 ? 1 : 0) + (rec.foodTick >= 0 ? 1 : 0) + (rec.genome ? 1 : 0) + rec.extra.size);
+    w.varint((rec.items.size > 0 ? 1 : 0) + (rec.foodTick >= 0 ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + rec.extra.size);
     if (rec.items.size > 0) {
       c.reset();
       c.varint(rec.items.size);
@@ -235,6 +237,10 @@ export class WorldStore {
       c.bool(g.female);
       w.varint(COMP_GENOME);
       w.blob(c.bytes());
+    }
+    if (rec.keyHash) {
+      w.varint(COMP_IDENTITY);
+      w.blob(rec.keyHash);
     }
     for (const [component, blob] of rec.extra) {
       w.varint(component);
@@ -286,7 +292,8 @@ export class WorldStore {
           g.mother = c.uint53();
           g.father = c.uint53();
           g.female = c.bool();
-        } else rec.extra.set(component, blob);
+        } else if (component === COMP_IDENTITY) rec.keyHash = blob;
+        else rec.extra.set(component, blob);
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }
       if (r.overflow) throw new Error(`entity ${row.pid}: truncated record`);

@@ -7,6 +7,7 @@
 
 import { chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import { HANDLE_GEN_MASK, HANDLE_INDEX_MASK, NULL_HANDLE, handleGen, handleIndex, makeHandle } from "../ids.ts";
+import { MODE_WALK, STAMINA_UNITS, type Body } from "./character.ts";
 
 export const F_ALIVE = 1;
 export const F_GROUNDED = 2;
@@ -33,6 +34,13 @@ export class EntityStore {
   readonly yaw: Uint16Array;
   /** Persistent id, or 0 for entities that are never saved. */
   readonly pid: Float64Array;
+  /** The rest of the predicted body state; see `Body` in character.ts. */
+  readonly mode: Uint8Array;
+  readonly stamina: Int32Array;
+  readonly staminaMax: Uint16Array;
+  readonly speedQ: Uint16Array;
+  readonly swimQ: Uint16Array;
+  readonly mflags: Uint8Array;
 
   /** Chunk the entity is linked into, or -1. */
   readonly chunk: Int32Array;
@@ -61,6 +69,12 @@ export class EntityStore {
     this.vz = new Float32Array(cap);
     this.yaw = new Uint16Array(cap);
     this.pid = new Float64Array(cap);
+    this.mode = new Uint8Array(cap);
+    this.stamina = new Int32Array(cap);
+    this.staminaMax = new Uint16Array(cap);
+    this.speedQ = new Uint16Array(cap);
+    this.swimQ = new Uint16Array(cap);
+    this.mflags = new Uint8Array(cap);
     this.chunk = new Int32Array(cap).fill(-1);
     this.chunkHead = new Int32Array(chunkCount(dims)).fill(-1);
     this.next = new Int32Array(cap).fill(-1);
@@ -87,8 +101,42 @@ export class EntityStore {
     this.vz[i] = 0;
     this.yaw[i] = 0;
     this.pid[i] = 0;
+    this.mode[i] = MODE_WALK;
+    this.staminaMax[i] = 100;
+    this.stamina[i] = 100 * STAMINA_UNITS;
+    this.speedQ[i] = 1000;
+    this.swimQ[i] = 1000;
+    this.mflags[i] = 0;
     this.link(i, chunkAt(this.dims, x, z));
     return i;
+  }
+
+  /** Copy an entity's predicted state into `b`. */
+  loadBody(i: number, b: Body): void {
+    b.x = this.x[i]!;
+    b.y = this.y[i]!;
+    b.z = this.z[i]!;
+    b.vx = this.vx[i]!;
+    b.vy = this.vy[i]!;
+    b.vz = this.vz[i]!;
+    b.grounded = (this.flags[i]! & F_GROUNDED) !== 0;
+    b.mode = this.mode[i]!;
+    b.stamina = this.stamina[i]!;
+    b.staminaMax = this.staminaMax[i]!;
+    b.speedQ = this.speedQ[i]!;
+    b.swimQ = this.swimQ[i]!;
+    b.mflags = this.mflags[i]!;
+  }
+
+  /** Write back what a step may change. Returns true if the entity changed chunk. */
+  storeBody(i: number, b: Body): boolean {
+    this.vx[i] = b.vx;
+    this.vy[i] = b.vy;
+    this.vz[i] = b.vz;
+    this.flags[i] = b.grounded ? this.flags[i]! | F_GROUNDED : this.flags[i]! & ~F_GROUNDED;
+    this.mode[i] = b.mode;
+    this.stamina[i] = b.stamina;
+    return this.setPosition(i, b.x, b.y, b.z);
   }
 
   destroy(i: number): void {

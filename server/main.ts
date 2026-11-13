@@ -2,6 +2,9 @@
 // and ticks the world on the wall clock.
 //
 //   bun server/main.ts [--dev] [--port 8787] [--db var/world.db]
+//
+// SNARK_ADMIN_PASSWORD sets the password for `enablecheats`. When started from
+// a terminal, lines typed there run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
@@ -13,8 +16,12 @@ import { join, normalize, resolve } from "node:path";
 
 export interface ServerOptions {
   port?: number;
-  /** Enables the self-check report endpoint. Never set in a public deployment. */
+  /** Enables the self-check report endpoint and cheats without a password. Never set in a public deployment. */
   dev?: boolean;
+  /** Password for `enablecheats`. Without it (and without `dev`) cheats are off. */
+  adminPassword?: string;
+  /** Read console commands from standard input, as the operator. */
+  terminal?: boolean;
   dbPath?: string;
   /** Directory holding the built client. */
   clientDir?: string;
@@ -45,7 +52,8 @@ interface Socket {
 export function startServer(opts: ServerOptions = {}): RunningServer {
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error("content errors:\n" + errors.join("\n"));
-  const host = createHost(registry, opts.probeScene ? { startingCreatures: 0, wakeRadius: -1 } : { ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 40 });
+  const roles = { dev: opts.dev ?? false, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}) };
+  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 40 });
   if (opts.probeScene) host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
   const clientDir = resolve(opts.clientDir ?? join(import.meta.dir, "../client/dist"));
   let onConnection: ((conn: Connection) => void) | null = null;
@@ -131,6 +139,15 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   };
   timer = setTimeout(loop, tickMs);
 
+  if (opts.terminal) {
+    void (async () => {
+      for await (const line of console) {
+        const out = host.exec(line);
+        if (out) console.log(out);
+      }
+    })();
+  }
+
   return {
     port: server.port ?? 0,
     host,
@@ -149,7 +166,13 @@ if (import.meta.main) {
     const i = args.indexOf(name);
     return i >= 0 ? args[i + 1] : undefined;
   };
-  const running = startServer({ port: Number(value("--port") ?? 8787), dev: args.includes("--dev"), dbPath: value("--db") });
+  const running = startServer({
+    port: Number(value("--port") ?? 8787),
+    dev: args.includes("--dev"),
+    dbPath: value("--db"),
+    adminPassword: process.env.SNARK_ADMIN_PASSWORD,
+    terminal: process.stdin.isTTY,
+  });
   console.log(`SNARK listening on http://localhost:${running.port}`);
   process.on("SIGINT", () => {
     running.stop();

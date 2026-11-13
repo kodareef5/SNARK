@@ -23,7 +23,7 @@ import { TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
-import { C_HELLO, InputBuffer, PROTOCOL_VERSION, S_SNAPSHOT, writeInputs } from "../shared/net/protocol.ts";
+import { InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, writeHello, writeInputs } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { Rng } from "../shared/rng.ts";
@@ -113,10 +113,9 @@ class Bot {
       if (tick > this.serverTick) this.serverTick = tick;
     };
     const w = this.w;
-    w.bits(C_HELLO, 4);
-    w.u16(PROTOCOL_VERSION);
-    w.u32(contentHash);
-    w.string(name);
+    const key = new Uint8Array(KEY_BYTES);
+    for (let i = 0; i < KEY_BYTES; i++) key[i] = this.rng.int(256);
+    writeHello(w, PROTOCOL_VERSION, contentHash, name, 0, key);
     this.end.send(CH_RELIABLE, w.bytes());
   }
 
@@ -195,7 +194,7 @@ for (let i = 0; i < PLAYERS; i++) {
   // Two real clients among the bots check that the load does not break prediction.
   if (i === 0 || i === 50) {
     const end = net.connect();
-    sessions.push(new ClientSession(end, { name: `bot${i}`, registry: reg, resolveMap: () => hf }));
+    sessions.push(new ClientSession(end, { name: `bot${i}`, key: new Uint8Array(KEY_BYTES).fill(i + 1), registry: reg, resolveMap: () => hf }));
     continue;
   }
   bots.push(new Bot(net, `bot${i}`, reg.hash, 100 + i));

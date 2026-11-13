@@ -160,21 +160,11 @@ export class Creatures {
       const flags = ents.flags[e]!;
       const move = this.aiMove[e]!;
       if (move === 0 && (flags & F_GROUNDED) !== 0 && ents.vx[e] === 0 && ents.vz[e] === 0) continue;
-      b.x = ents.x[e]!;
-      b.y = ents.y[e]!;
-      b.z = ents.z[e]!;
-      b.vx = ents.vx[e]!;
-      b.vy = ents.vy[e]!;
-      b.vz = ents.vz[e]!;
-      b.grounded = (flags & F_GROUNDED) !== 0;
-      stepBody(world, b, 0, move, ents.yaw[e]!, 0, world.reg.move[ents.kind[e]!]!, TICK_DT);
+      ents.loadBody(e, b);
+      stepBody(world, b, 0, move, ents.yaw[e]!, 0, 0, world.reg.move[ents.kind[e]!]!, TICK_DT);
       stepped++;
-      ents.vx[e] = b.vx;
-      ents.vy[e] = b.vy;
-      ents.vz[e] = b.vz;
-      ents.flags[e] = b.grounded ? flags | F_GROUNDED : flags & ~F_GROUNDED;
       // Walking into a sleeping chunk puts the creature to sleep there.
-      if (ents.setPosition(e, b.x, b.y, b.z) && this.chunkRefs[ents.chunk[e]!] === 0) this.sleep(e);
+      if (ents.storeBody(e, b) && this.chunkRefs[ents.chunk[e]!] === 0) this.sleep(e);
     }
     this.stepped = stepped;
   }

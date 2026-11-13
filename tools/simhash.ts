@@ -46,7 +46,7 @@ export function simHash(ticks = 3000): string {
         inp[2] = rng.int(65536);
         inp[3] = rng.int(4);
       }
-      stepBody(world, b, inp[0]!, inp[1]!, inp[2]!, inp[3]!, p, TICK_DT);
+      stepBody(world, b, inp[0]!, inp[1]!, inp[2]!, 0, inp[3]!, p, TICK_DT);
       f[0] = b.x;
       f[1] = b.y;
       f[2] = b.z;

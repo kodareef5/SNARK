@@ -16,17 +16,28 @@ import { handleIndex } from "../../shared/ids.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import {
-  C_HELLO,
+  CMD_TEXT,
+  HELLO_SPECTATE,
   INPUT_REDUNDANCY,
   InputBuffer,
+  MARGIN_UNKNOWN,
+  MAX_SERVER_TEXT_BYTES,
+  MAX_TEXT_BYTES,
+  OWN_SESSION,
   PITCH_LIMIT,
   PROTOCOL_VERSION,
+  SESSION_ALIVE,
   S_CHUNK,
   S_CHUNK_DROP,
+  S_OWN,
   S_REJECT,
+  S_RESULT,
   S_SNAPSHOT,
+  S_TEXT,
   S_WELCOME,
   readBody,
+  writeCommand,
+  writeHello,
   writeInputs,
 } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
@@ -38,6 +49,10 @@ import { StructureStore } from "../../shared/world/structures.ts";
 
 export interface SessionOptions {
   name: string;
+  /** The device key that owns the name: 16 random bytes kept by this client. */
+  key: Uint8Array;
+  /** Join without a body, if the server allows it. */
+  spectate?: boolean;
   registry: Registry;
   /** Return the terrain for a map, or null if this client does not have it. */
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
@@ -64,6 +79,13 @@ const TARGET_MARGIN = 2;
 const MAX_STEPS_PER_UPDATE = 8;
 const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
+/** Lines of server text kept for the console. */
+const LOG_LINES = 200;
+
+export interface TextLine {
+  channel: number;
+  text: string;
+}
 
 export class ClientSession {
   state: "connecting" | "active" | "closed" = "connecting";
@@ -71,8 +93,20 @@ export class ClientSession {
   closeReason = 0;
 
   world: (CollisionWorld & { dims: MapDims }) | null = null;
+  /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
+  /** SESSION_ALIVE, SESSION_DEAD or SESSION_SPECTATING, as the server last said. */
+  sessionState = SESSION_ALIVE;
+  /** Cheats are enabled for this session. */
+  admin = false;
+  /** Added to the tick to get the time of day. */
+  dayOffset = 0;
+  /** Text from the server, oldest first. `logVersion` counts every line ever added. */
+  readonly log: TextLine[] = [];
+  logVersion = 0;
+  /** Called with the sequence number and code when the server answers a command. */
+  onResult: ((seq: number, code: number) => void) | null = null;
   /** Predicted local body after the latest simulated tick. */
   readonly own = new Body();
   /** Predicted local body one tick earlier, for render interpolation. */
@@ -104,6 +138,7 @@ export class ClientSession {
   private dilation = 1;
   private guardTick = 0;
   private needFull = true;
+  private commandSeq = 0;
 
   constructor(conn: Connection, opts: SessionOptions) {
     this.conn = conn;
@@ -117,11 +152,31 @@ export class ClientSession {
       }
     };
     const w = this.w;
-    w.bits(C_HELLO, 4);
-    w.u16(PROTOCOL_VERSION);
-    w.u32(opts.registry.hash);
-    w.string(opts.name);
+    writeHello(w, PROTOCOL_VERSION, opts.registry.hash, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key);
     conn.send(CH_RELIABLE, w.bytes());
+  }
+
+  /**
+   * Send a command; `args` appends the op's arguments. Returns its sequence
+   * number. Commands are not predicted and not resent: what happened shows up
+   * in the state the server sends.
+   */
+  command(op: number, args?: (w: BitWriter) => void): number {
+    const seq = (this.commandSeq = (this.commandSeq + 1) & 0xffff);
+    if (this.state !== "active") return seq;
+    const w = this.w;
+    w.reset();
+    writeCommand(w, seq, op);
+    args?.(w);
+    this.conn.send(CH_RELIABLE, w.bytes());
+    return seq;
+  }
+
+  /** Send a console line. */
+  text(line: string): number {
+    // Cut by characters: three bytes each at most keeps the line under the server's limit.
+    const cut = line.length > MAX_TEXT_BYTES / 3 ? line.slice(0, Math.floor(MAX_TEXT_BYTES / 3)) : line;
+    return this.command(CMD_TEXT, (w) => w.string(cut));
   }
 
   /** Fraction of the way from `ownPrev` to `own` at the last `update`. */
@@ -214,7 +269,7 @@ export class ClientSession {
   private step(t: number): void {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
-    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.buttons[i]!, this.move!, TICK_DT);
+    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, inp.buttons[i]!, this.move!, TICK_DT);
     this.bodies[t & (HISTORY - 1)]!.copy(this.own);
     this.bodyTick[t & (HISTORY - 1)] = t;
   }
@@ -239,9 +294,37 @@ export class ClientSession {
     } else if (type === S_CHUNK) this.chunk(r);
     else if (type === S_CHUNK_DROP) this.world?.structs.dropChunk(r.u16());
     else if (type === S_WELCOME) this.welcome(r);
+    else if (type === S_RESULT) {
+      const seq = r.u16();
+      const code = r.u8();
+      if (!r.overflow) this.onResult?.(seq, code);
+    } else if (type === S_TEXT) {
+      const channel = r.u8();
+      const text = r.string(MAX_SERVER_TEXT_BYTES);
+      if (r.overflow) return;
+      this.log.push({ channel, text });
+      if (this.log.length > LOG_LINES) this.log.shift();
+      this.logVersion++;
+    } else if (type === S_OWN) this.ownState(r);
     else if (type === S_REJECT) {
       this.state = "closed";
       this.closeReason = r.u8();
+    }
+  }
+
+  /** Owner-private state: one component per message. */
+  private ownState(r: BitReader): void {
+    const component = r.u8();
+    if (component === OWN_SESSION) {
+      const state = r.bits(2);
+      const admin = r.bool();
+      const handle = r.u32();
+      const dayOffset = r.u32();
+      if (r.overflow) return;
+      this.sessionState = state;
+      this.admin = admin;
+      this.ownHandle = handle;
+      this.dayOffset = dayOffset;
     }
   }
 
@@ -250,6 +333,9 @@ export class ClientSession {
     const tick = r.u32();
     this.ownHandle = r.u32();
     this.ownKind = r.u16();
+    this.sessionState = r.bits(2);
+    this.admin = r.bool();
+    this.dayOffset = r.u32();
     const mapId = r.string(64);
     const mapHash = r.u32();
     const dims = { chunksX: r.u8() + 1, chunksZ: r.u8() + 1 };
@@ -278,6 +364,7 @@ export class ClientSession {
     const tick = r.u32();
     const age = r.u8();
     const margin = r.sbits(8);
+    const state = r.bits(2);
     const sb = this.serverBody;
     readBody(r, sb);
     if (r.overflow || tick <= this.latestSnapshot) return;
@@ -298,26 +385,40 @@ export class ClientSession {
     }
     this.latestSnapshot = tick;
     this.needFull = false;
+    this.sessionState = state;
     this.stats.snapshots++;
-    this.stats.margin = margin;
 
     // Render clock follows the newest server tick, smoothly unless far off.
     const lag = tick - this.renderClock;
     if (lag > 6 || lag < -6) this.renderClock = tick;
     else this.renderClock += lag * 0.1;
 
-    // Input clock: keep the server's margin near the target.
-    this.stats.rttTicks = this.simTick - tick - margin;
-    if (this.simTick >= this.guardTick) {
-      const error = TARGET_MARGIN - margin;
-      if (error >= 3 || error <= -6) {
-        this.tickClock += error;
-        this.dilation = 1;
-        this.stats.clockJumps++;
-        // Ignore feedback until snapshots can reflect this jump.
-        this.guardTick = Math.floor(this.tickClock) + Math.max(0, Math.ceil(this.stats.rttTicks)) + 2;
-      } else {
-        this.dilation = 1 + (error > 2 ? 2 : error < -2 ? -2 : error) * 0.01;
+    // Input clock: keep the server's margin near the target, once it has one to report.
+    if (margin !== MARGIN_UNKNOWN) {
+      this.stats.margin = margin;
+      // At either end of its range the margin is a bound, not a measurement.
+      if (margin > -127 && margin < 127) this.stats.rttTicks = this.simTick - tick - margin;
+      if (this.simTick >= this.guardTick) {
+        const error = TARGET_MARGIN - margin;
+        if (error >= 3 || error <= -6) {
+          this.tickClock += error;
+          this.dilation = 1;
+          this.stats.clockJumps++;
+          // Simulated far past the new time: waiting for the clock to catch up would
+          // freeze the player. Start again from here; the next snapshot supplies the body.
+          const at = Math.floor(this.tickClock);
+          if (this.simTick - at > TICK_RATE) {
+            this.simTick = at;
+            this.bodyTick.fill(0);
+            this.inputs.tick.fill(0);
+          }
+          // Ignore feedback until snapshots can reflect this jump: a round trip,
+          // but never more than a second, since the estimate is unreliable just after a jump.
+          const wait = Math.ceil(this.stats.rttTicks);
+          this.guardTick = Math.floor(this.tickClock) + (wait < 0 ? 0 : wait > TICK_RATE ? TICK_RATE : wait) + 2;
+        } else {
+          this.dilation = 1 + (error > 2 ? 2 : error < -2 ? -2 : error) * 0.01;
+        }
       }
     }
 

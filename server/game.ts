@@ -5,34 +5,47 @@
 // calls to `tick()` come from outside, so tests drive a whole server in memory
 // and server/main.ts wires the same class to Bun.
 
-import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
+import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { TAU, detCos, detSin } from "../shared/math/scalar.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import {
+  C_COMMAND,
   C_HELLO,
   C_INPUT,
+  HELLO_SPECTATE,
   INPUT_WINDOW,
   InputBuffer,
+  KEY_BYTES,
+  MARGIN_UNKNOWN,
   MAX_CLIENT_MESSAGE,
   MAX_NAME_BYTES,
+  OWN_SESSION,
   PROTOCOL_VERSION,
   REJECT_CONTENT,
+  REJECT_DENIED,
   REJECT_FULL,
   REJECT_MALFORMED,
   REJECT_NAME,
   REJECT_VERSION,
+  RESULT_BUSY,
+  RESULT_INVALID,
+  SESSION_ALIVE,
+  SESSION_SPECTATING,
   S_CHUNK,
   S_CHUNK_DROP,
+  S_OWN,
   S_REJECT,
+  S_RESULT,
   S_SNAPSHOT,
+  S_TEXT,
   S_WELCOME,
   readInputs,
   writeBody,
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
-import { Body, stepBody } from "../shared/sim/character.ts";
-import { F_AWAKE, F_GROUNDED, F_PLAYER } from "../shared/sim/entities.ts";
+import { Body, MODE_GHOST, stepBody } from "../shared/sim/character.ts";
+import { F_AWAKE, F_PLAYER } from "../shared/sim/entities.ts";
 import { sortU32 } from "../shared/sort.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
@@ -50,6 +63,10 @@ export interface GameOptions {
   /** Structure slots sent to one client per tick. */
   chunkSlotsPerTick: number;
   maxClients: number;
+  /** Ticks a body stays in the world after its connection closes. Leaving does not dodge what is about to happen to it. */
+  lingerTicks: number;
+  /** Who may spectate: nobody, sessions that have enabled cheats, or anyone (including at login). */
+  spectators: "off" | "admin" | "anyone";
 }
 
 const DEFAULTS: GameOptions = {
@@ -59,21 +76,56 @@ const DEFAULTS: GameOptions = {
   structRadius: 3,
   chunkSlotsPerTick: 256,
   maxClients: 128,
+  lingerTicks: 150,
+  spectators: "admin",
 };
 
-/** Messages accepted from one client per tick before the rest are dropped. */
+/** Unreliable messages accepted from one client per tick before the rest are dropped. */
 const MAX_PACKETS_PER_TICK = 8;
+/** Reliable messages per tick. They are never dropped silently; more than this is abuse. */
+const MAX_RELIABLE_PER_TICK = 32;
 /** Malformed messages tolerated before disconnecting. */
 const MAX_STRIKES = 8;
+/** Commands a client may have waiting, and how many run per tick. */
+const COMMAND_QUEUE = 16;
+const COMMANDS_PER_TICK = 4;
 const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
+/** How far above the ground a new spectator starts. */
+const SPECTATOR_LIFT = 1.6;
 
+/** Runs one command. Read every argument, check `r.overflow`, then act. Returns a RESULT code. */
+export type CommandHandler = (c: Client, r: BitReader) => number;
+
+/**
+ * One survivor's session. It outlives a connection by `lingerTicks`, and a new
+ * connection under the same name and key takes it over, body and all.
+ */
 export class Client {
   readonly id: number;
-  readonly conn: Connection;
+  conn: Connection;
   active = false;
+  /** The connection is gone; the body stays until `lingerUntil`. */
+  closed = false;
+  lingerUntil = 0;
   name = "";
-  /** Entity index of the controlled body, or -1. */
+  key: Uint8Array = new Uint8Array(KEY_BYTES);
+  /** Persistent id of the survivor's record, set by the host. 0 for a session that never had a body. */
+  pid = 0;
+  state = SESSION_ALIVE;
+  /** Cheats enabled. Belongs to the connection, never saved. */
+  admin = false;
+  cheatAttempts = 0;
+  /** Entity index of the visible body, or -1 (spectating, dead). */
   ent = -1;
+  /** Species whose movement parameters step the body. */
+  kind = 0;
+  /**
+   * The session's body after the latest tick. With an entity it is a copy of
+   * the entity's columns; without one it is the only copy, stepped in private.
+   */
+  readonly body = new Body();
+  /** Chunk the body is in: the centre of this session's interest. */
+  chunk = 0;
   readonly inputs = new InputBuffer(INPUT_WINDOW);
   heldX = 0;
   heldZ = 0;
@@ -96,11 +148,40 @@ export class Client {
   rotate = 0;
   strikes = 0;
   packets = 0;
+  reliable = 0;
+  /** Sequence number of the last command accepted. */
+  cmdSeq = 0;
+  readonly queue: Uint8Array[] = [];
+  /** Tick from which the next console line is accepted. */
+  textReadyAt = 0;
+  /** The session component (state, role, handle, day offset) must be sent. */
+  ownDirty = false;
 
   constructor(id: number, conn: Connection, chunks: number) {
     this.id = id;
     this.conn = conn;
     this.known = new Uint32Array(chunks);
+  }
+
+  /** Forget everything that belonged to the previous connection. */
+  relink(conn: Connection): void {
+    this.conn = conn;
+    this.closed = false;
+    this.inputs.tick.fill(0);
+    this.heldX = this.heldZ = this.heldButtons = 0;
+    this.newestInput = this.ackTick = this.lastSnapshot = 0;
+    this.views.clear();
+    this.known.fill(0);
+    this.subscribed.length = 0;
+    this.syncChunk = -1;
+    this.rotate = 0;
+    this.strikes = 0;
+    this.cmdSeq = 0;
+    this.queue.length = 0;
+    this.textReadyAt = 0;
+    this.admin = false;
+    this.cheatAttempts = 0;
+    this.ownDirty = false;
   }
 }
 
@@ -108,18 +189,26 @@ export class GameServer {
   readonly world: ServerWorld;
   readonly opts: GameOptions;
   readonly clients: (Client | null)[];
-  readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0 };
-  /** Called after a player body is created or about to be destroyed. */
-  onJoin: ((c: Client) => void) | null = null;
-  onLeave: ((c: Client) => void) | null = null;
-  /** Called once per tick after players move, before replication. */
+  readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0 };
+  /** May this device key use this name? Called before anything is created. */
+  authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
+  /** A session became active (it has a body or a spectator's focus). */
+  onEnter: ((c: Client) => void) | null = null;
+  /** A session is ending. Called before its body, if any, is removed. */
+  onExit: ((c: Client) => void) | null = null;
+  /** An entity was created for the session: at login, on respawn, or when it stops spectating. */
+  onBody: ((c: Client) => void) | null = null;
+  /** The session's entity is about to be destroyed. */
+  onBodyGone: ((c: Client) => void) | null = null;
+  /** Called once per tick after bodies move and commands run, before replication. */
   onStep: ((tick: number) => void) | null = null;
   /** Where a returning survivor was last seen, or null for a new one. */
   savedPosition: ((name: string) => { x: number; y: number; z: number; yaw: number } | null) | null = null;
 
+  private readonly handlers: (CommandHandler | null)[] = new Array(256).fill(null);
+  private readonly survivor: number;
   private readonly w = new BitWriter(16384);
   private readonly r = new BitReader();
-  private readonly body = new Body();
   private readonly cur = new EntityView();
   private readonly ids = new Uint32Array(MAX_VIEW);
   private readonly entityOffsets: Int16Array;
@@ -131,16 +220,23 @@ export class GameServer {
     this.clients = new Array(this.opts.maxClients).fill(null);
     this.entityOffsets = nearestFirst(this.opts.entityRadius);
     this.structOffsets = nearestFirst(this.opts.structRadius);
+    this.survivor = world.reg.index.get("core:survivor")!;
   }
 
   listen(listener: Listener): void {
     listener.onConnection = (conn) => this.accept(conn);
   }
 
+  /** Connected sessions. A body lingering after a disconnect is not counted. */
   get playerCount(): number {
     let n = 0;
-    for (const c of this.clients) if (c?.active) n++;
+    for (const c of this.clients) if (c?.active && !c.closed) n++;
     return n;
+  }
+
+  /** Register the handler for a command op. */
+  handle(op: number, fn: CommandHandler): void {
+    this.handlers[op] = fn;
   }
 
   /** Advance the world by one fixed step and replicate. */
@@ -148,14 +244,17 @@ export class GameServer {
     const world = this.world;
     const ents = world.ents;
     const T = ++world.tick;
-    const b = this.body;
 
     for (const c of this.clients) {
       if (!c) continue;
       c.packets = 0;
+      c.reliable = 0;
       if (!c.active) continue;
       const inputs = c.inputs;
-      if (inputs.has(T)) {
+      if (c.closed) {
+        // Nobody is steering: the body stands, falls, or sinks on its own.
+        c.heldX = c.heldZ = c.heldButtons = 0;
+      } else if (inputs.has(T)) {
         const i = T & inputs.mask;
         c.heldX = inputs.moveX[i]!;
         c.heldZ = inputs.moveZ[i]!;
@@ -163,28 +262,31 @@ export class GameServer {
         c.heldPitch = inputs.pitch[i]!;
         c.heldButtons = inputs.buttons[i]!;
       } else this.stats.heldInputs++;
+      const b = c.body;
       const e = c.ent;
-      b.x = ents.x[e]!;
-      b.y = ents.y[e]!;
-      b.z = ents.z[e]!;
-      b.vx = ents.vx[e]!;
-      b.vy = ents.vy[e]!;
-      b.vz = ents.vz[e]!;
-      b.grounded = (ents.flags[e]! & F_GROUNDED) !== 0;
-      stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldButtons, world.reg.move[ents.kind[e]!]!, TICK_DT);
-      ents.setPosition(e, b.x, b.y, b.z);
-      ents.vx[e] = b.vx;
-      ents.vy[e] = b.vy;
-      ents.vz[e] = b.vz;
-      ents.yaw[e] = c.heldYaw;
-      ents.flags[e] = b.grounded ? ents.flags[e]! | F_GROUNDED : ents.flags[e]! & ~F_GROUNDED;
+      if (e >= 0) {
+        ents.loadBody(e, b);
+        stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[ents.kind[e]!]!, TICK_DT);
+        ents.storeBody(e, b);
+        ents.yaw[e] = c.heldYaw;
+      } else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[c.kind]!, TICK_DT);
+      c.chunk = chunkAt(world.dims, b.x, b.z);
     }
+
+    for (const c of this.clients) if (c?.active && c.queue.length > 0) this.runCommands(c);
+    for (const c of this.clients) if (c?.closed && T >= c.lingerUntil) this.finalize(c);
 
     this.onStep?.(T);
 
     const snap = T % this.opts.snapshotEvery === 0;
     for (const c of this.clients) {
-      if (!c?.active) continue;
+      if (!c?.active || c.closed) continue;
+      // Commands and systems may have moved or replaced the body since it stepped.
+      if (c.ent >= 0) {
+        ents.loadBody(c.ent, c.body);
+        c.chunk = chunkAt(world.dims, c.body.x, c.body.z);
+      }
+      if (c.ownDirty) this.sendOwn(c);
       if (snap) this.snapshot(c, T);
       this.syncChunks(c, T);
     }
@@ -200,83 +302,59 @@ export class GameServer {
     c.conn.close();
   }
 
-  private accept(conn: Connection): void {
-    const slot = this.clients.indexOf(null);
-    if (slot < 0) {
-      const w = this.w;
+  /** Send text to a client, one message per line. */
+  sendText(c: Client, channel: number, text: string): void {
+    if (c.closed) return;
+    const w = this.w;
+    for (const line of text.split("\n")) {
       w.reset();
-      w.bits(S_REJECT, 4);
-      w.u8(REJECT_FULL);
-      conn.send(CH_RELIABLE, w.bytes());
-      conn.close();
-      return;
-    }
-    const c = new Client(slot, conn, chunkCount(this.world.dims));
-    this.clients[slot] = c;
-    conn.onMessage = (channel, data) => this.receive(c, channel, data);
-    conn.onClose = () => this.remove(c);
-  }
-
-  private remove(c: Client): void {
-    if (this.clients[c.id] !== c) return;
-    if (c.active) {
-      this.onLeave?.(c);
-      this.world.ents.destroy(c.ent);
-    }
-    c.active = false;
-    this.clients[c.id] = null;
-  }
-
-  private receive(c: Client, channel: number, data: Uint8Array): void {
-    if (++c.packets > MAX_PACKETS_PER_TICK) {
-      this.stats.throttled++;
-      return;
-    }
-    const r = this.r;
-    let ok = data.length <= MAX_CLIENT_MESSAGE;
-    if (ok) {
-      r.reset(data);
-      const type = r.bits(4);
-      if (type === C_INPUT && c.active) ok = this.input(c, r);
-      else if (type === C_HELLO && !c.active && channel === CH_RELIABLE) ok = this.hello(c, r);
-      else ok = false;
-    }
-    if (!ok) {
-      this.stats.malformed++;
-      if (++c.strikes > MAX_STRIKES) this.reject(c, REJECT_MALFORMED);
+      w.bits(S_TEXT, 4);
+      w.u8(channel);
+      // 330 characters is under the client's byte limit even at three bytes each.
+      w.string(line.length > 330 ? line.slice(0, 330) : line);
+      c.conn.send(CH_RELIABLE, w.bytes());
     }
   }
 
-  private input(c: Client, r: BitReader): boolean {
-    const ack = r.u32();
-    const newest = readInputs(r, c.inputs, this.world.tick);
-    if (newest === 0) return false;
-    if (newest <= this.world.tick) this.stats.lateInputs++;
-    if (newest > c.newestInput && newest < this.world.tick + INPUT_WINDOW) c.newestInput = newest;
-    // An ack can only name a snapshot that was sent, and only move forward.
-    if (ack > c.ackTick && ack <= c.lastSnapshot) c.ackTick = ack;
+  /** Every client must be sent its session component again (the day offset changed). */
+  markAllOwn(): void {
+    for (const c of this.clients) if (c?.active) c.ownDirty = true;
+  }
+
+  /**
+   * Turn spectating on or off. A spectator's body is private: stepped from the
+   * same inputs by the same function, but never in the entity store, so nobody
+   * sees it and it touches nothing. Returns false if there is no room to return.
+   */
+  setSpectating(c: Client, on: boolean): boolean {
+    if (on === (c.state === SESSION_SPECTATING)) return true;
+    if (on) {
+      this.dropBody(c);
+      this.makeGhost(c);
+    } else if (!this.spawnBody(c)) return false;
+    c.ownDirty = true;
     return true;
   }
 
-  private hello(c: Client, r: BitReader): boolean {
-    const version = r.u16();
-    const contentHash = r.u32();
-    const name = r.string(MAX_NAME_BYTES);
-    if (r.overflow) return false;
-    const world = this.world;
-    if (version !== PROTOCOL_VERSION) return this.refuse(c, REJECT_VERSION);
-    if (contentHash !== world.reg.hash) return this.refuse(c, REJECT_CONTENT);
-    if (!NAME.test(name)) return this.refuse(c, REJECT_NAME);
-    // One body per survivor: a second login under the same name is refused, not duplicated.
-    for (const other of this.clients) if (other?.active && other.name === name) return this.refuse(c, REJECT_NAME);
+  private makeGhost(c: Client): void {
+    const b = c.body;
+    b.y += SPECTATOR_LIFT;
+    b.vx = b.vy = b.vz = 0;
+    b.grounded = false;
+    b.mode = MODE_GHOST;
+    c.state = SESSION_SPECTATING;
+  }
 
-    const kind = world.reg.index.get("core:survivor")!;
+  /** Create the session's entity where its survivor was last seen, or near the spawn point. */
+  private spawnBody(c: Client): boolean {
+    const world = this.world;
+    const kind = this.survivor;
     const p = world.reg.move[kind]!;
     let x = world.spawn.x;
     let z = world.spawn.z;
     let y = 0;
     let yaw = world.spawn.yaw;
-    const saved = this.savedPosition?.(name);
+    const saved = this.savedPosition?.(c.name);
     if (saved && capsuleFree(world, saved.x, saved.y, saved.z, p.radius, p.height)) {
       x = saved.x;
       y = saved.y;
@@ -293,37 +371,226 @@ export class GameServer {
       }
       y = world.hf.heightAt(x, z);
     }
-    const e = world.ents.create(kind, x, y, z, F_PLAYER | F_AWAKE);
-    if (e < 0) return this.refuse(c, REJECT_FULL);
-    world.ents.yaw[e] = yaw;
-    c.ent = e;
-    c.name = name;
-    c.heldYaw = yaw;
-    c.active = true;
-    this.onJoin?.(c);
-
-    const w = this.w;
     const ents = world.ents;
+    const e = ents.create(kind, x, y, z, F_PLAYER | F_AWAKE);
+    if (e < 0) return false;
+    ents.yaw[e] = yaw;
+    c.ent = e;
+    c.kind = kind;
+    c.state = SESSION_ALIVE;
+    c.heldYaw = yaw;
+    ents.loadBody(e, c.body);
+    c.chunk = ents.chunk[e]!;
+    this.onBody?.(c);
+    return true;
+  }
+
+  /** Remove the session's entity, keeping where it was as the session's focus. */
+  private dropBody(c: Client): void {
+    if (c.ent < 0) return;
+    const ents = this.world.ents;
+    this.onBodyGone?.(c);
+    ents.loadBody(c.ent, c.body);
+    ents.destroy(c.ent);
+    c.ent = -1;
+  }
+
+  private accept(conn: Connection): void {
+    const slot = this.clients.indexOf(null);
+    if (slot < 0) {
+      const w = this.w;
+      w.reset();
+      w.bits(S_REJECT, 4);
+      w.u8(REJECT_FULL);
+      conn.send(CH_RELIABLE, w.bytes());
+      conn.close();
+      return;
+    }
+    const c = new Client(slot, conn, chunkCount(this.world.dims));
+    this.clients[slot] = c;
+    this.bind(c, conn);
+  }
+
+  private bind(c: Client, conn: Connection): void {
+    conn.onMessage = (channel, data) => this.receive(c, channel, data);
+    conn.onClose = () => this.remove(c, conn);
+  }
+
+  /** The connection closed. A living body stays for a while; anything else leaves now. */
+  private remove(c: Client, conn: Connection): void {
+    if (this.clients[c.id] !== c || c.conn !== conn || c.closed) return;
+    if (c.active && c.ent >= 0 && this.opts.lingerTicks > 0) {
+      c.closed = true;
+      c.lingerUntil = this.world.tick + this.opts.lingerTicks;
+      c.queue.length = 0;
+      return;
+    }
+    this.finalize(c);
+  }
+
+  private finalize(c: Client): void {
+    if (this.clients[c.id] !== c) return;
+    if (c.active) {
+      this.onExit?.(c);
+      this.dropBody(c);
+    }
+    c.active = false;
+    c.closed = false;
+    this.clients[c.id] = null;
+  }
+
+  private receive(c: Client, channel: number, data: Uint8Array): void {
+    if (c.closed) return;
+    let ok = true;
+    if (channel !== CH_RELIABLE) {
+      if (++c.packets > MAX_PACKETS_PER_TICK) {
+        this.stats.throttled++;
+        return;
+      }
+    } else if (++c.reliable > MAX_RELIABLE_PER_TICK) ok = false;
+    if (ok) ok = data.length <= MAX_CLIENT_MESSAGE;
+    if (ok) {
+      const r = this.r;
+      r.reset(data);
+      const type = r.bits(4);
+      if (type === C_INPUT && c.active) ok = this.input(c, r);
+      else if (type === C_COMMAND && c.active && channel === CH_RELIABLE) ok = this.command(c, r, data);
+      else if (type === C_HELLO && !c.active && channel === CH_RELIABLE) ok = this.hello(c, r);
+      else ok = false;
+    }
+    if (!ok) {
+      this.stats.malformed++;
+      if (++c.strikes > MAX_STRIKES) this.reject(c, REJECT_MALFORMED);
+    }
+  }
+
+  private input(c: Client, r: BitReader): boolean {
+    const ack = r.u32();
+    const newest = readInputs(r, c.inputs, this.world.tick);
+    if (newest === 0) return false;
+    if (newest <= this.world.tick) this.stats.lateInputs++;
+    // Remember the newest tick named even when it is too far ahead to buffer:
+    // the margin sent back is what tells a client its clock has run away. It
+    // only moves forward, except by a whole window at once, which is a client
+    // that restarted its clock rather than a packet out of order.
+    if (newest > c.newestInput || newest < c.newestInput - INPUT_WINDOW) c.newestInput = newest;
+    // An ack can only name a snapshot that was sent, and only move forward.
+    if (ack > c.ackTick && ack <= c.lastSnapshot) c.ackTick = ack;
+    return true;
+  }
+
+  /** Queue a command. The sequence must be exactly one more than the last; a gap means a broken client. */
+  private command(c: Client, r: BitReader, data: Uint8Array): boolean {
+    const seq = r.u16();
+    r.u8();
+    if (r.overflow || seq !== ((c.cmdSeq + 1) & 0xffff)) return false;
+    c.cmdSeq = seq;
+    if (c.queue.length >= COMMAND_QUEUE) this.result(c, seq, RESULT_BUSY);
+    else c.queue.push(data);
+    return true;
+  }
+
+  private runCommands(c: Client): void {
+    const r = this.r;
+    for (let n = 0; n < COMMANDS_PER_TICK && c.queue.length > 0; n++) {
+      r.reset(c.queue.shift()!);
+      r.bits(4);
+      const seq = r.u16();
+      const handler = this.handlers[r.u8()];
+      const code = handler ? handler(c, r) : RESULT_INVALID;
+      this.stats.commands++;
+      // The handler may have ended the session (a kick, too many password attempts).
+      if (this.clients[c.id] !== c || c.closed || !c.conn.open) return;
+      this.result(c, seq, code);
+    }
+  }
+
+  private result(c: Client, seq: number, code: number): void {
+    const w = this.w;
+    w.reset();
+    w.bits(S_RESULT, 4);
+    w.u16(seq);
+    w.u8(code);
+    c.conn.send(CH_RELIABLE, w.bytes());
+  }
+
+  private hello(c: Client, r: BitReader): boolean {
+    const version = r.u16();
+    const contentHash = r.u32();
+    const name = r.string(MAX_NAME_BYTES);
+    const flags = r.u8();
+    const key = new Uint8Array(KEY_BYTES);
+    for (let i = 0; i < KEY_BYTES; i++) key[i] = r.u8();
+    if (r.overflow) return false;
+    const world = this.world;
+    if (version !== PROTOCOL_VERSION) return this.refuse(c, REJECT_VERSION);
+    if (contentHash !== world.reg.hash) return this.refuse(c, REJECT_CONTENT);
+    if (!NAME.test(name)) return this.refuse(c, REJECT_NAME);
+    if (this.authorize && !this.authorize(name, key)) return this.refuse(c, REJECT_DENIED);
+    // One body per survivor. A second login is refused unless the first
+    // connection is gone, in which case this one takes over its body.
+    for (const other of this.clients) {
+      if (!other?.active || other.name !== name) continue;
+      if (!other.closed) return this.refuse(c, REJECT_NAME);
+      this.clients[c.id] = null;
+      other.relink(c.conn);
+      this.bind(other, c.conn);
+      this.welcome(other);
+      return true;
+    }
+
+    c.name = name;
+    c.key = key;
+    c.kind = this.survivor;
+    if ((flags & HELLO_SPECTATE) !== 0) {
+      if (this.opts.spectators !== "anyone") return this.refuse(c, REJECT_DENIED);
+      const b = c.body;
+      b.x = world.spawn.x;
+      b.z = world.spawn.z;
+      b.y = world.hf.heightAt(b.x, b.z);
+      this.makeGhost(c);
+      c.chunk = chunkAt(world.dims, b.x, b.z);
+    } else if (!this.spawnBody(c)) return this.refuse(c, REJECT_FULL);
+    c.active = true;
+    this.onEnter?.(c);
+    this.welcome(c);
+    return true;
+  }
+
+  private welcome(c: Client): void {
+    const world = this.world;
+    const ents = world.ents;
+    const w = this.w;
     w.reset();
     w.bits(S_WELCOME, 4);
     w.u16(PROTOCOL_VERSION);
     w.u32(world.tick);
-    w.u32(ents.handleOf(e));
-    w.u16(kind);
+    w.u32(c.ent >= 0 ? ents.handleOf(c.ent) : 0);
+    w.u16(c.kind);
+    w.bits(c.state, 2);
+    w.bool(c.admin);
+    w.u32(world.dayOffset);
     w.string(world.mapId);
     w.u32(world.mapHash);
     w.u8(world.dims.chunksX - 1);
     w.u8(world.dims.chunksZ - 1);
-    const b = this.body;
-    b.x = ents.x[e]!;
-    b.y = ents.y[e]!;
-    b.z = ents.z[e]!;
-    b.vx = b.vy = b.vz = 0;
-    b.grounded = false;
-    writeBody(w, b);
-    w.u16(ents.yaw[e]!);
+    if (c.ent >= 0) ents.loadBody(c.ent, c.body);
+    writeBody(w, c.body);
+    w.u16(c.heldYaw);
     c.conn.send(CH_RELIABLE, w.bytes());
-    return true;
+  }
+
+  private sendOwn(c: Client): void {
+    const w = this.w;
+    w.reset();
+    w.bits(S_OWN, 4);
+    w.u8(OWN_SESSION);
+    w.bits(c.state, 2);
+    w.bool(c.admin);
+    w.u32(c.ent >= 0 ? this.world.ents.handleOf(c.ent) : 0);
+    w.u32(this.world.dayOffset);
+    c.conn.send(CH_RELIABLE, w.bytes());
+    c.ownDirty = false;
   }
 
   private refuse(c: Client, reason: number): boolean {
@@ -334,7 +601,7 @@ export class GameServer {
   private occupied(x: number, z: number): boolean {
     const ents = this.world.ents;
     for (const c of this.clients) {
-      if (!c?.active) continue;
+      if (!c?.active || c.ent < 0) continue;
       const dx = ents.x[c.ent]! - x;
       const dz = ents.z[c.ent]! - z;
       if (dx * dx + dz * dz < 1) return true;
@@ -348,9 +615,9 @@ export class GameServer {
     const dims = world.dims;
     const e = c.ent;
 
-    // Entities in the chunks around the player, nearest chunks first.
-    const ccx = chunkCx(dims, ents.chunk[e]!);
-    const ccz = chunkCz(dims, ents.chunk[e]!);
+    // Entities in the chunks around the session's focus, nearest chunks first.
+    const ccx = chunkCx(dims, c.chunk);
+    const ccz = chunkCz(dims, c.chunk);
     const ids = this.ids;
     const offsets = this.entityOffsets;
     let n = 0;
@@ -379,19 +646,16 @@ export class GameServer {
     w.bits(S_SNAPSHOT, 4);
     w.u32(T);
     w.u8(base ? age : 0);
+    // Before the first input arrives there is no margin to report. Saying so
+    // matters: "0 - T" would tell a client joining a long-running world that
+    // it is hopelessly late, and it would jump out of the input window.
     let margin = c.newestInput - T;
-    if (margin < -127) margin = -127;
+    if (c.newestInput === 0) margin = MARGIN_UNKNOWN;
+    else if (margin < -127) margin = -127;
     else if (margin > 127) margin = 127;
     w.sbits(margin, 8);
-    const b = this.body;
-    b.x = ents.x[e]!;
-    b.y = ents.y[e]!;
-    b.z = ents.z[e]!;
-    b.vx = ents.vx[e]!;
-    b.vy = ents.vy[e]!;
-    b.vz = ents.vz[e]!;
-    b.grounded = (ents.flags[e]! & F_GROUNDED) !== 0;
-    writeBody(w, b);
+    w.bits(c.state, 2);
+    writeBody(w, c.body);
     c.rotate = writeViewDelta(w, base, cur, next, this.opts.snapshotBytes * 8 - w.pos, c.rotate);
     c.lastSnapshot = T;
     c.conn.send(CH_UNRELIABLE, w.bytes());
@@ -401,9 +665,8 @@ export class GameServer {
   private syncChunks(c: Client, T: number): void {
     const world = this.world;
     const dims = world.dims;
-    const ents = world.ents;
-    const ccx = chunkCx(dims, ents.chunk[c.ent]!);
-    const ccz = chunkCz(dims, ents.chunk[c.ent]!);
+    const ccx = chunkCx(dims, c.chunk);
+    const ccz = chunkCz(dims, c.chunk);
     const offsets = this.structOffsets;
     let budget = this.opts.chunkSlotsPerTick;
     for (let o = 0; o < offsets.length && budget > 0; o += 2) {

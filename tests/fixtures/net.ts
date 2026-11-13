@@ -7,6 +7,8 @@ import type { ServerWorld } from "../../server/world.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { LoopbackNet, type LinkOptions, type LoopbackEnd } from "../../shared/net/loopback.ts";
+import { hashString } from "../../shared/hash.ts";
+import { KEY_BYTES } from "../../shared/net/protocol.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { coreRegistry } from "./world.ts";
 
@@ -16,6 +18,25 @@ export interface Pilot {
   yaw: number;
   pitch: number;
   buttons: number;
+}
+
+/** A device key derived from a label, so a test can log in again as the same device. */
+export function testKey(label: string): Uint8Array {
+  const key = new Uint8Array(KEY_BYTES);
+  for (let i = 0; i < KEY_BYTES; i += 4) {
+    const h = hashString(label, 0x9e3779b9 + i);
+    key[i] = h;
+    key[i + 1] = h >>> 8;
+    key[i + 2] = h >>> 16;
+    key[i + 3] = h >>> 24;
+  }
+  return key;
+}
+
+export interface JoinOptions {
+  /** Device key; defaults to one derived from the name. */
+  key?: Uint8Array;
+  spectate?: boolean;
 }
 
 export class Harness {
@@ -44,10 +65,12 @@ export class Harness {
     this.clientFrameMs = 1000 / clientFps;
   }
 
-  join(name: string, link: LinkOptions = {}): ClientSession {
+  join(name: string, link: LinkOptions = {}, opts: JoinOptions = {}): ClientSession {
     const end = this.net.connect(link);
     const session = new ClientSession(end, {
       name,
+      key: opts.key ?? testKey(name),
+      spectate: opts.spectate ?? false,
       registry: this.reg,
       resolveMap: (_id, hash) => (hash === this.world.mapHash ? this.hf : null),
     });
@@ -79,5 +102,20 @@ export class Harness {
   /** Server-side entity index for a session. */
   ent(session: ClientSession): number {
     return this.world.ents.resolve(session.ownHandle);
+  }
+
+  /** The server's side of a session. */
+  client(session: ClientSession) {
+    const i = this.sessions.indexOf(session);
+    return this.server.clients.find((c) => c !== null && c.conn === this.ends[i]!.peer) ?? null;
+  }
+
+  /** Type a console line as `session` and return every line the server printed in reply. */
+  say(session: ClientSession, line: string, ms = 300): string[] {
+    const before = session.logVersion;
+    session.text(line);
+    this.run(ms);
+    const n = session.logVersion - before;
+    return n > 0 ? session.log.slice(-n).map((l) => l.text) : [];
   }
 }

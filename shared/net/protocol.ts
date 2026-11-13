@@ -1,51 +1,102 @@
-// Wire protocol, version 1. Message layouts live here and nowhere else.
+// Wire protocol, version 2. Message layouts live here and nowhere else.
 //
 // Every message starts with a 4-bit type. Channels are fixed per type:
 //
 //   client -> server
-//     HELLO     reliable     version u16, content hash u32, name string
+//     HELLO     reliable     version u16, content hash u32, name string, flags u8,
+//                            device key (16 bytes)
 //     INPUT     unreliable   ack tick u32, newest tick u32, count-1 (3 bits),
 //                            then inputs newest first; each after the first is
 //                            preceded by one bit: 1 = same as the one before
+//     COMMAND   reliable     sequence u16, op u8, arguments by op
 //   server -> client
 //     WELCOME   reliable     version u16, tick u32, own handle u32, species u16,
-//                            map id string, map hash u32, chunksX u8+1, chunksZ u8+1, own body
+//                            session state 2 bits, admin 1 bit, day offset u32,
+//                            map id string, map hash u32, chunksX u8+1, chunksZ u8+1,
+//                            own body, yaw u16
 //     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8,
-//                            own body, entity delta (see view.ts)
+//                            session state 2 bits, own body, entity delta (see view.ts)
 //     CHUNK     reliable     chunk u16, version u32, final 1 bit, count varint, slots
 //     CHUNK_DROP reliable    chunk u16
 //     REJECT    reliable     reason u8
+//     RESULT    reliable     command sequence u16, code u8
+//     TEXT      reliable     channel u8, text string
+//     OWN       reliable     component u8, then that component's fields
 //
-// The server never trusts a position. A client can only say what it presses, one
-// input per tick, so speed and teleport cheats have no message to travel in.
+// The server never trusts a position or a target. A client can say what it
+// presses, one input per tick, and what it asks the interface to do, one
+// command at a time. Neither message has room for a coordinate of its own body
+// or the identity of something to hit.
+//
+// Commands are applied at most once. They are never resent after a reconnect:
+// the client learns what happened from the state it is sent, and RESULT only
+// tells the interface why something was refused.
 
 import { BitReader, BitWriter } from "./codec.ts";
 import { Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
+export const C_COMMAND = 3;
 
 export const S_WELCOME = 1;
 export const S_SNAPSHOT = 2;
 export const S_CHUNK = 3;
 export const S_CHUNK_DROP = 4;
 export const S_REJECT = 5;
+export const S_RESULT = 6;
+export const S_TEXT = 7;
+export const S_OWN = 8;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
 export const REJECT_FULL = 3;
 export const REJECT_MALFORMED = 4;
 export const REJECT_NAME = 5;
+/** Wrong device key for the name, spectating not allowed, or too many password attempts. */
+export const REJECT_DENIED = 6;
+export const REJECT_KICKED = 7;
+
+/** HELLO flag: join without a body. */
+export const HELLO_SPECTATE = 1;
+export const KEY_BYTES = 16;
+
+/** What the session is doing. Sent with every snapshot. */
+export const SESSION_ALIVE = 0;
+export const SESSION_DEAD = 1;
+export const SESSION_SPECTATING = 2;
+
+/** Command ops. */
+export const CMD_TEXT = 1;
+
+export const RESULT_OK = 0;
+/** Too many commands in flight; try again. */
+export const RESULT_BUSY = 1;
+export const RESULT_INVALID = 2;
+export const RESULT_DENIED = 3;
+
+/** OWN components. */
+export const OWN_SESSION = 1;
+
+export const TEXT_CONSOLE = 0;
+export const TEXT_NOTICE = 1;
+
+/** Snapshot input margin meaning "no input has arrived yet": the client must not steer its clock by it. */
+export const MARGIN_UNKNOWN = -128;
 
 /** Inputs carried per packet. Losing up to three packets in a row costs nothing. */
 export const INPUT_REDUNDANCY = 4;
 /** How far ahead of the server tick an input may be and still be buffered. */
 export const INPUT_WINDOW = 32;
 /** Largest message a client may send, in bytes. */
-export const MAX_CLIENT_MESSAGE = 128;
+export const MAX_CLIENT_MESSAGE = 256;
 export const MAX_NAME_BYTES = 24;
+/** A console line from a client. */
+export const MAX_TEXT_BYTES = 200;
+/** A text message from the server. */
+export const MAX_SERVER_TEXT_BYTES = 1000;
 /** Known button bits; others are cleared on receipt. */
 export const BUTTON_MASK = 0x0f;
 /** Pitch units: 16384 is straight up. */
@@ -88,6 +139,7 @@ export class InputBuffer {
   }
 }
 
+/** 266 bits: position and velocity exactly, then the rest of the predicted state. */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);
   w.f32(b.y);
@@ -96,6 +148,12 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.vy);
   w.f32(b.vz);
   w.bool(b.grounded);
+  w.bits(b.mode, 3);
+  w.bits(b.stamina, 26);
+  w.u16(b.staminaMax);
+  w.bits(b.speedQ, 12);
+  w.bits(b.swimQ, 12);
+  w.bits(b.mflags, 4);
 }
 
 export function readBody(r: BitReader, b: Body): void {
@@ -106,6 +164,29 @@ export function readBody(r: BitReader, b: Body): void {
   b.vy = r.f32();
   b.vz = r.f32();
   b.grounded = r.bool();
+  b.mode = r.bits(3);
+  b.stamina = r.bits(26);
+  b.staminaMax = r.u16();
+  b.speedQ = r.bits(12);
+  b.swimQ = r.bits(12);
+  b.mflags = r.bits(4);
+}
+
+/** Write a HELLO. `key` must be KEY_BYTES long. */
+export function writeHello(w: BitWriter, version: number, contentHash: number, name: string, flags: number, key: Uint8Array): void {
+  w.bits(C_HELLO, 4);
+  w.u16(version);
+  w.u32(contentHash);
+  w.string(name);
+  w.u8(flags);
+  for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
+}
+
+/** Start a COMMAND; the caller appends the op's arguments. */
+export function writeCommand(w: BitWriter, seq: number, op: number): void {
+  w.bits(C_COMMAND, 4);
+  w.u16(seq);
+  w.u8(op);
 }
 
 /** Write an INPUT message carrying the newest `count` inputs ending at `newest`. */

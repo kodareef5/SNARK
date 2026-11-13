@@ -2,9 +2,12 @@
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
 import type { Registry } from "../shared/content/registry.ts";
+import { CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
+import { addCoreCommands } from "./commands/core.ts";
+import { Console } from "./console.ts";
 import { Creatures } from "./creatures.ts";
-import { GameServer, type GameOptions } from "./game.ts";
+import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records } from "./records.ts";
@@ -25,6 +28,26 @@ export interface HostOptions {
   /** Use this world instead of creating the proving ground. Its structures are kept only if the save is new. */
   world?: ServerWorld;
   seed?: number;
+  /** Password for `enablecheats`. Without one, cheats are off unless `dev` is set. */
+  adminPassword?: string;
+  /** Development server: cheats need no password. Never set in a public deployment. */
+  dev?: boolean;
+}
+
+/** Ticks between console lines accepted from one session. */
+const TEXT_INTERVAL = 6;
+/** Bytes of the SHA-256 of a device key that a survivor record keeps. */
+const KEY_HASH_BYTES = 16;
+
+function hashKey(key: Uint8Array): Uint8Array {
+  return new Bun.CryptoHasher("sha256").update(key).digest().slice(0, KEY_HASH_BYTES);
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
+  return diff === 0;
 }
 
 export interface Host {
@@ -34,8 +57,13 @@ export interface Host {
   readonly creatures: Creatures;
   readonly persistence: Persistence | null;
   readonly loaded: LoadReport | null;
+  readonly console: Console;
+  readonly adminPassword: string | null;
+  readonly dev: boolean;
   /** Spawn a wild creature by content id. Returns its entity index, or -1. */
   spawnCreature(id: string, x: number, z: number, level: number): number;
+  /** Run a console line as the operator, or as `client`. Returns what it printed. */
+  exec(line: string, client?: Client): string;
   /** Commit and close the store. */
   shutdown(): void;
 }
@@ -52,8 +80,12 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const survivor = reg.index.get("core:survivor")!;
   const names = new Map<string, number>();
   const creatures = new Creatures(world, records, opts.seed ?? 1, opts.wakeRadius ?? 3);
-  /** Chunk each connected player is keeping awake. */
-  const playerChunk = new Map<number, number>();
+  /** Chunk each session's focus is keeping awake. */
+  const focus = new Map<number, number>();
+  const recordOf = (name: string) => {
+    const pid = persistence ? persistence.survivors.get(name) : names.get(name);
+    return pid === undefined ? undefined : records.byPid.get(pid);
+  };
 
   const spawnCreature = (id: string, x: number, z: number, level: number): number => {
     const kind = reg.index.get(id);
@@ -78,69 +110,93 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     }
   }
 
-  game.savedPosition = (name) => {
-    const pid = persistence ? persistence.survivors.get(name) : names.get(name);
-    return pid === undefined ? null : (records.byPid.get(pid) ?? null);
+  // A name belongs to the first device key that takes a body under it.
+  game.authorize = (name, key) => {
+    const rec = recordOf(name);
+    return !rec || !rec.keyHash || sameBytes(rec.keyHash, hashKey(key));
   };
-  game.onJoin = (c) => {
-    let pid = persistence ? persistence.survivors.get(c.name) : names.get(c.name);
-    let rec = pid === undefined ? undefined : records.byPid.get(pid);
+  game.savedPosition = (name) => recordOf(name) ?? null;
+  game.onBody = (c) => {
+    let rec = recordOf(c.name);
     if (!rec) {
       rec = records.create(survivor, c.name);
-      pid = rec.pid;
-      if (persistence) persistence.bindSurvivor(c.name, pid);
-      else names.set(c.name, pid);
+      if (persistence) persistence.bindSurvivor(c.name, rec.pid);
+      else names.set(c.name, rec.pid);
     }
+    if (!rec.keyHash) {
+      rec.keyHash = hashKey(c.key);
+      records.dirty.add(rec.pid);
+    }
+    c.pid = rec.pid;
     if (persistence) persistence.attach(rec, c.ent);
     else {
       records.entOf.set(rec.pid, c.ent);
       world.ents.pid[c.ent] = rec.pid;
     }
-    const chunk = world.ents.chunk[c.ent]!;
-    playerChunk.set(c.id, chunk);
-    creatures.playerMoved(-1, chunk);
   };
-  game.onLeave = (c) => {
-    creatures.playerMoved(playerChunk.get(c.id) ?? -1, -1);
-    playerChunk.delete(c.id);
-    const pid = world.ents.pid[c.ent]!;
-    if (persistence) persistence.detach(pid);
+  game.onBodyGone = (c) => {
+    if (persistence) persistence.detach(c.pid);
     else {
-      const rec = records.byPid.get(pid);
+      const rec = records.byPid.get(c.pid);
       if (rec) {
         rec.x = world.ents.x[c.ent]!;
         rec.y = world.ents.y[c.ent]!;
         rec.z = world.ents.z[c.ent]!;
         rec.yaw = world.ents.yaw[c.ent]!;
       }
-      records.entOf.delete(pid);
+      records.entOf.delete(c.pid);
     }
+  };
+  game.onEnter = (c) => {
+    focus.set(c.id, c.chunk);
+    creatures.playerMoved(-1, c.chunk);
+  };
+  game.onExit = (c) => {
+    creatures.playerMoved(focus.get(c.id) ?? -1, -1);
+    focus.delete(c.id);
   };
   game.onStep = (tick) => {
     for (const c of game.clients) {
       if (!c?.active) continue;
-      const chunk = world.ents.chunk[c.ent]!;
-      const was = playerChunk.get(c.id)!;
-      if (chunk === was) continue;
-      playerChunk.set(c.id, chunk);
-      creatures.playerMoved(was, chunk);
+      const was = focus.get(c.id)!;
+      if (c.chunk === was) continue;
+      focus.set(c.id, c.chunk);
+      creatures.playerMoved(was, c.chunk);
     }
     creatures.step(tick);
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };
 
-  return {
+  const con = new Console();
+  addCoreCommands(con);
+  const host: Host = {
     world,
     records,
     game,
     creatures,
     persistence,
     loaded,
+    console: con,
+    adminPassword: opts.adminPassword || null,
+    dev: opts.dev ?? false,
     spawnCreature,
+    exec: (line, client) => con.exec({ host, client: client ?? null }, line),
     shutdown() {
       if (!persistence) return;
+      // Every body still in the world is saved where it stands.
+      for (const c of game.clients) if (c?.active && c.ent >= 0) records.dirty.add(c.pid);
       persistence.commit();
       persistence.store.close();
     },
   };
+  game.handle(CMD_TEXT, (c, r) => {
+    const line = r.string(MAX_TEXT_BYTES);
+    if (r.overflow) return RESULT_INVALID;
+    if (world.tick < c.textReadyAt) return RESULT_BUSY;
+    c.textReadyAt = world.tick + TEXT_INTERVAL;
+    const out = con.exec({ host, client: c }, line);
+    if (out) game.sendText(c, TEXT_CONSOLE, out);
+    return RESULT_OK;
+  });
+  return host;
 }

@@ -3,12 +3,12 @@ import { RemoteSample } from "../../client/core/session.ts";
 import { chunkCx, chunkCz } from "../../shared/coords.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
-import { C_HELLO, C_INPUT, PROTOCOL_VERSION, REJECT_CONTENT, REJECT_VERSION } from "../../shared/net/protocol.ts";
+import { C_INPUT, PROTOCOL_VERSION, REJECT_CONTENT, REJECT_VERSION, writeHello } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_JUMP, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
-import { Harness, type Pilot } from "../fixtures/net.ts";
+import { Harness, testKey, type Pilot } from "../fixtures/net.ts";
 
 function wander(p: Pilot, rng: Rng): void {
   p.moveX = rng.range(-1, 1);
@@ -84,6 +84,42 @@ test("on a clean link, prediction is never corrected", () => {
   expect(h.server.stats.heldInputs).toBeLessThan(40); // only around the initial clock sync
 });
 
+test("a client that joins a world that has been running for a while can move", () => {
+  // Round 1 missed this: before any input arrived the server reported a margin
+  // of minus its own tick, and the client jumped its clock out of the input window.
+  for (const [upMs, latencyMs] of [[100, 0], [1000, 30], [3000, 80], [20000, 150]] as const) {
+    const h = new Harness();
+    h.run(upMs);
+    const s = h.join("late", { latencyMs });
+    h.run(1000);
+    h.pilots[0]!.moveZ = 1;
+    h.run(2000);
+    h.pilots[0]!.moveZ = 0;
+    h.run(1000);
+    const e = h.ent(s);
+    expect(h.world.ents.z[e]! - 240).toBeGreaterThan(8);
+    expect(s.own.z).toBe(h.world.ents.z[e]!);
+    expect(s.stats.clockJumps).toBeLessThanOrEqual(2);
+    expect(s.simTick - h.world.tick).toBeLessThan(4 + (latencyMs * 2 * 30) / 1000 + 3);
+  }
+});
+
+test("a client whose clock has run far ahead is told so and comes back", () => {
+  const h = new Harness();
+  const s = h.join("skew", { latencyMs: 20 });
+  h.run(1000);
+  s.tickClock += 300; // ten seconds ahead: every input it sends is outside the server's window
+  h.pilots[0]!.moveZ = 1;
+  h.run(5000); // about two seconds to come back, then it walks
+  h.pilots[0]!.moveZ = 0;
+  h.run(1000);
+  expect(s.stats.clockJumps).toBeLessThan(6);
+  expect(s.simTick - h.world.tick).toBeLessThan(10);
+  const e = h.ent(s);
+  expect(h.world.ents.z[e]! - 240).toBeGreaterThan(6);
+  expect(s.own.z).toBe(h.world.ents.z[e]!);
+});
+
 test("under latency, jitter and loss, clients stay playable and converge", () => {
   const h = new Harness({}, 9);
   const link = { latencyMs: 75, jitterMs: 30, loss: 0.05 };
@@ -130,10 +166,7 @@ test("a hostile client cannot move faster, teleport, or crash the server", () =>
   let closed = false;
   end.onClose = () => (closed = true);
   const w = new BitWriter(256);
-  w.bits(C_HELLO, 4);
-  w.u16(PROTOCOL_VERSION);
-  w.u32(h.reg.hash);
-  w.string("mallory");
+  writeHello(w, PROTOCOL_VERSION, h.reg.hash, "mallory", 0, testKey("mallory"));
   end.send(CH_RELIABLE, w.bytes());
   h.run(200);
   expect(h.server.playerCount).toBe(2);
@@ -195,10 +228,7 @@ test("version and content mismatches are refused with a reason", () => {
     const end = h.net.connect();
     end.onMessage = (_ch, data) => reasons.push(data[0]! >> 4 | (data[1]! << 4) & 0xff);
     const w = new BitWriter(64);
-    w.bits(C_HELLO, 4);
-    w.u16(version);
-    w.u32(hash);
-    w.string("x");
+    writeHello(w, version, hash, "x", 0, testKey("x"));
     end.send(CH_RELIABLE, w.bytes());
     h.run(100);
     expect(end.open).toBe(false);

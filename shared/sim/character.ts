@@ -11,12 +11,26 @@
 // Crossing a wall needs two free positions at least a diameter apart, so no
 // input sequence can produce one. tests/unit/character.test.ts fuzzes this.
 
-import { YAW_UNITS } from "../coords.ts";
+import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { SKIN, capsuleBox, capsuleFree, push, restsOnStructure, type CollisionWorld } from "../world/collide.ts";
 
 export const BTN_JUMP = 1;
 export const BTN_SPRINT = 2;
+/** Swing, harvest, attack. Acted on by the server on the tick the press is consumed. */
+export const BTN_PRIMARY = 4;
+/** Use, open, pick up. */
+export const BTN_USE = 8;
+
+/** No movement at all: a dead survivor waiting to respawn. */
+export const MODE_NONE = 0;
+export const MODE_WALK = 1;
+export const MODE_SWIM = 2;
+/** Free flight with no collision. Set only by the server (admins, spectators). */
+export const MODE_GHOST = 3;
+
+/** Stamina is stored in thousandths of a point, so it steps in exact integers. */
+export const STAMINA_UNITS = 1000;
 
 export interface MoveParams {
   readonly radius: number;
@@ -35,7 +49,12 @@ export interface MoveParams {
   readonly stepDown: number;
 }
 
-/** The predicted state of a body. Everything the next step depends on. */
+/**
+ * The predicted state of a body: everything the next step depends on that
+ * belongs to the individual. The server sends all of it for the client's own
+ * body, and the client never derives any of it from stats, so both sides step
+ * with the same numbers.
+ */
 export class Body {
   x = 0;
   y = 0;
@@ -44,6 +63,16 @@ export class Body {
   vy = 0;
   vz = 0;
   grounded = false;
+  mode = MODE_WALK;
+  /** Thousandths of a point, 0 .. staminaMax * STAMINA_UNITS. */
+  stamina = 100 * STAMINA_UNITS;
+  /** Whole points. Set by the server from stat points. */
+  staminaMax = 100;
+  /** Speed on land and in water, in thousandths of the species value. Set by the server. */
+  speedQ = 1000;
+  swimQ = 1000;
+  /** Server-set restrictions (MF_ bits). */
+  mflags = 0;
 
   copy(o: Body): void {
     this.x = o.x;
@@ -53,10 +82,29 @@ export class Body {
     this.vy = o.vy;
     this.vz = o.vz;
     this.grounded = o.grounded;
+    this.mode = o.mode;
+    this.stamina = o.stamina;
+    this.staminaMax = o.staminaMax;
+    this.speedQ = o.speedQ;
+    this.swimQ = o.swimQ;
+    this.mflags = o.mflags;
+  }
+
+  /** Same place and motion. */
+  samePosition(o: Body): boolean {
+    return this.x === o.x && this.y === o.y && this.z === o.z && this.vx === o.vx && this.vy === o.vy && this.vz === o.vz && this.grounded === o.grounded;
   }
 
   equals(o: Body): boolean {
-    return this.x === o.x && this.y === o.y && this.z === o.z && this.vx === o.vx && this.vy === o.vy && this.vz === o.vz && this.grounded === o.grounded;
+    return (
+      this.samePosition(o) &&
+      this.mode === o.mode &&
+      this.stamina === o.stamina &&
+      this.staminaMax === o.staminaMax &&
+      this.speedQ === o.speedQ &&
+      this.swimQ === o.swimQ &&
+      this.mflags === o.mflags
+    );
   }
 }
 
@@ -66,13 +114,27 @@ const TERMINAL_SPEED = 60;
 const GROUND_PROBE = 0.02;
 const RESOLVE_ITERATIONS = 4;
 const SETTLE_ITERATIONS = 7;
+/** Ghost flight, metres per second; sprint multiplies it. */
+const GHOST_SPEED = 12;
+const GHOST_SPRINT = 5;
 const refs = new Uint32Array(256);
 
 /**
  * Advance `b` by one tick. `moveX` (strafe right) and `moveZ` (forward) are
- * -127..127, `yaw` is in 1/65536 turns: the quantized values sent on the wire.
+ * -127..127; `yaw` and `pitch` are in 1/65536 turns (pitch 16384 is straight
+ * up): the quantized values sent on the wire.
  */
-export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, buttons: number, p: MoveParams, dt: number): void {
+export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
+  if (b.mode === MODE_NONE) {
+    b.vx = 0;
+    b.vy = 0;
+    b.vz = 0;
+    return;
+  }
+  if (b.mode === MODE_GHOST) {
+    stepGhost(w, b, moveX, moveZ, yaw, pitch, buttons, dt);
+    return;
+  }
   const hf = w.hf;
   const structs = w.structs;
   const r = p.radius;
@@ -263,4 +325,43 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   b.vy = Math.fround(vy);
   b.vz = Math.fround(vz);
   b.grounded = grounded;
+}
+
+/** Free flight along the look direction. No collision; bounded to the map's box. */
+function stepGhost(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, dt: number): void {
+  let mx = moveX / 127;
+  let mz = moveZ / 127;
+  const m2 = mx * mx + mz * mz;
+  if (m2 > 1) {
+    const inv = 1 / Math.sqrt(m2);
+    mx *= inv;
+    mz *= inv;
+  }
+  const a = yaw * YAW_TO_RAD;
+  const s = detSin(a);
+  const c = detCos(a);
+  const e = pitch * YAW_TO_RAD;
+  const sp = detSin(e);
+  const cp = detCos(e);
+  const speed = GHOST_SPEED * ((buttons & BTN_SPRINT) !== 0 ? GHOST_SPRINT : 1);
+  const vx = (s * cp * mz - c * mx) * speed;
+  const vy = (sp * mz + ((buttons & BTN_JUMP) !== 0 ? 1 : 0)) * speed;
+  const vz = (c * cp * mz + s * mx) * speed;
+  let x = b.x + vx * dt;
+  let y = b.y + vy * dt;
+  let z = b.z + vz * dt;
+  const hf = w.hf;
+  if (x < 0) x = 0;
+  else if (x > hf.sizeX) x = hf.sizeX;
+  if (z < 0) z = 0;
+  else if (z > hf.sizeZ) z = hf.sizeZ;
+  if (y < WORLD_MIN_Y) y = WORLD_MIN_Y;
+  else if (y > WORLD_MAX_Y) y = WORLD_MAX_Y;
+  b.x = Math.fround(x);
+  b.y = Math.fround(y);
+  b.z = Math.fround(z);
+  b.vx = Math.fround(vx);
+  b.vy = Math.fround(vy);
+  b.vz = Math.fround(vz);
+  b.grounded = false;
 }

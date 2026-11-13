@@ -72,6 +72,7 @@ export class Persistence {
       const mapId = store.meta("map_id");
       if (mapId !== world.mapId) throw new Error(`save is for map "${mapId}", not "${world.mapId}"`);
       world.tick = Number(store.meta("tick") ?? 0);
+      world.dayOffset = Number(store.meta("day_offset") ?? 0);
       this.records.nextSeq = Number(store.meta("next_seq") ?? 1);
     }
     const structures = store.fresh ? world.structs.count : store.loadChunks(world.structs);
@@ -165,6 +166,7 @@ export class Persistence {
         for (const j of this.pending) store.appendJournal(j.seq, j.tick, j.op, j.data);
         for (const [name, pid] of this.newSurvivors) store.saveSurvivor(name, pid);
         store.setMeta("tick", world.tick);
+        store.setMeta("day_offset", world.dayOffset);
         store.setMeta("next_seq", records.nextSeq);
         store.setMeta("map_id", world.mapId);
       });

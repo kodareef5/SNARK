@@ -29,6 +29,8 @@ export class EntityRecord {
   foodTick = -1;
   /** Stat points, colours and ancestry; null for bodies that have none. */
   genome: Genome | null = null;
+  /** Hash of the device key that owns this survivor; null until one claims it. */
+  keyHash: Uint8Array | null = null;
   /** Component blobs this build does not understand, kept byte for byte. */
   readonly extra = new Map<number, Uint8Array>();
 

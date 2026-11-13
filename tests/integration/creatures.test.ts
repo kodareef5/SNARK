@@ -50,9 +50,11 @@ test("creatures are simulated only near players, and only the moving ones cost a
   s.sampleRemote(seen);
   expect(seen.count).toBeGreaterThan(20);
 
-  // The player leaves: everything goes back to sleep.
+  // The player leaves: once its body has lingered out, everything goes back to sleep.
   s.close();
   h.run(200);
+  expect(h.host.creatures.awakeCount).toBeGreaterThan(0);
+  h.run(5200);
   expect(h.host.creatures.awakeCount).toBe(0);
 });
 

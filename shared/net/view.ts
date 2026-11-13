@@ -107,6 +107,14 @@ export class ViewRing {
   at(i: number): EntityView {
     return this.views[i]!;
   }
+
+  /** Forget every view, as after a new connection. */
+  clear(): void {
+    for (const v of this.views) {
+      v.tick = 0;
+      v.count = 0;
+    }
+  }
 }
 
 // Encoder scratch: one entry per merged entity.

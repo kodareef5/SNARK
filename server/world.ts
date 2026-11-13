@@ -17,8 +17,10 @@ export interface ServerWorld extends CollisionWorld {
   readonly mapId: string;
   readonly mapHash: number;
   readonly spawn: { readonly x: number; readonly z: number; readonly yaw: number };
-  /** World clock in fixed steps. Persisted; never reset. */
+  /** World clock in fixed steps. Persisted; never reset and never set by hand. */
   tick: number;
+  /** Added to the tick to get the time of day (shared/sim/clock.ts). This is what `settime` changes. */
+  dayOffset: number;
 }
 
 export interface WorldOptions {
@@ -38,6 +40,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     mapHash,
     spawn,
     tick: 0,
+    dayOffset: 0,
   };
 }
 

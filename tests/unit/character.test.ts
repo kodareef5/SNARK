@@ -24,7 +24,7 @@ function bodyAt(w: TestWorld, x: number, z: number): Body {
 
 function run(w: TestWorld, b: Body, ticks: number, moveX: number, moveZ: number, yaw: number, buttons = 0): void {
   const p = survivor(w);
-  for (let i = 0; i < ticks; i++) stepBody(w, b, moveX, moveZ, yaw, buttons, p, TICK_DT);
+  for (let i = 0; i < ticks; i++) stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
 }
 
 test("walks forward at walk speed and strafes to its right", () => {
@@ -56,7 +56,7 @@ test("jump reaches the expected height and lands", () => {
   let apex = 0;
   const p = survivor(w);
   for (let i = 0; i < 60; i++) {
-    stepBody(w, b, 0, 0, 0, i === 0 ? BTN_JUMP : 0, p, TICK_DT);
+    stepBody(w, b, 0, 0, 0, 0, i === 0 ? BTN_JUMP : 0, p, TICK_DT);
     apex = Math.max(apex, b.y);
   }
   expect(apex).toBeGreaterThan(1.05); // v^2 / 2g = 1.225 m, less the discrete step
@@ -72,15 +72,15 @@ test("jumps onto a 1 m ledge and stands on it steadily", () => {
   const p = survivor(w);
   run(w, b, 22, 0, FWD, NORTH);
   expect(b.z).toBeLessThan(22.61); // too tall to step onto
-  for (let i = 0; i < 30; i++) stepBody(w, b, 0, FWD, NORTH, i === 0 ? BTN_JUMP : 0, p, TICK_DT);
+  for (let i = 0; i < 30; i++) stepBody(w, b, 0, FWD, NORTH, 0, i === 0 ? BTN_JUMP : 0, p, TICK_DT);
   let groundedTicks = 0;
   for (let i = 0; i < 90; i++) {
-    stepBody(w, b, 0, 0, NORTH, 0, p, TICK_DT);
+    stepBody(w, b, 0, 0, NORTH, 0, 0, p, TICK_DT);
     if (b.grounded) groundedTicks++;
     expect(Math.abs(b.y - 1)).toBeLessThan(0.021);
   }
   expect(groundedTicks).toBe(90);
-  stepBody(w, b, 0, 0, NORTH, BTN_JUMP, p, TICK_DT);
+  stepBody(w, b, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
   expect(b.vy).toBeGreaterThan(5); // can jump again from the ledge
 });
 
@@ -130,7 +130,7 @@ test("fuzz: no input sequence leaves a sealed room or enters solid space", () =>
       yaw = rng.int(65536);
       buttons = rng.int(4);
     }
-    stepBody(w, b, moveX, moveZ, yaw, buttons, p, TICK_DT);
+    stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
     const inside = b.x > room.minX && b.x < room.maxX && b.z > room.minZ && b.z < room.maxZ && b.y >= -SKIN && b.y + p.height < room.maxY + SKIN;
     if (!inside || !capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)) {
       throw new Error(`escaped at tick ${i}: ${b.x}, ${b.y}, ${b.z}`);
@@ -159,7 +159,7 @@ test("fuzz: bodies roaming the proving ground are always in free space", () => {
       }
       const px = b.x;
       const pz = b.z;
-      stepBody(w, b, moveX, moveZ, yaw, buttons, p, TICK_DT);
+      stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
       if (!capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`in solid at tick ${i}: ${b.x}, ${b.y}, ${b.z}`);
       // Sprint speed is 7.2 m/s: 0.24 m per tick. Nothing may move a body faster sideways.
       expect(Math.hypot(b.x - px, b.z - pz)).toBeLessThan(0.3);
@@ -175,7 +175,7 @@ test("the 0.2 m wall cannot be crossed from any angle", () => {
     const b = bodyAt(w, rng.range(279, 298), rng.range(256, 260));
     const yaw = (rng.int(12000) - 6000) & 0xffff; // roughly northward
     for (let i = 0; i < 120; i++) {
-      stepBody(w, b, rng.int(255) - 127, FWD, yaw, BTN_SPRINT | (rng.int(3) === 0 ? BTN_JUMP : 0), p, TICK_DT);
+      stepBody(w, b, rng.int(255) - 127, FWD, yaw, 0, BTN_SPRINT | (rng.int(3) === 0 ? BTN_JUMP : 0), p, TICK_DT);
       // The wall spans x 276..300. Rounding either end is legal; being level with it between them is not.
       if (b.x > 276 && b.x < 300) expect(b.z).toBeLessThan(261.5 + SKIN);
     }

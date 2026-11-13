@@ -3,6 +3,7 @@
 
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
+import { KEY_BYTES } from "../../shared/net/protocol.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { PROVING_ID, buildProvingHeightfield, provingMapHash } from "../../shared/world/proving.ts";
@@ -17,6 +18,23 @@ import { Input } from "./input.ts";
 import { connect } from "./socket.ts";
 
 const params = new URLSearchParams(location.search);
+
+/** This browser's device key: made once, kept in local storage. It is what owns a survivor's name. */
+function deviceKey(): Uint8Array {
+  const key = new Uint8Array(KEY_BYTES);
+  try {
+    const saved = localStorage.getItem("snark.key");
+    if (saved && saved.length === KEY_BYTES * 2) {
+      for (let i = 0; i < KEY_BYTES; i++) key[i] = parseInt(saved.slice(i * 2, i * 2 + 2), 16);
+      return key;
+    }
+  } catch {}
+  crypto.getRandomValues(key);
+  try {
+    localStorage.setItem("snark.key", Array.from(key, (b) => b.toString(16).padStart(2, "0")).join(""));
+  } catch {}
+  return key;
+}
 const selfcheck = params.has("selfcheck");
 const status = document.querySelector<HTMLElement>("#status")!;
 
@@ -30,6 +48,8 @@ async function boot(): Promise<void> {
   const input = new Input(canvas);
   const session = new ClientSession(connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`), {
     name: params.get("name") ?? `survivor${Math.floor(performance.now() * 1000) % 100000}`,
+    key: deviceKey(),
+    spectate: params.has("spectate"),
     registry: reg,
     resolveMap: (id, hash) => (id === PROVING_ID && hash === mapHash ? hf : null),
   });
