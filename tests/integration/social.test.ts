@@ -10,8 +10,9 @@ import type { Source } from "../../server/combat.ts";
 import { INVITE_TICKS, RANK_MEMBER, RANK_OWNER, REL_NONE, REL_OTHER, REL_SAME } from "../../server/tribes.ts";
 import { CMD_CHAT, MAX_CHAT_CHARS, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { BTN_PRIMARY } from "../../shared/sim/character.ts";
-import { DMG_EXPLOSIVE } from "../../shared/sim/damage.ts";
-import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { DMG_EXPLOSIVE, DMG_PIERCE } from "../../shared/sim/damage.ts";
+import { ZONE_TORSO } from "../../shared/anim/human.ts";
+import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { SWING_TICKS } from "../../shared/sim/weapon.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
@@ -161,6 +162,16 @@ test("a tribe: founded, joined face to face with everything the joiner owns, saf
   expect(h.host.combat.structureHits).toBe(wallHits + 1);
   const blasted = h.host.combat.structureHits;
   h.host.survival.refill(rb);
+  // What does a tribe mate no harm does them no harm afterwards either: a flame arrow of hers does not set him burning, nor a shock dart stun him.
+  const burning = h.reg.index.get("core:burning")!;
+  const stunned = h.reg.index.get("core:stunned")!;
+  for (const buff of [burning, stunned]) {
+    const arrow: Source = { ...src, type: DMG_PIERCE, base: 55, buff, torporInstant: 12, torporOver: 5, torporSeconds: 5 };
+    h.host.combat.land(arrow, h.ent(bob), ZONE_TORSO, at.x, 1.2, at.z + APART, APART);
+  }
+  h.run(1500);
+  expect([rb.buffs.map((b) => b.buff), h.host.survival.value(rb, V_HEALTH), h.host.survival.value(rb, V_TORPOR)]).toEqual([[], h.host.survival.value(rb, V_HEALTH), 0]);
+  expect(h.host.survival.value(rb, V_HEALTH)).toBeGreaterThanOrEqual(rb.vitals!.max[V_HEALTH]! / 1e6 - 0.01);
   // Unless the server allows it.
   expect(h.say(ada, "rule friendlyFire 1")[0]).toContain("friendlyFire");
   swings();

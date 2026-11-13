@@ -35,6 +35,15 @@ test("adding tops up matching stacks, then fills empty slots, and reports what d
   expect(inv.add(reg.index.get("core:wall")!, 1, 0, 0, 0, reg)).toBe(1); // not an item
 });
 
+test("a stack larger than its limit has become leaves the room the empty slots give, not less", () => {
+  const inv = new Inventory(2);
+  inv.add(stone, 100, 0, 0, 0, reg);
+  // The same table, but a stack of stone is fifty now.
+  const small = { ...reg, stack: reg.stack.map((n) => (n > 1 ? 50 : n)) };
+  expect(inv.room(stone, 0, small)).toBe(50);
+  expect(inv.room(stone, 0, reg)).toBe(100);
+});
+
 test("a move goes to an empty slot, joins a matching stack, swaps whole stacks, or is refused", () => {
   const a = new Inventory(6);
   const b = new Inventory(6);

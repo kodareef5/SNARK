@@ -600,7 +600,8 @@ export class Combat {
     last.blocked = harm.blocked;
     last.wear = hit.armor > 0 ? harm.wear : 0;
     last.killed = killed;
-    if (!killed && (ents.flags[target]! & F_ALIVE) !== 0) {
+    // A blow that this pairing of who and whom makes nothing of is nothing: it provokes nobody and leaves nothing behind.
+    if (!killed && hit.rule !== 0 && (ents.flags[target]! & F_ALIVE) !== 0) {
       creatures.provoke(target, ax, az, by ? (records.entOf.get(by.pid) ?? -1) : -1);
       // What the hit leaves behind: torpor at once, torpor to come as a dose, and whatever the round carries. Armor that stopped the harm stopped these in the same measure.
       const from = by ? by.pid : 0;

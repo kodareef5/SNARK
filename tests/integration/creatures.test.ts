@@ -6,6 +6,7 @@ import { RemoteSample } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { F_AWAKE } from "../../shared/sim/entities.ts";
+import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { V_FOOD, V_HEALTH } from "../../shared/sim/vitals.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -128,6 +129,31 @@ test("creatures keep their genome, hunger and place across a restart", () => {
 });
 
 const reg = compileContent(CORE_CONTENT).registry!;
+
+test("a creature that holds more than four thousand of something keeps all of it across a restart", () => {
+  const db = join(dir, "big.db");
+  const h = new Harness({}, 1, 30, { dbPath: db });
+  h.run(100);
+  const g = flatGround(h, 10, 10);
+  const e = h.host.spawnCreature("core:parasaur", g.x + 5, g.z + 5, 1);
+  expect(e).toBeGreaterThanOrEqual(0);
+  const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
+  // Thirty levels in food: four times what it began with, 6,000.
+  rec.genome!.wild[STAT_NAMES.indexOf("food")] = 30;
+  h.host.refreshBody(rec);
+  h.host.survival.refill(rec);
+  h.run(500);
+  const food = h.host.survival.value(rec, V_FOOD);
+  expect(food).toBeGreaterThan(5990);
+  const tick = h.world.tick;
+  h.host.shutdown();
+  const h2 = new Harness({}, 1, 30, { dbPath: db });
+  expect(h2.world.tick).toBe(tick);
+  const again = h2.host.records.byPid.get(rec.pid)!;
+  expect(h2.host.survival.value(again, V_FOOD)).toBe(food);
+  expect(again.vitals!.max[V_FOOD]! / 1e6).toBeCloseTo(6000, 3);
+  h2.host.shutdown();
+});
 
 test("a raptor goes for a survivor it sees, runs it down and bites; led too far from where it began it gives up, rests, and loses what it cannot see", () => {
   const h = new Harness({}, 1, 60, { dev: true });

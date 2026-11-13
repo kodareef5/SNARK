@@ -50,6 +50,12 @@ const COMP_LOOK = 10;
 const COMP_SLOTS2 = 11;
 /** Vitals with room for eight, and whether the body is unconscious. COMP_VITALS4 held four and is still read. */
 const COMP_VITALS8 = 12;
+/**
+ * The same, with each value and the tick whole: COMP_VITALS8 wrote a value in
+ * 32 bits of millionths, so anything above 4,294 points was cut short. It is
+ * still read (what it cut is gone), and no longer written.
+ */
+const COMP_VITALS53 = 17;
 /** The team that owns it, and its rank there. */
 const COMP_TEAM = 13;
 /** Taming: how well a tamed creature was tamed; and, for one lying there being tamed, what it has been given so far and for whom. */
@@ -374,14 +380,14 @@ export class WorldStore {
       let mask = 0;
       for (let i = 0; i < V_COUNT; i++) if (v.max[i]! > 0) mask |= 1 << i;
       c.u8(mask);
-      c.varint(v.tick);
+      c.uint53(v.tick);
       for (let i = 0; i < V_COUNT; i++) {
         if ((mask & (1 << i)) === 0) continue;
-        c.varint(v.value[i]!);
+        c.uint53(v.value[i]!);
         c.svarint(v.rate[i]!);
       }
       c.bool(rec.out);
-      w.varint(COMP_VITALS8);
+      w.varint(COMP_VITALS53);
       w.blob(c.bytes());
     }
     const g = rec.genome;
@@ -486,14 +492,15 @@ export class WorldStore {
           }
         } else if (component === COMP_VITALS) {
           // Round 1 food only: dropped; the survival system starts this body full.
-        } else if (component === COMP_VITALS4 || component === COMP_VITALS8) {
-          // The older form held four vitals behind a four-bit mask; a body saved in it has no torpor yet.
+        } else if (component === COMP_VITALS4 || component === COMP_VITALS8 || component === COMP_VITALS53) {
+          // The oldest form held four vitals behind a four-bit mask; a body saved in it has no torpor yet. The two older forms held each value in 32 bits.
+          const whole = component === COMP_VITALS53;
           const v = (rec.vitals = new Vitals());
           const mask = component === COMP_VITALS4 ? c.bits(4) : c.u8();
-          v.tick = c.varint();
+          v.tick = whole ? c.uint53() : c.varint();
           for (let i = 0; i < 8; i++) {
             if ((mask & (1 << i)) === 0) continue;
-            const value = c.varint();
+            const value = whole ? c.uint53() : c.varint();
             const rate = c.svarint();
             if (i >= V_COUNT) continue;
             v.value[i] = value;
@@ -501,7 +508,7 @@ export class WorldStore {
             // A placeholder until the survival system sets the true maximum from the body's stats.
             v.max[i] = value > 0 ? value : 1;
           }
-          if (component === COMP_VITALS8) rec.out = c.bool();
+          if (component !== COMP_VITALS4) rec.out = c.bool();
         } else if (component === COMP_GENOME) {
           const g = (rec.genome = new Genome());
           if (blob.length < STAT_COUNT * 3 + COLOR_REGIONS) throw new Error(`entity ${row.pid}: short genome`);

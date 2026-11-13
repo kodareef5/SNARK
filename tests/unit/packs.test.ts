@@ -64,3 +64,14 @@ test("stacking mistakes are reported, each with the definition at fault", () => 
   expect(compilePacks([CORE_PACK, { name: "mod", defs: [{ id: "mod:fast", extends: "core:grazer", walkSpeed: 900 }] }]).errors[0]).toMatch(/walkSpeed/);
   expect(compilePacks([CORE_PACK, { name: "mod", defs: [{ id: "mod:odd", extends: "core:grazer", stats: { luck: [1, 0, 0] } }] }]).errors[0]).toMatch(/unknown stat "luck"/);
 });
+
+test("a fuel that burns for most of an hour and a thing that cooks as long are held whole; one that burns for no time is a mistake", () => {
+  const long = CORE_CONTENT.map((d) => (d.id === "core:wood" ? { ...d, fuel: 3000 } : d.id === "core:meat" && d.type === "item" ? { ...d, cooks: { ...d.cooks!, seconds: 2400 } } : d));
+  const { registry, errors } = compileContent(long);
+  expect(errors).toEqual([]);
+  expect([registry!.fuelTicks[registry!.index.get("core:wood")!], registry!.cookTicks[registry!.index.get("core:meat")!]]).toEqual([90000, 72000]);
+  const none = CORE_CONTENT.map((d) => (d.id === "core:wood" ? { ...d, fuel: 0 } : d.id === "core:meat" && d.type === "item" ? { ...d, cooks: { ...d.cooks!, seconds: -1 } } : d));
+  const bad = compileContent(none).errors;
+  expect(bad.some((e) => /core:wood.*fuel/.test(e))).toBe(true);
+  expect(bad.some((e) => /core:meat.*cook/.test(e))).toBe(true);
+});

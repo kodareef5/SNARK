@@ -146,7 +146,8 @@ export class Inventory {
     let n = 0;
     for (let s = 0; s < this.bag; s++) {
       if (this.item[s] === 0) n += stack;
-      else if (stack > 1 && this.item[s] === item && this.quality[s] === quality) n += stack - this.count[s]!;
+      // (A stack may hold more than the limit has since become: it has no room, not less than none.)
+      else if (stack > this.count[s]! && this.item[s] === item && this.quality[s] === quality) n += stack - this.count[s]!;
     }
     return n;
   }

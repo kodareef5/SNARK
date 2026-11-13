@@ -126,9 +126,9 @@ export interface Registry {
   readonly sight: Float32Array;
   readonly leash: Float32Array;
   /** Per item: ticks one of it burns (0: it is no fuel); what it becomes over a fire (0: nothing) and the ticks that takes. */
-  readonly fuelTicks: Uint16Array;
+  readonly fuelTicks: Uint32Array;
   readonly cooksInto: Uint16Array;
-  readonly cookTicks: Uint16Array;
+  readonly cookTicks: Uint32Array;
   /** Per item a recipe makes: what one making needs, as pairs of item and count, and how many it makes. Null for everything else. */
   readonly recipeOf: readonly (Uint16Array | null)[];
   readonly recipeMakes: Uint16Array;
@@ -143,6 +143,8 @@ const FIST_REACH = 2.2;
 const MELEE_REACH = 2.6;
 /** The longest any timing of a weapon may be, in ticks: what a body's act counter holds. */
 const MAX_ACT_TICKS = 250;
+/** The longest one piece of fuel may burn, or one thing take to cook: thirty days. */
+const MAX_BURN_SECONDS = 30 * 86400;
 
 export const WEAR_SLOTS: readonly string[] = ["head", "torso", "hands", "legs", "feet"];
 
@@ -238,6 +240,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
     } else {
       if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
+      // A fuel burns, and a thing cooks, for some time and not for ever: each at least a tick, and no more than the tables hold.
+      if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
+      if (d.cooks !== undefined) positive(d, "cooks.seconds", d.cooks.seconds, MAX_BURN_SECONDS);
       if (d.spoilHours !== undefined && !(d.spoilHours > 0)) errors.push(`${d.id}: spoilHours must be positive`);
       // Anything that wears, holds rounds or takes an attachment is one thing to a slot.
       if ((d.weapon || d.wear || d.tool) && d.stack !== 1 && d.weapon?.kind !== "thrown") errors.push(`${d.id}: a tool, weapon or worn piece must have stack 1`);
@@ -369,9 +374,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const temper = new Uint8Array(n);
   const sight = new Float32Array(n);
   const leash = new Float32Array(n);
-  const fuelTicks = new Uint16Array(n);
+  const fuelTicks = new Uint32Array(n);
   const cooksInto = new Uint16Array(n);
-  const cookTicks = new Uint16Array(n);
+  const cookTicks = new Uint32Array(n);
   const recipeOf: (Uint16Array | null)[] = new Array(n).fill(null);
   const recipeMakes = new Uint16Array(n);
   const partStart = new Uint32Array(n + 1);
@@ -499,10 +504,11 @@ export function compileContent(input: readonly Def[]): CompileResult {
       doseSeconds[i] = d.dose.seconds;
     }
     if (d.type === "item") {
-      fuelTicks[i] = Math.round((d.fuel ?? 0) * TICK_RATE);
+      // Never so short that it rounds to nothing: a fuel stays a fuel.
+      fuelTicks[i] = d.fuel !== undefined ? Math.max(1, Math.round(d.fuel * TICK_RATE)) : 0;
       if (d.cooks) {
         cooksInto[i] = index.get(d.cooks.into)!;
-        cookTicks[i] = Math.round(d.cooks.seconds * TICK_RATE);
+        cookTicks[i] = Math.max(1, Math.round(d.cooks.seconds * TICK_RATE));
       }
     }
     // The first recipe that makes a thing says what it is made of.

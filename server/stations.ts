@@ -40,7 +40,7 @@ export class Stations {
     this.fixtures = fixtures;
     this.deadlines = deadlines;
     const reg = world.reg;
-    const first = (of: Uint16Array): number => {
+    const first = (of: Uint16Array | Uint32Array): number => {
       const inv = this.rec!.inv!;
       for (let s = 0; s < inv.bag; s++) if (inv.count[s]! > 0 && of[inv.item[s]!] !== 0) return s;
       return -1;

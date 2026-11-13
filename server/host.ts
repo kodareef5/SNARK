@@ -210,7 +210,6 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       creatures.claimed(e);
     }
   } }, (opts.seed ?? 1) + 71);
-  taming.resume();
   // A creature that is somebody's can be looked into by its tribe while it is awake; shut, it may have more to eat than it had.
   death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
   death.onShut = (rec) => taming.meal(rec);
@@ -240,7 +239,6 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const fixtures = new Fixtures(world, records, items);
   fixtures.index();
   const stations = new Stations(world, records, items, fixtures, deadlines);
-  stations.resume();
   const build = new Build({ world, game, records, items, tribes, rules, fixtures, light: (ref) => stations.toggle(ref), spill: (x, y, z, name) => death.spill(x, y, z, name) });
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
@@ -308,8 +306,11 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
         if (e >= 0) persistence!.attach(rec, e);
       }
     }
-    // Whatever was being made goes on being made; eggs wait to hatch, and the young go on growing.
+    // With every body back and its limits known, whatever was under way goes on: what was being made, fires,
+    // creatures lying there being tamed and the meals of those that are somebody's, eggs, and the young.
     for (const rec of records.byPid.values()) progression.resume(rec);
+    stations.resume();
+    taming.resume();
     breeding.resume();
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);

@@ -431,3 +431,23 @@ test("what it does about others is its stance: passive, nothing; neutral, it goe
   expect(mind.targetOf(other.e)).toBe(hunter);
   expect(h.host.items.audit()).toEqual([]);
 });
+
+test("a creature that is somebody's is next due to eat at the same moment after a restart as before it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-meal-"));
+  const dbPath = join(dir, "world.db");
+  const { h, ada, at } = camp({ dbPath });
+  const { rec } = tameNow(h, ada, at, "raptor", 0, 3);
+  // Short of full by less than a piece of meat, with meat in it: it will eat when it is short by a whole piece, hours from now.
+  h.host.survival.add(rec, V_FOOD, 1e6);
+  h.host.survival.add(rec, V_FOOD, -20);
+  h.host.items.mint(rec, id("meat"), 5);
+  h.host.taming.meal(rec);
+  const due = rec.mealDue;
+  expect(due).toBeGreaterThan(h.world.tick + 3600 * TICK_RATE);
+  h.run(1000);
+  h.host.shutdown();
+  const again = new Harness({}, 1, 60, { dev: true, dbPath });
+  expect(again.host.records.byPid.get(rec.pid)!.mealDue).toBe(due);
+  again.host.shutdown();
+  rmSync(dir, { recursive: true, force: true });
+});
