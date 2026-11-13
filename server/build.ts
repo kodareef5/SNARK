@@ -8,18 +8,29 @@
 // place exists, that it is within reach, that what it joins is the builder's
 // tribe's, that a foundation is not left in the air, that nothing built and
 // nobody is in the way. A refusal says which, so the screen can.
+//
+// And what is done to a piece afterwards. Its tribe may take it back into the
+// hands while it is unharmed, take it down for half of what it is made of, or
+// mend it for the part that is missing (shared/world/upkeep.ts has the
+// numbers). What stood on a piece that is taken back or taken down comes back
+// the same way, as the collapse reaches it, and does not break. Anyone may
+// take down what has decayed (server/decay.ts).
 
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { stanceEye } from "../shared/sim/character.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { capsuleKind } from "../shared/world/collide.ts";
 import { BUILD_REACH, ROLE_FOUNDATION, ROLE_PILLAR, freePose, obstructed, poseAt, tooHigh, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
-import { GONE_FELL } from "../shared/world/structures.ts";
+import { GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
+import { ACT_REACH, REPAIR_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_PICKUP, STRUCT_REPAIR, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
+import { TICK_RATE } from "../shared/coords.ts";
+import { Decay } from "./decay.ts";
+import type { Rules } from "./rules.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -47,6 +58,16 @@ export interface BuildContext {
   readonly records: Records;
   readonly items: Items;
   readonly tribes: Tribes;
+  readonly rules: Rules;
+  /** An empty cache at a place, for what comes back and does not fit in the hands. */
+  spill(x: number, y: number, z: number, name: string): EntityRecord;
+}
+
+/** Whoever took a piece back or down, and so is owed what stood on it: who, which of the two, and the cache what did not fit is going into. */
+interface Claim {
+  pid: number;
+  action: number;
+  cache: EntityRecord | null;
 }
 
 export class Build {
@@ -54,6 +75,13 @@ export class Build {
   placed = 0;
   refused = 0;
   fallen = 0;
+  /** Pieces taken back into the hands, taken down, and mended; those counted in the first two that came down with another. */
+  pickedUp = 0;
+  demolished = 0;
+  repaired = 0;
+  returned = 0;
+  /** Which pieces nobody of their tribe has come near for too long. */
+  readonly decay: Decay;
   /** Where the last piece set down is: its ref. */
   last = -1;
   /** What holds what up, asked of the rows: for a piece about to be built. */
@@ -62,6 +90,12 @@ export class Build {
   readonly collapse: Collapse;
   private readonly ctx: BuildContext;
   private readonly pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  /** When each piece was last harmed, and when each was set down: ticks, by ref. Kept only as long as they matter. */
+  private readonly hurtAt = new Map<number, number>();
+  private readonly placedAt = new Map<number, number>();
+  /** Claims on the collapse under way, numbered from 1, and the one a removal being made now is under. */
+  private readonly claims: Claim[] = [];
+  private claim = 0;
 
   constructor(ctx: BuildContext) {
     this.ctx = ctx;
@@ -70,11 +104,39 @@ export class Build {
     const heightAt = (x: number, z: number): number => world.hf.heightAt(x, z);
     this.support = new Support(structs, world.reg, heightAt);
     this.collapse = new Collapse(structs, world.reg, heightAt);
+    this.decay = new Decay(world, ctx.rules);
+    this.decay.lone = (ref) => {
+      this.support.forget();
+      const node = this.support.node(ref);
+      return node !== null && node.root && node.links.length === 0;
+    };
     // Whatever is taken away, by whatever means: what it held may have nothing left to stand on.
     // (What falls is the collapse's own doing, and it knows.)
     structs.onRemove = (ref, cause) => {
-      if (cause !== GONE_FELL) this.collapse.gone(ref);
+      this.hurtAt.delete(ref);
+      this.placedAt.delete(ref);
+      if (cause !== GONE_FELL) this.collapse.gone(ref, this.claim);
     };
+    this.collapse.onClaim = (ref, claim) => {
+      const of = this.claims[claim - 1];
+      const t = structs.chunks[Math.floor(ref / 65536)]!;
+      // Only what is the claimant's tribe's to take: anything else that comes down with it simply falls.
+      if (!of || !ctx.tribes.may(ctx.records.byPid.get(of.pid), t.owner[ref & 0xffff]!)) return false;
+      this.giveBack(of, t.kind[ref & 0xffff]!, t.x[ref & 0xffff]!, t.y[ref & 0xffff]!, t.z[ref & 0xffff]!);
+      this.returned++;
+      return true;
+    };
+  }
+
+  /** Something built was harmed (at tick `at`, now unless said): it cannot be mended for a while. */
+  hurt(ref: number, at = this.ctx.world.tick): void {
+    this.hurtAt.set(ref, at);
+    if (this.hurtAt.size > 8192) this.forget(this.hurtAt, REPAIR_WAIT_TICKS);
+  }
+
+  private forget(times: Map<number, number>, after: number): void {
+    const tick = this.ctx.world.tick;
+    for (const [ref, at] of times) if (tick - at >= after) times.delete(ref);
   }
 
   /** Pieces whose support is still to be looked at. */
@@ -82,9 +144,128 @@ export class Build {
     return this.collapse.pending;
   }
 
-  /** Once a tick: a little more of whatever collapse is under way. */
+  /** Once a tick: a little more of whatever collapse is under way, and now and then who is near what they built. */
   step(): void {
-    if (this.collapse.busy) this.fallen += this.collapse.step(COLLAPSE_WORK, this.ctx.world.tick);
+    const { world, game, records } = this.ctx;
+    if (this.collapse.busy) {
+      const before = this.collapse.fallen;
+      this.collapse.step(COLLAPSE_WORK, world.tick);
+      this.fallen += this.collapse.fallen - before;
+    } else if (this.claims.length > 0) this.claims.length = 0;
+    this.decay.step(world.tick, (visit) => {
+      for (const c of game.clients) {
+        // Those who are here and awake: a body left lying by someone who has gone visits nothing.
+        if (!c?.active || c.closed || c.ent < 0 || c.state !== SESSION_ALIVE) continue;
+        const rec = records.byPid.get(c.pid);
+        if (rec) visit(rec.team, c.chunk);
+      }
+    });
+  }
+
+  /**
+   * A session asks to do something to a thing built: take it back, take it
+   * down, or mend it. Returns a result code.
+   */
+  act(c: Client, r: BitReader): number {
+    const ref = r.u32();
+    const action = r.u8();
+    if (r.overflow) return RESULT_INVALID;
+    const { world, records, items, tribes, rules } = this.ctx;
+    const reg = world.reg;
+    const structs = world.structs;
+    const rec = records.byPid.get(c.pid);
+    if (!rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
+    const t = structs.chunks[Math.floor(ref / 65536)];
+    const slot = ref & 0xffff;
+    if (!t || slot >= t.high || t.kind[slot] === 0) return RESULT_INVALID;
+    const kind = t.kind[slot]!;
+    const x = t.x[slot]!;
+    const y = t.y[slot]!;
+    const z = t.z[slot]!;
+    // Within reach of the eye the server has for this survivor: to the piece's middle, less its size.
+    const e = c.ent;
+    const ents = world.ents;
+    const far = Math.hypot(ents.x[e]! - x, ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!) - y, ents.z[e]! - z);
+    if (far > ACT_REACH + Math.hypot(reg.halfX[kind]!, reg.halfY[kind]!, reg.halfZ[kind]!)) return RESULT_FAR;
+    const mine = tribes.may(rec, t.owner[slot]!);
+    const item = reg.pieceItem[kind]!;
+    const tick = world.tick;
+    if (action === STRUCT_PICKUP) {
+      if (!mine) return RESULT_NOT_YOURS;
+      if (item === 0) return RESULT_INVALID;
+      if (t.hp[slot]! < reg.maxHp[kind]!) return RESULT_DAMAGED;
+      // By rule, only for a while after it was set down.
+      const window = rules.values.pickupSeconds * TICK_RATE;
+      if (window > 0 && !(tick - (this.placedAt.get(ref) ?? -Infinity) <= window)) return RESULT_WAIT;
+      if (items.mint(rec, item, 1) === 0) return RESULT_FULL;
+      this.take(ref, rec, STRUCT_PICKUP);
+      this.pickedUp++;
+      return RESULT_OK;
+    }
+    if (action === STRUCT_DEMOLISH) {
+      // Its tribe's to take down; or anyone's, once it has been left too long.
+      if (!mine && !this.decay.expired(ref, tick)) return RESULT_NOT_YOURS;
+      const of = this.take(ref, rec, STRUCT_DEMOLISH);
+      this.giveBack(of, kind, x, y, z);
+      this.demolished++;
+      return RESULT_OK;
+    }
+    if (action === STRUCT_REPAIR) {
+      if (!mine) return RESULT_NOT_YOURS;
+      if (!repairCostOf(reg, kind, t.hp[slot]!)) return RESULT_INVALID;
+      if (tick - (this.hurtAt.get(ref) ?? -Infinity) < REPAIR_WAIT_TICKS) return RESULT_WAIT;
+      const inv = items.inv(rec);
+      for (let k = 0; k < cost.n; k++) if (inv.total(cost.item[k]!) < cost.count[k]!) return RESULT_SHORT;
+      for (let k = 0; k < cost.n; k++) if (!items.burnItem(rec, cost.item[k]!, cost.count[k]!)) throw new Error("the ingredients were counted");
+      structs.mend(ref, reg.maxHp[kind]!);
+      this.hurtAt.delete(ref);
+      this.repaired++;
+      return RESULT_OK;
+    }
+    return RESULT_INVALID;
+  }
+
+  /** Take a piece away for `rec`, who is then owed whatever comes down because of it. Returns the claim. */
+  private take(ref: number, rec: EntityRecord, action: number): Claim {
+    let n = this.claims.findIndex((q) => q.pid === rec.pid && q.action === action);
+    if (n < 0 && this.claims.length < 65535) n = this.claims.push({ pid: rec.pid, action, cache: null }) - 1;
+    this.claim = n + 1;
+    this.ctx.world.structs.remove(ref, GONE_TAKEN, this.ctx.world.tick);
+    this.claim = 0;
+    return this.claims[n] ?? { pid: rec.pid, action, cache: null };
+  }
+
+  /**
+   * Give whoever holds a claim what a piece of `kind` that stood at (x, y, z)
+   * comes back as: the piece itself if it was taken back, half of what it is
+   * made of if it was taken down. What does not fit in their hands, or has no
+   * hands to go to, lies in a cache where the piece stood.
+   */
+  private giveBack(of: Claim, kind: number, x: number, y: number, z: number): void {
+    const reg = this.ctx.world.reg;
+    const item = reg.pieceItem[kind]!;
+    if (item === 0) return;
+    if (of.action === STRUCT_PICKUP) this.hand(of, item, 1, x, y, z);
+    else if (refundOf(reg, kind)) {
+      // `hand` may ask for another cost before this one is done with: its own copy.
+      const n = cost.n;
+      const items = Array.from(cost.item.subarray(0, n));
+      const counts = Array.from(cost.count.subarray(0, n));
+      for (let k = 0; k < n; k++) this.hand(of, items[k]!, counts[k]!, x, y, z);
+    }
+  }
+
+  private hand(of: Claim, item: number, n: number, x: number, y: number, z: number): void {
+    const { records, items, spill } = this.ctx;
+    const rec = records.byPid.get(of.pid);
+    let left = n;
+    if (rec && !rec.dead && !rec.out && records.entOf.has(rec.pid)) left -= items.mint(rec, item, left);
+    // Whatever did not fit, into the claim's cache; when that is full, into another.
+    for (let tries = 0; left > 0 && tries < 4; tries++) {
+      if (!of.cache || records.byPid.get(of.cache.pid) !== of.cache) of.cache = spill(x, y, z, "building materials");
+      left -= items.mint(of.cache, item, left);
+      if (left > 0) of.cache = null;
+    }
   }
 
   /** Whether a piece at (x, z) would be too near what another team has founded. */
@@ -187,6 +368,12 @@ export class Build {
     // One fewer in the hand.
     items.burn(rec, slot, 1);
     this.last = ref;
+    // Its builder was here just now; and, where a piece may be taken back only for a while, when.
+    this.decay.visit(rec.team, Math.floor(ref / 65536), world.tick);
+    if (this.ctx.rules.values.pickupSeconds > 0) {
+      this.placedAt.set(ref, world.tick);
+      if (this.placedAt.size > 8192) this.forget(this.placedAt, 100 * TICK_RATE);
+    }
     this.collapse.built();
     this.onPlaced?.(rec, ref);
     return RESULT_OK;

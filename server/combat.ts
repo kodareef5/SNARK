@@ -137,6 +137,8 @@ export class Combat {
   onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number) => void) | null = null;
   /** Hits landed on things built, and the last of them: which, how much it took, and what it has left (0: it is gone). */
   structureHits = 0;
+  /** Called with something built that was harmed and still stands. */
+  onStructureHurt: ((ref: number) => void) | null = null;
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
   private readonly refs = new Uint32Array(4096);
   private readonly found: number[] = [];
@@ -619,6 +621,7 @@ export class Combat {
     if (!(harm.health > 0)) return 0;
     const before = t.hp[slot]!;
     const left = structs.damage(ref, harm.health, world.tick);
+    if (left > 0) this.onStructureHurt?.(ref);
     const done = left === 0 ? before : harm.health;
     this.structureHits++;
     this.lastStructure.ref = ref;

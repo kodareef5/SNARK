@@ -113,6 +113,8 @@ export interface MaterialDef {
   readonly type: "material";
   readonly id: string;
   readonly takes: { readonly [T in DamageType]?: number };
+  /** Days before what is made of it, left unvisited by those it belongs to, may be demolished by anyone. Omitted: never. */
+  readonly decayDays?: number;
 }
 
 export interface ItemDef {

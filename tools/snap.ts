@@ -12,6 +12,7 @@
 //   bun run snap -- --house stone             a small house of building pieces, in thatch, wood, stone or metal
 //   bun run snap -- --house wood --falling 450  that house 450 ms after its south-west foundation went and took the rest with it
 //   bun run snap -- --build                   a survivor building: a foundation and a wall set down, a doorframe shown where it would go
+//   bun run snap -- --build --menu            the same survivor asking what can be done to the wall
 //
 // Yaw and pitch are in degrees. Yaw 0 faces +Z (north); positive yaw turns toward +X.
 
@@ -485,6 +486,20 @@ if (import.meta.main) {
       app.controls.yaw = 0.5;
       app.controls.pitch = Math.atan2(-1.62, 5.4);
       run(300);
+      if (args.includes("--menu")) {
+        // Instead: the piece put away, a few steps toward the wall, and the use key held on it.
+        s.command(CMD_SELECT, (wr) => wr.u8(255));
+        app.controls.yaw = 0.25;
+        app.controls.pitch = 0.05;
+        app.key("KeyW", true);
+        run(700);
+        app.key("KeyW", false);
+        run(200);
+        app.key("KeyE", true);
+        run(500);
+        app.key("KeyE", false);
+        run(50);
+      }
       if (args.includes("--third")) app.view.thirdPerson = true;
     });
     const out = resolve(arg("out") ?? "artifacts/build.png");

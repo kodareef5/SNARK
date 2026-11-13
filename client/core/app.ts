@@ -8,7 +8,9 @@ import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CMD_SELECT, MARKER_DEATH, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { ACT_REACH } from "../../shared/world/upkeep.ts";
+import { structName } from "./ui/structure.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls } from "./controls.ts";
@@ -41,6 +43,8 @@ import { Ui } from "./ui/ui.ts";
 
 /** How far a body can reach to use something; the server's REACH. */
 const REACH = 3.5;
+/** How long the use key is held on something built before it means "what can I do to this", in milliseconds. */
+const STRUCT_HOLD_MS = 350;
 /** How far off a survivor's name can be read by looking at it, in metres. */
 const NAME_RANGE = 30;
 /** Bit in replicated entity flags marking a prop: a thing that can be opened. */
@@ -89,6 +93,7 @@ export class App {
     session.onResult = (seq, code) => {
       this.ui.creator.result(seq, code === RESULT_OK);
       this.builder.result(seq, code, this.nowMs);
+      this.ui.structure.result(seq, code, this.nowMs);
     };
   }
 
@@ -96,6 +101,9 @@ export class App {
   readonly builder = new Builder();
   /** The time of the last frame, for keys that are timed. */
   private nowMs = 0;
+  /** When the use key went down, or -1; and the thing built that the look is on, or -1. */
+  private useDownAt = -1;
+  aimed = -1;
 
   /** Whatever carries voice here, if anything does; whether the microphone is wanted; and how loud it is meant. */
   voice: VoicePort | null = null;
@@ -174,6 +182,8 @@ export class App {
       return true;
     }
     if (code === "ShiftLeft" || code === "ShiftRight") this.shift = down;
+    // The use key is the body's; held on something built, it also asks what can be done to that.
+    if (code === "KeyE") this.useDownAt = down ? (repeat ? this.useDownAt : this.nowMs) : -1;
     if (code === "KeyB") {
       // Held to talk; or, if the player has set it so, pressed to switch the microphone on and pressed again to switch it off.
       // With Alt it is a whisper, with Shift a yell.
@@ -264,6 +274,26 @@ export class App {
     if (hit < 0 || r.name[hit] === "" || (r.flags[hit]! & VIEW_FLAG_PROP) !== 0) return "";
     const mine = s.tribe.team !== 0 && r.team[hit] === s.tribe.team;
     return `${r.name[hit]}${mine ? " (tribe)" : ""}  level ${r.level[hit]}`;
+  }
+
+  /**
+   * The thing built that the look is on, within reach of acting on it, or -1;
+   * and what to say of it: its name and how whole it is.
+   */
+  private builtAt(world: CollisionWorld, eye: number): string {
+    const s = this.session;
+    const d = this.aim;
+    this.aimed = -1;
+    lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
+    if (castWorld(world, s.own.x, s.own.y + eye, s.own.z, d[0]!, d[1]!, d[2]!, ACT_REACH) !== HIT_STRUCTURE) return "";
+    const ref = rayHit.ref;
+    const t = world.structs.chunks[Math.floor(ref / 65536)]!;
+    const kind = t.kind[ref & 0xffff]!;
+    // Only what somebody built: the world's own walls are not anyone's to take down.
+    if (this.reg.pieceItem[kind] === 0 || t.owner[ref & 0xffff] === 0) return "";
+    this.aimed = ref;
+    const mine = s.tribe.team !== 0 && t.owner[ref & 0xffff] === s.tribe.team;
+    return `${mine ? "hold E  " : ""}${structName(this.reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${this.reg.maxHp[kind]}`;
   }
 
   /**
@@ -470,7 +500,16 @@ export class App {
       ghost.yaw = b.pose.yaw;
       ghost.color = b.problem === 0 ? GHOST_OK : GHOST_BAD;
     }
-    hud.prompt = !alive ? "" : b.active ? b.notice : this.prompt(world, eyeNow) || this.who(world, eyeNow);
+    // Something built, looked at: named, and with the use key held on it, asked about.
+    const menu = this.ui.structure;
+    menu.tick(nowMs);
+    const built = alive && !b.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = -1), "");
+    if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && this.ui.wantsPointerLock) {
+      menu.begin(this.aimed);
+      this.useDownAt = -1;
+      c.release();
+    }
+    hud.prompt = !alive ? "" : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || this.who(world, eyeNow) || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
     return packet;

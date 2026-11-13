@@ -277,6 +277,19 @@ export class StructureStore {
     return removed;
   }
 
+  /** Set a structure's health (it has been mended). False if there is no such structure. Authority only. */
+  mend(ref: number, hp: number): boolean {
+    const chunk = Math.floor(ref / 65536);
+    const slot = ref & 0xffff;
+    const t = this.chunks[chunk];
+    if (!t || slot >= t.high || t.kind[slot] === 0) return false;
+    t.version++;
+    t.hp[slot] = hp;
+    t.mod[slot] = t.version;
+    this.onChunkChanged?.(chunk);
+    return true;
+  }
+
   /**
    * Take `points` from a structure's health. At none left it is removed.
    * Returns what it has left (0 if it is gone), or -1 if there is no such

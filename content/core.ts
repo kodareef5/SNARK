@@ -192,10 +192,10 @@ export const CORE_CONTENT: readonly Def[] = [
   // What things are built of, and what each kind of damage does to it, as the reference has it. The tiers
   // differ in what can harm them, not in health. Thatch gives to anything but an arrow or a round; wood to
   // fire and blasts; stone to blasts, which do more to it than to wood; metal to blasts, grudgingly.
-  { type: "material", id: "core:mat_thatch", takes: { melee: 1, fire: 4, explosive: 1 } },
-  { type: "material", id: "core:mat_wood", takes: { fire: 3, explosive: 1 } },
-  { type: "material", id: "core:mat_stone", takes: { explosive: 2.3325 } },
-  { type: "material", id: "core:mat_metal", takes: { explosive: 0.3008 } },
+  { type: "material", id: "core:mat_thatch", takes: { melee: 1, fire: 4, explosive: 1 }, decayDays: 4 },
+  { type: "material", id: "core:mat_wood", takes: { fire: 3, explosive: 1 }, decayDays: 8 },
+  { type: "material", id: "core:mat_stone", takes: { explosive: 2.3325 }, decayDays: 12 },
+  { type: "material", id: "core:mat_metal", takes: { explosive: 0.3008 }, decayDays: 16 },
   { type: "structure", id: "core:block", mesh: "box", color: 2, half: [1, 1, 1], hp: 1000, material: "core:mat_stone" },
   { type: "structure", id: "core:crate", mesh: "box", color: 3, half: [0.5, 0.5, 0.5], hp: 200, material: "core:mat_wood" },
   { type: "structure", id: "core:foundation", mesh: "box", color: 4, half: [1.5, 0.15, 1.5], hp: 15000, material: "core:mat_stone" },

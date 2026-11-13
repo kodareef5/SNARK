@@ -138,6 +138,11 @@ export const CMD_CHAT = 17;
  * turned in its place (u8). The server works the position out again itself.
  */
 export const CMD_PLACE = 18;
+/**
+ * Do something to a thing built: which (u32, a ref) and what (u8, a STRUCT_
+ * action of shared/world/upkeep.ts): take it back into the hands, take it
+ * down for half of what it is made of, or mend it.
+ */
 export const CMD_STRUCT = 19;
 export const CMD_ORDER = 20;
 export const CMD_NAME = 21;
@@ -172,6 +177,9 @@ export const RESULT_NO_SUPPORT = 18;
 export const RESULT_ENEMY_NEAR = 19;
 export const RESULT_NOT_YOURS = 20;
 export const RESULT_NO_SNAP = 21;
+/** Why a thing built could not be taken back or mended: it has been harmed; or it is too soon, or too late. */
+export const RESULT_DAMAGED = 22;
+export const RESULT_WAIT = 23;
 
 /** OWN components. */
 export const OWN_SESSION = 1;

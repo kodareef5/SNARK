@@ -183,6 +183,24 @@ export class Death {
     return RESULT_OK;
   }
 
+  /**
+   * An empty cache set down at a place, for things that have nowhere else to
+   * go: what came back from something taken down and did not fit in the
+   * hands. It waits as long as any cache. Whoever asks for it fills it.
+   */
+  spill(x: number, y: number, z: number, name: string): EntityRecord {
+    const { world, records } = this.ctx;
+    const cache = records.create(this.cache, name);
+    const ground = world.hf.heightAt(x, z);
+    cache.x = x;
+    cache.y = ground > y ? ground : y;
+    cache.z = z;
+    cache.expiresAt = world.tick + CACHE_TICKS;
+    records.dirty.add(cache.pid);
+    this.place(cache);
+    return cache;
+  }
+
   /** Put a cache's body in the world (when it is made, and when a save is loaded) and set its clock. */
   place(cache: EntityRecord): void {
     const { world, records, deadlines } = this.ctx;

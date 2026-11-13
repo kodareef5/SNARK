@@ -9,9 +9,11 @@ import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPAWN_PANEL } from "../../client/core/ui/screens.ts";
 import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder } from "../../client/core/ui/character.ts";
+import { KEY_STRUCT_BUTTON, KEY_STRUCT_DETAIL, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
+import { STRUCT_DEMOLISH, STRUCT_PICKUP } from "../../shared/world/upkeep.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
+import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -721,4 +723,53 @@ test("what is said goes to the chat box and what the console printed stays in th
   ui.build(16 / 9, hud, session);
   expect(ui.chat.lines.length).toBe(100);
   expect(rows().at(-1)!.text).toBe("ada: 299");
+});
+
+test("the list of what can be done to a piece fits every window shape, whatever the piece is made of, and its digits and presses send what they say", () => {
+  const world = flatWorld(2);
+  const refs = ["foundation_stone", "wall_metal", "windowframe_wood", "ceiling_thatch"].map((name, i) => world.structs.add(reg.index.get(`core:${name}`)!, 20 + i * 6, 1, 20, 0, 7, 1 + i * 400));
+  for (const [name, aspect] of ASPECTS) {
+    for (const ref of refs) {
+      const { session, sent } = fakeSession(new Inventory(40));
+      Object.assign(session, { sessionState: SESSION_ALIVE, world });
+      const ui = new Ui();
+      ui.registry = reg;
+      ui.structure.begin(ref);
+      ui.build(aspect, fullHud(), session);
+      const f = ui.frame;
+      expect(ui.wantsPointerLock).toBe(false);
+      expect(f.find(KEY_STRUCT_PANEL)).not.toBeNull();
+      for (let i = 0; i < f.count; i++) {
+        const n = f.nodes[i]!;
+        if (n.key < KEY_STRUCT_PANEL || n.key > KEY_STRUCT_DETAIL + 3) continue;
+        const where = `${name} ref=${ref} key=${n.key} "${n.text}"`;
+        expect(n.x, where).toBeGreaterThanOrEqual(-0.01);
+        expect(n.x + n.w, where).toBeLessThanOrEqual(f.width + 0.01);
+        expect(n.y + n.h, where).toBeLessThanOrEqual(f.height + 0.01);
+        // A line of text fits its row; a button's words fit the button, with a little to spare each side.
+        if (n.text !== "") expect(textWidth(n.text, n.style), where).toBeLessThanOrEqual(n.w - (n.kind === K_TEXT ? 0 : 8) + 0.01);
+        for (let j = i + 1; j < f.count; j++) if (n.interactive && f.nodes[j]!.interactive) expect(overlaps(f, i, j), where).toBe(false);
+      }
+      // The third digit takes it down, and the list is put away; a digit with the list away is not the list's.
+      expect(ui.key("Digit3", true, false, session)).toBe(true);
+      expect(sent.map((c) => [c.op, new BitReader(c.bytes).u32(), c.bytes[4]])).toEqual([[CMD_STRUCT, ref, STRUCT_DEMOLISH]]);
+      expect([ui.structure.open, ui.key("Digit3", true, false, session)]).toEqual([false, false]);
+      // A press on the first line asks to take it back.
+      ui.structure.begin(ref);
+      ui.pointer(0, KEY_STRUCT_BUTTON, 0, 0, 0, session);
+      expect(sent[1]!.bytes[4]).toBe(STRUCT_PICKUP);
+      // Another screen puts it away; and if the piece has gone, there is nothing to list.
+      ui.structure.begin(ref);
+      ui.key("KeyM", true, false, session);
+      expect(ui.structure.open).toBe(false);
+    }
+  }
+  const { session } = fakeSession(new Inventory(40));
+  Object.assign(session, { sessionState: SESSION_ALIVE, world });
+  const ui = new Ui();
+  ui.registry = reg;
+  ui.structure.begin(refs[0]!);
+  world.structs.remove(refs[0]!);
+  ui.build(16 / 9, fullHud(), session);
+  expect([ui.structure.open, ui.frame.find(KEY_STRUCT_PANEL)]).toEqual([false, null]);
 });

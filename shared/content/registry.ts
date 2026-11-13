@@ -85,6 +85,13 @@ export interface Registry {
   readonly doorway: Uint8Array;
   /** Per item that is set down as a structure: the structures it may be set down as, the usual one first. Null for everything else. */
   readonly places: readonly (Uint16Array | null)[];
+  /** Per structure: the item that is set down as it (0 if none), its full health, and the days it lasts unvisited (0: for ever). */
+  readonly pieceItem: Uint16Array;
+  readonly maxHp: Float32Array;
+  readonly decayDays: Float32Array;
+  /** Per item a recipe makes: what one making needs, as pairs of item and count, and how many it makes. Null for everything else. */
+  readonly recipeOf: readonly (Uint16Array | null)[];
+  readonly recipeMakes: Uint16Array;
   /** A thrown weapon: metres per second off the hand, ticks until it goes off, and how far its blast reaches. */
   readonly throwSpeed: Float32Array;
   readonly fuseTicks: Uint16Array;
@@ -290,6 +297,11 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const role = new Int8Array(n).fill(-1);
   const doorway = new Uint8Array(n);
   const places: (Uint16Array | null)[] = new Array(n).fill(null);
+  const pieceItem = new Uint16Array(n);
+  const maxHp = new Float32Array(n);
+  const decayDays = new Float32Array(n);
+  const recipeOf: (Uint16Array | null)[] = new Array(n).fill(null);
+  const recipeMakes = new Uint16Array(n);
   const partStart = new Uint32Array(n + 1);
   const partBox: number[] = [];
   const throwSpeed = new Float32Array(n);
@@ -313,9 +325,11 @@ export function compileContent(input: readonly Def[]): CompileResult {
         if (shape.doorway) doorway[i] = 1;
         for (const b of shape.boxes) partBox.push(b.at[0], b.at[1], b.at[2], b.half[0], b.half[1], b.half[2]);
       } else partBox.push(0, 0, 0, d.half[0], d.half[1], d.half[2]);
+      if (d.type === "structure") maxHp[i] = d.hp;
       if (d.type === "structure" && d.material !== undefined) {
         const m = materials.get(d.material)!;
         structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
+        decayDays[i] = m.decayDays ?? 0;
       }
       if (d.type === "node") {
         nodeHits[i] = d.hits;
@@ -370,9 +384,18 @@ export function compileContent(input: readonly Def[]): CompileResult {
   // What an item is set down as, now that every definition has its number.
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
-    if (d.type === "item" && d.places) places[i] = Uint16Array.from(d.places, (id) => index.get(id)!);
+    if (d.type === "item" && d.places) {
+      places[i] = Uint16Array.from(d.places, (id) => index.get(id)!);
+      // Every form of the piece comes back as the one item.
+      for (const s of places[i]!) if (pieceItem[s] === 0) pieceItem[s] = i;
+    }
+    // The first recipe that makes a thing says what it is made of.
+    if (d.type === "recipe" && recipeOf[index.get(d.makes)!] === null) {
+      recipeOf[index.get(d.makes)!] = Uint16Array.from(d.needs.flatMap((need) => [index.get(need.item)!, need.count]));
+      recipeMakes[index.get(d.makes)!] = d.count;
+    }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

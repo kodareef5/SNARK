@@ -16,6 +16,7 @@ import { UiFrame } from "./nodes.ts";
 import { buildMap, buildRespawn, respawnClick } from "./screens.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsClick } from "./settings.ts";
+import { StructMenu } from "./structure.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 
 /** The keys that open the chat box, and the channel each opens it on. */
@@ -28,6 +29,8 @@ export class Ui {
   readonly inventory = new InventoryScreen();
   readonly creator = new CreatorScreen();
   readonly sheet = new CharacterScreen();
+  /** What can be done to the thing built that is being looked at. */
+  readonly structure = new StructMenu();
   /** The session has no survivor yet and is making one: the creator is the whole interface. */
   creating = false;
   /** The full map is up. */
@@ -50,7 +53,7 @@ export class Ui {
 
   /** The mouse should steer the camera (the shell holds pointer lock) rather than move a cursor. */
   get wantsPointerLock(): boolean {
-    return !this.console.open && !this.chat.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.dead && !this.creating;
+    return !this.console.open && !this.chat.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.dead && !this.creating && !this.structure.open;
   }
 
   /**
@@ -76,6 +79,8 @@ export class Ui {
       return true;
     }
     if (!con.open) {
+      // The list of what can be done to a piece takes its three digits and Escape, and goes away for any other screen.
+      if (this.structure.key(code, down, repeat, session)) return true;
       // Chat: Enter to everyone, Insert to those near, the slash key to the tribe. Not while a survivor is still being made.
       if (CHAT_KEYS[code] !== undefined && !this.creating) {
         if (down && !repeat) chat.begin(CHAT_KEYS[code]!, session);
@@ -84,6 +89,7 @@ export class Ui {
       // Screens leave the keyboard to the body: you can keep walking with them open.
       if (code === "KeyI" || code === "KeyM" || code === "KeyP" || code === "KeyO" || (code === "Escape" && (this.inventory.open || this.map || this.character || this.options))) {
         if (down && !repeat) {
+          this.structure.close();
           // One screen at a time: opening one puts the others away.
           const map = code === "KeyM" && !this.map;
           const character = code === "KeyP" && !this.character;
@@ -140,6 +146,7 @@ export class Ui {
       return;
     }
     if (kind === 0 && respawnClick(key, session)) return;
+    if (kind === 0 && this.structure.click(key, session)) return;
     if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
@@ -170,13 +177,17 @@ export class Ui {
     // The console covers whatever screen is up, and the chat box takes the keyboard from it; that screen
     // waits underneath, undrawn, so nothing clickable hides behind either.
     this.dead = session?.sessionState === SESSION_DEAD;
+    if (this.dead || this.creating) this.structure.close();
     if (!this.console.open && !this.chat.open) {
       if (this.creating && session) this.creator.build(f, this.palette, session.name);
       else if (this.dead && session) buildRespawn(f, session);
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);
-      else this.inventory.build(f, session, this.registry, this.palette);
+      else {
+        this.inventory.build(f, session, this.registry, this.palette);
+        if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
+      }
     }
     if (session) this.console.absorb(session);
     this.console.build(f);

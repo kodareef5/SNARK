@@ -2,7 +2,7 @@
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_PLACE, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -123,6 +123,9 @@ export interface Host {
   shutdown(): void;
 }
 
+/** How often the clocks of decay are saved: once a minute, in ticks. */
+const DECAY_SAVE_TICKS = 1800;
+
 export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, opts.store) : null;
   // A save supplies its own structures; only a new world gets the proving ground's.
@@ -171,7 +174,9 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const tribes = new Tribes(world, records);
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const chat = new Chat({ game, records, rules, tribes });
-  const build = new Build({ world, game, records, items, tribes });
+  const build = new Build({ world, game, records, items, tribes, rules, spill: (x, y, z, name) => death.spill(x, y, z, name) });
+  if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
+  combat.onStructureHurt = (ref) => build.hurt(ref);
   const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.values.globalVoice !== 0 }, (out) => void crypto.getRandomValues(out));
   /** The session a survivor has here now, lingering bodies not counted. */
   const sessionOf = (pid: number) => game.clients.find((c) => c?.active && !c.closed && c.pid === pid) ?? null;
@@ -345,6 +350,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     creatures.step(tick);
     build.step();
     voice.step(tick);
+    // Who was last near what: saved now and then, not with every step somebody takes.
+    if (persistence && build.decay.dirty && tick % DECAY_SAVE_TICKS === 0) persistence.store.setMeta("decay", build.decay.serialize());
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };
   game.onLand = (c, speed) => {
@@ -449,11 +456,13 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       if (!persistence) return;
       // Every body still in the world is saved where it stands.
       for (const c of game.clients) if (c?.active && c.ent >= 0) records.dirty.add(c.pid);
+      if (build.decay.dirty) persistence.store.setMeta("decay", build.decay.serialize());
       persistence.commit();
       persistence.store.close();
     },
   };
   game.handle(CMD_PLACE, (c, r) => build.place(c, r));
+  game.handle(CMD_STRUCT, (c, r) => build.act(c, r));
   game.handle(CMD_CHAT, (c, r) => {
     const channel = r.bits(3);
     const words = r.string(MAX_TEXT_BYTES);
