@@ -1,0 +1,47 @@
+# Operating system and editor output
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Dependencies, build output, and caches
+node_modules/
+dist/
+build/
+.cache/
+*.tsbuildinfo
+
+# Secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local world state and SQLite sidecars
+/var/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Test output and local diagnostics
+coverage/
+playwright-report/
+test-results/
+artifacts/
+*.log
+*.cpuprofile
+*.heapprofile
+
+# Local agent state is not project documentation
+AGENTS.md
+agents.md
+AGENT.md
+agent.md
+MEMORY.md
+memory.md
+.codex/
+.claude/
