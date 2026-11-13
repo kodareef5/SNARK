@@ -148,7 +148,21 @@ export const CMD_PLACE = 18;
  * by a PIN (u16: 0 to 9999, or 0xffff for none).
  */
 export const CMD_STRUCT = 19;
+/**
+ * Tell a creature of one's tribe what to do: which (its entity index, u32, or
+ * 0xffffffff for every one within a whistle's reach) and what (u8): stay,
+ * follow me, be passive, neutral or aggressive; or 16 plus a stat, to put one
+ * of its unspent levels there.
+ */
 export const CMD_ORDER = 20;
+export const ORDER_STAY = 0;
+export const ORDER_FOLLOW = 1;
+export const ORDER_STANCE = 2;
+export const ORDER_LEVEL = 16;
+/** In an order, the creature that means every one near. */
+export const ORDER_ALL = 0xffffffff;
+/** How far a whistle carries: metres. */
+export const WHISTLE_RANGE = 40;
 /** Name a creature of one's tribe: which (its entity handle, u32) and what (a string of at most 24 bytes). */
 export const CMD_NAME = 21;
 /** Feed the creature whose inventory is open something out of that inventory: its slot (varint) and what the client believes is there (u16). */
@@ -245,7 +259,9 @@ export const OWN_VOICE = 13;
  * SUBJECT: the creature whose inventory the session has open. Present 1 bit;
  * then whether it is being tamed and whether it is somebody's (1 bit each),
  * its level (u16), how far its taming has got and how well, and its torpor
- * and food as shares of their most: each in thousandths, 10 bits.
+ * and food as shares of their most: each in thousandths, 10 bits. Then which
+ * it is (its entity index, u32), the levels it has to spend (u8), its stance
+ * (2 bits) and whether it is following someone (1 bit).
  */
 export const OWN_SUBJECT = 14;
 

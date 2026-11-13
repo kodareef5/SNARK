@@ -95,6 +95,14 @@ export class EntityRecord {
    */
   tame: { affinity: number; sum: number; by: number; seen: number; due: number } | null = null;
   te = 0;
+  /**
+   * For a creature that is somebody's: what it does about others (a STANCE_
+   * of server/behavior.ts), whom it follows (a persistent id; 0: it stays),
+   * and the tick it is next due to eat of what it carries (0: nothing set).
+   */
+  stance = 1;
+  follow = 0;
+  mealDue = 0;
   /** For a bed: the tick from which someone may next return to life at it. */
   readyAt = 0;
   /** For a fire that is burning: how far it has been worked out (shared/sim/station.ts), and the tick it is next due to be looked at. Null when it is out. */

@@ -59,6 +59,10 @@ export class Death {
    * to use, or -1 if it was not.
    */
   onUseBuilt: ((c: Client, ref: number) => number) | null = null;
+  /** Whether a session may look into a creature that is awake: one of its tribe's. Given by whoever knows whose things are whose. */
+  canOpen: ((c: Client, rec: EntityRecord) => boolean) | null = null;
+  /** Called when a session shuts what it had open, with that record. */
+  onShut: ((rec: EntityRecord) => void) | null = null;
   /** The structure the last look met, or -1: set by `target`. */
   private struck = -1;
   private readonly ctx: DeathContext;
@@ -242,7 +246,9 @@ export class Death {
   }
 
   close(c: Client): void {
+    const was = c.open !== 0 ? this.ctx.records.byPid.get(c.open) : undefined;
     c.open = 0;
+    if (was) this.onShut?.(was);
   }
 
   /**
@@ -266,7 +272,7 @@ export class Death {
         } else if (!box || e === undefined || c.ent < 0) this.close(c);
         else if ((ents.flags[e]! & F_PROP) !== 0 && items.inv(box).used() === 0) this.remove(box);
         // A creature that has come round is not to be rummaged in.
-        else if ((ents.flags[e]! & F_PROP) === 0 && !box.out) this.close(c);
+        else if ((ents.flags[e]! & F_PROP) === 0 && !box.out && !(this.canOpen?.(c, box) ?? false)) this.close(c);
         else {
           const dx = ents.x[e]! - ents.x[c.ent]!;
           const dy = ents.y[e]! - ents.y[c.ent]!;
@@ -320,7 +326,7 @@ export class Death {
     const hit = this.target(c, REACH);
     // A cache or a bag; or a creature lying unconscious, which can be looked into where it lies.
     const there = hit >= 0 ? this.ctx.records.byPid.get(ents.pid[hit]!) : undefined;
-    const pid = hit >= 0 && ((ents.flags[hit]! & F_PROP) !== 0 || (there !== undefined && there.out && there.keyHash === null)) ? ents.pid[hit]! : 0;
+    const pid = hit >= 0 && ((ents.flags[hit]! & F_PROP) !== 0 || (there !== undefined && there.keyHash === null && (there.out || (this.canOpen?.(c, there) ?? false)))) ? ents.pid[hit]! : 0;
     const box = pid !== 0 ? there : undefined;
     if (box && c.open !== pid) {
       c.open = pid;

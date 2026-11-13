@@ -5,11 +5,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
-import { MIND_WANDER } from "../../server/behavior.ts";
+import { MIND_HUNT, MIND_WANDER, STANCE_AGGRESSIVE, STANCE_NEUTRAL, STANCE_PASSIVE } from "../../server/behavior.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_FEED, CMD_MOVE, CMD_NAME, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK } from "../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_FEED, CMD_MOVE, CMD_NAME, CMD_ORDER, ORDER_ALL, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { V_FOOD, V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -253,5 +253,181 @@ test("a narcotic keeps it under, one after another; harm costs how well it is do
   h.run(1000);
   expect([taming.tamed, p.rec.team, p.rec.out, h.host.items.inv(p.rec).total(id("berry"))]).toEqual([1, me.team, false, 3]);
   expect(survival.value(p.rec, V_FOOD)).toBeGreaterThan(food + 15);
+  expect(h.host.items.audit()).toEqual([]);
+});
+
+/** Tame a creature for `s` at once: knocked out, hungry, with one piece of what it likes in it, and looked into. Taming is made fast enough for one piece to do. */
+function tameNow(h: Harness, s: ClientSession, at: { x: number; z: number }, species: string, dx: number, far: number): { e: number; rec: EntityRecord } {
+  h.say(s, "rule tamingSpeed 60");
+  const made = knockOut(h, { x: at.x + dx, z: at.z }, species, far, 1);
+  h.host.survival.add(made.rec, V_FOOD, -80);
+  h.host.items.mint(made.rec, id(species === "parasaur" ? "berry" : "meat"), 1);
+  h.host.creatures.mind.stay(made.e, 0);
+  const me = h.host.records.byPid.get(h.client(s)!.pid)!;
+  made.rec.tame!.by = me.pid;
+  h.run(500);
+  expect([made.rec.team, made.rec.out]).toEqual([me.team, false]);
+  return made;
+}
+
+test("a creature that is somebody's follows and stays, by word or by whistle, for its tribe and nobody else; it is looked into awake, eats of what it carries, and takes levels", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-own-"));
+  const dbPath = join(dir, "world.db");
+  let { h, ada, at, rec: me } = camp({ dbPath });
+  const bob = h.join("bob");
+  h.run(500);
+  h.say(bob, "enablecheats");
+  h.say(bob, `tp ${(at.x + 3).toFixed(3)} ${(at.z - 2).toFixed(3)}`);
+  const raptor = tameNow(h, ada, at, "raptor", 0, 3);
+  const para = tameNow(h, ada, at, "parasaur", 8, 4);
+  const far = tameNow(h, ada, at, "raptor", 0, 3);
+  let ents = h.world.ents;
+  let mind = h.host.creatures.mind;
+  expect([mind.owned.has(raptor.e), mind.owned.has(para.e), mind.stance[raptor.e], mind.leader[raptor.e]]).toEqual([true, true, STANCE_NEUTRAL, -1]);
+  // (The third is taken off beyond a whistle's reach.)
+  ents.x[far.e] = at.x + 60;
+  ents.z[far.e] = at.z + 20;
+  const order = (s: ClientSession, which: number, what: number): number => {
+    let code = -1;
+    s.onResult = (seq, c) => void (seq !== 0 && (code = c));
+    s.command(CMD_ORDER, (w: BitWriter) => (w.u32(which >>> 0), w.u8(what)));
+    h.run(150);
+    return code;
+  };
+  const gap = (e: number, s: ClientSession): number => Math.hypot(ents.x[e]! - ents.x[h.ent(s)]!, ents.z[e]! - ents.z[h.ent(s)]!);
+  // Told to follow, it comes after her wherever she goes and stops a few steps off; the other stays where it is.
+  expect(order(ada, raptor.e, ORDER_FOLLOW)).toBe(RESULT_OK);
+  const stood = [ents.x[para.e]!, ents.z[para.e]!];
+  h.say(ada, `tp ${(at.x - 14).toFixed(3)} ${(at.z + 14).toFixed(3)}`);
+  h.run(6000);
+  expect(gap(raptor.e, ada)).toBeLessThan(4.2);
+  expect(gap(raptor.e, ada)).toBeGreaterThan(1.5);
+  expect([ents.x[para.e], ents.z[para.e], raptor.rec.follow, mind.leader[raptor.e]]).toEqual([...stood, me.pid, h.ent(ada)]);
+  // Told to stay, it stays when she goes.
+  expect(order(ada, raptor.e, ORDER_STAY)).toBe(RESULT_OK);
+  const left = [ents.x[raptor.e]!, ents.z[raptor.e]!];
+  h.say(ada, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
+  h.run(3000);
+  expect([Math.hypot(ents.x[raptor.e]! - left[0]!, ents.z[raptor.e]! - left[1]!) < 0.5, raptor.rec.follow]).toEqual([true, 0]);
+  // A whistle: every one of hers that hears it comes; the one sixty metres off does not hear.
+  expect(order(ada, ORDER_ALL, ORDER_FOLLOW)).toBe(RESULT_OK);
+  h.run(7000);
+  expect([gap(raptor.e, ada) < 4.2, gap(para.e, ada) < 5.5, far.rec.follow, mind.leader[far.e]]).toEqual([true, true, 0, -1]);
+  expect(order(ada, ORDER_ALL, ORDER_STAY)).toBe(RESULT_OK);
+  expect([raptor.rec.follow, para.rec.follow]).toEqual([0, 0]);
+  // Not another tribe's to order, by word or by whistle; nor is a survivor a creature to be ordered, nor nonsense an order.
+  expect([order(bob, raptor.e, ORDER_FOLLOW), order(bob, ORDER_ALL, ORDER_FOLLOW), raptor.rec.follow]).toEqual([RESULT_NOT_YOURS, RESULT_OK, 0]);
+  expect([order(ada, h.ent(bob), ORDER_FOLLOW), order(ada, raptor.e, 9), order(ada, far.e, ORDER_FOLLOW)]).toEqual([RESULT_INVALID, RESULT_INVALID, RESULT_FAR]);
+
+  // Awake, it is looked into by its tribe and not by a stranger. She is shown whose it is, which it is, and what it is doing.
+  press(h, bob, raptor.e);
+  expect(bob.open).toBeNull();
+  press(h, ada, raptor.e);
+  expect([ada.open !== null, ada.subject?.owned, ada.subject?.taming, ada.subject?.id, ada.subject?.stance, ada.subject?.following, ada.subject?.points]).toEqual([true, true, false, raptor.e, STANCE_NEUTRAL, false, 0]);
+  // Meat put in it, and it is hungry: shut, it eats a piece, at once and then as it hungers.
+  h.host.survival.add(raptor.rec, V_FOOD, -120);
+  give(h, ada, "meat", 6, 0);
+  const food = h.host.survival.value(raptor.rec, V_FOOD);
+  // (A piece is fifty: as many as it is short of full by.)
+  const pieces = Math.floor((raptor.rec.vitals!.max[V_FOOD]! / 1e6 - food) / 50);
+  expect(pieces).toBeGreaterThanOrEqual(2);
+  expect(h.host.taming.meals).toBe(0);
+  ada.command(CMD_CLOSE);
+  h.run(500);
+  expect([h.host.taming.meals, h.host.items.inv(raptor.rec).total(id("meat"))]).toEqual([pieces, 6 - pieces]);
+  expect(h.host.survival.value(raptor.rec, V_FOOD) - food).toBeGreaterThan(50 * pieces - 5);
+  // The next when it is hungry enough again: not for a long while.
+  expect(raptor.rec.mealDue).toBeGreaterThan(h.world.tick + 30 * TICK_RATE);
+
+  // It has earned levels: one is put into its health, which grows by what a tamed point is worth; none into what takes none; and then it has none.
+  h.host.progression.addXp(raptor.rec, 40);
+  const points = h.host.progression.statPoints(raptor.rec);
+  expect(points).toBeGreaterThan(0);
+  const most = raptor.rec.vitals!.max[V_HEALTH]!;
+  expect([order(ada, raptor.e, ORDER_LEVEL + 0), order(ada, raptor.e, ORDER_LEVEL + 8)]).toEqual([RESULT_OK, RESULT_INVALID]);
+  expect([raptor.rec.genome!.tamed[0], h.host.progression.statPoints(raptor.rec)]).toEqual([1, points - 1]);
+  expect(raptor.rec.vitals!.max[V_HEALTH]! / most).toBeCloseTo(1.054, 3);
+  for (let k = 1; k < points; k++) order(ada, raptor.e, ORDER_LEVEL + 6);
+  expect(order(ada, raptor.e, ORDER_LEVEL + 6)).toBe(RESULT_SHORT);
+
+  // Its stance and whom it follows are part of the world.
+  expect([order(ada, raptor.e, ORDER_STANCE + STANCE_AGGRESSIVE), order(ada, raptor.e, ORDER_FOLLOW)]).toEqual([RESULT_OK, RESULT_OK]);
+  const pid = raptor.rec.pid;
+  h.host.shutdown();
+  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  ents = h.world.ents;
+  mind = h.host.creatures.mind;
+  const again = h.host.records.byPid.get(pid)!;
+  const e2 = h.host.records.entOf.get(pid)!;
+  expect([again.stance, again.follow, again.team, again.genome!.tamed[0], again.name]).toEqual([STANCE_AGGRESSIVE, me.pid, me.team, 1, ""]);
+  // She comes back: it is hers, aggressive, and follows her again.
+  ada = h.join("ada");
+  h.run(2500);
+  expect([mind.owned.has(e2), mind.stance[e2], mind.leader[e2]]).toEqual([true, STANCE_AGGRESSIVE, h.ent(ada)]);
+  expect(h.host.items.audit()).toEqual([]);
+  h.host.shutdown();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("what it does about others is its stance: passive, nothing; neutral, it goes for what hurts it or its tribe; aggressive, for any wild thing it sees; and a wild hunter goes for it", () => {
+  const { h, ada, at, rec: me } = camp();
+  const ents = h.world.ents;
+  const mind = h.host.creatures.mind;
+  const mine = tameNow(h, ada, at, "raptor", 0, 3);
+  let code = -1;
+  ada.onResult = (seq, c) => void (seq !== 0 && (code = c));
+  const stance = (which: number): void => {
+    ada.command(CMD_ORDER, (w: BitWriter) => (w.u32(mine.e), w.u8(ORDER_STANCE + which)));
+    h.run(150);
+    expect(code).toBe(RESULT_OK);
+  };
+  // Neutral, with a wild parasaur grazing ten metres off and its own tribe all round it: it goes for nothing.
+  const grazer = h.host.spawnCreature("core:parasaur", at.x + 10, at.z + 6, 1);
+  mind.stay(grazer, h.world.tick + 3000);
+  h.run(2500);
+  expect([mind.mind[mine.e], mind.targetOf(mine.e)]).toEqual([MIND_WANDER, -1]);
+  // Passive, something hurts it: it does nothing about it.
+  stance(STANCE_PASSIVE);
+  h.host.creatures.provoke(mine.e, ents.x[grazer]!, ents.z[grazer]!, grazer);
+  h.run(1000);
+  expect(mind.targetOf(mine.e)).toBe(-1);
+  // Neutral, the same: it goes for what did it. Made passive in the middle of that, it lets go.
+  stance(STANCE_NEUTRAL);
+  h.host.creatures.provoke(mine.e, ents.x[grazer]!, ents.z[grazer]!, grazer);
+  expect([mind.mind[mine.e], mind.targetOf(mine.e)]).toEqual([MIND_HUNT, grazer]);
+  stance(STANCE_PASSIVE);
+  expect(mind.targetOf(mine.e)).toBe(-1);
+  // Neutral, and she is the one hurt, by something wild near it: it comes to her help. Hurt by one of her own, it does nothing.
+  stance(STANCE_NEUTRAL);
+  h.host.creatures.provoke(h.ent(ada), ents.x[grazer]!, ents.z[grazer]!, grazer);
+  expect(mind.targetOf(mine.e)).toBe(grazer);
+  stance(STANCE_PASSIVE);
+  stance(STANCE_NEUTRAL);
+  const other = tameNow(h, ada, at, "parasaur", -9, 4);
+  h.host.creatures.provoke(h.ent(ada), ents.x[other.e]!, ents.z[other.e]!, other.e);
+  h.host.creatures.provoke(mine.e, ents.x[h.ent(ada)]!, ents.z[h.ent(ada)]!, h.ent(ada));
+  expect(mind.targetOf(mine.e)).toBe(-1);
+
+  // Aggressive: it sees the wild one and goes for it, never her or the other of hers; it kills it, and what it earned by that is its own.
+  expect(mine.rec.xp).toBe(0);
+  stance(STANCE_AGGRESSIVE);
+  h.run(1500);
+  expect([mind.mind[mine.e], mind.targetOf(mine.e)]).toEqual([MIND_HUNT, grazer]);
+  const wild = h.host.records.byPid.get(ents.pid[grazer]!)!;
+  for (let k = 0; k < 120 && h.host.records.byPid.has(wild.pid); k++) h.run(500);
+  expect(h.host.records.byPid.has(wild.pid)).toBe(false);
+  expect(mine.rec.xp).toBeGreaterThan(0);
+  expect([h.host.records.byPid.has(other.rec.pid), h.host.survival.value(other.rec, V_HEALTH) > 150, me.dead]).toEqual([true, true, false]);
+
+  // A wild raptor, with her out of its sight: it goes for the parasaur that is hers. That one is neutral: hurt, it turns on it.
+  h.say(ada, `tp ${ents.x[mine.e]!.toFixed(3)} ${(ents.z[mine.e]! - 3).toFixed(3)}`);
+  stance(STANCE_PASSIVE);
+  h.say(ada, `tp ${(at.x + 80).toFixed(3)} ${(at.z + 8).toFixed(3)}`);
+  ents.x[mine.e] = at.x + 85;
+  const hunter = h.host.spawnCreature("core:raptor", ents.x[other.e]! + 9, ents.z[other.e]! + 2, 1);
+  h.run(1200);
+  expect([mind.mind[hunter], mind.targetOf(hunter)]).toEqual([MIND_HUNT, other.e]);
+  for (let k = 0; k < 20 && mind.targetOf(other.e) !== hunter; k++) h.run(500);
+  expect(mind.targetOf(other.e)).toBe(hunter);
   expect(h.host.items.audit()).toEqual([]);
 });

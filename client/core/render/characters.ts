@@ -157,6 +157,11 @@ export class Characters {
     return this.kinds[kind] != null || this.creatures[kind] != null;
   }
 
+  /** Whether a body of this kind is a survivor's shape: on the humanoid skeleton. */
+  human(kind: number): boolean {
+    return this.kinds[kind] != null;
+  }
+
   /** How far from where it stands any part of a body of this kind may be: for deciding whether it is in view. */
   reach(kind: number): number {
     return this.creatures[kind]?.rig.reach ?? BODY_RADIUS;

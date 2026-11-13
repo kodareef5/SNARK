@@ -2,7 +2,7 @@
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -194,12 +194,18 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const tribes = new Tribes(world, records);
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   // Taming: what a creature lying unconscious is given, and whose it becomes.
-  const taming = new Taming({ world, game, records, items, survival, buffs, rules, tribes, deadlines, openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
+  const taming = new Taming({ world, game, records, items, survival, buffs, rules, tribes, deadlines, creatures, progression, openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     // Somebody's now: until it is told otherwise it stands where it woke.
-    if (e !== undefined) creatures.mind.stay(e, 0xffffffff);
+    if (e !== undefined) {
+      creatures.mind.stay(e, 0xffffffff);
+      creatures.claimed(e);
+    }
   } }, (opts.seed ?? 1) + 71);
   taming.resume();
+  // A creature that is somebody's can be looked into by its tribe while it is awake; shut, it may have more to eat than it had.
+  death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
+  death.onShut = (rec) => taming.meal(rec);
   combat.onHarm = (victim, points) => taming.harmed(victim, points);
   const chat = new Chat({ game, records, rules, tribes });
   // What has state among the things built: found again among the records that were loaded.
@@ -543,6 +549,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   game.handle(CMD_PLACE, (c, r) => build.place(c, r));
   game.handle(CMD_STRUCT, (c, r) => build.act(c, r));
   game.handle(CMD_FEED, (c, r) => taming.feed(c, r));
+  game.handle(CMD_ORDER, (c, r) => taming.order(c, r));
   game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
   game.handle(CMD_CHAT, (c, r) => {
     const channel = r.bits(3);

@@ -14,7 +14,7 @@
 
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_USE } from "../../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, CMD_USE } from "../../../shared/net/protocol.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, type Inventory } from "../../../shared/sim/items.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
@@ -37,6 +37,16 @@ export const KEY_OPEN_SLOT = 600;
 export const KEY_OPEN_PAGE = 296;
 /** The line that says how the creature looked into is. */
 export const KEY_OPEN_SUBJECT = 299;
+/**
+ * For a creature of one's own: a button that tells it to follow or to stay,
+ * one that changes its stance, and one for each stat a level can be put in
+ * (when it has levels to spend).
+ */
+export const KEY_OPEN_ORDER = 270;
+export const KEY_OPEN_LEVEL = 272;
+/** The stats a creature's levels go in, and what each button is marked with. */
+const LEVEL_STATS: readonly [stat: number, mark: string][] = [[0, "health"], [1, "stam"], [2, "oxy"], [3, "food"], [5, "weight"], [6, "melee"], [7, "speed"]];
+const STANCE_WORDS: readonly string[] = ["passive", "neutral", "aggressive"];
 /** Rows of the open container shown at once. */
 const OPEN_ROWS = 6;
 /** Labels of the hotbar and armor rows, and the four buttons that act on the picked-up stack. */
@@ -102,6 +112,13 @@ export class InventoryScreen {
     if (kind === 2) {
       this.hoverBox = box;
       this.hover = slot;
+      return;
+    }
+    const subject = session.subject;
+    if (kind === 0 && subject?.owned && subject.id >= 0 && key >= KEY_OPEN_ORDER && key < KEY_OPEN_LEVEL + LEVEL_STATS.length) {
+      // What a creature of one's own is told: follow or stay, the next stance round, or a level into a stat.
+      const what = key === KEY_OPEN_ORDER ? (subject.following ? ORDER_STAY : ORDER_FOLLOW) : key === KEY_OPEN_ORDER + 1 ? ORDER_STANCE + ((subject.stance + 1) % STANCE_WORDS.length) : ORDER_LEVEL + LEVEL_STATS[key - KEY_OPEN_LEVEL]![0];
+      session.command(CMD_ORDER, (w) => (w.u32(subject.id), w.u8(what)));
       return;
     }
     if (kind === 0 && (key === KEY_OPEN_PAGE || key === KEY_OPEN_PAGE + 2)) {
@@ -196,7 +213,9 @@ export class InventoryScreen {
     const onPage = other ? Math.min(this.pageSize, other.bag - this.page * this.pageSize) : 0;
     // A creature looked into has a line of its own under its name: how its taming goes, or how it is.
     const subject = other ? session.subject : null;
-    const subjectH = subject ? infoH + 2 : 0;
+    // One's own has a row of buttons under that, and another when it has levels to spend.
+    const orderH = subject?.owned ? 28 + (subject.points > 0 ? 28 : 0) : 0;
+    const subjectH = subject ? infoH + 2 + orderH : 0;
     const otherH = other ? titleH + subjectH + rows(this.pages > 1 ? this.pageSize : other.bag) + PAD * 2 : 0;
     const x0 = Math.round((f.width - w) / 2);
     let y = Math.max(4, Math.round((f.height - ownH - otherH - (other ? 8 : 0)) / 2));
@@ -247,6 +266,24 @@ export class InventoryScreen {
         const pct = (v: number): string => `${Math.round(v * 100)}%`;
         const line = subject.taming ? `taming ${pct(subject.progress)}  well ${pct(subject.te)}  torpor ${pct(subject.torpor)}  food ${pct(subject.food)}` : `level ${subject.level}  torpor ${pct(subject.torpor)}  food ${pct(subject.food)}`;
         f.text(KEY_OPEN_SUBJECT, x0 + PAD, y + PAD + titleH, w - PAD * 2, S_LABEL, line.slice(0, Math.floor((w - PAD * 2) / 7.2)));
+        if (subject.owned) {
+          const top = y + PAD + titleH + infoH + 2;
+          const half = (w - PAD * 2 - GAP) / 2;
+          for (const [n, label] of [[0, subject.following ? "Stay here" : "Follow me"], [1, `It is ${STANCE_WORDS[subject.stance] ?? "neutral"}`]] as const) {
+            const b = f.add(KEY_OPEN_ORDER + n, K_BUTTON, x0 + PAD + n * (half + GAP), top, half, 24, S_BUTTON);
+            b.text = label;
+            b.interactive = true;
+          }
+          if (subject.points > 0) {
+            // A level for each press, into the stat pressed, while it has any.
+            const each = (w - PAD * 2 - GAP * (LEVEL_STATS.length - 1)) / LEVEL_STATS.length;
+            LEVEL_STATS.forEach(([, mark], n) => {
+              const b = f.add(KEY_OPEN_LEVEL + n, K_BUTTON, x0 + PAD + n * (each + GAP), top + 28, each, 24, S_BUTTON);
+              b.text = `+${mark}`.slice(0, Math.max(2, Math.floor((each - 6) / 8.4)));
+              b.interactive = true;
+            });
+          }
+        }
       }
       grid(other, BOX_OPEN, KEY_OPEN_SLOT, y + PAD + titleH + subjectH + 4, this.page * this.pageSize, onPage);
       y += otherH + 8;

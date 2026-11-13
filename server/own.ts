@@ -213,7 +213,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
       c.sentSubject = -1;
     }
   } else if (ctx.world.tick - c.sentSubjectAt >= 6) {
-    const q = [subject.taming ? 1 : 0, subject.owned ? 1 : 0, subject.level, Math.round(subject.progress * 1000), Math.round(subject.te * 1000), Math.round(subject.torpor * 1000), Math.round(subject.food * 1000)];
+    const q = [subject.taming ? 1 : 0, subject.owned ? 1 : 0, subject.level, Math.round(subject.progress * 1000), Math.round(subject.te * 1000), Math.round(subject.torpor * 1000), Math.round(subject.food * 1000), subject.id, subject.points, subject.stance, subject.following ? 1 : 0];
     const sum = q.reduce((h, v) => (Math.imul(h, 31) + v) | 0, 7) >>> 1;
     if (sum !== c.sentSubject) {
       const w = game.beginOwn(OWN_SUBJECT);
@@ -225,6 +225,10 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
       w.bits(q[4]!, 10);
       w.bits(q[5]!, 10);
       w.bits(q[6]!, 10);
+      w.u32(subject.id >>> 0);
+      w.u8(subject.points);
+      w.bits(subject.stance, 2);
+      w.bool(subject.following);
       game.endOwn(c);
       c.sentSubject = sum;
       c.sentSubjectAt = ctx.world.tick;

@@ -63,12 +63,15 @@ export class Creatures {
     this.awakeSlot = new Int32Array(cap).fill(-1);
     this.chunkRefs = new Uint16Array(chunkCount(world.dims));
     this.mind = new Behavior(world, game, seed + 7);
+    this.mind.herd = this;
     this.still = Uint8Array.from(world.reg.defs, (d) => (d?.type === "species" && d.still ? 1 : 0));
   }
 
   /** Something at (x, z) hurt creature `e`; `by` is the entity that did it, or -1. What it does about it is its temper's. */
   provoke(e: number, x: number, z: number, by = -1): void {
     const ents = this.world.ents;
+    // Whoever was hurt, survivor or creature: those of its tribe near it may come to its help.
+    this.mind.alert(ents.team[e]!, e, by);
     if (this.awakeSlot[e]! < 0 || this.still[ents.kind[e]!] || ents.driven[e] !== 0) return;
     this.mind.provoke(e, x, z, by);
   }
@@ -101,6 +104,9 @@ export class Creatures {
     ents.setLook(e, rec.genome ? rec.genome.level : 1, rec.genome ? rec.genome.colors : null, rec.name);
     this.records.entOf.set(rec.pid, e);
     this.mind.reset(e);
+    this.mind.stance[e] = rec.stance;
+    // Whose it is, if it is anyone's, is on its body from the start.
+    ents.setTeam(e, rec.team);
     // New bodies start full; loaded ones keep their numbers and get their deadline back.
     if (rec.vitals) this.survival.restore(rec, true);
     else this.survival.init(rec);
@@ -139,6 +145,8 @@ export class Creatures {
       // A session's inputs are driving it: it is stepped with that session's body, not here.
       if (ents.driven[e] !== 0) continue;
       const kind = ents.kind[e]!;
+      // One that is somebody's and was told to follow: found again when whoever it follows comes back into the world.
+      if (ents.team[e] !== 0 && mind.leader[e]! < 0 && (tick + e) % 30 === 0) this.relink(e);
       if (this.still[kind]) {
         // It stands; it only falls, if it was put down in the air.
         if ((ents.flags[e]! & F_GROUNDED) !== 0) continue;
@@ -189,10 +197,25 @@ export class Creatures {
     }
   }
 
+  /** A creature has become somebody's, or stopped being: whoever decides for creatures knows which are. */
+  claimed(e: number): void {
+    if (this.awakeSlot[e]! >= 0 && this.world.ents.team[e] !== 0) this.mind.owned.add(e);
+    else this.mind.owned.delete(e);
+  }
+
+  /** If creature `e` was told to follow someone who is in the world, it follows them. */
+  private relink(e: number): void {
+    const rec = this.records.byPid.get(this.world.ents.pid[e]!);
+    if (!rec || rec.follow === 0) return;
+    const whom = this.records.entOf.get(rec.follow);
+    if (whom !== undefined) this.mind.follow(e, whom);
+  }
+
   private wake(e: number): void {
     const ents = this.world.ents;
     const flags = ents.flags[e]!;
     if ((flags & F_ALIVE) === 0 || (flags & (F_PLAYER | F_PROP)) !== 0 || this.awakeSlot[e]! >= 0) return;
+    if (ents.team[e] !== 0) this.mind.owned.add(e);
     this.awakeSlot[e] = this.awakeCount;
     this.awake[this.awakeCount++] = e;
     ents.flags[e] = flags | F_AWAKE;
@@ -202,6 +225,7 @@ export class Creatures {
   private sleep(e: number): void {
     const slot = this.awakeSlot[e]!;
     if (slot < 0) return;
+    this.mind.owned.delete(e);
     const ents = this.world.ents;
     const last = this.awake[--this.awakeCount]!;
     this.awake[slot] = last;

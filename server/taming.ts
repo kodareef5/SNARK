@@ -19,7 +19,9 @@
 
 import { TICK_RATE } from "../shared/coords.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { EVENT_TAMED, MAX_NAME_BYTES, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_STALE, S_EVENT } from "../shared/net/protocol.ts";
+import { EVENT_TAMED, MAX_NAME_BYTES, ORDER_ALL, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_STALE, S_EVENT, WHISTLE_RANGE } from "../shared/net/protocol.ts";
+import type { Creatures } from "./creatures.ts";
+import type { Progression } from "./progression.ts";
 import { Rng } from "../shared/rng.ts";
 import { POINT_CAP, WILD_STATS } from "../shared/sim/genome.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
@@ -46,6 +48,8 @@ export interface TamingContext {
   readonly rules: Rules;
   readonly tribes: Tribes;
   readonly deadlines: DeadlineHeap;
+  readonly creatures: Creatures;
+  readonly progression: Progression;
   /** The record of the container a session has open, or null. */
   openOf(c: Client): EntityRecord | null;
   /** Recompute what follows from a record: its body's level, name, team and limits. */
@@ -66,14 +70,21 @@ export interface Subject {
   /** Its torpor and its food as shares of the most it holds. */
   torpor: number;
   food: number;
+  /** Which it is (an entity index, or -1), the levels it has to spend, its stance, and whether it follows someone. */
+  id: number;
+  points: number;
+  stance: number;
+  following: boolean;
 }
 
 export class Taming {
-  /** Creatures tamed, pieces eaten, tames lost to waking, and narcotics fed. */
+  /** Creatures tamed, pieces eaten, tames lost to waking, and narcotics fed; orders obeyed, and meals a creature that is somebody's ate of what it carries. */
   tamed = 0;
   bites = 0;
   lost = 0;
   doses = 0;
+  orders = 0;
+  meals = 0;
   private readonly ctx: TamingContext;
   private readonly rng: Rng;
   /** The creatures lying there being tamed: few at any time. */
@@ -86,13 +97,46 @@ export class Taming {
     this.drugged = ctx.world.reg.index.get("core:drugged") ?? 0;
   }
 
-  /** After a load: those that were lying there being tamed are again. */
+  /** After a load: those that were lying there being tamed are again, and those that are somebody's know when they next eat. */
   resume(): void {
     for (const rec of this.ctx.records.byPid.values()) {
-      if (!rec.tame) continue;
-      if (rec.out) this.lying.add(rec.pid);
-      else rec.tame = null;
+      if (rec.tame) {
+        if (rec.out) this.lying.add(rec.pid);
+        else rec.tame = null;
+      } else if (rec.team !== 0 && rec.keyHash === null && this.ctx.world.reg.eats[rec.kind]) {
+        rec.mealDue = 0;
+        this.meal(rec);
+      }
     }
+  }
+
+  /**
+   * A creature that is somebody's eats of what it carries when it is hungry
+   * enough for a piece: set the tick of its next meal. Called when what it
+   * carries may have changed (someone has shut it), and after each meal.
+   */
+  meal(rec: EntityRecord): void {
+    const { world, survival, deadlines } = this.ctx;
+    if (rec.team === 0 || rec.tame || rec.dead || !rec.vitals) return;
+    const k = this.best(rec);
+    if (k < 0) {
+      rec.mealDue = 0;
+      return;
+    }
+    survival.value(rec, V_FOOD);
+    const v = rec.vitals;
+    const level = v.max[V_FOOD]! - Math.round(world.reg.eats[rec.kind]![k + 1]! * 1e6);
+    const rate = v.rate[V_FOOD]!;
+    const over = v.value[V_FOOD]! - level;
+    if (over > 0 && !(rate < 0)) {
+      rec.mealDue = 0;
+      return;
+    }
+    const at = over <= 0 ? world.tick : v.tick + Math.ceil(over / -rate);
+    const due = at > world.tick ? at : world.tick + 1;
+    if (due === rec.mealDue) return;
+    rec.mealDue = due;
+    deadlines.push(due, DEADLINE_TAME, rec.pid, due);
   }
 
   private wild(rec: EntityRecord): boolean {
@@ -186,6 +230,21 @@ export class Taming {
   due(pid: number, stamp: number): void {
     const { world, records, items, survival, rules } = this.ctx;
     const rec = records.byPid.get(pid);
+    if (rec && !rec.tame && rec.team !== 0 && rec.mealDue === stamp) {
+      // Somebody's, and its mealtime: a piece of the best it carries, if it is still hungry enough for one.
+      rec.mealDue = 0;
+      const k = this.best(rec);
+      if (k >= 0 && rec.vitals) {
+        const eats = world.reg.eats[rec.kind]!;
+        survival.value(rec, V_FOOD);
+        if (rec.vitals.at(V_FOOD, world.tick) <= rec.vitals.max[V_FOOD]! - Math.round(eats[k + 1]! * 1e6) && items.burnItem(rec, eats[k]!, 1)) {
+          survival.add(rec, V_FOOD, eats[k + 1]!);
+          this.meals++;
+        }
+        this.meal(rec);
+      }
+      return;
+    }
     if (!rec?.tame || rec.tame.due !== stamp || !rec.out) return;
     const tame = rec.tame;
     tame.due = 0;
@@ -253,6 +312,7 @@ export class Taming {
     survival.add(rec, V_TORPOR, -survival.value(rec, V_TORPOR) - 1);
     this.ctx.refresh(rec);
     this.ctx.onTamed?.(rec);
+    this.meal(rec);
     // Whoever it is told, so that they can say what it is to be called.
     const e = records.entOf.get(rec.pid);
     const to = game.clients.find((c) => c?.active && !c.closed && c.pid === owner.pid) ?? null;
@@ -295,6 +355,58 @@ export class Taming {
     return RESULT_OK;
   }
 
+  /**
+   * A session tells a creature of its tribe what to do, or every one of them
+   * within a whistle's reach: stay, follow, a stance, or a level into a stat.
+   */
+  order(c: Client, r: BitReader): number {
+    const which = r.u32();
+    const what = r.u8();
+    if (r.overflow) return RESULT_INVALID;
+    const { world, records, tribes, creatures, progression } = this.ctx;
+    const ents = world.ents;
+    const me = records.byPid.get(c.pid);
+    if (!me || c.ent < 0 || me.dead) return RESULT_DENIED;
+    const stance = what - ORDER_STANCE;
+    if (what !== ORDER_STAY && what !== ORDER_FOLLOW && !(stance >= 0 && stance < 3) && what < ORDER_LEVEL) return RESULT_INVALID;
+    const obey = (e: number, rec: EntityRecord): number => {
+      if (what === ORDER_STAY || what === ORDER_FOLLOW) {
+        rec.follow = what === ORDER_FOLLOW ? c.pid : 0;
+        creatures.mind.follow(e, what === ORDER_FOLLOW ? c.ent : -1);
+      } else if (what >= ORDER_LEVEL) {
+        const done = progression.spend(rec, what - ORDER_LEVEL);
+        if (done !== RESULT_OK) return done;
+        this.ctx.refresh(rec);
+      } else {
+        rec.stance = stance;
+        creatures.mind.order(e, stance);
+      }
+      records.dirty.add(rec.pid);
+      this.orders++;
+      return RESULT_OK;
+    };
+    if (which === ORDER_ALL) {
+      // A whistle: every one of the tribe's that hears it. Levels are not given by whistling.
+      if (what >= ORDER_LEVEL) return RESULT_INVALID;
+      for (const e of creatures.mind.owned) {
+        const rec = records.byPid.get(ents.pid[e]!);
+        if (!rec || !tribes.may(me, rec.team)) continue;
+        const dx = ents.x[e]! - ents.x[c.ent]!;
+        const dz = ents.z[e]! - ents.z[c.ent]!;
+        if (dx * dx + dz * dz <= WHISTLE_RANGE * WHISTLE_RANGE) obey(e, rec);
+      }
+      return RESULT_OK;
+    }
+    const e = which < ents.cap ? which : -1;
+    const rec = e >= 0 && (ents.flags[e]! & 1) !== 0 ? records.byPid.get(ents.pid[e]!) : undefined;
+    if (!rec || world.reg.defs[rec.kind]?.type !== "species" || rec.keyHash !== null) return RESULT_INVALID;
+    if (rec.team === 0 || !tribes.may(me, rec.team)) return RESULT_NOT_YOURS;
+    const dx = ents.x[e]! - ents.x[c.ent]!;
+    const dz = ents.z[e]! - ents.z[c.ent]!;
+    if (dx * dx + dz * dz > WHISTLE_RANGE * WHISTLE_RANGE) return RESULT_FAR;
+    return obey(e, rec);
+  }
+
   /** A session names a creature of its tribe: which (an entity handle) and what. */
   rename(c: Client, r: BitReader): number {
     const handle = r.u32();
@@ -323,7 +435,12 @@ export class Taming {
     };
     const p = world.reg.taming[rec.kind];
     const level = rec.genome ? rec.genome.level : 1;
+    const e = this.ctx.records.entOf.get(rec.pid);
     return {
+      id: e ?? -1,
+      points: rec.team !== 0 ? Math.min(255, this.ctx.progression.statPoints(rec)) : 0,
+      stance: rec.stance,
+      following: rec.follow !== 0,
       taming: rec.tame !== null,
       owned: rec.team !== 0,
       level,

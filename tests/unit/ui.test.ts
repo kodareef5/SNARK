@@ -12,9 +12,9 @@ import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR
 import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
-import { KEY_OPEN_PAGE, KEY_OPEN_SLOT, KEY_OPEN_SUBJECT } from "../../client/core/ui/inventory.ts";
+import { KEY_OPEN_LEVEL, KEY_OPEN_ORDER, KEY_OPEN_PAGE, KEY_OPEN_SLOT, KEY_OPEN_SUBJECT } from "../../client/core/ui/inventory.ts";
 import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
-import { CMD_FEED, CMD_NAME, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
+import { CMD_FEED, CMD_NAME, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
@@ -966,5 +966,41 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     ui.key("Escape", true, false, session);
     ui.build(aspect, fullHud(), session);
     expect([ui.naming.open, sent.length, session.tamed.length, f.find(KEY_NAME_PANEL)]).toEqual([false, 3, 0, null]);
+  }
+});
+
+test("a creature of one's own, looked into, is told to follow or stay, to change its stance, and where to put its levels, by buttons that fit every window", () => {
+  for (const [name, aspect] of ASPECTS) {
+    const { session, sent } = fakeSession(fullInventory());
+    const subject = { taming: false, owned: true, level: 12, progress: 0, te: 0.8, torpor: 0, food: 0.7, id: 77, points: 2, stance: 1, following: false };
+    Object.assign(session, { sessionState: SESSION_ALIVE, open: { name: "Blue", inventory: new Inventory(20) }, subject });
+    const ui = new Ui();
+    ui.registry = reg;
+    ui.build(aspect, fullHud(), session);
+    const f = ui.frame;
+    expect([f.find(KEY_OPEN_ORDER)!.text, f.find(KEY_OPEN_ORDER + 1)!.text, f.find(KEY_OPEN_LEVEL + 6) !== null], name).toEqual(["Follow me", "It is neutral", true]);
+    for (let i = 0; i < f.count; i++) {
+      const n = f.nodes[i]!;
+      if (n.key < KEY_OPEN_ORDER || n.key >= KEY_OPEN_LEVEL + 7) continue;
+      expect(n.x, `${name} ${n.key}`).toBeGreaterThanOrEqual(-0.01);
+      expect(n.x + n.w, `${name} ${n.key}`).toBeLessThanOrEqual(f.width + 0.01);
+      expect(textWidth(n.text, n.style), `${name} ${n.key} "${n.text}"`).toBeLessThanOrEqual(n.w + 0.01);
+      for (let j = i + 1; j < f.count; j++) if (n.interactive && f.nodes[j]!.interactive) expect(overlaps(f, i, j), `${name} ${n.key} ${f.nodes[j]!.key}`).toBe(false);
+    }
+    // Follow; the next stance round; a level into melee (the sixth stat a level can go in).
+    ui.pointer(0, KEY_OPEN_ORDER, 0, 0, 0, session);
+    ui.pointer(0, KEY_OPEN_ORDER + 1, 0, 0, 0, session);
+    ui.pointer(0, KEY_OPEN_LEVEL + 5, 0, 0, 0, session);
+    expect(sent.map((c) => [c.op, new BitReader(c.bytes).u32(), c.bytes[4]])).toEqual([[CMD_ORDER, 77, ORDER_FOLLOW], [CMD_ORDER, 77, ORDER_STANCE + 2], [CMD_ORDER, 77, ORDER_LEVEL + 6]]);
+    // Following, the button says the other thing; with no levels to spend there is nothing to press for them.
+    Object.assign(subject, { following: true, points: 0, stance: 2 });
+    ui.build(aspect, fullHud(), session);
+    expect([f.find(KEY_OPEN_ORDER)!.text, f.find(KEY_OPEN_ORDER + 1)!.text, f.find(KEY_OPEN_LEVEL)]).toEqual(["Stay here", "It is aggressive", null]);
+    ui.pointer(0, KEY_OPEN_ORDER, 0, 0, 0, session);
+    expect(sent[3]!.bytes[4]).toBe(ORDER_STAY);
+    // A wild one lying there has none of these.
+    Object.assign(subject, { owned: false, taming: true });
+    ui.build(aspect, fullHud(), session);
+    expect(f.find(KEY_OPEN_ORDER)).toBeNull();
   }
 });

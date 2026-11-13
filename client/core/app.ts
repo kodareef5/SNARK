@@ -6,7 +6,7 @@
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CMD_SELECT, MARKER_DEATH, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP } from "../../shared/net/protocol.ts";
+import { CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -101,6 +101,8 @@ export class App {
   readonly builder = new Builder();
   /** The time of the last frame, for keys that are timed. */
   private nowMs = 0;
+  /** The creature of this survivor's tribe that the look is on, as its entity index, or -1. */
+  lookedAt = -1;
   /** When the use key went down, or -1; and the thing built that the look is on, or -1. */
   private useDownAt = -1;
   aimed = -1;
@@ -201,6 +203,15 @@ export class App {
         return true;
       }
     }
+    // Whistles. T and Y to the creature looked at: follow me, stay. J and U to every one of the tribe's that hears.
+    if (code === "KeyT" || code === "KeyY" || code === "KeyJ" || code === "KeyU") {
+      if (down && !repeat) {
+        const one = code === "KeyT" || code === "KeyY";
+        const which = one ? this.lookedAt : ORDER_ALL;
+        if (which >= 0) this.session.command(CMD_ORDER, (w) => (w.u32(which >>> 0), w.u8(code === "KeyT" || code === "KeyJ" ? ORDER_FOLLOW : ORDER_STAY)));
+      }
+      return true;
+    }
     if (code === "KeyB") {
       // Held to talk; or, if the player has set it so, pressed to switch the microphone on and pressed again to switch it off.
       // With Alt it is a whisper, with Shift a yell.
@@ -288,8 +299,10 @@ export class App {
         hit = i;
       }
     }
+    const mine = hit >= 0 && s.tribe.team !== 0 && r.team[hit] === s.tribe.team;
+    // A creature of the tribe's, looked at: the one a whistle is for.
+    this.lookedAt = hit >= 0 && mine && (r.flags[hit]! & VIEW_FLAG_PROP) === 0 && !this.scene!.characters.human(r.kind[hit]!) ? r.id[hit]! : -1;
     if (hit < 0 || r.name[hit] === "" || (r.flags[hit]! & VIEW_FLAG_PROP) !== 0) return "";
-    const mine = s.tribe.team !== 0 && r.team[hit] === s.tribe.team;
     return `${r.name[hit]}${mine ? " (tribe)" : ""}  level ${r.level[hit]}`;
   }
 
@@ -531,7 +544,8 @@ export class App {
       this.useKept = false;
       c.release();
     }
-    hud.prompt = !alive ? "" : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || this.who(world, eyeNow) || built;
+    const whom = alive ? this.who(world, eyeNow) : ((this.lookedAt = -1), "");
+    hud.prompt = !alive ? "" : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
     return packet;
