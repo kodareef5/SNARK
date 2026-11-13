@@ -23,7 +23,8 @@ import { TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
-import { InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, writeHello, writeInputs } from "../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, writeCommand, writeHello, writeInputs } from "../shared/net/protocol.ts";
+import { scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { Rng } from "../shared/rng.ts";
@@ -119,6 +120,22 @@ class Bot {
     this.end.send(CH_RELIABLE, w.bytes());
   }
 
+  private seq = 0;
+
+  /** Ask to move a whole stack between two of its own slots, as the inventory screen would. */
+  move(from: number, to: number, item: number): void {
+    const w = this.w;
+    w.reset();
+    writeCommand(w, (this.seq = (this.seq + 1) & 0xffff), CMD_MOVE);
+    w.bits(BOX_SELF, 1);
+    w.u8(from);
+    w.bits(BOX_SELF, 1);
+    w.u8(to);
+    w.u16(0);
+    w.u16(item);
+    this.end.send(CH_RELIABLE, w.bytes());
+  }
+
   update(worldTick: number): void {
     const target = (this.serverTick || worldTick) + 3;
     if (target <= this.sent) return;
@@ -148,7 +165,10 @@ section("World at target scale");
 let t0 = performance.now();
 const hf = buildTerrain();
 const mapHash = hashBytes(new Uint8Array(hf.heights.buffer, 0, 4096));
-const world = createWorld(reg, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 1024);
+// Trees, rocks and bushes over the whole map: 160 slots a chunk, most of them holding one.
+const nodeKinds = ["core:tree", "core:tree", "core:tree", "core:rock", "core:rock", "core:bush"].map((id) => reg.index.get(id)!);
+const nodeSource = scatterNodes(DIMS, hf, 0xbe7c, 160, nodeKinds, reg.halfY, () => true);
+const world = createWorld(reg, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 1024, undefined, nodeSource);
 record("terrain build, 8 km at 2 m", performance.now() - t0, "ms");
 const rng = new Rng(2026);
 t0 = performance.now();
@@ -194,7 +214,7 @@ for (let i = 0; i < PLAYERS; i++) {
   // Two real clients among the bots check that the load does not break prediction.
   if (i === 0 || i === 50) {
     const end = net.connect();
-    sessions.push(new ClientSession(end, { name: `bot${i}`, key: new Uint8Array(KEY_BYTES).fill(i + 1), registry: reg, resolveMap: () => hf }));
+    sessions.push(new ClientSession(end, { name: `bot${i}`, key: new Uint8Array(KEY_BYTES).fill(i + 1), registry: reg, resolveMap: () => hf, nodes: () => nodeSource }));
     continue;
   }
   bots.push(new Bot(net, `bot${i}`, reg.hash, 100 + i));
@@ -260,6 +280,107 @@ record("prediction corrections on the two real clients", sessions.reduce((n, s) 
 record("snapshots the real clients could not decode", sessions.reduce((n, s) => n + s.stats.undecodable, 0), "", 0);
 record("inputs the server had to repeat (of 90,000)", host.game.stats.heldInputs, "");
 record("process memory (resident)", mb(process.memoryUsage().rss), "MB", 2048);
+
+// ---------------------------------------------------------------- nodes
+section("Resource nodes: map data plus a sparse overlay");
+{
+  const spot: NodeSpot = { kind: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  let onMap = 0;
+  t0 = performance.now();
+  for (let chunk = 0; chunk < DIMS.chunksX * DIMS.chunksZ; chunk++) {
+    for (let i = 0; i < nodeSource.perChunk; i++) {
+      nodeSource.at(chunk, i, spot);
+      if (spot.kind !== 0) onMap++;
+    }
+  }
+  const scan = performance.now() - t0;
+  record("nodes on the 8 km map", onMap, "");
+  const field = host.harvest!.field;
+  record("node rows held in memory, near 100 players", field.store.count, "");
+  record("memory those rows take (34 bytes each)", mb(field.store.count * 34), "MB", 40);
+  // Fill and empty chunks nobody is near: what a player walking into new ground costs.
+  const far: number[] = [];
+  for (let chunk = 0; chunk < DIMS.chunksX * DIMS.chunksZ && far.length < 400; chunk += 37) if (!field.isLoaded(chunk)) far.push(chunk);
+  t0 = performance.now();
+  for (const chunk of far) field.retain(chunk, 0, 1, () => false);
+  record("fill one chunk of nodes", (performance.now() - t0) / far.length, "ms", 0.2);
+  for (const chunk of far) field.retain(chunk, 0, -1, () => false);
+  record("work out every node on the map once (not done in play)", scan, "ms");
+}
+
+// ---------------------------------------------------------------- everyone working
+section("Everyone working: 100 players striking nodes and moving items");
+{
+  const harvest = host.harvest!;
+  const quiet = host.game.clients.map((c) => (c ? (c.conn as LoopbackEnd).bytesSent : 0));
+  const botOf = new Map(bots.map((b) => [b.end.peer as unknown, b]));
+  commitTimes.length = 0;
+  const hitsBefore = harvest.hits;
+  const commandsBefore = host.game.stats.commands;
+  const work: number[] = [];
+  for (let i = 0; i < TICKS; i++) {
+    run(1, work);
+    if (i % 15 !== 0) continue;
+    for (const c of host.game.clients) {
+      if (!c?.active || c.ent < 0) continue;
+      // The nearest thing to hand: the first node in the body's own chunk.
+      const table = harvest.field.store.chunks[c.chunk];
+      if (table) for (let slot = 0; slot < table.high; slot++) if (table.kind[slot] !== 0 && harvest.strike(c, c.chunk, slot)) break;
+      // And shuffle a stack about, through the same command the inventory screen sends.
+      const rec = host.records.byPid.get(c.pid);
+      const bot = botOf.get(c.conn);
+      if (rec?.inv && bot) {
+        const from = rec.inv.item.findIndex((k) => k !== 0);
+        if (from >= 0) bot.move(from, (from + 1 + ((i / 15) % 38)) % rec.inv.cap, rec.inv.item[from]!);
+      }
+    }
+  }
+  work.sort((a, b) => a - b);
+  commitTimes.sort((a, b) => a - b);
+  record("node hits landed", harvest.hits - hitsBefore, "");
+  record("commands run", host.game.stats.commands - commandsBefore, "");
+  record("tick time, median", percentile(work, 0.5), "ms", 8);
+  record("tick time, 99th percentile", percentile(work, 0.99), "ms", 16);
+  record("commit time, 99th percentile", percentile(commitTimes, 0.99), "ms", 10);
+  const busy = host.game.clients.map((c, i) => (c ? ((c.conn as LoopbackEnd).bytesSent - quiet[i]!) / seconds : 0));
+  const atBase = host.game.clients.filter((c) => c && Number(c.name.slice(3)) >= 40).map((c) => busy[c!.id]!);
+  record("downstream per client at a base, working", mean(atBase) / 1024, "KB/s", 16);
+  // Owner state costs bytes only when it changes; the allowance for a busy survivor is 0.3 KB/s.
+  record("of which added by working (inventory, experience, nodes)", (mean(atBase) - mean(spread)) / 1024, "KB/s", 0.3);
+  record("nodes used up", harvest.goneCount, "");
+  const wrong = host.items.audit();
+  record("items the ledger cannot account for", wrong.length, "", 0);
+}
+
+// ---------------------------------------------------------------- stored stacks
+section("Stored stacks: 600,000 stacks in 10,000 containers nobody is near");
+{
+  const cacheKind = reg.index.get("core:cache")!;
+  const stone = reg.index.get("core:stone")!;
+  const berry = reg.index.get("core:berry")!;
+  t0 = performance.now();
+  for (let i = 0; i < 10000; i++) {
+    const box = host.records.create(cacheKind, "");
+    host.items.mint(box, stone, 3000);
+    host.items.mint(box, berry, 3000);
+  }
+  record("create them", performance.now() - t0, "ms");
+  t0 = performance.now();
+  persistence.commit();
+  record("first commit of 10,000 containers", performance.now() - t0, "ms");
+  const stored: number[] = [];
+  commitTimes.length = 0;
+  run(300, stored);
+  stored.sort((a, b) => a - b);
+  commitTimes.sort((a, b) => a - b);
+  // Nothing about a stored stack runs: the tick and the commit are what they were.
+  record("tick time, median, with them in the world", percentile(stored, 0.5), "ms", 8);
+  record("commit time, 99th percentile, with them in the world", percentile(commitTimes, 0.99), "ms", 10);
+  t0 = performance.now();
+  const wrong = host.items.audit();
+  record("audit every stack in the world against the ledger", performance.now() - t0, "ms", 1000);
+  record("items the ledger cannot account for", wrong.length, "", 0);
+}
 
 // ---------------------------------------------------------------- dormancy
 section("Dormancy: the same awake load with ten times the creatures");

@@ -41,6 +41,8 @@ export class FramePacket {
   readonly sky = new Float32Array(3);
   /** Unit vector toward the sun. */
   readonly sun = new Float32Array(3);
+  /** Brightness of the daylight, 0..1: every lit colour is multiplied by it. */
+  light = 1;
   fogStart = 0;
   fogEnd = 1;
 

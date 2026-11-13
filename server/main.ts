@@ -37,6 +37,8 @@ export interface RunningServer {
   readonly host: Host;
   /** Resolves with the first self-check report the page posts (dev only). */
   readonly selfcheck: Promise<unknown>;
+  /** Resolves with the first frame-time report a page opened with ?bench=1 posts (dev only). */
+  readonly bench: Promise<unknown>;
   stop(): void;
 }
 
@@ -75,6 +77,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
 
   let report: (value: unknown) => void = () => {};
   const selfcheck = new Promise<unknown>((r) => (report = r));
+  let measured: (value: unknown) => void = () => {};
+  const bench = new Promise<unknown>((r) => (measured = r));
 
   const server = Bun.serve<Socket>({
     port: opts.port ?? 8787,
@@ -83,6 +87,12 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (url.pathname === "/ws") return srv.upgrade(req, { data: { conn: null } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
       if (url.pathname === "/__selfcheck" && req.method === "POST" && opts.dev) {
         report(await req.json());
+        return new Response("ok");
+      }
+      if (url.pathname === "/__bench" && req.method === "POST" && opts.dev) {
+        const result = await req.json();
+        console.log(`frame times from a browser:\n${JSON.stringify(result, null, 2)}`);
+        measured(result);
         return new Response("ok");
       }
       const path = normalize(join(clientDir, url.pathname === "/" ? "index.html" : url.pathname));
@@ -159,6 +169,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     port: server.port ?? 0,
     host,
     selfcheck,
+    bench,
     stop() {
       clearTimeout(timer);
       server.stop(true);

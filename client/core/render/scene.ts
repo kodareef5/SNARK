@@ -14,7 +14,7 @@ import type { StructureStore } from "../../../shared/world/structures.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { DRAW_BLEND, FramePacket, InstanceWriter, MAX_DRAWS, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
-import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
+import { NIGHT_LIGHT, UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { TerrainLod } from "./terrain.ts";
 
 export interface RenderWorld {
@@ -57,6 +57,8 @@ export class Scene {
   viewDistance = 4000;
   /** Structures farther than this are not drawn. Distant bases need merged stand-ins, not instances. */
   structureDistance = Infinity;
+  /** Hour of the day, 0..24. Decides where the sun is and how bright the world is. Noon unless told. */
+  hour = 12;
   /** Distances at which structure batches switch to lower levels of detail. */
   lodNear = 96;
   lodFar = 256;
@@ -105,9 +107,6 @@ export class Scene {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
     }
-    const sun = [0.42, 0.8, 0.43];
-    const len = Math.hypot(sun[0]!, sun[1]!, sun[2]!);
-    this.packet.sun.set(sun.map((v) => v / len));
   }
 
   /** Forget what the renderer holds (after a lost graphics context): every buffer is sent again. */
@@ -123,14 +122,27 @@ export class Scene {
     p.camX = cam.x;
     p.camY = cam.y;
     p.camZ = cam.z;
+    // The sun rises at six, stands highest at noon, sets at eighteen. At night
+    // the light comes from a fixed moon and everything is dimmer.
+    const up = Math.sin(((this.hour - 6) / 12) * Math.PI);
+    const around = Math.cos(((this.hour - 6) / 12) * Math.PI);
+    const dusk = Math.max(0, Math.min(1, (up + 0.1) / 0.4));
+    p.light = NIGHT_LIGHT + (1 - NIGHT_LIGHT) * dusk * dusk * (3 - 2 * dusk);
+    const sx = up > 0.15 ? around * 0.6 : 0.3;
+    const sy = up > 0.15 ? up : 0.8;
+    const sl = Math.hypot(sx, sy, 0.43);
+    p.sun[0] = sx / sl;
+    p.sun[1] = sy / sl;
+    p.sun[2] = 0.43 / sl;
+
     // Under water the world is a short, dim view of the water's own colour.
     const sea = this.world.hf.seaLevel;
     if (cam.y < sea) {
-      p.sky.set(this.deepColor);
+      for (let k = 0; k < 3; k++) p.sky[k] = this.deepColor[k]! * p.light;
       p.fogStart = 0;
       p.fogEnd = UNDERWATER_VIEW;
     } else {
-      p.sky.set(this.skyColor);
+      for (let k = 0; k < 3; k++) p.sky[k] = this.skyColor[k]! * p.light;
       p.fogStart = this.viewDistance * 0.45;
       p.fogEnd = this.viewDistance;
     }

@@ -3,6 +3,7 @@
 import type { Registry } from "../shared/content/registry.ts";
 import type { MapDims } from "../shared/coords.ts";
 import { EntityStore } from "../shared/sim/entities.ts";
+import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_SPAWN, PROVING_SPAWNS, provingNodes, buildProvingHeightfield, populateProving, provingMapHash } from "../shared/world/proving.ts";
@@ -51,7 +52,8 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     spawn,
     spawns: spawns ?? [{ name: "Spawn", ...spawn }],
     tick: 0,
-    dayOffset: 0,
+    // A new world begins at nine in the morning.
+    dayOffset: 9 * GAME_HOUR_TICKS,
   };
 }
 

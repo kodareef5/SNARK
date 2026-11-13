@@ -6,6 +6,12 @@
 //
 //   bun run probe
 //   CHROME=/path/to/chrome bun run probe
+//   bun run probe -- --bench     also fly the camera for 900 frames and report frame times
+//
+// The frame times of a headless browser on this machine say little about a
+// player's. For a real number, run `bun run dev` and open
+// http://localhost:8787/?bench=1 on the device in question: the same report is
+// printed by the dev server.
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -37,6 +43,13 @@ const timeout = new Promise<null>((r) => setTimeout(() => r(null), 30000));
 const report = (await Promise.race([server.selfcheck, timeout])) as { ok?: boolean } | null;
 browser.kill();
 await browser.exited;
+if (report && process.argv.includes("--bench")) {
+  // A second page load of the same fixed scene, with the camera flying itself.
+  const flying = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", `--user-data-dir=${profile}`, `http://localhost:${server.port}/?bench=1&name=bench`], { stdout: "ignore", stderr: "ignore" });
+  await Promise.race([server.bench, new Promise((r) => setTimeout(r, 40000))]);
+  flying.kill();
+  await flying.exited;
+}
 server.stop();
 rmSync(profile, { recursive: true, force: true });
 

@@ -18,6 +18,9 @@ import { UiView } from "./ui.ts";
 
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
+/** A measurement run: the camera flies itself and the page reports how long frames took. */
+const bench = params.has("bench");
+const BENCH_FRAMES = 900;
 const root = document.querySelector<HTMLElement>("#ui")!;
 
 /** This browser's device key: made once, kept in local storage. It is what owns a survivor's name. */
@@ -54,6 +57,8 @@ async function boot(): Promise<void> {
   });
   const app = new App(session, reg, pack);
   app.steer = !selfcheck;
+  const intervals: number[] = [];
+  let previous = 0;
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   bindInput(canvas, app);
   let frames = 0;
@@ -70,6 +75,7 @@ async function boot(): Promise<void> {
     const cssWidth = canvas.clientWidth;
     const cssHeight = canvas.clientHeight;
     const t0 = performance.now();
+    if (bench) app.autopilot(now);
     const packet = app.frame(now, cssWidth, cssHeight);
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
@@ -81,6 +87,25 @@ async function boot(): Promise<void> {
     }
     renderer.draw(packet);
     times.push(performance.now() - t0);
+    if (bench && previous > 0 && intervals.push(now - previous) === BENCH_FRAMES) {
+      const sorted = (list: number[]) => [...list].sort((x, y) => x - y);
+      const at = (list: number[], q: number) => list[Math.floor((list.length - 1) * q)]!;
+      const gaps = sorted(intervals);
+      const work = sorted(times);
+      const result = {
+        frames: BENCH_FRAMES,
+        frameMs: { median: at(gaps, 0.5), p95: at(gaps, 0.95), p99: at(gaps, 0.99), worst: at(gaps, 1) },
+        buildAndSubmitMs: { median: at(work, 0.5), p99: at(work, 0.99) },
+        drawCalls: renderer.drawCalls,
+        triangles: packet.triangles,
+        canvas: [width, height],
+        renderer: renderer.rendererName,
+        userAgent: navigator.userAgent,
+      };
+      document.title = `SNARK ${result.frameMs.median.toFixed(1)} ms`;
+      void fetch("__bench", { method: "POST", body: JSON.stringify(result) });
+    }
+    previous = now;
 
     // Self-check: once the world has arrived, read pixels back and report.
     if (selfcheck && ++frames === 90) {

@@ -286,12 +286,16 @@ export class WorldStore {
     }
     const v = rec.vitals;
     if (v) {
+      // Which vitals this body has, then for each its value and rate. Maxima come from stats and are not saved.
       c.reset();
-      c.uint53(v.tick);
+      let mask = 0;
+      for (let i = 0; i < V_COUNT; i++) if (v.max[i]! > 0) mask |= 1 << i;
+      c.bits(mask, V_COUNT);
+      c.varint(v.tick);
       for (let i = 0; i < V_COUNT; i++) {
-        c.uint53(v.value[i]!);
+        if ((mask & (1 << i)) === 0) continue;
+        c.varint(v.value[i]!);
         c.svarint(v.rate[i]!);
-        c.uint53(v.max[i]!);
       }
       w.varint(COMP_VITALS4);
       w.blob(c.bytes());
@@ -376,11 +380,14 @@ export class WorldStore {
           // Round 1 food only: dropped; the survival system starts this body full.
         } else if (component === COMP_VITALS4) {
           const v = (rec.vitals = new Vitals());
-          v.tick = c.uint53();
+          const mask = c.bits(V_COUNT);
+          v.tick = c.varint();
           for (let i = 0; i < V_COUNT; i++) {
-            v.value[i] = c.uint53();
+            if ((mask & (1 << i)) === 0) continue;
+            v.value[i] = c.varint();
             v.rate[i] = c.svarint();
-            v.max[i] = c.uint53();
+            // A placeholder until the survival system sets the true maximum from the body's stats.
+            v.max[i] = v.value[i]! > 0 ? v.value[i]! : 1;
           }
         } else if (component === COMP_GENOME) {
           const g = (rec.genome = new Genome());

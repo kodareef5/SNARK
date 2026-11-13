@@ -496,7 +496,8 @@ export class GameServer {
   }
 
   private accept(conn: Connection): void {
-    if (this.pending.size >= MAX_PENDING) {
+    // As many may be on their way in as the server can hold: a full house arriving at once is not an attack.
+    if (this.pending.size >= Math.max(MAX_PENDING, this.opts.maxClients)) {
       const w = this.w;
       w.reset();
       w.bits(S_REJECT, 4);

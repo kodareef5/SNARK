@@ -85,7 +85,8 @@ export class Creatures {
     this.aiNext[e] = 0;
     this.aiMove[e] = 0;
     // New bodies start full; loaded ones keep their numbers and get their deadline back.
-    this.survival.init(rec);
+    if (rec.vitals) this.survival.restore(rec, true);
+    else this.survival.init(rec);
     if (this.chunkRefs[ents.chunk[e]!]! > 0) this.wake(e);
     return e;
   }

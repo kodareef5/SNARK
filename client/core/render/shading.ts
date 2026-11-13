@@ -25,3 +25,5 @@ export const WATER_TILE = 1024;
 /** How far one can see under water, and how much darker than the surface colour the depths are. */
 export const UNDERWATER_VIEW = 45;
 export const UNDERWATER_DIM = 0.55;
+/** How bright the world is at night, as a share of daylight. */
+export const NIGHT_LIGHT = 0.3;

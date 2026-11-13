@@ -142,6 +142,34 @@ export class Survival {
     this.update(rec);
   }
 
+  /**
+   * Take in a record loaded from a save: give its vitals their maxima and put
+   * its deadline back. Nothing about it changed, so it is not written again.
+   * A survivor is not in the world after a restart, so its clock is stopped.
+   */
+  restore(rec: EntityRecord, inWorld: boolean): void {
+    const v = rec.vitals;
+    const def = this.world.reg.defs[rec.kind];
+    if (!v || def?.type !== "species") return;
+    const g = rec.genome;
+    const max = [statOf(def, g, STAT_HEALTH, 0), statOf(def, g, STAT_FOOD, def.food?.max ?? 0), def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0)];
+    for (let i = 0; i < V_COUNT; i++) v.max[i] = Math.round(max[i]! * MICRO);
+    if (!inWorld) {
+      // Saved with its clock running (the server stopped while it was in the world): stop it, and save that.
+      this.suspended.add(rec.pid);
+      if (v.rate.some((r) => r !== 0)) {
+        v.rebase(this.world.tick);
+        v.rate.fill(0);
+        this.records.dirty.add(rec.pid);
+      }
+      return;
+    }
+    if (v.max[V_FOOD]! > 0 && v.at(V_FOOD, this.world.tick) <= 0) this.starving.add(rec.pid);
+    let next = Infinity;
+    for (let i = 0; i < V_COUNT; i++) if (v.rate[i]! < 0 && v.value[i]! > 0) next = Math.min(next, v.zeroTick(i));
+    if (next !== Infinity) this.deadlines.push(next, DEADLINE_VITALS, rec.pid, v.version);
+  }
+
   /** A vital now, in points. */
   value(rec: EntityRecord, i: number): number {
     return rec.vitals ? rec.vitals.at(i, this.world.tick) / MICRO : 0;

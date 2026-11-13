@@ -10,6 +10,7 @@ import { MARKER_DEATH, SESSION_ALIVE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
+import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls } from "./controls.ts";
 import { HudModel, minimapImage, updateHud } from "./hud.ts";
 import { Camera } from "./render/camera.ts";
@@ -73,6 +74,17 @@ export class App {
   /** The window lost focus. */
   blur(): void {
     this.controls.release();
+  }
+
+  /**
+   * Fly the camera by itself for a measurement run: turn steadily, nod, and
+   * walk forward, so every direction and distance is drawn in turn. Call each
+   * frame instead of forwarding input.
+   */
+  autopilot(nowMs: number): void {
+    this.controls.key("KeyW", true);
+    this.controls.yaw = nowMs / 1600;
+    this.controls.pitch = Math.sin(nowMs / 2300) * 0.35 - 0.1;
   }
 
   textInput(key: number, value: string): void {
@@ -167,6 +179,7 @@ export class App {
     const beams = this.scene.beams;
     beams.length = 0;
     for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
+    this.scene.hour = hourOfDay(session.serverTick, session.dayOffset);
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps);
     hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eye) : "";

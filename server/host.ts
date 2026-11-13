@@ -155,7 +155,11 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     // Every saved record that is not a survivor goes back where it stood: creatures to live, caches to wait.
     const survivors = new Set(persistence!.survivors.values());
     for (const rec of records.byPid.values()) {
-      if (survivors.has(rec.pid)) continue;
+      if (survivors.has(rec.pid)) {
+        // Not in the world until its owner returns: its vitals wait.
+        survival.restore(rec, false);
+        continue;
+      }
       if (reg.defs[rec.kind]?.type === "prop") death.place(rec);
       else {
         const e = creatures.adopt(rec);

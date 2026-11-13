@@ -16,11 +16,11 @@ in vec3 vRel;
 flat in vec3 vColor;
 uniform vec3 uSun, uSky, uCamMod;
 uniform vec2 uFog;
-uniform float uSolid, uAlpha;
+uniform float uSolid, uAlpha, uLight;
 out vec4 o;
 void main() {
   vec3 n = normalize(cross(dFdx(vRel), dFdy(vRel)));
-  float light = ${f(AMBIENT)} + ${f(DIFFUSE)} * max(dot(n, uSun), 0.0);
+  float light = (${f(AMBIENT)} + ${f(DIFFUSE)} * max(dot(n, uSun), 0.0)) * uLight;
   vec3 w = vRel + uCamMod - n * ${f(CHECK_INSET)};
   if (uSolid < 0.5) w.y = 0.0;
   float d = length(vRel);
@@ -220,6 +220,7 @@ export class GlRenderer {
       gl.uniform3f(prog.uniform("uCamMod"), p.camX % 16, p.camY % 16, p.camZ % 16);
       gl.uniform1f(prog.uniform("uSolid"), solid);
       gl.uniform1f(prog.uniform("uAlpha"), 1);
+      gl.uniform1f(prog.uniform("uLight"), p.light);
       gl.uniform1i(prog.uniform("uPalette"), 0);
     };
 

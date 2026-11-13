@@ -238,7 +238,7 @@ export class Rasterizer {
       poly[i * 7 + 6] = (m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) / w;
     }
 
-    const light = AMBIENT + DIFFUSE * Math.max(0, nx * p.sun[0]! + ny * p.sun[1]! + nz * p.sun[2]!);
+    const light = (AMBIENT + DIFFUSE * Math.max(0, nx * p.sun[0]! + ny * p.sun[1]! + nz * p.sun[2]!)) * p.light;
     const pal = this.pack.palette;
     const r = pal[colorIndex * 4]! * light;
     const g = pal[colorIndex * 4 + 1]! * light;

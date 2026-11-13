@@ -121,6 +121,12 @@ export class Harvest {
     return at >= 0 && this.hit(c, at >> 8, at & 255, true);
   }
 
+  /** Strike or pick a given node as `c`, whichever that node takes. For load tests; play goes through `swing` and `pick`. */
+  strike(c: Client, chunk: number, index: number): boolean {
+    const kind = this.field.store.chunks[chunk]?.kind[index] ?? 0;
+    return kind !== 0 && this.hit(c, chunk, index, (this.world.reg.defs[kind] as NodeDef).material === undefined);
+  }
+
   private hit(c: Client, chunk: number, index: number, byHand: boolean): boolean {
     const world = this.world;
     const reg = world.reg;

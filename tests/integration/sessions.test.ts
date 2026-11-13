@@ -25,8 +25,11 @@ import { CH_RELIABLE } from "../../shared/net/transport.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_SPRINT } from "../../shared/sim/character.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
+import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
 
+/** A new world's day offset: nine in the morning. */
+const MORNING = 9 * 4200;
 const dir = mkdtempSync(join(tmpdir(), "snark-sessions-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -134,7 +137,7 @@ test("the console obeys admins, refuses everyone else, and never moves the world
   expect(h.say(ada, "nonsense")[0]).toContain("unknown command");
   expect(h.say(ada, "settime 6")[0]).toContain("denied");
   expect(h.say(ada, "kick bo")[0]).toContain("denied");
-  expect(h.world.dayOffset).toBe(0);
+  expect(h.world.dayOffset).toBe(MORNING);
   expect(bo.state).toBe("active");
 
   expect(h.say(ada, "enablecheats wrong")).toEqual(["wrong password"]);
@@ -249,7 +252,7 @@ test("a hostile command stream changes nothing and cannot crash the server", () 
   expect(reconnects).toBeGreaterThan(3);
   expect(h.server.stats.commands).toBeGreaterThan(50);
   expect(h.server.stats.malformed).toBeGreaterThan(50);
-  expect(h.world.dayOffset).toBe(0);
+  expect(h.world.dayOffset).toBe(MORNING);
   expect(h.world.structs.count).toBe(structures);
   expect(h.server.clients.some((c) => c?.admin)).toBe(false);
   expect(h.server.clients.every((c) => !c || c.state === SESSION_ALIVE)).toBe(true);
@@ -369,4 +372,37 @@ test("a full server still lets a survivor back into its lingering body, and sile
   h.run(5000);
   expect(silent.every((e) => !e.open)).toBe(true);
   expect(h.server.playerCount).toBe(2);
+});
+
+test("a full house arriving in the same instant all get in", () => {
+  // The limit on connections that have not said hello yet must not be lower than the server's capacity.
+  const h = new Harness({ maxClients: 100 });
+  const all = [];
+  for (let i = 0; i < 100; i++) all.push(h.join(`p${i}`));
+  const extra = h.join("one too many");
+  h.run(1000);
+  expect(all.filter((s) => s.state === "active").length).toBe(100);
+  expect(h.server.playerCount).toBe(100);
+  expect(extra.closeReason).toBe(REJECT_FULL);
+});
+
+test("a survivor's vitals wait for it across restarts, whether it left before the server stopped or not", () => {
+  const db = join(dir, "waiting.db");
+  const h = new Harness({}, 1, 30, { dbPath: db });
+  const s = h.join("ada");
+  h.run(500);
+  const pid = h.client(s)!.pid;
+  h.host.survival.add(h.host.records.byPid.get(pid)!, V_FOOD, -40);
+  h.run(500);
+  const food = h.host.survival.value(h.host.records.byPid.get(pid)!, V_FOOD);
+  h.host.shutdown(); // stopped with her still in the world, her food running down
+
+  for (let restart = 0; restart < 2; restart++) {
+    const again = new Harness({}, 1, 30, { dbPath: db });
+    const rec = again.host.records.byPid.get(pid)!;
+    expect(again.host.survival.value(rec, V_FOOD)).toBe(food);
+    for (let i = 0; i < 30 * 3600; i++) again.server.tick(); // an hour with nobody there
+    expect(again.host.survival.value(rec, V_FOOD)).toBe(food);
+    again.host.shutdown();
+  }
 });

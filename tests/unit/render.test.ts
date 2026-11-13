@@ -169,3 +169,32 @@ test("water lies over the pool, tints what is under it, and changes the view fro
   expect(up[2]!).toBeGreaterThan(up[0]! + 30);
   expect(below.drawFlags[below.drawCount - 1]).toBe(DRAW_BLEND);
 });
+
+test("the hour moves the sun and dims the world at night; noon is what every other test sees", () => {
+  const view = provingView(W, H);
+  const at = (hour: number) => {
+    view.scene.hour = hour;
+    const p = view.render();
+    const o = (Math.floor(0.9 * H) * W + Math.floor(0.5 * W)) * 4; // plaza at the bottom of the frame
+    return { light: p.light, sunY: p.sun[1]!, sunX: p.sun[0]!, sky: p.sky[2]!, ground: view.raster.color[o]! };
+  };
+  const noon = at(12);
+  const morning = at(8);
+  const evening = at(16);
+  const midnight = at(0);
+  expect(noon.light).toBe(1);
+  expect(noon.sunY).toBeGreaterThan(0.9);
+  // The sun is on one side in the morning and on the other in the evening, at the same height.
+  expect(morning.sunX).toBeGreaterThan(0.2);
+  expect(evening.sunX).toBeLessThan(-0.2);
+  expect(morning.sunY).toBeCloseTo(evening.sunY, 5);
+  // Night: a third of the light, a darker sky, darker ground, and still lit from above.
+  expect(midnight.light).toBeCloseTo(0.3, 5);
+  expect(midnight.sky).toBeCloseTo(noon.sky * 0.3, 5);
+  expect(midnight.ground).toBeLessThan(noon.ground * 0.45);
+  expect(midnight.sunY).toBeGreaterThan(0.5);
+  // Dusk is between the two.
+  const dusk = at(18.2);
+  expect(dusk.light).toBeGreaterThan(0.3);
+  expect(dusk.light).toBeLessThan(1);
+});
