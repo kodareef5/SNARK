@@ -5,7 +5,7 @@
 // given on the command line. Lists that name classes take this engine's
 // content ids ("core:raptor") where ARK's take its class names.
 
-import { Sheet, live, none, plan, todo, type Row } from "./row.ts";
+import { Sheet, live, none, plan, type Row } from "./row.ts";
 
 export const MODE_ROWS: Row[] = [];
 
@@ -167,7 +167,7 @@ m.under("Structures, PvP and tribes")
   .f("TribeTowerBonusMultiplier", 2, "The Tribe Tower.", none("expansion", { game: "A" }));
 
 m.under("Other")
-  .b("bUseSingleplayerSettings", false, "ARK's single-player factors are applied on top of what the files give.", todo(9))
+  .b("bUseSingleplayerSettings", false, "ARK's single-player factors are put on top of what the files and the command line give: taming x2.5, hatching x9, growing up x35, the wait to mate x0.15, a tame's health per level x2.125 and its melee x2.3529; and what the dead leave lies six times as long. A value set afterwards, at the console or from the live file, is that value outright.", live())
   .b("bShowCreativeMode", false, "A button for creative mode.", plan("ops"))
   .b("MaxDifficulty", false, "Difficulty is 5, whatever else is set.", plan("polish", { note: "Named on the difficulty page only; not verified as a server setting." }))
   .b("bDisablePhotoMode", false, "Photo mode.", none("unreal", { game: "A" }))

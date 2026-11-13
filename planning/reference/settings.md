@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 515 of them: 113 take effect, 1 more will by the end of round 5,
+is listed here, 515 of them: 114 take effect,
 207 wait for a feature that is not built yet, and 194 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -152,6 +152,7 @@ may change a setting without a restart.
 | `MaxFallSpeedMultiplier` | 1 | The speed of a fall at which it begins to hurt. Higher survives longer falls. | yes |
 | `FastDecayInterval` | 43200 | Seconds before a foundation or pillar joined to nothing decays. Needs FastDecayUnsnappedCoreStructures. | yes |
 | `bUseCorpseLocator` | True | A beam marks where a survivor died. | yes; clients are told |
+| `bUseSingleplayerSettings` | False | ARK's single-player factors are put on top of what the files and the command line give: taming x2.5, hatching x9, growing up x35, the wait to mate x0.15, a tame's health per level x2.125 and its melee x2.3529; and what the dead leave lies six times as long. A value set afterwards, at the console or from the live file, is that value outright. | no |
 
 ### Command line
 
@@ -163,14 +164,6 @@ may change a setting without a restart.
 | `-port=` | none | The port the server listens on. | no |
 | `-WinLiveMaxPlayers=` | none | The most survivors at once. | no |
 | `-NoDinos` | not given | No wild creatures are put in the world. | no |
-
-## What will take effect this round
-
-### Game.ini `[/script/shootergame.shootergamemode]`
-
-| Setting | Default | What it does | From |
-| --- | --- | --- | --- |
-| `bUseSingleplayerSettings` | False | ARK's single-player factors are applied on top of what the files give. | phase 9 |
 
 ## What waits for a feature
 

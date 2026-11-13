@@ -132,7 +132,7 @@ test("a tame finishes on the same tick whether or not anyone is there, across a 
   // Taming four times as fast, so that a raptor of level 30 takes four pieces: two hundred seconds.
   const finish = (away: boolean): { ticks: number; te: number; level: number } => {
     let { h, ada, at, rec: me } = camp(away ? { dbPath } : {});
-    h.say(ada, "rule tamingSpeed 4");
+    h.say(ada, "setting TamingSpeedMultiplier 4");
     const { e, rec } = knockOut(h, at, "raptor", 2.6, 30);
     const down = h.world.tick;
     press(h, ada, e);
@@ -175,7 +175,7 @@ test("a tame finishes on the same tick whether or not anyone is there, across a 
 
   // Food put in it by no hand: it eats, and is full of what it needs, but is nobody's. The first to look into it has it.
   const { h, ada, at, rec: me } = camp();
-  h.say(ada, "rule tamingSpeed 30");
+  h.say(ada, "setting TamingSpeedMultiplier 30");
   const { e, rec } = knockOut(h, at, "raptor", 2.6, 1);
   h.host.items.mint(rec, id("meat"), 5);
   h.run(53000);
@@ -241,7 +241,7 @@ test("a narcotic keeps it under, one after another; harm costs how well it is do
   h.host.creatures.remove(e);
 
   // A parasaur: berries are what it eats; meat lying in it is not. Twenty times as fast, one berry does it, when it is twelve seconds hungry.
-  h.say(ada, "rule tamingSpeed 20");
+  h.say(ada, "setting TamingSpeedMultiplier 20");
   const p = knockOut(h, at, "parasaur", 4.5, 1);
   press(h, ada, p.e);
   expect(ada.open?.inventory.cap).toBe(30);
@@ -258,7 +258,7 @@ test("a narcotic keeps it under, one after another; harm costs how well it is do
 
 /** Tame a creature for `s` at once: knocked out, hungry, with one piece of what it likes in it, and looked into. Taming is made fast enough for one piece to do. */
 function tameNow(h: Harness, s: ClientSession, at: { x: number; z: number }, species: string, dx: number, far: number): { e: number; rec: EntityRecord } {
-  h.say(s, "rule tamingSpeed 60");
+  h.say(s, "setting TamingSpeedMultiplier 60");
   const made = knockOut(h, { x: at.x + dx, z: at.z }, species, far, 1);
   h.host.survival.add(made.rec, V_FOOD, -80);
   h.host.items.mint(made.rec, id(species === "parasaur" ? "berry" : "meat"), 1);

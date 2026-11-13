@@ -14,7 +14,7 @@ import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Progression } from "./progression.ts";
-import type { Rules } from "./rules.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
 import type { Tribes } from "./tribes.ts";
 import type { Subject } from "./taming.ts";
@@ -136,8 +136,8 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     const w = game.beginOwn(OWN_RULES);
     const rules = ctx.rules;
     w.u16(
-      (rules.values.damageNumbers !== 0 ? RULE_DAMAGE_NUMBERS : 0) |
-        (rules.values.globalChat !== 0 ? RULE_GLOBAL_CHAT : 0) |
+      (rules.on("ShowFloatingDamageText") ? RULE_DAMAGE_NUMBERS : 0) |
+        (rules.on("ProximityChat") ? 0 : RULE_GLOBAL_CHAT) |
         (rules.on("AllowHitMarkers") ? RULE_HIT_MARKERS : 0) |
         (rules.on("AllowThirdPersonPlayer") ? RULE_THIRD_PERSON : 0) |
         (rules.on("ServerCrosshair") ? RULE_CROSSHAIR : 0) |

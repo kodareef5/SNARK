@@ -3,7 +3,7 @@
 A browser survival parody with persistent multiplayer worlds, original creatures,
 and PvP built around readable, low-poly 3D.
 
-Four rounds are built. The engine spine: an authoritative Bun server, a predicted
+Five rounds are built. The engine spine: an authoritative Bun server, a predicted
 client, SQLite persistence, an asset pipeline, a WebGL2 renderer. On it, the
 survival core (gathering, an inventory with a ledger, crafting, levels and
 engrams, vitals, swimming, death with a cache and a marker, an admin console
@@ -13,8 +13,12 @@ buffs and torpor, grenades and structure damage); and a first working example
 of each larger module: tribes, text chat and voice relayed through the server,
 building with snapping, support and collapse, doors, locks, boxes, a campfire
 and a bed, creatures that hunt or flee, taming, commanding, riding, and
-breeding. Start with the [roadmap](planning/roadmap.md) and the
-[gameplay data model](planning/architecture/gameplay-model.md).
+breeding. And a server configured as an ARK server is: its two ini files, its
+command line and its live file, with 114 of its settings taking effect and
+the rest read, checked and listed as waiting for what they wait for. Start with
+the [roadmap](planning/roadmap.md), the
+[gameplay data model](planning/architecture/gameplay-model.md), and, to run a
+server, the [operator's guide](planning/reference/operators.md).
 
 ## Run it
 
@@ -53,13 +57,29 @@ Under `bun run dev` cheats need no password: type `enablecheats`, then try
 weapon to the hotbar in the inventory and press its number), `dummy flak` for
 something to shoot, `armor flak` to wear a set, `place wall_wood` for something
 to burn, `give piece_foundation_wood 10` and `give piece_wall_wood 20` for
-something to build with (move them to the hotbar), `buff burning`, and `rule` for
-the server's rules. For creatures: `spawn parasaur 20`, `forcetame` on the one
+something to build with (move them to the hotbar), `buff burning`, and `settings`
+and `setting <name> [value]` for the server's rules. For creatures: `spawn parasaur 20`, `forcetame` on the one
 you look at, `give saddle_parasaur 1`, and for breeding two of them told they
 may mate, then `hatch` on the egg and `grow` on what hatches. A development
-server starts with taming, hatching and growing up turned up, so that raising
-a creature takes minutes and not a day. On a real server set
-`SNARK_ADMIN_PASSWORD`; without it cheats are off.
+server reads `config/dev`: taming, hatching and growing up turned up, so that
+raising a creature takes minutes and not a day, and wild creatures of level 1
+to 30. On a real server set `ServerAdminPassword` in its settings, or
+`SNARK_ADMIN_PASSWORD`; without one cheats are off.
+
+## Run a server
+
+```sh
+bun run build
+bun server/main.ts --config config/boosted-50x --db world.db --port 8787
+```
+
+A server is configured as ARK's is: `GameUserSettings.ini` and `Game.ini` in
+the folder named, ARK's `?Key=Value` and `-Flag` on the command line, and a
+live file read again while it runs. `config` holds four folders to start from:
+`official`, `boosted-10x`, `boosted-50x` and `dev`. As it starts the server
+says what it applied, what waits for a feature, and what it refused and why.
+The [operator's guide](planning/reference/operators.md) has the rest, and the
+[settings reference](planning/reference/settings.md) every setting.
 
 Voice needs a microphone, and away from `localhost` a browser gives one only to
 a page served over TLS: start the server with `--cert cert.pem --key key.pem`.
@@ -68,8 +88,9 @@ a page served over TLS: start the server with `--cert cert.pem --key key.pem`.
 
 | Command | What it does |
 | --- | --- |
-| `bun run check` | Policy rules, type checks for every zone, and all tests. About eight seconds today; fails above 20 s |
-| `bun run bench` | Builds the sizing target (8 km, 500,000 structures, 2.6 million resource nodes, 30,000 creatures, 100 players) and holds each measurement to a budget |
+| `bun run check` | Policy rules, type checks for every zone, and all tests. About nine seconds today; fails above 20 s |
+| `bun run bench` | Builds the sizing target (8 km, 500,000 structures, 2.6 million resource nodes, 30,000 creatures, 100 players) and holds each measurement to a budget. `-- --config config/boosted-50x` holds a boosted server to the same budgets |
+| `bun run settings` | Writes the settings reference from the catalogue. The check fails if it is stale |
 | `bun run snap` | Draws the proving ground to `artifacts/snap.png` with a software rasterizer. No browser. `-- --ui` draws the interface over it; `-- --poses N` a line-up of bodies in motion; `-- --fight bow` a survivor mid-fight as its own client shows it; `-- --creatures` the modelled creatures, with `--young` each at four ages beside its egg |
 | `bun run probe` | Opens installed Chrome headless once and prints the page's self-check report. `-- --bench` adds frame times |
 | `bun run dev` | Development server with client rebuild on change |
@@ -88,6 +109,7 @@ will not be one: see the [testing policy](planning/quality/testing.md).
 | [client](client/README.md) | `core`: headless session and frame building. `shell`: WebGL2 and DOM |
 | [server](server/README.md) | Game loop, every gameplay system, records, persistence, the voice relay, process entry |
 | [tools](tools/README.md) | Check, bench, snapshot, pack build, probe, dev server |
+| `config` | Example server configurations: ARK's two ini files in a folder each |
 | [tests](tests/README.md) | Unit and integration tests, fixtures |
 | [assets](assets/README.md) | Editable art sources and runtime exports |
 

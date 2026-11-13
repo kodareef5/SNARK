@@ -9,7 +9,7 @@ import { KEY_DAMAGE, KEY_HIT_MARK } from "../../client/core/ui/combat.ts";
 import { KEY_SETTINGS_MIC, KEY_SETTINGS_PANEL, KEY_SETTINGS_ROW, buildSettings, settingsClick } from "../../client/core/ui/settings.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { createHost } from "../../server/host.ts";
-import { RULE_DEFAULTS, Rules } from "../../server/rules.ts";
+import type { Rules } from "../../server/settings/rules.ts";
 import { LOOK_BYTES, randomLook } from "../../shared/anim/look.ts";
 import { ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
 import { CMD_CREATE, EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, SESSION_ALIVE, SESSION_CREATING, SESSION_DEAD } from "../../shared/net/protocol.ts";
@@ -230,7 +230,7 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   expect(ada.stats.undecodable + bob.stats.undecodable).toBe(0);
 });
 
-test("server rules are factors in the damage function, are kept with the world, and the console shows and sets them", () => {
+test("server rules are factors in the damage function, last until the server is started again, and the console shows and sets them", () => {
   const dbPath = join(dir, "rules.db");
   let h = new Harness({}, 1, 60, { dev: true, dbPath });
   let ada = h.join("ada");
@@ -256,25 +256,25 @@ test("server rules are factors in the damage function, are kept with the world, 
     h.run(TICK_MS * 22);
     return combat.hits > before ? combat.last.damage : -1;
   };
-  expect(h.say(ada, "rule")).toEqual(Object.entries(RULE_DEFAULTS).map(([k, v]) => `${k} ${v}`));
+  expect(h.say(ada, "settings")).toEqual(["every setting is at its default"]);
   expect(punch(HEAD)).toBe(24);
   // Head shots off: a head is a part like any other.
-  expect(h.say(ada, "rule headshots 0")).toEqual(["headshots 0"]);
+  expect(h.say(ada, "setting HeadMultipliers False")).toEqual(["HeadMultipliers=False  (until the server is started again)"]);
   expect(punch(HEAD)).toBe(8);
-  // Survivors do half to each other.
-  h.say(ada, "rule playerDamage 0.5");
+  // Survivors take half from each other.
+  h.say(ada, "setting PlayerResistanceMultiplier 0.5");
   expect(punch(CHEST)).toBe(4);
   // Or nothing: the blow lands, and takes nothing.
-  h.say(ada, "rule playerDamage 0");
+  h.say(ada, "setting PlayerResistanceMultiplier 0");
   expect(punch(CHEST)).toBe(0);
   // A creature is another matter: its own rule.
-  h.say(ada, "rule creatureDamage 2");
+  h.say(ada, "setting DinoResistanceMultiplier 2");
   const e = h.host.spawnCreature("core:dummy", at.x + 1.5, at.z, 1);
   expect(e).toBeGreaterThanOrEqual(0);
   pa!.yaw = Math.PI / 2;
   expect(punch(CHEST)).toBe(16);
   // What is built has its own too.
-  h.say(ada, "rule structureDamage 3");
+  h.say(ada, "setting StructureResistanceMultiplier 3");
   h.host.death.die(h.host.records.byPid.get(h.world.ents.pid[e]!)!, 0);
   const wall = h.world.structs.add(id("wall_thatch"), at.x + 1.6, g.y + 1.5, at.z, 16384, 0, 250);
   pa!.pitch = -0.1;
@@ -284,31 +284,28 @@ test("server rules are factors in the damage function, are kept with the world, 
   h.run(TICK_MS * 22);
   expect(h.world.structs.chunks[Math.floor(wall / 65536)]!.hp[wall & 0xffff]).toBe(250 - 24);
   // Nonsense is refused, and says what would be accepted.
-  expect(h.say(ada, "rule gravity 2")[0]).toMatch(/^usage: rule </);
-  expect(h.say(ada, "rule playerDamage -1")[0]).toMatch(/^usage: rule </);
-  expect(h.say(ada, "rule playerDamage 1001")[0]).toMatch(/^usage: rule </);
-  expect(h.say(bob, "rule")).toHaveLength(16);
+  expect(h.say(ada, "setting Gravity 2")).toEqual(["there is no setting called Gravity"]);
+  expect(h.say(ada, "setting PlayerResistanceMultiplier -1")[0]).toMatch(/wants a number from 0 to/);
+  expect(h.say(ada, "setting PlayerResistanceMultiplier 1e9")[0]).toMatch(/wants a number from 0 to/);
+  expect(h.say(bob, "settings")).toHaveLength(4);
   // Clients are told the one they act on: the damage of a hit is not shown as a number unless the server says so.
   expect(ada.damageNumbers).toBe(false);
-  h.say(ada, "rule damageNumbers 1");
+  h.say(ada, "setting ShowFloatingDamageText True");
   expect([ada.damageNumbers, bob.damageNumbers]).toEqual([true, true]);
   // A change from the console lasts until the server is started again. A host started on the same rules has them still;
   const set = h.host.rules;
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath, config: set });
-  expect(h.host.rules.values).toEqual({ ...RULE_DEFAULTS, playerDamage: 0, creatureDamage: 2, structureDamage: 3, headshots: 0, damageNumbers: 1 });
+  const held = (r: Rules) => [r.num("PlayerResistanceMultiplier"), r.num("DinoResistanceMultiplier"), r.num("StructureResistanceMultiplier"), r.on("HeadMultipliers"), r.on("ShowFloatingDamageText")];
+  expect(held(h.host.rules)).toEqual([0, 2, 3, false, true]);
   ada = h.join("ada");
   h.run(500);
   expect(ada.damageNumbers).toBe(true);
   h.host.shutdown();
   // one started with none has the defaults, whatever the world it loads was last run under: the files are the truth.
   h = new Harness({}, 1, 60, { dev: true, dbPath });
-  expect(h.host.rules.values).toEqual({ ...RULE_DEFAULTS });
+  expect(held(h.host.rules)).toEqual([1, 1, 1, true, false]);
   h.host.shutdown();
-  // A rule book takes only what it knows, within bounds.
-  const rules = new Rules({ playerDamage: 3 });
-  expect(rules.values).toEqual({ ...RULE_DEFAULTS, playerDamage: 3 });
-  expect([rules.set("selfDamage", 0), rules.set("selfDamage", Number.NaN), rules.set("nope", 1)]).toEqual([true, false, false]);
   createHost(reg, {}).shutdown();
 });
 
@@ -412,7 +409,7 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   expect(app.ui.frame.find(KEY_SETTINGS_PANEL)).toBeNull();
   expect(app.ui.wantsPointerLock).toBe(true);
   // A punch on a dummy shows its mark and, on a server that shows the damage of hits, its number; with the player's own numbers off, the mark alone.
-  app.session.text("rule damageNumbers 1");
+  app.session.text("setting ShowFloatingDamageText True");
   run(300);
   app.session.text("dummy");
   run(300);

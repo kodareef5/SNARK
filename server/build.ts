@@ -38,7 +38,7 @@ import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_L
 import type { Fixtures } from "./fixtures.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Decay } from "./decay.ts";
-import type { Rules } from "./rules.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -371,7 +371,7 @@ export class Build {
       if (t.hp[slot]! < reg.maxHp[kind]!) return RESULT_DAMAGED;
       if ((fixtures.find(ref)?.inv?.used() ?? 0) > 0) return RESULT_NOT_EMPTY;
       // By rule, only for a while after it was set down.
-      const window = rules.values.pickupSeconds * TICK_RATE;
+      const window = rules.on("AlwaysAllowStructurePickup") ? 0 : rules.num("StructurePickupTimeAfterPlacement") * TICK_RATE;
       if (window > 0 && !(tick - (this.placedAt.get(ref) ?? -Infinity) <= window)) return RESULT_WAIT;
       if (items.mint(rec, item, 1) === 0) return RESULT_FULL;
       this.take(ref, rec, STRUCT_PICKUP);
@@ -555,7 +555,7 @@ export class Build {
     if (reg.isBed[kind] === 1) this.ctx.fixtures.ensure(ref);
     // Its builder was here just now; and, where a piece may be taken back only for a while, when.
     this.decay.visit(rec.team, Math.floor(ref / 65536), world.tick);
-    if (this.ctx.rules.values.pickupSeconds > 0) {
+    if (!this.ctx.rules.on("AlwaysAllowStructurePickup")) {
       this.placedAt.set(ref, world.tick);
       if (this.placedAt.size > 8192) this.forget(this.placedAt, 100 * TICK_RATE);
     }

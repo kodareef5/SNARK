@@ -173,12 +173,12 @@ test("a tribe: founded, joined face to face with everything the joiner owns, saf
   expect([rb.buffs.map((b) => b.buff), h.host.survival.value(rb, V_HEALTH), h.host.survival.value(rb, V_TORPOR)]).toEqual([[], h.host.survival.value(rb, V_HEALTH), 0]);
   expect(h.host.survival.value(rb, V_HEALTH)).toBeGreaterThanOrEqual(rb.vitals!.max[V_HEALTH]! / 1e6 - 0.01);
   // Unless the server allows it.
-  expect(h.say(ada, "rule friendlyFire 1")[0]).toContain("friendlyFire");
+  expect(h.say(ada, "setting FullFriendlyFire True")[0]).toContain("FullFriendlyFire=True");
   swings();
   expect(h.host.combat.structureHits).toBeGreaterThan(blasted);
   h.say(bob, `tp ${at.x.toFixed(3)} ${(at.z + APART).toFixed(3)}`);
   expect(punch(h, h.pilots[0]!)).toBeGreaterThan(0);
-  h.say(ada, "rule friendlyFire 0");
+  h.say(ada, "setting FullFriendlyFire False");
 
   // Someone leaving the game is shown as away; coming back, as here.
   bob.close();
@@ -329,7 +329,7 @@ test("chat: everyone, those near, and the tribe each hear what is theirs to hear
 
   // A server may have no global channel: clients are told, and a line sent there is refused with the reason.
   expect([ada.globalChat, cy.globalChat]).toEqual([true, true]);
-  h.say(ada, "rule globalChat 0");
+  h.say(ada, "setting ProximityChat True");
   expect([ada.globalChat, cy.globalChat]).toEqual([false, false]);
   codes.length = 0;
   from = marks();
@@ -338,7 +338,7 @@ test("chat: everyone, those near, and the tribe each hear what is theirs to hear
   expect(codes).toEqual([RESULT_DENIED]);
   expect(since(from, TEXT_GLOBAL).flat()).toEqual([]);
   expect(since(from, TEXT_NOTICE)[2]![0]).toContain("no global channel");
-  h.say(ada, "rule globalChat 1");
+  h.say(ada, "setting ProximityChat False");
   // The dead may write; someone with no body, only watching, may write to everyone and to nobody else.
   h.run(5000);
   h.say(cy, "spectate");

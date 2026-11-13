@@ -4,10 +4,6 @@
 // line, the live file or the console, in that order of strength (D88), and
 // remembers which. Rules are read where they are used; nothing caches one.
 // They are factors and switches, never a branch at a call site (D66).
-//
-// Until the end of round 5 the sixteen rules that came before the catalogue
-// keep their old names as aliases (`values`, `set`), each standing for one or
-// two of ARK's settings.
 
 import { CATALOG, rowOf } from "./catalog.ts";
 import { isList, toNumber, toSwitch, unquote, type IniNode } from "./ini.ts";
@@ -19,31 +15,6 @@ export type Source = (typeof SOURCES)[number];
 
 /** What a setting holds: a number, a switch, words, a number for each index, or the entries of a list. */
 export type Value = number | boolean | string | readonly number[] | readonly IniNode[];
-
-/** The old rules, by their old names, with what each begins as: ARK's defaults for the settings they stand for. */
-export const RULE_DEFAULTS = {
-  playerDamage: 1,
-  creatureDamage: 1,
-  structureDamage: 1,
-  selfDamage: 1,
-  headshots: 1,
-  damageNumbers: 0,
-  friendlyFire: 0,
-  globalChat: 1,
-  globalVoice: 0,
-  tamingSpeed: 1,
-  hatchSpeed: 1,
-  matureSpeed: 1,
-  matingInterval: 1,
-  pickupSeconds: 30,
-  decayTime: 1,
-  decayDestroy: 0,
-} as const;
-
-export type RuleName = keyof typeof RULE_DEFAULTS;
-export const RULE_NAMES = Object.keys(RULE_DEFAULTS) as RuleName[];
-/** The most an old rule may be set to. */
-export const RULE_MAX = 1000;
 
 /** The key a row's value is kept under: its exact name, and for a command-line flag a dash before it. */
 const slot = (row: Row): string => (row.kind === "flag" ? "-" : "") + row.name;
@@ -94,17 +65,10 @@ export class Rules {
   version = 0;
   private readonly vals = new Map<string, Value>();
   private readonly from = new Map<string, Source>();
-  private old: Record<RuleName, number> | null = null;
 
   /** Rules begin as the catalogue's defaults, which are ARK's. `first` gives some of the old rules other values to begin with. */
-  constructor(first: Partial<Record<RuleName, number>> = {}) {
+  constructor() {
     for (const row of CATALOG) this.vals.set(slot(row), defaultOf(row));
-    for (const name of RULE_NAMES) {
-      const v = first[name];
-      if (typeof v === "number") this.set(name, v);
-    }
-    this.from.clear();
-    this.version = 0;
   }
 
   private need(name: string): Value {
@@ -180,7 +144,6 @@ export class Rules {
     this.vals.set(slot(row), value);
     this.from.set(slot(row), source);
     this.version++;
-    this.old = null;
   }
 
   /**
@@ -196,72 +159,6 @@ export class Rules {
     if (typeof got === "string") return `${row.name} ${got}`;
     this.put(row, got.value as Value, source);
     return "";
-  }
-
-  /** The old rules, by their old names, as numbers: what each stands for now. */
-  get values(): Record<RuleName, number> {
-    if (this.old) return this.old;
-    const sw = (name: string): number => (this.on(name) ? 1 : 0);
-    this.old = {
-      playerDamage: this.num("PlayerResistanceMultiplier"),
-      creatureDamage: this.num("DinoResistanceMultiplier"),
-      structureDamage: this.num("StructureResistanceMultiplier"),
-      selfDamage: this.num("SelfDamageMultiplier"),
-      headshots: sw("HeadMultipliers"),
-      damageNumbers: sw("ShowFloatingDamageText"),
-      friendlyFire: sw("FullFriendlyFire"),
-      globalChat: this.on("ProximityChat") ? 0 : 1,
-      globalVoice: sw("globalVoiceChat"),
-      tamingSpeed: this.num("TamingSpeedMultiplier"),
-      hatchSpeed: this.num("EggHatchSpeedMultiplier"),
-      matureSpeed: this.num("BabyMatureSpeedMultiplier"),
-      matingInterval: this.num("MatingIntervalMultiplier"),
-      // 0 was "at any time".
-      pickupSeconds: this.on("AlwaysAllowStructurePickup") ? 0 : this.num("StructurePickupTimeAfterPlacement"),
-      // 0 was "nothing decays".
-      decayTime: this.on("DisableStructureDecayPvE") ? 0 : this.num("PvEStructureDecayPeriodMultiplier"),
-      decayDestroy: this.num("AutoDestroyOldStructuresMultiplier") > 0 && this.flag("AutoDestroyStructures") === true ? 1 : 0,
-    };
-    return this.old;
-  }
-
-  /** Set an old rule by its old name. False if there is no such rule or the value is not a number from 0 to RULE_MAX. */
-  set(name: string, value: number): boolean {
-    if (!(RULE_NAMES as string[]).includes(name) || !(value >= 0 && value <= RULE_MAX)) return false;
-    const to = (ark: string, v: Value): void => {
-      const row = rowOf(ark)!;
-      // An old rule might be 0 where the setting it stands for, which time is divided by, may not: the least it may be, then.
-      this.put(row, typeof v === "number" && v < row.min ? row.min : v, "console");
-    };
-    switch (name as RuleName) {
-      case "playerDamage": to("PlayerResistanceMultiplier", value); break;
-      case "creatureDamage": to("DinoResistanceMultiplier", value); break;
-      case "structureDamage": to("StructureResistanceMultiplier", value); break;
-      case "selfDamage": to("SelfDamageMultiplier", value); break;
-      case "headshots": to("HeadMultipliers", value !== 0); break;
-      case "damageNumbers": to("ShowFloatingDamageText", value !== 0); break;
-      case "friendlyFire": to("FullFriendlyFire", value !== 0); break;
-      case "globalChat": to("ProximityChat", value === 0); break;
-      case "globalVoice": to("globalVoiceChat", value !== 0); break;
-      case "tamingSpeed": to("TamingSpeedMultiplier", value); break;
-      case "hatchSpeed": to("EggHatchSpeedMultiplier", value); break;
-      case "matureSpeed": to("BabyMatureSpeedMultiplier", value); break;
-      case "matingInterval": to("MatingIntervalMultiplier", value); break;
-      case "pickupSeconds":
-        to("AlwaysAllowStructurePickup", value === 0);
-        if (value !== 0) to("StructurePickupTimeAfterPlacement", value);
-        break;
-      case "decayTime":
-        to("DisableStructureDecayPvE", value === 0);
-        if (value !== 0) to("PvEStructureDecayPeriodMultiplier", value);
-        break;
-      case "decayDestroy":
-        // The old rule was one switch; ARK's is a multiplier that also needs its command-line flag.
-        to("AutoDestroyOldStructuresMultiplier", value !== 0 ? 1 : 0);
-        this.put(rowOf("AutoDestroyStructures", true)!, value !== 0, "console");
-        break;
-    }
-    return true;
   }
 
   /**

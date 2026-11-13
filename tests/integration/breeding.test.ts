@@ -37,7 +37,7 @@ const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 
 /** Ada and Bob with cheats on level ground, five metres apart. */
-function pen(host: { dbPath?: string; rules?: Record<string, number>; config?: Rules } = {}, registry: Registry = reg) {
+function pen(host: { dbPath?: string; config?: Rules } = {}, registry: Registry = reg) {
   const h = new Harness({}, 1, 60, { dev: true, ...host }, registry);
   const ada = h.join("ada");
   const bob = h.join("bob");
@@ -228,8 +228,8 @@ test("an egg hatches and what hatches is grown on the ticks they were due, watch
   const growTicks = Math.ceil((95238 * TICK_RATE) / 1000);
   const raise = (away: boolean): { egg: number; grew: number; food: number; health: number; level: number; rest: number } => {
     let { h, ada, at, me } = pen(away ? { dbPath } : {});
-    h.say(ada, "rule hatchSpeed 500");
-    h.say(ada, "rule matureSpeed 1000");
+    h.say(ada, "setting EggHatchSpeedMultiplier 500");
+    h.say(ada, "setting BabyMatureSpeedMultiplier 1000");
     const f = tame(h, me, "parasaur", at.x - 2, at.z + 3, true);
     const m = tame(h, me, "parasaur", at.x + 2, at.z + 3, false);
     expect([order(h, ada, f.e, ORDER_MATE), order(h, ada, m.e, ORDER_MATE)]).toEqual([RESULT_OK, RESULT_OK]);
@@ -312,7 +312,7 @@ test("what hatches is nobody's and helpless until someone takes it; then it is t
   const mind = h.host.creatures.mind;
   const def = reg.defs[id("parasaur")] as SpeciesDef;
   // Growing up a thousand times as fast: ninety-five seconds. Bob is sent off for now.
-  h.say(ada, "rule matureSpeed 1000");
+  h.say(ada, "setting BabyMatureSpeedMultiplier 1000");
   h.say(bob, `tp ${(at.x + 200).toFixed(3)} ${(at.z + 200).toFixed(3)}`);
   const f = tame(h, me, "parasaur", at.x - 2, at.z + 3, true);
   const m = tame(h, me, "parasaur", at.x + 2, at.z + 3, false);
@@ -463,7 +463,7 @@ test("a species that bears its young alive goes the same way with no egg: carrie
   const parasaur = live.index.get("core:parasaur")!;
   let { h, ada, at, me } = pen({ dbPath }, live);
   // A hundred times as fast: six seconds carried.
-  h.say(ada, "rule hatchSpeed 100");
+  h.say(ada, "setting EggHatchSpeedMultiplier 100");
   const a = tame(h, me, "parasaur", at.x - 3, at.z + 3, true);
   const b = tame(h, me, "parasaur", at.x + 3, at.z + 3, true);
   const m = tame(h, me, "parasaur", at.x, at.z + 6, false);
@@ -523,7 +523,7 @@ test("a development server reads a folder of its own, with taming, hatching and 
   const [egg, grow] = [reg.incubateTicks[id("parasaur")]! / TICK_RATE, reg.matureTicks[id("parasaur")]! / TICK_RATE];
   expect([egg / rules.num("EggHatchSpeedMultiplier") < 120, grow / rules.num("BabyMatureSpeedMultiplier") < 360, egg > 5000, grow > 90000]).toEqual([true, true, true, true]);
   // A rule changed from the console lasts until the server is started again: then the folder says what it is.
-  h.say(ada, "rule hatchSpeed 7");
+  h.say(ada, "setting EggHatchSpeedMultiplier 7");
   expect(h.host.rules.num("EggHatchSpeedMultiplier")).toBe(7);
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath, config: loadConfigFolder(DEV_CONFIG).rules });

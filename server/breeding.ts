@@ -39,7 +39,7 @@ import type { Creatures } from "./creatures.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Persistence } from "./persist/persistence.ts";
 import type { EntityRecord, Records } from "./records.ts";
-import type { Rules } from "./rules.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { ServerWorld } from "./world.ts";
 

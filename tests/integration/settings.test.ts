@@ -10,6 +10,7 @@ import { WorldStore } from "../../server/persist/store.ts";
 import { rowOf } from "../../server/settings/catalog.ts";
 import { applyLive, emptyReport, formatReport, loadConfig, loadConfigFolder } from "../../server/settings/config.ts";
 import { timersOf } from "../../server/settings/rules.ts";
+import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-settings-"));
@@ -198,4 +199,28 @@ test("a folder is read from disk, any of its files missing; a server started on 
   // A save from before this was kept said the same of three of them under their old names.
   expect(timersOf(null, '{"hatchSpeed":50,"matureSpeed":300,"matingInterval":0.002,"playerDamage":1}')).toEqual({ EggHatchSpeedMultiplier: 50, BabyMatureSpeedMultiplier: 300, MatingIntervalMultiplier: 0.002 });
   expect([timersOf(null, null), timersOf("not json", null), timersOf('{"timers":{"EggHatchSpeedMultiplier":4,"Bad":"x"}}', '{"hatchSpeed":50}')]).toEqual([null, null, { EggHatchSpeedMultiplier: 4 }]);
+});
+
+test("ARK's single-player settings are its own fixed factors on top of what the files and the command line give; what is set afterwards is set outright", () => {
+  const made = loadConfig({ gus: "[ServerSettings]\nTamingSpeedMultiplier=2\n", game: "[/script/shootergame.shootergamemode]\nbUseSingleplayerSettings=True\nMatingIntervalMultiplier=0.5\nPerLevelStatsMultiplier_DinoTamed[1]=3\n" }, ["?TamingSpeedMultiplier=4"]);
+  const r = made.rules;
+  const near = (v: number): number => Math.round(v * 1e4) / 1e4;
+  // Taming x2.5 on what the command line gave; hatching x9 and growing up x35 on ARK's own 1; the wait to mate x0.15 on the file's.
+  expect([r.num("TamingSpeedMultiplier"), r.num("EggHatchSpeedMultiplier"), r.num("BabyMatureSpeedMultiplier"), near(r.num("MatingIntervalMultiplier"))]).toEqual([10, 9, 35, 0.075]);
+  // A tame's health per level x2.125 and its melee x2.3529, on ARK's own 0.2 and 0.17; a stat the file set is as the file set it.
+  expect(r.indexed("PerLevelStatsMultiplier_DinoTamed").map(near)).toEqual([0.425, 3, 1, 1, 1, 1, 1, 1, 0.4, 1, 1, 1]);
+  // What the dead leave lies six times as long. Those of its factors that wait for a feature are held for when it comes.
+  expect([r.num("UseCorpseLifeSpanMultiplier"), r.num("BabyCuddleIntervalMultiplier"), r.num("CropGrowthSpeedMultiplier"), near(r.indexed("PerLevelStatsMultiplier_DinoTamed_Add")[0]!)]).toEqual([6, 0.17, 4, 0.5]);
+  // Said, as the server starts; and where each value came from is still where it came from.
+  const lines = formatReport(made.report, r);
+  expect(lines.filter((l) => l.startsWith("  note      bUseSingleplayerSettings: ARK's single-player factors are on top of what was read")).length).toBe(1);
+  expect([r.sourceOf(rowOf("TamingSpeedMultiplier")!), r.sourceOf(rowOf("EggHatchSpeedMultiplier")!)]).toEqual(["command line", "default"]);
+  // A server on it has content to match: a parasaur gains 2.125 times the health from a level its owner gives it.
+  const h = new Harness({}, 1, 60, { dev: true, config: r });
+  const curve = (reg: typeof h.reg) => (reg.defs[reg.index.get("core:parasaur")!] as SpeciesDef).stats!.health!;
+  expect(near(curve(h.world.reg)[2] / curve(h.reg)[2])).toBe(2.125);
+  // Set at the console afterwards, a value is that value: the factor is not put on it again.
+  expect([h.host.setSetting("TamingSpeedMultiplier", "3"), h.host.rules.num("TamingSpeedMultiplier")]).toEqual(["", 3]);
+  // Without the switch, the files are what they say.
+  expect(loadConfig({ gus: "[ServerSettings]\nTamingSpeedMultiplier=2\n" }).rules.num("TamingSpeedMultiplier")).toBe(2);
 });

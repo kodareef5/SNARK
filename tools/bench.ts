@@ -18,7 +18,9 @@ import { ClientSession, RemoteSample, type Rubble } from "../client/core/session
 import { AnimState, HumanAnim } from "../shared/anim/pose.ts";
 import { ACT_NONE, ACT_SWING } from "../shared/sim/weapon.ts";
 import { CORE_CONTENT } from "../content/core.ts";
-import { createHost, type Host } from "../server/host.ts";
+import { contentFor, createHost, type Host } from "../server/host.ts";
+import { loadConfig, loadConfigFolder } from "../server/settings/config.ts";
+import { Rules } from "../server/settings/rules.ts";
 import { WorldStore } from "../server/persist/store.ts";
 import { createWorld, type ServerWorld } from "../server/world.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
@@ -164,8 +166,15 @@ class Bot {
   }
 }
 
-const reg = compileContent(CORE_CONTENT).registry!;
+// The server's settings: ARK's defaults, or those of a config folder named after `--config` (config/boosted-50x, say),
+// to hold a boosted server to the same budgets. Content is what those settings make of it, for the server and every client.
+const configAt = process.argv.indexOf("--config");
+const configFolder = configAt >= 0 ? (process.argv[configAt + 1] ?? "") : "";
+const benchRules = configFolder !== "" ? loadConfigFolder(configFolder).rules : new Rules();
+const written = compileContent(CORE_CONTENT).registry!;
+const reg = contentFor(written, benchRules);
 const dir = mkdtempSync(join(tmpdir(), "snark-bench-"));
+if (configFolder !== "") console.log(`settings: ${configFolder}`);
 console.log(`SNARK benchmarks  ${cpus()[0]!.model}, ${cpus().length} cores, ${(totalmem() / 2 ** 30).toFixed(0)} GB, Bun ${Bun.version}, ${process.platform} ${process.arch}`);
 
 // ---------------------------------------------------------------- world build
@@ -186,7 +195,7 @@ record("structures placed", world.structs.count, "");
 
 const dbPath = join(dir, "world.db");
 // More seats than ARK's seventy: the sizing target is a hundred players, and a dozen more come to watch a house fall.
-const host: Host = createHost(reg, { dbPath, world, commitEvery: 6, game: { maxClients: 128 } });
+const host: Host = createHost(reg, { dbPath, world, config: benchRules, commitEvery: 6, game: { maxClients: 128 } });
 const persistence = host.persistence!;
 t0 = performance.now();
 persistence.commit();
@@ -226,7 +235,7 @@ for (let i = 0; i < PLAYERS; i++) {
     sessions.push(new ClientSession(end, { name: `bot${i}`, key: new Uint8Array(KEY_BYTES).fill(i + 1), registry: reg, look: defaultLook(), resolveMap: () => hf, nodes: () => nodeSource }));
     continue;
   }
-  bots.push(new Bot(net, `bot${i}`, reg.hash, 100 + i));
+  bots.push(new Bot(net, `bot${i}`, reg.baseHash, 100 + i));
 }
 
 const commitTimes: number[] = [];
@@ -783,6 +792,41 @@ const records = store.loadEntities();
 record(`load ${records.length} entity records`, performance.now() - t0, "ms", 3000);
 store.close();
 
+// ---------------------------------------------------------------- restart under other settings
+section("Restart under other settings: the save of the sizing target, every timer and rate brought over");
+{
+  // The whole host on the save, twice: under the settings it was saved under, and under others that move everything a
+  // setting can move at a load. The difference is what bringing the world over costs.
+  const fresh = (content: typeof reg): ServerWorld => createWorld(content, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 2048, undefined, nodeSource);
+  const start = (rules: Rules): { host: Host; ms: number } => {
+    Bun.gc(true);
+    const at = performance.now();
+    const again = createHost(reg, { dbPath, world: fresh(contentFor(written, rules)), config: rules, commitEvery: 6, game: { maxClients: 128 } });
+    return { host: again, ms: performance.now() - at };
+  };
+  const same = start(benchRules);
+  record("start a host on the save, same settings", same.ms, "ms");
+  same.host.shutdown();
+  const was = (name: string): number => benchRules.num(name);
+  const other = loadConfig({
+    gus: `[ServerSettings]\nDinoCharacterFoodDrainMultiplier=${was("DinoCharacterFoodDrainMultiplier") * 2}\nPlayerCharacterFoodDrainMultiplier=${was("PlayerCharacterFoodDrainMultiplier") * 2}\nResourcesRespawnPeriodMultiplier=${was("ResourcesRespawnPeriodMultiplier") * 0.5}\nItemStackSizeMultiplier=${was("ItemStackSizeMultiplier")}\n`,
+    game: `[/script/shootergame.shootergamemode]\nEggHatchSpeedMultiplier=${was("EggHatchSpeedMultiplier") * 2}\nBabyMatureSpeedMultiplier=${was("BabyMatureSpeedMultiplier") * 0.5}\nMatingIntervalMultiplier=${was("MatingIntervalMultiplier") * 2}\nGlobalSpoilingTimeMultiplier=${was("GlobalSpoilingTimeMultiplier") * 2}\nFuelConsumptionIntervalMultiplier=${was("FuelConsumptionIntervalMultiplier") * 0.5}\nGlobalCorpseDecompositionTimeMultiplier=${was("GlobalCorpseDecompositionTimeMultiplier") * 2}\nGlobalItemDecompositionTimeMultiplier=${was("GlobalItemDecompositionTimeMultiplier") * 2}\n`,
+  }).rules;
+  const moved = start(other);
+  // Eggs, young, waits, bags, the top of every stack, every fire, every node growing back, and every body's rates.
+  record("start a host on it under other settings", moved.ms, "ms", 5000);
+  record("of that, the bringing over", Math.max(0, moved.ms - same.ms), "ms", 2000);
+  let rated = 0;
+  for (const rec of moved.host.records.byPid.values()) if (rec.vitals) rated++;
+  record("bodies rated again", rated, "");
+  t0 = performance.now();
+  moved.host.persistence!.commit();
+  // Everything that changed, written in one commit with the settings it was changed under.
+  record("the first commit after it", performance.now() - t0, "ms", 5000);
+  record("the item ledger still balances after it (0 is yes)", moved.host.items.audit().length, "", 0);
+  moved.host.shutdown();
+}
+
 // ---------------------------------------------------------------- client frame
 section("Client frame build (headless): standing 60 m from a 2,000-piece base");
 const scene = new Scene({ dims: DIMS, hf, structs: restored }, reg, pack);
@@ -933,7 +977,7 @@ section("Client frame build (headless): that house coming down 60 m off");
 
 rmSync(dir, { recursive: true, force: true });
 const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);
-const out = resolve("artifacts/bench.json");
+const out = resolve(configFolder !== "" ? `artifacts/bench-${configFolder.replace(/\/+$/, "").split("/").pop()}.json` : "artifacts/bench.json");
 mkdirSync(resolve("artifacts"), { recursive: true });
 writeFileSync(out, JSON.stringify({ machine: `${cpus()[0]!.model}, ${cpus().length} cores`, bun: Bun.version, rows }, null, 2));
 console.log(`\n${rows.filter((r) => r.budget !== null).length - misses.length} budgets met, ${misses.length} missed.  ${out}`);

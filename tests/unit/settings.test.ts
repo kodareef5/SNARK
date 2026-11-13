@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { CATALOG, catalogCounts, catalogFaults, rowOf } from "../../server/settings/catalog.ts";
 import { field, isList, parseIni, toNumber, toSwitch, unquote, writeNode, type IniList } from "../../server/settings/ini.ts";
 import { FEATURES } from "../../server/settings/row.ts";
-import { RULE_DEFAULTS, Rules, readValue } from "../../server/settings/rules.ts";
+import { Rules, readValue } from "../../server/settings/rules.ts";
 import { SETTINGS_PAGE, settingsPage } from "../../tools/settings.ts";
 
 const root = resolve(import.meta.dir, "../..");
@@ -124,32 +124,22 @@ test("a value is checked against its row: its kind, its range, and whether it is
   expect([readValue(rowOf("NoDinos", true)!, ""), readValue(rowOf("port", true)!, "9000"), readValue(rowOf("port", true)!, "")]).toEqual([{ value: true }, { value: "9000" }, "wants a value"]);
 });
 
-test("rules begin as the catalogue's defaults, are read by ARK's names, and the old names still stand for them", () => {
+test("rules begin as the catalogue's defaults, and are read and set by ARK's names", () => {
   const rules = new Rules();
   // ARK's defaults.
   expect([rules.num("TamingSpeedMultiplier"), rules.on("ShowFloatingDamageText"), rules.on("AlwaysAllowStructurePickup"), rules.num("StructurePickupTimeAfterPlacement"), rules.text("ServerPassword"), rules.flag("NoDinos"), rules.list("PreventDinoTameClassNames")]).toEqual([1, false, false, 30, "", false, []]);
   expect(rules.indexed("PerLevelStatsMultiplier_DinoTamed")[8]).toBe(0.17);
   expect(() => rules.num("NoSuchSetting")).toThrow(/no setting/);
   expect(() => rules.num("serverPVE")).toThrow(/not a number/);
-  // The old names read through to them: under ARK's defaults damage numbers are off and a piece may be taken back for 30 seconds.
-  expect(rules.values).toEqual({ ...RULE_DEFAULTS });
-  expect([RULE_DEFAULTS.damageNumbers, RULE_DEFAULTS.pickupSeconds]).toEqual([0, 30]);
   const before = new Rules();
-  expect([before.values, before.version]).toEqual([{ ...RULE_DEFAULTS }, 0]);
-  expect(new Rules({ tamingSpeed: 10, hatchSpeed: 50 }).values).toMatchObject({ tamingSpeed: 10, hatchSpeed: 50 });
-
-  // Set by an old name, the setting it stands for changes; some stand for two, and some the other way up.
-  expect([before.set("globalChat", 0), before.on("ProximityChat"), before.set("pickupSeconds", 45), before.on("AlwaysAllowStructurePickup"), before.num("StructurePickupTimeAfterPlacement")]).toEqual([true, true, true, false, 45]);
-  expect([before.set("decayTime", 0), before.on("DisableStructureDecayPvE"), before.set("decayTime", 3), before.on("DisableStructureDecayPvE"), before.num("PvEStructureDecayPeriodMultiplier")]).toEqual([true, true, true, false, 3]);
-  // An old rule of 0 where time is divided by it is the least the setting may be.
-  expect([before.set("hatchSpeed", 0), before.num("EggHatchSpeedMultiplier")]).toEqual([true, 0.001]);
-  expect([before.set("tamingSpeed", 1001), before.set("tamingSpeed", -1), before.set("nope", 1), before.version > 0]).toEqual([false, false, false, true]);
+  expect(before.version).toBe(0);
 
   // Set by ARK's name, from words, whatever its case; the reason is given when it will not do.
   expect([rules.assign("tamingspeedmultiplier", "2.5", "console"), rules.num("TamingSpeedMultiplier"), rules.sourceOf(rowOf("TamingSpeedMultiplier")!)]).toEqual(["", 2.5, "console"]);
   expect(rules.assign("TamingSpeedMultiplier", "lots", "console")).toMatch(/TamingSpeedMultiplier wants a number/);
   expect(rules.assign("Gravity", "2", "console")).toMatch(/no setting called Gravity/);
   expect(rules.assign("PreventDinoTameClassNames", "core:raptor", "console")).toMatch(/is a list/);
+  expect([rules.version > 0, before.num("TamingSpeedMultiplier")]).toEqual([true, 1]);
   // A weaker source does not replace what a stronger one gave.
   expect([rules.yields(rowOf("TamingSpeedMultiplier")!, "file"), rules.yields(rowOf("TamingSpeedMultiplier")!, "console"), rules.yields(rowOf("XPMultiplier")!, "file")]).toEqual([false, true, true]);
 });

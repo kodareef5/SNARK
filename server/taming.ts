@@ -31,7 +31,7 @@ import type { Buffs } from "./buffs.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
-import type { Rules } from "./rules.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { Survival } from "./survival.ts";
 import type { Tribes } from "./tribes.ts";
@@ -290,7 +290,7 @@ export class Taming {
     const hungry = v.at(V_FOOD, world.tick) <= v.max[V_FOOD]! - Math.round(food * 1e6);
     if (hungry && items.burnItem(rec, item, 1)) {
       survival.add(rec, V_FOOD, food);
-      const speed = rules.values.tamingSpeed;
+      const speed = rules.num("TamingSpeedMultiplier");
       tame.affinity += pieceWorth(affinity, speed);
       tame.sum += pieceCost(affinity, speed);
       this.bites++;

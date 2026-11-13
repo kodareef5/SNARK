@@ -10,6 +10,7 @@ import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { KEY_STRUCT_BUTTON, KEY_STRUCT_DETAIL, KEY_STRUCT_HEALTH, KEY_STRUCT_PANEL, KEY_STRUCT_TITLE, STRUCT_REASONS, structName } from "../../client/core/ui/structure.ts";
 import { DECAY_EVERY } from "../../server/decay.ts";
+import { loadConfig } from "../../server/settings/config.ts";
 import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
@@ -106,7 +107,7 @@ test("a piece is taken back while it is whole, mended for the part that is missi
   expect([h.host.build.pickedUp, h.host.build.demolished, h.host.build.repaired, h.host.build.fallen]).toEqual([2, 1, 1, 0]);
 
   // With the rule that a piece may be taken back only for a while: after that it may not, though it may still be taken down.
-  h.say(ada, "rule pickupSeconds 2");
+  h.say(ada, "setting StructurePickupTimeAfterPlacement 2");
   const late = join(ada, "wall", f, 2).ref;
   const soon = join(ada, "wall", f, 1).ref;
   expect(act(ada, soon, STRUCT_PICKUP)).toBe(RESULT_OK);
@@ -184,7 +185,8 @@ test("what stood on a piece that is taken back or taken down comes back the same
 test("what its tribe has not come near decays: anyone may take it down then, a piece by itself soonest; coming near winds the clock; and the clocks are kept with the world", () => {
   const dir = mkdtempSync(joinPath(tmpdir(), "snark-decay-"));
   const dbPath = joinPath(dir, "world.db");
-  let made = builder(["ada", "bob"], 40, 40, { dbPath });
+  // Started as ARK's servers that clear decayed bases are: with the flag that lets the server take down what has decayed.
+  let made = builder(["ada", "bob"], 40, 40, { dbPath, config: loadConfig({}, ["-AutoDestroyStructures"]).rules });
   let { h, sessions, join, structs, act, has } = made;
   let [ada, bob] = sessions as [ClientSession, ClientSession];
   const decay = () => h.host.build.decay;
@@ -201,7 +203,7 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   h.say(ada, "setting FastDecayUnsnappedCoreStructures True");
   expect(decay().period(id("foundation_wood"), true)).toBe(43200 * TICK_RATE);
   // Wood lasts eight days unvisited. Here, a ten-thousandth of that, 69 s; and a foundation by itself, four seconds.
-  h.say(ada, "rule decayTime 0.0001");
+  h.say(ada, "setting PvEStructureDecayPeriodMultiplier 0.0001");
   h.say(ada, "setting FastDecayInterval 4");
   expect([decay().period(id("wall_wood"), false), decay().period(id("foundation_wood"), true), decay().period(id("wall_thatch"), false), decay().period(id("wall_stone"), false), decay().period(id("wall_metal"), true)]).toEqual([2074, 120, 1037, 3110, 120]);
   // While she is there, nothing of hers decays, however long.
@@ -244,12 +246,12 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   h.run(30000);
   expect([f, wall].map((ref) => decay().expired(ref, h.world.tick))).toEqual([true, true]);
   h.say(bob, "enablecheats");
-  h.say(bob, "rule decayDestroy 1");
+  h.say(bob, "setting AutoDestroyOldStructuresMultiplier 1");
   h.run(6000);
   expect([f, wall].map((ref) => structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff])).toEqual([0, 0]);
   expect([decay().destroyed, h.host.build.fallen]).toEqual([2, 0]);
   // With decay turned off nothing is ever decayed.
-  h.say(bob, "rule decayTime 0");
+  h.say(bob, "setting DisableStructureDecayPvE True");
   expect([decay().active(), h.host.rules.on("DisableStructureDecayPvE")]).toEqual([false, true]);
   expect(h.host.items.audit()).toEqual([]);
   h.host.shutdown();

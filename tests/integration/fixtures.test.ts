@@ -258,7 +258,7 @@ test("a door opens and shuts for its tribe; for anyone once unlocked; and for wh
   const { at, join, act, count } = made;
   let [ada, bob] = made.sessions as [ClientSession, ClientSession];
   // (On this server a piece may be taken back at any time, not only in the half minute after it is set down.)
-  h.say(ada, "rule pickupSeconds 0");
+  h.say(ada, "setting AlwaysAllowStructurePickup True");
   ada.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
   h.run(100);
   const f = setDown(made, ada, at.x, at.z + 5).ref;

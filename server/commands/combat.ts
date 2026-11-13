@@ -6,7 +6,6 @@ import { V_TORPOR } from "../../shared/sim/vitals.ts";
 import { SLOT_OF_ZONE, ZONE_COUNT, ZONE_NAMES } from "../../shared/anim/human.ts";
 import { PIECE_SCALE } from "../../shared/sim/damage.ts";
 import { QUALITY_MUL } from "../../shared/sim/items.ts";
-import { RULE_MAX, RULE_NAMES, type RuleName } from "../rules.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
 import type { Host } from "../host.ts";
 import type { EntityRecord } from "../records.ts";
@@ -128,19 +127,6 @@ export function addCombatCommands(con: Console): void {
         const last = ctx.host.combat.last;
         if (ctx.host.combat.hits > 0) lines.push(`last blow: ${Number(last.damage.toFixed(1))} to the ${ZONE_NAMES[last.zone] ?? "body"}, ${Number(last.blocked.toFixed(1))} stopped by armor${last.killed ? ", fatal" : ""}`);
         return lines.join("\n");
-      },
-    },
-    {
-      name: "rule",
-      usage: "[name value]",
-      help: "Show the server's rules, or set one: playerDamage, creatureDamage, structureDamage, selfDamage (multipliers), headshots, damageNumbers (0 or 1).",
-      admin: true,
-      run(ctx, args) {
-        const rules = ctx.host.rules;
-        if (args.length === 0) return RULE_NAMES.map((name) => `${name} ${rules.values[name]}`).join("\n");
-        const value = parseNumber(args[1]);
-        if (args.length !== 2 || !ctx.host.setRule(args[0]!, value)) return `usage: rule <${RULE_NAMES.join("|")}> <0 to ${RULE_MAX}>`;
-        return `${args[0]} ${rules.values[args[0] as RuleName]}`;
       },
     },
     {

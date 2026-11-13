@@ -43,7 +43,7 @@ import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
-import { Rules, type RuleName } from "./rules.ts";
+import { Rules } from "./settings/rules.ts";
 import { CATALOG, rowOf } from "./settings/catalog.ts";
 import { Lists } from "./settings/lists.ts";
 import { timersOf } from "./settings/rules.ts";
@@ -87,12 +87,10 @@ export interface HostOptions {
   clips?: ClipSet;
   /** The rigs of that pack: those that are skeletons in themselves are what creatures are posed and hit on. */
   rigs?: readonly PackRig[];
-  /** Old rules to begin with other than their defaults, by their old names. */
-  rules?: Partial<Record<RuleName, number>>;
   /**
    * The server's rules, ready made: read from its config files and command
    * line (server/settings/config.ts), or carried over from a host that is
-   * being started again. In place of `rules`.
+   * being started again. Without them, ARK's defaults.
    */
   config?: Rules;
   /**
@@ -147,7 +145,6 @@ export interface Host {
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
-  setRule(name: string, value: number): boolean;
   /**
    * Set a setting by ARK's name from words, as the console does: only one
    * that may change while the server runs. Returns "" if it was set, or why
@@ -198,7 +195,7 @@ export function contentFor(content: Registry, rules: Rules): Registry {
 
 export function createHost(content: Registry, opts: HostOptions = {}): Host {
   // The files are the truth at every start (D88): nothing of the rules is read from the save.
-  const rules = opts.config ?? new Rules(opts.rules);
+  const rules = opts.config ?? new Rules();
   const lists = new Lists(rules, content);
   // Some settings change what content says. They are applied to the definitions, once, before anything reads them (D90):
   // from here on `reg` is content as this server has it, and there is no other.
@@ -328,7 +325,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   combat.onStructureHurt = (ref) => build.hurt(ref);
-  const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.values.globalVoice !== 0 }, (out) => void crypto.getRandomValues(out));
+  const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.on("globalVoiceChat") }, (out) => void crypto.getRandomValues(out));
   /** The session a survivor has here now, lingering bodies not counted. */
   const sessionOf = (pid: number) => game.clients.find((c) => c?.active && !c.closed && c.pid === pid) ?? null;
   /** Tell a survivor something, if they are here. */
@@ -755,9 +752,6 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     riding,
     breeding,
     online: (pid) => sessionOf(pid) !== null,
-    setRule(name, value) {
-      return rules.set(name, value);
-    },
     setSetting(name, words) {
       const row = rowOf(name);
       if (!row) return `there is no setting called ${name}`;

@@ -34,7 +34,7 @@ function stable(species: string, host: { dbPath?: string } = {}) {
     h.say(s, `tp ${(at.x + dx).toFixed(3)} ${at.z.toFixed(3)}`);
   }
   const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
-  h.say(ada, "rule tamingSpeed 60");
+  h.say(ada, "setting TamingSpeedMultiplier 60");
   const e = h.host.spawnCreature(`core:${species}`, at.x, at.z + 3.2, 1);
   const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
   h.host.creatures.mind.stay(e, 0);

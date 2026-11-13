@@ -555,8 +555,8 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
 
   // 5. A mate for it, of the other sex, had for the asking; both told they may. Half a minute, and there is an egg.
   //    (Hatching five hundred times as fast and growing up a thousand times: ten seconds, and ninety-five.)
-  h.say(ada, "rule hatchSpeed 500");
-  h.say(ada, "rule matureSpeed 1000");
+  h.say(ada, "setting EggHatchSpeedMultiplier 500");
+  h.say(ada, "setting BabyMatureSpeedMultiplier 1000");
   const mate = h.host.spawnCreature("core:parasaur", ents.x[dolly]! + 4, ents.z[dolly]! + 1, 12);
   const mateRec = h.host.records.byPid.get(ents.pid[mate]!)!;
   mateRec.genome!.female = !rec.genome!.female;

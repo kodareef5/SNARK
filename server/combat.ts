@@ -43,7 +43,7 @@ import type { Harvest } from "./harvest.ts";
 import { Past } from "./history.ts";
 import type { Items } from "./items.ts";
 import { XP_KILL, type Progression } from "./progression.ts";
-import type { Rules } from "./rules.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { STAT_MELEE, statOf, type Survival } from "./survival.ts";

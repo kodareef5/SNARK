@@ -13,7 +13,7 @@
 | `app.test.ts`, `creator.test.ts` | A whole headless client: screens, keys, the console, chat, voice controls; the character creator |
 | `poses.test.ts` | One pose for the server's hit test and every client's drawing |
 | `combat.test.ts`, `shooting.test.ts`, `buffs.test.ts`, `structures.test.ts` | Blows by zone and armor; shots with lag compensation; buffs and torpor; damage to things built, and the grenade |
-| `round3.test.ts` | Round 3's exit condition as one test; server rules; settings |
+| `round3.test.ts` | Round 3's exit condition as one test; server rules at the console |
 | `seams.test.ts` | What round 4 is built on: the body a session drives, who is seen first, whose a thing is |
 | `social.test.ts` | Tribes, and the three text channels |
 | `voice.test.ts` | The relay with real sessions: tokens, range, mutes, the nearest eight, a hostile client |
@@ -25,6 +25,11 @@
 | `riding.test.ts` | Saddles, getting on and off, riding with no corrections, a rider hit on the seat |
 | `breeding.test.ts` | Pairs, eggs, what hatches, growing up; watched against unwatched across restarts; live birth |
 | `round4.test.ts` | Round 4's exit condition as three stories: social, building, creatures |
+| `settings.test.ts` | The two files, the command line and the live file as ARK reads them; the report; the console; single-player settings |
+| `rates.test.ts`, `pairing.test.ts` | Each factor and switch read where it is used; damage by who dealt it and who took it, PvE, friendly fire |
+| `tuned.test.ts`, `stats.test.ts` | Content as a server's settings have it, derived the same by server and client; the join password; what a client shows by the server's leave; stat multipliers and difficulty |
+| `retime.test.ts`, `clock.test.ts` | What is under way timed again when its rule changes, live and across a restart; the live file; the day at the server's scales |
+| `round5.test.ts` | Round 5's exit condition as four stories: operator, live, client, catalogue |
 
 `fixtures/net.ts` runs a real server and real client sessions in one process on
 virtual time. Nothing is mocked. The determinism test is skipped with a message

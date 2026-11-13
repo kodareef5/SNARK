@@ -98,7 +98,54 @@ Notes on what changed, and why:
   The worst tick while every female lays at once varied between 7 and 16 ms
   over four runs.
 
+### Round 5: settings
+
+Recorded 2026-11-13 on the commit that closes round 5, on the same machine. The
+whole benchmark was run twice: at ARK's defaults, and as a 50x server
+(`bun run bench -- --config config/boosted-50x`: experience, taming and
+harvesting at 50, stacks at ten times their size, hatching and growing up at
+50). Both runs met all 77 budgets.
+
+| Measurement | ARK's defaults | 50x | Budget |
+| --- | --- | --- | --- |
+| Server tick, median | 2.83 ms | 2.78 ms | 8 ms |
+| Server tick, 99th percentile | 3.82 ms | 4.89 ms | 16 ms |
+| Tick with everyone working, median | 2.96 ms | 2.99 ms | 8 ms |
+| Commit, 99th percentile | 4.2 ms | 4.6 ms | 10 ms |
+| Downstream per client in a 40-player fight | 12.3 KB/s | 12.3 KB/s | 34 KB/s |
+| Downstream per client at a quiet base | 11.6 KB/s | 11.6 KB/s | 16 KB/s |
+| Prediction corrections on the two full clients | 0 | 0 | |
+| Process memory | 460 MB | 467 MB | 2,048 MB |
+
+A second section starts a host on the benchmark's own save (64 MB: 500,000
+structures, 310,826 records, 600,000 stored stacks) under settings that move
+everything a setting can move at a load: hatching, growing up, the wait to
+mate, spoiling, fuel, node regrowth, how long bags and caches lie, and the
+hunger of every creature and survivor.
+
+| Measurement | Result | Budget |
+| --- | --- | --- |
+| Start a host on the save, same settings | 374 ms | |
+| Start a host on it under other settings | 506 ms | 5,000 ms |
+| Of that, the bringing over | 132 ms | 2,000 ms |
+| Bodies rated again | 300,550 | |
+| The first commit after it | 552 ms | 5,000 ms |
+| Item ledger after it | balances | must balance |
+
+The three budgets were set after the first run and are loose: bringing a world
+over happens once, at a start, and the requirement is that a full server
+restarted under new files is back within seconds, not that it is quick. They
+are a guard against the pass becoming quadratic, not a target.
+
 ## What the results say
+
+**Settings cost nothing per tick.** A rule is read where it is used, as one
+lookup in a map; a server at 50x ticks as a server at ARK's defaults does.
+Settings that change content are applied to the definitions once, before the
+world is built, so the tables the tick reads are the same tables whatever the
+settings. Bringing 300,000 bodies and 600,000 stacks over to other settings is
+an eighth of a second, and what it changed is written in one commit of half a
+second.
 
 **The tick more than doubled between rounds, and is still an eighth of the
 step.** Round 1 measured a 1.15 ms median. Round 2 measures 2.60 ms with the
@@ -136,7 +183,7 @@ among them is a tenth of a millisecond once a second. Eggs and growing up are
 deadlines and cost nothing between. What grew is the downstream of the ten
 survivors walking among them, 20.6 KB/s each, as bodies enter and leave view.
 
-**The check stays fast.** 327 tests run in 7.7 s against a 20 s budget.
+**The check stays fast.** 390 tests run in 9.1 s against a 20 s budget.
 
 ## Browser result so far
 

@@ -48,9 +48,53 @@ export interface Report {
   unknown: { key: string; where: string }[];
   /** What would not do: a value out of range, a key in the wrong place, a line that could not be read. */
   refused: { key: string; where: string; why: string }[];
+  /** Anything else whoever started the server should know of what was read. */
+  notes: string[];
 }
 
-export const emptyReport = (): Report => ({ applied: [], waiting: [], nothing: [], unknown: [], refused: [] });
+export const emptyReport = (): Report => ({ applied: [], waiting: [], nothing: [], unknown: [], refused: [], notes: [] });
+
+/**
+ * ARK's single-player settings (`bUseSingleplayerSettings`): fixed factors
+ * on what the files and the command line give, as its reference lists them.
+ * Each is a setting, the factor, and for an indexed setting ARK's index.
+ * One more is not a factor: the life span of a corpse is set to 6.
+ */
+const SINGLE_PLAYER: readonly (readonly [name: string, factor: number, index?: number])[] = [
+  ["TamingSpeedMultiplier", 2.5],
+  ["EggHatchSpeedMultiplier", 9],
+  ["BabyMatureSpeedMultiplier", 35],
+  ["MatingIntervalMultiplier", 0.15],
+  ["BabyCuddleIntervalMultiplier", 0.17],
+  ["CropGrowthSpeedMultiplier", 4],
+  ["HairGrowthSpeedMultiplier", 0.7],
+  ["RaidDinoCharacterFoodDrainMultiplier", 0.4],
+  ["PerLevelStatsMultiplier_DinoTamed", 2.125, 0],
+  ["PerLevelStatsMultiplier_DinoTamed", 2.3529, 8],
+  ["PerLevelStatsMultiplier_DinoTamed_Add", 3.5714, 0],
+  ["PerLevelStatsMultiplier_DinoTamed_Add", 3.5714, 8],
+  ["PerLevelStatsMultiplier_DinoTamed_Affinity", 2.2727, 0],
+  ["PerLevelStatsMultiplier_DinoTamed_Affinity", 2.2727, 8],
+];
+const SINGLE_PLAYER_CORPSE = 6;
+
+/** Put ARK's single-player factors on what the rules hold, each kept within what its setting may be. Whatever sets one of them afterwards sets it outright. */
+function applySinglePlayer(rules: Rules, report: Report): void {
+  const within = (row: Row, v: number): number => Math.min(row.max, Math.max(row.min, v));
+  for (const [name, factor, index] of SINGLE_PLAYER) {
+    const row = rowOf(name);
+    if (!row) continue;
+    if (index === undefined) rules.put(row, within(row, rules.num(row.name) * factor), rules.sourceOf(row));
+    else {
+      const values = [...rules.indexed(row.name)];
+      values[index] = within(row, values[index]! * factor);
+      rules.put(row, values, rules.sourceOf(row));
+    }
+  }
+  const corpse = rowOf("UseCorpseLifeSpanMultiplier")!;
+  rules.put(corpse, SINGLE_PLAYER_CORPSE, rules.sourceOf(corpse));
+  report.notes.push("bUseSingleplayerSettings: ARK's single-player factors are on top of what was read: taming x2.5, hatching x9, growing up x35, the wait to mate x0.15, a tame's health per level x2.125 and melee x2.3529, and what the dead leave lies six times as long");
+}
 
 /** One pass over one source: lists begun in it replace what weaker sources gave, and then grow. */
 class Pass {
@@ -222,6 +266,7 @@ export function loadConfig(text: ConfigText, argv: readonly string[] = []): { ru
   if (text.game !== undefined) applyIni(rules, text.game, GAME_FILE, "file", report);
   const ours = applyArgs(rules, argv, report);
   if (text.live !== undefined && rules.flag("UseDynamicConfig") === true) applyLive(rules, text.live, report);
+  if (rules.on("bUseSingleplayerSettings")) applySinglePlayer(rules, report);
   return { rules, report, ours };
 }
 
@@ -265,5 +310,6 @@ export function formatReport(report: Report, rules: Rules): string[] {
   for (const x of report.nothing) out.push(`  no use    ${named(x.row)}  (${x.where}): ${NOT_HERE[x.row.waits as NotHere]}`);
   for (const u of report.unknown) out.push(`  unknown   ${u.key}  (${u.where})`);
   for (const r of report.refused) out.push(`  refused   ${r.key === "" ? "a line" : r.key}  (${r.where}): ${r.why}`);
+  for (const note of report.notes) out.push(`  note      ${note}`);
   return out;
 }

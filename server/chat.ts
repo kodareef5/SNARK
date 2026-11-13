@@ -9,7 +9,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { MAX_CHAT_CHARS, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SESSION_SPECTATING, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
-import type { Rules } from "./rules.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { Tribes } from "./tribes.ts";
 
 /** How far what is said on the local channel carries, in metres. */
@@ -79,7 +79,7 @@ export class Chat {
       game.sendText(c, TEXT_NOTICE, why);
       return code;
     };
-    if (channel === TEXT_GLOBAL && rules.values.globalChat === 0) return refuse(RESULT_DENIED, "There is no global channel on this server; Insert speaks to those near you.");
+    if (channel === TEXT_GLOBAL && rules.on("ProximityChat")) return refuse(RESULT_DENIED, "There is no global channel on this server; Insert speaks to those near you.");
     // The other two need someone to be: a place to be heard around, a tribe to be heard by.
     if (channel !== TEXT_GLOBAL && (!rec || c.state === SESSION_SPECTATING)) return refuse(RESULT_DENIED, "Only a survivor can say that.");
     const tribe = channel === TEXT_TRIBE ? tribes.of(rec!) : null;

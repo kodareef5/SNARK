@@ -64,7 +64,7 @@ export function settingsPage(): string {
   out.push("edit it by hand: change the catalogue and run the tool.", "");
   out.push("A server is configured as ARK's is ([how](round5-settings.md), and [what the");
   out.push("values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads");
-  out.push(`is listed here, ${n.all} of them: ${n.live} take effect, ${n.todo} more will by the end of round 5,`);
+  out.push(`is listed here, ${n.all} of them: ${n.live} take effect,${n.todo > 0 ? ` ${n.todo} more will by the end of the round being built,` : ""}`);
   out.push(`${n.planned} wait for a feature that is not built yet, and ${n.none} have no meaning in this`);
   out.push("engine. A setting that does not take effect is still read, checked and");
   out.push("reported when the server starts.", "");

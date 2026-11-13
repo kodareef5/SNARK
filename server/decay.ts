@@ -6,23 +6,25 @@
 // a chunk of it. A piece has decayed when that clock is older than what the
 // piece is made of allows (shared content: thatch four days, wood eight,
 // stone twelve, metal sixteen; a foundation or a ground pillar with nothing
-// joined to it, half a day). The rule `decayTime` stretches or shrinks all of
-// those, and 0 stops decay.
+// joined to it, half a day, if the server says so). The server's
+// `PvEStructureDecayPeriodMultiplier` stretches or shrinks all of those, and
+// `DisableStructureDecayPvE` stops decay.
 //
 // What has decayed still stands. Anyone may then demolish it
-// (server/build.ts); with the rule `decayDestroy` on, the server takes it
-// down itself, a few chunks at a time.
+// (server/build.ts); a server started with `-AutoDestroyStructures` takes it
+// down itself after `AutoDestroyOldStructuresMultiplier` decay periods, a few
+// chunks at a time.
 
 import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE, chunkCx, chunkCz } from "../shared/coords.ts";
 import { GONE_TAKEN } from "../shared/world/structures.ts";
-import type { Rules } from "./rules.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 
 const DAY_TICKS = 86400 * TICK_RATE;
 /** Who is near what is looked at this often: five seconds. */
 export const DECAY_EVERY = 5 * TICK_RATE;
-/** With `decayDestroy` on: the most pieces the server takes down in one look. */
+/** The most pieces the server takes down in one look, when it takes down what has decayed. */
 const SWEEP_MAX = 256;
 
 export class Decay {

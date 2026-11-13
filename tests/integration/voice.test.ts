@@ -490,7 +490,7 @@ test("a server may have every voice heard everywhere: no nearer or further, stil
   expect(reaches(1)).toEqual([REACH_LOCAL]);
   expect([heardBy(1), heardBy(2)]).toEqual([{ ada: 10 }, {}]);
   // By rule: everyone hears, a whisper as much as a yell, and each frame is marked as said to everyone.
-  expect(h.say(ada, "rule globalVoice 1")[0]).toContain("globalVoice");
+  expect(h.say(ada, "setting globalVoiceChat True")[0]).toContain("globalVoiceChat=True");
   hush();
   say(0, 10, MODE_WHISPER);
   expect(reaches(2)).toEqual([REACH_GLOBAL]);
@@ -500,7 +500,7 @@ test("a server may have every voice heard everywhere: no nearer or further, stil
   hush();
   say(0, 10);
   expect([heardBy(1), heardBy(2)]).toEqual([{ ada: 10 }, {}]);
-  h.say(ada, "rule globalVoice 0");
+  h.say(ada, "setting globalVoiceChat False");
   hush();
   say(0, 10, MODE_YELL);
   expect(heardBy(1)).toEqual({ ada: 10 });
