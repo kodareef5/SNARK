@@ -183,6 +183,30 @@ export class StructureStore {
   }
 
   /**
+   * Hand everything `from` owns to `to`. Returns how many changed hands.
+   * Authority only.
+   */
+  reown(from: number, to: number): number {
+    let n = 0;
+    if (from === to) return 0;
+    for (let chunk = 0; chunk < this.chunks.length; chunk++) {
+      const t = this.chunks[chunk];
+      if (!t) continue;
+      let any = false;
+      for (let slot = 0; slot < t.high; slot++) {
+        if (t.kind[slot] === 0 || t.owner[slot] !== from) continue;
+        if (!any) t.version++;
+        any = true;
+        t.owner[slot] = to;
+        t.mod[slot] = t.version;
+        n++;
+      }
+      if (any) this.onChunkChanged?.(chunk);
+    }
+    return n;
+  }
+
+  /**
    * Set a slot to replicated or loaded contents. `kind` 0 empties it. Does not
    * advance the table version; follow with `setVersion`.
    */

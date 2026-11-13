@@ -4,6 +4,7 @@
 //   bun run snap -- --pos 240,6,250 --yaw 30 --pitch -15 --size 1280x720 --out artifacts/house.png
 //   bun run snap -- --ui --console "help"     with the interface drawn over it
 //   bun run snap -- --ui --inventory          with the inventory screen open
+//   bun run snap -- --ui --chat               with the chat box open (--chat shut: only what was said)
 //   bun run snap -- --poses 2 --face 90       a line-up of bodies in motion: kinds 2 and 3, seen from the side
 //   bun run snap -- --looks                   a line-up of looks: both sexes, every hair, every slider at its ends
 //   bun run snap -- --creator 1               what a new survivor sees: the creator, on its first or second tab
@@ -39,6 +40,7 @@ import { buildCorePack } from "./pack/build.ts";
 import { HudModel, mapU, mapV } from "../client/core/hud.ts";
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "../client/core/ui/hud.ts";
 import { Ui } from "../client/core/ui/ui.ts";
+import { TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
 import { minimapImage, headingOf } from "../client/core/hud.ts";
 import { encodePng } from "./snap/png.ts";
 import { Rasterizer } from "./snap/raster.ts";
@@ -428,12 +430,28 @@ if (import.meta.main) {
       inv.set(3, item("core:fiber"), 180, 0, 0, 0);
       inv.set(12, item("core:meat"), 3, 0, 0, 4000);
       inv.set(13, item("core:waterskin"), 1, 0, 0, 0);
-      session = { inventory: inv, serverTick: 1000, logVersion: 0, log: [] } as unknown as ClientSession;
+      session = { inventory: inv, serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" } } as unknown as ClientSession;
       ui.registry = view.reg;
       ui.palette = view.pack.palette;
       ui.inventory.open = true;
       ui.inventory.held = 1;
       ui.inventory.hover = 2;
+    }
+    if (args.includes("--chat")) {
+      // Things said on each channel, and the box open on the tribe's with a line being typed.
+      session ??= { inventory: null, serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "Night Shift" } } as unknown as ClientSession;
+      const said: [number, string][] = [
+        [TEXT_NOTICE, "bob joined Night Shift."],
+        [TEXT_GLOBAL, "cy: anyone trading hide for narcotics? I am at the pool with far more than I can carry"],
+        [TEXT_LOCAL, "bob: right behind you"],
+        [TEXT_TRIBE, "bob: the wall is up"],
+        [TEXT_GLOBAL, "ada: hello, island"],
+      ];
+      for (const [channel, text] of said) ui.chat.print(channel, text, 1000);
+      if (arg("chat") !== "shut") {
+        ui.chat.begin(TEXT_TRIBE, session);
+        ui.chat.edit("on my way");
+      }
     }
     ui.build(w! / h!, hud, session);
     drawUi(view.raster.color, w!, h!, ui.frame);

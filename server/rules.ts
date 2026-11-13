@@ -17,6 +17,10 @@ export const RULE_DEFAULTS = {
   headshots: 1,
   /** 1: clients may show the damage of their hits as numbers. 0: they are told the numbers but asked not to show them. */
   damageNumbers: 1,
+  /** 1: members of a tribe can hurt each other, their tames and what they built. 0: only their blasts can. */
+  friendlyFire: 0,
+  /** 1: there is a text channel that reaches everyone. 0: only those near, and one's tribe. */
+  globalChat: 1,
 } as const;
 
 export type RuleName = keyof typeof RULE_DEFAULTS;

@@ -204,6 +204,9 @@ export class Client {
   sentBuffs = -1;
   /** The version of the server's rules this connection has been told; -1 for not yet. */
   sentRules = -1;
+  /** The version of the tribes this connection has been told; and the tick an invitation it was shown runs out, or 0. */
+  sentTribe = -1;
+  inviteUntil = 0;
   /** Persistent id of the container this session has open, or 0; and what of it has been sent. */
   open = 0;
   sentOpen = 0;
@@ -249,6 +252,8 @@ export class Client {
     this.sentHeld = -2;
     this.sentBuffs = -1;
     this.sentRules = -1;
+    this.sentTribe = -1;
+    this.inviteUntil = 0;
     this.open = this.sentOpen = 0;
     this.pressed = this.before = 0;
   }
@@ -265,6 +270,8 @@ export class GameServer {
   onEnter: ((c: Client) => void) | null = null;
   /** A session is ending. Called before its body, if any, is removed. */
   onExit: ((c: Client) => void) | null = null;
+  /** Called when a session's connection goes while its body stays, and when a returning connection takes that body up again. */
+  onPresence: ((c: Client) => void) | null = null;
   /** An entity was created for the session: at login, on respawn, or when it stops spectating. */
   onBody: ((c: Client) => void) | null = null;
   /** The session's entity is about to be destroyed. */
@@ -615,6 +622,7 @@ export class GameServer {
       c.closed = true;
       c.lingerUntil = this.world.tick + this.opts.lingerTicks;
       c.queue.length = 0;
+      this.onPresence?.(c);
       return;
     }
     this.finalize(c);
@@ -737,6 +745,7 @@ export class GameServer {
       other.relink(c.conn);
       this.bind(other, c.conn);
       this.welcome(other);
+      this.onPresence?.(other);
       return true;
     }
 

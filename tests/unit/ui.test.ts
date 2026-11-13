@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Controls, LOOK_SPEED } from "../../client/core/controls.ts";
 import { HudModel } from "../../client/core/hud.ts";
+import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT, KEY_CONSOLE_PANEL, KEY_CONSOLE_ROW, MAX_LINE } from "../../client/core/ui/console.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
@@ -10,7 +11,7 @@ import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPA
 import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder } from "../../client/core/ui/character.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_USE, MARKER_DEATH, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
+import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -51,11 +52,19 @@ const berry = reg.index.get("core:berry")!;
 /** Just enough of a session for the interface: an inventory, a clock, and a record of what was sent. */
 function fakeSession(inv: Inventory) {
   const sent: { op: number; bytes: Uint8Array }[] = [];
+  const said: { channel: number; words: string }[] = [];
   const session = {
     inventory: inv,
     serverTick: 1000,
     logVersion: 0,
-    log: [],
+    log: [] as { channel: number; text: string }[],
+    state: "active",
+    globalChat: true,
+    tribe: { team: 7, name: "", rank: 0, members: [], invite: "", inviteBy: "", version: 0 },
+    chat(channel: number, words: string): number {
+      said.push({ channel, words });
+      return said.length;
+    },
     command(op: number, args?: (w: BitWriter) => void): number {
       const w = new BitWriter(32);
       args?.(w);
@@ -63,7 +72,7 @@ function fakeSession(inv: Inventory) {
       return sent.length;
     },
   } as unknown as ClientSession;
-  return { session, sent };
+  return { session, sent, said };
 }
 
 function fullInventory(): Inventory {
@@ -80,7 +89,7 @@ function overlaps(f: UiFrame, a: number, b: number): boolean {
 
 test("every screen fits every window shape: nothing off the canvas, no clipped text, no stacked controls", () => {
   for (const [name, aspect] of ASPECTS) {
-    for (const consoleOpen of [false, true]) {
+    for (const [consoleOpen, chatOpen] of [[false, false], [true, false], [false, true]] as const) {
       const ui = new Ui();
       ui.registry = reg;
       ui.console.open = consoleOpen;
@@ -88,14 +97,24 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       ui.inventory.hover = 3;
       for (let i = 0; i < 60; i++) ui.console.print(`line ${i} ` + "word ".repeat(i));
       ui.console.edit("x".repeat(200));
-      ui.build(aspect, fullHud(), fakeSession(fullInventory()).session);
+      // Things said just now on every channel, long and short, and the box shut or open with a full line typed.
+      for (let i = 0; i < 30; i++) ui.chat.print(TEXT_NOTICE + (i % 4), `ada: ${"W".repeat(i * 5)} and so on`, 1000);
+      if (chatOpen) ui.chat.begin(TEXT_TRIBE, null);
+      ui.chat.edit("y".repeat(300));
+      const hud = fullHud();
+      hud.prompt = "E  open ada's cache";
+      hud.ammo = "stone arrow  1 / 1   (24 more)";
+      hud.hotbar.push(...Array.from({ length: 10 }, (_, i) => ({ tint: 0x808080, label: "bow", number: String((i + 1) % 10) })));
+      hud.combat.notice = "You killed a grazer, level 150";
+      hud.combat.noticeAlpha = 1;
+      ui.build(aspect, hud, fakeSession(fullInventory()).session);
       const f = ui.frame;
       expect(f.height).toBe(720);
       expect(f.width).toBe(Math.round(720 * aspect));
       const keys = new Set<number>();
       for (let i = 0; i < f.count; i++) {
         const n = f.nodes[i]!;
-        const where = `${name} console=${consoleOpen} key=${n.key}`;
+        const where = `${name} console=${consoleOpen} chat=${chatOpen} key=${n.key}`;
         expect(keys.has(n.key), where).toBe(false);
         keys.add(n.key);
         // Minimap markers may hang two units over the map's edge; everything else is inside the canvas.
@@ -116,7 +135,8 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
           if (p.interactive && q.interactive) expect(overlaps(f, a, b), `${name}: controls ${p.key} and ${q.key}`).toBe(false);
           // Layers: the HUD, the console, a screen. One may cover another on purpose;
           // within a layer, text must not collide.
-          const layer = (k: number) => (k >= KEY_INV_PANEL ? 2 : k >= KEY_CONSOLE_PANEL ? 1 : 0);
+          // The marks of a fight (2000 and up) are drawn over the world wherever it happened; they are the HUD's.
+          const layer = (k: number) => (k >= 2000 ? 0 : k >= KEY_INV_PANEL ? 2 : k >= KEY_CONSOLE_PANEL ? 1 : 0);
           if (p.kind === K_TEXT && q.kind === K_TEXT && layer(p.key) === layer(q.key)) {
             expect(overlaps(f, a, b), `${name}: text ${p.key} "${p.text}" and ${q.key} "${q.text}"`).toBe(false);
           }
@@ -127,9 +147,20 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       expect(f.find(KEY_VITAL + 9)!.value).toBe(0.5);
       expect(f.find(KEY_BANNER)!.text).toBe("SPECTATING");
       expect(f.find(KEY_CONSOLE_INPUT) !== null).toBe(consoleOpen);
-      // All forty slots are on the canvas, each with its count; under the console the screen is not drawn at all.
-      expect(f.find(KEY_INV_PANEL) !== null).toBe(!consoleOpen);
-      if (!consoleOpen) {
+      // What was said is on the canvas: the latest of it while the box is shut, more with the field while it is open.
+      let rows = 0;
+      for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CHAT_ROW && f.nodes[i]!.key < KEY_CHAT_ROW + 14) rows++;
+      expect(rows, name).toBeGreaterThanOrEqual(1);
+      expect(rows, name).toBeLessThanOrEqual(chatOpen ? 8 : 6);
+      expect(f.find(KEY_CHAT_INPUT) !== null).toBe(chatOpen);
+      expect(f.find(KEY_CHAT_PANEL) !== null).toBe(chatOpen);
+      if (chatOpen) {
+        expect(f.find(KEY_CHAT_INPUT)!.text).toBe("y".repeat(MAX_CHAT_CHARS));
+        expect(f.find(KEY_CHAT_TAG)!.text).toBe("Tribe");
+      }
+      // All forty slots are on the canvas, each with its count; under the console or the chat box the screen is not drawn at all.
+      expect(f.find(KEY_INV_PANEL) !== null).toBe(!consoleOpen && !chatOpen);
+      if (!consoleOpen && !chatOpen) {
         expect(f.find(KEY_INV_SLOT + 39 * 3)!.interactive).toBe(true);
         expect(f.find(KEY_INV_SLOT + 39 * 3 + 2)!.text).toBe("100");
         expect(f.find(KEY_INV_INFO)!.text).toContain("berry x100");
@@ -546,4 +577,142 @@ test("the character screen fits every window shape on every tab and page, and it
     ui.key("KeyM", true, false, session);
     expect([ui.character, ui.map]).toEqual([false, true]);
   }
+});
+
+test("the chat box: a key for each channel, Tab to change it, Enter to say the line, and the keyboard while it is open", () => {
+  const ui = new Ui();
+  const { session, said } = fakeSession(new Inventory(40));
+  const hud = new HudModel();
+  ui.build(16 / 9, hud, session);
+  expect(ui.frame.find(KEY_CHAT_INPUT)).toBeNull();
+  // Enter opens it to everyone. The key that opened it does not also say an empty line, however long it is held.
+  expect(ui.key("Enter", true, false, session)).toBe(true);
+  expect(ui.key("Enter", true, true, session)).toBe(true);
+  expect(ui.key("Enter", false, false, session)).toBe(true);
+  expect([ui.chat.open, ui.chat.channel]).toEqual([true, TEXT_GLOBAL]);
+  expect(ui.captureKeyboard).toBe(true);
+  expect(ui.wantsPointerLock).toBe(false);
+  ui.build(16 / 9, hud, session);
+  const field = ui.frame.find(KEY_CHAT_INPUT)!;
+  expect([field.kind, field.focus, field.interactive]).toEqual([K_INPUT, true, true]);
+  expect(ui.frame.find(KEY_CHAT_TAG)!.text).toBe("Global");
+  // Every other key is typing, the console's key among them; the body gets none of it.
+  for (const code of ["KeyW", "Backquote", "Slash", "Insert", "KeyI", "Digit1", "Space"]) expect(ui.key(code, true, false, session)).toBe(false);
+  expect(ui.console.open).toBe(false);
+  expect(ui.inventory.open).toBe(false);
+  ui.input(KEY_CHAT_INPUT, "  hello there  ");
+  ui.build(16 / 9, hud, session);
+  expect(ui.frame.find(KEY_CHAT_INPUT)!.text).toBe("  hello there  ");
+  expect(ui.key("Enter", true, false, session)).toBe(true);
+  expect(said).toEqual([{ channel: TEXT_GLOBAL, words: "hello there" }]);
+  expect([ui.chat.open, ui.chat.input]).toEqual([false, ""]);
+  expect(ui.wantsPointerLock).toBe(true);
+
+  // Insert speaks to those near, the slash key to the tribe; Tab goes round the channels this survivor can use.
+  ui.key("Insert", true, false, session);
+  expect(ui.chat.channel).toBe(TEXT_LOCAL);
+  expect(ui.key("Tab", true, false, session)).toBe(true);
+  expect(ui.chat.channel).toBe(TEXT_GLOBAL); // in no tribe: that channel is passed over
+  ui.key("Tab", true, false, session);
+  expect(ui.chat.channel).toBe(TEXT_LOCAL);
+  (session.tribe as { name: string }).name = "Night Shift";
+  ui.key("Tab", true, false, session);
+  expect(ui.chat.channel).toBe(TEXT_TRIBE);
+  ui.key("Tab", true, true, session); // held: once
+  expect(ui.chat.channel).toBe(TEXT_TRIBE);
+  // A click on the channel's name does what Tab does.
+  ui.build(16 / 9, hud, session);
+  ui.pointer(0, KEY_CHAT_TAG, 0, 0, 0, session);
+  expect(ui.chat.channel).toBe(TEXT_GLOBAL);
+  // Escape shuts it and says nothing; an empty line says nothing either.
+  ui.input(KEY_CHAT_INPUT, "never mind");
+  expect(ui.key("Escape", true, false, session)).toBe(true);
+  expect([ui.chat.open, ui.chat.input]).toEqual([false, ""]);
+  ui.key("Slash", true, false, session);
+  expect(ui.chat.channel).toBe(TEXT_TRIBE);
+  ui.input(KEY_CHAT_INPUT, "   ");
+  ui.key("Enter", true, false, session);
+  expect(ui.chat.open).toBe(false);
+  expect(said.length).toBe(1);
+  ui.key("NumpadEnter", true, false, session);
+  ui.input(KEY_CHAT_INPUT, "x".repeat(500));
+  expect(ui.chat.input.length).toBe(MAX_CHAT_CHARS);
+  ui.key("NumpadEnter", true, false, session);
+  expect(said[1]).toEqual({ channel: TEXT_GLOBAL, words: "x".repeat(MAX_CHAT_CHARS) });
+
+  // On a server with no global channel, Enter speaks to those near and Tab never lands on Global.
+  (session as { globalChat: boolean }).globalChat = false;
+  ui.key("Enter", true, false, session);
+  expect(ui.chat.channel).toBe(TEXT_LOCAL);
+  ui.key("Tab", true, false, session);
+  expect(ui.chat.channel).toBe(TEXT_TRIBE);
+  ui.key("Tab", true, false, session);
+  expect(ui.chat.channel).toBe(TEXT_LOCAL);
+  ui.key("Escape", true, false, session);
+  // The console still opens over everything, and while it is open the chat keys are its own typing.
+  ui.key("Backquote", true, false, session);
+  expect(ui.key("Slash", true, false, session)).toBe(false);
+  expect(ui.chat.open).toBe(false);
+  expect(ui.key("Enter", true, false, session)).toBe(true);
+  expect(ui.chat.open).toBe(false);
+});
+
+test("what is said goes to the chat box and what the console printed stays in the console; lines show for a while, then fade", () => {
+  const ui = new Ui();
+  const { session } = fakeSession(new Inventory(40));
+  const s = session as unknown as { log: { channel: number; text: string }[]; logVersion: number; serverTick: number };
+  const tell = (channel: number, text: string): void => {
+    s.log.push({ channel, text });
+    s.logVersion++;
+  };
+  const hud = new HudModel();
+  const rows = (): { text: string; alpha: number; style: number }[] => {
+    const out = [];
+    for (let i = 0; i < ui.frame.count; i++) {
+      const n = ui.frame.nodes[i]!;
+      if (n.key >= KEY_CHAT_ROW && n.key < KEY_CHAT_ROW + 14) out.push({ text: n.text, alpha: n.alpha, style: n.style });
+    }
+    return out;
+  };
+  tell(TEXT_CONSOLE, "x 1.00  y 2.00  z 3.00  alive");
+  tell(TEXT_NOTICE, "bob invites you to join Night Shift.");
+  tell(TEXT_GLOBAL, "ada: hello");
+  tell(TEXT_LOCAL, "bob: over here");
+  tell(TEXT_TRIBE, "cy: the wall is up");
+  ui.build(16 / 9, hud, session);
+  expect(rows().map((r) => r.text)).toEqual(["bob invites you to join Night Shift.", "ada: hello", "[Local] bob: over here", "[Tribe] cy: the wall is up"]);
+  expect(new Set(rows().map((r) => r.style)).size).toBe(4);
+  expect(rows().every((r) => r.alpha === 1)).toBe(true);
+  // The console has its own output and the server's notice, and none of the talk.
+  expect(ui.console.lines).toEqual(["x 1.00  y 2.00  z 3.00  alive", "bob invites you to join Night Shift."]);
+  // Built again with nothing new, nothing is taken in twice.
+  ui.build(16 / 9, hud, session);
+  expect(rows().length).toBe(4);
+
+  // Eleven seconds on they are fading; after twelve they are gone, until the box is opened.
+  s.serverTick = 1000 + 11 * 30;
+  ui.build(16 / 9, hud, session);
+  expect(rows().length).toBe(4);
+  expect(rows()[0]!.alpha).toBeCloseTo(0.5, 5);
+  tell(TEXT_GLOBAL, "ada: anyone?");
+  ui.build(16 / 9, hud, session);
+  expect(rows().map((r) => r.alpha)).toEqual([0.5, 0.5, 0.5, 0.5, 1]);
+  s.serverTick = 1000 + 13 * 30;
+  ui.build(16 / 9, hud, session);
+  expect(rows().map((r) => r.text)).toEqual(["ada: anyone?"]);
+  ui.key("Enter", true, false, session);
+  ui.build(16 / 9, hud, session);
+  expect(rows().length).toBe(5);
+  expect(rows().every((r) => r.alpha === 1)).toBe(true);
+  // A long line wraps inside the box, and only the newest rows are kept in view.
+  for (let i = 0; i < 20; i++) tell(TEXT_GLOBAL, `ada: ${i} ` + "word ".repeat(30));
+  ui.build(16 / 9, hud, session);
+  expect(rows().length).toBe(8);
+  for (const r of rows()) expect(textWidth(r.text, r.style)).toBeLessThanOrEqual(380);
+  expect(rows().at(-1)!.text.trim().endsWith("word")).toBe(true);
+  // More than it keeps: the oldest are forgotten.
+  for (let i = 0; i < 300; i++) tell(TEXT_GLOBAL, `ada: ${i}`);
+  ui.build(16 / 9, hud, session);
+  expect(ui.chat.lines.length).toBe(100);
+  expect(rows().at(-1)!.text).toBe("ada: 299");
 });

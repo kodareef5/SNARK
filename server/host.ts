@@ -2,12 +2,15 @@
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
 import { addCombatCommands } from "./commands/combat.ts";
 import { addCoreCommands } from "./commands/core.ts";
+import { addSocialCommands } from "./commands/social.ts";
+import { Chat } from "./chat.ts";
+import { Tribes } from "./tribes.ts";
 import { Console } from "./console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs, DEADLINE_BUFF } from "./buffs.ts";
@@ -86,6 +89,10 @@ export interface Host {
   readonly combat: Combat;
   readonly buffs: Buffs;
   readonly rules: Rules;
+  readonly tribes: Tribes;
+  readonly chat: Chat;
+  /** Whether the survivor with this persistent id has a session here now. */
+  online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
   setRule(name: string, value: number): boolean;
   readonly projectiles: Projectiles;
@@ -157,6 +164,17 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const rules = new Rules();
   if (persistence && !loaded!.fresh) rules.restore(persistence.store.meta("rules"));
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, harvest }, (opts.seed ?? 1) + 53);
+  const tribes = new Tribes(world, records);
+  if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
+  const chat = new Chat({ game, records, rules, tribes });
+  /** The session a survivor has here now, lingering bodies not counted. */
+  const sessionOf = (pid: number) => game.clients.find((c) => c?.active && !c.closed && c.pid === pid) ?? null;
+  tribes.onSave = () => persistence?.store.setMeta("tribes", tribes.serialize());
+  tribes.onTeam = (rec) => refreshBody(rec);
+  tribes.onNotice = (pid, text) => {
+    const to = sessionOf(pid);
+    if (to) game.sendText(to, TEXT_NOTICE, text);
+  };
   const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 71);
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   combat.onThrow = (c, rec, item, quality) => projectiles.lob(c, rec, item, quality);
@@ -279,8 +297,12 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
     focus.set(c.id, c.chunk);
     moved(-1, c.chunk);
+    // Its tribe sees it arrive.
+    tribes.version++;
   };
+  game.onPresence = () => void tribes.version++;
   game.onExit = (c) => {
+    tribes.version++;
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
   };
@@ -317,7 +339,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     if (rec) survival.landed(rec, speed);
   };
   const own: OwnContext = {
-    world, game, records, items, survival, progression, rules,
+    world, game, records, items, survival, progression, rules, tribes,
+    online: (pid) => sessionOf(pid) !== null,
     openOf: (c) => death.openOf(c),
     closeOpen: (c) => death.close(c),
     respawn: (c, index) => death.respawn(c, index),
@@ -375,6 +398,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   addCoreCommands(con);
   addAdminCommands(con);
   addCombatCommands(con);
+  addSocialCommands(con);
   const host: Host = {
     world,
     records,
@@ -386,6 +410,9 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     combat,
     buffs,
     rules,
+    tribes,
+    chat,
+    online: (pid) => sessionOf(pid) !== null,
     setRule(name, value) {
       if (!rules.set(name, value)) return false;
       persistence?.store.setMeta("rules", rules.serialize());
@@ -411,6 +438,12 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       persistence.store.close();
     },
   };
+  game.handle(CMD_CHAT, (c, r) => {
+    const channel = r.bits(3);
+    const words = r.string(MAX_TEXT_BYTES);
+    if (r.overflow) return RESULT_INVALID;
+    return chat.say(c, channel, words);
+  });
   game.handle(CMD_TEXT, (c, r) => {
     const line = r.string(MAX_TEXT_BYTES);
     if (r.overflow) return RESULT_INVALID;

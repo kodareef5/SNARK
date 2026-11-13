@@ -27,6 +27,9 @@ import {
   CMD_CREATE,
   OWN_BUFFS,
   OWN_RULES,
+  OWN_TRIBE,
+  CMD_CHAT,
+  MAX_CHAT_CHARS,
   OWN_HELD,
   OWN_LOOK,
   OWN_MARKERS,
@@ -236,8 +239,15 @@ export class ClientSession {
    */
   readonly vitals = new Vitals();
   hasVitals = false;
-  /** A rule of the server's: the damage of hits may be shown as numbers. */
+  /** Rules of the server's: the damage of hits may be shown as numbers; there is a text channel that reaches everyone. */
   damageNumbers = true;
+  globalChat = true;
+  /**
+   * Who this survivor is with, as the server last said: its team, its tribe's
+   * name ("" alone), its rank, the members, and an invitation it has yet to
+   * answer (the tribe's name, "" for none, and who asked).
+   */
+  readonly tribe = { team: 0, name: "", rank: 0, members: [] as { name: string; online: boolean; owner: boolean }[], invite: "", inviteBy: "", version: 0 };
   /** What is acting on this client's body for a time: each a buff (content index) and the tick it ends (0 for no end). */
   readonly buffs: { buff: number; until: number }[] = [];
   /** Shots this client's own body fired, as its prediction has them, oldest first. Whoever draws them empties this. */
@@ -357,6 +367,12 @@ export class ClientSession {
     // Cut by characters: three bytes each at most keeps the line under the server's limit.
     const cut = line.length > MAX_TEXT_BYTES / 3 ? line.slice(0, Math.floor(MAX_TEXT_BYTES / 3)) : line;
     return this.command(CMD_TEXT, (w) => w.string(cut));
+  }
+
+  /** Say something on a channel: TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE. The server decides who reads it. */
+  chat(channel: number, words: string): number {
+    const cut = words.length > MAX_CHAT_CHARS ? words.slice(0, MAX_CHAT_CHARS) : words;
+    return this.command(CMD_CHAT, (w) => (w.bits(channel, 3), w.string(cut)));
   }
 
   /** Fraction of the way from `ownPrev` to `own` at the last `update`. */
@@ -649,6 +665,27 @@ export class ClientSession {
       const flags = r.u8();
       if (r.overflow) return;
       this.damageNumbers = (flags & 1) !== 0;
+      this.globalChat = (flags & 2) !== 0;
+    } else if (component === OWN_TRIBE) {
+      const team = r.varint();
+      const name = r.string(MAX_NAME_BYTES * 3);
+      let rank = 0;
+      const members: { name: string; online: boolean; owner: boolean }[] = [];
+      if (name !== "") {
+        rank = r.u8();
+        for (let k = r.u8(); k > 0 && !r.overflow; k--) members.push({ name: r.string(MAX_NAME_BYTES * 3), online: r.bool(), owner: r.bool() });
+      }
+      const invite = r.string(MAX_NAME_BYTES * 3);
+      const inviteBy = invite !== "" ? r.string(MAX_NAME_BYTES * 3) : "";
+      if (r.overflow) return;
+      const t = this.tribe;
+      t.team = team;
+      t.name = name;
+      t.rank = rank;
+      t.members = members;
+      t.invite = invite;
+      t.inviteBy = inviteBy;
+      t.version++;
     } else if (component === OWN_BUFFS) {
       const n = r.u8();
       const got: { buff: number; until: number }[] = [];

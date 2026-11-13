@@ -169,7 +169,8 @@ export function addCombatCommands(con: Console): void {
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
         const x = c.body.x + Math.sin(a) * 3;
         const z = c.body.z + Math.cos(a) * 3;
-        const ref = world.structs.add(kind, x, world.hf.heightAt(x, z) + def.half[1], z, c.heldYaw, 0, def.hp);
+        // It is its builder's team's, as anything built is.
+        const ref = world.structs.add(kind, x, world.hf.heightAt(x, z) + def.half[1], z, c.heldYaw, ctx.host.records.byPid.get(c.pid)?.team ?? 0, def.hp);
         return ref < 0 ? "no room for it there" : `placed ${def.id} (${def.hp} health)`;
       },
     },

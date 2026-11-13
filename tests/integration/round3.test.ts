@@ -287,7 +287,7 @@ test("server rules are factors in the damage function, are kept with the world, 
   expect(h.say(ada, "rule gravity 2")[0]).toMatch(/^usage: rule </);
   expect(h.say(ada, "rule playerDamage -1")[0]).toMatch(/^usage: rule </);
   expect(h.say(ada, "rule playerDamage 1000")[0]).toMatch(/^usage: rule </);
-  expect(h.say(bob, "rule")).toHaveLength(6);
+  expect(h.say(bob, "rule")).toHaveLength(8);
   // Clients are told the one they act on.
   expect(ada.damageNumbers).toBe(true);
   h.say(ada, "rule damageNumbers 0");
@@ -295,7 +295,7 @@ test("server rules are factors in the damage function, are kept with the world, 
   // They are part of the world: a restart keeps them.
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath });
-  expect(h.host.rules.values).toEqual({ playerDamage: 0, creatureDamage: 2, structureDamage: 3, selfDamage: 1, headshots: 0, damageNumbers: 0 });
+  expect(h.host.rules.values).toEqual({ playerDamage: 0, creatureDamage: 2, structureDamage: 3, selfDamage: 1, headshots: 0, damageNumbers: 0, friendlyFire: 0, globalChat: 1 });
   ada = h.join("ada");
   h.run(500);
   expect(ada.damageNumbers).toBe(false);

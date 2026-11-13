@@ -27,7 +27,7 @@ import type { SpeciesDef } from "../shared/content/defs.ts";
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { stanceEye } from "../shared/sim/character.ts";
-import { DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
+import { DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, QUALITY_MUL } from "../shared/sim/items.ts";
 import { W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
@@ -510,6 +510,9 @@ export class Combat {
     const rules = this.ctx.rules.values;
     hit.zone = rules.headshots !== 0 ? (reg.zoneMul[vkind]?.[zone] ?? 1) : 1;
     hit.rule = vkind !== this.survivor ? rules.creatureDamage : by === victim ? rules.selfDamage : rules.playerDamage;
+    // Its own side: a blow, an arrow or a shot does nothing, unless the server allows it. A blast spares nobody,
+    // as it does not spare whoever set it off; and what one does to oneself is not this.
+    if (by && by !== victim && hit.type !== DMG_EXPLOSIVE && rules.friendlyFire === 0 && by.team !== 0 && by.team === victim.team) hit.rule = 0;
     const vinv = victim.inv;
     let piece = -1;
     let worn = 0;
@@ -610,6 +613,8 @@ export class Combat {
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
     hit.takes = takes[src.type]!;
     hit.rule = this.ctx.rules.values.structureDamage;
+    // What its own side built: likewise nothing, but for a blast.
+    if (src.by && src.type !== DMG_EXPLOSIVE && this.ctx.rules.values.friendlyFire === 0 && src.by.team !== 0 && src.by.team === t.owner[slot]) hit.rule = 0;
     resolveDamage();
     if (!(harm.health > 0)) return 0;
     const before = t.hp[slot]!;

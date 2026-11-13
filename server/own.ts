@@ -5,7 +5,7 @@
 
 import type { ItemDef, RecipeDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_TRIBE, OWN_VITALS, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
@@ -15,7 +15,11 @@ import type { EntityRecord, Records } from "./records.ts";
 import type { Progression } from "./progression.ts";
 import type { Rules } from "./rules.ts";
 import type { Survival } from "./survival.ts";
+import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
+
+/** Members of a tribe listed to a client; a larger tribe is told of its first this many. */
+const MAX_MEMBERS_SENT = 100;
 
 export interface OwnContext {
   readonly world: ServerWorld;
@@ -29,6 +33,9 @@ export interface OwnContext {
   respawn(c: Client, index: number): number;
   readonly progression: Progression;
   readonly rules: Rules;
+  readonly tribes: Tribes;
+  /** Whether the survivor with this persistent id has a session here now. */
+  online(pid: number): boolean;
   /** Recompute what follows from a record's stats, load and equipment. */
   refresh(rec: EntityRecord): void;
   /** Put `n` of what is in a slot on the ground by the body. False if that could not be done. */
@@ -105,9 +112,34 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
   }
   if (ctx.rules.version !== c.sentRules) {
     const w = game.beginOwn(OWN_RULES);
-    w.u8(ctx.rules.values.damageNumbers !== 0 ? 1 : 0);
+    w.u8((ctx.rules.values.damageNumbers !== 0 ? 1 : 0) | (ctx.rules.values.globalChat !== 0 ? 2 : 0));
     game.endOwn(c);
     c.sentRules = ctx.rules.version;
+  }
+  // Who it is with: sent whenever any tribe changes, someone comes or goes, or an invitation it was shown runs out.
+  const tribes = ctx.tribes;
+  if (tribes.version !== c.sentTribe || (c.inviteUntil !== 0 && ctx.world.tick >= c.inviteUntil)) {
+    const invite = tribes.inviteOf(rec);
+    const tribe = tribes.of(rec);
+    const w = game.beginOwn(OWN_TRIBE);
+    w.varint(rec.team);
+    w.string(tribe ? tribe.name : "");
+    if (tribe) {
+      w.u8(rec.rank);
+      const n = Math.min(tribe.members.length, MAX_MEMBERS_SENT);
+      w.u8(n);
+      for (let i = 0; i < n; i++) {
+        const pid = tribe.members[i]!;
+        w.string(ctx.records.byPid.get(pid)?.name ?? "");
+        w.bool(ctx.online(pid));
+        w.bool(pid === tribe.owner);
+      }
+    }
+    w.string(invite ? invite.tribe.name : "");
+    if (invite) w.string(invite.by);
+    game.endOwn(c);
+    c.sentTribe = tribes.version;
+    c.inviteUntil = invite ? invite.until : 0;
   }
   if (rec.buffsVersion !== c.sentBuffs) {
     const w = game.beginOwn(OWN_BUFFS);

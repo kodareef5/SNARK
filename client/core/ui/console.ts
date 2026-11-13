@@ -1,6 +1,7 @@
 // The console's state: the line being typed, history, and scrollback. Sending
 // a line and receiving text are the session's job; this file only edits.
 
+import { TEXT_NOTICE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
 import { columns, lineHeight, wrap, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
 import { S_CONSOLE_TEXT, S_INPUT, S_PANEL } from "./style.ts";
@@ -83,7 +84,8 @@ export class ConsoleState {
     if (fresh <= 0) return;
     this.seen = session.logVersion;
     const log = session.log;
-    for (let i = Math.max(0, log.length - fresh); i < log.length; i++) this.print(log[i]!.text);
+    // What survivors say to each other is the chat box's, not the console's.
+    for (let i = Math.max(0, log.length - fresh); i < log.length; i++) if (log[i]!.channel <= TEXT_NOTICE) this.print(log[i]!.text);
   }
 
   /** The console covers the top of the screen: scrollback above, the input line below it. */

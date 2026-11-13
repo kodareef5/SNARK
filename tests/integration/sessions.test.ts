@@ -134,7 +134,7 @@ test("the console obeys admins, refuses everyone else, and never moves the world
   h.run(500);
 
   expect(h.say(ada, "help").join(" ")).toContain("enablecheats <password>");
-  expect(h.say(ada, "help").join(" ")).not.toContain("kick");
+  expect(h.say(ada, "help").some((line) => line.startsWith("kick"))).toBe(false);
   expect(h.say(ada, "nonsense")[0]).toContain("unknown command");
   expect(h.say(ada, "settime 6")[0]).toContain("denied");
   expect(h.say(ada, "kick bo")[0]).toContain("denied");

@@ -121,6 +121,7 @@ export const CMD_DROP = 16;
  * 17 chat, 18 place a structure, 19 act on a structure, 20 order a creature, 21 name one,
  * 22 feed one, 23 open one. Each is defined beside the part that handles it.
  */
+/** Say something: the channel (3 bits: TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE), then the words (a string). */
 export const CMD_CHAT = 17;
 export const CMD_PLACE = 18;
 export const CMD_STRUCT = 19;
@@ -151,14 +152,14 @@ export const OWN_SESSION = 1;
 /** base tick u32, then for health, food, water, oxygen: value uint53, rate svarint, max uint53 (millionths of a point). */
 export const OWN_VITALS = 2;
 /**
- * box 1 bit, capacity u8, bag size u8, full 1 bit (forget every slot first),
- * count u8, then per slot: index u8, item u16, and if the item is not 0: count
+ * box 1 bit, capacity varint, bag size varint, full 1 bit (forget every slot first),
+ * count u16, then per slot: index varint, item u16, and if the item is not 0: count
  * u16, quality u8, durability u16, spoil tick u32, and 1 bit for "it holds
  * something", then if so: ammunition item u16, rounds u8, attachment item u16.
  */
 export const OWN_SLOTS = 3;
 
-/** open 1 bit; if open: capacity u8, name string. Its slots follow as OWN_SLOTS for the open box. */
+/** open 1 bit; if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */
 export const OWN_OPEN = 4;
 /** count u8, then per marker: kind u8, x f32, y f32, z f32, tick u32. Oldest first. */
 export const OWN_MARKERS = 5;
@@ -179,10 +180,18 @@ export const OWN_LOOK = 8;
 export const OWN_HELD = 9;
 /** What is acting on the body for a time: count u8, then for each a buff (u16 content index) and the tick it ends (u32; 0 for one with no end). */
 export const OWN_BUFFS = 10;
-/** The server's rules that a client acts on: flags u8 (bit 0: the damage of hits may be shown as numbers). */
+/** The server's rules that a client acts on: flags u8 (bit 0: the damage of hits may be shown as numbers; bit 1: there is a global text channel). */
 export const OWN_RULES = 11;
-/** Reserved for round 4, in the same way: the tribe, the voice socket's token and rights, and the creature opened or ridden. */
+/**
+ * Who the survivor is with: its team (varint), its tribe's name (a string;
+ * empty for a survivor alone, and then nothing more of the tribe follows), its
+ * rank there (u8), and the members (count u8, then for each a name string, 1
+ * bit for "here now" and 1 bit for "owns the tribe"). Then an invitation it
+ * has yet to answer: the tribe's name (a string, empty for none) and, if
+ * there is one, who asked (a string).
+ */
 export const OWN_TRIBE = 12;
+/** Reserved for round 4: the voice socket's token and rights, and the creature opened or ridden. */
 export const OWN_VOICE = 13;
 export const OWN_SUBJECT = 14;
 
@@ -213,6 +222,13 @@ export const EVENT_BLAST = 6;
 
 export const TEXT_CONSOLE = 0;
 export const TEXT_NOTICE = 1;
+/** What survivors say: to everyone, to those near, to their tribe. The text is "name: words". */
+export const TEXT_GLOBAL = 2;
+export const TEXT_LOCAL = 3;
+export const TEXT_TRIBE = 4;
+/** Characters of a chat line, at most; and of a tribe's name. */
+export const MAX_CHAT_CHARS = 120;
+export const MAX_TRIBE_NAME = 24;
 
 /** Snapshot input margin meaning "no input has arrived yet": the client must not steer its clock by it. */
 export const MARGIN_UNKNOWN = -128;

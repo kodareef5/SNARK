@@ -33,6 +33,20 @@ const MAX_MARKERS = 64;
 const VITAL_STYLE: Record<string, number> = { health: S_HEALTH, stamina: S_STAMINA, food: S_FOOD, water: S_WATER, oxygen: S_OXYGEN, torpor: S_TORPOR };
 const MARKER_STYLE: Record<string, number> = { self: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH };
 
+const HOTBAR_CELL = 34;
+
+/**
+ * The band at the left of the canvas that the HUD leaves free, for the chat
+ * box: under what is shown below the crosshair (a prompt, a bar, a notice),
+ * and over the hotbar, the line that says what is loaded, and the status line,
+ * wherever this window's shape puts them. It does not move as those come and go.
+ */
+export function chatBand(f: UiFrame, m: HudModel): { top: number; bottom: number } {
+  const rowH = lineHeight(S_LABEL) + 1;
+  const lift = (f.width < 700 ? m.vitals.length * rowH + 6 : 0) + lineHeight(S_TEXT) + 4;
+  return { top: f.height / 2 + 92, bottom: f.height - MARGIN - HOTBAR_CELL - lift - lineHeight(S_PROMPT) - 3 - 4 };
+}
+
 export function buildHud(f: UiFrame, m: HudModel): void {
   const W = f.width;
   const H = f.height;
@@ -79,7 +93,7 @@ export function buildHud(f: UiFrame, m: HudModel): void {
 
   // The hotbar, bottom centre; on a narrow canvas above the vitals, which would be in its way.
   if (m.hotbar.length > 0) {
-    const cell = 34;
+    const cell = HOTBAR_CELL;
     const gap = 3;
     const total = m.hotbar.length * (cell + gap) - gap;
     const x0 = Math.round((W - total) / 2);

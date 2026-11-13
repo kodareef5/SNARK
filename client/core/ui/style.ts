@@ -60,6 +60,13 @@ export const S_NOTICE = 31;
 export const S_TORPOR = 32;
 export const S_BUFF = 33;
 export const S_DARK = 34;
+/** A line of chat said to everyone, to those near, to the tribe, and one from the server; the open box's backdrop; and the channel's tag. */
+export const S_CHAT = 35;
+export const S_CHAT_LOCAL = 36;
+export const S_CHAT_TRIBE = 37;
+export const S_CHAT_NOTICE = 38;
+export const S_CHAT_PANEL = 39;
+export const S_CHAT_TAG = 40;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -97,4 +104,10 @@ export const STYLES: readonly Style[] = [
   /* S_TORPOR */ style(0x00000066, 0xa070d8),
   /* S_BUFF */ style(0x808080ff, 0xffffff, 11, 1, true),
   /* S_DARK */ style(0x000000ff, 0xffffff),
+  /* S_CHAT */ style(0, 0xf2f2f2, 13, 0, true),
+  /* S_CHAT_LOCAL */ style(0, 0xf0dc96, 13, 0, true),
+  /* S_CHAT_TRIBE */ style(0, 0x96e89a, 13, 0, true),
+  /* S_CHAT_NOTICE */ style(0, 0xa8c8ec, 13, 0, true),
+  /* S_CHAT_PANEL */ style(0x10141a99, 0xeeeeee, 13),
+  /* S_CHAT_TAG */ style(0x2a3440f0, 0xffffff, 12, 1),
 ];

@@ -34,7 +34,8 @@ around it trees, rocks, bushes, and a herd of wandering placeholder creatures.
 | V | Look from behind the body, or from its eyes |
 | E | Pick a bush, open a cache, close it |
 | I, P, M, O | Inventory, character (stats, engrams, crafting), map, settings |
-| Backquote or Tab | Console. `help` lists commands |
+| Enter, Insert, / | Chat: to everyone, to those within 60 m, to your tribe. Tab changes channel, Enter says the line |
+| Backquote or Tab | Console. `help` lists commands; `tribe` founds and runs a tribe; `mute <name>` stops you hearing someone |
 | Escape | Close a screen |
 
 Under `bun run dev` cheats need no password: type `enablecheats`, then try

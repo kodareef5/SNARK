@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { KEY_CONSOLE_INPUT, KEY_CONSOLE_ROW } from "../../client/core/ui/console.ts";
-import { KEY_BANNER, KEY_CROSS, KEY_READOUT, KEY_STATUS, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { KEY_CHAT_INPUT, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
+import { KEY_BANNER, KEY_CROSS, KEY_PROMPT, KEY_READOUT, KEY_STATUS, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { buildCorePack } from "../../tools/pack/build.ts";
+import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const pack = parsePack(buildCorePack());
@@ -173,4 +175,79 @@ test("the inventory screen moves and eats through the server, and the HUD bars a
   run(1000);
   expect(h.world.ents.z[h.ent(app.session)]!).toBeGreaterThan(z + 2);
   expect(h.host.items.audit()).toEqual([]);
+});
+
+test("two whole clients form a tribe, talk on three channels through the chat box, and each is told who it is looking at", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const ada = client(h, "ada");
+  const bob = client(h, "bob");
+  const run = (ms: number) =>
+    h.run(ms, (now) => {
+      ada.frame(now, 1280, 720);
+      bob.frame(now, 1280, 720);
+    });
+  const type = (app: App, line: string): void => {
+    app.session.text(line);
+    run(300);
+  };
+  const chatRows = (app: App): string[] => {
+    const out: string[] = [];
+    const f = app.ui.frame;
+    for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CHAT_ROW && f.nodes[i]!.key < KEY_CHAT_ROW + 14) out.push(f.nodes[i]!.text);
+    return out;
+  };
+  /** Open the box with `key`, type, and send. */
+  const say = (app: App, key: string, words: string): void => {
+    expect(app.key(key, true)).toBe(true);
+    app.key(key, false);
+    run(50);
+    app.textInput(KEY_CHAT_INPUT, words);
+    app.key("Enter", true);
+    app.key("Enter", false);
+    run(300);
+  };
+  run(600);
+  // Face to face on level ground, a metre and a half apart.
+  const g = flatGround(h, 10, 10);
+  for (const app of [ada, bob]) type(app, "enablecheats");
+  type(ada, `tp ${(g.x + 5).toFixed(3)} ${(g.z + 4).toFixed(3)}`);
+  type(bob, `tp ${(g.x + 5).toFixed(3)} ${(g.z + 5.5).toFixed(3)}`);
+  bob.controls.yaw = Math.PI;
+  run(300);
+  // Looking at each other: a name and a level, and nothing yet to say they are together.
+  expect(ada.ui.frame.find(KEY_PROMPT)!.text).toBe("bob  level 1");
+  expect(bob.ui.frame.find(KEY_PROMPT)!.text).toBe("ada  level 1");
+
+  type(ada, "tribe create Night Shift");
+  type(ada, "tribe invite bob");
+  // The invitation is on Bob's screen without his opening anything.
+  expect(chatRows(bob).join(" ")).toContain("ada invites you to join Night Shift.");
+  type(bob, "tribe accept");
+  expect(chatRows(ada)).toContain("bob joined Night Shift.");
+  expect(ada.ui.frame.find(KEY_PROMPT)!.text).toBe("bob (tribe)  level 1");
+  expect(bob.ui.frame.find(KEY_PROMPT)!.text).toBe("ada (tribe)  level 1");
+
+  // Enter, Insert and the slash key, each with its line.
+  say(ada, "Enter", "hello, island");
+  say(bob, "Insert", "right behind you");
+  expect(bob.key("Slash", true)).toBe(true);
+  run(50);
+  expect(bob.ui.frame.find(KEY_CHAT_TAG)!.text).toBe("Tribe");
+  expect(bob.ui.captureKeyboard).toBe(true);
+  bob.textInput(KEY_CHAT_INPUT, "the wall is up");
+  bob.key("Enter", true);
+  run(300);
+  expect(bob.ui.chat.open).toBe(false);
+  for (const app of [ada, bob]) expect(chatRows(app).slice(-3)).toEqual(["ada: hello, island", "[Local] bob: right behind you", "[Tribe] bob: the wall is up"]);
+  // While the box was open the body stood still: typing is not walking.
+  const z = h.world.ents.z[h.ent(bob.session)]!;
+  bob.key("Enter", true);
+  bob.key("KeyW", true);
+  run(500);
+  bob.key("KeyW", false);
+  bob.key("Escape", true);
+  expect(h.world.ents.z[h.ent(bob.session)]).toBe(z);
+  // None of the talk went to the console.
+  expect(ada.ui.console.lines.some((l) => l.includes("hello, island"))).toBe(false);
+  expect(ada.session.stats.undecodable + bob.session.stats.undecodable).toBe(0);
 });
