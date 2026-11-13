@@ -1,5 +1,6 @@
 // The authoritative world: static map, structures, entities and the tick clock.
 
+import type { Rig } from "../shared/anim/rigs.ts";
 import { NO_CLIPS } from "../shared/anim/clip.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 import type { Registry } from "../shared/content/registry.ts";
@@ -31,6 +32,8 @@ export interface ServerWorld extends CollisionWorld {
    * They must be the ones the clients draw with; without any, bodies rest in a T-pose.
    */
   anim: HumanAnim;
+  /** The skeletons that are data (creatures'), by rig id, out of the same pack: empty without one. */
+  rigs: Map<string, Rig>;
   /** Where moving entities were over the last few ticks. Whoever starts or stops stepping one tells it. */
   readonly history: History;
   /** World clock in fixed steps. Persisted; never reset and never set by hand. */
@@ -60,6 +63,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     ents,
     history: new History(ents),
     anim: new HumanAnim(NO_CLIPS),
+    rigs: new Map(),
     mapId,
     mapHash,
     spawn,

@@ -86,7 +86,7 @@ let sourceClips: readonly Clip[] | null = null;
 export function coreClips(): readonly Clip[] {
   if (sourceClips) return sourceClips;
   const file = join(SOURCE, "core/human-clips.snpk");
-  sourceClips = [...(existsSync(file) ? parsePack(new Uint8Array(readFileSync(file))).clips.clips : []), ...authoredClips()];
+  sourceClips = [...(existsSync(file) ? parsePack(new Uint8Array(readFileSync(file))).clips.clips : []), ...authoredClips(), ...coreCreatures().clips];
   return sourceClips;
 }
 
@@ -101,9 +101,21 @@ export function coreBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
   return (sourceBodies = { meshes: unpackMeshes(pack), rigs: pack.header.rigs });
 }
 
+let sourceCreatures: { meshes: SourceMesh[]; rigs: PackRig[]; clips: readonly Clip[] } | null = null;
+
+/** The creatures `bun run art -- --creatures` wrote, read once: a mesh, a rig that is a whole skeleton, and clips for each. */
+export function coreCreatures(): { meshes: SourceMesh[]; rigs: PackRig[]; clips: readonly Clip[] } {
+  if (sourceCreatures) return sourceCreatures;
+  const file = join(SOURCE, "core/creatures.snpk");
+  if (!existsSync(file)) return (sourceCreatures = { meshes: [], rigs: [], clips: [] });
+  const pack = parsePack(new Uint8Array(readFileSync(file)));
+  return (sourceCreatures = { meshes: unpackMeshes(pack), rigs: pack.header.rigs, clips: pack.clips.clips });
+}
+
 export function buildCorePack(extra: SourceMesh[] = []): Uint8Array {
   const bodies = coreBodies();
-  return buildPack([...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes(), ...bodies.meshes, ...extra], defaultPalette(), coreClips(), bodies.rigs);
+  const creatures = coreCreatures();
+  return buildPack([...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes(), ...bodies.meshes, ...creatures.meshes, ...extra], defaultPalette(), coreClips(), [...bodies.rigs, ...creatures.rigs]);
 }
 
 function findGlbs(dir: string, out: string[] = []): string[] {

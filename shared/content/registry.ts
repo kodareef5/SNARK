@@ -98,6 +98,8 @@ export interface Registry {
   readonly lights: Uint16Array;
   readonly burning: Uint8Array;
   readonly isBed: Uint8Array;
+  /** Per species: the speed from which it is seen to run and not walk, metres per second. */
+  readonly runAt: Float32Array;
   /** Per item: ticks one of it burns (0: it is no fuel); what it becomes over a fire (0: nothing) and the ticks that takes. */
   readonly fuelTicks: Uint16Array;
   readonly cooksInto: Uint16Array;
@@ -143,7 +145,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
       positive(d, "jumpSpeed", d.jumpSpeed, 30);
       if (d.swimSpeed !== undefined) positive(d, "swimSpeed", d.swimSpeed, 40);
       if (d.turn !== undefined) positive(d, "turn", d.turn, 3600);
-      if (d.skeleton !== undefined && d.skeleton !== "human") errors.push(`${d.id}: unknown skeleton "${d.skeleton}"`);
+      // Which skeletons there are is the pack's to say: a creature's comes with its model.
+      if (d.skeleton !== undefined && d.skeleton.length === 0) errors.push(`${d.id}: a skeleton must be named`);
       if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
       if (d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
       if (!(d.eyeHeight > 0 && d.eyeHeight <= d.height)) errors.push(`${d.id}: eyeHeight must be within the body`);
@@ -322,6 +325,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const lights = new Uint16Array(n);
   const burning = new Uint8Array(n);
   const isBed = new Uint8Array(n);
+  const runAt = new Float32Array(n);
   const fuelTicks = new Uint16Array(n);
   const cooksInto = new Uint16Array(n);
   const cookTicks = new Uint16Array(n);
@@ -423,6 +427,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
     }
     if (d.type === "structure" && d.opens !== undefined) opens[i] = index.get(d.opens)!;
     if (d.type === "structure" && d.lights !== undefined) lights[i] = index.get(d.lights)!;
+    // Half as fast again as it walks, it is running.
+    if (d.type === "species") runAt[i] = d.walkSpeed * 1.5;
     if (d.type === "item") {
       fuelTicks[i] = Math.round((d.fuel ?? 0) * TICK_RATE);
       if (d.cooks) {
@@ -440,7 +446,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
   for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
   // And a fire that is burning, as the fire it is.
   for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

@@ -85,13 +85,15 @@ test("the pack carries bodies cut into slots, each vertex on one bone, and the c
   }
   // A rig is the skeleton's bones resting where that body has them: close to the skeleton's own, not the same.
   for (const rig of pack.header.rigs) {
+    // (A creature's rig is a whole skeleton of its own: tests/unit/creature.test.ts.)
+    if (rig.names) continue;
     expect(rig.skeleton).toBe("human");
     expect(rig.rest.length).toBe(HUMAN.bones * 3);
     let far = 0;
     for (let k = 0; k < rig.rest.length; k++) far = Math.max(far, Math.abs(rig.rest[k]! - HUMAN.rest[k]!));
     expect(far).toBeLessThan(0.1);
   }
-  expect(pack.header.rigs.map((r) => r.id)).toEqual(["human_f", "human_m"]);
+  expect(pack.header.rigs.map((r) => r.id)).toEqual(["core:parasaur", "core:raptor", "human_f", "human_m"]);
   // Hair and a beard for each body.
   for (const id of ["core:human_m/hair/buzzed", "core:human_f/hair/long", "core:human_m/beard/full"]) expect(pack.meshIndex.has(id)).toBe(true);
 

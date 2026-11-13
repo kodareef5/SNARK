@@ -11,6 +11,8 @@ import { addCoreCommands } from "./commands/core.ts";
 import { addSocialCommands } from "./commands/social.ts";
 import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
+import { buildRigs } from "../shared/anim/rigs.ts";
+import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
 import type { BedPoint } from "./own.ts";
 import { RESULT_WAIT } from "../shared/net/protocol.ts";
@@ -67,6 +69,8 @@ export interface HostOptions {
   allowLedgerMismatch?: boolean;
   /** The animation clips of the asset pack the clients are served. They decide where hit zones are. */
   clips?: ClipSet;
+  /** The rigs of that pack: those that are skeletons in themselves are what creatures are posed and hit on. */
+  rigs?: readonly PackRig[];
 }
 
 /** Ticks between console lines accepted from one session. */
@@ -140,6 +144,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   // A save supplies its own structures; only a new world gets the proving ground's.
   const world = opts.world ?? createProvingWorld(reg, { populate: !store || store.fresh });
   if (opts.clips) world.anim = new HumanAnim(opts.clips);
+  if (opts.clips && opts.rigs) world.rigs = buildRigs(opts.rigs, opts.clips);
   const records = new Records(opts.worldId ?? 1);
   const game = new GameServer(world, opts.game);
   const persistence = store ? new Persistence(world, records, store) : null;

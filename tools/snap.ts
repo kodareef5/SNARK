@@ -6,6 +6,7 @@
 //   bun run snap -- --ui --inventory          with the inventory screen open
 //   bun run snap -- --ui --chat               with the chat box open (--chat shut: only what was said)
 //   bun run snap -- --poses 2 --face 90       a line-up of bodies in motion: kinds 2 and 3, seen from the side
+//   bun run snap -- --creatures --face 60     the creatures that came as models: standing, walking, running, striking
 //   bun run snap -- --looks                   a line-up of looks: both sexes, every hair, every slider at its ends
 //   bun run snap -- --creator 1               what a new survivor sees: the creator, on its first or second tab
 //   bun run snap -- --gear                    a line-up of armor tiers and held weapons
@@ -186,6 +187,71 @@ function idWithSeed(seed: number): number {
  * kind of motion side by side, and of the next kind behind them. `first` picks
  * the kind; `facing` is the bodies' yaw (a quarter turn shows them from the side).
  */
+/**
+ * The creatures whose bodies came as models, each in a row: standing, walking,
+ * running and striking, at four moments of each, with a survivor beside the
+ * first of each row for size.
+ */
+export function creaturesScene(view: ProvingView, tick: number, facing: number): void {
+  const r = view.remote;
+  r.count = 0;
+  r.tick = tick;
+  const st = new AnimState();
+  const kinds = ["core:parasaur", "core:raptor"].map((id) => view.reg.index.get(id)!);
+  // speed (in steps of 0.6 m/s), and whether it is striking
+  const rows: readonly (readonly [number, boolean])[] = [[0, false], [4, false], [12, false], [0, true]];
+  const put = (kind: number, x: number, z: number, colors: readonly number[]): number => {
+    const n = r.count++;
+    r.id[n] = idWithSeed(0) + 1024 * (n + 1);
+    r.kind[n] = kind;
+    r.x[n] = x;
+    r.z[n] = z;
+    r.y[n] = view.hf.heightAt(x, z);
+    r.yaw[n] = facing;
+    r.flags[n] = 1;
+    r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
+    for (let q = 0; q < 6; q++) r.colors[n * 6 + q] = colors[q] ?? 0;
+    st.speed = 0;
+    st.dir = 0;
+    st.pitch = 0;
+    st.mode = 1;
+    st.stance = 0;
+    st.grounded = true;
+    st.setAction(ACT_NONE, HOLD_HANDS, 0);
+    r.anim[n] = st.pack();
+    return n;
+  };
+  kinds.forEach((kind, j) => {
+    const z = 232 + j * 9;
+    const gap = j === 0 ? 9 : 5;
+    rows.forEach(([speed, strike], i) => {
+      const n = put(kind, 256 + (1.5 - i) * gap, z, j === 0 ? [9, 16, 13, 8] : [5, 15, 11]);
+      st.speed = speed;
+      // Each a little further on in its clip, and a strike part way through.
+      r.id[n] = idWithSeed(i * 5) + 1024 * (n + 1);
+      if (strike) st.setAction(ACT_SWING, HOLD_HANDS, tick - 10);
+      r.anim[n] = st.pack();
+      st.setAction(ACT_NONE, HOLD_HANDS, 0);
+    });
+    put(view.reg.index.get("core:survivor")!, 256 + 1.5 * gap + (j === 0 ? 5.5 : 2.6), z, []);
+  });
+  const cam = view.cam;
+  cam.x = 256;
+  cam.z = 196;
+  cam.y = view.hf.heightAt(cam.x, cam.z) + 9;
+  cam.fovY = 0.6;
+  cam.yaw = 0;
+  cam.pitch = -0.19;
+  // Or close to the raptors' row, for a look at feet and jaws.
+  if (process.argv.includes("--near")) {
+    cam.x = 259;
+    cam.z = 233;
+    cam.y = view.hf.heightAt(cam.x, cam.z) + 2.2;
+    cam.fovY = 0.9;
+    cam.pitch = -0.12;
+  }
+}
+
 export function posesScene(view: ProvingView, tick: number, first: number, facing: number): void {
   const r = view.remote;
   r.count = 0;
@@ -522,6 +588,7 @@ if (import.meta.main) {
   if (args.includes("--falling")) fallingScene(view, Number(arg("falling") ?? 450));
   if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
+  if (args.includes("--creatures")) creaturesScene(view, Number(arg("tick") ?? 40), (Number(arg("face") ?? 90) * Math.PI) / 180);
   if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
   const t0 = performance.now();
   const packet = view.render();

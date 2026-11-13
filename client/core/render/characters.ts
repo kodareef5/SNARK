@@ -17,6 +17,8 @@ import { HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
 import { HumanAnim, humanPose, type AnimState } from "../../../shared/anim/pose.ts";
 import { Solved, solve } from "../../../shared/anim/skeleton.ts";
+import { creaturePose } from "../../../shared/anim/creature.ts";
+import { buildRigs, type Rig } from "../../../shared/anim/rigs.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
 import { lodVertices, type Pack } from "../../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
@@ -74,6 +76,8 @@ export class Characters {
   /** Bodies posed this frame. */
   posed = 0;
   private readonly kinds: (BodyKind | null)[];
+  /** Per content index: for a creature whose skeleton came with its model, that skeleton, its one mesh, its colour and the speed it runs from. */
+  private readonly creatures: ({ rig: Rig; mesh: number; color: number; runAt: number } | null)[];
   /** Per content index: what wearing or holding that item draws, or null. */
   private readonly worn: (Worn | null)[];
   private readonly held: (Held | null)[];
@@ -132,6 +136,13 @@ export class Characters {
         armor: sets.map((set) => Int32Array.from(SLOT_NAMES, (name) => find(`${base}/armor/${set}/${name}`))),
       };
     };
+    const rigs = buildRigs(pack.header.rigs, pack.clips);
+    this.creatures = reg.defs.map((d, i) => {
+      if (d?.type !== "species" || d.skeleton === undefined || d.skeleton === HUMAN.id) return null;
+      const rig = rigs.get(d.mesh);
+      const mesh = pack.meshIndex.get(d.mesh);
+      return rig && mesh !== undefined ? { rig, mesh, color: d.color, runAt: reg.runAt[i]! } : null;
+    });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
       // A modelled body for each sex; or one body; or, when its meshes are not in the pack, the mannequin.
@@ -143,7 +154,33 @@ export class Characters {
 
   /** Whether content of this kind is drawn here rather than as a rigid mesh. */
   has(kind: number): boolean {
-    return this.kinds[kind] != null;
+    return this.kinds[kind] != null || this.creatures[kind] != null;
+  }
+
+  /** How far from where it stands any part of a body of this kind may be: for deciding whether it is in view. */
+  reach(kind: number): number {
+    return this.creatures[kind]?.rig.reach ?? BODY_RADIUS;
+  }
+
+  /** A creature: one mesh on its own skeleton, in its own colours. */
+  private addCreature(p: FramePacket, c: { rig: Rig; mesh: number; color: number; runAt: number }, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number): boolean {
+    const rig = c.rig;
+    if (p.boneCount + rig.bones > MAX_BONES || this.count + 1 > MAX_SKINNED) return false;
+    creaturePose(rig, st, tick, c.runAt, rig.a);
+    solve(rig, rig.a, rig.solved);
+    const first = p.boneCount;
+    writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw);
+    p.boneCount = first + rig.bones;
+    this.posed++;
+    const n = this.count++;
+    this.key[n] = c.mesh * LODS;
+    this.firstBone[n] = first;
+    this.region0[n] = c.color;
+    for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
+    this.id[n] = id;
+    this.near[n] = 0;
+    this.offset.fill(0, n * 3, n * 3 + 3);
+    return true;
   }
 
   begin(): void {
@@ -162,6 +199,8 @@ export class Characters {
    * when the frame has no room left.
    */
   add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean): boolean {
+    const creature = this.creatures[kind];
+    if (creature) return this.addCreature(p, creature, x, y, z, yaw, st, tick, colors, colorAt, id);
     const k = this.kinds[kind];
     if (!k || p.boneCount + HUMAN_BONES > MAX_BONES || this.count + PARTS > MAX_SKINNED) return false;
     // A modelled body that was given no look gets the plain one, so its regions have colours.

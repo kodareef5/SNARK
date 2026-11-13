@@ -65,7 +65,7 @@ export class Harness {
   constructor(opts: Partial<GameOptions> = {}, seed = 1, clientFps = 60, host: HostOptions = {}, reg: Registry = coreRegistry()) {
     this.reg = reg;
     // Posed with the clips of the real pack, as a server started from the built client is.
-    this.host = createHost(reg, { clips: corePack().clips, ...host, game: opts });
+    this.host = createHost(reg, { clips: corePack().clips, rigs: corePack().header.rigs, ...host, game: opts });
     this.world = this.host.world;
     this.server = this.host.game;
     this.net = new LoopbackNet(seed);

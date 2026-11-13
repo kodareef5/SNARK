@@ -60,6 +60,18 @@ export interface PackRig {
   id: string;
   skeleton: string;
   rest: number[];
+  /**
+   * A rig that is a whole skeleton (a creature's): its bones by name, the
+   * root first; each bone's parent among them, -1 for the root; its hit
+   * capsules, nine numbers each (the bone that carries it, its zone, its two
+   * ends relative to that bone's joint, its radius); and named places on it,
+   * each relative to a bone's joint. Absent for a body made on a skeleton the
+   * code defines (the humanoid's).
+   */
+  names?: string[];
+  parent?: number[];
+  caps?: number[];
+  sockets?: { name: string; bone: number; x: number; y: number; z: number }[];
 }
 
 export interface PackClip {

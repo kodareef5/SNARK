@@ -10,7 +10,13 @@ import { dress } from "../../server/commands/combat.ts";
 import { STUCK_TICKS } from "../../server/projectiles.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { ZONE_HEAD, ZONE_TORSO } from "../../shared/anim/human.ts";
-import { rayCapsule } from "../../shared/anim/skeleton.ts";
+import { boneToModel, rayCapsule, solve } from "../../shared/anim/skeleton.ts";
+import { creaturePose } from "../../shared/anim/creature.ts";
+import { AnimState, bodySeed } from "../../shared/anim/pose.ts";
+import { buildRigs } from "../../shared/anim/rigs.ts";
+import { Camera } from "../../client/core/render/camera.ts";
+import { Scene } from "../../client/core/render/scene.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -638,4 +644,73 @@ test("the client shows shots: its own arrow at once, another's when told, the li
   run(600);
   expect(app.cam.fovY).toBeCloseTo(wide, 2);
   expect(s.stats.undecodable).toBe(0);
+});
+
+test("a creature that came as a model is hit where its capsules are, in the pose it is in: its head for half as much again, its body for what the round does", () => {
+  // A parasaur that stands where it is put, so that where its head is can be known.
+  const wild = CORE_CONTENT.find((d) => d.id === "core:parasaur")!;
+  const { registry } = compileContent([...CORE_CONTENT, { ...wild, id: "core:parasaur_still", still: true } as Def]);
+  const { h, s, pilot, at, arm } = range(64, {}, registry!);
+  const kind = registry!.index.get("core:parasaur_still")!;
+  // Thirty metres up the range, turned a quarter so that it stands side on: its head to the shooter's right.
+  const e = h.host.spawnCreature("core:parasaur_still", at.x, at.z + 30, 150);
+  expect(e).toBeGreaterThanOrEqual(0);
+  const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
+  h.world.ents.yaw[e] = rec.yaw = 16384;
+  h.run(300);
+  const rig = buildRigs(corePack().header.rigs, corePack().clips).get("core:parasaur")!;
+  const st = new AnimState();
+  st.unpack(h.world.ents.anim[e]!);
+  st.seed = bodySeed(e);
+  // Where the middles of its head and of its body are now, in its own space; facing +X, what is ahead of it is to the east.
+  const middle = (bone: string): number[] => {
+    creaturePose(rig, st, h.world.tick, registry!.runAt[kind]!, rig.a);
+    solve(rig, rig.a, rig.solved);
+    const b = rig.names.indexOf(bone);
+    const out = [0, 0, 0];
+    boneToModel(rig.solved, b, (rig.capA[b * 3]! + rig.capB[b * 3]!) / 2, (rig.capA[b * 3 + 1]! + rig.capB[b * 3 + 1]!) / 2, (rig.capA[b * 3 + 2]! + rig.capB[b * 3 + 2]!) / 2, out);
+    return out;
+  };
+  arm("rifle", "rifle");
+  const combat = h.host.combat;
+  const health = (): number => h.host.survival.value(rec, V_HEALTH);
+  const full = health();
+  // Its body, side on: what a rifle round does to a creature.
+  const body = middle("Body");
+  aim(pilot, 30 - body[0]!, body[1]!, body[2]!);
+  h.run(100);
+  pull(h, pilot, 4800);
+  expect([combat.last.victim, combat.last.zone, combat.last.damage]).toEqual([rec.pid, ZONE_TORSO, 280]);
+  // (It has mended a little in the seconds the rifle took to reload.)
+  expect(full - health()).toBeGreaterThan(270);
+  expect(full - health()).toBeLessThanOrEqual(280);
+  // Its head, where the idle clip has it at this tick: half as much again.
+  st.unpack(h.world.ents.anim[e]!);
+  const head = middle("Head");
+  aim(pilot, 30 - head[0]!, head[1]!, head[2]!);
+  h.run(100);
+  pull(h, pilot, 4800);
+  expect([combat.last.zone, combat.last.damage]).toEqual([ZONE_HEAD, 420]);
+  // Over its back, where a box about it would have been: nothing.
+  const before = combat.hits;
+  aim(pilot, 30, rig.mid * 2.4, -1.5);
+  h.run(100);
+  pull(h, pilot, 4800);
+  expect(combat.hits).toBe(before);
+
+  // And it is drawn on its bones, where it is: one mesh that follows its skeleton.
+  const pack = corePack();
+  const scene = new Scene(s.world!, registry!, pack);
+  const remote = new RemoteSample();
+  s.sampleRemote(remote);
+  const cam = new Camera();
+  cam.x = s.own.x;
+  cam.y = s.own.y + EYE;
+  cam.z = s.own.z;
+  cam.aspect = 16 / 9;
+  const packet = scene.build(cam, remote);
+  const mesh = pack.meshIndex.get("core:parasaur")!;
+  let drawn = 0;
+  for (let d = 0; d < packet.drawCount; d++) if (packet.drawMesh[d] === mesh && (packet.drawFlags[d]! & DRAW_SKINNED) !== 0) drawn += packet.drawInstances[d]!;
+  expect([drawn, packet.boneCount >= rig.bones, scene.characters.has(kind)]).toEqual([1, true, true]);
 });

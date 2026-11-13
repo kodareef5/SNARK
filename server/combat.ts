@@ -22,6 +22,8 @@ import { HUMAN } from "../shared/anim/human.ts";
 import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
 import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
+import { rayCreature } from "../shared/anim/creature.ts";
+import type { Rig } from "../shared/anim/rigs.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
@@ -120,6 +122,7 @@ export class Combat {
   private readonly survivor: number;
   /** 1 for kinds whose body has the humanoid skeleton. */
   private readonly human: Uint8Array;
+  private readonly rig: (Rig | null)[];
   private readonly rng: Rng;
   private readonly dir = [0, 0, 0];
   private readonly st = new AnimState();
@@ -151,6 +154,8 @@ export class Combat {
     const reg = ctx.world.reg;
     this.survivor = reg.index.get("core:survivor")!;
     this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
+    // A creature whose skeleton came with its model is hit on that: where its capsules are in the pose it is in.
+    this.rig = reg.defs.map((d) => (d?.type === "species" && d.skeleton !== undefined && d.skeleton !== HUMAN.id ? (ctx.world.rigs.get(d.mesh) ?? null) : null));
     this.rng = new Rng(seed);
     this.dose = reg.index.get("core:tranquilized") ?? 0;
   }
@@ -343,9 +348,10 @@ export class Combat {
           const kind = ents.kind[i]!;
           // A sphere about the body that holds it whatever it does; a box that is larger has a larger one.
           const h = reg.bodyHeight[kind]!;
-          const r = Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!) + slack;
+          const rig = this.rig[kind];
+          const r = (rig ? rig.reach : Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!)) + slack;
           const px = ents.x[i]! - ox;
-          const py = ents.y[i]! + (this.human[kind] ? BODY_REACH_Y : h * 0.5) - oy;
+          const py = ents.y[i]! + (this.human[kind] ? BODY_REACH_Y : rig ? rig.mid : h * 0.5) - oy;
           const pz = ents.z[i]! - oz;
           const t = px * dx + py * dy + pz * dz;
           if (t < -r || t > maxT + r || px * px + py * py + pz * pz - t * t > r * r) continue;
@@ -465,6 +471,15 @@ export class Combat {
         st.unpack(past.anim);
         st.seed = bodySeed(i);
         const zone = rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach);
+        if (zone !== ZONE_NONE && zoneHit.t < reach) {
+          this.t = zoneHit.t * scale;
+          this.zone = zone;
+          best = i;
+        }
+      } else if (this.rig[kind]) {
+        st.unpack(past.anim);
+        st.seed = bodySeed(i);
+        const zone = rayCreature(this.rig[kind]!, st, tick, reg.runAt[kind]!, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach);
         if (zone !== ZONE_NONE && zoneHit.t < reach) {
           this.t = zoneHit.t * scale;
           this.zone = zone;

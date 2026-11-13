@@ -75,8 +75,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   // Bodies are posed, and so hit, with the clips of the very pack the clients are served.
   const packFile = join(clientDir, "assets/core.snpk");
   if (!existsSync(packFile)) throw new Error(`${packFile} is missing: build the client first (bun run build)`);
-  const clips = parsePack(new Uint8Array(readFileSync(packFile))).clips;
-  const roles = { dev: opts.dev ?? false, clips, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}) };
+  const pack = parsePack(new Uint8Array(readFileSync(packFile)));
+  const clips = pack.clips;
+  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 40 });
   if (opts.probeScene) {
     const ents = host.world.ents;

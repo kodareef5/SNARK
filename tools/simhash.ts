@@ -18,6 +18,8 @@ import { AnimState, HumanAnim, humanPose } from "../shared/anim/pose.ts";
 import { ACT_COOL, ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { Solved, rayZones, solve, zoneHit } from "../shared/anim/skeleton.ts";
 import { authoredClips } from "../shared/anim/authored.ts";
+import { creaturePose, rayCreature } from "../shared/anim/creature.ts";
+import { buildRigs, type Rig } from "../shared/anim/rigs.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { defaultPalette } from "../shared/pack/palette.ts";
 import { buildPack } from "./pack/write.ts";
@@ -198,4 +200,56 @@ export function snapHash(): string {
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash());
+/** The rigs that are skeletons in themselves, with their clips, as `bun run art -- --creatures` wrote them. */
+export function sourceRigs(): Map<string, Rig> {
+  const pack = parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/creatures.snpk", import.meta.url))));
+  return buildRigs(pack.header.rigs, pack.clips);
+}
+
+/**
+ * A fourth hash: every creature at every third speed, striking and not, at
+ * whole and fractional ticks, as the bytes of where each of its bones is, and
+ * what a few rays hit on it.
+ */
+export function creatureHash(): string {
+  const st = new AnimState();
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9747b28c;
+  const mix = (bytes: Uint8Array): void => {
+    for (let k = 0; k < bytes.length; k++) {
+      h1 = Math.imul(h1 ^ bytes[k]!, 0x01000193);
+      h2 = Math.imul(h2 + bytes[k]!, 0x85ebca6b) ^ (h2 >>> 13);
+    }
+  };
+  const f = new Float32Array(2);
+  const fb = new Uint8Array(f.buffer);
+  let n = 0;
+  for (const rig of sourceRigs().values()) {
+    const rot = new Uint8Array(rig.solved.rot.buffer);
+    const pos = new Uint8Array(rig.solved.pos.buffer);
+    for (let speed = 0; speed <= 15; speed += 3) {
+      for (const strike of [false, true]) {
+        for (let k = 0; k < 6; k++) {
+          const tick = 100 + n * 5.25;
+          st.speed = speed;
+          st.seed = (n * 37) % 1024;
+          st.setAction(strike ? ACT_SWING : ACT_NONE, HOLD_HANDS, Math.floor(tick) - k * 4);
+          creaturePose(rig, st, tick, 4, rig.a);
+          solve(rig, rig.a, rig.solved);
+          mix(rot);
+          mix(pos);
+          // A ray at it from the side, at the height of its middle, and one down its length from in front.
+          for (const [ox, oy, oz, dx, dz] of [[-20, rig.mid, 0.3, 1, 0], [0.05, rig.mid * 1.2, 30, 0, -1]] as const) {
+            f[0] = rayCreature(rig, st, tick, 4, 0, 0, 0, (n * 4099) & 0xffff, ox, oy, oz, dx, 0, dz, 60);
+            f[1] = zoneHit.t;
+            mix(fb);
+          }
+          n++;
+        }
+      }
+    }
+  }
+  return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash());

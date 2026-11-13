@@ -10,7 +10,7 @@
 
 import type { Clip } from "../../shared/anim/clip.ts";
 import { Pose } from "../../shared/anim/clip.ts";
-import { B_FOOT_L, B_FOOT_R, B_HIPS, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_FOOT_L, B_FOOT_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { quatMul, quatMulConj, quatNlerp, quatNormalize, quatRotate } from "../../shared/math/quat.ts";
@@ -77,6 +77,25 @@ function sample(track: Track, time: number, out: Float64Array): void {
  * reports an animation that is missing as a warning and skips it.
  */
 export function convertHumanClips(g: Gltf, specs: readonly ClipSpec[]): { clips: Clip[]; warnings: string[] } {
+  const made = convertClips(g, HUMAN_SOURCE_JOINTS, HUMAN.parent, specs);
+  // A gait starts where the left foot is farthest forward, so that gaits blend in step.
+  const clips = made.clips.map((clip, i) => (made.specs[i]!.gait && clip.loop ? rotated(clip, leftFootForward(clip)) : clip));
+  return { clips, warnings: made.warnings };
+}
+
+/**
+ * The same for any skeleton whose bones rest at identity: `joints` names the
+ * source joint that drives each bone (null for a bone the source does not
+ * have), `parents` each bone's parent among the bones (-1 for the root, which
+ * is the one bone whose travel is kept), and positions are multiplied by
+ * `scale`. A bone's parent here need not be its joint's parent in the source.
+ * Returns the clips made and the spec each was made from.
+ */
+export function convertClips(g: Gltf, joints: readonly (string | null)[], parents: ArrayLike<number>, specs: readonly ClipSpec[], scale = 1): { clips: Clip[]; specs: ClipSpec[]; warnings: string[] } {
+  const BONES = joints.length;
+  let rootBone = 0;
+  for (let b = 0; b < BONES; b++) if (parents[b]! < 0) rootBone = b;
+  const done: ClipSpec[] = [];
   const nodes = g.json.nodes ?? [];
   const parent = nodeParents(g);
   const warnings: string[] = [];
@@ -88,7 +107,7 @@ export function convertHumanClips(g: Gltf, specs: readonly ClipSpec[]): { clips:
   };
   parent.forEach((p, i) => p < 0 && visit(i));
 
-  const joint = HUMAN_SOURCE_JOINTS.map((name) => {
+  const joint = joints.map((name) => {
     if (name === null) return -1;
     const i = nodes.findIndex((n) => n.name === name);
     if (i < 0) throw new Error(`${g.path}: no joint named "${name}"`);
@@ -132,10 +151,10 @@ export function convertHumanClips(g: Gltf, specs: readonly ClipSpec[]): { clips:
   for (let i = 0; i < n; i++) restLocal(i);
   solveWorld();
   const restR = worldR.slice();
-  const restHips = [0, 1, 2].map((k) => worldT[joint[B_HIPS]! * 3 + k]!);
+  const restHips = [0, 1, 2].map((k) => worldT[joint[rootBone]! * 3 + k]!);
 
   const clips: Clip[] = [];
-  const delta = new Float64Array(HUMAN_BONES * 4);
+  const delta = new Float64Array(BONES * 4);
   const scratch = new Float64Array(4);
   for (const spec of specs) {
     const anim = g.json.animations?.find((a) => a.name === spec.source);
@@ -170,7 +189,7 @@ export function convertHumanClips(g: Gltf, specs: readonly ClipSpec[]): { clips:
       warnings.push(`"${spec.source}" has no frames in the range asked for`);
       continue;
     }
-    const rot = new Float32Array(frames * HUMAN_BONES * 4);
+    const rot = new Float32Array(frames * BONES * 4);
     const root = new Float32Array(frames * 3);
     const value = new Float64Array(4);
     for (let f = 0; f < frames; f++) {
@@ -186,7 +205,7 @@ export function convertHumanClips(g: Gltf, specs: readonly ClipSpec[]): { clips:
       }
       solveWorld();
       // How far each joint has turned from rest, in model space: world(t) * world(rest)^-1.
-      for (let b = 0; b < HUMAN_BONES; b++) {
+      for (let b = 0; b < BONES; b++) {
         const j = joint[b]!;
         if (j < 0) continue;
         scratch[0] = -restR[j * 4]!;
@@ -195,9 +214,9 @@ export function convertHumanClips(g: Gltf, specs: readonly ClipSpec[]): { clips:
         scratch[3] = restR[j * 4 + 3]!;
         quatMul(delta, b * 4, worldR, j * 4, scratch, 0);
       }
-      for (let b = 0; b < HUMAN_BONES; b++) {
-        const at = (f * HUMAN_BONES + b) * 4;
-        const p = HUMAN.parent[b]!;
+      for (let b = 0; b < BONES; b++) {
+        const at = (f * BONES + b) * 4;
+        const p = parents[b]!;
         if (joint[b]! < 0) rot[at + 3] = 1;
         else if (p < 0) for (let k = 0; k < 4; k++) rot[at + k] = delta[b * 4 + k]!;
         else {
@@ -206,13 +225,12 @@ export function convertHumanClips(g: Gltf, specs: readonly ClipSpec[]): { clips:
           for (let k = 0; k < 4; k++) rot[at + k] = scratch[k]!;
         }
       }
-      for (let k = 0; k < 3; k++) root[f * 3 + k] = worldT[joint[B_HIPS]! * 3 + k]! - restHips[k]!;
+      for (let k = 0; k < 3; k++) root[f * 3 + k] = (worldT[joint[rootBone]! * 3 + k]! - restHips[k]!) * scale;
     }
-    let clip: Clip = { id: spec.id, bones: HUMAN_BONES, frames, loop, rot, root };
-    if (spec.gait && loop) clip = rotated(clip, leftFootForward(clip));
-    clips.push(clip);
+    clips.push({ id: spec.id, bones: BONES, frames, loop, rot, root });
+    done.push(spec);
   }
-  return { clips, warnings };
+  return { clips, specs: done, warnings };
 }
 
 /** The frame at which the left foot is farthest ahead of the right. */
