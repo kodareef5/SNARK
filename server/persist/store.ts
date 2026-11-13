@@ -52,6 +52,8 @@ const COMP_SLOTS2 = 11;
 const COMP_VITALS8 = 12;
 /** The team that owns it, and its rank there. */
 const COMP_TEAM = 13;
+/** The state of something built: the ref of the structure it belongs to, whether it is locked, and its PIN plus one. */
+const COMP_FIXTURE = 14;
 /** Experience, learned engrams, crafting jobs. */
 const COMP_PROGRESSION = 4;
 /** The most slots a round 1 inventory is laid out in when it is converted. */
@@ -242,7 +244,15 @@ export class WorldStore {
     const used = inv ? inv.used() : 0;
     const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + rec.extra.size);
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + rec.extra.size);
+    if (rec.at >= 0) {
+      c.reset();
+      c.u32(rec.at);
+      c.bits(rec.lock, 2);
+      c.varint(rec.pin + 1);
+      w.varint(COMP_FIXTURE);
+      w.blob(c.bytes());
+    }
     if (hasProgress) {
       c.reset();
       c.f64(rec.xp);
@@ -480,6 +490,10 @@ export class WorldStore {
         } else if (component === COMP_TEAM) {
           rec.team = c.varint();
           rec.rank = c.u8();
+        } else if (component === COMP_FIXTURE) {
+          rec.at = c.u32();
+          rec.lock = c.bits(2);
+          rec.pin = c.varint() - 1;
         } else rec.extra.set(component, blob);
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }

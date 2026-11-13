@@ -27,8 +27,16 @@ export const KEY_OPEN_PANEL = 293;
 export const KEY_OPEN_TITLE = 294;
 /** Slot `s` of the survivor's own inventory is node KEY_INV_SLOT + 3 * s (then its swatch and its count). */
 export const KEY_INV_SLOT = 300;
-/** Slot `s` of the open container, the same way. */
+/**
+ * The open container's slots, the same way, but numbered by their place on
+ * the page shown: a vault has more slots than a screen has room for, and is
+ * turned through a page at a time.
+ */
 export const KEY_OPEN_SLOT = 600;
+/** The buttons that turn the page back and on, and the line between them that says which page it is. */
+export const KEY_OPEN_PAGE = 296;
+/** Rows of the open container shown at once. */
+const OPEN_ROWS = 6;
 /** Labels of the hotbar and armor rows, and the four buttons that act on the picked-up stack. */
 export const KEY_INV_ROW_LABEL = 280;
 export const KEY_INV_ACTION = 284;
@@ -54,6 +62,10 @@ export class InventoryScreen {
   hoverBox = BOX_SELF;
   hover = -1;
   private hadOpen = false;
+  /** Which page of the open container is shown, how many slots a page is, and how many pages there are. */
+  page = 0;
+  private pageSize = 60;
+  private pages = 1;
   /** Content, as of the last build: what a slot's item is decides what putting something down on it means. */
   private registry: Registry | null = null;
 
@@ -63,11 +75,13 @@ export class InventoryScreen {
 
   /** Which box and slot a node key names, as box * 1000 + slot, or -1. */
   private where(key: number, session: ClientSession): number {
-    for (const which of [BOX_SELF, BOX_OPEN]) {
-      const inv = this.box(session, which);
-      const s = (key - (which === BOX_OPEN ? KEY_OPEN_SLOT : KEY_INV_SLOT)) / 3;
-      if (inv && Number.isInteger(s) && s >= 0 && s < inv.cap) return which * 1000 + s;
-    }
+    const own = session.inventory;
+    const s = (key - KEY_INV_SLOT) / 3;
+    if (own && key < KEY_OPEN_SLOT && Number.isInteger(s) && s >= 0 && s < own.cap) return BOX_SELF * 1000 + s;
+    // The open container: the node says which place on the page, and the page says which slot that is.
+    const other = session.open?.inventory;
+    const i = (key - KEY_OPEN_SLOT) / 3;
+    if (other && Number.isInteger(i) && i >= 0 && i < this.pageSize && this.page * this.pageSize + i < other.cap) return BOX_OPEN * 1000 + this.page * this.pageSize + i;
     return -1;
   }
 
@@ -86,6 +100,10 @@ export class InventoryScreen {
     if (kind === 2) {
       this.hoverBox = box;
       this.hover = slot;
+      return;
+    }
+    if (kind === 0 && (key === KEY_OPEN_PAGE || key === KEY_OPEN_PAGE + 2)) {
+      this.page = Math.max(0, Math.min(this.pages - 1, this.page + (key === KEY_OPEN_PAGE ? -1 : 1)));
       return;
     }
     if (kind === 0 && key >= KEY_INV_ACTION && key < KEY_INV_ACTION + ACTIONS.length) {
@@ -146,7 +164,10 @@ export class InventoryScreen {
   build(f: UiFrame, session: ClientSession | null, reg: Registry | null, palette: Uint8Array | null): void {
     // A container the server has just opened brings the screen up with it.
     const isOpen = !!session?.open;
-    if (isOpen && !this.hadOpen) this.open = true;
+    if (isOpen && !this.hadOpen) {
+      this.open = true;
+      this.page = 0;
+    }
     this.hadOpen = isOpen;
     const own = session?.inventory;
     if (!this.open || !own || !session || !reg) return;
@@ -165,7 +186,12 @@ export class InventoryScreen {
     const tailH = tail ? infoH * 2 + rows(HOTBAR_SLOTS) + rows(ARMOR_SLOTS) + 4 : 0;
     const actionH = tail ? 28 : 0;
     const ownH = titleH + rows(own.bag) + tailH + infoH + actionH + PAD * 2 + 6;
-    const otherH = other ? titleH + rows(other.bag) + PAD * 2 : 0;
+    // The open container: as many rows as there is room to show; the rest by turning the page.
+    this.pageSize = cols * OPEN_ROWS;
+    this.pages = other ? Math.max(1, Math.ceil(other.bag / this.pageSize)) : 1;
+    if (this.page >= this.pages) this.page = this.pages - 1;
+    const onPage = other ? Math.min(this.pageSize, other.bag - this.page * this.pageSize) : 0;
+    const otherH = other ? titleH + rows(this.pages > 1 ? this.pageSize : other.bag) + PAD * 2 : 0;
     const x0 = Math.round((f.width - w) / 2);
     let y = Math.max(4, Math.round((f.height - ownH - otherH - (other ? 8 : 0)) / 2));
     const tick = session.serverTick;
@@ -177,28 +203,41 @@ export class InventoryScreen {
         const x = x0 + PAD + (i % cols) * (CELL + GAP);
         const yy = top + Math.floor(i / cols) * (CELL + GAP);
         const inHand = which === BOX_SELF && inv.hotbar >= 0 && s === inv.hotbar + session.held;
-        const cell = f.add(base + s * 3, K_BUTTON, x, yy, CELL, CELL, this.held === s && this.heldBox === which ? S_SLOT_HELD : S_SLOT);
+        // The open container's nodes are numbered by place on the page; a survivor's own by slot.
+        const key = base + (which === BOX_OPEN ? i : s) * 3;
+        const cell = f.add(key, K_BUTTON, x, yy, CELL, CELL, this.held === s && this.heldBox === which ? S_SLOT_HELD : S_SLOT);
         cell.interactive = true;
         // What is in hand has a lighter cell.
         if (inHand && cell.style === S_SLOT) cell.tint = 0x5a6a7a;
         const item = inv.item[s]!;
         if (item === 0) continue;
         const def = reg.defs[item] as ItemDef | null;
-        const swatch = f.add(base + s * 3 + 1, K_PANEL, x + 4, yy + 4, CELL - 8, CELL - 20, S_SWATCH);
+        const swatch = f.add(key + 1, K_PANEL, x + 4, yy + 4, CELL - 8, CELL - 20, S_SWATCH);
         const c = (def?.color ?? 15) * 4;
         if (palette) swatch.tint = (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!;
         swatch.text = itemLabel(reg, item).slice(0, 4);
         // A stack shows how many; a weapon shows the rounds in it.
         const number = inv.count[s]! > 1 ? String(inv.count[s]) : def?.weapon?.ammo ? String(inv.loaded[s]) : "";
-        f.text(base + s * 3 + 2, x + 2, yy + CELL - lineHeight(S_SLOT_TEXT), CELL - 4, S_SLOT_TEXT, number);
+        f.text(key + 2, x + 2, yy + CELL - lineHeight(S_SLOT_TEXT), CELL - 4, S_SLOT_TEXT, number);
       }
     };
     const fit = (text: string): string => text.slice(0, Math.floor((w - PAD * 2) / (18 * 0.6)));
 
     if (other) {
       f.add(KEY_OPEN_PANEL, K_PANEL, x0, y, w, otherH, S_PANEL);
-      f.text(KEY_OPEN_TITLE, x0 + PAD, y + PAD, w - PAD * 2, S_TITLE, fit(session.open!.name));
-      grid(other, BOX_OPEN, KEY_OPEN_SLOT, y + PAD + titleH + 4, 0, other.bag);
+      const pagerW = this.pages > 1 ? 120 : 0;
+      f.text(KEY_OPEN_TITLE, x0 + PAD, y + PAD, w - PAD * 2 - pagerW, S_TITLE, fit(session.open!.name).slice(0, Math.floor((w - PAD * 2 - pagerW) / (18 * 0.6))));
+      if (this.pages > 1) {
+        // Back, which page of how many, and on.
+        const px = x0 + w - PAD - pagerW;
+        for (const [n, label] of [[0, "<"], [2, ">"]] as const) {
+          const b = f.add(KEY_OPEN_PAGE + n, K_BUTTON, px + (n === 0 ? 0 : pagerW - 28), y + PAD - 2, 28, 22, S_BUTTON);
+          b.text = label;
+          b.interactive = true;
+        }
+        f.text(KEY_OPEN_PAGE + 1, px + 34, y + PAD + 2, pagerW - 68, S_LABEL, `${this.page + 1} / ${this.pages}`);
+      }
+      grid(other, BOX_OPEN, KEY_OPEN_SLOT, y + PAD + titleH + 4, this.page * this.pageSize, onPage);
       y += otherH + 8;
     }
     f.add(KEY_INV_PANEL, K_PANEL, x0, y, w, ownH, S_PANEL);

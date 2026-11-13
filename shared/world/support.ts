@@ -10,7 +10,8 @@
 // else (a ceiling, and whatever stands on a ceiling away from the walls under
 // it) is held sideways: it stands if, through pieces joined to it, it reaches
 // something that stands straight up within a few metres on the flat. A door
-// stands in its frame.
+// stands in its frame. A thing set down (a box, a vault) stands on the ground
+// under it or on the floor it was set on, and holds nothing.
 //
 // A question is answered over a picture of the pieces around: who is joined
 // to whom, and what each stands on. The picture of a piece is made once and
@@ -22,7 +23,7 @@
 // before asking.
 
 import { STRUCT_UNITS } from "../coords.ts";
-import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_WALL, frameAxes, makeSockets, socketsFor, units, type PieceTables } from "./snap.ts";
+import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, ROLE_WALL, frameAxes, makeSockets, overPiece, socketsFor, units, type PieceTables } from "./snap.ts";
 import type { StructureStore } from "./structures.ts";
 
 /** How far on the flat a ceiling may be from what holds it, and how far anything standing on a ceiling may be: metres. */
@@ -139,7 +140,9 @@ export class Support {
     const links: number[] = [];
     const under: number[] = [];
     const over: number[] = [];
-    const root = role === ROLE_FOUNDATION || (role === ROLE_PILLAR && y - half <= Math.ceil(this.heightAt(x / STRUCT_UNITS, z / STRUCT_UNITS) * STRUCT_UNITS) + FOOT);
+    // A pillar's foot may be a little above the ground and still be in it; a thing stands on the ground or it does not.
+    const ground = role === ROLE_PILLAR || role === ROLE_THING ? Math.ceil(this.heightAt(x / STRUCT_UNITS, z / STRUCT_UNITS) * STRUCT_UNITS) : 0;
+    const root = role === ROLE_FOUNDATION || (role === ROLE_PILLAR && y - half <= ground + FOOT) || (role === ROLE_THING && y - half <= ground);
     const mx = x / STRUCT_UNITS;
     const mz = z / STRUCT_UNITS;
     const near = this.near;
@@ -157,6 +160,15 @@ export class Support {
       const oy = units(t.y[slot]!);
       const oz = units(t.z[slot]!);
       const ohalf = units(tables.halfY[ok]!);
+      // A thing joins nothing. It stands on the floor its foot is on, if its middle is over that floor.
+      if (orole === ROLE_THING) continue;
+      if (role === ROLE_THING) {
+        if ((orole === ROLE_FOUNDATION || orole === ROLE_CEILING) && oy + ohalf === y - half && overPiece(ox, oz, t.yaw[slot]!, x, z)) {
+          links.push(ref);
+          under.push(ref);
+        }
+        continue;
+      }
       // This piece in one of its places, or it in one of this piece's.
       const onIt = inPlace(orole, ohalf, tables.doorway[ok] === 1, ox, oy, oz, t.yaw[slot]!, role, half, x, y, z);
       let inMine = false;
@@ -210,7 +222,7 @@ export class Support {
 
   private ask(n: SupportNode): boolean {
     if (this.straight(n, 0)) return true;
-    if (this.cut || n.role === ROLE_DOOR) return false;
+    if (this.cut || n.role === ROLE_DOOR || n.role === ROLE_THING) return false;
     // Held sideways: through what it is joined to, as far as its reach.
     const reach = (n.role === ROLE_CEILING ? CEILING_REACH : LOAD_REACH) * STRUCT_UNITS;
     const reach2 = reach * reach;
@@ -242,7 +254,8 @@ export class Support {
 
   /**
    * Whether a piece stands straight up from the ground: it stands by itself,
-   * or directly on something that does. A door: whether its frame is there.
+   * or directly on something that does. A door: whether its frame is there. A
+   * thing: whether what it was set on is there.
    */
   private straight(n: SupportNode, depth: number): boolean {
     if (n.root) return true;
@@ -254,7 +267,7 @@ export class Support {
     for (const ref of n.under) {
       const o = this.node(ref);
       this.work++;
-      if (o && (n.role === ROLE_DOOR || this.straight(o, depth + 1))) {
+      if (o && (n.role === ROLE_DOOR || n.role === ROLE_THING || this.straight(o, depth + 1))) {
         n.straight = 1;
         return true;
       }

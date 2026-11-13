@@ -18,7 +18,7 @@ import type { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_PLACE, RESULT_FAR, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
-import { BUILD_REACH, LIFT_MAX, LIFT_MIN, makeAim, obstructed, pickSnap, poseAt, freePose, tooHigh, turnsOf, type Pose } from "../../shared/world/snap.ts";
+import { BUILD_REACH, LIFT_MAX, LIFT_MIN, ON_TOP, ROLE_THING, makeAim, obstructed, pickSnap, poseAt, freePose, restPose, tooHigh, turnsOf, type Pose } from "../../shared/world/snap.ts";
 import { Support } from "../../shared/world/support.ts";
 import type { ClientSession } from "./session.ts";
 
@@ -57,6 +57,8 @@ export class Builder {
   lift = 0;
   private target = -1;
   private socket = 0;
+  /** The piece is a thing set on top of the target, at the free point, rather than in one of its places. */
+  private onTop = false;
   private freeX = 0;
   private freeZ = 0;
   private freeYaw = 0;
@@ -100,21 +102,31 @@ export class Builder {
     this.kind = kind;
     const structs = world.structs;
     const hit = castWorld(world, ox, oy, oz, dx, dy, dz, BUILD_REACH);
+    const looked = hit === HIT_STRUCTURE ? rayHit.ref : -1;
     const aim = this.aim;
-    pickSnap(structs, reg, kind, ox, oy, oz, dx, dy, dz, hit === HIT_STRUCTURE ? rayHit.ref : -1, rayHit.t, hit === HIT_TERRAIN, aim);
+    pickSnap(structs, reg, kind, ox, oy, oz, dx, dy, dz, looked, rayHit.t, hit === HIT_TERRAIN, aim);
     let problem = 0;
     this.target = -1;
-    if (!this.free && aim.target >= 0) {
+    this.onTop = false;
+    // Where the look ends, facing the way the builder does and turned by quarters: for open ground, and for a thing set on a floor.
+    this.freeX = Math.round(aim.px * STRUCT_UNITS);
+    this.freeZ = Math.round(aim.pz * STRUCT_UNITS);
+    this.freeYaw = (Math.round((yaw / (2 * Math.PI)) * YAW_UNITS) + this.turn * (YAW_UNITS / 4)) & (YAW_UNITS - 1);
+    if (reg.role[kind] === ROLE_THING && looked >= 0) {
+      // A thing, with the look on something built: on top of that, where the look is, if it is a floor of the builder's tribe.
+      this.target = looked;
+      this.onTop = true;
+      const t = structs.chunks[Math.floor(looked / 65536)]!;
+      if (!restPose(structs, reg, looked, kind, aim.px, aim.pz, this.freeYaw, this.pose)) problem = RESULT_NO_SNAP;
+      else if (t.owner[looked & 0xffff] !== session.tribe.team || session.tribe.team === 0) problem = RESULT_NOT_YOURS;
+    } else if (!this.free && aim.target >= 0) {
       this.target = aim.target;
       this.socket = aim.order[this.cycle % aim.count]!;
       const t = structs.chunks[Math.floor(aim.target / 65536)]!;
       if (!poseAt(structs, reg, aim.target, kind, this.socket, this.turn, this.pose)) problem = RESULT_NO_SNAP;
       else if (t.owner[aim.target & 0xffff] !== session.tribe.team || session.tribe.team === 0) problem = RESULT_NOT_YOURS;
     } else {
-      // Open ground, where the look meets it, facing the way the builder does and turned by quarters.
-      this.freeX = Math.round(aim.px * STRUCT_UNITS);
-      this.freeZ = Math.round(aim.pz * STRUCT_UNITS);
-      this.freeYaw = (Math.round((yaw / (2 * Math.PI)) * YAW_UNITS) + this.turn * (YAW_UNITS / 4)) & (YAW_UNITS - 1);
+      // Open ground, where the look meets it.
       if (!aim.ground || !freePose((x, z) => world.hf.heightAt(x, z), reg, kind, aim.px, aim.pz, this.freeYaw, this.lift, this.pose)) problem = RESULT_NO_SNAP;
     }
     const p = this.pose;
@@ -150,7 +162,7 @@ export class Builder {
     if (!down) return true;
     if (code === "KeyE" && !repeat) {
       // In a place, as many ways as the piece has; on open ground, a quarter at a time.
-      const ways = this.target >= 0 ? turnsOf(reg.role[this.kind]!) : 4;
+      const ways = this.target >= 0 && !this.onTop ? turnsOf(reg.role[this.kind]!) : 4;
       this.turn = (this.turn + 1) % ways;
     } else if (code === "KeyR" && !repeat) {
       this.variant++;
@@ -170,7 +182,12 @@ export class Builder {
       w.u8(variant);
       if (target >= 0) {
         w.u32(target);
-        w.u8(this.socket);
+        w.u8(this.onTop ? ON_TOP : this.socket);
+        if (this.onTop) {
+          w.sbits(this.freeX, 32);
+          w.sbits(this.freeZ, 32);
+          w.u16(this.freeYaw);
+        }
       } else {
         w.u32(NO_TARGET);
         w.sbits(this.freeX, 32);

@@ -72,8 +72,9 @@ export interface ShapeBox {
 }
 
 /** What kind of piece a shape is: what it may join, and what may join it, go by this. */
-export type PieceRole = "foundation" | "wall" | "ceiling" | "pillar" | "door" | "stairs";
-export const PIECE_ROLES: readonly PieceRole[] = ["foundation", "wall", "ceiling", "pillar", "door", "stairs"];
+export type PieceRole = "foundation" | "wall" | "ceiling" | "pillar" | "door" | "stairs" | "thing";
+/** A "thing" joins nothing: it is set down on the ground or on a floor, and stands on whatever is under it. */
+export const PIECE_ROLES: readonly PieceRole[] = ["foundation", "wall", "ceiling", "pillar", "door", "stairs", "thing"];
 
 /**
  * The form of something built, shared by every material it is made in: a wall
@@ -106,6 +107,16 @@ export interface StructureDef {
   readonly hp: number;
   /** What it is made of: a material definition, which says what each kind of damage does to it. Omitted: nothing harms it. */
   readonly material?: string;
+  /** It holds things: how many stacks. */
+  readonly slots?: number;
+  /** Used, it becomes this other structure in the same place: a door and the same door stood open name each other. */
+  readonly opens?: string;
+  /** Until its tribe says otherwise, only its tribe may use it. Omitted: anyone may. */
+  readonly locked?: boolean;
+  /** With nothing left to hold it, it comes down whole onto the ground under it instead of breaking. */
+  readonly falls?: boolean;
+  /** Days it lasts unvisited, if not what its material says. */
+  readonly decayDays?: number;
 }
 
 /** What something built is made of: what it takes of each kind of damage. A kind not given does nothing to it. */

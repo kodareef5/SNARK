@@ -9,9 +9,11 @@ import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPAWN_PANEL } from "../../client/core/ui/screens.ts";
 import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder } from "../../client/core/ui/character.ts";
-import { KEY_STRUCT_BUTTON, KEY_STRUCT_DETAIL, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
+import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
-import { STRUCT_DEMOLISH, STRUCT_PICKUP } from "../../shared/world/upkeep.ts";
+import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
+import { KEY_OPEN_PAGE, KEY_OPEN_SLOT } from "../../client/core/ui/inventory.ts";
+import { RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
@@ -727,7 +729,7 @@ test("what is said goes to the chat box and what the console printed stays in th
 
 test("the list of what can be done to a piece fits every window shape, whatever the piece is made of, and its digits and presses send what they say", () => {
   const world = flatWorld(2);
-  const refs = ["foundation_stone", "wall_metal", "windowframe_wood", "ceiling_thatch"].map((name, i) => world.structs.add(reg.index.get(`core:${name}`)!, 20 + i * 6, 1, 20, 0, 7, 1 + i * 400));
+  const refs = ["foundation_stone", "wall_metal", "windowframe_wood", "ceiling_thatch", "door_metal", "storage_large", "vault"].map((name, i) => world.structs.add(reg.index.get(`core:${name}`)!, 20 + i * 6, 1, 20, 0, 7, 1 + i * 400));
   for (const [name, aspect] of ASPECTS) {
     for (const ref of refs) {
       const { session, sent } = fakeSession(new Inventory(40));
@@ -741,7 +743,7 @@ test("the list of what can be done to a piece fits every window shape, whatever 
       expect(f.find(KEY_STRUCT_PANEL)).not.toBeNull();
       for (let i = 0; i < f.count; i++) {
         const n = f.nodes[i]!;
-        if (n.key < KEY_STRUCT_PANEL || n.key > KEY_STRUCT_DETAIL + 3) continue;
+        if (n.key < KEY_STRUCT_PANEL || n.key > KEY_PIN_CLEAR) continue;
         const where = `${name} ref=${ref} key=${n.key} "${n.text}"`;
         expect(n.x, where).toBeGreaterThanOrEqual(-0.01);
         expect(n.x + n.w, where).toBeLessThanOrEqual(f.width + 0.01);
@@ -772,4 +774,139 @@ test("the list of what can be done to a piece fits every window shape, whatever 
   world.structs.remove(refs[0]!);
   ui.build(16 / 9, fullHud(), session);
   expect([ui.structure.open, ui.frame.find(KEY_STRUCT_PANEL)]).toEqual([false, null]);
+});
+
+test("what can be used can be locked and given a PIN from the list; the PIN panel takes four digits, fits every window, and remembers a PIN that worked", () => {
+  const world = flatWorld(2);
+  const door = world.structs.add(reg.index.get("core:door_wood")!, 20, 1.5, 20, 0, 7, 6250);
+  const wall = world.structs.add(reg.index.get("core:wall_wood")!, 26, 1.5, 20, 0, 7, 10000);
+  const sentOf = (c: { op: number; bytes: Uint8Array }): number[] => {
+    const r = new BitReader(c.bytes);
+    return c.bytes.length > 5 ? [c.op, r.u32(), r.u8(), r.u16()] : [c.op, r.u32(), r.u8()];
+  };
+  for (const [name, aspect] of ASPECTS) {
+    const { session, sent } = fakeSession(new Inventory(40));
+    Object.assign(session, { sessionState: SESSION_ALIVE, world });
+    const ui = new Ui();
+    ui.registry = reg;
+    const menu = ui.structure;
+    const fits = (): void => {
+      ui.build(aspect, fullHud(), session);
+      const f = ui.frame;
+      for (let i = 0; i < f.count; i++) {
+        const n = f.nodes[i]!;
+        if (n.key < KEY_STRUCT_PANEL || n.key > KEY_PIN_CLEAR) continue;
+        const where = `${name} key=${n.key} "${n.text}"`;
+        expect(n.x, where).toBeGreaterThanOrEqual(-0.01);
+        expect(n.y, where).toBeGreaterThanOrEqual(-0.01);
+        expect(n.x + n.w, where).toBeLessThanOrEqual(f.width + 0.01);
+        expect(n.y + n.h, where).toBeLessThanOrEqual(f.height + 0.01);
+        if (n.text !== "") expect(textWidth(n.text, n.style), where).toBeLessThanOrEqual(n.w - (n.kind === K_TEXT ? 0 : 8) + 0.01);
+        for (let j = i + 1; j < f.count; j++) if (n.interactive && f.nodes[j]!.interactive) expect(overlaps(f, i, j), where).toBe(false);
+      }
+    };
+    // A wall has three things that can be done to it; a door six. The fourth digit does nothing to a wall.
+    menu.begin(wall);
+    fits();
+    expect([ui.frame.find(KEY_STRUCT_BUTTON + 2)?.text, ui.frame.find(KEY_STRUCT_BUTTON + 3)]).toEqual(["3  Take it down", null]);
+    ui.key("Digit4", true, false, session);
+    expect([sent.length, menu.open]).toEqual([0, true]);
+    menu.begin(door);
+    fits();
+    expect([3, 4, 5].map((n) => ui.frame.find(KEY_STRUCT_BUTTON + n)!.text)).toEqual(["4  Lock it", "5  Unlock it", "6  Give it a PIN"]);
+    ui.key("Digit4", true, false, session);
+    expect([sentOf(sent[0]!), menu.open]).toEqual([[CMD_STRUCT, door, STRUCT_LOCK], false]);
+    // The sixth asks for the digits first. They are shown as stars; one can be taken back; the fourth sends them.
+    menu.begin(door);
+    ui.key("Digit6", true, false, session);
+    expect([menu.open, menu.pad, sent.length, ui.wantsPointerLock]).toEqual([true, STRUCT_PIN, 1, false]);
+    fits();
+    expect(ui.frame.find(KEY_PIN_DIGITS)!.text).toBe("wooden door:  ____");
+    for (const code of ["Digit4", "Numpad0", "Digit9", "Backspace", "Digit7"]) expect(ui.key(code, true, false, session)).toBe(true);
+    ui.build(aspect, fullHud(), session);
+    expect(ui.frame.find(KEY_PIN_DIGITS)!.text).toBe("wooden door:  ***_");
+    ui.pointer(0, KEY_PIN_BUTTON + 1, 0, 0, 0, session);
+    expect([sentOf(sent[1]!), menu.open, menu.pad]).toEqual([[CMD_STRUCT, door, STRUCT_PIN, 4071], false, 0]);
+    // "No PIN" takes the PIN away.
+    menu.begin(door);
+    ui.key("Digit6", true, false, session);
+    ui.build(aspect, fullHud(), session);
+    ui.pointer(0, KEY_PIN_CLEAR, 0, 0, 0, session);
+    expect(sentOf(sent[2]!)).toEqual([CMD_STRUCT, door, STRUCT_PIN, NO_PIN]);
+
+    // Someone not of its tribe presses the use button on it, and the server says it wants its PIN: the panel asks.
+    menu.result(0, RESULT_PIN, 1000, session, door);
+    expect([menu.open, menu.pad]).toEqual([true, STRUCT_USE]);
+    fits();
+    expect([ui.frame.find(KEY_PIN_PANEL) !== null, ui.frame.find(KEY_PIN_CLEAR)]).toEqual([true, null]);
+    for (const code of ["Digit1", "Digit2", "Digit3", "Digit4"]) ui.key(code, true, false, session);
+    expect(sentOf(sent[3]!)).toEqual([CMD_STRUCT, door, STRUCT_USE, 1234]);
+    // Wrong: it says so, and remembers nothing. The next press asks again.
+    menu.result(sent.length, RESULT_DENIED, 2000);
+    expect(menu.notice).toBe("That is not its PIN");
+    menu.result(0, RESULT_PIN, 3000, session, door);
+    expect(menu.pad).toBe(STRUCT_USE);
+    for (const code of ["Digit4", "Digit0", "Digit7", "Digit1"]) ui.key(code, true, false, session);
+    menu.result(sent.length, RESULT_OK, 4000);
+    // Right: from then on that door is given its PIN without asking.
+    menu.result(0, RESULT_PIN, 5000, session, door);
+    expect([menu.open, sentOf(sent[sent.length - 1]!)]).toEqual([false, [CMD_STRUCT, door, STRUCT_USE, 4071]]);
+    // Escape puts the panel away with nothing sent.
+    menu.ask(wall);
+    const n = sent.length;
+    expect(ui.key("Escape", true, false, session)).toBe(true);
+    expect([menu.open, sent.length]).toEqual([false, n]);
+  }
+});
+
+test("a container with more slots than there is room for is turned through a page at a time, and a press on a slot means the slot on that page", () => {
+  for (const [name, aspect] of ASPECTS) {
+    const { session, sent } = fakeSession(fullInventory());
+    const vault = new Inventory(350);
+    vault.set(0, stone, 5, 0, 0, 0);
+    vault.set(349, berry, 7, 0, 0, 0);
+    Object.assign(session, { open: { name: "vault", inventory: vault }, sessionState: SESSION_ALIVE });
+    const ui = new Ui();
+    ui.registry = reg;
+    ui.build(aspect, fullHud(), session);
+    const f = ui.frame;
+    expect(ui.inventory.open, name).toBe(true);
+    // Everything shown is on the canvas, and no two things that can be pressed lie over each other.
+    const check = (): void => {
+      for (let i = 0; i < f.count; i++) {
+        const n = f.nodes[i]!;
+        if (n.key < KEY_OPEN_PAGE || n.key >= 900) continue;
+        expect(n.x + n.w, `${name} key=${n.key}`).toBeLessThanOrEqual(f.width + 0.01);
+        expect(n.y + n.h, `${name} key=${n.key}`).toBeLessThanOrEqual(f.height + 0.01);
+        expect(n.y, `${name} key=${n.key}`).toBeGreaterThanOrEqual(-0.01);
+        for (let j = i + 1; j < f.count; j++) if (n.interactive && f.nodes[j]!.interactive) expect(overlaps(f, i, j), `${name} ${n.key} ${f.nodes[j]!.key}`).toBe(false);
+      }
+    };
+    check();
+    const [, here, of] = /^(\d+) \/ (\d+)$/.exec(f.find(KEY_OPEN_PAGE + 1)!.text)!.map(Number) as [number, number, number];
+    const per = Math.ceil(350 / of);
+    expect([here, of > 1, f.find(KEY_OPEN_SLOT + 1) !== null]).toEqual([1, true, true]);
+    // Back from the first page stays there. On to the last: the last slot is on it, and the first is not.
+    ui.pointer(0, KEY_OPEN_PAGE, 0, 0, 0, session);
+    expect(ui.inventory.page).toBe(0);
+    for (let k = 0; k < of + 2; k++) ui.pointer(0, KEY_OPEN_PAGE + 2, 0, 0, 0, session);
+    expect(ui.inventory.page).toBe(of - 1);
+    ui.build(aspect, fullHud(), session);
+    check();
+    expect(f.find(KEY_OPEN_PAGE + 1)!.text).toBe(`${of} / ${of}`);
+    const size = (ui.inventory as unknown as { pageSize: number }).pageSize;
+    expect(per).toBeLessThanOrEqual(size);
+    const place = 349 - (of - 1) * size;
+    // Its seven berries are shown at its place on this page; picked up there and put down in the survivor's first slot, the command names slot 349.
+    expect(f.find(KEY_OPEN_SLOT + place * 3 + 2)!.text).toBe("7");
+    ui.pointer(0, KEY_OPEN_SLOT + place * 3, 0, 0, 0, session);
+    ui.pointer(0, KEY_INV_SLOT, 0, 0, 0, session);
+    const r = new BitReader(sent[0]!.bytes);
+    expect([sent[0]!.op, r.bits(1), r.varint(), r.bits(1), r.varint()]).toEqual([CMD_MOVE, 1, 349, 0, 0]);
+    // A box that fits has no pages.
+    Object.assign(session, { open: { name: "storage box", inventory: new Inventory(15) } });
+    ui.inventory.page = 3;
+    ui.build(aspect, fullHud(), session);
+    expect([f.find(KEY_OPEN_PAGE), ui.inventory.page]).toEqual([null, 0]);
+  }
 });

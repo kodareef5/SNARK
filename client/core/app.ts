@@ -93,7 +93,7 @@ export class App {
     session.onResult = (seq, code) => {
       this.ui.creator.result(seq, code === RESULT_OK);
       this.builder.result(seq, code, this.nowMs);
-      this.ui.structure.result(seq, code, this.nowMs);
+      this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
     };
   }
 
@@ -104,6 +104,10 @@ export class App {
   /** When the use key went down, or -1; and the thing built that the look is on, or -1. */
   private useDownAt = -1;
   aimed = -1;
+  /** The use key went down with the look on something built: the press is kept from the body until it is known to be a tap. */
+  private useKept = false;
+  /** Frames left of a use button pressed on the key's behalf, once it was let go as a tap. */
+  private usePulse = 0;
 
   /** Whatever carries voice here, if anything does; whether the microphone is wanted; and how loud it is meant. */
   voice: VoicePort | null = null;
@@ -182,8 +186,21 @@ export class App {
       return true;
     }
     if (code === "ShiftLeft" || code === "ShiftRight") this.shift = down;
-    // The use key is the body's; held on something built, it also asks what can be done to that.
-    if (code === "KeyE") this.useDownAt = down ? (repeat ? this.useDownAt : this.nowMs) : -1;
+    // The use key is the body's. On something built it may be a question instead (held, it asks what can be done to
+    // that), so there the body is not told of it until it is let go, and then as a short press.
+    if (code === "KeyE") {
+      if (down && !repeat) {
+        this.useDownAt = this.nowMs;
+        this.useKept = this.aimed >= 0;
+      } else if (!down) {
+        if (this.useKept && this.useDownAt >= 0) this.usePulse = 4;
+        this.useDownAt = -1;
+      }
+      if (this.useKept) {
+        if (!down) this.useKept = false;
+        return true;
+      }
+    }
     if (code === "KeyB") {
       // Held to talk; or, if the player has set it so, pressed to switch the microphone on and pressed again to switch it off.
       // With Alt it is a whisper, with Shift a yell.
@@ -293,7 +310,9 @@ export class App {
     if (this.reg.pieceItem[kind] === 0 || t.owner[ref & 0xffff] === 0) return "";
     this.aimed = ref;
     const mine = s.tribe.team !== 0 && t.owner[ref & 0xffff] === s.tribe.team;
-    return `${mine ? "hold E  " : ""}${structName(this.reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${this.reg.maxHp[kind]}`;
+    // What can be used says so, when it is near enough for the use button; what is one's own, that there is more to be done with it.
+    const usable = (this.reg.opens[kind] !== 0 || this.reg.structSlots[kind] !== 0) && rayHit.t <= REACH;
+    return `${usable ? "E use  " : mine ? "hold E  " : ""}${structName(this.reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${this.reg.maxHp[kind]}`;
   }
 
   /**
@@ -385,6 +404,8 @@ export class App {
       this.ui.build(aspect, hud, session);
       return null;
     }
+    // A tap of the use key on something built, passed on now that it is known to be one.
+    if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
     if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, c.buttons);
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
     const world = session.world;
@@ -507,6 +528,7 @@ export class App {
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && this.ui.wantsPointerLock) {
       menu.begin(this.aimed);
       this.useDownAt = -1;
+      this.useKept = false;
       c.release();
     }
     hud.prompt = !alive ? "" : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || this.who(world, eyeNow) || built;

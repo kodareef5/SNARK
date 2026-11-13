@@ -89,6 +89,11 @@ export interface Registry {
   readonly pieceItem: Uint16Array;
   readonly maxHp: Float32Array;
   readonly decayDays: Float32Array;
+  /** Per structure: how many stacks it holds (0: it holds nothing); the structure it becomes when used (0: none); whether it starts locked; whether it comes down whole. */
+  readonly structSlots: Uint16Array;
+  readonly opens: Uint16Array;
+  readonly lockedAtFirst: Uint8Array;
+  readonly fallsWhole: Uint8Array;
   /** Per item a recipe makes: what one making needs, as pairs of item and count, and how many it makes. Null for everything else. */
   readonly recipeOf: readonly (Uint16Array | null)[];
   readonly recipeMakes: Uint16Array;
@@ -241,6 +246,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
     else if (d.type === "species") for (const drop of d.drops ?? []) want(d, drop.item, "item");
     else if (d.type === "structure") {
       if (d.material !== undefined) want(d, d.material, "material");
+      if (d.opens !== undefined) want(d, d.opens, "structure");
       if (d.shape !== undefined) {
         want(d, d.shape, "shape");
         // The box that holds it is the shape's: the two cannot disagree.
@@ -300,6 +306,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const pieceItem = new Uint16Array(n);
   const maxHp = new Float32Array(n);
   const decayDays = new Float32Array(n);
+  const structSlots = new Uint16Array(n);
+  const opens = new Uint16Array(n);
+  const lockedAtFirst = new Uint8Array(n);
+  const fallsWhole = new Uint8Array(n);
   const recipeOf: (Uint16Array | null)[] = new Array(n).fill(null);
   const recipeMakes = new Uint16Array(n);
   const partStart = new Uint32Array(n + 1);
@@ -325,11 +335,16 @@ export function compileContent(input: readonly Def[]): CompileResult {
         if (shape.doorway) doorway[i] = 1;
         for (const b of shape.boxes) partBox.push(b.at[0], b.at[1], b.at[2], b.half[0], b.half[1], b.half[2]);
       } else partBox.push(0, 0, 0, d.half[0], d.half[1], d.half[2]);
-      if (d.type === "structure") maxHp[i] = d.hp;
+      if (d.type === "structure") {
+        maxHp[i] = d.hp;
+        structSlots[i] = d.slots ?? 0;
+        if (d.locked) lockedAtFirst[i] = 1;
+        if (d.falls) fallsWhole[i] = 1;
+      }
       if (d.type === "structure" && d.material !== undefined) {
         const m = materials.get(d.material)!;
         structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
-        decayDays[i] = m.decayDays ?? 0;
+        decayDays[i] = d.decayDays ?? m.decayDays ?? 0;
       }
       if (d.type === "node") {
         nodeHits[i] = d.hits;
@@ -389,13 +404,16 @@ export function compileContent(input: readonly Def[]): CompileResult {
       // Every form of the piece comes back as the one item.
       for (const s of places[i]!) if (pieceItem[s] === 0) pieceItem[s] = i;
     }
+    if (d.type === "structure" && d.opens !== undefined) opens[i] = index.get(d.opens)!;
     // The first recipe that makes a thing says what it is made of.
     if (d.type === "recipe" && recipeOf[index.get(d.makes)!] === null) {
       recipeOf[index.get(d.makes)!] = Uint16Array.from(d.needs.flatMap((need) => [index.get(need.item)!, need.count]));
       recipeMakes[index.get(d.makes)!] = d.count;
     }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  // A door stood open comes back as the door it is.
+  for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

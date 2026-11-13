@@ -277,6 +277,24 @@ export class StructureStore {
     return removed;
   }
 
+  /**
+   * Make a structure another kind of thing in the same place, as it is
+   * otherwise: a door stood open. False if there is no such structure.
+   * Authority only.
+   */
+  swap(ref: number, kind: number): boolean {
+    const chunk = Math.floor(ref / 65536);
+    const slot = ref & 0xffff;
+    const t = this.chunks[chunk];
+    if (!t || slot >= t.high || t.kind[slot] === 0 || kind === 0) return false;
+    const [x, y, z, yaw, owner, hp] = [t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.owner[slot]!, t.hp[slot]!];
+    t.version++;
+    this.erase(chunk, t, slot, t.version);
+    this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, t.version);
+    this.onChunkChanged?.(chunk);
+    return true;
+  }
+
   /** Set a structure's health (it has been mended). False if there is no such structure. Authority only. */
   mend(ref: number, hp: number): boolean {
     const chunk = Math.floor(ref / 65536);

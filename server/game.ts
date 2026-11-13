@@ -713,6 +713,11 @@ export class GameServer {
     }
   }
 
+  /** Tell a session something a command's answer would, when no command of its asked: a result with no sequence number. */
+  notify(c: Client, code: number): void {
+    this.result(c, 0, code);
+  }
+
   private result(c: Client, seq: number, code: number): void {
     const w = this.w;
     w.reset();

@@ -50,7 +50,7 @@ export class Items {
     const species = def?.type === "species" ? (def as SpeciesDef) : null;
     if (!inv) {
       // What its kind says it holds: a body, or a thing in the world with slots of its own (a bag, a cache).
-      const bag = (def?.type === "species" || def?.type === "prop" ? def.slots : undefined) ?? DEFAULT_SLOTS;
+      const bag = (def?.type === "species" || def?.type === "prop" || def?.type === "structure" ? def.slots : undefined) ?? DEFAULT_SLOTS;
       inv = rec.inv = new Inventory(bag + (species?.equips ? GEAR_SLOTS : 0), bag);
     } else if (species?.equips && inv.hotbar < 0) {
       // A save from before equipment: the same bag, with the tail it lacked.

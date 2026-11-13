@@ -24,6 +24,10 @@ export const ROLE_CEILING = 2;
 export const ROLE_PILLAR = 3;
 export const ROLE_DOOR = 4;
 export const ROLE_STAIRS = 5;
+/** Something set down on the ground or on a floor, joined to nothing: a box, a vault. */
+export const ROLE_THING = 6;
+/** In a request to set a piece down, a place of this number means "on top of that piece, at the point that follows". */
+export const ON_TOP = 255;
 
 /** Half a side of a piece, in lattice units: a metre and a half. */
 export const HALF_SIDE = (STRUCT_UNITS * 3) / 2;
@@ -371,17 +375,54 @@ export function pickSnap(structs: StructureStore, tables: PieceTables, kind: num
  */
 export function freePose(heightAt: (x: number, z: number) => number, tables: PieceTables, kind: number, px: number, pz: number, yaw: number, lift: number, out: Pose): boolean {
   const role = tables.role[kind]!;
-  if (role !== ROLE_FOUNDATION && role !== ROLE_PILLAR) return false;
+  if (role !== ROLE_FOUNDATION && role !== ROLE_PILLAR && role !== ROLE_THING) return false;
   out.x = Math.round(px * STRUCT_UNITS);
   out.z = Math.round(pz * STRUCT_UNITS);
   out.yaw = yaw & (YAW_UNITS - 1);
   const half = units(tables.halfY[kind]!);
+  if (role === ROLE_THING) {
+    // A thing stands on the ground under its middle.
+    out.y = Math.ceil(heightAt(out.x / STRUCT_UNITS, out.z / STRUCT_UNITS) * STRUCT_UNITS) + half;
+    return true;
+  }
   if (role === ROLE_PILLAR) {
     out.y = Math.floor(heightAt(out.x / STRUCT_UNITS, out.z / STRUCT_UNITS) * STRUCT_UNITS) - PILLAR_SINK + half;
     return true;
   }
   const steps = lift < LIFT_MIN ? LIFT_MIN : lift > LIFT_MAX ? LIFT_MAX : Math.trunc(lift);
   out.y = Math.ceil(groundUnder(heightAt, out, true) * STRUCT_UNITS) + FREE_TOP + steps * LIFT_STEP - half;
+  return true;
+}
+
+/** Whether the point (x, z) is over a foundation or a ceiling whose middle is at (ox, oz) and which faces `oyaw`: lattice units. */
+export function overPiece(ox: number, oz: number, oyaw: number, x: number, z: number): boolean {
+  frameAxes(oyaw, axes);
+  const dx = x - ox;
+  const dz = z - oz;
+  // Along each of the piece's two axes, no further than its half side.
+  const a = dx * axes[0]! + dz * axes[1]!;
+  const b = dx * axes[2]! + dz * axes[3]!;
+  return Math.abs(a) <= axes[0]! * axes[0]! + axes[1]! * axes[1]! && Math.abs(b) <= axes[2]! * axes[2]! + axes[3]! * axes[3]!;
+}
+
+/**
+ * The pose of a thing set down on top of the piece at `target`, with its
+ * middle over the point (px, pz) metres and facing `yaw`. False if it is not
+ * a thing, the piece is not a foundation or a ceiling, or the point is not
+ * over it.
+ */
+export function restPose(structs: StructureStore, tables: PieceTables, target: number, kind: number, px: number, pz: number, yaw: number, out: Pose): boolean {
+  if (tables.role[kind] !== ROLE_THING) return false;
+  const t = structs.chunks[Math.floor(target / 65536)];
+  const slot = target & 0xffff;
+  if (!t || slot >= t.high || t.kind[slot] === 0) return false;
+  const under = t.kind[slot]!;
+  if (tables.role[under] !== ROLE_FOUNDATION && tables.role[under] !== ROLE_CEILING) return false;
+  out.x = Math.round(px * STRUCT_UNITS);
+  out.z = Math.round(pz * STRUCT_UNITS);
+  out.yaw = yaw & (YAW_UNITS - 1);
+  if (!overPiece(units(t.x[slot]!), units(t.z[slot]!), t.yaw[slot]!, out.x, out.z)) return false;
+  out.y = units(t.y[slot]!) + units(tables.halfY[under]!) + units(tables.halfY[kind]!);
   return true;
 }
 

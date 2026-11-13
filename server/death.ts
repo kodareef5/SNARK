@@ -17,7 +17,7 @@ import { BTN_USE, stanceEye } from "../shared/sim/character.ts";
 import { F_PROP } from "../shared/sim/entities.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { TICK_RATE, chunkCx, chunkCz } from "../shared/coords.ts";
-import { castWorld, lookDirection, rayBox, rayHit, HIT_NONE } from "../shared/world/ray.ts";
+import { castWorld, lookDirection, rayBox, rayHit, HIT_NONE, HIT_STRUCTURE } from "../shared/world/ray.ts";
 import type { Creatures } from "./creatures.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
@@ -53,6 +53,14 @@ export class Death {
   count = 0;
   /** The use key was pressed with no container in front: something else may want it (a bush to pick). */
   onUse: ((c: Client) => void) | null = null;
+  /**
+   * Called when the use button is pressed with the look on something built
+   * (its ref) and nothing nearer. Returns a result code if that was a thing
+   * to use, or -1 if it was not.
+   */
+  onUseBuilt: ((c: Client, ref: number) => number) | null = null;
+  /** The structure the last look met, or -1: set by `target`. */
+  private struck = -1;
   private readonly ctx: DeathContext;
   private readonly survivor: number;
   private readonly cache: number;
@@ -250,7 +258,13 @@ export class Death {
       if (c.open !== 0) {
         const box = records.byPid.get(c.open);
         const e = box ? records.entOf.get(box.pid) : undefined;
-        if (!box || e === undefined || c.ent < 0) this.close(c);
+        if (box && box.at >= 0 && c.ent >= 0) {
+          // Something built: it has no body. It stays open while it stands and its user stays by it, empty or not.
+          const dx = box.x - ents.x[c.ent]!;
+          const dy = box.y - ents.y[c.ent]!;
+          const dz = box.z - ents.z[c.ent]!;
+          if (dx * dx + dy * dy + dz * dz > (REACH + 2.5) * (REACH + 2.5)) this.close(c);
+        } else if (!box || e === undefined || c.ent < 0) this.close(c);
         else if (items.inv(box).used() === 0) this.remove(box);
         else {
           const dx = ents.x[e]! - ents.x[c.ent]!;
@@ -274,7 +288,9 @@ export class Death {
     const oz = ents.z[e]!;
     const d = this.dir;
     lookDirection(c.heldYaw, c.heldPitch, d);
-    let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach) === HIT_NONE ? reach : rayHit.t;
+    const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
+    let best = what === HIT_NONE ? reach : rayHit.t;
+    this.struck = what === HIT_STRUCTURE ? rayHit.ref : -1;
     let hit = -1;
     const dims = world.dims;
     const ccx = chunkCx(dims, ents.chunk[e]!);
@@ -306,6 +322,12 @@ export class Death {
     if (box && c.open !== pid) {
       c.open = pid;
       return;
+    }
+    // Something built, and nothing in front of it: a door, a box. What it says of the attempt, if it refused, the session is told.
+    if (hit < 0 && this.struck >= 0 && this.onUseBuilt) {
+      const code = this.onUseBuilt(c, this.struck);
+      if (code > 0) this.ctx.game.notify(c, code);
+      if (code >= 0) return;
     }
     const had = c.open !== 0;
     this.close(c);

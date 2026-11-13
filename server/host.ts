@@ -10,6 +10,7 @@ import { addCombatCommands } from "./commands/combat.ts";
 import { addCoreCommands } from "./commands/core.ts";
 import { addSocialCommands } from "./commands/social.ts";
 import { Build } from "./build.ts";
+import { Fixtures } from "./fixtures.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
@@ -95,6 +96,7 @@ export interface Host {
   readonly chat: Chat;
   readonly voice: Voice;
   readonly build: Build;
+  readonly fixtures: Fixtures;
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
@@ -174,7 +176,11 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const tribes = new Tribes(world, records);
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const chat = new Chat({ game, records, rules, tribes });
-  const build = new Build({ world, game, records, items, tribes, rules, spill: (x, y, z, name) => death.spill(x, y, z, name) });
+  // What has state among the things built: found again among the records that were loaded.
+  const fixtures = new Fixtures(world, records, items);
+  fixtures.index();
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, spill: (x, y, z, name) => death.spill(x, y, z, name) });
+  death.onUseBuilt = (c, ref) => build.use(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   combat.onStructureHurt = (ref) => build.hurt(ref);
   const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.values.globalVoice !== 0 }, (out) => void crypto.getRandomValues(out));
@@ -229,6 +235,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
         survival.restore(rec, false);
         continue;
       }
+      // The state of something built has no body of its own: the structure is its body.
+      if (rec.at >= 0 || reg.defs[rec.kind]?.type === "structure") continue;
       if (reg.defs[rec.kind]?.type === "prop") death.place(rec);
       else {
         const e = creatures.adopt(rec);
@@ -434,6 +442,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     chat,
     voice,
     build,
+    fixtures,
     online: (pid) => sessionOf(pid) !== null,
     setRule(name, value) {
       if (!rules.set(name, value)) return false;

@@ -83,6 +83,11 @@ function houseScene(view: ProvingView, tier: string): void {
   add("ceiling", 1.5, up, 1.5);
   add("stairs", 1.5, floor + (WALL_HEIGHT + FLOOR_THICK) / 2, -1.5);
   add("pillar", -0.25, floor + WALL_HEIGHT / 2, 0.25);
+  // Outside, by the door: a storage box, a large one, and a vault.
+  const thing = (name: string, x: number, z: number): void => void structs.add(reg.index.get(`core:${name}`)!, cx + x, Math.ceil(hf.heightAt(cx + x, cz + z) * 512) / 512 + reg.halfY[reg.index.get(`core:${name}`)!]!, cz + z, 0, 0, 1);
+  thing("storage_box", -4.2, -4.6);
+  thing("storage_large", -5.8, -4.2);
+  thing("vault", -7.6, -3.6);
   view.cam.x = cx - 5.5;
   view.cam.z = cz - 10;
   view.cam.y = ground + 4.6;

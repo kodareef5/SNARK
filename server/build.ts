@@ -15,19 +15,27 @@
 // numbers). What stood on a piece that is taken back or taken down comes back
 // the same way, as the collapse reaches it, and does not break. Anyone may
 // take down what has decayed (server/decay.ts).
+//
+// And using what can be used. A door opens and shuts by becoming another kind
+// of thing in the same place; a box is looked into like any container. Each
+// is its tribe's to use, and anyone's if it is unlocked or they know its
+// PIN. The lock, the PIN and what a box holds are a record beside the row
+// (server/fixtures.ts). When the row goes, what was in a box lies in a cache
+// where it stood; a vault whose floor goes comes down whole.
 
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { stanceEye } from "../shared/sim/character.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { capsuleKind } from "../shared/world/collide.ts";
-import { BUILD_REACH, ROLE_FOUNDATION, ROLE_PILLAR, freePose, obstructed, poseAt, tooHigh, type Pose } from "../shared/world/snap.ts";
+import { BUILD_REACH, ON_TOP, ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, freePose, obstructed, overPiece, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
 import { GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
-import { ACT_REACH, REPAIR_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_PICKUP, STRUCT_REPAIR, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
+import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, REPAIR_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
+import type { Fixtures } from "./fixtures.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Decay } from "./decay.ts";
 import type { Rules } from "./rules.ts";
@@ -59,6 +67,7 @@ export interface BuildContext {
   readonly items: Items;
   readonly tribes: Tribes;
   readonly rules: Rules;
+  readonly fixtures: Fixtures;
   /** An empty cache at a place, for what comes back and does not fit in the hands. */
   spill(x: number, y: number, z: number, name: string): EntityRecord;
 }
@@ -80,6 +89,10 @@ export class Build {
   demolished = 0;
   repaired = 0;
   returned = 0;
+  /** Doors opened or shut and boxes looked into; boxes whose contents were left in a cache; vaults that came down whole. */
+  used = 0;
+  spilled = 0;
+  landed = 0;
   /** Which pieces nobody of their tribe has come near for too long. */
   readonly decay: Decay;
   /** Where the last piece set down is: its ref. */
@@ -96,6 +109,11 @@ export class Build {
   /** Claims on the collapse under way, numbered from 1, and the one a removal being made now is under. */
   private readonly claims: Claim[] = [];
   private claim = 0;
+  /** Things that fell whole and have yet to be set down where they land. */
+  private readonly landing: { rec: EntityRecord | null; kind: number; x: number; y: number; z: number; yaw: number; owner: number; hp: number }[] = [];
+  /** Wrong PINs, by session: how many in a row, and until when it must wait. */
+  private readonly strikes = new Map<number, { n: number; until: number }>();
+  private readonly near = new Uint32Array(64);
 
   constructor(ctx: BuildContext) {
     this.ctx = ctx;
@@ -115,6 +133,7 @@ export class Build {
     structs.onRemove = (ref, cause) => {
       this.hurtAt.delete(ref);
       this.placedAt.delete(ref);
+      this.leaving(ref, cause);
       if (cause !== GONE_FELL) this.collapse.gone(ref, this.claim);
     };
     this.collapse.onClaim = (ref, claim) => {
@@ -126,6 +145,127 @@ export class Build {
       this.returned++;
       return true;
     };
+  }
+
+  /**
+   * A structure is about to go. If it comes down whole it is noted, to be set
+   * down where it lands. Otherwise whatever state it had goes with it: what
+   * it held is left in a cache where it stood.
+   */
+  private leaving(ref: number, cause: number): void {
+    const { world, fixtures } = this.ctx;
+    const t = world.structs.chunks[Math.floor(ref / 65536)]!;
+    const slot = ref & 0xffff;
+    const kind = t.kind[slot]!;
+    const rec = fixtures.release(ref);
+    if (cause === GONE_FELL && world.reg.fallsWhole[kind] === 1) {
+      this.landing.push({ rec, kind, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, yaw: t.yaw[slot]!, owner: t.owner[slot]!, hp: t.hp[slot]! });
+      return;
+    }
+    if (rec) this.empty(rec, t.x[slot]!, t.y[slot]!, t.z[slot]!);
+  }
+
+  /** The record of something built that is no more: whoever had it open has not, what it held lies in a cache, and it is deleted. */
+  private empty(rec: EntityRecord, x: number, y: number, z: number): void {
+    const { game, records, spill } = this.ctx;
+    for (const c of game.clients) if (c?.open === rec.pid) c.open = 0;
+    if (rec.inv && rec.inv.used() > 0) {
+      // The same inventory, handed over: nothing is copied and nothing can be lost between.
+      const cache = spill(x, y, z, rec.name);
+      cache.inv = rec.inv;
+      rec.inv = null;
+      records.dirty.add(cache.pid);
+      this.spilled++;
+    }
+    records.delete(rec.pid);
+  }
+
+  /** The height of whatever a thing falling at (x, z) from `below` metres would land on: the highest floor under that point, or the ground. */
+  private floorUnder(x: number, z: number, below: number): number {
+    const { world } = this.ctx;
+    const reg = world.reg;
+    const structs = world.structs;
+    let top = Math.ceil(world.hf.heightAt(x, z) * STRUCT_UNITS) / STRUCT_UNITS;
+    const n = structs.query(x - 2.2, z - 2.2, x + 2.2, z + 2.2, this.near);
+    for (let i = 0; i < n; i++) {
+      const t = structs.chunks[Math.floor(this.near[i]! / 65536)]!;
+      const s = this.near[i]! & 0xffff;
+      const role = reg.role[t.kind[s]!]!;
+      if (role !== ROLE_FOUNDATION && role !== ROLE_CEILING) continue;
+      const at = t.y[s]! + reg.halfY[t.kind[s]!]!;
+      if (at > top && at <= below + 1e-6 && overPiece(units(t.x[s]!), units(t.z[s]!), t.yaw[s]!, units(x), units(z))) top = at;
+    }
+    return top;
+  }
+
+  /** Set down what fell whole, where it lands; its state, if it had any, is the state of the thing that now stands there. */
+  private land(): void {
+    const { world, fixtures } = this.ctx;
+    for (const l of this.landing) {
+      const half = world.reg.halfY[l.kind]!;
+      const ref = world.structs.add(l.kind, l.x, this.floorUnder(l.x, l.z, l.y - half) + half, l.z, l.yaw, l.owner, l.hp);
+      if (ref >= 0) {
+        if (l.rec) fixtures.bind(l.rec, ref);
+        this.landed++;
+      } else if (l.rec) this.empty(l.rec, l.x, l.y, l.z);
+    }
+    this.landing.length = 0;
+    this.collapse.built();
+  }
+
+  /**
+   * A survivor uses something built: by looking at it and pressing the use
+   * button (`pin` is then none), or by a command with a PIN. A door opens or
+   * shuts; a box is opened, or shut if this session had it open. Returns a
+   * result code, or -1 if it is nothing that can be used.
+   */
+  use(c: Client, ref: number, pin = NO_PIN): number {
+    const { world, records, tribes, fixtures } = this.ctx;
+    const reg = world.reg;
+    const structs = world.structs;
+    const t = structs.chunks[Math.floor(ref / 65536)];
+    const slot = ref & 0xffff;
+    if (!t || slot >= t.high || t.kind[slot] === 0) return -1;
+    const kind = t.kind[slot]!;
+    const opens = reg.opens[kind]!;
+    if (opens === 0 && reg.structSlots[kind] === 0) return -1;
+    const rec = records.byPid.get(c.pid);
+    if (!rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
+    const state = fixtures.find(ref);
+    // Its tribe's to use. Anyone else's only if it is unlocked, or they give its PIN.
+    if (!tribes.may(rec, t.owner[slot]!) && fixtures.locked(ref)) {
+      const need = state ? state.pin : -1;
+      if (need < 0) return RESULT_LOCKED;
+      const tick = world.tick;
+      let strike = this.strikes.get(c.id);
+      if (strike && strike.until > tick) return RESULT_WAIT;
+      if (pin === NO_PIN) return RESULT_PIN;
+      if (pin !== need) {
+        if (!strike) this.strikes.set(c.id, (strike = { n: 0, until: 0 }));
+        // Three wrong in a row, and it will not listen for a while.
+        if (++strike.n >= PIN_TRIES) {
+          strike.n = 0;
+          strike.until = tick + PIN_WAIT_TICKS;
+        }
+        return RESULT_DENIED;
+      }
+      this.strikes.delete(c.id);
+    }
+    if (opens !== 0) {
+      // A door: the same thing, the other way. Not into anybody.
+      if (this.bodyIn(opens, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!)) return RESULT_OBSTRUCTED;
+      structs.swap(ref, opens);
+      if (state) {
+        state.kind = opens;
+        records.dirty.add(state.pid);
+      }
+      if (this.collapse.busy) this.collapse.built();
+    } else {
+      const box = fixtures.ensure(ref);
+      c.open = c.open === box.pid ? 0 : box.pid;
+    }
+    this.used++;
+    return RESULT_OK;
   }
 
   /** Something built was harmed (at tick `at`, now unless said): it cannot be mended for a while. */
@@ -151,6 +291,7 @@ export class Build {
       const before = this.collapse.fallen;
       this.collapse.step(COLLAPSE_WORK, world.tick);
       this.fallen += this.collapse.fallen - before;
+      if (this.landing.length > 0) this.land();
     } else if (this.claims.length > 0) this.claims.length = 0;
     this.decay.step(world.tick, (visit) => {
       for (const c of game.clients) {
@@ -169,8 +310,9 @@ export class Build {
   act(c: Client, r: BitReader): number {
     const ref = r.u32();
     const action = r.u8();
+    const code = action === STRUCT_PIN || action === STRUCT_USE ? r.u16() : NO_PIN;
     if (r.overflow) return RESULT_INVALID;
-    const { world, records, items, tribes, rules } = this.ctx;
+    const { world, records, items, tribes, rules, fixtures } = this.ctx;
     const reg = world.reg;
     const structs = world.structs;
     const rec = records.byPid.get(c.pid);
@@ -190,10 +332,31 @@ export class Build {
     const mine = tribes.may(rec, t.owner[slot]!);
     const item = reg.pieceItem[kind]!;
     const tick = world.tick;
+    if (action === STRUCT_USE) {
+      const done = this.use(c, ref, code);
+      return done < 0 ? RESULT_INVALID : done;
+    }
+    if (action === STRUCT_LOCK || action === STRUCT_UNLOCK || action === STRUCT_PIN) {
+      // Only what can be used can be locked, and only by its tribe.
+      if (reg.opens[kind] === 0 && reg.structSlots[kind] === 0) return RESULT_INVALID;
+      if (!mine) return RESULT_NOT_YOURS;
+      if (action === STRUCT_PIN && code !== NO_PIN && code > 9999) return RESULT_INVALID;
+      const state = fixtures.ensure(ref);
+      if (action === STRUCT_UNLOCK) state.lock = 2;
+      else state.lock = 1;
+      // A PIN locks what it is given to; taking the PIN away leaves it as it was.
+      if (action === STRUCT_PIN) {
+        state.pin = code === NO_PIN ? -1 : code;
+        if (code === NO_PIN) state.lock = fixtures.locked(ref) ? 1 : 2;
+      }
+      records.dirty.add(state.pid);
+      return RESULT_OK;
+    }
     if (action === STRUCT_PICKUP) {
       if (!mine) return RESULT_NOT_YOURS;
       if (item === 0) return RESULT_INVALID;
       if (t.hp[slot]! < reg.maxHp[kind]!) return RESULT_DAMAGED;
+      if ((fixtures.find(ref)?.inv?.used() ?? 0) > 0) return RESULT_NOT_EMPTY;
       // By rule, only for a while after it was set down.
       const window = rules.values.pickupSeconds * TICK_RATE;
       if (window > 0 && !(tick - (this.placedAt.get(ref) ?? -Infinity) <= window)) return RESULT_WAIT;
@@ -311,7 +474,14 @@ export class Build {
       z = r.sbits(32);
       yaw = r.u16();
       lift = r.sbits(8);
-    } else socket = r.u8();
+    } else {
+      socket = r.u8();
+      if (socket === ON_TOP) {
+        x = r.sbits(32);
+        z = r.sbits(32);
+        yaw = r.u16();
+      }
+    }
     const turn = r.u8();
     if (r.overflow) return RESULT_INVALID;
     const code = this.set(c, variant, target, socket, turn, x, z, yaw, lift);
@@ -345,9 +515,9 @@ export class Build {
       const t = structs.chunks[Math.floor(target / 65536)];
       const ts = target & 0xffff;
       if (!t || ts >= t.high || t.kind[ts] === 0) return RESULT_NO_SNAP;
-      // A piece joins only what its builder's tribe built.
+      // A piece joins only what its builder's tribe built, and a thing is set only on such a floor.
       if (!tribes.may(rec, t.owner[ts]!)) return RESULT_NOT_YOURS;
-      if (!poseAt(structs, reg, target, kind, socket, turn, pose)) return RESULT_NO_SNAP;
+      if (socket === ON_TOP ? !restPose(structs, reg, target, kind, x / STRUCT_UNITS, z / STRUCT_UNITS, yaw, pose) : !poseAt(structs, reg, target, kind, socket, turn, pose)) return RESULT_NO_SNAP;
     }
     const px = pose.x / STRUCT_UNITS;
     const py = pose.y / STRUCT_UNITS;

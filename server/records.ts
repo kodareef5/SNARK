@@ -77,6 +77,15 @@ export class EntityRecord {
   buffsVersion = 0;
   /** Unconscious: its torpor reached its most, and has not yet run out. */
   out = false;
+  /**
+   * For the state of something built (server/fixtures.ts): the structure it
+   * is the state of, as a ref, or -1 for anything else. Then whether that is
+   * locked (0: as its kind starts out, 1: locked, 2: unlocked) and its PIN (0
+   * to 9999, or -1 for none).
+   */
+  at = -1;
+  lock = 0;
+  pin = -1;
   /** Component blobs this build does not understand, kept byte for byte. */
   readonly extra = new Map<number, Uint8Array>();
 

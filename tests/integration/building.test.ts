@@ -433,16 +433,20 @@ test("what is shown is what is built: over two thousand looks with every piece, 
 test("pieces are made as anything is: an engram at the reference's level, a recipe at its cost, and the thing in hand to set down", () => {
   // Every piece that can be set down has its item, a recipe that makes it, and an engram that teaches the recipe.
   const items = BUILDING_CONTENT.filter((d): d is ItemDef => d.type === "item" && d.places !== undefined);
-  expect(items.length).toBe(4 + 6 + 6 + 6);
+  // (Three of them are the things that hold things.)
+  expect(items.length).toBe(4 + 6 + 6 + 6 + 3);
   const levels: Record<string, number[]> = {};
+  const stores: [string, number][] = [];
   for (const item of items) {
     const recipe = BUILDING_CONTENT.find((d): d is RecipeDef => d.type === "recipe" && d.makes === item.id)!;
     const engram = BUILDING_CONTENT.find((d): d is EngramDef => d.type === "engram" && d.unlocks.includes(recipe.id))!;
     expect(engram.label.toLowerCase()).toBe(item.label!);
-    (levels[item.id.split("_").at(-1)!] ??= []).push(engram.level);
+    if (/_(thatch|wood|stone|metal)$/.test(item.id)) (levels[item.id.split("_").at(-1)!] ??= []).push(engram.level);
+    else stores.push([item.id.slice(11), engram.level]);
     // What it is set down as: itself, and for a wall its other forms.
     expect(item.places![0]).toBe(`core:${item.id.slice(11)}`);
   }
+  expect(stores).toEqual([["storage_box", 4], ["storage_large", 16], ["vault", 52]]);
   // Thatch at 4, wood from 11 to 14, stone from 24 to 27, metal from 45 to 47.
   expect(Object.fromEntries(Object.entries(levels).map(([tier, l]) => [tier, [Math.min(...l), Math.max(...l)]]))).toEqual({ thatch: [4, 4], wood: [11, 14], stone: [24, 27], metal: [45, 47] });
   const needs = (name: string): [string, number][] => (BUILDING_CONTENT.find((d) => d.id === `core:make-piece_${name}`) as RecipeDef).needs.map((n) => [n.item.slice(5), n.count]);

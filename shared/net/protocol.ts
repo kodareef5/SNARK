@@ -132,16 +132,20 @@ export const CMD_DROP = 16;
 export const CMD_CHAT = 17;
 /**
  * Set down the building piece in hand: which of the forms it has (u8); the
- * structure it joins (u32, a ref) and which of that structure's places (u8),
- * or 0xffffffff and, for open ground, where (x and z as s32 lattice units)
- * with the facing (u16) and how far it is raised (s8 steps); then how it is
- * turned in its place (u8). The server works the position out again itself.
+ * structure it joins (u32, a ref) and which of that structure's places (u8;
+ * or 255 for a thing set on top of it, and then where and facing which way:
+ * x and z as s32 lattice units, u16), or 0xffffffff and, for open ground,
+ * where (x and z as s32 lattice units) with the facing (u16) and how far it
+ * is raised (s8 steps); then how it is turned in its place (u8). The server
+ * works the position out again itself.
  */
 export const CMD_PLACE = 18;
 /**
  * Do something to a thing built: which (u32, a ref) and what (u8, a STRUCT_
  * action of shared/world/upkeep.ts): take it back into the hands, take it
- * down for half of what it is made of, or mend it.
+ * down for half of what it is made of, mend it, lock or unlock it, give it a
+ * PIN, or use it (open a door, look into a box). The last two are followed
+ * by a PIN (u16: 0 to 9999, or 0xffff for none).
  */
 export const CMD_STRUCT = 19;
 export const CMD_ORDER = 20;
@@ -180,6 +184,10 @@ export const RESULT_NO_SNAP = 21;
 /** Why a thing built could not be taken back or mended: it has been harmed; or it is too soon, or too late. */
 export const RESULT_DAMAGED = 22;
 export const RESULT_WAIT = 23;
+/** Why a thing built could not be used: it is locked; it is locked and wants its PIN; or, to be taken back, it must be empty. */
+export const RESULT_LOCKED = 24;
+export const RESULT_PIN = 25;
+export const RESULT_NOT_EMPTY = 26;
 
 /** OWN components. */
 export const OWN_SESSION = 1;

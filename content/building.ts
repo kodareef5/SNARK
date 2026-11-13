@@ -82,7 +82,31 @@ const TIERS: readonly Tier[] = [
 
 function piece(tier: Tier, name: string, shapeName = name): StructureDef {
   const form = SHAPES.find((s) => s.id === `core:shape_${shapeName}`)!;
-  return { type: "structure", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes), color: tier.color, hp: tier.hp[name.replace("_open", "")]!, material: `core:mat_${tier.name}` };
+  const base: StructureDef = { type: "structure", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes), color: tier.color, hp: tier.hp[name.replace("_open", "")]!, material: `core:mat_${tier.name}` };
+  // A door and the same door stood open are each what the other becomes when used. A door is its tribe's to open until they say otherwise.
+  if (name === "door") return { ...base, opens: `core:door_open_${tier.name}`, locked: true };
+  if (name === "door_open") return { ...base, opens: `core:door_${tier.name}`, locked: true };
+  return base;
+}
+
+/** Things that hold things: set down on the ground or on a floor, joined to nothing. */
+const STORES: readonly { name: string; label: string; half: readonly [number, number, number]; color: number; hp: number; material: string; slots: number; falls?: boolean; stack: number; weight: number; level: number; cost: number; needs: Needs }[] = [
+  { name: "storage_box", label: "Storage box", half: [0.5, 0.3125, 0.375], color: 3, hp: 500, material: "wood", slots: 15, stack: 100, weight: 4, level: 4, cost: 6, needs: [["wood", 25], ["thatch", 20], ["fiber", 10]] },
+  { name: "storage_large", label: "Large storage box", half: [0.75, 0.5, 0.4375], color: 3, hp: 2400, material: "wood", slots: 45, stack: 100, weight: 8, level: 16, cost: 9, needs: [["wood", 50], ["thatch", 35], ["fiber", 25]] },
+  // A vault: what is in it outlasts what it stands on.
+  { name: "vault", label: "Vault", half: [0.75, 1.25, 0.625], color: 11, hp: 50000, material: "metal", slots: 350, falls: true, stack: 5, weight: 40, level: 52, cost: 60, needs: [["ingot", 300], ["paste", 60]] },
+];
+
+function store(s: (typeof STORES)[number]): Def[] {
+  const shapeId = `core:shape_${s.name}`;
+  const item = `core:piece_${s.name}`;
+  return [
+    { type: "shape", id: shapeId, role: "thing", boxes: [box(0, 0, 0, s.half[0], s.half[1], s.half[2])] },
+    { type: "structure", id: `core:${s.name}`, mesh: "shape", shape: shapeId, half: s.half, color: s.color, hp: s.hp, material: `core:mat_${s.material}`, slots: s.slots, decayDays: 16, ...(s.falls ? { falls: true } : {}) },
+    { type: "item", id: item, stack: s.stack, weight: s.weight, label: s.label.toLowerCase(), color: s.color, places: [`core:${s.name}`] },
+    { type: "recipe", id: `core:make-piece_${s.name}`, makes: item, count: 1, needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(s.level / 3)) },
+    { type: "engram", id: `core:engram-piece_${s.name}`, label: s.label, level: s.level, cost: s.cost, unlocks: [`core:make-piece_${s.name}`] },
+  ];
 }
 
 type Needs = readonly (readonly [item: string, count: number])[];
@@ -170,6 +194,7 @@ export const BUILDING_CONTENT: readonly Def[] = [
     piece(tier, "door_open"),
     ...Object.keys(MAKING[tier.name]!.pieces).flatMap((name) => kit(tier, name)),
   ]),
+  ...STORES.flatMap(store),
   // What holds metal together: ground shell and stone.
   { type: "item", id: "core:paste", stack: 100, weight: 0.01, label: "cementing paste", color: 15 },
   { type: "recipe", id: "core:make-paste", makes: "core:paste", count: 1, needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 },

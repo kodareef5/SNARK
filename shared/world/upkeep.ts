@@ -11,6 +11,17 @@ import { TICK_RATE } from "../coords.ts";
 export const STRUCT_PICKUP = 0;
 export const STRUCT_DEMOLISH = 1;
 export const STRUCT_REPAIR = 2;
+export const STRUCT_LOCK = 3;
+export const STRUCT_UNLOCK = 4;
+/** Give it a PIN (which also locks it), or with no PIN take its PIN away. */
+export const STRUCT_PIN = 5;
+/** Use it: a door opens or shuts, a box is looked into. With a PIN, for one who is not of its tribe. */
+export const STRUCT_USE = 6;
+/** In a command, the PIN that means none. */
+export const NO_PIN = 0xffff;
+/** Wrong PINs in a row before a session must wait, and how long it waits: ticks. */
+export const PIN_TRIES = 3;
+export const PIN_WAIT_TICKS = 30 * TICK_RATE;
 
 /** Something that has just been harmed cannot be mended for this long: three minutes, in ticks. */
 export const REPAIR_WAIT_TICKS = 180 * TICK_RATE;
