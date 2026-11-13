@@ -54,8 +54,10 @@ export interface HostOptions {
   commitEvery?: number;
   game?: Partial<GameOptions>;
   store?: StoreOptions;
-  /** Wild creatures placed around the plaza of a new world. */
+  /** Wild creatures placed around the plaza of a new world; the species they are (grazers unless said); and how many hunters besides, further off. */
   startingCreatures?: number;
+  startingSpecies?: string;
+  startingHunters?: number;
   /** Chunks around a player in which creatures are simulated. */
   wakeRadius?: number;
   /** Use this world instead of creating the proving ground. Its structures are kept only if the save is new. */
@@ -266,7 +268,12 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     // Scatter the herd north of the spawn point; positions inside structures are skipped and retried.
     let wanted = opts.startingCreatures ?? 0;
     for (let tries = wanted * 20; wanted > 0 && tries > 0; tries--) {
-      if (spawnCreature("core:grazer", rng.range(226, 286), rng.range(244, 300), 1 + rng.int(30)) >= 0) wanted--;
+      if (spawnCreature(opts.startingSpecies ?? "core:grazer", rng.range(226, 286), rng.range(244, 300), 1 + rng.int(30)) >= 0) wanted--;
+    }
+    // Hunters at the far edge of that ground: near enough to be found, too far to see who has just arrived.
+    let hunters = opts.startingHunters ?? 0;
+    for (let tries = hunters * 20; hunters > 0 && tries > 0; tries--) {
+      if (spawnCreature("core:raptor", rng.range(226, 286), rng.range(288, 300), 1 + rng.int(30)) >= 0) hunters--;
     }
   }
 

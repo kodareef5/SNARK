@@ -78,7 +78,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const pack = parsePack(new Uint8Array(readFileSync(packFile)));
   const clips = pack.clips;
   const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}) };
-  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 40 });
+  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
   if (opts.probeScene) {
     const ents = host.world.ents;
     const e = host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
