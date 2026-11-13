@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 515 of them: 107 take effect, 7 more will by the end of round 5,
+is listed here, 515 of them: 113 take effect, 1 more will by the end of round 5,
 207 wait for a feature that is not built yet, and 194 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -29,6 +29,8 @@ may change a setting without a restart.
 | `DayCycleSpeedScale` | 1 | Speed of the game clock through the whole day. Higher is faster; about 0.035 is a day as long as a real one. | no; clients are told |
 | `DayTimeSpeedScale` | 1 | Speed of the clock by day. Higher is a shorter day. | no; clients are told |
 | `NightTimeSpeedScale` | 1 | Speed of the clock by night. Higher is a shorter night. | no; clients are told |
+| `DifficultyOffset` | 1 | Difficulty is offset x (map difficulty - 0.5) + 0.5. Wild creatures are levelled in 30 steps of the difficulty. Ignored when OverrideOfficialDifficulty is set. *One host gives the default as 0.2.* | no |
+| `OverrideOfficialDifficulty` | 0 | The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150. *A patch note says the most is 5; hosts recommend up to 6. Not verified.* | no |
 | `PlayerDamageMultiplier` | 1 | Damage survivors deal. Higher is more. | yes |
 | `PlayerResistanceMultiplier` | 1 | Damage survivors take. Higher takes more: 0.5 halves it. | yes |
 | `DinoDamageMultiplier` | 1 | Damage wild creatures deal. Higher is more. | yes |
@@ -139,6 +141,10 @@ may change a setting without a restart.
 | `PreventDinoTameClassNames` | none | Species that cannot be tamed. | no |
 | `bDisableDinoTaming` | False | Nothing can be tamed. | yes |
 | `bDisableDinoRiding` | False | Nothing can be ridden. | yes |
+| `PerLevelStatsMultiplier_Player[n]` | 1 each | What a survivor gains from each level put in a stat. ARK's index: 0 health, 1 stamina, 2 torpidity, 3 oxygen, 4 food, 5 water, 6 temperature, 7 weight, 8 melee, 9 speed, 10 fortitude, 11 crafting. A 0 is read as 1. | no |
+| `PerLevelStatsMultiplier_DinoWild[n]` | 1 each | What a creature gains from each level it was born or found with. | no |
+| `PerLevelStatsMultiplier_DinoTamed[n]` | 1 each; [0] 0.2, [8] 0.17 | What a tamed creature gains from each level its owner gives it. | no |
+| `PlayerBaseStatMultipliers[n]` | 1 each; [6] 0, [8] 0, [9] 0, [10] 0, [11] 0 | What a new survivor's stats begin at. Those at 0 cannot be raised. | no |
 | `StructureDamageRepairCooldown` | 180 | Seconds after it is damaged before something built may be mended. 0 is at once. | yes |
 | `bDisableFriendlyFire` | False | On a server that is not PvE: nothing of a tribe's own can be harmed by its own, not even by their blasts. *Without it a tribe's own blows, arrows and shots already do its own no harm; only its blasts do. ARK's hosts describe this as the switch for PvP servers and the next as the one for PvE servers.* | yes |
 | `bPvEDisableFriendlyFire` | False | The same on a PvE server. | yes |
@@ -160,21 +166,10 @@ may change a setting without a restart.
 
 ## What will take effect this round
 
-### GameUserSettings.ini `[ServerSettings]`
-
-| Setting | Default | What it does | From |
-| --- | --- | --- | --- |
-| `DifficultyOffset` | 1 | Difficulty is offset x (map difficulty - 0.5) + 0.5. Wild creatures are levelled in 30 steps of the difficulty. Ignored when OverrideOfficialDifficulty is set. *One host gives the default as 0.2.* | phase 8 |
-| `OverrideOfficialDifficulty` | 0 | The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150. *A patch note says the most is 5; hosts recommend up to 6. Not verified.* | phase 8 |
-
 ### Game.ini `[/script/shootergame.shootergamemode]`
 
 | Setting | Default | What it does | From |
 | --- | --- | --- | --- |
-| `PerLevelStatsMultiplier_Player[n]` | 1 each | What a survivor gains from each level put in a stat. ARK's index: 0 health, 1 stamina, 2 torpidity, 3 oxygen, 4 food, 5 water, 6 temperature, 7 weight, 8 melee, 9 speed, 10 fortitude, 11 crafting. A 0 is read as 1. | phase 8 |
-| `PerLevelStatsMultiplier_DinoWild[n]` | 1 each | What a creature gains from each level it was born or found with. | phase 8 |
-| `PerLevelStatsMultiplier_DinoTamed[n]` | 1 each; [0] 0.2, [8] 0.17 | What a tamed creature gains from each level its owner gives it. | phase 8 |
-| `PlayerBaseStatMultipliers[n]` | 1 each; [6] 0, [8] 0, [9] 0, [10] 0, [11] 0 | What a new survivor's stats begin at. Those at 0 cannot be raised. | phase 8 |
 | `bUseSingleplayerSettings` | False | ARK's single-player factors are applied on top of what the files give. | phase 9 |
 
 ## What waits for a feature

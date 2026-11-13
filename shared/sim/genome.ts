@@ -35,8 +35,23 @@ export const MUTATION_CHANCE = 0.025;
 export const MUTATION_POINTS = 2;
 export const MUTATION_LIMIT = 20;
 
-/** How a species turns points into a value: base * (1 + wild * perWild) * (1 + tamed * perTamed). */
+/**
+ * How a species turns points into a value: base * (1 + wild * perWild) * (1 + tamed * perTamed).
+ *
+ * The two gains are what a level is worth on a server at the reference
+ * game's defaults. For a creature's tamed levels that is its raw gain times
+ * the reference's own multiplier for the stat (`TAMED_GAIN`): a parasaur's
+ * health grows by 27% of its base a level, times 0.2. A server's settings
+ * scale each gain from there (shared/content/tuning.ts).
+ */
 export type StatCurve = readonly [base: number, perWild: number, perTamed: number];
+
+/**
+ * The reference game's default multipliers on what a tamed creature gains
+ * from a level its owner gives it. Every other stat's is 1. These are the
+ * defaults of `PerLevelStatsMultiplier_DinoTamed`.
+ */
+export const TAMED_GAIN: Readonly<Partial<Record<StatName, number>>> = { health: 0.2, melee: 0.17 };
 
 export class Genome {
   readonly wild = new Uint8Array(STAT_COUNT);

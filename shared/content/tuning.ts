@@ -45,11 +45,25 @@ export interface Tuning {
   /** What sprinting and jumping cost a body in stamina, times this; and for one species, times its own instead. */
   readonly stamina?: number;
   readonly staminaOf?: Readonly<Record<string, number>>;
+  /**
+   * What a species' stats are, as multiples of what content says, by stat
+   * name: where each begins, what a wild level is worth, and what a level its
+   * owner (or, for a survivor, itself) gives is worth. `gains` is for every
+   * species; `gainsOf` is for one, in place of that.
+   */
+  readonly gains?: Gains;
+  readonly gainsOf?: Readonly<Record<string, Gains>>;
   /** How long things keep before they spoil, and how long a piece of fuel burns, times this. */
   readonly spoil?: number;
   readonly fuel?: number;
   /** How many blows a tree, a rock or a bush takes, times this. */
   readonly nodeHits?: number;
+}
+
+export interface Gains {
+  readonly base?: Readonly<Record<string, number>>;
+  readonly wild?: Readonly<Record<string, number>>;
+  readonly tamed?: Readonly<Record<string, number>>;
 }
 
 const MULTIPLIERS: readonly (keyof Tuning)[] = ["stack", "stamina", "spoil", "fuel", "nodeHits"];
@@ -77,6 +91,8 @@ export function tuningText(t: Tuning): string {
     if ((MULTIPLIERS as readonly string[]).includes(k) && v === 1) continue;
     if ((k === "most" || k === "tameMost") && !(v > 0)) continue;
     if (typeof v === "object" && Object.keys(v).length === 0) continue;
+    // Gains that say nothing of any stat say nothing.
+    if (k === "gains" && Object.values(v as Gains).every((of) => of === undefined || Object.keys(of).length === 0)) continue;
     kept[k] = v;
   }
   return Object.keys(kept).length === 0 ? "" : canonical(kept);
@@ -119,6 +135,19 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
   const costs = record<unknown>(t.costs);
   const engrams = record<{ level?: unknown; cost?: unknown; hidden?: unknown; auto?: unknown }>(t.engrams);
   const staminaOf = record<unknown>(t.staminaOf);
+  const gains = record<unknown>(t.gains);
+  const gainsOf = record<unknown>(t.gainsOf);
+  /** The curve of one stat as a species' gains have it. A beginning is never brought to nothing, which no body could have. */
+  const curved = (curve: readonly [number, number, number], stat: string, g: Readonly<Record<string, unknown>>): readonly [number, number, number] => {
+    const of = (part: string, least: number): number => {
+      const v = record<unknown>(g[part])[stat];
+      return isNumber(v) && v >= least ? v : 1;
+    };
+    const base = of("base", 1e-6);
+    const wild = of("wild", 0);
+    const tamed = of("tamed", 0);
+    return base === 1 && wild === 1 && tamed === 1 ? curve : [curve[0] * base, curve[1] * wild, curve[2] * tamed];
+  };
   const xp = levelTable(t.xp);
   const tameXp = levelTable(t.tameXp);
 
@@ -178,9 +207,20 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
     if (d.type === "species") {
       const own = Object.hasOwn(staminaOf, d.id) ? staminaOf[d.id] : undefined;
       const m = isNumber(own) && own >= 0 ? own : stamina;
-      if (m === 1) return d;
+      const g = record<unknown>(Object.hasOwn(gainsOf, d.id) ? gainsOf[d.id] : gains);
+      let stats = d.stats;
+      if (stats) {
+        const next: Record<string, readonly [number, number, number]> = {};
+        let changed = false;
+        for (const [stat, curve] of Object.entries(stats)) {
+          next[stat] = curved(curve, stat, g);
+          if (next[stat] !== curve) changed = true;
+        }
+        if (changed) stats = next as NonNullable<SpeciesDef["stats"]>;
+      }
+      if (m === 1 && stats === d.stats) return d;
       const s = d.stamina ?? STAMINA_DEFAULT;
-      const out: SpeciesDef = { ...d, stamina: { sprint: s.sprint * m, regen: s.regen, jump: s.jump * m } };
+      const out: SpeciesDef = { ...d, ...(stats ? { stats } : {}), ...(m !== 1 ? { stamina: { sprint: s.sprint * m, regen: s.regen, jump: s.jump * m } } : {}) };
       return out;
     }
     if (d.type === "node") {

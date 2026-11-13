@@ -86,13 +86,14 @@ test("the two files are read as ARK's are: each key in its own section of its ow
     ["MaxPlayers", gusAt("MaxPlayers")],
     ["EggHatchSpeedMultiplier", gameAt("EggHatch")],
     ["MatingIntervalMultiplier", gameAt("MatingInterval")],
+    ["PerLevelStatsMultiplier_DinoTamed", gameAt("PerLevelStatsMultiplier_DinoTamed[0]")],
     ["OverridePlayerLevelEngramPoints", gameAt("OverridePlayerLevelEngramPoints")],
     ["PreventDinoTameClassNames", gameAt("PreventDinoTame")],
     ["OverrideNamedEngramEntries", gameAt("OverrideNamedEngramEntries")],
   ]);
   // What is not effective yet, or waits for a feature, is read and checked all the same, and holds its value for when it is.
   expect([rules.num("XPMultiplier"), rules.on("serverPVE"), rules.text("ServerAdminPassword"), rules.num("DinoCountMultiplier"), rules.num("MaxTamedDinos"), rules.text("SessionName"), rules.num("Port"), rules.text("Message"), rules.num("Duration"), rules.num("MaxPlayers"), rules.num("BabyCuddleIntervalMultiplier")]).toEqual([2.5, true, "hunter2", 2, 5000, "The Proving Ground", 9000, "Welcome\\nBe kind", 30, 40, 0.1]);
-  expect(report.waiting.map((w) => w.row.name)).toEqual(["DinoCountMultiplier", "BabyCuddleIntervalMultiplier", "PerLevelStatsMultiplier_DinoTamed"]);
+  expect(report.waiting.map((w) => w.row.name)).toEqual(["DinoCountMultiplier", "BabyCuddleIntervalMultiplier"]);
   expect(report.nothing.map((x) => x.row.name)).toEqual(["ActiveMods"]);
   // An indexed setting changes at its index and nowhere else; a list is its lines in order.
   expect(rules.indexed("PerLevelStatsMultiplier_DinoTamed")).toEqual([0.4, 1, 1, 1, 1, 1, 1, 1, 0.17, 1, 1, 1]);
@@ -111,7 +112,7 @@ test("the two files are read as ARK's are: each key in its own section of its ow
   ]);
   // The report, as whoever starts the server reads it. A password is never shown.
   const lines = formatReport(report, rules);
-  expect(lines[0]).toBe("settings: 15 applied, 3 not yet effective, 1 of no meaning here, 2 unknown, 7 refused");
+  expect(lines[0]).toBe("settings: 16 applied, 2 not yet effective, 1 of no meaning here, 2 unknown, 7 refused");
   expect(lines).toContain(`  applied   ServerAdminPassword=****  (${gusAt("ServerAdminPassword")})`);
   expect(lines).toContain(`  applied   TamingSpeedMultiplier=3  (${gusAt("TamingSpeedMultiplier=3")})`);
   expect(lines).toContain(`  not yet   DinoCountMultiplier  (${gusAt("DinoCount")}): waits for: wild creatures that spawn and respawn by region`);

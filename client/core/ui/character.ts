@@ -42,9 +42,11 @@ function ofType(reg: Registry, type: string): number[] {
   return out;
 }
 
-/** Every engram, the lowest level first; ties in content order. */
-export function engramOrder(reg: Registry): number[] {
-  return ofType(reg, "engram").sort((a, b) => (reg.defs[a] as EngramDef).level - (reg.defs[b] as EngramDef).level || a - b);
+/** Every engram the server offers, the lowest level first; ties in content order. One it does not offer is listed only for whoever knows it already (`known`). */
+export function engramOrder(reg: Registry, known: readonly number[] = []): number[] {
+  return ofType(reg, "engram")
+    .filter((e) => (reg.defs[e] as EngramDef).hidden !== true || known.includes(e))
+    .sort((a, b) => (reg.defs[a] as EngramDef).level - (reg.defs[b] as EngramDef).level || a - b);
 }
 
 export class CharacterScreen {
@@ -92,7 +94,7 @@ export class CharacterScreen {
         if (curve && curve[2] > 0) rows.push({ key: KEY_CHAR_STAT + i * 2, text: name, button: p.statPoints > 0 ? "+" : "" });
       });
     } else if (this.tab === TAB_ENGRAMS) {
-      engramOrder(reg).forEach((e, n) => {
+      engramOrder(reg, p.engrams).forEach((e, n) => {
         const def = reg.defs[e] as EngramDef;
         const known = p.engrams.includes(e);
         const can = !known && p.level >= def.level && p.engramPoints >= def.cost;
@@ -149,7 +151,7 @@ export class CharacterScreen {
       return true;
     }
     if (key >= KEY_CHAR_ENGRAM && key < KEY_CHAR_RECIPE && (key - KEY_CHAR_ENGRAM) % 2 === 1) {
-      const e = engramOrder(reg)[(key - KEY_CHAR_ENGRAM - 1) / 2];
+      const e = engramOrder(reg, session.progress.engrams)[(key - KEY_CHAR_ENGRAM - 1) / 2];
       if (e === undefined) return false;
       session.command(CMD_LEARN, (w) => w.u16(e));
       return true;

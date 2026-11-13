@@ -124,6 +124,9 @@ const LEVELS: Def = (() => {
   return { type: "levels", id: id("levels"), xp, engramPoints };
 })();
 
+// Stats are [base, gain per wild level, gain per level an owner gives]. For creatures the last is the raw gain times the
+// reference game's default multiplier for the stat (shared/sim/genome.ts TAMED_GAIN): health 27% x 0.2 = 0.054, melee
+// 10% x 0.17 = 0.017. A server's PerLevelStatsMultiplier settings scale each from there.
 export const CORE_CONTENT: readonly Def[] = [
   {
     type: "species",
@@ -167,7 +170,7 @@ export const CORE_CONTENT: readonly Def[] = [
     killXp: 4,
     // Torpor grows with level as health does; once down it stays down for minutes.
     torporDrain: 0.6,
-    stats: { health: [220, 0.2, 0.054], stamina: [180, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [400, 0.1, 0.1], weight: [200, 0.02, 0.04], melee: [1, 0.05, 0.1], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
+    stats: { health: [220, 0.2, 0.054], stamina: [180, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [400, 0.1, 0.1], weight: [200, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
   },
   // Creatures whose bodies came as models: each a mesh, a skeleton and clips in the pack under its own id.
   // A parasaur: large, slow to turn, and easily frightened.
@@ -199,7 +202,7 @@ export const CORE_CONTENT: readonly Def[] = [
     zones: { head: 1.5 },
     killXp: 6,
     torporDrain: 0.3,
-    stats: { health: [200, 0.2, 0.054], stamina: [200, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1500, 0.1, 0.1], weight: [255, 0.02, 0.04], melee: [1, 0.05, 0.1], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
+    stats: { health: [200, 0.2, 0.054], stamina: [200, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1500, 0.1, 0.1], weight: [255, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
   },
   // A raptor: small, quick, and it hunts.
   {
@@ -232,7 +235,7 @@ export const CORE_CONTENT: readonly Def[] = [
     zones: { head: 3 },
     killXp: 8,
     torporDrain: 0.3,
-    stats: { health: [200, 0.2, 0.054], stamina: [150, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1200, 0.1, 0.1], weight: [140, 0.02, 0.04], melee: [1, 0.05, 0.1], speed: [1, 0, 0.01], torpidity: [180, 0.06, 0] },
+    stats: { health: [200, 0.2, 0.054], stamina: [150, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1200, 0.1, 0.1], weight: [140, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [180, 0.06, 0] },
   },
   // Something to hit: a survivor's shape and a survivor's zones, with health enough to outlast the practice.
   {

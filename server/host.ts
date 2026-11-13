@@ -48,7 +48,7 @@ import { CATALOG, rowOf } from "./settings/catalog.ts";
 import { Lists } from "./settings/lists.ts";
 import { timersOf } from "./settings/rules.ts";
 import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/config.ts";
-import { tuningOf } from "./settings/tune.ts";
+import { difficultyOf, tuningOf, wildLevel } from "./settings/tune.ts";
 import { deriveRegistry } from "../shared/content/tuning.ts";
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
@@ -477,17 +477,19 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     breeding.resume();
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
+    // What is found wild is found at one of thirty levels the size of the server's difficulty.
+    const difficulty = difficultyOf(rules);
     // Scatter the herd north of the spawn point; positions inside structures are skipped and retried.
     // None at all if the server was started so (ARK's -NoDinos).
     const none = rules.flag("NoDinos") === true;
     let wanted = none ? 0 : (opts.startingCreatures ?? 0);
     for (let tries = wanted * 20; wanted > 0 && tries > 0; tries--) {
-      if (spawnCreature(opts.startingSpecies ?? "core:grazer", rng.range(226, 286), rng.range(244, 300), 1 + rng.int(30)) >= 0) wanted--;
+      if (spawnCreature(opts.startingSpecies ?? "core:grazer", rng.range(226, 286), rng.range(244, 300), wildLevel(1 + rng.int(30), difficulty)) >= 0) wanted--;
     }
     // Hunters at the far edge of that ground: near enough to be found, too far to see who has just arrived.
     let hunters = none ? 0 : (opts.startingHunters ?? 0);
     for (let tries = hunters * 20; hunters > 0 && tries > 0; tries--) {
-      if (spawnCreature("core:raptor", rng.range(226, 286), rng.range(288, 300), 1 + rng.int(30)) >= 0) hunters--;
+      if (spawnCreature("core:raptor", rng.range(226, 286), rng.range(288, 300), wildLevel(1 + rng.int(30), difficulty)) >= 0) hunters--;
     }
   }
 

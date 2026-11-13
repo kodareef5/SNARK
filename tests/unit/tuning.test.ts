@@ -135,3 +135,20 @@ test("whatever a tuning is, what comes of it compiles: numbers out of range are 
   expect(out.filter((d, i) => d !== defs[i]).every((d) => d.type === "item" && d.stack > 2)).toBe(true);
   expect(out.length).toBe(defs.length);
 });
+
+test("what a species' stats are: where each begins and what a level is worth, for every species or for one in place of that", () => {
+  const curve = (r: Registry, species: string, stat: string) => (def<SpeciesDef>(r, species).stats as Record<string, readonly number[]>)[stat]!;
+  expect([curve(base, "parasaur", "health"), curve(base, "survivor", "health"), curve(base, "raptor", "melee")]).toEqual([[200, 0.2, 0.054], [100, 0, 0.1], [1, 0.05, 0.017]]);
+  const reg = deriveRegistry(base, { gains: { wild: { health: 0.5 }, tamed: { health: 2, melee: 3 } }, gainsOf: { "core:survivor": { base: { health: 2 }, tamed: { weight: 4 } } } });
+  const near = (c: readonly number[]): number[] => c.map((v) => Math.round(v * 1e6) / 1e6);
+  // Every species by the general ones: a parasaur and a raptor alike.
+  expect([near(curve(reg, "parasaur", "health")), near(curve(reg, "raptor", "melee")), curve(reg, "raptor", "stamina")]).toEqual([[200, 0.1, 0.108], [1, 0.05, 0.051], curve(base, "raptor", "stamina")]);
+  // The one named by its own, in place of the general: nothing said of creatures reaches it.
+  expect([near(curve(reg, "survivor", "health")), near(curve(reg, "survivor", "weight")), curve(reg, "survivor", "melee")]).toEqual([[200, 0, 0.1], [100, 0, 0.4], curve(base, "survivor", "melee")]);
+  // Named with nothing said of it, it is still set apart.
+  const apart = deriveRegistry(base, { gains: { tamed: { health: 2 } }, gainsOf: { "core:survivor": {} } });
+  expect([near(curve(apart, "parasaur", "health")), curve(apart, "survivor", "health")]).toEqual([[200, 0.2, 0.108], curve(base, "survivor", "health")]);
+  // Gains that say nothing change nothing; nonsense is passed over; and a stat never begins at nothing.
+  expect(deriveRegistry(base, { gains: { wild: {}, tamed: {} }, gainsOf: {} })).toBe(base);
+  expect(deriveRegistry(base, parseTuning('{"gains":{"wild":"x","tamed":{"health":"y","melee":-1,"nostat":2},"base":{"health":0}},"gainsOf":{"core:survivor":7,"core:nothing":{"base":{"health":3}}}}')!).hash).toBe(base.hash);
+});

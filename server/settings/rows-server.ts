@@ -4,7 +4,7 @@
 // reference (planning/reference/round5-settings.md). Where the reference gives
 // no default the row's note says so.
 
-import { Sheet, live, none, plan, todo, type Row } from "./row.ts";
+import { Sheet, live, none, plan, type Row } from "./row.ts";
 
 export const SERVER_ROWS: Row[] = [];
 
@@ -18,8 +18,8 @@ s.f("XPMultiplier", 1, "Experience gained by survivors and tames. Higher is more
   .f("DayCycleSpeedScale", 1, "Speed of the game clock through the whole day. Higher is faster; about 0.035 is a day as long as a real one.", live({ client: true, retime: "clock", min: 0.01, max: 1000 }))
   .f("DayTimeSpeedScale", 1, "Speed of the clock by day. Higher is a shorter day.", live({ client: true, retime: "clock", min: 0.01, max: 1000 }))
   .f("NightTimeSpeedScale", 1, "Speed of the clock by night. Higher is a shorter night.", live({ client: true, retime: "clock", min: 0.01, max: 1000 }))
-  .f("DifficultyOffset", 1, "Difficulty is offset x (map difficulty - 0.5) + 0.5. Wild creatures are levelled in 30 steps of the difficulty. Ignored when OverrideOfficialDifficulty is set.", todo(8, { max: 100, note: "One host gives the default as 0.2." }))
-  .f("OverrideOfficialDifficulty", 0, "The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150.", todo(8, { max: 100, note: "A patch note says the most is 5; hosts recommend up to 6. Not verified." }))
+  .f("DifficultyOffset", 1, "Difficulty is offset x (map difficulty - 0.5) + 0.5. Wild creatures are levelled in 30 steps of the difficulty. Ignored when OverrideOfficialDifficulty is set.", live({ max: 100, note: "One host gives the default as 0.2." }))
+  .f("OverrideOfficialDifficulty", 0, "The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150.", live({ max: 100, note: "A patch note says the most is 5; hosts recommend up to 6. Not verified." }))
   .f("DinoCountMultiplier", 1, "How many wild creatures the world keeps. Higher is more.", plan("spawner"))
   .f("ServerAutoForceRespawnWildDinosInterval", 0, "At a restart, every wild creature is replaced if this many seconds have passed. 0 is never.", plan("spawner"))
   .b("RandomSupplyCratePoints", false, "Supply drops land in random places.", plan("loot"))

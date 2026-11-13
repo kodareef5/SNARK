@@ -515,7 +515,7 @@ test("a development server reads a folder of its own, with taming, hatching and 
   const dbPath = join(dir, "world.db");
   const dev = loadConfigFolder(DEV_CONFIG);
   // Everything in the folder's two files was understood and takes effect.
-  expect([dev.report.unknown, dev.report.refused, dev.report.waiting.map((w) => w.row.name), dev.report.applied.length]).toEqual([[], [], [], 6]);
+  expect([dev.report.unknown, dev.report.refused, dev.report.waiting.map((w) => w.row.name), dev.report.applied.length]).toEqual([[], [], [], 7]);
   let { h, ada, at, me } = pen({ dbPath, config: dev.rules });
   const rules = h.host.rules;
   expect([rules.num("TamingSpeedMultiplier"), rules.num("EggHatchSpeedMultiplier"), rules.num("BabyMatureSpeedMultiplier"), rules.num("MatingIntervalMultiplier"), rules.on("ShowFloatingDamageText"), rules.on("AlwaysAllowStructurePickup")]).toEqual([10, 50, 300, 0.002, true, true]);
