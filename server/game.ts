@@ -12,6 +12,7 @@ import {
   C_COMMAND,
   C_HELLO,
   C_INPUT,
+  HELLO_LOOK,
   HELLO_SPECTATE,
   INPUT_WINDOW,
   InputBuffer,
@@ -30,6 +31,7 @@ import {
   RESULT_BUSY,
   RESULT_INVALID,
   SESSION_ALIVE,
+  SESSION_CREATING,
   SESSION_DEAD,
   SESSION_SPECTATING,
   S_CHUNK,
@@ -47,6 +49,7 @@ import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../s
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { F_AWAKE, F_PLAYER } from "../shared/sim/entities.ts";
+import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { sortU32 } from "../shared/sort.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
@@ -167,6 +170,8 @@ export class Client {
   /** Sequence number of the last command accepted. */
   cmdSeq = 0;
   readonly queue: Uint8Array[] = [];
+  /** The look this connection brought or chose in the creator, for a survivor that has none yet. */
+  look: Uint8Array | null = null;
   /** Tick from which the next console line is accepted. */
   textReadyAt = 0;
   /** The session component (state, role, handle, day offset) must be sent. */
@@ -176,6 +181,8 @@ export class Client {
   sentInv = -1;
   sentMarkers = -1;
   sentRespawn = false;
+  /** The look this connection has been told is its own (by reference), or null. */
+  sentLook: Uint8Array | null = null;
   /** Persistent id of the container this session has open, or 0; and what of it has been sent. */
   open = 0;
   sentOpen = 0;
@@ -217,6 +224,7 @@ export class Client {
     this.ownDirty = false;
     this.sentVitals = this.sentInv = this.sentMarkers = this.sentOpenVersion = -1;
     this.sentRespawn = false;
+    this.sentLook = null;
     this.open = this.sentOpen = 0;
     this.pressed = this.before = 0;
   }
@@ -243,6 +251,8 @@ export class GameServer {
   onReplicate: ((c: Client) => void) | null = null;
   /** A session's body touched down at this many metres per second. */
   onLand: ((c: Client, speed: number) => void) | null = null;
+  /** Whether the survivor of this name has yet to be given a look. Without this hook nobody is sent to the creator. */
+  needsLook: ((name: string) => boolean) | null = null;
   /** Where a returning survivor was last seen, or null for a new one. `dead` means it joins with no body, to choose where to respawn. */
   savedPosition: ((name: string) => { x: number; y: number; z: number; yaw: number; dead?: boolean } | null) | null = null;
 
@@ -417,6 +427,15 @@ export class GameServer {
     this.dropBody(c);
     this.makeDead(c);
     c.ownDirty = true;
+  }
+
+  /** Give a session that is in the creator its body, with the look it chose. False if it is not creating or there is no room. */
+  create(c: Client, look: Uint8Array): boolean {
+    if (c.state !== SESSION_CREATING) return false;
+    c.look = look;
+    if (!this.spawnBody(c)) return false;
+    c.ownDirty = true;
+    return true;
   }
 
   /** Bring a dead session back to life at a place (or near it, if the spot is taken). */
@@ -630,7 +649,13 @@ export class GameServer {
     const flags = r.u8();
     const key = new Uint8Array(KEY_BYTES);
     for (let i = 0; i < KEY_BYTES; i++) key[i] = r.u8();
+    let look: Uint8Array | null = null;
+    if ((flags & HELLO_LOOK) !== 0) {
+      look = new Uint8Array(LOOK_BYTES);
+      for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();
+    }
     if (r.overflow) return false;
+    if (look && !validLook(look)) return this.refuse(c, REJECT_MALFORMED);
     const world = this.world;
     if (version !== PROTOCOL_VERSION) return this.refuse(c, REJECT_VERSION);
     // The same definitions and the same clips: a body must be posed alike on both sides.
@@ -656,6 +681,7 @@ export class GameServer {
     c.id = slot;
     c.name = name;
     c.key = key;
+    c.look = look;
     c.kind = this.survivor;
     if ((flags & HELLO_SPECTATE) !== 0) {
       if (this.opts.spectators !== "anyone") return this.refuse(c, REJECT_DENIED);
@@ -674,6 +700,15 @@ export class GameServer {
         c.body.z = saved.z;
         this.makeDead(c);
         c.chunk = chunkAt(world.dims, saved.x, saved.z);
+      } else if (!look && this.needsLook?.(name)) {
+        // A new survivor that did not bring a look: it waits at the spawn point, bodiless, in the creator.
+        const b = c.body;
+        b.x = world.spawn.x;
+        b.z = world.spawn.z;
+        b.y = world.hf.heightAt(b.x, b.z);
+        this.makeDead(c);
+        c.state = SESSION_CREATING;
+        c.chunk = chunkAt(world.dims, b.x, b.z);
       } else if (!this.spawnBody(c)) return this.refuse(c, REJECT_FULL);
     }
     c.active = true;
@@ -760,7 +795,7 @@ export class GameServer {
     for (let k = 0; k < n; k++) {
       const i = ids[k]!;
       cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!);
-      cur.look(ents.rev[i]!, ents.level[i]!, ents.colors, i * 6, ents.name[i]!);
+      cur.appear(ents.rev[i]!, ents.level[i]!, ents.colors, i * 6, ents.name[i]!, ents.look[i]!);
     }
 
     const age = T - c.ackTick;

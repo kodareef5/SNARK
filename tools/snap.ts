@@ -5,16 +5,23 @@
 //   bun run snap -- --ui --console "help"     with the interface drawn over it
 //   bun run snap -- --ui --inventory          with the inventory screen open
 //   bun run snap -- --poses 2 --face 90       a line-up of bodies in motion: kinds 2 and 3, seen from the side
+//   bun run snap -- --looks                   a line-up of looks: both sexes, every hair, every slider at its ends
+//   bun run snap -- --creator 1               what a new survivor sees: the creator, on its first or second tab
 //
 // Yaw and pitch are in degrees. Yaw 0 faces +Z (north); positive yaw turns toward +X.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { App } from "../client/core/app.ts";
 import { Camera } from "../client/core/render/camera.ts";
+import { Harness } from "../tests/fixtures/net.ts";
 import type { FramePacket } from "../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import { RemoteSample, type ClientSession } from "../client/core/session.ts";
+import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
 import { AnimState } from "../shared/anim/pose.ts";
+import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
+import { Rng } from "../shared/rng.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
@@ -155,6 +162,84 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
   cam.fovY = 0.25;
 }
 
+/**
+ * Replace the bodies in view with a line-up of looks. Front row: each sex
+ * plain, then with every hair style and a beard. Back row: each sex with every
+ * slider at its low end and at its high end, and four made at random.
+ */
+export function looksScene(view: ProvingView, facing: number): void {
+  const r = view.remote;
+  r.count = 0;
+  r.tick = 0;
+  const kind = view.reg.index.get("core:survivor")!;
+  const rng = new Rng(11);
+  const looks: Uint8Array[][] = [[], []];
+  for (let hair = 0; hair < HAIR_STYLES.length; hair++) {
+    for (const sex of [0, 1]) {
+      const look = defaultLook();
+      look[LOOK_SEX] = sex;
+      look[LOOK_HAIR] = hair;
+      look[LOOK_SKIN] = (hair * 2 + sex * 3) % SKIN_TONES;
+      look[LOOK_HAIR_COLOR] = (hair * 3 + sex) % HAIR_COLORS;
+      look[LOOK_EYE_COLOR] = (hair + sex * 2) % EYE_COLORS;
+      if (sex === 0 && hair % 2 === 1) look[LOOK_BEARD] = 1;
+      looks[0]!.push(look);
+    }
+  }
+  for (const sex of [0, 1]) {
+    for (const end of [-1, 1]) {
+      const look = defaultLook();
+      look[LOOK_SEX] = sex;
+      for (let region = 0; region < REGION_COUNT; region++) setRegion(look, region, end);
+      looks[1]!.push(look);
+    }
+  }
+  for (let i = 0; i < 6; i++) looks[1]!.push(randomLook(rng));
+  looks.forEach((row, j) => {
+    row.forEach((look, i) => {
+      const n = r.count++;
+      r.id[n] = 1024 * (n + 1);
+      r.kind[n] = kind;
+      r.x[n] = 256 + (row.length / 2 - 0.5 - i) * 1.15;
+      r.z[n] = 228 + j * 2.6;
+      r.y[n] = view.hf.heightAt(r.x[n]!, r.z[n]!);
+      r.yaw[n] = facing;
+      r.flags[n] = 1;
+      r.anim[n] = 0;
+      r.hasLook[n] = 1;
+      r.look.set(look, n * LOOK_BYTES);
+    });
+  });
+  const cam = view.cam;
+  cam.x = 256;
+  cam.z = 211;
+  cam.y = view.hf.heightAt(cam.x, cam.z) + 4.6;
+  cam.fovY = 0.27;
+}
+
+/**
+ * A whole client against a whole server, in this process, drawn after `ms` of
+ * play: the world as its scene has it and its interface over that. `setup`
+ * may steer it before the picture is taken.
+ */
+export function clientPicture(width: number, height: number, look: Uint8Array | null, setup: (app: App, run: (ms: number) => void) => void): Uint8ClampedArray {
+  const h = new Harness();
+  const pack = parsePack(buildCorePack());
+  const app = new App(h.join("ada", {}, { manual: true, look }), h.reg, pack);
+  let packet = app.frame(0, width, height);
+  const run = (ms: number): void => h.run(ms, (now) => (packet = app.frame(now, width, height)));
+  run(500);
+  setup(app, run);
+  run(50);
+  const raster = new Rasterizer(width, height, pack, app.session.world!.hf);
+  // The rasterizer has seen none of the uploads earlier frames carried: have the scene send them again.
+  app.scene!.resetUploads();
+  packet = app.frame(h.now + 1, width, height);
+  raster.render(packet!);
+  drawUi(raster.color, width, height, app.ui.frame);
+  return raster.color;
+}
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const arg = (name: string): string | undefined => {
@@ -162,11 +247,25 @@ if (import.meta.main) {
     return i >= 0 ? args[i + 1] : undefined;
   };
   const [w, h] = (arg("size") ?? "960x540").split("x").map(Number);
+  if (args.includes("--creator")) {
+    const tab = Number(arg("creator") ?? 0) || 0;
+    const pixels = clientPicture(w!, h!, null, (app) => {
+      app.ui.creator.tab = tab;
+      // Something other than the plain look, so that the controls show what they do.
+      randomLook(new Rng(5), app.ui.creator.look);
+    });
+    const out = resolve(arg("out") ?? "artifacts/creator.png");
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(w!, h!, pixels));
+    console.log(out);
+    process.exit(0);
+  }
   const view = provingView(w, h);
   const pos = arg("pos")?.split(",").map(Number);
   if (pos) [view.cam.x, view.cam.y, view.cam.z] = pos as [number, number, number];
   view.cam.yaw = (Number(arg("yaw") ?? 0) * Math.PI) / 180;
   view.cam.pitch = (Number(arg("pitch") ?? -4) * Math.PI) / 180;
+  if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
   const t0 = performance.now();
   const packet = view.render();

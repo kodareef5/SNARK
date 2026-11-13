@@ -24,6 +24,7 @@ import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { ChunkTable, StructureStore } from "../../shared/world/structures.ts";
 import { EntityRecord } from "../records.ts";
+import { validLook } from "../../shared/anim/look.ts";
 
 export const SCHEMA_VERSION = 2;
 const CHUNK_FORMAT = 1;
@@ -43,6 +44,8 @@ const COMP_VITALS4 = 8;
 const COMP_MARKERS = 5;
 /** Dead flag and expiry tick. */
 const COMP_STATE = 9;
+/** A survivor's look: the bytes of shared/anim/look.ts. */
+const COMP_LOOK = 10;
 /** Experience, learned engrams, crafting jobs. */
 const COMP_PROGRESSION = 4;
 /** An inventory's slot index travels in one byte. */
@@ -233,7 +236,7 @@ export class WorldStore {
     const used = inv ? inv.used() : 0;
     const hasState = rec.dead || rec.expiresAt !== 0;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + rec.extra.size);
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + rec.extra.size);
     if (hasProgress) {
       c.reset();
       c.f64(rec.xp);
@@ -315,6 +318,10 @@ export class WorldStore {
     if (rec.keyHash) {
       w.varint(COMP_IDENTITY);
       w.blob(rec.keyHash);
+    }
+    if (rec.look) {
+      w.varint(COMP_LOOK);
+      w.blob(rec.look);
     }
     for (const [component, blob] of rec.extra) {
       w.varint(component);
@@ -399,6 +406,8 @@ export class WorldStore {
           g.father = c.uint53();
           g.female = c.bool();
         } else if (component === COMP_IDENTITY) rec.keyHash = blob;
+        // A look this build cannot read (another length, a style that is gone) is kept as it is and not worn.
+        else if (component === COMP_LOOK && validLook(blob)) rec.look = blob;
         else if (component === COMP_MARKERS) {
           for (let k = c.varint(); k > 0 && !c.overflow; k--) rec.markers.push({ kind: c.u8(), x: c.f32(), y: c.f32(), z: c.f32(), tick: c.uint53() });
         } else if (component === COMP_PROGRESSION) {

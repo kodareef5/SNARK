@@ -23,6 +23,7 @@ import { Records, type EntityRecord } from "./records.ts";
 import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
+import { defaultLook } from "../shared/anim/look.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 
 export interface HostOptions {
@@ -187,6 +188,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     return !rec || !rec.keyHash || sameBytes(rec.keyHash, hashKey(key));
   };
   game.savedPosition = (name) => recordOf(name) ?? null;
+  game.needsLook = (name) => !recordOf(name)?.look;
   game.onBody = (c) => {
     let rec = recordOf(c.name);
     if (!rec) {
@@ -198,6 +200,12 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       rec.keyHash = hashKey(c.key);
       records.dirty.add(rec.pid);
     }
+    // Its look is what it brought or chose; one that predates looks gets the plain one.
+    if (!rec.look) {
+      rec.look = c.look ?? defaultLook();
+      records.dirty.add(rec.pid);
+    }
+    world.ents.setBodyLook(c.ent, rec.look);
     // A survivor has stat points like any body, all of them its own to place.
     rec.genome ??= new Genome();
     c.pid = rec.pid;

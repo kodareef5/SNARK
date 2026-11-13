@@ -105,3 +105,41 @@ export function nodeParents(g: Gltf): Int32Array {
 export function nodeByName(g: Gltf, name: string): number {
   return g.json.nodes?.findIndex((n) => n.name === name) ?? -1;
 }
+
+/** Column-major 4 x 4 world matrix of every node at rest. */
+export function restMatrices(g: Gltf): Float64Array[] {
+  const nodes = g.json.nodes ?? [];
+  const parent = nodeParents(g);
+  const out: Float64Array[] = new Array<Float64Array>(nodes.length);
+  const local = (n: GltfNode): Float64Array => {
+    if (n.matrix) return Float64Array.from(n.matrix);
+    const [tx, ty, tz] = n.translation ?? [0, 0, 0];
+    const [x, y, z, w] = n.rotation ?? [0, 0, 0, 1];
+    const [sx, sy, sz] = n.scale ?? [1, 1, 1];
+    return Float64Array.from([
+      (1 - 2 * (y! * y! + z! * z!)) * sx!, 2 * (x! * y! + z! * w!) * sx!, 2 * (x! * z! - y! * w!) * sx!, 0,
+      2 * (x! * y! - z! * w!) * sy!, (1 - 2 * (x! * x! + z! * z!)) * sy!, 2 * (y! * z! + x! * w!) * sy!, 0,
+      2 * (x! * z! + y! * w!) * sz!, 2 * (y! * z! - x! * w!) * sz!, (1 - 2 * (x! * x! + y! * y!)) * sz!, 0,
+      tx!, ty!, tz!, 1,
+    ]);
+  };
+  const solve = (i: number): Float64Array => {
+    if (out[i]) return out[i]!;
+    const m = local(nodes[i]!);
+    out[i] = parent[i]! < 0 ? m : multiply4(solve(parent[i]!), m);
+    return out[i]!;
+  };
+  for (let i = 0; i < nodes.length; i++) solve(i);
+  return out;
+}
+
+/** Column-major 4 x 4 product a * b. */
+export function multiply4(a: Float64Array, b: Float64Array | ArrayLike<number>): Float64Array {
+  const out = new Float64Array(16);
+  for (let c = 0; c < 4; c++) {
+    for (let r = 0; r < 4; r++) {
+      out[c * 4 + r] = a[r]! * b[c * 4]! + a[4 + r]! * b[c * 4 + 1]! + a[8 + r]! * b[c * 4 + 2]! + a[12 + r]! * b[c * 4 + 3]!;
+    }
+  }
+  return out;
+}

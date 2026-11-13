@@ -1,13 +1,13 @@
-// The mannequin: a body made of the skeleton's own hit boxes.
+// The mannequin: a body made of the skeleton's own hit capsules.
 //
-// One box per bone that can be hit, each following its bone, cut into the five
-// body slots like any other body. It stands in for a modelled body until one is
-// converted, and it is the picture of what the server hits: a shot that lands
-// on a box of this mesh lands in that zone.
+// One capsule per bone that can be hit, each following its bone, cut into the
+// five body slots like any other body. It stands in for a modelled body where
+// none is in the pack, and it is the picture of what the server hits: a shot
+// that lands on a capsule of this mesh lands in that zone.
 
 import { B_HEAD, HUMAN, SLOT_COUNT, SLOT_FEET, SLOT_HANDS, SLOT_HEAD, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
-import { boxMesh, type SourceLod, type SourceMesh } from "./write.ts";
+import type { SourceLod, SourceMesh } from "./write.ts";
 
 export const MANNEQUIN = "core:mannequin";
 
@@ -15,6 +15,9 @@ export const MANNEQUIN = "core:mannequin";
 const SKIN = 10;
 const SHOE = 4;
 const VISOR = 3;
+/** Sides around a capsule, and rings in each of its round ends. */
+const SIDES = 8;
+const RINGS = 2;
 
 interface Part {
   positions: number[];
@@ -23,34 +26,72 @@ interface Part {
   indices: number[];
 }
 
-function addBox(part: Part, bone: number, cx: number, cy: number, cz: number, half: readonly [number, number, number], color: number): void {
-  const box = boxMesh(half, color);
+/**
+ * Add a capsule from a to b with radius r, following `bone`. The faces lie
+ * just inside the true surface at their middles and on it at their corners,
+ * so nothing drawn is outside what can be hit.
+ */
+function addCapsule(part: Part, bone: number, a: readonly number[], b: readonly number[], r: number, color: number): void {
+  // An axis along the capsule and two across it.
+  let ux = b[0]! - a[0]!, uy = b[1]! - a[1]!, uz = b[2]! - a[2]!;
+  const length = Math.hypot(ux, uy, uz);
+  if (length < 1e-6) {
+    ux = 0;
+    uy = 1;
+    uz = 0;
+  } else {
+    ux /= length;
+    uy /= length;
+    uz /= length;
+  }
+  const hx = Math.abs(ux) < 0.9 ? 1 : 0, hy = Math.abs(ux) < 0.9 ? 0 : 1;
+  let vx = uy * 0 - uz * hy, vy = uz * hx - ux * 0, vz = ux * hy - uy * hx;
+  const vl = Math.hypot(vx, vy, vz);
+  vx /= vl;
+  vy /= vl;
+  vz /= vl;
+  const wx = uy * vz - uz * vy, wy = uz * vx - ux * vz, wz = ux * vy - uy * vx;
   const base = part.positions.length / 3;
-  for (let v = 0; v < box.positions.length / 3; v++) {
-    part.positions.push(box.positions[v * 3]! + cx, box.positions[v * 3 + 1]! + cy, box.positions[v * 3 + 2]! + cz);
+  const push = (cx: number, cy: number, cz: number, along: number, out: number, turn: number): void => {
+    const c = Math.cos(turn) * out, s = Math.sin(turn) * out;
+    part.positions.push(cx + ux * along + vx * c + wx * s, cy + uy * along + vy * c + wy * s, cz + uz * along + vz * c + wz * s);
     part.colors.push(color);
     part.bones.push(bone);
+  };
+  // Rings from the tip at a to the tip at b: the a end's cap, then the b end's.
+  const rows = 2 * (RINGS + 1);
+  for (let row = 0; row < rows; row++) {
+    const atA = row <= RINGS;
+    const lat = atA ? (-Math.PI / 2) * (1 - row / RINGS) : (Math.PI / 2) * ((row - RINGS - 1) / RINGS);
+    const centre = atA ? a : b;
+    for (let side = 0; side < SIDES; side++) push(centre[0]!, centre[1]!, centre[2]!, Math.sin(lat) * r, Math.cos(lat) * r, (side / SIDES) * Math.PI * 2);
   }
-  for (const i of box.indices) part.indices.push(base + i);
+  for (let row = 0; row + 1 < rows; row++) {
+    for (let side = 0; side < SIDES; side++) {
+      const i0 = base + row * SIDES + side, i1 = base + row * SIDES + ((side + 1) % SIDES);
+      const j0 = i0 + SIDES, j1 = i1 + SIDES;
+      // Row 0 and the last row are single points repeated; their degenerate triangles are skipped.
+      if (row > 0) part.indices.push(i0, j1, i1);
+      if (row + 2 < rows) part.indices.push(i0, j0, j1);
+    }
+  }
 }
 
 /** One mesh per body slot, ids "core:mannequin/head" and so on. */
 export function mannequinMeshes(): SourceMesh[] {
   const parts: Part[] = Array.from({ length: SLOT_COUNT }, () => ({ positions: [], colors: [], bones: [], indices: [] }));
   const s = HUMAN;
+  const end = (ends: Float32Array, b: number): number[] => [0, 1, 2].map((k) => s.rest[b * 3 + k]! + ends[b * 3 + k]!);
   for (let b = 0; b < s.zoneBones; b++) {
     if (s.zone[b] === 0) continue;
     const slot = s.slot[b]!;
     const color = slot === SLOT_HEAD || slot === SLOT_HANDS ? SKIN : slot === SLOT_FEET ? SHOE : REGION_BASE;
-    const half: [number, number, number] = [s.boxHalf[b * 3]!, s.boxHalf[b * 3 + 1]!, s.boxHalf[b * 3 + 2]!];
-    addBox(parts[slot]!, b, s.rest[b * 3]! + s.boxCenter[b * 3]!, s.rest[b * 3 + 1]! + s.boxCenter[b * 3 + 1]!, s.rest[b * 3 + 2]! + s.boxCenter[b * 3 + 2]!, half, color);
+    addCapsule(parts[slot]!, b, end(s.capA, b), end(s.capB, b), s.capR[b]!, color);
   }
-  // A visor, so that which way it faces can be seen. It stands 4 mm proud of the head's box:
-  // near enough that what is drawn and what can be hit do not differ by a pixel.
-  const hx = s.rest[B_HEAD * 3]! + s.boxCenter[B_HEAD * 3]!;
-  const hy = s.rest[B_HEAD * 3 + 1]! + s.boxCenter[B_HEAD * 3 + 1]!;
-  const hz = s.rest[B_HEAD * 3 + 2]! + s.boxCenter[B_HEAD * 3 + 2]! + s.boxHalf[B_HEAD * 3 + 2]!;
-  addBox(parts[SLOT_HEAD]!, B_HEAD, hx, hy + 0.025, hz, [0.065, 0.022, 0.004], VISOR);
+  // A visor, so that which way it faces can be seen: a flat capsule across the front of the head, inside it.
+  const head = end(s.capB, B_HEAD);
+  const r = s.capR[B_HEAD]!;
+  addCapsule(parts[SLOT_HEAD]!, B_HEAD, [head[0]! - r * 0.45, head[1]!, head[2]! + r * 0.78], [head[0]! + r * 0.45, head[1]!, head[2]! + r * 0.78], r * 0.2, VISOR);
   return parts.map((p, slot) => {
     const lod: SourceLod = { positions: Float32Array.from(p.positions), colors: Uint8Array.from(p.colors), indices: Uint32Array.from(p.indices), bones: Uint8Array.from(p.bones) };
     return { id: `${MANNEQUIN}/${SLOT_NAMES[slot]}`, lods: [lod], skeleton: HUMAN.id };

@@ -6,6 +6,8 @@
 // shader, a buffer layout, a missing upload.
 
 import { B_CHEST, HUMAN } from "../../shared/anim/human.ts";
+import { LOOK_SKIN, defaultLook } from "../../shared/anim/look.ts";
+import { SKIN_BASE } from "../../shared/pack/palette.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
@@ -51,11 +53,12 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
     probes.push({ name: "creature", sx: at[0]!, sy: at[1]!, rgb: color(PROBE_CREATURE.color), mode: "hue" });
   }
   // A survivor's body stands at another: its chest is where expected only if its bones reach the
-  // GPU and every vertex finds its own. The chest is on the body's axis, so its facing does not matter.
+  // GPU and every vertex finds its own, and it is skin-coloured only if its look's colour regions
+  // do too. The chest is on the body's axis, so its facing does not matter.
   const survivor = reg.defs[reg.index.get("core:survivor") ?? 0];
-  const chest = HUMAN.rest[B_CHEST * 3 + 1]! + HUMAN.boxCenter[B_CHEST * 3 + 1]!;
+  const chest = HUMAN.rest[B_CHEST * 3 + 1]! + HUMAN.capA[B_CHEST * 3 + 1]!;
   if (withCreature && survivor && survivor.type === "species" && cam.project(PROBE_BODY.x, hf.heightAt(PROBE_BODY.x, PROBE_BODY.z) + chest, PROBE_BODY.z, at)) {
-    probes.push({ name: "body", sx: at[0]!, sy: at[1]!, rgb: color(survivor.color), mode: "hue" });
+    probes.push({ name: "body", sx: at[0]!, sy: at[1]!, rgb: color(SKIN_BASE + defaultLook()[LOOK_SKIN]!), mode: "hue" });
   }
   return probes;
 }

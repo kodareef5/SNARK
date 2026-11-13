@@ -17,3 +17,7 @@ Record authorship with each file.
 `core/human-clips.snpk` is written by `bun run art`: the animation clips of the
 humanoid skeleton, converted from the libraries in [raw](../raw/README.md). It
 is a pack with no meshes; the core pack copies its clips.
+
+`core/human-bodies.snpk` is written by the same command: the two modelled
+bodies cut into body slots, with hair and beards fitted to each, and the rig
+each was made on. Making it needs Blender; reading it does not.

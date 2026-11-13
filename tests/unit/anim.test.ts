@@ -6,7 +6,8 @@ import {
 } from "../../shared/anim/human.ts";
 import { AnimState, HumanAnim, humanPose } from "../../shared/anim/pose.ts";
 import { STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
-import { Solved, boneToModel, rayZones, solve, zoneHit } from "../../shared/anim/skeleton.ts";
+import { Solved, boneToModel, rayCapsule, rayZones, solve, zoneHit } from "../../shared/anim/skeleton.ts";
+import { Rng } from "../../shared/rng.ts";
 import { quatAxis, quatMul, quatMulConj, quatNlerp, quatRotate, quatUnrotate } from "../../shared/math/quat.ts";
 import { coreAnim } from "../fixtures/pack.ts";
 
@@ -54,7 +55,7 @@ test("quaternions turn the right way and compose in order", () => {
   expect(v[2]!).toBeCloseTo(Math.SQRT1_2, 6);
 });
 
-test("the skeleton is a tree in order, mirrored left to right, with a box on every bone that can be hit", () => {
+test("the skeleton is a tree in order, mirrored left to right, with a capsule on every bone that can be hit", () => {
   const s = HUMAN;
   expect(s.bones).toBe(28);
   expect(s.names[B_HIPS]).toBe("hips");
@@ -66,13 +67,14 @@ test("the skeleton is a tree in order, mirrored left to right, with a box on eve
   for (const [l, r] of [[B_SHOULDER_L, B_SHOULDER_R], [B_HAND_L, B_HAND_R], [B_FOOT_L, B_FOOT_R]] as const) {
     expect(s.rest[r * 3]).toBe(-s.rest[l * 3]!);
     expect(s.rest[r * 3 + 1]).toBe(s.rest[l * 3 + 1]!);
-    expect(s.boxCenter[r * 3]! + s.boxCenter[l * 3]!).toBe(0);
-    expect(s.boxHalf[r * 3]).toBe(s.boxHalf[l * 3]!);
+    expect(s.capA[r * 3]! + s.capA[l * 3]!).toBe(0);
+    expect(s.capB[r * 3 + 1]).toBe(s.capB[l * 3 + 1]!);
+    expect(s.capR[r]).toBe(s.capR[l]!);
   }
   for (let b = 0; b < s.bones; b++) {
     if (b < s.zoneBones) {
       expect(s.zone[b]!).toBeGreaterThan(0);
-      expect(s.boxHalf[b * 3]! * s.boxHalf[b * 3 + 1]! * s.boxHalf[b * 3 + 2]!).toBeGreaterThan(0);
+      expect(s.capR[b]!).toBeGreaterThan(0.04);
     } else expect(s.zone[b]).toBe(0);
   }
   expect(s.zone[B_HAND_R]).toBe(ZONE_HAND_R);
@@ -312,4 +314,43 @@ test("a pose state survives packing into the 31 bits that are replicated", () =>
   expect(a.dir).toBe(8);
   a.setMotion(0.1, 0.1, 0, 0);
   expect([a.speed, a.dir]).toEqual([0, 0]);
+});
+
+test("a ray meets a capsule where stepping along the ray first comes within its radius", () => {
+  const rng = new Rng(31);
+  let hits = 0;
+  for (let i = 0; i < 4000; i++) {
+    // Capsules of every proportion, some of them balls; rays from all around, some starting inside.
+    const a = [rng.range(-0.3, 0.3), rng.range(-0.3, 0.3), rng.range(-0.3, 0.3)];
+    const b = i % 7 === 0 ? [...a] : [rng.range(-0.3, 0.3), rng.range(-0.3, 0.3), rng.range(-0.3, 0.3)];
+    const r = rng.range(0.03, 0.2);
+    const o = [rng.range(-1, 1), rng.range(-1, 1), rng.range(-1, 1)];
+    let d = [rng.range(-0.4, 0.4) - o[0]!, rng.range(-0.4, 0.4) - o[1]!, rng.range(-0.4, 0.4) - o[2]!];
+    // Now and then straight along the capsule, which is the case its side cannot answer.
+    if (i % 11 === 0 && i % 7 !== 0) d = [b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!];
+    const l = Math.hypot(d[0]!, d[1]!, d[2]!);
+    d = d.map((v) => v / l);
+    const t = rayCapsule(o[0]!, o[1]!, o[2]!, d[0]!, d[1]!, d[2]!, a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, r);
+    // Distance from a point to the segment a-b.
+    const far = (p: number[]): number => {
+      const ab = [b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!];
+      const ap = [p[0]! - a[0]!, p[1]! - a[1]!, p[2]! - a[2]!];
+      const len = ab[0]! * ab[0]! + ab[1]! * ab[1]! + ab[2]! * ab[2]!;
+      const s = len > 0 ? Math.min(1, Math.max(0, (ap[0]! * ab[0]! + ap[1]! * ab[1]! + ap[2]! * ab[2]!) / len)) : 0;
+      return Math.hypot(ap[0]! - ab[0]! * s, ap[1]! - ab[1]! * s, ap[2]! - ab[2]! * s);
+    };
+    const at = (k: number): number[] => [o[0]! + d[0]! * k, o[1]! + d[1]! * k, o[2]! + d[2]! * k];
+    if (t < 0) {
+      // A miss: no point of the ray is inside.
+      for (let k = 0; k <= 4; k += 0.01) expect(far(at(k))).toBeGreaterThan(r - 1e-6);
+    } else {
+      hits++;
+      // A hit: that point is on the surface (or the start is inside), and nothing before it is inside.
+      if (t === 0) expect(far(o)).toBeLessThanOrEqual(r + 1e-9);
+      else expect(far(at(t))).toBeCloseTo(r, 6);
+      for (let k = 0; k < t - 0.005; k += 0.01) expect(far(at(k))).toBeGreaterThan(r - 1e-6);
+    }
+  }
+  expect(hits).toBeGreaterThan(500);
+  expect(hits).toBeLessThan(3900);
 });

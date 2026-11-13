@@ -7,16 +7,20 @@ import type { ClientSession } from "../session.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { buildCharacter, characterClick } from "./character.ts";
+import { CreatorScreen } from "./creator.ts";
 import { buildHud } from "./hud.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { UiFrame } from "./nodes.ts";
 import { buildMap, buildRespawn, respawnClick } from "./screens.ts";
-import { SESSION_DEAD } from "../../../shared/net/protocol.ts";
+import { SESSION_CREATING, SESSION_DEAD } from "../../../shared/net/protocol.ts";
 
 export class Ui {
   readonly frame = new UiFrame();
   readonly console = new ConsoleState();
   readonly inventory = new InventoryScreen();
+  readonly creator = new CreatorScreen();
+  /** The session has no survivor yet and is making one: the creator is the whole interface. */
+  creating = false;
   /** The full map is up. */
   map = false;
   /** The character screen (stats, engrams, crafting) is up. */
@@ -34,7 +38,7 @@ export class Ui {
 
   /** The mouse should steer the camera (the shell holds pointer lock) rather than move a cursor. */
   get wantsPointerLock(): boolean {
-    return !this.console.open && !this.inventory.open && !this.map && !this.character && !this.dead;
+    return !this.console.open && !this.inventory.open && !this.map && !this.character && !this.dead && !this.creating;
   }
 
   /**
@@ -98,6 +102,10 @@ export class Ui {
   /** Pointer went down (0), up (1) or moved (2) over an interactive node. */
   pointer(kind: number, key: number, _x: number, _y: number, button: number, session: ClientSession | null): void {
     if (!session || this.console.open) return;
+    if (this.creating) {
+      this.creator.pointer(kind, key, _x, session);
+      return;
+    }
     if (kind === 0 && respawnClick(key, session)) return;
     if (kind === 0 && this.character && this.registry && characterClick(key, session, this.registry)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
@@ -112,11 +120,14 @@ export class Ui {
   build(aspect: number, hud: HudModel, session: ClientSession | null): void {
     const f = this.frame;
     f.begin(aspect);
-    buildHud(f, hud);
+    this.creating = session?.sessionState === SESSION_CREATING;
+    // A survivor that does not exist yet has no vitals, no place and nothing to aim at.
+    if (!this.creating) buildHud(f, hud);
     // The console covers whatever screen is up; that screen waits underneath, undrawn, so nothing clickable hides behind it.
     this.dead = session?.sessionState === SESSION_DEAD;
     if (!this.console.open) {
-      if (this.dead && session) buildRespawn(f, session);
+      if (this.creating && session) this.creator.build(f, this.palette, session.name);
+      else if (this.dead && session) buildRespawn(f, session);
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) buildCharacter(f, session, this.registry);
       else this.inventory.build(f, session, this.registry, this.palette);

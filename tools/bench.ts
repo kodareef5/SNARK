@@ -24,6 +24,7 @@ import { hashBytes } from "../shared/hash.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
 import { BOX_SELF, CMD_MOVE, InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, writeCommand, writeHello, writeInputs } from "../shared/net/protocol.ts";
+import { defaultLook } from "../shared/anim/look.ts";
 import { scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { parsePack } from "../shared/pack/pack.ts";
@@ -116,7 +117,7 @@ class Bot {
     const w = this.w;
     const key = new Uint8Array(KEY_BYTES);
     for (let i = 0; i < KEY_BYTES; i++) key[i] = this.rng.int(256);
-    writeHello(w, PROTOCOL_VERSION, contentHash, 0, name, 0, key);
+    writeHello(w, PROTOCOL_VERSION, contentHash, 0, name, 0, key, defaultLook());
     this.end.send(CH_RELIABLE, w.bytes());
   }
 

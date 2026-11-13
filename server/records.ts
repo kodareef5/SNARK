@@ -47,6 +47,8 @@ export class EntityRecord {
   genome: Genome | null = null;
   /** Hash of the device key that owns this survivor; null until one claims it. */
   keyHash: Uint8Array | null = null;
+  /** A survivor's look, as the character creator made it (shared/anim/look.ts); null for anything else. */
+  look: Uint8Array | null = null;
   /** A survivor waiting to respawn. */
   dead = false;
   /** Tick at which a cache disappears with whatever is left in it; 0 for things that stay. */

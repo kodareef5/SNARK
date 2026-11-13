@@ -6,7 +6,7 @@
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { MARKER_DEATH, SESSION_ALIVE } from "../../shared/net/protocol.ts";
+import { MARKER_DEATH, RESULT_OK, SESSION_ALIVE, SESSION_CREATING } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
@@ -48,7 +48,7 @@ export class App {
   /** Height of the camera's eye above the body's feet, or -1 before the first frame. */
   private eye = -1;
   private readonly aim = [0, 0, 0];
-  private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), id: 0 };
+  private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, id: 0 };
 
   constructor(session: ClientSession, reg: Registry, pack: Pack) {
     this.session = session;
@@ -56,6 +56,7 @@ export class App {
     this.pack = pack;
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
+    session.onResult = (seq, code) => this.ui.creator.result(seq, code === RESULT_OK);
   }
 
   /** A key went down, repeated, or went up. Returns true if the page should not also act on it. */
@@ -144,6 +145,39 @@ export class App {
   }
 
   /**
+   * The creator's view: the survivor being made stands at the spawn point in
+   * daylight, as the creator has it, and the camera faces it from the front,
+   * off to one side so the body is clear of the panel.
+   */
+  private preview(nowMs: number, aspect: number): void {
+    const session = this.session;
+    const cam = this.cam;
+    const body = this.body;
+    const creator = this.ui.creator;
+    body.kind = session.ownKind;
+    body.x = session.own.x;
+    body.y = session.own.y;
+    body.z = session.own.z;
+    body.yaw = creator.turn;
+    body.tick = nowMs / (1000 / 30);
+    body.firstPerson = false;
+    body.id = 0;
+    body.look = creator.look;
+    body.state.unpack(0);
+    body.state.seed = 0;
+    this.scene!.own = body;
+    this.scene!.hour = 12;
+    // The panel takes the right of a wide window: stand the body in the middle of what is left.
+    const back = 3.3;
+    const side = aspect > 1 ? back * Math.tan(cam.fovY / 2) * aspect * Math.min(0.42, 190 / (360 * aspect)) : 0;
+    cam.x = body.x + side;
+    cam.y = body.y + 1.15;
+    cam.z = body.z + back;
+    cam.yaw = Math.PI;
+    cam.pitch = -0.06;
+  }
+
+  /**
    * Advance to `nowMs` and lay out a frame for a `width` by `height` window.
    * Returns what to draw in the world, or null until the world has arrived; the
    * interface (`ui.frame`) is always ready.
@@ -183,8 +217,10 @@ export class App {
     const move = this.reg.move[session.ownKind];
     // The eye follows the stance, eased so that crouching is a movement and not a cut.
     const eyeNow = alive && move ? stanceEye(move, session.own.stance) : 0;
-    this.eye = this.eye < 0 || !alive ? eyeNow : this.eye + (eyeNow - this.eye) * Math.min(1, dt / 90);
-    const eye = this.eye;
+    // A body that has just appeared looks from its eye at once; only a change of stance is eased.
+    if (!alive) this.eye = -1;
+    else this.eye = this.eye < 0 ? eyeNow : this.eye + (eyeNow - this.eye) * Math.min(1, dt / 90);
+    const eye = alive ? this.eye : 0;
     const bx = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX;
     const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
     const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
@@ -204,12 +240,14 @@ export class App {
     body.tick = session.tickClock;
     body.firstPerson = !third;
     body.id = handleIndex(session.ownHandle);
+    body.look = session.ownLook;
     body.state.mode = session.own.mode;
     body.state.grounded = session.own.grounded;
     body.state.stance = session.own.stance;
     body.state.setMotion(session.own.vx, session.own.vz, c.yaw, c.pitch);
     body.state.seed = bodySeed(body.id);
     this.scene.own = alive && session.ownHandle !== 0 ? body : null;
+    if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
     session.sampleRemote(this.remote);
     // A beam over each place it died, so the place can be seen from far off.
     const beams = this.scene.beams;

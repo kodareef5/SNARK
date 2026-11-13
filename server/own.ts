@@ -5,7 +5,8 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_USE, OWN_MARKERS, OWN_PROGRESSION, OWN_OPEN, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_STALE, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_USE, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import type { Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -61,6 +62,12 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
   const rec = ctx.records.byPid.get(c.pid);
   if (!rec) return;
   const game = ctx.game;
+  if (rec.look && c.sentLook !== rec.look) {
+    const w = game.beginOwn(OWN_LOOK);
+    for (let i = 0; i < LOOK_BYTES; i++) w.u8(rec.look[i]!);
+    game.endOwn(c);
+    c.sentLook = rec.look;
+  }
   const v = rec.vitals;
   if (v && v.version !== c.sentVitals) {
     const w = game.beginOwn(OWN_VITALS);
@@ -175,6 +182,13 @@ export function addOwnCommands(ctx: OwnContext): void {
     return ctx.items.move(a, fromSlot, b, toSlot, count) > 0 ? RESULT_OK : RESULT_INVALID;
   });
 
+  ctx.game.handle(CMD_CREATE, (c: Client, r: BitReader) => {
+    const look = new Uint8Array(LOOK_BYTES);
+    for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();
+    if (r.overflow || !validLook(look)) return RESULT_INVALID;
+    if (c.state !== SESSION_CREATING) return RESULT_DENIED;
+    return ctx.game.create(c, look) ? RESULT_OK : RESULT_FULL;
+  });
   ctx.game.handle(CMD_CLOSE, (c: Client) => {
     ctx.closeOpen(c);
     return RESULT_OK;

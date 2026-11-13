@@ -3,6 +3,7 @@
 // to the DOM binder.
 
 import { CORE_CONTENT } from "../../content/core.ts";
+import { defaultLook } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { KEY_BYTES } from "../../shared/net/protocol.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -53,6 +54,8 @@ async function boot(): Promise<void> {
     spectate: params.has("spectate"),
     registry: reg,
     clipHash: pack.clips.hash,
+    // The self-check and the bench go straight into the world; so does ?quick. Anyone else new meets the creator.
+    ...(selfcheck || bench || params.has("quick") ? { look: defaultLook() } : {}),
     resolveMap: (id, hash) => (id === PROVING_ID && hash === mapHash ? hf : null),
     nodes: provingNodes,
   });

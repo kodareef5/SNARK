@@ -10,6 +10,7 @@ import { LoopbackNet, type LinkOptions, type LoopbackEnd } from "../../shared/ne
 import { hashString } from "../../shared/hash.ts";
 import { KEY_BYTES } from "../../shared/net/protocol.ts";
 import { buildProvingHeightfield, provingNodes } from "../../shared/world/proving.ts";
+import { defaultLook } from "../../shared/anim/look.ts";
 import { corePack } from "./pack.ts";
 import { coreRegistry } from "./world.ts";
 
@@ -40,6 +41,8 @@ export interface JoinOptions {
   spectate?: boolean;
   /** The test advances this session itself (through an App); the harness does not call `update`. */
   manual?: boolean;
+  /** The look a new survivor is made with. Defaults to the plain one; null arrives in the creator instead. */
+  look?: Uint8Array | null;
 }
 
 export class Harness {
@@ -78,6 +81,7 @@ export class Harness {
       spectate: opts.spectate ?? false,
       registry: this.reg,
       clipHash: this.world.anim.set.hash,
+      ...(opts.look === null ? {} : { look: opts.look ?? defaultLook() }),
       resolveMap: (_id, hash) => (hash === this.world.mapHash ? this.hf : null),
       nodes: (hf, reg) => (this.world.nodeField ? provingNodes(hf, reg) : null),
     });

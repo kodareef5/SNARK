@@ -4,6 +4,7 @@ import { chunkCx, chunkCz } from "../../shared/coords.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import { C_INPUT, PROTOCOL_VERSION, REJECT_CONTENT, REJECT_VERSION, writeHello } from "../../shared/net/protocol.ts";
+import { defaultLook } from "../../shared/anim/look.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_JUMP, BTN_SPRINT } from "../../shared/sim/character.ts";
@@ -166,7 +167,7 @@ test("a hostile client cannot move faster, teleport, or crash the server", () =>
   let closed = false;
   end.onClose = () => (closed = true);
   const w = new BitWriter(256);
-  writeHello(w, PROTOCOL_VERSION, h.reg.hash, h.world.anim.set.hash, "mallory", 0, testKey("mallory"));
+  writeHello(w, PROTOCOL_VERSION, h.reg.hash, h.world.anim.set.hash, "mallory", 0, testKey("mallory"), defaultLook());
   end.send(CH_RELIABLE, w.bytes());
   h.run(200);
   expect(h.server.playerCount).toBe(2);

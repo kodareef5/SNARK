@@ -64,6 +64,8 @@ export class EntityStore {
   readonly level: Uint16Array;
   readonly colors: Uint8Array;
   readonly name: string[];
+  /** A survivor's look (shared/anim/look.ts), or null: most entities have none. */
+  readonly look: (Uint8Array | null)[];
   readonly rev: Uint8Array;
 
   /** Chunk the entity is linked into, or -1. */
@@ -105,6 +107,7 @@ export class EntityStore {
     this.level = new Uint16Array(cap);
     this.colors = new Uint8Array(cap * 6);
     this.name = new Array<string>(cap).fill("");
+    this.look = new Array<Uint8Array | null>(cap).fill(null);
     this.rev = new Uint8Array(cap);
     this.chunk = new Int32Array(cap).fill(-1);
     this.chunkHead = new Int32Array(chunkCount(dims)).fill(-1);
@@ -144,6 +147,7 @@ export class EntityStore {
     this.level[i] = 0;
     this.colors.fill(0, i * 6, i * 6 + 6);
     this.name[i] = "";
+    this.look[i] = null;
     this.rev[i] = (this.rev[i]! + 1) & 15;
     this.link(i, chunkAt(this.dims, x, z));
     return i;
@@ -160,6 +164,12 @@ export class EntityStore {
     this.level[i] = level;
     for (let k = 0; k < 6; k++) this.colors[i * 6 + k] = colors ? colors[k]! : 0;
     this.name[i] = name;
+    this.rev[i] = (this.rev[i]! + 1) & 15;
+  }
+
+  /** Give an entity a look, or take it away. Clients that already see it are sent it again. */
+  setBodyLook(i: number, look: Uint8Array | null): void {
+    this.look[i] = look;
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 

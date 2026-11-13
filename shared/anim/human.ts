@@ -6,9 +6,9 @@
 // at the survivor's eye height; a body of other proportions is a rig with its
 // own rest positions and the same bones.
 //
-// The first twenty bones carry hit boxes. The last eight (toes, fingers,
+// The first twenty bones carry hit capsules. The last eight (toes, fingers,
 // thumbs, and a prop bone in each hand) only move geometry: what hangs on them
-// is covered by the box of the hand or foot they belong to.
+// is covered by the capsule of the hand or foot they belong to.
 
 import type { Skeleton } from "./skeleton.ts";
 
@@ -68,27 +68,30 @@ export const SLOT_NAMES: readonly string[] = ["head", "torso", "hands", "legs", 
 /** The slot whose armor protects each zone. */
 export const SLOT_OF_ZONE: readonly number[] = [SLOT_TORSO, SLOT_HEAD, SLOT_TORSO, SLOT_TORSO, SLOT_TORSO, SLOT_HANDS, SLOT_HANDS, SLOT_LEGS, SLOT_LEGS, SLOT_FEET, SLOT_FEET];
 
-type Row = readonly [name: string, parent: number, x: number, y: number, z: number, zone: number, slot: number, box: readonly [cx: number, cy: number, cz: number, hx: number, hy: number, hz: number] | null];
+type Row = readonly [name: string, parent: number, x: number, y: number, z: number, zone: number, slot: number, capsule: readonly [ax: number, ay: number, az: number, bx: number, by: number, bz: number, r: number] | null];
 
-// Left-side rows are mirrored for the right below. Box numbers are relative to the joint.
+// Left-side rows are mirrored for the right below. A capsule's two ends are relative to the
+// joint. One capsule a bone, sized generously around what follows that bone on the modelled
+// bodies (the fingers with the hand, the toes with the foot): good and close, not exact.
+// `bun tools/fit-zones.ts --check` tabulates how the zone drawn compares with the zone hit.
 const CENTER: readonly Row[] = [
-  ["hips", -1, 0, 0.904, -0.041, ZONE_TORSO, SLOT_LEGS, [0, 0.025, 0.035, 0.175, 0.105, 0.125]],
-  ["spine", B_HIPS, 0, 1.022, -0.007, ZONE_TORSO, SLOT_TORSO, [0, 0.055, 0.005, 0.165, 0.07, 0.12]],
-  ["chest", B_SPINE, 0, 1.123, 0.004, ZONE_TORSO, SLOT_TORSO, [0, 0.065, 0, 0.175, 0.08, 0.125]],
-  ["upperChest", B_CHEST, 0, 1.249, 0.007, ZONE_TORSO, SLOT_TORSO, [0, 0.1, -0.015, 0.2, 0.115, 0.13]],
-  ["neck", B_UPPER_CHEST, 0, 1.449, -0.039, ZONE_TORSO, SLOT_HEAD, [0, 0.035, 0.03, 0.06, 0.05, 0.065]],
-  ["head", B_NECK, 0, 1.525, -0.016, ZONE_HEAD, SLOT_HEAD, [0, 0.095, 0.02, 0.09, 0.115, 0.115]],
+  ["hips", -1, 0, 0.904, -0.041, ZONE_TORSO, SLOT_LEGS, [-0.05, 0.045, 0.007, 0.05, 0.045, 0.007, 0.125]],
+  ["spine", B_HIPS, 0, 1.022, -0.007, ZONE_TORSO, SLOT_TORSO, [-0.05, 0.044, 0.013, 0.05, 0.044, 0.013, 0.105]],
+  ["chest", B_SPINE, 0, 1.123, 0.004, ZONE_TORSO, SLOT_TORSO, [-0.05, 0.064, -0.005, 0.05, 0.064, -0.005, 0.115]],
+  ["upperChest", B_CHEST, 0, 1.249, 0.007, ZONE_TORSO, SLOT_TORSO, [-0.07, 0.085, -0.016, 0.07, 0.085, -0.016, 0.13]],
+  ["neck", B_UPPER_CHEST, 0, 1.449, -0.039, ZONE_TORSO, SLOT_HEAD, [0, 0.02, -0.008, 0, 0.022, -0.008, 0.065]],
+  ["head", B_NECK, 0, 1.525, -0.016, ZONE_HEAD, SLOT_HEAD, [0, 0.085, 0.017, 0, 0.105, 0.017, 0.115]],
 ];
 const LEFT_ARM: readonly Row[] = [
-  ["shoulder", B_UPPER_CHEST, 0.03, 1.425, 0.031, ZONE_TORSO, SLOT_TORSO, [0.09, -0.02, -0.06, 0.09, 0.065, 0.085]],
-  ["upperArm", B_SHOULDER_L, 0.202, 1.387, -0.062, ZONE_ARM_L, SLOT_TORSO, [0.12, 0, 0, 0.13, 0.058, 0.058]],
-  ["lowerArm", B_UPPER_ARM_L, 0.441, 1.387, -0.07, ZONE_ARM_L, SLOT_TORSO, [0.115, 0, 0, 0.125, 0.048, 0.048]],
-  ["hand", B_LOWER_ARM_L, 0.673, 1.387, -0.062, ZONE_HAND_L, SLOT_HANDS, [0.105, -0.01, 0.012, 0.11, 0.04, 0.062]],
+  ["shoulder", B_UPPER_CHEST, 0.03, 1.425, 0.031, ZONE_TORSO, SLOT_TORSO, [0.03, -0.018, -0.06, 0.13, -0.018, -0.06, 0.085]],
+  ["upperArm", B_SHOULDER_L, 0.202, 1.387, -0.062, ZONE_ARM_L, SLOT_TORSO, [0, -0.008, -0.016, 0.22, -0.008, -0.016, 0.07]],
+  ["lowerArm", B_UPPER_ARM_L, 0.441, 1.387, -0.07, ZONE_ARM_L, SLOT_TORSO, [0, -0.012, -0.008, 0.22, -0.012, -0.008, 0.058]],
+  ["hand", B_LOWER_ARM_L, 0.673, 1.387, -0.062, ZONE_HAND_L, SLOT_HANDS, [0.03, -0.03, 0.022, 0.17, -0.03, 0.022, 0.065]],
 ];
 const LEFT_LEG: readonly Row[] = [
-  ["upperLeg", B_HIPS, 0.109, 0.925, -0.034, ZONE_LEG_L, SLOT_LEGS, [0, -0.2, 0.01, 0.088, 0.225, 0.095]],
-  ["lowerLeg", B_UPPER_LEG_L, 0.109, 0.517, -0.034, ZONE_LEG_L, SLOT_LEGS, [0, -0.21, 0, 0.062, 0.23, 0.072]],
-  ["foot", B_LOWER_LEG_L, 0.109, 0.082, -0.084, ZONE_FOOT_L, SLOT_FEET, [0, -0.035, 0.08, 0.052, 0.058, 0.142]],
+  ["upperLeg", B_HIPS, 0.109, 0.925, -0.034, ZONE_LEG_L, SLOT_LEGS, [-0.003, -0.05, 0.007, -0.003, -0.35, 0.007, 0.1]],
+  ["lowerLeg", B_UPPER_LEG_L, 0.109, 0.517, -0.034, ZONE_LEG_L, SLOT_LEGS, [0.005, -0.03, -0.03, 0.005, -0.4, -0.03, 0.072]],
+  ["foot", B_LOWER_LEG_L, 0.109, 0.082, -0.084, ZONE_FOOT_L, SLOT_FEET, [0.013, -0.04, -0.02, 0.013, -0.04, 0.17, 0.058]],
 ];
 const LEFT_MINOR: readonly Row[] = [
   ["toe", B_FOOT_L, 0.109, 0.014, 0.052, ZONE_NONE, SLOT_FEET, null],
@@ -107,8 +110,9 @@ function build(): Skeleton & { readonly slot: Uint8Array } {
   const rest = new Float32Array(HUMAN_BONES * 3);
   const zone = new Uint8Array(HUMAN_BONES);
   const slot = new Uint8Array(HUMAN_BONES);
-  const boxCenter = new Float32Array(HUMAN_BONES * 3);
-  const boxHalf = new Float32Array(HUMAN_BONES * 3);
+  const capA = new Float32Array(HUMAN_BONES * 3);
+  const capB = new Float32Array(HUMAN_BONES * 3);
+  const capR = new Float32Array(HUMAN_BONES);
   const put = (b: number, row: Row, name: string, par: number, side: number, zoneId: number): void => {
     names[b] = name;
     parent[b] = par;
@@ -117,12 +121,12 @@ function build(): Skeleton & { readonly slot: Uint8Array } {
     rest[b * 3 + 2] = row[4];
     zone[b] = zoneId;
     slot[b] = row[6];
-    const box = row[7];
-    if (box) {
-      boxCenter[b * 3] = box[0] * side;
-      boxCenter[b * 3 + 1] = box[1];
-      boxCenter[b * 3 + 2] = box[2];
-      boxHalf.set(box.slice(3), b * 3);
+    const cap = row[7];
+    if (cap) {
+      // Mirrored, the ends swap sides with the body; `|| 0` keeps a zero from becoming minus zero.
+      capA.set([cap[0] * side || 0, cap[1], cap[2]], b * 3);
+      capB.set([cap[3] * side || 0, cap[4], cap[5]], b * 3);
+      capR[b] = cap[6];
     }
   };
   CENTER.forEach((row, i) => put(i, row, row[0], row[1], 1, row[5]));
@@ -149,7 +153,7 @@ function build(): Skeleton & { readonly slot: Uint8Array } {
     put(left, row, row[0] + ".L", row[1], 1, ZONE_NONE);
     put(right, row, row[0] + ".R", parentRight, -1, ZONE_NONE);
   });
-  return { id: "human", bones: HUMAN_BONES, names, parent, rest, zoneBones: B_FOOT_R + 1, zone, slot, boxCenter, boxHalf };
+  return { id: "human", bones: HUMAN_BONES, names, parent, rest, zoneBones: B_FOOT_R + 1, zone, slot, capA, capB, capR };
 }
 
 /** The skeleton, with the body slot each bone's geometry belongs to. */

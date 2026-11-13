@@ -4,7 +4,7 @@
 //
 //   client -> server
 //     HELLO     reliable     version u16, content hash u32, clip hash u32, name string,
-//                            flags u8, device key (16 bytes)
+//                            flags u8, device key (16 bytes), and with HELLO_LOOK a look (28 bytes)
 //     INPUT     unreliable   ack tick u32, newest tick u32, count-1 (3 bits),
 //                            then inputs newest first; each after the first is
 //                            preceded by one bit: 1 = same as the one before
@@ -33,6 +33,7 @@
 // tells the interface why something was refused.
 
 import { BitReader, BitWriter } from "./codec.ts";
+import { LOOK_BYTES } from "../anim/look.ts";
 import { Body } from "../sim/character.ts";
 
 export const PROTOCOL_VERSION = 3;
@@ -63,12 +64,16 @@ export const REJECT_KICKED = 7;
 
 /** HELLO flag: join without a body. */
 export const HELLO_SPECTATE = 1;
+/** HELLO flag: a look follows the key. A new survivor is made with it at once, without the creator. */
+export const HELLO_LOOK = 2;
 export const KEY_BYTES = 16;
 
 /** What the session is doing. Sent with every snapshot. */
 export const SESSION_ALIVE = 0;
 export const SESSION_DEAD = 1;
 export const SESSION_SPECTATING = 2;
+/** A new survivor with no look yet: it has no body until it sends one with CMD_CREATE. */
+export const SESSION_CREATING = 3;
 
 /** Command ops. */
 export const CMD_TEXT = 1;
@@ -88,6 +93,9 @@ export const CMD_SPEND = 6;
 export const CMD_LEARN = 7;
 /** Make something: recipe content index u16, how many u8. */
 export const CMD_CRAFT = 8;
+
+/** Make this session's survivor with a look: 28 bytes (shared/anim/look.ts). Only while the session is creating. */
+export const CMD_CREATE = 9;
 
 /** Boxes a slot command can address. Nothing else can be named: no ids travel. */
 export const BOX_SELF = 0;
@@ -130,6 +138,9 @@ export const OWN_RESPAWN = 6;
  * then recipe u16, units left u8, tick the current unit is done u32 each).
  */
 export const OWN_PROGRESSION = 7;
+
+/** The survivor's own look: 28 bytes. Sent when it gets a body. */
+export const OWN_LOOK = 8;
 
 export const MARKER_DEATH = 1;
 
@@ -229,14 +240,15 @@ export function readBody(r: BitReader, b: Body): void {
 }
 
 /** Write a HELLO. `key` must be KEY_BYTES long. */
-export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array): void {
+export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null): void {
   w.bits(C_HELLO, 4);
   w.u16(version);
   w.u32(contentHash);
   w.u32(clipHash);
   w.string(name);
-  w.u8(flags);
+  w.u8(look ? flags | HELLO_LOOK : flags & ~HELLO_LOOK);
   for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
+  if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
 }
 
 /** Start a COMMAND; the caller appends the op's arguments. */

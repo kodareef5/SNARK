@@ -1,0 +1,226 @@
+// The character creator: what a new survivor sees before it has a body.
+//
+// It edits a look (shared/anim/look.ts) and shows it on a body standing at the
+// spawn point, which the app draws from `look` and `turn`. Nothing is sent
+// until "Create": then the look goes to the server once, and the server makes
+// the survivor or says why not.
+
+import {
+  BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGIONS, REGION_COUNT, SEX_LABELS,
+  defaultLook, randomLook, regionOf, setRegion,
+} from "../../../shared/anim/look.ts";
+import { hashString } from "../../../shared/hash.ts";
+import { EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../../../shared/pack/palette.ts";
+import { Rng } from "../../../shared/rng.ts";
+import type { ClientSession } from "../session.ts";
+import { K_BAR, K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import { S_BUTTON, S_LABEL, S_MARK_SELF, S_PANEL, S_STAMINA, S_SWATCH, S_TITLE } from "./style.ts";
+
+export const KEY_CREATOR_PANEL = 3000;
+export const KEY_CREATOR_TITLE = 3001;
+/** The two tabs: look, body. */
+export const KEY_CREATOR_TAB = 3002;
+export const KEY_CREATOR_SEX = 3010;
+/** Turn the body left, turn it right. */
+export const KEY_CREATOR_TURN = 3012;
+export const KEY_CREATOR_RANDOM = 3014;
+export const KEY_CREATOR_RESET = 3015;
+export const KEY_CREATOR_CREATE = 3016;
+export const KEY_CREATOR_NOTE = 3017;
+/** Colour swatches: skin, hair, eyes; each preceded by a mark behind the chosen one. */
+export const KEY_CREATOR_SKIN = 3100;
+export const KEY_CREATOR_HAIR_COLOR = 3120;
+export const KEY_CREATOR_EYE = 3140;
+export const KEY_CREATOR_HAIR = 3160;
+export const KEY_CREATOR_BEARD = 3170;
+/** Section labels and the marks behind chosen swatches. */
+export const KEY_CREATOR_LABEL = 3180;
+export const KEY_CREATOR_MARK = 3190;
+/** Per body region: its label, a button down, its bar, a button up. */
+export const KEY_CREATOR_REGION = 3200;
+
+const PAD = 12;
+const ROW = 24;
+/** How far one press of a region's button moves it. */
+const STEP = 0.1;
+/** A quarter of a third of a turn per press. */
+const TURN_STEP = Math.PI / 6;
+/** Tint of a chosen button. */
+const CHOSEN = 0x3f6ea8;
+
+const TAB_LOOK = 0;
+
+export class CreatorScreen {
+  /** The look being made. */
+  readonly look = defaultLook();
+  tab = TAB_LOOK;
+  /** Radians the body shown is turned by: it starts facing the viewer, a little to one side. */
+  turn = 0.35;
+  /** The server refused the last "Create"; and that command's sequence number. */
+  refused = false;
+  private sent = 0;
+  private rng: Rng | null = null;
+  /** The region whose bar is being dragged, or -1; and where the bars are, from the last build. */
+  private drag = -1;
+  private barX = 0;
+  private barW = 1;
+
+  build(f: UiFrame, palette: Uint8Array | null, name: string): void {
+    const look = this.look;
+    const w = Math.min(380, f.width - 16);
+    const x = f.width - w - 8;
+    const y0 = 8;
+    const h = f.height - 16;
+    const inner = w - PAD * 2;
+    const lh = lineHeight(S_LABEL);
+    f.add(KEY_CREATOR_PANEL, K_PANEL, x, y0, w, h, S_PANEL);
+    f.text(KEY_CREATOR_TITLE, x + PAD, y0 + PAD, inner, S_TITLE, `New survivor: ${name}`.slice(0, Math.floor(inner / (18 * 0.6))));
+    let y = y0 + PAD + lineHeight(S_TITLE) + 6;
+    const button = (key: number, bx: number, bw: number, text: string, chosen = false, bh = ROW): void => {
+      const b = f.add(key, K_BUTTON, bx, y, bw, bh, S_BUTTON);
+      b.text = text;
+      b.interactive = true;
+      if (chosen) b.tint = CHOSEN;
+    };
+    /** `count` buttons across the panel with a gap between them. */
+    const across = (key: number, labels: readonly string[], chosen: number): void => {
+      const gap = 4;
+      const bw = (inner - gap * (labels.length - 1)) / labels.length;
+      labels.forEach((text, i) => button(key + i, x + PAD + i * (bw + gap), bw, text, i === chosen));
+      y += ROW + 6;
+    };
+    across(KEY_CREATOR_TAB, ["Look", "Body"], this.tab);
+
+    if (this.tab === TAB_LOOK) {
+      let label = 0;
+      let mark = 0;
+      const section = (text: string): void => {
+        f.text(KEY_CREATOR_LABEL + label++, x + PAD, y, inner, S_LABEL, text);
+        y += lh + 2;
+      };
+      const swatches = (key: number, base: number, count: number, chosen: number): void => {
+        const gap = 3;
+        const sw = (inner - gap * (count - 1)) / count;
+        for (let i = 0; i < count; i++) {
+          const sx = x + PAD + i * (sw + gap);
+          // A white edge behind the chosen one.
+          if (i === chosen) f.add(KEY_CREATOR_MARK + mark, K_PANEL, sx - 2, y - 2, sw + 4, ROW + 4, S_MARK_SELF);
+          const s = f.add(key + i, K_BUTTON, sx, y, sw, ROW, S_SWATCH);
+          s.interactive = true;
+          const at = (base + i) * 4;
+          s.tint = palette ? (palette[at]! << 16) | (palette[at + 1]! << 8) | palette[at + 2]! : 0x808080;
+        }
+        mark++;
+        y += ROW + 8;
+      };
+      section("Sex");
+      across(KEY_CREATOR_SEX, SEX_LABELS, look[LOOK_SEX]!);
+      section("Skin");
+      swatches(KEY_CREATOR_SKIN, SKIN_BASE, SKIN_TONES, look[LOOK_SKIN]!);
+      section("Hair colour");
+      swatches(KEY_CREATOR_HAIR_COLOR, HAIR_BASE, HAIR_COLORS, look[LOOK_HAIR_COLOR]!);
+      section("Eyes");
+      swatches(KEY_CREATOR_EYE, EYE_BASE, EYE_COLORS, look[LOOK_EYE_COLOR]!);
+      section("Hair");
+      across(KEY_CREATOR_HAIR, HAIR_STYLES.map((s) => s.label), look[LOOK_HAIR]!);
+      section("Beard");
+      across(KEY_CREATOR_BEARD, BEARD_STYLES.map((s) => s.label), look[LOOK_BEARD]!);
+    } else {
+      const labelW = 92;
+      const small = 22;
+      this.barX = x + PAD + labelW + small + 4;
+      this.barW = inner - labelW - small * 2 - 8;
+      const rowH = Math.min(ROW, Math.floor((y0 + h - y - 96) / REGION_COUNT));
+      for (let r = 0; r < REGION_COUNT; r++) {
+        const key = KEY_CREATOR_REGION + r * 4;
+        f.text(key, x + PAD, y + (rowH - lh) / 2, labelW, S_LABEL, REGIONS[r]!.label);
+        const down = f.add(key + 1, K_BUTTON, x + PAD + labelW, y + 1, small, rowH - 3, S_BUTTON);
+        down.text = "-";
+        down.interactive = true;
+        const bar = f.add(key + 2, K_BAR, this.barX, y + 5, this.barW, rowH - 11, S_STAMINA);
+        bar.value = (regionOf(look, r) + 1) / 2;
+        bar.interactive = true;
+        const up = f.add(key + 3, K_BUTTON, this.barX + this.barW + 4, y + 1, small, rowH - 3, S_BUTTON);
+        up.text = "+";
+        up.interactive = true;
+        y += rowH;
+      }
+    }
+
+    // Along the bottom, whichever tab is up: turn the body, start over, and finish.
+    y = y0 + h - PAD - 34 - 6 - ROW - (this.refused ? lh + 4 : 0);
+    if (this.refused) {
+      f.text(KEY_CREATOR_NOTE, x + PAD, y, inner, S_LABEL, "The server would not make it. Try again.");
+      y += lh + 4;
+    }
+    const quarter = (inner - 12) / 4;
+    button(KEY_CREATOR_TURN, x + PAD, quarter, "<");
+    button(KEY_CREATOR_TURN + 1, x + PAD + quarter + 4, quarter, ">");
+    button(KEY_CREATOR_RANDOM, x + PAD + (quarter + 4) * 2, quarter, "Random");
+    button(KEY_CREATOR_RESET, x + PAD + (quarter + 4) * 3, quarter, "Reset");
+    y += ROW + 6;
+    const create = f.add(KEY_CREATOR_CREATE, K_BUTTON, x + PAD, y, inner, 34, S_BUTTON);
+    create.text = "Create survivor";
+    create.interactive = true;
+    create.tint = 0x2f7a46;
+  }
+
+  /** The server answered a command: if it was the "Create" and the answer was no, say so. */
+  result(seq: number, ok: boolean): void {
+    if (seq === this.sent && seq !== 0) this.refused = !ok;
+  }
+
+  /** Pointer went down (0), up (1) or moved (2) over one of the screen's nodes. Returns true if it was one. */
+  pointer(kind: number, key: number, x: number, session: ClientSession): boolean {
+    if (key < KEY_CREATOR_PANEL || key >= KEY_CREATOR_REGION + REGION_COUNT * 4) return false;
+    const look = this.look;
+    if (kind === 1) {
+      this.drag = -1;
+      return true;
+    }
+    const region = key >= KEY_CREATOR_REGION ? Math.floor((key - KEY_CREATOR_REGION) / 4) : -1;
+    const part = key >= KEY_CREATOR_REGION ? (key - KEY_CREATOR_REGION) % 4 : -1;
+    if (kind === 2) {
+      // Dragging along a bar sets it; moving over anything else does nothing.
+      if (this.drag >= 0 && region === this.drag && part === 2) setRegion(look, region, ((x - this.barX) / this.barW) * 2 - 1);
+      return true;
+    }
+    if (region >= 0) {
+      if (part === 1) setRegion(look, region, regionOf(look, region) - STEP);
+      else if (part === 3) setRegion(look, region, regionOf(look, region) + STEP);
+      else if (part === 2) {
+        this.drag = region;
+        setRegion(look, region, ((x - this.barX) / this.barW) * 2 - 1);
+      }
+      return true;
+    }
+    const pick = (base: number, count: number, field: number): boolean => {
+      if (key < base || key >= base + count) return false;
+      look[field] = key - base;
+      return true;
+    };
+    if (key === KEY_CREATOR_TAB || key === KEY_CREATOR_TAB + 1) this.tab = key - KEY_CREATOR_TAB;
+    else if (key === KEY_CREATOR_TURN) this.turn -= TURN_STEP;
+    else if (key === KEY_CREATOR_TURN + 1) this.turn += TURN_STEP;
+    else if (key === KEY_CREATOR_RANDOM) {
+      // Seeded by the name, so a run can be repeated; each press is the next throw.
+      this.rng ??= new Rng(hashString(session.name));
+      randomLook(this.rng, look);
+    } else if (key === KEY_CREATOR_RESET) defaultLook(look);
+    else if (key === KEY_CREATOR_CREATE) {
+      this.refused = false;
+      this.sent = session.create(look);
+    } else if (pick(KEY_CREATOR_SEX, SEX_LABELS.length, LOOK_SEX)) {
+      // A beard does not follow to the other body unasked.
+      if (look[LOOK_SEX] !== 0) look[LOOK_BEARD] = 0;
+    } else if (
+      !pick(KEY_CREATOR_SKIN, SKIN_TONES, LOOK_SKIN) &&
+      !pick(KEY_CREATOR_HAIR_COLOR, HAIR_COLORS, LOOK_HAIR_COLOR) &&
+      !pick(KEY_CREATOR_EYE, EYE_COLORS, LOOK_EYE_COLOR) &&
+      !pick(KEY_CREATOR_HAIR, HAIR_STYLES.length, LOOK_HAIR)
+    ) {
+      pick(KEY_CREATOR_BEARD, BEARD_STYLES.length, LOOK_BEARD);
+    }
+    return true;
+  }
+}

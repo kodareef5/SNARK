@@ -21,6 +21,7 @@ import {
   writeCommand,
   writeHello,
 } from "../../shared/net/protocol.ts";
+import { defaultLook } from "../../shared/anim/look.ts";
 import { CH_RELIABLE } from "../../shared/net/transport.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_SPRINT } from "../../shared/sim/character.ts";
@@ -216,7 +217,7 @@ test("a hostile command stream changes nothing and cannot crash the server", () 
     end = h.net.connect();
     seq = 0;
     w.reset();
-    writeHello(w, PROTOCOL_VERSION, h.reg.hash, h.world.anim.set.hash, `mallory${reconnects++}`, 0, testKey("mallory"));
+    writeHello(w, PROTOCOL_VERSION, h.reg.hash, h.world.anim.set.hash, `mallory${reconnects++}`, 0, testKey("mallory"), defaultLook());
     end.send(CH_RELIABLE, w.bytes());
   };
   hello();

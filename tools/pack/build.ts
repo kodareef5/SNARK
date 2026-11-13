@@ -11,11 +11,11 @@ import type { Def } from "../../shared/content/defs.ts";
 import { WATER_TILE } from "../../client/core/render/shading.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
+import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { REGION_BASE, WATER_COLOR, defaultPalette } from "../../shared/pack/palette.ts";
 import { importGlb } from "./glb.ts";
 import { mannequinMeshes } from "./mannequin.ts";
-import { boxMesh, buildPack, type SourceMesh } from "./write.ts";
+import { boxMesh, buildPack, unpackMeshes, type SourceMesh } from "./write.ts";
 
 export const MISSING_MESH = "core:missing";
 export const WATER_MESH = "core:water";
@@ -72,8 +72,20 @@ export function coreClips(): readonly Clip[] {
   return sourceClips;
 }
 
+let sourceBodies: { meshes: SourceMesh[]; rigs: PackRig[] } | null = null;
+
+/** The modelled bodies `bun run art` wrote, read once: meshes and the rigs they were made on. */
+export function coreBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
+  if (sourceBodies) return sourceBodies;
+  const file = join(SOURCE, "core/human-bodies.snpk");
+  if (!existsSync(file)) return (sourceBodies = { meshes: [], rigs: [] });
+  const pack = parsePack(new Uint8Array(readFileSync(file)));
+  return (sourceBodies = { meshes: unpackMeshes(pack), rigs: pack.header.rigs });
+}
+
 export function buildCorePack(extra: SourceMesh[] = []): Uint8Array {
-  return buildPack([...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...extra], defaultPalette(), coreClips());
+  const bodies = coreBodies();
+  return buildPack([...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...bodies.meshes, ...extra], defaultPalette(), coreClips(), bodies.rigs);
 }
 
 function findGlbs(dir: string, out: string[] = []): string[] {

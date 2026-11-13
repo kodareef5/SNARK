@@ -300,9 +300,10 @@ test("no pose reaches outside the sphere the hit test rejects by, and a body cos
             humanPose(anim, st, tick, pose);
             solve(HUMAN, pose, solved);
             for (let b = 0; b < HUMAN.zoneBones; b++) {
-              for (let c = 0; c < 8; c++) {
-                boneToModel(solved, b, HUMAN.boxCenter[b * 3]! + (c & 1 ? 1 : -1) * HUMAN.boxHalf[b * 3]!, HUMAN.boxCenter[b * 3 + 1]! + (c & 2 ? 1 : -1) * HUMAN.boxHalf[b * 3 + 1]!, HUMAN.boxCenter[b * 3 + 2]! + (c & 4 ? 1 : -1) * HUMAN.boxHalf[b * 3 + 2]!, out);
-                const d = Math.hypot(out[0]!, out[1]! - BODY_REACH_Y, out[2]!);
+              // The farthest a capsule reaches is an end plus its radius.
+              for (const ends of [HUMAN.capA, HUMAN.capB]) {
+                boneToModel(solved, b, ends[b * 3]!, ends[b * 3 + 1]!, ends[b * 3 + 2]!, out);
+                const d = Math.hypot(out[0]!, out[1]! - BODY_REACH_Y, out[2]!) + HUMAN.capR[b]!;
                 if (d > worst) worst = d;
               }
             }
@@ -314,7 +315,7 @@ test("no pose reaches outside the sphere the hit test rejects by, and a body cos
   expect(worst).toBeLessThan(BODY_REACH - 0.1);
   expect(worst).toBeGreaterThan(1.2);
 
-  // Posing a body and testing a ray against all twenty boxes.
+  // Posing a body and testing a ray against all twenty capsules.
   st.unpack(0);
   st.speed = 7;
   const rounds = 20000;

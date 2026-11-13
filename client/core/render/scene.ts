@@ -11,6 +11,7 @@ import { INSTANCE_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
+import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { AnimState } from "../../../shared/anim/pose.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
@@ -41,8 +42,10 @@ export interface OwnBody {
   tick: number;
   /** Seen from its own eyes: drawn over everything, without its head. */
   firstPerson: boolean;
-  /** Six colour regions; zero leaves the species' own. */
+  /** Six colour regions; zero leaves the species' own. Used when it has no look. */
   readonly colors: Uint8Array;
+  /** Its 28-byte look, or null. */
+  look: Uint8Array | null;
   id: number;
 }
 
@@ -205,11 +208,12 @@ export class Scene {
         if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, y + 2.2, z + r)) continue;
         st.unpack(remote.anim[i]!);
         st.seed = bodySeed(remote.id[i]!);
-        if (!ch.add(p, kind, x, y, z, remote.yaw[i]!, st, remote.tick, remote.colors, i * 6, remote.id[i]!, false, false)) break;
+        const look = remote.hasLook[i] !== 0 ? remote.look : null;
+        if (!ch.add(p, kind, x, y, z, remote.yaw[i]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.id[i]!, false, false)) break;
       }
     }
     const own = this.own;
-    if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.colors, 0, own.id, own.firstPerson, own.firstPerson);
+    if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.id, own.firstPerson, own.firstPerson);
     ch.flush(p, this.transient, false, this.drawBody);
   }
 

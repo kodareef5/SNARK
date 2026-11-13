@@ -1,7 +1,7 @@
 // Builds pack files from meshes in authoring form.
 
 import type { Clip } from "../../shared/anim/clip.ts";
-import { CLIP_ROOT_BYTES, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, type PackHeader, type PackLod, type PackMesh, type PackRig } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, lodIndices, lodVertices, type Pack, type PackHeader, type PackLod, type PackMesh, type PackRig } from "../../shared/pack/pack.ts";
 
 /** One level of detail before quantization. */
 export interface SourceLod {
@@ -116,6 +116,34 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
     at += p.length;
   }
   return file;
+}
+
+/** The meshes of a pack back in authoring form, to put them into another pack. */
+export function unpackMeshes(pack: Pack): SourceMesh[] {
+  return pack.header.meshes.map((m) => {
+    const lods = m.lods.map((lod): SourceLod => {
+      const verts = lodVertices(pack, lod);
+      const view = new DataView(verts.buffer, verts.byteOffset, verts.byteLength);
+      const positions = new Float32Array(lod.vertexCount * 3);
+      const colors = new Uint8Array(lod.vertexCount);
+      const bones = new Uint8Array(lod.vertexCount);
+      for (let v = 0; v < lod.vertexCount; v++) {
+        for (let a = 0; a < 3; a++) positions[v * 3 + a] = m.center[a]! + (view.getInt16(v * VERTEX_BYTES + a * 2, true) / 32767) * m.half[a]!;
+        colors[v] = verts[v * VERTEX_BYTES + 6]!;
+        bones[v] = verts[v * VERTEX_BYTES + 7]!;
+      }
+      const idx = lodIndices(pack, lod);
+      const iv = new DataView(idx.buffer, idx.byteOffset, idx.byteLength);
+      const indices = new Uint32Array(lod.indexCount);
+      for (let i = 0; i < indices.length; i++) indices[i] = iv.getUint16(i * 2, true);
+      return m.skeleton ? { positions, colors, indices, bones } : { positions, colors, indices };
+    });
+    const out: SourceMesh = { id: m.id, lods };
+    if (m.collider) out.collider = m.collider;
+    if (m.skeleton) out.skeleton = m.skeleton;
+    if (m.rig !== undefined) out.rig = pack.header.rigs[m.rig]!.id;
+    return out;
+  });
 }
 
 /** A box mesh, one colour, outward-facing triangles. Used for graybox content. */

@@ -58,23 +58,42 @@ test("the core pack has a mesh for every graybox definition and rejects damaged 
   expect(() => parsePack(future)).toThrow(/version/);
 });
 
-test("the pack carries the mannequin cut into body slots, each vertex on one bone, and the clips that move it", () => {
+test("the pack carries bodies cut into slots, each vertex on one bone, and the clips that move them", () => {
   const pack = parsePack(buildCorePack());
-  let boxes = 0;
-  for (const slot of SLOT_NAMES) {
-    const mesh = pack.header.meshes[pack.meshIndex.get(`core:mannequin/${slot}`)!]!;
-    expect(mesh.skeleton).toBe("human");
-    expect(mesh.rig).toBeUndefined();
-    const verts = lodVertices(pack, mesh.lods[0]!);
-    boxes += mesh.lods[0]!.indexCount / 36;
-    // Every vertex follows a bone that can be hit and belongs to this slot.
-    for (let v = 0; v < mesh.lods[0]!.vertexCount; v++) {
-      const bone = verts[v * VERTEX_BYTES + 7]!;
-      expect(bone).toBeLessThan(HUMAN.zoneBones);
-      expect(SLOT_NAMES[HUMAN.slot[bone]!]).toBe(slot);
+  // The mannequin: the skeleton's own capsules. The two modelled bodies: each on its own rig, at three levels of detail.
+  for (const [base, rig, levels] of [["core:mannequin", undefined, 1], ["core:human_m", "human_m", 3], ["core:human_f", "human_f", 3]] as const) {
+    let triangles = 0;
+    for (const slot of SLOT_NAMES) {
+      const mesh = pack.header.meshes[pack.meshIndex.get(`${base}/${slot}`)!]!;
+      expect(mesh.skeleton).toBe("human");
+      expect(mesh.rig === undefined ? undefined : pack.header.rigs[mesh.rig]!.id).toBe(rig);
+      expect(mesh.lods.length).toBe(levels);
+      triangles += mesh.lods[0]!.indexCount / 3;
+      for (let l = 1; l < levels; l++) expect(mesh.lods[l]!.indexCount).toBeLessThan(mesh.lods[l - 1]!.indexCount * 0.6);
+      // Every vertex follows a bone that belongs to this slot.
+      const verts = lodVertices(pack, mesh.lods[0]!);
+      for (let v = 0; v < mesh.lods[0]!.vertexCount; v++) {
+        const bone = verts[v * VERTEX_BYTES + 7]!;
+        expect(bone).toBeLessThan(HUMAN.bones);
+        if (rig === undefined) expect(SLOT_NAMES[HUMAN.slot[bone]!]).toBe(slot);
+      }
+    }
+    if (rig !== undefined) {
+      expect(triangles).toBeGreaterThan(3500);
+      expect(triangles).toBeLessThan(5000);
     }
   }
-  expect(boxes).toBe(HUMAN.zoneBones + 1); // a box per bone, and the nose
+  // A rig is the skeleton's bones resting where that body has them: close to the skeleton's own, not the same.
+  for (const rig of pack.header.rigs) {
+    expect(rig.skeleton).toBe("human");
+    expect(rig.rest.length).toBe(HUMAN.bones * 3);
+    let far = 0;
+    for (let k = 0; k < rig.rest.length; k++) far = Math.max(far, Math.abs(rig.rest[k]! - HUMAN.rest[k]!));
+    expect(far).toBeLessThan(0.1);
+  }
+  expect(pack.header.rigs.map((r) => r.id)).toEqual(["human_f", "human_m"]);
+  // Hair and a beard for each body.
+  for (const id of ["core:human_m/hair/buzzed", "core:human_f/hair/long", "core:human_m/beard/full"]) expect(pack.meshIndex.has(id)).toBe(true);
 
   // The clips survive the trip through the file: unit rotations, the frames the conversion counted.
   const clips = pack.clips;

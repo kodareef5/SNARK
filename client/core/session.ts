@@ -24,6 +24,8 @@ import {
   MAX_NAME_BYTES,
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
+  CMD_CREATE,
+  OWN_LOOK,
   OWN_MARKERS,
   OWN_OPEN,
   OWN_PROGRESSION,
@@ -49,6 +51,7 @@ import {
   writeHello,
   writeInputs,
 } from "../../shared/net/protocol.ts";
+import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stepBody, type MoveParams } from "../../shared/sim/character.ts";
@@ -68,6 +71,11 @@ export interface SessionOptions {
   registry: Registry;
   /** Hash of the animation clips this client draws with (`Pack.clips.hash`); the server must pose with the same. */
   clipHash?: number;
+  /**
+   * A look to make a new survivor with at once (shared/anim/look.ts). Without
+   * one, a new name arrives in the creator and waits for `create`.
+   */
+  look?: Uint8Array;
   /** Return the terrain for a map, or null if this client does not have it. */
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, if it has any: the same pure function the server uses. */
@@ -93,6 +101,9 @@ export class RemoteSample {
   tick = 0;
   /** What each body's pose is made from, packed as the server sent it: see `AnimState.pack`. */
   readonly anim = new Uint32Array(MAX_VIEW);
+  /** A survivor's look, LOOK_BYTES each, where `hasLook` is 1. */
+  readonly look = new Uint8Array(MAX_VIEW * LOOK_BYTES);
+  readonly hasLook = new Uint8Array(MAX_VIEW);
 }
 
 const HISTORY = 128;
@@ -127,8 +138,12 @@ export class ClientSession {
   ownKind = 0;
   /** SESSION_ALIVE, SESSION_DEAD or SESSION_SPECTATING, as the server last said. */
   sessionState = SESSION_ALIVE;
+  /** The name this session joined under. */
+  readonly name: string;
   /** Cheats are enabled for this session. */
   admin = false;
+  /** This survivor's look, once the server has said what it is. */
+  ownLook: Uint8Array | null = null;
   /** Added to the tick to get the time of day. */
   dayOffset = 0;
   /** Text from the server, oldest first. `logVersion` counts every line ever added. */
@@ -204,6 +219,7 @@ export class ClientSession {
   private commandSeq = 0;
 
   constructor(conn: Connection, opts: SessionOptions) {
+    this.name = opts.name;
     this.conn = conn;
     this.opts = opts;
     for (let i = 0; i < HISTORY; i++) this.bodies.push(new Body());
@@ -215,7 +231,7 @@ export class ClientSession {
       }
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, opts.registry.hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key);
+    writeHello(w, PROTOCOL_VERSION, opts.registry.hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null);
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -236,6 +252,13 @@ export class ClientSession {
     args?.(w);
     this.conn.send(CH_RELIABLE, w.bytes());
     return seq;
+  }
+
+  /** Leave the creator: ask for this session's survivor to be made with `look`. */
+  create(look: Uint8Array): number {
+    return this.command(CMD_CREATE, (w) => {
+      for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
+    });
   }
 
   /** Send a console line. */
@@ -323,6 +346,9 @@ export class ClientSession {
       out.flags[n] = b.flags[j]!;
       out.level[n] = b.level[j]!;
       out.name[n] = b.name[j]!;
+      const look = b.look[j]!;
+      out.hasLook[n] = look ? 1 : 0;
+      if (look) out.look.set(look, n * LOOK_BYTES);
       for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
       if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
@@ -494,6 +520,10 @@ export class ClientSession {
       if (r.overflow) return;
       this.markers.length = 0;
       this.markers.push(...list);
+    } else if (component === OWN_LOOK) {
+      const look = new Uint8Array(LOOK_BYTES);
+      for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();
+      if (!r.overflow) this.ownLook = look;
     } else if (component === OWN_PROGRESSION) {
       const p = this.progress;
       const xp = r.u32();
