@@ -12,6 +12,8 @@ export const KEY_CLOCK = 12;
 export const KEY_VITAL = 80;
 /** Dark over the world while unconscious. */
 export const KEY_OUT = 36;
+/** A few words about voice, under the readout. */
+export const KEY_VOICE = 37;
 /** Per thing acting on the body: its mark. */
 export const KEY_BUFF = 180;
 export const KEY_CROSS = 30;
@@ -54,6 +56,12 @@ export function buildHud(f: UiFrame, m: HudModel): void {
   // Unconscious: the world goes dark under everything else.
   if (m.out) f.add(KEY_OUT, K_PANEL, 0, 0, W, H, S_DARK).alpha = 0.82;
   for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, MARGIN, 10 + i * lh, Math.min(W - MARGIN * 2, 400), S_TEXT, m.readout[i]!);
+  if (m.voice !== "") {
+    // Lit while the microphone is live; plain when it is saying why it is not.
+    const n = f.add(KEY_VOICE, K_PANEL, MARGIN, 10 + m.readout.length * lh + 4, Math.min(W - MARGIN * 2, m.voice === "TALKING" ? 76 : 330), lineHeight(S_BUFF) + 4, S_BUFF);
+    n.tint = m.voice === "TALKING" ? 0x3c9a4a : 0x4a4f58;
+    n.text = m.voice;
+  }
 
   // On a narrow canvas the minimap moves below the readout instead of beside it.
   const mapX = W - MARGIN - MINIMAP_SIZE;

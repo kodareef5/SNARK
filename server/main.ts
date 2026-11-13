@@ -1,7 +1,10 @@
 // Process entry point: serves the built client, accepts WebSocket connections,
 // and ticks the world on the wall clock.
 //
-//   bun server/main.ts [--dev] [--port 8787] [--db var/world.db]
+//   bun server/main.ts [--dev] [--port 8787] [--db var/world.db] [--cert cert.pem --key key.pem]
+//
+// With a certificate and its key the page is served over TLS, which a browser
+// asks for before it will open a microphone anywhere but on localhost.
 //
 // SNARK_ADMIN_PASSWORD sets the password for `enablecheats`. When started from
 // a terminal, lines typed there run as console commands with full rights.
@@ -12,6 +15,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
+import type { VoicePeer } from "./voice.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import { parsePack } from "../shared/pack/pack.ts";
@@ -32,6 +36,9 @@ export interface ServerOptions {
    * creature standing at the spot the self-check looks at.
    */
   probeScene?: boolean;
+  /** Paths of a certificate and its private key (PEM). With both, the server speaks TLS. */
+  cert?: string;
+  key?: string;
 }
 
 export interface RunningServer {
@@ -49,8 +56,14 @@ const SOFT_BACKLOG = 64 * 1024;
 const HARD_BACKLOG = 4 * 1024 * 1024;
 const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json" };
 
+/** Bytes a listener may leave unsent before voice meant for it is dropped: a quarter of a second of everyone it can hear. */
+const VOICE_BACKLOG = 16 * 1024;
+
 interface Socket {
   conn: Connection | null;
+  /** Set for a voice socket, which carries voice packets and nothing else. */
+  voice: VoicePeer | null;
+  isVoice: boolean;
 }
 
 export function startServer(opts: ServerOptions = {}): RunningServer {
@@ -91,11 +104,21 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   let measured: (value: unknown) => void = () => {};
   const bench = new Promise<unknown>((r) => (measured = r));
 
+  // What voice is waiting to go out is sent once at the end of the turn it arrived in.
+  let flushing = false;
+  const flushVoice = (): void => {
+    flushing = false;
+    host.voice.flush();
+  };
+
   const server = Bun.serve<Socket>({
     port: opts.port ?? 8787,
+    ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) } } : {}),
     async fetch(req, srv) {
       const url = new URL(req.url);
-      if (url.pathname === "/ws") return srv.upgrade(req, { data: { conn: null } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
+      if (url.pathname === "/ws" || url.pathname === "/voice") {
+        return srv.upgrade(req, { data: { conn: null, voice: null, isVoice: url.pathname === "/voice" } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
+      }
       if (url.pathname === "/__selfcheck" && req.method === "POST" && opts.dev) {
         report(await req.json());
         return new Response("ok");
@@ -115,6 +138,19 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     websocket: {
       maxPayloadLength: 4096,
       open(ws) {
+        if (ws.data.isVoice) {
+          ws.data.voice = host.voice.connect({
+            send(data) {
+              if (ws.getBufferedAmount() > VOICE_BACKLOG) return false;
+              ws.send(data);
+              return true;
+            },
+            close() {
+              ws.close();
+            },
+          });
+          return;
+        }
         const conn: Connection & { open: boolean } = {
           open: true,
           onMessage: null,
@@ -139,9 +175,18 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       },
       message(ws, message) {
         if (typeof message === "string" || message.length === 0) return;
+        if (ws.data.voice) {
+          host.voice.receive(ws.data.voice, message, performance.now());
+          if (host.voice.pending && !flushing) {
+            flushing = true;
+            setImmediate(flushVoice);
+          }
+          return;
+        }
         ws.data.conn?.onMessage?.(message[0]!, message.subarray(1));
       },
       close(ws) {
+        if (ws.data.voice) return void host.voice.disconnect(ws.data.voice);
         const conn = ws.data.conn as (Connection & { open: boolean }) | null;
         if (!conn) return;
         conn.open = false;
@@ -199,10 +244,12 @@ if (import.meta.main) {
     port: Number(value("--port") ?? 8787),
     dev: args.includes("--dev"),
     dbPath: value("--db"),
+    cert: value("--cert"),
+    key: value("--key"),
     adminPassword: process.env.SNARK_ADMIN_PASSWORD,
     terminal: process.stdin.isTTY,
   });
-  console.log(`SNARK listening on http://localhost:${running.port}`);
+  console.log(`SNARK listening on ${value("--cert") && value("--key") ? "https" : "http"}://localhost:${running.port}`);
   process.on("SIGINT", () => {
     running.stop();
     process.exit(0);

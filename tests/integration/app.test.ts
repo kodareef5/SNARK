@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { KEY_CONSOLE_INPUT, KEY_CONSOLE_ROW } from "../../client/core/ui/console.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
-import { KEY_BANNER, KEY_CROSS, KEY_PROMPT, KEY_READOUT, KEY_STATUS, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { KEY_BANNER, KEY_CROSS, KEY_PROMPT, KEY_READOUT, KEY_STATUS, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -250,4 +250,49 @@ test("two whole clients form a tribe, talk on three channels through the chat bo
   // None of the talk went to the console.
   expect(ada.ui.console.lines.some((l) => l.includes("hello, island"))).toBe(false);
   expect(ada.session.stats.undecodable + bob.session.stats.undecodable).toBe(0);
+});
+
+test("the talk key: held to talk, let go by anything that takes the keyboard, and the screen says when the microphone is live or why it is not", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const app = client(h, "ada");
+  const run = (ms: number) => h.run(ms, (now) => app.frame(now, 1280, 720));
+  run(500);
+  // With nothing to carry voice the key is still the app's, and does nothing.
+  expect(app.key("KeyB", true)).toBe(true);
+  expect(app.key("KeyB", false)).toBe(true);
+  run(50);
+  expect(app.ui.frame.find(KEY_VOICE)).toBeNull();
+
+  const calls: boolean[] = [];
+  const port = { notice: "", talk: (on: boolean) => void calls.push(on) };
+  app.voice = port;
+  app.key("KeyB", true);
+  app.key("KeyB", true, true); // held: once
+  run(50);
+  expect(calls).toEqual([true]);
+  expect(app.ui.frame.find(KEY_VOICE)!.text).toBe("TALKING");
+  app.key("KeyB", false);
+  run(50);
+  expect(calls).toEqual([true, false]);
+  expect(app.ui.frame.find(KEY_VOICE)).toBeNull();
+  // Opening the chat box with the key down lets go of it, and B is then a letter.
+  app.key("KeyB", true);
+  app.key("Enter", true);
+  expect(calls).toEqual([true, false, true, false]);
+  expect(app.key("KeyB", true)).toBe(false);
+  expect(calls.length).toBe(4);
+  app.key("Escape", true);
+  // So does the window losing focus.
+  app.key("KeyB", true);
+  app.blur();
+  expect(calls).toEqual([true, false, true, false, true, false]);
+  // While it has something to say, that is what is shown, pressed or not.
+  port.notice = "voice: no microphone (refused, or none to be had)";
+  run(50);
+  expect(app.ui.frame.find(KEY_VOICE)!.text).toBe(port.notice);
+  app.key("KeyB", true);
+  run(50);
+  expect(app.ui.frame.find(KEY_VOICE)!.text).toBe(port.notice);
+  // The session was given what opens the voice socket.
+  expect(app.session.voice.version).toBe(1);
 });

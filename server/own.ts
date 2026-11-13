@@ -5,8 +5,9 @@
 
 import type { ItemDef, RecipeDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_TRIBE, OWN_VITALS, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
+import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -16,6 +17,7 @@ import type { Progression } from "./progression.ts";
 import type { Rules } from "./rules.ts";
 import type { Survival } from "./survival.ts";
 import type { Tribes } from "./tribes.ts";
+import type { Voice } from "./voice.ts";
 import type { ServerWorld } from "./world.ts";
 
 /** Members of a tribe listed to a client; a larger tribe is told of its first this many. */
@@ -34,6 +36,7 @@ export interface OwnContext {
   readonly progression: Progression;
   readonly rules: Rules;
   readonly tribes: Tribes;
+  readonly voice: Voice;
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Recompute what follows from a record's stats, load and equipment. */
@@ -115,6 +118,16 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     w.u8((ctx.rules.values.damageNumbers !== 0 ? 1 : 0) | (ctx.rules.values.globalChat !== 0 ? 2 : 0));
     game.endOwn(c);
     c.sentRules = ctx.rules.version;
+  }
+  // What lets it open the voice socket: sent once to each connection.
+  const token = ctx.voice.token(c);
+  if (c.sentVoice !== token) {
+    const w = game.beginOwn(OWN_VOICE);
+    w.u16(c.id);
+    for (let i = 0; i < TOKEN_BYTES; i++) w.u8(token[i]!);
+    w.u8(1);
+    game.endOwn(c);
+    c.sentVoice = token;
   }
   // Who it is with: sent whenever any tribe changes, someone comes or goes, or an invitation it was shown runs out.
   const tribes = ctx.tribes;

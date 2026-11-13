@@ -28,6 +28,7 @@ import {
   OWN_BUFFS,
   OWN_RULES,
   OWN_TRIBE,
+  OWN_VOICE,
   CMD_CHAT,
   MAX_CHAT_CHARS,
   OWN_HELD,
@@ -66,6 +67,7 @@ import {
   writeInputs,
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
+import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
@@ -247,6 +249,8 @@ export class ClientSession {
    * name ("" alone), its rank, the members, and an invitation it has yet to
    * answer (the tribe's name, "" for none, and who asked).
    */
+  /** What lets this session open the voice socket: its speaker number, the token to show, and what it may do. `version` counts every time it is told. */
+  readonly voice = { slot: 0, token: new Uint8Array(TOKEN_BYTES), rights: 0, version: 0 };
   readonly tribe = { team: 0, name: "", rank: 0, members: [] as { name: string; online: boolean; owner: boolean }[], invite: "", inviteBy: "", version: 0 };
   /** What is acting on this client's body for a time: each a buff (content index) and the tick it ends (0 for no end). */
   readonly buffs: { buff: number; until: number }[] = [];
@@ -666,6 +670,16 @@ export class ClientSession {
       if (r.overflow) return;
       this.damageNumbers = (flags & 1) !== 0;
       this.globalChat = (flags & 2) !== 0;
+    } else if (component === OWN_VOICE) {
+      const slot = r.u16();
+      const token = new Uint8Array(TOKEN_BYTES);
+      for (let i = 0; i < TOKEN_BYTES; i++) token[i] = r.u8();
+      const rights = r.u8();
+      if (r.overflow) return;
+      this.voice.slot = slot;
+      this.voice.token = token;
+      this.voice.rights = rights;
+      this.voice.version++;
     } else if (component === OWN_TRIBE) {
       const team = r.varint();
       const name = r.string(MAX_NAME_BYTES * 3);

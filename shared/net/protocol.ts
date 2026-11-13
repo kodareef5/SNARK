@@ -191,7 +191,11 @@ export const OWN_RULES = 11;
  * there is one, who asked (a string).
  */
 export const OWN_TRIBE = 12;
-/** Reserved for round 4: the voice socket's token and rights, and the creature opened or ridden. */
+/**
+ * What lets this session open the voice socket: its speaker number (u16), the
+ * token to show there (8 bytes), and what it may do (u8; bit 0: speak).
+ * The creature opened or ridden (14) is reserved.
+ */
 export const OWN_VOICE = 13;
 export const OWN_SUBJECT = 14;
 

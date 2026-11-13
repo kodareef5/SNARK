@@ -11,6 +11,7 @@ import { addCoreCommands } from "./commands/core.ts";
 import { addSocialCommands } from "./commands/social.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
+import { Voice } from "./voice.ts";
 import { Console } from "./console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs, DEADLINE_BUFF } from "./buffs.ts";
@@ -91,6 +92,7 @@ export interface Host {
   readonly rules: Rules;
   readonly tribes: Tribes;
   readonly chat: Chat;
+  readonly voice: Voice;
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
@@ -167,6 +169,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const tribes = new Tribes(world, records);
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const chat = new Chat({ game, records, rules, tribes });
+  const voice = new Voice({ game }, (out) => void crypto.getRandomValues(out));
   /** The session a survivor has here now, lingering bodies not counted. */
   const sessionOf = (pid: number) => game.clients.find((c) => c?.active && !c.closed && c.pid === pid) ?? null;
   tribes.onSave = () => persistence?.store.setMeta("tribes", tribes.serialize());
@@ -300,9 +303,14 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     // Its tribe sees it arrive.
     tribes.version++;
   };
-  game.onPresence = () => void tribes.version++;
+  game.onPresence = (c) => {
+    tribes.version++;
+    // A connection that ended, or a new one in its place: the voice socket that went with the old one is no good.
+    voice.revoke(c);
+  };
   game.onExit = (c) => {
     tribes.version++;
+    voice.revoke(c);
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
   };
@@ -332,6 +340,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     combat.step();
     projectiles.step();
     creatures.step(tick);
+    voice.step(tick);
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };
   game.onLand = (c, speed) => {
@@ -339,7 +348,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     if (rec) survival.landed(rec, speed);
   };
   const own: OwnContext = {
-    world, game, records, items, survival, progression, rules, tribes,
+    world, game, records, items, survival, progression, rules, tribes, voice,
     online: (pid) => sessionOf(pid) !== null,
     openOf: (c) => death.openOf(c),
     closeOpen: (c) => death.close(c),
@@ -412,6 +421,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     rules,
     tribes,
     chat,
+    voice,
     online: (pid) => sessionOf(pid) !== null,
     setRule(name, value) {
       if (!rules.set(name, value)) return false;

@@ -15,6 +15,7 @@ import { ClientSession } from "../core/session.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
+import { VoiceIo } from "../voice/voice.ts";
 import { UiView } from "./ui.ts";
 
 const params = new URLSearchParams(location.search);
@@ -65,6 +66,14 @@ async function boot(): Promise<void> {
   let previous = 0;
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   bindInput(canvas, app);
+  // Voice: heard once the session has its token and the viewer has touched the page; B is held to talk.
+  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`);
+  app.voice = voice;
+  addEventListener("pointerdown", () => voice.unlock());
+  addEventListener("keydown", () => voice.unlock());
+  /** The self-check also talks to itself: its own voice, sent to the server and back, must be played. */
+  const voiceCheck = selfcheck && params.has("voice");
+  voice.loop = voiceCheck;
   let frames = 0;
   const times: number[] = [];
 
@@ -80,6 +89,8 @@ async function boot(): Promise<void> {
     const cssHeight = canvas.clientHeight;
     const t0 = performance.now();
     if (bench) app.autopilot(now);
+    voice.sync(session.voice);
+    if (voiceCheck && voice.report.status === "listening") voice.talk(true);
     const packet = app.frame(now, cssWidth, cssHeight);
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
@@ -112,7 +123,10 @@ async function boot(): Promise<void> {
     previous = now;
 
     // Self-check: once the world has arrived, read pixels back and report.
-    if (selfcheck && ++frames === 90) {
+    // With voice it waits for a second of it to have been played, or for ten seconds to say that none was.
+    if (selfcheck && frames >= 0 && ++frames >= 90 && (!voiceCheck || voice.report.played >= 50 || frames >= 690)) {
+      frames = -1;
+      const heard = !voiceCheck || (voice.report.played >= 50 && voice.report.odd === 0 && voice.report.errors === 0);
       const probes = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, params.has("creature")).map((p) => {
         const got = renderer.readPixel(p.sx, p.sy);
         return { name: p.name, expected: p.rgb, got, ok: probePasses(p, got[0], got[1], got[2]) };
@@ -120,7 +134,8 @@ async function boot(): Promise<void> {
       times.sort((x, y) => x - y);
       const misplaced = view.misplaced(app.ui.frame);
       const report = {
-        ok: probes.every((p) => p.ok) && misplaced === 0,
+        ok: probes.every((p) => p.ok) && misplaced === 0 && heard,
+        ...(voiceCheck ? { voice: voice.report } : {}),
         userAgent: navigator.userAgent,
         renderer: renderer.rendererName,
         canvas: [width, height],

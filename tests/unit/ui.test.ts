@@ -3,7 +3,7 @@ import { Controls, LOOK_SPEED } from "../../client/core/controls.ts";
 import { HudModel } from "../../client/core/hud.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT, KEY_CONSOLE_PANEL, KEY_CONSOLE_ROW, MAX_LINE } from "../../client/core/ui/console.ts";
-import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
@@ -38,6 +38,7 @@ function fullHud(): HudModel {
   m.formatReadout();
   m.clock = "23:59";
   m.status = "disconnected (reason -2)";
+  m.voice = "voice: no microphone (refused, or none to be had)";
   m.banner = "SPECTATING";
   m.vitals[4]!.fraction = 0.5;
   for (let i = 0; i < 80; i++) m.markers.push({ kind: i % 2 ? "player" : "creature", u: (i % 9) / 8, v: (i % 7) / 6 });
@@ -146,6 +147,10 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       expect(f.find(KEY_MINIMAP)).not.toBeNull();
       expect(f.find(KEY_VITAL + 9)!.value).toBe(0.5);
       expect(f.find(KEY_BANNER)!.text).toBe("SPECTATING");
+      // What voice has to say fits its box, under the readout.
+      const said = f.find(KEY_VOICE)!;
+      expect(textWidth(said.text, said.style), name).toBeLessThanOrEqual(said.w);
+      expect(said.y, name).toBeGreaterThanOrEqual(f.find(KEY_READOUT + 2)!.y + f.find(KEY_READOUT + 2)!.h);
       expect(f.find(KEY_CONSOLE_INPUT) !== null).toBe(consoleOpen);
       // What was said is on the canvas: the latest of it while the box is shut, more with the field while it is open.
       let rows = 0;

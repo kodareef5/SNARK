@@ -15,7 +15,7 @@ const server = startServer({ dev: true, port: Number(process.env.PORT ?? 8787) }
 console.log(`SNARK dev: http://localhost:${server.port}   (self-check: http://localhost:${server.port}/?selfcheck=1)`);
 
 let pending: ReturnType<typeof setTimeout> | undefined;
-for (const dir of ["client/core", "client/shell", "shared", "content"]) {
+for (const dir of ["client/core", "client/shell", "client/voice", "shared", "content"]) {
   watch(resolve(root, dir), { recursive: true }, () => {
     clearTimeout(pending);
     pending = setTimeout(() => {

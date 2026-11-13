@@ -27,6 +27,7 @@ import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS } from "../../shared/sim/items.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { RemoteSample, type ClientSession } from "./session.ts";
+import type { VoicePort } from "./voice/port.ts";
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "./ui/hud.ts";
 import { Ui } from "./ui/ui.ts";
 
@@ -78,14 +79,33 @@ export class App {
     session.onResult = (seq, code) => this.ui.creator.result(seq, code === RESULT_OK);
   }
 
+  /** Whatever carries voice here, if anything does; and whether the talk key is down. */
+  voice: VoicePort | null = null;
+  talking = false;
+
+  /** The talk key went down or came up, or something took the keyboard away. */
+  private talk(on: boolean): void {
+    if (on === this.talking) return;
+    this.talking = on;
+    this.voice?.talk(on);
+  }
+
   /** A key went down, repeated, or went up. Returns true if the page should not also act on it. */
   key(code: string, down: boolean, repeat = false): boolean {
     if (this.ui.key(code, down, repeat, this.session)) {
-      // A screen that takes the keyboard also takes it from the body.
-      if (this.ui.captureKeyboard) this.controls.release();
+      // A screen that takes the keyboard also takes it from the body, and from the microphone.
+      if (this.ui.captureKeyboard) {
+        this.controls.release();
+        this.talk(false);
+      }
       return true;
     }
     if (this.ui.captureKeyboard) return false;
+    if (code === "KeyB") {
+      // Held to talk.
+      if (!repeat) this.talk(down);
+      return true;
+    }
     const digit = /^Digit(\d)$/.exec(code);
     if (digit) {
       // 1 to 9 and then 0 take a hotbar slot in hand; the key of what is in hand puts it away.
@@ -113,6 +133,7 @@ export class App {
   /** The window lost focus. */
   blur(): void {
     this.controls.release();
+    this.talk(false);
   }
 
   /**
@@ -344,6 +365,7 @@ export class App {
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
+    hud.voice = this.talking && this.voice && this.voice.notice === "" ? "TALKING" : (this.voice?.notice ?? "");
     hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eyeNow) || this.who(world, eyeNow) : "";
     this.ui.build(aspect, hud, session);
     return packet;

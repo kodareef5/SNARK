@@ -5,7 +5,7 @@
 //   - no browser test suite and no browser automation packages
 //   - zero runtime packages, allow-listed development packages
 //   - deterministic maths inside the simulation
-//   - a small DOM/WebGL shell
+//   - a small DOM/WebGL shell, and a small browser side of voice
 //   - a wall-clock budget for the whole check
 //
 // Raising a budget or widening an allow-list is a decision, not a fix.
@@ -20,6 +20,8 @@ const ROOT = resolve(import.meta.dir, "..");
 const BUDGET_SECONDS = 20;
 /** Non-blank, non-comment lines allowed in client/shell. */
 const SHELL_MAX_LINES = 900;
+/** And in client/voice: the browser's side of voice, which like the shell has no tests. */
+const VOICE_MAX_LINES = 600;
 /** Development packages allowed in package.json. */
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
 
@@ -35,10 +37,11 @@ const ZONES: Zone[] = [
   { dir: "shared", may: ["shared"], builtins: false },
   { dir: "content", may: ["shared", "content"], builtins: false },
   { dir: "client/core", may: ["shared", "content", "client/core"], builtins: false },
-  { dir: "client/shell", may: ["shared", "content", "client/core", "client/shell"], builtins: false },
+  { dir: "client/voice", may: ["shared", "client/core", "client/voice"], builtins: false },
+  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/shell"], builtins: false },
   { dir: "server", may: ["shared", "content", "server"], builtins: true },
   { dir: "tools", may: "*", builtins: true },
-  // Tests never touch the DOM zone. Logic that needs a test belongs in client/core.
+  // Tests never touch the DOM zones. Logic that needs a test belongs in client/core.
   { dir: "tests", may: ["shared", "content", "client/core", "server", "tools", "tests"], builtins: true },
 ];
 
@@ -98,6 +101,7 @@ function checkPolicy(): void {
 
   const files = ZONES.flatMap((z) => walk(join(ROOT, z.dir))).filter((f) => f.endsWith(".ts"));
   let shellLines = 0;
+  let voiceLines = 0;
 
   for (const file of files) {
     const rel = relative(ROOT, file);
@@ -108,6 +112,10 @@ function checkPolicy(): void {
     if (zone.dir === "client/shell") {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/shell has no tests; move the logic into client/core`);
       shellLines += src.split("\n").filter((l) => l.trim().length > 0).length;
+    }
+    if (zone.dir === "client/voice") {
+      if (rel.endsWith(".test.ts")) fail(`${rel}: client/voice has no tests; move the logic into client/core/voice`);
+      voiceLines += src.split("\n").filter((l) => l.trim().length > 0).length;
     }
 
     for (const m of src.matchAll(IMPORT)) {
@@ -139,7 +147,11 @@ function checkPolicy(): void {
   if (shellLines > SHELL_MAX_LINES) {
     fail(`client/shell is ${shellLines} lines (budget ${SHELL_MAX_LINES}); move logic into client/core`);
   }
+  if (voiceLines > VOICE_MAX_LINES) {
+    fail(`client/voice is ${voiceLines} lines (budget ${VOICE_MAX_LINES}); move logic into client/core/voice`);
+  }
   console.log(`  shell size   ${shellLines}/${SHELL_MAX_LINES} lines`);
+  console.log(`  voice size   ${voiceLines}/${VOICE_MAX_LINES} lines`);
 }
 
 async function run(cmd: string[], quiet: boolean): Promise<{ ok: boolean; out: string }> {

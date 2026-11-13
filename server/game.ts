@@ -207,6 +207,8 @@ export class Client {
   /** The version of the tribes this connection has been told; and the tick an invitation it was shown runs out, or 0. */
   sentTribe = -1;
   inviteUntil = 0;
+  /** The voice token this connection has been sent (by reference), or null. */
+  sentVoice: Uint8Array | null = null;
   /** Persistent id of the container this session has open, or 0; and what of it has been sent. */
   open = 0;
   sentOpen = 0;
@@ -254,6 +256,7 @@ export class Client {
     this.sentRules = -1;
     this.sentTribe = -1;
     this.inviteUntil = 0;
+    this.sentVoice = null;
     this.open = this.sentOpen = 0;
     this.pressed = this.before = 0;
   }

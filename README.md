@@ -34,6 +34,7 @@ around it trees, rocks, bushes, and a herd of wandering placeholder creatures.
 | V | Look from behind the body, or from its eyes |
 | E | Pick a bush, open a cache, close it |
 | I, P, M, O | Inventory, character (stats, engrams, crafting), map, settings |
+| B | Hold to talk. The first press asks for the microphone |
 | Enter, Insert, / | Chat: to everyone, to those within 60 m, to your tribe. Tab changes channel, Enter says the line |
 | Backquote or Tab | Console. `help` lists commands; `tribe` founds and runs a tribe; `mute <name>` stops you hearing someone |
 | Escape | Close a screen |
@@ -45,6 +46,9 @@ weapon to the hotbar in the inventory and press its number), `dummy flak` for
 something to shoot, `armor flak` to wear a set, `place wall_wood` for something
 to burn, `buff burning`, and `rule` for the server's damage rules. On a real server set `SNARK_ADMIN_PASSWORD`; without it cheats are
 off.
+
+Voice needs a microphone, and away from `localhost` a browser gives one only to
+a page served over TLS: start the server with `--cert cert.pem --key key.pem`.
 
 ## Commands
 

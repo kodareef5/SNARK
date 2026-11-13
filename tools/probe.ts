@@ -7,6 +7,7 @@
 //   bun run probe
 //   CHROME=/path/to/chrome bun run probe
 //   bun run probe -- --bench     also fly the camera for 900 frames and report frame times
+//   bun run probe -- --no-voice  leave out the voice loop (the page talking to itself through the server)
 //
 // The frame times of a headless browser on this machine say little about a
 // player's. For a real number, run `bun run dev` and open
@@ -36,8 +37,11 @@ if (!chrome) {
 await buildClient();
 const server = startServer({ dev: true, port: 0, probeScene: true });
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
-const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe`;
-const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
+// The page also talks to itself: a microphone that is not one (Chrome's own stand-in, which beeps), allowed
+// without asking, and sound that may start without a touch.
+const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${process.argv.includes("--no-voice") ? "" : "&voice=1"}`;
+const VOICE_FLAGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
+const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
 
 const timeout = new Promise<null>((r) => setTimeout(() => r(null), 30000));
 const report = (await Promise.race([server.selfcheck, timeout])) as { ok?: boolean } | null;
