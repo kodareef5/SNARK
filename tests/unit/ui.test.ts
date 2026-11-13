@@ -39,6 +39,7 @@ function fullHud(): HudModel {
   m.clock = "23:59";
   m.status = "disconnected (reason -2)";
   m.voice = "voice: no microphone (refused, or none to be had)";
+  for (let i = 0; i < 8; i++) m.talkers.push("W".repeat(24));
   m.banner = "SPECTATING";
   m.vitals[4]!.fraction = 0.5;
   for (let i = 0; i < 80; i++) m.markers.push({ kind: i % 2 ? "player" : "creature", u: (i % 9) / 8, v: (i % 7) / 6 });

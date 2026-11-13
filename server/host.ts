@@ -169,7 +169,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const tribes = new Tribes(world, records);
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const chat = new Chat({ game, records, rules, tribes });
-  const voice = new Voice({ game }, (out) => void crypto.getRandomValues(out));
+  const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name) }, (out) => void crypto.getRandomValues(out));
   /** The session a survivor has here now, lingering bodies not counted. */
   const sessionOf = (pid: number) => game.clients.find((c) => c?.active && !c.closed && c.pid === pid) ?? null;
   tribes.onSave = () => persistence?.store.setMeta("tribes", tribes.serialize());

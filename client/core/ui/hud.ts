@@ -12,8 +12,9 @@ export const KEY_CLOCK = 12;
 export const KEY_VITAL = 80;
 /** Dark over the world while unconscious. */
 export const KEY_OUT = 36;
-/** A few words about voice, under the readout. */
+/** A few words about voice, under the readout; and under that, per survivor being heard, their name. */
 export const KEY_VOICE = 37;
+export const KEY_TALKER = 70;
 /** Per thing acting on the body: its mark. */
 export const KEY_BUFF = 180;
 export const KEY_CROSS = 30;
@@ -61,6 +62,13 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     const n = f.add(KEY_VOICE, K_PANEL, MARGIN, 10 + m.readout.length * lh + 4, Math.min(W - MARGIN * 2, m.voice === "TALKING" ? 76 : 330), lineHeight(S_BUFF) + 4, S_BUFF);
     n.tint = m.voice === "TALKING" ? 0x3c9a4a : 0x4a4f58;
     n.text = m.voice;
+  }
+  // Who is being heard, one to a row.
+  const talkH = lineHeight(S_BUFF) + 4;
+  for (let i = 0; i < m.talkers.length && i < 8; i++) {
+    const n = f.add(KEY_TALKER + i, K_PANEL, MARGIN, 10 + m.readout.length * lh + 4 + (talkH + 2) * (i + (m.voice !== "" ? 1 : 0)), 170, talkH, S_BUFF);
+    n.tint = 0x2f5f8a;
+    n.text = m.talkers[i]!;
   }
 
   // On a narrow canvas the minimap moves below the readout instead of beside it.

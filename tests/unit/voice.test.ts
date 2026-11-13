@@ -1,7 +1,8 @@
 // Voice: the packets, the buffer between the network and the ear, the rate changer, and the talk gate.
 
 import { expect, test } from "bun:test";
-import { JitterBuffer, START_TARGET } from "../../client/core/voice/jitter.ts";
+import { JitterBuffer, MAX_TARGET, MIN_TARGET, START_TARGET } from "../../client/core/voice/jitter.ts";
+import { voiceGain } from "../../client/core/voice/place.ts";
 import { Resampler } from "../../client/core/voice/resample.ts";
 import { GATE_END, GATE_SEND, GATE_SKIP, Gate, TAIL_FRAMES, Uplink } from "../../client/core/voice/talk.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -174,10 +175,12 @@ test("the buffer plays what arrives on time in order, a set way behind the newes
     clock += 128;
   }
   // Silence for the target, then every sample of every frame, in order, once; then nothing.
-  const first = heard.findIndex((v) => v !== 0);
+  // The first five milliseconds come up from nothing, so that a voice does not begin with a click.
+  const first = heard.findIndex((v) => v !== 0) - 1;
   expect(first).toBe(START_TARGET);
   const voiced = heard.slice(first, first + total * F);
-  for (let i = 0; i < voiced.length; i += 97) expect(voiced[i]).toBeCloseTo(100 + i / F, 3);
+  expect(voiced[120]).toBeCloseTo(100.125 * 0.5, 3);
+  for (let i = 291; i < voiced.length; i += 97) expect(voiced[i]).toBeCloseTo(100 + i / F, 3);
   expect(heard.slice(first + total * F).every((v) => v === 0)).toBe(true);
   expect(jb.playing).toBe(false);
   expect(jb.stats).toEqual({ played: total, missing: 0, late: 0, restarts: 0, jumps: 0, odd: 0 });
@@ -192,16 +195,20 @@ test("the buffer: a frame that never comes is a gap, one that comes too late is 
   const jb = new JitterBuffer();
   for (const f of [1, 2, 3, 6, 5]) jb.push(f * F, frame(f));
   expect(jb.depth).toBe(START_TARGET + 6 * F);
-  // Step the wait off first so that frames line up with reads; each read adds to what was there (-1), and a gap leaves it alone.
+  // Step the wait off first so that frames line up with reads. The gap where 4 was is covered by 3, played backwards and fading.
   jb.read(new Float32Array(START_TARGET), START_TARGET);
   const o = new Float32Array(F);
   const heard: number[] = [];
   for (let k = 0; k < 6; k++) {
-    o.fill(-1);
+    o.fill(0);
     jb.read(o, F);
-    heard.push(o[10]! < 0 ? -1 : Math.floor(o[10]! + 1));
+    heard.push(Math.floor(o[F - 10]!));
+    if (k === 3) {
+      expect(o[0]).toBeCloseTo(4 - 1 / F, 2);
+      expect(o[F - 1]).toBeCloseTo(3 * 0.5, 1);
+    }
   }
-  expect(heard).toEqual([1, 2, 3, -1, 5, 6]);
+  expect(heard).toEqual([1, 2, 3, 1, 5, 6]);
   expect(jb.stats).toEqual({ played: 5, missing: 1, late: 0, restarts: 0, jumps: 0, odd: 0 });
   // With nothing left in hand, whatever comes next is a new start, even the lost frame turning up at last.
   jb.push(4 * F, frame(4));
@@ -345,4 +352,159 @@ test("push to talk: every frame while the key is held and a short tail after, th
   up.capture(GATE_SEND);
   parseAudio(up.encoded(opus(rng, 10))!);
   expect([audio.seq, audio.time / F]).toEqual([3, 7]);
+});
+
+test("a lost frame is covered by the one before it and then by silence, with no step in the sound at either edge", () => {
+  // A steady tone, 20 ms to a frame; which frames arrive is the test's to say.
+  const tone = (f: number): Float32Array => {
+    const pcm = new Float32Array(F);
+    for (let i = 0; i < F; i++) pcm[i] = 0.5 * Math.sin((2 * Math.PI * 200 * (f * F + i)) / 48000);
+    return pcm;
+  };
+  /** Each frame arrives as it is made, but for those lost; what is heard, lined up so that frame f begins at f times the frame. */
+  const play = (lost: number[], frames: number): Float32Array => {
+    const jb = new JitterBuffer();
+    const all = new Float32Array(START_TARGET + frames * F);
+    for (let at = 0, f = 0; at < all.length; at += 120) {
+      for (; f < frames && f * F <= at; f++) if (!lost.includes(f)) jb.push(f * F, tone(f), f === frames - 1);
+      jb.read(all.subarray(at), 120);
+    }
+    return all.subarray(START_TARGET);
+  };
+  const energy = (x: Float32Array, from: number, to: number): number => {
+    let e = 0;
+    for (let i = from; i < to; i++) e += x[i]! * x[i]!;
+    return Math.sqrt(e / (to - from));
+  };
+  const step = (x: Float32Array, from: number, to: number): number => {
+    let worst = 0;
+    for (let i = Math.max(1, from); i < to; i++) worst = Math.max(worst, Math.abs(x[i]! - x[i - 1]!));
+    return worst;
+  };
+  const whole = play([], 20);
+  const full = energy(whole, 5 * F, 6 * F);
+  // The largest step a tone of this pitch and loudness takes from one sample to the next.
+  const natural = step(whole, 2 * F, 18 * F);
+  expect(full).toBeCloseTo(0.5 / Math.SQRT2, 2);
+
+  // One frame lost: its place is filled, quieter, and the sound has no jump going in or coming out.
+  const one = play([8], 20);
+  const covered = energy(one, 8 * F, 9 * F);
+  expect(covered).toBeGreaterThan(full * 0.45);
+  expect(covered).toBeLessThan(full * 0.9);
+  expect(step(one, 8 * F - 4, 9 * F + 200)).toBeLessThan(natural * 2.2);
+  expect(energy(one, 9 * F + 200, 10 * F)).toBeCloseTo(full, 2);
+
+  // Five lost: covered for three frames, each quieter than the last, then nothing; and the voice comes back in from silence.
+  const five = play([8, 9, 10, 11, 12], 20);
+  const levels = [8, 9, 10, 11, 12].map((f) => energy(five, f * F, (f + 1) * F));
+  expect(levels[0]!).toBeGreaterThan(levels[1]! * 1.6);
+  expect(levels[1]!).toBeGreaterThan(levels[2]! * 1.6);
+  expect(levels[3]!).toBeLessThan(full * 0.02);
+  expect(levels[4]!).toBe(0);
+  expect(Math.abs(five[13 * F]!)).toBeLessThan(0.001);
+  expect(step(five, 8 * F - 4, 14 * F)).toBeLessThan(natural * 2.2);
+  expect(energy(five, 13 * F + 480, 14 * F)).toBeCloseTo(full, 1);
+  // A speaker that simply stops is not echoed for long, and one that said it had finished is not echoed at all.
+  const said = play([], 6);
+  expect(energy(said, 5 * F, 6 * F)).toBeCloseTo(full, 1);
+  const jb = new JitterBuffer();
+  for (let f = 0; f < 6; f++) {
+    jb.push(f * F, tone(f));
+    jb.read(new Float32Array(F), F);
+  }
+  jb.read(new Float32Array(START_TARGET), START_TARGET);
+  const after = new Float32Array(8 * F);
+  jb.read(after, after.length);
+  expect(energy(after, 0, F)).toBeGreaterThan(full * 0.4);
+  expect(energy(after, 4 * F, 8 * F)).toBe(0);
+});
+
+test("the wait before playing follows the link: short on a steady one, longer on an uneven one, and a frame longer each time it runs dry", () => {
+  /** Frames sent every 20 ms, each arriving after a delay the link chooses, in talk of a few seconds with pauses between. */
+  const talk = (delayMs: (i: number, rng: Rng) => number, utterances = 6): JitterBuffer => {
+    const jb = new JitterBuffer();
+    const rng = new Rng(11);
+    let f = 0;
+    let clock = 0;
+    for (let u = 0; u < utterances; u++) {
+      const n = 150;
+      const arrivals: [number, number][] = [];
+      for (let i = 0; i < n; i++) arrivals.push([(f + i) * F + Math.round(delayMs(f + i, rng) * 48), f + i]);
+      arrivals.sort((a, b) => a[0] - b[0]);
+      let at = 0;
+      const until = (f + n + 40) * F;
+      for (; clock < until; clock += 128) {
+        while (at < arrivals.length && arrivals[at]![0] <= clock) {
+          const g = arrivals[at++]![1];
+          jb.push(g * F, frame(g), g === f + n - 1, clock);
+        }
+        jb.read(new Float32Array(128), 128);
+      }
+      f += n + 60;
+    }
+    return jb;
+  };
+  // A steady link: the wait settles at its least, and nothing is lost on the way there.
+  const steady = talk(() => 30);
+  expect(steady.target).toBe(MIN_TARGET);
+  expect(steady.stats.missing + steady.stats.late + steady.stats.restarts).toBe(0);
+  // Delay that wanders up to 90 ms: the wait grows to cover nearly all of it, and little is lost once it has.
+  const uneven = talk((_i, rng) => 30 + rng.range(0, 90));
+  expect(uneven.target).toBeGreaterThanOrEqual(100 * 48);
+  expect(uneven.target).toBeLessThanOrEqual(140 * 48);
+  const settled = talk((_i, rng) => 30 + rng.range(0, 90), 12);
+  expect(settled.stats.late - uneven.stats.late).toBeLessThan(40);
+  // Wild delay cannot push it past its most; and a link that settles lets it come back down.
+  expect(talk((_i, rng) => rng.range(0, 900), 4).wanted).toBe(MAX_TARGET);
+  const calmer = talk((i, rng) => (i < 400 ? 30 + rng.range(0, 90) : 30), 10);
+  expect(calmer.target).toBe(MIN_TARGET);
+
+  // Running dry in the middle of talk: the next frame starts it again after a short wait, and the wait is a frame longer from then on.
+  const jb = new JitterBuffer();
+  let clock = 0;
+  const feed = (from: number, to: number): void => {
+    for (let f = from; f < to; f++) {
+      jb.push(f * F, frame(f), false, clock);
+      for (let k = 0; k < F; k += 120) jb.read(new Float32Array(120), 120);
+      clock += F;
+    }
+  };
+  feed(0, 50);
+  const before = jb.target;
+  // Half a second of nothing arriving while the clock runs on.
+  for (let k = 0; k < 12000; k += 120) jb.read(new Float32Array(120), 120);
+  clock += 12000;
+  feed(50, 60);
+  expect(jb.stats.restarts).toBe(1);
+  expect(jb.target).toBe(before + F);
+  expect(jb.playing).toBe(true);
+});
+
+test("a voice is loudest near its speaker, falls away with distance, is faint at the edge of its range and gone a little past it", () => {
+  for (const [mode, range] of [[MODE_WHISPER, 4], [MODE_TALK, 25], [MODE_YELL, 60]] as const) {
+    expect(voiceGain(0, mode)).toBe(1);
+    expect(voiceGain(range * 0.15, mode)).toBe(1);
+    // Twice as far, half as loud.
+    expect(voiceGain(range * 0.3, mode)).toBeCloseTo(0.5, 6);
+    expect(voiceGain(range * 0.6, mode)).toBeCloseTo(0.25, 6);
+    expect(voiceGain(range, mode)).toBeCloseTo(0.15, 6);
+    // Past the edge, where the server still sends it for a step or two: down to nothing, with no jump.
+    expect(voiceGain(range * 1.05, mode)).toBeCloseTo(0.075, 6);
+    expect(voiceGain(range * 1.1, mode)).toBe(0);
+    expect(voiceGain(range * 3, mode)).toBe(0);
+    let before = 1;
+    for (let d = 0; d <= range * 1.2; d += range / 200) {
+      const g = voiceGain(d, mode);
+      expect(g).toBeLessThanOrEqual(before);
+      expect(before - g).toBeLessThan(0.04);
+      before = g;
+    }
+  }
+  // A yell is heard where talk is not, and louder where both are.
+  expect(voiceGain(40, MODE_YELL)).toBeGreaterThan(0);
+  expect(voiceGain(40, MODE_TALK)).toBe(0);
+  expect(voiceGain(20, MODE_YELL)).toBeGreaterThan(voiceGain(20, MODE_TALK));
+  // A speaker whose body this client has not been shown is played at a middling level, not at full.
+  expect(voiceGain(-1, MODE_TALK)).toBe(0.5);
 });

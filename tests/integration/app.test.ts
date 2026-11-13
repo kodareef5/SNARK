@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { KEY_CONSOLE_INPUT, KEY_CONSOLE_ROW } from "../../client/core/ui/console.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
-import { KEY_BANNER, KEY_CROSS, KEY_PROMPT, KEY_READOUT, KEY_STATUS, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
+import { KEY_BANNER, KEY_CROSS, KEY_PROMPT, KEY_READOUT, KEY_STATUS, KEY_TALKER, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -264,7 +264,9 @@ test("the talk key: held to talk, let go by anything that takes the keyboard, an
   expect(app.ui.frame.find(KEY_VOICE)).toBeNull();
 
   const calls: boolean[] = [];
-  const port = { notice: "", talk: (on: boolean) => void calls.push(on) };
+  const told: number[][] = [];
+  const speakers = new Map<number, { handle: number; name: string; speaking: boolean }>();
+  const port = { notice: "", talk: (on: boolean) => void calls.push(on), speakers, hear: (d: Float32Array, n: number) => void told.push([...d.subarray(0, n * 2)]) };
   app.voice = port;
   app.key("KeyB", true);
   app.key("KeyB", true, true); // held: once
@@ -295,4 +297,35 @@ test("the talk key: held to talk, let go by anything that takes the keyboard, an
   expect(app.ui.frame.find(KEY_VOICE)!.text).toBe(port.notice);
   // The session was given what opens the voice socket.
   expect(app.session.voice.version).toBe(1);
+
+  // Hearing others: whatever plays them is told how far off each is, and the screen names whoever is talking.
+  expect(told.length).toBe(0);
+  const bob = h.join("bob");
+  run(500);
+  h.say(bob, "enablecheats");
+  const me = h.world.ents;
+  const e = h.ent(app.session);
+  h.say(bob, `tp ${(me.x[e]! + 6).toFixed(3)} ${(me.z[e]! + 8).toFixed(3)}`);
+  run(300);
+  speakers.set(7, { handle: bob.ownHandle, name: "bob", speaking: false });
+  speakers.set(9, { handle: 0xfffff, name: "cy", speaking: true });
+  port.notice = "";
+  run(50);
+  // Bob is ten metres off; Cy is someone this client cannot see.
+  const last = told.at(-1)!;
+  expect([last[0], last[2], last[3]]).toEqual([7, 9, -1]);
+  expect(last[1]).toBeCloseTo(10, 1);
+  const talkers = (): string[] => {
+    const out: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      const n = app.ui.frame.find(KEY_TALKER + i);
+      if (n) out.push(n.text);
+    }
+    return out;
+  };
+  expect(talkers()).toEqual(["cy"]);
+  speakers.get(7)!.speaking = true;
+  speakers.get(9)!.speaking = false;
+  run(50);
+  expect(talkers()).toEqual(["bob"]);
 });

@@ -35,6 +35,13 @@ export const REACH_GLOBAL = 2;
 export const FLAG_LOOP = 32;
 const RESERVED = 0xc0;
 
+/** How far a voice carries, in metres, by how loud it is meant: a whisper, talk, a yell. */
+export const VOICE_RANGE: readonly number[] = [4, 25, 60];
+/** Someone already hearing a speaker goes on hearing it out to this many times its range, so that a step back and forth at the edge is not heard as cuts. */
+export const KEEP_RANGE = 1.1;
+/** The most speakers one listener is sent at once: the nearest. */
+export const MAX_HEARD = 8;
+
 /** Samples a second, and in one frame: 20 ms. */
 export const SAMPLE_RATE = 48000;
 export const FRAME_SAMPLES = 960;

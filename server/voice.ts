@@ -10,11 +10,17 @@
 // A packet says nothing of who is speaking or where they are: the server
 // knows both from the session, and what a client claims is not asked for.
 //
+// Who hears whom is worked out here, over sessions, a few times a second: a
+// voice carries as far as it is meant (a whisper, talk, a yell), a listener is
+// sent the nearest few speakers and no more, and nobody is sent a speaker
+// they have muted. Only a living survivor's voice has a place to carry from.
+//
 // This file has no sockets of its own: the process gives it something to
 // send on (server/main.ts), and tests give it one they can read.
 
 import { TICK_RATE } from "../shared/coords.ts";
-import { AUTH_BYTES, Batch, FLAG_LOOP, TOKEN_BYTES, VOICE_AUDIO, VOICE_AUTH, audio, parseAudio, seqNewer } from "../shared/voice/packet.ts";
+import { SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { AUTH_BYTES, Batch, FLAG_LOOP, KEEP_RANGE, MAX_HEARD, MAX_INTRO_NAME, MODE_TALK, TOKEN_BYTES, VOICE_AUDIO, VOICE_AUTH, VOICE_RANGE, audio, modeOf, parseAudio, seqNewer, writeIntro } from "../shared/voice/packet.ts";
 import type { Client, GameServer } from "./game.ts";
 
 /** Packets a speaker may send in a second, and at once after a pause: 50 a second is what talking takes. */
@@ -24,6 +30,9 @@ const BURST = 15;
 const MAX_STRIKES = 8;
 /** Ticks a socket has to say whose it is. */
 const AUTH_TICKS = 5 * TICK_RATE;
+/** Who hears whom is worked out every this many ticks, for whoever has spoken within this many. */
+const ROUTE_TICKS = 3;
+const SPEAKING_TICKS = 10;
 
 export interface VoiceSocket {
   /** Send one packet now. False if the listener is too far behind to take it: it is dropped, not queued. */
@@ -47,6 +56,16 @@ export class VoicePeer {
   /** It has frames waiting to be sent at the end of this turn. */
   waiting = false;
   closed = false;
+  /** How loud its last packet was meant; who is sent what it says; and the tick that was last worked out. */
+  mode = MODE_TALK;
+  readonly routes: VoicePeer[] = [];
+  routedAt = -1000;
+  /** The speakers (by slot) it is being sent, and the entity each was last said to be. */
+  readonly hears = new Set<number>();
+  readonly introduced = new Map<number, number>();
+  /** Scratch for working out routes: the speakers in reach of it, and how far (squared) each is. */
+  readonly near: VoicePeer[] = [];
+  readonly nearAt: number[] = [];
   readonly sock: VoiceSocket;
 
   constructor(sock: VoiceSocket) {
@@ -56,16 +75,21 @@ export class VoicePeer {
 
 export interface VoiceContext {
   readonly game: GameServer;
+  /** Whether `listener` has asked not to hear `speaker`. */
+  muted(listener: Client, speaker: Client): boolean;
 }
 
 export class Voice {
-  /** Packets taken, frames put in a listener's batch, packets refused for their shape, their rate or their order, and batches a slow listener could not take. */
-  readonly stats = { packets: 0, relayed: 0, malformed: 0, limited: 0, stale: 0, dropped: 0 };
+  /** Packets taken, frames put in a listener's batch, packets refused for their shape, their rate or their order, batches a slow listener could not take, and times who hears whom was worked out. */
+  readonly stats = { packets: 0, relayed: 0, malformed: 0, limited: 0, stale: 0, dropped: 0, routed: 0 };
   readonly peers = new Set<VoicePeer>();
   /** The peer of each session, by its slot. */
   private readonly bySlot: (VoicePeer | null)[] = [];
   private readonly tokens = new Map<Client, Uint8Array>();
   private readonly waiting: VoicePeer[] = [];
+  private readonly speakers: VoicePeer[] = [];
+  private readonly encoder = new TextEncoder();
+  private readonly intro = new Uint8Array(8 + MAX_INTRO_NAME);
   private readonly ctx: VoiceContext;
   private readonly random: (out: Uint8Array) => void;
 
@@ -153,8 +177,109 @@ export class Voice {
     this.stats.packets++;
     const c = peer.client;
     if (c.closed || !c.active) return;
+    const flags = audio.flags & ~FLAG_LOOP;
     // Back to the speaker, if it asked to hear itself: the way to test a microphone, and the whole of the path.
-    if ((audio.flags & FLAG_LOOP) !== 0) this.give(peer, c.id, audio.flags & ~FLAG_LOOP, audio.seq, audio.time, audio.opus);
+    if ((audio.flags & FLAG_LOOP) !== 0) this.give(peer, c.id, flags, audio.seq, audio.time, audio.opus);
+    if (!this.maySpeak(c)) return;
+    // To whoever is in reach. Someone who has just begun is not made to wait for the next working-out.
+    peer.mode = modeOf(flags);
+    const tick = this.ctx.game.world.tick;
+    if (tick - peer.routedAt > ROUTE_TICKS) this.routeOne(peer, tick);
+    for (const to of peer.routes) if (!to.closed) this.give(to, c.id, flags, audio.seq, audio.time, audio.opus);
+  }
+
+  /** Only a living survivor's voice has somewhere to carry from: the dead and those only watching are not heard. */
+  private maySpeak(c: Client): boolean {
+    return c.active && !c.closed && c.state === SESSION_ALIVE && c.ent >= 0;
+  }
+
+  /** Whether a peer is someone voices can be sent to. */
+  private listens(peer: VoicePeer): boolean {
+    return peer.client !== null && peer.client.active && !peer.client.closed;
+  }
+
+  /** How far apart two sessions are, squared: each where its body is, or where it is watching from. */
+  private apart(a: Client, b: Client): number {
+    const dx = a.body.x - b.body.x;
+    const dy = a.body.y - b.body.y;
+    const dz = a.body.z - b.body.z;
+    return dx * dx + dy * dy + dz * dz;
+  }
+
+  /** Whether `to` is where `speaker`'s voice reaches: within its range, or a little past it if already listening. */
+  private reaches(speaker: VoicePeer, to: VoicePeer, d2: number): boolean {
+    const r = VOICE_RANGE[speaker.mode]! * (to.hears.has(speaker.client!.id) ? KEEP_RANGE : 1);
+    return d2 <= r * r;
+  }
+
+  /** Tell a listener who a speaker number is, if it has not been told or the speaker has a new body. */
+  private introduce(to: VoicePeer, speaker: Client): void {
+    const handle = this.ctx.game.world.ents.handleOf(speaker.ent);
+    if (to.introduced.get(speaker.id) === handle) return;
+    to.introduced.set(speaker.id, handle);
+    const name = this.encoder.encode(speaker.name);
+    to.sock.send(this.intro.subarray(0, writeIntro(this.intro, speaker.id, handle, name)));
+  }
+
+  /** One speaker's listeners, worked out at once: everyone in reach who has room for another voice. */
+  private routeOne(s: VoicePeer, tick: number): void {
+    const c = s.client!;
+    s.routes.length = 0;
+    for (const to of this.peers) {
+      if (to === s || !this.listens(to)) continue;
+      if (!to.hears.has(c.id) && to.hears.size >= MAX_HEARD) continue;
+      if (!this.reaches(s, to, this.apart(c, to.client!)) || this.ctx.muted(to.client!, c)) continue;
+      to.hears.add(c.id);
+      s.routes.push(to);
+      this.introduce(to, c);
+    }
+    s.routedAt = tick;
+  }
+
+  /** Everyone's listeners, worked out afresh: each listener is sent the nearest speakers in reach, up to the most it may hear. */
+  private route(tick: number): void {
+    const speakers = this.speakers;
+    speakers.length = 0;
+    for (const p of this.peers) {
+      p.near.length = p.nearAt.length = 0;
+      if (p.client && tick - p.heardAt <= SPEAKING_TICKS && this.maySpeak(p.client)) speakers.push(p);
+      else p.routes.length = 0;
+    }
+    if (speakers.length === 0) {
+      for (const p of this.peers) p.hears.clear();
+      return;
+    }
+    this.stats.routed++;
+    for (const s of speakers) {
+      const c = s.client!;
+      for (const to of this.peers) {
+        if (to === s || !this.listens(to)) continue;
+        const d2 = this.apart(c, to.client!);
+        if (!this.reaches(s, to, d2) || this.ctx.muted(to.client!, c)) continue;
+        to.near.push(s);
+        // A voice already being heard counts as a little nearer than it is, so that in a crowd on the move the few that are heard do not keep changing.
+        to.nearAt.push(to.hears.has(c.id) ? d2 / (KEEP_RANGE * KEEP_RANGE) : d2);
+      }
+      s.routes.length = 0;
+      s.routedAt = tick;
+    }
+    for (const to of this.peers) {
+      to.hears.clear();
+      const near = to.near;
+      const at = to.nearAt;
+      // The nearest few: picked one at a time, which for this few is the quickest way.
+      for (let taken = 0; taken < MAX_HEARD && taken < near.length; taken++) {
+        let best = taken;
+        for (let k = taken + 1; k < near.length; k++) if (at[k]! < at[best]!) best = k;
+        const s = near[best]!;
+        near[best] = near[taken]!;
+        at[best] = at[taken]!;
+        near[taken] = s;
+        to.hears.add(s.client!.id);
+        s.routes.push(to);
+        this.introduce(to, s.client!);
+      }
+    }
   }
 
   private auth(peer: VoicePeer, data: Uint8Array): boolean {
@@ -205,8 +330,9 @@ export class Voice {
     this.waiting.length = 0;
   }
 
-  /** Once a tick: a socket that has not said whose it is in time is closed. */
+  /** Once a tick: a socket that has not said whose it is in time is closed, and every few ticks who hears whom is worked out. */
   step(tick: number): void {
     for (const peer of this.peers) if (!peer.client && tick - peer.since > AUTH_TICKS) this.close(peer);
+    if (tick % ROUTE_TICKS === 0) this.route(tick);
   }
 }

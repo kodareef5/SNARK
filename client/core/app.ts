@@ -90,6 +90,37 @@ export class App {
     this.voice?.talk(on);
   }
 
+  /**
+   * Tell whatever plays voices how far off each speaker is, from where this
+   * client sees their bodies, and the screen who is talking.
+   */
+  private listen(hud: HudModel): void {
+    hud.talkers.length = 0;
+    const v = this.voice;
+    if (!v || v.speakers.size === 0) return;
+    const r = this.remote;
+    const own = this.session.own;
+    const at = this.heardAt;
+    let n = 0;
+    for (const [speaker, s] of v.speakers) {
+      if (n * 2 >= at.length) break;
+      const index = handleIndex(s.handle);
+      let far = -1;
+      for (let i = 0; i < r.count; i++) {
+        if (r.id[i] !== index) continue;
+        far = Math.hypot(r.x[i]! - own.x, r.y[i]! - own.y, r.z[i]! - own.z);
+        break;
+      }
+      at[n * 2] = speaker;
+      at[n * 2 + 1] = far;
+      n++;
+      if (s.speaking && hud.talkers.length < 8) hud.talkers.push(s.name);
+    }
+    v.hear(at, n);
+  }
+  /** Scratch: pairs of a speaker number and how far off it is. */
+  private readonly heardAt = new Float32Array(2 * 128);
+
   /** A key went down, repeated, or went up. Returns true if the page should not also act on it. */
   key(code: string, down: boolean, repeat = false): boolean {
     if (this.ui.key(code, down, repeat, this.session)) {
@@ -366,6 +397,7 @@ export class App {
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
     hud.voice = this.talking && this.voice && this.voice.notice === "" ? "TALKING" : (this.voice?.notice ?? "");
+    this.listen(hud);
     hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eyeNow) || this.who(world, eyeNow) : "";
     this.ui.build(aspect, hud, session);
     return packet;

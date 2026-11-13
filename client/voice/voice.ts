@@ -7,7 +7,7 @@
 // Nothing here is tested, and nothing here decides anything: see
 // client/core/voice and shared/voice for what does.
 
-import type { VoicePort } from "../core/voice/port.ts";
+import type { VoicePort, VoiceSpeaker } from "../core/voice/port.ts";
 import { MODE_TALK, REACH_LOCAL } from "../../shared/voice/packet.ts";
 
 export interface VoiceReport {
@@ -24,8 +24,9 @@ export interface VoiceReport {
   errors: number;
   /** Milliseconds for a packet to come back from the server, when the loop is on; -1 before one has. */
   rttMs: number;
-  /** Milliseconds the audio device adds on the way out. */
+  /** Milliseconds the audio device adds on the way out, and the longest wait any buffer is holding. */
   outputMs: number;
+  targetMs: number;
   sampleRate: number;
 }
 
@@ -33,7 +34,9 @@ export class VoiceIo implements VoicePort {
   notice = "";
   /** Have the server send this client's own voice back to it: for testing a microphone, and the probe. */
   loop = false;
-  readonly report: VoiceReport = { status: "off", socket: false, captured: 0, sent: 0, received: 0, decoded: 0, played: 0, missing: 0, late: 0, odd: 0, errors: 0, rttMs: -1, outputMs: 0, sampleRate: 0 };
+  readonly report: VoiceReport = { status: "off", socket: false, captured: 0, sent: 0, received: 0, decoded: 0, played: 0, missing: 0, late: 0, odd: 0, errors: 0, rttMs: -1, outputMs: 0, targetMs: 0, sampleRate: 0 };
+  readonly speakers = new Map<number, VoiceSpeaker>();
+  private out: AudioWorkletNode | null = null;
   private ctx: AudioContext | null = null;
   private worker: Worker | null = null;
   private mic: "none" | "asking" | "open" | "refused" = "none";
@@ -77,9 +80,22 @@ export class VoiceIo implements VoicePort {
       out.connect(ctx.destination);
       const link = new MessageChannel();
       out.port.postMessage({ port: link.port1 }, [link.port1]);
-      out.port.onmessage = (e) => Object.assign(this.report, e.data);
+      this.out = out;
+      out.port.onmessage = (e) => {
+        const { speaking, ...numbers } = e.data as { speaking: number[] };
+        Object.assign(this.report, numbers);
+        for (const [speaker, s] of this.speakers) s.speaking = speaking.includes(speaker);
+      };
       this.worker = new Worker("voice-worker.js", { type: "module" });
-      this.worker.onmessage = (e) => Object.assign(this.report, e.data);
+      this.worker.onmessage = (e) => {
+        const who = (e.data as { who?: [number, number, string][] }).who;
+        if (!who) return void Object.assign(this.report, e.data);
+        for (const [speaker, handle, name] of who) {
+          const s = this.speakers.get(speaker);
+          if (s) Object.assign(s, { handle, name });
+          else this.speakers.set(speaker, { handle, name, speaking: false });
+        }
+      };
       this.worker.postMessage({ t: "playback", port: link.port2 }, [link.port2]);
       this.report.sampleRate = ctx.sampleRate;
       this.report.status = "listening";
@@ -94,6 +110,10 @@ export class VoiceIo implements VoicePort {
     if (!ctx) return;
     if (ctx.state === "suspended") void ctx.resume();
     this.report.outputMs = Math.round(((ctx.outputLatency || 0) + ctx.baseLatency) * 1000);
+  }
+
+  hear(distances: Float32Array, count: number): void {
+    this.out?.port.postMessage({ d: distances.slice(0, count * 2) });
   }
 
   talk(on: boolean): void {

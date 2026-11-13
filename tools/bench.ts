@@ -33,6 +33,8 @@ import { parsePack } from "../shared/pack/pack.ts";
 import { Rng } from "../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../shared/world/heightfield.ts";
 import { StructureStore } from "../shared/world/structures.ts";
+import { AUDIO_HEADER, AUTH_BYTES, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, VOICE_BATCH, flagsOf, readBatch, writeAudio, writeAuth } from "../shared/voice/packet.ts";
+import type { VoicePeer } from "../server/voice.ts";
 import { buildCorePack } from "./pack/build.ts";
 
 const PLAYERS = 100;
@@ -488,6 +490,84 @@ const pack = parsePack(buildCorePack());
   record("one blast in a 2,000-piece base, median", percentile(blasts, 0.5), "ms", 1);
   record("one blast in a 2,000-piece base, worst", blasts[blasts.length - 1]!, "ms", 4);
   record("items the ledger cannot account for", host.items.audit().length, "", 0);
+}
+
+// ---------------------------------------------------------------- voice
+section("Voice: 100 survivors in one crowd, all talking at once");
+{
+  // Everyone within talking range of everyone: the most the relay can be asked to do.
+  const voice = host.voice;
+  const ents = world.ents;
+  const crowd = centers[0]!;
+  const spot = new Rng(77);
+  const wires: { peer: VoicePeer; bytes: number; packets: number; heard: Set<number>; ever: Set<number> }[] = [];
+  let mostAtOnce = 0;
+  const auth = new Uint8Array(AUTH_BYTES);
+  for (const c of host.game.clients) {
+    if (!c?.active || c.ent < 0) continue;
+    const x = crowd[0] + 70 + spot.range(-9, 9);
+    const z = crowd[1] + spot.range(-9, 9);
+    ents.setPosition(c.ent, x, world.hf.heightAt(x, z), z);
+    const wire = { peer: null as unknown as VoicePeer, bytes: 0, packets: 0, heard: new Set<number>(), ever: new Set<number>() };
+    wire.peer = voice.connect({
+      send(data) {
+        wire.bytes += data.length;
+        wire.packets++;
+        if (data[0] === VOICE_BATCH) readBatch(data, (speaker) => void (wire.heard.add(speaker), wire.ever.add(speaker)));
+        return true;
+      },
+      close() {},
+    });
+    voice.receive(wire.peer, auth.subarray(0, writeAuth(auth, c.id, voice.token(c))), 0);
+    wires.push(wire);
+  }
+  run(3, null);
+  const opus = new Uint8Array(60).fill(7);
+  opus[0] = 9 << 3;
+  const packet = new Uint8Array(AUDIO_HEADER + opus.length);
+  const flags = flagsOf(MODE_TALK, REACH_LOCAL, false, false);
+  const before = { ...voice.stats };
+  let relay = 0;
+  let clock = 1000;
+  let seq = 0;
+  // Two seconds of it: every 20 ms each of them sends a frame, and the world ticks on underneath, three ticks to five frames.
+  const frames = 100;
+  for (let f = 0; f < frames; f++) {
+    const t = performance.now();
+    for (const w of wires) voice.receive(w.peer, packet.subarray(0, writeAudio(packet, flags, seq, seq * FRAME_SAMPLES, opus)), clock);
+    voice.flush();
+    relay += performance.now() - t;
+    // Whose voices each was sent in this one moment.
+    for (const w of wires) {
+      if (w.heard.size > mostAtOnce) mostAtOnce = w.heard.size;
+      w.heard.clear();
+    }
+    seq++;
+    clock += 20;
+    if (f % 5 === 1 || f % 5 === 3 || f % 5 === 4) run(1, null);
+  }
+  // Working out who hears whom, by itself, while they are all still talking.
+  const routes: number[] = [];
+  const due = world.tick - (world.tick % 3);
+  for (let k = 0; k < 60; k++) {
+    const t = performance.now();
+    voice.step(due);
+    routes.push(performance.now() - t);
+  }
+  routes.sort((a, b) => a - b);
+  const seconds = (frames * 20) / 1000;
+  const packets = wires.length * frames;
+  record("survivors talking", wires.length, "");
+  record("frames relayed for each packet taken (the most a listener is sent is eight speakers)", (voice.stats.relayed - before.relayed) / (voice.stats.packets - before.packets), "", 8);
+  record("most speakers any one listener was sent at once", mostAtOnce, "", 8);
+  record("different speakers a listener heard in those two seconds, on average (they are all walking about)", wires.reduce((sum, w) => sum + w.ever.size, 0) / wires.length, "");
+  record("relay work for one second of everyone talking", relay / seconds, "ms", 20);
+  record("relay work per packet", (relay / packets) * 1000, "us");
+  record("working out who hears whom, median", percentile(routes, 0.5), "ms", 0.5);
+  record("working out who hears whom, worst", routes[routes.length - 1]!, "ms", 2);
+  record("sent to each listener", wires.reduce((sum, w) => sum + w.bytes, 0) / wires.length / seconds / 1000, "KB/s", 31);
+  record("packets refused or dropped", voice.stats.malformed + voice.stats.limited + voice.stats.dropped - before.malformed - before.limited - before.dropped, "", 0);
+  for (const w of wires) voice.disconnect(w.peer);
 }
 
 // ---------------------------------------------------------------- restart

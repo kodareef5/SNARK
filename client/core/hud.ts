@@ -115,6 +115,8 @@ export function fillAction(m: HudModel, session: ClientSession | null, reg: Regi
 export class HudModel {
   /** A few words about voice: that the microphone is live, or why it is not. "" for nothing to say. */
   voice = "";
+  /** The names of those being heard now. */
+  readonly talkers: string[] = [];
   lat = 50;
   lon = 50;
   x = 0;

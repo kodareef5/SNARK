@@ -6,8 +6,10 @@ import { JitterBuffer, START_TARGET } from "../../client/core/voice/jitter.ts";
 import { Downlink } from "../../client/core/voice/listen.ts";
 import { GATE_END, GATE_SEND, Uplink } from "../../client/core/voice/talk.ts";
 import type { VoicePeer, VoiceSocket } from "../../server/voice.ts";
+import { CMD_RESPAWN, SESSION_ALIVE } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
-import { AUDIO_HEADER, FLAG_END, FLAG_LOOP, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, TOKEN_BYTES, VOICE_AUDIO, flagsOf, writeAudio, writeAuth } from "../../shared/voice/packet.ts";
+import { AUDIO_HEADER, FLAG_END, FLAG_LOOP, FRAME_SAMPLES, KEEP_RANGE, MAX_HEARD, MODE_TALK, MODE_WHISPER, MODE_YELL, REACH_GLOBAL, REACH_LOCAL, REACH_TRIBE, TOKEN_BYTES, VOICE_AUDIO, VOICE_INTRO, VOICE_RANGE, flagsOf, writeAudio, writeAuth } from "../../shared/voice/packet.ts";
+import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const F = FRAME_SAMPLES;
@@ -132,10 +134,12 @@ test("hearing yourself: what a session says with the loop asked for comes back t
     voice.flush();
     expect(voice.pending).toBe(false);
   }
-  expect(voice.stats).toEqual({ packets: 50, relayed: 50, malformed: 0, limited: 0, stale: 0, dropped: 0 });
-  // Bob, who is standing beside her, hears nothing yet: this phase only sends a voice back to its owner.
-  expect(b.wire.got.length).toBe(0);
+  // Each frame went two ways: back to her, and to Bob, who stands beside her.
+  expect(voice.stats).toEqual({ packets: 50, relayed: 100, malformed: 0, limited: 0, stale: 0, dropped: 0, routed: 0 });
   expect(a.wire.got.length).toBe(50);
+  // Bob was told who that speaker is, once, before the first of it.
+  expect(b.wire.got.length).toBe(51);
+  expect(b.wire.got[0]![0]).toBe(VOICE_INTRO);
 
   // The client's side: the batches are read, each frame "decoded" (here: its number becomes its sound), and played.
   const down = new Downlink();
@@ -167,11 +171,13 @@ test("hearing yourself: what a session says with the loop asked for comes back t
   // The times it carried count every frame of the microphone's, spoken or not.
   expect(down.speakers.get(ada.voice.slot)!.lastTime).toBe((25 + 49) * F);
 
-  // Without the loop asked for, nothing comes back.
+  // Without the loop asked for, nothing comes back to her; Bob still hears.
   up.loop = false;
   up.capture(GATE_SEND);
+  a.wire.got.length = 0;
   send(a.peer, up.encoded(opus(rng, 0))!);
-  expect(voice.pending).toBe(false);
+  voice.flush();
+  expect([a.wire.got.length, b.wire.got.length]).toEqual([0, 52]);
   expect(h.host.items.audit()).toEqual([]);
 });
 
@@ -263,4 +269,205 @@ test("the relay is bounded: no faster than speech, in order, well formed, and a 
   // After that it is not listened to at all.
   send(a.peer, packet());
   expect(voice.stats.relayed).toBe(relayed);
+});
+
+/**
+ * Survivors with voice sockets on level ground, the first at a spot the rest
+ * are placed from; and a way for one to say a few frames and for the test to
+ * see who was sent them.
+ */
+function crowd(names: string[]) {
+  const base = setup(names);
+  const { h, sessions, voice, open } = base;
+  for (const s of sessions) h.say(s, "enablecheats");
+  const g = flatGround(h, 8, 70);
+  const at = { x: g.x + 4, z: g.z + 2 };
+  /** Put a survivor `far` metres north of the spot. */
+  const place = (s: ClientSession, far: number, side = 0): void => void h.say(s, `tp ${(at.x + side).toFixed(3)} ${(at.z + far).toFixed(3)}`, 200);
+  sessions.forEach((s, i) => place(s, i === 0 ? 0 : 1));
+  const wires = sessions.map((s) => open(s));
+  const rng = new Rng(3);
+  const buf = new Uint8Array(AUDIO_HEADER + 64);
+  const seqs = sessions.map(() => 0);
+  let now = 100000;
+  /** Session `who` (or each of several, together) says `n` frames as loud as `mode`, 20 ms apart; the world moves on with it. */
+  const say = (who: number | number[], n = 5, mode = MODE_TALK, reach = REACH_LOCAL, loop = false): void => {
+    for (let k = 0; k < n; k++) {
+      for (const i of typeof who === "number" ? [who] : who) {
+        const seq = seqs[i]!++;
+        voice.receive(wires[i]!.peer, buf.subarray(0, writeAudio(buf, flagsOf(mode, reach, false, loop), seq & 0xffff, seq * F, opus(rng, seq))), now);
+      }
+      voice.flush();
+      now += 20;
+      h.run(20);
+    }
+  };
+  /** How many frames of each speaker a session has been sent since last asked, by speaker's name; and the introductions among them. */
+  const down = sessions.map(() => new Downlink());
+  const heardBy = (i: number): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const packet of wires[i]!.wire.got) {
+      down[i]!.receive(packet, (speaker) => {
+        const who = sessions.find((s) => s.voice.slot === speaker)!.name;
+        out[who] = (out[who] ?? 0) + 1;
+      });
+    }
+    wires[i]!.wire.got.length = 0;
+    return out;
+  };
+  /** Let any talk that is under way be forgotten, so that the next is worked out afresh. */
+  const hush = (): void => {
+    h.run(600);
+    sessions.forEach((_s, i) => heardBy(i));
+  };
+  return { ...base, at, place, wires, say, heardBy, hush, down };
+}
+
+test("a voice carries as far as it is meant: a whisper to those beside you, talk across a camp, a yell across a base", () => {
+  const { h, sessions, place, say, heardBy, hush, down } = crowd(["ada", "bob", "cy"]);
+  const [ada, bob, cy] = sessions as [ClientSession, ClientSession, ClientSession];
+  expect(VOICE_RANGE).toEqual([4, 25, 60]);
+  // Bob ten metres from Ada, Cy forty.
+  place(bob, 10);
+  place(cy, 40);
+  hush();
+  say(0, 10);
+  expect([heardBy(1), heardBy(2)]).toEqual([{ ada: 10 }, {}]);
+  hush();
+  say(0, 10, MODE_YELL);
+  expect([heardBy(1), heardBy(2)]).toEqual([{ ada: 10 }, { ada: 10 }]);
+  hush();
+  say(0, 10, MODE_WHISPER);
+  expect([heardBy(1), heardBy(2)]).toEqual([{}, {}]);
+  place(bob, 3);
+  hush();
+  say(0, 10, MODE_WHISPER);
+  expect([heardBy(1), heardBy(2)]).toEqual([{ ada: 10 }, {}]);
+  // She does not hear herself unless she asks to; and asking sends nobody anything more.
+  expect(heardBy(0)).toEqual({});
+  say(0, 5, MODE_WHISPER, REACH_LOCAL, true);
+  expect([heardBy(0), heardBy(1), heardBy(2)]).toEqual([{ ada: 5 }, { ada: 5 }, {}]);
+  // A listener is told who a speaker is: the body to place the voice at, and the name. Once.
+  const said = down[1]!.speakers.get(ada.voice.slot)!;
+  expect([said.name, h.world.ents.resolve(said.handle)]).toEqual(["ada", h.ent(ada)]);
+  expect(down[2]!.speakers.get(ada.voice.slot)!.name).toBe("ada");
+  expect(down[0]!.speakers.get(bob.voice.slot)).toBeUndefined();
+
+  // At the edge: outside, it is not heard; stepping in, it is; and a step back out is not at once a cut.
+  const r = VOICE_RANGE[MODE_TALK]!;
+  place(bob, r + 1);
+  hush();
+  say(0, 10);
+  expect(heardBy(1)).toEqual({});
+  place(bob, r - 1);
+  say(0, 10);
+  expect(heardBy(1).ada).toBeGreaterThanOrEqual(8);
+  place(bob, r * KEEP_RANGE - 0.5);
+  say(0, 10);
+  expect(heardBy(1)).toEqual({ ada: 10 });
+  place(bob, r * KEEP_RANGE + 1);
+  say(0, 10);
+  expect(heardBy(1).ada ?? 0).toBeLessThanOrEqual(3);
+  say(0, 10);
+  expect(heardBy(1)).toEqual({});
+  // Having stopped hearing it, he does not start again until he is back inside.
+  place(bob, r * KEEP_RANGE - 0.5);
+  say(0, 10);
+  expect(heardBy(1)).toEqual({});
+  expect(cy.voice.version).toBe(1);
+});
+
+test("who is heard: not the muted, not the dead, not those only watching; and whatever a client claims changes nothing", () => {
+  const { h, sessions, voice, place, say, heardBy, hush, wires, open } = crowd(["ada", "bob", "cy"]);
+  const [ada, bob, cy] = sessions as [ClientSession, ClientSession, ClientSession];
+  place(bob, 5);
+  place(cy, 45);
+  hush();
+  // Muted: Bob is sent nothing of Ada, in writing or aloud, until he says otherwise. Ada still hears him.
+  h.say(bob, "mute ada");
+  say(0, 10);
+  say(1, 10);
+  expect([heardBy(1), heardBy(0)]).toEqual([{}, { bob: 10 }]);
+  h.say(bob, "unmute ada");
+  hush();
+  say(0, 10);
+  expect(heardBy(1)).toEqual({ ada: 10 });
+
+  // Whatever a packet asks for, a voice goes where the server says: Cy, far off, is sent nothing by any flag.
+  hush();
+  for (const reach of [REACH_TRIBE, REACH_GLOBAL]) say(0, 5, MODE_TALK, reach);
+  expect([heardBy(1), heardBy(2)]).toEqual([{ ada: 10 }, {}]);
+  // And Cy, sending the loudest packet there is with the loop asked for, is heard by nobody out of a yell's reach.
+  place(cy, 68);
+  hush();
+  say(2, 10, MODE_YELL, REACH_GLOBAL, true);
+  expect([heardBy(0), heardBy(1), heardBy(2)]).toEqual([{}, {}, { cy: 10 }]);
+
+  // Someone only watching is not heard, though they may listen from where they watch.
+  place(cy, 6);
+  hush();
+  h.say(cy, "spectate");
+  say(2, 10);
+  say(0, 10);
+  expect([heardBy(0), heardBy(1), heardBy(2)]).toEqual([{}, { ada: 10 }, { ada: 10 }]);
+  h.say(cy, "stopspectating");
+  // The dead are not heard either; back in a new body, they are, and listeners are told of the new body.
+  hush();
+  const before = h.ent(bob);
+  h.say(bob, "suicide");
+  h.run(300);
+  say(1, 10);
+  expect(heardBy(0)).toEqual({});
+  bob.command(CMD_RESPAWN, (w) => w.u8(0));
+  h.run(600);
+  expect(bob.sessionState).toBe(SESSION_ALIVE);
+  place(bob, 5);
+  hush();
+  const intros = (): number => wires[0]!.wire.got.filter((p) => p[0] === VOICE_INTRO).length;
+  say(1, 10);
+  expect(intros()).toBe(1);
+  // It is the new body that the introduction named.
+  expect(before).toBeGreaterThanOrEqual(0);
+  const told = new Downlink();
+  for (const packet of wires[0]!.wire.got) told.receive(packet, () => {});
+  expect(h.world.ents.resolve(told.speakers.get(bob.voice.slot)!.handle)).toBe(h.ent(bob));
+  // A session that has gone is neither heard nor sent anything, even while its body lingers.
+  const stale = wires[2]!;
+  heardBy(2);
+  cy.close();
+  h.run(300);
+  expect(stale.wire.closed).toBe(true);
+  say(0, 10);
+  expect(stale.wire.got.filter((p) => p[0] !== VOICE_INTRO).length).toBe(0);
+  expect(voice.peers.size).toBe(2);
+  expect(open(ada).wire.closed).toBe(false);
+});
+
+test("a listener in a crowd is sent the nearest eight speakers and no others", () => {
+  const names = ["lis", ...Array.from({ length: 11 }, (_, i) => `s${i}`)];
+  const { sessions, place, say, heardBy, hush } = crowd(names);
+  // Eleven speakers in a line from 2 m to 22 m, all within talking range of the listener.
+  for (let i = 1; i < sessions.length; i++) place(sessions[i]!, i * 2);
+  const everyone = sessions.map((_s, i) => i).slice(1);
+  hush();
+  // All talking at once. In the first moments whoever began first is heard; once it has been worked out, the nearest are.
+  say(everyone, 10);
+  heardBy(0);
+  say(everyone, 20);
+  const heard = heardBy(0);
+  expect(Object.keys(heard).sort()).toEqual(["s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7"]);
+  expect(Object.keys(heard).length).toBe(MAX_HEARD);
+  for (const n of Object.values(heard)) expect(n).toBe(20);
+  // The furthest of them steps right up: now it is among the eight, and the one that was eighth is not.
+  place(sessions[11]!, 1, 1);
+  say(everyone, 10);
+  heardBy(0);
+  say(everyone, 20);
+  const now = heardBy(0);
+  expect(Object.keys(now).sort()).toEqual(["s0", "s1", "s10", "s2", "s3", "s4", "s5", "s6"]);
+  for (const n of Object.values(now)) expect(n).toBe(20);
+  // Each speaker hears its own neighbours, by its own distances: the one in the middle hears four on each side.
+  heardBy(6);
+  say(everyone, 10);
+  expect(Object.keys(heardBy(6)).sort()).toEqual(["s1", "s2", "s3", "s4", "s6", "s7", "s8", "s9"]);
 });

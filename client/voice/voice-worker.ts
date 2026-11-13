@@ -8,7 +8,7 @@
 
 import { Downlink } from "../core/voice/listen.ts";
 import { GATE_END, GATE_SKIP, Gate, Uplink } from "../core/voice/talk.ts";
-import { AUTH_BYTES, FLAG_END, FRAME_SAMPLES, SAMPLE_RATE, writeAuth } from "../../shared/voice/packet.ts";
+import { AUTH_BYTES, FLAG_END, FRAME_SAMPLES, SAMPLE_RATE, VOICE_INTRO, modeOf, writeAuth } from "../../shared/voice/packet.ts";
 
 interface Scope {
   onmessage: ((e: MessageEvent) => void) | null;
@@ -36,8 +36,9 @@ const sentAt = new Float64Array(256);
 
 interface Listening {
   decoder: AudioDecoder;
-  /** For each frame given to the decoder and not yet back: its time, and whether it is the last. */
+  /** For each frame given to the decoder and not yet back: its time, how loud it is meant, and whether it is the last. */
   times: number[];
+  modes: number[];
   ends: boolean[];
   usedAt: number;
 }
@@ -54,7 +55,13 @@ function connect(): void {
   };
   sock.onmessage = (e) => {
     stats.received++;
-    down.receive(new Uint8Array(e.data as ArrayBuffer), hear);
+    const data = new Uint8Array(e.data as ArrayBuffer);
+    down.receive(data, hear);
+    // The page is told who each speaker is as the server says.
+    if (data[0] !== VOICE_INTRO) return;
+    const who: [number, number, string][] = [];
+    for (const [speaker, s] of down.speakers) if (s.handle !== 0) who.push([speaker, s.handle, s.name]);
+    scope.postMessage({ who });
   };
   sock.onclose = () => {
     if (ws !== sock) return;
@@ -68,12 +75,12 @@ function connect(): void {
 function hear(speaker: number, flags: number, time: number, opus: Uint8Array): void {
   const end = (flags & FLAG_END) !== 0;
   if (opus.length === 0) {
-    if (end) playback?.postMessage({ s: speaker, t: time, e: true, p: null });
+    if (end) playback?.postMessage({ s: speaker, t: time, m: modeOf(flags), e: true, p: null });
     return;
   }
   let l = listening.get(speaker);
   if (!l || l.decoder.state === "closed") {
-    const mine: Listening = { times: [], ends: [], usedAt: 0, decoder: null as unknown as AudioDecoder };
+    const mine: Listening = { times: [], modes: [], ends: [], usedAt: 0, decoder: null as unknown as AudioDecoder };
     mine.decoder = new AudioDecoder({ output: (data) => decoded(speaker, mine, data), error: () => void stats.errors++ });
     mine.decoder.configure({ codec: "opus", sampleRate: SAMPLE_RATE, numberOfChannels: 1 });
     listening.set(speaker, (l = mine));
@@ -84,6 +91,7 @@ function hear(speaker: number, flags: number, time: number, opus: Uint8Array): v
     if (at > 0) stats.rttMs = performance.now() - at;
   }
   l.times.push(time);
+  l.modes.push(modeOf(flags));
   l.ends.push(end);
   l.usedAt = performance.now();
   l.decoder.decode(new EncodedAudioChunk({ type: "key", timestamp: (time / FRAME_SAMPLES) * 20000, data: opus }));
@@ -91,13 +99,14 @@ function hear(speaker: number, flags: number, time: number, opus: Uint8Array): v
 
 function decoded(speaker: number, l: Listening, data: AudioData): void {
   const time = l.times.shift();
+  const mode = l.modes.shift();
   const end = l.ends.shift();
   const pcm = new Float32Array(data.numberOfFrames);
   data.copyTo(pcm, { planeIndex: 0, format: "f32-planar" });
   data.close();
   if (time === undefined) return;
   stats.decoded++;
-  playback?.postMessage({ s: speaker, t: time, e: end === true, p: pcm }, [pcm.buffer]);
+  playback?.postMessage({ s: speaker, t: time, m: mode ?? 1, e: end === true, p: pcm }, [pcm.buffer]);
 }
 
 /** The microphone gave a frame. */
