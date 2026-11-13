@@ -56,7 +56,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     hf,
     nodeField,
     ...(nodeField ? { nodes: nodeField.store } : {}),
-    structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ),
+    structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts),
     ents,
     history: new History(ents),
     anim: new HumanAnim(NO_CLIPS),

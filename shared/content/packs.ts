@@ -139,6 +139,7 @@ const REQUIRED: Record<string, Record<string, string>> = {
   levels: { xp: "list", engramPoints: "list" },
   buff: { label: "string", color: "number" },
   material: { takes: "object" },
+  shape: { role: "string", boxes: "list" },
 };
 
 /** Why a resolved definition cannot be type-checked field by field, or null if it has every required field. */

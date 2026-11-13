@@ -30,95 +30,115 @@ const refs = new Uint32Array(256);
 
 /**
  * Test an upright capsule (feet at x,y,z; radius r; total height h) against one
- * structure. On overlap deeper than `slack`, fills `push` and returns true.
+ * structure: against each of the boxes it is made of. On overlap deeper than
+ * `slack`, fills `push` with the way out of the box it is deepest in and
+ * returns true.
  */
 export function capsuleBox(structs: StructureStore, ref: number, x: number, y: number, z: number, r: number, h: number, slack: number): boolean {
   const t = structs.chunks[Math.floor(ref / 65536)]!;
   const slot = ref & 0xffff;
   const kind = t.kind[slot]!;
   if (structs.isSoft(kind)) return false;
-  const hx = structs.halfXOf(kind);
-  const hy = structs.halfYOf(kind);
-  const hz = structs.halfZOf(kind);
   const a = t.yaw[slot]! * YAW_TO_RAD;
   const s = detSin(a);
   const c = detCos(a);
-
-  // Capsule axis in the box frame.
+  // The capsule's axis in the structure's own frame, about its origin.
   const dx = x - t.x[slot]!;
   const dz = z - t.z[slot]!;
-  const lx = c * dx - s * dz;
-  const lz = s * dx + c * dz;
-  const y0 = y + r - t.y[slot]!;
-  let y1 = y + h - r - t.y[slot]!;
-  if (y1 < y0) y1 = y0;
-
-  // Closest points between the axis segment and the box.
-  const px = lx < -hx ? -hx : lx > hx ? hx : lx;
-  const pz = lz < -hz ? -hz : lz > hz ? hz : lz;
-  const ex = lx - px;
-  const ez = lz - pz;
-  let ey = 0;
-  if (y1 < -hy) ey = y1 + hy;
-  else if (y0 > hy) ey = y0 - hy;
-  const d2 = ex * ex + ey * ey + ez * ez;
+  const fx = c * dx - s * dz;
+  const fz = s * dx + c * dz;
+  const fy0 = y + r - t.y[slot]!;
+  const fy1 = h > 2 * r ? y + h - r - t.y[slot]! : fy0;
   const reach = r - slack;
-  if (d2 >= reach * reach) return false;
+  const box = structs.parts.box;
+  let found = false;
+  let deepest = 0;
+  let bx = 0;
+  let by = 0;
+  let bz = 0;
+  for (let p = structs.parts.start[kind]! * 6, end = structs.parts.start[kind + 1]! * 6; p < end; p += 6) {
+    const hx = box[p + 3]!;
+    const hy = box[p + 4]!;
+    const hz = box[p + 5]!;
+    // The axis about this box's centre.
+    const lx = fx - box[p]!;
+    const lz = fz - box[p + 2]!;
+    const y0 = fy0 - box[p + 1]!;
+    const y1 = fy1 - box[p + 1]!;
 
-  let ox: number;
-  let oy: number;
-  let oz: number;
-  let depth: number;
-  if (d2 > 1e-12) {
-    const d = Math.sqrt(d2);
-    depth = r - d;
-    const k = depth / d;
-    ox = ex * k;
-    oy = ey * k;
-    oz = ez * k;
-  } else {
-    // The axis passes through the box: leave by the nearest face.
-    const xp = hx - lx + r;
-    const xn = lx + hx + r;
-    const zp = hz - lz + r;
-    const zn = lz + hz + r;
-    const yp = hy - y0 + r;
-    const yn = y1 + hy + r;
-    depth = xp;
-    ox = xp;
-    oy = 0;
-    oz = 0;
-    if (xn < depth) {
-      depth = xn;
-      ox = -xn;
-    }
-    if (zp < depth) {
-      depth = zp;
-      ox = 0;
-      oz = zp;
-    }
-    if (zn < depth) {
-      depth = zn;
-      ox = 0;
-      oz = -zn;
-    }
-    if (yp < depth) {
-      depth = yp;
-      ox = 0;
+    // Closest points between the axis segment and the box.
+    const px = lx < -hx ? -hx : lx > hx ? hx : lx;
+    const pz = lz < -hz ? -hz : lz > hz ? hz : lz;
+    const ex = lx - px;
+    const ez = lz - pz;
+    let ey = 0;
+    if (y1 < -hy) ey = y1 + hy;
+    else if (y0 > hy) ey = y0 - hy;
+    const d2 = ex * ex + ey * ey + ez * ez;
+    if (d2 >= reach * reach) continue;
+
+    let ox: number;
+    let oy: number;
+    let oz: number;
+    let depth: number;
+    if (d2 > 1e-12) {
+      const d = Math.sqrt(d2);
+      depth = r - d;
+      const k = depth / d;
+      ox = ex * k;
+      oy = ey * k;
+      oz = ez * k;
+    } else {
+      // The axis passes through the box: leave by the nearest face.
+      const xp = hx - lx + r;
+      const xn = lx + hx + r;
+      const zp = hz - lz + r;
+      const zn = lz + hz + r;
+      const yp = hy - y0 + r;
+      const yn = y1 + hy + r;
+      depth = xp;
+      ox = xp;
+      oy = 0;
       oz = 0;
-      oy = yp;
+      if (xn < depth) {
+        depth = xn;
+        ox = -xn;
+      }
+      if (zp < depth) {
+        depth = zp;
+        ox = 0;
+        oz = zp;
+      }
+      if (zn < depth) {
+        depth = zn;
+        ox = 0;
+        oz = -zn;
+      }
+      if (yp < depth) {
+        depth = yp;
+        ox = 0;
+        oz = 0;
+        oy = yp;
+      }
+      if (yn < depth) {
+        depth = yn;
+        ox = 0;
+        oz = 0;
+        oy = -yn;
+      }
     }
-    if (yn < depth) {
-      depth = yn;
-      ox = 0;
-      oz = 0;
-      oy = -yn;
-    }
+    if (found && depth <= deepest) continue;
+    found = true;
+    deepest = depth;
+    bx = ox;
+    by = oy;
+    bz = oz;
   }
-  push.x = c * ox + s * oz;
-  push.y = oy;
-  push.z = -s * ox + c * oz;
-  push.depth = depth;
+  if (!found) return false;
+  push.x = c * bx + s * bz;
+  push.y = by;
+  push.z = -s * bx + c * bz;
+  push.depth = deepest;
   return true;
 }
 

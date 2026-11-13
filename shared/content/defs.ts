@@ -65,13 +65,42 @@ export interface SpeciesDef {
   readonly torporDrain?: number;
 }
 
+/** One box of a shape: its centre, measured from the piece's own origin, and its half extents, in metres. */
+export interface ShapeBox {
+  readonly at: readonly [number, number, number];
+  readonly half: readonly [number, number, number];
+}
+
+/** What kind of piece a shape is: what it may join, and what may join it, go by this. */
+export type PieceRole = "foundation" | "wall" | "ceiling" | "pillar" | "door" | "stairs";
+export const PIECE_ROLES: readonly PieceRole[] = ["foundation", "wall", "ceiling", "pillar", "door", "stairs"];
+
+/**
+ * The form of something built, shared by every material it is made in: a wall
+ * with a doorway is the same three boxes in thatch and in metal. Bodies walk on
+ * the boxes and into them, and rays stop at them. There are no slopes: stairs
+ * are steps.
+ */
+export interface ShapeDef {
+  readonly type: "shape";
+  readonly id: string;
+  readonly role: PieceRole;
+  readonly boxes: readonly ShapeBox[];
+}
+
 export interface StructureDef {
   readonly type: "structure";
   readonly id: string;
+  /** "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. */
   readonly mesh: string;
   readonly color: number;
-  /** Collider half extents in metres; the structure's position is the box centre. */
+  /**
+   * Half extents in metres of the box that holds all of it; the structure's
+   * position is that box's centre. Without a shape, this box is its collider.
+   */
   readonly half: readonly [number, number, number];
+  /** Its form, if it is more than one box. Its `half` must be what holds that form. */
+  readonly shape?: string;
   readonly hp: number;
   /** What it is made of: a material definition, which says what each kind of damage does to it. Omitted: nothing harms it. */
   readonly material?: string;
@@ -284,4 +313,11 @@ export interface BuffDef {
   readonly good?: boolean;
 }
 
-export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef | BuffDef | MaterialDef;
+export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef;
+
+/** Half extents of the box, centred on a shape's origin, that holds all of its boxes. */
+export function shapeHalf(boxes: readonly ShapeBox[]): [number, number, number] {
+  const out: [number, number, number] = [0, 0, 0];
+  for (const b of boxes) for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(b.at[a]!) + b.half[a]!);
+  return out;
+}

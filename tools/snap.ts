@@ -9,6 +9,7 @@
 //   bun run snap -- --looks                   a line-up of looks: both sexes, every hair, every slider at its ends
 //   bun run snap -- --creator 1               what a new survivor sees: the creator, on its first or second tab
 //   bun run snap -- --gear                    a line-up of armor tiers and held weapons
+//   bun run snap -- --house stone             a small house of building pieces, in thatch, wood, stone or metal
 //
 // Yaw and pitch are in degrees. Yaw 0 faces +Z (north); positive yaw turns toward +X.
 
@@ -29,6 +30,7 @@ import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../shared/net/protocol.ts";
 import { dress } from "../server/commands/combat.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
+import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
@@ -45,6 +47,44 @@ import { minimapImage, headingOf } from "../client/core/hud.ts";
 import { encodePng } from "./snap/png.ts";
 import { Rasterizer } from "./snap/raster.ts";
 import { drawUi } from "./snap/ui.ts";
+
+/**
+ * A house two pieces square, set down in front of the spawn point and looked at
+ * from its corner: a doorway with its door stood open, a window, stairs up to a
+ * part of an upper floor, and a pillar under the corner of it.
+ */
+function houseScene(view: ProvingView, tier: string): void {
+  const { reg, structs, hf } = view;
+  const made = (piece: string): number => reg.index.get(`core:${piece}_${tier}`) ?? reg.index.get(`core:${piece}_wood`)!;
+  const [cx, cz] = [PROVING_SPAWN.x - 24, PROVING_SPAWN.z - 2];
+  const ground = hf.heightAt(cx, cz);
+  const floor = ground + FOUNDATION_THICK;
+  const add = (piece: string, x: number, y: number, z: number, yaw = 0): void => void structs.add(made(piece), cx + x, y, cz + z, yaw, 0, 1);
+  const Q = 16384;
+  for (const ox of [-1.5, 1.5]) for (const oz of [-1.5, 1.5]) add("foundation", ox, ground + FOUNDATION_THICK / 2, oz);
+  const wy = floor + WALL_HEIGHT / 2;
+  // The south side faces the camera: a doorway and a window. The others are walls.
+  add("doorframe", -1.5, wy, -3);
+  add("door_open", -1.5, floor + DOOR_HEIGHT / 2, -3);
+  add("windowframe", 1.5, wy, -3);
+  for (const o of [-1.5, 1.5]) {
+    add("wall", o, wy, 3);
+    add("wall", 3, wy, o, Q);
+  }
+  add("wall", -3, wy, 1.5, Q);
+  add("windowframe", -3, wy, -1.5, Q);
+  // Half a floor above, reached by stairs along the east wall.
+  const up = floor + WALL_HEIGHT + FLOOR_THICK / 2;
+  add("ceiling", -1.5, up, 1.5);
+  add("ceiling", 1.5, up, 1.5);
+  add("stairs", 1.5, floor + (WALL_HEIGHT + FLOOR_THICK) / 2, -1.5);
+  add("pillar", -0.25, floor + WALL_HEIGHT / 2, 0.25);
+  view.cam.x = cx - 5.5;
+  view.cam.z = cz - 10;
+  view.cam.y = ground + 4.6;
+  view.cam.yaw = (27 * Math.PI) / 180;
+  view.cam.pitch = (-17 * Math.PI) / 180;
+}
 
 export interface ProvingView {
   reg: Registry;
@@ -64,7 +104,7 @@ export interface ProvingView {
 export function provingView(width = 640, height = 360): ProvingView {
   const reg = compileContent(CORE_CONTENT).registry!;
   const hf = buildProvingHeightfield();
-  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ);
+  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   populateProving(structs, hf, reg);
   const pack = parsePack(buildCorePack());
   // Every chunk's nodes, as a client standing anywhere would have them filled in around it.
@@ -388,6 +428,7 @@ if (import.meta.main) {
   if (pos) [view.cam.x, view.cam.y, view.cam.z] = pos as [number, number, number];
   view.cam.yaw = (Number(arg("yaw") ?? 0) * Math.PI) / 180;
   view.cam.pitch = (Number(arg("pitch") ?? -4) * Math.PI) / 180;
+  if (args.includes("--house")) houseScene(view, arg("house") ?? "wood");
   if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);

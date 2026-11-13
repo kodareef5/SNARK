@@ -38,6 +38,23 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
   for (let i = 1; i < beam.positions.length; i += 3) beam.positions[i]! += 40;
   const meshes: SourceMesh[] = [{ id: MISSING_MESH, lods: [boxMesh([0.5, 0.5, 0.5], 0)] }, waterMesh(), { id: BEAM_MESH, lods: [beam] }];
   for (const d of defs) {
+    if (d.type === "structure" && d.mesh === "shape") {
+      // Its shape's boxes, each where it stands in the piece.
+      const shape = defs.find((s) => s.type === "shape" && s.id === d.shape);
+      if (shape?.type !== "shape") continue;
+      const positions: number[] = [];
+      const colors: number[] = [];
+      const indices: number[] = [];
+      for (const b of shape.boxes) {
+        const one = boxMesh(b.half, REGION_BASE);
+        const first = positions.length / 3;
+        for (let i = 0; i < one.positions.length; i++) positions.push(one.positions[i]! + b.at[i % 3]!);
+        colors.push(...one.colors);
+        for (const v of one.indices) indices.push(v + first);
+      }
+      meshes.push({ id: d.id, lods: [{ positions: Float32Array.from(positions), colors: Uint8Array.from(colors), indices: Uint32Array.from(indices) }] });
+      continue;
+    }
     if ((d.type !== "species" && d.type !== "structure" && d.type !== "prop" && d.type !== "node") || d.mesh !== "box") continue;
     if (d.type === "structure") meshes.push({ id: d.id, lods: [boxMesh(d.half, REGION_BASE)] });
     else if (d.type === "node") {

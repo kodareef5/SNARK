@@ -818,7 +818,7 @@ export class ClientSession {
     }
     const source = this.opts.nodes?.(hf, reg) ?? null;
     this.nodeField = source ? new NodeField(dims, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, source) : null;
-    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ), ...(this.nodeField ? { nodes: this.nodeField.store } : {}) };
+    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), ...(this.nodeField ? { nodes: this.nodeField.store } : {}) };
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);

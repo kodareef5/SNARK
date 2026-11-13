@@ -31,7 +31,7 @@ import { StructureStore } from "../shared/world/structures.ts";
 export function simHash(ticks = 3000): string {
   const reg = compileContent(CORE_CONTENT).registry!;
   const hf = buildProvingHeightfield();
-  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ);
+  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   populateProving(structs, hf, reg);
   const world = { hf, structs };
   const p = reg.move[reg.index.get("core:survivor")!]!;

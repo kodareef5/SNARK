@@ -131,11 +131,22 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
         // The ray in the box's own frame.
         const px = ox - t.x[slot]!;
         const pz = oz - t.z[slot]!;
-        const hx = structs.halfXOf(k);
-        const hy = structs.halfYOf(k);
-        const hz = structs.halfZOf(k);
-        const hit = rayBox(c * px - s * pz, oy - t.y[slot]!, s * px + c * pz, c * dx - s * dz, dy, s * dx + c * dz, -hx, -hy, -hz, hx, hy, hz);
-        if (hit < best) {
+        const lx = c * px - s * pz;
+        const ly = oy - t.y[slot]!;
+        const lz = s * px + c * pz;
+        const ldx = c * dx - s * dz;
+        const ldz = s * dx + c * dz;
+        // Each of the boxes it is made of.
+        const box = structs.parts.box;
+        for (let p = structs.parts.start[k]! * 6, end = structs.parts.start[k + 1]! * 6; p < end; p += 6) {
+          const bx = box[p]!;
+          const by = box[p + 1]!;
+          const bz = box[p + 2]!;
+          const hx = box[p + 3]!;
+          const hy = box[p + 4]!;
+          const hz = box[p + 5]!;
+          const hit = rayBox(lx, ly, lz, ldx, dy, ldz, bx - hx, by - hy, bz - hz, bx + hx, by + hy, bz + hz);
+          if (hit >= best) continue;
           best = hit;
           kind = pass === 0 ? HIT_STRUCTURE : HIT_NODE;
           ref = r;

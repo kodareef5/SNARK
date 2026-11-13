@@ -577,7 +577,7 @@ host.shutdown();
 record("save size on disk", mb(statSync(dbPath).size), "MB");
 t0 = performance.now();
 const store = new WorldStore(dbPath, reg);
-const restored = new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ);
+const restored = new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
 const count = store.loadChunks(restored);
 record(`load ${count} structures and rebuild the collision grid`, performance.now() - t0, "ms", 3000);
 t0 = performance.now();

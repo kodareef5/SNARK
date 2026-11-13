@@ -18,6 +18,31 @@ import { CHUNK_SIZE, STRUCT_UNITS, YAW_UNITS, chunkAt, chunkCount, type MapDims 
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 
 export const GRID_CELL = 4;
+/**
+ * What bodies and rays meet, for every kind: kind `k` is the boxes numbered
+ * `start[k]` up to `start[k + 1]`, and each box is six numbers in `box`: its
+ * centre, measured from the structure's own origin, then its half extents.
+ */
+export interface PartTable {
+  readonly start: Uint32Array;
+  readonly box: Float32Array;
+}
+
+/** A table in which every kind is the one box of its half extents. */
+function oneBoxEach(halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array): PartTable {
+  const n = halfX.length;
+  const start = new Uint32Array(n + 1);
+  const box = new Float32Array(n * 6);
+  for (let k = 0; k < n; k++) {
+    start[k] = k;
+    box[k * 6 + 3] = halfX[k]!;
+    box[k * 6 + 4] = halfY[k]!;
+    box[k * 6 + 5] = halfZ[k]!;
+  }
+  start[n] = n;
+  return { start, box };
+}
+
 /** Grid cells per chunk side (64 m / 4 m). */
 const CELLS = 16;
 export const MAX_SLOTS_PER_CHUNK = 65535;
@@ -84,10 +109,12 @@ export class StructureStore {
   /** Called after any change to a chunk's table. */
   onChunkChanged: ((chunk: number) => void) | null = null;
 
-  /** Collider half extents per content index. */
+  /** Half extents, per content index, of the box that holds all of a structure. */
   private readonly halfX: Float32Array;
   private readonly halfY: Float32Array;
   private readonly halfZ: Float32Array;
+  /** The boxes bodies and rays meet, per content index. */
+  readonly parts: PartTable;
 
   private readonly gridX: number;
   private readonly gridZ: number;
@@ -108,9 +135,10 @@ export class StructureStore {
   /** Kinds that bodies pass through: present for rays and drawing, absent for collision. */
   private readonly soft: Uint8Array | null;
 
-  constructor(dims: MapDims, halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array, soft: Uint8Array | null = null) {
+  constructor(dims: MapDims, halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array, soft: Uint8Array | null = null, parts: PartTable | null = null) {
     this.dims = dims;
     this.soft = soft;
+    this.parts = parts ?? oneBoxEach(halfX, halfY, halfZ);
     this.halfX = halfX;
     this.halfY = halfY;
     this.halfZ = halfZ;

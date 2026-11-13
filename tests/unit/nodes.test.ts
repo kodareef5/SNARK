@@ -81,7 +81,7 @@ test("the node store holds only chunks someone is near, minus what is used up", 
 test("trees and rocks stop a body, bushes do not, and a ray finds all three", () => {
   const f = field();
   f.retain(0, 16, 1, () => false);
-  const world = { hf, structs: new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ), nodes: f.store };
+  const world = { hf, structs: new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), nodes: f.store };
   const p = reg.move[kind("core:survivor")]!;
   const spot: NodeSpot = { kind: 0, x: 0, y: 0, z: 0, yaw: 0 };
   const seen = new Set<number>();
@@ -119,7 +119,7 @@ test("trees and rocks stop a body, bushes do not, and a ray finds all three", ()
 test("fuzz: bodies wandering among trees and rocks are always in free space", () => {
   const f = field();
   f.retain(0, 16, 1, () => false);
-  const world = { hf, structs: new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ), nodes: f.store };
+  const world = { hf, structs: new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), nodes: f.store };
   const p = reg.move[kind("core:survivor")]!;
   for (let seed = 1; seed <= 4; seed++) {
     const rng = new Rng(seed);

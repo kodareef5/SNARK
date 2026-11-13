@@ -2,6 +2,7 @@
 // Colours are palette indices; see shared/pack/palette.ts.
 
 import type { Def } from "../shared/content/defs.ts";
+import { BUILDING_CONTENT } from "./building.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
 /** Bare ids get the pack's namespace. */
@@ -204,10 +205,8 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "structure", id: "core:step", mesh: "box", color: 7, half: [1, 0.15, 0.5], hp: 400, material: "core:mat_wood" },
   // The floor of the plaza is the map's own: nothing harms it.
   { type: "structure", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
-  // Walls of the lesser materials, and of the greater.
-  { type: "structure", id: "core:wall_thatch", mesh: "box", color: 18, half: [1.5, 1.5, 0.1], hp: 1600, material: "core:mat_thatch" },
-  { type: "structure", id: "core:wall_wood", mesh: "box", color: 3, half: [1.5, 1.5, 0.1], hp: 10000, material: "core:mat_wood" },
-  { type: "structure", id: "core:wall_metal", mesh: "box", color: 11, half: [1.5, 1.5, 0.1], hp: 10000, material: "core:mat_metal" },
+  // What survivors build with, in every material: content/building.ts.
+  ...BUILDING_CONTENT,
   // A grenade between the hand and the bang.
   { type: "prop", id: "core:grenade_live", mesh: "core:grenade_thrown", color: 7, radius: 0.08, height: 0.12 },
   // What a survivor leaves where it dies: everything it carried.

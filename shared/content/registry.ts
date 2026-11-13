@@ -12,10 +12,13 @@ import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
 import { ZONE_COUNT } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
-import type { Def, SpeciesDef, WeaponFacet } from "./defs.ts";
+import type { PartTable } from "../world/structures.ts";
+import { PIECE_ROLES, shapeHalf, type Def, type SpeciesDef, type WeaponFacet } from "./defs.ts";
 
 export const MISSING = 0;
 export const MAX_STRUCTURE_HALF = 16;
+/** The most boxes a shape may be made of. */
+export const MAX_SHAPE_BOXES = 16;
 
 const ID = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_\/-]*$/;
 const GRAVITY = 20;
@@ -74,6 +77,10 @@ export interface Registry {
   readonly ammoBuff: Uint16Array;
   /** Per structure: what it takes of each DMG_ type, from its material. Null for everything else, and for a structure nothing harms. */
   readonly structTakes: readonly (Float32Array | null)[];
+  /** Per structure and node: the boxes bodies and rays meet. A plain one has one, its own. */
+  readonly parts: PartTable;
+  /** Per structure with a shape: what kind of piece it is, as an index into PIECE_ROLES; -1 for everything else. */
+  readonly role: Int8Array;
   /** A thrown weapon: metres per second off the hand, ticks until it goes off, and how far its blast reaches. */
   readonly throwSpeed: Float32Array;
   readonly fuseTicks: Uint16Array;
@@ -166,6 +173,16 @@ export function compileContent(input: readonly Def[]): CompileResult {
       positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
       positive(d, "half[2]", d.half[2], MAX_STRUCTURE_HALF);
       positive(d, "hp", d.hp, 1e9);
+      if ((d.mesh === "shape") !== (d.shape !== undefined)) errors.push(`${d.id}: a mesh of "shape" and a shape go together`);
+    } else if (d.type === "shape") {
+      if (!PIECE_ROLES.includes(d.role)) errors.push(`${d.id}: role must be one of ${PIECE_ROLES.join(", ")}`);
+      if (d.boxes.length < 1 || d.boxes.length > MAX_SHAPE_BOXES) errors.push(`${d.id}: a shape has 1 to ${MAX_SHAPE_BOXES} boxes`);
+      for (const b of d.boxes) {
+        for (let a = 0; a < 3; a++) {
+          positive(d, `a box's half[${a}]`, b.half[a]!, MAX_STRUCTURE_HALF);
+          if (!(Math.abs(b.at[a]!) + b.half[a]! <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: a box reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
+        }
+      }
     } else {
       if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
@@ -200,6 +217,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
   // References between definitions must name something of the right type.
   const typeOf = new Map(input.map((d) => [d.id, d.type]));
   const items = new Map(input.flatMap((d) => (d.type === "item" ? [[d.id, d] as const] : [])));
+  const shapes = new Map(input.flatMap((d) => (d.type === "shape" ? [[d.id, d] as const] : [])));
   const want = (d: Def, id: string, type: string) => {
     if (typeOf.get(id) !== type) errors.push(`${d.id}: "${id}" is not ${type === "item" ? "an item" : `a ${type}`}`);
   };
@@ -210,7 +228,16 @@ export function compileContent(input: readonly Def[]): CompileResult {
       for (const n of d.needs) want(d, n.item, "item");
     } else if (d.type === "engram") for (const r of d.unlocks) want(d, r, "recipe");
     else if (d.type === "species") for (const drop of d.drops ?? []) want(d, drop.item, "item");
-    else if (d.type === "structure" && d.material !== undefined) want(d, d.material, "material");
+    else if (d.type === "structure") {
+      if (d.material !== undefined) want(d, d.material, "material");
+      if (d.shape !== undefined) {
+        want(d, d.shape, "shape");
+        // The box that holds it is the shape's: the two cannot disagree.
+        const shape = shapes.get(d.shape);
+        const holds = shape ? shapeHalf(shape.boxes) : null;
+        if (holds && holds.some((v, a) => Math.abs(v - d.half[a]!) > 1e-6)) errors.push(`${d.id}: half must be [${holds.join(", ")}], the box that holds ${d.shape}`);
+      }
+    }
     else if (d.type === "item") {
       for (const a of d.weapon?.ammo ?? []) if (!items.get(a)?.ammo) errors.push(`${d.id}: "${a}" is not ammunition`);
       for (const a of d.weapon?.fits ?? []) if (!items.get(a)?.attachment) errors.push(`${d.id}: "${a}" is not an attachment`);
@@ -254,6 +281,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const ammoTorporSeconds = new Float32Array(n);
   const ammoBuff = new Uint16Array(n);
   const structTakes: (Float32Array | null)[] = new Array(n).fill(null);
+  const role = new Int8Array(n).fill(-1);
+  const partStart = new Uint32Array(n + 1);
+  const partBox: number[] = [];
   const throwSpeed = new Float32Array(n);
   const fuseTicks = new Uint16Array(n);
   const blast = new Float32Array(n);
@@ -263,10 +293,17 @@ export function compileContent(input: readonly Def[]): CompileResult {
     const d = defs[i]!;
     index.set(d.id, i);
     hash = hashString(canonical(d), hash);
+    partStart[i] = partBox.length / 6;
     if (d.type === "structure" || d.type === "node") {
       halfX[i] = d.half[0];
       halfY[i] = d.half[1];
       halfZ[i] = d.half[2];
+      // What bodies and rays meet: its shape's boxes, or the one box it is.
+      const shape = d.type === "structure" && d.shape !== undefined ? shapes.get(d.shape)! : null;
+      if (shape) {
+        role[i] = PIECE_ROLES.indexOf(shape.role);
+        for (const b of shape.boxes) partBox.push(b.at[0], b.at[1], b.at[2], b.half[0], b.half[1], b.half[2]);
+      } else partBox.push(0, 0, 0, d.half[0], d.half[1], d.half[2]);
       if (d.type === "structure" && d.material !== undefined) {
         const m = materials.get(d.material)!;
         structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
@@ -319,7 +356,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
       }
     }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  partStart[n] = partBox.length / 6;
+  const parts: PartTable = { start: partStart, box: Float32Array.from(partBox) };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

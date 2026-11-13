@@ -131,7 +131,7 @@ export class Scene {
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
-      this.meshOfKind[k] = pack.meshIndex.get(d.mesh === "box" ? d.id : d.mesh) ?? missing;
+      this.meshOfKind[k] = pack.meshIndex.get(d.mesh === "box" || d.mesh === "shape" ? d.id : d.mesh) ?? missing;
       this.colorOfKind[k] = d.color;
     }
     const meshes = pack.header.meshes;
