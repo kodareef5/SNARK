@@ -46,6 +46,8 @@ export interface RunningServer {
   readonly host: Host;
   /** Resolves with the first self-check report the page posts (dev only). */
   readonly selfcheck: Promise<unknown>;
+  /** Resolves with the next self-check report after those already taken (dev only): for a probe of more than one page. */
+  nextSelfcheck(): Promise<unknown>;
   /** Resolves with the first frame-time report a page opened with ?bench=1 posts (dev only). */
   readonly bench: Promise<unknown>;
   stop(): void;
@@ -99,8 +101,17 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     },
   });
 
-  let report: (value: unknown) => void = () => {};
-  const selfcheck = new Promise<unknown>((r) => (report = r));
+  let first: (value: unknown) => void = () => {};
+  const selfcheck = new Promise<unknown>((r) => (first = r));
+  // Reports as they come, and whoever is waiting for one.
+  const reports: unknown[] = [];
+  const waiting: ((value: unknown) => void)[] = [];
+  const report = (value: unknown): void => {
+    first(value);
+    const next = waiting.shift();
+    if (next) next(value);
+    else reports.push(value);
+  };
   let measured: (value: unknown) => void = () => {};
   const bench = new Promise<unknown>((r) => (measured = r));
 
@@ -225,6 +236,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     port: server.port ?? 0,
     host,
     selfcheck,
+    nextSelfcheck: () => (reports.length > 0 ? Promise.resolve(reports.shift()) : new Promise<unknown>((r) => waiting.push(r))),
     bench,
     stop() {
       clearTimeout(timer);

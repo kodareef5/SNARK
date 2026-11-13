@@ -21,6 +21,8 @@ export const RULE_DEFAULTS = {
   friendlyFire: 0,
   /** 1: there is a text channel that reaches everyone. 0: only those near, and one's tribe. */
   globalChat: 1,
+  /** 1: a voice is heard by everyone, wherever they are. 0: only by those it carries to. */
+  globalVoice: 0,
 } as const;
 
 export type RuleName = keyof typeof RULE_DEFAULTS;

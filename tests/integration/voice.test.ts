@@ -8,7 +8,7 @@ import { GATE_END, GATE_SEND, Uplink } from "../../client/core/voice/talk.ts";
 import type { VoicePeer, VoiceSocket } from "../../server/voice.ts";
 import { CMD_RESPAWN, SESSION_ALIVE } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
-import { AUDIO_HEADER, FLAG_END, FLAG_LOOP, FRAME_SAMPLES, KEEP_RANGE, MAX_HEARD, MODE_TALK, MODE_WHISPER, MODE_YELL, REACH_GLOBAL, REACH_LOCAL, REACH_TRIBE, TOKEN_BYTES, VOICE_AUDIO, VOICE_INTRO, VOICE_RANGE, flagsOf, writeAudio, writeAuth } from "../../shared/voice/packet.ts";
+import { AUDIO_HEADER, FLAG_END, FLAG_LOOP, FRAME_SAMPLES, KEEP_RANGE, MAX_HEARD, MODE_TALK, MODE_WHISPER, MODE_YELL, REACH_GLOBAL, REACH_LOCAL, REACH_TRIBE, TOKEN_BYTES, VOICE_AUDIO, VOICE_INTRO, VOICE_RANGE, flagsOf, reachOf, writeAudio, writeAuth } from "../../shared/voice/packet.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -470,4 +470,39 @@ test("a listener in a crowd is sent the nearest eight speakers and no others", (
   heardBy(6);
   say(everyone, 10);
   expect(Object.keys(heardBy(6)).sort()).toEqual(["s1", "s2", "s3", "s4", "s6", "s7", "s8", "s9"]);
+});
+
+test("a server may have every voice heard everywhere: no nearer or further, still no more than eight at once, and each frame says so", () => {
+  const { h, sessions, place, say, heardBy, hush, wires } = crowd(["ada", "bob", "cy"]);
+  const [ada] = sessions as [ClientSession];
+  place(sessions[1]!, 10);
+  place(sessions[2]!, 68);
+  hush();
+  const reaches = (i: number): number[] => {
+    const out: number[] = [];
+    const down = new Downlink();
+    for (const packet of wires[i]!.wire.got) down.receive(packet, (_speaker, flags) => out.push(reachOf(flags)));
+    return [...new Set(out)];
+  };
+  // As it is: Cy, far off, hears nothing, and what Bob is sent is marked as carried to him.
+  say(0, 10, MODE_WHISPER, REACH_GLOBAL);
+  say(0, 10, MODE_TALK, REACH_GLOBAL);
+  expect(reaches(1)).toEqual([REACH_LOCAL]);
+  expect([heardBy(1), heardBy(2)]).toEqual([{ ada: 10 }, {}]);
+  // By rule: everyone hears, a whisper as much as a yell, and each frame is marked as said to everyone.
+  expect(h.say(ada, "rule globalVoice 1")[0]).toContain("globalVoice");
+  hush();
+  say(0, 10, MODE_WHISPER);
+  expect(reaches(2)).toEqual([REACH_GLOBAL]);
+  expect([heardBy(1), heardBy(2)]).toEqual([{ ada: 10 }, { ada: 10 }]);
+  // The dead and the muted are still not heard.
+  h.say(sessions[2]!, "mute ada");
+  hush();
+  say(0, 10);
+  expect([heardBy(1), heardBy(2)]).toEqual([{ ada: 10 }, {}]);
+  h.say(ada, "rule globalVoice 0");
+  hush();
+  say(0, 10, MODE_YELL);
+  expect(heardBy(1)).toEqual({ ada: 10 });
+  expect(reaches(1)).toEqual([]);
 });

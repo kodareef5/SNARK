@@ -7,8 +7,8 @@
 // client/core/voice; this file joins those decisions to the browser.
 
 import { Downlink } from "../core/voice/listen.ts";
-import { GATE_END, GATE_SKIP, Gate, Uplink } from "../core/voice/talk.ts";
-import { AUTH_BYTES, FLAG_END, FRAME_SAMPLES, SAMPLE_RATE, VOICE_INTRO, modeOf, writeAuth } from "../../shared/voice/packet.ts";
+import { GATE_END, GATE_OPEN, GATE_SKIP, Gate, PREROLL_FRAMES, Uplink, frameLevel } from "../core/voice/talk.ts";
+import { AUTH_BYTES, FLAG_END, FRAME_SAMPLES, REACH_GLOBAL, SAMPLE_RATE, VOICE_INTRO, modeOf, reachOf, writeAuth } from "../../shared/voice/packet.ts";
 
 interface Scope {
   onmessage: ((e: MessageEvent) => void) | null;
@@ -24,7 +24,9 @@ const IDLE_MS = 30000;
 const gate = new Gate();
 const up = new Uplink();
 const down = new Downlink();
-const stats = { socket: false, captured: 0, sent: 0, unsent: 0, received: 0, decoded: 0, errors: 0, rttMs: -1 };
+const stats = { socket: false, captured: 0, sent: 0, unsent: 0, received: 0, decoded: 0, errors: 0, rttMs: -1, level: 0, sending: false };
+/** The last frames the microphone gave that were not sent: if the next opens the gate, they go first. */
+const before: Float32Array[] = [];
 let url = "";
 let auth = new Uint8Array(AUTH_BYTES);
 let ws: WebSocket | null = null;
@@ -36,7 +38,7 @@ const sentAt = new Float64Array(256);
 
 interface Listening {
   decoder: AudioDecoder;
-  /** For each frame given to the decoder and not yet back: its time, how loud it is meant, and whether it is the last. */
+  /** For each frame given to the decoder and not yet back: its time, its flags, and whether it is the last. */
   times: number[];
   modes: number[];
   ends: boolean[];
@@ -75,7 +77,7 @@ function connect(): void {
 function hear(speaker: number, flags: number, time: number, opus: Uint8Array): void {
   const end = (flags & FLAG_END) !== 0;
   if (opus.length === 0) {
-    if (end) playback?.postMessage({ s: speaker, t: time, m: modeOf(flags), e: true, p: null });
+    if (end) playback?.postMessage({ s: speaker, t: time, m: modeOf(flags), g: reachOf(flags) === REACH_GLOBAL, e: true, p: null });
     return;
   }
   let l = listening.get(speaker);
@@ -91,7 +93,7 @@ function hear(speaker: number, flags: number, time: number, opus: Uint8Array): v
     if (at > 0) stats.rttMs = performance.now() - at;
   }
   l.times.push(time);
-  l.modes.push(modeOf(flags));
+  l.modes.push(flags);
   l.ends.push(end);
   l.usedAt = performance.now();
   l.decoder.decode(new EncodedAudioChunk({ type: "key", timestamp: (time / FRAME_SAMPLES) * 20000, data: opus }));
@@ -99,21 +101,34 @@ function hear(speaker: number, flags: number, time: number, opus: Uint8Array): v
 
 function decoded(speaker: number, l: Listening, data: AudioData): void {
   const time = l.times.shift();
-  const mode = l.modes.shift();
+  const flags = l.modes.shift() ?? 0;
   const end = l.ends.shift();
   const pcm = new Float32Array(data.numberOfFrames);
   data.copyTo(pcm, { planeIndex: 0, format: "f32-planar" });
   data.close();
   if (time === undefined) return;
   stats.decoded++;
-  playback?.postMessage({ s: speaker, t: time, m: mode ?? 1, e: end === true, p: pcm }, [pcm.buffer]);
+  playback?.postMessage({ s: speaker, t: time, m: modeOf(flags), g: reachOf(flags) === REACH_GLOBAL, e: end === true, p: pcm }, [pcm.buffer]);
 }
 
 /** The microphone gave a frame. */
 function capture(pcm: Float32Array): void {
   stats.captured++;
-  const say = gate.step();
-  if (say !== GATE_SKIP && (!encoder || encoder.state === "closed")) {
+  const level = frameLevel(pcm);
+  // What the meter shows: the loudest of late, falling back slowly.
+  stats.level = level > stats.level ? level : stats.level * 0.9 + level * 0.1;
+  const say = gate.step(level);
+  stats.sending = gate.sending;
+  if (say === GATE_SKIP) {
+    // Kept for a moment, in case what follows it opens the gate.
+    if (gate.open && gate.pressed) {
+      before.push(pcm);
+      if (before.length > PREROLL_FRAMES) before.shift();
+    } else before.length = 0;
+    up.capture(say);
+    return;
+  }
+  if (!encoder || encoder.state === "closed") {
     // What a lost encoder had been given will not come back.
     up.drop();
     encoder = new AudioEncoder({ output: encoded, error: () => void stats.errors++ });
@@ -121,13 +136,20 @@ function capture(pcm: Float32Array): void {
     const opus = { frameDuration: 20000, application: "voip", signal: "voice", usedtx: false, useinbandfec: false };
     encoder.configure({ codec: "opus", sampleRate: SAMPLE_RATE, numberOfChannels: 1, bitrate: 24000, bitrateMode: "variable", opus } as AudioEncoderConfig);
   }
-  const micros = up.capture(say);
+  // The gate has just opened: the frames from just before the sound go first, so that its beginning is not cut.
+  if (say === GATE_OPEN) for (let k = before.length; k > 0; k--) encode(before[before.length - k]!, up.recall(k));
+  before.length = 0;
+  encode(pcm, up.capture(say));
+  // The last frame of an utterance must not wait inside the encoder for the next one.
+  if (say === GATE_END) void encoder.flush().catch(() => {});
+}
+
+/** Hand one frame to the encoder, as of `micros` on the speaker's clock. */
+function encode(pcm: Float32Array, micros: number): void {
   if (micros < 0 || !encoder) return;
   const data = new AudioData({ format: "f32", sampleRate: SAMPLE_RATE, numberOfFrames: FRAME_SAMPLES, numberOfChannels: 1, timestamp: micros, data: pcm as Float32Array<ArrayBuffer> });
   encoder.encode(data);
   data.close();
-  // The last frame of an utterance must not wait inside the encoder for the next one.
-  if (say === GATE_END) void encoder.flush().catch(() => {});
 }
 
 function encoded(chunk: EncodedAudioChunk): void {
@@ -147,7 +169,7 @@ function encoded(chunk: EncodedAudioChunk): void {
 }
 
 scope.onmessage = (e) => {
-  const m = e.data as { t: string; url?: string; slot?: number; token?: Uint8Array; port?: MessagePort; on?: boolean; mode?: number; reach?: number; loop?: boolean };
+  const m = e.data as { t: string; url?: string; slot?: number; token?: Uint8Array; port?: MessagePort; on?: boolean; open?: boolean; mode?: number; reach?: number; loop?: boolean };
   if (m.t === "open") {
     // Whose socket this is, or is now: a new token means a new connection.
     url = m.url!;
@@ -162,6 +184,7 @@ scope.onmessage = (e) => {
   else if (m.t === "mic") m.port!.onmessage = (frame) => capture(frame.data as Float32Array);
   else if (m.t === "talk") {
     gate.pressed = m.on!;
+    gate.open = m.open!;
     up.mode = m.mode!;
     up.reach = m.reach!;
     up.loop = m.loop!;
@@ -171,7 +194,7 @@ scope.onmessage = (e) => {
   }
 };
 
-// Twice a second: tell the page how things stand, and let go of decoders nobody has spoken through for a while.
+// Ten times a second: tell the page how things stand. Now and then: let go of decoders nobody has spoken through for a while.
 setInterval(() => {
   scope.postMessage(stats);
   const now = performance.now();
@@ -180,4 +203,4 @@ setInterval(() => {
     if (l.decoder.state !== "closed") l.decoder.close();
     listening.delete(speaker);
   }
-}, 500);
+}, 100);

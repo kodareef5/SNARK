@@ -8,6 +8,7 @@
 //   CHROME=/path/to/chrome bun run probe
 //   bun run probe -- --bench     also fly the camera for 900 frames and report frame times
 //   bun run probe -- --no-voice  leave out the voice loop (the page talking to itself through the server)
+//   bun run probe -- --voice     also open a second page beside the first, which must hear the first talking
 //
 // The frame times of a headless browser on this machine say little about a
 // player's. For a real number, run `bun run dev` and open
@@ -44,7 +45,17 @@ const VOICE_FLAGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-me
 const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
 
 const timeout = new Promise<null>((r) => setTimeout(() => r(null), 30000));
-const report = (await Promise.race([server.selfcheck, timeout])) as { ok?: boolean } | null;
+const report = (await Promise.race([server.nextSelfcheck(), timeout])) as { ok?: boolean } | null;
+let second: { ok?: boolean } | null | undefined;
+if (report && process.argv.includes("--voice")) {
+  // The first page goes on talking; a second, with a profile of its own, joins beside it and listens.
+  const profile2 = mkdtempSync(join(tmpdir(), "snark-probe-"));
+  const listener = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile2}`, `http://localhost:${server.port}/?selfcheck=1&voice=listen&name=listener`], { stdout: "ignore", stderr: "ignore" });
+  second = (await Promise.race([server.nextSelfcheck(), new Promise<null>((r) => setTimeout(() => r(null), 30000))])) as { ok?: boolean } | null;
+  listener.kill();
+  await listener.exited;
+  rmSync(profile2, { recursive: true, force: true });
+}
 browser.kill();
 await browser.exited;
 if (report && process.argv.includes("--bench")) {
@@ -62,5 +73,10 @@ if (!report) {
   process.exit(1);
 }
 console.log(JSON.stringify(report, null, 2));
-console.log(report.ok ? "\nprobe: PASS" : "\nprobe: FAIL");
-process.exit(report.ok ? 0 : 1);
+if (second !== undefined) {
+  console.log("\nthe page that listened:");
+  console.log(second ? JSON.stringify(second, null, 2) : "no report within 30 s");
+}
+const ok = report.ok === true && (second === undefined || second?.ok === true);
+console.log(ok ? "\nprobe: PASS" : "\nprobe: FAIL");
+process.exit(ok ? 0 : 1);

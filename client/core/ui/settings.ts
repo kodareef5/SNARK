@@ -2,8 +2,8 @@
 // to step it down and one to step it up.
 
 import { SETTING_ROWS, type Settings } from "../settings.ts";
-import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
+import { K_BAR, K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import { S_BUTTON, S_LABEL, S_PANEL, S_STAMINA, S_TITLE } from "./style.ts";
 
 export const KEY_SETTINGS_PANEL = 2300;
 export const KEY_SETTINGS_TITLE = 2301;
@@ -13,10 +13,13 @@ const ROW = 30;
 const PAD = 14;
 const BUTTON = 30;
 
-export function buildSettings(f: UiFrame, s: Settings): void {
+/** The microphone's row: its label and a bar of how loud it is now. */
+export const KEY_SETTINGS_MIC = 2390;
+
+export function buildSettings(f: UiFrame, s: Settings, micLevel = 0): void {
   const w = Math.min(f.width - 16, 420);
   const titleH = lineHeight(S_TITLE);
-  const h = PAD * 2 + titleH + 8 + SETTING_ROWS.length * ROW;
+  const h = PAD * 2 + titleH + 8 + (SETTING_ROWS.length + 1) * ROW;
   const x = Math.round((f.width - w) / 2);
   const y = Math.round((f.height - h) / 2);
   f.add(KEY_SETTINGS_PANEL, K_PANEL, x, y, w, h, S_PANEL);
@@ -34,6 +37,12 @@ export function buildSettings(f: UiFrame, s: Settings): void {
       b.interactive = true;
     }
   });
+  // The microphone, as it is heard now: quiet speech fills about half of it. Empty until the talk key has asked for it.
+  const my = y + PAD + titleH + 8 + SETTING_ROWS.length * ROW;
+  f.text(KEY_SETTINGS_MIC, x + PAD, my + 5, 120, S_LABEL, "Microphone");
+  const bar = f.add(KEY_SETTINGS_MIC + 1, K_BAR, x + PAD + 130, my + 9, w - PAD * 2 - 130, 8, S_STAMINA);
+  const db = micLevel > 0 ? 20 * Math.log10(micLevel) : -60;
+  bar.value = db <= -60 ? 0 : db >= 0 ? 1 : 1 + db / 60;
 }
 
 /** A press on one of the screen's buttons. Returns true if it was one. */

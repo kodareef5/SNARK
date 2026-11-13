@@ -33,8 +33,8 @@ around it trees, rocks, bushes, and a herd of wandering placeholder creatures.
 | R, F | Reload; strike with whatever is held |
 | V | Look from behind the body, or from its eyes |
 | E | Pick a bush, open a cache, close it |
-| I, P, M, O | Inventory, character (stats, engrams, crafting), map, settings |
-| B | Hold to talk. The first press asks for the microphone |
+| I, P, M, O | Inventory, character (stats, engrams, crafting), map, settings (among them voice volume, and whether B is held or switches the microphone) |
+| B | Hold to talk to those near; with Alt a whisper, with Shift a yell. The first press asks for the microphone |
 | Enter, Insert, / | Chat: to everyone, to those within 60 m, to your tribe. Tab changes channel, Enter says the line |
 | Backquote or Tab | Console. `help` lists commands; `tribe` founds and runs a tribe; `mute <name>` stops you hearing someone |
 | Escape | Close a screen |

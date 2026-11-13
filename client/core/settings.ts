@@ -9,7 +9,13 @@ export class Settings {
   sensitivity = 1;
   /** The field of view, top to bottom, degrees. */
   fov = 70;
+  /** How loud other survivors' voices are played, as a multiple of the usual. */
+  voiceVolume = 1;
+  /** The talk key switches the microphone on and off, instead of being held. */
+  toggleTalk = false;
 }
+
+export const VOLUME_MAX = 2;
 
 export const SENSITIVITY_MIN = 0.2;
 export const SENSITIVITY_MAX = 3;
@@ -29,4 +35,6 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Damage numbers", value: (s) => (s.damageNumbers ? "on" : "off"), step: (s) => void (s.damageNumbers = !s.damageNumbers) },
   { label: "Mouse sensitivity", value: (s) => `${Math.round(s.sensitivity * 100)}%`, step: (s, by) => void (s.sensitivity = clamp(Math.round((s.sensitivity + by * 0.1) * 10) / 10, SENSITIVITY_MIN, SENSITIVITY_MAX)) },
   { label: "Field of view", value: (s) => `${s.fov} degrees`, step: (s, by) => void (s.fov = clamp(s.fov + by * 5, FOV_MIN, FOV_MAX)) },
+  { label: "Voice volume", value: (s) => `${Math.round(s.voiceVolume * 100)}%`, step: (s, by) => void (s.voiceVolume = clamp(Math.round((s.voiceVolume + by * 0.1) * 10) / 10, 0, VOLUME_MAX)) },
+  { label: "Talk key (B)", value: (s) => (s.toggleTalk ? "on and off" : "hold"), step: (s) => void (s.toggleTalk = !s.toggleTalk) },
 ];

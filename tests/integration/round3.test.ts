@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
 import type { ClientSession } from "../../client/core/session.ts";
-import { FOV_MAX, SENSITIVITY_MIN, Settings } from "../../client/core/settings.ts";
+import { FOV_MAX, SENSITIVITY_MIN, Settings, VOLUME_MAX } from "../../client/core/settings.ts";
 import { KEY_DAMAGE, KEY_HIT_MARK } from "../../client/core/ui/combat.ts";
-import { KEY_SETTINGS_PANEL, KEY_SETTINGS_ROW, buildSettings, settingsClick } from "../../client/core/ui/settings.ts";
+import { KEY_SETTINGS_MIC, KEY_SETTINGS_PANEL, KEY_SETTINGS_ROW, buildSettings, settingsClick } from "../../client/core/ui/settings.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { createHost } from "../../server/host.ts";
 import { RULE_DEFAULTS, Rules } from "../../server/rules.ts";
@@ -287,7 +287,7 @@ test("server rules are factors in the damage function, are kept with the world, 
   expect(h.say(ada, "rule gravity 2")[0]).toMatch(/^usage: rule </);
   expect(h.say(ada, "rule playerDamage -1")[0]).toMatch(/^usage: rule </);
   expect(h.say(ada, "rule playerDamage 1000")[0]).toMatch(/^usage: rule </);
-  expect(h.say(bob, "rule")).toHaveLength(8);
+  expect(h.say(bob, "rule")).toHaveLength(9);
   // Clients are told the one they act on.
   expect(ada.damageNumbers).toBe(true);
   h.say(ada, "rule damageNumbers 0");
@@ -295,7 +295,7 @@ test("server rules are factors in the damage function, are kept with the world, 
   // They are part of the world: a restart keeps them.
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath });
-  expect(h.host.rules.values).toEqual({ playerDamage: 0, creatureDamage: 2, structureDamage: 3, selfDamage: 1, headshots: 0, damageNumbers: 0, friendlyFire: 0, globalChat: 1 });
+  expect(h.host.rules.values).toEqual({ playerDamage: 0, creatureDamage: 2, structureDamage: 3, selfDamage: 1, headshots: 0, damageNumbers: 0, friendlyFire: 0, globalChat: 1, globalVoice: 0 });
   ada = h.join("ada");
   h.run(500);
   expect(ada.damageNumbers).toBe(false);
@@ -368,6 +368,24 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   f.begin(16 / 9);
   buildSettings(f, s);
   expect([f.find(KEY_SETTINGS_ROW + 1)!.text, f.find(KEY_SETTINGS_ROW + 5)!.text, f.find(KEY_SETTINGS_ROW + 9)!.text]).toEqual(["off", "20%", "100 degrees"]);
+  // Voice: how loud others are, from silence to twice as loud; and whether the talk key is held or switches.
+  expect([f.find(KEY_SETTINGS_ROW + 13)!.text, f.find(KEY_SETTINGS_ROW + 17)!.text]).toEqual(["100%", "hold"]);
+  for (let n = 0; n < 40; n++) settingsClick(KEY_SETTINGS_ROW + 12 + 3, s);
+  expect(s.voiceVolume).toBe(VOLUME_MAX);
+  for (let n = 0; n < 40; n++) settingsClick(KEY_SETTINGS_ROW + 12 + 2, s);
+  expect(s.voiceVolume).toBe(0);
+  settingsClick(KEY_SETTINGS_ROW + 16 + 3, s);
+  expect(s.toggleTalk).toBe(true);
+  // The microphone's meter: empty in silence, about half for quiet speech, full at the loudest.
+  const meter = (level: number): number => {
+    f.begin(16 / 9);
+    buildSettings(f, s, level);
+    return f.find(KEY_SETTINGS_MIC + 1)!.value;
+  };
+  expect([meter(0), meter(1), meter(2)]).toEqual([0, 1, 1]);
+  expect(meter(0.03)).toBeCloseTo(0.49, 1);
+  expect(meter(0.0001)).toBe(0);
+  expect([f.find(KEY_SETTINGS_ROW + 13)!.text, f.find(KEY_SETTINGS_ROW + 17)!.text]).toEqual(["0%", "on and off"]);
 
   // In the client: O opens the screen and frees the mouse; the view, the mouse and the numbers follow what is set.
   const h = new Harness({}, 1, 60, { dev: true });

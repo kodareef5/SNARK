@@ -117,6 +117,8 @@ export class HudModel {
   voice = "";
   /** The names of those being heard now. */
   readonly talkers: string[] = [];
+  /** How loud the microphone is, 0 to 1, for the settings screen. */
+  micLevel = 0;
   lat = 50;
   lon = 50;
   x = 0;

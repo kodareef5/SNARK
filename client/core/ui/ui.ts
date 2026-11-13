@@ -175,7 +175,7 @@ export class Ui {
       else if (this.dead && session) buildRespawn(f, session);
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
-      else if (this.options) buildSettings(f, this.settings);
+      else if (this.options) buildSettings(f, this.settings, hud.micLevel);
       else this.inventory.build(f, session, this.registry, this.palette);
     }
     if (session) this.console.absorb(session);

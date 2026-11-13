@@ -2,9 +2,9 @@
 
 import { expect, test } from "bun:test";
 import { JitterBuffer, MAX_TARGET, MIN_TARGET, START_TARGET } from "../../client/core/voice/jitter.ts";
-import { voiceGain } from "../../client/core/voice/place.ts";
+import { panLeft, panRight, voiceGain, voicePan } from "../../client/core/voice/place.ts";
 import { Resampler } from "../../client/core/voice/resample.ts";
-import { GATE_END, GATE_SEND, GATE_SKIP, Gate, TAIL_FRAMES, Uplink } from "../../client/core/voice/talk.ts";
+import { GATE_END, GATE_OPEN, GATE_SEND, GATE_SKIP, Gate, HANG_FRAMES, OPEN_LEVEL, PREROLL_FRAMES, TAIL_FRAMES, Uplink, frameLevel } from "../../client/core/voice/talk.ts";
 import { Rng } from "../../shared/rng.ts";
 import {
   AUDIO_HEADER,
@@ -309,14 +309,14 @@ test("push to talk: every frame while the key is held and a short tail after, th
   const gate = new Gate();
   const steps = (n: number): number[] => Array.from({ length: n }, () => gate.step());
   expect(steps(3)).toEqual([GATE_SKIP, GATE_SKIP, GATE_SKIP]);
-  expect(gate.open).toBe(false);
+  expect(gate.sending).toBe(false);
   gate.pressed = true;
   expect(steps(4)).toEqual([GATE_SEND, GATE_SEND, GATE_SEND, GATE_SEND]);
   gate.pressed = false;
-  expect(gate.open).toBe(true);
+  expect(gate.sending).toBe(true);
   const tail = steps(TAIL_FRAMES + 2);
   expect(tail).toEqual([...Array(TAIL_FRAMES - 1).fill(GATE_SEND), GATE_END, GATE_SKIP, GATE_SKIP]);
-  expect(gate.open).toBe(false);
+  expect(gate.sending).toBe(false);
   // Pressed again inside the tail, it simply goes on: no end is said.
   gate.pressed = true;
   gate.step();
@@ -507,4 +507,69 @@ test("a voice is loudest near its speaker, falls away with distance, is faint at
   expect(voiceGain(20, MODE_YELL)).toBeGreaterThan(voiceGain(20, MODE_TALK));
   // A speaker whose body this client has not been shown is played at a middling level, not at full.
   expect(voiceGain(-1, MODE_TALK)).toBe(0.5);
+});
+
+test("a microphone left open sends only what it hears: from a little before a sound to a little after the last", () => {
+  const gate = new Gate();
+  gate.open = true;
+  const quiet = OPEN_LEVEL / 3;
+  const loud = OPEN_LEVEL * 3;
+  // Switched off, nothing is sent however loud it is.
+  expect([gate.step(loud), gate.step(loud)]).toEqual([GATE_SKIP, GATE_SKIP]);
+  gate.pressed = true;
+  // Switched on in a quiet room: still nothing.
+  expect([gate.step(quiet), gate.step(quiet), gate.step(0)]).toEqual([GATE_SKIP, GATE_SKIP, GATE_SKIP]);
+  expect(gate.sending).toBe(false);
+  // The first frame loud enough opens it; while there is sound it stays open; a pause shorter than the hang does not close it.
+  expect(gate.step(loud)).toBe(GATE_OPEN);
+  expect([gate.step(loud), gate.step(quiet), gate.step(quiet), gate.step(loud)]).toEqual([GATE_SEND, GATE_SEND, GATE_SEND, GATE_SEND]);
+  expect(gate.sending).toBe(true);
+  // After the last sound it goes on for the hang, the last frame of it marked as the end; then nothing until the next sound.
+  const after = Array.from({ length: HANG_FRAMES + 2 }, () => gate.step(quiet));
+  expect(after).toEqual([...Array(HANG_FRAMES - 1).fill(GATE_SEND), GATE_END, GATE_SKIP, GATE_SKIP]);
+  expect(gate.sending).toBe(false);
+  expect(gate.step(loud)).toBe(GATE_OPEN);
+  // Switched off in the middle of a word, the word is finished and ended as any other.
+  gate.pressed = false;
+  const off = Array.from({ length: HANG_FRAMES + 1 }, () => gate.step(loud));
+  expect(off.filter((g) => g === GATE_END).length).toBe(1);
+  expect(off.at(-1)).toBe(GATE_SKIP);
+
+  // How loud a frame is: nothing for silence, 1 for a square wave at full, about 0.7 for a sine at full.
+  expect(frameLevel(new Float32Array(F))).toBe(0);
+  expect(frameLevel(new Float32Array(F).fill(-1))).toBe(1);
+  expect(frameLevel(Float32Array.from({ length: F }, (_, i) => Math.sin(i / 5)))).toBeCloseTo(Math.SQRT1_2, 2);
+  expect(OPEN_LEVEL).toBeCloseTo(0.0056, 4);
+
+  // The frames just before the sound are sent first, with the times they were given at.
+  const up = new Uplink();
+  const rng = new Rng(2);
+  for (let i = 0; i < 10; i++) up.capture(GATE_SKIP);
+  const micros = [up.recall(PREROLL_FRAMES), up.recall(PREROLL_FRAMES - 1), up.capture(GATE_OPEN), up.capture(GATE_SEND)];
+  expect(micros).toEqual([8, 9, 10, 11].map((f) => f * 20000));
+  const times = micros.map(() => (parseAudio(up.encoded(opus(rng, 30))!), [audio.seq, audio.time / F, audio.flags & FLAG_END]));
+  expect(times).toEqual([[0, 8, 0], [1, 9, 0], [2, 10, 0], [3, 11, 0]]);
+  // At the very start there is nothing before to send.
+  expect(new Uplink().recall(1)).toBe(-1);
+});
+
+test("a voice is heard on the side it is on, as loud in all wherever that is", () => {
+  // Looking along +Z, the right is -X.
+  expect(voicePan(-5, 0, 0)).toBeCloseTo(1, 6);
+  expect(voicePan(5, 0, 0)).toBeCloseTo(-1, 6);
+  expect(voicePan(0, 5, 0)).toBeCloseTo(0, 6);
+  expect(voicePan(0, -5, 0)).toBeCloseTo(0, 6);
+  expect(voicePan(-3, 3, 0)).toBeCloseTo(Math.SQRT1_2, 6);
+  // Turned a quarter to the left (yaw grows that way), what was ahead is on the right.
+  expect(voicePan(0, 5, Math.PI / 2)).toBeCloseTo(1, 6);
+  expect(voicePan(-5, 0, Math.PI / 2)).toBeCloseTo(0, 6);
+  // Distance does not matter, until the speaker is within arm's reach, where it comes to the middle.
+  expect(voicePan(-50, 0, 0)).toBeCloseTo(1, 6);
+  expect(voicePan(-0.5, 0, 0)).toBeCloseTo(0.5, 6);
+  expect(voicePan(0, 0, 1)).toBe(0);
+  // The two ears together are as loud wherever it is; fully to one side, the other hears nothing.
+  for (let pan = -1; pan <= 1; pan += 0.125) expect(panLeft(pan) ** 2 + panRight(pan) ** 2).toBeCloseTo(1, 9);
+  expect([panLeft(-1), panRight(-1), panLeft(1), panRight(1)].map((v) => Math.round(v * 1000) / 1000)).toEqual([1, 0, 0, 1]);
+  expect(panLeft(0)).toBeCloseTo(Math.SQRT1_2, 9);
+  expect(panLeft(0.5)).toBeLessThan(panRight(0.5));
 });

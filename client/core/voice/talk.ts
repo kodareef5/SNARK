@@ -1,39 +1,77 @@
 // When a survivor is speaking, and what each frame it speaks goes out as.
 //
 // The microphone gives a frame every 20 ms whether anyone is talking or not.
-// The gate decides which of them are sent: with push-to-talk, every frame
-// while the key is held and for a short tail after it is let go, so the end
-// of a word is not cut; the last of them is marked as the end. The uplink
-// numbers what is sent and wraps it, once the encoder has made Opus of it.
+// The gate decides which of them are sent. Held to talk: every frame while
+// the key is held and for a short tail after it is let go, so the end of a
+// word is not cut. Switched on and left open: only while there is something
+// to hear, beginning a little before the sound that opened it and going on a
+// little after the last. Either way the last frame is marked as the end. The
+// uplink numbers what is sent and wraps it, once the encoder has made Opus
+// of it.
 
 import { AUDIO_HEADER, FRAME_SAMPLES, MAX_OPUS, flagsOf, writeAudio } from "../../../shared/voice/packet.ts";
 
 /** Frames sent after the key is let go: 200 ms. */
 export const TAIL_FRAMES = 10;
 
-/** What to do with a frame: leave it, send it, or send it as the last of an utterance. */
+/** With the microphone left open: frames sent from before the sound that opened the gate, and after the last sound: 360 ms. */
+export const PREROLL_FRAMES = 2;
+export const HANG_FRAMES = 18;
+/** How loud a frame must be to open the gate: -45 dB below full, as a root mean square. */
+export const OPEN_LEVEL = 10 ** (-45 / 20);
+
+/**
+ * What to do with a frame: leave it, send it, send it as the last of an
+ * utterance, or send it after the few before it that were left.
+ */
 export const GATE_SKIP = 0;
 export const GATE_SEND = 1;
 export const GATE_END = 2;
+export const GATE_OPEN = 3;
+
+/** How loud a frame is: the root of the mean of its squares, 0 to 1. */
+export function frameLevel(pcm: Float32Array): number {
+  let sum = 0;
+  for (let i = 0; i < pcm.length; i++) sum += pcm[i]! * pcm[i]!;
+  return Math.sqrt(sum / (pcm.length || 1));
+}
 
 export class Gate {
-  /** The talk key is held. */
+  /** The talk key is held; or, with `open`, the microphone has been switched on and is left on. */
   pressed = false;
+  /** Send only while there is sound, not all the while `pressed` is so. */
+  open = false;
   private tail = 0;
+  private sounding = false;
 
-  /** Called once for each frame the microphone gives, in order. */
-  step(): number {
-    if (this.pressed) {
+  /** Called once for each frame the microphone gives, in order, with how loud it is. */
+  step(level = 1): number {
+    if (this.pressed && this.open) {
+      // Left open: a frame loud enough opens it, and it stays open a while after the last that was.
+      if (level >= OPEN_LEVEL) {
+        this.tail = HANG_FRAMES;
+        if (this.sounding) return GATE_SEND;
+        this.sounding = true;
+        return GATE_OPEN;
+      }
+      if (!this.sounding) return GATE_SKIP;
+    } else if (this.pressed) {
       this.tail = TAIL_FRAMES;
+      this.sounding = true;
       return GATE_SEND;
     }
-    if (this.tail === 0) return GATE_SKIP;
-    return --this.tail === 0 ? GATE_END : GATE_SEND;
+    if (this.tail === 0 || !this.sounding) {
+      this.sounding = false;
+      return GATE_SKIP;
+    }
+    if (--this.tail > 0) return GATE_SEND;
+    this.sounding = false;
+    return GATE_END;
   }
 
-  /** Whether anything is being sent: the key is held, or its tail is running. */
-  get open(): boolean {
-    return this.pressed || this.tail > 0;
+  /** Whether anything is being sent now. */
+  get sending(): boolean {
+    return this.sounding;
   }
 }
 
@@ -64,6 +102,20 @@ export class Uplink {
     this.pendingTime.push(time);
     this.pendingEnd.push(gate === GATE_END);
     return (time / FRAME_SAMPLES) * 20000;
+  }
+
+  /**
+   * The frame that was given `back` frames before the next one is to be sent
+   * after all, having been left at the time: the gate opened on what followed
+   * it. Returns its time in microseconds, or -1 if there was no such frame.
+   * Call for the oldest first, before `capture` for the frame that opened the gate.
+   */
+  recall(back: number): number {
+    const f = this.frame - back;
+    if (f < 0) return -1;
+    this.pendingTime.push(f * FRAME_SAMPLES);
+    this.pendingEnd.push(false);
+    return f * 20000;
   }
 
   /**

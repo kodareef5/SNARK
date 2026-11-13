@@ -20,7 +20,7 @@
 
 import { TICK_RATE } from "../shared/coords.ts";
 import { SESSION_ALIVE } from "../shared/net/protocol.ts";
-import { AUTH_BYTES, Batch, FLAG_LOOP, KEEP_RANGE, MAX_HEARD, MAX_INTRO_NAME, MODE_TALK, TOKEN_BYTES, VOICE_AUDIO, VOICE_AUTH, VOICE_RANGE, audio, modeOf, parseAudio, seqNewer, writeIntro } from "../shared/voice/packet.ts";
+import { AUTH_BYTES, Batch, FLAG_LOOP, KEEP_RANGE, MAX_HEARD, MAX_INTRO_NAME, MODE_TALK, REACH_GLOBAL, REACH_SHIFT, TOKEN_BYTES, VOICE_AUDIO, VOICE_AUTH, VOICE_RANGE, audio, modeOf, parseAudio, seqNewer, writeIntro } from "../shared/voice/packet.ts";
 import type { Client, GameServer } from "./game.ts";
 
 /** Packets a speaker may send in a second, and at once after a pause: 50 a second is what talking takes. */
@@ -77,6 +77,8 @@ export interface VoiceContext {
   readonly game: GameServer;
   /** Whether `listener` has asked not to hear `speaker`. */
   muted(listener: Client, speaker: Client): boolean;
+  /** Whether the server's rule is that a voice is heard by everyone, wherever they are. */
+  everywhere(): boolean;
 }
 
 export class Voice {
@@ -177,14 +179,18 @@ export class Voice {
     this.stats.packets++;
     const c = peer.client;
     if (c.closed || !c.active) return;
-    const flags = audio.flags & ~FLAG_LOOP;
+    // Who it is for is the server's to say, whatever the packet asked: those it carries to, or by rule everyone.
+    const flags = (audio.flags & ~(FLAG_LOOP | (3 << REACH_SHIFT))) | (this.ctx.everywhere() ? REACH_GLOBAL << REACH_SHIFT : 0);
     // Back to the speaker, if it asked to hear itself: the way to test a microphone, and the whole of the path.
     if ((audio.flags & FLAG_LOOP) !== 0) this.give(peer, c.id, flags, audio.seq, audio.time, audio.opus);
     if (!this.maySpeak(c)) return;
-    // To whoever is in reach. Someone who has just begun is not made to wait for the next working-out.
-    peer.mode = modeOf(flags);
+    // To whoever is in reach. Someone who has just begun, or has just raised or lowered their voice, is not made to wait for the next working-out.
+    const mode = modeOf(flags);
     const tick = this.ctx.game.world.tick;
-    if (tick - peer.routedAt > ROUTE_TICKS) this.routeOne(peer, tick);
+    if (mode !== peer.mode || tick - peer.routedAt > ROUTE_TICKS) {
+      peer.mode = mode;
+      this.routeOne(peer, tick);
+    }
     for (const to of peer.routes) if (!to.closed) this.give(to, c.id, flags, audio.seq, audio.time, audio.opus);
   }
 
@@ -208,6 +214,7 @@ export class Voice {
 
   /** Whether `to` is where `speaker`'s voice reaches: within its range, or a little past it if already listening. */
   private reaches(speaker: VoicePeer, to: VoicePeer, d2: number): boolean {
+    if (this.ctx.everywhere()) return true;
     const r = VOICE_RANGE[speaker.mode]! * (to.hears.has(speaker.client!.id) ? KEEP_RANGE : 1);
     return d2 <= r * r;
   }

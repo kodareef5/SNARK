@@ -72,7 +72,9 @@ async function boot(): Promise<void> {
   addEventListener("pointerdown", () => voice.unlock());
   addEventListener("keydown", () => voice.unlock());
   /** The self-check also talks to itself: its own voice, sent to the server and back, must be played. */
-  const voiceCheck = selfcheck && params.has("voice");
+  const voiceCheck = selfcheck && params.get("voice") === "1";
+  /** Or it only listens, for another page that is talking: what it reports is whose voice it played. */
+  const voiceListen = selfcheck && params.get("voice") === "listen";
   voice.loop = voiceCheck;
   let frames = 0;
   const times: number[] = [];
@@ -124,9 +126,10 @@ async function boot(): Promise<void> {
 
     // Self-check: once the world has arrived, read pixels back and report.
     // With voice it waits for a second of it to have been played, or for ten seconds to say that none was.
-    if (selfcheck && frames >= 0 && ++frames >= 90 && (!voiceCheck || voice.report.played >= 50 || frames >= 690)) {
+    const voiced = voiceCheck || voiceListen;
+    if (selfcheck && frames >= 0 && ++frames >= 90 && (!voiced || voice.report.played >= 50 || frames >= 690)) {
       frames = -1;
-      const heard = !voiceCheck || (voice.report.played >= 50 && voice.report.odd === 0 && voice.report.errors === 0);
+      const heard = !voiced || (voice.report.played >= 50 && voice.report.odd === 0 && voice.report.errors === 0 && (!voiceListen || voice.report.heard.length > 0));
       const probes = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, params.has("creature")).map((p) => {
         const got = renderer.readPixel(p.sx, p.sy);
         return { name: p.name, expected: p.rgb, got, ok: probePasses(p, got[0], got[1], got[2]) };
@@ -134,8 +137,9 @@ async function boot(): Promise<void> {
       times.sort((x, y) => x - y);
       const misplaced = view.misplaced(app.ui.frame);
       const report = {
-        ok: probes.every((p) => p.ok) && misplaced === 0 && heard,
-        ...(voiceCheck ? { voice: voice.report } : {}),
+        // A page that only listens stands beside the other, which is in its view: its picture is not the fixed one.
+        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard,
+        ...(voiced ? { voice: voice.report } : {}),
         userAgent: navigator.userAgent,
         renderer: renderer.rendererName,
         canvas: [width, height],

@@ -27,7 +27,12 @@ import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS } from "../../shared/sim/items.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { RemoteSample, type ClientSession } from "./session.ts";
-import type { VoicePort } from "./voice/port.ts";
+import { voicePan } from "./voice/place.ts";
+import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
+import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
+
+/** What the screen says while the microphone is live, by how loud it is meant. */
+const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "./ui/hud.ts";
 import { Ui } from "./ui/ui.ts";
 
@@ -79,15 +84,21 @@ export class App {
     session.onResult = (seq, code) => this.ui.creator.result(seq, code === RESULT_OK);
   }
 
-  /** Whatever carries voice here, if anything does; and whether the talk key is down. */
+  /** Whatever carries voice here, if anything does; whether the microphone is wanted; and how loud it is meant. */
   voice: VoicePort | null = null;
   talking = false;
+  private talkMode = MODE_TALK;
+  private volumeSet = -1;
+  /** Alt and Shift, as they are held: with the talk key, a whisper and a yell. */
+  private alt = false;
+  private shift = false;
 
-  /** The talk key went down or came up, or something took the keyboard away. */
+  /** The microphone is wanted, or no longer: the talk key, or something that took the keyboard away. */
   private talk(on: boolean): void {
     if (on === this.talking) return;
     this.talking = on;
-    this.voice?.talk(on);
+    if (on) this.talkMode = this.alt ? MODE_WHISPER : this.shift ? MODE_YELL : MODE_TALK;
+    this.voice?.talk(on, this.talkMode, this.ui.settings.toggleTalk);
   }
 
   /**
@@ -96,45 +107,64 @@ export class App {
    */
   private listen(hud: HudModel): void {
     hud.talkers.length = 0;
+    hud.voice = "";
     const v = this.voice;
-    if (!v || v.speakers.size === 0) return;
+    if (!v) return;
+    // What the microphone is doing, or why it is not doing it.
+    if (v.notice !== "") hud.voice = v.notice;
+    else if (this.talking) hud.voice = this.ui.settings.toggleTalk && !v.sending ? "MIC OPEN" : TALK_LABEL[this.talkMode]!;
+    hud.micLevel = v.level;
+    if (this.volumeSet !== this.ui.settings.voiceVolume) v.volume((this.volumeSet = this.ui.settings.voiceVolume));
+    if (v.speakers.size === 0) return;
     const r = this.remote;
     const own = this.session.own;
     const at = this.heardAt;
     let n = 0;
     for (const [speaker, s] of v.speakers) {
-      if (n * 2 >= at.length) break;
+      if ((n + 1) * HEAR_FIELDS > at.length) break;
       const index = handleIndex(s.handle);
       let far = -1;
+      let side = 0;
       for (let i = 0; i < r.count; i++) {
         if (r.id[i] !== index) continue;
         far = Math.hypot(r.x[i]! - own.x, r.y[i]! - own.y, r.z[i]! - own.z);
+        side = voicePan(r.x[i]! - own.x, r.z[i]! - own.z, this.controls.yaw);
         break;
       }
-      at[n * 2] = speaker;
-      at[n * 2 + 1] = far;
+      at[n * HEAR_FIELDS] = speaker;
+      at[n * HEAR_FIELDS + 1] = far;
+      at[n * HEAR_FIELDS + 2] = side;
       n++;
       if (s.speaking && hud.talkers.length < 8) hud.talkers.push(s.name);
     }
     v.hear(at, n);
   }
-  /** Scratch: pairs of a speaker number and how far off it is. */
-  private readonly heardAt = new Float32Array(2 * 128);
+  /** Scratch: for each speaker its number, how far off it is, and which side it is on. */
+  private readonly heardAt = new Float32Array(HEAR_FIELDS * 128);
 
   /** A key went down, repeated, or went up. Returns true if the page should not also act on it. */
   key(code: string, down: boolean, repeat = false): boolean {
     if (this.ui.key(code, down, repeat, this.session)) {
-      // A screen that takes the keyboard also takes it from the body, and from the microphone.
+      // A screen that takes the keyboard also takes it from the body, and from a microphone that is held open by a key.
       if (this.ui.captureKeyboard) {
         this.controls.release();
-        this.talk(false);
+        if (!this.ui.settings.toggleTalk) this.talk(false);
       }
       return true;
     }
     if (this.ui.captureKeyboard) return false;
+    if (code === "AltLeft" || code === "AltRight") {
+      // Kept from the browser, which would open its menu.
+      this.alt = down;
+      return true;
+    }
+    if (code === "ShiftLeft" || code === "ShiftRight") this.shift = down;
     if (code === "KeyB") {
-      // Held to talk.
-      if (!repeat) this.talk(down);
+      // Held to talk; or, if the player has set it so, pressed to switch the microphone on and pressed again to switch it off.
+      // With Alt it is a whisper, with Shift a yell.
+      if (repeat) return true;
+      if (!this.ui.settings.toggleTalk) this.talk(down);
+      else if (down) this.talk(!this.talking);
       return true;
     }
     const digit = /^Digit(\d)$/.exec(code);
@@ -164,7 +194,8 @@ export class App {
   /** The window lost focus. */
   blur(): void {
     this.controls.release();
-    this.talk(false);
+    this.alt = this.shift = false;
+    if (!this.ui.settings.toggleTalk) this.talk(false);
   }
 
   /**
@@ -396,7 +427,6 @@ export class App {
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
-    hud.voice = this.talking && this.voice && this.voice.notice === "" ? "TALKING" : (this.voice?.notice ?? "");
     this.listen(hud);
     hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eyeNow) || this.who(world, eyeNow) : "";
     this.ui.build(aspect, hud, session);

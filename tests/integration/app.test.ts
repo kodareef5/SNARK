@@ -4,6 +4,7 @@ import { KEY_CONSOLE_INPUT, KEY_CONSOLE_ROW } from "../../client/core/ui/console
 import { KEY_CHAT_INPUT, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_PROMPT, KEY_READOUT, KEY_STATUS, KEY_TALKER, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
+import { KEY_SETTINGS_MIC } from "../../client/core/ui/settings.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { buildCorePack } from "../../tools/pack/build.ts";
@@ -266,7 +267,17 @@ test("the talk key: held to talk, let go by anything that takes the keyboard, an
   const calls: boolean[] = [];
   const told: number[][] = [];
   const speakers = new Map<number, { handle: number; name: string; speaking: boolean }>();
-  const port = { notice: "", talk: (on: boolean) => void calls.push(on), speakers, hear: (d: Float32Array, n: number) => void told.push([...d.subarray(0, n * 2)]) };
+  const modes: [number, boolean][] = [];
+  const volumes: number[] = [];
+  const port = {
+    notice: "",
+    level: 0,
+    sending: true,
+    talk: (on: boolean, mode: number, open: boolean) => void (calls.push(on), modes.push([mode, open])),
+    volume: (gain: number) => void volumes.push(gain),
+    speakers,
+    hear: (d: Float32Array, n: number) => void told.push([...d.subarray(0, n * 3)]),
+  };
   app.voice = port;
   app.key("KeyB", true);
   app.key("KeyB", true, true); // held: once
@@ -311,10 +322,17 @@ test("the talk key: held to talk, let go by anything that takes the keyboard, an
   speakers.set(9, { handle: 0xfffff, name: "cy", speaking: true });
   port.notice = "";
   run(50);
-  // Bob is ten metres off; Cy is someone this client cannot see.
+  // Bob is ten metres off, ahead and to the left (facing +Z, +X is the left); Cy is someone this client cannot see.
+  app.controls.yaw = 0;
+  run(50);
   const last = told.at(-1)!;
-  expect([last[0], last[2], last[3]]).toEqual([7, 9, -1]);
+  expect([last[0], last[3], last[4], last[5]]).toEqual([7, 9, -1, 0]);
   expect(last[1]).toBeCloseTo(10, 1);
+  expect(last[2]).toBeCloseTo(-0.6, 2);
+  // Turning to face the other way puts him on the right.
+  app.controls.yaw = Math.PI;
+  run(50);
+  expect(told.at(-1)![2]).toBeCloseTo(0.6, 2);
   const talkers = (): string[] => {
     const out: string[] = [];
     for (let i = 0; i < 8; i++) {
@@ -328,4 +346,73 @@ test("the talk key: held to talk, let go by anything that takes the keyboard, an
   speakers.get(9)!.speaking = false;
   run(50);
   expect(talkers()).toEqual(["bob"]);
+});
+
+test("the talk key with Alt is a whisper and with Shift a yell; set to switch, one press opens the microphone and the next shuts it", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const app = client(h, "ada");
+  const run = (ms: number) => h.run(ms, (now) => app.frame(now, 1280, 720));
+  run(500);
+  const calls: [boolean, number, boolean][] = [];
+  const volumes: number[] = [];
+  const port = { notice: "", level: 0.25, sending: false, speakers: new Map(), hear: () => {}, volume: (g: number) => void volumes.push(g), talk: (on: boolean, mode: number, open: boolean) => void calls.push([on, mode, open]) };
+  app.voice = port;
+  const label = (): string | undefined => app.ui.frame.find(KEY_VOICE)?.text;
+  const press = (code: string, mods: string[] = []): void => {
+    for (const m of mods) app.key(m, true);
+    app.key(code, true);
+    run(50);
+  };
+  const lift = (code: string, mods: string[] = []): void => {
+    app.key(code, false);
+    for (const m of mods) app.key(m, false);
+    run(50);
+  };
+  press("KeyB");
+  expect(label()).toBe("TALKING");
+  lift("KeyB");
+  expect(app.key("AltLeft", true)).toBe(true); // kept from the browser's menu
+  app.key("AltLeft", false);
+  press("KeyB", ["AltLeft"]);
+  expect(label()).toBe("WHISPERING");
+  lift("KeyB", ["AltLeft"]);
+  press("KeyB", ["ShiftLeft"]);
+  expect(label()).toBe("YELLING");
+  // How loud it is meant is settled when the key goes down, whatever is let go after.
+  app.key("ShiftLeft", false);
+  run(50);
+  expect(label()).toBe("YELLING");
+  lift("KeyB");
+  expect(label()).toBeUndefined();
+  expect(calls).toEqual([[true, 1, false], [false, 1, false], [true, 0, false], [false, 0, false], [true, 2, false], [false, 2, false]]);
+
+  // Set to switch: one press opens the microphone, and it stays open with the key let go.
+  calls.length = 0;
+  app.ui.settings.toggleTalk = true;
+  press("KeyB");
+  lift("KeyB");
+  expect(calls).toEqual([[true, 1, true]]);
+  // Open and hearing nothing worth sending, the screen says so; while something is being sent, it says that.
+  expect(label()).toBe("MIC OPEN");
+  port.sending = true;
+  run(50);
+  expect(label()).toBe("TALKING");
+  // Typing in the chat box does not shut a microphone that was switched on; nor does the window losing focus.
+  app.key("Enter", true);
+  app.key("Escape", true);
+  app.blur();
+  expect(calls.length).toBe(1);
+  press("KeyB");
+  lift("KeyB");
+  expect(calls).toEqual([[true, 1, true], [false, 1, true]]);
+  expect(label()).toBeUndefined();
+
+  // How loud others are played follows the setting, told once each time it changes; and the meter is the microphone's.
+  expect(volumes).toEqual([1]);
+  app.ui.settings.voiceVolume = 0.5;
+  run(100);
+  expect(volumes).toEqual([1, 0.5]);
+  app.key("KeyO", true);
+  run(50);
+  expect(app.ui.frame.find(KEY_SETTINGS_MIC + 1)!.value).toBeCloseTo(1 + (20 * Math.log10(0.25)) / 60, 5);
 });

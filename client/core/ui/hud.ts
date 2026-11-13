@@ -59,8 +59,10 @@ export function buildHud(f: UiFrame, m: HudModel): void {
   for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, MARGIN, 10 + i * lh, Math.min(W - MARGIN * 2, 400), S_TEXT, m.readout[i]!);
   if (m.voice !== "") {
     // Lit while the microphone is live; plain when it is saying why it is not.
-    const n = f.add(KEY_VOICE, K_PANEL, MARGIN, 10 + m.readout.length * lh + 4, Math.min(W - MARGIN * 2, m.voice === "TALKING" ? 76 : 330), lineHeight(S_BUFF) + 4, S_BUFF);
-    n.tint = m.voice === "TALKING" ? 0x3c9a4a : 0x4a4f58;
+    // Its state is in capitals; anything else is a sentence saying what is wrong.
+    const live = m.voice === m.voice.toUpperCase();
+    const n = f.add(KEY_VOICE, K_PANEL, MARGIN, 10 + m.readout.length * lh + 4, Math.min(W - MARGIN * 2, live ? 96 : 330), lineHeight(S_BUFF) + 4, S_BUFF);
+    n.tint = !live ? 0x4a4f58 : m.voice === "MIC OPEN" ? 0x6a7a3a : 0x3c9a4a;
     n.text = m.voice;
   }
   // Who is being heard, one to a row.
