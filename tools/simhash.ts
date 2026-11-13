@@ -15,7 +15,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { Pose } from "../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../shared/anim/human.ts";
 import { AnimState, HumanAnim, humanPose } from "../shared/anim/pose.ts";
-import { ACT_NONE, ACT_SWING, HOLD_HANDS, HOLD_TOOL } from "../shared/sim/weapon.ts";
+import { ACT_COOL, ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { Solved, rayZones, solve, zoneHit } from "../shared/anim/skeleton.ts";
 import { authoredClips } from "../shared/anim/authored.ts";
 import { parsePack } from "../shared/pack/pack.ts";
@@ -127,8 +127,9 @@ export function poseHash(): string {
           st.pitch = pitch;
           st.seed = (n * 37) % 1024;
           const tick = n * 7.25;
-          // Every third one is partway through a swing, of a hand or of a tool.
+          // Every third one is partway through a swing, of a hand or of a tool; some of the rest hold a bow or a gun, and are doing something with it.
           if (n % 3 === 0) st.setAction(ACT_SWING, n % 2 === 0 ? HOLD_HANDS : HOLD_TOOL, Math.floor(tick) - (n % 17));
+          else if (n % 5 === 1) st.setAction([ACT_DRAW, ACT_HOLD, ACT_RELOAD, ACT_COOL, ACT_NONE][n % 7 % 5]!, [HOLD_BOW, HOLD_RIFLE, HOLD_PISTOL][n % 3]!, Math.floor(tick) - (n % 11));
           else st.setAction(ACT_NONE, HOLD_HANDS, 0);
           n++;
           humanPose(anim, st, tick, pose);

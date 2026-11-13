@@ -227,6 +227,56 @@ export class Characters {
     return true;
   }
 
+  /**
+   * Queue a rigid mesh that has a place and a direction of its own: an arrow
+   * in the air, the line of a round. Its origin goes to (x, y, z) relative to
+   * the camera and its +Z along the unit direction (dx, dy, dz), stretched
+   * `length` times along that. It is drawn through the bone path with one bone
+   * of its own, which is how a mesh gets a tilt as well as a facing. False
+   * when the frame has no room left.
+   */
+  loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number): boolean {
+    if (p.boneCount + 1 > MAX_BONES || this.count + 1 > MAX_SKINNED) return false;
+    // Right is level and square to the direction; up is square to both.
+    let rx = dz;
+    let rz = -dx;
+    const rl = Math.sqrt(rx * rx + rz * rz);
+    if (rl < 1e-6) {
+      rx = 1;
+      rz = 0;
+    } else {
+      rx /= rl;
+      rz /= rl;
+    }
+    const ux = -rz * dy;
+    const uy = rz * dx - rx * dz;
+    const uz = rx * dy;
+    const first = p.boneCount++;
+    const o = first * BONE_FLOATS;
+    const b = p.bones;
+    b[o] = rx;
+    b[o + 1] = ux;
+    b[o + 2] = dx * length;
+    b[o + 3] = x;
+    b[o + 4] = 0;
+    b[o + 5] = uy;
+    b[o + 6] = dy * length;
+    b[o + 7] = y;
+    b[o + 8] = rz;
+    b[o + 9] = uz;
+    b[o + 10] = dz * length;
+    b[o + 11] = z;
+    const n = this.count++;
+    this.key[n] = mesh * LODS;
+    this.firstBone[n] = first;
+    this.region0[n] = 0;
+    this.colors.fill(0, n * 6, n * 6 + 6);
+    this.id[n] = 0;
+    this.near[n] = 0;
+    this.offset.fill(0, n * 3, n * 3 + 3);
+    return true;
+  }
+
   /** Turn what was queued into instances and draws: the viewer's own body when `own`, everyone else otherwise. */
   flush(p: FramePacket, writer: InstanceWriter, own: boolean, draw: DrawFn): void {
     const want = own ? 1 : 0;

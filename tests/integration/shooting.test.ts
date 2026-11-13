@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
+import { App } from "../../client/core/app.ts";
+import { DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
+import { TRACER_MS } from "../../client/core/shots.ts";
+import { KEY_ACTION, KEY_AMMO } from "../../client/core/ui/hud.ts";
+import { corePack } from "../fixtures/pack.ts";
 import { REWIND_TICKS } from "../../server/combat.ts";
 import { dress } from "../../server/commands/combat.ts";
 import { STUCK_TICKS } from "../../server/projectiles.ts";
@@ -11,7 +16,7 @@ import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import { handleIndex } from "../../shared/ids.ts";
-import { EVENT_HIT, EVENT_SHOT } from "../../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, CMD_SELECT, EVENT_HIT, EVENT_SHOT } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { DRAW_SPEED_MIN, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
@@ -510,4 +515,127 @@ test("whoever is near a shot is told of it, and the one who fired is not", () =>
   expect([shot.item, shot.flies]).toEqual([id("arrow_stone"), true]);
   expect(Math.hypot(shot.vx, shot.vy, shot.vz)).toBeCloseTo(70, 0);
   expect(shot.vz).toBeGreaterThan(69);
+});
+
+test("the client shows shots: its own arrow at once, another's when told, the line of a round, an arrow standing where it landed, the draw bar, and a narrowed view when aiming", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const pack = corePack();
+  const app = new App(h.join("ada", { latencyMs: 40 }, { manual: true }), h.reg, pack);
+  const eve = new App(h.join("eve", { latencyMs: 40 }, { manual: true }), h.reg, pack);
+  let packet = app.frame(0, 1280, 720);
+  let seen = eve.frame(0, 1280, 720);
+  const run = (ms: number): void =>
+    h.run(ms, (now) => {
+      packet = app.frame(now, 1280, 720);
+      seen = eve.frame(now, 1280, 720);
+    });
+  run(500);
+  const s = app.session;
+  // Both clients are driven a frame at a time, so everything they do is done with frames running.
+  const say = (who: App, line: string): void => {
+    who.session.text(line);
+    run(200);
+  };
+  /** Move what is carried to a hotbar slot and take it in hand. */
+  const hold = (item: number, hotbar: number): void => {
+    const inv = s.inventory!;
+    const from = inv.item.indexOf(item);
+    const to = inv.hotbar + hotbar;
+    if (from !== to) s.command(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.u8(from), w.bits(BOX_SELF, 1), w.u8(to), w.u16(0), w.u16(item)));
+    run(150);
+    s.command(CMD_SELECT, (w) => w.u8(hotbar));
+    run(150);
+  };
+  say(app, "enablecheats");
+  say(eve, "enablecheats");
+  const g = flatGround(h, 24, 44);
+  const at = { x: g.x + 12, z: g.z + 1.5 };
+  say(app, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
+  // Eve stands off to one side, looking across the range.
+  say(eve, `tp ${(at.x + 8).toFixed(3)} ${(at.z + 10).toFixed(3)}`);
+  eve.controls.yaw = -Math.PI / 2;
+  say(app, "kit bow");
+  say(app, "kit rifle");
+  run(200);
+  const meshes = (p: typeof packet): string[] => [...p!.drawMesh.subarray(0, p!.drawCount)].filter((_, d) => (p!.drawFlags[d]! & DRAW_SKINNED) !== 0).map((m) => pack.header.meshes[m]!.id);
+  const f = app.ui.frame;
+
+  // The bow in hand: the line above the hotbar says what is on the string and what is in the bag.
+  hold(id("bow"), 0);
+  run(1500);
+  expect(f.find(KEY_AMMO)!.text).toBe("stone arrow  1 / 39");
+  expect(f.find(KEY_ACTION)).toBeNull();
+  // Drawing: the bar under the crosshair fills.
+  app.controls.yaw = 0;
+  app.controls.pitch = 0.05;
+  app.controls.mouseButton(0, true);
+  run(400);
+  const part = f.find(KEY_ACTION)!.value;
+  expect(part).toBeGreaterThan(0.2);
+  expect(part).toBeLessThan(0.6);
+  run(1200);
+  expect(f.find(KEY_ACTION)!.value).toBe(1);
+  expect(app.shots.flying.length).toBe(0);
+  // Let go: the arrow is in the air on her own screen within a frame or two, before the server could have said so.
+  app.controls.mouseButton(0, false);
+  run(70);
+  expect(app.shots.flying.length).toBe(1);
+  expect(h.host.projectiles.fired).toBe(0);
+  expect(meshes(packet)).toContain("core:arrow");
+  const mine = app.shots.flying[0]!;
+  expect(Math.hypot(mine.vx, mine.vy, mine.vz)).toBeCloseTo(70, 0);
+  // The server flies it too, and Eve is told and draws her own picture of it.
+  run(130);
+  expect(h.host.projectiles.fired).toBe(1);
+  expect(eve.shots.flying.length).toBe(1);
+  expect(meshes(seen)).toContain("core:arrow");
+  // Both pictures end where the arrow comes down, about where the server's did.
+  run(2500);
+  expect(app.shots.flying.length).toBe(0);
+  expect(eve.shots.flying.length).toBe(0);
+  expect(h.host.projectiles.lastEnd.on).toBe(-1);
+  // The bar showed the next arrow being nocked, and the line counts one fewer.
+  expect(f.find(KEY_AMMO)!.text).toBe("stone arrow  1 / 38");
+
+  // Arrows into the ground until one stands: it is drawn tilted, by both, as a thing in the world.
+  app.controls.pitch = -0.2;
+  for (let n = 0; n < 12 && h.host.projectiles.stuckCount === 0; n++) {
+    app.controls.mouseButton(0, true);
+    run(1300);
+    app.controls.mouseButton(0, false);
+    run(1500);
+  }
+  expect(h.host.projectiles.stuckCount).toBeGreaterThan(0);
+  expect(app.shots.flying.length).toBe(0);
+  expect(meshes(packet)).toContain("core:arrow");
+  eve.controls.yaw = Math.atan2(at.x - (at.x + 8), 6);
+  run(300);
+  expect(meshes(seen)).toContain("core:arrow");
+
+  // The rifle: a round leaves a line for a moment, on her screen at once and on Eve's when told.
+  hold(id("rifle"), 1);
+  run(5200);
+  expect(f.find(KEY_AMMO)!.text).toBe("rifle round  1 / 29");
+  app.controls.pitch = 0;
+  app.controls.mouseButton(0, true);
+  run(50);
+  app.controls.mouseButton(0, false);
+  expect(app.shots.tracers.length).toBe(1);
+  expect(meshes(packet)).toContain("core:tracer");
+  run(TRACER_MS + 120);
+  expect(app.shots.tracers.length).toBe(0);
+  expect(meshes(packet)).not.toContain("core:tracer");
+  // The reload shows as a bar of its own.
+  expect(f.find(KEY_ACTION)).not.toBeNull();
+  expect(eve.session.events.length).toBe(0);
+  // Aiming narrows the view and slows the mouse to match.
+  const wide = app.cam.fovY;
+  app.controls.mouseButton(2, true);
+  run(600);
+  expect(app.cam.fovY).toBeLessThan(wide * 0.85);
+  expect(app.controls.zoom).toBeCloseTo(app.cam.fovY / wide, 5);
+  app.controls.mouseButton(2, false);
+  run(600);
+  expect(app.cam.fovY).toBeCloseTo(wide, 2);
+  expect(s.stats.undecodable).toBe(0);
 });

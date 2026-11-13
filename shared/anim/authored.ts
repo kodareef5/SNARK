@@ -1,5 +1,5 @@
 // Clips written as code, for motions the animation libraries do not have:
-// lying prone and crawling now; drawing a bow and shouldering a rifle later.
+// lying prone and crawling, and how a bow and a gun are held, drawn and aimed.
 //
 // A pose is built by walking down the skeleton and saying where each part
 // points in model space ("the left forearm points forward and a little in"),
@@ -101,6 +101,14 @@ export class PoseBuilder {
     return this.store(bone);
   }
 
+  /** Stand a bone as it rests in model space, whatever its parents are doing: a hand so set holds a thing pointing forward and upright. */
+  level(bone: number): this {
+    const w = this.world;
+    w[bone * 4] = w[bone * 4 + 1] = w[bone * 4 + 2] = 0;
+    w[bone * 4 + 3] = 1;
+    return this.store(bone);
+  }
+
   /** Where a bone's joint is in model space, as the pose stands. */
   joint(bone: number): [number, number, number] {
     const chain: number[] = [];
@@ -177,6 +185,51 @@ function prone(b: PoseBuilder, reach: number): void {
   }
 }
 
+// How things are held. Each is one frame, and only the upper body of it is used: the legs go on with
+// whatever they were doing. +Z is ahead, +X the body's left, and a pose looks level: the look's pitch is
+// added by the pose function. A thing in the right hand points where the hand's own +Z does, so a hand
+// set level holds it aimed; a bow is in the left hand and shoots the way that arm points.
+
+/** A bow carried: low and ahead in the left hand, the right hand loose. */
+function bowReady(b: PoseBuilder): void {
+  b.aim(B_UPPER_ARM_L, 0.3, -0.85, 0.35).aim(B_LOWER_ARM_L, 0.05, -0.45, 0.9);
+  b.aim(B_UPPER_ARM_R, -0.25, -0.95, 0.1).aim(B_LOWER_ARM_R, -0.1, -0.8, 0.55);
+}
+
+/** A bow drawn: the body half turned, the left arm straight out at the mark, the right hand back at the jaw. */
+function bowDrawn(b: PoseBuilder): void {
+  b.turn(B_SPINE, 0, -14).turn(B_CHEST, 0, -14).turn(B_UPPER_CHEST, 0, -12).turn(B_NECK, 0, 20).turn(B_HEAD, 0, 20);
+  b.aim(B_UPPER_ARM_L, 0.12, -0.04, 1).aim(B_LOWER_ARM_L, 0.05, -0.02, 1);
+  b.aim(B_UPPER_ARM_R, -0.75, 0.02, -0.5).aim(B_LOWER_ARM_R, 0.82, 0.06, 0.62);
+}
+
+/** A long gun at the shoulder: the right hand at the grip under the eye, the left under the barrel. */
+function gunAimed(b: PoseBuilder): void {
+  b.turn(B_SPINE, 0, -8).turn(B_CHEST, 0, -8).turn(B_NECK, 0, 8).turn(B_HEAD, 0, 8);
+  b.aim(B_UPPER_ARM_R, -0.38, -0.82, 0.28).aim(B_LOWER_ARM_R, 0.42, 0.42, 0.8).level(B_HAND_R);
+  b.aim(B_UPPER_ARM_L, 0.05, -0.55, 0.85).aim(B_LOWER_ARM_L, -0.62, 0.3, 0.75);
+}
+
+/** A long gun brought down to be loaded: across the body, muzzle low, the left hand at the breech. */
+function gunLowered(b: PoseBuilder): void {
+  b.aim(B_UPPER_ARM_R, -0.3, -0.92, 0.1).aim(B_LOWER_ARM_R, 0.3, -0.25, 0.9).level(B_HAND_R).turn(B_HAND_R, 28, 22);
+  b.aim(B_UPPER_ARM_L, 0.15, -0.85, 0.4).aim(B_LOWER_ARM_L, -0.7, 0.05, 0.7);
+  b.turn(B_NECK, 14).turn(B_HEAD, 12);
+}
+
+/** A pistol held out in the right hand, the left steadying it. */
+function pistolAimed(b: PoseBuilder): void {
+  b.aim(B_UPPER_ARM_R, -0.12, -0.28, 1).aim(B_LOWER_ARM_R, 0.2, 0.12, 1).level(B_HAND_R);
+  b.aim(B_UPPER_ARM_L, 0.2, -0.42, 0.9).aim(B_LOWER_ARM_L, -0.55, 0.22, 0.8);
+}
+
+/** A pistol brought in to be loaded: muzzle up by the shoulder, the left hand at it. */
+function pistolLowered(b: PoseBuilder): void {
+  b.aim(B_UPPER_ARM_R, -0.3, -0.9, 0.25).aim(B_LOWER_ARM_R, 0.25, 0.55, 0.8).level(B_HAND_R).turn(B_HAND_R, -40);
+  b.aim(B_UPPER_ARM_L, 0.2, -0.8, 0.45).aim(B_LOWER_ARM_L, -0.6, 0.45, 0.65);
+  b.turn(B_NECK, 10).turn(B_HEAD, 10);
+}
+
 let authored: readonly Clip[] | null = null;
 
 /** Every clip written as code. Built once. */
@@ -184,5 +237,11 @@ export function authoredClips(): readonly Clip[] {
   return (authored ??= [
     clip("human/prone_idle", 1, true, (b) => prone(b, 0)),
     clip("human/prone_crawl", 40, true, (b, phase) => prone(b, detSin(phase * TAU))),
+    clip("human/bow_ready", 1, true, bowReady),
+    clip("human/bow_drawn", 1, true, bowDrawn),
+    clip("human/gun_aimed", 1, true, gunAimed),
+    clip("human/gun_lowered", 1, true, gunLowered),
+    clip("human/pistol_aimed", 1, true, pistolAimed),
+    clip("human/pistol_lowered", 1, true, pistolLowered),
   ]);
 }

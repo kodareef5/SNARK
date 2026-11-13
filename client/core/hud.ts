@@ -15,6 +15,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
 import { SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { STAMINA_UNITS } from "../../shared/sim/character.ts";
+import { ACT_DRAW, ACT_HOLD, ACT_RELOAD } from "../../shared/sim/weapon.ts";
 import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../../shared/sim/vitals.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -71,6 +72,34 @@ export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg
   }
 }
 
+/** What `HudModel.actionKind` says the bar under the crosshair is showing. */
+export const ACTION_NONE = 0;
+export const ACTION_DRAW = 1;
+export const ACTION_RELOAD = 2;
+
+/** Fill what the HUD shows of the weapon in hand: how far a bow is drawn or a reload has got, and the rounds in it and in the bag. */
+export function fillAction(m: HudModel, session: ClientSession | null, reg: Registry): void {
+  m.actionKind = ACTION_NONE;
+  m.actionFraction = 0;
+  m.ammo = "";
+  if (!session) return;
+  const b = session.own;
+  const w = reg.weapon[b.held];
+  if (!w || w.clip === 0) return;
+  if (b.act === ACT_DRAW || b.act === ACT_HOLD) {
+    m.actionKind = ACTION_DRAW;
+    m.actionFraction = b.act === ACT_HOLD || w.drawTicks === 0 ? 1 : b.actTicks / w.drawTicks;
+  } else if (b.act === ACT_RELOAD) {
+    m.actionKind = ACTION_RELOAD;
+    m.actionFraction = w.reloadTicks === 0 ? 1 : b.actTicks / w.reloadTicks;
+  }
+  const inv = session.inventory;
+  const slot = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.hotbar + session.held : -1;
+  const kind = slot >= 0 ? inv!.ammo[slot]! : 0;
+  const def = kind !== 0 ? (reg.defs[kind] as ItemDef | null) : null;
+  m.ammo = def ? `${def.label ?? def.id.slice(def.id.indexOf(":") + 1)}  ${b.rounds} / ${inv!.total(kind)}` : "not loaded";
+}
+
 export class HudModel {
   lat = 50;
   lon = 50;
@@ -108,6 +137,11 @@ export class HudModel {
   /** The ten hotbar slots, or none for a body that has no hotbar. `held` is the one in hand, or -1. */
   readonly hotbar: HotbarCell[] = [];
   held = -1;
+  /** The bar under the crosshair: ACTION_DRAW or ACTION_RELOAD and how far along, 0 to 1; or ACTION_NONE. */
+  actionKind = ACTION_NONE;
+  actionFraction = 0;
+  /** The weapon in hand: what it is loaded with, the rounds in it, and those carried. Empty for anything that takes none. */
+  ammo = "";
   /** Hits landed and harm taken, as they are shown this frame. */
   readonly combat = new CombatModel();
   private readoutAge = 0;

@@ -13,7 +13,8 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
-import { AnimState, bodySeed } from "../../../shared/anim/pose.ts";
+import { AnimState, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
+import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { BODY_RADIUS, Characters } from "./characters.ts";
@@ -94,6 +95,11 @@ export class Scene {
   readonly meshOfKind: Uint16Array;
   /** Region 0 colour per content index. */
   readonly colorOfKind: Uint8Array;
+  /** 1 for kinds drawn tilted to their pitch as well as turned to their facing. */
+  private readonly pitched: Uint8Array;
+  /** Shots in the air, drawn with the bodies; and the moment to draw them at, in ticks. Set by the app. */
+  shots: Shots | null = null;
+  shotTick = 0;
   private readonly trisOfMesh: number[][];
   private readonly radiusOfMesh: Float32Array;
   private readonly world: RenderWorld;
@@ -121,6 +127,7 @@ export class Scene {
     const missing = pack.meshIndex.get(MISSING_MESH) ?? 0;
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
     this.colorOfKind = new Uint8Array(reg.defs.length);
+    this.pitched = Uint8Array.from(reg.defs, (d) => (d?.type === "prop" && d.pitched ? 1 : 0));
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
@@ -215,6 +222,22 @@ export class Scene {
         if (!ch.add(p, kind, x, y, z, remote.yaw[i]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false)) break;
       }
     }
+    // Things that lie tilted as well as turned (an arrow where it landed), and whatever is in the air.
+    if (remote) {
+      for (let i = 0; i < remote.count; i++) {
+        const kind = remote.kind[i]!;
+        if (this.pitched[kind] === 0) continue;
+        const x = remote.x[i]! - cam.x;
+        const y = remote.y[i]! - cam.y;
+        const z = remote.z[i]! - cam.z;
+        if (!cam.boxVisible(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1)) continue;
+        st.unpack(remote.anim[i]!);
+        const pitch = (st.pitch / PITCH_STEPS) * (Math.PI / 2);
+        const level = Math.cos(pitch);
+        if (!ch.loose(p, this.meshOfKind[kind]!, x, y, z, Math.sin(remote.yaw[i]!) * level, Math.sin(pitch), Math.cos(remote.yaw[i]!) * level, 1)) break;
+      }
+    }
+    this.shots?.draw(ch, p, cam, this.shotTick);
     const own = this.own;
     if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson);
     ch.flush(p, this.transient, false, this.drawBody);
@@ -356,7 +379,7 @@ export class Scene {
     let visible = 0;
     const bodies = this.characters;
     for (let i = 0; i < remote.count; i++) {
-      if (bodies.has(remote.kind[i]!)) continue;
+      if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0) continue;
       const mesh = this.meshOfKind[remote.kind[i]!]!;
       const r = this.radiusOfMesh[mesh]!;
       const x = remote.x[i]! - cam.x;
@@ -376,7 +399,7 @@ export class Scene {
     }
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
-      if (bodies.has(kind)) continue;
+      if (bodies.has(kind) || this.pitched[kind] !== 0) continue;
       const mesh = this.meshOfKind[kind]!;
       const r = this.radiusOfMesh[mesh]!;
       const x = remote.x[i]! - cam.x;

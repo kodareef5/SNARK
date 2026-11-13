@@ -21,6 +21,8 @@ export class Controls {
   yaw = 0;
   pitch = 0;
   buttons = 0;
+  /** How much of its usual turn a pixel of mouse movement gives: below 1 while the view is narrowed to aim. */
+  zoom = 1;
   private readonly held = new Set<string>();
   private mouse = 0;
   /** BTN_CROUCH, BTN_PRONE or 0: the stance asked for, sent for as long as it is wanted. */
@@ -55,8 +57,8 @@ export class Controls {
   /** Mouse movement in pixels while it steers the camera. */
   look(dx: number, dy: number): void {
     // Facing +Z, right is -X: turning right lowers yaw.
-    this.yaw -= dx * LOOK_SPEED;
-    const p = this.pitch - dy * LOOK_SPEED;
+    this.yaw -= dx * LOOK_SPEED * this.zoom;
+    const p = this.pitch - dy * LOOK_SPEED * this.zoom;
     this.pitch = p < -PITCH_LIMIT ? -PITCH_LIMIT : p > PITCH_LIMIT ? PITCH_LIMIT : p;
   }
 

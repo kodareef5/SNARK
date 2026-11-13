@@ -24,8 +24,10 @@ import { AnimState } from "../shared/anim/pose.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
 import { Rng } from "../shared/rng.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
+import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../shared/net/protocol.ts";
+import { dress } from "../server/commands/combat.ts";
 import { Inventory } from "../shared/sim/items.ts";
-import { ACT_NONE, ACT_SWING, HOLD_HANDS, HOLD_TOOL } from "../shared/sim/weapon.ts";
+import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
@@ -114,7 +116,7 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
   r.tick = tick;
   const kind = view.reg.index.get("core:survivor")!;
   // speed, dir, pitch, mode, stance, grounded; then, for a body that is swinging, how it holds what it swings
-  const rows: readonly (readonly [number, number, number, number, number, number, number?])[] = [
+  const rows: readonly (readonly [number, number, number, number, number, number, number?, number?, string?])[] = [
     [0, 0, 0, 1, 0, 1], // idle
     [3, 0, 0, 1, 0, 1], // walk
     [7, 0, 0, 1, 0, 1], // jog
@@ -135,6 +137,14 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
     [0, 0, 0, 1, 0, 1, HOLD_TOOL], // a swing of a hatchet
     [7, 0, 0, 1, 0, 1, HOLD_TOOL], // the same at a jog
     [0, 0, -14, 1, 1, 1, HOLD_HANDS], // a punch, crouched and looking down
+    [0, 0, 0, 1, 0, 1, HOLD_BOW, ACT_DRAW, "bow"], // a bow coming up as it is drawn
+    [3, 0, 10, 1, 0, 1, HOLD_BOW, ACT_HOLD, "bow"], // drawn, walking, looking up
+    [0, 0, 0, 1, 0, 1, HOLD_RIFLE, ACT_NONE, "rifle"], // a rifle at the shoulder
+    [7, 0, -12, 1, 0, 1, HOLD_RIFLE, ACT_NONE, "rifle"], // at a jog, looking down
+    [0, 0, 0, 1, 0, 1, HOLD_RIFLE, ACT_RELOAD, "rifle"], // brought down to be loaded
+    [0, 0, 14, 1, 1, 1, HOLD_PISTOL, ACT_NONE, "pistol"], // a pistol, crouched, looking up
+    [0, 0, 0, 1, 0, 1, HOLD_PISTOL, ACT_RELOAD, "pistol"], // a pistol being loaded
+    [0, 0, 0, 1, 0, 1, HOLD_RIFLE, ACT_NONE, "crossbow"], // a crossbow
   ];
   const hatchet = view.reg.index.get("core:hatchet")!;
   // Two kinds of motion to a picture, one behind the other; eight moments of each, left to right.
@@ -160,9 +170,10 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
       st.grounded = row[5] === 1;
       // A swing is shown from its first tick to its last, left to right, whatever the body's own clock says.
       if (row[6] === undefined) st.setAction(ACT_NONE, HOLD_HANDS, 0);
-      else st.setAction(ACT_SWING, row[6], tick - i * 2);
+      else st.setAction(row[7] ?? ACT_SWING, row[6], tick - i * 2);
       r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
       if (row[6] === HOLD_TOOL) r.gear[n * GEAR_COUNT + GEAR_HELD] = hatchet;
+      if (row[8] !== undefined) r.gear[n * GEAR_COUNT + GEAR_HELD] = view.reg.index.get(`core:${row[8]}`)!;
       r.flags[n] = row[5];
       r.anim[n] = st.pack();
     }
@@ -283,14 +294,14 @@ export function looksScene(view: ProvingView, facing: number): void {
  * play: the world as its scene has it and its interface over that. `setup`
  * may steer it before the picture is taken.
  */
-export function clientPicture(width: number, height: number, look: Uint8Array | null, setup: (app: App, run: (ms: number) => void) => void): Uint8ClampedArray {
-  const h = new Harness();
+export function clientPicture(width: number, height: number, look: Uint8Array | null, setup: (app: App, run: (ms: number) => void, h: Harness) => void): Uint8ClampedArray {
+  const h = new Harness({}, 1, 60, { dev: true });
   const pack = parsePack(buildCorePack());
   const app = new App(h.join("ada", {}, { manual: true, look }), h.reg, pack);
   let packet = app.frame(0, width, height);
   const run = (ms: number): void => h.run(ms, (now) => (packet = app.frame(now, width, height)));
   run(500);
-  setup(app, run);
+  setup(app, run, h);
   run(50);
   const raster = new Rasterizer(width, height, pack, app.session.world!.hf);
   // The rasterizer has seen none of the uploads earlier frames carried: have the scene send them again.
@@ -316,6 +327,55 @@ if (import.meta.main) {
       randomLook(new Rng(5), app.ui.creator.look);
     });
     const out = resolve(arg("out") ?? "artifacts/creator.png");
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(w!, h!, pixels));
+    console.log(out);
+    process.exit(0);
+  }
+  if (args.includes("--fight")) {
+    // A survivor facing a dummy in flak, six metres off, caught in the middle of something:
+    // "punch" (up close, as the blow lands), "bow" (at full draw), "loosed" (the arrow in the air), "rifle" (the round's line).
+    const what = arg("fight") ?? "bow";
+    const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
+      const s = app.session;
+      const ents = hh.world.ents;
+      const e = hh.ent(s);
+      const rec = hh.host.records.byPid.get(ents.pid[e]!)!;
+      const far = what === "punch" ? 1.4 : 6;
+      const d = hh.host.spawnCreature("core:dummy", ents.x[e]!, ents.z[e]! + far, 1);
+      const drec = hh.host.records.byPid.get(ents.pid[d]!)!;
+      ents.yaw[d] = drec.yaw = 32768;
+      for (const part of ["hat", "shirt", "gloves", "pants", "boots"]) dress(hh.host, drec, hh.reg.index.get(`core:flak_${part}`)!);
+      hh.host.refreshBody(drec);
+      const k = (name: string): number => hh.reg.index.get(`core:${name}`)!;
+      const weapon = what === "rifle" ? "rifle" : what === "punch" ? "" : "bow";
+      if (weapon !== "") {
+        hh.host.items.mint(rec, k(weapon), 1);
+        hh.host.items.mint(rec, k(weapon === "rifle" ? "round_rifle" : "arrow_stone"), 20);
+        run(200);
+        const inv = s.inventory!;
+        const from = inv.item.indexOf(k(weapon));
+        s.command(CMD_MOVE, (wr) => (wr.bits(BOX_SELF, 1), wr.u8(from), wr.bits(BOX_SELF, 1), wr.u8(inv.hotbar), wr.u16(0), wr.u16(k(weapon))));
+        run(150);
+        s.command(CMD_SELECT, (wr) => wr.u8(0));
+        run(weapon === "rifle" ? 5400 : 1500);
+      }
+      app.view.thirdPerson = args.includes("--third");
+      app.controls.yaw = args.includes("--third") ? 0.5 : 0;
+      app.controls.pitch = what === "punch" ? 0.02 : -0.02;
+      run(200);
+      app.controls.mouseButton(0, true);
+      if (what === "punch") run(260);
+      else if (what === "rifle") run(1000 / 60);
+      else {
+        run(1400);
+        if (what === "loosed") {
+          app.controls.mouseButton(0, false);
+          run(1000 / 30);
+        }
+      }
+    });
+    const out = resolve(arg("out") ?? `artifacts/fight-${what}.png`);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);

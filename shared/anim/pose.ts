@@ -16,10 +16,10 @@
 import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatAxis, quatMul, quatRotate } from "../math/quat.ts";
 import { Pose, blendPose, sampleClip, type Clip, type ClipSet } from "./clip.ts";
-import { B_CHEST, B_FINGERS_L, B_HEAD, B_HIPS, B_NECK, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, HUMAN, HUMAN_BONES } from "./human.ts";
+import { B_CHEST, B_FINGERS_L, B_HEAD, B_HIPS, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, HUMAN, HUMAN_BONES } from "./human.ts";
 
 import { MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
-import { ACT_NONE, ACT_SWING, HOLD_HANDS, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
+import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
 
 /** The parts of a packed `AnimState`, as replication sends them: each part travels only when it changes. */
 export const ANIM_MOTION_BITS = 12;
@@ -119,6 +119,12 @@ export class HumanAnim {
   readonly punchCross: Clip | null;
   readonly toolSwing: Clip | null;
   readonly throwing: Clip | null;
+  readonly bowReady: Clip | null;
+  readonly bowDrawn: Clip | null;
+  readonly gunAimed: Clip | null;
+  readonly gunLowered: Clip | null;
+  readonly pistolAimed: Clip | null;
+  readonly pistolLowered: Clip | null;
 
   constructor(set: ClipSet) {
     this.set = set;
@@ -142,6 +148,12 @@ export class HumanAnim {
     this.punchCross = find("human/punch_cross");
     this.toolSwing = find("human/tool_swing");
     this.throwing = find("human/throw");
+    this.bowReady = find("human/bow_ready");
+    this.bowDrawn = find("human/bow_drawn");
+    this.gunAimed = find("human/gun_aimed");
+    this.gunLowered = find("human/gun_lowered");
+    this.pistolAimed = find("human/pistol_aimed");
+    this.pistolLowered = find("human/pistol_lowered");
   }
 }
 
@@ -177,6 +189,14 @@ const HANDS_FROM = B_FINGERS_L;
 /** Ticks over which a swing takes the upper body over, and gives it back. */
 const SWING_IN = 2;
 const SWING_OUT = 3;
+
+/** Ticks a bow takes to come up as the draw begins and to go down after the shot; and a gun to come down to be loaded. */
+const BOW_RAISE = 9;
+const BOW_LOWER = 6;
+const GUN_LOWER = 5;
+/** A gun kicks up by this much when it fires, radians, and settles over these ticks. */
+const KICK = 0.09;
+const KICK_TICKS = 5;
 
 const a = new Pose(HUMAN_BONES);
 const b = new Pose(HUMAN_BONES);
@@ -260,13 +280,41 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     blendPose(out, a, b, clamp((speed - JOG_SPEED) / (SPRINT_SPEED - JOG_SPEED), 0, 1));
   }
 
+  const act = st.action & 7;
+  const hold = st.action >>> 3;
+  // Ticks since what it is doing began. Drawn a moment before the tick it began, it has not begun.
+  let e = act === ACT_NONE ? 0 : (tick - st.actionStart) % 256;
+  if (e < 0) e += 256;
+  if (e > 250) e = 0;
+  /** How far its arms are up and aimed, 0 to 1: they then follow the whole of the look, not the spine's share of it. */
+  let raised = 0;
+  let kick = 0;
+  if (hold === HOLD_BOW) {
+    // Carried low; up as the draw begins; down again once the arrow is gone.
+    raised = act === ACT_DRAW ? clamp(e / BOW_RAISE, 0, 1) : act === ACT_HOLD ? 1 : act === ACT_COOL ? clamp(1 - e / BOW_LOWER, 0, 1) : 0;
+    if (anim.bowReady && anim.bowDrawn) {
+      sampleClip(anim.bowReady, 0, a);
+      sampleClip(anim.bowDrawn, 0, b);
+      blendPose(a, a, b, raised, UPPER_FROM, UPPER_TO);
+      blendPose(out, out, a, 1, UPPER_FROM, UPPER_TO);
+    }
+  } else if (hold === HOLD_RIFLE || hold === HOLD_PISTOL) {
+    // At the shoulder, except while it is loaded or being taken in hand.
+    const low = act === ACT_RELOAD ? clamp(e / GUN_LOWER, 0, 1) : act === ACT_EQUIP ? clamp(1 - e / EQUIP_TICKS, 0, 1) : 0;
+    raised = 1 - low;
+    if (act === ACT_COOL && e < KICK_TICKS) kick = KICK * (1 - e / KICK_TICKS);
+    const up = hold === HOLD_RIFLE ? anim.gunAimed : anim.pistolAimed;
+    const down = hold === HOLD_RIFLE ? anim.gunLowered : anim.pistolLowered;
+    if (up && down) {
+      sampleClip(up, 0, a);
+      sampleClip(down, 0, b);
+      blendPose(a, a, b, low, UPPER_FROM, UPPER_TO);
+      blendPose(out, out, a, 1, UPPER_FROM, UPPER_TO);
+    }
+  }
+
   // A swing: the upper body leaves what the legs are doing, for as long as a swing lasts.
-  if ((st.action & 7) === ACT_SWING) {
-    let e = (tick - st.actionStart) % 256;
-    if (e < 0) e += 256;
-    // Drawn a moment before the tick it began, it has not begun.
-    if (e > 250) e = 0;
-    const hold = st.action >>> 3;
+  if (act === ACT_SWING) {
     const clip = hold === HOLD_HANDS ? ((st.actionStart & 1) !== 0 ? (anim.punchCross ?? anim.punch) : anim.punch) : hold === HOLD_THROW ? anim.throwing : anim.toolSwing;
     const k = e < SWING_IN ? e / SWING_IN : (SWING_TICKS - e) / SWING_OUT;
     if (clip && k > 0) {
@@ -292,6 +340,12 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     turn(out, B_UPPER_CHEST, 1, 0, 0, -look * spineShare);
     turn(out, B_NECK, 1, 0, 0, -look * PITCH_NECK);
     turn(out, B_HEAD, 1, 0, 0, -look * PITCH_HEAD);
+  }
+  // Arms that are up and aimed point where it looks: the rest of the pitch the spine did not take, and a gun's kick.
+  const lift = (look * (1 - 3 * spineShare) + kick) * raised;
+  if (lift !== 0) {
+    turn(out, B_SHOULDER_L, 1, 0, 0, -lift);
+    turn(out, B_SHOULDER_R, 1, 0, 0, -lift);
   }
 }
 

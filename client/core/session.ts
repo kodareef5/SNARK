@@ -62,8 +62,8 @@ import {
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { Body, stepBody, type MoveParams } from "../../shared/sim/character.ts";
-import { FISTS, stepAction } from "../../shared/sim/weapon.ts";
+import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
@@ -174,6 +174,17 @@ export interface CombatEvent {
   back: number;
 }
 
+/** A shot of this client's own, as predicted: from its eye, along its look (in an input's units), drawn `draw`, a round of `ammo`. */
+export interface LocalShot {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+  draw: number;
+  ammo: number;
+}
+
 export interface TextLine {
   channel: number;
   text: string;
@@ -210,6 +221,9 @@ export class ClientSession {
    */
   readonly vitals = new Vitals();
   hasVitals = false;
+  /** Shots this client's own body fired, as its prediction has them, oldest first. Whoever draws them empties this. */
+  readonly fired: LocalShot[] = [];
+  private firedTick = 0;
   /** Hits landed and harm taken, as the server reported them, oldest first. Whoever shows them empties this. */
   readonly events: CombatEvent[] = [];
   /** A mirror of the survivor's own inventory; null until the server sends it. */
@@ -445,6 +459,14 @@ export class ClientSession {
     // What it does with what it holds, as the server will step it: the same buttons, and those that went down since the tick before.
     const before = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
     stepAction(this.own, buttons, buttons & ~before, this.opts.registry.weapon[this.own.held] ?? FISTS);
+    // A shot left, on a tick stepped for the first time (a replay after a correction steps old ticks again): noted, to be drawn at once.
+    if (actionOut.fire && t > this.firedTick) {
+      this.firedTick = t;
+      const inv = this.inventory;
+      const slot = inv && inv.hotbar >= 0 && this.held >= 0 ? inv.hotbar + this.held : -1;
+      const ammo = slot >= 0 ? inv!.ammo[slot]! : 0;
+      if (ammo !== 0 && this.fired.length < 16) this.fired.push({ x: this.own.x, y: this.own.y + stanceEye(this.move!, this.own.stance), z: this.own.z, yaw: inp.yaw[i]!, pitch: inp.pitch[i]!, draw: actionOut.draw, ammo });
+    }
     this.bodies[t & (HISTORY - 1)]!.copy(this.own);
     this.bodyTick[t & (HISTORY - 1)] = t;
   }

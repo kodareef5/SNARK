@@ -12,11 +12,14 @@ import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "..
 import type { Pack } from "../../shared/pack/pack.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls } from "./controls.ts";
-import { HudModel, fillHotbar, minimapImage, updateHud } from "./hud.ts";
+import { HudModel, fillAction, fillHotbar, minimapImage, updateHud } from "./hud.ts";
 import { Camera } from "./render/camera.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
 import { Feedback } from "./feedback.ts";
+import { Shots } from "./shots.ts";
+import { BTN_SECONDARY } from "../../shared/sim/character.ts";
+import type { ItemDef } from "../../shared/content/defs.ts";
 import { FISTS } from "../../shared/sim/weapon.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { handleIndex } from "../../shared/ids.ts";
@@ -32,6 +35,11 @@ const REACH = 3.5;
 /** Bit in replicated entity flags marking a prop: a thing that can be opened. */
 const VIEW_FLAG_PROP = 8;
 
+/** The camera's field of view, top to bottom, radians: as it is, aiming a bow or a gun, and through a scope. */
+const BASE_FOV = 1.2217;
+const AIM_FOV = 0.96;
+const SCOPE_FOV = 0.3;
+
 export class App {
   readonly session: ClientSession;
   readonly controls = new Controls();
@@ -39,6 +47,9 @@ export class App {
   readonly cam = new Camera();
   readonly hud = new HudModel();
   readonly feedback = new Feedback();
+  readonly shots: Shots;
+  /** The camera's field of view, eased toward what the weapon in hand and the aim button ask for. */
+  private fov = BASE_FOV;
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
   scene: Scene | null = null;
@@ -61,6 +72,7 @@ export class App {
     this.pack = pack;
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
+    this.shots = new Shots(reg, pack);
     session.onResult = (seq, code) => this.ui.creator.result(seq, code === RESULT_OK);
   }
 
@@ -219,6 +231,7 @@ export class App {
     }
     if (!this.scene) {
       this.scene = new Scene(world, this.reg, this.pack);
+      this.scene.shots = this.shots;
       this.ui.frame.images[IMAGE_MINIMAP] = { width: MINIMAP_SIZE, height: MINIMAP_SIZE, data: minimapImage(world.hf, this.pack.palette, MINIMAP_SIZE), version: 1 };
     }
     hud.status = "";
@@ -243,6 +256,17 @@ export class App {
     this.view.place(cam, world, bx, by + eye, bz, c.yaw, c.pitch);
     this.view.thirdPerson = third;
     cam.aspect = aspect;
+    // Aiming narrows the view: a little with a bow or a gun, a great deal through a scope. The mouse slows to match.
+    let want = BASE_FOV;
+    const aimed = this.reg.weapon[session.own.held];
+    if (alive && this.steer && (c.buttons & BTN_SECONDARY) !== 0 && aimed && aimed.clip > 0) {
+      const inv = session.inventory;
+      const fitted = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.attach[inv.hotbar + session.held]! : 0;
+      want = (this.reg.defs[fitted] as ItemDef | null)?.attachment === "scope" ? SCOPE_FOV : AIM_FOV;
+    }
+    this.fov += (want - this.fov) * Math.min(1, dt / 70);
+    cam.fovY = this.fov;
+    c.zoom = this.fov / BASE_FOV;
     // The body itself, posed from what the prediction says it is doing.
     const body = this.body;
     body.kind = session.ownKind;
@@ -271,6 +295,10 @@ export class App {
     this.scene.own = alive && session.ownHandle !== 0 ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
     session.sampleRemote(this.remote);
+    // Shots in the air: this client's own as its prediction has them, others' as the server told of them.
+    this.shots.absorb(session, world, nowMs);
+    this.shots.step(world, this.remote, session.tickClock, nowMs);
+    this.scene.shotTick = session.tickClock;
     // A beam over each place it died, so the place can be seen from far off.
     const beams = this.scene.beams;
     beams.length = 0;
@@ -281,6 +309,7 @@ export class App {
     this.feedback.absorb(session, this.reg, nowMs);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs);
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
+    fillAction(hud, alive ? session : null, this.reg);
     hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eyeNow) : "";
     this.ui.build(aspect, hud, session);
     return packet;

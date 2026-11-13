@@ -1,6 +1,6 @@
 // The heads-up display as a screen: readout, vitals, minimap, crosshair.
 
-import type { HudModel } from "../hud.ts";
+import { ACTION_DRAW, ACTION_NONE, type HudModel } from "../hud.ts";
 import { K_BAR, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT, S_SLOT_TEXT, S_STAMINA, S_SWATCH, S_TEXT, S_WATER } from "./style.ts";
 
@@ -13,6 +13,9 @@ export const KEY_CROSS = 30;
 export const KEY_STATUS = 31;
 export const KEY_BANNER = 32;
 export const KEY_PROMPT = 33;
+/** The bar that fills as a bow is drawn or a reload goes on, and the line that says what is loaded. */
+export const KEY_ACTION = 34;
+export const KEY_AMMO = 35;
 /** Per hotbar slot: its box, its swatch, its number. */
 export const KEY_HOTBAR = 40;
 export const KEY_MARKER = 100;
@@ -76,11 +79,14 @@ export function buildHud(f: UiFrame, m: HudModel): void {
       swatch.text = c.label;
       f.text(KEY_HOTBAR + i * 3 + 2, x + 2, y0 + cell - small, cell - 4, S_SLOT_TEXT, c.number);
     }
+    if (m.ammo !== "") f.text(KEY_AMMO, Math.max(MARGIN, W / 2 - 150), y0 - lineHeight(S_PROMPT) - 3, Math.min(300, W - MARGIN * 2), S_PROMPT, m.ammo);
   }
 
   if (m.crosshair) {
     f.add(KEY_CROSS, K_PANEL, W / 2 - 2, H / 2 - 2, 4, 4, S_CROSS);
     if (m.prompt !== "") f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, m.prompt.slice(0, 38));
+    // Under the crosshair: how far the bow is drawn, or the reload has got.
+    if (m.actionKind !== ACTION_NONE) f.add(KEY_ACTION, K_BAR, W / 2 - 40, H / 2 + 38, 80, 5, m.actionKind === ACTION_DRAW ? S_STAMINA : S_OXYGEN).value = m.actionFraction;
   }
   // The status line sits left of the vitals, or above them where there is no room beside.
   if (m.status !== "") {
