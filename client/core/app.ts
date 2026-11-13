@@ -6,7 +6,7 @@
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CMD_SELECT, MARKER_DEATH, RESULT_OK, SESSION_ALIVE, SESSION_CREATING } from "../../shared/net/protocol.ts";
+import { CMD_SELECT, MARKER_DEATH, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
@@ -27,6 +27,8 @@ import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS } from "../../shared/sim/items.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { RemoteSample, type ClientSession } from "./session.ts";
+import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
+import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { voicePan } from "./voice/place.ts";
 import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
@@ -81,8 +83,16 @@ export class App {
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
     this.shots = new Shots(reg, pack);
-    session.onResult = (seq, code) => this.ui.creator.result(seq, code === RESULT_OK);
+    session.onResult = (seq, code) => {
+      this.ui.creator.result(seq, code === RESULT_OK);
+      this.builder.result(seq, code, this.nowMs);
+    };
   }
+
+  /** Where the building piece in hand would go, if one is. */
+  readonly builder = new Builder();
+  /** The time of the last frame, for keys that are timed. */
+  private nowMs = 0;
 
   /** Whatever carries voice here, if anything does; whether the microphone is wanted; and how loud it is meant. */
   voice: VoicePort | null = null;
@@ -153,6 +163,8 @@ export class App {
       return true;
     }
     if (this.ui.captureKeyboard) return false;
+    // With a building piece in hand, some keys are building's.
+    if (this.builder.key(code, down, repeat, this.nowMs, this.reg)) return true;
     if (code === "AltLeft" || code === "AltRight") {
       // Kept from the browser, which would open its menu.
       this.alt = down;
@@ -183,7 +195,13 @@ export class App {
   }
 
   mouseButton(button: number, down: boolean): void {
-    if (this.ui.wantsPointerLock) this.controls.mouseButton(button, down);
+    if (!this.ui.wantsPointerLock) return;
+    // With a building piece in hand the primary button sets it down; it is not a blow.
+    if (button === 0 && this.builder.active) {
+      if (down) this.builder.place(this.session, this.reg);
+      return;
+    }
+    this.controls.mouseButton(button, down);
   }
 
   /** Mouse movement while the pointer is locked. */
@@ -327,6 +345,7 @@ export class App {
     const session = this.session;
     const hud = this.hud;
     const c = this.controls;
+    this.nowMs = nowMs;
 
     if (session.state === "closed") {
       hud.status = `disconnected (reason ${session.closeReason})`;
@@ -428,7 +447,24 @@ export class App {
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
     this.listen(hud);
-    hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eyeNow) || this.who(world, eyeNow) : "";
+    // A building piece in hand: shown where it would go, in green if it may and red if not, with the reason.
+    const ghost = this.scene.ghost;
+    ghost.kind = 0;
+    const b = this.builder;
+    if (alive && session.driving < 0) {
+      lookDirection(Math.round((c.yaw / TAU) * 65536) & 0xffff, Math.round((c.pitch / (PI / 2)) * 16384), this.aim);
+      b.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.aim[0]!, this.aim[1]!, this.aim[2]!, c.yaw, nowMs);
+    } else b.active = false;
+    if (b.active && b.problem !== RESULT_NO_SNAP) {
+      ghost.kind = b.kind;
+      ghost.x = b.pose.x / STRUCT_UNITS;
+      ghost.y = b.pose.y / STRUCT_UNITS;
+      ghost.z = b.pose.z / STRUCT_UNITS;
+      ghost.yaw = b.pose.yaw;
+      ghost.color = b.problem === 0 ? GHOST_OK : GHOST_BAD;
+    }
+    hud.prompt = !alive ? "" : b.active ? b.notice : this.prompt(world, eyeNow) || this.who(world, eyeNow);
+    if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
     return packet;
   }

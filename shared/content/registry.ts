@@ -81,6 +81,10 @@ export interface Registry {
   readonly parts: PartTable;
   /** Per structure with a shape: what kind of piece it is, as an index into PIECE_ROLES; -1 for everything else. */
   readonly role: Int8Array;
+  /** Per structure: 1 if it is a wall with a doorway. */
+  readonly doorway: Uint8Array;
+  /** Per item that is set down as a structure: the structures it may be set down as, the usual one first. Null for everything else. */
+  readonly places: readonly (Uint16Array | null)[];
   /** A thrown weapon: metres per second off the hand, ticks until it goes off, and how far its blast reaches. */
   readonly throwSpeed: Float32Array;
   readonly fuseTicks: Uint16Array;
@@ -242,6 +246,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
       for (const a of d.weapon?.ammo ?? []) if (!items.get(a)?.ammo) errors.push(`${d.id}: "${a}" is not ammunition`);
       for (const a of d.weapon?.fits ?? []) if (!items.get(a)?.attachment) errors.push(`${d.id}: "${a}" is not an attachment`);
       if (d.ammo?.buff !== undefined) want(d, d.ammo.buff, "buff");
+      for (const s of d.places ?? []) want(d, s, "structure");
+      if (d.places && d.places.length === 0) errors.push(`${d.id}: places must name at least one structure`);
     }
   }
   if (input.length >= 65535) errors.push("too many definitions for a 16-bit index");
@@ -282,6 +288,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const ammoBuff = new Uint16Array(n);
   const structTakes: (Float32Array | null)[] = new Array(n).fill(null);
   const role = new Int8Array(n).fill(-1);
+  const doorway = new Uint8Array(n);
+  const places: (Uint16Array | null)[] = new Array(n).fill(null);
   const partStart = new Uint32Array(n + 1);
   const partBox: number[] = [];
   const throwSpeed = new Float32Array(n);
@@ -302,6 +310,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       const shape = d.type === "structure" && d.shape !== undefined ? shapes.get(d.shape)! : null;
       if (shape) {
         role[i] = PIECE_ROLES.indexOf(shape.role);
+        if (shape.doorway) doorway[i] = 1;
         for (const b of shape.boxes) partBox.push(b.at[0], b.at[1], b.at[2], b.half[0], b.half[1], b.half[2]);
       } else partBox.push(0, 0, 0, d.half[0], d.half[1], d.half[2]);
       if (d.type === "structure" && d.material !== undefined) {
@@ -358,7 +367,12 @@ export function compileContent(input: readonly Def[]): CompileResult {
   }
   partStart[n] = partBox.length / 6;
   const parts: PartTable = { start: partStart, box: Float32Array.from(partBox) };
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  // What an item is set down as, now that every definition has its number.
+  for (let i = 1; i < n; i++) {
+    const d = defs[i]!;
+    if (d.type === "item" && d.places) places[i] = Uint16Array.from(d.places, (id) => index.get(id)!);
+  }
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

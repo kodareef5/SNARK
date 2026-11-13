@@ -27,6 +27,7 @@ import { Rng } from "../shared/rng.ts";
 import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, stepBody } from "../shared/sim/character.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../shared/world/proving.ts";
 import { StructureStore } from "../shared/world/structures.ts";
+import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../shared/world/snap.ts";
 
 export function simHash(ticks = 3000): string {
   const reg = compileContent(CORE_CONTENT).registry!;
@@ -149,4 +150,52 @@ export function poseHash(): string {
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-if (import.meta.main) console.log(simHash() + " " + poseHash());
+/**
+ * Building: from a first piece at each of many facings, pieces joined on at
+ * random, each where the shared arithmetic puts it, with what a look from
+ * above chooses and whether each place is free. Equal hashes mean the client's
+ * preview and the server's check agree to the last unit on both engines.
+ */
+export function snapHash(): string {
+  const reg = compileContent(CORE_CONTENT).registry!;
+  const kinds = ["foundation", "wall", "doorframe", "windowframe", "ceiling", "pillar", "door", "stairs"].map((p) => reg.index.get(`core:${p}_stone`)!);
+  const rng = new Rng(7106);
+  const axes = new Int32Array(4);
+  const pose: SnapPose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const sockets = makeSockets();
+  const aim = makeAim();
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9747b28c;
+  const mix = (v: number): void => {
+    h1 = Math.imul(h1 ^ (v | 0), 0x01000193);
+    h2 = Math.imul(h2 + (v | 0), 0x85ebca6b) ^ (h2 >>> 13);
+  };
+  for (let trial = 0; trial < 120; trial++) {
+    const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+    const yaw = rng.int(65536);
+    frameAxes(yaw, axes);
+    for (const v of axes) mix(v);
+    const built = [structs.add(kinds[0]!, 200 + rng.range(-20, 20), 4 + rng.int(64) / 512, 200 + rng.range(-20, 20), yaw, 1, 1)];
+    for (let i = 0; i < 60; i++) {
+      const target = built[rng.int(built.length)]!;
+      const kind = kinds[rng.int(kinds.length)]!;
+      const n = socketsOf(structs, reg, target, kind, sockets);
+      mix(n);
+      if (n === 0 || !poseAt(structs, reg, target, kind, rng.int(n), rng.int(4), pose)) continue;
+      mix(pose.x);
+      mix(pose.y);
+      mix(pose.z);
+      mix(pose.yaw);
+      const taken = obstructed(structs, reg.parts, kind, pose.x / 512, pose.y / 512, pose.z / 512, pose.yaw);
+      mix(taken ? 1 : 0);
+      if (!taken) built.push(structs.add(kind, pose.x / 512, pose.y / 512, pose.z / 512, pose.yaw, 1, 1));
+      // A look straight down onto somewhere near it.
+      pickSnap(structs, reg, kinds[rng.int(kinds.length)]!, pose.x / 512 + rng.range(-3, 3), pose.y / 512 + 6, pose.z / 512 + rng.range(-3, 3), 0, -1, 0, -1, 6, false, aim);
+      mix(aim.target);
+      for (let k = 0; k < aim.count; k++) mix(aim.order[k]!);
+    }
+  }
+  return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash());

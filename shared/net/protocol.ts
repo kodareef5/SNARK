@@ -123,6 +123,13 @@ export const CMD_DROP = 16;
  */
 /** Say something: the channel (3 bits: TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE), then the words (a string). */
 export const CMD_CHAT = 17;
+/**
+ * Set down the building piece in hand: which of the forms it has (u8); the
+ * structure it joins (u32, a ref) and which of that structure's places (u8),
+ * or 0xffffffff and, for open ground, where (x and z as s32 lattice units)
+ * with the facing (u16) and how far it is raised (s8 steps); then how it is
+ * turned in its place (u8). The server works the position out again itself.
+ */
 export const CMD_PLACE = 18;
 export const CMD_STRUCT = 19;
 export const CMD_ORDER = 20;
@@ -146,6 +153,18 @@ export const RESULT_FULL = 5;
 export const RESULT_FAR = 6;
 /** Not enough of something: points, level, ingredients. */
 export const RESULT_SHORT = 7;
+/**
+ * Why a piece could not be set down: something is in the way; a foundation
+ * would stand too far clear of the ground; nothing would hold it up; it is too
+ * near what another tribe has founded; what it would join is not this
+ * survivor's tribe's; or there is no such place to join.
+ */
+export const RESULT_OBSTRUCTED = 16;
+export const RESULT_TOO_HIGH = 17;
+export const RESULT_NO_SUPPORT = 18;
+export const RESULT_ENEMY_NEAR = 19;
+export const RESULT_NOT_YOURS = 20;
+export const RESULT_NO_SNAP = 21;
 
 /** OWN components. */
 export const OWN_SESSION = 1;

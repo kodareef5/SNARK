@@ -33,6 +33,7 @@ around it trees, rocks, bushes, and a herd of wandering placeholder creatures.
 | R, F | Reload; strike with whatever is held |
 | V | Look from behind the body, or from its eyes |
 | E | Pick a bush, open a cache, close it |
+| Building piece in hand | Left button sets it down where it is shown. E turns it, Q takes the next nearest place (held: open ground), R changes a wall to a doorframe or a windowframe, arrow keys raise and lower a foundation |
 | I, P, M, O | Inventory, character (stats, engrams, crafting), map, settings (among them voice volume, and whether B is held or switches the microphone) |
 | B | Hold to talk to those near; with Alt a whisper, with Shift a yell. The first press asks for the microphone |
 | Enter, Insert, / | Chat: to everyone, to those within 60 m, to your tribe. Tab changes channel, Enter says the line |
@@ -44,7 +45,8 @@ Under `bun run dev` cheats need no password: type `enablecheats`, then try
 `spectate`. For a fight: `kit bow`, `kit rifle`, `kit grenades` (then move the
 weapon to the hotbar in the inventory and press its number), `dummy flak` for
 something to shoot, `armor flak` to wear a set, `place wall_wood` for something
-to burn, `buff burning`, and `rule` for the server's damage rules. On a real server set `SNARK_ADMIN_PASSWORD`; without it cheats are
+to burn, `give piece_foundation_wood 10` and `give piece_wall_wood 20` for
+something to build with (move them to the hotbar), `buff burning`, and `rule` for the server's damage rules. On a real server set `SNARK_ADMIN_PASSWORD`; without it cheats are
 off.
 
 Voice needs a microphone, and away from `localhost` a browser gives one only to

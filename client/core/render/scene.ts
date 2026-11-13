@@ -111,6 +111,8 @@ export class Scene {
   private readonly beamMesh: number;
   /** Places to mark with a beam: x, y, z each. Set by the app before `build`. */
   readonly beams: number[] = [];
+  /** A piece shown where it would be built: its kind (0 for none), where (metres), its facing (wire units) and a palette colour. */
+  readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
   /** Bodies with bones. */
   readonly characters: Characters;
   /** The viewer's own body, or null to draw none. Set by the app before `build`. */
@@ -195,6 +197,7 @@ export class Scene {
     if (remote) this.entities(cam, remote);
     this.bodies(cam, remote);
     if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
+    if (this.ghost.kind !== 0) this.showGhost(cam);
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody);
@@ -241,6 +244,19 @@ export class Scene {
     const own = this.own;
     if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson);
     ch.flush(p, this.transient, false, this.drawBody);
+  }
+
+  /** The piece a builder is about to set down, where it would go: see-through, in the colour given. */
+  private showGhost(cam: Camera): void {
+    const p = this.packet;
+    const g = this.ghost;
+    const first = p.transientCount;
+    this.transient.set(first, g.x - cam.x, g.y - cam.y, g.z - cam.z, g.yaw, g.color);
+    p.transientIds[first] = 0;
+    const d = p.drawCount;
+    this.draw(this.meshOfKind[g.kind]!, 0, TRANSIENT_BUFFER, first, 1, 0, 0, 0);
+    if (p.drawCount > d) p.drawFlags[d] = DRAW_BLEND;
+    p.transientCount = first + 1;
   }
 
   /** A tall thin beam over each marked place, visible from far off. */

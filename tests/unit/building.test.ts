@@ -1,7 +1,7 @@
 // What survivors build with: pieces made of more than one box, and bodies and rays among them.
 
 import { expect, test } from "bun:test";
-import { BUILDING_CONTENT, DOOR_HEIGHT, DOOR_WIDTH, FLOOR_THICK, FOUNDATION_THICK, SPAN, WALL_HEIGHT } from "../../content/building.ts";
+import { BUILDING_CONTENT, DOOR_HEIGHT, DOOR_WIDTH, FLOOR_THICK, FOUNDATION_THICK, RISE, SPAN, WALL_HEIGHT } from "../../content/building.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { PIECE_ROLES, shapeHalf, type Def, type ShapeDef, type StructureDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -16,7 +16,6 @@ import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 const FWD = 127;
 const Q = 16384;
-const RISE = WALL_HEIGHT + FLOOR_THICK;
 const TIERS = ["thatch", "wood", "stone", "metal"];
 
 function survivor(w: TestWorld): MoveParams {
@@ -55,13 +54,14 @@ test("the building set: every piece in every material it is made in, with the re
     expect(def(`wall_${tier}`).material).toBe(`core:mat_${tier}`);
   }
   expect(["foundation", "wall", "ceiling", "doorframe", "door"].map((p) => def(`${p}_thatch`).hp)).toEqual([2400, 1600, 1600, 1600, 1000]);
-  // Three metres square, a wall three high, a storey 3.2 from floor to floor.
-  expect([SPAN, WALL_HEIGHT, RISE]).toEqual([3, 3, 3.2]);
+  // Three metres square, a wall three high, and a storey exactly a wall high; every height a whole number of 1/256 m.
+  expect([SPAN, WALL_HEIGHT, RISE]).toEqual([3, 3, 3]);
+  for (const v of [FOUNDATION_THICK, FLOOR_THICK, WALL_HEIGHT, DOOR_HEIGHT, RISE]) expect((v * 256) % 1).toBe(0);
   expect(def("foundation_stone").half).toEqual([1.5, FOUNDATION_THICK / 2, 1.5]);
   expect(def("wall_wood").half).toEqual([1.5, 1.5, 0.1]);
-  expect(def("ceiling_wood").half).toEqual([1.5, 0.1, 1.5]);
+  expect(def("ceiling_wood").half).toEqual([1.5, 0.125, 1.5]);
   expect(def("pillar_wood").half).toEqual([0.25, 1.5, 0.25]);
-  expect(def("stairs_wood").half.map((v) => Math.round(v * 1000) / 1000)).toEqual([1.5, 1.6, 1.5]);
+  expect(def("stairs_wood").half.map((v) => Math.round(v * 1000) / 1000)).toEqual([1.5, 1.5, 1.5]);
   // A doorframe is as big as a wall, and a door fills its doorway.
   expect(def("doorframe_wood").half.map((v) => Math.round(v * 1000) / 1000)).toEqual([1.5, 1.5, 0.1]);
   expect(def("door_wood").half).toEqual([DOOR_WIDTH / 2, DOOR_HEIGHT / 2, 0.04]);
@@ -77,7 +77,7 @@ test("the building set: every piece in every material it is made in, with the re
 
   // The box that holds a piece is its shape's, and content that says otherwise is refused; so is a shape with no boxes.
   const stairs = BUILDING_CONTENT.find((d) => d.id === "core:shape_stairs") as ShapeDef;
-  expect(shapeHalf(stairs.boxes).map((v) => Math.round(v * 1000) / 1000)).toEqual([1.5, 1.6, 1.5]);
+  expect(shapeHalf(stairs.boxes).map((v) => Math.round(v * 1000) / 1000)).toEqual([1.5, 1.5, 1.5]);
   const broken = (change: (d: Def) => Def): string[] => compileContent(CORE_CONTENT.map(change)).errors;
   expect(broken((d) => (d.id === "core:wall_wood" ? { ...d, half: [1.5, 1.5, 0.3] } : d))[0]).toContain("core:wall_wood: half must be [1.5, 1.5, 0.1]");
   expect(broken((d) => (d.id === "core:wall_wood" ? { ...d, shape: "core:stone" } : d))[0]).toContain('"core:stone" is not a shape');
@@ -92,7 +92,7 @@ test("each piece is drawn as its boxes", () => {
   expect([tris("core:wall_wood"), tris("core:doorframe_wood"), tris("core:windowframe_stone"), tris("core:stairs_metal")]).toEqual([12, 36, 48, 120]);
   // The mesh reaches as far as the piece does, about its centre.
   const m = pack.header.meshes[pack.meshIndex.get("core:stairs_wood")!]!;
-  expect(m.half.map((v) => Math.round(v * 100) / 100)).toEqual([1.5, 1.6, 1.5]);
+  expect(m.half.map((v) => Math.round(v * 1000) / 1000)).toEqual([1.5, 1.5, 1.5]);
   expect(m.center.map((v) => Math.round(Math.abs(v) * 100) / 100)).toEqual([0, 0, 0]);
 });
 

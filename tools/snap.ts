@@ -10,6 +10,7 @@
 //   bun run snap -- --creator 1               what a new survivor sees: the creator, on its first or second tab
 //   bun run snap -- --gear                    a line-up of armor tiers and held weapons
 //   bun run snap -- --house stone             a small house of building pieces, in thatch, wood, stone or metal
+//   bun run snap -- --build                   a survivor building: a foundation and a wall set down, a doorframe shown where it would go
 //
 // Yaw and pitch are in degrees. Yaw 0 faces +Z (north); positive yaw turns toward +X.
 
@@ -397,7 +398,7 @@ if (import.meta.main) {
         run(200);
         const inv = s.inventory!;
         const from = inv.item.indexOf(k(weapon));
-        s.command(CMD_MOVE, (wr) => (wr.bits(BOX_SELF, 1), wr.u8(from), wr.bits(BOX_SELF, 1), wr.u8(inv.hotbar), wr.u16(0), wr.u16(k(weapon))));
+        s.command(CMD_MOVE, (wr) => (wr.bits(BOX_SELF, 1), wr.varint(from), wr.bits(BOX_SELF, 1), wr.varint(inv.hotbar), wr.u16(0), wr.u16(k(weapon))));
         run(150);
         s.command(CMD_SELECT, (wr) => wr.u8(0));
         run(weapon === "rifle" ? 5400 : 1500);
@@ -418,6 +419,48 @@ if (import.meta.main) {
       }
     });
     const out = resolve(arg("out") ?? `artifacts/fight-${what}.png`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(w!, h!, pixels));
+    console.log(out);
+    process.exit(0);
+  }
+  if (args.includes("--build")) {
+    // A survivor who has set down a foundation and a wall, with a doorframe in hand, looking at where it would go.
+    const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
+      const s = app.session;
+      const rec = hh.host.records.byPid.get(hh.world.ents.pid[hh.ent(s)]!)!;
+      const k = (name: string): number => hh.reg.index.get(`core:${name}`)!;
+      for (const [slot, piece] of ["piece_foundation_wood", "piece_wall_wood"].entries()) {
+        hh.host.items.mint(rec, k(piece), 5);
+        run(200);
+        const inv = s.inventory!;
+        const from = inv.item.indexOf(k(piece));
+        s.command(CMD_MOVE, (wr) => (wr.bits(BOX_SELF, 1), wr.varint(from), wr.bits(BOX_SELF, 1), wr.varint(inv.hotbar + slot), wr.u16(0), wr.u16(k(piece))));
+        run(150);
+      }
+      const click = (): void => {
+        app.mouseButton(0, true);
+        app.mouseButton(0, false);
+        run(300);
+      };
+      s.command(CMD_SELECT, (wr) => wr.u8(0));
+      app.controls.yaw = 0.25;
+      app.controls.pitch = Math.atan2(-1.62, 5.5);
+      run(300);
+      click();
+      // A wall on its far edge; then, looking a little to the left, the same piece as a doorframe on its west edge, not yet set down.
+      s.command(CMD_SELECT, (wr) => wr.u8(1));
+      app.controls.pitch = Math.atan2(-1.62, 6.6);
+      run(300);
+      click();
+      app.key("KeyR", true);
+      app.key("KeyR", false);
+      app.controls.yaw = 0.5;
+      app.controls.pitch = Math.atan2(-1.62, 5.4);
+      run(300);
+      if (args.includes("--third")) app.view.thirdPerson = true;
+    });
+    const out = resolve(arg("out") ?? "artifacts/build.png");
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);

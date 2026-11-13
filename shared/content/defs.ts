@@ -86,6 +86,8 @@ export interface ShapeDef {
   readonly id: string;
   readonly role: PieceRole;
   readonly boxes: readonly ShapeBox[];
+  /** A wall with a doorway: a door may be set in it. */
+  readonly doorway?: boolean;
 }
 
 export interface StructureDef {
@@ -138,6 +140,12 @@ export interface ItemDef {
   readonly wear?: WearFacet;
   /** Something fitted to a weapon: what kind of thing it is. A weapon lists the attachment items it takes. */
   readonly attachment?: "scope" | "silencer" | "light" | "laser";
+  /**
+   * Something set down as a structure: the structures it may be set down as.
+   * The first is what it is; the rest are other forms of the same piece (a
+   * wall as a doorframe), chosen as it is placed.
+   */
+  readonly places?: readonly string[];
 }
 
 /** How a kind of damage is named. Armor, species and structure materials each say what they make of a type. */

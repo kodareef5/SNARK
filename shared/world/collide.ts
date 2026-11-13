@@ -10,7 +10,7 @@
 import { YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import type { Heightfield } from "./heightfield.ts";
-import type { StructureStore } from "./structures.ts";
+import type { PartTable, StructureStore } from "./structures.ts";
 
 /** Penetration below this depth counts as touching, not overlapping. */
 export const SKIN = 0.002;
@@ -39,24 +39,33 @@ export function capsuleBox(structs: StructureStore, ref: number, x: number, y: n
   const slot = ref & 0xffff;
   const kind = t.kind[slot]!;
   if (structs.isSoft(kind)) return false;
-  const a = t.yaw[slot]! * YAW_TO_RAD;
+  return capsuleKind(structs.parts, kind, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, x, y, z, r, h, slack);
+}
+
+/**
+ * The same test against a structure of `kind` standing at (sx, sy, sz) and
+ * facing `syaw`, whether or not one is there: for asking what would be in the
+ * way of one about to be built.
+ */
+export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, x: number, y: number, z: number, r: number, h: number, slack: number): boolean {
+  const a = syaw * YAW_TO_RAD;
   const s = detSin(a);
   const c = detCos(a);
   // The capsule's axis in the structure's own frame, about its origin.
-  const dx = x - t.x[slot]!;
-  const dz = z - t.z[slot]!;
+  const dx = x - sx;
+  const dz = z - sz;
   const fx = c * dx - s * dz;
   const fz = s * dx + c * dz;
-  const fy0 = y + r - t.y[slot]!;
-  const fy1 = h > 2 * r ? y + h - r - t.y[slot]! : fy0;
+  const fy0 = y + r - sy;
+  const fy1 = h > 2 * r ? y + h - r - sy : fy0;
   const reach = r - slack;
-  const box = structs.parts.box;
+  const box = parts.box;
   let found = false;
   let deepest = 0;
   let bx = 0;
   let by = 0;
   let bz = 0;
-  for (let p = structs.parts.start[kind]! * 6, end = structs.parts.start[kind + 1]! * 6; p < end; p += 6) {
+  for (let p = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; p < end; p += 6) {
     const hx = box[p + 3]!;
     const hy = box[p + 4]!;
     const hz = box[p + 5]!;

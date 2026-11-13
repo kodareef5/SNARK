@@ -2,13 +2,14 @@
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_PLACE, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
 import { addCombatCommands } from "./commands/combat.ts";
 import { addCoreCommands } from "./commands/core.ts";
 import { addSocialCommands } from "./commands/social.ts";
+import { Build } from "./build.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
@@ -93,6 +94,7 @@ export interface Host {
   readonly tribes: Tribes;
   readonly chat: Chat;
   readonly voice: Voice;
+  readonly build: Build;
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
@@ -169,6 +171,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const tribes = new Tribes(world, records);
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const chat = new Chat({ game, records, rules, tribes });
+  const build = new Build({ world, game, records, items, tribes });
   const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.values.globalVoice !== 0 }, (out) => void crypto.getRandomValues(out));
   /** The session a survivor has here now, lingering bodies not counted. */
   const sessionOf = (pid: number) => game.clients.find((c) => c?.active && !c.closed && c.pid === pid) ?? null;
@@ -422,6 +425,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     tribes,
     chat,
     voice,
+    build,
     online: (pid) => sessionOf(pid) !== null,
     setRule(name, value) {
       if (!rules.set(name, value)) return false;
@@ -448,6 +452,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       persistence.store.close();
     },
   };
+  game.handle(CMD_PLACE, (c, r) => build.place(c, r));
   game.handle(CMD_CHAT, (c, r) => {
     const channel = r.bits(3);
     const words = r.string(MAX_TEXT_BYTES);
