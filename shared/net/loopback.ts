@@ -18,7 +18,8 @@ interface Queued {
   seq: number;
   to: LoopbackEnd;
   channel: number;
-  data: Uint8Array;
+  /** Null marks the peer closing: delivered in order after what it sent first. */
+  data: Uint8Array | null;
 }
 
 export class LoopbackEnd implements Connection {
@@ -45,12 +46,12 @@ export class LoopbackEnd implements Connection {
     this.net.enqueue(this, channel, data);
   }
 
+  /** Close this end now. The peer sees everything sent before the close, then the close. */
   close(): void {
     if (!this.open) return;
     this.open = false;
-    this.peer.open = false;
+    this.net.enqueueClose(this);
     this.onClose?.();
-    this.peer.onClose?.();
   }
 }
 
@@ -88,13 +89,24 @@ export class LoopbackNet implements Listener {
     this.push({ at, seq: this.seq++, to: from.peer, channel, data: data.slice() });
   }
 
+  enqueueClose(from: LoopbackEnd): void {
+    let at = this.now + from.link.latencyMs;
+    if (at < from.lastReliableAt) at = from.lastReliableAt;
+    this.push({ at, seq: this.seq++, to: from.peer, channel: 1, data: null });
+  }
+
   /** Move virtual time to `nowMs` and deliver everything due, in order. */
   advance(nowMs: number): void {
     const heap = this.heap;
     while (heap.length > 0 && heap[0]!.at <= nowMs) {
       const m = this.pop();
       if (m.at > this.now) this.now = m.at;
-      if (m.to.open) m.to.onMessage?.(m.channel, m.data);
+      if (!m.to.open) continue;
+      if (m.data) m.to.onMessage?.(m.channel, m.data);
+      else {
+        m.to.open = false;
+        m.to.onClose?.();
+      }
     }
     this.now = nowMs;
   }

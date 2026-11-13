@@ -1,0 +1,159 @@
+import { afterAll, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CORE_CONTENT } from "../../content/core.ts";
+import { createHost } from "../../server/host.ts";
+import { WorldStore } from "../../server/persist/store.ts";
+import { compileContent } from "../../shared/content/registry.ts";
+import { BitReader } from "../../shared/net/codec.ts";
+import { HOLDERS, OP_TRANSFER, START } from "../fixtures/crash-child.ts";
+import { Harness } from "../fixtures/net.ts";
+import { coreRegistry } from "../fixtures/world.ts";
+
+const dir = mkdtempSync(join(tmpdir(), "snark-test-"));
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+test("a world survives restart: tick, structures, records and where a survivor stood", () => {
+  const db = join(dir, "restart.db");
+  const reg = coreRegistry();
+  const stone = reg.index.get("core:stone")!;
+
+  const h = new Harness({}, 1, 60, { dbPath: db });
+  const ada = h.join("ada");
+  h.pilots[0]!.moveZ = 1;
+  h.run(2500);
+  h.pilots[0]!.moveZ = 0;
+  const wall = reg.index.get("core:wall")!;
+  const added = h.world.structs.add(wall, 250.25, 1.5, 230, 4096, 9, 777);
+  const crate = h.world.structs.chunks.findIndex((t) => t && t.live > 20);
+  expect(h.world.structs.remove(crate * 65536 + 3)).toBe(true);
+  const pid = h.world.ents.pid[h.ent(ada)]!;
+  h.host.records.give(pid, stone, 40);
+  h.run(500);
+  const where = { x: h.world.ents.x[h.ent(ada)]!, z: h.world.ents.z[h.ent(ada)]! };
+  expect(where.z).toBeGreaterThan(248);
+  ada.close();
+  h.run(100);
+  const tick = h.world.tick;
+  const before = h.world.structs;
+  h.host.shutdown();
+
+  const h2 = new Harness({}, 1, 60, { dbPath: db });
+  expect(h2.host.loaded).toEqual({ fresh: false, tick, structures: before.count, records: 1 });
+  expect(h2.world.tick).toBe(tick);
+  // Structure tables are identical slot for slot, so refs held elsewhere stay valid.
+  before.chunks.forEach((t, chunk) => {
+    const u = h2.world.structs.chunks[chunk];
+    if (!t) return expect(u ?? null).toBeNull();
+    expect(u!.version).toBe(t.version);
+    expect(u!.high).toBe(t.high);
+    expect(u!.live).toBe(t.live);
+    for (const col of ["kind", "x", "y", "z", "yaw", "owner", "hp", "mod"] as const) {
+      expect([...u![col].subarray(0, t.high)]).toEqual([...t[col].subarray(0, t.high)]);
+    }
+  });
+  const t = h2.world.structs.chunks[Math.floor(added / 65536)]!;
+  expect(t.hp[added & 0xffff]).toBe(777);
+  expect(h2.host.records.byPid.get(pid)!.items.get(stone)).toBe(40);
+
+  // The same name returns to the same body, where it logged out.
+  const again = h2.join("ada");
+  h2.run(300);
+  expect(h2.world.ents.pid[h2.ent(again)]).toBe(pid);
+  expect(Math.abs(h2.world.ents.x[h2.ent(again)]! - where.x)).toBeLessThan(0.01);
+  expect(Math.abs(h2.world.ents.z[h2.ent(again)]! - where.z)).toBeLessThan(0.01);
+  // A second login under that name does not create a second body.
+  const twin = h2.join("ada");
+  h2.run(200);
+  expect(twin.state).toBe("closed");
+  expect(h2.server.playerCount).toBe(1);
+  h2.host.shutdown();
+});
+
+test("a save that uses removed content refuses to load unless told to drop it", () => {
+  const db = join(dir, "content.db");
+  const full = coreRegistry();
+  createHost(full, { dbPath: db }).shutdown();
+  const without = compileContent(CORE_CONTENT.filter((d) => d.id !== "core:wall")).registry!;
+  expect(() => createHost(without, { dbPath: db })).toThrow(/core:wall/);
+  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true } });
+  expect(forced.world.structs.count).toBeLessThan(createHost(full).world.structs.count);
+  forced.persistence!.store.close(); // closed without committing: the save keeps its walls
+  const back = createHost(full, { dbPath: db });
+  expect(back.world.structs.count).toBe(createHost(full).world.structs.count);
+  back.shutdown();
+});
+
+test("commit callbacks run only after the transaction is durable", () => {
+  const host = createHost(coreRegistry(), { dbPath: join(dir, "ack.db") });
+  const p = host.persistence!;
+  let acked = 0;
+  const seq = p.journal(7, new Uint8Array([1, 2, 3]));
+  p.afterCommit(() => acked++);
+  expect(acked).toBe(0);
+  expect(p.durableSeq).toBeLessThan(seq);
+  p.commit();
+  expect(acked).toBe(1);
+  expect(p.durableSeq).toBe(seq);
+  p.commit();
+  expect(acked).toBe(1);
+  expect(p.store.journal().map((j) => [j.seq, j.op, [...j.data]])).toEqual([[seq, 7, [1, 2, 3]]]);
+  host.shutdown();
+});
+
+async function runUntilKilled(db: string, seed: number, minAcks: number): Promise<number> {
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../fixtures/crash-child.ts"), db, String(seed)], { stdout: "pipe", stderr: "inherit" });
+  const decoder = new TextDecoder();
+  let text = "";
+  let killed = false;
+  for await (const chunk of proc.stdout) {
+    text += decoder.decode(chunk);
+    if (!killed && text.split("acked").length > minAcks) {
+      proc.kill(9); // no warning, possibly mid-transaction
+      killed = true;
+    }
+  }
+  await proc.exited;
+  // Everything the child printed before it died was printed after a commit returned.
+  const acks = [...text.matchAll(/acked (\d+)\n/g)];
+  return Number(acks.at(-1)![1]);
+}
+
+test("killing the process at any moment loses no acknowledged trade and conserves every item", async () => {
+  const db = join(dir, "crash.db");
+  const reg = coreRegistry();
+  const stone = reg.index.get("core:stone")!;
+  let journalled = 0;
+  for (const [seed, minAcks] of [[1, 40], [2, 25], [3, 60]] as const) {
+    const lastAck = await runUntilKilled(db, seed, minAcks);
+    const store = new WorldStore(db, reg);
+    const journal = store.journal();
+    const records = store.loadEntities().sort((a, b) => a.pid - b.pid);
+    store.close();
+
+    // Nothing acknowledged is missing, and each run added to the same history.
+    expect(journal.length).toBeGreaterThanOrEqual(lastAck);
+    expect(journal.length).toBeGreaterThan(journalled);
+    journalled = journal.length;
+    expect(journal.map((j) => j.seq)).toEqual(journal.map((_, i) => i + 1));
+
+    // Conservation: no item created or destroyed.
+    expect(records.length).toBe(HOLDERS);
+    expect(records.reduce((n, r) => n + (r.items.get(stone) ?? 0), 0)).toBe(HOLDERS * START);
+
+    // Atomicity: the saved inventories are exactly the journal applied to the start.
+    const balance = new Map(records.map((r) => [r.pid, START]));
+    const r = new BitReader();
+    for (const j of journal) {
+      expect(j.op).toBe(OP_TRANSFER);
+      r.reset(j.data);
+      const from = r.uint53();
+      const to = r.uint53();
+      const count = r.varint();
+      balance.set(from, balance.get(from)! - count);
+      balance.set(to, balance.get(to)! + count);
+    }
+    for (const rec of records) expect(rec.items.get(stone) ?? 0).toBe(balance.get(rec.pid)!);
+  }
+});

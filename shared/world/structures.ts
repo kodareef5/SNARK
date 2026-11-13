@@ -280,7 +280,14 @@ export class StructureStore {
         this.nodeFree = node;
       }
     }
+    // Empty slots hold zeros, so equal tables are equal byte for byte.
     t.kind[slot] = 0;
+    t.x[slot] = 0;
+    t.y[slot] = 0;
+    t.z[slot] = 0;
+    t.yaw[slot] = 0;
+    t.owner[slot] = 0;
+    t.hp[slot] = 0;
     t.mod[slot] = mod;
     t.live--;
     this.count--;
