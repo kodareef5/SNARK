@@ -7,7 +7,7 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { KEY_BYTES } from "../../shared/net/protocol.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
-import { PROVING_ID, buildProvingHeightfield, provingMapHash } from "../../shared/world/proving.ts";
+import { PROVING_ID, buildProvingHeightfield, provingMapHash, provingNodes } from "../../shared/world/proving.ts";
 import { App } from "../core/app.ts";
 import { probePasses, provingProbes } from "../core/selfcheck.ts";
 import { ClientSession } from "../core/session.ts";
@@ -50,6 +50,7 @@ async function boot(): Promise<void> {
     spectate: params.has("spectate"),
     registry: reg,
     resolveMap: (id, hash) => (id === PROVING_ID && hash === mapHash ? hf : null),
+    nodes: provingNodes,
   });
   const app = new App(session, reg, pack);
   app.steer = !selfcheck;

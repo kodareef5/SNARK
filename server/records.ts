@@ -22,6 +22,13 @@ export interface Marker {
   tick: number;
 }
 
+/** A run of one recipe: `left` units still to make, the current one finished at tick `doneAt`. */
+export interface Job {
+  recipe: number;
+  left: number;
+  doneAt: number;
+}
+
 export class EntityRecord {
   readonly pid: number;
   /** Content index of the species. */
@@ -47,6 +54,12 @@ export class EntityRecord {
   /** Places this survivor should be able to find again, oldest first. */
   readonly markers: Marker[] = [];
   markersVersion = 0;
+  /** Experience, learned engrams (content indices), and what is being crafted. */
+  xp = 0;
+  readonly engrams: number[] = [];
+  readonly jobs: Job[] = [];
+  /** Counts every change to the three above, for sending. */
+  progVersion = 0;
   /** Component blobs this build does not understand, kept byte for byte. */
   readonly extra = new Map<number, Uint8Array>();
 

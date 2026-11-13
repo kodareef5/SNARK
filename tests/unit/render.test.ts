@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_BLEND, FramePacket } from "../../client/core/render/packet.ts";
 import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
+import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { TerrainLod } from "../../client/core/render/terrain.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { PROVING_POOL, PROVING_SEA_LEVEL } from "../../shared/world/proving.ts";
@@ -56,7 +57,7 @@ test("the frame from the spawn point shows the right thing under known pixels", 
 
   // Every structure draw references a buffer uploaded in this or an earlier packet; one draw per mesh per chunk.
   expect(packet.uploads.length).toBeGreaterThan(0);
-  expect(packet.drawCount).toBeLessThan(40);
+  expect(packet.drawCount).toBeLessThan(120); // structures, plus up to three kinds of node per chunk in view
   expect(packet.tileCount).toBeGreaterThan(10);
   const wallMesh = view.scene.meshOfKind[reg.index.get("core:wall")!]!;
   expect([...packet.drawMesh.subarray(0, packet.drawCount)]).toContain(wallMesh);
@@ -87,9 +88,10 @@ test("nothing behind the camera or beyond the view distance is submitted", () =>
   const view = provingView(W, H);
   view.cam.yaw = Math.PI; // facing south, away from every structure
   const south = view.render();
-  // Only the water surface, which lies over the whole map, is left to draw.
-  expect(south.drawCount).toBe(1);
-  expect(south.drawFlags[0]).toBe(DRAW_BLEND);
+  // No structure is drawn: what is left is trees, rocks and bushes to the south, and the water surface last.
+  expect(south.drawCount).toBeGreaterThan(1);
+  for (let d = 0; d < south.drawCount - 1; d++) expect(south.drawBuffer[d]!).toBeGreaterThanOrEqual(NODE_BUFFERS);
+  expect(south.drawFlags[south.drawCount - 1]).toBe(DRAW_BLEND);
   expect(south.tileCount).toBeGreaterThan(0);
 
   view.cam.yaw = 0;

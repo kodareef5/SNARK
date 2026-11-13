@@ -50,6 +50,8 @@ export interface DeathContext {
 export class Death {
   /** Deaths so far, for tests and measurement. */
   count = 0;
+  /** The use key was pressed with no container in front: something else may want it (a bush to pick). */
+  onUse: ((c: Client) => void) | null = null;
   private readonly ctx: DeathContext;
   private readonly survivor: number;
   private readonly cache: number;
@@ -254,7 +256,12 @@ export class Death {
     const hit = this.target(c, REACH);
     const pid = hit >= 0 && (ents.flags[hit]! & F_PROP) !== 0 ? ents.pid[hit]! : 0;
     const box = pid !== 0 ? this.ctx.records.byPid.get(pid) : undefined;
-    if (!box || c.open === pid) this.close(c);
-    else c.open = pid;
+    if (box && c.open !== pid) {
+      c.open = pid;
+      return;
+    }
+    const had = c.open !== 0;
+    this.close(c);
+    if (!had && !box) this.onUse?.(c);
   }
 }

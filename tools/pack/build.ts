@@ -32,9 +32,21 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
   for (let i = 1; i < beam.positions.length; i += 3) beam.positions[i]! += 40;
   const meshes: SourceMesh[] = [{ id: MISSING_MESH, lods: [boxMesh([0.5, 0.5, 0.5], 0)] }, waterMesh(), { id: BEAM_MESH, lods: [beam] }];
   for (const d of defs) {
-    if (d.type === "item" || d.mesh !== "box") continue;
+    if ((d.type !== "species" && d.type !== "structure" && d.type !== "prop" && d.type !== "node") || d.mesh !== "box") continue;
     if (d.type === "structure") meshes.push({ id: d.id, lods: [boxMesh(d.half, REGION_BASE)] });
-    else {
+    else if (d.type === "node") {
+      // A node stands on its base; its position is the centre of its collider.
+      const lod = boxMesh(d.half, REGION_BASE);
+      if (d.top) {
+        const top = boxMesh(d.top.half, d.top.color);
+        for (let i = 1; i < top.positions.length; i += 3) top.positions[i]! += d.half[1] + d.top.half[1] * 0.6;
+        const n = lod.positions.length / 3;
+        lod.positions = Float32Array.from([...lod.positions, ...top.positions]);
+        lod.colors = Uint8Array.from([...lod.colors, ...top.colors]);
+        lod.indices = Uint32Array.from([...lod.indices, ...Array.from(top.indices, (v) => v + n)]);
+      }
+      meshes.push({ id: d.id, lods: [lod] });
+    } else {
       // A species or a prop stands on its origin: lift the box so its base is at y = 0.
       const lod = boxMesh([d.radius, d.height / 2, d.radius], REGION_BASE);
       for (let i = 1; i < lod.positions.length; i += 3) lod.positions[i]! += d.height / 2;

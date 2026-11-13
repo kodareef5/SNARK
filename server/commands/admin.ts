@@ -137,6 +137,22 @@ export function addAdminCommands(con: Console): void {
       },
     },
     {
+      name: "addxp",
+      usage: "<amount>",
+      help: "Give yourself experience.",
+      admin: true,
+      run(ctx, args) {
+        const c = ctx.client;
+        const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
+        if (!c || !rec) return "this needs a survivor";
+        const amount = parseNumber(args[0]);
+        if (!(amount > 0 && amount <= 1e6)) return "amount must be a number from 0 to 1000000";
+        const prog = ctx.host.progression;
+        prog.addXp(rec, amount);
+        return `level ${prog.levelOf(rec.xp)}, ${Math.floor(rec.xp)} experience, ${prog.statPoints(rec)} stat points and ${prog.engramPoints(rec)} engram points to spend`;
+      },
+    },
+    {
       name: "suicide",
       usage: "",
       help: "Die where you stand. Everything you carry is left in a cache.",

@@ -49,6 +49,8 @@ export class Persistence {
   /** Newest journal entry known to be on disk. */
   durableSeq = 0;
   readonly survivors = new Map<string, number>();
+  /** Per-chunk state other than structures: each provider encodes the chunks it has marked dirty. */
+  readonly blobs: { tag: number; dirty: Set<number>; encode(chunk: number): Uint8Array | null }[] = [];
   /** The item ledger, saved in the same transaction as the records it accounts for. */
   ledger: { dirty: boolean; serialize(): string } | null = null;
 
@@ -169,6 +171,7 @@ export class Persistence {
           this.capture(rec, ent);
           store.saveEntity(rec);
         }
+        for (const b of this.blobs) for (const chunk of b.dirty) store.saveBlob(chunk, b.tag, b.encode(chunk));
         for (const j of this.pending) store.appendJournal(j.seq, j.tick, j.op, j.data);
         if (this.ledger?.dirty) store.setMeta("ledger", this.ledger.serialize());
         // The journal is an audit trail, not the state: keep the recent part.
@@ -193,6 +196,7 @@ export class Persistence {
     this.newSurvivors.length = 0;
     this.durableSeq = this.journalSeq;
     if (this.ledger) this.ledger.dirty = false;
+    for (const b of this.blobs) b.dirty.clear();
     this.commits++;
     for (const cb of callbacks) cb();
   }

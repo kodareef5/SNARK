@@ -5,12 +5,13 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_MOVE, CMD_RESPAWN, CMD_USE, OWN_MARKERS, OWN_OPEN, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_STALE, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_USE, OWN_MARKERS, OWN_PROGRESSION, OWN_OPEN, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_STALE, SESSION_DEAD } from "../shared/net/protocol.ts";
 import type { Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
+import type { Progression } from "./progression.ts";
 import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -24,6 +25,7 @@ export interface OwnContext {
   openOf(c: Client): EntityRecord | null;
   closeOpen(c: Client): void;
   respawn(c: Client, index: number): number;
+  readonly progression: Progression;
 }
 
 /** Write the slots of `inv` that changed after version `since` (all the occupied ones if `full`). */
@@ -115,6 +117,25 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     c.sentMarkers = rec.markersVersion;
   }
 
+  if (rec.progVersion !== c.sentProgress) {
+    const prog = ctx.progression;
+    const w = game.beginOwn(OWN_PROGRESSION);
+    w.u32(Math.floor(rec.xp));
+    w.u16(prog.levelOf(rec.xp));
+    w.u16(prog.statPoints(rec));
+    w.u16(prog.engramPoints(rec));
+    w.u8(rec.engrams.length);
+    for (const e of rec.engrams) w.u16(e);
+    w.u8(rec.jobs.length);
+    for (const j of rec.jobs) {
+      w.u16(j.recipe);
+      w.u8(j.left > 255 ? 255 : j.left);
+      w.u32(j.doneAt);
+    }
+    game.endOwn(c);
+    c.sentProgress = rec.progVersion;
+  }
+
   // Dead: told once where it may return.
   if (c.state === SESSION_DEAD && !c.sentRespawn) {
     const w = game.beginOwn(OWN_RESPAWN);
@@ -162,6 +183,24 @@ export function addOwnCommands(ctx: OwnContext): void {
   ctx.game.handle(CMD_RESPAWN, (c: Client, r: BitReader) => {
     const index = r.u8();
     return r.overflow ? RESULT_INVALID : ctx.respawn(c, index);
+  });
+
+  const mine = (c: Client): EntityRecord | null => (c.ent >= 0 ? (ctx.records.byPid.get(c.pid) ?? null) : null);
+  ctx.game.handle(CMD_SPEND, (c: Client, r: BitReader) => {
+    const stat = r.u8();
+    const rec = mine(c);
+    return r.overflow ? RESULT_INVALID : rec ? ctx.progression.spend(rec, stat) : RESULT_DENIED;
+  });
+  ctx.game.handle(CMD_LEARN, (c: Client, r: BitReader) => {
+    const engram = r.u16();
+    const rec = mine(c);
+    return r.overflow ? RESULT_INVALID : rec ? ctx.progression.learn(rec, engram) : RESULT_DENIED;
+  });
+  ctx.game.handle(CMD_CRAFT, (c: Client, r: BitReader) => {
+    const recipe = r.u16();
+    const count = r.u8();
+    const rec = mine(c);
+    return r.overflow ? RESULT_INVALID : rec ? ctx.progression.craft(rec, recipe, count) : RESULT_DENIED;
   });
 
   ctx.game.handle(CMD_USE, (c: Client, r: BitReader) => {

@@ -25,7 +25,7 @@ import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { ChunkTable, StructureStore } from "../../shared/world/structures.ts";
 import { EntityRecord } from "../records.ts";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 const CHUNK_FORMAT = 1;
 const RECORD_FORMAT = 1;
 // A record is a list of components, each an id and a length-prefixed blob. A
@@ -43,6 +43,8 @@ const COMP_VITALS4 = 8;
 const COMP_MARKERS = 5;
 /** Dead flag and expiry tick. */
 const COMP_STATE = 9;
+/** Experience, learned engrams, crafting jobs. */
+const COMP_PROGRESSION = 4;
 /** An inventory's slot index travels in one byte. */
 const MAX_INVENTORY_SLOTS = 255;
 /** Bytes per structure slot in a chunk blob. */
@@ -57,6 +59,10 @@ const MIGRATIONS: ((db: Database) => void)[] = [
       CREATE TABLE survivors (name TEXT PRIMARY KEY, pid INTEGER NOT NULL) WITHOUT ROWID;
       CREATE TABLE journal (seq INTEGER PRIMARY KEY, tick INTEGER NOT NULL, op INTEGER NOT NULL, data BLOB NOT NULL);
     `);
+  },
+  // Schema 2: small per-chunk state other than structures, by tag. First use: resource nodes that have been touched.
+  (db) => {
+    db.exec("CREATE TABLE chunk_blobs (chunk INTEGER NOT NULL, tag INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (chunk, tag)) WITHOUT ROWID");
   },
 ];
 
@@ -226,7 +232,22 @@ export class WorldStore {
     const inv = rec.inv;
     const used = inv ? inv.used() : 0;
     const hasState = rec.dead || rec.expiresAt !== 0;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + rec.extra.size);
+    const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + rec.extra.size);
+    if (hasProgress) {
+      c.reset();
+      c.f64(rec.xp);
+      c.varint(rec.engrams.length);
+      for (const e of rec.engrams) c.varint(this.toSaved[e]!);
+      c.varint(rec.jobs.length);
+      for (const j of rec.jobs) {
+        c.varint(this.toSaved[j.recipe]!);
+        c.varint(j.left);
+        c.uint53(j.doneAt);
+      }
+      w.varint(COMP_PROGRESSION);
+      w.blob(c.bytes());
+    }
     if (rec.markers.length > 0) {
       c.reset();
       c.varint(rec.markers.length);
@@ -373,6 +394,19 @@ export class WorldStore {
         } else if (component === COMP_IDENTITY) rec.keyHash = blob;
         else if (component === COMP_MARKERS) {
           for (let k = c.varint(); k > 0 && !c.overflow; k--) rec.markers.push({ kind: c.u8(), x: c.f32(), y: c.f32(), z: c.f32(), tick: c.uint53() });
+        } else if (component === COMP_PROGRESSION) {
+          rec.xp = c.f64();
+          // Engrams and recipes whose content is gone are forgotten; nothing of value is lost with them.
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) {
+            const e = this.toRuntime[c.varint()] ?? 0;
+            if (e !== 0) rec.engrams.push(e);
+          }
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) {
+            const recipe = this.toRuntime[c.varint()] ?? 0;
+            const left = c.varint();
+            const doneAt = c.uint53();
+            if (recipe !== 0) rec.jobs.push({ recipe, left, doneAt });
+          }
         } else if (component === COMP_STATE) {
           rec.dead = c.bool();
           rec.expiresAt = c.uint53();
@@ -384,6 +418,16 @@ export class WorldStore {
       out.push(rec);
     }
     return out;
+  }
+
+  /** Store or, with null, delete a chunk's blob for a tag. */
+  saveBlob(chunk: number, tag: number, data: Uint8Array | null): void {
+    if (data) this.db.query("INSERT OR REPLACE INTO chunk_blobs (chunk, tag, data) VALUES (?, ?, ?)").run(chunk, tag, data);
+    else this.db.query("DELETE FROM chunk_blobs WHERE chunk = ? AND tag = ?").run(chunk, tag);
+  }
+
+  loadBlobs(tag: number): { chunk: number; data: Uint8Array }[] {
+    return this.db.query("SELECT chunk, data FROM chunk_blobs WHERE tag = ?").all(tag) as { chunk: number; data: Uint8Array }[];
   }
 
   /** Runtime index of a saved item index. An item whose content is gone stops the load unless the operator chose to drop such things. */

@@ -105,8 +105,12 @@ export class StructureStore {
   private fz0 = 0;
   private fz1 = 0;
 
-  constructor(dims: MapDims, halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array) {
+  /** Kinds that bodies pass through: present for rays and drawing, absent for collision. */
+  private readonly soft: Uint8Array | null;
+
+  constructor(dims: MapDims, halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array, soft: Uint8Array | null = null) {
     this.dims = dims;
+    this.soft = soft;
     this.halfX = halfX;
     this.halfY = halfY;
     this.halfZ = halfZ;
@@ -227,6 +231,11 @@ export class StructureStore {
       }
     }
     return n;
+  }
+
+  /** Whether bodies pass through boxes of this kind. */
+  isSoft(kind: number): boolean {
+    return this.soft !== null && this.soft[kind] === 1;
   }
 
   halfXOf(kind: number): number {

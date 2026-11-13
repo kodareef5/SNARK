@@ -8,7 +8,7 @@ import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { MARKER_DEATH, SESSION_ALIVE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { Controls } from "./controls.ts";
 import { HudModel, minimapImage, updateHud } from "./hud.ts";
@@ -97,7 +97,9 @@ export class App {
     const oy = s.own.y + eye;
     const oz = s.own.z;
     lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
-    let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, REACH) === HIT_NONE ? REACH : rayHit.t;
+    const struck = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, REACH);
+    let best = struck === HIT_NONE ? REACH : rayHit.t;
+    const node = struck === HIT_NODE ? rayHit.ref : -1;
     let hit = -1;
     for (let i = 0; i < r.count; i++) {
       const rad = this.reg.bodyRadius[r.kind[i]!]!;
@@ -107,8 +109,14 @@ export class App {
         hit = i;
       }
     }
-    if (hit < 0 || (r.flags[hit]! & VIEW_FLAG_PROP) === 0) return "";
-    return `E  ${s.open ? "close" : "open"} ${r.name[hit]}`;
+    if (hit >= 0) return (r.flags[hit]! & VIEW_FLAG_PROP) !== 0 ? `E  ${s.open ? "close" : "open"} ${r.name[hit]}` : "";
+    if (node < 0 || !world.nodes) return "";
+    // A tree or rock is struck with the primary button; a bush is picked with the use key.
+    const kind = world.nodes.chunks[Math.floor(node / 65536)]?.kind[node & 0xffff] ?? 0;
+    const def = this.reg.defs[kind];
+    if (def?.type !== "node") return "";
+    const what = def.id.slice(def.id.indexOf(":") + 1);
+    return def.material === undefined ? `E  pick ${what}` : `hold click  gather from ${what}`;
   }
 
   /**

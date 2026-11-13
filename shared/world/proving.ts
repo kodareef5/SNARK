@@ -13,6 +13,7 @@ import type { Registry } from "../content/registry.ts";
 import { hashBytes } from "../hash.ts";
 import { Rng } from "../rng.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
+import { scatterNodes, type NodeSource } from "./nodes.ts";
 import type { StructureStore } from "./structures.ts";
 
 export const PROVING_ID = "proving:1";
@@ -186,4 +187,23 @@ export function populateProving(structs: StructureStore, hf: Heightfield, reg: R
 
   // Distance markers every 50 m to the north.
   for (let z = 350; z <= 500; z += 50) put(pillar, 256, hf.heightAt(256, z) + 3, z);
+}
+
+/** Slots for nodes in each chunk of the proving ground. About a third end up holding one. */
+export const PROVING_NODES_PER_CHUNK = 96;
+
+/** The proving ground's trees, rocks and bushes: everywhere outside the plaza that is dry and not too steep. */
+export function provingNodes(hf: Heightfield, reg: Registry): NodeSource {
+  const kinds: number[] = [];
+  for (const [id, weight] of [["core:tree", 5], ["core:rock", 3], ["core:bush", 3]] as const) {
+    const k = reg.index.get(id);
+    if (k !== undefined) for (let i = 0; i < weight; i++) kinds.push(k);
+  }
+  const outside = (x: number, z: number): boolean => {
+    const dx = Math.abs(x - CENTER);
+    const dz = Math.abs(z - CENTER);
+    // A thin band of nodes hugs the plaza's edge so there is something to gather a short walk from the spawn.
+    return (dx > dz ? dx : dz) > PLAZA + 3;
+  };
+  return scatterNodes(PROVING_DIMS, hf, 0x51ab, PROVING_NODES_PER_CHUNK, kinds, reg.halfY, outside);
 }

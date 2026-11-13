@@ -7,9 +7,11 @@ import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../cli
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPAWN_PANEL } from "../../client/core/ui/screens.ts";
+import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TITLE } from "../../client/core/ui/character.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { CMD_MOVE, CMD_RESPAWN, CMD_USE, MARKER_DEATH, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
+import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_USE, MARKER_DEATH, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
+import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -387,5 +389,69 @@ test("the respawn and map screens fit every window shape, and a click on a place
         expect(ui.map).toBe(false);
       }
     }
+  }
+});
+
+test("the character screen fits every window shape and its buttons send what they say", () => {
+  const engram = (name: string) => reg.index.get(name)!;
+  const engrams = reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : []));
+  const recipes = reg.defs.flatMap((d, k) => (d?.type === "recipe" ? [k] : []));
+  for (const [name, aspect] of ASPECTS) {
+    const { session, sent } = fakeSession(new Inventory(40));
+    Object.assign(session, {
+      sessionState: SESSION_ALIVE,
+      ownKind: reg.index.get("core:survivor")!,
+      progress: { xp: 99999, level: 20, statPoints: 19, engramPoints: 250, engrams: [engram("core:engram-pick"), engram("core:engram-hatchet")], jobs: [{ recipe: reg.index.get("core:make-hatchet")!, left: 3, doneAt: 5 }], version: 1 },
+    });
+    const ui = new Ui();
+    ui.registry = reg;
+    expect(ui.key("KeyC", true, false, session)).toBe(true);
+    expect(ui.wantsPointerLock).toBe(false);
+    ui.build(aspect, fullHud(), session);
+    const f = ui.frame;
+    for (let i = 0; i < f.count; i++) {
+      const n = f.nodes[i]!;
+      const where = `${name} key=${n.key}`;
+      expect(n.x, where).toBeGreaterThanOrEqual(-0.01);
+      expect(n.y, where).toBeGreaterThanOrEqual(-0.01);
+      expect(n.x + n.w, where).toBeLessThanOrEqual(f.width + 0.01);
+      expect(n.y + n.h, where).toBeLessThanOrEqual(f.height + 0.01);
+      if (n.key >= KEY_CHAR_PANEL && n.kind === K_TEXT) expect(textWidth(n.text, n.style), where).toBeLessThanOrEqual(n.w + 0.01);
+      for (let j = i + 1; j < f.count; j++) {
+        const q = f.nodes[j]!;
+        if (n.interactive && q.interactive) expect(overlaps(f, i, j), where).toBe(false);
+        if (n.key >= KEY_CHAR_PANEL && q.key >= KEY_CHAR_PANEL && n.kind === K_TEXT && q.kind === K_TEXT) expect(overlaps(f, i, j), `${where} and ${q.key}`).toBe(false);
+      }
+    }
+    expect(f.find(KEY_CHAR_TITLE)!.text).toBe("Level 20  99999 xp");
+    expect(f.find(KEY_CHAR_POINTS)!.text).toBe("19 stat points  250 engram points");
+    expect(f.find(KEY_CHAR_JOBS)!.text).toBe("making hatchet (3 to go)");
+    // A stat it has a curve for has a line and, with points to spend, a button; one it has no curve for has neither.
+    const speed = STAT_NAMES.indexOf("speed");
+    expect(f.find(KEY_CHAR_STAT + speed * 2)!.text).toBe("speed");
+    expect(f.find(KEY_CHAR_STAT + speed * 2 + 1)!.text).toBe("+");
+    expect(f.find(KEY_CHAR_STAT + STAT_NAMES.indexOf("torpidity") * 2)).toBeNull();
+    // Known engrams say so and offer nothing; the third can be learned; only recipes of known engrams are listed.
+    const pickEngram = engrams.indexOf(engram("core:engram-pick"));
+    expect(f.find(KEY_CHAR_ENGRAM + pickEngram * 2)!.text).toBe("Stone pick: known");
+    expect(f.find(KEY_CHAR_ENGRAM + pickEngram * 2 + 1)).toBeNull();
+    const third = engrams.indexOf(engram("core:engram-waterskin"));
+    expect(f.find(KEY_CHAR_ENGRAM + third * 2 + 1)!.text).toBe("learn");
+    const pickRow = recipes.indexOf(reg.index.get("core:make-pick")!);
+    expect(f.find(KEY_CHAR_RECIPE + pickRow * 2)!.text.startsWith("pick: 1 stone, 1 wood")).toBe(true);
+    expect(f.find(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:make-waterskin")!) * 2)).toBeNull();
+
+    ui.pointer(0, KEY_CHAR_STAT + speed * 2 + 1, 0, 0, 0, session);
+    ui.pointer(0, KEY_CHAR_ENGRAM + third * 2 + 1, 0, 0, 0, session);
+    ui.pointer(0, KEY_CHAR_RECIPE + pickRow * 2 + 1, 0, 0, 0, session);
+    ui.pointer(0, KEY_CHAR_STAT + speed * 2, 0, 0, 0, session); // the line, not the button
+    expect(sent.map((c) => c.op)).toEqual([CMD_SPEND, CMD_LEARN, CMD_CRAFT]);
+    expect(sent[0]!.bytes[0]).toBe(speed);
+    expect(new BitReader(sent[1]!.bytes).u16()).toBe(engram("core:engram-waterskin"));
+    const r = new BitReader(sent[2]!.bytes);
+    expect([r.u16(), r.u8()]).toEqual([reg.index.get("core:make-pick")!, 1]);
+    // One screen at a time: the map key puts this one away.
+    ui.key("KeyM", true, false, session);
+    expect([ui.character, ui.map]).toEqual([false, true]);
   }
 });

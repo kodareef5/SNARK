@@ -57,6 +57,66 @@ export interface ItemDef {
   readonly label?: string;
   /** Palette index of its swatch in the interface. */
   readonly color?: number;
+  /** A tool: what it works on ("wood", "stone"), how many times stronger than bare hands, and how many uses it lasts. */
+  readonly tool?: { readonly on: string; readonly power: number; readonly uses: number };
+}
+
+/**
+ * A resource node: a tree, a rock, a bush. Nodes are map data. Where they
+ * stand comes from the map, is the same on every client, and is never saved;
+ * only the ones that have been touched are.
+ */
+export interface NodeDef {
+  readonly type: "node";
+  readonly id: string;
+  readonly mesh: string;
+  readonly color: number;
+  /** Collider and graybox half extents; the node stands on its base. */
+  readonly half: readonly [number, number, number];
+  /** A second box on top of the first, for a crown. Drawn, not collided with. */
+  readonly top?: { readonly half: readonly [number, number, number]; readonly color: number };
+  /** Bodies walk through it (a bush). It can still be looked at and used. */
+  readonly soft?: boolean;
+  /** Hits (or picks) before it is used up. */
+  readonly hits: number;
+  /** In-game hours until it grows back. */
+  readonly respawnHours: number;
+  /** What kind of tool works on it: matched against a tool's `on`. Omitted for things picked by hand with the use key. */
+  readonly material?: string;
+  /** What each hit gives: an item and a range. `tool` true means only with the right tool. */
+  readonly yields: readonly { readonly item: string; readonly min: number; readonly max: number; readonly tool?: boolean }[];
+  /** Experience per hit. */
+  readonly xp: number;
+}
+
+export interface RecipeDef {
+  readonly type: "recipe";
+  readonly id: string;
+  readonly makes: string;
+  readonly count: number;
+  readonly needs: readonly { readonly item: string; readonly count: number }[];
+  /** Seconds to make one. */
+  readonly seconds: number;
+  readonly xp: number;
+}
+
+export interface EngramDef {
+  readonly type: "engram";
+  readonly id: string;
+  readonly label: string;
+  /** Level needed to learn it, and what it costs in engram points. */
+  readonly level: number;
+  readonly cost: number;
+  /** Recipes it unlocks. */
+  readonly unlocks: readonly string[];
+}
+
+/** The level table: experience needed to reach each level (index 0 is level 1), and engram points gained on reaching it. */
+export interface LevelsDef {
+  readonly type: "levels";
+  readonly id: string;
+  readonly xp: readonly number[];
+  readonly engramPoints: readonly number[];
 }
 
 /**
@@ -75,4 +135,4 @@ export interface PropDef {
   readonly slots?: number;
 }
 
-export type Def = SpeciesDef | StructureDef | ItemDef | PropDef;
+export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef;

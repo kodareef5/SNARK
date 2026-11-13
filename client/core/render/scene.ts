@@ -21,7 +21,12 @@ export interface RenderWorld {
   readonly dims: MapDims;
   readonly hf: Heightfield;
   readonly structs: StructureStore;
+  /** Resource nodes, drawn exactly as structures are. */
+  readonly nodes?: StructureStore;
 }
+
+/** Instance buffers of the node store are numbered from here, clear of chunk indices. */
+export const NODE_BUFFERS = 1 << 20;
 
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
@@ -83,7 +88,7 @@ export class Scene {
     this.colorOfKind = new Uint8Array(reg.defs.length);
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
-      if (d.type === "item") continue;
+      if (!("mesh" in d)) continue;
       this.meshOfKind[k] = pack.meshIndex.get(d.mesh === "box" ? d.id : d.mesh) ?? missing;
       this.colorOfKind[k] = d.color;
     }
@@ -131,7 +136,8 @@ export class Scene {
     }
 
     this.terrain.select(cam, p, this.viewDistance);
-    this.structures(cam);
+    this.structures(cam, this.world.structs, 0);
+    if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS);
     if (remote) this.entities(cam, remote);
     if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
@@ -177,30 +183,32 @@ export class Scene {
     p.transientCount = first + n;
   }
 
-  private structures(cam: Camera): void {
+  /** Draw one box store. Its chunk `c` uses instance buffer `base + c`. */
+  private structures(cam: Camera, store: StructureStore, base: number): void {
     const p = this.packet;
     const world = this.world;
-    const chunks = world.structs.chunks;
+    const chunks = store.chunks;
 
     // Chunks that no longer exist on this client free their buffers.
-    for (const [chunk, batch] of this.batches) {
-      if (chunks[chunk]) continue;
-      if (batch.uploaded) p.drops.push(chunk);
-      this.batches.delete(chunk);
+    for (const [id, batch] of this.batches) {
+      if (id < base || id >= base + NODE_BUFFERS || chunks[id - base]) continue;
+      if (batch.uploaded) p.drops.push(id);
+      this.batches.delete(id);
     }
 
     for (let chunk = 0; chunk < chunks.length; chunk++) {
       const t = chunks[chunk];
+      const id = base + chunk;
       if (!t || t.live === 0) {
-        const stale = this.batches.get(chunk);
+        const stale = this.batches.get(id);
         if (stale) {
-          if (stale.uploaded) p.drops.push(chunk);
-          this.batches.delete(chunk);
+          if (stale.uploaded) p.drops.push(id);
+          this.batches.delete(id);
         }
         continue;
       }
-      let batch = this.batches.get(chunk);
-      if (!batch || batch.version !== t.version) batch = this.rebuild(chunk, batch);
+      let batch = this.batches.get(id);
+      if (!batch || batch.version !== t.version) batch = this.rebuild(store, chunk, id, batch);
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
       const ax = batch.minX - cam.x;
@@ -216,19 +224,19 @@ export class Scene {
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (dist > this.viewDistance || dist > this.structureDistance) continue;
       if (!batch.uploaded) {
-        p.uploads.push({ buffer: chunk, data: batch.data, slots: batch.slots });
+        p.uploads.push({ buffer: id, data: batch.data, slots: batch.slots });
         batch.uploaded = true;
       }
       const lod = dist < this.lodNear ? 0 : dist < this.lodFar ? 1 : 2;
       for (let r = 0; r < batch.ranges.length; r += 3) {
-        this.draw(batch.ranges[r]!, lod, chunk, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z);
+        this.draw(batch.ranges[r]!, lod, id, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z);
       }
     }
   }
 
-  private rebuild(chunk: number, old: ChunkBatch | undefined): ChunkBatch {
+  private rebuild(store: StructureStore, chunk: number, id: number, old: ChunkBatch | undefined): ChunkBatch {
     const world = this.world;
-    const t = world.structs.chunks[chunk]!;
+    const t = store.chunks[chunk]!;
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
     const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
     const counts = this.counts.fill(0);
@@ -262,7 +270,7 @@ export class Scene {
       if (y + r > b.maxY) b.maxY = y + r;
       if (z + r > b.maxZ) b.maxZ = z + r;
     }
-    this.batches.set(chunk, b);
+    this.batches.set(id, b);
     return b;
   }
 

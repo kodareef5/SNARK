@@ -6,6 +6,7 @@ import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
+import { buildCharacter, characterClick } from "./character.ts";
 import { buildHud } from "./hud.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { UiFrame } from "./nodes.ts";
@@ -18,6 +19,8 @@ export class Ui {
   readonly inventory = new InventoryScreen();
   /** The full map is up. */
   map = false;
+  /** The character screen (stats, engrams, crafting) is up. */
+  character = false;
   /** The session is dead and choosing where to return: the mouse is free for that. */
   private dead = false;
   /** Content and palette, for naming and colouring items. Set by the app once it has them. */
@@ -31,7 +34,7 @@ export class Ui {
 
   /** The mouse should steer the camera (the shell holds pointer lock) rather than move a cursor. */
   get wantsPointerLock(): boolean {
-    return !this.console.open && !this.inventory.open && !this.map && !this.dead;
+    return !this.console.open && !this.inventory.open && !this.map && !this.character && !this.dead;
   }
 
   /**
@@ -48,12 +51,16 @@ export class Ui {
     }
     if (!con.open) {
       // Screens leave the keyboard to the body: you can keep walking with them open.
-      if (code === "KeyI" || code === "KeyM" || (code === "Escape" && (this.inventory.open || this.map))) {
+      if (code === "KeyI" || code === "KeyM" || code === "KeyC" || (code === "Escape" && (this.inventory.open || this.map || this.character))) {
         if (down && !repeat) {
-          if (code === "KeyM") this.map = !this.map;
-          else if (code === "Escape") this.map = false;
-          if (code === "KeyI" && !this.inventory.open) this.inventory.open = true;
-          else if (code !== "KeyM") this.inventory.close(session);
+          // One screen at a time: opening one puts the others away.
+          const map = code === "KeyM" && !this.map;
+          const character = code === "KeyC" && !this.character;
+          const inventory = code === "KeyI" && !this.inventory.open;
+          this.map = map;
+          this.character = character;
+          if (inventory) this.inventory.open = true;
+          else this.inventory.close(session);
         }
         return true;
       }
@@ -92,6 +99,7 @@ export class Ui {
   pointer(kind: number, key: number, _x: number, _y: number, button: number, session: ClientSession | null): void {
     if (!session || this.console.open) return;
     if (kind === 0 && respawnClick(key, session)) return;
+    if (kind === 0 && this.character && this.registry && characterClick(key, session, this.registry)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
 
@@ -110,6 +118,7 @@ export class Ui {
     if (!this.console.open) {
       if (this.dead && session) buildRespawn(f, session);
       else if (this.map && session) buildMap(f, session, hud);
+      else if (this.character && session && this.registry) buildCharacter(f, session, this.registry);
       else this.inventory.build(f, session, this.registry, this.palette);
     }
     if (session) this.console.absorb(session);

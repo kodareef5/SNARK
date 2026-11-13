@@ -11,7 +11,7 @@
 // both sides of a move land in the same commit. That, and never re-reading a
 // record from disk while it is live, is why a crash cannot duplicate an item.
 
-import type { SpeciesDef } from "../shared/content/defs.ts";
+import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { Inventory, moveSlot, type ItemTable } from "../shared/sim/items.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -63,6 +63,8 @@ export class Items {
   /** Create `n` of an item in a record's inventory. Returns how many fit, which is how many were created. */
   mint(rec: EntityRecord, item: number, n: number, quality = 0, dur = 0): number {
     if (!this.isItem(item) || !(n > 0) || !Number.isInteger(n)) return 0;
+    // A tool is made with all its uses.
+    if (dur === 0) dur = (this.reg.defs[item] as ItemDef).tool?.uses ?? 0;
     const made = n - this.inv(rec).add(item, n, quality, dur, this.world.tick, this.table);
     if (made > 0) {
       this.minted[item] = this.minted[item]! + made;

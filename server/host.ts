@@ -12,6 +12,9 @@ import { Console } from "./console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Creatures } from "./creatures.ts";
 import { DEADLINE_DESPAWN, Death } from "./death.ts";
+import { DEADLINE_NODE, Harvest } from "./harvest.ts";
+import { DEADLINE_CRAFT, Progression } from "./progression.ts";
+import { BTN_PRIMARY } from "../shared/sim/character.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
@@ -68,6 +71,9 @@ export interface Host {
   readonly items: Items;
   readonly survival: Survival;
   readonly death: Death;
+  readonly progression: Progression;
+  /** Null for a world whose map has no resource nodes. */
+  readonly harvest: Harvest | null;
   readonly deadlines: DeadlineHeap;
   readonly persistence: Persistence | null;
   readonly loaded: LoadReport | null;
@@ -127,6 +133,24 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   };
   const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines });
   survival.onDeath = (rec, cause) => death.die(rec, cause);
+  const progression = new Progression(world, records, items, deadlines);
+  const harvest = world.nodeField ? new Harvest(world, game, records, items, progression, deadlines, (opts.seed ?? 1) + 31) : null;
+  if (harvest) {
+    death.onUse = (c) => void harvest.pick(c);
+    if (persistence) {
+      if (!loaded!.fresh) for (const row of persistence.store.loadBlobs(harvest.tag)) harvest.decode(row.chunk, row.data);
+      persistence.blobs.push(harvest);
+    }
+  }
+  const wakeRadius = opts.wakeRadius ?? 3;
+  /** A session's focus entered `to` and left `from` (-1 for none): creatures wake and nodes are filled around it. */
+  const moved = (from: number, to: number): void => {
+    creatures.playerMoved(from, to);
+    if (harvest && wakeRadius >= 0) {
+      if (to >= 0) harvest.retain(to, wakeRadius, 1);
+      if (from >= 0) harvest.retain(from, wakeRadius, -1);
+    }
+  };
   if (loaded && !loaded.fresh) {
     // Every saved record that is not a survivor goes back where it stood: creatures to live, caches to wait.
     const survivors = new Set(persistence!.survivors.values());
@@ -138,6 +162,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
         if (e >= 0) persistence!.attach(rec, e);
       }
     }
+    // Whatever was being made goes on being made.
+    for (const rec of records.byPid.values()) progression.resume(rec);
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
     // Scatter the herd north of the spawn point; positions inside structures are skipped and retried.
@@ -195,10 +221,10 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     // A survivor that joins dead has no body yet, but it is still that survivor.
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
     focus.set(c.id, c.chunk);
-    creatures.playerMoved(-1, c.chunk);
+    moved(-1, c.chunk);
   };
   game.onExit = (c) => {
-    creatures.playerMoved(focus.get(c.id) ?? -1, -1);
+    moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
   };
   game.onStep = (tick) => {
@@ -207,7 +233,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       const was = focus.get(c.id)!;
       if (c.chunk === was) continue;
       focus.set(c.id, c.chunk);
-      creatures.playerMoved(was, c.chunk);
+      moved(was, c.chunk);
     }
     // A head under water starts the air running out; coming up stops it.
     for (const c of game.clients) {
@@ -218,8 +244,12 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     deadlines.run(tick, (kind, pid, stamp) => {
       if (kind === DEADLINE_VITALS) survival.due(pid, stamp);
       else if (kind === DEADLINE_DESPAWN) death.despawn(pid, stamp);
+      else if (kind === DEADLINE_CRAFT) progression.due(pid, stamp);
+      else if (kind === DEADLINE_NODE) harvest?.due(pid, stamp);
     });
     death.step();
+    // A held primary button swings at what is in front, a few times a second.
+    if (harvest) for (const c of game.clients) if (c?.active && c.ent >= 0 && (c.heldButtons & BTN_PRIMARY) !== 0) harvest.swing(c);
     creatures.step(tick);
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };
@@ -227,8 +257,12 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     const rec = records.byPid.get(c.pid);
     if (rec) survival.landed(rec, speed);
   };
-  const own: OwnContext = { world, game, records, items, survival, openOf: (c) => death.openOf(c), closeOpen: (c) => death.close(c), respawn: (c, index) => death.respawn(c, index) };
-  game.onReplicate = (c) => syncOwn(own, c);
+  const own: OwnContext = { world, game, records, items, survival, progression, openOf: (c) => death.openOf(c), closeOpen: (c) => death.close(c), respawn: (c, index) => death.respawn(c, index) };
+  game.onReplicate = (c) => {
+    syncOwn(own, c);
+    harvest?.sync(c, game.opts.structRadius);
+  };
+  progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
 
   function refreshBody(rec: EntityRecord): void {
@@ -236,7 +270,9 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     const e = records.entOf.get(rec.pid);
     if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
     refreshMods(reg, world.ents, e, rec.genome, rec.inv ? items.inv(rec).weight(items.table) : 0);
-    world.ents.setLook(e, rec.genome ? rec.genome.level : 1, rec.genome ? rec.genome.colors : null, rec.name);
+    // A survivor's level is what its experience has earned; a creature's is its points.
+    const level = rec.kind === survivor ? progression.levelOf(rec.xp) : rec.genome ? rec.genome.level : 1;
+    world.ents.setLook(e, level, rec.genome ? rec.genome.colors : null, rec.name);
   }
 
   const con = new Console();
@@ -250,6 +286,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     items,
     survival,
     death,
+    progression,
+    harvest,
     deadlines,
     persistence,
     loaded,

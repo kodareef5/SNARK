@@ -281,12 +281,12 @@ test("creatures arrive with their level and colours, players with their names, a
   expect(seen.name[g]).toBe("");
   expect(seen.name[p]).toBe("ada");
   expect(seen.level[p]).toBe(1);
-  // Ada puts points into speed: bo is told her new level, with no other change to prompt it.
-  h.say(s, "setstat speed 9");
+  // Ada gains three levels: bo is told her new level, with no other change to prompt it.
+  expect(h.say(s, "addxp 40")[0]).toContain("level 4");
   h.run(300);
   bo.sampleRemote(seen);
   const p2 = [...Array(seen.count).keys()].find((i) => seen.kind[i] !== grazer)!;
-  expect(seen.level[p2]).toBe(10);
+  expect(seen.level[p2]).toBe(4);
   expect(bo.stats.undecodable).toBe(0);
 });
 
@@ -304,7 +304,7 @@ test("setstat refreshes everything the points feed, with the load still counted"
   expect(h.say(s, "setstat health 20")).toEqual(["health: 20 points, value 300"]);
   h.run(300);
   expect(s.vitals.max[V_HEALTH]).toBe(300_000_000);
-  expect(ents.level[e]).toBe(31);
+  expect(ents.level[e]).toBe(1); // a survivor's level is its experience, not points an admin set
   // Points in weight do lift it: 100 kg of a 200 kg limit.
   h.say(s, "setstat weight 10");
   h.run(300);

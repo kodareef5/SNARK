@@ -9,7 +9,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { LoopbackNet, type LinkOptions, type LoopbackEnd } from "../../shared/net/loopback.ts";
 import { hashString } from "../../shared/hash.ts";
 import { KEY_BYTES } from "../../shared/net/protocol.ts";
-import { buildProvingHeightfield } from "../../shared/world/proving.ts";
+import { buildProvingHeightfield, provingNodes } from "../../shared/world/proving.ts";
 import { coreRegistry } from "./world.ts";
 
 export interface Pilot {
@@ -76,6 +76,7 @@ export class Harness {
       spectate: opts.spectate ?? false,
       registry: this.reg,
       resolveMap: (_id, hash) => (hash === this.world.mapHash ? this.hf : null),
+      nodes: (hf, reg) => (this.world.nodeField ? provingNodes(hf, reg) : null),
     });
     this.sessions.push(session);
     if (opts.manual) this.manual.add(session);

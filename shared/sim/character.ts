@@ -294,23 +294,28 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     // Structures: push out along the shortest exit, a few rounds.
     let blocked = false;
     for (let iter = 0; iter < RESOLVE_ITERATIONS; iter++) {
-      const count = structs.query(nx - r, nz - r, nx + r, nz + r, refs);
       let moved = false;
-      for (let k = 0; k < count; k++) {
-        if (!capsuleBox(structs, refs[k]!, nx, ny, nz, r, p.height, 0)) continue;
-        nx += push.x;
-        ny += push.y;
-        nz += push.z;
-        if (push.y > 0.7 * push.depth) {
-          if (vy < 0) {
-            if (-vy > fall) fall = -vy;
-            vy = 0;
+      // Structures, then resource nodes: both are boxes in a store of the same kind.
+      for (let pass = 0; pass < 2; pass++) {
+        const store = pass === 0 ? structs : w.nodes;
+        if (!store) continue;
+        const count = store.query(nx - r, nz - r, nx + r, nz + r, refs);
+        for (let k = 0; k < count; k++) {
+          if (!capsuleBox(store, refs[k]!, nx, ny, nz, r, p.height, 0)) continue;
+          nx += push.x;
+          ny += push.y;
+          nz += push.z;
+          if (push.y > 0.7 * push.depth) {
+            if (vy < 0) {
+              if (-vy > fall) fall = -vy;
+              vy = 0;
+            }
+          } else {
+            blocked = true;
+            if (push.y < -0.7 * push.depth && vy > 0) vy = 0;
           }
-        } else {
-          blocked = true;
-          if (push.y < -0.7 * push.depth && vy > 0) vy = 0;
+          moved = true;
         }
-        moved = true;
       }
       if (!moved) break;
     }
@@ -542,17 +547,21 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
     }
 
     for (let iter = 0; iter < RESOLVE_ITERATIONS; iter++) {
-      const count = structs.query(nx - r, nz - r, nx + r, nz + r, refs);
       let moved = false;
-      for (let k = 0; k < count; k++) {
-        if (!capsuleBox(structs, refs[k]!, nx, ny, nz, r, p.height, 0)) continue;
-        nx += push.x;
-        ny += push.y;
-        nz += push.z;
-        if (push.y > 0.7 * push.depth) {
-          if (vy < 0) vy = 0;
-        } else if (push.y < -0.7 * push.depth && vy > 0) vy = 0;
-        moved = true;
+      for (let pass = 0; pass < 2; pass++) {
+        const store = pass === 0 ? structs : w.nodes;
+        if (!store) continue;
+        const count = store.query(nx - r, nz - r, nx + r, nz + r, refs);
+        for (let k = 0; k < count; k++) {
+          if (!capsuleBox(store, refs[k]!, nx, ny, nz, r, p.height, 0)) continue;
+          nx += push.x;
+          ny += push.y;
+          nz += push.z;
+          if (push.y > 0.7 * push.depth) {
+            if (vy < 0) vy = 0;
+          } else if (push.y < -0.7 * push.depth && vy > 0) vy = 0;
+          moved = true;
+        }
       }
       if (!moved) break;
     }

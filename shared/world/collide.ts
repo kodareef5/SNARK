@@ -19,6 +19,8 @@ const YAW_TO_RAD = TAU / YAW_UNITS;
 export interface CollisionWorld {
   readonly hf: Heightfield;
   readonly structs: StructureStore;
+  /** Resource nodes near a body, as boxes like structures (shared/world/nodes.ts). */
+  readonly nodes?: StructureStore;
 }
 
 /** Result of the last `capsuleBox` call that returned true: the shortest push out, world space. */
@@ -34,6 +36,7 @@ export function capsuleBox(structs: StructureStore, ref: number, x: number, y: n
   const t = structs.chunks[Math.floor(ref / 65536)]!;
   const slot = ref & 0xffff;
   const kind = t.kind[slot]!;
+  if (structs.isSoft(kind)) return false;
   const hx = structs.halfXOf(kind);
   const hy = structs.halfYOf(kind);
   const hz = structs.halfZOf(kind);
@@ -128,6 +131,13 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
   for (let i = 0; i < n; i++) {
     if (capsuleBox(w.structs, refs[i]!, x, y, z, r, h, SKIN)) return false;
   }
+  const nodes = w.nodes;
+  if (nodes) {
+    const m = nodes.query(x - r, z - r, x + r, z + r, refs);
+    for (let i = 0; i < m; i++) {
+      if (capsuleBox(nodes, refs[i]!, x, y, z, r, h, SKIN)) return false;
+    }
+  }
   return true;
 }
 
@@ -136,6 +146,13 @@ export function restsOnStructure(w: CollisionWorld, x: number, y: number, z: num
   const n = w.structs.query(x - r, z - r, x + r, z + r, refs);
   for (let i = 0; i < n; i++) {
     if (capsuleBox(w.structs, refs[i]!, x, y - probe, z, r, h, 0) && push.y > 0.7 * push.depth) return true;
+  }
+  const nodes = w.nodes;
+  if (nodes) {
+    const m = nodes.query(x - r, z - r, x + r, z + r, refs);
+    for (let i = 0; i < m; i++) {
+      if (capsuleBox(nodes, refs[i]!, x, y - probe, z, r, h, 0) && push.y > 0.7 * push.depth) return true;
+    }
   }
   return false;
 }

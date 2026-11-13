@@ -38,6 +38,10 @@ export interface Registry {
   /** Radius and height of anything that stands in the world as an entity; zero otherwise. */
   readonly bodyRadius: Float32Array;
   readonly bodyHeight: Float32Array;
+  /** 1 for box kinds that bodies pass through (bushes). */
+  readonly soft: Uint8Array;
+  /** Hits a node of this kind takes before it is used up. */
+  readonly nodeHits: Float32Array;
 }
 
 export interface CompileResult {
@@ -77,6 +81,21 @@ export function compileContent(input: readonly Def[]): CompileResult {
     } else if (d.type === "prop") {
       positive(d, "radius", d.radius, 8);
       positive(d, "height", d.height, 32);
+    } else if (d.type === "node") {
+      for (let a = 0; a < 3; a++) positive(d, `half[${a}]`, d.half[a]!, MAX_STRUCTURE_HALF);
+      positive(d, "hits", d.hits, 10000);
+      positive(d, "respawnHours", d.respawnHours, 1e6);
+      for (const y of d.yields) if (!(y.min >= 0 && y.max >= y.min)) errors.push(`${d.id}: a yield's range must be 0 <= min <= max`);
+    } else if (d.type === "recipe") {
+      positive(d, "count", d.count, 1000);
+      positive(d, "seconds", d.seconds, 86400);
+      if (d.needs.length === 0) errors.push(`${d.id}: a recipe needs at least one ingredient`);
+    } else if (d.type === "engram") {
+      positive(d, "level", d.level, 1000);
+      if (!(d.cost >= 0)) errors.push(`${d.id}: cost must not be negative`);
+    } else if (d.type === "levels") {
+      if (d.xp.length < 2 || d.xp[0] !== 0 || d.xp.some((v, i) => i > 0 && v <= d.xp[i - 1]!)) errors.push(`${d.id}: xp must start at 0 and rise`);
+      if (d.engramPoints.length !== d.xp.length) errors.push(`${d.id}: engramPoints must have one entry per level`);
     } else if (d.type === "structure") {
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
       positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
@@ -87,10 +106,22 @@ export function compileContent(input: readonly Def[]): CompileResult {
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
       if (d.spoilHours !== undefined && !(d.spoilHours > 0)) errors.push(`${d.id}: spoilHours must be positive`);
     }
-    if (d.type !== "item") {
+    if (d.type === "species" || d.type === "structure" || d.type === "prop" || d.type === "node") {
       if (d.mesh.length === 0) errors.push(`${d.id}: mesh is required`);
       if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
     }
+  }
+  // References between definitions must name something of the right type.
+  const typeOf = new Map(input.map((d) => [d.id, d.type]));
+  const want = (d: Def, id: string, type: string) => {
+    if (typeOf.get(id) !== type) errors.push(`${d.id}: "${id}" is not ${type === "item" ? "an item" : `a ${type}`}`);
+  };
+  for (const d of input) {
+    if (d.type === "node") for (const y of d.yields) want(d, y.item, "item");
+    else if (d.type === "recipe") {
+      want(d, d.makes, "item");
+      for (const n of d.needs) want(d, n.item, "item");
+    } else if (d.type === "engram") for (const r of d.unlocks) want(d, r, "recipe");
   }
   if (input.length >= 65535) errors.push("too many definitions for a 16-bit index");
   if (errors.length > 0) return { registry: null, errors };
@@ -109,26 +140,32 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const spoilTicks = new Uint32Array(n);
   const bodyRadius = new Float32Array(n);
   const bodyHeight = new Float32Array(n);
+  const soft = new Uint8Array(n);
+  const nodeHits = new Float32Array(n);
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
     index.set(d.id, i);
     hash = hashString(canonical(d), hash);
-    if (d.type === "structure") {
+    if (d.type === "structure" || d.type === "node") {
       halfX[i] = d.half[0];
       halfY[i] = d.half[1];
       halfZ[i] = d.half[2];
+      if (d.type === "node") {
+        nodeHits[i] = d.hits;
+        if (d.soft) soft[i] = 1;
+      }
     } else if (d.type === "species" || d.type === "prop") {
       if (d.type === "species") move[i] = moveParams(d);
       bodyRadius[i] = d.radius;
       bodyHeight[i] = d.height;
-    } else {
+    } else if (d.type === "item") {
       stack[i] = d.stack;
       weight[i] = d.weight ?? 0.1;
       spoilTicks[i] = Math.round((d.spoilHours ?? 0) * GAME_HOUR_TICKS);
     }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits }, errors };
 }
 
 function moveParams(d: SpeciesDef): MoveParams {

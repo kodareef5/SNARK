@@ -10,6 +10,8 @@ import type { CollisionWorld } from "./collide.ts";
 export const HIT_NONE = 0;
 export const HIT_TERRAIN = 1;
 export const HIT_STRUCTURE = 2;
+/** A resource node; `rayHit.ref` is its reference in the node store (chunk * 65536 + slot). */
+export const HIT_NODE = 3;
 
 /** Result of the last `castWorld`: what was hit, how far along the ray, and which structure. */
 export const rayHit = { kind: HIT_NONE, t: 0, ref: 0 };
@@ -90,34 +92,37 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
     }
   }
 
-  // Structures: boxes turned about the vertical axis, a stretch of the ray at a time.
-  const structs = w.structs;
-  for (let from = 0; from < best; from += SEGMENT) {
-    const to = from + SEGMENT < best ? from + SEGMENT : best;
-    const ax = ox + dx * from;
-    const az = oz + dz * from;
-    const bx = ox + dx * to;
-    const bz = oz + dz * to;
-    const n = structs.query(ax < bx ? ax : bx, az < bz ? az : bz, ax > bx ? ax : bx, az > bz ? az : bz, refs);
-    for (let i = 0; i < n; i++) {
-      const r = refs[i]!;
-      const t = structs.chunks[Math.floor(r / 65536)]!;
-      const slot = r & 0xffff;
-      const k = t.kind[slot]!;
-      const a = t.yaw[slot]! * TO_RAD;
-      const s = detSin(a);
-      const c = detCos(a);
-      // The ray in the box's own frame.
-      const px = ox - t.x[slot]!;
-      const pz = oz - t.z[slot]!;
-      const hx = structs.halfXOf(k);
-      const hy = structs.halfYOf(k);
-      const hz = structs.halfZOf(k);
-      const hit = rayBox(c * px - s * pz, oy - t.y[slot]!, s * px + c * pz, c * dx - s * dz, dy, s * dx + c * dz, -hx, -hy, -hz, hx, hy, hz);
-      if (hit < best) {
-        best = hit;
-        kind = HIT_STRUCTURE;
-        ref = r;
+  // Structures, then nodes: boxes turned about the vertical axis, a stretch of the ray at a time.
+  for (let pass = 0; pass < 2; pass++) {
+    const structs = pass === 0 ? w.structs : w.nodes;
+    if (!structs) continue;
+    for (let from = 0; from < best; from += SEGMENT) {
+      const to = from + SEGMENT < best ? from + SEGMENT : best;
+      const ax = ox + dx * from;
+      const az = oz + dz * from;
+      const bx = ox + dx * to;
+      const bz = oz + dz * to;
+      const n = structs.query(ax < bx ? ax : bx, az < bz ? az : bz, ax > bx ? ax : bx, az > bz ? az : bz, refs);
+      for (let i = 0; i < n; i++) {
+        const r = refs[i]!;
+        const t = structs.chunks[Math.floor(r / 65536)]!;
+        const slot = r & 0xffff;
+        const k = t.kind[slot]!;
+        const a = t.yaw[slot]! * TO_RAD;
+        const s = detSin(a);
+        const c = detCos(a);
+        // The ray in the box's own frame.
+        const px = ox - t.x[slot]!;
+        const pz = oz - t.z[slot]!;
+        const hx = structs.halfXOf(k);
+        const hy = structs.halfYOf(k);
+        const hz = structs.halfZOf(k);
+        const hit = rayBox(c * px - s * pz, oy - t.y[slot]!, s * px + c * pz, c * dx - s * dz, dy, s * dx + c * dz, -hx, -hy, -hz, hx, hy, hz);
+        if (hit < best) {
+          best = hit;
+          kind = pass === 0 ? HIT_STRUCTURE : HIT_NODE;
+          ref = r;
+        }
       }
     }
   }

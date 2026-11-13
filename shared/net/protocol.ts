@@ -49,6 +49,8 @@ export const S_REJECT = 5;
 export const S_RESULT = 6;
 export const S_TEXT = 7;
 export const S_OWN = 8;
+/** Which nodes of a chunk are used up: chunk u16, version u32, count u8, slot u8 each. Reliable. */
+export const S_NODES = 9;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -80,6 +82,13 @@ export const CMD_CLOSE = 4;
 /** Return to life at one of the offered places: index u8. */
 export const CMD_RESPAWN = 5;
 
+/** Put a level-up point into a stat: stat u8. */
+export const CMD_SPEND = 6;
+/** Learn an engram: content index u16. */
+export const CMD_LEARN = 7;
+/** Make something: recipe content index u16, how many u8. */
+export const CMD_CRAFT = 8;
+
 /** Boxes a slot command can address. Nothing else can be named: no ids travel. */
 export const BOX_SELF = 0;
 /** Whatever container the session has open, if any. */
@@ -94,6 +103,8 @@ export const RESULT_DENIED = 3;
 export const RESULT_STALE = 4;
 export const RESULT_FULL = 5;
 export const RESULT_FAR = 6;
+/** Not enough of something: points, level, ingredients. */
+export const RESULT_SHORT = 7;
 
 /** OWN components. */
 export const OWN_SESSION = 1;
@@ -112,6 +123,13 @@ export const OWN_OPEN = 4;
 export const OWN_MARKERS = 5;
 /** Where a dead survivor may return: count u8, then per place: name string, x f32, z f32. */
 export const OWN_RESPAWN = 6;
+
+/**
+ * experience u32, level u16, unspent stat points u16, unspent engram points u16,
+ * learned engrams (count u8, content index u16 each), crafting jobs (count u8,
+ * then recipe u16, units left u8, tick the current unit is done u32 each).
+ */
+export const OWN_PROGRESSION = 7;
 
 export const MARKER_DEATH = 1;
 

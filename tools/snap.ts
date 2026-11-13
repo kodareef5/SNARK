@@ -18,7 +18,8 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
-import { PROVING_DIMS, PROVING_SPAWN, buildProvingHeightfield, populateProving } from "../shared/world/proving.ts";
+import { NodeField } from "../shared/world/nodes.ts";
+import { PROVING_DIMS, PROVING_SPAWN, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
 import { StructureStore } from "../shared/world/structures.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { HudModel, mapU, mapV } from "../client/core/hud.ts";
@@ -33,6 +34,7 @@ export interface ProvingView {
   reg: Registry;
   hf: Heightfield;
   structs: StructureStore;
+  nodes: NodeField;
   pack: Pack;
   scene: Scene;
   cam: Camera;
@@ -49,7 +51,10 @@ export function provingView(width = 640, height = 360): ProvingView {
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ);
   populateProving(structs, hf, reg);
   const pack = parsePack(buildCorePack());
-  const scene = new Scene({ dims: PROVING_DIMS, hf, structs }, reg, pack);
+  // Every chunk's nodes, as a client standing anywhere would have them filled in around it.
+  const nodes = new NodeField(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, provingNodes(hf, reg));
+  nodes.retain(0, 64, 1, () => false);
+  const scene = new Scene({ dims: PROVING_DIMS, hf, structs, nodes: nodes.store }, reg, pack);
   const cam = new Camera();
   cam.x = PROVING_SPAWN.x;
   cam.z = PROVING_SPAWN.z;
@@ -69,7 +74,7 @@ export function provingView(width = 640, height = 360): ProvingView {
   place(102, "core:grazer", 259, 254, 0.7);
   const raster = new Rasterizer(width, height, pack, hf);
   return {
-    reg, hf, structs, pack, scene, cam, remote, raster,
+    reg, hf, structs, nodes, pack, scene, cam, remote, raster,
     render() {
       const packet = scene.build(cam, remote);
       raster.render(packet);

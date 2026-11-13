@@ -141,6 +141,8 @@ export class Client {
   heldButtons = 0;
   /** Buttons that went down on the tick just stepped. */
   pressed = 0;
+  /** Tick from which the next swing of the primary action may land. */
+  swingAt = 0;
   private before = 0;
   /** Newest input tick received. */
   newestInput = 0;
@@ -150,6 +152,9 @@ export class Client {
   readonly views = new ViewRing();
   /** Structure table version the client holds, per chunk. */
   readonly known: Uint32Array;
+  /** Version of each chunk's used-up nodes the client holds. */
+  readonly nodesKnown: Uint32Array;
+  sentProgress = -1;
   readonly subscribed: number[] = [];
   syncChunk = -1;
   syncCursor = 0;
@@ -186,6 +191,7 @@ export class Client {
     this.id = id;
     this.conn = conn;
     this.known = new Uint32Array(chunks);
+    this.nodesKnown = new Uint32Array(chunks);
   }
 
   /** Forget everything that belonged to the previous connection. */
@@ -197,6 +203,8 @@ export class Client {
     this.newestInput = this.ackTick = this.lastSnapshot = 0;
     this.views.clear();
     this.known.fill(0);
+    this.nodesKnown.fill(0);
+    this.sentProgress = -1;
     this.subscribed.length = 0;
     this.syncChunk = -1;
     this.rotate = 0;
@@ -370,6 +378,14 @@ export class GameServer {
 
   endOwn(c: Client): void {
     c.conn.send(CH_RELIABLE, this.w.bytes());
+  }
+
+  /** Start a reliable message of another type; finish it with `endOwn`. */
+  begin(type: number): BitWriter {
+    const w = this.w;
+    w.reset();
+    w.bits(type, 4);
+    return w;
   }
 
   /** Every client must be sent its session component again (the day offset changed). */

@@ -133,6 +133,10 @@ const REQUIRED: Record<string, Record<string, string>> = {
   structure: { mesh: "string", color: "number", half: "array", hp: "number" },
   item: { stack: "number" },
   prop: { mesh: "string", color: "number", radius: "number", height: "number" },
+  node: { mesh: "string", color: "number", half: "array", hits: "number", respawnHours: "number", yields: "list", xp: "number" },
+  recipe: { makes: "string", count: "number", needs: "list", seconds: "number", xp: "number" },
+  engram: { label: "string", level: "number", cost: "number", unlocks: "list" },
+  levels: { xp: "list", engramPoints: "list" },
 };
 
 /** Why a resolved definition cannot be type-checked field by field, or null if it has every required field. */
@@ -141,7 +145,8 @@ function shapeProblem(d: Record<string, unknown>): string | null {
   if (!fields) return `unknown type "${String(d.type)}"`;
   for (const [key, kind] of Object.entries(fields)) {
     const v = d[key];
-    const ok = kind === "array" ? Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number") : typeof v === kind;
+    // "array" is three numbers (half extents); "list" is any array.
+    const ok = kind === "array" ? Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number") : kind === "list" ? Array.isArray(v) : typeof v === kind;
     if (!ok) return `missing or malformed field "${key}"`;
   }
   return null;

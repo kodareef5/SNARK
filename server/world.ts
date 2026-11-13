@@ -5,7 +5,8 @@ import type { MapDims } from "../shared/coords.ts";
 import { EntityStore } from "../shared/sim/entities.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
-import { PROVING_DIMS, PROVING_ID, PROVING_SPAWN, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingMapHash } from "../shared/world/proving.ts";
+import { PROVING_DIMS, PROVING_ID, PROVING_SPAWN, PROVING_SPAWNS, provingNodes, buildProvingHeightfield, populateProving, provingMapHash } from "../shared/world/proving.ts";
+import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
 
 export interface ServerWorld extends CollisionWorld {
@@ -19,6 +20,8 @@ export interface ServerWorld extends CollisionWorld {
   readonly spawn: { readonly x: number; readonly z: number; readonly yaw: number };
   /** Places a dead survivor may choose to return at. The first is `spawn`. */
   readonly spawns: readonly { readonly name: string; readonly x: number; readonly z: number; readonly yaw: number }[];
+  /** The map's resource nodes, if it has any. `nodes` (from CollisionWorld) is this field's store. */
+  readonly nodeField: NodeField | null;
   /** World clock in fixed steps. Persisted; never reset and never set by hand. */
   tick: number;
   /** Added to the tick to get the time of day (shared/sim/clock.ts). This is what `settime` changes. */
@@ -29,13 +32,18 @@ export interface WorldOptions {
   entityCap?: number;
   /** Place the proving ground's structures. False when a save will supply them. */
   populate?: boolean;
+  /** False for a proving ground with no trees, rocks or bushes. */
+  nodes?: boolean;
 }
 
-export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityCap: number, spawns?: ServerWorld["spawns"]): ServerWorld {
+export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityCap: number, spawns?: ServerWorld["spawns"], nodeSource?: NodeSource): ServerWorld {
+  const nodeField = nodeSource ? new NodeField(dims, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, nodeSource) : null;
   return {
     reg,
     dims,
     hf,
+    nodeField,
+    ...(nodeField ? { nodes: nodeField.store } : {}),
     structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ),
     ents: new EntityStore(dims, entityCap),
     mapId,
@@ -49,7 +57,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
 
 export function createProvingWorld(reg: Registry, opts: WorldOptions = {}): ServerWorld {
   const hf = buildProvingHeightfield();
-  const world = createWorld(reg, PROVING_DIMS, hf, PROVING_ID, provingMapHash(hf), PROVING_SPAWN, opts.entityCap ?? 4096, PROVING_SPAWNS);
+  const world = createWorld(reg, PROVING_DIMS, hf, PROVING_ID, provingMapHash(hf), PROVING_SPAWN, opts.entityCap ?? 4096, PROVING_SPAWNS, opts.nodes === false ? undefined : provingNodes(hf, reg));
   if (opts.populate !== false) populateProving(world.structs, hf, reg);
   return world;
 }

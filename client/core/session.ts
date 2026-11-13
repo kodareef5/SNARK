@@ -11,7 +11,7 @@
 // small and positive.
 
 import type { Registry } from "../../shared/content/registry.ts";
-import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
+import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
@@ -26,6 +26,7 @@ import {
   MAX_TEXT_BYTES,
   OWN_MARKERS,
   OWN_OPEN,
+  OWN_PROGRESSION,
   OWN_RESPAWN,
   OWN_SESSION,
   OWN_SLOTS,
@@ -36,6 +37,7 @@ import {
   SESSION_ALIVE,
   S_CHUNK,
   S_CHUNK_DROP,
+  S_NODES,
   S_OWN,
   S_REJECT,
   S_RESULT,
@@ -54,6 +56,7 @@ import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 
 export interface SessionOptions {
@@ -65,6 +68,8 @@ export interface SessionOptions {
   registry: Registry;
   /** Return the terrain for a map, or null if this client does not have it. */
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
+  /** The map's resource nodes, if it has any: the same pure function the server uses. */
+  nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
 }
 
 /** Remote entities at the current render time, filled by `sampleRemote`. */
@@ -93,6 +98,8 @@ const MAX_STEPS_PER_UPDATE = 8;
 /** Time constant of the fade that hides a correction, and the largest correction worth hiding. */
 const SMOOTH_MS = 90;
 const SMOOTH_LIMIT = 3;
+/** Chunks around the body whose nodes are kept filled: for collision one would do, for drawing more is better. */
+const NODE_RADIUS = 3;
 const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
 /** Lines of server text kept for the console. */
@@ -136,6 +143,12 @@ export class ClientSession {
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
   /** Where a dead survivor may return. */
   readonly respawnPoints: { name: string; x: number; z: number }[] = [];
+  /** Experience and what it has earned, as the server last said. */
+  readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { recipe: number; left: number; doneAt: number }[], version: 0 };
+  /** Resource nodes around this client: filled from the map, less those the server says are used up. */
+  nodeField: NodeField | null = null;
+  private nodeChunk = -1;
+  private readonly nodeGone = new Map<number, number[]>();
   /** Called with the sequence number and code when the server answers a command. */
   onResult: ((seq: number, code: number) => void) | null = null;
   /** Predicted local body after the latest simulated tick. */
@@ -270,7 +283,10 @@ export class ClientSession {
     }
     // Too far behind to catch up by simulating: skip. The server held the last input meanwhile.
     if (this.simTick < target) this.simTick = target;
-    if (steps > 0) this.sendInputs();
+    if (steps > 0) {
+      this.sendInputs();
+      this.recenterNodes();
+    }
   }
 
   /** Fill `out` with remote entities interpolated to the current render time. */
@@ -350,6 +366,7 @@ export class ClientSession {
       if (this.state === "active") this.snapshot(r);
     } else if (type === S_CHUNK) this.chunk(r);
     else if (type === S_CHUNK_DROP) this.world?.structs.dropChunk(r.u16());
+    else if (type === S_NODES) this.nodes(r);
     else if (type === S_WELCOME) this.welcome(r);
     else if (type === S_RESULT) {
       const seq = r.u16();
@@ -367,6 +384,34 @@ export class ClientSession {
       this.state = "closed";
       this.closeReason = r.u8();
     }
+  }
+
+  /** Which nodes of a chunk are used up. Applied at once if the chunk is filled, and remembered for when it is. */
+  private nodes(r: BitReader): void {
+    const chunk = r.u16();
+    r.u32();
+    const count = r.u8();
+    const gone: number[] = [];
+    for (let k = 0; k < count; k++) gone.push(r.u8());
+    const field = this.nodeField;
+    if (r.overflow || !field) return;
+    const before = this.nodeGone.get(chunk) ?? [];
+    this.nodeGone.set(chunk, gone);
+    for (const i of before) if (!gone.includes(i)) field.set(chunk, i, true);
+    for (const i of gone) if (!before.includes(i)) field.set(chunk, i, false);
+  }
+
+  /** Keep the nodes around the body filled in as it moves from chunk to chunk. */
+  private recenterNodes(): void {
+    const field = this.nodeField;
+    const world = this.world;
+    if (!field || !world) return;
+    const chunk = chunkAt(world.dims, this.own.x, this.own.z);
+    if (chunk === this.nodeChunk) return;
+    const gone = (c: number, i: number): boolean => this.nodeGone.get(c)?.includes(i) ?? false;
+    field.retain(chunk, NODE_RADIUS, 1, gone);
+    if (this.nodeChunk >= 0) field.retain(this.nodeChunk, NODE_RADIUS, -1, gone);
+    this.nodeChunk = chunk;
   }
 
   /** Owner-private state: one component per message. */
@@ -439,6 +484,24 @@ export class ClientSession {
       if (r.overflow) return;
       this.markers.length = 0;
       this.markers.push(...list);
+    } else if (component === OWN_PROGRESSION) {
+      const p = this.progress;
+      const xp = r.u32();
+      const level = r.u16();
+      const statPoints = r.u16();
+      const engramPoints = r.u16();
+      const engrams: number[] = [];
+      for (let k = r.u8(); k > 0 && !r.overflow; k--) engrams.push(r.u16());
+      const jobs: { recipe: number; left: number; doneAt: number }[] = [];
+      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ recipe: r.u16(), left: r.u8(), doneAt: r.u32() });
+      if (r.overflow) return;
+      p.xp = xp;
+      p.level = level;
+      p.statPoints = statPoints;
+      p.engramPoints = engramPoints;
+      p.engrams = engrams;
+      p.jobs = jobs;
+      p.version++;
     } else if (component === OWN_RESPAWN) {
       const count = r.u8();
       const list = [];
@@ -476,7 +539,10 @@ export class ClientSession {
       this.conn.close();
       return;
     }
-    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ) };
+    const source = this.opts.nodes?.(hf, reg) ?? null;
+    this.nodeField = source ? new NodeField(dims, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, source) : null;
+    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ), ...(this.nodeField ? { nodes: this.nodeField.store } : {}) };
+    this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);
     this.ownYaw = (yaw * TAU) / YAW_UNITS;
