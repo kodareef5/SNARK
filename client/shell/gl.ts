@@ -2,7 +2,7 @@
 // batches, which level of detail and which colours all arrive in the packet.
 // Keep it that way; logic added here cannot be tested.
 
-import { DRAW_BLEND, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../core/render/packet.ts";
+import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../core/render/shading.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES, lodIndices, lodVertices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
@@ -26,9 +26,11 @@ void main() {
   float d = length(vRel);
   float shade = 1.0;
   vec3 a = floor(w);
-  if (mod(a.x + a.y + a.z, 2.0) > 0.5) shade -= ${f(1 - CHECK_FINE)} * max(0.0, 1.0 - d / ${f(CHECK_FINE_FADE)});
   vec3 b = floor(w / ${f(CHECK_COARSE_SIZE)});
-  if (mod(b.x + b.y + b.z, 2.0) > 0.5) shade -= ${f(1 - CHECK_COARSE)} * max(0.0, 1.0 - d / ${f(CHECK_COARSE_FADE)});
+  if (uSolid < 1.5) {
+    if (mod(a.x + a.y + a.z, 2.0) > 0.5) shade -= ${f(1 - CHECK_FINE)} * max(0.0, 1.0 - d / ${f(CHECK_FINE_FADE)});
+    if (mod(b.x + b.y + b.z, 2.0) > 0.5) shade -= ${f(1 - CHECK_COARSE)} * max(0.0, 1.0 - d / ${f(CHECK_COARSE_FADE)});
+  }
   float fog = clamp((d - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
   o = vec4(mix(vColor * light * shade, uSky, fog * fog), uAlpha);
 }`;
@@ -40,16 +42,28 @@ layout(location=2) in vec3 iPos;
 layout(location=3) in float iYaw;
 layout(location=4) in uvec4 iRegA;
 layout(location=5) in uvec2 iRegB;
+layout(location=6) in uint aBone;
 uniform mat4 uViewProj;
 uniform vec3 uOffset, uCenter, uHalf;
+uniform float uSkin;
 uniform sampler2D uPalette;
+uniform highp sampler2D uBones;
 out vec3 vRel;
 flat out vec3 vColor;
 void main() {
   vec3 l = uCenter + aPos * uHalf;
-  float t = iYaw * 6.283185307;
-  float s = sin(t), c = cos(t);
-  vec3 p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
+  vec3 p;
+  if (uSkin > 0.5) {
+    // A body with bones: the instance names its first bone where a rigid one has its yaw.
+    int n = (int(iYaw * 65535.0 + 0.5) + int(aBone)) * 3;
+    ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
+    vec4 v = vec4(l, 1.0);
+    p = vec3(dot(texelFetch(uBones, at, 0), v), dot(texelFetch(uBones, at + ivec2(1, 0), 0), v), dot(texelFetch(uBones, at + ivec2(2, 0), 0), v));
+  } else {
+    float t = iYaw * 6.283185307;
+    float s = sin(t), c = cos(t);
+    p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
+  }
   uint i = aColor;
   if (i >= ${REGION_BASE}u) { uint r = i - ${REGION_BASE}u; i = r < 4u ? iRegA[r] : iRegB[r - 4u]; }
   vColor = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;
@@ -124,7 +138,7 @@ export class GlRenderer {
     this.terrain = this.link(TERRAIN_VERTEX);
     this.buffers.clear();
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    const texture = (unit: number, internal: number, w: number, h: number, format: number, type: number, data: ArrayBufferView): void => {
+    const texture = (unit: number, internal: number, w: number, h: number, format: number, type: number, data: ArrayBufferView | null): void => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
       gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format, type, data);
@@ -135,6 +149,8 @@ export class GlRenderer {
     texture(0, gl.RGBA8, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.pack.palette);
     texture(1, gl.R16UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_SHORT, hf.heights);
     texture(2, gl.R8UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_BYTE, hf.tint);
+    // Bones: three texels of four floats each, read by exact texel. Left bound on unit 3.
+    texture(3, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
 
     // Meshes: one vertex array per level of detail; instance attributes are pointed per draw.
     this.meshLods = this.pack.header.meshes.map((m) =>
@@ -147,6 +163,8 @@ export class GlRenderer {
         gl.vertexAttribPointer(0, 3, gl.SHORT, true, VERTEX_BYTES, 0);
         gl.enableVertexAttribArray(1);
         gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 6);
+        gl.enableVertexAttribArray(6);
+        gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 7);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, lodIndices(this.pack, lod), gl.STATIC_DRAW);
         for (let a = 2; a <= 5; a++) {
@@ -260,16 +278,32 @@ export class GlRenderer {
       gl.bufferData(gl.ARRAY_BUFFER, p.transient.subarray(0, p.transientCount * INSTANCE_BYTES), gl.DYNAMIC_DRAW);
     }
 
+    if (p.boneCount > 0) {
+      const rows = Math.ceil(p.boneCount / BONES_PER_ROW);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, rows, gl.RGBA, gl.FLOAT, p.bones);
+    }
+
     common(this.mesh, 1);
+    gl.uniform1i(this.mesh.uniform("uBones"), 3);
     gl.enable(gl.CULL_FACE);
     const offset = this.mesh.uniform("uOffset");
     const center = this.mesh.uniform("uCenter");
     const half = this.mesh.uniform("uHalf");
+    const solid = this.mesh.uniform("uSolid");
+    const skin = this.mesh.uniform("uSkin");
+    const opaque = (): void => {
+      gl.disable(gl.BLEND);
+      gl.depthMask(true);
+      gl.enable(gl.CULL_FACE);
+      gl.uniform1f(this.mesh.uniform("uAlpha"), 1);
+    };
     let blending = false;
+    let near = false;
     for (let d = 0; d < p.drawCount; d++) {
       const m = p.drawMesh[d]!;
-      // See-through draws come last: blended, both faces, leaving depth alone.
-      if (!blending && (p.drawFlags[d]! & DRAW_BLEND) !== 0) {
+      const flags = p.drawFlags[d]!;
+      // See-through draws come after the opaque ones: blended, both faces, leaving depth alone.
+      if (!blending && (flags & DRAW_BLEND) !== 0) {
         blending = true;
         gl.enable(gl.BLEND);
         gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
@@ -277,6 +311,15 @@ export class GlRenderer {
         gl.disable(gl.CULL_FACE);
         gl.uniform1f(this.mesh.uniform("uAlpha"), WATER_ALPHA);
       }
+      // The viewer's own body comes last of all: over everything, with its own near plane.
+      if (!near && (flags & DRAW_NEAR) !== 0) {
+        near = true;
+        opaque();
+        gl.clear(gl.DEPTH_BUFFER_BIT);
+        gl.uniformMatrix4fv(this.mesh.uniform("uViewProj"), false, p.nearViewProj);
+      }
+      gl.uniform1f(solid, (flags & DRAW_PLAIN) !== 0 ? 2 : 1);
+      gl.uniform1f(skin, (flags & DRAW_SKINNED) !== 0 ? 1 : 0);
       const lods = this.meshLods[m]!;
       const lod = lods[Math.min(p.drawLod[d]!, lods.length - 1)]!;
       const buffer = p.drawBuffer[d] === TRANSIENT_BUFFER ? this.transient : this.buffers.get(p.drawBuffer[d]!);
@@ -296,10 +339,7 @@ export class GlRenderer {
       gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, gl.UNSIGNED_SHORT, 0, p.drawInstances[d]!);
       this.drawCalls++;
     }
-    if (blending) {
-      gl.disable(gl.BLEND);
-      gl.depthMask(true);
-    }
+    if (blending && !near) opaque();
     gl.bindVertexArray(null);
   }
 

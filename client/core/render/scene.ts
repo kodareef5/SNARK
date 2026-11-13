@@ -11,8 +11,10 @@ import { INSTANCE_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
+import { AnimState } from "../../../shared/anim/pose.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
+import { BODY_RADIUS, Characters } from "./characters.ts";
 import { DRAW_BLEND, FramePacket, InstanceWriter, MAX_DRAWS, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
 import { NIGHT_LIGHT, UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { TerrainLod } from "./terrain.ts";
@@ -23,6 +25,25 @@ export interface RenderWorld {
   readonly structs: StructureStore;
   /** Resource nodes, drawn exactly as structures are. */
   readonly nodes?: StructureStore;
+}
+
+/** The viewer's own body, which is not among the remote entities. */
+export interface OwnBody {
+  kind: number;
+  /** World position of its origin. */
+  x: number;
+  y: number;
+  z: number;
+  /** Radians. */
+  yaw: number;
+  readonly state: AnimState;
+  /** The moment to pose it at, in ticks. */
+  tick: number;
+  /** Seen from its own eyes: drawn over everything, without its head. */
+  firstPerson: boolean;
+  /** Six colour regions; zero leaves the species' own. */
+  readonly colors: Uint8Array;
+  id: number;
 }
 
 /** Instance buffers of the node store are numbered from here, clear of chunk indices. */
@@ -78,6 +99,12 @@ export class Scene {
   private readonly beamMesh: number;
   /** Places to mark with a beam: x, y, z each. Set by the app before `build`. */
   readonly beams: number[] = [];
+  /** Bodies with bones. */
+  readonly characters: Characters;
+  /** The viewer's own body, or null to draw none. Set by the app before `build`. */
+  own: OwnBody | null = null;
+  private readonly state = new AnimState();
+  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags);
   /** Linear RGB of the open sky and of deep water. */
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
@@ -100,6 +127,7 @@ export class Scene {
     this.counts = new Uint32Array(meshes.length);
     this.cursor = new Uint32Array(meshes.length);
     this.transient = new InstanceWriter(this.packet.transient);
+    this.characters = new Characters(reg, pack);
 
     this.waterMesh = pack.meshIndex.get(WATER_MESH) ?? -1;
     this.beamMesh = pack.meshIndex.get(BEAM_MESH) ?? -1;
@@ -119,6 +147,7 @@ export class Scene {
     p.beginFrame();
     cam.update();
     p.viewProj.set(cam.viewProj);
+    p.nearViewProj.set(cam.nearViewProj);
     p.camX = cam.x;
     p.camY = cam.y;
     p.camZ = cam.z;
@@ -151,9 +180,42 @@ export class Scene {
     this.structures(cam, this.world.structs, 0);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS);
     if (remote) this.entities(cam, remote);
+    this.bodies(cam, remote);
     if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
+    // The viewer's own body goes over everything else, water included.
+    this.characters.flush(p, this.transient, true, this.drawBody);
     return p;
+  }
+
+  /** Bodies with bones: every remote one in view, and the viewer's own. */
+  private bodies(cam: Camera, remote: RemoteSample | null): void {
+    const p = this.packet;
+    const ch = this.characters;
+    const st = this.state;
+    ch.begin();
+    if (remote) {
+      for (let i = 0; i < remote.count; i++) {
+        const kind = remote.kind[i]!;
+        if (!ch.has(kind)) continue;
+        const x = remote.x[i]! - cam.x;
+        const y = remote.y[i]! - cam.y;
+        const z = remote.z[i]! - cam.z;
+        const r = BODY_RADIUS;
+        if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, y + 2.2, z + r)) continue;
+        st.mode = remote.mode[i]!;
+        st.grounded = (remote.flags[i]! & 1) !== 0;
+        st.speed = remote.speed[i]!;
+        st.dir = remote.dir[i]!;
+        st.pitch = remote.pitch[i]!;
+        st.stance = remote.stance[i]!;
+        st.seed = bodySeed(remote.id[i]!);
+        if (!ch.add(p, kind, x, y, z, remote.yaw[i]!, st, remote.tick, remote.colors, i * 6, remote.id[i]!, false, false)) break;
+      }
+    }
+    const own = this.own;
+    if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.colors, 0, own.id, own.firstPerson, own.firstPerson);
+    ch.flush(p, this.transient, false, this.drawBody);
   }
 
   /** A tall thin beam over each marked place, visible from far off. */
@@ -290,7 +352,9 @@ export class Scene {
     const p = this.packet;
     const counts = this.counts.fill(0);
     let visible = 0;
+    const bodies = this.characters;
     for (let i = 0; i < remote.count; i++) {
+      if (bodies.has(remote.kind[i]!)) continue;
       const mesh = this.meshOfKind[remote.kind[i]!]!;
       const r = this.radiusOfMesh[mesh]!;
       const x = remote.x[i]! - cam.x;
@@ -302,7 +366,7 @@ export class Scene {
       visible++;
     }
     if (visible === 0) return;
-    let total = 0;
+    let total = p.transientCount;
     for (let m = 0; m < counts.length; m++) {
       this.cursor[m] = total;
       if (counts[m]! > 0) this.draw(m, 0, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0);
@@ -310,6 +374,7 @@ export class Scene {
     }
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
+      if (bodies.has(kind)) continue;
       const mesh = this.meshOfKind[kind]!;
       const r = this.radiusOfMesh[mesh]!;
       const x = remote.x[i]! - cam.x;
@@ -324,7 +389,7 @@ export class Scene {
     p.transientCount = total;
   }
 
-  private draw(mesh: number, lod: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number): void {
+  private draw(mesh: number, lod: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags = 0): void {
     const p = this.packet;
     const n = p.drawCount;
     if (n === MAX_DRAWS) return;
@@ -336,9 +401,14 @@ export class Scene {
     p.drawOffset[n * 3] = ox;
     p.drawOffset[n * 3 + 1] = oy;
     p.drawOffset[n * 3 + 2] = oz;
-    p.drawFlags[n] = 0;
+    p.drawFlags[n] = flags;
     p.drawCount = n + 1;
     const tris = this.trisOfMesh[mesh]!;
     p.triangles += tris[lod < tris.length ? lod : tris.length - 1]! * count;
   }
+}
+
+/** Ticks a body's clock is ahead of the world's, so that a crowd does not move in step. The server uses the same. */
+export function bodySeed(id: number): number {
+  return (id * 37) % 1024;
 }

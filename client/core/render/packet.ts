@@ -22,6 +22,29 @@ export const TRANSIENT_BUFFER = 0xffffffff;
 export const MAX_WATER_TILES = 64;
 /** Draw flag: see-through. Drawn after everything opaque, blended, both faces, without writing depth. */
 export const DRAW_BLEND = 1;
+/**
+ * Draw flag: the mesh follows bones. Each vertex names a bone; each instance
+ * carries, where a rigid instance has its yaw, the index of its first bone in
+ * `bones`. Instance positions are unused: a bone's rows already hold the whole
+ * way from the mesh to the camera-relative world.
+ */
+export const DRAW_SKINNED = 2;
+/** Draw flag: no checker pattern. A checker fixed to the world would crawl over a moving body. */
+export const DRAW_PLAIN = 4;
+/**
+ * Draw flag: the viewer's own body. Drawn last, over everything, with
+ * `nearViewProj`, whose near plane is close enough for arms and hands.
+ */
+export const DRAW_NEAR = 8;
+
+/** Floats per bone: three rows of a 3 x 4 matrix, each row x, y, z, translation. */
+export const BONE_FLOATS = 12;
+/** Bones per row of the bone texture, whose texels are four floats: three texels a bone. */
+export const BONES_PER_ROW = 256;
+export const BONE_ROWS = 64;
+export const MAX_BONES = BONES_PER_ROW * BONE_ROWS;
+/** Instances a frame may carry for bodies with bones: every body is several meshes. */
+export const MAX_SKINNED = MAX_VIEW * 8;
 
 export interface BufferUpload {
   /** Chunk index the instances belong to. */
@@ -34,6 +57,8 @@ export interface BufferUpload {
 
 export class FramePacket {
   readonly viewProj = new Float32Array(16);
+  /** The same view with a near plane for the viewer's own body. */
+  readonly nearViewProj = new Float32Array(16);
   camX = 0;
   camY = 0;
   camZ = 0;
@@ -69,9 +94,13 @@ export class FramePacket {
   readonly tileOrigin = new Int32Array(MAX_TILES * 2);
 
   transientCount = 0;
-  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17) * INSTANCE_BYTES);
+  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_SKINNED) * INSTANCE_BYTES);
   /** Entity slot index of each transient instance, for picking. */
-  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17);
+  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17 + MAX_SKINNED);
+
+  /** Bones of every body drawn this frame, BONE_FLOATS each. */
+  boneCount = 0;
+  readonly bones = new Float32Array(MAX_BONES * BONE_FLOATS);
 
   /** Triangles submitted, for budgets and benchmarks. */
   triangles = 0;
@@ -82,6 +111,7 @@ export class FramePacket {
     this.drawCount = 0;
     this.tileCount = 0;
     this.transientCount = 0;
+    this.boneCount = 0;
     this.triangles = 0;
   }
 }
@@ -106,6 +136,11 @@ export class InstanceWriter {
     const at = i * INSTANCE_BYTES + 14;
     this.bytes[at] = region0;
     this.bytes.fill(0, at + 1, at + 6);
+  }
+
+  /** A body with bones: its first bone's index goes where a rigid instance has its yaw. */
+  setSkinned(i: number, firstBone: number, region0: number): void {
+    this.set(i, 0, 0, 0, firstBone, region0);
   }
 
   /** Give instance `i` its own colour regions. A zero leaves that region as `set` wrote it. */

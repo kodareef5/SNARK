@@ -1,5 +1,6 @@
 // Builds the core asset pack: a graybox mesh for every definition whose mesh is
-// "box", plus every .glb under assets/source (id "<folder>:<file name>").
+// "box", the mannequin, the clips converted by `bun run art`, plus every .glb
+// under assets/source (id "<folder>:<file name>").
 //
 //   bun tools/pack/build.ts        writes client/dist/assets/core.snpk
 
@@ -8,8 +9,11 @@ import { basename, dirname, join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { WATER_TILE } from "../../client/core/render/shading.ts";
+import type { Clip } from "../../shared/anim/clip.ts";
+import { parsePack } from "../../shared/pack/pack.ts";
 import { REGION_BASE, WATER_COLOR, defaultPalette } from "../../shared/pack/palette.ts";
 import { importGlb } from "./glb.ts";
+import { mannequinMeshes } from "./mannequin.ts";
 import { boxMesh, buildPack, type SourceMesh } from "./write.ts";
 
 export const MISSING_MESH = "core:missing";
@@ -56,8 +60,19 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
   return meshes;
 }
 
+const SOURCE = resolve(import.meta.dir, "../../assets/source");
+let sourceClips: readonly Clip[] | null = null;
+
+/** The clips `bun run art` wrote, read once. */
+export function coreClips(): readonly Clip[] {
+  if (sourceClips) return sourceClips;
+  const file = join(SOURCE, "core/human-clips.snpk");
+  sourceClips = existsSync(file) ? parsePack(new Uint8Array(readFileSync(file))).clips.clips : [];
+  return sourceClips;
+}
+
 export function buildCorePack(extra: SourceMesh[] = []): Uint8Array {
-  return buildPack([...grayboxMeshes(CORE_CONTENT), ...extra], defaultPalette());
+  return buildPack([...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...extra], defaultPalette(), coreClips());
 }
 
 function findGlbs(dir: string, out: string[] = []): string[] {

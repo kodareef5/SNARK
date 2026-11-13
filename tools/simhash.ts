@@ -3,10 +3,20 @@
 // equal hashes mean the simulation is bit-identical across the two engines,
 // which is what client prediction relies on.
 //
+// A second hash covers poses: every kind of motion at whole and fractional
+// ticks, solved to bone positions, and what a set of rays hits. Equal pose
+// hashes mean the server and a browser agree on where every bone is.
+//
 //   bun tools/simhash.ts
 //   node tools/simhash.ts
 
+import { readFileSync } from "node:fs";
 import { CORE_CONTENT } from "../content/core.ts";
+import { Pose } from "../shared/anim/clip.ts";
+import { HUMAN, HUMAN_BONES } from "../shared/anim/human.ts";
+import { AnimState, HumanAnim, humanPose } from "../shared/anim/pose.ts";
+import { Solved, rayZones, solve, zoneHit } from "../shared/anim/skeleton.ts";
+import { parsePack } from "../shared/pack/pack.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { TICK_DT } from "../shared/coords.ts";
 import { Rng } from "../shared/rng.ts";
@@ -71,4 +81,58 @@ export function simHash(ticks = 3000): string {
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-if (import.meta.main) console.log(simHash());
+/** The clips the art conversion wrote, as both engines can read them. */
+export function sourceClips(): HumanAnim {
+  return new HumanAnim(parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/human-clips.snpk", import.meta.url)))).clips);
+}
+
+export function poseHash(): string {
+  const anim = sourceClips();
+  const st = new AnimState();
+  const pose = new Pose(HUMAN_BONES);
+  const solved = new Solved(HUMAN_BONES);
+  const rot = new Uint8Array(solved.rot.buffer);
+  const pos = new Uint8Array(solved.pos.buffer);
+  const f = new Float32Array(1);
+  const fb = new Uint8Array(f.buffer);
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9747b28c;
+  const mix = (bytes: Uint8Array): void => {
+    for (let k = 0; k < bytes.length; k++) {
+      h1 = Math.imul(h1 ^ bytes[k]!, 0x01000193);
+      h2 = Math.imul(h2 + bytes[k]!, 0x85ebca6b) ^ (h2 >>> 13);
+    }
+  };
+  let n = 0;
+  // Standing, crouched, in the air, in water; every third speed, direction and pitch.
+  for (const [mode, grounded, stance] of [[1, 1, 0], [1, 1, 1], [1, 0, 0], [2, 0, 0]] as const) {
+    for (let speed = 0; speed <= 15; speed += 3) {
+      for (let dir = 0; dir < 16; dir += 3) {
+        for (let pitch = -31; pitch <= 31; pitch += 13) {
+          st.mode = mode;
+          st.grounded = grounded === 1;
+          st.stance = stance;
+          st.speed = speed;
+          st.dir = dir;
+          st.pitch = pitch;
+          st.seed = (n * 37) % 1024;
+          const tick = n * 7.25;
+          n++;
+          humanPose(anim, st, tick, pose);
+          solve(HUMAN, pose, solved);
+          mix(rot);
+          mix(pos);
+          // A ray at chest height from the front and one down through the head.
+          for (const [ox, oy, oz, dx, dy, dz] of [[0.05, 1.3, 3, 0, 0, -1], [0.02, 3, 0.03, 0, -1, 0], [2, 0.4, 0.1, -1, 0, 0]] as const) {
+            h1 = Math.imul(h1 ^ rayZones(HUMAN, solved, ox, oy, oz, dx, dy, dz, 10), 0x01000193);
+            f[0] = zoneHit.t;
+            mix(fb);
+          }
+        }
+      }
+    }
+  }
+  return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+if (import.meta.main) console.log(simHash() + " " + poseHash());

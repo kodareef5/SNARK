@@ -10,7 +10,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
-import { PROBE_CREATURE } from "../shared/world/proving.ts";
+import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
 import { join, normalize, resolve } from "node:path";
 
@@ -63,6 +63,11 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     genome.colors.fill(0);
     genome.colors[0] = PROBE_CREATURE.color;
     ents.setLook(e, genome.level, genome.colors, "");
+    // And one body with bones, in its species' own colour.
+    const body = host.spawnCreature("core:survivor", PROBE_BODY.x, PROBE_BODY.z, 1);
+    const look = host.records.byPid.get(ents.pid[body]!)!.genome!;
+    look.colors.fill(0);
+    ents.setLook(body, look.level, look.colors, "");
   }
   const clientDir = resolve(opts.clientDir ?? join(import.meta.dir, "../client/dist"));
   let onConnection: ((conn: Connection) => void) | null = null;

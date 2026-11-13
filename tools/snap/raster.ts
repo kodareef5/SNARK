@@ -9,7 +9,8 @@
 // It is not fast and does not try to be: z-buffered triangles, flat shading,
 // near-plane clipping, perspective-correct checker.
 
-import { DRAW_BLEND, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { NEAR_BODY } from "../../client/core/render/camera.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES, lodIndices, lodVertices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
@@ -23,6 +24,7 @@ export const PICK_ENTITY = 3;
 interface DecodedLod {
   positions: Float32Array;
   colors: Uint8Array;
+  bones: Uint8Array;
   indices: Uint16Array;
 }
 
@@ -42,6 +44,11 @@ export class Rasterizer {
   private readonly buffers = new Map<number, { data: Uint8Array; slots: Uint16Array }>();
   private readonly lods = new Map<number, DecodedLod>();
   private packet!: FramePacket;
+  /** The matrix and near distance triangles are drawn with: the packet's own, or its near pass. */
+  private matrix!: Float32Array;
+  private nearClip = 0.05;
+  /** Triangles are drawn without the checker. */
+  private plain = false;
   private scratch = new Float32Array(3 * 1024);
   // Clip scratch: up to 4 vertices of (rel x, y, z, clip x, y, w, ndc depth).
   private readonly poly = new Float64Array(4 * 7);
@@ -74,8 +81,19 @@ export class Rasterizer {
     this.pickId.fill(0);
     this.trianglesDrawn = 0;
 
+    this.matrix = packet.viewProj;
+    this.nearClip = 0.05;
+    this.plain = false;
     this.terrain(packet);
-    for (let d = 0; d < packet.drawCount; d++) this.draw(packet, d);
+    for (let d = 0; d < packet.drawCount; d++) {
+      // The viewer's own body: over everything drawn so far, with its own near plane.
+      if ((packet.drawFlags[d]! & DRAW_NEAR) !== 0 && this.matrix !== packet.nearViewProj) {
+        this.matrix = packet.nearViewProj;
+        this.nearClip = NEAR_BODY;
+        this.depth.fill(Infinity);
+      }
+      this.draw(packet, d);
+    }
   }
 
   private terrain(p: FramePacket): void {
@@ -128,21 +146,36 @@ export class Rasterizer {
     const n = lod.positions.length / 3;
     if (this.scratch.length < n * 3) this.scratch = new Float32Array(n * 3);
     const out = this.scratch;
+    const skinned = (p.drawFlags[d]! & DRAW_SKINNED) !== 0;
+    this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0;
+    const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
       const at = inst * INSTANCE_BYTES;
-      const yaw = (view.getUint16(at + 12, true) / 65536) * Math.PI * 2;
-      const s = Math.sin(yaw);
-      const c = Math.cos(yaw);
-      const ix = view.getFloat32(at, true) + ox;
-      const iy = view.getFloat32(at + 4, true) + oy;
-      const iz = view.getFloat32(at + 8, true) + oz;
-      for (let v = 0; v < n; v++) {
-        const lx = lod.positions[v * 3]!;
-        const lz = lod.positions[v * 3 + 2]!;
-        out[v * 3] = c * lx + s * lz + ix;
-        out[v * 3 + 1] = lod.positions[v * 3 + 1]! + iy;
-        out[v * 3 + 2] = -s * lx + c * lz + iz;
+      if (skinned) {
+        // Each vertex follows one bone of this instance's body.
+        const first = view.getUint16(at + 12, true);
+        for (let v = 0; v < n; v++) {
+          const b = (first + lod.bones[v]!) * BONE_FLOATS;
+          const lx = lod.positions[v * 3]!, ly = lod.positions[v * 3 + 1]!, lz = lod.positions[v * 3 + 2]!;
+          out[v * 3] = bones[b]! * lx + bones[b + 1]! * ly + bones[b + 2]! * lz + bones[b + 3]!;
+          out[v * 3 + 1] = bones[b + 4]! * lx + bones[b + 5]! * ly + bones[b + 6]! * lz + bones[b + 7]!;
+          out[v * 3 + 2] = bones[b + 8]! * lx + bones[b + 9]! * ly + bones[b + 10]! * lz + bones[b + 11]!;
+        }
+      } else {
+        const yaw = (view.getUint16(at + 12, true) / 65536) * Math.PI * 2;
+        const s = Math.sin(yaw);
+        const c = Math.cos(yaw);
+        const ix = view.getFloat32(at, true) + ox;
+        const iy = view.getFloat32(at + 4, true) + oy;
+        const iz = view.getFloat32(at + 8, true) + oz;
+        for (let v = 0; v < n; v++) {
+          const lx = lod.positions[v * 3]!;
+          const lz = lod.positions[v * 3 + 2]!;
+          out[v * 3] = c * lx + s * lz + ix;
+          out[v * 3 + 1] = lod.positions[v * 3 + 1]! + iy;
+          out[v * 3 + 2] = -s * lx + c * lz + iz;
+        }
       }
       const kind = transient ? PICK_ENTITY : PICK_STRUCTURE;
       const id = transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
@@ -165,15 +198,17 @@ export class Rasterizer {
     const n = m.lods[level]!.vertexCount;
     const positions = new Float32Array(n * 3);
     const colors = new Uint8Array(n);
+    const bones = new Uint8Array(n);
     for (let v = 0; v < n; v++) {
       for (let a = 0; a < 3; a++) positions[v * 3 + a] = m.center[a]! + (view.getInt16(v * VERTEX_BYTES + a * 2, true) / 32767) * m.half[a]!;
       colors[v] = verts[v * VERTEX_BYTES + 6]!;
+      bones[v] = verts[v * VERTEX_BYTES + 7]!;
     }
     const idx = lodIndices(this.pack, m.lods[level]!);
     const iview = new DataView(idx.buffer, idx.byteOffset, idx.byteLength);
     const indices = new Uint16Array(m.lods[level]!.indexCount);
     for (let i = 0; i < indices.length; i++) indices[i] = iview.getUint16(i * 2, true);
-    lod = { positions, colors, indices };
+    lod = { positions, colors, bones, indices };
     this.lods.set(key, lod);
     return lod;
   }
@@ -201,8 +236,8 @@ export class Rasterizer {
     nz /= nl;
 
     // Clip against the near plane (w > near), producing 3 or 4 vertices.
-    const m = p.viewProj;
-    const near = 0.05;
+    const m = this.matrix;
+    const near = this.nearClip;
     const poly = this.poly;
     let count = 0;
     const src = [ax, ay, az, bx, by, bz, cx, cy, cz];
@@ -288,9 +323,12 @@ export class Rasterizer {
           const wx = rx + sx, wy = solid ? ry + sy : 0, wz = rz + sz;
           const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
           let shade = 1;
-          if (((Math.floor(wx) + Math.floor(wy) + Math.floor(wz)) & 1) !== 0) shade -= (1 - CHECK_FINE) * Math.max(0, 1 - dist / CHECK_FINE_FADE);
           const cs = CHECK_COARSE_SIZE;
-          if (((Math.floor(wx / cs) + Math.floor(wy / cs) + Math.floor(wz / cs)) & 1) !== 0) shade -= (1 - CHECK_COARSE) * Math.max(0, 1 - dist / CHECK_COARSE_FADE);
+          if (this.plain) shade = 1;
+          else {
+            if (((Math.floor(wx) + Math.floor(wy) + Math.floor(wz)) & 1) !== 0) shade -= (1 - CHECK_FINE) * Math.max(0, 1 - dist / CHECK_FINE_FADE);
+            if (((Math.floor(wx / cs) + Math.floor(wy / cs) + Math.floor(wz / cs)) & 1) !== 0) shade -= (1 - CHECK_COARSE) * Math.max(0, 1 - dist / CHECK_COARSE_FADE);
+          }
           let fog = (dist - p.fogStart) / fogSpan;
           fog = fog < 0 ? 0 : fog > 1 ? 1 : fog * fog;
           const o = at * 4;

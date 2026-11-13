@@ -67,6 +67,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       positive(d, "sprintMul", d.sprintMul, 4);
       positive(d, "jumpSpeed", d.jumpSpeed, 30);
       if (d.swimSpeed !== undefined) positive(d, "swimSpeed", d.swimSpeed, 40);
+      if (d.skeleton !== undefined && d.skeleton !== "human") errors.push(`${d.id}: unknown skeleton "${d.skeleton}"`);
       if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
       if (d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
       if (!(d.eyeHeight > 0 && d.eyeHeight <= d.height)) errors.push(`${d.id}: eyeHeight must be within the body`);

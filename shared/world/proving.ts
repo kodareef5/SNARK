@@ -36,6 +36,8 @@ export const PROVING_POOL = { x: 172, z: 256 };
  * body's colours reached the renderer.
  */
 export const PROBE_CREATURE = { x: 259, z: 254, color: 6 };
+/** Where the probe server stands one body with bones, for the self-check to look at. */
+export const PROBE_BODY = { x: 253.5, z: 247 };
 
 /** Slope strips, west to east: 10 to 60 degrees. Entries are tan(angle). */
 export const SLOPE_TANS = [0.17632698, 0.36397023, 0.57735027, 0.83909963, 1.19175359, 1.73205081];

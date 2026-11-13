@@ -1,8 +1,14 @@
 import { expect, test } from "bun:test";
 import { Camera } from "../../client/core/render/camera.ts";
-import { DRAW_BLEND, FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket } from "../../client/core/render/packet.ts";
 import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
-import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
+import { NODE_BUFFERS, bodySeed, type OwnBody } from "../../client/core/render/scene.ts";
+import { Viewpoint } from "../../client/core/viewpoint.ts";
+import { Pose } from "../../shared/anim/clip.ts";
+import { B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_LOWER_LEG_R, B_UPPER_CHEST, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { AnimState, humanPose } from "../../shared/anim/pose.ts";
+import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";
+import { flatWorld } from "../fixtures/world.ts";
 import { TerrainLod } from "../../client/core/render/terrain.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { PROVING_POOL, PROVING_SEA_LEVEL } from "../../shared/world/proving.ts";
@@ -197,4 +203,147 @@ test("the hour moves the sun and dims the world at night; noon is what every oth
   const dusk = at(18.2);
   expect(dusk.light).toBeGreaterThan(0.3);
   expect(dusk.light).toBeLessThan(1);
+});
+
+/** World position of the middle of a bone's hit box, for remote body `i` of the view as the scene will pose it. */
+function boneCentre(view: ReturnType<typeof provingView>, i: number, bone: number): number[] {
+  const r = view.remote;
+  const st = new AnimState();
+  st.mode = r.mode[i]!;
+  st.grounded = (r.flags[i]! & 1) !== 0;
+  st.speed = r.speed[i]!;
+  st.dir = r.dir[i]!;
+  st.pitch = r.pitch[i]!;
+  st.stance = r.stance[i]!;
+  st.seed = bodySeed(r.id[i]!);
+  const pose = new Pose(HUMAN_BONES);
+  const solved = new Solved(HUMAN_BONES);
+  humanPose(view.scene.characters.anim, st, r.tick, pose);
+  solve(HUMAN, pose, solved);
+  const m = [0, 0, 0];
+  boneToModel(solved, bone, HUMAN.boxCenter[bone * 3]!, HUMAN.boxCenter[bone * 3 + 1]!, HUMAN.boxCenter[bone * 3 + 2]!, m);
+  const s = Math.sin(r.yaw[i]!);
+  const c = Math.cos(r.yaw[i]!);
+  return [c * m[0]! + s * m[2]! + r.x[i]!, m[1]! + r.y[i]!, c * m[2]! - s * m[0]! + r.z[i]!];
+}
+
+test("a body with bones is drawn where its skeleton is, standing and running", () => {
+  const view = provingView(W * 2, H * 2);
+  const { raster, remote } = view;
+  // Close to the survivor, a little to one side so that neither arm hides behind the body.
+  view.cam.x = 255.5;
+  view.cam.z = 246.4;
+  view.cam.yaw = -0.4;
+  view.cam.pitch = -0.12;
+  const px = (p: number[]): number => {
+    const out = [0, 0, 0];
+    expect(view.cam.project(p[0]!, p[1]!, p[2]!, out)).toBe(true);
+    return Math.floor(out[1]! * H * 2) * W * 2 + Math.floor(out[0]! * W * 2);
+  };
+  const seen = (): void => {
+    const packet = view.render();
+    for (const bone of [B_HEAD, B_UPPER_CHEST, B_HAND_L, B_HAND_R, B_FOOT_L, B_FOOT_R, B_LOWER_LEG_R]) {
+      const at = px(boneCentre(view, 0, bone));
+      expect(raster.pickKind[at]).toBe(PICK_ENTITY);
+      expect(raster.pickId[at]).toBe(101);
+    }
+    // Skin on the head, the species' colour on the chest, through the same palette and regions as anything else.
+    const head = px(boneCentre(view, 0, B_HEAD)) * 4;
+    expect(Math.abs(raster.color[head]! - raster.color[head + 2]!)).toBeLessThan(25);
+    const chest = px(boneCentre(view, 0, B_UPPER_CHEST)) * 4;
+    expect(raster.color[chest]!).toBeGreaterThan(raster.color[chest + 1]! * 1.8);
+    // Its meshes are drawn with bones and without the checker; the grazer beside it is still one rigid box.
+    const skinned = [...packet.drawFlags.subarray(0, packet.drawCount)].filter((f) => (f & DRAW_SKINNED) !== 0);
+    expect(skinned.length).toBe(5);
+    for (const f of skinned) expect(f).toBe(DRAW_SKINNED | DRAW_PLAIN);
+    expect(packet.boneCount).toBe(HUMAN_BONES);
+    expect(view.scene.characters.posed).toBe(1);
+  };
+  seen();
+  const idleHand = boneCentre(view, 0, B_HAND_L);
+  // Running, eleven ticks on: every part has moved and is still drawn where the skeleton has it.
+  remote.speed[0] = 7;
+  remote.tick = 11;
+  seen();
+  const runHand = boneCentre(view, 0, B_HAND_L);
+  expect(Math.hypot(runHand[0]! - idleHand[0]!, runHand[1]! - idleHand[1]!, runHand[2]! - idleHand[2]!)).toBeGreaterThan(0.15);
+
+  // Looking away: the body costs nothing. No pose, no bones, no draws.
+  view.cam.yaw = Math.PI;
+  const away = view.render();
+  expect(view.scene.characters.posed).toBe(0);
+  expect(away.boneCount).toBe(0);
+});
+
+test("the viewer's own body is drawn last and in front: headless from its own eyes, whole from over the shoulder", () => {
+  const view = provingView(W, H);
+  const { raster, reg } = view;
+  const kind = reg.index.get("core:survivor")!;
+  const own: OwnBody = { kind, x: 256, y: view.hf.heightAt(256, 240), z: 240, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), id: 7 };
+  view.scene.own = own;
+  view.remote.count = 0;
+  view.cam.x = own.x;
+  view.cam.z = own.z;
+  view.cam.y = own.y + 1.62;
+  view.cam.pitch = -1.35;
+  const packet = view.render();
+  const flags = [...packet.drawFlags.subarray(0, packet.drawCount)];
+  const near = flags.filter((f) => (f & DRAW_NEAR) !== 0);
+  // Torso, hands, legs, feet: not the head it is looking out of.
+  expect(near.length).toBe(4);
+  expect(flags.slice(-4)).toEqual(near);
+  const headMesh = view.pack.meshIndex.get("core:mannequin/head")!;
+  for (let d = packet.drawCount - 4; d < packet.drawCount; d++) expect(packet.drawMesh[d]).not.toBe(headMesh);
+  // Looking down, its own body fills the middle of the view, in its own colour.
+  const mid = Math.floor(0.6 * H) * W + W / 2;
+  expect(raster.pickKind[mid]).toBe(PICK_ENTITY);
+  expect(raster.pickId[mid]).toBe(7);
+  // Looking level, none of it is in the way.
+  view.cam.pitch = 0;
+  view.render();
+  let own_pixels = 0;
+  for (let i = 0; i < W * H; i++) if (raster.pickKind[i] === PICK_ENTITY && raster.pickId[i] === 7) own_pixels++;
+  expect(own_pixels).toBe(0);
+
+  // Over the shoulder: an ordinary body, head and all, in the ordinary pass.
+  const vp = new Viewpoint();
+  vp.thirdPerson = true;
+  vp.place(view.cam, null, own.x, own.y + 1.62, own.z, 0, -0.1);
+  own.firstPerson = false;
+  const third = view.render();
+  const all = [...third.drawFlags.subarray(0, third.drawCount)];
+  expect(all.filter((f) => (f & DRAW_NEAR) !== 0).length).toBe(0);
+  expect(all.filter((f) => (f & DRAW_SKINNED) !== 0).length).toBe(5);
+  const out = [0, 0, 0];
+  expect(view.cam.project(own.x, own.y + 1.6, own.z, out)).toBe(true);
+  const head = Math.floor(out[1]! * H) * W + Math.floor(out[0]! * W);
+  expect(raster.pickId[head]).toBe(7);
+  // The camera is behind the body and to its right, and the body is left of centre.
+  expect(view.cam.z).toBeLessThan(own.z - 3);
+  expect(view.cam.x).toBeLessThan(own.x - 0.4);
+  expect(out[0]!).toBeLessThan(0.5);
+});
+
+test("the third-person camera is pulled in by whatever is behind the body, and first person ignores it", () => {
+  const w = flatWorld();
+  const cam = new Camera();
+  const vp = new Viewpoint();
+  vp.thirdPerson = true;
+  vp.place(cam, w, 64, 1.62, 64, 0, 0);
+  const open = Math.hypot(cam.x - 64, cam.y - 1.62, cam.z - 64);
+  expect(open).toBeGreaterThan(3.3);
+  // A wall a metre behind.
+  w.structs.add(w.kind("core:wall"), 64, 1.5, 62.9, 0, 0, 1);
+  vp.place(cam, w, 64, 1.62, 64, 0, 0);
+  const blocked = Math.hypot(cam.x - 64, cam.y - 1.62, cam.z - 64);
+  expect(blocked).toBeLessThan(0.9);
+  expect(cam.z).toBeGreaterThan(63);
+  // Looking down from above, the ground does not stop it; looking up from below, it does.
+  vp.place(cam, w, 64, 1.62, 70, 0, -0.6);
+  expect(cam.y).toBeGreaterThan(3);
+  vp.place(cam, w, 64, 1.62, 70, 0, 1.2);
+  expect(cam.y).toBeGreaterThan(0.2);
+  vp.thirdPerson = false;
+  vp.place(cam, w, 64, 1.62, 64, 0.5, 0.2);
+  expect([cam.x, cam.y, cam.z, cam.yaw, cam.pitch]).toEqual([64, 1.62, 64, 0.5, 0.2]);
 });

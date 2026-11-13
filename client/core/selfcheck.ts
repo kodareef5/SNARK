@@ -5,9 +5,10 @@
 // A probe that fails in the browser but passes here points at the shell: a
 // shader, a buffer layout, a missing upload.
 
+import { B_CHEST, HUMAN } from "../../shared/anim/human.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
-import { PROBE_CREATURE } from "../../shared/world/proving.ts";
+import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import type { Camera } from "./render/camera.ts";
 
 export interface Probe {
@@ -25,8 +26,8 @@ export interface Probe {
  * Probes for the proving ground seen from its spawn point looking north: sky
  * at the top, plaza at the bottom, the face of a known block, and a point on
  * the 50 degree slope, which is only where expected if terrain heights reach
- * the GPU correctly. With `withCreature`, also the creature the probe server
- * places.
+ * the GPU correctly. With `withCreature`, also the creature and the body with
+ * bones that the probe server places.
  */
 export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, skyIndex: number, hf: Heightfield, withCreature: boolean): Probe[] {
   const color = (index: number): [number, number, number] => [palette[index * 4]!, palette[index * 4 + 1]!, palette[index * 4 + 2]!];
@@ -48,6 +49,13 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   const grazer = reg.defs[reg.index.get("core:grazer") ?? 0];
   if (withCreature && grazer && grazer.type === "species" && cam.project(PROBE_CREATURE.x, hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z) + grazer.height / 2, PROBE_CREATURE.z, at)) {
     probes.push({ name: "creature", sx: at[0]!, sy: at[1]!, rgb: color(PROBE_CREATURE.color), mode: "hue" });
+  }
+  // A survivor's body stands at another: its chest is where expected only if its bones reach the
+  // GPU and every vertex finds its own. The chest is on the body's axis, so its facing does not matter.
+  const survivor = reg.defs[reg.index.get("core:survivor") ?? 0];
+  const chest = HUMAN.rest[B_CHEST * 3 + 1]! + HUMAN.boxCenter[B_CHEST * 3 + 1]!;
+  if (withCreature && survivor && survivor.type === "species" && cam.project(PROBE_BODY.x, hf.heightAt(PROBE_BODY.x, PROBE_BODY.z) + chest, PROBE_BODY.z, at)) {
+    probes.push({ name: "body", sx: at[0]!, sy: at[1]!, rgb: color(survivor.color), mode: "hue" });
   }
   return probes;
 }

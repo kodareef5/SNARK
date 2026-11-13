@@ -3,7 +3,7 @@ import { HudModel, headingOf, minimapImage, updateHud } from "../../client/core/
 import { RemoteSample } from "../../client/core/session.ts";
 import { probePasses, provingProbes } from "../../client/core/selfcheck.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
-import { PROBE_CREATURE } from "../../shared/world/proving.ts";
+import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import { provingView } from "../../tools/snap.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -61,18 +61,18 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
   const H = 180;
   const view = provingView(W, H);
   view.cam.pitch = 0;
-  // Only the grazer at the probe's spot, as the probe server sets the scene up.
+  // The grazer and the survivor's body at the probe's spots, as the probe server sets the scene up.
   const r = view.remote;
-  r.id[0] = r.id[1]!;
-  r.kind[0] = r.kind[1]!;
-  r.x[0] = PROBE_CREATURE.x;
-  r.z[0] = PROBE_CREATURE.z;
-  r.y[0] = view.hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z);
-  r.colors[0] = PROBE_CREATURE.color;
-  r.count = 1;
+  r.x[1] = PROBE_CREATURE.x;
+  r.z[1] = PROBE_CREATURE.z;
+  r.y[1] = view.hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z);
+  r.colors[6] = PROBE_CREATURE.color;
+  r.x[0] = PROBE_BODY.x;
+  r.z[0] = PROBE_BODY.z;
+  r.y[0] = view.hf.heightAt(PROBE_BODY.x, PROBE_BODY.z);
   view.render();
   const probes = provingProbes(view.cam, view.reg, view.pack.palette, SKY_COLOR, view.hf, true);
-  expect(probes.map((p) => p.name)).toEqual(["sky", "plaza", "block", "slope", "creature"]);
+  expect(probes.map((p) => p.name)).toEqual(["sky", "plaza", "block", "slope", "creature", "body"]);
   for (const p of probes) {
     const o = (Math.floor(p.sy * H) * W + Math.floor(p.sx * W)) * 4;
     expect(probePasses(p, view.raster.color[o]!, view.raster.color[o + 1]!, view.raster.color[o + 2]!)).toBe(true);
@@ -80,9 +80,12 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
     expect(probePasses(p, 255, 0, 255)).toBe(false);
   }
   // Drawn in its species' own colour instead, the creature probe fails: the check does see colour regions.
-  r.colors[0] = 0;
+  r.colors[6] = 0;
+  // And with the body lying where its bones were never applied (anywhere but here), the body probe fails.
+  r.x[0] = PROBE_BODY.x + 2;
   view.render();
-  const c = probes[4]!;
-  const o = (Math.floor(c.sy * H) * W + Math.floor(c.sx * W)) * 4;
-  expect(probePasses(c, view.raster.color[o]!, view.raster.color[o + 1]!, view.raster.color[o + 2]!)).toBe(false);
+  for (const c of [probes[4]!, probes[5]!]) {
+    const o = (Math.floor(c.sy * H) * W + Math.floor(c.sx * W)) * 4;
+    expect(probePasses(c, view.raster.color[o]!, view.raster.color[o + 1]!, view.raster.color[o + 2]!)).toBe(false);
+  }
 });

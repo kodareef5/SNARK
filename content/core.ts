@@ -8,7 +8,8 @@ export const CORE_CONTENT: readonly Def[] = [
   {
     type: "species",
     id: "core:survivor",
-    mesh: "box",
+    mesh: "core:mannequin",
+    skeleton: "human",
     color: 8,
     radius: 0.4,
     height: 1.8,

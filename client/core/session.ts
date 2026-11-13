@@ -51,6 +51,7 @@ import {
 } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
+import { AnimState } from "../../shared/anim/pose.ts";
 import { Body, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
@@ -87,7 +88,17 @@ export class RemoteSample {
   /** Six colour regions per entity; zero means the species' own colour. */
   readonly colors = new Uint8Array(MAX_VIEW * 6);
   readonly name: string[] = new Array<string>(MAX_VIEW).fill("");
+  /** The moment sampled, in ticks; it may fall between ticks. */
+  tick = 0;
+  /** What a pose is made from, as shared/anim/pose.ts counts them. */
+  readonly mode = new Uint8Array(MAX_VIEW).fill(1);
+  readonly speed = new Uint8Array(MAX_VIEW);
+  readonly dir = new Uint8Array(MAX_VIEW);
+  readonly pitch = new Int8Array(MAX_VIEW);
+  readonly stance = new Uint8Array(MAX_VIEW);
 }
+
+const motion = new AnimState();
 
 const HISTORY = 128;
 /** Ticks the client starts ahead of the server before any feedback. */
@@ -293,6 +304,7 @@ export class ClientSession {
   sampleRemote(out: RemoteSample, delayTicks = 2): void {
     out.count = 0;
     const at = this.renderClock - delayTicks;
+    out.tick = at;
     let a: EntityView | null = null;
     let b: EntityView | null = null;
     for (let i = 0; i < VIEW_RING; i++) {
@@ -325,7 +337,14 @@ export class ClientSession {
         if (turn > 512) turn -= 1024;
         else if (turn < -512) turn += 1024;
         out.yaw[n] = ((a!.yaw[i]! + turn * k) * TAU) / 1024;
+        // Until the server sends how a body moves, it is read off its last two places.
+        const perSecond = TICK_RATE / (b.tick - a!.tick);
+        motion.setMotion(dequantX(b.qx[j]! - a!.qx[i]!) * perSecond, dequantX(b.qz[j]! - a!.qz[i]!) * perSecond, (b.yaw[j]! * TAU) / 1024, 0);
+        out.speed[n] = motion.speed;
+        out.dir[n] = motion.dir;
       } else {
+        out.speed[n] = 0;
+        out.dir[n] = 0;
         out.x[n] = dequantX(b.qx[j]!);
         out.y[n] = dequantY(b.qy[j]!);
         out.z[n] = dequantX(b.qz[j]!);

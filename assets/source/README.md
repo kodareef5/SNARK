@@ -12,4 +12,8 @@ An export follows these conventions so the importer needs no hints:
   match is poor.
 - No textures. Color is per material.
 
-Record authorship with each file. No source assets exist yet.
+Record authorship with each file.
+
+`core/human-clips.snpk` is written by `bun run art`: the animation clips of the
+humanoid skeleton, converted from the libraries in [raw](../raw/README.md). It
+is a pack with no meshes; the core pack copies its clips.

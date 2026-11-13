@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { VERTEX_BYTES, lodIndices, lodVertices, parsePack } from "../../shared/pack/pack.ts";
+import { HUMAN, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { MISSING_MESH, buildCorePack } from "../../tools/pack/build.ts";
 import { importGlb } from "../../tools/pack/glb.ts";
@@ -39,12 +40,13 @@ test("a glTF export becomes a pack mesh with levels of detail, colour regions an
 test("the core pack has a mesh for every graybox definition and rejects damaged files", () => {
   const file = buildCorePack();
   const pack = parsePack(file);
-  for (const id of [MISSING_MESH, "core:wall", "core:survivor", "core:slab"]) expect(pack.meshIndex.has(id)).toBe(true);
+  for (const id of [MISSING_MESH, "core:wall", "core:grazer", "core:slab"]) expect(pack.meshIndex.has(id)).toBe(true);
   const wall = pack.header.meshes[pack.meshIndex.get("core:wall")!]!;
   expect(wall.half.map((v) => +v.toFixed(4))).toEqual([1.5, 1.5, 0.1]);
   expect(wall.lods[0]!.indexCount).toBe(36);
-  const survivor = pack.header.meshes[pack.meshIndex.get("core:survivor")!]!;
-  expect(survivor.center[1]).toBeCloseTo(0.9, 4); // stands on its origin
+  expect(wall.skeleton).toBeUndefined();
+  const grazer = pack.header.meshes[pack.meshIndex.get("core:grazer")!]!;
+  expect(grazer.center[1]).toBeCloseTo(0.8, 4); // stands on its origin
   expect(pack.palette.length).toBe(1024);
 
   expect(() => parsePack(file.subarray(0, 40))).toThrow();
@@ -54,4 +56,43 @@ test("the core pack has a mesh for every graybox definition and rejects damaged 
   const future = file.slice();
   future[4] = 9;
   expect(() => parsePack(future)).toThrow(/version/);
+});
+
+test("the pack carries the mannequin cut into body slots, each vertex on one bone, and the clips that move it", () => {
+  const pack = parsePack(buildCorePack());
+  let boxes = 0;
+  for (const slot of SLOT_NAMES) {
+    const mesh = pack.header.meshes[pack.meshIndex.get(`core:mannequin/${slot}`)!]!;
+    expect(mesh.skeleton).toBe("human");
+    expect(mesh.rig).toBeUndefined();
+    const verts = lodVertices(pack, mesh.lods[0]!);
+    boxes += mesh.lods[0]!.indexCount / 36;
+    // Every vertex follows a bone that can be hit and belongs to this slot.
+    for (let v = 0; v < mesh.lods[0]!.vertexCount; v++) {
+      const bone = verts[v * VERTEX_BYTES + 7]!;
+      expect(bone).toBeLessThan(HUMAN.zoneBones);
+      expect(SLOT_NAMES[HUMAN.slot[bone]!]).toBe(slot);
+    }
+  }
+  expect(boxes).toBe(HUMAN.zoneBones + 1); // a box per bone, and the nose
+
+  // The clips survive the trip through the file: unit rotations, the frames the conversion counted.
+  const clips = pack.clips;
+  expect(clips.clips.length).toBeGreaterThanOrEqual(30);
+  const jog = clips.clips[clips.index.get("human/jog")!]!;
+  expect([jog.bones, jog.frames, jog.loop]).toEqual([HUMAN.bones, 28, true]);
+  for (let k = 0; k < jog.rot.length; k += 4) expect(Math.hypot(jog.rot[k]!, jog.rot[k + 1]!, jog.rot[k + 2]!, jog.rot[k + 3]!)).toBeCloseTo(1, 3);
+  expect(clips.clips[clips.index.get("human/death")!]!.loop).toBe(false);
+  expect(clips.hash).not.toBe(0);
+  expect(parsePack(buildCorePack()).clips.hash).toBe(clips.hash);
+  // A clip pointing outside the file is refused.
+  const header = JSON.stringify({ ...pack.header, clips: [{ ...pack.header.clips[0]!, frames: 1e6 }] });
+  const broken = new Uint8Array(12 + header.length + pack.blob.length);
+  const view = new DataView(broken.buffer);
+  view.setUint32(0, 0x4b504e53, true);
+  view.setUint16(4, 2, true);
+  view.setUint32(8, header.length, true);
+  broken.set(new TextEncoder().encode(header), 12);
+  broken.set(pack.blob, 12 + header.length);
+  expect(() => parsePack(broken)).toThrow(/clip/);
 });

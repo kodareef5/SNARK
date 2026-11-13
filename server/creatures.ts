@@ -75,7 +75,8 @@ export class Creatures {
   /** Put a creature that already has a record (new or loaded) into the simulation. */
   adopt(rec: EntityRecord): number {
     const ents = this.world.ents;
-    const e = ents.create(rec.kind, rec.x, rec.y, rec.z, 0);
+    // It is put down standing: on the ground until the simulation says otherwise.
+    const e = ents.create(rec.kind, rec.x, rec.y, rec.z, F_GROUNDED);
     if (e < 0) return -1;
     ents.yaw[e] = rec.yaw;
     ents.pid[e] = rec.pid;

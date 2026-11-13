@@ -15,7 +15,10 @@ import { Controls } from "./controls.ts";
 import { HudModel, minimapImage, updateHud } from "./hud.ts";
 import { Camera } from "./render/camera.ts";
 import type { FramePacket } from "./render/packet.ts";
-import { Scene } from "./render/scene.ts";
+import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
+import { AnimState } from "../../shared/anim/pose.ts";
+import { handleIndex } from "../../shared/ids.ts";
+import { Viewpoint } from "./viewpoint.ts";
 import { RemoteSample, type ClientSession } from "./session.ts";
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "./ui/hud.ts";
 import { Ui } from "./ui/ui.ts";
@@ -32,6 +35,7 @@ export class App {
   readonly cam = new Camera();
   readonly hud = new HudModel();
   readonly remote = new RemoteSample();
+  readonly view = new Viewpoint();
   scene: Scene | null = null;
   /** Smoothed frames per second. */
   fps = 60;
@@ -42,6 +46,7 @@ export class App {
   private readonly pack: Pack;
   private last = -1;
   private readonly aim = [0, 0, 0];
+  private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), id: 0 };
 
   constructor(session: ClientSession, reg: Registry, pack: Pack) {
     this.session = session;
@@ -59,6 +64,11 @@ export class App {
       return true;
     }
     if (this.ui.captureKeyboard) return false;
+    if (code === "KeyV") {
+      // Out of the body's eyes, or over its shoulder.
+      if (down && !repeat) this.view.thirdPerson = !this.view.thirdPerson;
+      return true;
+    }
     return this.controls.key(code, down);
   }
 
@@ -167,13 +177,32 @@ export class App {
     // Eye position: between the last two predicted ticks, so motion is smooth at any frame rate.
     const cam = this.cam;
     const a = session.alpha;
-    const eye = session.sessionState === SESSION_ALIVE ? ((this.reg.defs[session.ownKind] as SpeciesDef | null)?.eyeHeight ?? 1.6) : 0;
-    cam.x = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX;
-    cam.y = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY + eye;
-    cam.z = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
-    cam.yaw = c.yaw;
-    cam.pitch = c.pitch;
+    const alive = session.sessionState === SESSION_ALIVE;
+    const eye = alive ? ((this.reg.defs[session.ownKind] as SpeciesDef | null)?.eyeHeight ?? 1.6) : 0;
+    const bx = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX;
+    const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
+    const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
+    // A spectator has no body to look past: always from the eye.
+    const third = this.view.thirdPerson;
+    if (!alive) this.view.thirdPerson = false;
+    this.view.place(cam, world, bx, by + eye, bz, c.yaw, c.pitch);
+    this.view.thirdPerson = third;
     cam.aspect = aspect;
+    // The body itself, posed from what the prediction says it is doing.
+    const body = this.body;
+    body.kind = session.ownKind;
+    body.x = bx;
+    body.y = by;
+    body.z = bz;
+    body.yaw = c.yaw;
+    body.tick = session.tickClock;
+    body.firstPerson = !third;
+    body.id = handleIndex(session.ownHandle);
+    body.state.mode = session.own.mode;
+    body.state.grounded = session.own.grounded;
+    body.state.setMotion(session.own.vx, session.own.vz, c.yaw, c.pitch);
+    body.state.seed = bodySeed(body.id);
+    this.scene.own = alive && session.ownHandle !== 0 ? body : null;
     session.sampleRemote(this.remote);
     // A beam over each place it died, so the place can be seen from far off.
     const beams = this.scene.beams;

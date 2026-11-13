@@ -12,7 +12,8 @@
     "dev": "bun --watch tools/dev.ts",
     "build": "bun tools/build-client.ts",
     "snap": "bun tools/snap.ts",
-    "probe": "bun tools/probe.ts"
+    "probe": "bun tools/probe.ts",
+    "art": "bun tools/art.ts"
   },
   "devDependencies": {
     "@types/bun": "1.4.3",

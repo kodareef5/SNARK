@@ -1,6 +1,7 @@
 // Builds pack files from meshes in authoring form.
 
-import { PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, type PackHeader, type PackLod, type PackMesh } from "../../shared/pack/pack.ts";
+import type { Clip } from "../../shared/anim/clip.ts";
+import { CLIP_ROOT_BYTES, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, type PackHeader, type PackLod, type PackMesh, type PackRig } from "../../shared/pack/pack.ts";
 
 /** One level of detail before quantization. */
 export interface SourceLod {
@@ -9,15 +10,20 @@ export interface SourceLod {
   /** Palette index or colour region per vertex. */
   colors: Uint8Array;
   indices: Uint32Array;
+  /** The bone each vertex follows, in a mesh with a skeleton. */
+  bones?: Uint8Array;
 }
 
 export interface SourceMesh {
   id: string;
   lods: SourceLod[];
   collider?: [number, number, number];
+  /** Skeleton the vertices follow, and optionally the rig (by id) the mesh was made on. */
+  skeleton?: string;
+  rig?: string;
 }
 
-export function buildPack(meshes: SourceMesh[], palette: Uint8Array): Uint8Array {
+export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = []): Uint8Array {
   const parts: Uint8Array[] = [];
   let size = 0;
   const append = (bytes: Uint8Array): number => {
@@ -32,7 +38,7 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array): Uint8Array
     return at;
   };
 
-  const header: PackHeader = { paletteOffset: append(palette), meshes: [] };
+  const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: [...rigs].sort((a, b) => (a.id < b.id ? -1 : 1)), clips: [] };
   for (const mesh of [...meshes].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     if (mesh.lods.length === 0) throw new Error(`${mesh.id}: no geometry`);
     // One set of bounds for all levels, so they overlay exactly.
@@ -49,6 +55,11 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array): Uint8Array
     const half = min.map((lo, a) => Math.max((max[a]! - lo) / 2, 1e-4)) as [number, number, number];
     const out: PackMesh = { id: mesh.id, center, half, lods: [] };
     if (mesh.collider) out.collider = mesh.collider;
+    if (mesh.skeleton) out.skeleton = mesh.skeleton;
+    if (mesh.rig) {
+      out.rig = header.rigs.findIndex((r) => r.id === mesh.rig);
+      if (out.rig < 0) throw new Error(`${mesh.id}: rig "${mesh.rig}" is not in the pack`);
+    }
     for (const lod of mesh.lods) {
       const n = lod.positions.length / 3;
       if (n > 65535) throw new Error(`${mesh.id}: a level of detail has ${n} vertices; the limit is 65535`);
@@ -60,7 +71,9 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array): Uint8Array
           view.setInt16(v * VERTEX_BYTES + a * 2, q, true);
         }
         verts[v * VERTEX_BYTES + 6] = lod.colors[v]!;
+        if (lod.bones) verts[v * VERTEX_BYTES + 7] = lod.bones[v]!;
       }
+      if (mesh.skeleton && !lod.bones) throw new Error(`${mesh.id}: a mesh with a skeleton needs a bone for every vertex`);
       const idx = new Uint8Array(lod.indices.length * 2);
       const iview = new DataView(idx.buffer);
       lod.indices.forEach((i, k) => iview.setUint16(k * 2, i, true));
@@ -68,6 +81,20 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array): Uint8Array
       out.lods.push(packed);
     }
     header.meshes.push(out);
+  }
+
+  for (const clip of [...clips].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const rot = new Uint8Array(clip.frames * clipRotBytes(clip.bones));
+    const rv = new DataView(rot.buffer);
+    for (let k = 0; k < clip.frames * clip.bones; k++) {
+      // Stored with w >= 0, so three numbers are enough.
+      const sign = clip.rot[k * 4 + 3]! < 0 ? -1 : 1;
+      for (let a = 0; a < 3; a++) rv.setInt16(k * 6 + a * 2, Math.round(clip.rot[k * 4 + a]! * sign * 32767), true);
+    }
+    const root = new Uint8Array(clip.frames * CLIP_ROOT_BYTES);
+    const tv = new DataView(root.buffer);
+    for (let k = 0; k < clip.frames * 3; k++) tv.setFloat32(k * 4, clip.root[k]!, true);
+    header.clips.push({ id: clip.id, bones: clip.bones, frames: clip.frames, loop: clip.loop, rotOffset: append(rot), rootOffset: append(root) });
   }
 
   let json = new TextEncoder().encode(JSON.stringify(header));

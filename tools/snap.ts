@@ -4,6 +4,7 @@
 //   bun run snap -- --pos 240,6,250 --yaw 30 --pitch -15 --size 1280x720 --out artifacts/house.png
 //   bun run snap -- --ui --console "help"     with the interface drawn over it
 //   bun run snap -- --ui --inventory          with the inventory screen open
+//   bun run snap -- --poses 2 --face 90       a line-up of bodies in motion: kinds 2 and 3, seen from the side
 //
 // Yaw and pitch are in degrees. Yaw 0 faces +Z (north); positive yaw turns toward +X.
 
@@ -11,7 +12,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { Camera } from "../client/core/render/camera.ts";
 import type { FramePacket } from "../client/core/render/packet.ts";
-import { Scene } from "../client/core/render/scene.ts";
+import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import { RemoteSample, type ClientSession } from "../client/core/session.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -69,6 +70,7 @@ export function provingView(width = 640, height = 360): ProvingView {
     remote.y[n] = hf.heightAt(x, z);
     remote.z[n] = z;
     remote.yaw[n] = yaw;
+    remote.flags[n] = 1; // standing on the ground
   };
   place(101, "core:survivor", 254, 250, 2.6);
   place(102, "core:grazer", 259, 254, 0.7);
@@ -83,6 +85,69 @@ export function provingView(width = 640, height = 360): ProvingView {
   };
 }
 
+/** The smallest id whose body clock runs `seed` ticks ahead. */
+function idWithSeed(seed: number): number {
+  for (let id = 0; id < 1024; id++) if (bodySeed(id) === seed) return id;
+  return 0;
+}
+
+/**
+ * Replace the bodies in view with a line-up on the plaza: eight moments of one
+ * kind of motion side by side, and of the next kind behind them. `first` picks
+ * the kind; `facing` is the bodies' yaw (a quarter turn shows them from the side).
+ */
+export function posesScene(view: ProvingView, tick: number, first: number, facing: number): void {
+  const r = view.remote;
+  r.count = 0;
+  r.tick = tick;
+  const kind = view.reg.index.get("core:survivor")!;
+  // speed, dir, pitch, mode, stance, grounded
+  const rows: readonly (readonly [number, number, number, number, number, number])[] = [
+    [0, 0, 0, 1, 0, 1], // idle
+    [3, 0, 0, 1, 0, 1], // walk
+    [7, 0, 0, 1, 0, 1], // jog
+    [12, 0, 0, 1, 0, 1], // sprint
+    [7, 4, 0, 1, 0, 1], // jog to its left
+    [7, 8, 0, 1, 0, 1], // jog backward
+    [0, 0, 20, 1, 0, 1], // looking up
+    [0, 0, -20, 1, 0, 1], // looking down
+    [0, 0, 0, 1, 0, 0], // in the air
+    [0, 0, 0, 1, 1, 1], // crouched
+    [3, 0, 0, 1, 1, 1], // crouched, moving
+    [0, 0, 0, 2, 0, 0], // treading water
+    [4, 0, 0, 2, 0, 0], // swimming
+    [4, 0, 16, 2, 0, 0], // swimming upward
+  ];
+  // Two kinds of motion to a picture, one behind the other; eight moments of each, left to right.
+  const columns = 8;
+  const shown = rows.slice(first, first + 2);
+  shown.forEach((row, j) => {
+    for (let i = 0; i < columns; i++) {
+      const n = r.count++;
+      // A body's clock runs ahead of the world's by a seed made from its id.
+      // Pick ids whose seed is the column, times three ticks: each column is a later moment.
+      r.id[n] = idWithSeed(i * 3) + 1024 * (n + 1);
+      r.kind[n] = kind;
+      r.x[n] = 256 + (3.5 - i) * 1.3;
+      r.z[n] = 228 + j * 2.4;
+      r.y[n] = view.hf.heightAt(r.x[n]!, r.z[n]!) + (row[3] === 2 ? 1.2 : 0);
+      r.yaw[n] = facing;
+      r.speed[n] = row[0];
+      r.dir[n] = row[1];
+      r.pitch[n] = row[2];
+      r.mode[n] = row[3];
+      r.stance[n] = row[4];
+      r.flags[n] = row[5];
+    }
+  });
+  // From far off through a narrow lens, so that the bodies at the edges are not stretched.
+  const cam = view.cam;
+  cam.x = 256;
+  cam.z = 211;
+  cam.y = view.hf.heightAt(cam.x, cam.z) + 4.4;
+  cam.fovY = 0.25;
+}
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const arg = (name: string): string | undefined => {
@@ -95,6 +160,7 @@ if (import.meta.main) {
   if (pos) [view.cam.x, view.cam.y, view.cam.z] = pos as [number, number, number];
   view.cam.yaw = (Number(arg("yaw") ?? 0) * Math.PI) / 180;
   view.cam.pitch = (Number(arg("pitch") ?? -4) * Math.PI) / 180;
+  if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
   const t0 = performance.now();
   const packet = view.render();
   const ms = performance.now() - t0;

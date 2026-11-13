@@ -3,6 +3,10 @@
 // in double precision first, so float32 never has to resolve millimetres at
 // eight kilometres from the origin.
 
+/** Near and far planes of the pass that draws the viewer's own body. */
+export const NEAR_BODY = 0.03;
+export const NEAR_BODY_FAR = 12;
+
 export class Camera {
   x = 0;
   y = 0;
@@ -17,6 +21,8 @@ export class Camera {
 
   /** Column-major view-projection for camera-relative positions. */
   readonly viewProj = new Float32Array(16);
+  /** The same with a near plane of NEAR_BODY, for drawing the viewer's own body. */
+  readonly nearViewProj = new Float32Array(16);
   /** Six frustum planes (a, b, c, d), inside when a*x + b*y + c*z + d >= 0, camera-relative. */
   readonly planes = new Float32Array(24);
 
@@ -38,6 +44,11 @@ export class Camera {
     m[1] = fl * ux; m[5] = fl * uy; m[9] = fl * uz; m[13] = 0;
     m[2] = -a * fx; m[6] = -a * fy; m[10] = -a * fz; m[14] = b;
     m[3] = fx; m[7] = fy; m[11] = fz; m[15] = 0;
+    const nm = this.nearViewProj;
+    nm.set(m);
+    const na = (NEAR_BODY_FAR + NEAR_BODY) / (NEAR_BODY - NEAR_BODY_FAR);
+    nm[2] = -na * fx; nm[6] = -na * fy; nm[10] = -na * fz;
+    nm[14] = (2 * NEAR_BODY_FAR * NEAR_BODY) / (NEAR_BODY - NEAR_BODY_FAR);
 
     const p = this.planes;
     for (let i = 0; i < 6; i++) {

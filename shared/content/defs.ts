@@ -10,6 +10,12 @@ export interface SpeciesDef {
   readonly id: string;
   /** Mesh id in an asset pack, or "box" for a generated graybox. */
   readonly mesh: string;
+  /**
+   * The skeleton its body hangs on ("human"). The body is then drawn from the
+   * meshes "<mesh>/head", "/torso", "/hands", "/legs" and "/feet", posed by
+   * shared/anim, and hit by zone. Omitted for a body that is one rigid mesh.
+   */
+  readonly skeleton?: string;
   /** Palette index used by graybox meshes. */
   readonly color: number;
   readonly radius: number;
