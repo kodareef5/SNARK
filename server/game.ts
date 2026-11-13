@@ -42,6 +42,7 @@ import {
   S_RESULT,
   S_SNAPSHOT,
   S_TEXT,
+  REMOVAL_NEWS_TICKS,
   S_WELCOME,
   readInputs,
   writeBody,
@@ -52,6 +53,7 @@ import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/ch
 import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
+import { GONE_TAKEN } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
@@ -178,6 +180,8 @@ export class Client {
   syncCursor = 0;
   syncFrom = 0;
   syncTarget = 0;
+  /** Removed rows of the chunk being synced are sent as the removals they went in, not one by one. */
+  syncByRemoval = false;
   rotate = 0;
   strikes = 0;
   packets = 0;
@@ -266,7 +270,7 @@ export class GameServer {
   readonly world: ServerWorld;
   readonly opts: GameOptions;
   readonly clients: (Client | null)[];
-  readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0 };
+  readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0 };
   /** May this device key use this name? Called before anything is created. */
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
   /** A session became active (it has a body or a spectator's focus). */
@@ -964,6 +968,13 @@ export class GameServer {
       c.syncCursor = 0;
       c.syncFrom = c.known[chunk]!;
       c.syncTarget = t.version;
+      // If the chunk still remembers every removal since what this client has, it is told of those whole.
+      // A client that has nothing of the chunk has nothing to remove.
+      c.syncByRemoval = c.syncFrom > 0 && c.syncFrom >= t.goneFloor;
+    } else if (c.syncByRemoval && c.syncFrom < t.goneFloor) {
+      // One of those removals has been forgotten since: begin again, row by row.
+      c.syncByRemoval = false;
+      c.syncCursor = 0;
     }
     const dims = this.world.dims;
     const x0 = chunkCx(dims, chunk) * CHUNK_SIZE;
@@ -980,6 +991,7 @@ export class GameServer {
     for (; s < t.high && count < budget; s++) {
       if (t.mod[s]! <= c.syncFrom) continue;
       const kind = t.kind[s]!;
+      if (kind === 0 && c.syncByRemoval) continue;
       w.u16(s);
       w.u16(kind);
       if (kind !== 0) {
@@ -993,13 +1005,48 @@ export class GameServer {
       count++;
     }
     const final = s >= t.high;
+    const rows = count;
+    // With the last of the rows: what went, as the removals it went in. A wing of a building is a few runs of slots.
+    let removals = 0;
+    const at = w.pos;
+    w.u8(0);
+    if (final && c.syncByRemoval) {
+      const T = this.world.tick;
+      for (const g of t.gone) {
+        if (g.version <= c.syncFrom || g.version > c.syncTarget) continue;
+        // Why it went is news only for a moment; after that it is simply gone.
+        const cause = T - g.stamp <= REMOVAL_NEWS_TICKS ? g.cause : GONE_TAKEN;
+        w.varint(c.syncTarget - g.version);
+        w.bits(cause, 2);
+        if (cause !== GONE_TAKEN) {
+          w.f32(g.x);
+          w.f32(g.y);
+          w.f32(g.z);
+          w.u32(g.stamp);
+        }
+        // Each run from where the one before ended: slots that went together are mostly near each other.
+        w.varint(g.runs.length / 2);
+        let last = 0;
+        for (let k = 0; k < g.runs.length; k += 2) {
+          w.svarint(g.runs[k]! - last);
+          w.varint(g.runs[k + 1]! - 1);
+          last = g.runs[k]! + g.runs[k + 1]!;
+        }
+        removals++;
+        count += g.runs.length / 2;
+      }
+    }
     const end = w.pos;
+    w.pos = at;
+    w.u8(removals);
     w.pos = header;
     // The header bits were written as zeros, so OR-ing the real values in is safe.
     w.bits(final ? 1 : 0, 1);
-    w.bits(count, 16);
+    w.bits(rows, 16);
     w.pos = end;
-    c.conn.send(CH_RELIABLE, w.bytes());
+    const bytes = w.bytes();
+    this.stats.chunkBytes += bytes.length;
+    c.conn.send(CH_RELIABLE, bytes);
     if (final) {
       if (c.known[chunk] === 0 && !c.subscribed.includes(chunk)) c.subscribed.push(chunk);
       c.known[chunk] = c.syncTarget;

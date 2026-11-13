@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { BUILD_REASONS, Builder, GHOST_BAD, GHOST_OK } from "../../client/core/build.ts";
-import { DRAW_BLEND } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { KEY_AMMO, KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { BUILDING_CONTENT } from "../../content/building.ts";
 import type { EngramDef, ItemDef, RecipeDef } from "../../shared/content/defs.ts";
@@ -14,12 +14,13 @@ import { DOOR_WIDTH, FOUNDATION_THICK, RISE, WALL_HEIGHT } from "../../content/b
 import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK } from "../../shared/net/protocol.ts";
+import { BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_NO_SUPPORT, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { capsuleKind } from "../../shared/world/collide.ts";
 import { lookDirection } from "../../shared/world/ray.ts";
 import { makeSockets, poseAt, socketsOf, type Pose } from "../../shared/world/snap.ts";
+import { GONE_DESTROYED, GONE_FELL } from "../../shared/world/structures.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -33,11 +34,11 @@ const PIECES = ["foundation", "wall", "ceiling", "pillar", "door", "stairs"];
 const STOCK = 60;
 
 /** Survivors with cheats on level ground, strong enough to carry sixty pieces of every kind in wood, one kind to each of the first six hotbar slots. */
-function builder(names = ["ada"], wide = 40) {
+function builder(names = ["ada"], wide = 40, deep = wide) {
   const h = new Harness({}, 1, 60, { dev: true });
   const sessions = names.map((n) => h.join(n));
   h.run(600);
-  const g = flatGround(h, wide, wide);
+  const g = flatGround(h, wide, deep);
   const at = { x: g.x + wide / 2, z: g.z + 4, y: g.y };
   sessions.forEach((s, i) => {
     h.say(s, "enablecheats");
@@ -617,4 +618,285 @@ test("in the whole client: the piece in hand is drawn where it would go, the but
   expect(ghost.kind).toBe(0);
   expect(app.key("KeyQ", true)).toBe(false);
   expect(h.host.items.audit()).toEqual([]);
+});
+
+test("nothing is built that nothing would hold up; and when what held a piece goes, the piece falls, and what another still holds stays", () => {
+  const { h, sessions, at, join, rowOf, structs } = builder();
+  const s = sessions[0]!;
+  const team = h.host.records.byPid.get(h.client(s)!.pid)!.team;
+  const ok = (piece: string, target: number, socket: number, turn = 0, variant = 0): number => {
+    const r = join(s, piece, target, socket, turn, variant);
+    expect([piece, r.code]).toEqual([piece, RESULT_OK]);
+    return r.ref;
+  };
+  const mine = (): number => {
+    let n = 0;
+    for (const t of structs.chunks) if (t) for (let k = 0; k < t.high; k++) if (t.kind[k] !== 0 && t.owner[k] === team) n++;
+    return n;
+  };
+  h.say(s, `tp ${at.x.toFixed(3)} ${(at.z + 3).toFixed(3)}`);
+  s.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
+  h.run(100);
+  s.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round((at.x - 1.5) * U), 32), w.sbits(Math.round((at.z + 8) * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+  h.run(200);
+  // Two foundations side by side, west and east. Walls round the outside; on the edge they share, a doorframe with its door.
+  const west = h.host.build.last;
+  const east = ok("foundation", west, 1);
+  const outer = { wn: ok("wall", west, 0), ws: ok("wall", west, 2), ww: ok("wall", west, 3), en: ok("wall", east, 0), es: ok("wall", east, 2), ee: ok("wall", east, 1) };
+  const shared = ok("wall", west, 1, 0, 1);
+  const door = ok("door", shared, 0);
+  // A floor over each, a wall of the upper storey over the west wall, and stairs on the east foundation.
+  const overWest = ok("ceiling", outer.ww, 1);
+  const overEast = ok("ceiling", outer.ee, 1);
+  const upper = ok("wall", outer.ww, 0);
+  // Out past the east wall the floor goes two pieces and no further, and the preview knows it.
+  const out1 = ok("ceiling", outer.ee, 0);
+  const out2 = ok("ceiling", out1, 0);
+  expect(join(s, "ceiling", out2, 0).code).toBe(RESULT_NO_SUPPORT);
+  expect(join(s, "wall", out2, 0).code).toBe(RESULT_NO_SUPPORT);
+  expect(BUILD_REASONS[RESULT_NO_SUPPORT]).toBe("Nothing would hold it up");
+  const all = mine();
+  expect(all).toBe(2 + 6 + 2 + 2 + 1 + 2);
+
+  // The west foundation is destroyed. Nothing else comes down: its walls hang from the floor above them,
+  // which is joined to the doorframe that stands on the east foundation, all within reach.
+  const there = (ref: number): boolean => structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff] !== 0;
+  structs.damage(west, 1e9);
+  expect(h.host.build.pending).toBeGreaterThan(0);
+  h.run(400);
+  expect(h.host.build.pending).toBe(0);
+  expect([h.host.build.fallen, mine()]).toEqual([0, all - 1]);
+  // The client is shown what went and what did not.
+  const seen = (ref: number): number => s.world!.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!;
+  expect([seen(west), seen(shared)]).toEqual([0, rowOf(shared)[0]]);
+  // The doorframe goes: its door has no frame, and falls. The rest is still joined, through the floors, to the east walls.
+  structs.damage(shared, 1e9);
+  h.run(400);
+  expect([door, overWest, overEast, outer.ww, upper].map(there)).toEqual([false, true, true, true, true]);
+  expect(h.host.build.fallen).toBe(1);
+  // The east foundation, the last thing standing on the ground: everything comes down, and nothing of the tribe's remains.
+  structs.damage(east, 1e9);
+  h.run(600);
+  expect(mine()).toBe(0);
+  expect(h.host.build.pending).toBe(0);
+  expect(h.host.build.fallen).toBe(all - 3);
+  // What fell gave nothing back, and the books balance.
+  expect(h.host.items.audit()).toEqual([]);
+
+  // A long floor on two pillars; the far pillar goes, and what it alone held falls: the pieces past the near pillar's reach.
+  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const add = (piece: string, target: number, k: number): number => {
+    poseAt(structs, h.reg, target, id(`${piece}_wood`), k, 0, pose);
+    return structs.add(id(`${piece}_wood`), pose.x / U, pose.y / U, pose.z / U, pose.yaw, team, 10000);
+  };
+  const near = structs.add(id("pillar_wood"), at.x - 12, at.y + 1.5 - 0.125, at.z + 14, 0, team, 6250);
+  const floor = [add("ceiling", near, 0)];
+  for (let k = 0; k < 4; k++) floor.push(add("ceiling", floor[k]!, 1));
+  const farPillar = add("pillar", floor[2]!, 1);
+  expect(floor.map((r) => h.host.build.support.standsRef(r))).toEqual([true, true, true, true, true]);
+  const fell = h.host.build.fallen;
+  structs.damage(farPillar, 1e9);
+  h.run(300);
+  expect(floor.map(there)).toEqual([true, true, true, false, false]);
+  expect(h.host.build.fallen - fell).toBe(2);
+  for (const r of [near, floor[0]!, floor[1]!, floor[2]!]) structs.remove(r);
+  h.run(300);
+
+  // A tower of walls sixty high with its bottom knocked out: all of it comes down, in the tick after, as one removal.
+  s.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
+  h.run(100);
+  s.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round((at.x + 4) * U), 32), w.sbits(Math.round((at.z + 8) * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+  h.run(200);
+  const base = h.host.build.last;
+  const rec = h.host.records.byPid.get(h.client(s)!.pid)!;
+  h.host.items.mint(rec, id("piece_wall_wood"), 40);
+  h.run(200);
+  // Built by the server's own hand past the first few: a builder cannot reach sixty storeys up.
+  let top = ok("wall", base, 0);
+  const bottom = top;
+  for (let k = 0; k < 59; k++) {
+    poseAt(structs, h.reg, top, id("wall_wood"), 0, 0, pose);
+    top = structs.add(id("wall_wood"), pose.x / U, pose.y / U, pose.z / U, pose.yaw, team, 10000);
+  }
+  expect(h.host.build.support.standsRef(top)).toBe(true);
+  const before = h.host.build.fallen;
+  structs.damage(bottom, 1e9);
+  const waves = h.host.build.collapse.waves;
+  h.server.tick();
+  expect(h.host.build.fallen - before).toBe(59);
+  expect(h.host.build.collapse.waves - waves).toBe(1);
+  expect(mine()).toBe(1);
+  h.server.tick();
+  expect(h.host.build.collapse.busy).toBe(false);
+});
+
+test("a house that comes down: whoever watches is told of it as a few removals and sees its pieces fall from where it began; whoever comes later finds it simply gone", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const pack = parsePack(buildCorePack());
+  const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);
+  // Bob watches too, as a session with nothing to show it: what he is told of stays where it is put.
+  const bob = h.join("bob");
+  let packet: ReturnType<App["frame"]> = null;
+  let most = 0;
+  let drawn = 0;
+  const wallMesh = (): number => app.scene!.meshOfKind[id("wall_wood")]!;
+  const run = (ms: number): void =>
+    h.run(ms, (now) => {
+      packet = app.frame(now, 1280, 720);
+      const falling = app.falling;
+      if (!packet || !falling || falling.count === 0) return;
+      most = Math.max(most, falling.count);
+      // Walls on their way down are in the frame as walls: one plain draw of the frame's own instances.
+      for (let d = 0; d < packet.drawCount; d++) if (packet.drawBuffer[d] === TRANSIENT_BUFFER && packet.drawMesh[d] === wallMesh() && packet.drawFlags[d] === 0) drawn = Math.max(drawn, packet.drawInstances[d]!);
+    });
+  run(600);
+  const s = app.session;
+  s.text("enablecheats");
+  h.say(bob, "enablecheats");
+  const g = flatGround(h, 40, 40);
+  s.text(`tp ${(g.x + 20).toFixed(3)} ${(g.z + 3).toFixed(3)}`);
+  h.say(bob, `tp ${(g.x + 22).toFixed(3)} ${(g.z + 3).toFixed(3)}`);
+  run(300);
+  app.controls.yaw = 0;
+  app.controls.pitch = 0.1;
+
+  // A house four foundations square and two storeys high, set down by the server's own hand ten metres in front of them.
+  const structs = h.world.structs;
+  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const add = (piece: string, target: number, k: number): number => {
+    expect(poseAt(structs, h.reg, target, id(`${piece}_wood`), k, 0, pose)).toBe(true);
+    return structs.add(id(`${piece}_wood`), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 9, 10000);
+  };
+  const N = 4;
+  const ground: number[][] = [];
+  for (let i = 0; i < N; i++) {
+    ground.push([]);
+    for (let j = 0; j < N; j++) ground[i]!.push(i === 0 && j === 0 ? structs.add(id("foundation_wood"), g.x + 15, g.y + FOUNDATION_THICK / 2, g.z + 12, 0, 9, 15000) : j === 0 ? add("foundation", ground[i - 1]![0]!, 1) : add("foundation", ground[i]![j - 1]!, 0));
+  }
+  let tiles = ground;
+  for (let storey = 0; storey < 2; storey++) {
+    tiles = tiles.map((line, i) =>
+      line.map((t, j) => {
+        const north = add("wall", t, 0);
+        add("wall", t, 1);
+        if (j === 0) add("wall", t, 2);
+        if (i === 0) add("wall", t, 3);
+        return add("ceiling", north, 1);
+      }),
+    );
+  }
+  const pieces = N * N + 2 * (N * N * 3 + 2 * N);
+  const ours = (st: typeof structs): number => {
+    let n = 0;
+    for (const t of st.chunks) if (t) for (let k = 0; k < t.high; k++) if (t.kind[k] !== 0 && t.owner[k] === 9) n++;
+    return n;
+  };
+  /** Whether a client has every chunk it holds exactly as the server does: every slot's kind. */
+  const same = (c: ClientSession): boolean => c.world!.structs.chunks.every((t, chunk) => !t || Array.from(t.kind.subarray(0, t.high)).join() === Array.from(structs.chunks[chunk]!.kind.subarray(0, t.high)).join());
+  expect(ours(structs)).toBe(pieces);
+  for (const ref of ground.flat()) expect(h.host.build.support.standsRef(ref)).toBe(true);
+  run(1000);
+  expect([ours(s.world!.structs), ours(bob.world!.structs), same(s), same(bob)]).toEqual([pieces, pieces, true, true]);
+  expect([s.rubble.length, bob.rubble.length, app.falling!.count]).toEqual([0, 0, 0]);
+
+  // Every foundation is destroyed at once. All of it comes down, over a second or so, in a handful of waves.
+  const origin = structs.chunks[Math.floor(ground[0]![0]! / 65536)]!;
+  const began = [origin.x[ground[0]![0]! & 0xffff]!, origin.y[ground[0]![0]! & 0xffff]!, origin.z[ground[0]![0]! & 0xffff]!];
+  const sent = h.server.stats.chunkBytes;
+  const from = h.world.tick;
+  for (const ref of ground.flat()) structs.damage(ref, 1e9, from);
+  const waves = h.host.build.collapse.waves;
+  run(2500);
+  expect([ours(structs), h.host.build.pending, h.host.build.fallen]).toEqual([0, 0, pieces - N * N]);
+  expect(h.host.build.collapse.waves - waves).toBeGreaterThan(1);
+  // Both have exactly what the server has, and it cost each of them a fraction of what telling of every row would:
+  // four bytes a row at the least.
+  expect([ours(s.world!.structs), ours(bob.world!.structs), same(s), same(bob)]).toEqual([0, 0, true, true]);
+  const each = (h.server.stats.chunkBytes - sent) / 2;
+  expect(each).toBeLessThan(pieces * 2);
+  expect(each).toBeGreaterThan(20);
+
+  // Bob was told of every piece once, with why it went: the foundations destroyed, the rest fallen from where the first foundation stood.
+  expect(bob.rubble.length).toBe(pieces);
+  expect(bob.rubble.filter((r) => r.cause === GONE_DESTROYED).length).toBe(N * N);
+  const fell = bob.rubble.filter((r) => r.cause === GONE_FELL);
+  expect(fell.length).toBe(pieces - N * N);
+  expect(fell.every((r) => r.ox === began[0] && r.oy === began[1] && r.oz === began[2] && r.tick > from && r.tick < from + 60)).toBe(true);
+  expect(new Set(bob.rubble.map((r) => `${r.kind} ${r.x} ${r.y} ${r.z}`)).size).toBe(pieces);
+  expect(new Set(fell.map((r) => r.tick)).size).toBe(h.host.build.collapse.waves - waves);
+  // Ada saw them go: taken in as they came, many in the air at once and drawn there, and all gone into the ground since.
+  expect([s.rubble.length, app.falling!.taken, app.falling!.dropped, app.falling!.count]).toEqual([0, pieces, 0, 0]);
+  expect(most).toBeGreaterThan(pieces / 2);
+  expect(drawn).toBeGreaterThan(10);
+
+  // Whoever comes later is shown what is there now, and nothing of how it came to be.
+  const cy = h.join("cy");
+  run(1500);
+  expect([same(cy), ours(cy.world!.structs), cy.rubble.length]).toEqual([true, 0, 0]);
+  // Something that went a while ago is, to those who hear of it only now, simply gone.
+  const old = structs.add(id("pillar_wood"), g.x + 20, g.y + 1.375, g.z + 10, 0, 9, 6250);
+  run(300);
+  expect(ours(bob.world!.structs)).toBe(1);
+  const seen = bob.rubble.length;
+  structs.damage(old, 1e9, h.world.tick - 100);
+  run(300);
+  expect([ours(bob.world!.structs), bob.rubble.length - seen, same(bob)]).toEqual([0, 0, true]);
+  // A slot emptied and filled again before anyone was told: the new piece is what they have, not a hole where the old one was.
+  const first = structs.add(id("pillar_wood"), g.x + 20, g.y + 1.375, g.z + 10, 0, 9, 6250);
+  run(300);
+  structs.damage(first, 1e9, h.world.tick);
+  const second = structs.add(id("foundation_wood"), g.x + 24, g.y + FOUNDATION_THICK / 2, g.z + 10, 0, 9, 15000);
+  expect(second).toBe(first);
+  run(300);
+  expect([ours(bob.world!.structs), same(bob), same(s), same(cy)]).toEqual([1, true, true, true]);
+  expect(bob.world!.structs.chunks[Math.floor(second / 65536)]!.kind[second & 0xffff]).toBe(id("foundation_wood"));
+  expect(s.stats.undecodable + bob.stats.undecodable + cy.stats.undecodable).toBe(0);
+});
+
+test("nothing is built near what another tribe has founded: fifty metres from a foundation, ten from a pillar in the ground", () => {
+  const yard = (names: string[]) => {
+    const made = builder(names, 120, 10);
+    const { h, sessions, at } = made;
+    let code = -1;
+    for (const s of sessions) s.onResult = (_seq, c) => void (code = c);
+    /** Stand `far` metres along the yard and set a piece on the ground three metres further on. */
+    const found = (s: ClientSession, piece: string, far: number): number => {
+      h.say(s, `tp ${(at.x - 58 + far).toFixed(3)} ${at.z.toFixed(3)}`);
+      s.command(CMD_SELECT, (w: BitWriter) => w.u8(PIECES.indexOf(piece)));
+      h.run(100);
+      code = -1;
+      s.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round((at.x - 58 + far + 3) * U), 32), w.sbits(Math.round(at.z * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
+      h.run(200);
+      return code;
+    };
+    return { ...made, found };
+  };
+  const { h, sessions, at, found } = yard(["ada", "bob"]);
+  const [ada, bob] = sessions as [ClientSession, ClientSession];
+  expect(found(ada, "foundation", 10)).toBe(RESULT_OK);
+  // Bob, of no tribe of hers: not thirty metres off, not forty-nine, with a foundation or with a pillar; at fifty-one, yes.
+  expect(found(bob, "foundation", 40)).toBe(RESULT_ENEMY_NEAR);
+  expect(found(bob, "pillar", 40)).toBe(RESULT_ENEMY_NEAR);
+  expect(found(bob, "foundation", 59)).toBe(RESULT_ENEMY_NEAR);
+  expect(found(bob, "foundation", 61)).toBe(RESULT_OK);
+  expect(BUILD_REASONS[RESULT_ENEMY_NEAR]).toBe("Too near another tribe's foundation");
+  // She builds beside her own, away from his; but now his is there, not within fifty metres of it, though it is nearer her own.
+  expect(found(ada, "foundation", 5)).toBe(RESULT_OK);
+  expect(found(ada, "foundation", 20)).toBe(RESULT_ENEMY_NEAR);
+  // In one tribe there is no "another's": his work is hers, and she builds against it.
+  h.say(ada, `tp ${(at.x - 5).toFixed(3)} ${(at.z + 1).toFixed(3)}`);
+  h.say(bob, `tp ${(at.x - 5).toFixed(3)} ${(at.z + 3).toFixed(3)}`);
+  h.say(ada, "tribe create Neighbours");
+  h.say(ada, "tribe invite bob");
+  h.say(bob, "tribe accept");
+  expect(found(ada, "foundation", 44)).toBe(RESULT_OK);
+  expect(h.host.items.audit()).toEqual([]);
+
+  // A pillar in the ground keeps others off for ten metres only.
+  const other = yard(["cy", "dee"]);
+  const [cy, dee] = other.sessions as [ClientSession, ClientSession];
+  expect(other.found(cy, "pillar", 20)).toBe(RESULT_OK);
+  expect(other.found(dee, "foundation", 26)).toBe(RESULT_ENEMY_NEAR);
+  expect(other.found(dee, "pillar", 12)).toBe(RESULT_ENEMY_NEAR);
+  expect(other.found(dee, "foundation", 32)).toBe(RESULT_OK);
 });

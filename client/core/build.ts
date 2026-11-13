@@ -19,6 +19,7 @@ import { CMD_PLACE, RESULT_FAR, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPP
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { BUILD_REACH, LIFT_MAX, LIFT_MIN, makeAim, obstructed, pickSnap, poseAt, freePose, tooHigh, turnsOf, type Pose } from "../../shared/world/snap.ts";
+import { Support } from "../../shared/world/support.ts";
 import type { ClientSession } from "./session.ts";
 
 const NO_TARGET = 0xffffffff;
@@ -61,6 +62,8 @@ export class Builder {
   private freeYaw = 0;
   private item = 0;
   private readonly aim = makeAim();
+  private support: Support | null = null;
+  private supportOf: unknown = null;
   private qDownAt = -1;
   private refusal = "";
   private refusalUntil = 0;
@@ -121,6 +124,13 @@ export class Builder {
       const pz = p.z / STRUCT_UNITS;
       if (tooHigh((x, z) => world.hf.heightAt(x, z), reg, kind, p)) problem = RESULT_TOO_HIGH;
       else if (obstructed(structs, reg.parts, kind, px, py, pz, p.yaw)) problem = RESULT_OBSTRUCTED;
+      else {
+        if (this.supportOf !== structs) {
+          this.supportOf = structs;
+          this.support = new Support(structs, reg, (x, z) => world.hf.heightAt(x, z));
+        }
+        if (!this.support!.stands(kind, p.x, p.y, p.z, p.yaw)) problem = RESULT_NO_SUPPORT;
+      }
     }
     this.problem = problem;
     this.notice = nowMs < this.refusalUntil ? this.refusal : (BUILD_REASONS[problem] ?? "");

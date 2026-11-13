@@ -17,7 +17,14 @@
 //                            own body, yaw u16
 //     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8,
 //                            session state 2 bits, own body, entity delta (see view.ts)
-//     CHUNK     reliable     chunk u16, version u32, final 1 bit, count varint, slots
+//     CHUNK     reliable     chunk u16, version u32, final 1 bit, count 16 bits, slots,
+//                            then removals: count u8, and for each: how many versions back
+//                            (varint), why (2 bits: taken, destroyed, fell), and unless it
+//                            was taken where it began (3 x f32) and when (tick u32); then
+//                            runs of slots (count varint; each how far its first slot is
+//                            from the end of the run before, svarint, and how many more,
+//                            varint). Rows are read first; a removal leaves alone any row
+//                            newer than itself.
 //     CHUNK_DROP reliable    chunk u16
 //     REJECT    reliable     reason u8
 //     RESULT    reliable     command sequence u16, code u8
@@ -242,6 +249,9 @@ export const EVENT_KILL = 4;
 export const EVENT_SHOT = 5;
 /** BLAST, to whoever is near: something went off. Where (3 x f32) and how far it reached (f32, metres). */
 export const EVENT_BLAST = 6;
+
+/** A removal a client is told of with its cause is one that happened within this many ticks: older ones are only the fact. */
+export const REMOVAL_NEWS_TICKS = 60;
 
 export const TEXT_CONSOLE = 0;
 export const TEXT_NOTICE = 1;

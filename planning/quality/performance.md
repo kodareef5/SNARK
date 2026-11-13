@@ -55,8 +55,23 @@ two of the hundred are full clients.
 | One grenade blast in a 2,000-piece base, median / worst of 20 | 0.07 ms / 0.35 ms | 1 ms / 4 ms |
 | Client frame build with 300 survivors posed in view, median / 99th percentile | 0.47 ms / 0.92 ms | 4 ms / 8 ms |
 
-The last four rows were added with round 3's combat, on the same machine and
-day, and the benchmark now holds 42 budgets. All are met. The 99th percentile tick uses 12% of the 33.3 ms step.
+| A 1,512-piece house losing all 144 foundations at once, 38 players watching: ticks until the last piece is down | 32 | 60 |
+| The same: collapse work in a tick, median / worst | 0.56 ms / 1.60 ms | 1.5 ms / 3 ms |
+| The same: whole server tick, worst | 9.3 ms | 16 ms |
+| The same: sent to each watcher for all of it (its rows would be 6,048 bytes at least) | 2,540 bytes | 3,024 bytes |
+| Ask whether one piece of that house stands | 0.045 ms | 0.1 ms |
+| Client: take in the 1,512 pieces and move the 256 shown, worst frame | 0.35 ms | 1 ms |
+| Client frame build while they fall, median / 99th percentile | 0.05 ms / 0.08 ms | 1.5 ms / 3 ms |
+
+The four rows before these were added with round 3's combat, on the same
+machine and day. The collapse rows were added with round 4's building on
+2026-11-13, same machine; the benchmark now holds 62 budgets (voice has ten of
+them, reported by the tool and in [voice](../architecture/voice.md)). All are
+met. The 99th percentile tick uses 12% of the 33.3 ms step.
+
+The bytes budget for a collapse is half of what its rows would cost. The first
+run missed it at 3,262 bytes with each run of slots sent as a 16-bit slot and a
+length; sending each run as a gap from the one before met it.
 
 ## What the results say
 

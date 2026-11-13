@@ -48,9 +48,37 @@ const CELLS = 16;
 export const MAX_SLOTS_PER_CHUNK = 65535;
 const YAW_TO_RAD = TAU / YAW_UNITS;
 
+/** Why a structure went: taken away (picked up, demolished), its health ran out, or nothing was left to hold it up. */
+export const GONE_TAKEN = 0;
+export const GONE_DESTROYED = 1;
+export const GONE_FELL = 2;
+/** Removals a chunk remembers, newest last, so that whoever is watching can be told of each as one thing. */
+export const GONE_KEPT = 8;
+
+/**
+ * Structures of one chunk that went together: at which version of the chunk,
+ * why, where it began (metres; for a fall, where support was lost), when (the
+ * caller's clock), and which slots, as runs: a first slot and how many.
+ */
+export interface GoneBatch {
+  version: number;
+  readonly cause: number;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly stamp: number;
+  readonly runs: number[];
+  count: number;
+}
+
 export class ChunkTable {
   /** Bumped on every change to this chunk. 0 means never touched. */
   version = 0;
+  /** The last few removals, oldest first; and the version of the newest removal no longer among them. */
+  readonly gone: GoneBatch[] = [];
+  goneFloor = 0;
+  /** Scratch for queries that cover several cells: the query that last counted each slot. */
+  stamp: Uint32Array;
   /** Slots [0, high) have been used at some point. */
   high = 0;
   live = 0;
@@ -78,6 +106,13 @@ export class ChunkTable {
     this.owner = new Uint32Array(cap);
     this.hp = new Float32Array(cap);
     this.mod = new Uint32Array(cap);
+    this.stamp = new Uint32Array(cap);
+  }
+
+  /** Remember a removal, forgetting the oldest if there are too many. */
+  log(batch: GoneBatch): void {
+    this.gone.push(batch);
+    if (this.gone.length > GONE_KEPT) this.goneFloor = this.gone.shift()!.version;
   }
 
   ensure(slot: number): void {
@@ -97,6 +132,7 @@ export class ChunkTable {
     this.owner = grow(this.owner);
     this.hp = grow(this.hp);
     this.mod = grow(this.mod);
+    this.stamp = grow(this.stamp);
     this.cap = cap;
   }
 }
@@ -125,6 +161,7 @@ export class StructureStore {
   private nodeNext: Int32Array;
   private nodeHigh = 0;
   private nodeFree = 0;
+  private queryId = 0;
 
   // Footprint scratch, filled by `footprint`.
   private fx0 = 0;
@@ -173,13 +210,28 @@ export class StructureStore {
     return chunk * 65536 + slot;
   }
 
-  /** Remove a structure. Authority only. */
-  remove(ref: number): boolean {
+  /** Called with a structure's ref and why it is going, just before it is removed, while its row can still be read. Authority only. */
+  onRemove: ((ref: number, cause: number) => void) | null = null;
+
+  /** Remove a structure, saying why and when (the caller's clock). Authority only. */
+  remove(ref: number, cause = GONE_TAKEN, stamp = 0): boolean {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
     const t = this.chunks[chunk];
     if (!t || slot >= t.high || t.kind[slot] === 0) return false;
+    this.onRemove?.(ref, cause);
+    // One after another for the same reason at the same moment, with nothing else changed between
+    // (a blast through a wall): they are remembered as one removal, which began at the first.
+    const last = t.gone[t.gone.length - 1];
+    const joins = last !== undefined && last.version === t.version && last.cause === cause && last.stamp === stamp;
     t.version++;
+    if (joins) {
+      const runs = last.runs;
+      if (runs[runs.length - 2]! + runs[runs.length - 1]! === slot) runs[runs.length - 1]!++;
+      else runs.push(slot, 1);
+      last.version = t.version;
+      last.count++;
+    } else t.log({ version: t.version, cause, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, stamp, runs: [slot, 1], count: 1 });
     this.erase(chunk, t, slot, t.version);
     t.free.push(slot);
     this.onChunkChanged?.(chunk);
@@ -187,11 +239,50 @@ export class StructureStore {
   }
 
   /**
+   * Remove many structures as one thing: the first `n` of `refs`, which this
+   * sorts. Each chunk they are in changes once, and remembers them as one
+   * removal that began at (x, y, z). Returns how many went. Authority only.
+   */
+  removeMany(refs: Uint32Array, n: number, cause: number, x: number, y: number, z: number, stamp: number): number {
+    const sorted = refs.subarray(0, n).sort();
+    let removed = 0;
+    for (let i = 0; i < n; ) {
+      const chunk = Math.floor(sorted[i]! / 65536);
+      const t = this.chunks[chunk];
+      let end = i;
+      while (end < n && Math.floor(sorted[end]! / 65536) === chunk) end++;
+      if (t) {
+        const runs: number[] = [];
+        let count = 0;
+        for (let k = i; k < end; k++) {
+          const slot = sorted[k]! & 0xffff;
+          if (slot >= t.high || t.kind[slot] === 0 || (k > i && sorted[k] === sorted[k - 1])) continue;
+          this.onRemove?.(sorted[k]!, cause);
+          if (count === 0) t.version++;
+          this.erase(chunk, t, slot, t.version);
+          t.free.push(slot);
+          // Slots come in order: one next to the last lengthens its run.
+          if (runs.length > 0 && runs[runs.length - 2]! + runs[runs.length - 1]! === slot) runs[runs.length - 1]!++;
+          else runs.push(slot, 1);
+          count++;
+        }
+        if (count > 0) {
+          t.log({ version: t.version, cause, x, y, z, stamp, runs, count });
+          this.onChunkChanged?.(chunk);
+          removed += count;
+        }
+      }
+      i = end;
+    }
+    return removed;
+  }
+
+  /**
    * Take `points` from a structure's health. At none left it is removed.
    * Returns what it has left (0 if it is gone), or -1 if there is no such
    * structure. Authority only.
    */
-  damage(ref: number, points: number): number {
+  damage(ref: number, points: number, stamp = 0): number {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
     const t = this.chunks[chunk];
@@ -199,7 +290,7 @@ export class StructureStore {
     if (!(points > 0)) return t.hp[slot]!;
     const left = t.hp[slot]! - points;
     if (left <= 0) {
-      this.remove(ref);
+      this.remove(ref, GONE_DESTROYED, stamp);
       return 0;
     }
     // Its health is part of what is saved and sent: the slot has changed.
@@ -283,6 +374,12 @@ export class StructureStore {
     const single = cx0 === cx1 && cz0 === cz1;
     let n = 0;
     const chunksX = this.dims.chunksX;
+    // A structure that lies in several cells is counted once: each slot notes the query that last counted it.
+    if (++this.queryId === 0xffffffff) {
+      for (const t of this.chunks) t?.stamp.fill(0);
+      this.queryId = 1;
+    }
+    const id = this.queryId;
     for (let cz = cz0; cz <= cz1; cz++) {
       for (let cx = cx0; cx <= cx1; cx++) {
         const cells = this.heads[(cz >> 4) * chunksX + (cx >> 4)];
@@ -292,14 +389,10 @@ export class StructureStore {
           const ref = this.nodeRef[node - 1]!;
           node = this.nodeNext[node - 1]!;
           if (!single) {
-            let seen = false;
-            for (let i = 0; i < n; i++) {
-              if (out[i] === ref) {
-                seen = true;
-                break;
-              }
-            }
-            if (seen) continue;
+            const t = this.chunks[Math.floor(ref / 65536)]!;
+            const slot = ref & 0xffff;
+            if (t.stamp[slot] === id) continue;
+            t.stamp[slot] = id;
           }
           if (n === out.length) return n;
           out[n++] = ref;

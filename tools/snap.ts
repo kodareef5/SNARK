@@ -10,6 +10,7 @@
 //   bun run snap -- --creator 1               what a new survivor sees: the creator, on its first or second tab
 //   bun run snap -- --gear                    a line-up of armor tiers and held weapons
 //   bun run snap -- --house stone             a small house of building pieces, in thatch, wood, stone or metal
+//   bun run snap -- --house wood --falling 450  that house 450 ms after its south-west foundation went and took the rest with it
 //   bun run snap -- --build                   a survivor building: a foundation and a wall set down, a doorframe shown where it would go
 //
 // Yaw and pitch are in degrees. Yaw 0 faces +Z (north); positive yaw turns toward +X.
@@ -21,7 +22,8 @@ import { Camera } from "../client/core/render/camera.ts";
 import { Harness } from "../tests/fixtures/net.ts";
 import type { FramePacket } from "../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
-import { RemoteSample, type ClientSession } from "../client/core/session.ts";
+import { Falling } from "../client/core/rubble.ts";
+import { RemoteSample, type ClientSession, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
 import { AnimState } from "../shared/anim/pose.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
@@ -38,7 +40,7 @@ import { parsePack, type Pack } from "../shared/pack/pack.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { NodeField } from "../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_SPAWN, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
-import { StructureStore } from "../shared/world/structures.ts";
+import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { HudModel, mapU, mapV } from "../client/core/hud.ts";
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "../client/core/ui/hud.ts";
@@ -85,6 +87,31 @@ function houseScene(view: ProvingView, tier: string): void {
   view.cam.y = ground + 4.6;
   view.cam.yaw = (27 * Math.PI) / 180;
   view.cam.pitch = (-17 * Math.PI) / 180;
+}
+
+/**
+ * The house of `houseScene` on its way down: every piece of it gone from the
+ * world and shown as a client would show it `ms` after being told, the
+ * collapse having begun at its south-west foundation.
+ */
+function fallingScene(view: ProvingView, ms: number): void {
+  const { reg, structs, hf } = view;
+  const [cx, cz] = [PROVING_SPAWN.x - 24, PROVING_SPAWN.z - 2];
+  const gone: Rubble[] = [];
+  const refs: number[] = [];
+  const origin = { x: cx - 1.5, y: hf.heightAt(cx, cz) + FOUNDATION_THICK / 2, z: cz - 1.5 };
+  structs.chunks.forEach((t, chunk) => {
+    for (let s = 0; t && s < t.high; s++) {
+      if (t.kind[s] === 0 || reg.role[t.kind[s]!]! < 0 || Math.abs(t.x[s]! - cx) > 4 || Math.abs(t.z[s]! - cz) > 4) continue;
+      refs.push(chunk * 65536 + s);
+      gone.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, cause: GONE_FELL, ox: origin.x, oy: origin.y, oz: origin.z, tick: 1 });
+    }
+  });
+  for (const ref of refs) structs.remove(ref);
+  const falling = new Falling(reg.halfY, (x, z) => hf.heightAt(x, z));
+  falling.absorb(gone, 0, view.cam.x, view.cam.y, view.cam.z);
+  falling.step(ms);
+  view.scene.falling = falling;
 }
 
 export interface ProvingView {
@@ -472,6 +499,7 @@ if (import.meta.main) {
   view.cam.yaw = (Number(arg("yaw") ?? 0) * Math.PI) / 180;
   view.cam.pitch = (Number(arg("pitch") ?? -4) * Math.PI) / 180;
   if (args.includes("--house")) houseScene(view, arg("house") ?? "wood");
+  if (args.includes("--falling")) fallingScene(view, Number(arg("falling") ?? 450));
   if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);

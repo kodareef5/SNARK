@@ -618,7 +618,7 @@ export class Combat {
     resolveDamage();
     if (!(harm.health > 0)) return 0;
     const before = t.hp[slot]!;
-    const left = structs.damage(ref, harm.health);
+    const left = structs.damage(ref, harm.health, world.tick);
     const done = left === 0 ? before : harm.health;
     this.structureHits++;
     this.lastStructure.ref = ref;

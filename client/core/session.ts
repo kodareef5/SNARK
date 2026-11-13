@@ -78,7 +78,7 @@ import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
-import { StructureStore } from "../../shared/world/structures.ts";
+import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 
 export interface SessionOptions {
   name: string;
@@ -101,6 +101,25 @@ export interface SessionOptions {
 }
 
 /** Remote entities at the current render time, filled by `sampleRemote`. */
+/** A structure that has just gone, for showing it go. */
+export interface Rubble {
+  kind: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  /** GONE_DESTROYED or GONE_FELL. */
+  cause: number;
+  /** Where it began: for a fall, where support was lost. */
+  ox: number;
+  oy: number;
+  oz: number;
+  tick: number;
+}
+
+/** Fallen structures kept for showing, at most: beyond this the oldest are simply gone. */
+const MAX_RUBBLE_QUEUED = 2048;
+
 export class RemoteSample {
   count = 0;
   readonly id = new Uint32Array(MAX_VIEW);
@@ -241,6 +260,12 @@ export class ClientSession {
    */
   readonly vitals = new Vitals();
   hasVitals = false;
+  /**
+   * Structures that have just been destroyed or have fallen, oldest first:
+   * what each was and where, why it went, and where and when (a server tick)
+   * that began. Whoever shows them going empties this.
+   */
+  readonly rubble: Rubble[] = [];
   /** Rules of the server's: the damage of hits may be shown as numbers; there is a text channel that reaches everyone. */
   damageNumbers = true;
   globalChat = true;
@@ -973,6 +998,33 @@ export class ClientSession {
       const hp = r.f32();
       if (r.overflow || kind >= kinds) return;
       world.structs.put(chunk, slot, kind, x, y, z, yaw, owner, hp, version);
+    }
+    // What went, as the removals it went in. A row newer than a removal (the slot was used again) is left alone.
+    const t = world.structs.chunks[chunk];
+    for (let b = r.u8(); b > 0 && !r.overflow; b--) {
+      const at = version - r.varint();
+      const cause = r.bits(2);
+      const told = cause !== GONE_TAKEN;
+      const ox = told ? r.f32() : 0;
+      const oy = told ? r.f32() : 0;
+      const oz = told ? r.f32() : 0;
+      const tick = told ? r.u32() : 0;
+      let last = 0;
+      for (let runs = r.varint(); runs > 0 && !r.overflow; runs--) {
+        const first = last + r.svarint();
+        const more = r.varint();
+        last = first + more + 1;
+        if (r.overflow || !t || first < 0) break;
+        for (let slot = first; slot <= first + more && slot < t.high; slot++) {
+          if (t.kind[slot] === 0 || t.mod[slot]! >= at) continue;
+          // What was destroyed or fell is kept a moment, for whoever shows it going.
+          if (told) {
+            if (this.rubble.length >= MAX_RUBBLE_QUEUED) this.rubble.shift();
+            this.rubble.push({ kind: t.kind[slot]!, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, yaw: t.yaw[slot]!, cause, ox, oy, oz, tick });
+          }
+          world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
+        }
+      }
     }
     if (final) world.structs.setVersion(chunk, version);
   }

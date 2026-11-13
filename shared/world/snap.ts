@@ -44,9 +44,16 @@ export function units(metres: number): number {
  */
 export function frameAxes(yaw: number, out: Int32Array): void {
   const quarters = (yaw >>> 14) & 3;
-  const a = (yaw & (QUARTER - 1)) * (TAU / YAW_UNITS);
-  let c = Math.round(detCos(a) * HALF_SIDE);
-  let s = Math.round(detSin(a) * HALF_SIDE);
+  const within = yaw & (QUARTER - 1);
+  // Everything joined to one first piece shares this part of its facing: the last one asked about is kept.
+  if (within !== lastWithin) {
+    const a = within * (TAU / YAW_UNITS);
+    lastCos = Math.round(detCos(a) * HALF_SIDE);
+    lastSin = Math.round(detSin(a) * HALF_SIDE);
+    lastWithin = within;
+  }
+  let c = lastCos;
+  let s = lastSin;
   // A quarter turn takes (c, s) to (-s, c).
   for (let k = 0; k < quarters; k++) {
     const t = c;
@@ -58,6 +65,10 @@ export function frameAxes(yaw: number, out: Int32Array): void {
   out[2] = s;
   out[3] = c;
 }
+
+let lastWithin = -1;
+let lastCos = 0;
+let lastSin = 0;
 
 /** The places one piece offers another: for each, how many half-sides along the target's X and Z, how far up in lattice units, and how many quarter turns from the target's facing. */
 export interface Sockets {
@@ -72,13 +83,10 @@ export function makeSockets(): Sockets {
   return { n: 0, i: new Int8Array(MAX_SOCKETS), j: new Int8Array(MAX_SOCKETS), dy: new Int32Array(MAX_SOCKETS), dq: new Int8Array(MAX_SOCKETS) };
 }
 
-const EDGES: readonly (readonly [number, number, number])[] = [
-  // Half-sides along X and Z to the middle of each edge, and the quarter turns that face a wall there outward.
-  [0, 1, 0],
-  [1, 0, 1],
-  [0, -1, 2],
-  [-1, 0, 3],
-];
+// Half-sides along X and Z to the middle of each edge, in the order north, east, south, west; a wall on edge `e`
+// faces outward when it is turned `e` quarters from the piece it stands on.
+const EDGE_I: readonly number[] = [0, 1, 0, -1];
+const EDGE_J: readonly number[] = [1, 0, -1, 0];
 
 /**
  * Fill `out` with the places a piece of role `piece` may join a piece of role
@@ -96,39 +104,39 @@ const EDGES: readonly (readonly [number, number, number])[] = [
  * doorway.
  */
 export function socketsFor(target: number, piece: number, th: number, ph: number, doorway: boolean, out: Sockets): void {
-  let n = 0;
-  const put = (i: number, j: number, dy: number, dq: number): void => {
-    out.i[n] = i;
-    out.j[n] = j;
-    out.dy[n] = dy;
-    out.dq[n] = dq;
-    n++;
-  };
+  out.n = 0;
   const floor = target === ROLE_FOUNDATION || target === ROLE_CEILING;
   if (floor && (piece === ROLE_CEILING || (piece === ROLE_FOUNDATION && target === ROLE_FOUNDATION))) {
     // Edge to edge, tops level.
-    for (const [i, j] of EDGES) put(i * 2, j * 2, th - ph, 0);
+    for (let e = 0; e < 4; e++) put(out, EDGE_I[e]! * 2, EDGE_J[e]! * 2, th - ph, 0);
   } else if (floor && piece === ROLE_WALL) {
-    for (const [i, j, dq] of EDGES) put(i, j, th + ph, dq);
+    for (let e = 0; e < 4; e++) put(out, EDGE_I[e]!, EDGE_J[e]!, th + ph, e);
   } else if ((floor || target === ROLE_PILLAR) && piece === ROLE_PILLAR) {
-    put(0, 0, th + ph, 0);
+    put(out, 0, 0, th + ph, 0);
     // From below: under a foundation or a pillar, or with its top level with a ceiling's, as a wall's would be.
-    put(0, 0, target === ROLE_CEILING ? th - ph : -(th + ph), 0);
+    put(out, 0, 0, target === ROLE_CEILING ? th - ph : -(th + ph), 0);
   } else if (floor && piece === ROLE_STAIRS) {
-    put(0, 0, th + ph, 0);
+    put(out, 0, 0, th + ph, 0);
   } else if (target === ROLE_WALL && piece === ROLE_WALL) {
-    put(0, 0, th + ph, 0);
+    put(out, 0, 0, th + ph, 0);
   } else if (target === ROLE_WALL && piece === ROLE_CEILING) {
     // An edge along the wall, its top level with the wall's, the rest to one side of it or the other.
-    put(0, 1, th - ph, 0);
-    put(0, -1, th - ph, 0);
+    put(out, 0, 1, th - ph, 0);
+    put(out, 0, -1, th - ph, 0);
   } else if (target === ROLE_WALL && piece === ROLE_DOOR && doorway) {
     // Standing on the doorway's sill.
-    put(0, 0, ph - th, 0);
+    put(out, 0, 0, ph - th, 0);
   } else if (target === ROLE_PILLAR && piece === ROLE_CEILING) {
-    put(0, 0, th - ph, 0);
+    put(out, 0, 0, th - ph, 0);
   }
-  out.n = n;
+}
+
+function put(out: Sockets, i: number, j: number, dy: number, dq: number): void {
+  const n = out.n++;
+  out.i[n] = i;
+  out.j[n] = j;
+  out.dy[n] = dy;
+  out.dq[n] = dq;
 }
 
 /** How many ways a piece of a role may be turned in one place: stairs four, a wall or a door two (which side is which), the rest one. */

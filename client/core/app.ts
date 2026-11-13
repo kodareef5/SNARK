@@ -18,6 +18,7 @@ import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
 import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
+import { Falling } from "./rubble.ts";
 import { BTN_SECONDARY } from "../../shared/sim/character.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { FISTS } from "../../shared/sim/weapon.ts";
@@ -58,6 +59,8 @@ export class App {
   readonly hud = new HudModel();
   readonly feedback = new Feedback();
   readonly shots: Shots;
+  /** Structures seen falling, once there is a world for them to fall in. */
+  falling: Falling | null = null;
   /** The camera's field of view, eased toward what the weapon in hand and the aim button ask for. */
   private fov = BASE_FOV;
   readonly remote = new RemoteSample();
@@ -363,6 +366,7 @@ export class App {
     if (!this.scene) {
       this.scene = new Scene(world, this.reg, this.pack);
       this.scene.shots = this.shots;
+      this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z));
       this.ui.frame.images[IMAGE_MINIMAP] = { width: MINIMAP_SIZE, height: MINIMAP_SIZE, data: minimapImage(world.hf, this.pack.palette, MINIMAP_SIZE), version: 1 };
     }
     hud.status = "";
@@ -434,6 +438,9 @@ export class App {
     this.shots.absorb(session, world, nowMs);
     this.shots.step(world, this.remote, session.tickClock, nowMs);
     this.scene.shotTick = session.tickClock;
+    // What has just been destroyed or has fallen: seen to go, the nearest to the eye first.
+    this.falling!.absorb(session.rubble, nowMs, cam.x, cam.y, cam.z);
+    this.falling!.step(nowMs);
     // A beam over each place it died, so the place can be seen from far off.
     const beams = this.scene.beams;
     beams.length = 0;

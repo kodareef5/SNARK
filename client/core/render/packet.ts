@@ -18,8 +18,10 @@ export const MAX_TILES = 1024;
 export const TILE_QUADS = 32;
 /** Buffer id for the per-frame instance data carried in the packet itself. */
 export const TRANSIENT_BUFFER = 0xffffffff;
-/** Instances a frame may carry besides entities: water surface tiles and marker beams. */
+/** Instances a frame may carry besides entities: water surface tiles, sixteen marker beams, and a piece about to be built. */
 export const MAX_WATER_TILES = 64;
+/** Structures a frame may show falling: the nearest to the eye of those that have just gone. */
+export const MAX_FALLING = 256;
 /** Draw flag: see-through. Drawn after everything opaque, blended, both faces, without writing depth. */
 export const DRAW_BLEND = 1;
 /**
@@ -95,9 +97,9 @@ export class FramePacket {
   readonly tileOrigin = new Int32Array(MAX_TILES * 2);
 
   transientCount = 0;
-  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_SKINNED) * INSTANCE_BYTES);
+  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_FALLING + MAX_SKINNED) * INSTANCE_BYTES);
   /** Entity slot index of each transient instance, for picking. */
-  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17 + MAX_SKINNED);
+  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17 + MAX_FALLING + MAX_SKINNED);
 
   /** Bones of every body drawn this frame, BONE_FLOATS each. */
   boneCount = 0;

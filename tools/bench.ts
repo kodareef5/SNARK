@@ -13,7 +13,8 @@ import { cpus, tmpdir, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { Camera } from "../client/core/render/camera.ts";
 import { Scene } from "../client/core/render/scene.ts";
-import { ClientSession, RemoteSample } from "../client/core/session.ts";
+import { Falling } from "../client/core/rubble.ts";
+import { ClientSession, RemoteSample, type Rubble } from "../client/core/session.ts";
 import { AnimState, HumanAnim } from "../shared/anim/pose.ts";
 import { ACT_NONE, ACT_SWING } from "../shared/sim/weapon.ts";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -21,7 +22,7 @@ import { createHost, type Host } from "../server/host.ts";
 import { WorldStore } from "../server/persist/store.ts";
 import { createWorld, type ServerWorld } from "../server/world.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
-import { TICK_RATE, chunkAt } from "../shared/coords.ts";
+import { STRUCT_UNITS, TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
@@ -32,7 +33,8 @@ import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { Rng } from "../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../shared/world/heightfield.ts";
-import { StructureStore } from "../shared/world/structures.ts";
+import { poseAt, type Pose } from "../shared/world/snap.ts";
+import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { AUDIO_HEADER, AUTH_BYTES, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, VOICE_BATCH, flagsOf, readBatch, writeAudio, writeAuth } from "../shared/voice/packet.ts";
 import type { VoicePeer } from "../server/voice.ts";
 import { buildCorePack } from "./pack/build.ts";
@@ -492,6 +494,91 @@ const pack = parsePack(buildCorePack());
   record("items the ledger cannot account for", host.items.audit().length, "", 0);
 }
 
+// ---------------------------------------------------------------- collapse
+section("Collapse: a 1,500-piece house loses every foundation at once, with the 40 of the fight watching");
+/** The pieces of that house as a client is told of them going, for the client's side of it further down. */
+const wreck: Rubble[] = [];
+{
+  // Twelve foundations square and three storeys, of real building pieces, beside the fight.
+  const structs = world.structs;
+  const piece = (name: string): number => reg.index.get(`core:${name}_stone`)!;
+  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const add = (name: string, target: number, k: number): number => {
+    if (!poseAt(structs, reg, target, piece(name), k, 0, pose)) throw new Error(`no place for a ${name}`);
+    return structs.add(piece(name), pose.x / STRUCT_UNITS, pose.y / STRUCT_UNITS, pose.z / STRUCT_UNITS, pose.yaw, 9000, 10000);
+  };
+  const N = 12;
+  const [hx, hz] = [centers[0]![0] + 52, centers[0]![1] - 18];
+  const before = structs.count;
+  const ground: number[][] = [];
+  for (let i = 0; i < N; i++) {
+    ground.push([]);
+    for (let j = 0; j < N; j++) ground[i]!.push(i === 0 && j === 0 ? structs.add(piece("foundation"), hx, hf.heightAt(hx, hz) + 0.1875, hz, 0, 9000, 15000) : j === 0 ? add("foundation", ground[i - 1]![0]!, 1) : add("foundation", ground[i]![j - 1]!, 0));
+  }
+  let tiles = ground;
+  for (let storey = 0; storey < 3; storey++) {
+    tiles = tiles.map((line, i) =>
+      line.map((t, j) => {
+        const north = add("wall", t, 0);
+        add("wall", t, 1);
+        if (j === 0) add("wall", t, 2);
+        if (i === 0) add("wall", t, 3);
+        return add("ceiling", north, 1);
+      }),
+    );
+  }
+  const pieces = structs.count - before;
+  record("pieces in the house", pieces, "");
+  // What asking whether one piece stands costs, as when a piece is set down.
+  t0 = performance.now();
+  let asked = 0;
+  for (const line of tiles) for (const ref of line) asked += host.build.support.standsRef(ref) ? 1 : 0;
+  record("ask whether a piece stands, mean", (performance.now() - t0) / asked, "ms", 0.1);
+  run(90, null); // everyone near has it
+  const houseChunk = chunkAt(DIMS, hx, hz);
+  const watchers = host.game.clients.filter((c) => c?.active && c.known[houseChunk]! > 0).length;
+  record("players who have the house", watchers, "");
+  const origin = { x: hx, y: hf.heightAt(hx, hz) + 0.1875, z: hz };
+  for (const t of structs.chunks) {
+    if (!t) continue;
+    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] === 9000) wreck.push({ kind: t.kind[s]!, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]!, cause: GONE_FELL, ox: origin.x, oy: origin.y, oz: origin.z, tick: 0 });
+  }
+
+  const build = host.build;
+  const step = build.step.bind(build);
+  const work: number[] = [];
+  build.step = () => {
+    const t = performance.now();
+    step();
+    if (build.collapse.busy || work.length === 0) work.push(performance.now() - t);
+  };
+  const sentBytes = host.game.stats.chunkBytes;
+  const fallenBefore = build.fallen;
+  const wavesBefore = build.collapse.waves;
+  t0 = performance.now();
+  for (const ref of ground.flat()) structs.damage(ref, 1e9, world.tick);
+  record("destroy 144 foundations", performance.now() - t0, "ms", 2);
+  const whole: number[] = [];
+  let ticks = 0;
+  while (build.collapse.busy && ticks < 900) {
+    run(1, whole);
+    ticks++;
+  }
+  run(30, whole); // the last of it reaches everyone
+  build.step = step;
+  work.sort((a, b) => a - b);
+  whole.sort((a, b) => a - b);
+  record("pieces that fell", build.fallen - fallenBefore, "");
+  record("pieces of the house left standing", structs.count - before, "", 0);
+  record("removals they fell in", build.collapse.waves - wavesBefore, "");
+  record("ticks until the last was down", ticks, "", 60);
+  record("collapse work in a tick, median", percentile(work, 0.5), "ms", 1.5);
+  record("collapse work in a tick, worst", work[work.length - 1]!, "ms", 3);
+  record("whole tick while it fell, worst", whole[whole.length - 1]!, "ms", 16);
+  record("sent to each watcher for all of it", (host.game.stats.chunkBytes - sentBytes) / watchers, "bytes", pieces * 2);
+  record("the same told row by row would be at least", pieces * 4, "bytes");
+}
+
 // ---------------------------------------------------------------- voice
 section("Voice: 100 survivors in one crowd, all talking at once");
 {
@@ -649,6 +736,44 @@ section("Client frame build (headless): 300 survivors in view, posed every frame
   record("frame build with them, median", percentile(posed, 0.5), "ms", 4);
   record("frame build with them, 99th percentile", percentile(posed, 0.99), "ms", 8);
   record("draw calls", packet.drawCount, "", 400);
+}
+
+section("Client frame build (headless): that house coming down 60 m off");
+{
+  // The pieces arrive as the server's waves would bring them: a hundred or so a tick.
+  cam.x = wreck[0]!.ox - 30;
+  cam.z = wreck[0]!.oz + 18;
+  cam.y = hf.heightAt(cam.x, cam.z) + 8;
+  cam.yaw = Math.PI / 2 + Math.PI;
+  const falling = new Falling(reg.halfY, (x, z) => hf.heightAt(x, z));
+  scene.falling = falling;
+  wreck.sort((p, q) => Math.hypot(p.x - p.ox, p.z - p.oz) - Math.hypot(q.x - q.ox, q.z - q.oz));
+  const taking: number[] = [];
+  const fallFrames: number[] = [];
+  let most = 0;
+  let at = 0;
+  for (let f = 0; f < 240; f++) {
+    const nowMs = f * (1000 / 60);
+    const lot: Rubble[] = [];
+    if (f % 2 === 0) for (let k = 0; k < 110 && at < wreck.length; k++) lot.push({ ...wreck[at++]!, tick: f >> 1 });
+    let t = performance.now();
+    falling.absorb(lot, nowMs, cam.x, cam.y, cam.z);
+    falling.step(nowMs);
+    taking.push(performance.now() - t);
+    if (falling.count > most) most = falling.count;
+    t = performance.now();
+    packet = scene.build(cam, null);
+    if (falling.count > 0) fallFrames.push(performance.now() - t);
+  }
+  taking.sort((a, b) => a - b);
+  fallFrames.sort((a, b) => a - b);
+  record("pieces told of", falling.taken, "");
+  record("most shown falling at once", most, "", 256);
+  record("take them in and move them, worst frame", taking[taking.length - 1]!, "ms", 1);
+  record("frame build while they fall, median", percentile(fallFrames, 0.5), "ms", 1.5);
+  record("frame build while they fall, 99th percentile", percentile(fallFrames, 0.99), "ms", 3);
+  record("pieces still in the air four seconds on", falling.count, "", 0);
+  scene.falling = null;
 }
 
 rmSync(dir, { recursive: true, force: true });

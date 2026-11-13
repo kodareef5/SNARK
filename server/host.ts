@@ -343,6 +343,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     combat.step();
     projectiles.step();
     creatures.step(tick);
+    build.step();
     voice.step(tick);
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };

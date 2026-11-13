@@ -14,6 +14,7 @@ import type { StructureStore } from "../../../shared/world/structures.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
 import { AnimState, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
+import type { Falling } from "../rubble.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
@@ -100,6 +101,8 @@ export class Scene {
   /** Shots in the air, drawn with the bodies; and the moment to draw them at, in ticks. Set by the app. */
   shots: Shots | null = null;
   shotTick = 0;
+  /** Structures that have just gone, drawn where they have fallen to. Set by the app. */
+  falling: Falling | null = null;
   private readonly trisOfMesh: number[][];
   private readonly radiusOfMesh: Float32Array;
   private readonly world: RenderWorld;
@@ -197,6 +200,7 @@ export class Scene {
     if (remote) this.entities(cam, remote);
     this.bodies(cam, remote);
     if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
+    if (this.falling && this.falling.count > 0) this.showFalling(cam, this.falling);
     if (this.ghost.kind !== 0) this.showGhost(cam);
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
     // The viewer's own body goes over everything else, water included.
@@ -244,6 +248,26 @@ export class Scene {
     const own = this.own;
     if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson);
     ch.flush(p, this.transient, false, this.drawBody);
+  }
+
+  /** Structures on their way down: each as its own mesh, where its fall has taken it. */
+  private showFalling(cam: Camera, f: Falling): void {
+    const p = this.packet;
+    const counts = this.counts.fill(0);
+    for (let i = 0; i < f.count; i++) counts[this.meshOfKind[f.kind[i]!]!]!++;
+    let total = p.transientCount;
+    for (let m = 0; m < counts.length; m++) {
+      this.cursor[m] = total;
+      if (counts[m]! > 0) this.draw(m, 0, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0);
+      total += counts[m]!;
+    }
+    for (let i = 0; i < f.count; i++) {
+      const kind = f.kind[i]!;
+      const at = this.cursor[this.meshOfKind[kind]!]!++;
+      this.transient.set(at, f.x[i]! - cam.x, f.y[i]! - cam.y, f.z[i]! - cam.z, f.yaw[i]!, this.colorOfKind[kind]!);
+      p.transientIds[at] = 0;
+    }
+    p.transientCount = total;
   }
 
   /** The piece a builder is about to set down, where it would go: see-through, in the colour given. */
