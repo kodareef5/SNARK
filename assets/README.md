@@ -1,8 +1,9 @@
 # Assets
 
-Original editable art goes in [source](source/README.md). Nothing is committed
-there yet: the proving ground uses graybox meshes generated from content
-definitions.
+Original editable art goes in [source](source/README.md). The proving ground
+uses graybox meshes generated from content definitions. Packs made by other
+people are kept unchanged in [raw](raw/README.md) with their licence and where
+they came from; `bun run art` converts them into `source`.
 
 The pipeline: a glTF binary export in `assets/source/<pack>/<name>.glb` becomes
 the mesh `<pack>:<name>` in a pack file when `bun tools/pack/build.ts` or
