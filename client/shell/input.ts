@@ -1,36 +1,39 @@
-// Keyboard and mouse to the input sample the session consumes. Pointer lock for
-// mouse look; touch controls are not implemented yet.
+// Forwards raw keyboard and mouse events to the app and keeps pointer lock in
+// step with what the interface wants. What a key means is decided in
+// client/core. Touch controls are not implemented yet.
 
-import { BTN_JUMP, BTN_SPRINT } from "../../shared/sim/character.ts";
+import type { App } from "../core/app.ts";
 
-export class Input {
-  moveX = 0;
-  moveZ = 0;
-  yaw = 0;
-  pitch = 0;
-  buttons = 0;
-  private readonly keys = new Set<string>();
-
-  constructor(target: HTMLElement) {
-    addEventListener("keydown", (e) => {
-      this.keys.add(e.code);
-      if (e.code === "Space") e.preventDefault();
-    });
-    addEventListener("keyup", (e) => this.keys.delete(e.code));
-    addEventListener("blur", () => this.keys.clear());
-    target.addEventListener("click", () => void target.requestPointerLock());
-    addEventListener("mousemove", (e) => {
-      if (document.pointerLockElement !== target) return;
-      // Facing +Z, right is -X: turning right lowers yaw.
-      this.yaw -= e.movementX * 0.0025;
-      this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch - e.movementY * 0.0025));
-    });
-  }
-
-  sample(): void {
-    const k = this.keys;
-    this.moveX = (k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0);
-    this.moveZ = (k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0);
-    this.buttons = (k.has("Space") ? BTN_JUMP : 0) | (k.has("ShiftLeft") ? BTN_SPRINT : 0);
-  }
+export function bindInput(canvas: HTMLCanvasElement, app: App): void {
+  /** The viewer has clicked into the game at least once since the lock was last lost. */
+  let engaged = false;
+  const sync = (): void => {
+    const locked = document.pointerLockElement === canvas;
+    if (app.ui.wantsPointerLock && engaged && !locked) void canvas.requestPointerLock();
+    else if (!app.ui.wantsPointerLock && locked) document.exitPointerLock();
+  };
+  addEventListener("keydown", (e) => {
+    if (app.key(e.code, true, e.repeat)) e.preventDefault();
+    sync();
+  });
+  addEventListener("keyup", (e) => {
+    if (app.key(e.code, false, false)) e.preventDefault();
+  });
+  addEventListener("blur", () => app.blur());
+  canvas.addEventListener("click", () => {
+    engaged = true;
+    sync();
+  });
+  document.addEventListener("pointerlockchange", () => {
+    // Escape releases the lock without telling the page which key it was.
+    if (document.pointerLockElement !== canvas && app.ui.wantsPointerLock) engaged = false;
+    if (document.pointerLockElement !== canvas) app.blur();
+  });
+  addEventListener("mousemove", (e) => {
+    if (document.pointerLockElement === canvas) app.look(e.movementX, e.movementY);
+  });
+  canvas.addEventListener("mousedown", (e) => {
+    if (document.pointerLockElement === canvas) app.mouseButton(e.button, true);
+  });
+  addEventListener("mouseup", (e) => app.mouseButton(e.button, false));
 }

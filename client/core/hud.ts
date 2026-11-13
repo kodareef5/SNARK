@@ -10,6 +10,9 @@
 // with +Y up, so facing north puts +X on your left).
 
 import { TICK_RATE } from "../../shared/coords.ts";
+import { SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
+import { STAMINA_UNITS } from "../../shared/sim/character.ts";
+import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 
@@ -43,7 +46,7 @@ export class HudModel {
   fps = 0;
   corrections = 0;
   nearby = 0;
-  /** Placeholders until stats replicate; the layout is what is being proven. */
+  /** Stamina comes from the predicted body. The rest are placeholders until vitals replicate. */
   readonly vitals: Vital[] = [
     { id: "health", label: "Health", fraction: 1 },
     { id: "stamina", label: "Stamina", fraction: 1 },
@@ -51,6 +54,29 @@ export class HudModel {
     { id: "water", label: "Water", fraction: 1 },
   ];
   readonly markers: Marker[] = [];
+  /** Lines of text at the top left. Rewritten a few times a second, not every frame. */
+  readonly readout: string[] = ["", "", ""];
+  /** Time of day, "06:30". */
+  clock = "";
+  /** A line at the bottom left: connection state, or nothing. */
+  status = "";
+  /** A word across the top while the session has no body: "SPECTATING", "DEAD". */
+  banner = "";
+  crosshair = true;
+  private readoutAge = 0;
+
+  /** Rewrite the readout from the numbers above. */
+  formatReadout(): void {
+    this.readout[0] = `${this.lat.toFixed(1)} lat  ${this.lon.toFixed(1)} lon  ${this.compass} ${this.heading.toFixed(0)}`;
+    this.readout[1] = `x ${this.x.toFixed(1)}  y ${this.y.toFixed(1)}  z ${this.z.toFixed(1)}  ${this.speed.toFixed(1)} m/s`;
+    this.readout[2] = `${this.fps.toFixed(0)} fps  ${this.pingMs.toFixed(0)} ms  ${this.corrections} corrections  ${this.nearby} nearby`;
+  }
+
+  /** True once every `every` calls: the readout need not change faster than it can be read. */
+  readoutDue(every: number): boolean {
+    if (this.readoutAge++ % every !== 0) return false;
+    return true;
+  }
 }
 
 const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
@@ -91,6 +117,11 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
     model.markers.push({ kind: (remote.flags[i]! & VIEW_FLAG_PLAYER) !== 0 ? "player" : "creature", u: mapU(world.hf, remote.x[i]!), v: mapV(world.hf, remote.z[i]!) });
   }
   model.markers.push({ kind: "self", u: mapU(world.hf, b.x), v: mapV(world.hf, b.z) });
+  model.vitals[1]!.fraction = b.staminaMax > 0 ? b.stamina / (b.staminaMax * STAMINA_UNITS) : 0;
+  model.clock = formatHour(hourOfDay(session.latestSnapshot, session.dayOffset));
+  model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? "DEAD" : "";
+  model.crosshair = model.banner === "";
+  if (model.readoutDue(6)) model.formatReadout();
 }
 
 /** A top-down picture of the terrain, north up, for the minimap: palette tint with simple relief shading. */

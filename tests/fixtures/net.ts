@@ -37,6 +37,8 @@ export interface JoinOptions {
   /** Device key; defaults to one derived from the name. */
   key?: Uint8Array;
   spectate?: boolean;
+  /** The test advances this session itself (through an App); the harness does not call `update`. */
+  manual?: boolean;
 }
 
 export class Harness {
@@ -48,6 +50,7 @@ export class Harness {
   readonly sessions: ClientSession[] = [];
   readonly ends: LoopbackEnd[] = [];
   readonly pilots: Pilot[] = [];
+  private readonly manual = new Set<ClientSession>();
   /** Virtual milliseconds. */
   now = 0;
   private serverClock = 0;
@@ -75,6 +78,7 @@ export class Harness {
       resolveMap: (_id, hash) => (hash === this.world.mapHash ? this.hf : null),
     });
     this.sessions.push(session);
+    if (opts.manual) this.manual.add(session);
     this.ends.push(end);
     this.pilots.push({ moveX: 0, moveZ: 0, yaw: 0, pitch: 0, buttons: 0 });
     return session;
@@ -94,7 +98,7 @@ export class Harness {
       eachFrame?.(this.now);
       for (let i = 0; i < this.sessions.length; i++) {
         const p = this.pilots[i]!;
-        this.sessions[i]!.update(this.now, p.moveX, p.moveZ, p.yaw, p.pitch, p.buttons);
+        if (!this.manual.has(this.sessions[i]!)) this.sessions[i]!.update(this.now, p.moveX, p.moveZ, p.yaw, p.pitch, p.buttons);
       }
     }
   }

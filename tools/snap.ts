@@ -2,6 +2,7 @@
 //
 //   bun run snap                              from the spawn point, looking north
 //   bun run snap -- --pos 240,6,250 --yaw 30 --pitch -15 --size 1280x720 --out artifacts/house.png
+//   bun run snap -- --ui --console "help"     with the interface drawn over it
 //
 // Yaw and pitch are in degrees. Yaw 0 faces +Z (north); positive yaw turns toward +X.
 
@@ -18,8 +19,13 @@ import type { Heightfield } from "../shared/world/heightfield.ts";
 import { PROVING_DIMS, PROVING_SPAWN, buildProvingHeightfield, populateProving } from "../shared/world/proving.ts";
 import { StructureStore } from "../shared/world/structures.ts";
 import { buildCorePack } from "./pack/build.ts";
+import { HudModel, mapU, mapV } from "../client/core/hud.ts";
+import { IMAGE_MINIMAP, MINIMAP_SIZE } from "../client/core/ui/hud.ts";
+import { Ui } from "../client/core/ui/ui.ts";
+import { minimapImage, headingOf } from "../client/core/hud.ts";
 import { encodePng } from "./snap/png.ts";
 import { Rasterizer } from "./snap/raster.ts";
+import { drawUi } from "./snap/ui.ts";
 
 export interface ProvingView {
   reg: Registry;
@@ -85,6 +91,34 @@ if (import.meta.main) {
   const t0 = performance.now();
   const packet = view.render();
   const ms = performance.now() - t0;
+  if (args.includes("--ui")) {
+    // The interface as a client standing at the camera would see it, with stand-in numbers.
+    const ui = new Ui();
+    const hud = new HudModel();
+    const cam = view.cam;
+    hud.x = cam.x;
+    hud.y = cam.y - 1.62;
+    hud.z = cam.z;
+    hud.lon = mapU(view.hf, cam.x) * 100;
+    hud.lat = mapV(view.hf, cam.z) * 100;
+    hud.heading = headingOf(cam.yaw);
+    hud.compass = "N";
+    hud.fps = 60;
+    hud.nearby = view.remote.count;
+    hud.clock = "06:30";
+    hud.formatReadout();
+    [1, 0.6, 0.8, 0.45].forEach((v, i) => (hud.vitals[i]!.fraction = v));
+    hud.markers.push({ kind: "creature", u: mapU(view.hf, 259), v: mapV(view.hf, 254) }, { kind: "self", u: mapU(view.hf, cam.x), v: mapV(view.hf, cam.z) });
+    ui.frame.images[IMAGE_MINIMAP] = { width: MINIMAP_SIZE, height: MINIMAP_SIZE, data: minimapImage(view.hf, view.pack.palette, MINIMAP_SIZE), version: 1 };
+    const typed = arg("console");
+    if (typed !== undefined) {
+      ui.console.open = true;
+      for (const line of ["> help", "enablecheats <password>", "help [command]", "pos", "spectate", "time", "who"]) ui.console.print(line);
+      ui.console.edit(typed);
+    }
+    ui.build(w! / h!, hud, null);
+    drawUi(view.raster.color, w!, h!, ui.frame);
+  }
   const out = resolve(arg("out") ?? "artifacts/snap.png");
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, encodePng(w!, h!, view.raster.color));
