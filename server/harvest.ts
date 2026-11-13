@@ -5,7 +5,9 @@
 // what is saved (per chunk) and what clients are told (which slots are used
 // up). Everything else about nodes comes from the map on both sides.
 //
-// What a swing hits is decided here, by a ray from the body's own eye.
+// What a swing hits is decided by server/combat.ts, which tells this file when
+// it was a node; what the use key picks is decided here, by a ray from the
+// body's own eye.
 
 import type { ItemDef, NodeDef } from "../shared/content/defs.ts";
 import { stanceEye } from "../shared/sim/character.ts";
@@ -25,8 +27,7 @@ import type { ServerWorld } from "./world.ts";
 
 export const DEADLINE_NODE = 3;
 export const TAG_NODES = 1;
-/** Ticks between swings while the primary button is held. */
-export const SWING_TICKS = 15;
+/** How far a body reaches to pick a bush with the use key. A swing reaches as far as what swings. */
 const REACH = 3.5;
 /** A node does not grow back while a body is this close; it tries again later. */
 const CROWDED = 12;
@@ -106,13 +107,9 @@ export class Harvest {
     return Math.floor(rayHit.ref / 65536) * 256 + (rayHit.ref & 0xffff);
   }
 
-  /** The primary button is held: swing at whatever is in front, if the last swing is over. Returns true if a node was hit. */
-  swing(c: Client): boolean {
-    const tick = this.world.tick;
-    if (tick < c.swingAt) return false;
-    c.swingAt = tick + SWING_TICKS;
-    const at = this.target(c);
-    return at >= 0 && this.hit(c, at >> 8, at & 255, false);
+  /** A swing landed on the node in `chunk` at `index` (server/combat.ts found it). Returns true if that did anything. */
+  struck(c: Client, chunk: number, index: number): boolean {
+    return this.hit(c, chunk, index, false);
   }
 
   /** The use key on a node that is picked by hand (a bush). Returns true if one was picked. */
@@ -121,7 +118,7 @@ export class Harvest {
     return at >= 0 && this.hit(c, at >> 8, at & 255, true);
   }
 
-  /** Strike or pick a given node as `c`, whichever that node takes. For load tests; play goes through `swing` and `pick`. */
+  /** Strike or pick a given node as `c`, whichever that node takes. For load tests; play goes through a swing and `pick`. */
   strike(c: Client, chunk: number, index: number): boolean {
     const kind = this.field.store.chunks[chunk]?.kind[index] ?? 0;
     return kind !== 0 && this.hit(c, chunk, index, (this.world.reg.defs[kind] as NodeDef).material === undefined);

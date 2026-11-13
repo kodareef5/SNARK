@@ -18,6 +18,7 @@ import { STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../../shared/sim/vitals.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { CombatModel } from "./feedback.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 
 export type MarkerKind = "self" | "player" | "creature" | "spawn" | "death";
@@ -107,6 +108,8 @@ export class HudModel {
   /** The ten hotbar slots, or none for a body that has no hotbar. `held` is the one in hand, or -1. */
   readonly hotbar: HotbarCell[] = [];
   held = -1;
+  /** Hits landed and harm taken, as they are shown this frame. */
+  readonly combat = new CombatModel();
   private readoutAge = 0;
 
   /** Rewrite the readout from the numbers above. */

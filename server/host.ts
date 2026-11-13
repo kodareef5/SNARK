@@ -6,14 +6,17 @@ import { CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
+import { addCombatCommands } from "./commands/combat.ts";
 import { addCoreCommands } from "./commands/core.ts";
 import { Console } from "./console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
+import { Combat } from "./combat.ts";
 import { Creatures } from "./creatures.ts";
 import { DEADLINE_DESPAWN, Death } from "./death.ts";
 import { DEADLINE_NODE, Harvest } from "./harvest.ts";
 import { DEADLINE_CRAFT, Progression } from "./progression.ts";
-import { BTN_PRIMARY, stanceEye } from "../shared/sim/character.ts";
+import { stanceEye } from "../shared/sim/character.ts";
+import { ACT_EQUIP, ACT_NONE, FISTS } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
@@ -77,6 +80,7 @@ export interface Host {
   readonly items: Items;
   readonly survival: Survival;
   readonly death: Death;
+  readonly combat: Combat;
   readonly progression: Progression;
   /** Null for a world whose map has no resource nodes. */
   readonly harvest: Harvest | null;
@@ -139,9 +143,16 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     return e;
   };
   const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines });
-  survival.onDeath = (rec, cause) => death.die(rec, cause);
   const progression = new Progression(world, records, items, deadlines);
   const harvest = world.nodeField ? new Harvest(world, game, records, items, progression, deadlines, (opts.seed ?? 1) + 31) : null;
+  const combat = new Combat({ world, game, records, items, survival, progression, creatures, harvest }, (opts.seed ?? 1) + 53);
+  // Whoever killed it has what a kill gives, while it is still there to be asked about; then it dies.
+  survival.onDeath = (rec, cause, by) => {
+    // Taking the body out of the world looks at its vitals again: it dies once.
+    if (rec.dead) return;
+    combat.killed(rec, by);
+    death.die(rec, cause);
+  };
   if (harvest) {
     death.onUse = (c) => void harvest.pick(c);
     if (persistence) {
@@ -223,6 +234,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     // Out of the world, a survivor neither eats nor drowns.
     const gone = records.byPid.get(c.pid);
     if (gone) survival.suspend(gone, true);
+    inHand.delete(c.pid);
     if (persistence) persistence.detach(c.pid);
     else {
       const rec = records.byPid.get(c.pid);
@@ -266,8 +278,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       else if (kind === DEADLINE_NODE) harvest?.due(pid, stamp);
     });
     death.step();
-    // A held primary button swings at what is in front, a few times a second.
-    if (harvest) for (const c of game.clients) if (c?.active && c.ent >= 0 && (c.heldButtons & BTN_PRIMARY) !== 0) harvest.swing(c);
+    // Swings that landed and shots that left on this tick, now that every body has moved.
+    combat.step();
     creatures.step(tick);
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };
@@ -301,16 +313,38 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     // What it holds and wears is seen by others.
     const inv = rec.inv;
     if (inv && inv.hotbar >= 0) {
-      gear[GEAR_HELD] = rec.held >= 0 ? inv.item[inv.hotbar + rec.held]! : 0;
+      const ents = world.ents;
+      const slot = rec.held >= 0 && inv.item[inv.hotbar + rec.held] !== 0 ? inv.hotbar + rec.held : -1;
+      const item = slot >= 0 ? inv.item[slot]! : 0;
+      const was = ents.gear[e]?.[GEAR_HELD] ?? 0;
+      gear[GEAR_HELD] = item;
       for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
-      world.ents.setGear(e, gear);
+      ents.setGear(e, gear);
+      // What its action step runs on: how the thing is held, what it has loaded, and what a reload would bring that to.
+      // A weapon that is worn out holds nothing and takes nothing.
+      const params = reg.weapon[item] ?? FISTS;
+      const works = slot >= 0 && params.clip > 0 && inv.dur[slot]! > 0;
+      const loaded = works ? inv.loaded[slot]! : 0;
+      const ammo = works ? combat.ammoFor(rec, slot) : 0;
+      ents.hold[e] = params.hold;
+      ents.rounds[e] = loaded;
+      ents.reloadTo[e] = works ? Math.min(params.clip, (ammo === inv.ammo[slot] ? loaded : 0) + (ammo !== 0 ? inv.total(ammo) : 0)) : 0;
+      // Something else in its hands: whatever it was doing stops, and the new thing takes a moment to be ready.
+      if (item !== was || slot !== (inHand.get(rec.pid) ?? -1)) {
+        ents.act[e] = item !== 0 ? ACT_EQUIP : ACT_NONE;
+        ents.actTicks[e] = 0;
+      }
+      inHand.set(rec.pid, slot);
     }
   }
   const gear = new Uint16Array(GEAR_COUNT);
+  /** The slot of what each record had in its hands when its body was last refreshed. */
+  const inHand = new Map<number, number>();
 
   const con = new Console();
   addCoreCommands(con);
   addAdminCommands(con);
+  addCombatCommands(con);
   const host: Host = {
     world,
     records,
@@ -319,6 +353,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     items,
     survival,
     death,
+    combat,
     progression,
     harvest,
     deadlines,

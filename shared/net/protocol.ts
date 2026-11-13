@@ -52,6 +52,8 @@ export const S_TEXT = 7;
 export const S_OWN = 8;
 /** Which nodes of a chunk are used up: chunk u16, version u32, count u8, slot u8 each. Reliable. */
 export const S_NODES = 9;
+/** Something happened that this client is told about once: a hit it landed, harm it took, a death. See EVENT_*. */
+export const S_EVENT = 10;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -163,6 +165,20 @@ export const OWN_HELD = 9;
 
 export const MARKER_DEATH = 1;
 
+/**
+ * Kinds of S_EVENT, each after a u8 naming it.
+ * HIT, to whoever landed it: where (3 x f32), the part hit (4 bits), the damage (u16), whether it killed, whether armor stopped some of it.
+ * HURT, to whoever took it: the damage (u16), the side it came from (u8, 256ths of a turn, as a facing), the part hit (4 bits).
+ * DEATH, likewise, then: who did it (a string), with what (u16 content index, 0 for bare hands), from how far (u16, tenths of a metre).
+ * KILL, to whoever did it: what died (a string), its level (u16), the experience gained (u16, tenths).
+ */
+export const EVENT_HIT = 1;
+/** Bytes of a name in an event, at most: 24 characters of up to three bytes each. */
+export const EVENT_NAME_BYTES = 72;
+export const EVENT_HURT = 2;
+export const EVENT_DEATH = 3;
+export const EVENT_KILL = 4;
+
 export const TEXT_CONSOLE = 0;
 export const TEXT_NOTICE = 1;
 
@@ -223,7 +239,7 @@ export class InputBuffer {
   }
 }
 
-/** 268 bits: position and velocity exactly, then the rest of the predicted state. */
+/** 311 bits: position and velocity exactly, then the rest of the predicted state. */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);
   w.f32(b.y);
@@ -239,6 +255,11 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.bits(b.speedQ, 12);
   w.bits(b.swimQ, 12);
   w.bits(b.mflags, 4);
+  w.u16(b.held);
+  w.bits(b.act, 3);
+  w.u8(b.actTicks);
+  w.u8(b.rounds);
+  w.u8(b.reloadTo);
 }
 
 export function readBody(r: BitReader, b: Body): void {
@@ -256,6 +277,11 @@ export function readBody(r: BitReader, b: Body): void {
   b.speedQ = r.bits(12);
   b.swimQ = r.bits(12);
   b.mflags = r.bits(4);
+  b.held = r.u16();
+  b.act = r.bits(3);
+  b.actTicks = r.u8();
+  b.rounds = r.u8();
+  b.reloadTo = r.u8();
 }
 
 /** Write a HELLO. `key` must be KEY_BYTES long. */

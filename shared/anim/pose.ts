@@ -16,14 +16,15 @@
 import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatAxis, quatMul, quatRotate } from "../math/quat.ts";
 import { Pose, blendPose, sampleClip, type Clip, type ClipSet } from "./clip.ts";
-import { B_CHEST, B_HEAD, B_HIPS, B_NECK, B_SPINE, B_UPPER_CHEST, HUMAN, HUMAN_BONES } from "./human.ts";
+import { B_CHEST, B_FINGERS_L, B_HEAD, B_HIPS, B_NECK, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, HUMAN, HUMAN_BONES } from "./human.ts";
 
 import { MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
+import { ACT_NONE, ACT_SWING, HOLD_HANDS, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
 
 /** The parts of a packed `AnimState`, as replication sends them: each part travels only when it changes. */
 export const ANIM_MOTION_BITS = 12;
 export const ANIM_LOOK_BITS = 6;
-export const ANIM_ACTION_BITS = 13;
+export const ANIM_ACTION_BITS = 14;
 export const ANIM_MOTION_MASK = 0xfff;
 export const ANIM_LOOK_SHIFT = 12;
 export const ANIM_ACTION_SHIFT = 18;
@@ -47,16 +48,26 @@ export class AnimState {
   /** Where it looks: -PITCH_STEPS (down) to PITCH_STEPS (up). */
   pitch = 0;
   stance = STANCE_STAND;
-  /** What it is doing besides moving (0 for nothing), and the low byte of the tick it began. */
+  /**
+   * What it is doing with what it holds: an act of shared/sim/weapon.ts in the
+   * low three bits and how it holds the thing (HOLD_*) in the next three; and
+   * the low byte of the tick the act began.
+   */
   action = 0;
   actionStart = 0;
   /** Ticks added to the clock, so that bodies are out of step with each other. Not replicated: it comes from the entity's id. */
   seed = 0;
 
-  /** Everything but the seed as one 31-bit number: motion in the low 12 bits, then the look, then the action. */
+  /** Everything but the seed as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
   pack(): number {
     const motion = this.speed | (this.dir << 4) | (this.stance << 8) | (this.mode === MODE_SWIM ? 1 << 10 : 0) | (this.grounded ? 0 : 1 << 11);
-    return motion | ((this.pitch & 63) << ANIM_LOOK_SHIFT) | (this.action << ANIM_ACTION_SHIFT) | ((this.actionStart & 255) << (ANIM_ACTION_SHIFT + 5));
+    return (motion | ((this.pitch & 63) << ANIM_LOOK_SHIFT) | (this.action << ANIM_ACTION_SHIFT) | ((this.actionStart & 255) << (ANIM_ACTION_SHIFT + 6))) >>> 0;
+  }
+
+  /** Set the action from an act, a hold, and the tick the act began. An act of none has no beginning. */
+  setAction(act: number, hold: number, start: number): void {
+    this.action = (act & 7) | ((hold & 7) << 3);
+    this.actionStart = act === ACT_NONE ? 0 : start & 255;
   }
 
   unpack(word: number): void {
@@ -67,8 +78,8 @@ export class AnimState {
     this.grounded = (word & (1 << 11)) === 0;
     const look = (word >>> ANIM_LOOK_SHIFT) & 63;
     this.pitch = look >= 32 ? look - 64 : look;
-    this.action = (word >>> ANIM_ACTION_SHIFT) & 31;
-    this.actionStart = (word >>> (ANIM_ACTION_SHIFT + 5)) & 255;
+    this.action = (word >>> ANIM_ACTION_SHIFT) & 63;
+    this.actionStart = (word >>> (ANIM_ACTION_SHIFT + 6)) & 255;
   }
 
   /** Set speed, direction and pitch from a velocity, a facing (radians) and a look pitch (radians). */
@@ -85,6 +96,11 @@ export class AnimState {
   }
 }
 
+/** Ticks a body's clock is ahead of the world's, so that a crowd does not move in step. `id` is its entity index: the server and every client get the same. */
+export function bodySeed(id: number): number {
+  return (id * 37) % 1024;
+}
+
 /** The clips a humanoid uses, found once by id. A missing clip leaves that part of the body at rest. */
 export class HumanAnim {
   readonly set: ClipSet;
@@ -99,6 +115,10 @@ export class HumanAnim {
   readonly crouchWalk: Clip | null;
   readonly proneIdle: Clip | null;
   readonly proneCrawl: Clip | null;
+  readonly punch: Clip | null;
+  readonly punchCross: Clip | null;
+  readonly toolSwing: Clip | null;
+  readonly throwing: Clip | null;
 
   constructor(set: ClipSet) {
     this.set = set;
@@ -118,6 +138,10 @@ export class HumanAnim {
     this.crouchWalk = find("human/crouch_walk");
     this.proneIdle = find("human/prone_idle");
     this.proneCrawl = find("human/prone_crawl");
+    this.punch = find("human/punch");
+    this.punchCross = find("human/punch_cross");
+    this.toolSwing = find("human/tool_swing");
+    this.throwing = find("human/throw");
   }
 }
 
@@ -145,6 +169,14 @@ const SWIM_PIVOT = 1.25;
 const PITCH_SPINE = 0.14;
 const PITCH_NECK = 0.2;
 const PITCH_HEAD = 0.3;
+
+/** A swing takes the upper body: the spine up to the hands, then the fingers and what they hold. The legs go on walking. */
+const UPPER_FROM = B_SPINE;
+const UPPER_TO = B_UPPER_LEG_L;
+const HANDS_FROM = B_FINGERS_L;
+/** Ticks over which a swing takes the upper body over, and gives it back. */
+const SWING_IN = 2;
+const SWING_OUT = 3;
 
 const a = new Pose(HUMAN_BONES);
 const b = new Pose(HUMAN_BONES);
@@ -226,6 +258,22 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     gait(anim.jog, JOG_TICKS, t, reverse, a);
     gait(anim.sprint, SPRINT_TICKS, t, reverse, b);
     blendPose(out, a, b, clamp((speed - JOG_SPEED) / (SPRINT_SPEED - JOG_SPEED), 0, 1));
+  }
+
+  // A swing: the upper body leaves what the legs are doing, for as long as a swing lasts.
+  if ((st.action & 7) === ACT_SWING) {
+    let e = (tick - st.actionStart) % 256;
+    if (e < 0) e += 256;
+    // Drawn a moment before the tick it began, it has not begun.
+    if (e > 250) e = 0;
+    const hold = st.action >>> 3;
+    const clip = hold === HOLD_HANDS ? ((st.actionStart & 1) !== 0 ? (anim.punchCross ?? anim.punch) : anim.punch) : hold === HOLD_THROW ? anim.throwing : anim.toolSwing;
+    const k = e < SWING_IN ? e / SWING_IN : (SWING_TICKS - e) / SWING_OUT;
+    if (clip && k > 0) {
+      sampleClip(clip, (e / SWING_TICKS) * (clip.frames - 1), a);
+      blendPose(out, out, a, k, UPPER_FROM, UPPER_TO);
+      blendPose(out, out, a, k, HANDS_FROM, HUMAN_BONES);
+    }
   }
 
   if (twistAngle !== 0) {

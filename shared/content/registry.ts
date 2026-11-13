@@ -9,7 +9,10 @@ import { hashString } from "../hash.ts";
 import { STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
 import { STAT_NAMES } from "../sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
-import type { Def, SpeciesDef } from "./defs.ts";
+import { ZONE_COUNT } from "../anim/human.ts";
+import { DAMAGE_TYPES } from "../sim/damage.ts";
+import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
+import type { Def, SpeciesDef, WeaponFacet } from "./defs.ts";
 
 export const MISSING = 0;
 export const MAX_STRUCTURE_HALF = 16;
@@ -46,7 +49,25 @@ export interface Registry {
   readonly wearSlot: Int8Array;
   /** Uses an item has at primitive quality before it breaks: a tool's, a weapon's, a worn piece's. 0 for things that do not wear. */
   readonly uses: Uint16Array;
+  /** When a weapon swings, draws, fires and reloads; null for everything that is not one. Bare hands are `FISTS`. */
+  readonly weapon: readonly (WeaponParams | null)[];
+  /** Damage of one hit of a melee or thrown weapon, or of one round of ammunition, at primitive quality; and its DMG_ type. For a species: of its bare hands. */
+  readonly damage: Float32Array;
+  readonly damageType: Uint8Array;
+  /** How far a melee weapon reaches from the eye, metres. For a species: its bare hands. */
+  readonly reach: Float32Array;
+  /** Armor rating of a worn piece at primitive quality. */
+  readonly armor: Float32Array;
+  /** Per species: what it takes of each DMG_ type, and what a hit on each zone is multiplied by. Null for everything else. */
+  readonly takes: readonly (Float32Array | null)[];
+  readonly zoneMul: readonly (Float32Array | null)[];
 }
+
+/** How far bare hands and a melee weapon reach unless content says otherwise. */
+const FIST_REACH = 2.2;
+const MELEE_REACH = 2.6;
+/** The longest any timing of a weapon may be, in ticks: what a body's act counter holds. */
+const MAX_ACT_TICKS = 250;
 
 export const WEAR_SLOTS: readonly string[] = ["head", "torso", "hands", "legs", "feet"];
 
@@ -83,6 +104,12 @@ export function compileContent(input: readonly Def[]): CompileResult {
       if (d.food) {
         positive(d, "food.max", d.food.max, 1e6);
         positive(d, "food.perHour", d.food.perHour, 1e6);
+      }
+      for (const [type, v] of Object.entries(d.takes ?? {})) {
+        if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);
+      }
+      for (const [zone, v] of Object.entries(d.zones ?? {})) {
+        if (!(zone in ZONE_GROUPS) || !(v >= 0)) errors.push(`${d.id}: zones.${zone} must name a part of the body and not be negative`);
       }
       for (const [stat, curve] of Object.entries(d.stats ?? {})) {
         if (!(STAT_NAMES as readonly string[]).includes(stat)) errors.push(`${d.id}: unknown stat "${stat}"`);
@@ -124,6 +151,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
         if ((w.kind === "bow" || w.kind === "gun") && !(w.ammo && w.ammo.length > 0)) errors.push(`${d.id}: a ${w.kind} needs the ammunition it takes`);
         if (w.kind === "bow" && !(w.draw! > 0)) errors.push(`${d.id}: a bow needs a draw time`);
         if (w.clip !== undefined && !(Number.isInteger(w.clip) && w.clip >= 1 && w.clip <= 255)) errors.push(`${d.id}: weapon.clip must be a whole number from 1 to 255`);
+        for (const [name, v] of [["reload", w.reload], ["draw", w.draw], ["interval", w.interval]] as const) {
+          if (v !== undefined && !(v > 0 && v * TICK_RATE <= MAX_ACT_TICKS)) errors.push(`${d.id}: weapon.${name} must be above 0 and at most ${MAX_ACT_TICKS / TICK_RATE} seconds`);
+        }
       }
       if (d.ammo && !(d.ammo.damage >= 0)) errors.push(`${d.id}: ammo.damage must not be negative`);
       if (d.ammo?.recover !== undefined && !(d.ammo.recover >= 0 && d.ammo.recover <= 1)) errors.push(`${d.id}: ammo.recover must be from 0 to 1`);
@@ -177,6 +207,13 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const nodeHits = new Float32Array(n);
   const wearSlot = new Int8Array(n).fill(-1);
   const uses = new Uint16Array(n);
+  const weapon: (WeaponParams | null)[] = new Array(n).fill(null);
+  const damage = new Float32Array(n);
+  const damageType = new Uint8Array(n);
+  const reach = new Float32Array(n);
+  const armor = new Float32Array(n);
+  const takes: (Float32Array | null)[] = new Array(n).fill(null);
+  const zoneMul: (Float32Array | null)[] = new Array(n).fill(null);
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
@@ -191,7 +228,15 @@ export function compileContent(input: readonly Def[]): CompileResult {
         if (d.soft) soft[i] = 1;
       }
     } else if (d.type === "species" || d.type === "prop") {
-      if (d.type === "species") move[i] = moveParams(d);
+      if (d.type === "species") {
+        move[i] = moveParams(d);
+        damage[i] = d.fists ?? 8;
+        reach[i] = FIST_REACH;
+        takes[i] = Float32Array.from(DAMAGE_TYPES, (t) => d.takes?.[t] ?? 1);
+        const zones = new Float32Array(ZONE_COUNT).fill(1);
+        for (const [group, v] of Object.entries(d.zones ?? {})) for (const z of ZONE_GROUPS[group]!) zones[z] = v;
+        zoneMul[i] = zones;
+      }
       bodyRadius[i] = d.radius;
       bodyHeight[i] = d.height;
     } else if (d.type === "item") {
@@ -200,9 +245,44 @@ export function compileContent(input: readonly Def[]): CompileResult {
       spoilTicks[i] = Math.round((d.spoilHours ?? 0) * GAME_HOUR_TICKS);
       if (d.wear) wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
       uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? 0;
+      armor[i] = d.wear?.armor ?? 0;
+      if (d.weapon) {
+        weapon[i] = weaponParams(d.weapon);
+        reach[i] = d.weapon.reach ?? MELEE_REACH;
+      }
+      const hits = d.ammo ?? d.weapon;
+      if (hits?.damage !== undefined) {
+        damage[i] = hits.damage;
+        damageType[i] = Math.max(0, DAMAGE_TYPES.indexOf(hits.type ?? "melee"));
+      }
     }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul }, errors };
+}
+
+/** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */
+const ZONE_GROUPS: Readonly<Record<string, readonly number[]>> = { head: [1], torso: [2], arms: [3, 4], hands: [5, 6], legs: [7, 8], feet: [9, 10] };
+
+const HOLDS: Readonly<Record<WeaponFacet["hold"], number>> = { tool: HOLD_TOOL, spear: HOLD_SPEAR, bow: HOLD_BOW, rifle: HOLD_RIFLE, pistol: HOLD_PISTOL };
+
+function weaponParams(w: WeaponFacet): WeaponParams {
+  const ticks = (seconds: number | undefined, fallback: number): number => (seconds === undefined ? fallback : Math.max(1, Math.round(seconds * TICK_RATE)));
+  const kind = w.kind === "melee" ? W_MELEE : w.kind === "bow" ? W_BOW : w.kind === "gun" ? W_GUN : W_THROWN;
+  // A swing, or the pause after a shot. A bow's pause is short: nocking the next arrow is its reload.
+  const swingTicks = ticks(w.interval, kind === W_BOW ? 6 : SWING_TICKS);
+  const drawTicks = kind === W_BOW ? ticks(w.draw, 1) : 0;
+  return {
+    kind,
+    hold: kind === W_THROWN ? HOLD_THROW : (HOLDS[w.hold] ?? HOLD_HANDS),
+    swingTicks,
+    // A blow lands a third of the way through its swing; a throw leaves the hand a little later.
+    strikeTick: Math.max(1, Math.min(swingTicks - 1, Math.round(swingTicks * (kind === W_THROWN ? 0.45 : 1 / 3)))),
+    drawTicks,
+    minDrawTicks: Math.round(drawTicks / 4),
+    reloadTicks: kind === W_BOW || kind === W_GUN ? ticks(w.reload, 1) : 0,
+    clip: kind === W_BOW || kind === W_GUN ? (w.clip ?? 1) : 0,
+    wet: w.wet ?? (kind === W_MELEE),
+  };
 }
 
 function moveParams(d: SpeciesDef): MoveParams {

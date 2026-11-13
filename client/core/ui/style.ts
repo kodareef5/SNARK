@@ -45,6 +45,17 @@ export const S_SLOT_HELD = 21;
 export const S_SLOT_TEXT = 22;
 export const S_SWATCH = 23;
 export const S_PROMPT = 24;
+/** A stroke of the mark that says a hit landed; and of the one that says it killed. */
+export const S_HIT = 25;
+export const S_HIT_KILL = 26;
+/** A number over the place a hit landed: on a body, on a head, and the one that killed. */
+export const S_DAMAGE = 27;
+export const S_DAMAGE_HEAD = 28;
+export const S_DAMAGE_KILL = 29;
+/** Red at the edges of the screen, and the mark of the side harm came from. */
+export const S_BLOOD = 30;
+/** A line under the crosshair: what was killed, who killed you. */
+export const S_NOTICE = 31;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -72,4 +83,11 @@ export const STYLES: readonly Style[] = [
   /* S_SLOT_TEXT */ style(0, 0xffffff, 11, 2, true),
   /* S_SWATCH */ style(0x808080ff, 0xffffff, 11, 0, true),
   /* S_PROMPT */ style(0, 0xffffff, 13, 1, true),
+  /* S_HIT */ style(0xffffffff, 0xffffff),
+  /* S_HIT_KILL */ style(0xe03030ff, 0xffffff),
+  /* S_DAMAGE */ style(0, 0xffffff, 16, 1, true),
+  /* S_DAMAGE_HEAD */ style(0, 0xffc83c, 20, 1, true),
+  /* S_DAMAGE_KILL */ style(0, 0xff5040, 20, 1, true),
+  /* S_BLOOD */ style(0xb01010ff, 0xffffff),
+  /* S_NOTICE */ style(0, 0xffffff, 14, 1, true),
 ];

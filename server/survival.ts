@@ -21,6 +21,7 @@ export const STAT_WEIGHT = STAT_NAMES.indexOf("weight");
 export const STAT_STAMINA = STAT_NAMES.indexOf("stamina");
 export const STAT_OXYGEN = STAT_NAMES.indexOf("oxygen");
 export const STAT_SPEED = STAT_NAMES.indexOf("speed");
+export const STAT_MELEE = STAT_NAMES.indexOf("melee");
 
 /** A stat's current value for a body of this species, or `fallback` if the species has no curve for it. */
 export function statOf(def: SpeciesDef, g: Genome | null, stat: number, fallback: number): number {
@@ -97,8 +98,8 @@ export class Survival {
   readonly deadlines: DeadlineHeap;
   /** Records whose food has run out. */
   readonly starving = new Set<number>();
-  /** Called when a body's health reaches zero. */
-  onDeath: ((rec: EntityRecord, cause: number) => void) | null = null;
+  /** Called when a body's health reaches zero. `by` is the persistent id of whoever did it, or 0. */
+  onDeath: ((rec: EntityRecord, cause: number, by: number) => void) | null = null;
   /** Records that take no harm. */
   readonly gods = new Set<number>();
 
@@ -107,6 +108,7 @@ export class Survival {
   private readonly submerged = new Set<number>();
   private readonly suspended = new Set<number>();
   private pendingCause = 0;
+  private pendingBy = 0;
 
   /** `deadlines` is the world's one heap; whoever runs it passes DEADLINE_VITALS entries to `due`. */
   constructor(world: ServerWorld, records: Records, deadlines: DeadlineHeap) {
@@ -187,6 +189,20 @@ export class Survival {
     this.pendingCause = 0;
   }
 
+  /**
+   * Harm done by someone: take `points` of health, and if that kills, `by`
+   * (a persistent id, or 0 for nobody) is who did it. Returns the points taken,
+   * which is less than asked when it had less left, and none for a god.
+   */
+  hurt(rec: EntityRecord, points: number, by: number, cause = CAUSE_KILLED): number {
+    if (!rec.vitals || !(points > 0) || this.gods.has(rec.pid)) return 0;
+    const before = this.value(rec, V_HEALTH);
+    this.pendingBy = by;
+    this.add(rec, V_HEALTH, -points, cause);
+    this.pendingBy = 0;
+    return points < before ? points : before;
+  }
+
   /** The body's head went under water or came up. */
   setSubmerged(rec: EntityRecord, under: boolean): void {
     if (under === this.submerged.has(rec.pid)) return;
@@ -248,7 +264,9 @@ export class Survival {
 
     if (v.max[V_HEALTH]! > 0 && v.value[V_HEALTH]! <= 0) {
       v.rate.fill(0);
-      this.onDeath?.(rec, airless ? CAUSE_DROWNED : starved ? CAUSE_STARVED : parched ? CAUSE_THIRST : this.pendingCause || CAUSE_KILLED);
+      // Harm from someone is what killed it, whatever else was wrong with it.
+      const by = this.pendingBy;
+      this.onDeath?.(rec, by !== 0 ? this.pendingCause : airless ? CAUSE_DROWNED : starved ? CAUSE_STARVED : parched ? CAUSE_THIRST : this.pendingCause || CAUSE_KILLED, by);
       return;
     }
     if (paused) {

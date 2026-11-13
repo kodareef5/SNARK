@@ -49,6 +49,14 @@ export interface SpeciesDef {
   readonly drops?: readonly { readonly item: string; readonly min: number; readonly max: number }[];
   /** How points become values, per stat: [base, gain per wild point, gain per tamed point]. */
   readonly stats?: { readonly [S in StatName]?: StatCurve };
+  /** What it takes of each kind of damage: 1 where not given. */
+  readonly takes?: { readonly [T in DamageType]?: number };
+  /** What a hit on each part of its body is multiplied by: 1 where not given. Arms, hands, legs and feet are both of them. */
+  readonly zones?: { readonly head?: number; readonly torso?: number; readonly arms?: number; readonly hands?: number; readonly legs?: number; readonly feet?: number };
+  /** Experience for killing one at level 1; each level above that adds a tenth. Defaults to none. */
+  readonly killXp?: number;
+  /** It stands where it is put and does nothing: a target to practise on. */
+  readonly still?: boolean;
 }
 
 export interface StructureDef {
@@ -101,7 +109,7 @@ export interface WeaponFacet {
   /** Melee and thrown: damage of one hit at primitive quality, and its type. */
   readonly damage?: number;
   readonly type?: DamageType;
-  /** Melee: how far it reaches, metres. Defaults to 2.5. */
+  /** Melee: how far it reaches from the eye, metres. Defaults to 2.6. */
   readonly reach?: number;
   /** Bow and gun: the ammunition items it takes, and what it multiplies their damage by. */
   readonly ammo?: readonly string[];

@@ -40,7 +40,13 @@ import {
   SESSION_ALIVE,
   S_CHUNK,
   S_CHUNK_DROP,
+  S_EVENT,
   S_NODES,
+  EVENT_DEATH,
+  EVENT_HIT,
+  EVENT_HURT,
+  EVENT_KILL,
+  EVENT_NAME_BYTES,
   S_OWN,
   S_REJECT,
   S_RESULT,
@@ -56,6 +62,7 @@ import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { FISTS, stepAction } from "../../shared/sim/weapon.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
@@ -126,6 +133,34 @@ const CLOSED_BAD_MAP = -2;
 /** Lines of server text kept for the console. */
 const LOG_LINES = 200;
 
+/** Events kept until whoever shows them takes them. */
+const MAX_EVENTS = 64;
+
+/** One S_EVENT as received; the fields its kind does not carry are zero. See EVENT_* in shared/net/protocol.ts. */
+export interface CombatEvent {
+  kind: number;
+  /** Where a hit landed. */
+  x: number;
+  y: number;
+  z: number;
+  /** The part hit, a ZONE_ of shared/anim/human.ts. */
+  zone: number;
+  damage: number;
+  kill: boolean;
+  /** Armor stopped some of it. */
+  blocked: boolean;
+  /** The side harm came from, 256ths of a turn, as a facing. */
+  bearing: number;
+  /** Who killed this body, or what this body killed. */
+  name: string;
+  /** What it was killed with (content index; 0 for bare hands), and from how many metres. */
+  item: number;
+  far: number;
+  /** What was killed: its level, and the experience that gave. */
+  level: number;
+  xp: number;
+}
+
 export interface TextLine {
   channel: number;
   text: string;
@@ -162,6 +197,8 @@ export class ClientSession {
    */
   readonly vitals = new Vitals();
   hasVitals = false;
+  /** Hits landed and harm taken, as the server reported them, oldest first. Whoever shows them empties this. */
+  readonly events: CombatEvent[] = [];
   /** A mirror of the survivor's own inventory; null until the server sends it. */
   inventory: Inventory | null = null;
   /** The container the server says this survivor has open, and a mirror of what is in it. */
@@ -387,7 +424,11 @@ export class ClientSession {
   private step(t: number): void {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
-    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, inp.buttons[i]!, this.move!, TICK_DT);
+    const buttons = inp.buttons[i]!;
+    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.move!, TICK_DT);
+    // What it does with what it holds, as the server will step it: the same buttons, and those that went down since the tick before.
+    const before = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
+    stepAction(this.own, buttons, buttons & ~before, this.opts.registry.weapon[this.own.held] ?? FISTS);
     this.bodies[t & (HISTORY - 1)]!.copy(this.own);
     this.bodyTick[t & (HISTORY - 1)] = t;
   }
@@ -412,6 +453,7 @@ export class ClientSession {
     } else if (type === S_CHUNK) this.chunk(r);
     else if (type === S_CHUNK_DROP) this.world?.structs.dropChunk(r.u16());
     else if (type === S_NODES) this.nodes(r);
+    else if (type === S_EVENT) this.event(r);
     else if (type === S_WELCOME) this.welcome(r);
     else if (type === S_RESULT) {
       const seq = r.u16();
@@ -573,6 +615,38 @@ export class ClientSession {
   /** The server tick as best this client knows it, for evaluating vitals and spoil clocks. */
   get serverTick(): number {
     return Math.floor(this.renderClock);
+  }
+
+  /** Something the server tells this client once: a hit it landed, harm it took, a death. */
+  private event(r: BitReader): void {
+    const kind = r.u8();
+    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0 };
+    if (kind === EVENT_HIT) {
+      ev.x = r.f32();
+      ev.y = r.f32();
+      ev.z = r.f32();
+      ev.zone = r.bits(4);
+      ev.damage = r.u16();
+      ev.kill = r.bool();
+      ev.blocked = r.bool();
+    } else if (kind === EVENT_HURT || kind === EVENT_DEATH) {
+      ev.damage = r.u16();
+      ev.bearing = r.u8();
+      ev.zone = r.bits(4);
+      if (kind === EVENT_DEATH) {
+        ev.kill = true;
+        ev.name = r.string(EVENT_NAME_BYTES);
+        ev.item = r.u16();
+        ev.far = r.u16() / 10;
+      }
+    } else if (kind === EVENT_KILL) {
+      ev.name = r.string(EVENT_NAME_BYTES);
+      ev.level = r.u16();
+      ev.xp = r.u16() / 10;
+    } else return;
+    if (r.overflow) return;
+    this.events.push(ev);
+    if (this.events.length > MAX_EVENTS) this.events.shift();
   }
 
   private welcome(r: BitReader): void {

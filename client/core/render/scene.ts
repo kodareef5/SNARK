@@ -13,7 +13,7 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
-import { AnimState } from "../../../shared/anim/pose.ts";
+import { AnimState, bodySeed } from "../../../shared/anim/pose.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { BODY_RADIUS, Characters } from "./characters.ts";
@@ -410,7 +410,4 @@ export class Scene {
   }
 }
 
-/** Ticks a body's clock is ahead of the world's, so that a crowd does not move in step. The server uses the same. */
-export function bodySeed(id: number): number {
-  return (id * 37) % 1024;
-}
+export { bodySeed };

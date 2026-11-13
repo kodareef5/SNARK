@@ -27,6 +27,7 @@ interface Bound {
   version: number;
   interactive: boolean;
   tint: number;
+  alpha: number;
   order: number;
   seen: number;
 }
@@ -91,6 +92,10 @@ export class UiView {
         s.textAlign = st.align === 1 ? "center" : st.align === 2 ? "right" : "left";
         s.textShadow = st.shadow ? "0 1px 2px #000" : "none";
         if (b.fill) b.fill.style.background = rgb(st.ink);
+      }
+      if (b.alpha !== n.alpha) {
+        b.alpha = n.alpha;
+        s.opacity = String(n.alpha);
       }
       if (b.text !== n.text) {
         b.text = n.text;
@@ -158,7 +163,7 @@ export class UiView {
     el.dataset.k = String(n.key);
     el.style.pointerEvents = "none";
     this.root.append(el);
-    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", value: NaN, version: 0, interactive: false, tint: -2, order: -1, seen: 0 };
+    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", value: NaN, version: 0, interactive: false, tint: -2, alpha: 1, order: -1, seen: 0 };
     this.bound.set(n.key, b);
     return b;
   }

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
-import { SWING_TICKS } from "../../server/harvest.ts";
+import { SWING_TICKS } from "../../shared/sim/weapon.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_USE, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { BTN_JUMP, BTN_USE, MODE_SWIM } from "../../shared/sim/character.ts";

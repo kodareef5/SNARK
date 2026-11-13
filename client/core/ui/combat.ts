@@ -1,0 +1,76 @@
+// Combat as a screen: the mark that a hit landed, the numbers over where,
+// the side harm came from, red at the edges, and the line that says who killed
+// what. All of it is drawn from `CombatModel`; see client/core/feedback.ts.
+
+import { NUMBER_HEAD, NUMBER_KILL, type CombatModel } from "../feedback.ts";
+import { K_PANEL, columns, lineHeight, type UiFrame } from "./nodes.ts";
+import { S_BLOOD, S_DAMAGE, S_DAMAGE_HEAD, S_DAMAGE_KILL, S_HIT, S_HIT_KILL, S_NOTICE } from "./style.ts";
+
+/** Four strokes about the crosshair. */
+export const KEY_HIT_MARK = 2000;
+/** Two bands along each edge of the screen. */
+export const KEY_BLOOD = 2010;
+/** One mark per side harm came from. */
+export const KEY_HURT = 2020;
+export const KEY_NOTICE = 2040;
+/** One number per hit. */
+export const KEY_DAMAGE = 2100;
+
+/** How far from the crosshair the marks of a hit and of harm sit, canvas units. */
+const MARK_REACH = 9;
+const HURT_REACH = 96;
+const HURT_SIZE = 14;
+const BAND = 18;
+
+export function buildCombat(f: UiFrame, m: CombatModel): void {
+  const W = f.width;
+  const H = f.height;
+  const cx = W / 2;
+  const cy = H / 2;
+
+  // Red at the edges first, so everything else is over it: two bands a side, the outer over the inner, for an edge that deepens.
+  if (m.blood > 0.01) {
+    let k = KEY_BLOOD;
+    for (let band = 2; band >= 1; band--) {
+      const t = BAND * band;
+      const a = m.blood * 0.3;
+      f.add(k++, K_PANEL, 0, 0, W, t, S_BLOOD).alpha = a;
+      f.add(k++, K_PANEL, 0, H - t, W, t, S_BLOOD).alpha = a;
+      f.add(k++, K_PANEL, 0, t, t, H - t * 2, S_BLOOD).alpha = a;
+      f.add(k++, K_PANEL, W - t, t, t, H - t * 2, S_BLOOD).alpha = a;
+    }
+  }
+
+  for (let i = 0; i < m.hurtCount; i++) {
+    const h = m.hurts[i]!;
+    // An angle to the left of straight ahead: straight ahead is up the screen.
+    const x = cx - Math.sin(h.angle) * HURT_REACH;
+    const y = cy - Math.cos(h.angle) * HURT_REACH;
+    f.add(KEY_HURT + i, K_PANEL, x - HURT_SIZE / 2, y - HURT_SIZE / 2, HURT_SIZE, HURT_SIZE, S_BLOOD).alpha = h.alpha;
+  }
+
+  if (m.mark > 0) {
+    // A head or a kill is marked larger.
+    const big = m.markKill || m.markHead;
+    const reach = MARK_REACH + (big ? 3 : 0);
+    const size = big ? 5 : 4;
+    const style = m.markKill ? S_HIT_KILL : S_HIT;
+    for (let i = 0; i < 4; i++) {
+      const x = cx + (i & 1 ? reach : -reach) - size / 2;
+      const y = cy + (i & 2 ? reach : -reach) - size / 2;
+      f.add(KEY_HIT_MARK + i, K_PANEL, x, y, size, size, style).alpha = m.mark;
+    }
+  }
+
+  for (let i = 0; i < m.numberCount; i++) {
+    const d = m.numbers[i]!;
+    const style = d.kind === NUMBER_KILL ? S_DAMAGE_KILL : d.kind === NUMBER_HEAD ? S_DAMAGE_HEAD : S_DAMAGE;
+    const w = 90;
+    f.text(KEY_DAMAGE + i, d.u * W - w / 2, d.v * H - lineHeight(style) / 2, w, style, d.text).alpha = d.alpha;
+  }
+
+  if (m.noticeAlpha > 0 && m.notice !== "") {
+    const w = Math.min(W - 24, 620);
+    f.text(KEY_NOTICE, cx - w / 2, cy + 70, w, S_NOTICE, m.notice.slice(0, columns(w, S_NOTICE))).alpha = m.noticeAlpha;
+  }
+}

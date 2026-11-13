@@ -130,6 +130,18 @@ export class Body {
   swimQ = 1000;
   /** Server-set restrictions (MF_ bits). */
   mflags = 0;
+  /**
+   * What it does with what it holds; see shared/sim/weapon.ts. `held` is the
+   * content index of the thing in its hands (0 for nothing), `act` what it is
+   * doing with it and `actTicks` for how many ticks, `rounds` what the weapon
+   * has loaded. `reloadTo` is how many rounds a reload would leave in it, set
+   * by the server from what the body carries.
+   */
+  held = 0;
+  act = 0;
+  actTicks = 0;
+  rounds = 0;
+  reloadTo = 0;
 
   copy(o: Body): void {
     this.x = o.x;
@@ -146,6 +158,11 @@ export class Body {
     this.speedQ = o.speedQ;
     this.swimQ = o.swimQ;
     this.mflags = o.mflags;
+    this.held = o.held;
+    this.act = o.act;
+    this.actTicks = o.actTicks;
+    this.rounds = o.rounds;
+    this.reloadTo = o.reloadTo;
   }
 
   /** Same place and motion. */
@@ -162,7 +179,12 @@ export class Body {
       this.staminaMax === o.staminaMax &&
       this.speedQ === o.speedQ &&
       this.swimQ === o.swimQ &&
-      this.mflags === o.mflags
+      this.mflags === o.mflags &&
+      this.held === o.held &&
+      this.act === o.act &&
+      this.actTicks === o.actTicks &&
+      this.rounds === o.rounds &&
+      this.reloadTo === o.reloadTo
     );
   }
 }

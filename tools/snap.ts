@@ -23,7 +23,9 @@ import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HA
 import { AnimState } from "../shared/anim/pose.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
 import { Rng } from "../shared/rng.ts";
+import { GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
+import { ACT_NONE, ACT_SWING, HOLD_HANDS, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
@@ -111,8 +113,8 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
   r.count = 0;
   r.tick = tick;
   const kind = view.reg.index.get("core:survivor")!;
-  // speed, dir, pitch, mode, stance, grounded
-  const rows: readonly (readonly [number, number, number, number, number, number])[] = [
+  // speed, dir, pitch, mode, stance, grounded; then, for a body that is swinging, how it holds what it swings
+  const rows: readonly (readonly [number, number, number, number, number, number, number?])[] = [
     [0, 0, 0, 1, 0, 1], // idle
     [3, 0, 0, 1, 0, 1], // walk
     [7, 0, 0, 1, 0, 1], // jog
@@ -129,7 +131,12 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
     [4, 0, 16, 2, 0, 0], // swimming upward
     [0, 0, 0, 1, 2, 1], // prone
     [1, 0, 0, 1, 2, 1], // crawling
+    [0, 0, 0, 1, 0, 1, HOLD_HANDS], // a punch, start to end
+    [0, 0, 0, 1, 0, 1, HOLD_TOOL], // a swing of a hatchet
+    [7, 0, 0, 1, 0, 1, HOLD_TOOL], // the same at a jog
+    [0, 0, -14, 1, 1, 1, HOLD_HANDS], // a punch, crouched and looking down
   ];
+  const hatchet = view.reg.index.get("core:hatchet")!;
   // Two kinds of motion to a picture, one behind the other; eight moments of each, left to right.
   const columns = 8;
   const st = new AnimState();
@@ -151,6 +158,11 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
       st.mode = row[3];
       st.stance = row[4];
       st.grounded = row[5] === 1;
+      // A swing is shown from its first tick to its last, left to right, whatever the body's own clock says.
+      if (row[6] === undefined) st.setAction(ACT_NONE, HOLD_HANDS, 0);
+      else st.setAction(ACT_SWING, row[6], tick - i * 2);
+      r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
+      if (row[6] === HOLD_TOOL) r.gear[n * GEAR_COUNT + GEAR_HELD] = hatchet;
       r.flags[n] = row[5];
       r.anim[n] = st.pack();
     }

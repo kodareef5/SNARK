@@ -15,6 +15,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { Pose } from "../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../shared/anim/human.ts";
 import { AnimState, HumanAnim, humanPose } from "../shared/anim/pose.ts";
+import { ACT_NONE, ACT_SWING, HOLD_HANDS, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { Solved, rayZones, solve, zoneHit } from "../shared/anim/skeleton.ts";
 import { authoredClips } from "../shared/anim/authored.ts";
 import { parsePack } from "../shared/pack/pack.ts";
@@ -126,6 +127,9 @@ export function poseHash(): string {
           st.pitch = pitch;
           st.seed = (n * 37) % 1024;
           const tick = n * 7.25;
+          // Every third one is partway through a swing, of a hand or of a tool.
+          if (n % 3 === 0) st.setAction(ACT_SWING, n % 2 === 0 ? HOLD_HANDS : HOLD_TOOL, Math.floor(tick) - (n % 17));
+          else st.setAction(ACT_NONE, HOLD_HANDS, 0);
           n++;
           humanPose(anim, st, tick, pose);
           solve(HUMAN, pose, solved);

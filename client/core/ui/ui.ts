@@ -8,6 +8,7 @@ import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CharacterScreen } from "./character.ts";
 import { CreatorScreen } from "./creator.ts";
+import { buildCombat } from "./combat.ts";
 import { buildHud } from "./hud.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { UiFrame } from "./nodes.ts";
@@ -123,7 +124,10 @@ export class Ui {
     f.begin(aspect);
     this.creating = session?.sessionState === SESSION_CREATING;
     // A survivor that does not exist yet has no vitals, no place and nothing to aim at.
-    if (!this.creating) buildHud(f, hud);
+    if (!this.creating) {
+      buildHud(f, hud);
+      buildCombat(f, hud.combat);
+    }
     // The console covers whatever screen is up; that screen waits underneath, undrawn, so nothing clickable hides behind it.
     this.dead = session?.sessionState === SESSION_DEAD;
     if (!this.console.open) {

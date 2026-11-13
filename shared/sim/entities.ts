@@ -7,13 +7,11 @@
 
 import { chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import { HANDLE_GEN_MASK, HANDLE_INDEX_MASK, NULL_HANDLE, handleGen, handleIndex, makeHandle } from "../ids.ts";
-import { ANIM_ACTION_SHIFT, AnimState } from "../anim/pose.ts";
+import { AnimState } from "../anim/pose.ts";
 import { PI, TAU } from "../math/scalar.ts";
 import { MODE_WALK, STAMINA_UNITS, type Body } from "./character.ts";
 
 const posed = new AnimState();
-/** Everything in a packed pose state below the action. */
-const POSE_BELOW_ACTION = (1 << ANIM_ACTION_SHIFT) - 1;
 
 /** What `EntityStore.gear` holds: the item in hand, then the piece worn in each of the five armor slots. */
 export const GEAR_HELD = 0;
@@ -62,6 +60,13 @@ export class EntityStore {
   readonly speedQ: Uint16Array;
   readonly swimQ: Uint16Array;
   readonly mflags: Uint8Array;
+  /** What it does with what it holds (shared/sim/weapon.ts): the act, its ticks, rounds loaded, and what a reload would bring that to. */
+  readonly act: Uint8Array;
+  readonly actTicks: Uint8Array;
+  readonly rounds: Uint8Array;
+  readonly reloadTo: Uint8Array;
+  /** How it carries what it holds (HOLD_*), for its pose. Set with its gear. */
+  readonly hold: Uint8Array;
   /**
    * What others are told about a body when it enters their view: level, six
    * region colours, a name. `rev` changes whenever any of it does.
@@ -115,6 +120,11 @@ export class EntityStore {
     this.speedQ = new Uint16Array(cap);
     this.swimQ = new Uint16Array(cap);
     this.mflags = new Uint8Array(cap);
+    this.act = new Uint8Array(cap);
+    this.actTicks = new Uint8Array(cap);
+    this.rounds = new Uint8Array(cap);
+    this.reloadTo = new Uint8Array(cap);
+    this.hold = new Uint8Array(cap);
     this.level = new Uint16Array(cap);
     this.colors = new Uint8Array(cap * 6);
     this.name = new Array<string>(cap).fill("");
@@ -156,6 +166,11 @@ export class EntityStore {
     this.speedQ[i] = 1000;
     this.swimQ[i] = 1000;
     this.mflags[i] = 0;
+    this.act[i] = 0;
+    this.actTicks[i] = 0;
+    this.rounds[i] = 0;
+    this.reloadTo[i] = 0;
+    this.hold[i] = 0;
     this.level[i] = 0;
     this.colors.fill(0, i * 6, i * 6 + 6);
     this.name[i] = "";
@@ -197,17 +212,17 @@ export class EntityStore {
   }
 
   /**
-   * Bring `anim[i]` up to date with how the entity moves and where it looks.
-   * Whoever changes its velocity, facing, pitch, mode or stance calls this.
+   * Bring `anim[i]` up to date with how the entity moves, where it looks and
+   * what it is doing at `tick`. Whoever changes its velocity, facing, pitch,
+   * mode, stance or act calls this.
    */
-  pose(i: number): void {
+  pose(i: number, tick = 0): void {
     posed.mode = this.mode[i]!;
     posed.grounded = (this.flags[i]! & F_GROUNDED) !== 0;
     posed.stance = this.stance[i]!;
-    posed.action = 0;
-    posed.actionStart = 0;
+    posed.setAction(this.act[i]!, this.hold[i]!, tick - this.actTicks[i]!);
     posed.setMotion(this.vx[i]!, this.vz[i]!, (this.yaw[i]! * TAU) / 65536, (this.pitch[i]! * (PI / 2)) / 16384);
-    this.anim[i] = ((this.anim[i]! & ~POSE_BELOW_ACTION) | posed.pack()) >>> 0;
+    this.anim[i] = posed.pack();
   }
 
   /** Copy an entity's predicted state into `b`. */
@@ -226,6 +241,11 @@ export class EntityStore {
     b.speedQ = this.speedQ[i]!;
     b.swimQ = this.swimQ[i]!;
     b.mflags = this.mflags[i]!;
+    b.held = this.gear[i]?.[GEAR_HELD] ?? 0;
+    b.act = this.act[i]!;
+    b.actTicks = this.actTicks[i]!;
+    b.rounds = this.rounds[i]!;
+    b.reloadTo = this.reloadTo[i]!;
   }
 
   /** Write back what a step may change. Returns true if the entity changed chunk. */
@@ -238,6 +258,9 @@ export class EntityStore {
     this.stance[i] = b.stance;
     this.stamina[i] = b.stamina;
     this.mflags[i] = b.mflags;
+    this.act[i] = b.act;
+    this.actTicks[i] = b.actTicks;
+    this.rounds[i] = b.rounds;
     return this.setPosition(i, b.x, b.y, b.z);
   }
 

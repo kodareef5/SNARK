@@ -1,0 +1,404 @@
+// Combat: what a swing lands on, and what that does.
+//
+// The shared action step (shared/sim/weapon.ts) says *when*: the tick a swing
+// lands, a shot leaves, a reload ends. This file says *what*. It looks from the
+// body's own eye along where it is looking, on the server, against the world,
+// the resource nodes and the bodies near; a client never names what it hit.
+//
+// A body with a skeleton is hit by zone: it is posed as every client draws it
+// (shared/anim/zones.ts) and the ray is tested against its boxes. Anything else
+// is its box, and counts as its torso.
+//
+// What a hit does is `resolveDamage` (shared/sim/damage.ts) and nothing else.
+// This file gathers what that needs: the weapon, the attacker's strength, what
+// the victim's species makes of the kind of damage, the part hit, and the piece
+// of armor over that part.
+//
+// What clients are told (S_EVENT) is little. Whoever landed a hit learns where,
+// which part, how much, and whether it killed: never what the victim has left.
+// Whoever was hit learns how much and from which side.
+
+import { HUMAN } from "../shared/anim/human.ts";
+import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
+import { AnimState, bodySeed } from "../shared/anim/pose.ts";
+import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
+import { zoneHit } from "../shared/anim/skeleton.ts";
+import type { SpeciesDef } from "../shared/content/defs.ts";
+import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
+import { Rng } from "../shared/rng.ts";
+import { stanceEye } from "../shared/sim/character.ts";
+import { DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
+import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
+import { QUALITY_MUL } from "../shared/sim/items.ts";
+import { W_MELEE } from "../shared/sim/weapon.ts";
+import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
+import type { Creatures } from "./creatures.ts";
+import { DID_FIRE, DID_RELOAD, DID_STRIKE, type Client, type GameServer } from "./game.ts";
+import type { Harvest } from "./harvest.ts";
+import type { Items } from "./items.ts";
+import type { Progression } from "./progression.ts";
+import type { EntityRecord, Records } from "./records.ts";
+import { STAT_MELEE, statOf, type Survival } from "./survival.ts";
+import type { ServerWorld } from "./world.ts";
+
+/** Chunks are this many metres across. */
+const CHUNK_METRES = 64;
+/** A swing is not a line: rays this far to each side of where it looks also land. */
+const SWING_WIDTH = 0.14;
+/** Bodies near enough to a ray to be worth posing, at most. */
+const MAX_NEAR = 64;
+
+export interface CombatContext {
+  readonly world: ServerWorld;
+  readonly game: GameServer;
+  readonly records: Records;
+  readonly items: Items;
+  readonly survival: Survival;
+  readonly progression: Progression;
+  readonly creatures: Creatures;
+  readonly harvest: Harvest | null;
+}
+
+/** One blow as it was resolved, for tests, the console and measurement. */
+export interface Blow {
+  /** Persistent ids of who struck and who was struck. */
+  by: number;
+  victim: number;
+  zone: number;
+  /** Health taken, damage the armor stopped, and the uses that cost it. */
+  damage: number;
+  blocked: number;
+  wear: number;
+  killed: boolean;
+}
+
+export class Combat {
+  /** Blows landed on bodies so far. */
+  hits = 0;
+  /** The last blow landed. */
+  readonly last: Blow = { by: 0, victim: 0, zone: 0, damage: 0, blocked: 0, wear: 0, killed: false };
+
+  private readonly ctx: CombatContext;
+  private readonly survivor: number;
+  /** 1 for kinds whose body has the humanoid skeleton. */
+  private readonly human: Uint8Array;
+  private readonly rng: Rng;
+  private readonly dir = [0, 0, 0];
+  private readonly st = new AnimState();
+  private readonly near = new Int32Array(MAX_NEAR);
+  /** Where the last `castBodies` hit: the part, and how far along the ray. */
+  private zone = ZONE_NONE;
+  private t = 0;
+  /** Set by `killed`, which the hurt in progress may call. */
+  private died = false;
+
+  constructor(ctx: CombatContext, seed: number) {
+    this.ctx = ctx;
+    const reg = ctx.world.reg;
+    this.survivor = reg.index.get("core:survivor")!;
+    this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
+    this.rng = new Rng(seed);
+  }
+
+  /** Once a tick, after every body has stepped: act on what each body's step said happened. */
+  step(): void {
+    for (const c of this.ctx.game.clients) {
+      if (!c?.active || c.did === 0 || c.ent < 0) continue;
+      if ((c.did & DID_RELOAD) !== 0) this.reload(c);
+      if ((c.did & DID_STRIKE) !== 0) this.strike(c);
+      if ((c.did & DID_FIRE) !== 0) this.fire(c);
+    }
+  }
+
+  /** The slot of what a record holds in its hands, or -1. */
+  private heldSlot(rec: EntityRecord): number {
+    const inv = this.ctx.items.inv(rec);
+    return inv.hotbar >= 0 && rec.held >= 0 && inv.item[inv.hotbar + rec.held] !== 0 ? inv.hotbar + rec.held : -1;
+  }
+
+  /** A swing landed: find what is in front, and hit it. */
+  private strike(c: Client): void {
+    const { world, records, items, harvest } = this.ctx;
+    const rec = records.byPid.get(c.pid);
+    if (!rec) return;
+    const ents = world.ents;
+    const reg = world.reg;
+    const e = c.ent;
+    const kind = ents.kind[e]!;
+    // What it swings: the thing in its hands if that is for swinging and not worn out, or its bare hands.
+    const inv = items.inv(rec);
+    const slot = this.heldSlot(rec);
+    let item = slot >= 0 ? inv.item[slot]! : 0;
+    if (item !== 0 && (reg.weapon[item]?.kind !== W_MELEE || (reg.uses[item]! > 0 && inv.dur[slot]! === 0))) item = 0;
+    const reach = reg.reach[item !== 0 ? item : kind]!;
+    const d = this.dir;
+    lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
+    const ox = ents.x[e]!;
+    const oy = ents.y[e]! + stanceEye(reg.move[kind]!, ents.stance[e]!);
+    const oz = ents.z[e]!;
+    const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
+    const ref = rayHit.ref;
+    const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : rayHit.t, SWING_WIDTH);
+    if (target >= 0) {
+      const t = this.t;
+      this.land(rec, e, target, this.zone, item, item !== 0 ? inv.quality[slot]! : 0, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
+      // A blow wears what struck it.
+      if (item !== 0 && reg.uses[item]! > 0) items.wear(rec, slot, 1);
+    } else if (what === HIT_NODE && harvest) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
+  }
+
+  /** A reload ended: the rounds go from the bag into the weapon. */
+  private reload(c: Client): void {
+    const { world, records, items } = this.ctx;
+    const rec = records.byPid.get(c.pid);
+    if (!rec) return;
+    const slot = this.heldSlot(rec);
+    const params = slot >= 0 ? world.reg.weapon[items.inv(rec).item[slot]!] : null;
+    const ammo = slot >= 0 ? this.ammoFor(rec, slot) : 0;
+    if (params && ammo !== 0) items.load(rec, slot, ammo, params.clip);
+    // The body's count is the weapon's, whatever the step supposed.
+    world.ents.rounds[c.ent] = slot >= 0 ? items.inv(rec).loaded[slot]! : 0;
+  }
+
+  /** A shot left: the round is spent and the weapon is worn by it. */
+  private fire(c: Client): void {
+    const { world, records, items } = this.ctx;
+    const rec = records.byPid.get(c.pid);
+    if (!rec) return;
+    const slot = this.heldSlot(rec);
+    if (slot < 0 || !items.spend(rec, slot)) return;
+    if (world.reg.uses[items.inv(rec).item[slot]!]! > 0) items.wear(rec, slot, 1);
+  }
+
+  /**
+   * The ammunition a reload of the weapon in `slot` would use: the kind it was
+   * last told to take, or else the first kind it takes that the body carries. 0 for none.
+   */
+  ammoFor(rec: EntityRecord, slot: number): number {
+    const reg = this.ctx.world.reg;
+    const inv = this.ctx.items.inv(rec);
+    const def = reg.defs[inv.item[slot]!];
+    const takes = def?.type === "item" ? def.weapon?.ammo : undefined;
+    if (!takes) return 0;
+    const chosen = inv.ammo[slot]!;
+    if (chosen !== 0 && (inv.loaded[slot]! > 0 || inv.total(chosen) > 0)) return chosen;
+    for (const id of takes) {
+      const k = reg.index.get(id)!;
+      if (inv.total(k) > 0) return k;
+    }
+    return chosen;
+  }
+
+  /**
+   * The nearest body a ray hits within `maxT`, other than `self`: its entity
+   * index, or -1. `this.zone` and `this.t` say where. With a `width`, rays that
+   * far to each side are tried when the middle one finds nothing, so that a
+   * swing lands on what it visibly passes through.
+   */
+  castBodies(self: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, width = 0): number {
+    const world = this.ctx.world;
+    const ents = world.ents;
+    const reg = world.reg;
+    const dims = world.dims;
+    // Every body whose farthest reach could touch the ray.
+    let n = 0;
+    const near = this.near;
+    const pad = maxT + BODY_REACH + width;
+    const x0 = Math.max(0, Math.floor((ox - pad) / CHUNK_METRES));
+    const x1 = Math.min(dims.chunksX - 1, Math.floor((ox + pad) / CHUNK_METRES));
+    const z0 = Math.max(0, Math.floor((oz - pad) / CHUNK_METRES));
+    const z1 = Math.min(dims.chunksZ - 1, Math.floor((oz + pad) / CHUNK_METRES));
+    for (let cz = z0; cz <= z1; cz++) {
+      for (let cx = x0; cx <= x1; cx++) {
+        for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
+          if (i === self || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
+          const kind = ents.kind[i]!;
+          // A sphere about the body that holds it whatever it does; a box that is larger has a larger one.
+          const h = reg.bodyHeight[kind]!;
+          const r = Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!) + width;
+          const px = ents.x[i]! - ox;
+          const py = ents.y[i]! + (this.human[kind] ? BODY_REACH_Y : h * 0.5) - oy;
+          const pz = ents.z[i]! - oz;
+          const along = px * dx + py * dy + pz * dz;
+          if (along < -r || along > maxT + r || px * px + py * py + pz * pz - along * along > r * r) continue;
+          if (n < MAX_NEAR) near[n++] = i;
+        }
+      }
+    }
+    this.zone = ZONE_NONE;
+    this.t = maxT;
+    if (n === 0) return -1;
+    let best = this.castNear(n, ox, oy, oz, dx, dy, dz);
+    if (best >= 0 || width <= 0) return best;
+    // To each side and above and below: (rx, 0, rz) is level and square to the ray, (ux, uy, uz) square to both.
+    let rx = dz;
+    let rz = -dx;
+    const rl = Math.sqrt(rx * rx + rz * rz);
+    if (rl < 1e-6) {
+      rx = 1;
+      rz = 0;
+    } else {
+      rx /= rl;
+      rz /= rl;
+    }
+    const ux = -rz * dy;
+    const uy = rz * dx - rx * dz;
+    const uz = rx * dy;
+    for (let k = 0; k < 4; k++) {
+      const a = k === 0 ? width : k === 1 ? -width : 0;
+      const b = k === 2 ? width : k === 3 ? -width : 0;
+      const hit = this.castNear(n, ox + rx * a + ux * b, oy + uy * b, oz + rz * a + uz * b, dx, dy, dz);
+      if (hit >= 0) best = hit;
+    }
+    return best;
+  }
+
+  /** The nearest of the first `n` bodies in `near` that a ray hits nearer than `this.t`, or -1. Moves `this.t` and `this.zone` up to it. */
+  private castNear(n: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): number {
+    const world = this.ctx.world;
+    const ents = world.ents;
+    const reg = world.reg;
+    const st = this.st;
+    let best = -1;
+    for (let k = 0; k < n; k++) {
+      const i = this.near[k]!;
+      const kind = ents.kind[i]!;
+      if (this.human[kind] && world.anim) {
+        st.unpack(ents.anim[i]!);
+        st.seed = bodySeed(i);
+        const zone = rayBody(world.anim, st, world.tick, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.yaw[i]!, ox, oy, oz, dx, dy, dz, this.t);
+        if (zone !== ZONE_NONE && zoneHit.t < this.t) {
+          this.t = zoneHit.t;
+          this.zone = zone;
+          best = i;
+        }
+      } else {
+        const r = reg.bodyRadius[kind]!;
+        const t = rayBox(ox, oy, oz, dx, dy, dz, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[kind]!, ents.z[i]! + r);
+        if (t < this.t) {
+          this.t = t;
+          this.zone = ZONE_TORSO;
+          best = i;
+        }
+      }
+    }
+    return best;
+  }
+
+  /**
+   * A blow from `by` (whose body is entity `from`) lands on entity `target`,
+   * on `zone`, at (x, y, z), `far` metres from where it came. `item` is the
+   * weapon (0 for bare hands) and `quality` its quality.
+   */
+  private land(by: EntityRecord, from: number, target: number, zone: number, item: number, quality: number, x: number, y: number, z: number, far: number): void {
+    const { world, records, items, survival, creatures } = this.ctx;
+    const ents = world.ents;
+    const reg = world.reg;
+    const victim = records.byPid.get(ents.pid[target]!);
+    if (!victim) return;
+    const vkind = ents.kind[target]!;
+    const akind = ents.kind[from]!;
+    resetHit();
+    hit.base = reg.damage[item !== 0 ? item : akind]!;
+    hit.type = item !== 0 ? reg.damageType[item]! : DMG_MELEE;
+    hit.quality = QUALITY_MUL[quality] ?? 1;
+    hit.attack = statOf(reg.defs[akind] as SpeciesDef, by.genome, STAT_MELEE, 1);
+    hit.takes = reg.takes[vkind]?.[hit.type] ?? 1;
+    hit.zone = reg.zoneMul[vkind]?.[zone] ?? 1;
+    // The piece worn over the part hit, if it is not worn out.
+    const vinv = victim.inv;
+    const piece = vinv && vinv.armor >= 0 ? vinv.armor + SLOT_OF_ZONE[zone]! : -1;
+    if (piece >= 0 && vinv!.item[piece] !== 0 && vinv!.dur[piece]! > 0) hit.armor = reg.armor[vinv!.item[piece]!]! * (QUALITY_MUL[vinv!.quality[piece]!] ?? 1) * PIECE_SCALE;
+    resolveDamage();
+    if (harm.wear > 0 && hit.armor > 0) items.wear(victim, piece, harm.wear);
+
+    const vc = this.clientOf(victim.pid);
+    const ax = ents.x[from]!;
+    const az = ents.z[from]!;
+    const vx = ents.x[target]!;
+    const vz = ents.z[target]!;
+    this.died = false;
+    const taken = survival.hurt(victim, harm.health, by.pid);
+    const killed = this.died;
+    this.hits++;
+    const last = this.last;
+    last.by = by.pid;
+    last.victim = victim.pid;
+    last.zone = zone;
+    last.damage = taken;
+    last.blocked = harm.blocked;
+    last.wear = hit.armor > 0 ? harm.wear : 0;
+    last.killed = killed;
+    if (!killed && (ents.flags[target]! & F_ALIVE) !== 0) creatures.provoke(target, ax, az);
+
+    const game = this.ctx.game;
+    const shown = Math.min(65535, Math.max(taken > 0 ? 1 : 0, Math.round(taken)));
+    const ac = this.clientOf(by.pid);
+    if (ac) {
+      const w = game.begin(S_EVENT);
+      w.u8(EVENT_HIT);
+      w.f32(x);
+      w.f32(y);
+      w.f32(z);
+      w.bits(zone, 4);
+      w.u16(shown);
+      w.bool(killed);
+      w.bool(harm.blocked > 0);
+      game.endOwn(ac);
+    }
+    if (vc && taken > 0) {
+      const w = game.begin(S_EVENT);
+      w.u8(killed ? EVENT_DEATH : EVENT_HURT);
+      w.u16(shown);
+      // The side it came from, as a facing: 256ths of a turn.
+      w.u8(Math.round((Math.atan2(ax - vx, az - vz) / (Math.PI * 2)) * 256) & 255);
+      w.bits(zone, 4);
+      if (killed) {
+        w.string(by.name !== "" ? by.name.slice(0, 24) : speciesLabel(reg.ids[akind]!));
+        w.u16(item);
+        w.u16(Math.min(65535, Math.round(far * 10)));
+      }
+      game.endOwn(vc);
+    }
+  }
+
+  /**
+   * A body's health reached zero, and `by` (a persistent id, or 0) did it.
+   * Called before the body is taken out of the world: whoever killed it has
+   * the experience and what it yields.
+   */
+  killed(rec: EntityRecord, by: number): void {
+    this.died = true;
+    const { world, records, items, progression, game } = this.ctx;
+    const killer = by !== 0 ? records.byPid.get(by) : undefined;
+    if (!killer || killer === rec || killer.dead) return;
+    const reg = world.reg;
+    const def = reg.defs[rec.kind] as SpeciesDef;
+    const level = rec.kind === this.survivor ? progression.levelOf(rec.xp) : (rec.genome?.level ?? 1);
+    const xp = Math.round((def.killXp ?? 0) * (1 + 0.1 * (level - 1)) * 10) / 10;
+    progression.addXp(killer, xp);
+    for (const drop of def.drops ?? []) {
+      const n = drop.min + this.rng.int(drop.max - drop.min + 1);
+      if (n > 0) items.mint(killer, reg.index.get(drop.item)!, n);
+    }
+    const kc = this.clientOf(killer.pid);
+    if (kc) {
+      const w = game.begin(S_EVENT);
+      w.u8(EVENT_KILL);
+      w.string(rec.name !== "" ? rec.name.slice(0, 24) : speciesLabel(def.id));
+      w.u16(level);
+      w.u16(Math.min(65535, Math.round(xp * 10)));
+      game.endOwn(kc);
+    }
+  }
+
+  private clientOf(pid: number): Client | null {
+    for (const c of this.ctx.game.clients) if (c?.active && !c.closed && c.pid === pid) return c;
+    return null;
+  }
+}
+
+/** A species' id without its namespace, for when a body has no name of its own. */
+function speciesLabel(id: string): string {
+  return id.slice(id.indexOf(":") + 1);
+}

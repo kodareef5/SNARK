@@ -47,6 +47,8 @@ export interface UiNode {
   focus: boolean;
   /** A fill colour of the node's own, 0xRRGGBB, instead of its style's; -1 for none. */
   tint: number;
+  /** How solid the whole node is, 0 to 1: for things that fade. */
+  alpha: number;
 }
 
 export interface UiImage {
@@ -75,7 +77,7 @@ export class UiFrame {
   add(key: number, kind: number, x: number, y: number, w: number, h: number, style: number): UiNode {
     let n = this.nodes[this.count];
     if (!n) {
-      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", value: 0, image: 0, interactive: false, focus: false, tint: -1 };
+      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", value: 0, image: 0, interactive: false, focus: false, tint: -1, alpha: 1 };
       this.nodes.push(n);
     }
     this.count++;
@@ -92,6 +94,7 @@ export class UiFrame {
     n.interactive = false;
     n.focus = false;
     n.tint = -1;
+    n.alpha = 1;
     return n;
   }
 

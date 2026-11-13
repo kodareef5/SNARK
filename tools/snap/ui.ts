@@ -52,10 +52,10 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
       }
       continue;
     }
-    if (n.tint >= 0) rect(n.x, n.y, n.w, n.h, n.tint >> 16, (n.tint >> 8) & 255, n.tint & 255, 1);
-    else if (fa > 0) rect(n.x, n.y, n.w, n.h, st.fill >>> 24, (st.fill >>> 16) & 255, (st.fill >>> 8) & 255, fa);
+    if (n.tint >= 0) rect(n.x, n.y, n.w, n.h, n.tint >> 16, (n.tint >> 8) & 255, n.tint & 255, n.alpha);
+    else if (fa > 0) rect(n.x, n.y, n.w, n.h, st.fill >>> 24, (st.fill >>> 16) & 255, (st.fill >>> 8) & 255, fa * n.alpha);
     if (n.kind === K_BAR) {
-      rect(n.x, n.y, n.w * Math.max(0, Math.min(1, n.value)), n.h, ir, ig, ib, 1);
+      rect(n.x, n.y, n.w * Math.max(0, Math.min(1, n.value)), n.h, ir, ig, ib, n.alpha);
       continue;
     }
     if (n.text === "") continue;
@@ -75,8 +75,8 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
           const gx = tx + c * cell + col * dot;
           const gy = ty + row * dot;
           if (gx < n.x || gx + dot > n.x + n.w + 0.5) continue;
-          if (st.shadow) rect(gx + dot, gy + dot, dot, dot, 0, 0, 0, 0.7);
-          rect(gx, gy, dot, dot, ir, ig, ib, 1);
+          if (st.shadow) rect(gx + dot, gy + dot, dot, dot, 0, 0, 0, 0.7 * n.alpha);
+          rect(gx, gy, dot, dot, ir, ig, ib, n.alpha);
         }
       }
     }

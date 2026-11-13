@@ -48,6 +48,7 @@ import {
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
+import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { F_AWAKE, F_PLAYER } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { sortU32 } from "../shared/sort.ts";
@@ -100,6 +101,11 @@ const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** How far above the ground a new spectator starts. */
 const SPECTATOR_LIFT = 1.6;
 
+/** What a body's action step said happened on the tick just stepped (`Client.did`). */
+export const DID_STRIKE = 1;
+export const DID_FIRE = 2;
+export const DID_RELOAD = 4;
+
 /** Runs one command. Read every argument, check `r.overflow`, then act. Returns a RESULT code. */
 export type CommandHandler = (c: Client, r: BitReader) => number;
 
@@ -144,8 +150,9 @@ export class Client {
   heldButtons = 0;
   /** Buttons that went down on the tick just stepped. */
   pressed = 0;
-  /** Tick from which the next swing of the primary action may land. */
-  swingAt = 0;
+  /** What the body's action step said happened on the tick just stepped (DID_ bits), and how far a shot was drawn. */
+  did = 0;
+  drawn = 0;
   private before = 0;
   /** Newest input tick received. */
   newestInput = 0;
@@ -323,15 +330,20 @@ export class GameServer {
         c.heldButtons = inputs.buttons[i]!;
       } else this.stats.heldInputs++;
       c.edges();
+      c.did = 0;
       const b = c.body;
       const e = c.ent;
       if (e >= 0) {
         ents.loadBody(e, b);
         stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[ents.kind[e]!]!, TICK_DT);
+        // What it does with what it holds. What a swing or a shot lands on is decided once every body has moved.
+        stepAction(b, c.heldButtons, c.pressed, world.reg.weapon[b.held] ?? FISTS);
+        c.did = (actionOut.strike ? DID_STRIKE : 0) | (actionOut.fire ? DID_FIRE : 0) | (actionOut.reloaded ? DID_RELOAD : 0);
+        c.drawn = actionOut.draw;
         ents.storeBody(e, b);
         ents.yaw[e] = c.heldYaw;
         ents.pitch[e] = c.heldPitch;
-        ents.pose(e);
+        ents.pose(e, T);
         if (stepOut.landSpeed > 0) this.onLand?.(c, stepOut.landSpeed);
       } else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[c.kind]!, TICK_DT);
       c.chunk = chunkAt(world.dims, b.x, b.z);

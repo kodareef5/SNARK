@@ -283,10 +283,10 @@ test("sampling a clip between frames and blending poses stay on the short way ro
   expect(a.rot[B_UPPER_ARM_L * 4]).not.toBe(b.rot[B_UPPER_ARM_L * 4]!);
 });
 
-test("a pose state survives packing into the 31 bits that are replicated", () => {
+test("a pose state survives packing into the 32 bits that are replicated", () => {
   const a = new AnimState();
   const b = new AnimState();
-  for (const [mode, grounded, stance, speed, dir, pitch, action, start] of [[1, true, 0, 0, 0, 0, 0, 0], [2, false, 0, 15, 15, -31, 31, 255], [1, false, 2, 7, 9, 31, 5, 128], [1, true, 1, 3, 4, -1, 0, 7]] as const) {
+  for (const [mode, grounded, stance, speed, dir, pitch, action, start] of [[1, true, 0, 0, 0, 0, 0, 0], [2, false, 0, 15, 15, -31, 63, 255], [1, false, 2, 7, 9, 31, 37, 128], [1, true, 1, 3, 4, -1, 0, 7]] as const) {
     a.mode = mode;
     a.grounded = grounded;
     a.stance = stance;
@@ -296,7 +296,7 @@ test("a pose state survives packing into the 31 bits that are replicated", () =>
     a.action = action;
     a.actionStart = start;
     const word = a.pack();
-    expect(word).toBeLessThan(2 ** 31);
+    expect(word).toBeLessThan(2 ** 32);
     expect(word).toBeGreaterThanOrEqual(0);
     b.unpack(word);
     expect([b.mode, b.grounded, b.stance, b.speed, b.dir, b.pitch, b.action, b.actionStart]).toEqual([mode, grounded, stance, speed, dir, pitch, action, start]);

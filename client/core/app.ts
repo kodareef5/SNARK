@@ -16,6 +16,8 @@ import { HudModel, fillHotbar, minimapImage, updateHud } from "./hud.ts";
 import { Camera } from "./render/camera.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
+import { Feedback } from "./feedback.ts";
+import { FISTS } from "../../shared/sim/weapon.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
@@ -36,6 +38,7 @@ export class App {
   readonly ui = new Ui();
   readonly cam = new Camera();
   readonly hud = new HudModel();
+  readonly feedback = new Feedback();
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
   scene: Scene | null = null;
@@ -262,6 +265,8 @@ export class App {
     body.state.grounded = session.own.grounded;
     body.state.stance = session.own.stance;
     body.state.setMotion(session.own.vx, session.own.vz, c.yaw, c.pitch);
+    // What it is doing with what it holds, as its own prediction has it: a swing is seen the moment it is asked for.
+    body.state.setAction(session.own.act, (this.reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
     body.state.seed = bodySeed(body.id);
     this.scene.own = alive && session.ownHandle !== 0 ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
@@ -273,6 +278,8 @@ export class App {
     this.scene.hour = hourOfDay(session.serverTick, session.dayOffset);
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps);
+    this.feedback.absorb(session, this.reg, nowMs);
+    this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs);
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eyeNow) : "";
     this.ui.build(aspect, hud, session);

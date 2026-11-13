@@ -20,6 +20,8 @@ import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
+/** How long a creature that was hurt runs for. */
+const FLEE_TICKS = 150;
 /** Palette indices wild creatures may roll for a colour region. */
 const WILD_COLORS = [3, 5, 6, 7, 9, 12, 15];
 
@@ -41,6 +43,8 @@ export class Creatures {
   private readonly chunkRefs: Uint16Array;
   private readonly aiNext: Uint32Array;
   private readonly aiMove: Int8Array;
+  /** 1 for kinds that stand where they are put. */
+  private readonly still: Uint8Array;
   private readonly body = new Body();
 
   constructor(world: ServerWorld, records: Records, survival: Survival, seed: number, wakeRadius = 3) {
@@ -55,6 +59,19 @@ export class Creatures {
     this.chunkRefs = new Uint16Array(chunkCount(world.dims));
     this.aiNext = new Uint32Array(cap);
     this.aiMove = new Int8Array(cap);
+    this.still = Uint8Array.from(world.reg.defs, (d) => (d?.type === "species" && d.still ? 1 : 0));
+  }
+
+  /**
+   * Something at (x, z) hurt creature `e`. For now every creature does the
+   * same: it runs the other way for a few seconds. Behaviour proper replaces this.
+   */
+  provoke(e: number, x: number, z: number): void {
+    const ents = this.world.ents;
+    if (this.awakeSlot[e]! < 0 || this.still[ents.kind[e]!]) return;
+    ents.yaw[e] = Math.round((Math.atan2(ents.x[e]! - x, ents.z[e]! - z) / (Math.PI * 2)) * 65536) & 0xffff;
+    this.aiMove[e] = 127;
+    this.aiNext[e] = this.world.tick + FLEE_TICKS;
   }
 
   /** Create a wild creature with a rolled genome. Returns its entity index, or -1 if there is no room. */
@@ -121,7 +138,10 @@ export class Creatures {
     let stepped = 0;
     for (let n = this.awakeCount - 1; n >= 0; n--) {
       const e = this.awake[n]!;
-      if (tick >= this.aiNext[e]!) {
+      if (this.still[ents.kind[e]!]) {
+        // It stands; it only falls, if it was put down in the air.
+        if ((ents.flags[e]! & F_GROUNDED) !== 0) continue;
+      } else if (tick >= this.aiNext[e]!) {
         // Wander: pick a heading and walk, or stand, for a few seconds.
         this.aiMove[e] = rng.int(3) === 0 ? 0 : 90;
         ents.yaw[e] = rng.int(65536);
