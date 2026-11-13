@@ -14,7 +14,7 @@ export const MANNEQUIN = "core:mannequin";
 /** Palette colours of the parts that do not take the body's own colour. */
 const SKIN = 10;
 const SHOE = 4;
-const NOSE = 3;
+const VISOR = 3;
 
 interface Part {
   positions: number[];
@@ -45,11 +45,12 @@ export function mannequinMeshes(): SourceMesh[] {
     const half: [number, number, number] = [s.boxHalf[b * 3]!, s.boxHalf[b * 3 + 1]!, s.boxHalf[b * 3 + 2]!];
     addBox(parts[slot]!, b, s.rest[b * 3]! + s.boxCenter[b * 3]!, s.rest[b * 3 + 1]! + s.boxCenter[b * 3 + 1]!, s.rest[b * 3 + 2]! + s.boxCenter[b * 3 + 2]!, half, color);
   }
-  // A nose, so that which way it faces can be seen.
+  // A visor, so that which way it faces can be seen. It stands 4 mm proud of the head's box:
+  // near enough that what is drawn and what can be hit do not differ by a pixel.
   const hx = s.rest[B_HEAD * 3]! + s.boxCenter[B_HEAD * 3]!;
   const hy = s.rest[B_HEAD * 3 + 1]! + s.boxCenter[B_HEAD * 3 + 1]!;
   const hz = s.rest[B_HEAD * 3 + 2]! + s.boxCenter[B_HEAD * 3 + 2]! + s.boxHalf[B_HEAD * 3 + 2]!;
-  addBox(parts[SLOT_HEAD]!, B_HEAD, hx, hy - 0.02, hz + 0.02, [0.02, 0.03, 0.02], NOSE);
+  addBox(parts[SLOT_HEAD]!, B_HEAD, hx, hy + 0.025, hz, [0.065, 0.022, 0.004], VISOR);
   return parts.map((p, slot) => {
     const lod: SourceLod = { positions: Float32Array.from(p.positions), colors: Uint8Array.from(p.colors), indices: Uint32Array.from(p.indices), bones: Uint8Array.from(p.bones) };
     return { id: `${MANNEQUIN}/${SLOT_NAMES[slot]}`, lods: [lod], skeleton: HUMAN.id };

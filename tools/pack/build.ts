@@ -9,6 +9,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { WATER_TILE } from "../../client/core/render/shading.ts";
+import { authoredClips } from "../../shared/anim/authored.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { REGION_BASE, WATER_COLOR, defaultPalette } from "../../shared/pack/palette.ts";
@@ -63,11 +64,11 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
 const SOURCE = resolve(import.meta.dir, "../../assets/source");
 let sourceClips: readonly Clip[] | null = null;
 
-/** The clips `bun run art` wrote, read once. */
+/** The clips `bun run art` wrote, read once, and the ones written as code. */
 export function coreClips(): readonly Clip[] {
   if (sourceClips) return sourceClips;
   const file = join(SOURCE, "core/human-clips.snpk");
-  sourceClips = existsSync(file) ? parsePack(new Uint8Array(readFileSync(file))).clips.clips : [];
+  sourceClips = [...(existsSync(file) ? parsePack(new Uint8Array(readFileSync(file))).clips.clips : []), ...authoredClips()];
   return sourceClips;
 }
 

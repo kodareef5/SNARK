@@ -1,7 +1,6 @@
 // Assembles a running world: map, records, persistence and the game loop.
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
-import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
@@ -14,7 +13,7 @@ import { Creatures } from "./creatures.ts";
 import { DEADLINE_DESPAWN, Death } from "./death.ts";
 import { DEADLINE_NODE, Harvest } from "./harvest.ts";
 import { DEADLINE_CRAFT, Progression } from "./progression.ts";
-import { BTN_PRIMARY } from "../shared/sim/character.ts";
+import { BTN_PRIMARY, stanceEye } from "../shared/sim/character.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
@@ -23,6 +22,8 @@ import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
 import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
+import type { ClipSet } from "../shared/anim/clip.ts";
+import { HumanAnim } from "../shared/anim/pose.ts";
 
 export interface HostOptions {
   /** SQLite file. Omit for a world that lives only in memory. */
@@ -45,6 +46,8 @@ export interface HostOptions {
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
   allowLedgerMismatch?: boolean;
+  /** The animation clips of the asset pack the clients are served. They decide where hit zones are. */
+  clips?: ClipSet;
 }
 
 /** Ticks between console lines accepted from one session. */
@@ -98,13 +101,14 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, opts.store) : null;
   // A save supplies its own structures; only a new world gets the proving ground's.
   const world = opts.world ?? createProvingWorld(reg, { populate: !store || store.fresh });
+  if (opts.clips) world.anim = new HumanAnim(opts.clips);
   const records = new Records(opts.worldId ?? 1);
   const game = new GameServer(world, opts.game);
   const persistence = store ? new Persistence(world, records, store) : null;
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
-  const eyeHeight = (reg.defs[survivor] as SpeciesDef).eyeHeight;
+  const survivorMove = reg.move[survivor]!;
   const names = new Map<string, number>();
   // One heap for everything that happens at a tick; entries are dispatched by kind in onStep.
   const deadlines = new DeadlineHeap();
@@ -243,7 +247,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     for (const c of game.clients) {
       if (!c?.active || c.ent < 0) continue;
       const rec = records.byPid.get(c.pid);
-      if (rec) survival.setSubmerged(rec, world.ents.y[c.ent]! + eyeHeight < world.hf.seaLevel);
+      if (rec) survival.setSubmerged(rec, world.ents.y[c.ent]! + stanceEye(survivorMove, world.ents.stance[c.ent]!) < world.hf.seaLevel);
     }
     deadlines.run(tick, (kind, pid, stamp) => {
       if (kind === DEADLINE_VITALS) survival.due(pid, stamp);

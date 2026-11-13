@@ -34,7 +34,8 @@ export class Creatures {
   private readonly records: Records;
   private readonly survival: Survival;
   private readonly rng: Rng;
-  private readonly awake: Int32Array;
+  /** Entity slots of the awake creatures; the first `awakeCount` entries. */
+  readonly awake: Int32Array;
   private readonly awakeSlot: Int32Array;
   /** Players keeping each chunk awake. */
   private readonly chunkRefs: Uint16Array;
@@ -134,7 +135,9 @@ export class Creatures {
       stepBody(world, b, 0, move, ents.yaw[e]!, 0, 0, world.reg.move[ents.kind[e]!]!, TICK_DT);
       stepped++;
       // Walking into a sleeping chunk puts the creature to sleep there.
-      if (ents.storeBody(e, b) && this.chunkRefs[ents.chunk[e]!] === 0) this.sleep(e);
+      const crossed = ents.storeBody(e, b);
+      ents.pose(e);
+      if (crossed && this.chunkRefs[ents.chunk[e]!] === 0) this.sleep(e);
     }
     this.stepped = stepped;
   }
@@ -166,6 +169,7 @@ export class Creatures {
     this.awakeSlot[e] = this.awakeCount;
     this.awake[this.awakeCount++] = e;
     ents.flags[e] = flags | F_AWAKE;
+    this.world.history.track(e);
   }
 
   private sleep(e: number): void {
@@ -180,5 +184,7 @@ export class Creatures {
     ents.vx[e] = 0;
     ents.vy[e] = 0;
     ents.vz[e] = 0;
+    ents.pose(e);
+    this.world.history.untrack(e);
   }
 }

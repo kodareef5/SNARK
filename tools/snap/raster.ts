@@ -37,6 +37,8 @@ export class Rasterizer {
   readonly pickKind: Uint8Array;
   /** Structure ref (chunk * 65536 + slot) or entity slot index. */
   readonly pickId: Uint32Array;
+  /** For a body with bones: one more than the bone the triangle under the pixel follows. 0 elsewhere. */
+  readonly pickBone: Uint8Array;
   trianglesDrawn = 0;
 
   private readonly pack: Pack;
@@ -49,6 +51,8 @@ export class Rasterizer {
   private nearClip = 0.05;
   /** Triangles are drawn without the checker. */
   private plain = false;
+  /** What `pickBone` gets for the triangle being drawn. */
+  private bone = 0;
   private scratch = new Float32Array(3 * 1024);
   // Clip scratch: up to 4 vertices of (rel x, y, z, clip x, y, w, ndc depth).
   private readonly poly = new Float64Array(4 * 7);
@@ -62,6 +66,7 @@ export class Rasterizer {
     this.depth = new Float32Array(width * height);
     this.pickKind = new Uint8Array(width * height);
     this.pickId = new Uint32Array(width * height);
+    this.pickBone = new Uint8Array(width * height);
   }
 
   render(packet: FramePacket): void {
@@ -79,11 +84,13 @@ export class Rasterizer {
     this.depth.fill(Infinity);
     this.pickKind.fill(PICK_SKY);
     this.pickId.fill(0);
+    this.pickBone.fill(0);
     this.trianglesDrawn = 0;
 
     this.matrix = packet.viewProj;
     this.nearClip = 0.05;
     this.plain = false;
+    this.bone = 0;
     this.terrain(packet);
     for (let d = 0; d < packet.drawCount; d++) {
       // The viewer's own body: over everything drawn so far, with its own near plane.
@@ -183,6 +190,7 @@ export class Rasterizer {
         const last = lod.indices[t + 2]!;
         let color = lod.colors[last]!;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
+        this.bone = skinned ? lod.bones[last]! + 1 : 0;
         this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0);
       }
     }
@@ -313,6 +321,7 @@ export class Rasterizer {
             this.depth[at] = z;
             this.pickKind[at] = pickKind;
             this.pickId[at] = pickId;
+            this.pickBone[at] = this.bone;
           }
           // Perspective-correct position for the checker and fog.
           const q0 = e0 * poly[v0 + 5]!, q1 = e1 * poly[v1 + 5]!, q2 = e2 * poly[v2 + 5]!;

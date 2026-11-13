@@ -16,15 +16,21 @@
 //     id gap varint: this id minus the previous id (first: id + 1), so always >= 1
 //     op 2 bits: 0 update, 1 create, 2 remove
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4,
-//             then its appearance: revision 4, level varint, [colours? 1][6 x 8],
-//             [name? 1][string]
+//             pose state 31, then its appearance: revision 4, level varint,
+//             [colours? 1][6 x 8], [name? 1][string]
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
+//             [motion? 1][12] [look? 1][6] [action? 1][13]
+//
+// The pose state is what shared/anim/pose.ts makes a pose from, in three parts
+// that change at different rates: how the body moves, where it looks, and what
+// it is doing. Each travels only when it changes.
 //
 // Appearance (level, colour regions, name) changes rarely, so it rides only on
 // create. A change bumps the entity's revision, which makes the next delta
 // send a create for it again. It therefore arrives with the entity, never
 // before or after, and loss is handled by the same baselines as everything else.
 
+import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK } from "../anim/pose.ts";
 import { WORLD_MIN_Y } from "../coords.ts";
 import type { BitReader, BitWriter } from "./codec.ts";
 
@@ -37,11 +43,13 @@ const OP_UPDATE = 0;
 const OP_CREATE = 1;
 const OP_REMOVE = 2;
 
-const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + 4 + 16 + 2 + 48;
+const ANIM_BITS = ANIM_MOTION_BITS + ANIM_LOOK_BITS + ANIM_ACTION_BITS;
+const LOOK_MASK = (1 << ANIM_LOOK_BITS) - 1;
+const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 4 + 16 + 2 + 48;
 /** Longest name carried, in bytes. */
 export const MAX_NAME_LENGTH = 72;
 
-const UPDATE_BITS = 24 + 2 + 2 + 64 + 1 + 10 + 1 + 4;
+const UPDATE_BITS = 24 + 2 + 2 + 64 + 1 + 10 + 1 + 4 + 3 + ANIM_BITS;
 
 /** Bits a create for entry `j` of `v` takes at most: the fixed part plus its name's bytes. */
 function createBits(v: EntityView, j: number): number {
@@ -85,6 +93,8 @@ export class EntityView {
   /** 10-bit yaw. */
   readonly yaw = new Uint16Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
+  /** Packed pose state: see `AnimState.pack`. */
+  readonly anim = new Uint32Array(MAX_VIEW);
   /** Appearance: revision (4 bits), level, six colour regions, name. */
   readonly rev = new Uint8Array(MAX_VIEW);
   readonly level = new Uint16Array(MAX_VIEW);
@@ -100,7 +110,7 @@ export class EntityView {
     this.name[n] = name;
   }
 
-  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number): boolean {
+  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number): boolean {
     const n = this.count;
     if (n === MAX_VIEW) return false;
     this.id[n] = id;
@@ -111,12 +121,13 @@ export class EntityView {
     this.qz[n] = qz;
     this.yaw[n] = yaw;
     this.flags[n] = flags;
+    this.anim[n] = anim;
     this.count = n + 1;
     return true;
   }
 
   copyFrom(o: EntityView, i: number): boolean {
-    if (!this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!)) return false;
+    if (!this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!)) return false;
     this.look(o.rev[i]!, o.level[i]!, o.colors, i * 6, o.name[i]!);
     return true;
   }
@@ -204,7 +215,7 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
       if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
         opKind[n] = K_REPLACE;
         written++;
-      } else if (base!.qx[i] === cur.qx[j] && base!.qy[i] === cur.qy[j] && base!.qz[i] === cur.qz[j] && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
+      } else if (base!.qx[i] === cur.qx[j] && base!.qy[i] === cur.qy[j] && base!.qz[i] === cur.qz[j] && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j] && base!.anim[i] === cur.anim[j]) {
         opKind[n] = K_KEEP;
       } else {
         opKind[n] = K_UPDATE;
@@ -264,6 +275,7 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
       w.bits(cur.qz[ci]!, 22);
       w.bits(cur.yaw[ci]!, 10);
       w.bits(cur.flags[ci]!, 4);
+      w.bits(cur.anim[ci]!, ANIM_BITS);
       w.bits(cur.rev[ci]!, 4);
       w.varint(cur.level[ci]!);
       const c0 = ci * 6;
@@ -301,6 +313,16 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
       const flagged = cur.flags[ci] !== base!.flags[bi];
       w.bool(flagged);
       if (flagged) w.bits(cur.flags[ci]!, 4);
+      const changed = cur.anim[ci]! ^ base!.anim[bi]!;
+      const motion = (changed & ANIM_MOTION_MASK) !== 0;
+      w.bool(motion);
+      if (motion) w.bits(cur.anim[ci]! & ANIM_MOTION_MASK, ANIM_MOTION_BITS);
+      const look = ((changed >>> ANIM_LOOK_SHIFT) & LOOK_MASK) !== 0;
+      w.bool(look);
+      if (look) w.bits((cur.anim[ci]! >>> ANIM_LOOK_SHIFT) & LOOK_MASK, ANIM_LOOK_BITS);
+      const action = changed >>> ANIM_ACTION_SHIFT !== 0;
+      w.bool(action);
+      if (action) w.bits(cur.anim[ci]! >>> ANIM_ACTION_SHIFT, ANIM_ACTION_BITS);
       next.copyFrom(cur, ci);
     }
   }
@@ -332,13 +354,14 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const qz = r.bits(22);
       const yaw = r.bits(10);
       const flags = r.bits(4);
+      const anim = r.bits(ANIM_BITS);
       const rev = r.bits(4);
       const level = r.varint();
       if (r.bool()) for (let q = 0; q < 6; q++) scratchColors[q] = r.u8();
       else scratchColors.fill(0);
       const name = r.bool() ? r.string(MAX_NAME_LENGTH) : "";
       if (present) i++;
-      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags)) return false;
+      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim)) return false;
       next.look(rev, level, scratchColors, 0, name);
     } else if (op === OP_UPDATE) {
       if (!present) return false;
@@ -360,7 +383,11 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       }
       if (r.bool()) yaw = r.bits(10);
       if (r.bool()) flags = r.bits(4);
-      if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags)) return false;
+      let anim = base!.anim[i]!;
+      if (r.bool()) anim = (anim & ~ANIM_MOTION_MASK) | r.bits(ANIM_MOTION_BITS);
+      if (r.bool()) anim = (anim & ~(LOOK_MASK << ANIM_LOOK_SHIFT)) | (r.bits(ANIM_LOOK_BITS) << ANIM_LOOK_SHIFT);
+      if (r.bool()) anim = (anim & ((1 << ANIM_ACTION_SHIFT) - 1)) | (r.bits(ANIM_ACTION_BITS) << ANIM_ACTION_SHIFT);
+      if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0)) return false;
       next.look(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!);
       i++;
     } else return false;

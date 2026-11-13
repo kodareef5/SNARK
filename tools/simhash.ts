@@ -16,11 +16,14 @@ import { Pose } from "../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../shared/anim/human.ts";
 import { AnimState, HumanAnim, humanPose } from "../shared/anim/pose.ts";
 import { Solved, rayZones, solve, zoneHit } from "../shared/anim/skeleton.ts";
+import { authoredClips } from "../shared/anim/authored.ts";
 import { parsePack } from "../shared/pack/pack.ts";
+import { defaultPalette } from "../shared/pack/palette.ts";
+import { buildPack } from "./pack/write.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { TICK_DT } from "../shared/coords.ts";
 import { Rng } from "../shared/rng.ts";
-import { Body, MODE_GHOST, stepBody } from "../shared/sim/character.ts";
+import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, stepBody } from "../shared/sim/character.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../shared/world/proving.ts";
 import { StructureStore } from "../shared/world/structures.ts";
 
@@ -60,7 +63,8 @@ export function simHash(ticks = 3000): string {
         inp[0] = rng.int(255) - 127;
         inp[1] = rng.int(255) - 127;
         inp[2] = rng.int(65536);
-        inp[3] = rng.int(4);
+        // Jump and sprint, and now and then a wish to crouch or lie down.
+        inp[3] = rng.int(4) | (rng.int(6) === 0 ? BTN_CROUCH : 0) | (rng.int(11) === 0 ? BTN_PRONE : 0);
         inp[4] = rng.int(32769) - 16384;
       }
       stepBody(world, b, inp[0]!, inp[1]!, inp[2]!, inp[4]!, inp[3]!, p, TICK_DT);
@@ -74,16 +78,21 @@ export function simHash(ticks = 3000): string {
         h1 = Math.imul(h1 ^ bytes[k]!, 0x01000193);
         h2 = Math.imul(h2 + bytes[k]!, 0x85ebca6b) ^ (h2 >>> 13);
       }
-      h1 = Math.imul(h1 ^ ((b.grounded ? 1 : 0) | (b.mode << 1) | (b.mflags << 4)), 0x01000193);
+      h1 = Math.imul(h1 ^ ((b.grounded ? 1 : 0) | (b.mode << 1) | (b.mflags << 4) | (b.stance << 8)), 0x01000193);
       h2 = Math.imul(h2 + b.stamina, 0x85ebca6b) ^ (h2 >>> 13);
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-/** The clips the art conversion wrote, as both engines can read them. */
+/**
+ * The clips as the game has them: those the art conversion wrote and those
+ * written as code, through the pack's own encoding. Built from files and
+ * modules both engines can read.
+ */
 export function sourceClips(): HumanAnim {
-  return new HumanAnim(parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/human-clips.snpk", import.meta.url)))).clips);
+  const converted = parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/human-clips.snpk", import.meta.url)))).clips.clips;
+  return new HumanAnim(parsePack(buildPack([], defaultPalette(), [...converted, ...authoredClips()])).clips);
 }
 
 export function poseHash(): string {
@@ -104,8 +113,8 @@ export function poseHash(): string {
     }
   };
   let n = 0;
-  // Standing, crouched, in the air, in water; every third speed, direction and pitch.
-  for (const [mode, grounded, stance] of [[1, 1, 0], [1, 1, 1], [1, 0, 0], [2, 0, 0]] as const) {
+  // Standing, crouched, prone, in the air, in water; every third speed, direction and pitch.
+  for (const [mode, grounded, stance] of [[1, 1, 0], [1, 1, 1], [1, 1, 2], [1, 0, 0], [2, 0, 0]] as const) {
     for (let speed = 0; speed <= 15; speed += 3) {
       for (let dir = 0; dir < 16; dir += 3) {
         for (let pitch = -31; pitch <= 31; pitch += 13) {

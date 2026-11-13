@@ -51,7 +51,6 @@ import {
 } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { AnimState } from "../../shared/anim/pose.ts";
 import { Body, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
@@ -67,6 +66,8 @@ export interface SessionOptions {
   /** Join without a body, if the server allows it. */
   spectate?: boolean;
   registry: Registry;
+  /** Hash of the animation clips this client draws with (`Pack.clips.hash`); the server must pose with the same. */
+  clipHash?: number;
   /** Return the terrain for a map, or null if this client does not have it. */
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, if it has any: the same pure function the server uses. */
@@ -90,15 +91,9 @@ export class RemoteSample {
   readonly name: string[] = new Array<string>(MAX_VIEW).fill("");
   /** The moment sampled, in ticks; it may fall between ticks. */
   tick = 0;
-  /** What a pose is made from, as shared/anim/pose.ts counts them. */
-  readonly mode = new Uint8Array(MAX_VIEW).fill(1);
-  readonly speed = new Uint8Array(MAX_VIEW);
-  readonly dir = new Uint8Array(MAX_VIEW);
-  readonly pitch = new Int8Array(MAX_VIEW);
-  readonly stance = new Uint8Array(MAX_VIEW);
+  /** What each body's pose is made from, packed as the server sent it: see `AnimState.pack`. */
+  readonly anim = new Uint32Array(MAX_VIEW);
 }
-
-const motion = new AnimState();
 
 const HISTORY = 128;
 /** Ticks the client starts ahead of the server before any feedback. */
@@ -220,7 +215,7 @@ export class ClientSession {
       }
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, opts.registry.hash, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key);
+    writeHello(w, PROTOCOL_VERSION, opts.registry.hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key);
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -337,14 +332,10 @@ export class ClientSession {
         if (turn > 512) turn -= 1024;
         else if (turn < -512) turn += 1024;
         out.yaw[n] = ((a!.yaw[i]! + turn * k) * TAU) / 1024;
-        // Until the server sends how a body moves, it is read off its last two places.
-        const perSecond = TICK_RATE / (b.tick - a!.tick);
-        motion.setMotion(dequantX(b.qx[j]! - a!.qx[i]!) * perSecond, dequantX(b.qz[j]! - a!.qz[i]!) * perSecond, (b.yaw[j]! * TAU) / 1024, 0);
-        out.speed[n] = motion.speed;
-        out.dir[n] = motion.dir;
+        // How it moves is not something to blend: it is what the nearer snapshot says.
+        out.anim[n] = k < 0.5 ? a!.anim[i]! : b.anim[j]!;
       } else {
-        out.speed[n] = 0;
-        out.dir[n] = 0;
+        out.anim[n] = b.anim[j]!;
         out.x[n] = dequantX(b.qx[j]!);
         out.y[n] = dequantY(b.qy[j]!);
         out.z[n] = dequantX(b.qz[j]!);

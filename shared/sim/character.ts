@@ -21,6 +21,21 @@ export const BTN_SPRINT = 2;
 export const BTN_PRIMARY = 4;
 /** Use, open, pick up. */
 export const BTN_USE = 8;
+/** Aim, draw, block: whatever the held thing does besides its primary action. */
+export const BTN_SECONDARY = 16;
+export const BTN_RELOAD = 32;
+/** Strike with whatever is held, or with a fist. */
+export const BTN_MELEE = 64;
+/** Held for as long as the body should stay low. The client turns a key press into this. */
+export const BTN_CROUCH = 128;
+export const BTN_PRONE = 256;
+/** Switch the held thing's attachment on or off. */
+export const BTN_MOD = 512;
+
+/** How low a body holds itself. A lower stance is a shorter capsule, a lower eye and a slower walk. */
+export const STANCE_STAND = 0;
+export const STANCE_CROUCH = 1;
+export const STANCE_PRONE = 2;
 
 /** No movement at all: a dead survivor waiting to respawn. */
 export const MODE_NONE = 0;
@@ -60,6 +75,14 @@ export const stepOut = {
 export interface MoveParams {
   readonly radius: number;
   readonly height: number;
+  readonly eyeHeight: number;
+  /** Capsule height, eye height and share of the walk speed when crouched and when prone. */
+  readonly crouchHeight: number;
+  readonly crouchEye: number;
+  readonly crouchMul: number;
+  readonly proneHeight: number;
+  readonly proneEye: number;
+  readonly proneMul: number;
   readonly walkSpeed: number;
   readonly sprintMul: number;
   readonly accelGround: number;
@@ -96,6 +119,8 @@ export class Body {
   vz = 0;
   grounded = false;
   mode = MODE_WALK;
+  /** STANCE_STAND, STANCE_CROUCH or STANCE_PRONE. Changed only by the step, from the buttons. */
+  stance = STANCE_STAND;
   /** Thousandths of a point, 0 .. staminaMax * STAMINA_UNITS. */
   stamina = 100 * STAMINA_UNITS;
   /** Whole points. Set by the server from stat points. */
@@ -115,6 +140,7 @@ export class Body {
     this.vz = o.vz;
     this.grounded = o.grounded;
     this.mode = o.mode;
+    this.stance = o.stance;
     this.stamina = o.stamina;
     this.staminaMax = o.staminaMax;
     this.speedQ = o.speedQ;
@@ -131,6 +157,7 @@ export class Body {
     return (
       this.samePosition(o) &&
       this.mode === o.mode &&
+      this.stance === o.stance &&
       this.stamina === o.stamina &&
       this.staminaMax === o.staminaMax &&
       this.speedQ === o.speedQ &&
@@ -138,6 +165,16 @@ export class Body {
       this.mflags === o.mflags
     );
   }
+}
+
+/** Height of the capsule in a stance. */
+export function stanceHeight(p: MoveParams, stance: number): number {
+  return stance === STANCE_STAND ? p.height : stance === STANCE_CROUCH ? p.crouchHeight : p.proneHeight;
+}
+
+/** Height of the eye above the feet in a stance: where a body looks and aims from. */
+export function stanceEye(p: MoveParams, stance: number): number {
+  return stance === STANCE_STAND ? p.eyeHeight : stance === STANCE_CROUCH ? p.crouchEye : p.proneEye;
 }
 
 const YAW_TO_RAD = TAU / YAW_UNITS;
@@ -184,6 +221,16 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const r = p.radius;
   const flags = b.mflags;
 
+  // Stance: going lower happens at once; rising needs room for the taller capsule.
+  let stance = b.stance;
+  const want = (buttons & BTN_PRONE) !== 0 ? STANCE_PRONE : (buttons & BTN_CROUCH) !== 0 ? STANCE_CROUCH : STANCE_STAND;
+  if (want !== stance) {
+    if (want > stance || capsuleFree(w, b.x, b.y, b.z, r, stanceHeight(p, want))) stance = want;
+    else if (stance === STANCE_PRONE && capsuleFree(w, b.x, b.y, b.z, r, p.crouchHeight)) stance = STANCE_CROUCH;
+  }
+  const height = stanceHeight(p, stance);
+  const standing = stance === STANCE_STAND;
+
   // Horizontal velocity moves toward the wished velocity at a bounded rate.
   let mx = moveX / 127;
   let mz = moveZ / 127;
@@ -197,9 +244,9 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const a = yaw * YAW_TO_RAD;
   const s = detSin(a);
   const c = detCos(a);
-  const sprint = m2 > 0 && canSprint(b, buttons);
+  const sprint = m2 > 0 && standing && canSprint(b, buttons);
   let stamina = spendStamina(b, p, sprint);
-  const speed = p.walkSpeed * (b.speedQ / 1000) * (sprint ? p.sprintMul : 1);
+  const speed = p.walkSpeed * (b.speedQ / 1000) * (sprint ? p.sprintMul : standing ? 1 : stance === STANCE_CROUCH ? p.crouchMul : p.proneMul);
   let dvx = (s * mz - c * mx) * speed - b.vx;
   let dvz = (c * mz + s * mx) * speed - b.vz;
   const maxDv = (b.grounded ? p.accelGround : p.accelAir) * dt;
@@ -218,7 +265,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   /** Fastest downward speed stopped by something this tick. */
   let fall = 0;
   if (wasGrounded) {
-    if ((buttons & BTN_JUMP) !== 0 && (flags & (MF_NO_JUMP | MF_ROOTED)) === 0 && stamina >= p.staminaJump) {
+    if ((buttons & BTN_JUMP) !== 0 && standing && (flags & (MF_NO_JUMP | MF_ROOTED)) === 0 && stamina >= p.staminaJump) {
       vy = p.jumpSpeed;
       jumped = true;
       stamina -= p.staminaJump;
@@ -301,7 +348,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
         if (!store) continue;
         const count = store.query(nx - r, nz - r, nx + r, nz + r, refs);
         for (let k = 0; k < count; k++) {
-          if (!capsuleBox(store, refs[k]!, nx, ny, nz, r, p.height, 0)) continue;
+          if (!capsuleBox(store, refs[k]!, nx, ny, nz, r, height, 0)) continue;
           nx += push.x;
           ny += push.y;
           nz += push.z;
@@ -331,12 +378,12 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       if (tz < r) tz = r;
       else if (tz > maxZ) tz = maxZ;
       const top = y + p.stepUp;
-      if (capsuleFree(w, x, top, z, r, p.height) && capsuleFree(w, tx, top, tz, r, p.height)) {
+      if (capsuleFree(w, x, top, z, r, height) && capsuleFree(w, tx, top, tz, r, height)) {
         let lo = y;
         let hi = top;
         for (let k = 0; k < SETTLE_ITERATIONS; k++) {
           const mid = (lo + hi) * 0.5;
-          if (capsuleFree(w, tx, mid - SETTLE_MARGIN, tz, r, p.height)) hi = mid;
+          if (capsuleFree(w, tx, mid - SETTLE_MARGIN, tz, r, height)) hi = mid;
           else lo = mid;
         }
         nx = tx;
@@ -349,7 +396,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     const ddx = nx - x;
     const ddz = nz - z;
     const ddy = ny - y;
-    if (ddx * ddx + ddz * ddz > maxSide2 || ddy > maxRise || ddy < -maxRise || !capsuleFree(w, nx, ny, nz, r, p.height)) {
+    if (ddx * ddx + ddz * ddz > maxSide2 || ddy > maxRise || ddy < -maxRise || !capsuleFree(w, nx, ny, nz, r, height)) {
       vx = 0;
       vz = 0;
       if (vy > 0) vy = 0;
@@ -364,13 +411,13 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   // support to follow it down (slopes, stairs, kerbs) instead of going airborne.
   let grounded = false;
   if (vy <= 0) {
-    if (y - hf.heightAt(x, z) <= GROUND_PROBE || restsOnStructure(w, x, y, z, r, p.height, GROUND_PROBE)) grounded = true;
-    else if (walking && !capsuleFree(w, x, y - p.stepDown, z, r, p.height)) {
+    if (y - hf.heightAt(x, z) <= GROUND_PROBE || restsOnStructure(w, x, y, z, r, height, GROUND_PROBE)) grounded = true;
+    else if (walking && !capsuleFree(w, x, y - p.stepDown, z, r, height)) {
       let lo = y - p.stepDown;
       let hi = y;
       for (let k = 0; k < SETTLE_ITERATIONS; k++) {
         const mid = (lo + hi) * 0.5;
-        if (capsuleFree(w, x, mid - SETTLE_MARGIN, z, r, p.height)) hi = mid;
+        if (capsuleFree(w, x, mid - SETTLE_MARGIN, z, r, height)) hi = mid;
         else lo = mid;
       }
       y = hi;
@@ -383,9 +430,11 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   }
   if (grounded && !wasGrounded) stepOut.landSpeed = fall;
 
-  // Deep enough to float: from the next tick the body swims.
-  if (hf.seaLevel - y > p.height * SWIM_ENTER) {
+  // Deep enough to float: from the next tick the body swims, and a swimmer has no stance.
+  // One held low by a ceiling stays as it is: a swimmer is as tall as a body standing.
+  if (hf.seaLevel - y > p.height * SWIM_ENTER && (standing || capsuleFree(w, x, y, z, r, p.height))) {
     b.mode = MODE_SWIM;
+    stance = STANCE_STAND;
     grounded = false;
     stepOut.landSpeed = 0;
   }
@@ -398,6 +447,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   b.vy = Math.fround(vy);
   b.vz = Math.fround(vz);
   b.grounded = grounded;
+  b.stance = stance;
   b.stamina = stamina;
 }
 
@@ -599,6 +649,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   b.vy = Math.fround(vy);
   b.vz = Math.fround(vz);
   b.grounded = grounded;
+  b.stance = STANCE_STAND;
   b.stamina = stamina;
 }
 

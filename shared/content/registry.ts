@@ -71,6 +71,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
       if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
       if (d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
       if (!(d.eyeHeight > 0 && d.eyeHeight <= d.height)) errors.push(`${d.id}: eyeHeight must be within the body`);
+      for (const [name, st] of [["crouch", d.crouch], ["prone", d.prone]] as const) {
+        if (st && !(st.height > 0 && st.height <= d.height && st.eye > 0 && st.eye <= st.height && st.speed > 0 && st.speed <= 1)) errors.push(`${d.id}: ${name} needs 0 < eye <= height <= the body's height and 0 < speed <= 1`);
+      }
       if (d.food) {
         positive(d, "food.max", d.food.max, 1e6);
         positive(d, "food.perHour", d.food.perHour, 1e6);
@@ -170,9 +173,20 @@ export function compileContent(input: readonly Def[]): CompileResult {
 }
 
 function moveParams(d: SpeciesDef): MoveParams {
+  // A capsule is never shorter than it is wide.
+  const low = (h: number): number => (h < 2 * d.radius ? 2 * d.radius : h);
+  const crouchHeight = low(d.crouch?.height ?? (d.height * 2) / 3);
+  const proneHeight = low(d.prone?.height ?? 0);
   return {
     radius: d.radius,
     height: d.height,
+    eyeHeight: d.eyeHeight,
+    crouchHeight,
+    crouchEye: d.crouch?.eye ?? crouchHeight * (d.eyeHeight / d.height),
+    crouchMul: d.crouch?.speed ?? 0.5,
+    proneHeight,
+    proneEye: d.prone?.eye ?? proneHeight * 0.45,
+    proneMul: d.prone?.speed ?? 0.2,
     walkSpeed: d.walkSpeed,
     sprintMul: d.sprintMul,
     accelGround: d.walkSpeed * 10,

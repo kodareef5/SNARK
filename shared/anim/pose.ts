@@ -18,12 +18,15 @@ import { quatAxis, quatMul, quatRotate } from "../math/quat.ts";
 import { Pose, blendPose, sampleClip, type Clip, type ClipSet } from "./clip.ts";
 import { B_CHEST, B_HEAD, B_HIPS, B_NECK, B_SPINE, B_UPPER_CHEST, HUMAN, HUMAN_BONES } from "./human.ts";
 
-/** Body modes, as shared/sim/character.ts numbers them. */
-const MODE_SWIM = 2;
+import { MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
 
-export const STANCE_STAND = 0;
-export const STANCE_CROUCH = 1;
-export const STANCE_PRONE = 2;
+/** The parts of a packed `AnimState`, as replication sends them: each part travels only when it changes. */
+export const ANIM_MOTION_BITS = 12;
+export const ANIM_LOOK_BITS = 6;
+export const ANIM_ACTION_BITS = 13;
+export const ANIM_MOTION_MASK = 0xfff;
+export const ANIM_LOOK_SHIFT = 12;
+export const ANIM_ACTION_SHIFT = 18;
 
 /** Metres per second per unit of `AnimState.speed`. */
 export const SPEED_STEP = 0.6;
@@ -35,7 +38,7 @@ export const PITCH_STEPS = 31;
 
 /** Everything a pose depends on besides the tick. All whole numbers, as replicated. */
 export class AnimState {
-  mode = 1;
+  mode = MODE_WALK;
   grounded = true;
   /** Speed over the ground, 0..SPEED_MAX. */
   speed = 0;
@@ -44,8 +47,29 @@ export class AnimState {
   /** Where it looks: -PITCH_STEPS (down) to PITCH_STEPS (up). */
   pitch = 0;
   stance = STANCE_STAND;
-  /** Ticks added to the clock, so that bodies are out of step with each other. */
+  /** What it is doing besides moving (0 for nothing), and the low byte of the tick it began. */
+  action = 0;
+  actionStart = 0;
+  /** Ticks added to the clock, so that bodies are out of step with each other. Not replicated: it comes from the entity's id. */
   seed = 0;
+
+  /** Everything but the seed as one 31-bit number: motion in the low 12 bits, then the look, then the action. */
+  pack(): number {
+    const motion = this.speed | (this.dir << 4) | (this.stance << 8) | (this.mode === MODE_SWIM ? 1 << 10 : 0) | (this.grounded ? 0 : 1 << 11);
+    return motion | ((this.pitch & 63) << ANIM_LOOK_SHIFT) | (this.action << ANIM_ACTION_SHIFT) | ((this.actionStart & 255) << (ANIM_ACTION_SHIFT + 5));
+  }
+
+  unpack(word: number): void {
+    this.speed = word & 15;
+    this.dir = (word >>> 4) & 15;
+    this.stance = (word >>> 8) & 3;
+    this.mode = (word & (1 << 10)) !== 0 ? MODE_SWIM : MODE_WALK;
+    this.grounded = (word & (1 << 11)) === 0;
+    const look = (word >>> ANIM_LOOK_SHIFT) & 63;
+    this.pitch = look >= 32 ? look - 64 : look;
+    this.action = (word >>> ANIM_ACTION_SHIFT) & 31;
+    this.actionStart = (word >>> (ANIM_ACTION_SHIFT + 5)) & 255;
+  }
 
   /** Set speed, direction and pitch from a velocity, a facing (radians) and a look pitch (radians). */
   setMotion(vx: number, vz: number, yaw: number, pitch: number): void {
@@ -73,6 +97,8 @@ export class HumanAnim {
   readonly swim: Clip | null;
   readonly crouchIdle: Clip | null;
   readonly crouchWalk: Clip | null;
+  readonly proneIdle: Clip | null;
+  readonly proneCrawl: Clip | null;
 
   constructor(set: ClipSet) {
     this.set = set;
@@ -90,6 +116,8 @@ export class HumanAnim {
     this.swim = find("human/swim");
     this.crouchIdle = find("human/crouch_idle");
     this.crouchWalk = find("human/crouch_walk");
+    this.proneIdle = find("human/prone_idle");
+    this.proneCrawl = find("human/prone_crawl");
   }
 }
 
@@ -102,9 +130,17 @@ const JOG_TICKS = 22;
 const SPRINT_TICKS = 18;
 const CROUCH_SPEED = 1.5;
 const CROUCH_TICKS = 34;
+const PRONE_SPEED = 0.6;
+const PRONE_TICKS = 40;
 const SWIM_SPEED = 2.4;
-/** The body pitches about this height when it swims up or down. */
-const SWIM_PIVOT = 0.9;
+/**
+ * Swim clips are made with the water's surface at the origin. A swimmer's
+ * capsule floats with three quarters of its height under water, so its
+ * surface is this far above its feet (SWIM_FLOAT of a 1.8 m body).
+ */
+const SWIM_LIFT = 1.35;
+/** The body pitches about this height when it swims up or down: where it lies when level. */
+const SWIM_PIVOT = 1.25;
 /** Share of the look pitch taken by each of the three spine bones, the neck, and the head. */
 const PITCH_SPINE = 0.14;
 const PITCH_NECK = 0.2;
@@ -150,18 +186,27 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   let twistAngle = (twist / DIR_STEPS) * TAU;
   const pitch = (st.pitch / PITCH_STEPS) * (PI / 2);
   let bodyPitch = 0;
+  let spineShare = PITCH_SPINE;
 
   if (st.mode === MODE_SWIM) {
     loop(anim.swimIdle, t, a);
     loop(anim.swim, t, b);
     const k = clamp(speed / SWIM_SPEED, 0, 1);
     blendPose(out, a, b, k);
+    out.root[1]! += SWIM_LIFT;
     // Swimming where it looks: the whole body tips, more the faster it goes.
     bodyPitch = pitch * k;
     twistAngle = 0;
   } else if (!st.grounded) {
     loop(anim.fall, t, out);
     twistAngle = 0;
+  } else if (st.stance === STANCE_PRONE) {
+    loop(anim.proneIdle, t, a);
+    gait(anim.proneCrawl, PRONE_TICKS, t, reverse, b);
+    blendPose(out, a, b, clamp(speed / PRONE_SPEED, 0, 1));
+    // Flat on the ground it turns as one piece, and only the head follows the look.
+    twistAngle = 0;
+    spineShare = 0;
   } else if (st.stance === STANCE_CROUCH) {
     loop(anim.crouchIdle, t, a);
     gait(anim.crouchWalk, CROUCH_TICKS, t, reverse, b);
@@ -194,9 +239,9 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   const look = pitch - bodyPitch;
   if (look !== 0) {
     // Looking up is a turn toward -X's right-hand sense: +Z rises toward +Y.
-    turn(out, B_SPINE, 1, 0, 0, -look * PITCH_SPINE);
-    turn(out, B_CHEST, 1, 0, 0, -look * PITCH_SPINE);
-    turn(out, B_UPPER_CHEST, 1, 0, 0, -look * PITCH_SPINE);
+    turn(out, B_SPINE, 1, 0, 0, -look * spineShare);
+    turn(out, B_CHEST, 1, 0, 0, -look * spineShare);
+    turn(out, B_UPPER_CHEST, 1, 0, 0, -look * spineShare);
     turn(out, B_NECK, 1, 0, 0, -look * PITCH_NECK);
     turn(out, B_HEAD, 1, 0, 0, -look * PITCH_HEAD);
   }

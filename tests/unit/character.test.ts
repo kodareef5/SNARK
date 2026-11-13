@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BTN_JUMP, BTN_SPRINT, Body, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_SPRINT, Body, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye, stanceHeight, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { SKIN, capsuleFree } from "../../shared/world/collide.ts";
 import { SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0 } from "../../shared/world/proving.ts";
 import { flatWorld, provingWorld, sealedRoom, type TestWorld } from "../fixtures/world.ts";
@@ -128,11 +128,13 @@ test("fuzz: no input sequence leaves a sealed room or enters solid space", () =>
       moveX = rng.int(513) - 256;
       moveZ = rng.int(513) - 256;
       yaw = rng.int(65536);
-      buttons = rng.int(4);
+      // Every button, the stance ones included: getting up and down must not open a way out.
+      buttons = rng.int(1024);
     }
     stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
-    const inside = b.x > room.minX && b.x < room.maxX && b.z > room.minZ && b.z < room.maxZ && b.y >= -SKIN && b.y + p.height < room.maxY + SKIN;
-    if (!inside || !capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)) {
+    const height = stanceHeight(p, b.stance);
+    const inside = b.x > room.minX && b.x < room.maxX && b.z > room.minZ && b.z < room.maxZ && b.y >= -SKIN && b.y + height < room.maxY + SKIN;
+    if (!inside || !capsuleFree(w, b.x, b.y, b.z, p.radius, height)) {
       throw new Error(`escaped at tick ${i}: ${b.x}, ${b.y}, ${b.z}`);
     }
   }
@@ -157,12 +159,12 @@ test("fuzz: bodies roaming the proving ground are always in free space", () => {
         moveX = rng.int(255) - 127;
         moveZ = rng.int(255) - 127;
         yaw = rng.int(65536);
-        buttons = rng.int(4);
+        buttons = rng.int(4) | (rng.int(5) === 0 ? BTN_CROUCH : 0) | (rng.int(9) === 0 ? BTN_PRONE : 0);
       }
       const px = b.x;
       const pz = b.z;
       stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
-      if (!capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`in solid at tick ${i}: ${b.x}, ${b.y}, ${b.z}`);
+      if (!capsuleFree(w, b.x, b.y, b.z, p.radius, stanceHeight(p, b.stance))) throw new Error(`in solid at tick ${i}: ${b.x}, ${b.y}, ${b.z}`);
       // Sprint speed is 7.2 m/s: 0.24 m per tick. Nothing may move a body faster sideways.
       expect(Math.hypot(b.x - px, b.z - pz)).toBeLessThan(0.3);
     }
@@ -183,4 +185,80 @@ test("the 0.2 m wall cannot be crossed from any angle", () => {
       if (b.x > 276 && b.x < 300) expect(b.z).toBeLessThan(261.5 + SKIN);
     }
   }
+});
+
+test("crouching and lying prone shorten the body and slow it; it rises only where there is room", () => {
+  const w = flatWorld();
+  const p = survivor(w);
+  expect([stanceHeight(p, STANCE_STAND), stanceHeight(p, STANCE_CROUCH), stanceHeight(p, STANCE_PRONE)].map((v) => +v.toFixed(3))).toEqual([1.8, 1.2, 0.8]);
+  expect(stanceEye(p, STANCE_STAND)).toBe(1.62);
+  expect(stanceEye(p, STANCE_CROUCH)).toBeCloseTo(1.08, 5);
+  expect(stanceEye(p, STANCE_PRONE)).toBeCloseTo(0.36, 5);
+
+  // A ceiling whose underside is 1.4 m up: too low to stand under, high enough to crouch.
+  const ceiling = w.kind("core:ceiling");
+  w.structs.add(ceiling, 64, 1.5, 30, 0, 0, 1);
+  const b = bodyAt(w, 64, 24);
+  run(w, b, 120, 0, FWD, NORTH);
+  expect(b.z).toBeLessThan(28.2); // standing, it is stopped at the edge
+  const z0 = b.z;
+  run(w, b, 30, 0, FWD, NORTH, BTN_CROUCH);
+  expect(b.stance).toBe(STANCE_CROUCH);
+  // Half the walking speed: 2.25 m in a second, give or take the last step it was held short by.
+  expect(b.z - z0).toBeGreaterThan(2.0);
+  expect(b.z - z0).toBeLessThan(2.4);
+  // Under the ceiling, letting go of the key leaves it crouched; jumping and sprinting do nothing more.
+  run(w, b, 10, 0, 0, NORTH, BTN_CROUCH);
+  expect(b.z).toBeGreaterThan(28.6);
+  expect(b.z).toBeLessThan(31.4);
+  run(w, b, 20, 0, 0, NORTH);
+  expect(b.stance).toBe(STANCE_CROUCH);
+  run(w, b, 5, 0, 0, NORTH, BTN_JUMP | BTN_CROUCH);
+  expect(b.y).toBe(0);
+  const z1 = b.z;
+  run(w, b, 10, 0, FWD, NORTH, BTN_CROUCH | BTN_SPRINT);
+  expect(b.z - z1).toBeLessThan(0.76);
+  // Out from under it, it stands by itself.
+  run(w, b, 200, 0, FWD, NORTH);
+  expect(b.z).toBeGreaterThan(32);
+  expect(b.stance).toBe(STANCE_STAND);
+
+  // A ceiling 1.0 m up: only lying down fits, and from there it rises as far as there is room.
+  w.structs.add(ceiling, 80, 1.1, 30, 0, 0, 1);
+  w.structs.add(ceiling, 80, 1.5, 33, 0, 0, 1);
+  const c = bodyAt(w, 80, 27.5);
+  run(w, c, 60, 0, FWD, NORTH, BTN_CROUCH);
+  expect(c.z).toBeLessThan(28.2);
+  const z2 = c.z;
+  run(w, c, 60, 0, FWD, NORTH, BTN_PRONE);
+  expect(c.stance).toBe(STANCE_PRONE);
+  // A fifth of the walking speed: 0.9 m/s, so 1.8 m in two seconds.
+  expect(c.z - z2).toBeGreaterThan(1.6);
+  expect(c.z - z2).toBeLessThan(1.95);
+  run(w, c, 30, 0, 0, NORTH);
+  expect(c.stance).toBe(STANCE_PRONE);
+  // Crawl on under the higher ceiling and let go: it gets to a crouch there, and to its feet beyond.
+  run(w, c, 110, 0, FWD, NORTH, BTN_PRONE);
+  expect(c.z).toBeGreaterThan(32.2);
+  expect(c.z).toBeLessThan(33.8);
+  run(w, c, 2, 0, 0, NORTH);
+  expect(c.stance).toBe(STANCE_CROUCH);
+  run(w, c, 200, 0, FWD, NORTH);
+  expect(c.stance).toBe(STANCE_STAND);
+
+  // Going down is immediate, even in the air, and a swimmer has no stance.
+  const d = bodyAt(w, 100, 100);
+  stepBody(w, d, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+  stepBody(w, d, 0, 0, NORTH, 0, BTN_PRONE, p, TICK_DT);
+  expect(d.stance).toBe(STANCE_PRONE);
+  expect(d.y).toBeGreaterThan(0.2);
+  const pool = provingWorld();
+  const e = bodyAt(pool, 178, 256);
+  e.y = -4;
+  e.mode = MODE_SWIM;
+  e.grounded = false;
+  e.stance = STANCE_CROUCH;
+  stepBody(pool, e, 0, 0, NORTH, 0, BTN_PRONE, survivor(pool), TICK_DT);
+  expect(e.mode).toBe(MODE_SWIM);
+  expect(e.stance).toBe(STANCE_STAND);
 });

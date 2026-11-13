@@ -14,6 +14,7 @@ import { Camera } from "../client/core/render/camera.ts";
 import type { FramePacket } from "../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import { RemoteSample, type ClientSession } from "../client/core/session.ts";
+import { AnimState } from "../shared/anim/pose.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
@@ -71,6 +72,7 @@ export function provingView(width = 640, height = 360): ProvingView {
     remote.z[n] = z;
     remote.yaw[n] = yaw;
     remote.flags[n] = 1; // standing on the ground
+    remote.anim[n] = 0; // at rest, looking level
   };
   place(101, "core:survivor", 254, 250, 2.6);
   place(102, "core:grazer", 259, 254, 0.7);
@@ -117,9 +119,12 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
     [0, 0, 0, 2, 0, 0], // treading water
     [4, 0, 0, 2, 0, 0], // swimming
     [4, 0, 16, 2, 0, 0], // swimming upward
+    [0, 0, 0, 1, 2, 1], // prone
+    [1, 0, 0, 1, 2, 1], // crawling
   ];
   // Two kinds of motion to a picture, one behind the other; eight moments of each, left to right.
   const columns = 8;
+  const st = new AnimState();
   const shown = rows.slice(first, first + 2);
   shown.forEach((row, j) => {
     for (let i = 0; i < columns; i++) {
@@ -132,12 +137,14 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
       r.z[n] = 228 + j * 2.4;
       r.y[n] = view.hf.heightAt(r.x[n]!, r.z[n]!) + (row[3] === 2 ? 1.2 : 0);
       r.yaw[n] = facing;
-      r.speed[n] = row[0];
-      r.dir[n] = row[1];
-      r.pitch[n] = row[2];
-      r.mode[n] = row[3];
-      r.stance[n] = row[4];
+      st.speed = row[0];
+      st.dir = row[1];
+      st.pitch = row[2];
+      st.mode = row[3];
+      st.stance = row[4];
+      st.grounded = row[5] === 1;
       r.flags[n] = row[5];
+      r.anim[n] = st.pack();
     }
   });
   // From far off through a narrow lens, so that the bodies at the edges are not stretched.

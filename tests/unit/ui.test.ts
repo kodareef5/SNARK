@@ -15,7 +15,7 @@ import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { coreRegistry } from "../fixtures/world.ts";
-import { BTN_JUMP, BTN_PRIMARY, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
+import { BTN_CROUCH, BTN_JUMP, BTN_MELEE, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
 
 const ASPECTS: [string, number][] = [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]];
 
@@ -261,14 +261,56 @@ test("controls: keys and mouse become one input sample", () => {
   c.key("ShiftLeft", true);
   c.key("KeyE", true);
   c.mouseButton(0, true);
-  c.mouseButton(2, true); // only the primary button is bound
+  c.mouseButton(1, true); // the middle button is not bound
   expect(c.buttons).toBe(BTN_JUMP | BTN_SPRINT | BTN_USE | BTN_PRIMARY);
+  c.mouseButton(2, true); // the right button is the secondary action, held with the left
+  c.key("KeyR", true);
+  c.key("KeyF", true);
+  c.key("KeyN", true);
+  expect(c.buttons).toBe(BTN_JUMP | BTN_SPRINT | BTN_USE | BTN_PRIMARY | BTN_SECONDARY | BTN_RELOAD | BTN_MELEE | BTN_MOD);
+  for (const code of ["KeyR", "KeyF", "KeyN"]) c.key(code, false);
   c.key("Space", false);
   c.mouseButton(0, false);
-  expect(c.buttons).toBe(BTN_SPRINT | BTN_USE);
+  expect(c.buttons).toBe(BTN_SPRINT | BTN_USE | BTN_SECONDARY);
+  c.mouseButton(2, false);
   expect(c.key("KeyQ", true)).toBe(false);
   c.release();
   expect([c.moveX, c.moveZ, c.buttons]).toEqual([0, 0, 0]);
+
+  // Stance keys toggle: one press goes down, the next stands up, and the other key switches.
+  expect(c.key("KeyC", true)).toBe(true);
+  c.key("KeyC", true); // the key repeating while held changes nothing
+  c.key("KeyC", false);
+  expect(c.buttons).toBe(BTN_CROUCH);
+  c.key("KeyX", true);
+  c.key("KeyX", false);
+  expect(c.buttons).toBe(BTN_PRONE);
+  c.key("KeyX", true);
+  c.key("KeyX", false);
+  expect(c.buttons).toBe(0);
+  // Sprinting stands a crouched body up and sprints; jumping stands it up and does not also jump.
+  c.key("KeyC", true);
+  c.key("KeyC", false);
+  c.key("ShiftLeft", true);
+  expect(c.buttons).toBe(BTN_SPRINT);
+  c.key("ShiftLeft", false);
+  c.key("KeyX", true);
+  c.key("KeyX", false);
+  c.key("ShiftLeft", true); // a body lying down does not get up to sprint
+  expect(c.buttons).toBe(BTN_PRONE | BTN_SPRINT);
+  c.key("ShiftLeft", false);
+  c.key("Space", true);
+  expect(c.buttons).toBe(0);
+  c.key("Space", false);
+  c.key("Space", true);
+  expect(c.buttons).toBe(BTN_JUMP);
+  c.key("Space", false);
+  // Losing focus lets go of keys but not of a stance.
+  c.key("KeyC", true);
+  c.release();
+  expect(c.buttons).toBe(BTN_CROUCH);
+  c.key("KeyC", true);
+  expect(c.buttons).toBe(0);
 
   c.look(100, 0); // right turn lowers yaw
   expect(c.yaw).toBeCloseTo(-100 * LOOK_SPEED, 10);
@@ -405,7 +447,7 @@ test("the character screen fits every window shape and its buttons send what the
     });
     const ui = new Ui();
     ui.registry = reg;
-    expect(ui.key("KeyC", true, false, session)).toBe(true);
+    expect(ui.key("KeyP", true, false, session)).toBe(true);
     expect(ui.wantsPointerLock).toBe(false);
     ui.build(aspect, fullHud(), session);
     const f = ui.frame;

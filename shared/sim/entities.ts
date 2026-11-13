@@ -7,7 +7,13 @@
 
 import { chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import { HANDLE_GEN_MASK, HANDLE_INDEX_MASK, NULL_HANDLE, handleGen, handleIndex, makeHandle } from "../ids.ts";
+import { ANIM_ACTION_SHIFT, AnimState } from "../anim/pose.ts";
+import { PI, TAU } from "../math/scalar.ts";
 import { MODE_WALK, STAMINA_UNITS, type Body } from "./character.ts";
+
+const posed = new AnimState();
+/** Everything in a packed pose state below the action. */
+const POSE_BELOW_ACTION = (1 << ANIM_ACTION_SHIFT) - 1;
 
 export const F_ALIVE = 1;
 export const F_GROUNDED = 2;
@@ -36,8 +42,16 @@ export class EntityStore {
   readonly yaw: Uint16Array;
   /** Persistent id, or 0 for entities that are never saved. */
   readonly pid: Float64Array;
+  /** Where it looks, in the units of an input's pitch: 16384 is straight up. */
+  readonly pitch: Int16Array;
+  /**
+   * What its pose is made from, packed as shared/net/view.ts sends it. Written
+   * by whoever moves the body; read by replication and by the hit test.
+   */
+  readonly anim: Uint32Array;
   /** The rest of the predicted body state; see `Body` in character.ts. */
   readonly mode: Uint8Array;
+  readonly stance: Uint8Array;
   readonly stamina: Int32Array;
   readonly staminaMax: Uint16Array;
   readonly speedQ: Uint16Array;
@@ -78,8 +92,11 @@ export class EntityStore {
     this.vy = new Float32Array(cap);
     this.vz = new Float32Array(cap);
     this.yaw = new Uint16Array(cap);
+    this.pitch = new Int16Array(cap);
+    this.anim = new Uint32Array(cap);
     this.pid = new Float64Array(cap);
     this.mode = new Uint8Array(cap);
+    this.stance = new Uint8Array(cap);
     this.stamina = new Int32Array(cap);
     this.staminaMax = new Uint16Array(cap);
     this.speedQ = new Uint16Array(cap);
@@ -114,8 +131,11 @@ export class EntityStore {
     this.vy[i] = 0;
     this.vz[i] = 0;
     this.yaw[i] = 0;
+    this.pitch[i] = 0;
+    this.anim[i] = 0;
     this.pid[i] = 0;
     this.mode[i] = MODE_WALK;
+    this.stance[i] = 0;
     this.staminaMax[i] = 100;
     this.stamina[i] = 100 * STAMINA_UNITS;
     this.speedQ[i] = 1000;
@@ -143,6 +163,20 @@ export class EntityStore {
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
+  /**
+   * Bring `anim[i]` up to date with how the entity moves and where it looks.
+   * Whoever changes its velocity, facing, pitch, mode or stance calls this.
+   */
+  pose(i: number): void {
+    posed.mode = this.mode[i]!;
+    posed.grounded = (this.flags[i]! & F_GROUNDED) !== 0;
+    posed.stance = this.stance[i]!;
+    posed.action = 0;
+    posed.actionStart = 0;
+    posed.setMotion(this.vx[i]!, this.vz[i]!, (this.yaw[i]! * TAU) / 65536, (this.pitch[i]! * (PI / 2)) / 16384);
+    this.anim[i] = ((this.anim[i]! & ~POSE_BELOW_ACTION) | posed.pack()) >>> 0;
+  }
+
   /** Copy an entity's predicted state into `b`. */
   loadBody(i: number, b: Body): void {
     b.x = this.x[i]!;
@@ -153,6 +187,7 @@ export class EntityStore {
     b.vz = this.vz[i]!;
     b.grounded = (this.flags[i]! & F_GROUNDED) !== 0;
     b.mode = this.mode[i]!;
+    b.stance = this.stance[i]!;
     b.stamina = this.stamina[i]!;
     b.staminaMax = this.staminaMax[i]!;
     b.speedQ = this.speedQ[i]!;
@@ -167,6 +202,7 @@ export class EntityStore {
     this.vz[i] = b.vz;
     this.flags[i] = b.grounded ? this.flags[i]! | F_GROUNDED : this.flags[i]! & ~F_GROUNDED;
     this.mode[i] = b.mode;
+    this.stance[i] = b.stance;
     this.stamina[i] = b.stamina;
     this.mflags[i] = b.mflags;
     return this.setPosition(i, b.x, b.y, b.z);

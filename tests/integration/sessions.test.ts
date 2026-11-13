@@ -216,7 +216,7 @@ test("a hostile command stream changes nothing and cannot crash the server", () 
     end = h.net.connect();
     seq = 0;
     w.reset();
-    writeHello(w, PROTOCOL_VERSION, h.reg.hash, `mallory${reconnects++}`, 0, testKey("mallory"));
+    writeHello(w, PROTOCOL_VERSION, h.reg.hash, h.world.anim.set.hash, `mallory${reconnects++}`, 0, testKey("mallory"));
     end.send(CH_RELIABLE, w.bytes());
   };
   hello();

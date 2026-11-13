@@ -203,12 +203,7 @@ export class Scene {
         const z = remote.z[i]! - cam.z;
         const r = BODY_RADIUS;
         if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, y + 2.2, z + r)) continue;
-        st.mode = remote.mode[i]!;
-        st.grounded = (remote.flags[i]! & 1) !== 0;
-        st.speed = remote.speed[i]!;
-        st.dir = remote.dir[i]!;
-        st.pitch = remote.pitch[i]!;
-        st.stance = remote.stance[i]!;
+        st.unpack(remote.anim[i]!);
         st.seed = bodySeed(remote.id[i]!);
         if (!ch.add(p, kind, x, y, z, remote.yaw[i]!, st, remote.tick, remote.colors, i * 6, remote.id[i]!, false, false)) break;
       }

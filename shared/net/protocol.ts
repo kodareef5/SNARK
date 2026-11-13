@@ -1,10 +1,10 @@
-// Wire protocol, version 2. Message layouts live here and nowhere else.
+// Wire protocol, version 3. Message layouts live here and nowhere else.
 //
 // Every message starts with a 4-bit type. Channels are fixed per type:
 //
 //   client -> server
-//     HELLO     reliable     version u16, content hash u32, name string, flags u8,
-//                            device key (16 bytes)
+//     HELLO     reliable     version u16, content hash u32, clip hash u32, name string,
+//                            flags u8, device key (16 bytes)
 //     INPUT     unreliable   ack tick u32, newest tick u32, count-1 (3 bits),
 //                            then inputs newest first; each after the first is
 //                            preceded by one bit: 1 = same as the one before
@@ -35,7 +35,7 @@
 import { BitReader, BitWriter } from "./codec.ts";
 import { Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -150,8 +150,9 @@ export const MAX_NAME_BYTES = 24;
 export const MAX_TEXT_BYTES = 200;
 /** A text message from the server. */
 export const MAX_SERVER_TEXT_BYTES = 1000;
-/** Known button bits; others are cleared on receipt. */
-export const BUTTON_MASK = 0x0f;
+/** Bits an input's buttons take on the wire, and the known ones; others are cleared on receipt. */
+export const BUTTON_BITS = 10;
+export const BUTTON_MASK = 0x3ff;
 /** Pitch units: 16384 is straight up. */
 export const PITCH_LIMIT = 16384;
 
@@ -163,7 +164,7 @@ export class InputBuffer {
   readonly moveZ: Int8Array;
   readonly yaw: Uint16Array;
   readonly pitch: Int16Array;
-  readonly buttons: Uint8Array;
+  readonly buttons: Uint16Array;
 
   /** `size` must be a power of two. */
   constructor(size: number) {
@@ -173,7 +174,7 @@ export class InputBuffer {
     this.moveZ = new Int8Array(size);
     this.yaw = new Uint16Array(size);
     this.pitch = new Int16Array(size);
-    this.buttons = new Uint8Array(size);
+    this.buttons = new Uint16Array(size);
   }
 
   has(tick: number): boolean {
@@ -192,7 +193,7 @@ export class InputBuffer {
   }
 }
 
-/** 266 bits: position and velocity exactly, then the rest of the predicted state. */
+/** 268 bits: position and velocity exactly, then the rest of the predicted state. */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);
   w.f32(b.y);
@@ -202,6 +203,7 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.vz);
   w.bool(b.grounded);
   w.bits(b.mode, 3);
+  w.bits(b.stance, 2);
   w.bits(b.stamina, 26);
   w.u16(b.staminaMax);
   w.bits(b.speedQ, 12);
@@ -218,6 +220,7 @@ export function readBody(r: BitReader, b: Body): void {
   b.vz = r.f32();
   b.grounded = r.bool();
   b.mode = r.bits(3);
+  b.stance = r.bits(2);
   b.stamina = r.bits(26);
   b.staminaMax = r.u16();
   b.speedQ = r.bits(12);
@@ -226,10 +229,11 @@ export function readBody(r: BitReader, b: Body): void {
 }
 
 /** Write a HELLO. `key` must be KEY_BYTES long. */
-export function writeHello(w: BitWriter, version: number, contentHash: number, name: string, flags: number, key: Uint8Array): void {
+export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array): void {
   w.bits(C_HELLO, 4);
   w.u16(version);
   w.u32(contentHash);
+  w.u32(clipHash);
   w.string(name);
   w.u8(flags);
   for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
@@ -265,7 +269,7 @@ export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newe
     w.sbits(inputs.moveZ[i]!, 8);
     w.u16(inputs.yaw[i]!);
     w.sbits(inputs.pitch[i]!, 16);
-    w.u8(inputs.buttons[i]!);
+    w.bits(inputs.buttons[i]!, BUTTON_BITS);
     prev = i;
   }
 }
@@ -289,7 +293,7 @@ export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number
       moveZ = r.sbits(8);
       yaw = r.u16();
       pitch = r.sbits(16);
-      buttons = r.u8();
+      buttons = r.bits(BUTTON_BITS);
     }
     const tick = newest - k;
     if (tick > serverTick && tick < serverTick + INPUT_WINDOW && !inputs.has(tick)) {

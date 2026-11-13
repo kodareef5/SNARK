@@ -11,10 +11,9 @@
 // is looking at by casting a ray from its own eye. A client never names what
 // it wants to open.
 
-import type { SpeciesDef } from "../shared/content/defs.ts";
 import { BitWriter } from "../shared/net/codec.ts";
 import { MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
-import { BTN_USE } from "../shared/sim/character.ts";
+import { BTN_USE, stanceEye } from "../shared/sim/character.ts";
 import { F_PROP } from "../shared/sim/entities.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { TICK_RATE, chunkCx, chunkCz } from "../shared/coords.ts";
@@ -55,7 +54,6 @@ export class Death {
   private readonly ctx: DeathContext;
   private readonly survivor: number;
   private readonly cache: number;
-  private readonly eye: number;
   private readonly dir = [0, 0, 0];
   private readonly w = new BitWriter(64);
 
@@ -64,7 +62,6 @@ export class Death {
     const reg = ctx.world.reg;
     this.survivor = reg.index.get("core:survivor")!;
     this.cache = reg.index.get("core:cache")!;
-    this.eye = (reg.defs[this.survivor] as SpeciesDef).eyeHeight;
   }
 
   private clientOf(pid: number): Client | null {
@@ -223,7 +220,7 @@ export class Death {
     const reg = world.reg;
     const e = c.ent;
     const ox = ents.x[e]!;
-    const oy = ents.y[e]! + this.eye;
+    const oy = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!);
     const oz = ents.z[e]!;
     const d = this.dir;
     lookDirection(c.heldYaw, c.heldPitch, d);

@@ -4,7 +4,7 @@
 // Tests drive this class directly.
 
 import type { Registry } from "../../shared/content/registry.ts";
-import type { SpeciesDef } from "../../shared/content/defs.ts";
+import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { MARKER_DEATH, SESSION_ALIVE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -45,6 +45,8 @@ export class App {
   private readonly reg: Registry;
   private readonly pack: Pack;
   private last = -1;
+  /** Height of the camera's eye above the body's feet, or -1 before the first frame. */
+  private eye = -1;
   private readonly aim = [0, 0, 0];
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), id: 0 };
 
@@ -178,7 +180,11 @@ export class App {
     const cam = this.cam;
     const a = session.alpha;
     const alive = session.sessionState === SESSION_ALIVE;
-    const eye = alive ? ((this.reg.defs[session.ownKind] as SpeciesDef | null)?.eyeHeight ?? 1.6) : 0;
+    const move = this.reg.move[session.ownKind];
+    // The eye follows the stance, eased so that crouching is a movement and not a cut.
+    const eyeNow = alive && move ? stanceEye(move, session.own.stance) : 0;
+    this.eye = this.eye < 0 || !alive ? eyeNow : this.eye + (eyeNow - this.eye) * Math.min(1, dt / 90);
+    const eye = this.eye;
     const bx = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX;
     const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
     const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
@@ -200,6 +206,7 @@ export class App {
     body.id = handleIndex(session.ownHandle);
     body.state.mode = session.own.mode;
     body.state.grounded = session.own.grounded;
+    body.state.stance = session.own.stance;
     body.state.setMotion(session.own.vx, session.own.vz, c.yaw, c.pitch);
     body.state.seed = bodySeed(body.id);
     this.scene.own = alive && session.ownHandle !== 0 ? body : null;
@@ -211,7 +218,7 @@ export class App {
     this.scene.hour = hourOfDay(session.serverTick, session.dayOffset);
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps);
-    hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eye) : "";
+    hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eyeNow) : "";
     this.ui.build(aspect, hud, session);
     return packet;
   }

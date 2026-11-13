@@ -51,11 +51,11 @@ export class Ui {
     }
     if (!con.open) {
       // Screens leave the keyboard to the body: you can keep walking with them open.
-      if (code === "KeyI" || code === "KeyM" || code === "KeyC" || (code === "Escape" && (this.inventory.open || this.map || this.character))) {
+      if (code === "KeyI" || code === "KeyM" || code === "KeyP" || (code === "Escape" && (this.inventory.open || this.map || this.character))) {
         if (down && !repeat) {
           // One screen at a time: opening one puts the others away.
           const map = code === "KeyM" && !this.map;
-          const character = code === "KeyC" && !this.character;
+          const character = code === "KeyP" && !this.character;
           const inventory = code === "KeyI" && !this.inventory.open;
           this.map = map;
           this.character = character;

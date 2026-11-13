@@ -166,7 +166,7 @@ test("a hostile client cannot move faster, teleport, or crash the server", () =>
   let closed = false;
   end.onClose = () => (closed = true);
   const w = new BitWriter(256);
-  writeHello(w, PROTOCOL_VERSION, h.reg.hash, "mallory", 0, testKey("mallory"));
+  writeHello(w, PROTOCOL_VERSION, h.reg.hash, h.world.anim.set.hash, "mallory", 0, testKey("mallory"));
   end.send(CH_RELIABLE, w.bytes());
   h.run(200);
   expect(h.server.playerCount).toBe(2);
@@ -228,7 +228,7 @@ test("version and content mismatches are refused with a reason", () => {
     const end = h.net.connect();
     end.onMessage = (_ch, data) => reasons.push(data[0]! >> 4 | (data[1]! << 4) & 0xff);
     const w = new BitWriter(64);
-    writeHello(w, version, hash, "x", 0, testKey("x"));
+    writeHello(w, version, hash, h.world.anim.set.hash, "x", 0, testKey("x"));
     end.send(CH_RELIABLE, w.bytes());
     h.run(100);
     expect(end.open).toBe(false);

@@ -1,5 +1,7 @@
 // The authoritative world: static map, structures, entities and the tick clock.
 
+import { NO_CLIPS } from "../shared/anim/clip.ts";
+import { HumanAnim } from "../shared/anim/pose.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import type { MapDims } from "../shared/coords.ts";
 import { EntityStore } from "../shared/sim/entities.ts";
@@ -9,6 +11,7 @@ import type { Heightfield } from "../shared/world/heightfield.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_SPAWN, PROVING_SPAWNS, provingNodes, buildProvingHeightfield, populateProving, provingMapHash } from "../shared/world/proving.ts";
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
+import { History } from "./history.ts";
 
 export interface ServerWorld extends CollisionWorld {
   readonly reg: Registry;
@@ -23,6 +26,13 @@ export interface ServerWorld extends CollisionWorld {
   readonly spawns: readonly { readonly name: string; readonly x: number; readonly z: number; readonly yaw: number }[];
   /** The map's resource nodes, if it has any. `nodes` (from CollisionWorld) is this field's store. */
   readonly nodeField: NodeField | null;
+  /**
+   * The clips bodies are posed with, which decide where their hit zones are.
+   * They must be the ones the clients draw with; without any, bodies rest in a T-pose.
+   */
+  anim: HumanAnim;
+  /** Where moving entities were over the last few ticks. Whoever starts or stops stepping one tells it. */
+  readonly history: History;
   /** World clock in fixed steps. Persisted; never reset and never set by hand. */
   tick: number;
   /** Added to the tick to get the time of day (shared/sim/clock.ts). This is what `settime` changes. */
@@ -39,6 +49,7 @@ export interface WorldOptions {
 
 export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityCap: number, spawns?: ServerWorld["spawns"], nodeSource?: NodeSource): ServerWorld {
   const nodeField = nodeSource ? new NodeField(dims, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, nodeSource) : null;
+  const ents = new EntityStore(dims, entityCap);
   return {
     reg,
     dims,
@@ -46,7 +57,9 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     nodeField,
     ...(nodeField ? { nodes: nodeField.store } : {}),
     structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ),
-    ents: new EntityStore(dims, entityCap),
+    ents,
+    history: new History(ents),
+    anim: new HumanAnim(NO_CLIPS),
     mapId,
     mapHash,
     spawn,

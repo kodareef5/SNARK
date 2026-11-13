@@ -52,6 +52,7 @@ async function boot(): Promise<void> {
     key: deviceKey(),
     spectate: params.has("spectate"),
     registry: reg,
+    clipHash: pack.clips.hash,
     resolveMap: (id, hash) => (id === PROVING_ID && hash === mapHash ? hf : null),
     nodes: provingNodes,
   });

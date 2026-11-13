@@ -75,6 +75,29 @@ export class Camera {
   }
 
   /**
+   * The direction, from the camera, of the point at screen position (sx, sy)
+   * in 0..1 with y down: a unit vector into out[0..2]. Uses yaw, pitch, fovY
+   * and aspect as they stand; it does not need `update`.
+   */
+  ray(sx: number, sy: number, out: Float32Array | Float64Array | number[]): void {
+    const syaw = Math.sin(this.yaw);
+    const cyaw = Math.cos(this.yaw);
+    const sp = Math.sin(this.pitch);
+    const cp = Math.cos(this.pitch);
+    const t = Math.tan(this.fovY / 2);
+    const rx = (sx * 2 - 1) * t * this.aspect;
+    const ry = (1 - sy * 2) * t;
+    // forward + right * rx + up * ry, with the basis `update` builds.
+    const x = syaw * cp - cyaw * rx - syaw * sp * ry;
+    const y = sp + cp * ry;
+    const z = cyaw * cp + syaw * rx - cyaw * sp * ry;
+    const l = Math.hypot(x, y, z);
+    out[0] = x / l;
+    out[1] = y / l;
+    out[2] = z / l;
+  }
+
+  /**
    * Project a world position to the screen. Fills out[0..1] with x, y in 0..1
    * (y down) and out[2] with distance along the view; false if behind the camera.
    */

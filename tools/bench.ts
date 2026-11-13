@@ -116,7 +116,7 @@ class Bot {
     const w = this.w;
     const key = new Uint8Array(KEY_BYTES);
     for (let i = 0; i < KEY_BYTES; i++) key[i] = this.rng.int(256);
-    writeHello(w, PROTOCOL_VERSION, contentHash, name, 0, key);
+    writeHello(w, PROTOCOL_VERSION, contentHash, 0, name, 0, key);
     this.end.send(CH_RELIABLE, w.bytes());
   }
 

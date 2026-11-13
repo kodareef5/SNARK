@@ -317,6 +317,8 @@ export class GameServer {
         stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[ents.kind[e]!]!, TICK_DT);
         ents.storeBody(e, b);
         ents.yaw[e] = c.heldYaw;
+        ents.pitch[e] = c.heldPitch;
+        ents.pose(e);
         if (stepOut.landSpeed > 0) this.onLand?.(c, stepOut.landSpeed);
       } else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[c.kind]!, TICK_DT);
       c.chunk = chunkAt(world.dims, b.x, b.z);
@@ -327,6 +329,8 @@ export class GameServer {
     for (const c of this.pending) if (T >= c.helloBy) this.reject(c, REJECT_MALFORMED);
 
     this.onStep?.(T);
+    // Everything has moved: this is the world as snapshots of this tick will show it.
+    world.history.record(T);
 
     const snap = T % this.opts.snapshotEvery === 0;
     for (const c of this.clients) {
@@ -473,6 +477,7 @@ export class GameServer {
     }
     const ents = world.ents;
     const e = ents.create(kind, x, y, z, F_PLAYER | F_AWAKE);
+    if (e >= 0) world.history.track(e);
     if (e < 0) return false;
     ents.yaw[e] = yaw;
     c.ent = e;
@@ -491,6 +496,7 @@ export class GameServer {
     const ents = this.world.ents;
     this.onBodyGone?.(c);
     ents.loadBody(c.ent, c.body);
+    this.world.history.untrack(c.ent);
     ents.destroy(c.ent);
     c.ent = -1;
   }
@@ -619,6 +625,7 @@ export class GameServer {
   private hello(c: Client, r: BitReader): boolean {
     const version = r.u16();
     const contentHash = r.u32();
+    const clipHash = r.u32();
     const name = r.string(MAX_NAME_BYTES);
     const flags = r.u8();
     const key = new Uint8Array(KEY_BYTES);
@@ -626,7 +633,8 @@ export class GameServer {
     if (r.overflow) return false;
     const world = this.world;
     if (version !== PROTOCOL_VERSION) return this.refuse(c, REJECT_VERSION);
-    if (contentHash !== world.reg.hash) return this.refuse(c, REJECT_CONTENT);
+    // The same definitions and the same clips: a body must be posed alike on both sides.
+    if (contentHash !== world.reg.hash || clipHash !== world.anim.set.hash) return this.refuse(c, REJECT_CONTENT);
     if (!NAME.test(name)) return this.refuse(c, REJECT_NAME);
     if (this.authorize && !this.authorize(name, key)) return this.refuse(c, REJECT_DENIED);
     // One body per survivor. A second login is refused unless the first
@@ -751,7 +759,7 @@ export class GameServer {
     cur.count = 0;
     for (let k = 0; k < n; k++) {
       const i = ids[k]!;
-      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf);
+      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!);
       cur.look(ents.rev[i]!, ents.level[i]!, ents.colors, i * 6, ents.name[i]!);
     }
 

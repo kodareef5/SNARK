@@ -7,7 +7,8 @@
 //
 // What a swing hits is decided here, by a ray from the body's own eye.
 
-import type { ItemDef, NodeDef, SpeciesDef } from "../shared/content/defs.ts";
+import type { ItemDef, NodeDef } from "../shared/content/defs.ts";
+import { stanceEye } from "../shared/sim/character.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { S_NODES } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
@@ -55,7 +56,6 @@ export class Harvest {
   private readonly deadlines: DeadlineHeap;
   private readonly touched = new Map<number, Touched>();
   private readonly rng: Rng;
-  private readonly eye: number;
   private readonly dir = [0, 0, 0];
   private readonly spot: NodeSpot = { kind: 0, x: 0, y: 0, z: 0, yaw: 0 };
   private readonly per: number;
@@ -71,7 +71,6 @@ export class Harvest {
     this.per = this.field.source.perChunk;
     this.version = new Uint32Array(chunkCount(world.dims));
     this.rng = new Rng(seed);
-    this.eye = (world.reg.defs[world.reg.index.get("core:survivor")!] as SpeciesDef).eyeHeight;
   }
 
   private key(chunk: number, index: number): number {
@@ -102,7 +101,8 @@ export class Harvest {
     const e = c.ent;
     const d = this.dir;
     lookDirection(c.heldYaw, c.heldPitch, d);
-    if (castWorld(this.world, ents.x[e]!, ents.y[e]! + this.eye, ents.z[e]!, d[0]!, d[1]!, d[2]!, REACH) !== HIT_NODE) return -1;
+    const eye = stanceEye(this.world.reg.move[ents.kind[e]!]!, ents.stance[e]!);
+    if (castWorld(this.world, ents.x[e]!, ents.y[e]! + eye, ents.z[e]!, d[0]!, d[1]!, d[2]!, REACH) !== HIT_NODE) return -1;
     return Math.floor(rayHit.ref / 65536) * 256 + (rayHit.ref & 0xffff);
   }
 

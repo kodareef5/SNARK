@@ -5,9 +5,11 @@ import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
 import { NODE_BUFFERS, bodySeed, type OwnBody } from "../../client/core/render/scene.ts";
 import { Viewpoint } from "../../client/core/viewpoint.ts";
 import { Pose } from "../../shared/anim/clip.ts";
-import { B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_LOWER_LEG_R, B_UPPER_CHEST, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_LOWER_LEG_R, B_UPPER_CHEST, HUMAN, HUMAN_BONES, ZONE_COUNT, ZONE_HEAD, ZONE_NAMES } from "../../shared/anim/human.ts";
 import { AnimState, humanPose } from "../../shared/anim/pose.ts";
 import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";
+import { rayBody, zoneOfBone } from "../../shared/anim/zones.ts";
+import { STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { TerrainLod } from "../../client/core/render/terrain.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -205,23 +207,18 @@ test("the hour moves the sun and dims the world at night; noon is what every oth
   expect(dusk.light).toBeLessThan(1);
 });
 
-/** World position of the middle of a bone's hit box, for remote body `i` of the view as the scene will pose it. */
-function boneCentre(view: ReturnType<typeof provingView>, i: number, bone: number): number[] {
+/** World position of the middle of a bone's hit box (raised by `lift` in the bone's space), for remote body `i` of the view as the scene will pose it. */
+function boneCentre(view: ReturnType<typeof provingView>, i: number, bone: number, lift = 0): number[] {
   const r = view.remote;
   const st = new AnimState();
-  st.mode = r.mode[i]!;
-  st.grounded = (r.flags[i]! & 1) !== 0;
-  st.speed = r.speed[i]!;
-  st.dir = r.dir[i]!;
-  st.pitch = r.pitch[i]!;
-  st.stance = r.stance[i]!;
+  st.unpack(r.anim[i]!);
   st.seed = bodySeed(r.id[i]!);
   const pose = new Pose(HUMAN_BONES);
   const solved = new Solved(HUMAN_BONES);
   humanPose(view.scene.characters.anim, st, r.tick, pose);
   solve(HUMAN, pose, solved);
   const m = [0, 0, 0];
-  boneToModel(solved, bone, HUMAN.boxCenter[bone * 3]!, HUMAN.boxCenter[bone * 3 + 1]!, HUMAN.boxCenter[bone * 3 + 2]!, m);
+  boneToModel(solved, bone, HUMAN.boxCenter[bone * 3]!, HUMAN.boxCenter[bone * 3 + 1]! + lift, HUMAN.boxCenter[bone * 3 + 2]!, m);
   const s = Math.sin(r.yaw[i]!);
   const c = Math.cos(r.yaw[i]!);
   return [c * m[0]! + s * m[2]! + r.x[i]!, m[1]! + r.y[i]!, c * m[2]! - s * m[0]! + r.z[i]!];
@@ -248,7 +245,7 @@ test("a body with bones is drawn where its skeleton is, standing and running", (
       expect(raster.pickId[at]).toBe(101);
     }
     // Skin on the head, the species' colour on the chest, through the same palette and regions as anything else.
-    const head = px(boneCentre(view, 0, B_HEAD)) * 4;
+    const head = px(boneCentre(view, 0, B_HEAD, -0.06)) * 4; // below the visor
     expect(Math.abs(raster.color[head]! - raster.color[head + 2]!)).toBeLessThan(25);
     const chest = px(boneCentre(view, 0, B_UPPER_CHEST)) * 4;
     expect(raster.color[chest]!).toBeGreaterThan(raster.color[chest + 1]! * 1.8);
@@ -262,7 +259,9 @@ test("a body with bones is drawn where its skeleton is, standing and running", (
   seen();
   const idleHand = boneCentre(view, 0, B_HAND_L);
   // Running, eleven ticks on: every part has moved and is still drawn where the skeleton has it.
-  remote.speed[0] = 7;
+  const running = new AnimState();
+  running.speed = 7;
+  remote.anim[0] = running.pack();
   remote.tick = 11;
   seen();
   const runHand = boneCentre(view, 0, B_HAND_L);
@@ -346,4 +345,87 @@ test("the third-person camera is pulled in by whatever is behind the body, and f
   vp.thirdPerson = false;
   vp.place(cam, w, 64, 1.62, 64, 0.5, 0.2);
   expect([cam.x, cam.y, cam.z, cam.yaw, cam.pitch]).toEqual([64, 1.62, 64, 0.5, 0.2]);
+});
+
+test("what is drawn of a body is what a ray hits: zone by zone, in every pose, from every side", () => {
+  const SIZE = 128;
+  const view = provingView(SIZE, SIZE);
+  const { raster, remote, cam } = view;
+  const anim = view.scene.characters.anim;
+  remote.count = 1;
+  const id = remote.id[0]!;
+  const bx = remote.x[0]!;
+  const by = remote.y[0]!;
+  const bz = remote.z[0]!;
+  // drawn[z] counts pixels showing zone z; agreed[z] those where a ray through the pixel finds zone z too.
+  const drawn = new Uint32Array(ZONE_COUNT);
+  const agreed = new Uint32Array(ZONE_COUNT);
+  let phantom = 0;
+  let empty = 0;
+  const st = new AnimState();
+  const dir = [0, 0, 0];
+  const states: readonly (readonly [speed: number, dirTo: number, pitch: number, mode: number, stance: number, grounded: boolean])[] = [
+    [0, 0, 0, 1, 0, true], [7, 0, 0, 1, 0, true], [12, 0, 10, 1, 0, true], [7, 5, -12, 1, 0, true], [7, 8, 0, 1, 0, true],
+    [0, 0, 0, 1, 0, false], [2, 0, 0, 1, STANCE_CROUCH, true], [1, 0, 8, 1, STANCE_PRONE, true], [4, 0, 14, 2, 0, false],
+  ];
+  let shot = 0;
+  for (const [speed, dirTo, pitch, mode, stance, grounded] of states) {
+    st.speed = speed;
+    st.dir = dirTo;
+    st.pitch = pitch;
+    st.mode = mode;
+    st.stance = stance;
+    st.grounded = grounded;
+    remote.anim[0] = st.pack();
+    remote.flags[0] = grounded ? 1 : 0;
+    st.seed = bodySeed(id);
+    // From the front, a side, behind and above; a different moment and facing each time.
+    for (const [around, up] of [[0, 0.1], [1.4, 0.2], [3.3, 0.05], [4.6, 0.9], [0.7, -0.25]] as const) {
+      const tick = shot * 7.3;
+      const yawUnits = (shot * 9973) & 0xffc0; // a facing the 10-bit wire yaw can carry exactly
+      shot++;
+      remote.tick = tick;
+      remote.yaw[0] = (yawUnits / 65536) * Math.PI * 2;
+      const reach = 4;
+      cam.x = bx + Math.sin(around) * Math.cos(up) * reach;
+      cam.z = bz + Math.cos(around) * Math.cos(up) * reach;
+      cam.y = by + 0.9 + Math.sin(up) * reach;
+      cam.yaw = around + Math.PI;
+      cam.pitch = -up;
+      cam.fovY = 0.7;
+      cam.aspect = 1;
+      view.render();
+      for (let py = 0; py < SIZE; py++) {
+        for (let px = 0; px < SIZE; px++) {
+          const at = py * SIZE + px;
+          const isBody = raster.pickKind[at] === PICK_ENTITY && raster.pickId[at] === id;
+          cam.ray((px + 0.5) / SIZE, (py + 0.5) / SIZE, dir);
+          const hit = rayBody(anim, st, tick, bx, by, bz, yawUnits, cam.x, cam.y, cam.z, dir[0]!, dir[1]!, dir[2]!, 50);
+          if (!isBody) {
+            // Nothing of the body is drawn here. A hit would be a shot landing on thin air, unless something else is in front.
+            if (hit !== 0 && raster.pickKind[at] !== PICK_STRUCTURE) phantom++;
+            else empty++;
+            continue;
+          }
+          const zone = zoneOfBone(raster.pickBone[at]! - 1);
+          drawn[zone]!++;
+          if (hit === zone) agreed[zone]!++;
+        }
+      }
+    }
+  }
+  let all = 0;
+  let allAgreed = 0;
+  for (let z = 1; z < ZONE_COUNT; z++) {
+    all += drawn[z]!;
+    allAgreed += agreed[z]!;
+    // Every zone was seen, and a ray through its pixels finds it.
+    expect(drawn[z]!).toBeGreaterThan(150);
+    if (agreed[z]! / drawn[z]! < 0.99) throw new Error(`${ZONE_NAMES[z]}: only ${agreed[z]} of ${drawn[z]} drawn pixels are hit`);
+  }
+  expect(agreed[ZONE_HEAD]! / drawn[ZONE_HEAD]!).toBeGreaterThan(0.995);
+  expect(allAgreed / all).toBeGreaterThan(0.995);
+  // And the other way: almost no pixel that shows no body is a hit (edges of boxes, by a fraction of a pixel).
+  expect(phantom / all).toBeLessThan(0.01);
+  expect(empty).toBeGreaterThan(all);
 });

@@ -4,7 +4,8 @@ import {
   B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_LEG_L, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_ARM_L, B_UPPER_ARM_R,
   HUMAN, HUMAN_BONES, SOCKET_EYE, ZONE_ARM_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_TORSO,
 } from "../../shared/anim/human.ts";
-import { AnimState, HumanAnim, STANCE_CROUCH, humanPose } from "../../shared/anim/pose.ts";
+import { AnimState, HumanAnim, humanPose } from "../../shared/anim/pose.ts";
+import { STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
 import { Solved, boneToModel, rayZones, solve, zoneHit } from "../../shared/anim/skeleton.ts";
 import { quatAxis, quatMul, quatMulConj, quatNlerp, quatRotate, quatUnrotate } from "../../shared/math/quat.ts";
 import { coreAnim } from "../fixtures/pack.ts";
@@ -169,7 +170,7 @@ test("moving sideways turns the hips toward the way it goes and leaves the head 
   for (let k = 0; k < back.pos.length; k++) expect(back.pos[k]!).toBeCloseTo(fore.pos[k]!, 5);
 });
 
-test("looking up tips the head back, crouching lowers it, swimming lays the body flat", () => {
+test("looking up tips the head back, crouching lowers it, lying prone and swimming lay the body flat", () => {
   const st = new AnimState();
   const v = new Float64Array(3);
   const facing = (s: Solved): number[] => {
@@ -188,6 +189,20 @@ test("looking up tips the head back, crouching lowers it, swimming lays the body
   const low = new AnimState();
   low.stance = STANCE_CROUCH;
   expect(y(solved(low, 0), B_HEAD)).toBeLessThan(y(stand, B_HEAD) - 0.3);
+  // Prone: everything within half a metre of the ground, head forward of the feet, face level and looking ahead.
+  low.stance = STANCE_PRONE;
+  for (const speed of [0, 1]) {
+    low.speed = speed;
+    for (const tick of [0, 10, 20, 30]) {
+      const flat = solved(low, tick);
+      for (let b = 0; b < HUMAN_BONES; b++) {
+        expect(y(flat, b)).toBeLessThan(0.55);
+        expect(y(flat, b)).toBeGreaterThan(-0.02);
+      }
+      expect(z(flat, B_HEAD) - z(flat, B_FOOT_L)).toBeGreaterThan(1.1);
+      expect(facing(flat)[2]!).toBeGreaterThan(0.9);
+    }
+  }
 
   const swim = new AnimState();
   swim.mode = 2;
@@ -264,4 +279,37 @@ test("sampling a clip between frames and blending poses stay on the short way ro
   expect([...a.rot.slice(0, B_SHOULDER_L * 4)]).toEqual(before);
   expect([...a.root]).toEqual(root);
   expect(a.rot[B_UPPER_ARM_L * 4]).not.toBe(b.rot[B_UPPER_ARM_L * 4]!);
+});
+
+test("a pose state survives packing into the 31 bits that are replicated", () => {
+  const a = new AnimState();
+  const b = new AnimState();
+  for (const [mode, grounded, stance, speed, dir, pitch, action, start] of [[1, true, 0, 0, 0, 0, 0, 0], [2, false, 0, 15, 15, -31, 31, 255], [1, false, 2, 7, 9, 31, 5, 128], [1, true, 1, 3, 4, -1, 0, 7]] as const) {
+    a.mode = mode;
+    a.grounded = grounded;
+    a.stance = stance;
+    a.speed = speed;
+    a.dir = dir;
+    a.pitch = pitch;
+    a.action = action;
+    a.actionStart = start;
+    const word = a.pack();
+    expect(word).toBeLessThan(2 ** 31);
+    expect(word).toBeGreaterThanOrEqual(0);
+    b.unpack(word);
+    expect([b.mode, b.grounded, b.stance, b.speed, b.dir, b.pitch, b.action, b.actionStart]).toEqual([mode, grounded, stance, speed, dir, pitch, action, start]);
+  }
+  // A body at rest on the ground, looking level, doing nothing, is the number zero.
+  expect(new AnimState().pack()).toBe(0);
+  // Motion is read off a velocity and a facing: forward, to its left, backward, and its look.
+  a.setMotion(0, 4.2, 0, 0.5);
+  expect([a.speed, a.dir, a.pitch]).toEqual([7, 0, 10]);
+  a.setMotion(4.2, 0, 0, 0);
+  expect([a.speed, a.dir]).toEqual([7, 4]);
+  a.setMotion(0, -7.2, 0, -Math.PI / 2);
+  expect([a.speed, a.dir, a.pitch]).toEqual([12, 8, -31]);
+  a.setMotion(-3, 0, Math.PI / 2, 0); // facing +X, moving -X: backward
+  expect(a.dir).toBe(8);
+  a.setMotion(0.1, 0.1, 0, 0);
+  expect([a.speed, a.dir]).toEqual([0, 0]);
 });

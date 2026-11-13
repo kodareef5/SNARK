@@ -36,4 +36,6 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
     if (document.pointerLockElement === canvas) app.mouseButton(e.button, true);
   });
   addEventListener("mouseup", (e) => app.mouseButton(e.button, false));
+  // The right button is the secondary action, not a menu.
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 }

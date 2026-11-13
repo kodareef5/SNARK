@@ -24,6 +24,13 @@ export interface SpeciesDef {
   readonly walkSpeed: number;
   readonly sprintMul: number;
   readonly jumpSpeed: number;
+  /**
+   * Crouching and lying prone: capsule height, eye height, and share of the walk
+   * speed. Default to two thirds and (as low as the radius allows) of the height,
+   * with half and a fifth of the speed.
+   */
+  readonly crouch?: { readonly height: number; readonly eye: number; readonly speed: number };
+  readonly prone?: { readonly height: number; readonly eye: number; readonly speed: number };
   /** Metres per second in water. Defaults to 60% of the walk speed. */
   readonly swimSpeed?: number;
   /** Stamina points: per second of sprinting, per second of rest, per jump. Defaults to 5, 8 and 6. */

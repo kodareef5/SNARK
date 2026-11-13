@@ -11,11 +11,12 @@ import { Pose } from "../../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { HumanAnim, humanPose, type AnimState } from "../../../shared/anim/pose.ts";
 import { Solved, solve } from "../../../shared/anim/skeleton.ts";
+import { BODY_REACH } from "../../../shared/anim/zones.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 
-/** A body is not drawn when its origin is farther than this outside the view; it covers an outstretched arm. */
-export const BODY_RADIUS = 1.3;
+/** A body is not drawn when its origin is farther than this outside the view: no pose reaches farther from where it stands. */
+export const BODY_RADIUS = BODY_REACH;
 
 interface BodyKind {
   /** Pack mesh per body slot, -1 where there is none. */

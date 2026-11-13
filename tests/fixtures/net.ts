@@ -10,6 +10,7 @@ import { LoopbackNet, type LinkOptions, type LoopbackEnd } from "../../shared/ne
 import { hashString } from "../../shared/hash.ts";
 import { KEY_BYTES } from "../../shared/net/protocol.ts";
 import { buildProvingHeightfield, provingNodes } from "../../shared/world/proving.ts";
+import { corePack } from "./pack.ts";
 import { coreRegistry } from "./world.ts";
 
 export interface Pilot {
@@ -60,7 +61,8 @@ export class Harness {
 
   constructor(opts: Partial<GameOptions> = {}, seed = 1, clientFps = 60, host: HostOptions = {}, reg: Registry = coreRegistry()) {
     this.reg = reg;
-    this.host = createHost(reg, { ...host, game: opts });
+    // Posed with the clips of the real pack, as a server started from the built client is.
+    this.host = createHost(reg, { clips: corePack().clips, ...host, game: opts });
     this.world = this.host.world;
     this.server = this.host.game;
     this.net = new LoopbackNet(seed);
@@ -75,6 +77,7 @@ export class Harness {
       key: opts.key ?? testKey(name),
       spectate: opts.spectate ?? false,
       registry: this.reg,
+      clipHash: this.world.anim.set.hash,
       resolveMap: (_id, hash) => (hash === this.world.mapHash ? this.hf : null),
       nodes: (hf, reg) => (this.world.nodeField ? provingNodes(hf, reg) : null),
     });
