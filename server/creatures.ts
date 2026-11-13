@@ -138,6 +138,8 @@ export class Creatures {
     let stepped = 0;
     for (let n = this.awakeCount - 1; n >= 0; n--) {
       const e = this.awake[n]!;
+      // A session's inputs are driving it: it is stepped with that session's body, not here.
+      if (ents.driven[e] !== 0) continue;
       if (this.still[ents.kind[e]!]) {
         // It stands; it only falls, if it was put down in the air.
         if ((ents.flags[e]! & F_GROUNDED) !== 0) continue;

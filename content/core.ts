@@ -188,25 +188,26 @@ export const CORE_CONTENT: readonly Def[] = [
     stats: { health: [100000, 0, 0], torpidity: [200, 0, 0] },
     torporDrain: 4,
   },
-  // What things are built of, and what each kind of damage does to it. Thatch gives to anything; wood to
-  // fire and blasts; stone to blasts alone; metal to blasts, grudgingly.
-  { type: "material", id: "core:mat_thatch", takes: { melee: 1, pierce: 0.5, bullet: 0.5, fire: 4, explosive: 2 } },
-  { type: "material", id: "core:mat_wood", takes: { fire: 3, explosive: 1.5 } },
-  { type: "material", id: "core:mat_stone", takes: { explosive: 1 } },
-  { type: "material", id: "core:mat_metal", takes: { explosive: 0.35 } },
+  // What things are built of, and what each kind of damage does to it, as the reference has it. The tiers
+  // differ in what can harm them, not in health. Thatch gives to anything but an arrow or a round; wood to
+  // fire and blasts; stone to blasts, which do more to it than to wood; metal to blasts, grudgingly.
+  { type: "material", id: "core:mat_thatch", takes: { melee: 1, fire: 4, explosive: 1 } },
+  { type: "material", id: "core:mat_wood", takes: { fire: 3, explosive: 1 } },
+  { type: "material", id: "core:mat_stone", takes: { explosive: 2.3325 } },
+  { type: "material", id: "core:mat_metal", takes: { explosive: 0.3008 } },
   { type: "structure", id: "core:block", mesh: "box", color: 2, half: [1, 1, 1], hp: 1000, material: "core:mat_stone" },
   { type: "structure", id: "core:crate", mesh: "box", color: 3, half: [0.5, 0.5, 0.5], hp: 200, material: "core:mat_wood" },
-  { type: "structure", id: "core:foundation", mesh: "box", color: 4, half: [1.5, 0.15, 1.5], hp: 2000, material: "core:mat_stone" },
-  { type: "structure", id: "core:wall", mesh: "box", color: 5, half: [1.5, 1.5, 0.1], hp: 1500, material: "core:mat_stone" },
-  { type: "structure", id: "core:ceiling", mesh: "box", color: 4, half: [1.5, 0.1, 1.5], hp: 1500, material: "core:mat_stone" },
-  { type: "structure", id: "core:pillar", mesh: "box", color: 6, half: [0.25, 3, 0.25], hp: 800, material: "core:mat_stone" },
+  { type: "structure", id: "core:foundation", mesh: "box", color: 4, half: [1.5, 0.15, 1.5], hp: 15000, material: "core:mat_stone" },
+  { type: "structure", id: "core:wall", mesh: "box", color: 5, half: [1.5, 1.5, 0.1], hp: 10000, material: "core:mat_stone" },
+  { type: "structure", id: "core:ceiling", mesh: "box", color: 4, half: [1.5, 0.1, 1.5], hp: 10000, material: "core:mat_stone" },
+  { type: "structure", id: "core:pillar", mesh: "box", color: 6, half: [0.25, 3, 0.25], hp: 6250, material: "core:mat_stone" },
   { type: "structure", id: "core:step", mesh: "box", color: 7, half: [1, 0.15, 0.5], hp: 400, material: "core:mat_wood" },
   // The floor of the plaza is the map's own: nothing harms it.
   { type: "structure", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
   // Walls of the lesser materials, and of the greater.
-  { type: "structure", id: "core:wall_thatch", mesh: "box", color: 18, half: [1.5, 1.5, 0.1], hp: 250, material: "core:mat_thatch" },
-  { type: "structure", id: "core:wall_wood", mesh: "box", color: 3, half: [1.5, 1.5, 0.1], hp: 1000, material: "core:mat_wood" },
-  { type: "structure", id: "core:wall_metal", mesh: "box", color: 11, half: [1.5, 1.5, 0.1], hp: 3000, material: "core:mat_metal" },
+  { type: "structure", id: "core:wall_thatch", mesh: "box", color: 18, half: [1.5, 1.5, 0.1], hp: 1600, material: "core:mat_thatch" },
+  { type: "structure", id: "core:wall_wood", mesh: "box", color: 3, half: [1.5, 1.5, 0.1], hp: 10000, material: "core:mat_wood" },
+  { type: "structure", id: "core:wall_metal", mesh: "box", color: 11, half: [1.5, 1.5, 0.1], hp: 10000, material: "core:mat_metal" },
   // A grenade between the hand and the bang.
   { type: "prop", id: "core:grenade_live", mesh: "core:grenade_thrown", color: 7, radius: 0.08, height: 0.12 },
   // What a survivor leaves where it dies: everything it carried.

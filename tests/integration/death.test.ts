@@ -43,9 +43,9 @@ const caches = (h: Harness): EntityRecord[] => [...h.host.records.byPid.values()
 const move = (s: ClientSession, fromBox: number, from: number, toBox: number, to: number, item: number): number =>
   s.command(CMD_MOVE, (w: BitWriter) => {
     w.bits(fromBox, 1);
-    w.u8(from);
+    w.varint(from);
     w.bits(toBox, 1);
-    w.u8(to);
+    w.varint(to);
     w.u16(0);
     w.u16(item);
   });
@@ -103,7 +103,7 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
   s.onResult = (_seq, code) => codes.push(code);
   const food = sv.value(rec, V_FOOD);
   pilot.moveZ = 1;
-  s.command(CMD_USE, (w) => (w.u8(0), w.u16(id("core:berry"))));
+  s.command(CMD_USE, (w) => (w.varint(0), w.u16(id("core:berry"))));
   s.command(CMD_RESPAWN, (w) => w.u8(9)); // no such place
   h.run(3000);
   pilot.moveZ = 0;
@@ -183,9 +183,9 @@ test("use opens only what the body can see and reach, and walking away closes it
   // Take ten, then use again: it closes.
   s.command(CMD_MOVE, (w) => {
     w.bits(BOX_OPEN, 1);
-    w.u8(0);
+    w.varint(0);
     w.bits(BOX_SELF, 1);
-    w.u8(3);
+    w.varint(3);
     w.u16(10);
     w.u16(stone);
   });

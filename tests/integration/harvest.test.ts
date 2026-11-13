@@ -132,7 +132,7 @@ test("a pick gets three times the stone and flint besides, wears with each hit, 
   s.onResult = (_seq, code) => codes.push(code);
   const repair = (): number => {
     codes.length = 0;
-    s.command(CMD_REPAIR, (w) => w.u8(slot));
+    s.command(CMD_REPAIR, (w) => w.varint(slot));
     h.run(200);
     return codes[0]!;
   };

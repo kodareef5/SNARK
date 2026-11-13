@@ -1,4 +1,4 @@
-// Wire protocol, version 3. Message layouts live here and nowhere else.
+// Wire protocol, version 4. Message layouts live here and nowhere else.
 //
 // Every message starts with a 4-bit type. Channels are fixed per type:
 //
@@ -39,7 +39,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -116,6 +116,18 @@ export const CMD_UNLOAD = 14;
 export const CMD_REPAIR = 15;
 /** Drop from a slot of your own onto the ground: slot u8, count u16 (0 = the whole stack), expected item u16. */
 export const CMD_DROP = 16;
+/**
+ * Round 4's commands, numbered here once so that nothing is renumbered as its parts arrive:
+ * 17 chat, 18 place a structure, 19 act on a structure, 20 order a creature, 21 name one,
+ * 22 feed one, 23 open one. Each is defined beside the part that handles it.
+ */
+export const CMD_CHAT = 17;
+export const CMD_PLACE = 18;
+export const CMD_STRUCT = 19;
+export const CMD_ORDER = 20;
+export const CMD_NAME = 21;
+export const CMD_FEED = 22;
+export const CMD_OPEN = 23;
 
 /** Boxes a slot command can address. Nothing else can be named: no ids travel. */
 export const BOX_SELF = 0;
@@ -169,6 +181,10 @@ export const OWN_HELD = 9;
 export const OWN_BUFFS = 10;
 /** The server's rules that a client acts on: flags u8 (bit 0: the damage of hits may be shown as numbers). */
 export const OWN_RULES = 11;
+/** Reserved for round 4, in the same way: the tribe, the voice socket's token and rights, and the creature opened or ridden. */
+export const OWN_TRIBE = 12;
+export const OWN_VOICE = 13;
+export const OWN_SUBJECT = 14;
 
 export const MARKER_DEATH = 1;
 
@@ -263,7 +279,7 @@ export class InputBuffer {
   }
 }
 
-/** 312 bits: position and velocity exactly, then the rest of the predicted state. */
+/** 344 bits: position and velocity exactly, then the rest of the predicted state. */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);
   w.f32(b.y);
@@ -279,6 +295,8 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.bits(b.speedQ, 12);
   w.bits(b.swimQ, 12);
   w.bits(b.mflags, 5);
+  w.u16(b.kind);
+  w.u16(b.yaw);
   w.u16(b.held);
   w.bits(b.act, 3);
   w.u8(b.actTicks);
@@ -301,6 +319,8 @@ export function readBody(r: BitReader, b: Body): void {
   b.speedQ = r.bits(12);
   b.swimQ = r.bits(12);
   b.mflags = r.bits(5);
+  b.kind = r.u16();
+  b.yaw = r.u16();
   b.held = r.u16();
   b.act = r.bits(3);
   b.actTicks = r.u8();

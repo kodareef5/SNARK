@@ -111,6 +111,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       positive(d, "sprintMul", d.sprintMul, 4);
       positive(d, "jumpSpeed", d.jumpSpeed, 30);
       if (d.swimSpeed !== undefined) positive(d, "swimSpeed", d.swimSpeed, 40);
+      if (d.turn !== undefined) positive(d, "turn", d.turn, 3600);
       if (d.skeleton !== undefined && d.skeleton !== "human") errors.push(`${d.id}: unknown skeleton "${d.skeleton}"`);
       if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
       if (d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
@@ -377,6 +378,9 @@ function moveParams(d: SpeciesDef): MoveParams {
     staminaSprint: Math.round(((d.stamina?.sprint ?? 5) * STAMINA_UNITS) / TICK_RATE),
     staminaRegen: Math.round(((d.stamina?.regen ?? 8) * STAMINA_UNITS) / TICK_RATE),
     staminaJump: Math.round((d.stamina?.jump ?? 6) * STAMINA_UNITS),
+    // Whole units per tick, so both sides turn the same.
+    turnRate: d.turn === undefined ? 0 : Math.max(1, Math.round(((d.turn / 360) * 65536) / TICK_RATE)),
+    strafe: d.strafe !== false,
   };
 }
 

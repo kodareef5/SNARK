@@ -87,7 +87,7 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   h.run(20000); // some time passes; it is a little hungry
   const hungry = h.host.survival.value(rec(), V_FOOD);
   expect(hungry).toBeLessThan(100);
-  say((c) => c.command(CMD_USE, (w) => (w.u8(c.inventory!.item.indexOf(id("core:berry"))), w.u16(id("core:berry")))));
+  say((c) => c.command(CMD_USE, (w) => (w.varint(c.inventory!.item.indexOf(id("core:berry"))), w.u16(id("core:berry")))));
   expect(have("core:berry")).toBe(berries - 1);
   expect(h.host.survival.value(rec(), V_FOOD)).toBeGreaterThan(hungry);
 
@@ -142,9 +142,9 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
     if (item === 0) continue;
     s.command(CMD_MOVE, (w) => {
       w.bits(BOX_OPEN, 1);
-      w.u8(i);
+      w.varint(i);
       w.bits(BOX_SELF, 1);
-      w.u8(i);
+      w.varint(i);
       w.u16(0);
       w.u16(item);
     });

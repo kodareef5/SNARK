@@ -131,9 +131,9 @@ class Bot {
     w.reset();
     writeCommand(w, (this.seq = (this.seq + 1) & 0xffff), CMD_MOVE);
     w.bits(BOX_SELF, 1);
-    w.u8(from);
+    w.varint(from);
     w.bits(BOX_SELF, 1);
-    w.u8(to);
+    w.varint(to);
     w.u16(0);
     w.u16(item);
     this.end.send(CH_RELIABLE, w.bytes());

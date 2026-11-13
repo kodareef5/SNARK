@@ -124,8 +124,8 @@ test("what a thing is built of decides what harms it: fists and a hatchet bring 
   // Bare hands: thatch gives, wood and stone do not.
   face(-6);
   swing(h, pilot);
-  expect(hp(thatch)).toBe(250 - 8);
-  expect([combat.structureHits, combat.lastStructure.damage, combat.lastStructure.left]).toEqual([1, 8, 242]);
+  expect(hp(thatch)).toBe(1600 - 8);
+  expect([combat.structureHits, combat.lastStructure.damage, combat.lastStructure.left]).toEqual([1, 8, 1592]);
   // The one who struck is told, as for a body: where, and how much.
   const told = s.events.filter((ev) => ev.kind === EVENT_HIT);
   expect(told.map((ev) => [ev.zone, ev.damage, ev.kill])).toEqual([[ZONE_NONE, 8, false]]);
@@ -133,7 +133,7 @@ test("what a thing is built of decides what harms it: fists and a hatchet bring 
   swing(h, pilot);
   face(6);
   swing(h, pilot);
-  expect([hp(wood), hp(stone), combat.structureHits]).toEqual([1000, 1500, 1]);
+  expect([hp(wood), hp(stone), combat.structureHits]).toEqual([10000, 10000, 1]);
   // A stone hatchet: nothing to wood or stone, and no wear for a blow that did nothing; its twenty to thatch, and worn by it.
   const slot = arm("tools", "hatchet", 700);
   const inv = h.host.items.inv(rec);
@@ -141,13 +141,14 @@ test("what a thing is built of decides what harms it: fists and a hatchet bring 
   swing(h, pilot);
   face(6);
   swing(h, pilot);
-  expect([hp(wood), hp(stone), inv.dur[slot]]).toEqual([1000, 1500, 60]);
+  expect([hp(wood), hp(stone), inv.dur[slot]]).toEqual([10000, 10000, 60]);
   face(-6);
   swing(h, pilot);
-  expect(hp(thatch)).toBe(242 - 20);
+  expect(hp(thatch)).toBe(1592 - 20);
   expect(inv.dur[slot]).toBe(59);
-  // Blow after blow it comes down, and is gone from the world.
-  for (let n = 0; n < 12; n++) swing(h, pilot);
+  // Worn nearly through already, two more blows bring it down, and it is gone from the world.
+  h.world.structs.damage(thatch, 1572 - 30);
+  for (let n = 0; n < 2; n++) swing(h, pilot);
   expect(hp(thatch)).toBe(0);
   expect(combat.lastStructure.left).toBe(0);
   expect(h.host.items.audit()).toEqual([]);
@@ -169,8 +170,10 @@ test("a flame arrow burns a wooden wall; a stone arrow does nothing to it and st
     aimAt(1.2 + n * 0.2);
     loose(h, pilot);
   }
-  expect([hp(wood), combat.structureHits]).toEqual([1000, 0]);
+  expect([hp(wood), combat.structureHits]).toEqual([10000, 0]);
   expect(shots.stuckCount).toBeGreaterThanOrEqual(1);
+  // A wooden wall has ten thousand health, sixty flame arrows' worth. This one has been burning a while: a thousand left.
+  structs.damage(wood, 9000);
   // Flame arrows: fifty-five of fire, three times over on wood.
   h.host.items.load(rec, slot, id("arrow_flame"), 1);
   h.run(900);
@@ -200,7 +203,7 @@ test("a flame arrow burns a wooden wall; a stone arrow does nothing to it and st
   expect(h.host.items.audit()).toEqual([]);
 });
 
-test("a grenade is thrown in an arc, bounces, lies, and goes off after five seconds: stone takes it, metal a third of it, bodies by how near and what is between", () => {
+test("a grenade is thrown in an arc, bounces, lies, and goes off after five seconds: stone takes it hard, metal barely, bodies by how near and what is between", () => {
   const { h, s, pilot, rec, at, hp, structs } = range(46);
   const shots = h.host.projectiles;
   const survival = h.host.survival;
@@ -278,10 +281,10 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   expect([hp(stone), hp(metal), health(near)]).toEqual([1500, 3000, full]);
   h.run(1400);
   expect(shots.bursts).toBe(2);
-  // The walls: each is 2.4 m off at its nearest, which is 65% of the blast. Stone takes all of that; metal about a third.
+  // The walls: each is 2.4 m off at its nearest, which is 65% of the blast. A blast does more than twice as much to stone as to wood, and under a third as much to metal.
   const fade = (d: number): number => (d <= 1 ? 1 : 1 - (d - 1) / 4);
-  expect(1500 - hp(stone)).toBeCloseTo(788 * fade(2.4), 0);
-  expect(3000 - hp(metal)).toBeCloseTo(788 * 0.35 * fade(2.4), 0);
+  expect(1500 - hp(stone)).toBeCloseTo(788 * 2.3325 * fade(2.4), 0);
+  expect(3000 - hp(metal)).toBeCloseTo(788 * 0.3008 * fade(2.4), 0);
   // The bodies in the open: the nearer the worse; flak (five pieces of 100, each counted once: a sixth gets through) keeps most of it out and is worn all over.
   const lostNear = full - health(near);
   const lostFar = full - health(far);
@@ -299,11 +302,9 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   expect(health(hidden)).toBe(full);
   // The thrower, far off, is told what it did: a number for each thing it hurt.
   expect(s.events.filter((ev) => ev.kind === EVENT_HIT).length).toBe(5);
-  // Two more bring the stone wall down.
-  for (let n = 0; n < 2; n++) {
-    lob();
-    h.run(5600);
-  }
+  // One more brings what is left of the stone wall down.
+  lob();
+  h.run(5600);
   expect(hp(stone)).toBe(0);
   // Dropped at her own feet, it kills the one who threw it like anyone, and she has no credit for it.
   const xp = rec.xp;
@@ -335,7 +336,7 @@ test("damage to something built is saved with it, and a client is shown a blast"
   run(200);
   // The console stands a wall three metres ahead, facing the caller.
   say("place wall_wood");
-  expect(app.session.log.at(-1)!.text).toBe("placed core:wall_wood (1000 health)");
+  expect(app.session.log.at(-1)!.text).toBe("placed core:wall_wood (10000 health)");
   say("place nothing");
   expect(app.session.log.at(-1)!.text).toBe('no structure "nothing"');
   const structs = h.world.structs;
@@ -344,19 +345,19 @@ test("damage to something built is saved with it, and a client is shown a blast"
   expect(rayHit.t).toBeCloseTo(2.9, 1);
   const chunk = Math.floor(ref / 65536);
   const version = structs.chunks[chunk]!.version;
-  expect(structs.damage(ref, 100)).toBe(900);
+  expect(structs.damage(ref, 100)).toBe(9900);
   // Its health is part of the chunk: the chunk changed, so it is sent and saved again.
   expect(structs.chunks[chunk]!.version).toBe(version + 1);
-  expect(structs.damage(ref, 0)).toBe(900);
+  expect(structs.damage(ref, 0)).toBe(9900);
   expect(structs.damage(999999999, 5)).toBe(-1);
   run(300);
-  expect(app.session.world!.structs.chunks[chunk]!.hp[ref & 0xffff]).toBe(900);
+  expect(app.session.world!.structs.chunks[chunk]!.hp[ref & 0xffff]).toBe(9900);
   // A grenade at her feet, looking down: the flash is drawn while it lasts.
   say("god");
   say("kit grenades");
   const s = app.session;
   const inv = s.inventory!;
-  s.command(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.u8(inv.item.indexOf(id("grenade"))), w.bits(BOX_SELF, 1), w.u8(inv.hotbar), w.u16(0), w.u16(id("grenade"))));
+  s.command(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.varint(inv.item.indexOf(id("grenade"))), w.bits(BOX_SELF, 1), w.varint(inv.hotbar), w.u16(0), w.u16(id("grenade"))));
   run(150);
   s.command(CMD_SELECT, (w) => w.u8(0));
   run(700);
@@ -378,5 +379,5 @@ test("damage to something built is saved with it, and a client is shown a blast"
   expect(app.shots.blasts.length).toBe(0);
   expect(meshes()).not.toContain("core:blast");
   // The wall in front of her took it; she, a god, did not.
-  expect(structs.chunks[chunk]!.kind[ref & 0xffff] === 0 || structs.chunks[chunk]!.hp[ref & 0xffff]! < 900).toBe(true);
+  expect(structs.chunks[chunk]!.kind[ref & 0xffff] === 0 || structs.chunks[chunk]!.hp[ref & 0xffff]! < 9900).toBe(true);
 });

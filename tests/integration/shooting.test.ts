@@ -541,7 +541,7 @@ test("the client shows shots: its own arrow at once, another's when told, the li
     const inv = s.inventory!;
     const from = inv.item.indexOf(item);
     const to = inv.hotbar + hotbar;
-    if (from !== to) s.command(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.u8(from), w.bits(BOX_SELF, 1), w.u8(to), w.u16(0), w.u16(item)));
+    if (from !== to) s.command(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.varint(from), w.bits(BOX_SELF, 1), w.varint(to), w.u16(0), w.u16(item)));
     run(150);
     s.command(CMD_SELECT, (w) => w.u8(hotbar));
     run(150);

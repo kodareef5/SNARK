@@ -22,13 +22,13 @@ function setup(link = {}) {
 const move = (s: ClientSession, from: number, to: number, count: number, expectItem: number, fromBox = BOX_SELF, toBox = BOX_SELF): number =>
   s.command(CMD_MOVE, (w: BitWriter) => {
     w.bits(fromBox, 1);
-    w.u8(from);
+    w.varint(from);
     w.bits(toBox, 1);
-    w.u8(to);
+    w.varint(to);
     w.u16(count);
     w.u16(expectItem);
   });
-const use = (s: ClientSession, slot: number, expectItem: number): number => s.command(CMD_USE, (w: BitWriter) => (w.u8(slot), w.u16(expectItem)));
+const use = (s: ClientSession, slot: number, expectItem: number): number => s.command(CMD_USE, (w: BitWriter) => (w.varint(slot), w.u16(expectItem)));
 
 function same(a: Inventory, b: Inventory): boolean {
   if (a.cap !== b.cap) return false;

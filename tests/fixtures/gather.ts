@@ -70,9 +70,9 @@ export function takeInHand(h: Harness, s: ClientSession, item: number, hotbar = 
   if (from !== to) {
     s.command(CMD_MOVE, (w) => {
       w.bits(BOX_SELF, 1);
-      w.u8(from);
+      w.varint(from);
       w.bits(BOX_SELF, 1);
-      w.u8(to);
+      w.varint(to);
       w.u16(0);
       w.u16(item);
     });

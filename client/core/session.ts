@@ -119,6 +119,11 @@ export class RemoteSample {
   readonly hasLook = new Uint8Array(MAX_VIEW);
   /** What each holds and wears: GEAR_COUNT content indices each, zeros for nothing. */
   readonly gear = new Uint16Array(MAX_VIEW * GEAR_COUNT);
+  /** Each 0 for none: the team that owns it; the entity it sits on, plus one; the ticks it was born and will be grown. */
+  readonly team = new Uint32Array(MAX_VIEW);
+  readonly seat = new Uint32Array(MAX_VIEW);
+  readonly born = new Uint32Array(MAX_VIEW);
+  readonly grown = new Uint32Array(MAX_VIEW);
 }
 
 const HISTORY = 128;
@@ -202,6 +207,13 @@ export class ClientSession {
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
+  /** The entity this session's inputs drive in place of its own body (its index), or -1. */
+  driving = -1;
+
+  /** The species of the body being predicted: the survivor's own, or that of a creature it drives. */
+  get bodyKind(): number {
+    return this.own.kind !== 0 ? this.own.kind : this.ownKind;
+  }
   /** SESSION_ALIVE, SESSION_DEAD or SESSION_SPECTATING, as the server last said. */
   sessionState = SESSION_ALIVE;
   /** The name this session joined under. */
@@ -433,6 +445,10 @@ export class ClientSession {
       if (gear) out.gear.set(gear, n * GEAR_COUNT);
       else out.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
       for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
+      out.team[n] = b.team[j]!;
+      out.seat[n] = b.seat[j]!;
+      out.born[n] = b.born[j]!;
+      out.grown[n] = b.grown[j]!;
       if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);
@@ -462,7 +478,13 @@ export class ClientSession {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
     const buttons = inp.buttons[i]!;
-    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.move!, TICK_DT);
+    // The body is stepped as what the server last said it is: its own species, or a creature it drives.
+    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.opts.registry.move[this.own.kind] ?? this.move!, TICK_DT);
+    if (this.driving >= 0) {
+      this.bodies[t & (HISTORY - 1)]!.copy(this.own);
+      this.bodyTick[t & (HISTORY - 1)] = t;
+      return;
+    }
     // What it does with what it holds, as the server will step it: the same buttons, and those that went down since the tick before.
     const before = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
     stepAction(this.own, buttons, buttons & ~before, this.opts.registry.weapon[this.own.held] ?? FISTS);
@@ -580,10 +602,10 @@ export class ClientSession {
       this.hasVitals = true;
     } else if (component === OWN_SLOTS) {
       const box = r.bits(1);
-      const cap = r.u8();
-      const bag = r.u8();
+      const cap = r.varint();
+      const bag = r.varint();
       const full = r.bool();
-      const count = r.u8();
+      const count = r.u16();
       if (r.overflow || bag > cap) return;
       let inv: Inventory | null;
       if (box === BOX_SELF) {
@@ -595,7 +617,7 @@ export class ClientSession {
         inv = this.open.inventory;
       }
       for (let k = 0; k < count; k++) {
-        const slot = r.u8();
+        const slot = r.varint();
         const item = r.u16();
         const n = item === 0 ? 0 : r.u16();
         const quality = item === 0 ? 0 : r.u8();
@@ -612,7 +634,7 @@ export class ClientSession {
     } else if (component === OWN_OPEN) {
       if (!r.bool()) this.open = null;
       else {
-        const cap = r.u8();
+        const cap = r.varint();
         const name = r.string(64);
         if (!r.overflow) this.open = { name, inventory: new Inventory(cap) };
       }
@@ -761,6 +783,7 @@ export class ClientSession {
     const age = r.u8();
     const margin = r.sbits(8);
     const state = r.bits(2);
+    const driving = r.varint() - 1;
     const sb = this.serverBody;
     readBody(r, sb);
     if (r.overflow || tick <= this.latestSnapshot) return;
@@ -782,6 +805,7 @@ export class ClientSession {
     this.latestSnapshot = tick;
     this.needFull = false;
     this.sessionState = state;
+    this.driving = driving;
     this.stats.snapshots++;
 
     // Render clock follows the newest server tick, smoothly unless far off.

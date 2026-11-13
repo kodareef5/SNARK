@@ -104,6 +104,13 @@ export interface MoveParams {
   readonly staminaSprint: number;
   readonly staminaRegen: number;
   readonly staminaJump: number;
+  /**
+   * How fast the body turns toward where its input looks, in 1/65536 turns per
+   * tick. 0 means it faces there at once, as a survivor does.
+   */
+  readonly turnRate: number;
+  /** It can move sideways. A body that cannot goes only where it faces. */
+  readonly strafe: boolean;
 }
 
 /**
@@ -133,6 +140,14 @@ export class Body {
   /** Server-set restrictions (MF_ bits). */
   mflags = 0;
   /**
+   * The species whose movement steps this body (a content index), and where it
+   * faces, in 1/65536 turns. A session's inputs drive one body at a time: its
+   * survivor's, or a creature it rides. Both travel with the body, so the
+   * client steps whatever it was last told it is driving.
+   */
+  kind = 0;
+  yaw = 0;
+  /**
    * What it does with what it holds; see shared/sim/weapon.ts. `held` is the
    * content index of the thing in its hands (0 for nothing), `act` what it is
    * doing with it and `actTicks` for how many ticks, `rounds` what the weapon
@@ -160,6 +175,8 @@ export class Body {
     this.speedQ = o.speedQ;
     this.swimQ = o.swimQ;
     this.mflags = o.mflags;
+    this.kind = o.kind;
+    this.yaw = o.yaw;
     this.held = o.held;
     this.act = o.act;
     this.actTicks = o.actTicks;
@@ -182,6 +199,8 @@ export class Body {
       this.speedQ === o.speedQ &&
       this.swimQ === o.swimQ &&
       this.mflags === o.mflags &&
+      this.kind === o.kind &&
+      this.yaw === o.yaw &&
       this.held === o.held &&
       this.act === o.act &&
       this.actTicks === o.actTicks &&
@@ -232,6 +251,17 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     return;
   }
   stepOut.landSpeed = 0;
+  // Its facing follows the look: at once for a body that turns freely, at its own rate for one that does not.
+  // It then moves the way it faces, and one that cannot go sideways ignores being asked to.
+  if (p.turnRate <= 0 || b.mode === MODE_GHOST) b.yaw = yaw & 0xffff;
+  else {
+    let turn = ((yaw - b.yaw + 32768) & 0xffff) - 32768;
+    if (turn > p.turnRate) turn = p.turnRate;
+    else if (turn < -p.turnRate) turn = -p.turnRate;
+    b.yaw = (b.yaw + turn) & 0xffff;
+  }
+  yaw = b.yaw;
+  if (!p.strafe) moveX = 0;
   if (b.mode === MODE_GHOST) {
     stepGhost(w, b, moveX, moveZ, yaw, pitch, buttons, dt);
     return;

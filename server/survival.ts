@@ -22,7 +22,6 @@ export const STAT_STAMINA = STAT_NAMES.indexOf("stamina");
 export const STAT_OXYGEN = STAT_NAMES.indexOf("oxygen");
 export const STAT_SPEED = STAT_NAMES.indexOf("speed");
 export const STAT_MELEE = STAT_NAMES.indexOf("melee");
-export const STAT_TORPOR = STAT_NAMES.indexOf("torpidity");
 
 /** A stat's current value for a body of this species, or `fallback` if the species has no curve for it. */
 export function statOf(def: SpeciesDef, g: Genome | null, stat: number, fallback: number): number {
@@ -37,6 +36,35 @@ function ratioQ(def: SpeciesDef, g: Genome | null, stat: number): number {
   if (!curve || !g) return 1000;
   const q = Math.round((statValue(curve, g, stat) / curve[0]) * 1000);
   return q < 1 ? 1 : q > 4095 ? 4095 : q;
+}
+
+/** The levels a body was born or tamed with: every point it holds that was not spent by an owner. */
+export function wildLevels(g: Genome | null): number {
+  if (!g) return 0;
+  let n = 0;
+  for (let s = 0; s < STAT_NAMES.length; s++) n += g.wild[s]! + g.mutated[s]!;
+  return n;
+}
+
+/**
+ * The most torpor a body can hold before it goes under. Unlike the other
+ * stats it takes no points of its own: it grows by its curve's second number
+ * (0.06 in the reference) for every wild level the body has, whatever stat that
+ * level went into. 0 for a species that cannot be knocked out.
+ */
+export function torporMax(def: SpeciesDef, g: Genome | null): number {
+  const curve = def.stats?.torpidity;
+  return curve ? curve[0] * (1 + curve[1] * wildLevels(g)) : 0;
+}
+
+/**
+ * Torpor a body shakes off each second: its species' rate at level 1, more for
+ * every wild level above that, by the reference's curve.
+ */
+export function torporDrain(def: SpeciesDef, g: Genome | null): number {
+  const base = def.torporDrain ?? 1;
+  const levels = wildLevels(g);
+  return levels > 0 && base > 0 ? base + Math.pow(levels, 0.800403041) / (22.39671632 / base) : base;
 }
 
 /** Carrying this share of the weight stat stops sprinting and slows the body; carrying all of it roots it. */
@@ -141,7 +169,7 @@ export class Survival {
 
   /** The most of each vital a body of this species with these points has; 0 for one it does not have. */
   private maxima(def: SpeciesDef, g: Genome | null): number[] {
-    return [statOf(def, g, STAT_HEALTH, 0), statOf(def, g, STAT_FOOD, def.food?.max ?? 0), def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0), statOf(def, g, STAT_TORPOR, 0)];
+    return [statOf(def, g, STAT_HEALTH, 0), statOf(def, g, STAT_FOOD, def.food?.max ?? 0), def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0), torporMax(def, g)];
   }
 
   /**
@@ -323,7 +351,9 @@ export class Survival {
         rec.out = false;
         cameRound = true;
       }
-      const net = (ex ? ex.torpor : 0) - ratePerSecond(def.torporDrain ?? 1);
+      // While something is dosing it, it shakes nothing off: the dose is the whole rate.
+      const dose = ex ? ex.torpor : 0;
+      const net = dose > 0 ? dose : -ratePerSecond(torporDrain(def, rec.genome));
       v.rate[V_TORPOR] = net < 0 && v.value[V_TORPOR]! <= 0 ? 0 : net;
     } else v.rate[V_TORPOR] = 0;
     const injured = v.max[V_HEALTH]! > INJURED && v.value[V_HEALTH]! < INJURED;

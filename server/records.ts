@@ -65,6 +65,13 @@ export class EntityRecord {
   readonly jobs: Job[] = [];
   /** Counts every change to the three above, for sending. */
   progVersion = 0;
+  /**
+   * The team that owns it: a survivor's own, a tribe's, or 0 for nobody (a
+   * wild creature). A survivor alone is a team of one. `rank` is its standing
+   * in a tribe; nothing reads it yet.
+   */
+  team = 0;
+  rank = 0;
   /** What is acting on it for a time (server/buffs.ts). Not saved. `buffsVersion` counts every change, for sending. */
   readonly buffs: BuffOn[] = [];
   buffsVersion = 0;
@@ -91,6 +98,11 @@ export class Records {
 
   constructor(worldId: number) {
     this.worldId = worldId;
+  }
+
+  /** A new team id: from the same counter as records, so it is saved with it and never repeats. */
+  newTeam(): number {
+    return this.nextSeq++;
   }
 
   create(kind: number, name = ""): EntityRecord {

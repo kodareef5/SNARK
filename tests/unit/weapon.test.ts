@@ -193,7 +193,7 @@ test("what a body is doing with what it holds travels with the body", () => {
   a.reloadTo = 255;
   const w = new BitWriter(64);
   writeBody(w, a);
-  expect(w.pos).toBe(312);
+  expect(w.pos).toBe(344);
   const b = new Body();
   readBody(new BitReader(w.bytes()), b);
   expect(b.equals(a)).toBe(true);

@@ -44,7 +44,7 @@ function setup(host = {}) {
     return codes.get(seq) ?? -1;
   };
   const move = (from: number, to: number, item: number, count = 0): number =>
-    send(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.u8(from), w.bits(BOX_SELF, 1), w.u8(to), w.u16(count), w.u16(item)));
+    send(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.varint(from), w.bits(BOX_SELF, 1), w.varint(to), w.u16(count), w.u16(item)));
   const inv = (): Inventory => h.host.items.inv(rec);
   const give = (name: string, n = 1): number => {
     expect(h.host.items.mint(rec, id(name), n)).toBe(n);
@@ -258,7 +258,7 @@ test("a weapon is set to its ammunition, loaded, fired empty, fitted and strippe
 
   // With a full bag there is nowhere for rounds or an attachment to come out to.
   items.load(rec, rifle, id("dart_tranq"), 1);
-  send(CMD_ATTACH, (w) => (w.u8(rifle), w.u8(inv().item.indexOf(id("scope")))));
+  send(CMD_ATTACH, (w) => (w.varint(rifle), w.varint(inv().item.indexOf(id("scope")))));
   items.mint(rec, id("waterskin"), 60);
   expect(inv().free()).toBe(-1);
   items.burnItem(rec, id("dart_tranq"), inv().total(id("dart_tranq"))); // no stack of darts left to top up
@@ -310,7 +310,7 @@ test("what is dropped lies in a bag anyone can open, and is gone, on the books, 
   expect(bo.open?.name).toBe("bag");
   expect(bo.open!.inventory.item[0]).toBe(id("rifle"));
   expect(bo.open!.inventory.loaded[0]).toBe(1);
-  bo.command(CMD_MOVE, (w) => (w.bits(BOX_OPEN, 1), w.u8(0), w.bits(BOX_SELF, 1), w.u8(0), w.u16(0), w.u16(id("rifle"))));
+  bo.command(CMD_MOVE, (w) => (w.bits(BOX_OPEN, 1), w.varint(0), w.bits(BOX_SELF, 1), w.varint(0), w.u16(0), w.u16(id("rifle"))));
   h.run(300);
   const boRec = h.host.records.byPid.get(h.world.ents.pid[h.ent(bo)]!)!;
   expect([items.inv(boRec).item[0], items.inv(boRec).loaded[0], items.inv(boRec).ammo[0]]).toEqual([id("rifle"), 1, id("round_rifle")]);
@@ -394,19 +394,19 @@ test("fuzz: no stream of equipment commands, valid or not, makes or loses an ite
     const s = sessions[k]!;
     const inv = s.inventory!;
     // Mostly slots that hold something and items that are really there; sometimes anything at all.
-    const slot = (): number => (rng.int(5) === 0 ? rng.int(256) : rng.int(inv.cap));
+    const slot = (): number => (rng.int(5) === 0 ? rng.int(600) : rng.int(inv.cap));
     const item = (at: number): number => (rng.int(6) === 0 ? rng.int(reg.defs.length) : (inv.item[at] ?? 0));
     const op = ops[rng.int(ops.length)]!;
     const a = slot();
     const b = slot();
     s.command(op, (w) => {
-      if (op === CMD_MOVE) (w.bits(rng.int(2), 1), w.u8(a), w.bits(rng.int(2), 1), w.u8(b), w.u16(rng.int(3) === 0 ? rng.int(40) : 0), w.u16(item(a)));
+      if (op === CMD_MOVE) (w.bits(rng.int(2), 1), w.varint(a), w.bits(rng.int(2), 1), w.varint(b), w.u16(rng.int(3) === 0 ? rng.int(40) : 0), w.u16(item(a)));
       else if (op === CMD_SELECT) w.u8(rng.int(4) === 0 ? 255 : rng.int(12));
-      else if (op === CMD_LOAD) (w.u8(a), w.u16(item(b)));
-      else if (op === CMD_ATTACH) (w.u8(a), w.u8(b));
-      else if (op === CMD_DROP) (w.u8(a), w.u16(rng.int(2) === 0 ? 0 : rng.int(20)), w.u16(item(a)));
-      else if (op === CMD_USE) (w.u8(a), w.u16(item(a)));
-      else w.u8(a);
+      else if (op === CMD_LOAD) (w.varint(a), w.u16(item(b)));
+      else if (op === CMD_ATTACH) (w.varint(a), w.varint(b));
+      else if (op === CMD_DROP) (w.varint(a), w.u16(rng.int(2) === 0 ? 0 : rng.int(20)), w.u16(item(a)));
+      else if (op === CMD_USE) (w.varint(a), w.u16(item(a)));
+      else w.varint(a);
     });
     // The server reloads and fires on its own account now and then, as the weapon step will.
     const rec = recs[k]!;

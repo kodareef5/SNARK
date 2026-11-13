@@ -31,6 +31,10 @@ export interface SpeciesDef {
    */
   readonly crouch?: { readonly height: number; readonly eye: number; readonly speed: number };
   readonly prone?: { readonly height: number; readonly eye: number; readonly speed: number };
+  /** Degrees a second its body turns toward where it looks. Omitted: it faces there at once, as a survivor does. */
+  readonly turn?: number;
+  /** False for a body that cannot move sideways: it goes only where it faces. */
+  readonly strafe?: boolean;
   /** Metres per second in water. Defaults to 60% of the walk speed. */
   readonly swimSpeed?: number;
   /** Stamina points: per second of sprinting, per second of rest, per jump. Defaults to 5, 8 and 6. */

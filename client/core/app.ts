@@ -240,7 +240,7 @@ export class App {
     const cam = this.cam;
     const a = session.alpha;
     const alive = session.sessionState === SESSION_ALIVE;
-    const move = this.reg.move[session.ownKind];
+    const move = this.reg.move[session.bodyKind];
     // The eye follows the stance, eased so that crouching is a movement and not a cut.
     const eyeNow = alive && move ? stanceEye(move, session.own.stance) : 0;
     // A body that has just appeared looks from its eye at once; only a change of stance is eased.
@@ -295,7 +295,8 @@ export class App {
     // What it is doing with what it holds, as its own prediction has it: a swing is seen the moment it is asked for.
     body.state.setAction(session.own.act, (this.reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
     body.state.seed = bodySeed(body.id);
-    this.scene.own = alive && session.ownHandle !== 0 ? body : null;
+    // Driving something else, its own body is one more body in view, where the server has it.
+    this.scene.own = alive && session.ownHandle !== 0 && session.driving < 0 ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
     session.sampleRemote(this.remote);
     // Shots in the air: this client's own as its prediction has them, others' as the server told of them.

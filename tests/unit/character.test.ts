@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_SPRINT, Body, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye, stanceHeight, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_SPRINT, Body, MODE_GHOST, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye, stanceHeight, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { SKIN, capsuleFree } from "../../shared/world/collide.ts";
 import { SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0 } from "../../shared/world/proving.ts";
 import { flatWorld, provingWorld, sealedRoom, type TestWorld } from "../fixtures/world.ts";
@@ -261,4 +261,44 @@ test("crouching and lying prone shorten the body and slow it; it rises only wher
   stepBody(pool, e, 0, 0, NORTH, 0, BTN_PRONE, survivor(pool), TICK_DT);
   expect(e.mode).toBe(MODE_SWIM);
   expect(e.stance).toBe(STANCE_STAND);
+});
+
+test("a body with a turn rate comes round to where it is asked to look at that rate, by the short way, and goes where it faces", () => {
+  const w = flatWorld();
+  // 90 degrees a second, in whole units a tick as the registry makes it; and no stepping sideways.
+  const rate = Math.round(65536 / 4 / 30);
+  const p: MoveParams = { ...survivor(w), turnRate: rate, strafe: false };
+  const b = bodyAt(w, 64, 64);
+  const step = (ticks: number, moveX: number, moveZ: number, yaw: number): void => {
+    for (let i = 0; i < ticks; i++) stepBody(w, b, moveX, moveZ, yaw, 0, 0, p, TICK_DT);
+  };
+  // Asked to face a quarter turn away: a second to get there, one step of the rate each tick.
+  step(1, 0, 0, 16384);
+  expect(b.yaw).toBe(rate);
+  step(14, 0, 0, 16384);
+  expect(b.yaw).toBe(rate * 15);
+  step(30, 0, 0, 16384);
+  expect(b.yaw).toBe(16384);
+  // Across zero it takes the short way round.
+  step(3, 0, 0, 65536 - 10000);
+  expect(b.yaw).toBe(16384 - rate * 3);
+  b.yaw = 100;
+  step(1, 0, 0, 65436);
+  expect(b.yaw).toBe(65436);
+  // It walks the way it faces, not the way it is asked to look, and sideways not at all.
+  b.yaw = 0;
+  step(30, 127, 0, 0);
+  expect([b.x, b.z]).toEqual([64, 64]);
+  step(1, 0, FWD, 30000);
+  expect(b.vz).toBeGreaterThan(0);
+  expect(b.yaw).toBe(rate);
+  // A survivor faces where it looks at once; so does anything while it is a ghost.
+  const s = bodyAt(w, 64, 64);
+  stepBody(w, s, 0, 0, 40000, 0, 0, survivor(w), TICK_DT);
+  expect(s.yaw).toBe(40000);
+  expect(survivor(w).turnRate).toBe(0);
+  expect(survivor(w).strafe).toBe(true);
+  b.mode = MODE_GHOST;
+  step(1, 0, 0, 50000);
+  expect(b.yaw).toBe(50000);
 });

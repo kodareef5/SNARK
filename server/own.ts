@@ -38,16 +38,17 @@ export interface OwnContext {
 /** Write the slots of `inv` that changed after version `since` (all the occupied ones if `full`). */
 function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, since: number, full: boolean): void {
   const w = ctx.game.beginOwn(OWN_SLOTS);
+  // Sizes and slot numbers are varints: a vault holds more than a byte counts.
   w.bits(box, 1);
-  w.u8(inv.cap);
-  w.u8(inv.bag);
+  w.varint(inv.cap);
+  w.varint(inv.bag);
   w.bool(full);
   const at = w.pos;
-  w.u8(0);
+  w.u16(0);
   let n = 0;
   for (let s = 0; s < inv.cap; s++) {
     if (full ? inv.item[s] === 0 : inv.mod[s]! <= since) continue;
-    w.u8(s);
+    w.varint(s);
     w.u16(inv.item[s]!);
     if (inv.item[s] !== 0) {
       w.u16(inv.count[s]!);
@@ -67,7 +68,7 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
   }
   const end = w.pos;
   w.pos = at;
-  w.u8(n); // written over the zero placeholder
+  w.u16(n); // written over the zero placeholder
   w.pos = end;
   ctx.game.endOwn(c);
 }
@@ -132,7 +133,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     const w = game.beginOwn(OWN_OPEN);
     w.bool(open !== null);
     if (open) {
-      w.u8(ctx.items.inv(open).cap);
+      w.varint(ctx.items.inv(open).cap);
       w.string(open.name);
     }
     game.endOwn(c);
@@ -203,9 +204,9 @@ function box(ctx: OwnContext, c: Client, which: number): EntityRecord | null {
 export function addOwnCommands(ctx: OwnContext): void {
   ctx.game.handle(CMD_MOVE, (c: Client, r: BitReader) => {
     const fromBox = r.bits(1);
-    const fromSlot = r.u8();
+    const fromSlot = r.varint();
     const toBox = r.bits(1);
-    const toSlot = r.u8();
+    const toSlot = r.varint();
     const count = r.u16();
     const expect = r.u16();
     if (r.overflow) return RESULT_INVALID;
@@ -278,7 +279,7 @@ export function addOwnCommands(ctx: OwnContext): void {
   });
 
   ctx.game.handle(CMD_LOAD, (c: Client, r: BitReader) => {
-    const slot = r.u8();
+    const slot = r.varint();
     const ammo = r.u16();
     const own = bagOf(c);
     if (r.overflow) return RESULT_INVALID;
@@ -295,8 +296,8 @@ export function addOwnCommands(ctx: OwnContext): void {
   });
 
   ctx.game.handle(CMD_ATTACH, (c: Client, r: BitReader) => {
-    const slot = r.u8();
-    const from = r.u8();
+    const slot = r.varint();
+    const from = r.varint();
     const own = bagOf(c);
     if (r.overflow) return RESULT_INVALID;
     if (!own) return RESULT_DENIED;
@@ -308,7 +309,7 @@ export function addOwnCommands(ctx: OwnContext): void {
   });
 
   ctx.game.handle(CMD_DETACH, (c: Client, r: BitReader) => {
-    const slot = r.u8();
+    const slot = r.varint();
     const own = bagOf(c);
     if (r.overflow) return RESULT_INVALID;
     if (!own) return RESULT_DENIED;
@@ -317,7 +318,7 @@ export function addOwnCommands(ctx: OwnContext): void {
   });
 
   ctx.game.handle(CMD_UNLOAD, (c: Client, r: BitReader) => {
-    const slot = r.u8();
+    const slot = r.varint();
     const own = bagOf(c);
     if (r.overflow) return RESULT_INVALID;
     if (!own) return RESULT_DENIED;
@@ -326,7 +327,7 @@ export function addOwnCommands(ctx: OwnContext): void {
   });
 
   ctx.game.handle(CMD_REPAIR, (c: Client, r: BitReader) => {
-    const slot = r.u8();
+    const slot = r.varint();
     const own = bagOf(c);
     if (r.overflow) return RESULT_INVALID;
     if (!own) return RESULT_DENIED;
@@ -346,7 +347,7 @@ export function addOwnCommands(ctx: OwnContext): void {
   });
 
   ctx.game.handle(CMD_DROP, (c: Client, r: BitReader) => {
-    const slot = r.u8();
+    const slot = r.varint();
     const count = r.u16();
     const expect = r.u16();
     const own = bagOf(c);
@@ -358,7 +359,7 @@ export function addOwnCommands(ctx: OwnContext): void {
   });
 
   ctx.game.handle(CMD_USE, (c: Client, r: BitReader) => {
-    const slot = r.u8();
+    const slot = r.varint();
     const expect = r.u16();
     if (r.overflow) return RESULT_INVALID;
     const rec = ctx.records.byPid.get(c.pid);

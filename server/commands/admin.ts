@@ -137,6 +137,25 @@ export function addAdminCommands(con: Console): void {
       },
     },
     {
+      name: "possess",
+      usage: "[off]",
+      help: "Drive the creature you are looking at with your own keys, in place of your body; off gives it back.",
+      admin: true,
+      run(ctx, args) {
+        const c = ctx.client;
+        if (!c || c.ent < 0) return needsBody;
+        const game = ctx.host.game;
+        if (args[0] === "off" || c.drive >= 0) {
+          if (c.drive < 0) return "you are driving nothing";
+          game.release(c);
+          return "back in your own body";
+        }
+        const e = ctx.host.death.target(c, 8);
+        if (e < 0 || !game.take(c, e)) return "nothing in front of you that can be driven";
+        return `driving ${ctx.host.world.reg.ids[ctx.host.world.ents.kind[e]!]}`;
+      },
+    },
+    {
       name: "addxp",
       usage: "<amount>",
       help: "Give yourself experience.",

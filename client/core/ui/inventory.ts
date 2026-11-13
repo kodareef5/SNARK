@@ -96,7 +96,7 @@ export class InventoryScreen {
       if (!own || from < 0 || this.heldBox !== BOX_SELF || own.item[from] === 0) return;
       const op = [CMD_DROP, CMD_REPAIR, CMD_UNLOAD, CMD_DETACH][key - KEY_INV_ACTION]!;
       session.command(op, (w) => {
-        w.u8(from);
+        w.varint(from);
         if (op === CMD_DROP) (w.u16(0), w.u16(own.item[from]!));
       });
       return;
@@ -105,7 +105,7 @@ export class InventoryScreen {
     if (kind !== 0 || slot < 0 || !inv) return;
     if (button === 2) {
       // Use what is here. Only what you carry can be used.
-      if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.u8(slot), w.u16(inv.item[slot]!)));
+      if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
       this.held = -1;
       return;
     }
@@ -126,18 +126,18 @@ export class InventoryScreen {
     const target = fromBox === BOX_SELF && box === BOX_SELF && this.registry ? (this.registry.defs[inv.item[slot]!] as ItemDef | null)?.weapon : undefined;
     const what = this.registry?.ids[src.item[from]!] ?? "";
     if (target?.ammo?.includes(what)) {
-      session.command(CMD_LOAD, (w) => (w.u8(slot), w.u16(src.item[from]!)));
+      session.command(CMD_LOAD, (w) => (w.varint(slot), w.u16(src.item[from]!)));
       return;
     }
     if (target?.fits?.includes(what)) {
-      session.command(CMD_ATTACH, (w) => (w.u8(slot), w.u8(from)));
+      session.command(CMD_ATTACH, (w) => (w.varint(slot), w.varint(from)));
       return;
     }
     session.command(CMD_MOVE, (w) => {
       w.bits(fromBox, 1);
-      w.u8(from);
+      w.varint(from);
       w.bits(box, 1);
-      w.u8(slot);
+      w.varint(slot);
       w.u16(count);
       w.u16(src.item[from]!);
     });

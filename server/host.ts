@@ -241,6 +241,11 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       records.dirty.add(rec.pid);
     }
     world.ents.setBodyLook(c.ent, rec.look);
+    // Every survivor is on a team, if only its own.
+    if (rec.team === 0) {
+      rec.team = records.newTeam();
+      records.dirty.add(rec.pid);
+    }
     // A survivor has stat points like any body, all of them its own to place.
     rec.genome ??= new Genome();
     c.pid = rec.pid;
@@ -334,6 +339,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     // A survivor's level is what its experience has earned; a creature's is its points.
     const level = rec.kind === survivor ? progression.levelOf(rec.xp) : rec.genome ? rec.genome.level : 1;
     world.ents.setLook(e, level, rec.genome ? rec.genome.colors : null, rec.name);
+    world.ents.setTeam(e, rec.team);
     // What it holds and wears is seen by others.
     const inv = rec.inv;
     if (inv && inv.hotbar >= 0) {

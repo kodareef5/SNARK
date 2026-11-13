@@ -118,3 +118,41 @@ test("breeding favours the higher stat, mutates rarely, and tracks mutation coun
     for (const s of WILD_STATS) expect(c.wild[s]! + c.mutated[s]!).toBeLessThanOrEqual(POINT_CAP);
   }
 });
+
+test("a mutation comes from the parent stronger in that stat a little more than half the time, and from either when they are level", () => {
+  const rng = new Rng(7);
+  const mother = rollWild(rng, 1, [5]);
+  const father = rollWild(rng, 1, [6]);
+  // The mother is the stronger in every stat a mutation can land on.
+  for (const s of WILD_STATS) {
+    mother.wild[s] = 40;
+    father.wild[s] = 20;
+  }
+  const N = 60000;
+  const count = (): [number, number] => {
+    let viaMother = 0;
+    let viaFather = 0;
+    for (let i = 0; i < N; i++) {
+      const c = breed(mother, father, 11, 22, rng, [200]);
+      viaMother += c.mutMat;
+      viaFather += c.mutPat;
+    }
+    return [viaMother, viaFather];
+  };
+  let [m, f] = count();
+  // Three rolls of 2.5% each.
+  expect((m + f) / N).toBeGreaterThan(0.07);
+  expect((m + f) / N).toBeLessThan(0.08);
+  expect(m / (m + f)).toBeGreaterThan(HIGHER_STAT_CHANCE - 0.03);
+  expect(m / (m + f)).toBeLessThan(HIGHER_STAT_CHANCE + 0.03);
+  // The other way about, it is the father.
+  for (const s of WILD_STATS) father.wild[s] = 60;
+  [m, f] = count();
+  expect(f / (m + f)).toBeGreaterThan(HIGHER_STAT_CHANCE - 0.03);
+  expect(f / (m + f)).toBeLessThan(HIGHER_STAT_CHANCE + 0.03);
+  // Level in everything: either, evenly.
+  for (const s of WILD_STATS) father.wild[s] = 40;
+  [m, f] = count();
+  expect(m / (m + f)).toBeGreaterThan(0.47);
+  expect(m / (m + f)).toBeLessThan(0.53);
+});

@@ -67,6 +67,18 @@ export class EntityStore {
   readonly reloadTo: Uint8Array;
   /** How it carries what it holds (HOLD_*), for its pose. Set with its gear. */
   readonly hold: Uint8Array;
+  /** 1 while a session's inputs drive it in place of its own behaviour (a mount). */
+  readonly driven: Uint8Array;
+  /**
+   * More of what others are told when it enters their view, each 0 for none:
+   * the team that owns it; the entity it sits on, plus one; and for the young
+   * the ticks it was born and will be grown. Changed only through the setters,
+   * so `rev` follows.
+   */
+  readonly team: Uint32Array;
+  readonly seat: Uint32Array;
+  readonly born: Uint32Array;
+  readonly grown: Uint32Array;
   /**
    * What others are told about a body when it enters their view: level, six
    * region colours, a name. `rev` changes whenever any of it does.
@@ -125,6 +137,11 @@ export class EntityStore {
     this.rounds = new Uint8Array(cap);
     this.reloadTo = new Uint8Array(cap);
     this.hold = new Uint8Array(cap);
+    this.driven = new Uint8Array(cap);
+    this.team = new Uint32Array(cap);
+    this.seat = new Uint32Array(cap);
+    this.born = new Uint32Array(cap);
+    this.grown = new Uint32Array(cap);
     this.level = new Uint16Array(cap);
     this.colors = new Uint8Array(cap * 6);
     this.name = new Array<string>(cap).fill("");
@@ -171,6 +188,11 @@ export class EntityStore {
     this.rounds[i] = 0;
     this.reloadTo[i] = 0;
     this.hold[i] = 0;
+    this.driven[i] = 0;
+    this.team[i] = 0;
+    this.seat[i] = 0;
+    this.born[i] = 0;
+    this.grown[i] = 0;
     this.level[i] = 0;
     this.colors.fill(0, i * 6, i * 6 + 6);
     this.name[i] = "";
@@ -192,6 +214,28 @@ export class EntityStore {
     this.level[i] = level;
     for (let k = 0; k < 6; k++) this.colors[i * 6 + k] = colors ? colors[k]! : 0;
     this.name[i] = name;
+    this.rev[i] = (this.rev[i]! + 1) & 15;
+  }
+
+  /** Say which team owns an entity (0 for none). Clients that see it are told if that changed. */
+  setTeam(i: number, team: number): void {
+    if (this.team[i] === team) return;
+    this.team[i] = team;
+    this.rev[i] = (this.rev[i]! + 1) & 15;
+  }
+
+  /** Say what an entity sits on: another entity's index, or -1 for nothing. */
+  setSeat(i: number, mount: number): void {
+    if (this.seat[i] === mount + 1) return;
+    this.seat[i] = mount + 1;
+    this.rev[i] = (this.rev[i]! + 1) & 15;
+  }
+
+  /** Say when a young entity was born and when it will be grown (both 0 for one that is grown). */
+  setYoung(i: number, born: number, grown: number): void {
+    if (this.born[i] === born && this.grown[i] === grown) return;
+    this.born[i] = born;
+    this.grown[i] = grown;
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
@@ -241,6 +285,8 @@ export class EntityStore {
     b.speedQ = this.speedQ[i]!;
     b.swimQ = this.swimQ[i]!;
     b.mflags = this.mflags[i]!;
+    b.kind = this.kind[i]!;
+    b.yaw = this.yaw[i]!;
     b.held = this.gear[i]?.[GEAR_HELD] ?? 0;
     b.act = this.act[i]!;
     b.actTicks = this.actTicks[i]!;
@@ -258,6 +304,7 @@ export class EntityStore {
     this.stance[i] = b.stance;
     this.stamina[i] = b.stamina;
     this.mflags[i] = b.mflags;
+    this.yaw[i] = b.yaw;
     this.act[i] = b.act;
     this.actTicks[i] = b.actTicks;
     this.rounds[i] = b.rounds;

@@ -107,11 +107,16 @@ export function breed(mother: Genome, father: Genome, motherPid: number, fatherP
   child.mutPat = father.mutMat + father.mutPat;
   for (let roll = 0; roll < MUTATION_ROLLS; roll++) {
     // Draw everything first so the random stream does not depend on outcomes.
-    const fromMother = rng.int(2) === 0;
+    const strongerDraw = rng.float();
+    const tieDraw = rng.int(2);
     const stat = WILD_STATS[rng.int(WILD_STATS.length)]!;
     const region = rng.int(COLOR_REGIONS);
     const color = mutationColors[rng.int(mutationColors.length)]!;
     const hit = rng.float() < MUTATION_CHANCE;
+    // The mutation comes from one parent: the one stronger in that stat a little more than half the time.
+    const m = mother.wild[stat]! + mother.mutated[stat]!;
+    const f = father.wild[stat]! + father.mutated[stat]!;
+    const fromMother = m === f ? tieDraw === 0 : m > f === strongerDraw < HIGHER_STAT_CHANCE;
     const source = fromMother ? mother : father;
     if (!hit || source.mutMat + source.mutPat >= MUTATION_LIMIT) continue;
     const room = POINT_CAP - child.wild[stat]! - child.mutated[stat]!;

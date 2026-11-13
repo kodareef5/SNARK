@@ -50,7 +50,7 @@ import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../s
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
-import { F_AWAKE, F_PLAYER } from "../shared/sim/entities.ts";
+import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { sortU32 } from "../shared/sort.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
@@ -136,6 +136,13 @@ export class Client {
   ent = -1;
   /** Species whose movement parameters step the body. */
   kind = 0;
+  /**
+   * The entity this session's inputs drive in place of its own body (a
+   * creature it rides), or -1; and that entity's generation, so that one that
+   * has gone is noticed.
+   */
+  drive = -1;
+  driveGen = 0;
   /**
    * The session's body after the latest tick. With an entity it is a copy of
    * the entity's columns; without one it is the only copy, stepped in private.
@@ -285,6 +292,8 @@ export class GameServer {
   private readonly r = new BitReader();
   private readonly cur = new EntityView();
   private readonly ids = new Uint32Array(MAX_VIEW);
+  private readonly movers = new Uint32Array(MAX_VIEW);
+  private readonly idle = new Uint32Array(MAX_VIEW);
   private readonly entityOffsets: Int16Array;
   private readonly structOffsets: Int16Array;
 
@@ -339,20 +348,27 @@ export class GameServer {
       c.edges();
       c.did = 0;
       const b = c.body;
-      const e = c.ent;
+      // The body its inputs drive: its own, or something it has been put in charge of, for as long as that is there.
+      if (c.drive >= 0 && ((ents.flags[c.drive]! & F_ALIVE) === 0 || ents.gen[c.drive] !== c.driveGen)) this.release(c);
+      const driving = c.drive >= 0;
+      const e = driving ? c.drive : c.ent;
       if (e >= 0) {
         ents.loadBody(e, b);
-        stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[ents.kind[e]!]!, TICK_DT);
-        // What it does with what it holds. What a swing or a shot lands on is decided once every body has moved.
-        stepAction(b, c.heldButtons, c.pressed, world.reg.weapon[b.held] ?? FISTS);
-        c.did = (actionOut.strike ? DID_STRIKE : 0) | (actionOut.fire ? DID_FIRE : 0) | (actionOut.reloaded ? DID_RELOAD : 0);
-        c.drawn = actionOut.draw;
+        stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[b.kind]!, TICK_DT);
+        if (!driving) {
+          // What it does with what it holds. What a swing or a shot lands on is decided once every body has moved.
+          stepAction(b, c.heldButtons, c.pressed, world.reg.weapon[b.held] ?? FISTS);
+          c.did = (actionOut.strike ? DID_STRIKE : 0) | (actionOut.fire ? DID_FIRE : 0) | (actionOut.reloaded ? DID_RELOAD : 0);
+          c.drawn = actionOut.draw;
+        }
         ents.storeBody(e, b);
-        ents.yaw[e] = c.heldYaw;
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
-        if (stepOut.landSpeed > 0) this.onLand?.(c, stepOut.landSpeed);
-      } else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[c.kind]!, TICK_DT);
+        if (!driving && stepOut.landSpeed > 0) this.onLand?.(c, stepOut.landSpeed);
+      } else {
+        b.kind = c.kind;
+        stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[c.kind]!, TICK_DT);
+      }
       c.chunk = chunkAt(world.dims, b.x, b.z);
     }
 
@@ -368,8 +384,9 @@ export class GameServer {
     for (const c of this.clients) {
       if (!c?.active || c.closed) continue;
       // Commands and systems may have moved or replaced the body since it stepped.
-      if (c.ent >= 0) {
-        ents.loadBody(c.ent, c.body);
+      const at = c.drive >= 0 ? c.drive : c.ent;
+      if (at >= 0) {
+        ents.loadBody(at, c.body);
         c.chunk = chunkAt(world.dims, c.body.x, c.body.z);
       }
       if (c.ownDirty) this.sendOwn(c);
@@ -449,6 +466,29 @@ export class GameServer {
     this.dropBody(c);
     this.makeDead(c);
     c.ownDirty = true;
+  }
+
+  /**
+   * Put a session's inputs in charge of entity `e` in place of its own body.
+   * Its own body stays where it is, unstepped, until `release`. False if the
+   * session has no body, already drives something, or `e` cannot be driven.
+   */
+  take(c: Client, e: number): boolean {
+    const ents = this.world.ents;
+    if (c.ent < 0 || c.drive >= 0 || e === c.ent || (ents.flags[e]! & (F_ALIVE | F_PLAYER | F_PROP)) !== F_ALIVE || ents.driven[e] !== 0) return false;
+    if (!this.world.reg.move[ents.kind[e]!]) return false;
+    c.drive = e;
+    c.driveGen = ents.gen[e]!;
+    ents.driven[e] = 1;
+    return true;
+  }
+
+  /** Hand what a session drives back to itself; the session's inputs go to its own body again. */
+  release(c: Client): void {
+    const ents = this.world.ents;
+    if (c.drive < 0) return;
+    if ((ents.flags[c.drive]! & F_ALIVE) !== 0 && ents.gen[c.drive] === c.driveGen) ents.driven[c.drive] = 0;
+    c.drive = -1;
   }
 
   /** Give a session that is in the creator its body, with the look it chose. False if it is not creating or there is no room. */
@@ -533,6 +573,7 @@ export class GameServer {
 
   /** Remove the session's entity, keeping where it was as the session's focus. */
   private dropBody(c: Client): void {
+    this.release(c);
     if (c.ent < 0) return;
     const ents = this.world.ents;
     this.onBodyGone?.(c);
@@ -569,6 +610,8 @@ export class GameServer {
     if (this.pending.delete(c)) return;
     if (this.clients[c.id] !== c || c.conn !== conn || c.closed) return;
     if (c.active && c.ent >= 0 && this.opts.lingerTicks > 0) {
+      // Whatever it was driving is let go; its own body is what stays.
+      this.release(c);
       c.closed = true;
       c.lingerUntil = this.world.tick + this.opts.lingerTicks;
       c.queue.length = 0;
@@ -796,22 +839,38 @@ export class GameServer {
     const world = this.world;
     const ents = world.ents;
     const dims = world.dims;
-    const e = c.ent;
+    // Its own body is not in its own view: the client draws that from its prediction. While it drives
+    // something else, both that and its own body are, as anyone else's would be.
+    const e = c.drive >= 0 ? -1 : c.ent;
 
-    // Entities in the chunks around the session's focus, nearest chunks first.
+    // Entities in the chunks around the session's focus, nearest chunks first, in three classes: other
+    // players; then whatever is moving or doing something; then what stands idle, and things. When there
+    // are more than a view holds, it fills in that order, so a crowd of idle creatures never hides a player.
     const ccx = chunkCx(dims, c.chunk);
     const ccz = chunkCz(dims, c.chunk);
     const ids = this.ids;
+    const movers = this.movers;
+    const idle = this.idle;
     const offsets = this.entityOffsets;
     let n = 0;
-    for (let o = 0; o < offsets.length && n < MAX_VIEW; o += 2) {
+    let nm = 0;
+    let ni = 0;
+    for (let o = 0; o < offsets.length; o += 2) {
       const cx = ccx + offsets[o]!;
       const cz = ccz + offsets[o + 1]!;
       if (cx < 0 || cz < 0 || cx >= dims.chunksX || cz >= dims.chunksZ) continue;
-      for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0 && n < MAX_VIEW; i = ents.next[i]!) {
-        if (i !== e) ids[n++] = i;
+      for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
+        if (i === e) continue;
+        const f = ents.flags[i]!;
+        if ((f & F_PLAYER) !== 0) {
+          if (n < MAX_VIEW) ids[n++] = i;
+        } else if ((f & F_PROP) === 0 && (ents.vx[i] !== 0 || ents.vz[i] !== 0 || ents.vy[i] !== 0 || ents.act[i] !== 0 || ents.driven[i] !== 0)) {
+          if (nm < MAX_VIEW) movers[nm++] = i;
+        } else if (ni < MAX_VIEW) idle[ni++] = i;
       }
     }
+    for (let k = 0; k < nm && n < MAX_VIEW; k++) ids[n++] = movers[k]!;
+    for (let k = 0; k < ni && n < MAX_VIEW; k++) ids[n++] = idle[k]!;
     sortU32(ids, n);
     const cur = this.cur;
     cur.count = 0;
@@ -819,6 +878,7 @@ export class GameServer {
       const i = ids[k]!;
       cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!);
       cur.appear(ents.rev[i]!, ents.level[i]!, ents.colors, i * 6, ents.name[i]!, ents.look[i]!, ents.gear[i]!);
+      cur.belong(ents.team[i]!, ents.seat[i]!, ents.born[i]!, ents.grown[i]!);
     }
 
     const age = T - c.ackTick;
@@ -839,6 +899,8 @@ export class GameServer {
     else if (margin > 127) margin = 127;
     w.sbits(margin, 8);
     w.bits(c.state, 2);
+    // What the body that follows is: its own (0), or the entity it drives, plus one.
+    w.varint(c.drive + 1);
     writeBody(w, c.body);
     c.rotate = writeViewDelta(w, base, cur, next, this.opts.snapshotBytes * 8 - w.pos, c.rotate);
     c.lastSnapshot = T;

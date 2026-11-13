@@ -50,9 +50,11 @@ const COMP_LOOK = 10;
 const COMP_SLOTS2 = 11;
 /** Vitals with room for eight, and whether the body is unconscious. COMP_VITALS4 held four and is still read. */
 const COMP_VITALS8 = 12;
+/** The team that owns it, and its rank there. */
+const COMP_TEAM = 13;
 /** Experience, learned engrams, crafting jobs. */
 const COMP_PROGRESSION = 4;
-/** An inventory's slot index travels in one byte. */
+/** The most slots a round 1 inventory is laid out in when it is converted. */
 const MAX_INVENTORY_SLOTS = 255;
 /** Bytes per structure slot in a chunk blob. */
 const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
@@ -240,7 +242,7 @@ export class WorldStore {
     const used = inv ? inv.used() : 0;
     const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + rec.extra.size);
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + rec.extra.size);
     if (hasProgress) {
       c.reset();
       c.f64(rec.xp);
@@ -275,6 +277,13 @@ export class WorldStore {
       // One more than the hotbar slot in hand; 0 for none. Older saves end before this.
       c.u8(rec.held + 1);
       w.varint(COMP_STATE);
+      w.blob(c.bytes());
+    }
+    if (rec.team !== 0) {
+      c.reset();
+      c.varint(rec.team);
+      c.u8(rec.rank);
+      w.varint(COMP_TEAM);
       w.blob(c.bytes());
     }
     if (inv && used > 0) {
@@ -468,8 +477,10 @@ export class WorldStore {
           rec.dead = c.bool();
           rec.expiresAt = c.uint53();
           rec.held = c.pos + 8 <= blob.length * 8 ? c.u8() - 1 : -1;
-        }
-        else rec.extra.set(component, blob);
+        } else if (component === COMP_TEAM) {
+          rec.team = c.varint();
+          rec.rank = c.u8();
+        } else rec.extra.set(component, blob);
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }
       if (r.overflow) throw new Error(`entity ${row.pid}: truncated record`);

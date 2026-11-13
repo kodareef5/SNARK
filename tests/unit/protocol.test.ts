@@ -3,6 +3,7 @@ import { tokenize, parseNumber } from "../../shared/console.ts";
 import { TICK_DT, WORLD_MAX_Y } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { readBody, writeBody } from "../../shared/net/protocol.ts";
+import { EntityView, MAX_VIEW, readViewDelta, writeViewDelta } from "../../shared/net/view.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_JUMP, BTN_SPRINT, Body, MODE_GHOST, MODE_NONE, STAMINA_UNITS, stepBody } from "../../shared/sim/character.ts";
 import { DAY_TICKS, dayTick, formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts";
@@ -29,6 +30,8 @@ test("every field of a body survives the wire exactly", () => {
     a.speedQ = rng.int(4096);
     a.swimQ = rng.int(4096);
     a.mflags = rng.int(16);
+    a.kind = rng.int(65536);
+    a.yaw = rng.int(65536);
     w.reset();
     w.bits(i, 3); // any bit offset
     writeBody(w, a);
@@ -108,4 +111,50 @@ test("the time of day is the world clock plus an offset, and setting it changes 
     // A day later it is the same time.
     expect(dayTick(tick + DAY_TICKS, offset)).toBe(dayTick(tick, offset));
   }
+});
+
+test("whose an entity is, what it sits on and how old it is travel when it appears, stay with it as it moves, and are sent again when they change", () => {
+  const w = new BitWriter(1 << 16);
+  const r = new BitReader();
+  const colors = new Uint8Array(6);
+  const belongs = (v: EntityView, i: number): number[] => [v.team[i]!, v.seat[i]!, v.born[i]!, v.grown[i]!];
+  /** What the server holds for the client, and what the client holds, after sending `cur` on top of them. */
+  const send = (cur: EntityView, sent: EntityView | null, held: EntityView | null): [EntityView, EntityView] => {
+    const next = new EntityView();
+    const got = new EntityView();
+    w.reset();
+    writeViewDelta(w, sent, cur, next, 1 << 20, 0);
+    r.reset(w.bytes());
+    expect(readViewDelta(r, held, got)).toBe(true);
+    expect(r.overflow).toBe(false);
+    expect(got.count).toBe(cur.count);
+    return [next, got];
+  };
+  const make = (qx: number, rev: number, team: number, seat: number, born: number, grown: number): EntityView => {
+    const v = new EntityView();
+    // A tame someone sits on; a wild creature with nothing to say; a young one, far along the id space.
+    v.push(3, 1, 7, qx, 200, 300, 5, 1, 0);
+    v.appear(rev, 12, colors, 0, "Rex", null, null);
+    v.belong(team, seat, 0, 0);
+    v.push(8, 1, 7, 110, 200, 300, 5, 1, 0);
+    v.appear(0, 1, colors, 0, "", null, null);
+    v.push(MAX_VIEW + 9000, 2, 9, 120, 200, 300, 5, 1, 0);
+    v.appear(0, 1, colors, 0, "", null, null);
+    v.belong(0, 0, born, grown);
+    return v;
+  };
+  let [sent, held] = send(make(100, 0, 0xfffffff, 41, 1234567, 4000000000), null, null);
+  expect(belongs(held, 0)).toEqual([0xfffffff, 41, 0, 0]);
+  expect(belongs(held, 1)).toEqual([0, 0, 0, 0]);
+  expect(belongs(held, 2)).toEqual([0, 0, 1234567, 4000000000]);
+  // It moves: an update says nothing of whose it is, and the client still knows.
+  [sent, held] = send(make(101, 0, 0xfffffff, 41, 1234567, 4000000000), sent, held);
+  expect(held.qx[0]).toBe(101);
+  expect(belongs(held, 0)).toEqual([0xfffffff, 41, 0, 0]);
+  expect(belongs(held, 2)).toEqual([0, 0, 1234567, 4000000000]);
+  // Its rider gets down and it changes hands: its revision moved, so it is sent whole again.
+  [sent, held] = send(make(101, 1, 5, 0, 1234567, 4000000000), sent, held);
+  expect(belongs(held, 0)).toEqual([5, 0, 0, 0]);
+  expect(held.name[0]).toBe("Rex");
+  expect(belongs(sent, 0)).toEqual([5, 0, 0, 0]);
 });

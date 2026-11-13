@@ -48,7 +48,7 @@ const OP_REMOVE = 2;
 
 const ANIM_BITS = ANIM_MOTION_BITS + ANIM_LOOK_BITS + ANIM_ACTION_BITS;
 const LOOK_MASK = (1 << ANIM_LOOK_BITS) - 1;
-const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 4 + 16 + 4 + 48;
+const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 4 + 16 + 4 + 48 + 3;
 /** Longest name carried, in bytes. */
 export const MAX_NAME_LENGTH = 72;
 
@@ -57,7 +57,8 @@ const UPDATE_BITS = 24 + 2 + 2 + 64 + 1 + 10 + 1 + 4 + 3 + ANIM_BITS;
 /** Bits a create for entry `j` of `v` takes at most: the fixed part plus its name's bytes. */
 function createBits(v: EntityView, j: number): number {
   const name = v.name[j]!;
-  const look = (v.look[j] ? LOOK_BYTES * 8 : 0) + (v.gear[j] ? GEAR_COUNT * 16 : 0);
+  // What only some entries carry: a look, gear, a team, a seat, an age.
+  const look = (v.look[j] ? LOOK_BYTES * 8 : 0) + (v.gear[j] ? GEAR_COUNT * 16 : 0) + (v.team[j] !== 0 ? 40 : 0) + (v.seat[j] !== 0 ? 40 : 0) + (v.born[j] !== 0 || v.grown[j] !== 0 ? 64 : 0);
   if (name === "") return CREATE_BITS + look;
   let bytes = 1;
   for (let i = 0; i < name.length; i++) {
@@ -108,6 +109,20 @@ export class EntityView {
   readonly look: (Uint8Array | null)[] = new Array<Uint8Array | null>(MAX_VIEW).fill(null);
   /** What it holds and wears (GEAR_COUNT content indices), shared by reference; null for none. */
   readonly gear: (Uint16Array | null)[] = new Array<Uint16Array | null>(MAX_VIEW).fill(null);
+  /** As `EntityStore` has them, each 0 for none: owning team; what it sits on, plus one; born and grown ticks. */
+  readonly team = new Uint32Array(MAX_VIEW);
+  readonly seat = new Uint32Array(MAX_VIEW);
+  readonly born = new Uint32Array(MAX_VIEW);
+  readonly grown = new Uint32Array(MAX_VIEW);
+
+  /** The rest of the appearance of the entry just pushed. Unset, each is none. */
+  belong(team: number, seat: number, born: number, grown: number): void {
+    const n = this.count - 1;
+    this.team[n] = team;
+    this.seat[n] = seat;
+    this.born[n] = born;
+    this.grown[n] = grown;
+  }
 
   /** Set the appearance of the entry just pushed. `colors` is read from `at`, six bytes. */
   appear(rev: number, level: number, colors: Uint8Array, at: number, name: string, look: Uint8Array | null, gear: Uint16Array | null): void {
@@ -118,6 +133,7 @@ export class EntityView {
     this.name[n] = name;
     this.look[n] = look;
     this.gear[n] = gear;
+    this.team[n] = this.seat[n] = this.born[n] = this.grown[n] = 0;
   }
 
   push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number): boolean {
@@ -139,6 +155,7 @@ export class EntityView {
   copyFrom(o: EntityView, i: number): boolean {
     if (!this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!)) return false;
     this.appear(o.rev[i]!, o.level[i]!, o.colors, i * 6, o.name[i]!, o.look[i]!, o.gear[i]!);
+    this.belong(o.team[i]!, o.seat[i]!, o.born[i]!, o.grown[i]!);
     return true;
   }
 }
@@ -302,6 +319,17 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
       const gear = cur.gear[ci]!;
       w.bool(gear !== null);
       if (gear) for (let q = 0; q < GEAR_COUNT; q++) w.u16(gear[q]!);
+      // Whose it is, what it sits on, and when it was born and will be grown: each only if it has one.
+      w.bool(cur.team[ci] !== 0);
+      if (cur.team[ci] !== 0) w.varint(cur.team[ci]!);
+      w.bool(cur.seat[ci] !== 0);
+      if (cur.seat[ci] !== 0) w.varint(cur.seat[ci]!);
+      const young = cur.born[ci] !== 0 || cur.grown[ci] !== 0;
+      w.bool(young);
+      if (young) {
+        w.u32(cur.born[ci]!);
+        w.u32(cur.grown[ci]!);
+      }
       next.copyFrom(cur, ci);
     } else {
       w.bits(OP_UPDATE, 2);
@@ -386,9 +414,15 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
         gear = new Uint16Array(GEAR_COUNT);
         for (let q = 0; q < GEAR_COUNT; q++) gear[q] = r.u16();
       }
+      const team = r.bool() ? r.varint() : 0;
+      const seat = r.bool() ? r.varint() : 0;
+      const young = r.bool();
+      const born = young ? r.u32() : 0;
+      const grown = young ? r.u32() : 0;
       if (present) i++;
       if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim)) return false;
       next.appear(rev, level, scratchColors, 0, name, look, gear);
+      next.belong(team, seat, born, grown);
     } else if (op === OP_UPDATE) {
       if (!present) return false;
       let qx = base!.qx[i]!;
@@ -415,6 +449,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (r.bool()) anim = (anim & ((1 << ANIM_ACTION_SHIFT) - 1)) | (r.bits(ANIM_ACTION_BITS) << ANIM_ACTION_SHIFT);
       if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0)) return false;
       next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!);
+      next.belong(base!.team[i]!, base!.seat[i]!, base!.born[i]!, base!.grown[i]!);
       i++;
     } else return false;
     if (r.overflow) return false;
