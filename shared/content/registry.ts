@@ -67,6 +67,11 @@ export interface Registry {
   readonly ammoSpeed: Float32Array;
   readonly ammoGravity: Float32Array;
   readonly ammoRecover: Float32Array;
+  /** Ammunition: torpor as multiples of the damage done, at once and then over `ammoTorporSeconds`; and the buff it gives (a content index, or 0). */
+  readonly ammoTorpor: Float32Array;
+  readonly ammoTorporOver: Float32Array;
+  readonly ammoTorporSeconds: Float32Array;
+  readonly ammoBuff: Uint16Array;
 }
 
 /** How far bare hands and a melee weapon reach unless content says otherwise. */
@@ -139,6 +144,12 @@ export function compileContent(input: readonly Def[]): CompileResult {
     } else if (d.type === "levels") {
       if (d.xp.length < 2 || d.xp[0] !== 0 || d.xp.some((v, i) => i > 0 && v <= d.xp[i - 1]!)) errors.push(`${d.id}: xp must start at 0 and rise`);
       if (d.engramPoints.length !== d.xp.length) errors.push(`${d.id}: engramPoints must have one entry per level`);
+    } else if (d.type === "buff") {
+      if (d.seconds !== undefined) positive(d, "seconds", d.seconds, 86400);
+      for (const [name, v] of [["speed", d.speed], ["dealt", d.dealt], ["taken", d.taken]] as const) {
+        if (v !== undefined && !(v >= 0 && v <= 100)) errors.push(`${d.id}: ${name} must be from 0 to 100`);
+      }
+      if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
     } else if (d.type === "structure") {
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
       positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
@@ -191,6 +202,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
     else if (d.type === "item") {
       for (const a of d.weapon?.ammo ?? []) if (!items.get(a)?.ammo) errors.push(`${d.id}: "${a}" is not ammunition`);
       for (const a of d.weapon?.fits ?? []) if (!items.get(a)?.attachment) errors.push(`${d.id}: "${a}" is not an attachment`);
+      if (d.ammo?.buff !== undefined) want(d, d.ammo.buff, "buff");
     }
   }
   if (input.length >= 65535) errors.push("too many definitions for a 16-bit index");
@@ -225,6 +237,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const ammoSpeed = new Float32Array(n);
   const ammoGravity = new Float32Array(n);
   const ammoRecover = new Float32Array(n);
+  const ammoTorpor = new Float32Array(n);
+  const ammoTorporOver = new Float32Array(n);
+  const ammoTorporSeconds = new Float32Array(n);
+  const ammoBuff = new Uint16Array(n);
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
@@ -266,6 +282,11 @@ export function compileContent(input: readonly Def[]): CompileResult {
         ammoSpeed[i] = d.ammo.speed ?? 0;
         ammoGravity[i] = d.ammo.gravity ?? 0;
         ammoRecover[i] = d.ammo.recover ?? 0;
+        ammoTorpor[i] = d.ammo.torpor?.instant ?? 0;
+        ammoTorporOver[i] = d.ammo.torpor?.over ?? 0;
+        ammoTorporSeconds[i] = d.ammo.torpor?.seconds ?? 0;
+        // Ids are sorted, so a buff's index is its place among them.
+        if (d.ammo.buff !== undefined) ammoBuff[i] = sorted.findIndex((o) => o.id === d.ammo!.buff) + 1;
       }
       const hits = d.ammo ?? d.weapon;
       if (hits?.damage !== undefined) {
@@ -274,7 +295,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       }
     }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

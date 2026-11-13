@@ -54,6 +54,8 @@ export const MF_NO_JUMP = 2;
 export const MF_ROOTED = 4;
 /** Out of breath: set when stamina reaches zero, cleared once a quarter of it has returned. */
 export const MF_WINDED = 8;
+/** Unconscious: it lies where it is and does nothing. Set by the server. */
+export const MF_OUT = 16;
 
 /** A walker starts swimming when this fraction of its height is under water. */
 const SWIM_ENTER = 0.7;
@@ -245,7 +247,10 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
 
   // Stance: going lower happens at once; rising needs room for the taller capsule.
   let stance = b.stance;
-  const want = (buttons & BTN_PRONE) !== 0 ? STANCE_PRONE : (buttons & BTN_CROUCH) !== 0 ? STANCE_CROUCH : STANCE_STAND;
+  // Unconscious, it lies down whatever is pressed, and nothing pressed moves it.
+  const out = (flags & MF_OUT) !== 0;
+  if (out) buttons = 0;
+  const want = out || (buttons & BTN_PRONE) !== 0 ? STANCE_PRONE : (buttons & BTN_CROUCH) !== 0 ? STANCE_CROUCH : STANCE_STAND;
   if (want !== stance) {
     if (want > stance || capsuleFree(w, b.x, b.y, b.z, r, stanceHeight(p, want))) stance = want;
     else if (stance === STANCE_PRONE && capsuleFree(w, b.x, b.y, b.z, r, p.crouchHeight)) stance = STANCE_CROUCH;
@@ -256,7 +261,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   // Horizontal velocity moves toward the wished velocity at a bounded rate.
   let mx = moveX / 127;
   let mz = moveZ / 127;
-  if ((flags & MF_ROOTED) !== 0) mx = mz = 0;
+  if ((flags & (MF_ROOTED | MF_OUT)) !== 0) mx = mz = 0;
   const m2 = mx * mx + mz * mz;
   if (m2 > 1) {
     const inv = 1 / Math.sqrt(m2);
@@ -511,7 +516,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   const r = p.radius;
   let mx = moveX / 127;
   let mz = moveZ / 127;
-  if ((b.mflags & MF_ROOTED) !== 0) mx = mz = 0;
+  if ((b.mflags & (MF_ROOTED | MF_OUT)) !== 0) mx = mz = 0;
   const m2 = mx * mx + mz * mz;
   if (m2 > 1) {
     const inv = 1 / Math.sqrt(m2);

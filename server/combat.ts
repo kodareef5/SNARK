@@ -32,7 +32,9 @@ import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { QUALITY_MUL } from "../shared/sim/items.ts";
 import { W_MELEE } from "../shared/sim/weapon.ts";
 import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
+import type { Buffs } from "./buffs.ts";
 import type { Creatures } from "./creatures.ts";
+import { V_TORPOR } from "../shared/sim/vitals.ts";
 import { DID_FIRE, DID_RELOAD, DID_STRIKE, type Client, type GameServer } from "./game.ts";
 import type { Harvest } from "./harvest.ts";
 import { Past } from "./history.ts";
@@ -59,6 +61,7 @@ export interface CombatContext {
   readonly survival: Survival;
   readonly progression: Progression;
   readonly creatures: Creatures;
+  readonly buffs: Buffs;
   readonly harvest: Harvest | null;
 }
 
@@ -87,6 +90,9 @@ export interface Source {
   attack: number;
   torporInstant: number;
   torporOver: number;
+  /** Seconds the torpor to come is spread over, and a buff the hit gives (a content index, or 0). */
+  torporSeconds: number;
+  buff: number;
 }
 
 /** One blow as it was resolved, for tests, the console and measurement. */
@@ -117,7 +123,9 @@ export class Combat {
   private readonly st = new AnimState();
   private readonly near = new Int32Array(MAX_NEAR);
   private readonly past = new Past();
-  private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0 };
+  private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  /** The buff a dose of narcotic is: each hit that brings torpor to come puts one on, carrying its strength. */
+  private readonly dose: number;
   /** Where the last `castBodies` hit: the part, and how far along the ray. */
   zone = ZONE_NONE;
   t = 0;
@@ -132,6 +140,7 @@ export class Combat {
     this.survivor = reg.index.get("core:survivor")!;
     this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
     this.rng = new Rng(seed);
+    this.dose = reg.index.get("core:tranquilized") ?? 0;
   }
 
   /** Once a tick, after every body has stepped: act on what each body's step said happened. */
@@ -185,7 +194,8 @@ export class Combat {
       src.quality = item !== 0 ? (QUALITY_MUL[inv.quality[slot]!] ?? 1) : 1;
       src.draw = 1;
       src.attack = statOf(reg.defs[kind] as SpeciesDef, rec.genome, STAT_MELEE, 1);
-      src.torporInstant = src.torporOver = 0;
+      src.torporInstant = src.torporOver = src.torporSeconds = 0;
+      src.buff = 0;
       this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
       // A blow wears what struck it.
       if (item !== 0 && reg.uses[item]! > 0) items.wear(rec, slot, 1);
@@ -449,7 +459,7 @@ export class Combat {
    * is now, whatever moment the hit was judged at.
    */
   land(src: Source, target: number, zone: number, x: number, y: number, z: number, far: number): void {
-    const { world, records, items, survival, creatures } = this.ctx;
+    const { world, records, items, survival, creatures, buffs } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
     const victim = records.byPid.get(ents.pid[target]!);
@@ -462,7 +472,9 @@ export class Combat {
     hit.type = src.type;
     hit.quality = src.quality;
     hit.draw = src.draw;
-    hit.attack = src.attack;
+    // What is acting on either of them is a factor like any other.
+    hit.attack = src.attack * (by ? buffs.dealtOf(by) : 1);
+    hit.resist = buffs.takenOf(victim);
     hit.torporInstant = src.torporInstant;
     hit.torporOver = src.torporOver;
     hit.takes = reg.takes[vkind]?.[hit.type] ?? 1;
@@ -491,7 +503,14 @@ export class Combat {
     last.blocked = harm.blocked;
     last.wear = hit.armor > 0 ? harm.wear : 0;
     last.killed = killed;
-    if (!killed && (ents.flags[target]! & F_ALIVE) !== 0) creatures.provoke(target, ax, az);
+    if (!killed && (ents.flags[target]! & F_ALIVE) !== 0) {
+      creatures.provoke(target, ax, az);
+      // What the hit leaves behind: torpor at once, torpor to come as a dose, and whatever the round carries. Armor that stopped the harm stopped these in the same measure.
+      const from = by ? by.pid : 0;
+      if (harm.torpor > 0) survival.add(victim, V_TORPOR, harm.torpor);
+      if (harm.torporOver > 0 && src.torporSeconds > 0 && this.dose !== 0) buffs.give(victim, this.dose, from, src.torporSeconds, harm.torporOver / src.torporSeconds);
+      if (src.buff !== 0) buffs.give(victim, src.buff, from);
+    }
 
     const game = this.ctx.game;
     const shown = Math.min(65535, Math.max(taken > 0 ? 1 : 0, Math.round(taken)));

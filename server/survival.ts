@@ -5,12 +5,12 @@
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { MF_NO_SPRINT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim/character.ts";
+import { MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { EntityStore } from "../shared/sim/entities.ts";
 import { STAT_NAMES, statValue, type Genome, type StatName } from "../shared/sim/genome.ts";
 import { MICRO, ratePerTick } from "../shared/sim/lazy.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
-import { V_COUNT, V_FOOD, V_HEALTH, V_OXYGEN, V_WATER, Vitals } from "../shared/sim/vitals.ts";
+import { V_COUNT, V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER, Vitals } from "../shared/sim/vitals.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -22,6 +22,7 @@ export const STAT_STAMINA = STAT_NAMES.indexOf("stamina");
 export const STAT_OXYGEN = STAT_NAMES.indexOf("oxygen");
 export const STAT_SPEED = STAT_NAMES.indexOf("speed");
 export const STAT_MELEE = STAT_NAMES.indexOf("melee");
+export const STAT_TORPOR = STAT_NAMES.indexOf("torpidity");
 
 /** A stat's current value for a body of this species, or `fallback` if the species has no curve for it. */
 export function statOf(def: SpeciesDef, g: Genome | null, stat: number, fallback: number): number {
@@ -48,14 +49,15 @@ const HEAVY_SPEED = 0.6;
  * game), the stamina cap, and the limits of a heavy load. Call after anything
  * that changes the points or the load.
  */
-export function refreshMods(reg: Registry, ents: EntityStore, e: number, g: Genome | null, carriedKg = 0): void {
+export function refreshMods(reg: Registry, ents: EntityStore, e: number, g: Genome | null, carriedKg = 0, speedMul = 1, rooted = false, out = false): void {
   const def = reg.defs[ents.kind[e]!] as SpeciesDef;
   const load = carriedKg / statOf(def, g, STAT_WEIGHT, Infinity);
-  let flags = 0;
-  let speed = ratioQ(def, g, STAT_SPEED);
-  if (load >= 1) flags = MF_ROOTED | MF_NO_SPRINT;
+  let flags = (rooted ? MF_ROOTED | MF_NO_SPRINT : 0) | (out ? MF_OUT : 0);
+  // What is acting on it (an injury, a stun) slows it as its stats quicken it.
+  let speed = Math.max(1, Math.min(4095, Math.round(ratioQ(def, g, STAT_SPEED) * speedMul)));
+  if (load >= 1) flags |= MF_ROOTED | MF_NO_SPRINT;
   else if (load >= HEAVY) {
-    flags = MF_NO_SPRINT;
+    flags |= MF_NO_SPRINT;
     speed = Math.max(1, Math.round(speed * HEAVY_SPEED));
   }
   ents.speedQ[e] = speed;
@@ -78,6 +80,7 @@ export const CAUSE_KILLED = 5;
 export const CAUSE_NAMES = ["", "starved", "died of thirst", "drowned", "fell to your death", "were killed"];
 
 const perSecond = (points: number): number => Math.round((points * MICRO) / TICK_RATE);
+const ratePerSecond = perSecond;
 /** Points per second. */
 const HEALTH_REGEN = perSecond(0.2);
 const STARVE = perSecond(0.5);
@@ -85,6 +88,8 @@ const THIRST = perSecond(0.5);
 const DROWN = perSecond(8);
 const OXYGEN_DRAIN = perSecond(3);
 const OXYGEN_REFILL = perSecond(20);
+/** Below this much health a body is injured, and the worse for it. */
+const INJURED = 30 * MICRO;
 /** A landing slower than this does no harm; each metre per second above it costs this much health. */
 const SAFE_LANDING = 12;
 const LANDING_DAMAGE = 7;
@@ -102,6 +107,13 @@ export class Survival {
   onDeath: ((rec: EntityRecord, cause: number, by: number) => void) | null = null;
   /** Records that take no harm. */
   readonly gods = new Set<number>();
+  /** Called when a body goes unconscious (its torpor reached its most) or comes round (it ran out). */
+  onOut: ((rec: EntityRecord, out: boolean) => void) | null = null;
+  /** Called when a body's health falls below the mark of an injury, or mends past it. */
+  onInjured: ((rec: EntityRecord, injured: boolean) => void) | null = null;
+  /** Rates that something acting on a body adds to its own, millionths of a point per tick, and who is to blame if the harm kills. */
+  private readonly extra = new Map<number, { health: number; torpor: number; by: number }>();
+  private readonly injured = new Set<number>();
 
   private readonly world: ServerWorld;
   private readonly records: Records;
@@ -122,16 +134,31 @@ export class Survival {
     const v = rec.vitals;
     if (!v) return;
     v.rebase(this.world.tick);
-    for (let i = 0; i < V_COUNT; i++) v.value[i] = v.max[i]!;
+    for (let i = 0; i < V_COUNT; i++) v.value[i] = i === V_TORPOR ? 0 : v.max[i]!;
+    rec.out = false;
     this.records.dirty.add(rec.pid);
+  }
+
+  /** The most of each vital a body of this species with these points has; 0 for one it does not have. */
+  private maxima(def: SpeciesDef, g: Genome | null): number[] {
+    return [statOf(def, g, STAT_HEALTH, 0), statOf(def, g, STAT_FOOD, def.food?.max ?? 0), def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0), statOf(def, g, STAT_TORPOR, 0)];
+  }
+
+  /**
+   * Rates that something acting on a body adds to its own: health and torpor
+   * per second (negative health harms), and who is to blame if that kills it.
+   */
+  setExtra(rec: EntityRecord, health: number, torpor: number, by: number): void {
+    if (health === 0 && torpor === 0) this.extra.delete(rec.pid);
+    else this.extra.set(rec.pid, { health: Math.round((health * MICRO) / TICK_RATE), torpor: Math.round((torpor * MICRO) / TICK_RATE), by });
+    if (rec.vitals) this.update(rec);
   }
 
   /** Give a record vitals if its species has any, full; or refresh their maxima after its stats changed. */
   init(rec: EntityRecord): void {
     const def = this.world.reg.defs[rec.kind];
     if (def?.type !== "species") return;
-    const g = rec.genome;
-    const max = [statOf(def, g, STAT_HEALTH, 0), statOf(def, g, STAT_FOOD, def.food?.max ?? 0), def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0)];
+    const max = this.maxima(def, rec.genome);
     if (max.every((m) => m <= 0)) return;
     const fresh = !rec.vitals;
     const v = (rec.vitals ??= new Vitals());
@@ -139,7 +166,9 @@ export class Survival {
     else v.tick = this.world.tick;
     for (let i = 0; i < V_COUNT; i++) {
       v.max[i] = Math.round(max[i]! * MICRO);
-      if (fresh || v.value[i]! > v.max[i]!) v.value[i] = v.max[i]!;
+      // A new body is full of everything but torpor, of which it has none.
+      if (fresh) v.value[i] = i === V_TORPOR ? 0 : v.max[i]!;
+      else if (v.value[i]! > v.max[i]!) v.value[i] = v.max[i]!;
     }
     this.update(rec);
   }
@@ -153,8 +182,7 @@ export class Survival {
     const v = rec.vitals;
     const def = this.world.reg.defs[rec.kind];
     if (!v || def?.type !== "species") return;
-    const g = rec.genome;
-    const max = [statOf(def, g, STAT_HEALTH, 0), statOf(def, g, STAT_FOOD, def.food?.max ?? 0), def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0)];
+    const max = this.maxima(def, rec.genome);
     for (let i = 0; i < V_COUNT; i++) v.max[i] = Math.round(max[i]! * MICRO);
     if (!inWorld) {
       // Saved with its clock running (the server stopped while it was in the world): stop it, and save that.
@@ -236,6 +264,8 @@ export class Survival {
     this.submerged.delete(pid);
     this.suspended.delete(pid);
     this.gods.delete(pid);
+    this.extra.delete(pid);
+    this.injured.delete(pid);
   }
 
   /** A DEADLINE_VITALS entry came due. Stale if the record is gone or its vitals have changed since it was scheduled. */
@@ -262,10 +292,12 @@ export class Survival {
     if (starved) this.starving.add(rec.pid);
     else this.starving.delete(rec.pid);
 
+    const ex = this.extra.get(rec.pid);
     if (v.max[V_HEALTH]! > 0 && v.value[V_HEALTH]! <= 0) {
       v.rate.fill(0);
-      // Harm from someone is what killed it, whatever else was wrong with it.
-      const by = this.pendingBy;
+      rec.out = false;
+      // Harm from someone is what killed it, whatever else was wrong with it: a blow, or something they left acting on it.
+      const by = this.pendingBy !== 0 ? this.pendingBy : ex && ex.health < 0 ? ex.by : 0;
       this.onDeath?.(rec, by !== 0 ? this.pendingCause : airless ? CAUSE_DROWNED : starved ? CAUSE_STARVED : parched ? CAUSE_THIRST : this.pendingCause || CAUSE_KILLED, by);
       return;
     }
@@ -276,13 +308,40 @@ export class Survival {
     v.rate[V_FOOD] = eats ? -ratePerTick(def.food!.perHour) : 0;
     v.rate[V_WATER] = drinks ? -ratePerTick(def.waterPerHour!) : 0;
     v.rate[V_OXYGEN] = breathes ? (under ? -OXYGEN_DRAIN : OXYGEN_REFILL) : 0;
-    const harm = this.gods.has(rec.pid) ? 0 : (starved ? STARVE : 0) + (parched ? THIRST : 0) + (airless ? DROWN : 0);
-    v.rate[V_HEALTH] = harm > 0 ? -harm : HEALTH_REGEN;
+    const god = this.gods.has(rec.pid);
+    const harm = god ? 0 : (starved ? STARVE : 0) + (parched ? THIRST : 0) + (airless ? DROWN : 0);
+    // What is acting on it adds to that; a god takes the good of it and none of the harm.
+    const acting = ex ? (god && ex.health < 0 ? 0 : ex.health) : 0;
+    v.rate[V_HEALTH] = (harm > 0 ? -harm : HEALTH_REGEN) + acting;
+
+    // Torpor: whatever is dosing it, less what it shakes off each tick. At its most the body is out, and stays out until it is all gone.
+    let wentOut = false;
+    let cameRound = false;
+    if (v.max[V_TORPOR]! > 0) {
+      if (!rec.out && v.value[V_TORPOR]! >= v.max[V_TORPOR]!) rec.out = wentOut = true;
+      else if (rec.out && v.value[V_TORPOR]! <= 0) {
+        rec.out = false;
+        cameRound = true;
+      }
+      const net = (ex ? ex.torpor : 0) - ratePerSecond(def.torporDrain ?? 1);
+      v.rate[V_TORPOR] = net < 0 && v.value[V_TORPOR]! <= 0 ? 0 : net;
+    } else v.rate[V_TORPOR] = 0;
+    const injured = v.max[V_HEALTH]! > INJURED && v.value[V_HEALTH]! < INJURED;
+    const wasInjured = this.injured.has(rec.pid);
+    if (injured) this.injured.add(rec.pid);
+    else this.injured.delete(rec.pid);
 
     let next = Infinity;
     for (let i = 0; i < V_COUNT; i++) {
       if (v.rate[i]! < 0 && v.value[i]! > 0) next = Math.min(next, v.zeroTick(i));
     }
+    // The other moments at which something changes: torpor reaching its most, health crossing the mark of an injury either way.
+    if (v.rate[V_TORPOR]! > 0 && !rec.out) next = Math.min(next, v.fullTick(V_TORPOR));
+    if (injured && v.rate[V_HEALTH]! > 0) next = Math.min(next, v.riseTick(V_HEALTH, INJURED));
+    else if (!injured && v.rate[V_HEALTH]! < 0 && v.max[V_HEALTH]! > INJURED) next = Math.min(next, v.tick + Math.floor((v.value[V_HEALTH]! - INJURED) / -v.rate[V_HEALTH]!) + 1);
     if (next !== Infinity) this.deadlines.push(next, DEADLINE_VITALS, rec.pid, v.version);
+    // Whoever is told may look at this record's vitals again: everything above is settled first.
+    if (wentOut || cameRound) this.onOut?.(rec, rec.out);
+    if (injured !== wasInjured) this.onInjured?.(rec, injured);
   }
 }

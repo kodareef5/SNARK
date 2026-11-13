@@ -13,11 +13,11 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
-import { SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
-import { STAMINA_UNITS } from "../../shared/sim/character.ts";
+import { SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
+import { MF_OUT, STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_RELOAD } from "../../shared/sim/weapon.ts";
 import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
-import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../../shared/sim/vitals.ts";
+import { V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER } from "../../shared/sim/vitals.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { CombatModel } from "./feedback.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
@@ -72,6 +72,18 @@ export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg
   }
 }
 
+/** Fill what the HUD shows of what is acting on the body, from what the server last said. */
+export function fillBuffs(m: HudModel, session: ClientSession | null, reg: Registry, palette: Uint8Array): void {
+  m.buffs.length = 0;
+  if (!session) return;
+  for (const b of session.buffs) {
+    const def = reg.defs[b.buff];
+    if (def?.type !== "buff") continue;
+    const c = def.color * 4;
+    m.buffs.push({ label: def.label, tint: (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!, seconds: b.until === 0 ? -1 : Math.max(0, Math.ceil((b.until - session.serverTick) / TICK_RATE)) });
+  }
+}
+
 /** What `HudModel.actionKind` says the bar under the crosshair is showing. */
 export const ACTION_NONE = 0;
 export const ACTION_DRAW = 1;
@@ -121,7 +133,12 @@ export class HudModel {
     { id: "food", label: "Food", fraction: 1 },
     { id: "water", label: "Water", fraction: 1 },
     { id: "oxygen", label: "Oxygen", fraction: 1 },
+    { id: "torpor", label: "Torpor", fraction: 0 },
   ];
+  /** What is acting on the body: a name, its colour (0xRRGGBB), and the seconds it has left (-1 for no end). */
+  readonly buffs: { label: string; tint: number; seconds: number }[] = [];
+  /** The body is unconscious: the screen is dark and nothing can be done. */
+  out = false;
   readonly markers: Marker[] = [];
   /** Lines of text at the top left. Rewritten a few times a second, not every frame. */
   readonly readout: string[] = ["", "", ""];
@@ -208,9 +225,11 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
     model.vitals[2]!.fraction = fraction(V_FOOD);
     model.vitals[3]!.fraction = fraction(V_WATER);
     model.vitals[4]!.fraction = fraction(V_OXYGEN);
+    model.vitals[5]!.fraction = v.max[V_TORPOR]! > 0 ? v.at(V_TORPOR, tick) / v.max[V_TORPOR]! : 0;
   }
+  model.out = session.sessionState === SESSION_ALIVE && (b.mflags & MF_OUT) !== 0;
   model.clock = formatHour(hourOfDay(session.latestSnapshot, session.dayOffset));
-  model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? "DEAD" : "";
+  model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? "DEAD" : model.out ? "UNCONSCIOUS" : "";
   model.crosshair = model.banner === "";
   if (model.readoutDue(6)) model.formatReadout();
 }

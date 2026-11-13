@@ -48,6 +48,8 @@ const COMP_STATE = 9;
 const COMP_LOOK = 10;
 /** Slots as component 7 has them, with the bag's size and, for weapons, what each holds. */
 const COMP_SLOTS2 = 11;
+/** Vitals with room for eight, and whether the body is unconscious. COMP_VITALS4 held four and is still read. */
+const COMP_VITALS8 = 12;
 /** Experience, learned engrams, crafting jobs. */
 const COMP_PROGRESSION = 4;
 /** An inventory's slot index travels in one byte. */
@@ -306,14 +308,15 @@ export class WorldStore {
       c.reset();
       let mask = 0;
       for (let i = 0; i < V_COUNT; i++) if (v.max[i]! > 0) mask |= 1 << i;
-      c.bits(mask, V_COUNT);
+      c.u8(mask);
       c.varint(v.tick);
       for (let i = 0; i < V_COUNT; i++) {
         if ((mask & (1 << i)) === 0) continue;
         c.varint(v.value[i]!);
         c.svarint(v.rate[i]!);
       }
-      w.varint(COMP_VITALS4);
+      c.bool(rec.out);
+      w.varint(COMP_VITALS8);
       w.blob(c.bytes());
     }
     const g = rec.genome;
@@ -418,17 +421,22 @@ export class WorldStore {
           }
         } else if (component === COMP_VITALS) {
           // Round 1 food only: dropped; the survival system starts this body full.
-        } else if (component === COMP_VITALS4) {
+        } else if (component === COMP_VITALS4 || component === COMP_VITALS8) {
+          // The older form held four vitals behind a four-bit mask; a body saved in it has no torpor yet.
           const v = (rec.vitals = new Vitals());
-          const mask = c.bits(V_COUNT);
+          const mask = component === COMP_VITALS4 ? c.bits(4) : c.u8();
           v.tick = c.varint();
-          for (let i = 0; i < V_COUNT; i++) {
+          for (let i = 0; i < 8; i++) {
             if ((mask & (1 << i)) === 0) continue;
-            v.value[i] = c.varint();
-            v.rate[i] = c.svarint();
+            const value = c.varint();
+            const rate = c.svarint();
+            if (i >= V_COUNT) continue;
+            v.value[i] = value;
+            v.rate[i] = rate;
             // A placeholder until the survival system sets the true maximum from the body's stats.
-            v.max[i] = v.value[i]! > 0 ? v.value[i]! : 1;
+            v.max[i] = value > 0 ? value : 1;
           }
+          if (component === COMP_VITALS8) rec.out = c.bool();
         } else if (component === COMP_GENOME) {
           const g = (rec.genome = new Genome());
           if (blob.length < STAT_COUNT * 3 + COLOR_REGIONS) throw new Error(`entity ${row.pid}: short genome`);

@@ -56,6 +56,10 @@ export const S_DAMAGE_KILL = 29;
 export const S_BLOOD = 30;
 /** A line under the crosshair: what was killed, who killed you. */
 export const S_NOTICE = 31;
+/** The torpor bar; the mark of something acting on the body; and the dark over everything while unconscious. */
+export const S_TORPOR = 32;
+export const S_BUFF = 33;
+export const S_DARK = 34;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -90,4 +94,7 @@ export const STYLES: readonly Style[] = [
   /* S_DAMAGE_KILL */ style(0, 0xff5040, 20, 1, true),
   /* S_BLOOD */ style(0xb01010ff, 0xffffff),
   /* S_NOTICE */ style(0, 0xffffff, 14, 1, true),
+  /* S_TORPOR */ style(0x00000066, 0xa070d8),
+  /* S_BUFF */ style(0x808080ff, 0xffffff, 11, 1, true),
+  /* S_DARK */ style(0x000000ff, 0xffffff),
 ];

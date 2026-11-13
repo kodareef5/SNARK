@@ -20,7 +20,7 @@
 //   reload    putting rounds in, or nocking the next arrow
 //   cool      the pause after a shot
 
-import { BTN_MELEE, BTN_PRIMARY, BTN_RELOAD, MODE_SWIM, MODE_WALK, type Body } from "./character.ts";
+import { BTN_MELEE, BTN_PRIMARY, BTN_RELOAD, MF_OUT, MODE_SWIM, MODE_WALK, type Body } from "./character.ts";
 
 export const ACT_NONE = 0;
 export const ACT_EQUIP = 1;
@@ -96,7 +96,8 @@ export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponP
   out.draw = 0;
   out.reloaded = false;
   const reloadTo = b.reloadTo;
-  if (b.mode !== MODE_WALK && b.mode !== MODE_SWIM) {
+  // Not in the world, or unconscious: it does nothing, and whatever it was doing is over.
+  if ((b.mode !== MODE_WALK && b.mode !== MODE_SWIM) || (b.mflags & MF_OUT) !== 0) {
     b.act = ACT_NONE;
     b.actTicks = 0;
     return;

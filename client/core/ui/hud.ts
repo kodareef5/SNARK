@@ -2,13 +2,18 @@
 
 import { ACTION_DRAW, ACTION_NONE, type HudModel } from "../hud.ts";
 import { K_BAR, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT, S_SLOT_TEXT, S_STAMINA, S_SWATCH, S_TEXT, S_WATER } from "./style.ts";
+import { S_BUFF, S_DARK, S_TORPOR, S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT, S_SLOT_TEXT, S_STAMINA, S_SWATCH, S_TEXT, S_WATER } from "./style.ts";
 
 export const KEY_READOUT = 1;
 export const KEY_MINIMAP_FRAME = 10;
 export const KEY_MINIMAP = 11;
 export const KEY_CLOCK = 12;
-export const KEY_VITAL = 20;
+/** Per vital: its label, then its bar. */
+export const KEY_VITAL = 80;
+/** Dark over the world while unconscious. */
+export const KEY_OUT = 36;
+/** Per thing acting on the body: its mark. */
+export const KEY_BUFF = 180;
 export const KEY_CROSS = 30;
 export const KEY_STATUS = 31;
 export const KEY_BANNER = 32;
@@ -25,13 +30,15 @@ export const IMAGE_MINIMAP = 1;
 export const MINIMAP_SIZE = 160;
 const MARGIN = 12;
 const MAX_MARKERS = 64;
-const VITAL_STYLE: Record<string, number> = { health: S_HEALTH, stamina: S_STAMINA, food: S_FOOD, water: S_WATER, oxygen: S_OXYGEN };
+const VITAL_STYLE: Record<string, number> = { health: S_HEALTH, stamina: S_STAMINA, food: S_FOOD, water: S_WATER, oxygen: S_OXYGEN, torpor: S_TORPOR };
 const MARKER_STYLE: Record<string, number> = { self: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH };
 
 export function buildHud(f: UiFrame, m: HudModel): void {
   const W = f.width;
   const H = f.height;
   const lh = lineHeight(S_TEXT);
+  // Unconscious: the world goes dark under everything else.
+  if (m.out) f.add(KEY_OUT, K_PANEL, 0, 0, W, H, S_DARK).alpha = 0.82;
   for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, MARGIN, 10 + i * lh, Math.min(W - MARGIN * 2, 400), S_TEXT, m.readout[i]!);
 
   // On a narrow canvas the minimap moves below the readout instead of beside it.
@@ -57,6 +64,17 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.text(KEY_VITAL + i * 2, W - MARGIN - barW - labelW, y, labelW, S_LABEL, v.label);
     f.add(KEY_VITAL + i * 2 + 1, K_BAR, W - MARGIN - barW, y + 5, barW, 8, VITAL_STYLE[v.id] ?? S_HEALTH).value = v.fraction;
     y += rowH;
+  }
+  // What is acting on the body, in a column above the vitals: its name and the seconds it has left.
+  const buffW = barW + labelW;
+  const buffH = lineHeight(S_BUFF) + 2;
+  let by = H - MARGIN - m.vitals.length * rowH - 6 - buffH;
+  for (let i = 0; i < m.buffs.length && i < 16 && by > 200; i++) {
+    const b = m.buffs[i]!;
+    const n = f.add(KEY_BUFF + i, K_PANEL, W - MARGIN - buffW, by, buffW, buffH, S_BUFF);
+    n.tint = b.tint;
+    n.text = b.seconds < 0 ? b.label : `${b.label}  ${b.seconds}s`;
+    by -= buffH + 2;
   }
 
   // The hotbar, bottom centre; on a narrow canvas above the vitals, which would be in its way.

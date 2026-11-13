@@ -10,6 +10,7 @@ import { addCombatCommands } from "./commands/combat.ts";
 import { addCoreCommands } from "./commands/core.ts";
 import { Console } from "./console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
+import { Buffs, DEADLINE_BUFF } from "./buffs.ts";
 import { Combat } from "./combat.ts";
 import { Creatures } from "./creatures.ts";
 import { DEADLINE_DESPAWN, Death } from "./death.ts";
@@ -82,6 +83,7 @@ export interface Host {
   readonly survival: Survival;
   readonly death: Death;
   readonly combat: Combat;
+  readonly buffs: Buffs;
   readonly projectiles: Projectiles;
   readonly progression: Progression;
   /** Null for a world whose map has no resource nodes. */
@@ -147,7 +149,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines });
   const progression = new Progression(world, records, items, deadlines);
   const harvest = world.nodeField ? new Harvest(world, game, records, items, progression, deadlines, (opts.seed ?? 1) + 31) : null;
-  const combat = new Combat({ world, game, records, items, survival, progression, creatures, harvest }, (opts.seed ?? 1) + 53);
+  const buffs = new Buffs(world, records, survival, deadlines);
+  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, harvest }, (opts.seed ?? 1) + 53);
   const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 71);
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   // Whoever killed it has what a kill gives, while it is still there to be asked about; then it dies.
@@ -155,8 +158,16 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     // Taking the body out of the world looks at its vitals again: it dies once.
     if (rec.dead) return;
     combat.killed(rec, by);
+    // Whatever was acting on it ends with it.
+    rec.buffs.length = 0;
+    rec.buffsVersion++;
     death.die(rec, cause);
   };
+  // Going under, coming round, an injury, and anything else that begins or ends acting on a body change how it moves.
+  const injured = reg.index.get("core:injured") ?? 0;
+  survival.onOut = (rec) => refreshBody(rec);
+  survival.onInjured = (rec, on) => void (on ? buffs.give(rec, injured) : buffs.take(rec, injured));
+  buffs.onChange = (rec) => refreshBody(rec);
   if (harvest) {
     death.onUse = (c) => void harvest.pick(c);
     if (persistence) {
@@ -280,6 +291,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       else if (kind === DEADLINE_DESPAWN) death.despawn(pid, stamp);
       else if (kind === DEADLINE_CRAFT) progression.due(pid, stamp);
       else if (kind === DEADLINE_NODE) harvest?.due(pid, stamp);
+      else if (kind === DEADLINE_BUFF) buffs.due(pid, stamp);
     });
     death.step();
     // Swings that landed and shots that left on this tick, now that every body has moved.
@@ -311,7 +323,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     survival.init(rec);
     const e = records.entOf.get(rec.pid);
     if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
-    refreshMods(reg, world.ents, e, rec.genome, rec.inv ? items.inv(rec).weight(items.table) : 0);
+    refreshMods(reg, world.ents, e, rec.genome, rec.inv ? items.inv(rec).weight(items.table) : 0, buffs.speedOf(rec), buffs.rooted(rec), rec.out);
     // A survivor's level is what its experience has earned; a creature's is its points.
     const level = rec.kind === survivor ? progression.levelOf(rec.xp) : rec.genome ? rec.genome.level : 1;
     world.ents.setLook(e, level, rec.genome ? rec.genome.colors : null, rec.name);
@@ -359,6 +371,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     survival,
     death,
     combat,
+    buffs,
     projectiles,
     progression,
     harvest,

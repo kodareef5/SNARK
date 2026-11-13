@@ -57,6 +57,8 @@ export interface SpeciesDef {
   readonly killXp?: number;
   /** It stands where it is put and does nothing: a target to practise on. */
   readonly still?: boolean;
+  /** Torpor it loses each second. Defaults to 1. Its most is its torpidity stat; a species without that stat cannot be knocked out. */
+  readonly torporDrain?: number;
 }
 
 export interface StructureDef {
@@ -237,4 +239,35 @@ export interface PropDef {
   readonly pitched?: boolean;
 }
 
-export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef;
+/**
+ * Something that acts on a body for a time: burning, a dose of narcotic, a
+ * stun. A body may be under several at once. Nothing about one is stepped: its
+ * end is a moment known when it begins, what it does to vitals is a change of
+ * rate, and what it multiplies is read when it matters.
+ */
+export interface BuffDef {
+  readonly type: "buff";
+  readonly id: string;
+  readonly label: string;
+  /** Palette index of its mark in the interface. */
+  readonly color: number;
+  /** Seconds it lasts when whatever gives it does not say. Omitted: until it is taken away. */
+  readonly seconds?: number;
+  /** Given again while it is on: "refresh" (the default) starts its time again; "stack" adds another, each with its own end. */
+  readonly again?: "refresh" | "stack";
+  /** Health per second (negative harms) and torpor per second, for as long as it lasts. */
+  readonly health?: number;
+  readonly torpor?: number;
+  /** Multipliers: of how fast the body moves, of the damage it deals, and of the damage it takes. */
+  readonly speed?: number;
+  readonly dealt?: number;
+  readonly taken?: number;
+  /** It cannot move from where it is. */
+  readonly root?: boolean;
+  /** Nothing harms it. */
+  readonly immune?: boolean;
+  /** It is good for whoever has it; shown apart from those that are not. */
+  readonly good?: boolean;
+}
+
+export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef | BuffDef;

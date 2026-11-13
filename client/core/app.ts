@@ -12,7 +12,7 @@ import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "..
 import type { Pack } from "../../shared/pack/pack.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls } from "./controls.ts";
-import { HudModel, fillAction, fillHotbar, minimapImage, updateHud } from "./hud.ts";
+import { HudModel, fillAction, fillBuffs, fillHotbar, minimapImage, updateHud } from "./hud.ts";
 import { Camera } from "./render/camera.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
@@ -310,6 +310,7 @@ export class App {
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs);
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     fillAction(hud, alive ? session : null, this.reg);
+    fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
     hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eyeNow) : "";
     this.ui.build(aspect, hud, session);
     return packet;

@@ -137,6 +137,7 @@ const REQUIRED: Record<string, Record<string, string>> = {
   recipe: { makes: "string", count: "number", needs: "list", seconds: "number", xp: "number" },
   engram: { label: "string", level: "number", cost: "number", unlocks: "list" },
   levels: { xp: "list", engramPoints: "list" },
+  buff: { label: "string", color: "number" },
 };
 
 /** Why a resolved definition cannot be type-checked field by field, or null if it has every required field. */

@@ -165,6 +165,8 @@ export const OWN_LOOK = 8;
 
 /** Which hotbar slot is in the survivor's hands: u8, 255 for none. */
 export const OWN_HELD = 9;
+/** What is acting on the body for a time: count u8, then for each a buff (u16 content index) and the tick it ends (u32; 0 for one with no end). */
+export const OWN_BUFFS = 10;
 
 export const MARKER_DEATH = 1;
 
@@ -257,7 +259,7 @@ export class InputBuffer {
   }
 }
 
-/** 311 bits: position and velocity exactly, then the rest of the predicted state. */
+/** 312 bits: position and velocity exactly, then the rest of the predicted state. */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);
   w.f32(b.y);
@@ -272,7 +274,7 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u16(b.staminaMax);
   w.bits(b.speedQ, 12);
   w.bits(b.swimQ, 12);
-  w.bits(b.mflags, 4);
+  w.bits(b.mflags, 5);
   w.u16(b.held);
   w.bits(b.act, 3);
   w.u8(b.actTicks);
@@ -294,7 +296,7 @@ export function readBody(r: BitReader, b: Body): void {
   b.staminaMax = r.u16();
   b.speedQ = r.bits(12);
   b.swimQ = r.bits(12);
-  b.mflags = r.bits(4);
+  b.mflags = r.bits(5);
   b.held = r.u16();
   b.act = r.bits(3);
   b.actTicks = r.u8();

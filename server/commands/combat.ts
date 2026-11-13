@@ -1,6 +1,8 @@
 // Cheats for trying combat: something to hit, and things to hit it with.
 
+import { parseNumber } from "../../shared/console.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
+import { V_TORPOR } from "../../shared/sim/vitals.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
 import type { Host } from "../host.ts";
 import type { EntityRecord } from "../records.ts";
@@ -75,6 +77,44 @@ export function addCombatCommands(con: Console): void {
           out.push(`${made} ${def.label ?? what}${made < n ? ` (${n - made} did not fit)` : ""}`);
         }
         return `gave ${out.join(", ")}`;
+      },
+    },
+    {
+      name: "buff",
+      usage: "<name> [seconds] | off <name>",
+      help: "Put something on yourself that acts for a time (burning, stunned, tranquilized, injured, god), or take it off.",
+      admin: true,
+      run(ctx, args) {
+        const c = ctx.client;
+        const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
+        if (!c || !rec) return "this needs a survivor";
+        const reg = ctx.host.world.reg;
+        const off = args[0] === "off";
+        const name = (off ? args[1] : args[0]) ?? "";
+        const buff = reg.index.get(name) ?? reg.index.get(`core:${name}`);
+        if (buff === undefined || reg.defs[buff]!.type !== "buff") return `no buff "${name}"`;
+        if (off) return ctx.host.buffs.take(rec, buff) ? `${reg.ids[buff]} off` : `you are not under ${reg.ids[buff]}`;
+        const seconds = args[1] === undefined ? undefined : parseNumber(args[1]);
+        if (seconds !== undefined && !(seconds > 0 && seconds <= 86400)) return "seconds must be above 0 and at most 86400";
+        ctx.host.buffs.give(rec, buff, 0, seconds);
+        return `${reg.ids[buff]} on`;
+      },
+    },
+    {
+      name: "hurt",
+      usage: "<points> [torpor]",
+      help: "Take that much of your own health, and add that much torpor.",
+      admin: true,
+      run(ctx, args) {
+        const c = ctx.client;
+        const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
+        if (!c || !rec) return "this needs a survivor";
+        const points = parseNumber(args[0]);
+        const torpor = args[1] === undefined ? 0 : parseNumber(args[1]);
+        if (!(points >= 0) || !(torpor >= 0)) return "usage: hurt <points> [torpor]";
+        const taken = ctx.host.survival.hurt(rec, points, 0);
+        if (torpor > 0 && !rec.dead) ctx.host.survival.add(rec, V_TORPOR, torpor);
+        return `took ${Number(taken.toFixed(1))} health${torpor > 0 ? ` and ${torpor} torpor` : ""}`;
       },
     },
   ];

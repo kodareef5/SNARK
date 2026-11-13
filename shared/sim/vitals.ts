@@ -1,4 +1,4 @@
-// Vitals: health, food, water and oxygen as lazy quantities.
+// Vitals: health, food, water, oxygen and torpor as lazy quantities.
 //
 // Each is a value at a base tick, a rate per tick, and a maximum. Nothing is
 // stepped: the value at any tick is computed, and the tick at which one runs
@@ -10,8 +10,10 @@ export const V_HEALTH = 0;
 export const V_FOOD = 1;
 export const V_WATER = 2;
 export const V_OXYGEN = 3;
-export const V_COUNT = 4;
-export const VITAL_NAMES = ["health", "food", "water", "oxygen"] as const;
+/** Torpor runs the other way from the rest: nothing is well, and at its maximum the body is unconscious. */
+export const V_TORPOR = 4;
+export const V_COUNT = 5;
+export const VITAL_NAMES = ["health", "food", "water", "oxygen", "torpor"] as const;
 
 export class Vitals {
   /** Values at `tick`, in millionths of a point. */
@@ -35,6 +37,24 @@ export class Vitals {
     for (let i = 0; i < V_COUNT; i++) this.value[i] = this.at(i, tick);
     this.tick = tick;
     this.version++;
+  }
+
+  /** First tick at which vital `i` is at its maximum at its current rate, or Infinity. */
+  fullTick(i: number): number {
+    const short = this.max[i]! - this.value[i]!;
+    const r = this.rate[i]!;
+    if (short <= 0) return this.tick;
+    if (r <= 0) return Infinity;
+    return this.tick + Math.ceil(short / r);
+  }
+
+  /** First tick at which vital `i` is at `level` (millionths of a point) or above at its current rate, or Infinity. */
+  riseTick(i: number, level: number): number {
+    const short = level - this.value[i]!;
+    const r = this.rate[i]!;
+    if (short <= 0) return this.tick;
+    if (r <= 0) return Infinity;
+    return this.tick + Math.ceil(short / r);
   }
 
   /** First tick at which vital `i` is zero at its current rate, or Infinity. */

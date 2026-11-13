@@ -25,6 +25,7 @@ import {
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
   CMD_CREATE,
+  OWN_BUFFS,
   OWN_HELD,
   OWN_LOOK,
   OWN_MARKERS,
@@ -221,6 +222,8 @@ export class ClientSession {
    */
   readonly vitals = new Vitals();
   hasVitals = false;
+  /** What is acting on this client's body for a time: each a buff (content index) and the tick it ends (0 for no end). */
+  readonly buffs: { buff: number; until: number }[] = [];
   /** Shots this client's own body fired, as its prediction has them, oldest first. Whoever draws them empties this. */
   readonly fired: LocalShot[] = [];
   private firedTick = 0;
@@ -556,7 +559,7 @@ export class ClientSession {
     } else if (component === OWN_VITALS) {
       const v = this.vitals;
       const tick = r.u32();
-      const fields = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      const fields = new Array<number>(V_COUNT * 3).fill(0);
       for (let i = 0; i < V_COUNT * 3; i += 3) {
         fields[i] = r.uint53();
         fields[i + 1] = r.svarint();
@@ -616,6 +619,13 @@ export class ClientSession {
       if (r.overflow) return;
       this.markers.length = 0;
       this.markers.push(...list);
+    } else if (component === OWN_BUFFS) {
+      const n = r.u8();
+      const got: { buff: number; until: number }[] = [];
+      for (let i = 0; i < n; i++) got.push({ buff: r.u16(), until: r.u32() });
+      if (r.overflow) return;
+      this.buffs.length = 0;
+      this.buffs.push(...got);
     } else if (component === OWN_HELD) {
       const held = r.u8();
       if (!r.overflow) this.held = held === 255 ? -1 : held;

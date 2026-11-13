@@ -144,7 +144,9 @@ export const CORE_CONTENT: readonly Def[] = [
     // A head counts three times.
     zones: { head: 3 },
     killXp: 10,
-    stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015] },
+    // Knocked out at 200 torpor, and out for most of a minute.
+    torporDrain: 4,
+    stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015], torpidity: [200, 0, 0] },
   },
   {
     type: "species",
@@ -162,7 +164,9 @@ export const CORE_CONTENT: readonly Def[] = [
     // A rifle round does less to a creature than to a survivor.
     takes: { bullet: 0.7 },
     killXp: 4,
-    stats: { health: [220, 0.2, 0.054], stamina: [180, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [400, 0.1, 0.1], weight: [200, 0.02, 0.04], melee: [1, 0.05, 0.1], speed: [1, 0, 0.01] },
+    // Torpor grows with level as health does; once down it stays down for minutes.
+    torporDrain: 0.6,
+    stats: { health: [220, 0.2, 0.054], stamina: [180, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [400, 0.1, 0.1], weight: [200, 0.02, 0.04], melee: [1, 0.05, 0.1], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
   },
   // Something to hit: a survivor's shape and a survivor's zones, with health enough to outlast the practice.
   {
@@ -181,7 +185,8 @@ export const CORE_CONTENT: readonly Def[] = [
     equips: true,
     still: true,
     zones: { head: 3 },
-    stats: { health: [100000, 0, 0] },
+    stats: { health: [100000, 0, 0], torpidity: [200, 0, 0] },
+    torporDrain: 4,
   },
   { type: "structure", id: "core:block", mesh: "box", color: 2, half: [1, 1, 1], hp: 1000 },
   { type: "structure", id: "core:crate", mesh: "box", color: 3, half: [0.5, 0.5, 0.5], hp: 200 },
@@ -195,6 +200,12 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "prop", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // What is dropped on the ground lies in one of these.
   { type: "prop", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
+  // What can act on a body for a time.
+  { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8 },
+  { type: "buff", id: "core:tranquilized", label: "Tranquilized", color: 9, seconds: 5, again: "stack" },
+  { type: "buff", id: "core:stunned", label: "Stunned", color: 6, seconds: 3, root: true },
+  { type: "buff", id: "core:injured", label: "Injured", color: 8, speed: 0.8 },
+  { type: "buff", id: "core:god", label: "God", color: 14, immune: true, good: true },
   // An arrow that missed and did not break, standing where it landed until someone walks over it.
   { type: "prop", id: "core:arrow_stuck", mesh: "core:arrow", color: 15, radius: 0.1, height: 0.1, pitched: true },
   { type: "item", id: "core:fiber", stack: 200, weight: 0.01, color: 7 },

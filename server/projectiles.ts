@@ -98,7 +98,7 @@ export class Projectiles {
   private readonly stuckKind: number;
   private readonly rng: Rng;
   private readonly dir = [0, 0, 0];
-  private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0 };
+  private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
 
   constructor(ctx: ProjectilesContext, seed: number) {
     this.ctx = ctx;
@@ -267,7 +267,10 @@ export class Projectiles {
     src.quality = QUALITY_MUL[quality] ?? 1;
     src.draw = draw;
     src.attack = 1;
-    src.torporInstant = src.torporOver = 0;
+    src.torporInstant = reg.ammoTorpor[ammo]!;
+    src.torporOver = reg.ammoTorporOver[ammo]!;
+    src.torporSeconds = reg.ammoTorporSeconds[ammo]!;
+    src.buff = reg.ammoBuff[ammo]!;
     this.struck++;
     this.ended(x, y, z, target);
     this.ctx.combat.land(src, target, zone, x, y, z, Math.sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy) + (z - oz) * (z - oz)));

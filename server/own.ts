@@ -5,7 +5,7 @@
 
 import type { ItemDef, RecipeDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
@@ -99,6 +99,16 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     c.sentInv = inv.version;
     // What is carried changes how the body moves, and what it holds and wears is seen by others.
     if (c.ent >= 0) ctx.refresh(rec);
+  }
+  if (rec.buffsVersion !== c.sentBuffs) {
+    const w = game.beginOwn(OWN_BUFFS);
+    w.u8(rec.buffs.length);
+    for (const b of rec.buffs) {
+      w.u16(b.buff);
+      w.u32(b.until);
+    }
+    game.endOwn(c);
+    c.sentBuffs = rec.buffsVersion;
   }
   if (rec.held !== c.sentHeld) {
     const w = game.beginOwn(OWN_HELD);

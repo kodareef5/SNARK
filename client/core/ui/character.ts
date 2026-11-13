@@ -87,7 +87,9 @@ export class CharacterScreen {
     const rows: { key: number; text: string; button: string }[] = [];
     if (this.tab === TAB_STATS) {
       STAT_NAMES.forEach((name, i) => {
-        if (species?.stats?.[name]) rows.push({ key: KEY_CHAR_STAT + i * 2, text: name, button: p.statPoints > 0 ? "+" : "" });
+        // Only what a point can raise: torpidity is the body's own.
+        const curve = species?.stats?.[name];
+        if (curve && curve[2] > 0) rows.push({ key: KEY_CHAR_STAT + i * 2, text: name, button: p.statPoints > 0 ? "+" : "" });
       });
     } else if (this.tab === TAB_ENGRAMS) {
       engramOrder(reg).forEach((e, n) => {

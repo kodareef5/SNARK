@@ -193,10 +193,10 @@ export function addAdminCommands(con: Console): void {
         const c = ctx.client;
         const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
         if (!c || !rec) return "this needs a survivor";
-        const gods = ctx.host.survival.gods;
-        if (gods.delete(rec.pid)) return "god off";
-        gods.add(rec.pid);
-        ctx.host.survival.add(rec, V_HEALTH, 0);
+        // God mode is a buff like any other: it has no end, and is seen on the buff bar.
+        const god = ctx.host.world.reg.index.get("core:god")!;
+        if (ctx.host.buffs.take(rec, god)) return "god off";
+        ctx.host.buffs.give(rec, god);
         return "god on";
       },
     },

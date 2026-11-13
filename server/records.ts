@@ -9,6 +9,7 @@
 // Records are keyed by persistent id and exist whether or not the entity is
 // currently in the simulation (an offline survivor still has one).
 
+import type { BuffOn } from "./buffs.ts";
 import { makePid } from "../shared/ids.ts";
 import type { Genome } from "../shared/sim/genome.ts";
 import type { Inventory } from "../shared/sim/items.ts";
@@ -64,6 +65,11 @@ export class EntityRecord {
   readonly jobs: Job[] = [];
   /** Counts every change to the three above, for sending. */
   progVersion = 0;
+  /** What is acting on it for a time (server/buffs.ts). Not saved. `buffsVersion` counts every change, for sending. */
+  readonly buffs: BuffOn[] = [];
+  buffsVersion = 0;
+  /** Unconscious: its torpor reached its most, and has not yet run out. */
+  out = false;
   /** Component blobs this build does not understand, kept byte for byte. */
   readonly extra = new Map<number, Uint8Array>();
 

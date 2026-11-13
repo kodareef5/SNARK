@@ -13,7 +13,7 @@
 import type { EngramDef, ItemDef, LevelsDef, RecipeDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../shared/net/protocol.ts";
-import { STAT_COUNT, spendPoint } from "../shared/sim/genome.ts";
+import { STAT_COUNT, STAT_NAMES, spendPoint } from "../shared/sim/genome.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -83,6 +83,10 @@ export class Progression {
   /** Put one unspent point into a stat. */
   spend(rec: EntityRecord, stat: number): number {
     if (!rec.genome || stat >= STAT_COUNT) return RESULT_INVALID;
+    // A stat that a point would not raise (torpidity, which is the body's own) takes none.
+    const def = this.world.reg.defs[rec.kind];
+    const curve = def?.type === "species" ? def.stats?.[STAT_NAMES[stat]!] : undefined;
+    if (!curve || !(curve[2] > 0)) return RESULT_INVALID;
     if (this.statPoints(rec) < 1) return RESULT_SHORT;
     if (!spendPoint(rec.genome, stat)) return RESULT_INVALID;
     rec.progVersion++;
