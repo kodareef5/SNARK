@@ -1,14 +1,24 @@
 # Shared code
 
-Keep portable TypeScript contracts and pure logic used by both browser and server
-here. Candidates include identity and protocol types, math, movement rules,
-content contracts, and validation that both sides need.
+Portable TypeScript used by the browser, the server, and tools. ECMAScript only:
+no DOM, no Bun, no packages, no clock. Environmental inputs are passed in.
 
-Shared modules must not import client, server, tools, tests, DOM, or Bun-specific
-APIs. No third-party runtime packages. Pass environmental inputs explicitly.
-Do not move code here solely because it might be reused later.
+| Path | Contents |
+| --- | --- |
+| `coords.ts` | Axes, units, chunks, tick rate |
+| `ids.ts` | Handles, persistent ids |
+| `math/` | Trigonometry that is bit-identical on every engine |
+| `rng.ts`, `hash.ts`, `sort.ts` | Seeded randomness, FNV hash, allocation-free sort |
+| `world/` | Height grid, structure tables and collision grid, capsule collision, the proving ground |
+| `sim/` | Entity store, character controller, deadlines, lazy quantities, genome |
+| `net/` | Bit codec, protocol messages, entity views and deltas, transport interface, loopback |
+| `content/` | Definition types, pack stacking, the compiled registry |
+| `pack/` | Asset pack format and palette |
 
-First agree on identity, coordinates, commands, snapshots, and movement boundaries
-through the [integration contracts](../planning/architecture/contracts.md).
-Add concrete types with implementation fixtures and tests. No public types or
-wire formats exist yet.
+`sim/`, `world/`, and `math/` must produce identical bits on JavaScriptCore and
+V8. `tools/check.ts` rejects `Math.sin` and similar there; use `math/scalar.ts`.
+
+Do not move code here because it might be reused. Move it when both sides need
+the same answer.
+
+See the [architecture](../planning/architecture/README.md).

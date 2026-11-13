@@ -1,13 +1,9 @@
 # Runtime assets
 
-Store reviewed, browser-ready exports and their manifest data here. Commit
-intentional exports with their editable source; temporary build output belongs
-outside this directory.
+Pack files are build output, written to `client/dist/assets` and not committed.
+`core.snpk` is rebuilt from content definitions and `assets/source` on every
+client build.
 
-Consumers may use browser capabilities and the project's own loaders. No
-third-party runtime decoder or hosted asset service is implied. Record bounds,
-collision associations, LOD references, and actual resource costs according to
-the [handoff contract](../../planning/architecture/contracts.md).
-
-First prove one small asset loads by stable ID with no broken references.
-No exports or manifest format exist yet.
+A pack that must be reviewed or pinned (for example a large map) may be
+committed here once a storage policy for large binaries is decided. Nothing is
+stored here yet.

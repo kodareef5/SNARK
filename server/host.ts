@@ -71,7 +71,11 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     }
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
-    for (let i = opts.startingCreatures ?? 0; i > 0; i--) spawnCreature("core:grazer", rng.range(200, 312), rng.range(190, 250), 1 + rng.int(30));
+    // Scatter the herd north of the spawn point; positions inside structures are skipped and retried.
+    let wanted = opts.startingCreatures ?? 0;
+    for (let tries = wanted * 20; wanted > 0 && tries > 0; tries--) {
+      if (spawnCreature("core:grazer", rng.range(226, 286), rng.range(244, 300), 1 + rng.int(30)) >= 0) wanted--;
+    }
   }
 
   game.savedPosition = (name) => {

@@ -1,13 +1,14 @@
 # Assets
 
-Keep original editable art in [source](source/README.md) and browser-ready exports
-in [runtime](runtime/README.md). Gameplay definitions belong in
-[content](../content/README.md).
+Original editable art goes in [source](source/README.md). Nothing is committed
+there yet: the proving ground uses graybox meshes generated from content
+definitions.
 
-Coordinate units, axes, pivots, collision data, manifests, formats, and budgets
-through the [asset handoff contracts](../planning/architecture/contracts.md).
-Record authorship/provenance and reproducible export steps with actual assets.
-Use local versioned exports; no CDN asset dependency is assumed.
+The pipeline: a glTF binary export in `assets/source/<pack>/<name>.glb` becomes
+the mesh `<pack>:<name>` in a pack file when `bun tools/pack/build.ts` or
+`bun run build` runs. The pack format, palette, and export conventions are in
+[rendering](../planning/architecture/rendering.md) and
+[contracts](../planning/architecture/contracts.md).
 
-Begin with a small export fixture. Agree on large-binary storage before bulk
-production. No art assets or asset pipeline are implemented yet.
+Agree on per-device budgets before bulk production. A storage policy for large
+binaries is not decided.

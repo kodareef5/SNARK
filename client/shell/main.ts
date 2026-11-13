@@ -90,7 +90,7 @@ async function boot(): Promise<void> {
 
     // Self-check: once the world has arrived, read pixels back and report.
     if (selfcheck && ++frames === 90) {
-      const probes = provingProbes(cam, reg, pack.palette, SKY_COLOR, hf).map((p) => {
+      const probes = provingProbes(cam, reg, pack.palette, SKY_COLOR, hf, params.has("creature")).map((p) => {
         const rgb = renderer.readPixel(p.sx, p.sy);
         return { name: p.name, expected: p.rgb, got: rgb, ok: probePasses(p, rgb[0], rgb[1], rgb[2]) };
       });
@@ -104,6 +104,7 @@ async function boot(): Promise<void> {
         structures: world.structs.count,
         tiles: packet.tileCount,
         draws: packet.drawCount,
+        entitiesDrawn: packet.transientCount,
         drawCalls: renderer.drawCalls,
         triangles: packet.triangles,
         buildAndSubmitMsMedian: times[times.length >> 1],

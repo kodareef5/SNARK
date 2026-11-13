@@ -3,6 +3,7 @@ import { HudModel, headingOf, minimapImage, updateHud } from "../../client/core/
 import { RemoteSample } from "../../client/core/session.ts";
 import { probePasses, provingProbes } from "../../client/core/selfcheck.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
+import { PROBE_CREATURE } from "../../shared/world/proving.ts";
 import { provingView } from "../../tools/snap.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -60,10 +61,17 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
   const H = 180;
   const view = provingView(W, H);
   view.cam.pitch = 0;
-  view.remote.count = 0;
+  // Only the grazer at the probe's spot, as the probe server sets the scene up.
+  const r = view.remote;
+  r.id[0] = r.id[1]!;
+  r.kind[0] = r.kind[1]!;
+  r.x[0] = PROBE_CREATURE.x;
+  r.z[0] = PROBE_CREATURE.z;
+  r.y[0] = view.hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z);
+  r.count = 1;
   view.render();
-  const probes = provingProbes(view.cam, view.reg, view.pack.palette, SKY_COLOR, view.hf);
-  expect(probes.map((p) => p.name)).toEqual(["sky", "plaza", "block", "slope"]);
+  const probes = provingProbes(view.cam, view.reg, view.pack.palette, SKY_COLOR, view.hf, true);
+  expect(probes.map((p) => p.name)).toEqual(["sky", "plaza", "block", "slope", "creature"]);
   for (const p of probes) {
     const o = (Math.floor(p.sy * H) * W + Math.floor(p.sx * W)) * 4;
     expect(probePasses(p, view.raster.color[o]!, view.raster.color[o + 1]!, view.raster.color[o + 2]!)).toBe(true);

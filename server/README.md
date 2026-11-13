@@ -1,14 +1,28 @@
 # Server
 
-The Bun server owns simulation, command validation, connections, durable state,
-and recovery. It is headless and must not depend on rendering or the DOM.
+The Bun process that owns a world. Headless; no rendering or DOM code.
 
-Use TypeScript, built-in Bun WebSockets and SQLite, portable shared modules,
-and validated content. No third-party runtime packages. Start with one small
-in-memory authoritative world and two client sessions, then add durable state
-in R2.
+| File | Contents |
+| --- | --- |
+| `main.ts` | Process entry: static files, WebSocket adapter, wall-clock tick loop |
+| `host.ts` | Assembles world, records, creatures, persistence, and the game loop |
+| `game.ts` | Connections, input buffering and validation, player stepping, snapshots, structure sync |
+| `world.ts` | The world container |
+| `creatures.ts` | Spawning, dormancy, placeholder wander behavior, hunger deadlines |
+| `records.ts` | Cold records: name, inventory, vitals, genome |
+| `persist/store.ts` | SQLite schema and encoding |
+| `persist/persistence.ts` | What each commit contains |
 
-See the [server workstream](../planning/workstreams/server.md),
-[authority](../planning/architecture/authority.md), and
-[persistence plan](../planning/architecture/persistence.md). No server or schema
-is implemented yet.
+`game.ts`, `creatures.ts`, and `persistence.ts` take no socket and no clock, so
+tests run a whole server in memory.
+
+```sh
+bun server/main.ts --port 8787 --db var/world.db
+```
+
+`--dev` enables the self-check report endpoint and must not be used on a public
+server. A login name is not authentication; accounts do not exist yet.
+
+See [authority](../planning/architecture/authority.md),
+[scheduling](../planning/architecture/scheduling.md), and
+[persistence](../planning/architecture/persistence.md).

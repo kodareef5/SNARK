@@ -18,6 +18,8 @@ import type { StructureStore } from "./structures.ts";
 export const PROVING_ID = "proving:1";
 export const PROVING_DIMS: MapDims = { chunksX: 8, chunksZ: 8 };
 export const PROVING_SPAWN = { x: 256, z: 240, yaw: 0 };
+/** Where the boot probe stands one creature: in clear view of the spawn point, hiding nothing else it checks. */
+export const PROBE_CREATURE = { x: 259, z: 254 };
 
 /** Slope strips, west to east: 10 to 60 degrees. Entries are tan(angle). */
 export const SLOPE_TANS = [0.17632698, 0.36397023, 0.57735027, 0.83909963, 1.19175359, 1.73205081];

@@ -1,12 +1,10 @@
 # Performance scenarios
 
-Keep reproducible workloads and small scenario definitions here. Measure the
-client, active and dormant simulation, replication, and storage separately.
+Benchmarks live in `tools/bench.ts` and run with `bun run bench`. They are not
+part of the check. The tool builds the sizing target, prints each measurement
+with its budget, writes `artifacts/bench.json`, and exits non-zero on a miss.
 
-Use project modules and pinned development tooling. Record the scenario seed,
-content, workload, hardware, software versions, and measurement method. Large
-reports and profiles are artifacts, not source files.
-
-Begin with the R1 scene baseline. See the
-[performance plan](../../planning/quality/performance.md). No benchmarks have
-been implemented or measured.
+Record results with the machine line the tool prints in
+[performance](../../planning/quality/performance.md). Add a scenario to the tool
+when a new system has a cost worth budgeting; add a file here only if a scenario
+needs data that does not belong in the tool.

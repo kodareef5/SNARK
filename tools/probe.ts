@@ -28,9 +28,9 @@ if (!chrome) {
 }
 
 await buildClient();
-const server = startServer({ dev: true, port: 0 });
+const server = startServer({ dev: true, port: 0, probeScene: true });
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
-const url = `http://localhost:${server.port}/?selfcheck=1&name=probe`;
+const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe`;
 const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
 
 const timeout = new Promise<null>((r) => setTimeout(() => r(null), 30000));

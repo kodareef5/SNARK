@@ -7,6 +7,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
+import { PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
 import { join, normalize, resolve } from "node:path";
 
@@ -17,6 +18,11 @@ export interface ServerOptions {
   dbPath?: string;
   /** Directory holding the built client. */
   clientDir?: string;
+  /**
+   * A fixed scene for the boot probe: no wandering herd, nothing woken, and one
+   * creature standing at the spot the self-check looks at.
+   */
+  probeScene?: boolean;
 }
 
 export interface RunningServer {
@@ -39,7 +45,8 @@ interface Socket {
 export function startServer(opts: ServerOptions = {}): RunningServer {
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error("content errors:\n" + errors.join("\n"));
-  const host = createHost(registry, { ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 40 });
+  const host = createHost(registry, opts.probeScene ? { startingCreatures: 0, wakeRadius: -1 } : { ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 40 });
+  if (opts.probeScene) host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
   const clientDir = resolve(opts.clientDir ?? join(import.meta.dir, "../client/dist"));
   let onConnection: ((conn: Connection) => void) | null = null;
   host.game.listen({

@@ -1,11 +1,12 @@
 # Integration tests
 
-Exercise the real Bun server and its boundaries: connections, command rejection,
-SQLite transactions, conservation, restart, and recovery. Use temporary databases,
-isolated configuration, and clean teardown.
+| File | Holds |
+| --- | --- |
+| `multiplayer.test.ts` | Join, movement, mutual visibility, structure sync; zero corrections on a clean link; convergence under loss; a hostile client; refusals; a crowded scene within the byte budget |
+| `persistence.test.ts` | Restart round trip; removed content; commit callbacks; three process kills with conservation |
+| `creatures.test.ts` | Dormancy, hunger deadlines while dormant, creatures across restart |
+| `determinism.test.ts` | The same scenario under Bun and Node produces the same hash |
 
-Tests may use built-in Bun APIs and production/shared modules. Begin with two
-connections and invalid input, then add durability cases in R2. No production
-secrets or live world data belong in fixtures.
-
-See [testing policy](../../planning/quality/testing.md). No tests are implemented yet.
+`fixtures/net.ts` runs a real server and real client sessions in one process on
+virtual time. Nothing is mocked. The determinism test is skipped with a message
+if Node 24 or later is not installed.

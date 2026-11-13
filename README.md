@@ -3,34 +3,56 @@
 A browser survival parody with persistent multiplayer worlds, original creatures,
 and PvP built around readable, low-poly 3D.
 
-Start with the [planning index](planning/README.md),
-[roadmap](planning/roadmap.md), and [working conventions](planning/workflow.md).
-The repository currently contains plans and directory stubs. There is no runnable
-game, installed toolchain, automated test suite, or CI workflow yet.
+The engine spine exists: an authoritative Bun server, a predicted client, SQLite
+persistence, an asset pipeline, a WebGL2 renderer, and a graybox proving ground
+to walk around in. Gameplay beyond walking is planned, not built. Start with the
+[roadmap](planning/roadmap.md) and the [architecture](planning/architecture/README.md).
 
-## Project layout
+## Run it
+
+```sh
+bun install
+bun run dev        # http://localhost:8787  (click to capture the mouse; WASD, space, shift)
+```
+
+Open the page in two tabs to see two survivors. The world is the proving ground:
+a checkered plaza with slopes, stairs, a house, a thin wall, pillars, crates, and
+a herd of wandering placeholder creatures.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `bun run check` | Policy rules, type checks for every zone, and all tests. Under a second today; fails above 20 s |
+| `bun run bench` | Builds the sizing target (8 km, 500,000 structures, 30,000 creatures, 100 players) and holds each measurement to a budget |
+| `bun run snap` | Draws the proving ground to `artifacts/snap.png` with a software rasterizer. No browser |
+| `bun run probe` | Opens installed Chrome headless once and prints the page's self-check report |
+| `bun run dev` | Development server with client rebuild on change |
+| `bun run build` | Builds the client into `client/dist` |
+
+Every change passes `bun run check`. There is no browser test suite and there
+will not be one: see the [testing policy](planning/quality/testing.md).
+
+## Layout
 
 | Directory | Responsibility |
 | --- | --- |
-| [planning](planning/README.md) | Decisions, research, epics, acceptance scenarios, and team coordination |
-| [client](client/README.md) | Browser rendering, input, UI, audio, and prediction |
-| [server](server/README.md) | Authoritative simulation, connections, and durable state |
-| [shared](shared/README.md) | Portable TypeScript contracts and pure logic |
-| [content](content/README.md) | Gameplay definitions for items, creatures, structures, and maps |
-| [assets](assets/README.md) | Editable art and browser-ready exports |
-| [tools](tools/README.md) | Build, asset, and development tools |
-| [tests](tests/README.md) | Future behavioral tests and reusable fixtures |
+| [planning](planning/README.md) | Decisions, architecture, roadmap, epics, quality |
+| [shared](shared/README.md) | Conventions, maths, world, simulation, protocol, content, pack format |
+| [content](content/README.md) | Definitions as data |
+| [client](client/README.md) | `core`: headless session and frame building. `shell`: WebGL2 and DOM |
+| [server](server/README.md) | Game loop, creatures, records, persistence, process entry |
+| [tools](tools/README.md) | Check, bench, snapshot, pack build, probe, dev server |
+| [tests](tests/README.md) | Unit and integration tests, fixtures |
+| [assets](assets/README.md) | Editable art sources and runtime exports |
 
 ## Engineering commitments
 
-Use TypeScript, Bun, SQLite, and browser standards. Build a custom WebGL2 renderer
-with Chrome as the primary target and Firefox, iOS Safari, and mobile constraints
-considered from the first client. WebGPU is out of scope.
+TypeScript, Bun, SQLite, and browser standards. A custom WebGL2 renderer.
+Zero runtime packages; development packages are allow-listed. The server owns
+the world; the client predicts with the same simulation code and is corrected by
+it. Measure before optimizing and record what was measured. See the
+[principles](planning/principles.md) and [decisions](planning/decisions.md).
 
-The game has zero third-party runtime packages. Pinned development tools are
-allowed. Keep gameplay authoritative on the server, measure performance, and test
-in browsers. Preserve survival depth while removing meshing, collision exploits,
-and duplication. See the [principles](planning/principles.md).
-
-Use feature branches and PRs, with separate clones for remote teams. Update plans
-with the changes they describe. The repository is the shared project record.
+Work happens on `main` while one builder is active. See the
+[working conventions](planning/workflow.md).
