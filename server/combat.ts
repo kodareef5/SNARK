@@ -44,6 +44,7 @@ import { Past } from "./history.ts";
 import type { Items } from "./items.ts";
 import { XP_KILL, type Progression } from "./progression.ts";
 import type { Rules } from "./rules.ts";
+import type { Lists } from "./settings/lists.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { STAT_MELEE, statOf, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
@@ -67,6 +68,7 @@ export interface CombatContext {
   readonly creatures: Creatures;
   readonly buffs: Buffs;
   readonly rules: Rules;
+  readonly lists: Lists;
   readonly harvest: Harvest | null;
 }
 
@@ -526,6 +528,51 @@ export class Combat {
   }
 
   /**
+   * The server's multiplier for what `by` deals: by what it is (a survivor, a
+   * wild creature, a tamed one), and for a creature by its species. What
+   * nobody dealt is as it is.
+   */
+  private dealt(by: EntityRecord | null): number {
+    if (!by) return 1;
+    const { rules, lists } = this.ctx;
+    if (by.kind === this.survivor) return rules.num("PlayerDamageMultiplier");
+    const tamed = by.team !== 0;
+    return rules.num(tamed ? "TamedDinoDamageMultiplier" : "DinoDamageMultiplier") * (lists.multipliers(tamed ? "TamedDinoClassDamageMultipliers" : "DinoClassDamageMultipliers").get(by.kind) ?? 1);
+  }
+
+  /**
+   * The server's multiplier for what `victim` takes, by what it is. As ARK
+   * has it, the settings for a whole class are damage taken (higher takes
+   * more), and the lists that name a species are resistance (higher takes
+   * less): the two are written the opposite way round.
+   */
+  private taken(victim: EntityRecord): number {
+    const { rules, lists } = this.ctx;
+    if (victim.kind === this.survivor) return rules.num("PlayerResistanceMultiplier");
+    const tamed = victim.team !== 0;
+    const own = lists.multipliers(tamed ? "TamedDinoClassResistanceMultipliers" : "DinoClassResistanceMultipliers").get(victim.kind);
+    return rules.num(tamed ? "TamedDinoResistanceMultiplier" : "DinoResistanceMultiplier") / (own !== undefined && own > 0 ? own : 1);
+  }
+
+  /**
+   * Whether the server's rules make nothing of what `by` does to something of
+   * `team`. On a PvE server, what is one tribe's cannot be harmed by
+   * another's: survivors, tames, and what they built. One's own side is
+   * spared a blow, an arrow or a shot, but not a blast, which spares nobody
+   * as it does not spare whoever set it off; the server may spare it blasts
+   * too, or nothing. What is nobody's (the wild, and what the wild does), and
+   * what one does to oneself, is never this.
+   */
+  private spared(by: EntityRecord | null, team: number, type: number, self: boolean): boolean {
+    if (!by || self || by.team === 0 || team === 0) return false;
+    const rules = this.ctx.rules;
+    const pve = rules.on("serverPVE");
+    if (by.team !== team) return pve;
+    if (rules.on(pve ? "bPvEDisableFriendlyFire" : "bDisableFriendlyFire")) return true;
+    return type !== DMG_EXPLOSIVE && !rules.on("FullFriendlyFire");
+  }
+
+  /**
    * What `src` brings lands on entity `target`, on `zone`, at (x, y, z),
    * `far` metres from where it came. The harm is done now, to the body as it
    * is now, whatever moment the hit was judged at.
@@ -551,12 +598,10 @@ export class Combat {
     hit.torporOver = src.torporOver;
     hit.takes = reg.takes[vkind]?.[hit.type] ?? 1;
     // The server's rules: whether where it landed matters, and what this pairing of who and whom is worth.
-    const rules = this.ctx.rules.values;
-    hit.zone = rules.headshots !== 0 ? (reg.zoneMul[vkind]?.[zone] ?? 1) : 1;
-    hit.rule = vkind !== this.survivor ? rules.creatureDamage : by === victim ? rules.selfDamage : rules.playerDamage;
-    // Its own side: a blow, an arrow or a shot does nothing, unless the server allows it. A blast spares nobody,
-    // as it does not spare whoever set it off; and what one does to oneself is not this.
-    if (by && by !== victim && hit.type !== DMG_EXPLOSIVE && rules.friendlyFire === 0 && by.team !== 0 && by.team === victim.team) hit.rule = 0;
+    const rules = this.ctx.rules;
+    hit.zone = rules.on("HeadMultipliers") ? (reg.zoneMul[vkind]?.[zone] ?? 1) : 1;
+    const self = by === victim;
+    hit.rule = this.spared(by, victim.team, hit.type, self) ? 0 : this.dealt(by) * this.taken(victim) * (self ? rules.num("SelfDamageMultiplier") : 1);
     const vinv = victim.inv;
     let piece = -1;
     let worn = 0;
@@ -661,9 +706,8 @@ export class Combat {
     hit.draw = src.draw;
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
     hit.takes = takes[src.type]!;
-    hit.rule = this.ctx.rules.values.structureDamage;
-    // What its own side built: likewise nothing, but for a blast.
-    if (src.by && src.type !== DMG_EXPLOSIVE && this.ctx.rules.values.friendlyFire === 0 && src.by.team !== 0 && src.by.team === t.owner[slot]) hit.rule = 0;
+    // What its own side built is spared as its own side is; what another tribe built, as that tribe is.
+    hit.rule = this.spared(src.by, t.owner[slot]!, src.type, false) ? 0 : this.dealt(src.by) * this.ctx.rules.num("StructureResistanceMultiplier");
     resolveDamage();
     if (!(harm.health > 0)) return 0;
     const before = t.hp[slot]!;

@@ -28,12 +28,12 @@ s.f("XPMultiplier", 1, "Experience gained by survivors and tames. Higher is more
   .t("WorldBossKingKaijuSpawnTime", "19:00:00", "When a world boss appears, by the wall clock.", none("expansion", { game: "A" }));
 
 s.under("Damage")
-  .f("PlayerDamageMultiplier", 1, "Damage survivors deal. Higher is more.", todo(4, { live: true }))
+  .f("PlayerDamageMultiplier", 1, "Damage survivors deal. Higher is more.", live({ live: true }))
   .f("PlayerResistanceMultiplier", 1, "Damage survivors take. Higher takes more: 0.5 halves it.", live({ live: true }))
-  .f("DinoDamageMultiplier", 1, "Damage wild creatures deal. Higher is more.", todo(4, { live: true }))
+  .f("DinoDamageMultiplier", 1, "Damage wild creatures deal. Higher is more.", live({ live: true }))
   .f("DinoResistanceMultiplier", 1, "Damage wild creatures take. Higher takes more.", live({ live: true }))
-  .f("TamedDinoDamageMultiplier", 1, "Damage tamed creatures deal. Higher is more.", todo(4, { live: true }))
-  .f("TamedDinoResistanceMultiplier", 1, "Damage tamed creatures take. Higher takes more.", todo(4, { live: true }))
+  .f("TamedDinoDamageMultiplier", 1, "Damage tamed creatures deal. Higher is more.", live({ live: true }))
+  .f("TamedDinoResistanceMultiplier", 1, "Damage tamed creatures take. Higher takes more.", live({ live: true }))
   .f("StructureResistanceMultiplier", 1, "Damage things built take. Higher takes more.", live({ live: true }))
   .f("StructureDamageMultiplier", 1, "Damage dealt by things built, such as spike walls. Higher is more.", plan("defences"))
   .b("ShowFloatingDamageText", false, "The damage of a hit is shown as a number where it landed.", live({ live: true, client: true }))
@@ -146,7 +146,7 @@ s.under("Structures")
   .f("OutpostSigilRewardMultiplier", 1, "Outposts.", none("expansion", { game: "A" }));
 
 s.under("PvP and PvE")
-  .b("serverPVE", false, "Survivors, their tames and what they build cannot be harmed by other tribes.", todo(4, { live: true }))
+  .b("serverPVE", false, "Survivors, their tames and what they build cannot be harmed by other tribes. What is built decays when its tribe stays away.", live({ live: true }))
   .b("AllowThirdPersonPlayer", true, "The body may be looked at from behind.", todo(5, { live: true, client: true }))
   .b("ServerCrosshair", true, "A crosshair is shown.", todo(5, { live: true, client: true }))
   .b("ShowMapPlayerLocation", true, "The map shows where its reader is.", todo(5, { live: true, client: true }))

@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 515 of them: 52 take effect, 62 more will by the end of round 5,
+is listed here, 515 of them: 63 take effect, 51 more will by the end of round 5,
 207 wait for a feature that is not built yet, and 194 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -23,8 +23,12 @@ may change a setting without a restart.
 | `XPMultiplier` | 1 | Experience gained by survivors and tames. Higher is more. Each gain is also multiplied by its source's own multiplier. | yes |
 | `TamingSpeedMultiplier` | 1 | What each piece of food is worth to a creature being tamed. Higher is faster. | yes |
 | `HarvestAmountMultiplier` | 1 | What each harvesting blow yields. Higher is more. | yes |
+| `PlayerDamageMultiplier` | 1 | Damage survivors deal. Higher is more. | yes |
 | `PlayerResistanceMultiplier` | 1 | Damage survivors take. Higher takes more: 0.5 halves it. | yes |
+| `DinoDamageMultiplier` | 1 | Damage wild creatures deal. Higher is more. | yes |
 | `DinoResistanceMultiplier` | 1 | Damage wild creatures take. Higher takes more. | yes |
+| `TamedDinoDamageMultiplier` | 1 | Damage tamed creatures deal. Higher is more. | yes |
+| `TamedDinoResistanceMultiplier` | 1 | Damage tamed creatures take. Higher takes more. | yes |
 | `StructureResistanceMultiplier` | 1 | Damage things built take. Higher takes more. | yes |
 | `ShowFloatingDamageText` | False | The damage of a hit is shown as a number where it landed. | yes; clients are told |
 | `MaxTamedDinos` | 5000 | Tamed creatures the whole server may hold. | yes |
@@ -38,6 +42,7 @@ may change a setting without a restart.
 | `StructurePickupTimeAfterPlacement` | 30 | Seconds after it is set down that a piece may be taken back. | yes |
 | `ForceAllStructureLocking` | False | Everything that can be locked is locked when it is built. | yes |
 | `PreventOutOfTribePinCodeUse` | False | A PIN opens nothing for those outside the tribe. | yes |
+| `serverPVE` | False | Survivors, their tames and what they build cannot be harmed by other tribes. What is built decays when its tribe stays away. | yes |
 | `globalVoiceChat` | False | A voice is heard by everyone, wherever they are. | yes |
 | `ProximityChat` | False | What is written reaches only those near. | yes; clients are told |
 | `ServerAdminPassword` | none | Asked of whoever would use cheats. | no |
@@ -85,10 +90,16 @@ may change a setting without a restart.
 | `PlayerHarvestingDamageMultiplier` | 1 | What a survivor's blow does to a tree or a rock. Higher fells it sooner. | yes |
 | `HarvestResourceItemAmountClassMultipliers` | none | Yield of one resource: `(ClassName="core:thatch",Multiplier=2.0)`. | yes |
 | `ResourceNoReplenishRadiusPlayers` | 1 | How far from a survivor nodes will not grow back. Higher is further. | yes |
+| `DinoClassDamageMultipliers` | none | Damage one wild species deals: `(ClassName="core:raptor",Multiplier=2.0)`. | yes |
+| `TamedDinoClassDamageMultipliers` | none | Damage one tamed species deals. | yes |
+| `DinoClassResistanceMultipliers` | none | How well one wild species resists damage. Higher takes less: 2.0 halves it. *The reverse of the settings for a whole class, where higher takes more: ARK's reference and its operators both say so.* | yes |
+| `TamedDinoClassResistanceMultipliers` | none | How well one tamed species resists damage. Higher takes less. *As above.* | yes |
 | `PreventDinoTameClassNames` | none | Species that cannot be tamed. | no |
 | `bDisableDinoTaming` | False | Nothing can be tamed. | yes |
 | `bDisableDinoRiding` | False | Nothing can be ridden. | yes |
 | `StructureDamageRepairCooldown` | 180 | Seconds after it is damaged before something built may be mended. 0 is at once. | yes |
+| `bDisableFriendlyFire` | False | On a server that is not PvE: nothing of a tribe's own can be harmed by its own, not even by their blasts. *Without it a tribe's own blows, arrows and shots already do its own no harm; only its blasts do. ARK's hosts describe this as the switch for PvP servers and the next as the one for PvE servers.* | yes |
+| `bPvEDisableFriendlyFire` | False | The same on a PvE server. | yes |
 | `MaxNumberOfPlayersInTribe` | 0 | The most members a tribe may have. 0 is no limit. | yes |
 | `MaxFallSpeedMultiplier` | 1 | The speed of a fall at which it begins to hurt. Higher survives longer falls. | yes |
 | `FastDecayInterval` | 43200 | Seconds before a foundation or pillar joined to nothing decays. Needs FastDecayUnsnappedCoreStructures. | yes |
@@ -117,10 +128,6 @@ may change a setting without a restart.
 | `NightTimeSpeedScale` | 1 | Speed of the clock by night. Higher is a shorter night. | phase 7 |
 | `DifficultyOffset` | 1 | Difficulty is offset x (map difficulty - 0.5) + 0.5. Wild creatures are levelled in 30 steps of the difficulty. Ignored when OverrideOfficialDifficulty is set. *One host gives the default as 0.2.* | phase 8 |
 | `OverrideOfficialDifficulty` | 0 | The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150. *A patch note says the most is 5; hosts recommend up to 6. Not verified.* | phase 8 |
-| `PlayerDamageMultiplier` | 1 | Damage survivors deal. Higher is more. | phase 4 |
-| `DinoDamageMultiplier` | 1 | Damage wild creatures deal. Higher is more. | phase 4 |
-| `TamedDinoDamageMultiplier` | 1 | Damage tamed creatures deal. Higher is more. | phase 4 |
-| `TamedDinoResistanceMultiplier` | 1 | Damage tamed creatures take. Higher takes more. | phase 4 |
 | `AllowHitMarkers` | True | A mark is shown when a ranged hit lands. | phase 5 |
 | `PlayerCharacterFoodDrainMultiplier` | 1 | How fast survivors hunger. Higher is faster. | phase 6 |
 | `PlayerCharacterWaterDrainMultiplier` | 1 | How fast survivors thirst. Higher is faster. | phase 6 |
@@ -130,7 +137,6 @@ may change a setting without a restart.
 | `DinoCharacterStaminaDrainMultiplier` | 1 | How fast creatures tire. Higher is faster. | phase 5 |
 | `DinoCharacterHealthRecoveryMultiplier` | 1 | How fast creatures mend. Higher is faster. | phase 6 |
 | `OxygenSwimSpeedStatMultiplier` | 1 | Swimming speed gained by each level of oxygen. Higher is more. | phase 6 |
-| `serverPVE` | False | Survivors, their tames and what they build cannot be harmed by other tribes. | phase 4 |
 | `AllowThirdPersonPlayer` | True | The body may be looked at from behind. | phase 5 |
 | `ServerCrosshair` | True | A crosshair is shown. | phase 5 |
 | `ShowMapPlayerLocation` | True | The map shows where its reader is. | phase 5 |
@@ -168,16 +174,10 @@ may change a setting without a restart.
 | `TamedDinoCharacterFoodDrainMultiplier` | 1 | How fast tamed creatures hunger. Higher is faster. *How it combines with DinoCharacterFoodDrainMultiplier is not documented; they are multiplied.* | phase 6 |
 | `WildDinoTorporDrainMultiplier` | 1 | How fast wild creatures shake off torpor. Higher is faster. | phase 6 |
 | `TamedDinoTorporDrainMultiplier` | 1 | How fast tamed creatures shake off torpor. Higher is faster. | phase 6 |
-| `DinoClassDamageMultipliers` | none | Damage one wild species deals: `(ClassName="core:raptor",Multiplier=2.0)`. | phase 4 |
-| `TamedDinoClassDamageMultipliers` | none | Damage one tamed species deals. | phase 4 |
-| `DinoClassResistanceMultipliers` | none | Damage one wild species takes. *The reference says higher takes less here, the reverse of the global settings. To be checked before it is built.* | phase 4 |
-| `TamedDinoClassResistanceMultipliers` | none | Damage one tamed species takes. *As above.* | phase 4 |
 | `PerLevelStatsMultiplier_Player[n]` | 1 each | What a survivor gains from each level put in a stat. ARK's index: 0 health, 1 stamina, 2 torpidity, 3 oxygen, 4 food, 5 water, 6 temperature, 7 weight, 8 melee, 9 speed, 10 fortitude, 11 crafting. A 0 is read as 1. | phase 8 |
 | `PerLevelStatsMultiplier_DinoWild[n]` | 1 each | What a creature gains from each level it was born or found with. | phase 8 |
 | `PerLevelStatsMultiplier_DinoTamed[n]` | 1 each; [0] 0.2, [8] 0.17 | What a tamed creature gains from each level its owner gives it. | phase 8 |
 | `PlayerBaseStatMultipliers[n]` | 1 each; [6] 0, [8] 0, [9] 0, [10] 0, [11] 0 | What a new survivor's stats begin at. Those at 0 cannot be raised. | phase 8 |
-| `bDisableFriendlyFire` | False | Nothing of a tribe's own can be harmed by its own, not even by their blasts. | phase 4 |
-| `bPvEDisableFriendlyFire` | False | The same on a PvE server. | phase 4 |
 | `bUseCorpseLocator` | True | A beam marks where a survivor died. | phase 5 |
 | `bUseSingleplayerSettings` | False | ARK's single-player factors are applied on top of what the files give. | phase 9 |
 

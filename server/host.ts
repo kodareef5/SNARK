@@ -233,7 +233,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     persistence.settingsAt = at;
     settingsAt = at;
   }
-  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, harvest }, (opts.seed ?? 1) + 53);
+  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest }, (opts.seed ?? 1) + 53);
   // A creature's bite is a blow like any other.
   creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
