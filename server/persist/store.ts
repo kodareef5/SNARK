@@ -246,8 +246,8 @@ export class WorldStore {
     const used = inv ? inv.used() : 0;
     const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 ? 1 : 0) + rec.extra.size);
-    if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1) {
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + rec.extra.size);
+    if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0) {
       c.reset();
       c.f32(rec.te);
       c.bool(rec.tame !== null);
@@ -259,6 +259,8 @@ export class WorldStore {
       // Older saves end before these: its stance, and whom it follows.
       c.u8(rec.stance);
       c.uint53(rec.follow);
+      // And, later still, the saddle it wears.
+      c.varint(rec.saddle === 0 ? 0 : this.toSaved[rec.saddle]!);
       w.varint(COMP_TAME);
       w.blob(c.bytes());
     }
@@ -521,6 +523,10 @@ export class WorldStore {
           if (c.pos + 61 <= blob.length * 8) {
             rec.stance = c.u8();
             rec.follow = c.uint53();
+            if (c.pos + 8 <= blob.length * 8) {
+              const saved = c.varint();
+              rec.saddle = saved === 0 ? 0 : (this.toRuntime[saved] ?? 0);
+            }
           }
         } else if (component === COMP_FIXTURE) {
           rec.at = c.u32();

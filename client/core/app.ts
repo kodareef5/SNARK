@@ -6,7 +6,7 @@
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP } from "../../shared/net/protocol.ts";
+import { CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -202,6 +202,12 @@ export class App {
         if (!down) this.useKept = false;
         return true;
       }
+    }
+    // F looks into a creature of the tribe's: the one ridden, or the one looked at.
+    if (code === "KeyF") {
+      const which = this.session.driving >= 0 ? this.session.driving : this.lookedAt;
+      if (down && !repeat && which >= 0) this.session.command(CMD_OPEN, (w) => w.u32(which >>> 0));
+      return true;
     }
     // Whistles. T and Y to the creature looked at: follow me, stay. J and U to every one of the tribe's that hears.
     if (code === "KeyT" || code === "KeyY" || code === "KeyJ" || code === "KeyU") {
@@ -452,6 +458,8 @@ export class App {
     // A spectator has no body to look past: always from the eye.
     const third = this.view.thirdPerson;
     if (!alive) this.view.thirdPerson = false;
+    // A rider looks at its mount from behind.
+    else if (session.driving >= 0) this.view.thirdPerson = true;
     this.view.place(cam, world, bx, by + eye, bz, c.yaw, c.pitch);
     this.view.thirdPerson = third;
     cam.aspect = aspect;
@@ -494,8 +502,27 @@ export class App {
     // What it is doing with what it holds, as its own prediction has it: a swing is seen the moment it is asked for.
     body.state.setAction(session.own.act, (this.reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
     body.state.seed = bodySeed(body.id);
-    // Driving something else, its own body is one more body in view, where the server has it.
-    this.scene.own = alive && session.ownHandle !== 0 && session.driving < 0 ? body : null;
+    // Driving something else (riding), its own body is one more body in view, where the server has it: on the seat.
+    // What it drives is the body it predicts: drawn from that, not from what the server last said, and always seen from outside.
+    const riding = alive && session.driving >= 0;
+    if (riding) {
+      body.kind = session.bodyKind;
+      body.yaw = (session.own.yaw / 65536) * TAU;
+      body.firstPerson = false;
+      body.id = session.driving;
+      body.look = null;
+      body.gear.fill(0);
+      body.state.stance = 0;
+      body.state.setMotion(session.own.vx, session.own.vz, body.yaw, 0);
+      body.state.setAction(session.own.act, 0, session.simTick - session.own.actTicks);
+      body.state.seed = bodySeed(body.id);
+      // Its colours are what the server shows of it.
+      body.colors.fill(0);
+      const r = this.remote;
+      for (let i = 0; i < r.count; i++) if (r.id[i] === session.driving) body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
+    }
+    this.scene.skip = riding ? session.driving : -1;
+    this.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
     session.sampleRemote(this.remote);
     // Shots in the air: this client's own as its prediction has them, others' as the server told of them.

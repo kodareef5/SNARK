@@ -57,6 +57,8 @@ export interface OwnBody {
 /** Instance buffers of the node store are numbered from here, clear of chunk indices. */
 export const NODE_BUFFERS = 1 << 20;
 
+/** How far a rider's feet hang below where it sits: as the server has it (server/riding.ts). */
+const SEAT_DROP = 0.55;
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
 const BEAM_MESH = "core:beam";
@@ -120,6 +122,10 @@ export class Scene {
   readonly characters: Characters;
   /** The viewer's own body, or null to draw none. Set by the app before `build`. */
   own: OwnBody | null = null;
+  /** An entity not to draw from what the server says of it, because `own` is that body as the viewer predicts it (a mount): its index, or -1. */
+  skip = -1;
+  private readonly seatAt = [0, 0, 0];
+  private readonly mountState = new AnimState();
   private readonly state = new AnimState();
   private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags);
   /** Linear RGB of the open sky and of deep water. */
@@ -217,16 +223,42 @@ export class Scene {
     if (remote) {
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
-        if (!ch.has(kind)) continue;
-        const x = remote.x[i]! - cam.x;
-        const y = remote.y[i]! - cam.y;
-        const z = remote.z[i]! - cam.z;
+        if (!ch.has(kind) || remote.id[i] === this.skip) continue;
+        let x = remote.x[i]! - cam.x;
+        let y = remote.y[i]! - cam.y;
+        let z = remote.z[i]! - cam.z;
+        let yaw = remote.yaw[i]!;
+        // A rider is drawn on its mount's seat, where the mount is drawn: the viewer's own as it predicts it, another's as it is shown.
+        const on = remote.seat[i]! - 1;
+        if (on >= 0) {
+          const own = this.own;
+          const at = this.seatAt;
+          let found = false;
+          if (own && own.id === on) {
+            found = ch.seat(own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, at);
+            yaw = own.yaw;
+          } else {
+            for (let j = 0; j < remote.count && !found; j++) {
+              if (remote.id[j] !== on) continue;
+              const ms = this.mountState;
+              ms.unpack(remote.anim[j]!);
+              ms.seed = bodySeed(on);
+              found = ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at);
+              yaw = remote.yaw[j]!;
+            }
+          }
+          if (found) {
+            x = at[0]!;
+            y = at[1]! - SEAT_DROP;
+            z = at[2]!;
+          }
+        }
         const r = ch.reach(kind);
         if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, y + (r > 2.2 ? r : 2.2), z + r)) continue;
         st.unpack(remote.anim[i]!);
         st.seed = bodySeed(remote.id[i]!);
         const look = remote.hasLook[i] !== 0 ? remote.look : null;
-        if (!ch.add(p, kind, x, y, z, remote.yaw[i]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false)) break;
+        if (!ch.add(p, kind, x, y, z, yaw, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false)) break;
       }
     }
     // Things that lie tilted as well as turned (an arrow where it landed), and whatever is in the air.

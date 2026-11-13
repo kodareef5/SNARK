@@ -16,7 +16,7 @@ import { Pose } from "../../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
 import { HumanAnim, humanPose, type AnimState } from "../../../shared/anim/pose.ts";
-import { Solved, solve } from "../../../shared/anim/skeleton.ts";
+import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { creaturePose } from "../../../shared/anim/creature.ts";
 import { buildRigs, type Rig } from "../../../shared/anim/rigs.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
@@ -165,6 +165,27 @@ export class Characters {
   /** How far from where it stands any part of a body of this kind may be: for deciding whether it is in view. */
   reach(kind: number): number {
     return this.creatures[kind]?.rig.reach ?? BODY_RADIUS;
+  }
+
+  /**
+   * Where the seat on a creature's back is, with the creature at (x, y, z)
+   * facing `yaw` (radians) in the state `st` at `tick`: written to `out`.
+   * False for a kind that has no seat.
+   */
+  seat(kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, out: number[]): boolean {
+    const c = this.creatures[kind];
+    const socket = c?.rig.sockets.get("seat");
+    if (!c || !socket) return false;
+    creaturePose(c.rig, st, tick, c.runAt, c.rig.a);
+    solve(c.rig, c.rig.a, c.rig.solved);
+    boneToModel(c.rig.solved, socket.bone, socket.x, socket.y, socket.z, out);
+    const s = Math.sin(yaw);
+    const co = Math.cos(yaw);
+    const [mx, my, mz] = [out[0]!, out[1]!, out[2]!];
+    out[0] = x + co * mx + s * mz;
+    out[1] = y + my;
+    out[2] = z + co * mz - s * mx;
+    return true;
   }
 
   /** A creature: one mesh on its own skeleton, in its own colours. */

@@ -171,6 +171,8 @@ export interface ItemDef {
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
   /** It burns: seconds one of it keeps a fire going. */
   readonly fuel?: number;
+  /** A saddle: the species it fits, and the armor it gives the creature that wears it (the reference's rating). */
+  readonly saddle?: { readonly fits: string; readonly armor: number };
   /** Fed to something unconscious it deepens its sleep: so much torpor, over so many seconds. */
   readonly dose?: { readonly torpor: number; readonly seconds: number };
   /** Over a fire it becomes another item, in so many seconds. */

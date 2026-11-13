@@ -289,7 +289,7 @@ export class ClientSession {
   /** Creatures this survivor has just tamed and not yet been asked about: which, what it is, its level, and how well (percent). */
   readonly tamed: { handle: number; kind: number; level: number; te: number }[] = [];
   /** The creature whose inventory is open, as the server last said it is; null when what is open is no creature. Shares are 0 to 1. */
-  subject: { taming: boolean; owned: boolean; level: number; progress: number; te: number; torpor: number; food: number; id: number; points: number; stance: number; following: boolean } | null = null;
+  subject: { taming: boolean; owned: boolean; level: number; progress: number; te: number; torpor: number; food: number; id: number; points: number; stance: number; following: boolean; saddled: boolean } | null = null;
   /** A mirror of the survivor's own inventory; null until the server sends it. */
   inventory: Inventory | null = null;
   /** The container the server says this survivor has open, and a mirror of what is in it. */
@@ -533,6 +533,12 @@ export class ClientSession {
     // The body is stepped as what the server last said it is: its own species, or a creature it drives.
     stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.opts.registry.move[this.own.kind] ?? this.move!, TICK_DT);
     if (this.driving >= 0) {
+      // What it drives has jaws: its bite is stepped here as the server steps it, so the two agree on what the body is doing.
+      const jaws = this.opts.registry.weapon[this.own.kind];
+      if (jaws) {
+        const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
+        stepAction(this.own, buttons, buttons & ~was, jaws);
+      }
       this.bodies[t & (HISTORY - 1)]!.copy(this.own);
       this.bodyTick[t & (HISTORY - 1)] = t;
       return;
@@ -686,7 +692,7 @@ export class ClientSession {
     } else if (component === OWN_SUBJECT) {
       if (!r.bool()) this.subject = null;
       else {
-        const next = { taming: r.bool(), owned: r.bool(), level: r.u16(), progress: r.bits(10) / 1000, te: r.bits(10) / 1000, torpor: r.bits(10) / 1000, food: r.bits(10) / 1000, id: r.u32(), points: r.u8(), stance: r.bits(2), following: r.bool() };
+        const next = { taming: r.bool(), owned: r.bool(), level: r.u16(), progress: r.bits(10) / 1000, te: r.bits(10) / 1000, torpor: r.bits(10) / 1000, food: r.bits(10) / 1000, id: r.u32(), points: r.u8(), stance: r.bits(2), following: r.bool(), saddled: r.bool() };
         if (!r.overflow) this.subject = next;
       }
     } else if (component === OWN_OPEN) {

@@ -61,6 +61,15 @@ export class Death {
   onUseBuilt: ((c: Client, ref: number) => number) | null = null;
   /** Whether a session may look into a creature that is awake: one of its tribe's. Given by whoever knows whose things are whose. */
   canOpen: ((c: Client, rec: EntityRecord) => boolean) | null = null;
+  /**
+   * Riding, given by whoever knows of it. `riding`: whether a session is on a
+   * mount; `offMount`: put it off. `onRide`: the use button was pressed on a
+   * creature (its entity): a result code if that was a mount to get on (or
+   * one that refused), -1 if it is not something to ride.
+   */
+  riding: ((c: Client) => boolean) | null = null;
+  offMount: ((c: Client) => void) | null = null;
+  onRide: ((c: Client, e: number) => number) | null = null;
   /** Called when a session shuts what it had open, with that record. */
   onShut: ((rec: EntityRecord) => void) | null = null;
   /** The structure the last look met, or -1: set by `target`. */
@@ -323,7 +332,18 @@ export class Death {
   /** The use button: open the container looked at, or close the one that is open. */
   private use(c: Client): void {
     const ents = this.ctx.world.ents;
+    // On a mount, the use button gets off it.
+    if (this.riding?.(c)) {
+      this.offMount?.(c);
+      return;
+    }
     const hit = this.target(c, REACH);
+    // A creature to ride: saddled, awake, and its tribe's.
+    if (hit >= 0 && (ents.flags[hit]! & F_PROP) === 0 && this.onRide) {
+      const code = this.onRide(c, hit);
+      if (code > 0) this.ctx.game.notify(c, code);
+      if (code >= 0) return;
+    }
     // A cache or a bag; or a creature lying unconscious, which can be looked into where it lies.
     const there = hit >= 0 ? this.ctx.records.byPid.get(ents.pid[hit]!) : undefined;
     const pid = hit >= 0 && ((ents.flags[hit]! & F_PROP) !== 0 || (there !== undefined && there.keyHash === null && (there.out || (this.canOpen?.(c, there) ?? false)))) ? ents.pid[hit]! : 0;

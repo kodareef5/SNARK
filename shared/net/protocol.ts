@@ -158,6 +158,8 @@ export const CMD_ORDER = 20;
 export const ORDER_STAY = 0;
 export const ORDER_FOLLOW = 1;
 export const ORDER_STANCE = 2;
+/** Take its saddle off: it goes into what the creature carries. */
+export const ORDER_UNSADDLE = 5;
 export const ORDER_LEVEL = 16;
 /** In an order, the creature that means every one near. */
 export const ORDER_ALL = 0xffffffff;
@@ -167,6 +169,7 @@ export const WHISTLE_RANGE = 40;
 export const CMD_NAME = 21;
 /** Feed the creature whose inventory is open something out of that inventory: its slot (varint) and what the client believes is there (u16). */
 export const CMD_FEED = 22;
+/** Look into a creature of one's tribe: which (its entity index, u32). The use button rides one that is saddled; this is how what it carries is reached. */
 export const CMD_OPEN = 23;
 
 /** Boxes a slot command can address. Nothing else can be named: no ids travel. */

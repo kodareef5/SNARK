@@ -103,6 +103,8 @@ export class EntityRecord {
   stance = 1;
   follow = 0;
   mealDue = 0;
+  /** The saddle it wears (a content index), or 0. */
+  saddle = 0;
   /** For a bed: the tick from which someone may next return to life at it. */
   readyAt = 0;
   /** For a fire that is burning: how far it has been worked out (shared/sim/station.ts), and the tick it is next due to be looked at. Null when it is out. */

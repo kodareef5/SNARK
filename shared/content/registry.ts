@@ -104,6 +104,9 @@ export interface Registry {
   /** Per species: its taming numbers, or null if it cannot be tamed; and what it eats, best first, as triples of item, food and affinity. */
   readonly taming: readonly (TameParams | null)[];
   readonly eats: readonly (readonly number[] | null)[];
+  /** Per item: the species it is a saddle for (0: it is no saddle), and the armor that gives. */
+  readonly saddleFits: Uint16Array;
+  readonly saddleArmor: Float32Array;
   /** Per item: the torpor a dose of it gives and the seconds it takes to (0: it is no dose). */
   readonly doseTorpor: Float32Array;
   readonly doseSeconds: Float32Array;
@@ -281,6 +284,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       }
     }
     else if (d.type === "item") {
+      if (d.saddle) want(d, d.saddle.fits, "species");
       for (const a of d.weapon?.ammo ?? []) if (!items.get(a)?.ammo) errors.push(`${d.id}: "${a}" is not ammunition`);
       for (const a of d.weapon?.fits ?? []) if (!items.get(a)?.attachment) errors.push(`${d.id}: "${a}" is not an attachment`);
       if (d.ammo?.buff !== undefined) want(d, d.ammo.buff, "buff");
@@ -341,6 +345,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const runAt = new Float32Array(n);
   const taming: (TameParams | null)[] = new Array(n).fill(null);
   const eats: (number[] | null)[] = new Array(n).fill(null);
+  const saddleFits = new Uint16Array(n);
+  const saddleArmor = new Float32Array(n);
   const doseTorpor = new Float32Array(n);
   const doseSeconds = new Float32Array(n);
   const temper = new Uint8Array(n);
@@ -461,6 +467,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
         weapon[i] = { kind: W_MELEE, hold: HOLD_HANDS, swingTicks: d.bite.ticks ?? 27, strikeTick: d.bite.lands ?? 11, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true };
       }
     }
+    if (d.type === "item" && d.saddle) {
+      saddleFits[i] = index.get(d.saddle.fits)!;
+      saddleArmor[i] = d.saddle.armor;
+    }
     if (d.type === "item" && d.dose) {
       doseTorpor[i] = d.dose.torpor;
       doseSeconds[i] = d.dose.seconds;
@@ -482,7 +492,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
   for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
   // And a fire that is burning, as the fire it is.
   for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

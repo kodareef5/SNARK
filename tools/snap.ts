@@ -234,6 +234,13 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
       st.setAction(ACT_NONE, HOLD_HANDS, 0);
     });
     put(view.reg.index.get("core:survivor")!, 256 + 1.5 * gap + (j === 0 ? 5.5 : 2.6), z, []);
+    // And one sitting on the second of the row: tied to its seat, low, as a rider is.
+    const mount = r.count - 4;
+    const rider = put(view.reg.index.get("core:survivor")!, r.x[mount]!, z, []);
+    r.seat[rider] = r.id[mount]! + 1;
+    st.stance = 1;
+    r.anim[rider] = st.pack();
+    st.stance = 0;
   });
   const cam = view.cam;
   cam.x = 256;

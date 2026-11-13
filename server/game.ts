@@ -106,6 +106,8 @@ const SPECTATOR_LIFT = 1.6;
 
 /** What a body's action step said happened on the tick just stepped (`Client.did`). */
 export const DID_STRIKE = 1;
+/** What a session drives (a mount) bit: its jaws landed this tick. */
+export const DID_BITE = 8;
 export const DID_FIRE = 2;
 export const DID_RELOAD = 4;
 
@@ -379,6 +381,13 @@ export class GameServer {
           stepAction(b, c.heldButtons, c.pressed, world.reg.weapon[b.held] ?? FISTS);
           c.did = (actionOut.strike ? DID_STRIKE : 0) | (actionOut.fire ? DID_FIRE : 0) | (actionOut.reloaded ? DID_RELOAD : 0);
           c.drawn = actionOut.draw;
+        } else {
+          // What it drives has jaws: the primary button is its bite, through the step every blow goes through.
+          const jaws = world.reg.weapon[b.kind];
+          if (jaws) {
+            stepAction(b, c.heldButtons, c.pressed, jaws);
+            if (actionOut.strike) c.did = DID_BITE;
+          }
         }
         ents.storeBody(e, b);
         ents.pitch[e] = c.heldPitch;

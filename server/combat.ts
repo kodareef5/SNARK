@@ -37,7 +37,7 @@ import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, ra
 import type { Buffs } from "./buffs.ts";
 import type { Creatures } from "./creatures.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
-import { DID_FIRE, DID_RELOAD, DID_STRIKE, type Client, type GameServer } from "./game.ts";
+import { DID_FIRE, DID_RELOAD, DID_BITE, DID_STRIKE, type Client, type GameServer } from "./game.ts";
 import type { Harvest } from "./harvest.ts";
 import { Past } from "./history.ts";
 import type { Items } from "./items.ts";
@@ -121,6 +121,8 @@ export class Combat {
   private readonly ctx: CombatContext;
   private readonly survivor: number;
   /** 1 for kinds whose body has the humanoid skeleton. */
+  /** A body the cast under way is not to find besides its own: whoever sits on the creature that is biting. -1 for none. */
+  private spare = -1;
   private readonly human: Uint8Array;
   private readonly rig: (Rig | null)[];
   private readonly rng: Rng;
@@ -140,6 +142,8 @@ export class Combat {
   onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number) => void) | null = null;
   /** Hits landed on things built, and the last of them: which, how much it took, and what it has left (0: it is gone). */
   structureHits = 0;
+  /** Whoever rides the creature with this record, or null: half of what a mount earns by a kill is its rider's too. */
+  riderOf: ((mount: EntityRecord) => EntityRecord | null) | null = null;
   /** Called with a body that was harmed and how much health that took. */
   onHarm: ((victim: EntityRecord, points: number) => void) | null = null;
   /** Called with something built that was harmed and still stands. */
@@ -168,6 +172,7 @@ export class Combat {
       if (!c?.active || c.did === 0 || c.ent < 0) continue;
       if ((c.did & DID_RELOAD) !== 0) this.reload(c);
       if ((c.did & DID_STRIKE) !== 0) this.strike(c);
+      if ((c.did & DID_BITE) !== 0 && c.drive >= 0) this.bite(c.drive);
       if ((c.did & DID_FIRE) !== 0) this.fire(c);
     }
   }
@@ -210,7 +215,11 @@ export class Combat {
     const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
     const ref = rayHit.ref;
     const worldT = rayHit.t;
+    // A mount does not bite whoever is on its back, who sits where its jaws begin.
+    const rider = c === null ? (this.riderOf?.(rec) ?? null) : null;
+    this.spare = rider ? (this.ctx.records.entOf.get(rider.pid) ?? -1) : -1;
     const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH);
+    this.spare = -1;
     // What the blow brings, whatever it lands on.
     const src = this.src;
     src.by = rec;
@@ -355,7 +364,7 @@ export class Combat {
         const fz = mz - dz * along;
         if (fx * fx + fz * fz > (CHUNK_REACH + pad) * (CHUNK_REACH + pad)) continue;
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
-          if (i === self || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
+          if (i === self || i === this.spare || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
           const kind = ents.kind[i]!;
           // A sphere about the body that holds it whatever it does; a box that is larger has a larger one.
           const h = reg.bodyHeight[kind]!;
@@ -556,9 +565,12 @@ export class Combat {
         hit.armor += reg.armor[vinv.item[at]!]! * (QUALITY_MUL[vinv.quality[at]!] ?? 1);
         worn++;
       }
+    } else if (victim.saddle !== 0) {
+      // A saddle is its wearer's armor, wherever it is hit: by the reference, damage is multiplied by 100 / (100 + twice its rating).
+      hit.armor = reg.saddleArmor[victim.saddle]! * 2;
     }
     resolveDamage();
-    if (harm.wear > 0 && hit.armor > 0) {
+    if (harm.wear > 0 && hit.armor > 0 && vinv && vinv.armor >= 0) {
       if (piece >= 0) items.wear(victim, piece, harm.wear);
       else for (let k = 0; k < ARMOR_SLOTS; k++) if (vinv!.item[vinv!.armor + k] !== 0 && vinv!.dur[vinv!.armor + k]! > 0) items.wear(victim, vinv!.armor + k, Math.ceil(harm.wear / worn));
     }
@@ -770,6 +782,9 @@ export class Combat {
     const level = rec.kind === this.survivor ? progression.levelOf(rec.xp) : (rec.genome?.level ?? 1);
     const xp = Math.round((def.killXp ?? 0) * (1 + 0.1 * (level - 1)) * 10) / 10;
     progression.addXp(killer, xp);
+    // Ridden, half as much again goes to whoever rides it.
+    const rider = this.riderOf?.(killer) ?? null;
+    if (rider) progression.addXp(rider, xp / 2);
     for (const drop of def.drops ?? []) {
       const n = drop.min + this.rng.int(drop.max - drop.min + 1);
       if (n > 0) items.mint(killer, reg.index.get(drop.item)!, n);

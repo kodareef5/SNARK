@@ -19,7 +19,7 @@
 
 import { TICK_RATE } from "../shared/coords.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { EVENT_TAMED, MAX_NAME_BYTES, ORDER_ALL, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_STALE, S_EVENT, WHISTLE_RANGE } from "../shared/net/protocol.ts";
+import { EVENT_TAMED, MAX_NAME_BYTES, ORDER_ALL, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, ORDER_UNSADDLE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_STALE, S_EVENT, WHISTLE_RANGE } from "../shared/net/protocol.ts";
 import type { Creatures } from "./creatures.ts";
 import type { Progression } from "./progression.ts";
 import { Rng } from "../shared/rng.ts";
@@ -70,6 +70,8 @@ export interface Subject {
   /** Its torpor and its food as shares of the most it holds. */
   torpor: number;
   food: number;
+  /** Whether it wears a saddle. */
+  saddled: boolean;
   /** Which it is (an entity index, or -1), the levels it has to spend, its stance, and whether it follows someone. */
   id: number;
   points: number;
@@ -338,11 +340,22 @@ export class Taming {
     if (r.overflow) return RESULT_INVALID;
     const { world, items, buffs } = this.ctx;
     const box = this.ctx.openOf(c);
-    if (!box || !box.out || world.reg.defs[box.kind]?.type !== "species") return RESULT_DENIED;
+    if (!box || world.reg.defs[box.kind]?.type !== "species" || box.keyHash !== null) return RESULT_DENIED;
     const inv = items.inv(box);
     if (slot >= inv.cap) return RESULT_INVALID;
     const item = inv.item[slot]!;
     if (item !== expect || item === 0) return RESULT_STALE;
+    // A saddle that fits it, on a creature of one's tribe that has none: it is put on, and is no longer among what it carries.
+    if (world.reg.saddleFits[item] !== 0) {
+      if (world.reg.saddleFits[item] !== box.kind || box.saddle !== 0) return RESULT_INVALID;
+      if (box.team === 0 || !this.ctx.tribes.may(this.ctx.records.byPid.get(c.pid), box.team)) return RESULT_NOT_YOURS;
+      if (!items.burn(box, slot, 1)) return RESULT_STALE;
+      box.saddle = item;
+      this.ctx.records.dirty.add(box.pid);
+      this.ctx.refresh(box);
+      return RESULT_OK;
+    }
+    if (!box.out) return RESULT_DENIED;
     const torpor = world.reg.doseTorpor[item]!;
     const seconds = world.reg.doseSeconds[item]!;
     if (!(torpor > 0) || !(seconds > 0) || this.drugged === 0) return RESULT_INVALID;
@@ -352,6 +365,26 @@ export class Taming {
     const left = on && on.until > world.tick ? (on.until - world.tick) / TICK_RATE : 0;
     buffs.give(box, this.drugged, c.pid, left + seconds, torpor / seconds);
     this.doses++;
+    return RESULT_OK;
+  }
+
+  /** A session asks to look into a creature of its tribe, by its entity index: one near it, or the one it rides. */
+  open(c: Client, r: BitReader): number {
+    const which = r.u32();
+    if (r.overflow) return RESULT_INVALID;
+    const { world, records, tribes } = this.ctx;
+    const ents = world.ents;
+    const me = records.byPid.get(c.pid);
+    if (!me || c.ent < 0 || me.dead || me.out) return RESULT_DENIED;
+    const e = which < ents.cap ? which : -1;
+    const rec = e >= 0 && (ents.flags[e]! & 1) !== 0 ? records.byPid.get(ents.pid[e]!) : undefined;
+    if (!rec || world.reg.defs[rec.kind]?.type !== "species" || rec.keyHash !== null) return RESULT_INVALID;
+    if (rec.team === 0 || !tribes.may(me, rec.team)) return RESULT_NOT_YOURS;
+    const dx = ents.x[e]! - ents.x[c.ent]!;
+    const dz = ents.z[e]! - ents.z[c.ent]!;
+    const reach = 3.5 + world.reg.bodyRadius[rec.kind]!;
+    if (c.drive !== e && dx * dx + dz * dz > reach * reach) return RESULT_FAR;
+    c.open = c.open === rec.pid ? 0 : rec.pid;
     return RESULT_OK;
   }
 
@@ -368,9 +401,16 @@ export class Taming {
     const me = records.byPid.get(c.pid);
     if (!me || c.ent < 0 || me.dead) return RESULT_DENIED;
     const stance = what - ORDER_STANCE;
-    if (what !== ORDER_STAY && what !== ORDER_FOLLOW && !(stance >= 0 && stance < 3) && what < ORDER_LEVEL) return RESULT_INVALID;
+    if (what !== ORDER_STAY && what !== ORDER_FOLLOW && what !== ORDER_UNSADDLE && !(stance >= 0 && stance < 3) && what < ORDER_LEVEL) return RESULT_INVALID;
     const obey = (e: number, rec: EntityRecord): number => {
-      if (what === ORDER_STAY || what === ORDER_FOLLOW) {
+      if (what === ORDER_UNSADDLE) {
+        // Its saddle comes off into what it carries: not while someone sits on it, and not if there is no room.
+        if (rec.saddle === 0) return RESULT_INVALID;
+        if (ents.driven[e] !== 0) return RESULT_BUSY;
+        if (this.ctx.items.mint(rec, rec.saddle, 1) === 0) return RESULT_FULL;
+        rec.saddle = 0;
+        this.ctx.refresh(rec);
+      } else if (what === ORDER_STAY || what === ORDER_FOLLOW) {
         rec.follow = what === ORDER_FOLLOW ? c.pid : 0;
         creatures.mind.follow(e, what === ORDER_FOLLOW ? c.ent : -1);
       } else if (what >= ORDER_LEVEL) {
@@ -386,8 +426,8 @@ export class Taming {
       return RESULT_OK;
     };
     if (which === ORDER_ALL) {
-      // A whistle: every one of the tribe's that hears it. Levels are not given by whistling.
-      if (what >= ORDER_LEVEL) return RESULT_INVALID;
+      // A whistle: every one of the tribe's that hears it. Levels are not given by whistling, nor saddles taken off.
+      if (what >= ORDER_LEVEL || what === ORDER_UNSADDLE) return RESULT_INVALID;
       for (const e of creatures.mind.owned) {
         const rec = records.byPid.get(ents.pid[e]!);
         if (!rec || !tribes.may(me, rec.team)) continue;
@@ -437,6 +477,7 @@ export class Taming {
     const level = rec.genome ? rec.genome.level : 1;
     const e = this.ctx.records.entOf.get(rec.pid);
     return {
+      saddled: rec.saddle !== 0,
       id: e ?? -1,
       points: rec.team !== 0 ? Math.min(255, this.ctx.progression.statPoints(rec)) : 0,
       stance: rec.stance,

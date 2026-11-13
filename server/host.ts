@@ -2,7 +2,7 @@
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -12,6 +12,7 @@ import { addSocialCommands } from "./commands/social.ts";
 import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
+import { Riding } from "./riding.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
@@ -110,6 +111,7 @@ export interface Host {
   readonly fixtures: Fixtures;
   readonly stations: Stations;
   readonly taming: Taming;
+  readonly riding: Riding;
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
@@ -206,6 +208,20 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   // A creature that is somebody's can be looked into by its tribe while it is awake; shut, it may have more to eat than it had.
   death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
   death.onShut = (rec) => taming.meal(rec);
+  // Riding: the use button on a saddled creature of one's tribe gets on it, and on a mount gets off.
+  const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec) });
+  death.riding = (c) => riding.riding(c);
+  death.offMount = (c) => riding.dismount(c);
+  death.onRide = (c, e) => {
+    const rec = records.byPid.get(world.ents.pid[e]!);
+    // Only what is saddled, awake, and theirs is something to ride; anything else is whatever it was.
+    if (!rec || rec.keyHash !== null || rec.saddle === 0 || rec.out || !tribes.may(records.byPid.get(c.pid), rec.team)) return -1;
+    return riding.mount(c, e);
+  };
+  combat.riderOf = (mount) => {
+    const e = records.entOf.get(mount.pid);
+    return e === undefined ? null : riding.riderOf(e);
+  };
   combat.onHarm = (victim, points) => taming.harmed(victim, points);
   const chat = new Chat({ game, records, rules, tribes });
   // What has state among the things built: found again among the records that were loaded.
@@ -396,6 +412,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       else if (kind === DEADLINE_TAME) taming.due(pid, stamp);
     });
     death.step();
+    // Riders go where their mounts went this tick, before anything is aimed at either.
+    riding.step();
     // Swings that landed and shots that left on this tick, now that every body has moved.
     combat.step();
     projectiles.step();
@@ -460,7 +478,10 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     survival.init(rec);
     const e = records.entOf.get(rec.pid);
     if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
-    refreshMods(reg, world.ents, e, rec.genome, rec.inv ? items.inv(rec).weight(items.table) : 0, buffs.speedOf(rec), buffs.rooted(rec), rec.out);
+    // What it carries; and, for a mount, what its rider carries too.
+    const rider = riding.riderOf(e);
+    const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0);
+    refreshMods(reg, world.ents, e, rec.genome, load, buffs.speedOf(rec), buffs.rooted(rec), rec.out);
     // A survivor's level is what its experience has earned; a creature's is its points.
     const level = rec.kind === survivor ? progression.levelOf(rec.xp) : rec.genome ? rec.genome.level : 1;
     world.ents.setLook(e, level, rec.genome ? rec.genome.colors : null, rec.name);
@@ -519,6 +540,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     fixtures,
     stations,
     taming,
+    riding,
     online: (pid) => sessionOf(pid) !== null,
     setRule(name, value) {
       if (!rules.set(name, value)) return false;
@@ -550,6 +572,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   game.handle(CMD_STRUCT, (c, r) => build.act(c, r));
   game.handle(CMD_FEED, (c, r) => taming.feed(c, r));
   game.handle(CMD_ORDER, (c, r) => taming.order(c, r));
+  game.handle(CMD_OPEN, (c, r) => taming.open(c, r));
   game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
   game.handle(CMD_CHAT, (c, r) => {
     const channel = r.bits(3);

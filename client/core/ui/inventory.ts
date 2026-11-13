@@ -14,7 +14,7 @@
 
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, CMD_USE } from "../../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, ORDER_UNSADDLE, CMD_USE } from "../../../shared/net/protocol.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, type Inventory } from "../../../shared/sim/items.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
@@ -44,6 +44,8 @@ export const KEY_OPEN_SUBJECT = 299;
  */
 export const KEY_OPEN_ORDER = 270;
 export const KEY_OPEN_LEVEL = 272;
+/** And, on one that wears a saddle, a button that takes it off. */
+export const KEY_OPEN_UNSADDLE = 279;
 /** The stats a creature's levels go in, and what each button is marked with. */
 const LEVEL_STATS: readonly [stat: number, mark: string][] = [[0, "health"], [1, "stam"], [2, "oxy"], [3, "food"], [5, "weight"], [6, "melee"], [7, "speed"]];
 const STANCE_WORDS: readonly string[] = ["passive", "neutral", "aggressive"];
@@ -115,9 +117,9 @@ export class InventoryScreen {
       return;
     }
     const subject = session.subject;
-    if (kind === 0 && subject?.owned && subject.id >= 0 && key >= KEY_OPEN_ORDER && key < KEY_OPEN_LEVEL + LEVEL_STATS.length) {
-      // What a creature of one's own is told: follow or stay, the next stance round, or a level into a stat.
-      const what = key === KEY_OPEN_ORDER ? (subject.following ? ORDER_STAY : ORDER_FOLLOW) : key === KEY_OPEN_ORDER + 1 ? ORDER_STANCE + ((subject.stance + 1) % STANCE_WORDS.length) : ORDER_LEVEL + LEVEL_STATS[key - KEY_OPEN_LEVEL]![0];
+    if (kind === 0 && subject?.owned && subject.id >= 0 && key >= KEY_OPEN_ORDER && key <= KEY_OPEN_UNSADDLE) {
+      // What a creature of one's own is told: follow or stay, the next stance round, its saddle off, or a level into a stat.
+      const what = key === KEY_OPEN_UNSADDLE ? ORDER_UNSADDLE : key === KEY_OPEN_ORDER ? (subject.following ? ORDER_STAY : ORDER_FOLLOW) : key === KEY_OPEN_ORDER + 1 ? ORDER_STANCE + ((subject.stance + 1) % STANCE_WORDS.length) : ORDER_LEVEL + LEVEL_STATS[key - KEY_OPEN_LEVEL]![0];
       session.command(CMD_ORDER, (w) => (w.u32(subject.id), w.u8(what)));
       return;
     }
@@ -268,10 +270,17 @@ export class InventoryScreen {
         f.text(KEY_OPEN_SUBJECT, x0 + PAD, y + PAD + titleH, w - PAD * 2, S_LABEL, line.slice(0, Math.floor((w - PAD * 2) / 7.2)));
         if (subject.owned) {
           const top = y + PAD + titleH + infoH + 2;
-          const half = (w - PAD * 2 - GAP) / 2;
-          for (const [n, label] of [[0, subject.following ? "Stay here" : "Follow me"], [1, `It is ${STANCE_WORDS[subject.stance] ?? "neutral"}`]] as const) {
+          // Two buttons, or three on one that wears a saddle.
+          const across = subject.saddled ? 3 : 2;
+          const half = (w - PAD * 2 - GAP * (across - 1)) / across;
+          for (const [n, label] of [[0, subject.following ? "Stay here" : "Follow me"], [1, subject.saddled ? (STANCE_WORDS[subject.stance] ?? "neutral") : `It is ${STANCE_WORDS[subject.stance] ?? "neutral"}`]] as const) {
             const b = f.add(KEY_OPEN_ORDER + n, K_BUTTON, x0 + PAD + n * (half + GAP), top, half, 24, S_BUTTON);
-            b.text = label;
+            b.text = label.slice(0, Math.max(4, Math.floor((half - 6) / 8.4)));
+            b.interactive = true;
+          }
+          if (subject.saddled) {
+            const b = f.add(KEY_OPEN_UNSADDLE, K_BUTTON, x0 + PAD + 2 * (half + GAP), top, half, 24, S_BUTTON);
+            b.text = "Unsaddle".slice(0, Math.max(4, Math.floor((half - 6) / 8.4)));
             b.interactive = true;
           }
           if (subject.points > 0) {
