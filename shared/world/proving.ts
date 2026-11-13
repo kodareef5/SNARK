@@ -23,7 +23,12 @@ export const PROVING_SPAWN = { x: 256, z: 240, yaw: 0 };
 export const PROVING_SEA_LEVEL = -0.5;
 /** Centre of the bowl: 8 m deep, the place to swim and to drown. */
 export const PROVING_POOL = { x: 172, z: 256 };
-export const PROBE_CREATURE = { x: 259, z: 254 };
+/**
+ * Where the probe server stands its one creature, and the colour it gives the
+ * creature's first region: not the species' own, so seeing it proves that a
+ * body's colours reached the renderer.
+ */
+export const PROBE_CREATURE = { x: 259, z: 254, color: 6 };
 
 /** Slope strips, west to east: 10 to 60 degrees. Entries are tan(angle). */
 export const SLOPE_TANS = [0.17632698, 0.36397023, 0.57735027, 0.83909963, 1.19175359, 1.73205081];

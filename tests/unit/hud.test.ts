@@ -68,6 +68,7 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
   r.x[0] = PROBE_CREATURE.x;
   r.z[0] = PROBE_CREATURE.z;
   r.y[0] = view.hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z);
+  r.colors[0] = PROBE_CREATURE.color;
   r.count = 1;
   view.render();
   const probes = provingProbes(view.cam, view.reg, view.pack.palette, SKY_COLOR, view.hf, true);
@@ -78,4 +79,10 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
     expect(probePasses(p, 0, 0, 0)).toBe(false);
     expect(probePasses(p, 255, 0, 255)).toBe(false);
   }
+  // Drawn in its species' own colour instead, the creature probe fails: the check does see colour regions.
+  r.colors[0] = 0;
+  view.render();
+  const c = probes[4]!;
+  const o = (Math.floor(c.sy * H) * W + Math.floor(c.sx * W)) * 4;
+  expect(probePasses(c, view.raster.color[o]!, view.raster.color[o + 1]!, view.raster.color[o + 2]!)).toBe(false);
 });

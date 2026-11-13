@@ -54,7 +54,14 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   if (!registry) throw new Error("content errors:\n" + errors.join("\n"));
   const roles = { dev: opts.dev ?? false, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 40 });
-  if (opts.probeScene) host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
+  if (opts.probeScene) {
+    const ents = host.world.ents;
+    const e = host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
+    const genome = host.records.byPid.get(ents.pid[e]!)!.genome!;
+    genome.colors.fill(0);
+    genome.colors[0] = PROBE_CREATURE.color;
+    ents.setLook(e, genome.level, genome.colors, "");
+  }
   const clientDir = resolve(opts.clientDir ?? join(import.meta.dir, "../client/dist"));
   let onConnection: ((conn: Connection) => void) | null = null;
   host.game.listen({

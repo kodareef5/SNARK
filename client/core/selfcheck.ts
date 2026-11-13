@@ -43,10 +43,11 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   if (cam.project(232, hf.heightAt(232, 296), 296, at)) {
     probes.push({ name: "slope", sx: at[0]!, sy: at[1]!, rgb: color(hf.tint[Math.round(296 / hf.cell) * hf.nx + Math.round(232 / hf.cell)]!), mode: "hue" });
   }
-  // The probe server stands one grazer at a known spot: checks the per-frame entity path and its colour region.
+  // The probe server stands one grazer at a known spot, in a colour that is not its species' own:
+  // checks the per-frame entity path and that a body's colour regions arrive with it.
   const grazer = reg.defs[reg.index.get("core:grazer") ?? 0];
   if (withCreature && grazer && grazer.type === "species" && cam.project(PROBE_CREATURE.x, hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z) + grazer.height / 2, PROBE_CREATURE.z, at)) {
-    probes.push({ name: "creature", sx: at[0]!, sy: at[1]!, rgb: color(grazer.color), mode: "hue" });
+    probes.push({ name: "creature", sx: at[0]!, sy: at[1]!, rgb: color(PROBE_CREATURE.color), mode: "hue" });
   }
   return probes;
 }
