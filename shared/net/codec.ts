@@ -1,0 +1,322 @@
+// Bit-level wire codec. Least-significant bit first.
+//
+// Neither side throws on bad data: the writer and reader set `overflow` and keep
+// returning zeros, and the caller checks the flag once at the end. A hostile
+// packet therefore costs a bounded amount of work and never an exception.
+
+const F32 = new Float32Array(1);
+const F32_BITS = new Uint32Array(F32.buffer);
+const F64 = new Float64Array(1);
+const F64_BITS = new Uint32Array(F64.buffer);
+
+const TWO_32 = 4294967296;
+
+export class BitWriter {
+  readonly buf: Uint8Array;
+  /** Position in bits. */
+  pos = 0;
+  overflow = false;
+  private readonly capBits: number;
+  private dirtyBytes = 0;
+
+  constructor(capacityBytes: number) {
+    this.buf = new Uint8Array(capacityBytes);
+    this.capBits = capacityBytes * 8;
+  }
+
+  reset(): void {
+    this.buf.fill(0, 0, Math.max(this.dirtyBytes, this.byteLength));
+    this.pos = 0;
+    this.dirtyBytes = 0;
+    this.overflow = false;
+  }
+
+  get byteLength(): number {
+    return (this.pos + 7) >>> 3;
+  }
+
+  /** The written bytes. A view, valid until the next reset. */
+  bytes(): Uint8Array {
+    return this.buf.subarray(0, this.byteLength);
+  }
+
+  /** Write the low `n` bits of `value`, 0 <= n <= 32. */
+  bits(value: number, n: number): void {
+    let p = this.pos;
+    if (p + n > this.capBits) {
+      this.overflow = true;
+      return;
+    }
+    let v = value >>> 0;
+    const buf = this.buf;
+    while (n > 0) {
+      const off = p & 7;
+      const room = 8 - off;
+      const take = room < n ? room : n;
+      buf[p >>> 3]! |= (v & ((1 << take) - 1)) << off;
+      v >>>= take;
+      p += take;
+      n -= take;
+    }
+    this.pos = p;
+    const used = (p + 7) >>> 3;
+    if (used > this.dirtyBytes) this.dirtyBytes = used;
+  }
+
+  /** Move back to an earlier position, discarding what was written after it. */
+  rewind(pos: number): void {
+    const from = pos >>> 3;
+    const to = this.byteLength;
+    const keep = pos & 7;
+    if (keep !== 0) {
+      this.buf[from]! &= (1 << keep) - 1;
+      this.buf.fill(0, from + 1, to);
+    } else {
+      this.buf.fill(0, from, to);
+    }
+    this.pos = pos;
+  }
+
+  bool(b: boolean): void {
+    this.bits(b ? 1 : 0, 1);
+  }
+
+  u8(v: number): void {
+    this.bits(v, 8);
+  }
+
+  u16(v: number): void {
+    this.bits(v, 16);
+  }
+
+  u32(v: number): void {
+    this.bits(v, 32);
+  }
+
+  /** Signed integer in `n` bits, two's complement. */
+  sbits(v: number, n: number): void {
+    this.bits(v, n);
+  }
+
+  /** Unsigned 32-bit integer, 1 to 5 bytes. */
+  varint(v: number): void {
+    v >>>= 0;
+    while (v >= 0x80) {
+      this.bits((v & 0x7f) | 0x80, 8);
+      v >>>= 7;
+    }
+    this.bits(v, 8);
+  }
+
+  /** Signed 32-bit integer, zig-zag encoded. */
+  svarint(v: number): void {
+    this.varint(((v << 1) ^ (v >> 31)) >>> 0);
+  }
+
+  /** Non-negative safe integer below 2^53 (persistent ids). */
+  uint53(v: number): void {
+    this.bits(v % TWO_32, 32);
+    this.bits(Math.floor(v / TWO_32), 21);
+  }
+
+  f32(v: number): void {
+    F32[0] = v;
+    this.bits(F32_BITS[0]!, 32);
+  }
+
+  f64(v: number): void {
+    F64[0] = v;
+    this.bits(F64_BITS[0]!, 32);
+    this.bits(F64_BITS[1]!, 32);
+  }
+
+  /** Raw bytes with a varint length prefix. */
+  blob(src: Uint8Array): void {
+    this.varint(src.length);
+    for (let i = 0; i < src.length; i++) this.bits(src[i]!, 8);
+  }
+
+  /** UTF-8 string with a varint byte-length prefix. */
+  string(s: string): void {
+    this.varint(utf8Length(s));
+    for (let i = 0; i < s.length; i++) {
+      let c = s.charCodeAt(i);
+      if (c >= 0xd800 && c < 0xdc00 && i + 1 < s.length) {
+        c = 0x10000 + ((c - 0xd800) << 10) + (s.charCodeAt(++i) - 0xdc00);
+      }
+      if (c < 0x80) this.bits(c, 8);
+      else if (c < 0x800) {
+        this.bits(0xc0 | (c >> 6), 8);
+        this.bits(0x80 | (c & 63), 8);
+      } else if (c < 0x10000) {
+        this.bits(0xe0 | (c >> 12), 8);
+        this.bits(0x80 | ((c >> 6) & 63), 8);
+        this.bits(0x80 | (c & 63), 8);
+      } else {
+        this.bits(0xf0 | (c >> 18), 8);
+        this.bits(0x80 | ((c >> 12) & 63), 8);
+        this.bits(0x80 | ((c >> 6) & 63), 8);
+        this.bits(0x80 | (c & 63), 8);
+      }
+    }
+  }
+}
+
+function utf8Length(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c < 0xdc00 && i + 1 < s.length) {
+      n += 4;
+      i++;
+    } else n += 3;
+  }
+  return n;
+}
+
+export class BitReader {
+  private buf: Uint8Array = new Uint8Array(0);
+  private limitBits = 0;
+  pos = 0;
+  overflow = false;
+
+  constructor(data?: Uint8Array) {
+    if (data) this.reset(data);
+  }
+
+  reset(data: Uint8Array): void {
+    this.buf = data;
+    this.limitBits = data.length * 8;
+    this.pos = 0;
+    this.overflow = false;
+  }
+
+  get remainingBits(): number {
+    return this.limitBits - this.pos;
+  }
+
+  bits(n: number): number {
+    let p = this.pos;
+    if (p + n > this.limitBits) {
+      this.overflow = true;
+      this.pos = this.limitBits;
+      return 0;
+    }
+    const buf = this.buf;
+    let v = 0;
+    let shift = 0;
+    while (n > 0) {
+      const off = p & 7;
+      const room = 8 - off;
+      const take = room < n ? room : n;
+      v |= ((buf[p >>> 3]! >>> off) & ((1 << take) - 1)) << shift;
+      shift += take;
+      p += take;
+      n -= take;
+    }
+    this.pos = p;
+    return v >>> 0;
+  }
+
+  bool(): boolean {
+    return this.bits(1) === 1;
+  }
+
+  u8(): number {
+    return this.bits(8);
+  }
+
+  u16(): number {
+    return this.bits(16);
+  }
+
+  u32(): number {
+    return this.bits(32);
+  }
+
+  sbits(n: number): number {
+    const shift = 32 - n;
+    return (this.bits(n) << shift) >> shift;
+  }
+
+  varint(): number {
+    let v = 0;
+    let shift = 0;
+    for (let i = 0; i < 5; i++) {
+      const b = this.bits(8);
+      v |= (b & 0x7f) << shift;
+      if (b < 0x80) return v >>> 0;
+      shift += 7;
+    }
+    this.overflow = true;
+    return 0;
+  }
+
+  svarint(): number {
+    const v = this.varint();
+    return (v >>> 1) ^ -(v & 1);
+  }
+
+  uint53(): number {
+    const lo = this.bits(32);
+    return this.bits(21) * TWO_32 + lo;
+  }
+
+  f32(): number {
+    F32_BITS[0] = this.bits(32);
+    return F32[0]!;
+  }
+
+  f64(): number {
+    F64_BITS[0] = this.bits(32);
+    F64_BITS[1] = this.bits(32);
+    return F64[0]!;
+  }
+
+  /** Length-prefixed bytes, copied. Lengths above `max` mark the packet bad. */
+  blob(max: number): Uint8Array {
+    const n = this.varint();
+    if (n > max || n * 8 > this.remainingBits) {
+      this.overflow = true;
+      return new Uint8Array(0);
+    }
+    const out = new Uint8Array(n);
+    for (let i = 0; i < n; i++) out[i] = this.bits(8);
+    return out;
+  }
+
+  /** Length-prefixed UTF-8. Lengths above `maxBytes` mark the packet bad. */
+  string(maxBytes: number): string {
+    const n = this.varint();
+    if (n > maxBytes || n * 8 > this.remainingBits) {
+      this.overflow = true;
+      return "";
+    }
+    let s = "";
+    let i = 0;
+    while (i < n) {
+      const b = this.bits(8);
+      i++;
+      let c = b;
+      let extra = 0;
+      if (b >= 0xf0) {
+        c = b & 7;
+        extra = 3;
+      } else if (b >= 0xe0) {
+        c = b & 15;
+        extra = 2;
+      } else if (b >= 0xc0) {
+        c = b & 31;
+        extra = 1;
+      }
+      for (; extra > 0 && i < n; extra--, i++) c = (c << 6) | (this.bits(8) & 63);
+      if (c >= 0x10000) {
+        c -= 0x10000;
+        s += String.fromCharCode(0xd800 + (c >> 10), 0xdc00 + (c & 1023));
+      } else s += String.fromCharCode(c);
+    }
+    return s;
+  }
+}

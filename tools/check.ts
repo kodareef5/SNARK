@@ -1,0 +1,186 @@
+// The one command every change must pass: `bun run check`.
+//
+// It enforces the rules that keep this project fast to change:
+//   - zone import boundaries (who may import whom)
+//   - no browser test suite and no browser automation packages
+//   - zero runtime packages, allow-listed development packages
+//   - deterministic maths inside the simulation
+//   - a small DOM/WebGL shell
+//   - a wall-clock budget for the whole check
+//
+// Raising a budget or widening an allow-list is a decision, not a fix.
+// Record it in planning/decisions.md in the same change.
+
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+
+const ROOT = resolve(import.meta.dir, "..");
+
+/** Whole-check wall clock budget in seconds. */
+const BUDGET_SECONDS = 20;
+/** Non-blank, non-comment lines allowed in client/shell. */
+const SHELL_MAX_LINES = 900;
+/** Development packages allowed in package.json. */
+const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
+
+interface Zone {
+  dir: string;
+  /** Zones this zone may import from. "*" means any. */
+  may: string[] | "*";
+  /** May import `bun:*` / `node:*` built-ins. */
+  builtins: boolean;
+}
+
+const ZONES: Zone[] = [
+  { dir: "shared", may: ["shared"], builtins: false },
+  { dir: "content", may: ["shared", "content"], builtins: false },
+  { dir: "client/core", may: ["shared", "content", "client/core"], builtins: false },
+  { dir: "client/shell", may: ["shared", "content", "client/core", "client/shell"], builtins: false },
+  { dir: "server", may: ["shared", "content", "server"], builtins: true },
+  { dir: "tools", may: "*", builtins: true },
+  // Tests never touch the DOM zone. Logic that needs a test belongs in client/core.
+  { dir: "tests", may: ["shared", "content", "client/core", "server", "tools", "tests"], builtins: true },
+];
+
+/** Directories where results must be bit-identical on JavaScriptCore and V8. */
+const DETERMINISTIC_DIRS = ["shared/sim", "shared/world", "shared/math"];
+const NONDETERMINISTIC = /\bMath\.(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|expm1|log|log2|log10|log1p|pow|hypot|cbrt|random)\b|\*\*|\bDate\.now\b|\bperformance\.now\b/;
+/** Seeded randomness only, wherever game state is produced. */
+const SEEDED_ONLY_DIRS = ["shared", "server", "client/core", "content"];
+
+const problems: string[] = [];
+const fail = (msg: string) => problems.push(msg);
+
+function walk(dir: string, out: string[] = []): string[] {
+  if (!existsSync(dir)) return out;
+  for (const name of readdirSync(dir)) {
+    if (name === "node_modules" || name === "dist" || name.startsWith(".")) continue;
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) walk(p, out);
+    else out.push(p);
+  }
+  return out;
+}
+
+function zoneOf(rel: string): Zone | undefined {
+  let best: Zone | undefined;
+  for (const z of ZONES) {
+    if ((rel === z.dir || rel.startsWith(z.dir + "/")) && (!best || z.dir.length > best.dir.length)) best = z;
+  }
+  return best;
+}
+
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
+}
+
+const IMPORT = /^[ \t]*(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|^[ \t]*import\s*['"]([^'"]+)['"]/gm;
+
+function checkPolicy(): void {
+  const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+  if (pkg.dependencies && Object.keys(pkg.dependencies).length > 0) {
+    fail(`package.json: runtime dependencies are not allowed (${Object.keys(pkg.dependencies).join(", ")})`);
+  }
+  for (const name of Object.keys(pkg.devDependencies ?? {})) {
+    if (!ALLOWED_DEV_PACKAGES.has(name)) {
+      fail(`package.json: development package "${name}" is not allow-listed in tools/check.ts`);
+    }
+    if (/playwright|puppeteer|selenium|webdriver|cypress|testcafe|nightwatch/i.test(name)) {
+      fail(`package.json: "${name}" is browser automation; see planning/quality/testing.md`);
+    }
+  }
+  const pinned = pkg.engines?.bun;
+  if (pinned !== Bun.version) fail(`Bun ${Bun.version} is running but package.json pins ${pinned}`);
+
+  if (existsSync(join(ROOT, "tests/browser"))) {
+    fail("tests/browser exists: there is no browser test suite; see planning/quality/testing.md");
+  }
+
+  const files = ZONES.flatMap((z) => walk(join(ROOT, z.dir))).filter((f) => f.endsWith(".ts"));
+  let shellLines = 0;
+
+  for (const file of files) {
+    const rel = relative(ROOT, file);
+    const zone = zoneOf(rel)!;
+    const src = stripComments(readFileSync(file, "utf8"));
+
+    if (/\.(spec|e2e)\.ts$/.test(rel)) fail(`${rel}: spec/e2e files are not used here`);
+    if (zone.dir === "client/shell") {
+      if (rel.endsWith(".test.ts")) fail(`${rel}: client/shell has no tests; move the logic into client/core`);
+      shellLines += src.split("\n").filter((l) => l.trim().length > 0).length;
+    }
+
+    for (const m of src.matchAll(IMPORT)) {
+      const spec = m[1] ?? m[2] ?? m[3]!;
+      if (spec.startsWith(".")) {
+        const target = relative(ROOT, resolve(dirname(file), spec));
+        const tz = zoneOf(target);
+        if (!tz) fail(`${rel}: imports "${spec}" which is outside every zone`);
+        else if (zone.may !== "*" && !zone.may.includes(tz.dir)) {
+          fail(`${rel}: zone ${zone.dir} may not import from ${tz.dir} ("${spec}")`);
+        }
+        if (!spec.endsWith(".ts") && !spec.endsWith(".json")) fail(`${rel}: import "${spec}" needs an explicit .ts extension`);
+      } else if (/^(bun|node):|^bun$/.test(spec)) {
+        if (!zone.builtins) fail(`${rel}: zone ${zone.dir} may not import built-in "${spec}"`);
+      } else {
+        fail(`${rel}: bare package import "${spec}" (zero runtime packages)`);
+      }
+    }
+
+    if (DETERMINISTIC_DIRS.some((d) => rel.startsWith(d + "/"))) {
+      const hit = src.match(NONDETERMINISTIC);
+      if (hit) fail(`${rel}: "${hit[0]}" is not bit-reproducible across engines; use shared/math`);
+    }
+    if (SEEDED_ONLY_DIRS.some((d) => rel.startsWith(d + "/")) && /\bMath\.random\b/.test(src)) {
+      fail(`${rel}: Math.random is not allowed; use the seeded Rng in shared/rng.ts`);
+    }
+  }
+
+  if (shellLines > SHELL_MAX_LINES) {
+    fail(`client/shell is ${shellLines} lines (budget ${SHELL_MAX_LINES}); move logic into client/core`);
+  }
+  console.log(`  shell size   ${shellLines}/${SHELL_MAX_LINES} lines`);
+}
+
+async function run(cmd: string[], quiet: boolean): Promise<{ ok: boolean; out: string }> {
+  const proc = Bun.spawn(cmd, { cwd: ROOT, stdout: quiet ? "pipe" : "inherit", stderr: quiet ? "pipe" : "inherit" });
+  const out = quiet ? (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text()) : "";
+  return { ok: (await proc.exited) === 0, out };
+}
+
+async function checkTypes(): Promise<void> {
+  const tsc = join(ROOT, "node_modules/.bin/tsc");
+  const zones = ZONES.filter((z) => walk(join(ROOT, z.dir)).some((f) => f.endsWith(".ts")));
+  const results = await Promise.all(zones.map((z) => run([tsc, "-p", join(z.dir, "tsconfig.json")], true)));
+  results.forEach((r, i) => {
+    if (!r.ok) fail(`type check failed in ${zones[i]!.dir}:\n${r.out.trim()}`);
+  });
+}
+
+async function checkTests(): Promise<void> {
+  const hasTests = walk(join(ROOT, "tests")).some((f) => f.endsWith(".test.ts"));
+  if (!hasTests) return;
+  const r = await run(["bun", "test"], true);
+  if (!r.ok) fail(`tests failed:\n${r.out.trim()}`);
+  else console.log("  " + (r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim()).join(", ")));
+}
+
+const t0 = performance.now();
+const step = async (name: string, fn: () => void | Promise<void>) => {
+  const t = performance.now();
+  await fn();
+  console.log(`${name.padEnd(12)} ${((performance.now() - t) / 1000).toFixed(2)}s`);
+};
+
+await step("policy", checkPolicy);
+await Promise.all([step("types", checkTypes), step("tests", checkTests)]);
+
+const seconds = (performance.now() - t0) / 1000;
+if (seconds > BUDGET_SECONDS) {
+  fail(`check took ${seconds.toFixed(1)}s (budget ${BUDGET_SECONDS}s); make tests faster or remove them`);
+}
+if (problems.length > 0) {
+  console.error(`\nFAILED (${problems.length})\n` + problems.map((p) => " - " + p).join("\n"));
+  process.exit(1);
+}
+console.log(`\nOK in ${seconds.toFixed(2)}s (budget ${BUDGET_SECONDS}s)`);
