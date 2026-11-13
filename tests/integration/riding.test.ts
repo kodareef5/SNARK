@@ -137,7 +137,7 @@ test("a saddle is put on a creature of one's tribe that it fits; saddled, the us
   // The saddle is part of the world; taken off, it is among what the creature carries again, unless there is no room.
   const pid = rec.pid;
   h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
   rec = h.host.records.byPid.get(pid)!;
   e = h.host.records.entOf.get(pid)!;
   expect(rec.saddle).toBe(id("saddle_raptor"));

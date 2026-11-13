@@ -412,7 +412,7 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   const standing = structs.count;
   const cooked = hearth.pid;
   h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
   [ada, bob, cy] = ["ada", "bob", "cy"].map((n) => h.join(n)) as [ClientSession, ClientSession, ClientSession];
   h.run(900);
   expect(h.host.items.audit()).toEqual([]);
@@ -606,7 +606,7 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   const [dollyPid, matePid, babyPid, grownAt] = [rec.pid, mateRec.pid, baby.pid, baby.grown];
   const before = { born: baby.born, grown: baby.grown, berries: h.host.items.inv(baby).total(id("berry")), food: baby.vitals!.at(V_FOOD, h.world.tick) };
   h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
   const get = (pid: number): EntityRecord => h.host.records.byPid.get(pid)!;
   // (Asked before a tick has passed: it has in it exactly what it had.)
   expect({ born: get(babyPid).born, grown: get(babyPid).grown, berries: h.host.items.inv(get(babyPid)).total(id("berry")), food: get(babyPid).vitals!.at(V_FOOD, h.world.tick) }).toEqual(before);

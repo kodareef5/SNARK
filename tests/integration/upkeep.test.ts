@@ -206,7 +206,7 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   // It still stands. The clocks are part of the world: after a restart it is as decayed as it was, not new.
   expect(structs.chunks[Math.floor(alone / 65536)]!.kind[alone & 0xffff]).toBe(id("foundation_wood"));
   h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
   bob = h.join("bob");
   h.run(600);
   structs = h.world.structs;

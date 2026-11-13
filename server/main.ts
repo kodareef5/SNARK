@@ -1,7 +1,12 @@
 // Process entry point: serves the built client, accepts WebSocket connections,
 // and ticks the world on the wall clock.
 //
-//   bun server/main.ts [--dev] [--port 8787] [--db var/world.db] [--cert cert.pem --key key.pem]
+//   bun server/main.ts [--dev] [--config dir] [--port 8787] [--db var/world.db] [--cert cert.pem --key key.pem]
+//                      [?Key=Value?Key2=Value2] [-Flag] [-Flag=value]
+//
+// `--config` names a folder holding GameUserSettings.ini and Game.ini, as an
+// ARK server has them. Settings of the first may also be given ARK's way on
+// the command line, and are then stronger than the files.
 //
 // With a certificate and its key the page is served over TLS, which a browser
 // asks for before it will open a microphone anywhere but on localhost.
@@ -15,6 +20,8 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
+import { formatReport, loadConfigFolder } from "./settings/config.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { VoicePeer } from "./voice.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
@@ -39,6 +46,8 @@ export interface ServerOptions {
   /** Paths of a certificate and its private key (PEM). With both, the server speaks TLS. */
   cert?: string;
   key?: string;
+  /** The server's rules, as read from its config files and command line. Without them, ARK's defaults. */
+  config?: Rules;
 }
 
 export interface RunningServer {
@@ -68,13 +77,8 @@ interface Socket {
   isVoice: boolean;
 }
 
-/**
- * What a development server's rules begin as. At the reference's rates a
- * parasaur's egg takes an hour and a half and what hatches a day more; with
- * these the egg takes under two minutes, growing up about five, and a female
- * will mate again within a few minutes.
- */
-export const DEV_RULES = { tamingSpeed: 10, hatchSpeed: 50, matureSpeed: 300, matingInterval: 0.002 } as const;
+/** The folder a development server reads its settings from when it is given no other: taming, hatching and growing up turned up, so that raising a creature takes minutes. */
+export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
 export function startServer(opts: ServerOptions = {}): RunningServer {
   const { registry, errors } = compileContent(CORE_CONTENT);
@@ -85,8 +89,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   if (!existsSync(packFile)) throw new Error(`${packFile} is missing: build the client first (bun run build)`);
   const pack = parsePack(new Uint8Array(readFileSync(packFile)));
   const clips = pack.clips;
-  // A development server starts a new world with taming, hatching and growing up turned up, so that the whole of raising a creature takes minutes.
-  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.dev ? { rules: DEV_RULES } : {}) };
+  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
   if (opts.probeScene) {
     const ents = host.world.ents;
@@ -262,9 +265,17 @@ if (import.meta.main) {
     const i = args.indexOf(name);
     return i >= 0 ? args[i + 1] : undefined;
   };
+  // Settings: ARK's two files from the folder named (a development server's own, if none is), then what the command line gives.
+  const dev = args.includes("--dev");
+  const folder = value("--config") ?? (dev ? DEV_CONFIG : "");
+  const { rules, report } = loadConfigFolder(folder, args);
+  for (const line of formatReport(report, rules)) console.log(line);
+  // The port: ours, then ARK's flag, then the file's.
+  const flagPort = rules.flag("port");
   const running = startServer({
-    port: Number(value("--port") ?? 8787),
-    dev: args.includes("--dev"),
+    port: Number(value("--port") ?? (typeof flagPort === "string" && flagPort !== "" ? flagPort : rules.num("Port"))),
+    dev,
+    config: rules,
     dbPath: value("--db"),
     cert: value("--cert"),
     key: value("--key"),

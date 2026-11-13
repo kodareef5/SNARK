@@ -64,6 +64,8 @@ test("a campfire burns the fuel on it and cooks what lies over it, at the refere
   let { h } = made;
   const { at } = made;
   const [ada, bob] = made.sessions as [ClientSession, ClientSession];
+  // (On this server a piece may be taken back at any time, not only in the half minute after it is set down.)
+  h.say(ada, "rule pickupSeconds 0");
   const fire = setDown(made, ada, "piece_campfire", at.x, at.z + 2);
   expect([kindAt(h, fire), h.host.fixtures.count]).toEqual([id("campfire"), 0]);
   // Nothing on it: it will not light. Nor is it another tribe's to light.
@@ -87,7 +89,7 @@ test("a campfire burns the fuel on it and cooks what lies over it, at the refere
 
   // The world stops and starts again with the fire burning.
   h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
   const again = h.join("ada");
   h.run(600);
   state = h.host.fixtures.find(fire)!;

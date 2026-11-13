@@ -24,7 +24,8 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | `fixtures.ts`, `stations.ts` | Things built that have state: doors, locks, boxes, fires, beds |
 | `creatures.ts`, `behavior.ts` | Spawning, dormancy and stepping; what a creature decides to do |
 | `taming.ts`, `riding.ts`, `breeding.ts` | Creatures that become somebody's, are told what to do, ridden, and bred |
-| `console.ts`, `commands/` | The console and its commands: session, admin, combat, social, creatures |
+| `settings/` | ARK's settings: the catalogue of them, the ini reader, the rules they give, and reading a config folder and a command line |
+| `console.ts`, `commands/` | The console and its commands: session, admin, combat, social, creatures, settings |
 | `persist/store.ts` | SQLite schema and encoding |
 | `persist/persistence.ts` | What each commit contains |
 
@@ -33,8 +34,15 @@ memory. Almost nothing steps: what happens at a moment is a deadline on one
 heap, and what changes steadily is worked out when asked.
 
 ```sh
-bun server/main.ts --port 8787 --db var/world.db
+bun server/main.ts --config config/dev --port 8787 --db var/world.db
 ```
+
+A server is configured as ARK's is. `--config` names a folder holding
+`GameUserSettings.ini` and `Game.ini`; settings of the first may also be given
+ARK's way on the command line (`?TamingSpeedMultiplier=5 -NoDinos`), which is
+stronger than the files. What was read is reported at start: applied, not yet
+effective, of no meaning here, unknown, refused. Every setting is listed in
+the [settings reference](../planning/reference/settings.md).
 
 `--dev` enables the self-check report endpoint, cheats without a password, and
 rules that hurry taming, hatching and growing up. It must not be used on a

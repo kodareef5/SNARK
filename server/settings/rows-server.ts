@@ -232,7 +232,7 @@ s.under("Admin and session")
 
 new Sheet(SERVER_ROWS, "session", "Admin and session")
   .t("SessionName", "", "The server's name, as those who join are told it.", todo(3))
-  .i("Port", 8787, "The port the server listens on.", todo(2, { min: 1, max: 65535, note: "ARK's default is 7777." }))
+  .i("Port", 8787, "The port the server listens on.", live({ min: 1, max: 65535, note: "ARK's default is 7777." }))
   .i("QueryPort", 27015, "The port a store asks about the server on.", none("platform"))
   .t("MultiHome", "", "The address to listen on.", none("platform"));
 
@@ -258,7 +258,7 @@ const c = new Sheet(SERVER_ROWS, "cli", "Command line");
 c.flag("UseDynamicConfig", "The live file is read, and read again while the server runs.", todo(6))
   .flag("AutoDestroyStructures", "What has decayed is taken down by the server (see AutoDestroyOldStructuresMultiplier).", todo(3))
   .flag("EnableIdlePlayerKick", "The idle are put off the server (see KickIdlePlayersPeriod).", todo(3))
-  .flag("port", "The port the server listens on.", todo(2, { game: "A", min: 1, max: 65535 }), true)
+  .flag("port", "The port the server listens on.", live({ game: "A", min: 1, max: 65535 }), true)
   .flag("WinLiveMaxPlayers", "The most survivors at once.", todo(3, { game: "A", min: 1, max: 1000 }), true)
   .flag("NoDinos", "No wild creatures are put in the world.", todo(3))
   .flags(["ForceRespawnDinos", "NoWildBabies", "NoDinosExceptForcedSpawn", "NoDinosExceptStreamingSpawn", "NoDinosExceptManualSpawn", "NoDinosExceptWaterSpawn"], "Which wild creatures spawn, and whether they are replaced at a start.", plan("spawner"))

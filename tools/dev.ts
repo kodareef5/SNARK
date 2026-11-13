@@ -6,12 +6,18 @@
 
 import { watch } from "node:fs";
 import { resolve } from "node:path";
-import { startServer } from "../server/main.ts";
+import { DEV_CONFIG, startServer } from "../server/main.ts";
+import { formatReport, loadConfigFolder } from "../server/settings/config.ts";
 import { buildClient } from "./build-client.ts";
 
 const root = resolve(import.meta.dir, "..");
 await buildClient();
-const server = startServer({ dev: true, port: Number(process.env.PORT ?? 8787) });
+// A development server's settings: its own folder, or the one named after `--config`; then anything given ARK's way on the command line.
+const args = process.argv.slice(2);
+const named = args.indexOf("--config");
+const { rules, report } = loadConfigFolder(named >= 0 && args[named + 1] ? args[named + 1]! : DEV_CONFIG, args);
+for (const line of formatReport(report, rules)) console.log(line);
+const server = startServer({ dev: true, port: Number(process.env.PORT ?? 8787), config: rules });
 console.log(`SNARK dev: http://localhost:${server.port}   (self-check: http://localhost:${server.port}/?selfcheck=1)`);
 
 let pending: ReturnType<typeof setTimeout> | undefined;

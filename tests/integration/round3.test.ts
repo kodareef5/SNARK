@@ -288,25 +288,26 @@ test("server rules are factors in the damage function, are kept with the world, 
   expect(h.say(ada, "rule playerDamage -1")[0]).toMatch(/^usage: rule </);
   expect(h.say(ada, "rule playerDamage 1001")[0]).toMatch(/^usage: rule </);
   expect(h.say(bob, "rule")).toHaveLength(16);
-  // Clients are told the one they act on.
-  expect(ada.damageNumbers).toBe(true);
-  h.say(ada, "rule damageNumbers 0");
-  expect([ada.damageNumbers, bob.damageNumbers]).toEqual([false, false]);
-  // They are part of the world: a restart keeps them.
+  // Clients are told the one they act on: the damage of a hit is not shown as a number unless the server says so.
+  expect(ada.damageNumbers).toBe(false);
+  h.say(ada, "rule damageNumbers 1");
+  expect([ada.damageNumbers, bob.damageNumbers]).toEqual([true, true]);
+  // A change from the console lasts until the server is started again. A host started on the same rules has them still;
+  const set = h.host.rules;
   h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
-  expect(h.host.rules.values).toEqual({ playerDamage: 0, creatureDamage: 2, structureDamage: 3, selfDamage: 1, headshots: 0, damageNumbers: 0, friendlyFire: 0, globalChat: 1, globalVoice: 0, tamingSpeed: 1, hatchSpeed: 1, matureSpeed: 1, matingInterval: 1, pickupSeconds: 0, decayTime: 1, decayDestroy: 0 });
+  h = new Harness({}, 1, 60, { dev: true, dbPath, config: set });
+  expect(h.host.rules.values).toEqual({ ...RULE_DEFAULTS, playerDamage: 0, creatureDamage: 2, structureDamage: 3, headshots: 0, damageNumbers: 1 });
   ada = h.join("ada");
   h.run(500);
-  expect(ada.damageNumbers).toBe(false);
+  expect(ada.damageNumbers).toBe(true);
+  h.host.shutdown();
+  // one started with none has the defaults, whatever the world it loads was last run under: the files are the truth.
+  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  expect(h.host.rules.values).toEqual({ ...RULE_DEFAULTS });
   h.host.shutdown();
   // A rule book takes only what it knows, within bounds.
-  const rules = new Rules();
-  rules.restore('{"playerDamage":3,"nonsense":4,"headshots":-2,"selfDamage":"x"}');
+  const rules = new Rules({ playerDamage: 3 });
   expect(rules.values).toEqual({ ...RULE_DEFAULTS, playerDamage: 3 });
-  rules.restore("not json");
-  rules.restore(null);
-  expect(rules.values.playerDamage).toBe(3);
   expect([rules.set("selfDamage", 0), rules.set("selfDamage", Number.NaN), rules.set("nope", 1)]).toEqual([true, false, false]);
   createHost(reg, {}).shutdown();
 });
@@ -410,7 +411,9 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   run(50);
   expect(app.ui.frame.find(KEY_SETTINGS_PANEL)).toBeNull();
   expect(app.ui.wantsPointerLock).toBe(true);
-  // A punch on a dummy shows its mark and its number; with numbers off, the mark alone.
+  // A punch on a dummy shows its mark and, on a server that shows the damage of hits, its number; with the player's own numbers off, the mark alone.
+  app.session.text("rule damageNumbers 1");
+  run(300);
   app.session.text("dummy");
   run(300);
   const ents = h.world.ents;

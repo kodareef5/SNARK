@@ -20,14 +20,14 @@ export type Source = (typeof SOURCES)[number];
 /** What a setting holds: a number, a switch, words, a number for each index, or the entries of a list. */
 export type Value = number | boolean | string | readonly number[] | readonly IniNode[];
 
-/** The old rules, by their old names, with what each began as. */
+/** The old rules, by their old names, with what each begins as: ARK's defaults for the settings they stand for. */
 export const RULE_DEFAULTS = {
   playerDamage: 1,
   creatureDamage: 1,
   structureDamage: 1,
   selfDamage: 1,
   headshots: 1,
-  damageNumbers: 1,
+  damageNumbers: 0,
   friendlyFire: 0,
   globalChat: 1,
   globalVoice: 0,
@@ -35,7 +35,7 @@ export const RULE_DEFAULTS = {
   hatchSpeed: 1,
   matureSpeed: 1,
   matingInterval: 1,
-  pickupSeconds: 0,
+  pickupSeconds: 30,
   decayTime: 1,
   decayDestroy: 0,
 } as const;
@@ -96,18 +96,9 @@ export class Rules {
   private readonly from = new Map<string, Source>();
   private old: Record<RuleName, number> | null = null;
 
-  /**
-   * Rules begin as the catalogue's defaults. `first` gives some of the old
-   * rules other values to begin with. Until the files are the truth (the next
-   * phase), two settings begin as this engine had them and not as ARK does:
-   * damage numbers shown, and a piece taken back at any time.
-   */
-  constructor(first: Partial<Record<RuleName, number>> = {}, asBefore = true) {
+  /** Rules begin as the catalogue's defaults, which are ARK's. `first` gives some of the old rules other values to begin with. */
+  constructor(first: Partial<Record<RuleName, number>> = {}) {
     for (const row of CATALOG) this.vals.set(slot(row), defaultOf(row));
-    if (asBefore) {
-      this.vals.set("ShowFloatingDamageText", true);
-      this.vals.set("AlwaysAllowStructurePickup", true);
-    }
     for (const name of RULE_NAMES) {
       const v = first[name];
       if (typeof v === "number") this.set(name, v);
@@ -150,11 +141,18 @@ export class Rules {
     return v as readonly number[];
   }
 
-  /** The entries of a list: structs, names, or numbers, as they were written. */
+  /** The entries of a list of structs or of names, as they were written. */
   list(name: string): readonly IniNode[] {
     const v = this.need(name);
     if (!Array.isArray(v)) throw new Error(`${name} is not a list`);
     return v as readonly IniNode[];
+  }
+
+  /** The entries of a list of numbers, in the order of their lines. */
+  numbers(name: string): readonly number[] {
+    const v = this.need(name);
+    if (!Array.isArray(v)) throw new Error(`${name} is not a list`);
+    return v as readonly number[];
   }
 
   /** A command-line flag: whether it was given, or for one that takes a value, that value ("" if it was not given). */
@@ -262,24 +260,45 @@ export class Rules {
     return true;
   }
 
-  /** The old rules as they are saved with a world. */
-  serialize(): string {
-    return JSON.stringify(this.values);
+  /**
+   * The values that timers already running were worked out under: every
+   * setting that re-times something, by name. Stored with the world (D91), so
+   * that a save loaded under other values can be re-timed once.
+   */
+  timers(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const row of CATALOG) if (row.retime !== "") out[row.name] = this.num(row.name);
+    return out;
   }
+}
 
-  /** Take in saved old rules. Anything unknown or out of range is left as it is. */
-  restore(saved: string | number | null): void {
-    if (typeof saved !== "string") return;
-    let parsed: unknown;
+/**
+ * What a save's timers were worked out under, read back: the stored
+ * snapshot, or for a save from before there was one, the three old rules
+ * that were saved with the world. Null if there is neither.
+ */
+export function timersOf(snapshot: string | number | null, oldRules: string | number | null): Record<string, number> | null {
+  const read = (text: string | number | null): Record<string, unknown> | null => {
+    if (typeof text !== "string") return null;
     try {
-      parsed = JSON.parse(saved);
+      const parsed: unknown = JSON.parse(text);
+      return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
     } catch {
-      return;
+      return null;
     }
-    if (typeof parsed !== "object" || parsed === null) return;
-    for (const name of RULE_NAMES) {
-      const v = (parsed as Record<string, unknown>)[name];
-      if (typeof v === "number") this.set(name, v);
-    }
+  };
+  const out: Record<string, number> = {};
+  const snap = read(snapshot);
+  const timers = snap && typeof snap.timers === "object" && snap.timers !== null ? (snap.timers as Record<string, unknown>) : null;
+  if (timers) {
+    for (const [name, v] of Object.entries(timers)) if (typeof v === "number" && v > 0) out[name] = v;
+    return out;
   }
+  const old = read(oldRules);
+  if (!old) return null;
+  for (const [was, name] of [["hatchSpeed", "EggHatchSpeedMultiplier"], ["matureSpeed", "BabyMatureSpeedMultiplier"], ["matingInterval", "MatingIntervalMultiplier"]] as const) {
+    const v = old[was];
+    if (typeof v === "number" && v > 0) out[name] = v;
+  }
+  return out;
 }

@@ -11,7 +11,9 @@ import { KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { buildCorePack } from "../../tools/pack/build.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { DEV_RULES } from "../../server/main.ts";
+import { DEV_CONFIG } from "../../server/main.ts";
+import { loadConfigFolder } from "../../server/settings/config.ts";
+import type { Rules } from "../../server/settings/rules.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -34,7 +36,7 @@ const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 
 /** Ada and Bob with cheats on level ground, five metres apart. */
-function pen(host: { dbPath?: string; rules?: Record<string, number> } = {}, registry: Registry = reg) {
+function pen(host: { dbPath?: string; rules?: Record<string, number>; config?: Rules } = {}, registry: Registry = reg) {
   const h = new Harness({}, 1, 60, { dev: true, ...host }, registry);
   const ada = h.join("ada");
   const bob = h.join("bob");
@@ -234,7 +236,7 @@ test("an egg hatches and what hatches is grown on the ticks they were due, watch
     expect(h.host.breeding.pairCount).toBe(1);
     const restart = (): void => {
       h.host.shutdown();
-      h = new Harness({}, 1, 60, { dev: true, dbPath });
+      h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
     };
     if (away) {
       // She goes far off as soon as they are a pair, and does not come back. Nobody sees any of what follows.
@@ -506,19 +508,24 @@ test("a species that bears its young alive goes the same way with no egg: carrie
   void me;
 });
 
-test("a development server begins with taming, hatching and growing up turned up, so that raising a creature takes minutes; what a save holds comes first; and the cheats hurry the rest", () => {
+test("a development server reads a folder of its own, with taming, hatching and growing up turned up so that raising a creature takes minutes; the folder is the truth at every start; and the cheats hurry the rest", () => {
   const dir = mkdtempSync(join(tmpdir(), "snark-dev-"));
   const dbPath = join(dir, "world.db");
-  let { h, ada, at, me } = pen({ dbPath, rules: DEV_RULES });
-  expect(h.host.rules.values).toMatchObject(DEV_RULES);
+  const dev = loadConfigFolder(DEV_CONFIG);
+  // Everything in the folder's two files was understood and takes effect.
+  expect([dev.report.unknown, dev.report.refused, dev.report.waiting.map((w) => w.row.name), dev.report.applied.length]).toEqual([[], [], [], 6]);
+  let { h, ada, at, me } = pen({ dbPath, config: dev.rules });
+  const rules = h.host.rules;
+  expect([rules.num("TamingSpeedMultiplier"), rules.num("EggHatchSpeedMultiplier"), rules.num("BabyMatureSpeedMultiplier"), rules.num("MatingIntervalMultiplier"), rules.on("ShowFloatingDamageText"), rules.on("AlwaysAllowStructurePickup")]).toEqual([10, 50, 300, 0.002, true, true]);
   // At these, a parasaur's egg takes under two minutes and what hatches about five; at the reference's, an hour and a half and more than a day.
   const [egg, grow] = [reg.incubateTicks[id("parasaur")]! / TICK_RATE, reg.matureTicks[id("parasaur")]! / TICK_RATE];
-  expect([egg / DEV_RULES.hatchSpeed < 120, grow / DEV_RULES.matureSpeed < 360, egg > 5000, grow > 90000]).toEqual([true, true, true, true]);
-  // A rule that is changed is kept, whatever the server would have begun with.
+  expect([egg / rules.num("EggHatchSpeedMultiplier") < 120, grow / rules.num("BabyMatureSpeedMultiplier") < 360, egg > 5000, grow > 90000]).toEqual([true, true, true, true]);
+  // A rule changed from the console lasts until the server is started again: then the folder says what it is.
   h.say(ada, "rule hatchSpeed 7");
+  expect(h.host.rules.num("EggHatchSpeedMultiplier")).toBe(7);
   h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath, rules: DEV_RULES });
-  expect([h.host.rules.values.hatchSpeed, h.host.rules.values.matureSpeed]).toEqual([7, 300]);
+  h = new Harness({}, 1, 60, { dev: true, dbPath, config: loadConfigFolder(DEV_CONFIG).rules });
+  expect([h.host.rules.num("EggHatchSpeedMultiplier"), h.host.rules.num("BabyMatureSpeedMultiplier")]).toEqual([50, 300]);
   h.host.shutdown();
   rmSync(dir, { recursive: true, force: true });
 

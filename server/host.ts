@@ -10,6 +10,7 @@ import { addCombatCommands } from "./commands/combat.ts";
 import { addCoreCommands } from "./commands/core.ts";
 import { addSocialCommands } from "./commands/social.ts";
 import { addCreatureCommands } from "./commands/creatures.ts";
+import { addSettingsCommands } from "./commands/settings.ts";
 import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
@@ -43,6 +44,8 @@ import { Projectiles } from "./projectiles.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
 import { Rules, type RuleName } from "./rules.ts";
+import { rowOf } from "./settings/catalog.ts";
+import { timersOf } from "./settings/rules.ts";
 import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
@@ -78,8 +81,14 @@ export interface HostOptions {
   clips?: ClipSet;
   /** The rigs of that pack: those that are skeletons in themselves are what creatures are posed and hit on. */
   rigs?: readonly PackRig[];
-  /** Rules a new world begins with in place of their defaults: a development server turns taming, hatching and growing up. What a save holds comes first. */
+  /** Old rules to begin with other than their defaults, by their old names. */
   rules?: Partial<Record<RuleName, number>>;
+  /**
+   * The server's rules, ready made: read from its config files and command
+   * line (server/settings/config.ts), or carried over from a host that is
+   * being started again. In place of `rules`.
+   */
+  config?: Rules;
 }
 
 /** Ticks between console lines accepted from one session. */
@@ -122,6 +131,14 @@ export interface Host {
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
   setRule(name: string, value: number): boolean;
+  /**
+   * Set a setting by ARK's name from words, as the console does: only one
+   * that may change while the server runs. Returns "" if it was set, or why
+   * it was not. It lasts until the server is started again.
+   */
+  setSetting(name: string, words: string): string;
+  /** What a loaded save's timers were worked out under, by setting; null for a new world. */
+  readonly loadedUnder: Record<string, number> | null;
   readonly projectiles: Projectiles;
   readonly progression: Progression;
   /** Null for a world whose map has no resource nodes. */
@@ -157,6 +174,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const world = opts.world ?? createProvingWorld(reg, { populate: !store || store.fresh });
   if (opts.clips) world.anim = new HumanAnim(opts.clips);
   if (opts.clips && opts.rigs) world.rigs = buildRigs(opts.rigs, opts.clips);
+  let settingsAt: { dirty: boolean; version: number } | null = null;
   const records = new Records(opts.worldId ?? 1);
   const game = new GameServer(world, opts.game);
   const persistence = store ? new Persistence(world, records, store) : null;
@@ -194,8 +212,15 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const progression = new Progression(world, records, items, deadlines);
   const harvest = world.nodeField ? new Harvest(world, game, records, items, progression, deadlines, (opts.seed ?? 1) + 31) : null;
   const buffs = new Buffs(world, records, survival, deadlines);
-  const rules = new Rules(opts.rules);
-  if (persistence && !loaded!.fresh) rules.restore(persistence.store.meta("rules"));
+  // The files are the truth at every start (D88): nothing of the rules is read from the save.
+  const rules = opts.config ?? new Rules(opts.rules);
+  // What is kept with the world is what its timers were worked out under, so that they can be re-timed under other rules.
+  const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at"), persistence.store.meta("rules")) : null;
+  if (persistence) {
+    const at = { dirty: true, version: rules.version, serialize: () => JSON.stringify({ timers: rules.timers() }) };
+    persistence.settingsAt = at;
+    settingsAt = at;
+  }
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, harvest }, (opts.seed ?? 1) + 53);
   // A creature's bite is a blow like any other.
   creatures.onStrike = (e) => combat.bite(e);
@@ -437,6 +462,11 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     taming.step();
     breeding.step(tick);
     voice.step(tick);
+    // A rule has changed: what the world's timers are worked out under goes into the next commit with them.
+    if (settingsAt && settingsAt.version !== rules.version) {
+      settingsAt.version = rules.version;
+      settingsAt.dirty = true;
+    }
     // Who was last near what: saved now and then, not with every step somebody takes.
     if (persistence && build.decay.dirty && tick % DECAY_SAVE_TICKS === 0) persistence.store.setMeta("decay", build.decay.serialize());
     if (persistence && tick % commitEvery === 0) persistence.commit();
@@ -541,6 +571,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   addCombatCommands(con);
   addSocialCommands(con);
   addCreatureCommands(con);
+  addSettingsCommands(con);
   const host: Host = {
     world,
     records,
@@ -563,10 +594,16 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     breeding,
     online: (pid) => sessionOf(pid) !== null,
     setRule(name, value) {
-      if (!rules.set(name, value)) return false;
-      persistence?.store.setMeta("rules", rules.serialize());
-      return true;
+      return rules.set(name, value);
     },
+    setSetting(name, words) {
+      const row = rowOf(name);
+      if (!row) return `there is no setting called ${name}`;
+      if (row.status !== "live") return `${row.name} does not take effect yet`;
+      if (!row.live) return `${row.name} is read when the server starts: set it in its file and start again`;
+      return rules.assign(row.name, words, "console");
+    },
+    loadedUnder,
     projectiles,
     progression,
     harvest,

@@ -21,6 +21,8 @@ export interface ConsoleCommand {
   readonly admin: boolean;
   /** Not written to the journal even when admin (it would record a password). */
   readonly secret?: boolean;
+  /** The line as the journal should have it, for a command some of whose arguments are not to be kept (a password). Without it, the line as typed. */
+  redact?(args: string[]): string;
   run(ctx: CommandContext, args: string[]): string;
 }
 
@@ -53,7 +55,7 @@ export class Console {
       return `${name} failed: ${err instanceof Error ? err.message : String(err)}`;
     }
     if (cmd.admin && !cmd.secret) {
-      ctx.host.persistence?.journal(OP_ADMIN, new TextEncoder().encode(`${ctx.client ? ctx.client.name : "(operator)"}\t${line}`));
+      ctx.host.persistence?.journal(OP_ADMIN, new TextEncoder().encode(`${ctx.client ? ctx.client.name : "(operator)"}\t${cmd.redact ? cmd.redact(words.slice(1)) : line}`));
     }
     return out;
   }

@@ -53,6 +53,8 @@ export class Persistence {
   readonly blobs: { tag: number; dirty: Set<number>; encode(chunk: number): Uint8Array | null }[] = [];
   /** The item ledger, saved in the same transaction as the records it accounts for. */
   ledger: { dirty: boolean; serialize(): string } | null = null;
+  /** The settings that the timers in the records were worked out under, saved in the same transaction as those records (D91). */
+  settingsAt: { dirty: boolean; serialize(): string } | null = null;
 
   private readonly world: ServerWorld;
   private readonly records: Records;
@@ -174,6 +176,7 @@ export class Persistence {
         for (const b of this.blobs) for (const chunk of b.dirty) store.saveBlob(chunk, b.tag, b.encode(chunk));
         for (const j of this.pending) store.appendJournal(j.seq, j.tick, j.op, j.data);
         if (this.ledger?.dirty) store.setMeta("ledger", this.ledger.serialize());
+        if (this.settingsAt?.dirty) store.setMeta("settings_at", this.settingsAt.serialize());
         // The journal is an audit trail, not the state: keep the recent part.
         if (this.commits % PRUNE_EVERY === PRUNE_EVERY - 1) store.pruneJournal(this.opts.journalKeep);
         for (const [name, pid] of this.newSurvivors) store.saveSurvivor(name, pid);
@@ -196,6 +199,7 @@ export class Persistence {
     this.newSurvivors.length = 0;
     this.durableSeq = this.journalSeq;
     if (this.ledger) this.ledger.dirty = false;
+    if (this.settingsAt) this.settingsAt.dirty = false;
     for (const b of this.blobs) b.dirty.clear();
     this.commits++;
     for (const cb of callbacks) cb();

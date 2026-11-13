@@ -125,15 +125,15 @@ test("a value is checked against its row: its kind, its range, and whether it is
 });
 
 test("rules begin as the catalogue's defaults, are read by ARK's names, and the old names still stand for them", () => {
-  const rules = new Rules({}, false);
+  const rules = new Rules();
   // ARK's defaults.
   expect([rules.num("TamingSpeedMultiplier"), rules.on("ShowFloatingDamageText"), rules.on("AlwaysAllowStructurePickup"), rules.num("StructurePickupTimeAfterPlacement"), rules.text("ServerPassword"), rules.flag("NoDinos"), rules.list("PreventDinoTameClassNames")]).toEqual([1, false, false, 30, "", false, []]);
   expect(rules.indexed("PerLevelStatsMultiplier_DinoTamed")[8]).toBe(0.17);
   expect(() => rules.num("NoSuchSetting")).toThrow(/no setting/);
   expect(() => rules.num("serverPVE")).toThrow(/not a number/);
   // The old names read through to them: under ARK's defaults damage numbers are off and a piece may be taken back for 30 seconds.
-  expect(rules.values).toEqual({ ...RULE_DEFAULTS, damageNumbers: 0, pickupSeconds: 30 });
-  // And as this engine began them, until the files are the truth.
+  expect(rules.values).toEqual({ ...RULE_DEFAULTS });
+  expect([RULE_DEFAULTS.damageNumbers, RULE_DEFAULTS.pickupSeconds]).toEqual([0, 30]);
   const before = new Rules();
   expect([before.values, before.version]).toEqual([{ ...RULE_DEFAULTS }, 0]);
   expect(new Rules({ tamingSpeed: 10, hatchSpeed: 50 }).values).toMatchObject({ tamingSpeed: 10, hatchSpeed: 50 });

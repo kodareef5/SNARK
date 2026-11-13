@@ -143,7 +143,7 @@ test("a tame finishes on the same tick whether or not anyone is there, across a 
       h.say(ada, `tp ${(at.x + 300).toFixed(3)} ${(at.z + 300).toFixed(3)}`);
       h.run(60000);
       h.host.shutdown();
-      h = new Harness({}, 1, 60, { dev: true, dbPath });
+      h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
       expect(h.host.records.byPid.get(pid)!.tame).toMatchObject({ by: me.pid });
       expect(h.host.records.byPid.get(pid)!.tame!.affinity).toBeGreaterThan(0);
     }
@@ -354,7 +354,7 @@ test("a creature that is somebody's follows and stays, by word or by whistle, fo
   expect([order(ada, raptor.e, ORDER_STANCE + STANCE_AGGRESSIVE), order(ada, raptor.e, ORDER_FOLLOW)]).toEqual([RESULT_OK, RESULT_OK]);
   const pid = raptor.rec.pid;
   h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
   ents = h.world.ents;
   mind = h.host.creatures.mind;
   const again = h.host.records.byPid.get(pid)!;
@@ -446,7 +446,7 @@ test("a creature that is somebody's is next due to eat at the same moment after 
   expect(due).toBeGreaterThan(h.world.tick + 3600 * TICK_RATE);
   h.run(1000);
   h.host.shutdown();
-  const again = new Harness({}, 1, 60, { dev: true, dbPath });
+  const again = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
   expect(again.host.records.byPid.get(rec.pid)!.mealDue).toBe(due);
   again.host.shutdown();
   rmSync(dir, { recursive: true, force: true });

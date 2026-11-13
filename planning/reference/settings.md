@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 515 of them: 18 take effect, 96 more will by the end of round 5,
+is listed here, 515 of them: 20 take effect, 94 more will by the end of round 5,
 207 wait for a feature that is not built yet, and 194 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -33,6 +33,12 @@ may change a setting without a restart.
 | `globalVoiceChat` | False | A voice is heard by everyone, wherever they are. | yes |
 | `ProximityChat` | False | What is written reaches only those near. | yes; clients are told |
 
+### GameUserSettings.ini `[SessionSettings]`
+
+| Setting | Default | What it does | While running |
+| --- | --- | --- | --- |
+| `Port` | 8787 | The port the server listens on. *ARK's default is 7777.* | no |
+
 ### GameUserSettings.ini `[SnarkSettings]`
 
 | Setting | Default | What it does | While running |
@@ -48,6 +54,12 @@ may change a setting without a restart.
 | `MatingIntervalMultiplier` | 1 | The wait before a female may mate again. Lower is sooner. | yes |
 | `EggHatchSpeedMultiplier` | 1 | How fast an egg hatches, or young are carried. Higher is faster. | yes |
 | `BabyMatureSpeedMultiplier` | 1 | How fast the young grow up. Higher is faster. Their hunger each second is as it was. | yes |
+
+### Command line
+
+| Setting | Default | What it does | While running |
+| --- | --- | --- | --- |
+| `-port=` | none | The port the server listens on. | no |
 
 ## What will take effect this round
 
@@ -98,7 +110,6 @@ may change a setting without a restart.
 | Setting | Default | What it does | From |
 | --- | --- | --- | --- |
 | `SessionName` | none | The server's name, as those who join are told it. | phase 3 |
-| `Port` | 8787 | The port the server listens on. *ARK's default is 7777.* | phase 2 |
 
 ### GameUserSettings.ini `[MessageOfTheDay]`
 
@@ -173,7 +184,6 @@ may change a setting without a restart.
 | `-UseDynamicConfig` | not given | The live file is read, and read again while the server runs. | phase 6 |
 | `-AutoDestroyStructures` | not given | What has decayed is taken down by the server (see AutoDestroyOldStructuresMultiplier). | phase 3 |
 | `-EnableIdlePlayerKick` | not given | The idle are put off the server (see KickIdlePlayersPeriod). | phase 3 |
-| `-port=` | none | The port the server listens on. | phase 2 |
 | `-WinLiveMaxPlayers=` | none | The most survivors at once. | phase 3 |
 | `-NoDinos` | not given | No wild creatures are put in the world. | phase 3 |
 
