@@ -69,6 +69,40 @@ export function maturity(span: number, grown: number, tick: number): number {
   return left >= span ? 0 : (span - left) / span;
 }
 
+/**
+ * A young one's growing made `k` times as long from `tick` on: what a rule
+ * that speeds growing up does when it changes (k is the old speed over the
+ * new). What is left of it is that many times as long, and so is the whole,
+ * held to where the hundredth it is in is the one it was in: it is never
+ * less grown for it. Writes how long its growing now takes and when it ends
+ * into `out`.
+ */
+export function regrow(span: number, grown: number, tick: number, k: number, out: [number, number]): void {
+  out[0] = span;
+  out[1] = grown;
+  if (grown === 0 || tick >= grown || !(k > 0)) return;
+  const step = growthStep(span, grown, tick);
+  const left = Math.max(1, Math.ceil((grown - tick) * k));
+  // In the same hundredth with that much left, its growing takes no less than `least` ticks and less than `most`.
+  const least = Math.ceil((left * GROWN) / (GROWN - step));
+  const most = step < GROWN - 1 ? Math.ceil((left * GROWN) / (GROWN - 1 - step)) - 1 : Infinity;
+  let next = Math.round(span * k);
+  if (next > most) next = most;
+  if (next < least) next = least;
+  out[0] = next < GROWN ? GROWN : next;
+  out[1] = tick + left;
+}
+
+/** What is left of a time that a rule divides (how fast an egg hatches), when the rule goes from `was` to `is`: never none. */
+export function leftAtSpeed(left: number, was: number, is: number): number {
+  return Math.max(1, Math.ceil((left * was) / is));
+}
+
+/** What is left of a time that a rule multiplies (how long a female waits), when the rule goes from `was` to `is`: never none. */
+export function leftAtPeriod(left: number, was: number, is: number): number {
+  return Math.max(1, Math.round((left * is) / was));
+}
+
 /** Which of STAGES a young one `step` hundredths grown is in. */
 export function stageOf(step: number): number {
   return step >= GROWN ? 3 : step >= STAGE_ADOLESCENT ? 2 : step >= STAGE_JUVENILE ? 1 : 0;

@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BIRTH_HUNGER, BIRTH_SCALE, BIRTH_SHARE, GROWN, MATE_RANGE, MATE_SECONDS, STAGES, growthStep, litter, mateWait, maturity, stageOf, stepTick, youngHunger, youngScale, youngShare } from "../../shared/sim/breeding.ts";
+import { BIRTH_HUNGER, BIRTH_SCALE, BIRTH_SHARE, GROWN, MATE_RANGE, MATE_SECONDS, STAGES, growthStep, leftAtPeriod, leftAtSpeed, litter, mateWait, maturity, regrow, stageOf, stepTick, youngHunger, youngScale, youngShare } from "../../shared/sim/breeding.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 test("one mating in ten gives twins and one in fifty triplets; a female then waits between eighteen and forty-eight hours", () => {
@@ -80,4 +80,44 @@ test("the two creatures that breed do so at the reference's times, each laying a
   expect([reg.birthScale[of("parasaur")], reg.birthScale[of("survivor")]]).toEqual([BIRTH_SCALE, 1]);
   // Everything else does not: survivors, and the box that grazes.
   expect([reg.breedEgg[of("survivor")], reg.breedEgg[of("grazer")], reg.matureTicks[of("grazer")]]).toEqual([0xffff, 0xffff, 0]);
+});
+
+test("re-timing: what is left of a time a rule divides or multiplies; and a young one whose growing is made faster or slower is never less grown for it", () => {
+  // A time a rule divides (hatching at a speed): twice as fast leaves half, rounded up, and never none.
+  expect([leftAtSpeed(1000, 1, 2), leftAtSpeed(1001, 1, 2), leftAtSpeed(1000, 2, 1), leftAtSpeed(1000, 10, 50), leftAtSpeed(1, 1, 1000), leftAtSpeed(777, 3, 3)]).toEqual([500, 501, 2000, 200, 1, 777]);
+  // A time a rule multiplies (a wait): twice the rule leaves twice the wait.
+  expect([leftAtPeriod(1000, 1, 2), leftAtPeriod(1000, 2, 1), leftAtPeriod(1000, 1, 0.002), leftAtPeriod(1, 1, 0.001), leftAtPeriod(777, 3, 3)]).toEqual([2000, 500, 2, 1, 777]);
+
+  const rng = new Rng(29);
+  const out: [number, number] = [0, 0];
+  for (let n = 0; n < 4000; n++) {
+    const span = GROWN + rng.int(3000000);
+    const tick = 1 + rng.int(5000000);
+    // Anywhere in its growing, the last tick of it included.
+    const grown = tick + 1 + rng.int(span);
+    const k = n % 5 === 0 ? 1 : Math.exp((rng.float() - 0.5) * 12);
+    const step = growthStep(span, grown, tick);
+    regrow(span, grown, tick, k, out);
+    const [span2, grown2] = out;
+    const left = Math.max(1, Math.ceil((grown - tick) * k));
+    // What is left is what was left, that many times as long; and its growing takes no less than a tick a hundredth.
+    expect([grown2 - tick, span2 >= GROWN]).toEqual([left, true]);
+    const step2 = growthStep(span2, grown2, tick);
+    // Never less grown. The same hundredth, unless what is left is too little to tell one hundredth from the next.
+    expect(step2).toBeGreaterThanOrEqual(step);
+    if (left >= GROWN * 2 && span2 > GROWN) expect(step2).toBe(step);
+    // The same rule changes nothing.
+    if (k === 1) expect([span2, grown2]).toEqual([span, grown]);
+    // And it goes on from there a hundredth at a time, each on a tick still to come.
+    expect(stepTick(span2, grown2, step2 + 1)).toBeGreaterThan(tick);
+  }
+  // Made a hundred times slower nine tenths of the way through, at tick 1000: its growing takes far longer than the world
+  // is old, and nothing needs the tick it began on.
+  regrow(1000, 1100, 1000, 100, out);
+  expect([out, growthStep(out[0], out[1], 1000), out[1] - out[0] < 0]).toEqual([[100000, 11000], 90, true]);
+  // One that is grown, or was never young, is left alone.
+  regrow(1000, 500, 600, 3, out);
+  expect(out).toEqual([1000, 500]);
+  regrow(0, 0, 600, 3, out);
+  expect(out).toEqual([0, 0]);
 });

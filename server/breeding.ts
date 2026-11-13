@@ -29,7 +29,7 @@
 import { TICK_RATE } from "../shared/coords.ts";
 import { EVENT_TAMED, ORDER_MATE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
-import { GROWN, MATE_RANGE, MATE_TICKS, growthStep, litter, mateWait, maturity, stageOf, stepTick } from "../shared/sim/breeding.ts";
+import { GROWN, MATE_RANGE, MATE_TICKS, growthStep, leftAtPeriod, leftAtSpeed, litter, mateWait, maturity, regrow, stageOf, stepTick } from "../shared/sim/breeding.ts";
 import { MF_NO_SPRINT } from "../shared/sim/character.ts";
 import { F_AWAKE } from "../shared/sim/entities.ts";
 import { breed } from "../shared/sim/genome.ts";
@@ -88,8 +88,9 @@ export class Breeding {
   parted = 0;
   private readonly ctx: BreedingContext;
   private readonly rng: Rng;
-  /** The pairs there are, by the female's persistent id: the male, and the ticks they began and will have done. */
-  private readonly pairs = new Map<number, { male: number; began: number; due: number }>();
+  /** The pairs there are, by the female's persistent id: the male, how many ticks their mating takes, and the tick they will have done. */
+  private readonly pairs = new Map<number, { male: number; span: number; due: number }>();
+  private readonly grew: [number, number] = [0, 0];
   /** Scratch for a pass: the willing females and males that are awake (entity indices), and the females among them (persistent ids). */
   private readonly females: number[] = [];
   private readonly males: number[] = [];
@@ -182,8 +183,10 @@ export class Breeding {
         this.parted++;
       }
       if (best < 0) continue;
-      const due = tick + MATE_TICKS;
-      this.pairs.set(pid, { male: ents.pid[best]!, began: tick, due });
+      // As long as the server's rule for it says.
+      const span = Math.max(1, Math.ceil(MATE_TICKS / speed(this.ctx.rules.num("MatingSpeedMultiplier"))));
+      const due = tick + span;
+      this.pairs.set(pid, { male: ents.pid[best]!, span, due });
       deadlines.push(due, DEADLINE_BREED, pid, due);
       seen.add(pid);
       this.begun++;
@@ -237,7 +240,7 @@ export class Breeding {
     const tick = world.tick;
     const n = litter(this.rng.float());
     const eggKind = reg.breedEgg[mother.kind]!;
-    const span = Math.max(1, Math.ceil(reg.incubateTicks[mother.kind]! / speed(rules.values.hatchSpeed)));
+    const span = Math.max(1, Math.ceil(reg.incubateTicks[mother.kind]! / speed(rules.num("EggHatchSpeedMultiplier"))));
     const hatchAt = tick + span;
     const id = reg.ids[mother.kind]!;
     const what = id.slice(id.indexOf(":") + 1);
@@ -264,7 +267,7 @@ export class Breeding {
       deadlines.push(hatchAt, DEADLINE_BREED, egg.pid, hatchAt);
       this.laid++;
     }
-    mother.mateReadyAt = tick + Math.round(mateWait(this.rng.float()) * TICK_RATE * rules.values.matingInterval);
+    mother.mateReadyAt = tick + Math.round(mateWait(this.rng.float()) * TICK_RATE * rules.num("MatingIntervalMultiplier"));
     records.dirty.add(mother.pid);
     this.mated++;
   }
@@ -311,7 +314,7 @@ export class Breeding {
     rec.z = z;
     rec.yaw = egg.yaw;
     // Never so fast that a hundredth of it is less than a tick.
-    rec.span = Math.max(GROWN, Math.ceil(reg.matureTicks[info.species]! / speed(rules.values.matureSpeed)));
+    rec.span = Math.max(GROWN, Math.ceil(reg.matureTicks[info.species]! / speed(rules.num("BabyMatureSpeedMultiplier"))));
     rec.grown = tick + rec.span;
     const e = creatures.adopt(rec);
     if (e < 0) {
@@ -350,6 +353,64 @@ export class Breeding {
     this.ctx.refresh(rec);
     this.ctx.meal(rec);
     if (rec.grown !== 0) this.next(rec);
+  }
+
+  /**
+   * The rules that time breeding were `was` and are now what the server
+   * holds: everything under way is timed again from this tick (D91). An egg
+   * has left what it had left at the new speed, and so has a young one, which
+   * is no less grown for it; a female's wait is as much longer or shorter as
+   * the rule is; a pair goes on from where it had got. Each keeps its
+   * deadline, and its body says what it now is.
+   */
+  retime(was: { hatch: number; mature: number; interval: number; mating: number }): void {
+    const { world, records, rules, deadlines } = this.ctx;
+    const tick = world.tick;
+    const hatch = speed(rules.num("EggHatchSpeedMultiplier"));
+    const mature = speed(rules.num("BabyMatureSpeedMultiplier"));
+    const interval = rules.num("MatingIntervalMultiplier");
+    const mating = speed(rules.num("MatingSpeedMultiplier"));
+    const grew = this.grew;
+    for (const rec of records.byPid.values()) {
+      const egg = rec.egg;
+      if (egg) {
+        if (hatch === speed(was.hatch) || egg.hatchAt <= tick) continue;
+        egg.span = Math.max(1, Math.round((egg.span * speed(was.hatch)) / hatch));
+        egg.hatchAt = tick + leftAtSpeed(egg.hatchAt - tick, speed(was.hatch), hatch);
+        deadlines.push(egg.hatchAt, DEADLINE_BREED, rec.pid, egg.hatchAt);
+        const e = records.entOf.get(rec.pid);
+        if (e !== undefined) world.ents.setYoung(e, egg.span, egg.hatchAt);
+        records.dirty.add(rec.pid);
+        continue;
+      }
+      if (rec.grown > tick && mature !== speed(was.mature)) {
+        const step = growthStep(rec.span, rec.grown, tick);
+        regrow(rec.span, rec.grown, tick, speed(was.mature) / mature, grew);
+        rec.span = grew[0];
+        rec.grown = grew[1];
+        const e = records.entOf.get(rec.pid);
+        if (e !== undefined) world.ents.setYoung(e, rec.span, rec.grown);
+        records.dirty.add(rec.pid);
+        // The ends of the range may put it a hundredth on: then it is that much more of a grown one.
+        if (growthStep(rec.span, rec.grown, tick) !== step) {
+          this.ctx.refresh(rec);
+          this.ctx.meal(rec);
+        }
+        this.next(rec);
+      }
+      if (rec.mateReadyAt > tick && interval !== was.interval && was.interval > 0) {
+        rec.mateReadyAt = interval > 0 ? tick + leftAtPeriod(rec.mateReadyAt - tick, was.interval, interval) : tick;
+        records.dirty.add(rec.pid);
+      }
+    }
+    if (mating !== speed(was.mating)) {
+      for (const [pid, pair] of this.pairs) {
+        if (pair.due <= tick) continue;
+        pair.span = Math.max(1, Math.round((pair.span * speed(was.mating)) / mating));
+        pair.due = tick + leftAtSpeed(pair.due - tick, speed(was.mating), mating);
+        deadlines.push(pair.due, DEADLINE_BREED, pid, pair.due);
+      }
+    }
   }
 
   /** A cheat: this egg hatches now. False if it is no egg. */
@@ -436,7 +497,7 @@ export class Breeding {
   /** How far along the pair this creature is one of has got, 0 to 1; 0 for one that is in none. A male's is that of the furthest along. */
   progress(rec: EntityRecord): number {
     const tick = this.ctx.world.tick;
-    const share = (p: { began: number; due: number }): number => Math.max(0, Math.min(1, (tick - p.began) / (p.due - p.began)));
+    const share = (p: { span: number; due: number }): number => Math.max(0, Math.min(1, 1 - (p.due - tick) / p.span));
     const own = this.pairs.get(rec.pid);
     if (own) return share(own);
     let best = 0;

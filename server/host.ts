@@ -44,9 +44,10 @@ import { Projectiles } from "./projectiles.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
 import { Rules, type RuleName } from "./rules.ts";
-import { rowOf } from "./settings/catalog.ts";
+import { CATALOG, rowOf } from "./settings/catalog.ts";
 import { Lists } from "./settings/lists.ts";
 import { timersOf } from "./settings/rules.ts";
+import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/config.ts";
 import { tuningOf } from "./settings/tune.ts";
 import { deriveRegistry } from "../shared/content/tuning.ts";
 import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
@@ -92,6 +93,13 @@ export interface HostOptions {
    * being started again. In place of `rules`.
    */
   config?: Rules;
+  /**
+   * The live file as it is now: its text, or null if there is none. Asked
+   * again every `AutoSavePeriodMinutes` and at `ForceUpdateDynamicConfig`, if
+   * the server was started with `-UseDynamicConfig`. Whoever starts the
+   * server gives it (it reads `DynamicConfig.ini` beside the other two files).
+   */
+  live?: () => string | null;
 }
 
 /** Ticks between console lines accepted from one session. */
@@ -144,6 +152,8 @@ export interface Host {
    * it was not. It lasts until the server is started again.
    */
   setSetting(name: string, words: string): string;
+  /** Read the live file again now: what came of it, in words. */
+  readLive(): string[];
   /** What a loaded save's timers were worked out under, by setting; null for a new world. */
   readonly loadedUnder: Record<string, number> | null;
   readonly projectiles: Projectiles;
@@ -230,6 +240,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     persistence.ledger = items;
   }
   const creatures = new Creatures(world, game, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
+  creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");
   /** Chunk each session's focus is keeping awake. */
   const focus = new Map<number, number>();
   const recordOf = (name: string) => {
@@ -243,7 +254,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     if (e >= 0 && persistence) persistence.attach(records.byPid.get(world.ents.pid[e]!)!, e);
     return e;
   };
-  const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines });
+  const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules });
   const progression = new Progression(world, records, items, deadlines);
   progression.rules = rules;
   const harvest = world.nodeField ? new Harvest(world, game, records, items, progression, deadlines, (opts.seed ?? 1) + 31) : null;
@@ -357,7 +368,71 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       if (from >= 0) harvest.retain(from, wakeRadius, -1);
     }
   };
+  /**
+   * The values the world's timers and rates are worked out under: a save's
+   * own until it has been brought to this server's, then this server's. A
+   * setting the save says nothing of was at its default.
+   */
+  let under: Record<string, number> = loadedUnder ?? rules.timers();
+  const wasAt = (name: string): number => under[name] ?? (rowOf(name)!.def as number);
+  const RATES = CATALOG.filter((row) => row.retime === "rate").map((row) => row.name);
+  /**
+   * Bring everything under way from the values it was worked out under to
+   * the server's now (D91): at a load, once, for a save made under other
+   * settings; and while the server runs, whenever a rule that may change
+   * does. One function for each kind of thing, the same for both. What is
+   * worked out only when someone looks (a stack's spoiling, a fire) cannot
+   * change while the server runs, and is settled as it was before it is
+   * re-timed.
+   */
+  const retime = (atLoad: boolean): void => {
+    const now = rules.timers();
+    let any = false;
+    for (const name in now) if (wasAt(name) !== now[name]) any = true;
+    if (!any) {
+      under = now;
+      return;
+    }
+    breeding.retime({ hatch: wasAt("EggHatchSpeedMultiplier"), mature: wasAt("BabyMatureSpeedMultiplier"), interval: wasAt("MatingIntervalMultiplier"), mating: wasAt("MatingSpeedMultiplier") });
+    death.retime(wasAt("GlobalItemDecompositionTimeMultiplier"), wasAt("GlobalCorpseDecompositionTimeMultiplier") * wasAt("UseCorpseLifeSpanMultiplier"));
+    if (atLoad) {
+      harvest?.retime(wasAt("ResourcesRespawnPeriodMultiplier"));
+      const spoilWas = wasAt("GlobalSpoilingTimeMultiplier");
+      const fuelWas = wasAt("FuelConsumptionIntervalMultiplier");
+      if (spoilWas !== now.GlobalSpoilingTimeMultiplier || fuelWas !== now.FuelConsumptionIntervalMultiplier) {
+        // Content as it was when the save was made, in the two things that time what lies in a box or on a fire.
+        const old = deriveRegistry(content, { ...tuned.tuning, spoil: spoilWas, fuel: fuelWas });
+        items.table = old;
+        stations.refuel(old.fuelTicks, fuelWas, now.FuelConsumptionIntervalMultiplier!);
+        items.respoil(old, spoilWas, now.GlobalSpoilingTimeMultiplier!);
+        items.table = reg;
+      }
+    } else if (RATES.some((name) => wasAt(name) !== now[name])) {
+      // A rate that may change while the server runs is the young's hunger: each is rated again, and eats when that says.
+      for (const rec of records.byPid.values()) {
+        if (rec.grown === 0 || rec.egg !== null || !rec.vitals) continue;
+        survival.touch(rec);
+        taming.meal(rec);
+      }
+    }
+    under = now;
+    if (settingsAt) settingsAt.dirty = true;
+  };
+  let retimedAt = rules.version;
+  /** Ticks between looks at the live file: ARK reads its own at every save of the world. */
+  const liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
+  const readLive = (): string[] => {
+    if (!opts.live || rules.flag("UseDynamicConfig") !== true) return ["the live file is not in use: the server was not started with -UseDynamicConfig"];
+    const text = opts.live();
+    if (text === null) return [`there is no ${LIVE_FILE} to read`];
+    const report = emptyReport();
+    applyLive(rules, text, report);
+    const [first, ...rest] = formatReport(report, rules);
+    return [`${LIVE_FILE} read again: ${first!.slice("settings: ".length)}`, ...rest];
+  };
   if (loaded && !loaded.fresh) {
+    // Bodies saved under other rates than this server's are rated again as they are taken in.
+    survival.rerate = RATES.some((name) => wasAt(name) !== rules.num(name));
     // Every saved record that is not a survivor goes back where it stood: creatures to live, caches to wait.
     const survivors = new Set(persistence!.survivors.values());
     for (const rec of records.byPid.values()) {
@@ -374,6 +449,9 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
         if (e >= 0) persistence!.attach(rec, e);
       }
     }
+    survival.rerate = false;
+    // A save made under other settings is brought to this server's, once: its timers from the values kept with it.
+    retime(true);
     // With every body back and its limits known, whatever was under way goes on: what was being made, fires,
     // creatures lying there being tamed and the meals of those that are somebody's, eggs, and the young.
     for (const rec of records.byPid.values()) progression.resume(rec);
@@ -516,7 +594,18 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       const most = Math.round(rules.num("KickIdlePlayersPeriod") * TICK_RATE);
       for (const c of game.clients) if (c?.active && !c.closed && tick - c.activeAt > most) game.reject(c, REJECT_KICKED);
     }
-    // A rule has changed: what the world's timers are worked out under goes into the next commit with them.
+    // The live file, looked at again as often as the server's rule says. What it changes is said; what it leaves alone is not.
+    if (opts.live && tick % liveEvery === 0 && rules.flag("UseDynamicConfig") === true) {
+      const before = rules.version;
+      const said = readLive();
+      if (rules.version !== before) for (const line of said) console.log(line);
+    }
+    // A rule has changed: whatever it times is timed again from this tick,
+    if (retimedAt !== rules.version) {
+      retimedAt = rules.version;
+      retime(false);
+    }
+    // and what the world's timers are worked out under goes into the next commit with them.
     if (settingsAt && settingsAt.version !== rules.version) {
       settingsAt.version = rules.version;
       settingsAt.dirty = true;
@@ -583,7 +672,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0);
     // A young one can carry a share of what a grown one can: the same load is that much more of it.
     const strength = youngShare(growthStep(rec.span, rec.grown, world.tick));
-    refreshMods(reg, world.ents, e, rec.genome, load / strength, buffs.speedOf(rec), buffs.rooted(rec), rec.out);
+    refreshMods(reg, world.ents, e, rec.genome, load / strength, buffs.speedOf(rec), buffs.rooted(rec), rec.out, creatures.swimGain);
     // A survivor's level is what its experience has earned; a creature's is its points.
     const level = rec.kind === survivor ? progression.levelOf(rec.xp) : rec.genome ? rec.genome.level : 1;
     world.ents.setLook(e, level, rec.genome ? rec.genome.colors : null, rec.name);
@@ -657,6 +746,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       if (!row.live) return `${row.name} is read when the server starts: set it in its file and start again`;
       return rules.assign(row.name, words, "console");
     },
+    readLive,
     loadedUnder,
     projectiles,
     progression,

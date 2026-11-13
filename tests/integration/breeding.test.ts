@@ -488,7 +488,8 @@ test("a species that bears its young alive goes the same way with no egg: carrie
   const [pa, pb] = [a.rec.pid, b.rec.pid];
   const due = carried[0]!.egg!.hatchAt;
   h.host.shutdown();
-  h = new Harness({}, 1, 60, { dev: true, dbPath }, live);
+  // On the settings it was stopped on: started on others, what is carried would be carried as long as those say.
+  h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules }, live);
   expect([eggs(h).length, bodies(), young(h).length]).toEqual([carried.length, 3, 0]);
   // One of the mothers dies before her time.
   h.host.survival.add(h.host.records.byPid.get(pb)!, V_HEALTH, -1e9);

@@ -17,6 +17,16 @@ function shown(row: Row, rules: Rules): string {
 export function addSettingsCommands(con: Console): void {
   const commands: ConsoleCommand[] = [
     {
+      // ARK's own name for it (ForceUpdateDynamicConfig): the console takes a command in any case.
+      name: "forceupdatedynamicconfig",
+      usage: "",
+      help: "Read the live file again now, without waiting for the next time it would be.",
+      admin: true,
+      run(ctx) {
+        return ctx.host.readLive().join("\n");
+      },
+    },
+    {
       name: "settings",
       usage: "",
       help: "Every setting that is not at its default, and where its value came from.",

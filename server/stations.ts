@@ -12,6 +12,7 @@
 import { RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../shared/net/protocol.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { burn, type Hearth } from "../shared/sim/station.ts";
+import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { Fixtures } from "./fixtures.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -29,6 +30,8 @@ export class Stations {
   private readonly items: Items;
   private readonly fixtures: Fixtures;
   private readonly deadlines: DeadlineHeap;
+  /** Ticks one of each thing burns: content's, but for the moment a save made under other content is brought up to date. */
+  private fuelTicks: Uint32Array;
   /** The fire being worked out, and what lies on it, for `hearth`. */
   private rec: EntityRecord | null = null;
   private readonly hearth: Hearth;
@@ -40,6 +43,7 @@ export class Stations {
     this.fixtures = fixtures;
     this.deadlines = deadlines;
     const reg = world.reg;
+    this.fuelTicks = reg.fuelTicks;
     const first = (of: Uint16Array | Uint32Array): number => {
       const inv = this.rec!.inv!;
       for (let s = 0; s < inv.bag; s++) if (inv.count[s]! > 0 && of[inv.item[s]!] !== 0) return s;
@@ -48,9 +52,9 @@ export class Stations {
     this.hearth = {
       settle: (t) => items.spoilTo(this.rec!, t),
       feed: () => {
-        const s = first(reg.fuelTicks);
+        const s = first(this.fuelTicks);
         if (s < 0) return 0;
-        const ticks = reg.fuelTicks[this.rec!.inv!.item[s]!]!;
+        const ticks = this.fuelTicks[this.rec!.inv!.item[s]!]!;
         items.burn(this.rec!, s, 1, true);
         return ticks;
       },
@@ -71,6 +75,27 @@ export class Stations {
     items.onFire = (rec) => this.tend(rec);
   }
 
+  /**
+   * A save is being taken in that was made when fuel burned `was` times its
+   * own time, and it now burns `is` times it. Every fire is first worked out
+   * up to this tick as it would have burned then, by the table of then
+   * (`old`); then the piece burning on each has left what it had left, as
+   * much longer or shorter as the rule is. The pile under it burns by the
+   * table of now. Things spoil on the way as `Items.respoil` has them: this
+   * comes before it.
+   */
+  refuel(old: Uint32Array, was: number, is: number): void {
+    this.fuelTicks = old;
+    for (const rec of this.records.byPid.values()) if (rec.fire && rec.at >= 0) this.tend(rec);
+    this.fuelTicks = this.world.reg.fuelTicks;
+    for (const rec of this.records.byPid.values()) {
+      const fire = rec.fire;
+      if (!fire || fire.fuel <= 0) continue;
+      fire.fuel = leftAtPeriod(fire.fuel, was, is);
+      this.records.dirty.add(rec.pid);
+    }
+  }
+
   /** After a load: every fire that was burning has its deadline again. */
   resume(): void {
     for (const rec of this.records.byPid.values()) if (rec.fire && rec.at >= 0) this.schedule(rec);
@@ -79,7 +104,7 @@ export class Stations {
   /** Ticks of burning left in what lies on a fire, besides the piece now burning. */
   private pile(rec: EntityRecord): number {
     const inv = rec.inv;
-    const fuel = this.world.reg.fuelTicks;
+    const fuel = this.fuelTicks;
     let ticks = 0;
     for (let s = 0; inv && s < inv.bag; s++) ticks += inv.count[s]! * fuel[inv.item[s]!]!;
     return ticks;

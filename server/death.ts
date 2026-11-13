@@ -26,6 +26,8 @@ import type { Persistence } from "./persist/persistence.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { CAUSE_NAMES, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
+import type { Rules } from "./settings/rules.ts";
+import { leftAtPeriod } from "../shared/sim/breeding.ts";
 
 export const DEADLINE_DESPAWN = 2;
 /** Journal op: survivor pid, cause, cache pid (0 if it carried nothing). */
@@ -47,6 +49,8 @@ export interface DeathContext {
   readonly creatures: Creatures;
   readonly persistence: Persistence | null;
   readonly deadlines: DeadlineHeap;
+  /** The server's rules: how long a bag, and what a death leaves, lie. */
+  readonly rules: Rules;
 }
 
 export class Death {
@@ -111,7 +115,7 @@ export class Death {
     bag.z = ents.z[e]! + this.dir[2]! * 0.8;
     const ground = world.hf.heightAt(bag.x, bag.z);
     bag.y = ground > ents.y[e]! ? ground : ents.y[e]!;
-    bag.expiresAt = world.tick + BAG_TICKS;
+    bag.expiresAt = world.tick + this.lifetime(this.bag);
     records.dirty.add(bag.pid);
     this.place(bag);
     return true;
@@ -156,7 +160,7 @@ export class Death {
       cache.x = rec.x;
       cache.y = rec.y;
       cache.z = rec.z;
-      cache.expiresAt = world.tick + CACHE_TICKS;
+      cache.expiresAt = world.tick + this.lifetime(this.cache);
       this.place(cache);
       cachePid = cache.pid;
     }
@@ -216,10 +220,44 @@ export class Death {
     cache.x = x;
     cache.y = ground > y ? ground : y;
     cache.z = z;
-    cache.expiresAt = world.tick + CACHE_TICKS;
+    cache.expiresAt = world.tick + this.lifetime(this.cache);
     records.dirty.add(cache.pid);
     this.place(cache);
     return cache;
+  }
+
+  /**
+   * How long a thing of this kind lies before it is gone, in ticks, by the
+   * server's rules: a bag set down by hand by its rule for things dropped; a
+   * cache (what a death leaves, or a container that was destroyed) by its two
+   * for what the dead leave, multiplied.
+   */
+  lifetime(kind: number): number {
+    const rules = this.ctx.rules;
+    const by = kind === this.bag && kind !== this.cache ? rules.num("GlobalItemDecompositionTimeMultiplier") : rules.num("GlobalCorpseDecompositionTimeMultiplier") * rules.num("UseCorpseLifeSpanMultiplier");
+    return Math.max(1, Math.round((kind === this.bag && kind !== this.cache ? BAG_TICKS : CACHE_TICKS) * by));
+  }
+
+  /**
+   * Those rules have changed: what was `bagWas` times a bag's own time and
+   * `cacheWas` times a cache's is now what the server holds. Everything lying
+   * has left what it had left, as much longer or shorter as its rule is.
+   */
+  retime(bagWas: number, cacheWas: number): void {
+    const { world, records, deadlines, rules } = this.ctx;
+    const tick = world.tick;
+    const bagIs = rules.num("GlobalItemDecompositionTimeMultiplier");
+    const cacheIs = rules.num("GlobalCorpseDecompositionTimeMultiplier") * rules.num("UseCorpseLifeSpanMultiplier");
+    for (const rec of records.byPid.values()) {
+      if (rec.expiresAt <= tick || (rec.kind !== this.bag && rec.kind !== this.cache)) continue;
+      const bag = rec.kind === this.bag && rec.kind !== this.cache;
+      const was = bag ? bagWas : cacheWas;
+      const is = bag ? bagIs : cacheIs;
+      if (was === is || !(was > 0)) continue;
+      rec.expiresAt = tick + leftAtPeriod(rec.expiresAt - tick, was, is);
+      deadlines.push(rec.expiresAt, DEADLINE_DESPAWN, rec.pid, rec.expiresAt);
+      records.dirty.add(rec.pid);
+    }
   }
 
   /** Put a cache's body in the world (when it is made, and when a save is loaded) and set its clock. */

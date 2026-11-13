@@ -34,6 +34,8 @@ export class Creatures {
   awakeCount = 0;
   /** Creatures run through collision in the last step, for measurement. */
   stepped = 0;
+  /** The server's rule for how much swimming speed each level of oxygen gives; whoever assembles the world sets it. */
+  swimGain = 1;
 
   private readonly world: ServerWorld;
   private readonly records: Records;
@@ -100,7 +102,7 @@ export class Creatures {
     if (e < 0) return -1;
     ents.yaw[e] = rec.yaw;
     ents.pid[e] = rec.pid;
-    refreshMods(this.world.reg, ents, e, rec.genome);
+    refreshMods(this.world.reg, ents, e, rec.genome, 0, 1, false, false, this.swimGain);
     ents.setLook(e, rec.genome ? rec.genome.level : 1, rec.genome ? rec.genome.colors : null, rec.name);
     this.records.entOf.set(rec.pid, e);
     this.mind.reset(e);

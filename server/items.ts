@@ -14,6 +14,7 @@
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { GEAR_SLOTS, Inventory, QUALITY_MUL, moveSlot, type ItemTable } from "../shared/sim/items.ts";
+import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -21,7 +22,8 @@ import type { ServerWorld } from "./world.ts";
 const DEFAULT_SLOTS = 40;
 
 export class Items {
-  readonly table: ItemTable;
+  /** What the item model needs to know of each item: content's. Another only for the moment a save made under other content is brought up to date. */
+  table: ItemTable;
   readonly minted: Float64Array;
   readonly burned: Float64Array;
   /** The ledger changed since it was last saved. */
@@ -82,6 +84,32 @@ export class Items {
    * things happened (server/stations.ts).
    */
   onFire: ((rec: EntityRecord) => void) | null = null;
+
+  /**
+   * A save is being taken in that was made when things kept `was` times
+   * their own time, and they now keep `is` times it. First everything is
+   * brought up to this tick as it would have spoiled then, by the table of
+   * then (`old`); then the piece on top of each stack, which is part way to
+   * spoiling, has left what it had left, as much longer or shorter as the
+   * rule is. The pieces under it have not begun, and keep by the table of now.
+   */
+  respoil(old: ItemTable, was: number, is: number): void {
+    const tick = this.world.tick;
+    for (const rec of this.records.byPid.values()) {
+      const inv = rec.inv;
+      if (!inv) continue;
+      const before = inv.version;
+      inv.settle(tick, old, this.spoiled);
+      for (let s = 0; s < inv.cap; s++) {
+        const at = inv.spoilAt[s]!;
+        if (at <= tick || inv.item[s] === 0) continue;
+        const next = tick + leftAtPeriod(at - tick, was, is);
+        inv.spoilAt[s] = next > 0xffffffff ? 0xffffffff : next;
+        inv.mod[s] = ++inv.version;
+      }
+      if (inv.version !== before) this.records.dirty.add(rec.pid);
+    }
+  }
 
   /** For whoever is working through a time nobody watched: spoil a record's things up to tick `at` and no further. */
   spoilTo(rec: EntityRecord, at: number): void {

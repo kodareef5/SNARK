@@ -20,7 +20,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
-import { formatReport, loadConfigFolder } from "./settings/config.ts";
+import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { VoicePeer } from "./voice.ts";
 import { existsSync, readFileSync } from "node:fs";
@@ -48,6 +48,8 @@ export interface ServerOptions {
   key?: string;
   /** The server's rules, as read from its config files and command line. Without them, ARK's defaults. */
   config?: Rules;
+  /** The live file as it is now, or null if there is none: see `HostOptions.live`. */
+  live?: () => string | null;
 }
 
 export interface RunningServer {
@@ -77,6 +79,13 @@ interface Socket {
   isVoice: boolean;
 }
 
+/** A reader of the live file in a config folder, for a server to ask again while it runs; undefined if there is no folder. */
+export function liveFileOf(folder: string): (() => string | null) | undefined {
+  if (folder === "") return undefined;
+  const path = join(folder, LIVE_FILE);
+  return () => (existsSync(path) ? readFileSync(path, "utf8") : null);
+}
+
 /** The folder a development server reads its settings from when it is given no other: taming, hatching and growing up turned up, so that raising a creature takes minutes. */
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
@@ -89,7 +98,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   if (!existsSync(packFile)) throw new Error(`${packFile} is missing: build the client first (bun run build)`);
   const pack = parsePack(new Uint8Array(readFileSync(packFile)));
   const clips = pack.clips;
-  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}) };
+  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
   // What of the settings named nothing this build has, or made no sense, is said as the server starts; it stops nothing.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
@@ -273,12 +282,14 @@ if (import.meta.main) {
   const folder = value("--config") ?? (dev ? DEV_CONFIG : "");
   const { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
+  const live = liveFileOf(folder);
   // The port: ours, then ARK's flag, then the file's.
   const flagPort = rules.flag("port");
   const running = startServer({
     port: Number(value("--port") ?? (typeof flagPort === "string" && flagPort !== "" ? flagPort : rules.num("Port"))),
     dev,
     config: rules,
+    ...(live ? { live } : {}),
     dbPath: value("--db"),
     cert: value("--cert"),
     key: value("--key"),

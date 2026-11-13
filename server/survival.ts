@@ -10,7 +10,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { EntityStore } from "../shared/sim/entities.ts";
 import { STAT_NAMES, statValue, type Genome, type StatName } from "../shared/sim/genome.ts";
-import { GAME_HOUR_TICKS, MICRO, ratePerTick } from "../shared/sim/lazy.ts";
+import { GAME_HOUR_TICKS, MICRO } from "../shared/sim/lazy.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER, Vitals } from "../shared/sim/vitals.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -78,9 +78,11 @@ const HEAVY_SPEED = 0.6;
  * Recompute the movement modifiers of entity `e` from its stat points and what
  * it carries: speed on land, speed in water (from oxygen, as in the reference
  * game), the stamina cap, and the limits of a heavy load. Call after anything
- * that changes the points or the load.
+ * that changes the points or the load. `swimGain` is the server's rule
+ * for how much swimming speed each level of oxygen gives (1: as content has
+ * it).
  */
-export function refreshMods(reg: Registry, ents: EntityStore, e: number, g: Genome | null, carriedKg = 0, speedMul = 1, rooted = false, out = false): void {
+export function refreshMods(reg: Registry, ents: EntityStore, e: number, g: Genome | null, carriedKg = 0, speedMul = 1, rooted = false, out = false, swimGain = 1): void {
   const def = reg.defs[ents.kind[e]!] as SpeciesDef;
   const load = carriedKg / statOf(def, g, STAT_WEIGHT, Infinity);
   let flags = (rooted ? MF_ROOTED | MF_NO_SPRINT : 0) | (out ? MF_OUT : 0);
@@ -92,7 +94,9 @@ export function refreshMods(reg: Registry, ents: EntityStore, e: number, g: Geno
     speed = Math.max(1, Math.round(speed * HEAVY_SPEED));
   }
   ents.speedQ[e] = speed;
-  ents.swimQ[e] = ratioQ(def, g, STAT_OXYGEN);
+  // Oxygen is what quickens a swimmer, by the server's rule for how much each level of it gives.
+  const swim = Math.round(1000 + (ratioQ(def, g, STAT_OXYGEN) - 1000) * swimGain);
+  ents.swimQ[e] = swim < 1 ? 1 : swim > 4095 ? 4095 : swim;
   const max = Math.round(statOf(def, g, STAT_STAMINA, 100));
   ents.staminaMax[e] = max < 1 ? 1 : max > 65535 ? 65535 : max;
   if (ents.stamina[e]! > ents.staminaMax[e]! * STAMINA_UNITS) ents.stamina[e] = ents.staminaMax[e]! * STAMINA_UNITS;
@@ -111,7 +115,15 @@ export const CAUSE_KILLED = 5;
 export const CAUSE_NAMES = ["", "starved", "died of thirst", "drowned", "fell to your death", "were killed"];
 
 const perSecond = (points: number): number => Math.round((points * MICRO) / TICK_RATE);
-const ratePerSecond = perSecond;
+/**
+ * A rate (millionths of a point a tick, not yet a whole number) as one of the
+ * server's rules has it: whole, and never rounded away to nothing, which
+ * would turn "a hundredth as fast" into "never".
+ */
+const scaled = (rate: number, by: number): number => {
+  const whole = Math.round(rate * by);
+  return whole === 0 && rate > 0 && by > 0 ? 1 : whole;
+};
 /** Points per second. */
 const HEALTH_REGEN = perSecond(0.2);
 const STARVE = perSecond(0.5);
@@ -148,8 +160,14 @@ export class Survival {
   private readonly extra = new Map<number, { health: number; torpor: number; by: number }>();
   private readonly injured = new Set<number>();
 
+  /**
+   * Set while a save is being taken in whose bodies were rated under other
+   * settings than the server's now: each is rated again as it is restored.
+   */
+  rerate = false;
   private readonly world: ServerWorld;
   private readonly records: Records;
+  private readonly survivor: number;
   private readonly submerged = new Set<number>();
   private readonly suspended = new Set<number>();
   private pendingCause = 0;
@@ -160,6 +178,12 @@ export class Survival {
     this.world = world;
     this.records = records;
     this.deadlines = deadlines;
+    this.survivor = world.reg.index.get("core:survivor") ?? 0;
+  }
+
+  /** Work a body's rates out again from its circumstances: for when a rule they are worked out by has changed. */
+  touch(rec: EntityRecord): void {
+    if (rec.vitals) this.update(rec);
   }
 
   /** Set every vital to its maximum (a respawn). */
@@ -231,6 +255,11 @@ export class Survival {
         v.rate.fill(0);
         this.records.dirty.add(rec.pid);
       }
+      return;
+    }
+    // Saved under other rates than this server's: rated again, from what it had at this tick.
+    if (this.rerate) {
+      this.update(rec);
       return;
     }
     if (v.max[V_FOOD]! > 0 && v.at(V_FOOD, this.world.tick) <= 0) this.starving.add(rec.pid);
@@ -346,17 +375,27 @@ export class Survival {
       v.rate.fill(0);
       return;
     }
+    // The server's rules for how fast a body hungers, thirsts, mends and shakes off torpor: a survivor's, or a creature's,
+    // and for a creature by whether it is anybody's. Each multiplies a rate that is otherwise content's.
+    const rules = this.rules;
+    const person = rec.kind === this.survivor;
+    const tamed = rec.team !== 0;
+    const hunger = !rules ? 1 : person ? rules.num("PlayerCharacterFoodDrainMultiplier") : rules.num("DinoCharacterFoodDrainMultiplier") * rules.num(tamed ? "TamedDinoCharacterFoodDrainMultiplier" : "WildDinoCharacterFoodDrainMultiplier");
+    const thirst = rules && person ? rules.num("PlayerCharacterWaterDrainMultiplier") : 1;
+    const mending = !rules ? 1 : rules.num(person ? "PlayerCharacterHealthRecoveryMultiplier" : "DinoCharacterHealthRecoveryMultiplier");
+    const waking = !rules || person ? 1 : rules.num(tamed ? "TamedDinoTorporDrainMultiplier" : "WildDinoTorporDrainMultiplier");
     // Lying unconscious, a creature that can be tamed hungers at the reference's rate for that, which is fast.
-    // A young one hungers many times as fast as a grown one, less so the more grown it is.
+    // A young one hungers many times as fast as a grown one, less so the more grown it is, and by the server's rule for the young.
     const step = growthStep(rec.span, rec.grown, tick);
-    v.rate[V_FOOD] = eats ? -(step < GROWN ? Math.round((def.food!.perHour * MICRO * youngHunger(step)) / GAME_HOUR_TICKS) : rec.out && def.taming ? ratePerSecond(proneHunger(def.taming)) : ratePerTick(def.food!.perHour)) : 0;
-    v.rate[V_WATER] = drinks ? -ratePerTick(def.waterPerHour!) : 0;
+    const eaten = !eats ? 0 : step < GROWN ? ((def.food!.perHour * MICRO * youngHunger(step)) / GAME_HOUR_TICKS) * (rules ? rules.num("BabyFoodConsumptionSpeedMultiplier") : 1) : rec.out && def.taming ? (proneHunger(def.taming) * MICRO) / TICK_RATE : (def.food!.perHour * MICRO) / GAME_HOUR_TICKS;
+    v.rate[V_FOOD] = eats ? -scaled(eaten, hunger) : 0;
+    v.rate[V_WATER] = drinks ? -scaled((def.waterPerHour! * MICRO) / GAME_HOUR_TICKS, thirst) : 0;
     v.rate[V_OXYGEN] = breathes ? (under ? -OXYGEN_DRAIN : OXYGEN_REFILL) : 0;
     const god = this.gods.has(rec.pid);
     const harm = god ? 0 : (starved ? STARVE : 0) + (parched ? THIRST : 0) + (airless ? DROWN : 0);
     // What is acting on it adds to that; a god takes the good of it and none of the harm.
     const acting = ex ? (god && ex.health < 0 ? 0 : ex.health) : 0;
-    v.rate[V_HEALTH] = (harm > 0 ? -harm : HEALTH_REGEN) + acting;
+    v.rate[V_HEALTH] = (harm > 0 ? -harm : scaled(HEALTH_REGEN, mending)) + acting;
 
     // Torpor: whatever is dosing it, less what it shakes off each tick. At its most the body is out, and stays out until it is all gone.
     let wentOut = false;
@@ -369,7 +408,7 @@ export class Survival {
       }
       // While something is dosing it, it shakes nothing off: the dose is the whole rate.
       const dose = ex ? ex.torpor : 0;
-      const net = dose > 0 ? dose : -ratePerSecond(torporDrain(def, rec.genome));
+      const net = dose > 0 ? dose : -scaled((torporDrain(def, rec.genome) * MICRO) / TICK_RATE, waking);
       v.rate[V_TORPOR] = net < 0 && v.value[V_TORPOR]! <= 0 ? 0 : net;
     } else v.rate[V_TORPOR] = 0;
     const injured = v.max[V_HEALTH]! > INJURED && v.value[V_HEALTH]! < INJURED;

@@ -15,6 +15,7 @@ import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { S_NODES } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
+import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { chunkCount, chunkCx, chunkCz, TICK_RATE } from "../shared/coords.ts";
 import type { NodeField, NodeSpot } from "../shared/world/nodes.ts";
@@ -183,7 +184,8 @@ export class Harvest {
       this.touched.set(k, { hits: left, respawnAt: 0 });
       return true;
     }
-    const respawnAt = world.tick + Math.round(def.respawnHours * GAME_HOUR_TICKS);
+    // Grown back after its own time, by the server's rule for that: lower is sooner.
+    const respawnAt = world.tick + Math.max(1, Math.round(def.respawnHours * GAME_HOUR_TICKS * (rules ? rules.num("ResourcesRespawnPeriodMultiplier") : 1)));
     this.touched.set(k, { hits: 0, respawnAt });
     this.field.set(chunk, index, false);
     this.version[chunk] = this.version[chunk]! + 1;
@@ -232,6 +234,28 @@ export class Harvest {
       w.uint53(t.respawnAt);
     }
     return w.bytes().slice();
+  }
+
+  /** The tick a used-up node grows back; 0 for one that is not used up. */
+  regrowsAt(chunk: number, index: number): number {
+    return this.touched.get(this.key(chunk, index))?.respawnAt ?? 0;
+  }
+
+  /**
+   * The server's rule for how long a node takes to grow back was `was` when
+   * these were used up, and is now what the server holds: each has left what
+   * it had left, as much longer or shorter as the rule is.
+   */
+  retime(was: number): void {
+    const is = this.rules ? this.rules.num("ResourcesRespawnPeriodMultiplier") : 1;
+    const tick = this.world.tick;
+    if (was === is || !(was > 0)) return;
+    for (const [key, t] of this.touched) {
+      if (t.respawnAt <= tick) continue;
+      t.respawnAt = tick + leftAtPeriod(t.respawnAt - tick, was, is);
+      this.deadlines.push(t.respawnAt, DEADLINE_NODE, key, t.respawnAt);
+      this.dirty.add(Math.floor(key / 256));
+    }
   }
 
   /** Take in a chunk's saved state and put back the deadlines of what was growing. */

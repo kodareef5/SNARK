@@ -233,6 +233,9 @@ export class EntityStore {
 
   /** Say how many ticks a young entity's growing takes and the tick it will be grown (both 0 for one that is grown). */
   setYoung(i: number, span: number, grown: number): void {
+    // Each is 32 bits here and on the wire: growing made slow enough to pass that is shown as the longest there is.
+    if (span > 0xffffffff) span = 0xffffffff;
+    if (grown > 0xffffffff) grown = 0xffffffff;
     if (this.span[i] === span && this.grown[i] === grown) return;
     this.span[i] = span;
     this.grown[i] = grown;
