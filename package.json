@@ -13,7 +13,8 @@
     "build": "bun tools/build-client.ts",
     "snap": "bun tools/snap.ts",
     "probe": "bun tools/probe.ts",
-    "art": "bun tools/art.ts"
+    "art": "bun tools/art.ts",
+    "settings": "bun tools/settings.ts"
   },
   "devDependencies": {
     "@types/bun": "1.4.3",

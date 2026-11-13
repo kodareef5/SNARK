@@ -4,13 +4,13 @@
 // reference (planning/reference/round5-settings.md). Where the reference gives
 // no default the row's note says so.
 
-import { Sheet, none, plan, todo, type Row } from "./row.ts";
+import { Sheet, live, none, plan, todo, type Row } from "./row.ts";
 
 export const SERVER_ROWS: Row[] = [];
 
 const s = new Sheet(SERVER_ROWS, "server", "Rates and world");
 s.f("XPMultiplier", 1, "Experience gained by survivors and tames. Higher is more. Each gain is also multiplied by its source's own multiplier.", todo(3, { live: true }))
-  .f("TamingSpeedMultiplier", 1, "What each piece of food is worth to a creature being tamed. Higher is faster.", todo(1, { live: true }))
+  .f("TamingSpeedMultiplier", 1, "What each piece of food is worth to a creature being tamed. Higher is faster.", live({ live: true }))
   .f("HarvestAmountMultiplier", 1, "What each harvesting blow yields. Higher is more.", todo(3, { live: true }))
   .f("HarvestHealthMultiplier", 1, "Health of trees, rocks and bushes. Higher takes more blows and gives more in all.", todo(5, { min: 0.01 }))
   .f("ResourcesRespawnPeriodMultiplier", 1, "Time before a harvested node grows back. Lower is sooner.", todo(6, { retime: "period", min: 0.001 }))
@@ -29,14 +29,14 @@ s.f("XPMultiplier", 1, "Experience gained by survivors and tames. Higher is more
 
 s.under("Damage")
   .f("PlayerDamageMultiplier", 1, "Damage survivors deal. Higher is more.", todo(4, { live: true }))
-  .f("PlayerResistanceMultiplier", 1, "Damage survivors take. Higher takes more: 0.5 halves it.", todo(1, { live: true }))
+  .f("PlayerResistanceMultiplier", 1, "Damage survivors take. Higher takes more: 0.5 halves it.", live({ live: true }))
   .f("DinoDamageMultiplier", 1, "Damage wild creatures deal. Higher is more.", todo(4, { live: true }))
-  .f("DinoResistanceMultiplier", 1, "Damage wild creatures take. Higher takes more.", todo(1, { live: true }))
+  .f("DinoResistanceMultiplier", 1, "Damage wild creatures take. Higher takes more.", live({ live: true }))
   .f("TamedDinoDamageMultiplier", 1, "Damage tamed creatures deal. Higher is more.", todo(4, { live: true }))
   .f("TamedDinoResistanceMultiplier", 1, "Damage tamed creatures take. Higher takes more.", todo(4, { live: true }))
-  .f("StructureResistanceMultiplier", 1, "Damage things built take. Higher takes more.", todo(1, { live: true }))
+  .f("StructureResistanceMultiplier", 1, "Damage things built take. Higher takes more.", live({ live: true }))
   .f("StructureDamageMultiplier", 1, "Damage dealt by things built, such as spike walls. Higher is more.", plan("defences"))
-  .b("ShowFloatingDamageText", false, "The damage of a hit is shown as a number where it landed.", todo(1, { live: true, client: true }))
+  .b("ShowFloatingDamageText", false, "The damage of a hit is shown as a number where it landed.", live({ live: true, client: true }))
   .b("AllowHitMarkers", true, "A mark is shown when a ranged hit lands.", todo(5, { live: true, client: true }))
   .b("AllowMultipleAttachedC4", false, "More than one charge may be stuck to a creature.", plan("defences"))
   .f("CosmoWeaponAmmoReloadAmount", 1, "Ammunition one of the expansions' creatures gains at a reload.", none("expansion", { game: "A" }))
@@ -89,10 +89,10 @@ s.under("Creatures")
   .f("CryoHospitalMatingCooldownReduction", 2, "Cryo hospital.", none("expansion", { game: "A" }));
 
 s.under("Decay")
-  .b("DisableStructureDecayPvE", false, "Nothing built decays.", todo(1, { live: true }))
-  .f("PvEStructureDecayPeriodMultiplier", 1, "Time before something built that its tribe has not come near decays. Higher is longer.", todo(1, { live: true, note: "Applies in PvP too when decay is on there, despite the name." }))
+  .b("DisableStructureDecayPvE", false, "Nothing built decays.", live({ live: true }))
+  .f("PvEStructureDecayPeriodMultiplier", 1, "Time before something built that its tribe has not come near decays. Higher is longer.", live({ live: true, note: "Applies in PvP too when decay is on there, despite the name." }))
   .b("PvPStructureDecay", false, "Things built decay on a PvP server too.", todo(3, { live: true }))
-  .f("AutoDestroyOldStructuresMultiplier", 0, "What has decayed is taken down by the server after this many decay periods. 0 leaves it standing for anyone to demolish. Needs -AutoDestroyStructures.", todo(1, { live: true }))
+  .f("AutoDestroyOldStructuresMultiplier", 0, "What has decayed is taken down by the server after this many decay periods. 0 leaves it standing for anyone to demolish. Needs -AutoDestroyStructures.", live({ live: true }))
   .b("FastDecayUnsnappedCoreStructures", false, "A foundation or pillar joined to nothing decays in FastDecayInterval.", todo(3, { live: true }))
   .b("OnlyAutoDestroyCoreStructures", false, "Only core pieces are taken down by the server.", plan("decay"))
   .b("OnlyDecayUnsnappedCoreStructures", false, "Only core pieces joined to nothing decay.", plan("decay"))
@@ -105,8 +105,8 @@ s.under("Decay")
   .b("DisableBurrowDecayTimers", false, "One of the expansions' burrows does not decay.", none("expansion", { game: "A" }));
 
 s.under("Structures")
-  .b("AlwaysAllowStructurePickup", false, "A piece may be taken back into the hands at any time while it is whole.", todo(1, { live: true }))
-  .f("StructurePickupTimeAfterPlacement", 30, "Seconds after it is set down that a piece may be taken back.", todo(1, { live: true }))
+  .b("AlwaysAllowStructurePickup", false, "A piece may be taken back into the hands at any time while it is whole.", live({ live: true }))
+  .f("StructurePickupTimeAfterPlacement", 30, "Seconds after it is set down that a piece may be taken back.", live({ live: true }))
   .b("ForceAllStructureLocking", false, "Everything that can be locked is locked when it is built.", todo(3, { live: true }))
   .b("PreventOutOfTribePinCodeUse", false, "A PIN opens nothing for those outside the tribe.", todo(3, { live: true }))
   .f("StructurePickupHoldDuration", 0.5, "Seconds the key is held to take a piece back.", plan("polish"))
@@ -180,8 +180,8 @@ s.under("Transfers")
   .i("MaxTributeCharacters", 10, "Survivors that may be uploaded.", plan("transfers"));
 
 s.under("Chat")
-  .b("globalVoiceChat", false, "A voice is heard by everyone, wherever they are.", todo(1, { live: true }))
-  .b("ProximityChat", false, "What is written reaches only those near.", todo(1, { live: true, client: true }))
+  .b("globalVoiceChat", false, "A voice is heard by everyone, wherever they are.", live({ live: true }))
+  .b("ProximityChat", false, "What is written reaches only those near.", live({ live: true, client: true }))
   .b("AlwaysNotifyPlayerLeft", false, "Everyone is told when someone leaves.", plan("polish"))
   .b("DontAlwaysNotifyPlayerJoined", false, "Nobody is told when someone joins.", plan("polish"))
   .t("BadWordListURL", "", "A list of words not to be written.", plan("ops"))
@@ -250,9 +250,9 @@ new Sheet(SERVER_ROWS, "map", "Other")
   .i("VolcanoInterval", 0, "One of ARK's maps.", none("expansion", { game: "E" }));
 
 new Sheet(SERVER_ROWS, "snark", "Damage")
-  .b("HeadMultipliers", true, "Where a hit lands matters: a head counts for more. Off, every part counts once.", todo(1, { live: true, note: "Ours. ARK has no key; this is its behaviour." }))
-  .f("SelfDamageMultiplier", 1, "What a survivor's own blast does to them.", todo(1, { live: true, note: "Ours. ARK has no key; 1 is its behaviour." }))
-  .b("FullFriendlyFire", false, "Members of a tribe can hurt each other, their tames and what they built with anything, not only with blasts.", todo(1, { live: true, note: "Ours. ARK has no key; off is its behaviour as far as the research could tell." }));
+  .b("HeadMultipliers", true, "Where a hit lands matters: a head counts for more. Off, every part counts once.", live({ live: true, note: "Ours. ARK has no key; this is its behaviour." }))
+  .f("SelfDamageMultiplier", 1, "What a survivor's own blast does to them.", live({ live: true, note: "Ours. ARK has no key; 1 is its behaviour." }))
+  .b("FullFriendlyFire", false, "Members of a tribe can hurt each other, their tames and what they built with anything, not only with blasts.", live({ live: true, note: "Ours. ARK has no key; off is its behaviour as far as the research could tell." }));
 
 const c = new Sheet(SERVER_ROWS, "cli", "Command line");
 c.flag("UseDynamicConfig", "The live file is read, and read again while the server runs.", todo(6))

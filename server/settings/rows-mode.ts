@@ -5,7 +5,7 @@
 // given on the command line. Lists that name classes take this engine's
 // content ids ("core:raptor") where ARK's take its class names.
 
-import { Sheet, none, plan, todo, type Row } from "./row.ts";
+import { Sheet, live, none, plan, todo, type Row } from "./row.ts";
 
 export const MODE_ROWS: Row[] = [];
 
@@ -15,10 +15,10 @@ const twelve = (v: number): number[] => new Array<number>(12).fill(v);
 const butHealthAndMelee = (health: number, melee: number): number[] => twelve(1).map((v, n) => (n === 0 ? health : n === 8 ? melee : v));
 
 const m = new Sheet(MODE_ROWS, "mode", "Breeding");
-m.f("MatingIntervalMultiplier", 1, "The wait before a female may mate again. Lower is sooner.", todo(1, { live: true, retime: "period" }))
+m.f("MatingIntervalMultiplier", 1, "The wait before a female may mate again. Lower is sooner.", live({ live: true, retime: "period" }))
   .f("MatingSpeedMultiplier", 1, "How fast a pair's mating goes. Higher is faster.", todo(6, { live: true, retime: "speed", min: 0.001 }))
-  .f("EggHatchSpeedMultiplier", 1, "How fast an egg hatches, or young are carried. Higher is faster.", todo(1, { live: true, retime: "speed", min: 0.001 }))
-  .f("BabyMatureSpeedMultiplier", 1, "How fast the young grow up. Higher is faster. Their hunger each second is as it was.", todo(1, { live: true, retime: "speed", min: 0.001, max: 100000 }))
+  .f("EggHatchSpeedMultiplier", 1, "How fast an egg hatches, or young are carried. Higher is faster.", live({ live: true, retime: "speed", min: 0.001 }))
+  .f("BabyMatureSpeedMultiplier", 1, "How fast the young grow up. Higher is faster. Their hunger each second is as it was.", live({ live: true, retime: "speed", min: 0.001, max: 100000 }))
   .f("BabyFoodConsumptionSpeedMultiplier", 1, "How fast the young hunger. Lower eats less.", todo(6, { live: true }))
   .b("bDisableDinoBreeding", false, "Nothing breeds.", todo(3, { live: true }))
   .n("PreventBreedingForClassNames", "Species that do not breed.", todo(3))
