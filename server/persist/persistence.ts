@@ -11,7 +11,7 @@
 // Callers that must not tell a player "done" before it is durable register an
 // `afterCommit` callback instead of replying at once.
 
-import { F_ALIVE } from "../../shared/sim/entities.ts";
+import { F_ALIVE, F_AWAKE, F_PLAYER } from "../../shared/sim/entities.ts";
 import type { EntityRecord, Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
 import type { WorldStore } from "./store.ts";
@@ -53,6 +53,7 @@ export class Persistence {
   private readonly newSurvivors: [string, number][] = [];
   private callbacks: (() => void)[] = [];
   private readonly live: number[] = [];
+  private readonly liveSet = new Set<number>();
   private cursor = 0;
 
   constructor(world: ServerWorld, records: Records, store: WorldStore, opts: Partial<PersistenceOptions> = {}) {
@@ -105,7 +106,10 @@ export class Persistence {
   attach(rec: EntityRecord, ent: number): void {
     this.records.entOf.set(rec.pid, ent);
     this.world.ents.pid[ent] = rec.pid;
-    this.live.push(rec.pid);
+    if (!this.liveSet.has(rec.pid)) {
+      this.liveSet.add(rec.pid);
+      this.live.push(rec.pid);
+    }
   }
 
   /** An entity left the simulation; its record keeps its last position. */
@@ -117,8 +121,8 @@ export class Persistence {
       this.records.dirty.add(pid);
     }
     this.records.entOf.delete(pid);
-    const i = this.live.indexOf(pid);
-    if (i >= 0) {
+    if (this.liveSet.delete(pid)) {
+      const i = this.live.indexOf(pid);
       this.live[i] = this.live[this.live.length - 1]!;
       this.live.pop();
     }
@@ -151,8 +155,11 @@ export class Persistence {
           if (this.cursor >= this.live.length) this.cursor = 0;
           const pid = this.live[this.cursor++]!;
           if (records.dirty.has(pid)) continue;
+          const ent = records.entOf.get(pid);
+          // Sleeping creatures have not moved since they were last written.
+          if (ent === undefined || (world.ents.flags[ent]! & (F_AWAKE | F_PLAYER)) === 0) continue;
           const rec = records.byPid.get(pid)!;
-          this.capture(rec, records.entOf.get(pid)!);
+          this.capture(rec, ent);
           store.saveEntity(rec);
         }
         for (const j of this.pending) store.appendJournal(j.seq, j.tick, j.op, j.data);

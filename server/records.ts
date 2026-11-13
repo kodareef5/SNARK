@@ -10,6 +10,7 @@
 // currently in the simulation (an offline survivor still has one).
 
 import { makePid } from "../shared/ids.ts";
+import type { Genome } from "../shared/sim/genome.ts";
 
 export class EntityRecord {
   readonly pid: number;
@@ -23,6 +24,11 @@ export class EntityRecord {
   yaw = 0;
   /** Item content index -> count. */
   readonly items = new Map<number, number>();
+  /** Food as a lazy quantity: millionths of a point at `foodTick`. A tick of -1 means the species does not eat. */
+  food0 = 0;
+  foodTick = -1;
+  /** Stat points, colours and ancestry; null for bodies that have none. */
+  genome: Genome | null = null;
   /** Component blobs this build does not understand, kept byte for byte. */
   readonly extra = new Map<number, Uint8Array>();
 

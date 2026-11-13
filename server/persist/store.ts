@@ -19,12 +19,19 @@
 import { Database, type Statement } from "bun:sqlite";
 import type { Registry } from "../../shared/content/registry.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { COLOR_REGIONS, Genome, STAT_COUNT } from "../../shared/sim/genome.ts";
 import type { ChunkTable, StructureStore } from "../../shared/world/structures.ts";
 import { EntityRecord } from "../records.ts";
 
 export const SCHEMA_VERSION = 1;
 const CHUNK_FORMAT = 1;
 const RECORD_FORMAT = 1;
+// A record is a list of components, each an id and a length-prefixed blob. A
+// build that does not know a component keeps its bytes and writes them back,
+// so a save survives a round trip through a server missing some content pack.
+const COMP_INVENTORY = 1;
+const COMP_VITALS = 2;
+const COMP_GENOME = 3;
 /** Bytes per structure slot in a chunk blob. */
 const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
 
@@ -71,7 +78,9 @@ export class WorldStore {
   private readonly putJournal: Statement;
   private readonly putSurvivor: Statement;
   private readonly w = new BitWriter(65536);
+  private readonly c = new BitWriter(32768);
   private readonly r = new BitReader();
+  private readonly cr = new BitReader();
 
   constructor(path: string, reg: Registry, opts: StoreOptions = {}) {
     const db = new Database(path, { create: true });
@@ -193,20 +202,45 @@ export class WorldStore {
 
   saveEntity(rec: EntityRecord): void {
     const w = this.w;
+    const c = this.c;
     w.reset();
     w.u8(RECORD_FORMAT);
     w.string(rec.name);
-    w.varint(rec.items.size);
-    for (const [item, count] of rec.items) {
-      w.varint(this.toSaved[item]!);
-      w.varint(count);
+    w.varint((rec.items.size > 0 ? 1 : 0) + (rec.foodTick >= 0 ? 1 : 0) + (rec.genome ? 1 : 0) + rec.extra.size);
+    if (rec.items.size > 0) {
+      c.reset();
+      c.varint(rec.items.size);
+      for (const [item, count] of rec.items) {
+        c.varint(this.toSaved[item]!);
+        c.varint(count);
+      }
+      w.varint(COMP_INVENTORY);
+      w.blob(c.bytes());
     }
-    w.varint(rec.extra.size);
+    if (rec.foodTick >= 0) {
+      c.reset();
+      c.uint53(rec.food0);
+      c.uint53(rec.foodTick);
+      w.varint(COMP_VITALS);
+      w.blob(c.bytes());
+    }
+    const g = rec.genome;
+    if (g) {
+      c.reset();
+      for (const points of [g.wild, g.mutated, g.tamed, g.colors]) for (let i = 0; i < points.length; i++) c.u8(points[i]!);
+      c.varint(g.mutMat);
+      c.varint(g.mutPat);
+      c.uint53(g.mother);
+      c.uint53(g.father);
+      c.bool(g.female);
+      w.varint(COMP_GENOME);
+      w.blob(c.bytes());
+    }
     for (const [component, blob] of rec.extra) {
       w.varint(component);
       w.blob(blob);
     }
-    if (w.overflow) throw new Error(`record ${rec.pid} is too large to save`);
+    if (w.overflow || c.overflow) throw new Error(`record ${rec.pid} is too large to save`);
     this.putEntity.run(rec.pid, this.toSaved[rec.kind]!, rec.x, rec.y, rec.z, rec.yaw, w.bytes().slice());
   }
 
@@ -229,12 +263,32 @@ export class WorldStore {
       r.reset(row.data);
       if (r.u8() !== RECORD_FORMAT) throw new Error(`entity ${row.pid}: unknown record format`);
       rec.name = r.string(256);
+      const c = this.cr;
       for (let n = r.varint(); n > 0 && !r.overflow; n--) {
-        const item = this.toRuntime[r.varint()]!;
-        const count = r.varint();
-        if (item !== 0) rec.items.set(item, count);
+        const component = r.varint();
+        const blob = r.blob(1 << 20);
+        c.reset(blob);
+        if (component === COMP_INVENTORY) {
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) {
+            const item = this.toRuntime[c.varint()]!;
+            const count = c.varint();
+            if (item !== 0) rec.items.set(item, count);
+          }
+        } else if (component === COMP_VITALS) {
+          rec.food0 = c.uint53();
+          rec.foodTick = c.uint53();
+        } else if (component === COMP_GENOME) {
+          const g = (rec.genome = new Genome());
+          if (blob.length < STAT_COUNT * 3 + COLOR_REGIONS) throw new Error(`entity ${row.pid}: short genome`);
+          for (const points of [g.wild, g.mutated, g.tamed, g.colors]) for (let i = 0; i < points.length; i++) points[i] = c.u8();
+          g.mutMat = c.varint();
+          g.mutPat = c.varint();
+          g.mother = c.uint53();
+          g.father = c.uint53();
+          g.female = c.bool();
+        } else rec.extra.set(component, blob);
+        if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }
-      for (let n = r.varint(); n > 0 && !r.overflow; n--) rec.extra.set(r.varint(), r.blob(1 << 20));
       if (r.overflow) throw new Error(`entity ${row.pid}: truncated record`);
       out.push(rec);
     }

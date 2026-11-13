@@ -39,7 +39,7 @@ interface Socket {
 export function startServer(opts: ServerOptions = {}): RunningServer {
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error("content errors:\n" + errors.join("\n"));
-  const host = createHost(registry, opts.dbPath ? { dbPath: opts.dbPath } : {});
+  const host = createHost(registry, { ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 40 });
   const clientDir = resolve(opts.clientDir ?? join(import.meta.dir, "../client/dist"));
   let onConnection: ((conn: Connection) => void) | null = null;
   host.game.listen({
