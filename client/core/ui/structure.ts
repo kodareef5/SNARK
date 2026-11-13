@@ -14,7 +14,7 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import { CMD_STRUCT, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_WAIT } from "../../../shared/net/protocol.ts";
-import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
+import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
@@ -33,7 +33,7 @@ export const KEY_PIN_BUTTON = 2440;
 export const KEY_PIN_CLEAR = 2450;
 
 /** The actions in the order they are listed, and the digit that chooses each. The last three are only for what can be used. */
-const LISTED = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_UNLOCK, STRUCT_PIN] as const;
+const LISTED = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_UNLOCK, STRUCT_PIN, STRUCT_LIGHT] as const;
 
 /** What to say when the server will not do what was asked of a piece, by the code it gives. */
 export const STRUCT_REASONS: Readonly<Record<number, string>> = {
@@ -42,7 +42,7 @@ export const STRUCT_REASONS: Readonly<Record<number, string>> = {
   [RESULT_DAMAGED]: "It is damaged: mend it first",
   [RESULT_WAIT]: "Not yet",
   [RESULT_FULL]: "No room to carry it",
-  [RESULT_SHORT]: "Not enough to mend it with",
+  [RESULT_SHORT]: "Not enough for that",
   [RESULT_LOCKED]: "It is locked",
   [RESULT_DENIED]: "That is not its PIN",
   [RESULT_NOT_EMPTY]: "Empty it first",
@@ -264,6 +264,11 @@ export class StructMenu {
     if (usable) {
       lines.push("4  Lock it", "5  Unlock it", "6  Give it a PIN");
       details.push("for your tribe alone", "for anyone", "four digits let others in");
+    }
+    // A fire is lit and put out.
+    if (usable && reg.lights[kind] !== 0) {
+      lines.push(reg.burning[kind] === 1 ? "7  Put it out" : "7  Light it");
+      details.push(reg.burning[kind] === 1 ? "what is half cooked starts again" : "it burns what fuel lies on it");
     }
     this.lines = lines.length;
     const step = rowH + labelH + 8;

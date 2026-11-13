@@ -250,6 +250,14 @@ export class WorldStore {
       c.u32(rec.at);
       c.bits(rec.lock, 2);
       c.varint(rec.pin + 1);
+      // Older saves end before these: a bed's wait, and a fire that is burning.
+      c.uint53(rec.readyAt);
+      c.bool(rec.fire !== null);
+      if (rec.fire) {
+        c.uint53(rec.fire.at);
+        c.varint(rec.fire.fuel);
+        c.varint(rec.fire.cook);
+      }
       w.varint(COMP_FIXTURE);
       w.blob(c.bytes());
     }
@@ -494,6 +502,10 @@ export class WorldStore {
           rec.at = c.u32();
           rec.lock = c.bits(2);
           rec.pin = c.varint() - 1;
+          if (c.pos + 54 <= blob.length * 8) {
+            rec.readyAt = c.uint53();
+            if (c.bool()) rec.fire = { at: c.uint53(), fuel: c.varint(), cook: c.varint(), due: 0 };
+          }
         } else rec.extra.set(component, blob);
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }

@@ -113,7 +113,7 @@ test("a piece is taken back while it is whole, mended for the part that is missi
   h.run(2500);
   expect([act(ada, late, STRUCT_PICKUP), act(ada, late, STRUCT_DEMOLISH)]).toEqual([RESULT_WAIT, RESULT_OK]);
   expect(h.host.items.audit()).toEqual([]);
-  expect(STRUCT_REASONS[RESULT_DAMAGED]).toBe("It is damaged: mend it first");
+  expect([STRUCT_REASONS[RESULT_DAMAGED], STRUCT_REASONS[RESULT_SHORT]]).toEqual(["It is damaged: mend it first", "Not enough for that"]);
 });
 
 test("what stood on a piece that is taken back or taken down comes back the same way and does not break; what does not fit in the hands lies in a cache", () => {

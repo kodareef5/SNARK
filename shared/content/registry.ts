@@ -94,6 +94,14 @@ export interface Registry {
   readonly opens: Uint16Array;
   readonly lockedAtFirst: Uint8Array;
   readonly fallsWhole: Uint8Array;
+  /** Per structure: the structure it becomes when lit or put out (0: it is no fire); whether it is the burning one; whether it is a bed. */
+  readonly lights: Uint16Array;
+  readonly burning: Uint8Array;
+  readonly isBed: Uint8Array;
+  /** Per item: ticks one of it burns (0: it is no fuel); what it becomes over a fire (0: nothing) and the ticks that takes. */
+  readonly fuelTicks: Uint16Array;
+  readonly cooksInto: Uint16Array;
+  readonly cookTicks: Uint16Array;
   /** Per item a recipe makes: what one making needs, as pairs of item and count, and how many it makes. Null for everything else. */
   readonly recipeOf: readonly (Uint16Array | null)[];
   readonly recipeMakes: Uint16Array;
@@ -247,6 +255,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
     else if (d.type === "structure") {
       if (d.material !== undefined) want(d, d.material, "material");
       if (d.opens !== undefined) want(d, d.opens, "structure");
+      if (d.lights !== undefined) want(d, d.lights, "structure");
       if (d.shape !== undefined) {
         want(d, d.shape, "shape");
         // The box that holds it is the shape's: the two cannot disagree.
@@ -310,6 +319,12 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const opens = new Uint16Array(n);
   const lockedAtFirst = new Uint8Array(n);
   const fallsWhole = new Uint8Array(n);
+  const lights = new Uint16Array(n);
+  const burning = new Uint8Array(n);
+  const isBed = new Uint8Array(n);
+  const fuelTicks = new Uint16Array(n);
+  const cooksInto = new Uint16Array(n);
+  const cookTicks = new Uint16Array(n);
   const recipeOf: (Uint16Array | null)[] = new Array(n).fill(null);
   const recipeMakes = new Uint16Array(n);
   const partStart = new Uint32Array(n + 1);
@@ -340,6 +355,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
         structSlots[i] = d.slots ?? 0;
         if (d.locked) lockedAtFirst[i] = 1;
         if (d.falls) fallsWhole[i] = 1;
+        if (d.lit) burning[i] = 1;
+        if (d.bed) isBed[i] = 1;
       }
       if (d.type === "structure" && d.material !== undefined) {
         const m = materials.get(d.material)!;
@@ -405,6 +422,14 @@ export function compileContent(input: readonly Def[]): CompileResult {
       for (const s of places[i]!) if (pieceItem[s] === 0) pieceItem[s] = i;
     }
     if (d.type === "structure" && d.opens !== undefined) opens[i] = index.get(d.opens)!;
+    if (d.type === "structure" && d.lights !== undefined) lights[i] = index.get(d.lights)!;
+    if (d.type === "item") {
+      fuelTicks[i] = Math.round((d.fuel ?? 0) * TICK_RATE);
+      if (d.cooks) {
+        cooksInto[i] = index.get(d.cooks.into)!;
+        cookTicks[i] = Math.round(d.cooks.seconds * TICK_RATE);
+      }
+    }
     // The first recipe that makes a thing says what it is made of.
     if (d.type === "recipe" && recipeOf[index.get(d.makes)!] === null) {
       recipeOf[index.get(d.makes)!] = Uint16Array.from(d.needs.flatMap((need) => [index.get(need.item)!, need.count]));
@@ -413,7 +438,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
   }
   // A door stood open comes back as the door it is.
   for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  // And a fire that is burning, as the fire it is.
+  for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

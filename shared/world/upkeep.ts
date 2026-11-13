@@ -17,6 +17,8 @@ export const STRUCT_UNLOCK = 4;
 export const STRUCT_PIN = 5;
 /** Use it: a door opens or shuts, a box is looked into. With a PIN, for one who is not of its tribe. */
 export const STRUCT_USE = 6;
+/** Light a fire, or put it out. */
+export const STRUCT_LIGHT = 7;
 /** In a command, the PIN that means none. */
 export const NO_PIN = 0xffff;
 /** Wrong PINs in a row before a session must wait, and how long it waits: ticks. */

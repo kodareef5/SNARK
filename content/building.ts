@@ -90,11 +90,15 @@ function piece(tier: Tier, name: string, shapeName = name): StructureDef {
 }
 
 /** Things that hold things: set down on the ground or on a floor, joined to nothing. */
-const STORES: readonly { name: string; label: string; half: readonly [number, number, number]; color: number; hp: number; material: string; slots: number; falls?: boolean; stack: number; weight: number; level: number; cost: number; needs: Needs }[] = [
+const STORES: readonly { name: string; label: string; half: readonly [number, number, number]; color: number; hp: number; material: string; slots?: number; falls?: boolean; fire?: boolean; bed?: boolean; stack: number; weight: number; level: number; cost: number; needs: Needs }[] = [
   { name: "storage_box", label: "Storage box", half: [0.5, 0.3125, 0.375], color: 3, hp: 500, material: "wood", slots: 15, stack: 100, weight: 4, level: 4, cost: 6, needs: [["wood", 25], ["thatch", 20], ["fiber", 10]] },
   { name: "storage_large", label: "Large storage box", half: [0.75, 0.5, 0.4375], color: 3, hp: 2400, material: "wood", slots: 45, stack: 100, weight: 8, level: 16, cost: 9, needs: [["wood", 50], ["thatch", 35], ["fiber", 25]] },
   // A vault: what is in it outlasts what it stands on.
   { name: "vault", label: "Vault", half: [0.75, 1.25, 0.625], color: 11, hp: 50000, material: "metal", slots: 350, falls: true, stack: 5, weight: 40, level: 52, cost: 60, needs: [["ingot", 300], ["paste", 60]] },
+  // A fire to cook on: it holds its fuel and what is cooking, and is lit and put out.
+  { name: "campfire", label: "Campfire", half: [0.5, 0.1875, 0.5], color: 5, hp: 500, material: "stone", slots: 3, fire: true, stack: 3, weight: 4, level: 2, cost: 3, needs: [["thatch", 12], ["flint", 1], ["stone", 16], ["wood", 2]] },
+  // A bed: where its tribe may return to life.
+  { name: "bed", label: "Simple bed", half: [0.5, 0.25, 1], color: 18, hp: 500, material: "wood", bed: true, stack: 3, weight: 6, level: 7, cost: 8, needs: [["wood", 15], ["thatch", 80], ["fiber", 30], ["hide", 40]] },
 ];
 
 function store(s: (typeof STORES)[number]): Def[] {
@@ -102,7 +106,9 @@ function store(s: (typeof STORES)[number]): Def[] {
   const item = `core:piece_${s.name}`;
   return [
     { type: "shape", id: shapeId, role: "thing", boxes: [box(0, 0, 0, s.half[0], s.half[1], s.half[2])] },
-    { type: "structure", id: `core:${s.name}`, mesh: "shape", shape: shapeId, half: s.half, color: s.color, hp: s.hp, material: `core:mat_${s.material}`, slots: s.slots, decayDays: 16, ...(s.falls ? { falls: true } : {}) },
+    { type: "structure", id: `core:${s.name}`, mesh: "shape", shape: shapeId, half: s.half, color: s.color, hp: s.hp, material: `core:mat_${s.material}`, decayDays: 16, ...(s.slots ? { slots: s.slots } : {}), ...(s.falls ? { falls: true } : {}), ...(s.bed ? { bed: true } : {}), ...(s.fire ? { lights: `core:${s.name}_lit` } : {}) },
+    // A fire burning is the same thing in the same place, in the colour of fire.
+    ...(s.fire ? [{ type: "structure", id: `core:${s.name}_lit`, mesh: "shape", shape: shapeId, half: s.half, color: 8, hp: s.hp, material: `core:mat_${s.material}`, decayDays: 16, slots: s.slots!, lights: `core:${s.name}`, lit: true } as StructureDef] : []),
     { type: "item", id: item, stack: s.stack, weight: s.weight, label: s.label.toLowerCase(), color: s.color, places: [`core:${s.name}`] },
     { type: "recipe", id: `core:make-piece_${s.name}`, makes: item, count: 1, needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(s.level / 3)) },
     { type: "engram", id: `core:engram-piece_${s.name}`, label: s.label, level: s.level, cost: s.cost, unlocks: [`core:make-piece_${s.name}`] },

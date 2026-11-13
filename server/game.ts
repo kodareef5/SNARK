@@ -200,6 +200,8 @@ export class Client {
   sentInv = -1;
   sentMarkers = -1;
   sentRespawn = false;
+  /** The places this session was told it may return to life at, in the order told: where, facing which way, and for a bed its ref (else -1). */
+  readonly respawnAt: { x: number; y: number; z: number; yaw: number; bed: number }[] = [];
   /** The look this connection has been told is its own (by reference), or null. */
   sentLook: Uint8Array | null = null;
   /** The hotbar slot this connection has been told is in its hands; -2 for not told yet. */
@@ -515,8 +517,9 @@ export class GameServer {
   }
 
   /** Bring a dead session back to life at a place (or near it, if the spot is taken). */
-  revive(c: Client, x: number, z: number, yaw: number): boolean {
-    if (c.state !== SESSION_DEAD || !this.spawnBody(c, { x, y: this.world.hf.heightAt(x, z), z, yaw })) return false;
+  /** Give a dead session a body again at (x, z), on the ground unless a height is given (a bed on an upper floor). */
+  revive(c: Client, x: number, z: number, yaw: number, y = this.world.hf.heightAt(x, z)): boolean {
+    if (c.state !== SESSION_DEAD || !this.spawnBody(c, { x, y, z, yaw })) return false;
     c.ownDirty = true;
     return true;
   }

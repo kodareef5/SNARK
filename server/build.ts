@@ -34,7 +34,7 @@ import { BUILD_REACH, ON_TOP, ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, freePo
 import { Collapse } from "../shared/world/collapse.ts";
 import { GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
-import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, REPAIR_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
+import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, REPAIR_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
 import type { Fixtures } from "./fixtures.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Decay } from "./decay.ts";
@@ -68,6 +68,8 @@ export interface BuildContext {
   readonly tribes: Tribes;
   readonly rules: Rules;
   readonly fixtures: Fixtures;
+  /** Light the fire at a ref, or put it out: a result code. */
+  light(ref: number): number;
   /** An empty cache at a place, for what comes back and does not fit in the hands. */
   spill(x: number, y: number, z: number, name: string): EntityRecord;
 }
@@ -336,6 +338,11 @@ export class Build {
       const done = this.use(c, ref, code);
       return done < 0 ? RESULT_INVALID : done;
     }
+    if (action === STRUCT_LIGHT) {
+      // A fire is its tribe's to light and to put out.
+      if (reg.lights[kind] === 0) return RESULT_INVALID;
+      return mine ? this.ctx.light(ref) : RESULT_NOT_YOURS;
+    }
     if (action === STRUCT_LOCK || action === STRUCT_UNLOCK || action === STRUCT_PIN) {
       // Only what can be used can be locked, and only by its tribe.
       if (reg.opens[kind] === 0 && reg.structSlots[kind] === 0) return RESULT_INVALID;
@@ -538,6 +545,8 @@ export class Build {
     // One fewer in the hand.
     items.burn(rec, slot, 1);
     this.last = ref;
+    // A bed has something to remember from the first: it is found among the things with state.
+    if (reg.isBed[kind] === 1) this.ctx.fixtures.ensure(ref);
     // Its builder was here just now; and, where a piece may be taken back only for a while, when.
     this.decay.visit(rec.team, Math.floor(ref / 65536), world.tick);
     if (this.ctx.rules.values.pickupSeconds > 0) {

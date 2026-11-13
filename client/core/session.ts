@@ -291,7 +291,8 @@ export class ClientSession {
   /** Places to find again (where it died), oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
   /** Where a dead survivor may return. */
-  readonly respawnPoints: { name: string; x: number; z: number }[] = [];
+  /** Where a dead survivor may return to life: the world's places, then its tribe's beds, each with the seconds it must still wait for (0 for most). */
+  readonly respawnPoints: { name: string; x: number; z: number; wait: number }[] = [];
   /** Experience and what it has earned, as the server last said. */
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { recipe: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around this client: filled from the map, less those the server says are used up. */
@@ -760,7 +761,7 @@ export class ClientSession {
     } else if (component === OWN_RESPAWN) {
       const count = r.u8();
       const list = [];
-      for (let k = 0; k < count; k++) list.push({ name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32() });
+      for (let k = 0; k < count; k++) list.push({ name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), wait: r.u16() });
       if (r.overflow) return;
       this.respawnPoints.length = 0;
       this.respawnPoints.push(...list);

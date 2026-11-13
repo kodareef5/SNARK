@@ -86,6 +86,10 @@ export class EntityRecord {
   at = -1;
   lock = 0;
   pin = -1;
+  /** For a bed: the tick from which someone may next return to life at it. */
+  readyAt = 0;
+  /** For a fire that is burning: how far it has been worked out (shared/sim/station.ts), and the tick it is next due to be looked at. Null when it is out. */
+  fire: { at: number; fuel: number; cook: number; due: number } | null = null;
   /** Component blobs this build does not understand, kept byte for byte. */
   readonly extra = new Map<number, Uint8Array>();
 

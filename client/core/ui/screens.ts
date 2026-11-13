@@ -30,7 +30,8 @@ export function buildRespawn(f: UiFrame, session: ClientSession): void {
   f.text(KEY_RESPAWN_TITLE, x + 16, y + 14, w - 32, S_TITLE, "Return to life at");
   for (let i = 0; i < points.length && i < 16; i++) {
     const b = f.add(KEY_RESPAWN_BUTTON + i, K_BUTTON, x + 16, y + 52 + i * (rowH + 6), w - 32, rowH, S_BUTTON);
-    b.text = points[i]!.name;
+    // A bed someone has just risen from must be waited for.
+    b.text = points[i]!.wait > 0 ? `${points[i]!.name}  (in ${points[i]!.wait} s)` : points[i]!.name;
     b.interactive = true;
   }
 }

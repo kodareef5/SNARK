@@ -59,6 +59,8 @@ export class Items {
       inv = rec.inv = grown;
       this.records.dirty.add(rec.pid);
     }
+    // A fire is worked out first, event by event: what it cooked was cooked before what was left spoiled.
+    if (rec.fire && this.onFire) this.onFire(rec);
     const before = inv.version;
     inv.settle(this.world.tick, this.table, this.spoiled);
     if (inv.version !== before) this.records.dirty.add(rec.pid);
@@ -74,12 +76,33 @@ export class Items {
     return this.table.stack[kind]! > 0;
   }
 
-  /** Create `n` of an item in a record's inventory. Returns how many fit, which is how many were created. */
-  mint(rec: EntityRecord, item: number, n: number, quality = 0, dur = 0): number {
+  /**
+   * Called with a record whose fire is burning, before its inventory is
+   * brought up to now: whoever tends fires works it out first, in the order
+   * things happened (server/stations.ts).
+   */
+  onFire: ((rec: EntityRecord) => void) | null = null;
+
+  /** For whoever is working through a time nobody watched: spoil a record's things up to tick `at` and no further. */
+  spoilTo(rec: EntityRecord, at: number): void {
+    const inv = rec.inv;
+    if (!inv) return;
+    const before = inv.version;
+    inv.settle(at, this.table, this.spoiled);
+    if (inv.version !== before) this.records.dirty.add(rec.pid);
+  }
+
+  /**
+   * Create `n` of an item in a record's inventory. Returns how many fit, which
+   * is how many were created. `at` is the tick it happens at, now unless the
+   * caller is working through an earlier moment: then the inventory is taken
+   * as it is and not brought up to now first.
+   */
+  mint(rec: EntityRecord, item: number, n: number, quality = 0, dur = 0, at = -1): number {
     if (!this.isItem(item) || !(n > 0) || !Number.isInteger(n)) return 0;
     // Anything that wears is made with all its uses.
     if (dur === 0) dur = this.maxDur(item, quality);
-    const made = n - this.inv(rec).add(item, n, quality, dur, this.world.tick, this.table);
+    const made = n - (at < 0 ? this.inv(rec) : rec.inv!).add(item, n, quality, dur, at < 0 ? this.world.tick : at, this.table);
     if (made > 0) {
       this.minted[item] = this.minted[item]! + made;
       this.dirty = true;
@@ -88,9 +111,9 @@ export class Items {
     return made;
   }
 
-  /** Destroy `n` items from one slot. Returns false, changing nothing, if there are not that many. */
-  burn(rec: EntityRecord, slot: number, n: number): boolean {
-    const inv = this.inv(rec);
+  /** Destroy `n` items from one slot. Returns false, changing nothing, if there are not that many. `raw`: the inventory is taken as it is, not brought up to now first. */
+  burn(rec: EntityRecord, slot: number, n: number, raw = false): boolean {
+    const inv = raw ? rec.inv! : this.inv(rec);
     if (slot >= inv.cap || !(n > 0) || inv.count[slot]! < n) return false;
     const item = inv.item[slot]!;
     // What a weapon holds goes with it.

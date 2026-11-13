@@ -176,15 +176,14 @@ export class Death {
   }
 
   /** Return a dead survivor to life at one of the map's spawn points. */
-  respawn(c: Client, index: number): number {
-    const { world, records, survival, game } = this.ctx;
+  respawn(c: Client, x: number, z: number, yaw: number, y?: number): number {
+    const { records, survival, game } = this.ctx;
     const rec = records.byPid.get(c.pid);
-    const point = world.spawns[index];
-    if (!rec || !rec.dead || c.state !== SESSION_DEAD || !point) return RESULT_INVALID;
+    if (!rec || !rec.dead || c.state !== SESSION_DEAD) return RESULT_INVALID;
     survival.refill(rec);
     rec.dead = false;
     records.dirty.add(rec.pid);
-    if (!game.revive(c, point.x, point.z, point.yaw)) {
+    if (!game.revive(c, x, z, yaw, y)) {
       rec.dead = true;
       return RESULT_INVALID;
     }

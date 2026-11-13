@@ -117,6 +117,12 @@ export interface StructureDef {
   readonly falls?: boolean;
   /** Days it lasts unvisited, if not what its material says. */
   readonly decayDays?: number;
+  /** A fire: lit, it becomes this other structure in the same place, and that one, put out, becomes this again. */
+  readonly lights?: string;
+  /** This is the burning one of such a pair. */
+  readonly lit?: boolean;
+  /** Its tribe may return to life at it. */
+  readonly bed?: boolean;
 }
 
 /** What something built is made of: what it takes of each kind of damage. A kind not given does nothing to it. */
@@ -139,6 +145,10 @@ export interface ItemDef {
   readonly spoilHours?: number;
   /** What eating one restores, in points. */
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
+  /** It burns: seconds one of it keeps a fire going. */
+  readonly fuel?: number;
+  /** Over a fire it becomes another item, in so many seconds. */
+  readonly cooks?: { readonly into: string; readonly seconds: number };
   /** Name shown in the interface. Defaults to the id without its namespace. */
   readonly label?: string;
   /** Palette index of its swatch in the interface. */

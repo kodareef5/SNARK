@@ -11,6 +11,10 @@ import { addCoreCommands } from "./commands/core.ts";
 import { addSocialCommands } from "./commands/social.ts";
 import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
+import { DEADLINE_FIRE, Stations } from "./stations.ts";
+import type { BedPoint } from "./own.ts";
+import { RESULT_WAIT } from "../shared/net/protocol.ts";
+import { TICK_RATE } from "../shared/coords.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
@@ -97,6 +101,7 @@ export interface Host {
   readonly voice: Voice;
   readonly build: Build;
   readonly fixtures: Fixtures;
+  readonly stations: Stations;
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
@@ -125,6 +130,8 @@ export interface Host {
   shutdown(): void;
 }
 
+/** After someone returns to life at a bed, nobody may again for this long: five minutes, in ticks. */
+export const BED_WAIT_TICKS = 5 * 60 * TICK_RATE;
 /** How often the clocks of decay are saved: once a minute, in ticks. */
 const DECAY_SAVE_TICKS = 1800;
 
@@ -179,7 +186,9 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   // What has state among the things built: found again among the records that were loaded.
   const fixtures = new Fixtures(world, records, items);
   fixtures.index();
-  const build = new Build({ world, game, records, items, tribes, rules, fixtures, spill: (x, y, z, name) => death.spill(x, y, z, name) });
+  const stations = new Stations(world, records, items, fixtures, deadlines);
+  stations.resume();
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, light: (ref) => stations.toggle(ref), spill: (x, y, z, name) => death.spill(x, y, z, name) });
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   combat.onStructureHurt = (ref) => build.hurt(ref);
@@ -350,6 +359,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       else if (kind === DEADLINE_CRAFT) progression.due(pid, stamp);
       else if (kind === DEADLINE_NODE) harvest?.due(pid, stamp);
       else if (kind === DEADLINE_BUFF) buffs.due(pid, stamp);
+      else if (kind === DEADLINE_FIRE) stations.due(pid, stamp);
     });
     death.step();
     // Swings that landed and shots that left on this tick, now that every body has moved.
@@ -371,7 +381,35 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     online: (pid) => sessionOf(pid) !== null,
     openOf: (c) => death.openOf(c),
     closeOpen: (c) => death.close(c),
-    respawn: (c, index) => death.respawn(c, index),
+    respawn: (c, index) => {
+      const p = c.respawnAt[index];
+      if (!p) return RESULT_INVALID;
+      if (p.bed < 0) return death.respawn(c, p.x, p.z, p.yaw);
+      // A bed: still there, still its tribe's, and not just used.
+      const bed = fixtures.find(p.bed);
+      const t = world.structs.chunks[Math.floor(p.bed / 65536)];
+      const slot = p.bed & 0xffff;
+      if (!bed || !t || world.reg.isBed[t.kind[slot]!] !== 1 || !tribes.may(records.byPid.get(c.pid), t.owner[slot]!)) return RESULT_INVALID;
+      if (bed.readyAt > world.tick) return RESULT_WAIT;
+      const code = death.respawn(c, p.x, p.z, p.yaw, p.y);
+      if (code === RESULT_OK) {
+        bed.readyAt = world.tick + BED_WAIT_TICKS;
+        records.dirty.add(bed.pid);
+      }
+      return code;
+    },
+    beds: (rec) => {
+      const out: BedPoint[] = [];
+      fixtures.each((ref, bed) => {
+        const t = world.structs.chunks[Math.floor(ref / 65536)]!;
+        const slot = ref & 0xffff;
+        const kind = t.kind[slot]!;
+        if (world.reg.isBed[kind] !== 1 || !tribes.may(rec, t.owner[slot]!)) return;
+        // To stand on it, facing the way it does.
+        out.push({ ref, name: `bed at ${Math.round(t.x[slot]!)}, ${Math.round(t.z[slot]!)}`, x: t.x[slot]!, y: t.y[slot]! + world.reg.halfY[kind]!, z: t.z[slot]!, yaw: (t.yaw[slot]! / 65536) * 2 * Math.PI, wait: Math.max(0, Math.ceil((bed.readyAt - world.tick) / TICK_RATE)) });
+      });
+      return out;
+    },
     refresh: (rec) => refreshBody(rec),
     drop: (rec, slot, n) => death.drop(rec, slot, n),
   };
@@ -443,6 +481,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     voice,
     build,
     fixtures,
+    stations,
     online: (pid) => sessionOf(pid) !== null,
     setRule(name, value) {
       if (!rules.set(name, value)) return false;

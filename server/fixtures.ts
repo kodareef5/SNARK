@@ -26,6 +26,14 @@ export class Fixtures {
     this.items = items;
   }
 
+  /** Every structure that has state, as its ref and its record. */
+  each(visit: (ref: number, rec: EntityRecord) => void): void {
+    for (const [ref, pid] of this.byRef) {
+      const rec = this.records.byPid.get(pid);
+      if (rec) visit(ref, rec);
+    }
+  }
+
   /** How many things built have state. */
   get count(): number {
     return this.byRef.size;

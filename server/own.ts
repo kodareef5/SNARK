@@ -20,6 +20,20 @@ import type { Tribes } from "./tribes.ts";
 import type { Voice } from "./voice.ts";
 import type { ServerWorld } from "./world.ts";
 
+/** Places to return to life a client is told of, at most: the world's, and as many beds as there is room left for. */
+export const MAX_RESPAWN_POINTS = 16;
+
+/** A bed a survivor may return to life at: which, what to call it, where to stand them, and the seconds until it may be used. */
+export interface BedPoint {
+  ref: number;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  wait: number;
+}
+
 /** Members of a tribe listed to a client; a larger tribe is told of its first this many. */
 const MAX_MEMBERS_SENT = 100;
 
@@ -33,6 +47,8 @@ export interface OwnContext {
   openOf(c: Client): EntityRecord | null;
   closeOpen(c: Client): void;
   respawn(c: Client, index: number): number;
+  /** The beds a survivor's tribe has, for returning to life at. */
+  beds(rec: EntityRecord): BedPoint[];
   readonly progression: Progression;
   readonly rules: Rules;
   readonly tribes: Tribes;
@@ -226,15 +242,26 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     c.sentProgress = rec.progVersion;
   }
 
-  // Dead: told once where it may return.
+  // Dead: told once where it may return. The world's own places, then its tribe's beds, each with how long it must wait for it.
   if (c.state === SESSION_DEAD && !c.sentRespawn) {
     const w = game.beginOwn(OWN_RESPAWN);
     const spawns = ctx.world.spawns;
-    w.u8(spawns.length);
+    const beds = ctx.beds(rec).slice(0, MAX_RESPAWN_POINTS - spawns.length);
+    c.respawnAt.length = 0;
+    w.u8(spawns.length + beds.length);
     for (const p of spawns) {
       w.string(p.name);
       w.f32(p.x);
       w.f32(p.z);
+      w.u16(0);
+      c.respawnAt.push({ x: p.x, y: NaN, z: p.z, yaw: p.yaw, bed: -1 });
+    }
+    for (const b of beds) {
+      w.string(b.name);
+      w.f32(b.x);
+      w.f32(b.z);
+      w.u16(b.wait);
+      c.respawnAt.push({ x: b.x, y: b.y, z: b.z, yaw: b.yaw, bed: b.ref });
     }
     game.endOwn(c);
     c.sentRespawn = true;
