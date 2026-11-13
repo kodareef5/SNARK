@@ -75,6 +75,11 @@ export const CMD_MOVE = 2;
 /** Eat or use what is in one of your own slots: slot u8, expected item u16. */
 export const CMD_USE = 3;
 
+/** Close the container this session has open. No arguments. */
+export const CMD_CLOSE = 4;
+/** Return to life at one of the offered places: index u8. */
+export const CMD_RESPAWN = 5;
+
 /** Boxes a slot command can address. Nothing else can be named: no ids travel. */
 export const BOX_SELF = 0;
 /** Whatever container the session has open, if any. */
@@ -100,6 +105,15 @@ export const OWN_VITALS = 2;
  * durability u16, spoil tick u32.
  */
 export const OWN_SLOTS = 3;
+
+/** open 1 bit; if open: capacity u8, name string. Its slots follow as OWN_SLOTS for the open box. */
+export const OWN_OPEN = 4;
+/** count u8, then per marker: kind u8, x f32, y f32, z f32, tick u32. Oldest first. */
+export const OWN_MARKERS = 5;
+/** Where a dead survivor may return: count u8, then per place: name string, x f32, z f32. */
+export const OWN_RESPAWN = 6;
+
+export const MARKER_DEATH = 1;
 
 export const TEXT_CONSOLE = 0;
 export const TEXT_NOTICE = 1;

@@ -283,10 +283,55 @@ test("creatures arrive with their level and colours, players with their names, a
   expect(seen.level[p]).toBe(1);
   // Ada puts points into speed: bo is told her new level, with no other change to prompt it.
   h.say(s, "setstat speed 9");
-  h.world.ents.setLook(h.ent(s), 10, null, "ada");
   h.run(300);
   bo.sampleRemote(seen);
   const p2 = [...Array(seen.count).keys()].find((i) => seen.kind[i] !== grazer)!;
   expect(seen.level[p2]).toBe(10);
   expect(bo.stats.undecodable).toBe(0);
+});
+
+test("setstat refreshes everything the points feed, with the load still counted", () => {
+  const { h, s, rec, ents, e } = setup();
+  h.say(s, "give stone 200"); // 100 kg: at the limit, rooted
+  h.run(300);
+  expect(ents.mflags[e]! & MF_ROOTED).toBe(MF_ROOTED);
+  // Points in food must not lift the load, and must raise the food the body can hold.
+  expect(h.say(s, "setstat food 10")).toEqual(["food: 10 points, value 200"]);
+  h.run(300);
+  expect(ents.mflags[e]! & MF_ROOTED).toBe(MF_ROOTED);
+  expect(rec.vitals!.max[V_FOOD]).toBe(200_000_000);
+  expect(s.vitals.max[V_FOOD]).toBe(200_000_000);
+  expect(h.say(s, "setstat health 20")).toEqual(["health: 20 points, value 300"]);
+  h.run(300);
+  expect(s.vitals.max[V_HEALTH]).toBe(300_000_000);
+  expect(ents.level[e]).toBe(31);
+  // Points in weight do lift it: 100 kg of a 200 kg limit.
+  h.say(s, "setstat weight 10");
+  h.run(300);
+  expect(ents.mflags[e]! & (MF_ROOTED | MF_NO_SPRINT)).toBe(0);
+  expect(ents.speedQ[e]).toBe(1000);
+});
+
+test("handing food to someone else does not make it fresher", () => {
+  const { h, rec, id, items } = setup();
+  const berry = id("core:berry");
+  const other = h.host.records.create(id("core:grazer"), "mule");
+  const made = h.world.tick;
+  items.mint(rec, berry, 30);
+  const clock = items.inv(rec).spoilAt[0]!;
+  expect(clock).toBe(made + h.reg.spoilTicks[berry]!);
+  // Just before the first berry would spoil, most of the stack changes hands.
+  while (h.world.tick < clock - 10) h.server.tick();
+  expect(items.give(rec, other, berry, 20)).toBe(true);
+  const theirs = items.inv(other);
+  expect(theirs.total(berry)).toBe(20);
+  expect(theirs.spoilAt[theirs.item.indexOf(berry)]).toBe(clock);
+  // Ten ticks later both stacks lose a berry, as they would have had they never moved.
+  while (h.world.tick < clock + 5) h.server.tick();
+  expect(items.inv(other).total(berry)).toBe(19);
+  expect(items.inv(rec).total(berry)).toBe(9);
+  // Joining an older stack onto a fresher one makes the whole stack as old as the older part.
+  items.mint(other, berry, 5);
+  expect(items.inv(other).spoilAt[theirs.item.indexOf(berry)]).toBe(clock + h.reg.spoilTicks[berry]!);
+  expect(items.audit()).toEqual([]);
 });

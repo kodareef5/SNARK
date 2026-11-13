@@ -132,6 +132,7 @@ const REQUIRED: Record<string, Record<string, string>> = {
   species: { mesh: "string", color: "number", radius: "number", height: "number", eyeHeight: "number", walkSpeed: "number", sprintMul: "number", jumpSpeed: "number" },
   structure: { mesh: "string", color: "number", half: "array", hp: "number" },
   item: { stack: "number" },
+  prop: { mesh: "string", color: "number", radius: "number", height: "number" },
 };
 
 /** Why a resolved definition cannot be type-checked field by field, or null if it has every required field. */

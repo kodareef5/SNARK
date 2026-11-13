@@ -5,7 +5,10 @@
 
 import type { Registry } from "../../shared/content/registry.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
-import { SESSION_ALIVE } from "../../shared/net/protocol.ts";
+import { PI, TAU } from "../../shared/math/scalar.ts";
+import { MARKER_DEATH, SESSION_ALIVE } from "../../shared/net/protocol.ts";
+import type { CollisionWorld } from "../../shared/world/collide.ts";
+import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { Controls } from "./controls.ts";
 import { HudModel, minimapImage, updateHud } from "./hud.ts";
@@ -15,6 +18,11 @@ import { Scene } from "./render/scene.ts";
 import { RemoteSample, type ClientSession } from "./session.ts";
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "./ui/hud.ts";
 import { Ui } from "./ui/ui.ts";
+
+/** How far a body can reach to use something; the server's REACH. */
+const REACH = 3.5;
+/** Bit in replicated entity flags marking a prop: a thing that can be opened. */
+const VIEW_FLAG_PROP = 8;
 
 export class App {
   readonly session: ClientSession;
@@ -32,6 +40,7 @@ export class App {
   private readonly reg: Registry;
   private readonly pack: Pack;
   private last = -1;
+  private readonly aim = [0, 0, 0];
 
   constructor(session: ClientSession, reg: Registry, pack: Pack) {
     this.session = session;
@@ -73,6 +82,33 @@ export class App {
   /** Pointer went down (0), up (1) or moved (2) over an interactive node; position in canvas units. */
   pointer(kind: number, key: number, x: number, y: number, button: number): void {
     this.ui.pointer(kind, key, x, y, button, this.session);
+  }
+
+  /**
+   * What the use button would act on: the same ray the server will cast from
+   * the same eye, here only to say so on screen. The server's answer is the
+   * one that counts.
+   */
+  private prompt(world: CollisionWorld, eye: number): string {
+    const s = this.session;
+    const r = this.remote;
+    const d = this.aim;
+    const ox = s.own.x;
+    const oy = s.own.y + eye;
+    const oz = s.own.z;
+    lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
+    let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, REACH) === HIT_NONE ? REACH : rayHit.t;
+    let hit = -1;
+    for (let i = 0; i < r.count; i++) {
+      const rad = this.reg.bodyRadius[r.kind[i]!]!;
+      const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + this.reg.bodyHeight[r.kind[i]!]!, r.z[i]! + rad);
+      if (t < best) {
+        best = t;
+        hit = i;
+      }
+    }
+    if (hit < 0 || (r.flags[hit]! & VIEW_FLAG_PROP) === 0) return "";
+    return `E  ${s.open ? "close" : "open"} ${r.name[hit]}`;
   }
 
   /**
@@ -119,8 +155,13 @@ export class App {
     cam.pitch = c.pitch;
     cam.aspect = aspect;
     session.sampleRemote(this.remote);
+    // A beam over each place it died, so the place can be seen from far off.
+    const beams = this.scene.beams;
+    beams.length = 0;
+    for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps);
+    hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eye) : "";
     this.ui.build(aspect, hud, session);
     return packet;
   }

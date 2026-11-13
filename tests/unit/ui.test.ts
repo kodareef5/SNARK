@@ -6,9 +6,11 @@ import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL 
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
+import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPAWN_PANEL } from "../../client/core/ui/screens.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { CMD_MOVE, CMD_USE } from "../../shared/net/protocol.ts";
+import { CMD_MOVE, CMD_RESPAWN, CMD_USE, MARKER_DEATH, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
+import { flatWorld } from "../fixtures/world.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 import { BTN_JUMP, BTN_PRIMARY, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
@@ -334,4 +336,56 @@ test("the inventory screen turns clicks into commands and never changes anything
   expect(ui.key("Escape", true, false, session)).toBe(true);
   expect(ui.inventory.open).toBe(false);
   expect(ui.wantsPointerLock).toBe(true);
+});
+
+test("the respawn and map screens fit every window shape, and a click on a place asks to return there", () => {
+  const world = flatWorld(8);
+  for (const [name, aspect] of ASPECTS) {
+    for (const dead of [true, false]) {
+      const { session, sent } = fakeSession(new Inventory(40));
+      Object.assign(session, {
+        sessionState: dead ? SESSION_DEAD : SESSION_ALIVE,
+        respawnPoints: [{ name: "Plaza", x: 1, z: 1 }, { name: "a place with a long name", x: 2, z: 2 }, { name: "Poolside", x: 3, z: 3 }],
+        markers: [1, 2, 3, 4, 5].map((i) => ({ kind: MARKER_DEATH, x: i * 100, y: 0, z: 511 - i * 90, tick: 100 * i })),
+        world,
+        own: { x: 256, y: 0, z: 256 },
+        serverTick: 99999,
+      });
+      const ui = new Ui();
+      ui.registry = reg;
+      if (!dead) expect(ui.key("KeyM", true, false, session)).toBe(true);
+      ui.build(aspect, fullHud(), session);
+      const f = ui.frame;
+      for (let i = 0; i < f.count; i++) {
+        const n = f.nodes[i]!;
+        const where = `${name} dead=${dead} key=${n.key}`;
+        expect(n.x, where).toBeGreaterThanOrEqual(-0.01);
+        expect(n.y, where).toBeGreaterThanOrEqual(-0.01);
+        expect(n.x + n.w, where).toBeLessThanOrEqual(f.width + 0.01);
+        expect(n.y + n.h, where).toBeLessThanOrEqual(f.height + 0.01);
+        if (n.kind === K_TEXT && n.key >= KEY_RESPAWN_PANEL) expect(textWidth(n.text, n.style), where).toBeLessThanOrEqual(n.w + 0.01);
+        for (let j = i + 1; j < f.count; j++) if (n.interactive && f.nodes[j]!.interactive) expect(overlaps(f, i, j), where).toBe(false);
+      }
+      expect(ui.wantsPointerLock).toBe(false);
+      if (dead) {
+        // Three places, three buttons; the map does not open over the choice.
+        expect(f.find(KEY_RESPAWN_BUTTON + 2)!.text).toBe("Poolside");
+        expect(f.find(KEY_MAP_IMAGE)).toBeNull();
+        ui.pointer(0, KEY_RESPAWN_BUTTON + 1, 0, 0, 0, session);
+        ui.pointer(0, KEY_RESPAWN_BUTTON + 7, 0, 0, 0, session); // not a button
+        expect(sent.map((c) => [c.op, c.bytes[0]])).toEqual([[CMD_RESPAWN, 1]]);
+      } else {
+        // The map: the picture, a pin per death and one for the survivor, and a line per death.
+        expect(f.find(KEY_RESPAWN_PANEL)).toBeNull();
+        expect(f.find(KEY_MAP_IMAGE)!.w).toBe(f.find(KEY_MAP_IMAGE)!.h);
+        expect(f.find(KEY_MAP_PIN + 4)).not.toBeNull();
+        expect(f.find(KEY_MAP_PIN + 16)).not.toBeNull();
+        expect(f.find(KEY_MAP_LINE + 4)!.text).toMatch(/^died  \d+\.\d lat  \d+\.\d lon  \d+ min ago$/);
+        ui.pointer(0, KEY_RESPAWN_BUTTON, 0, 0, 0, session);
+        expect(sent.length).toBe(0);
+        expect(ui.key("Escape", true, false, session)).toBe(true);
+        expect(ui.map).toBe(false);
+      }
+    }
+  }
 });

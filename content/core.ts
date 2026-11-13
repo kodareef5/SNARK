@@ -43,6 +43,8 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "structure", id: "core:pillar", mesh: "box", color: 6, half: [0.25, 3, 0.25], hp: 800 },
   { type: "structure", id: "core:step", mesh: "box", color: 7, half: [1, 0.15, 0.5], hp: 400 },
   { type: "structure", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
+  // What a survivor leaves where it dies: everything it carried.
+  { type: "prop", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   { type: "item", id: "core:fiber", stack: 200, weight: 0.01, color: 7 },
   { type: "item", id: "core:stone", stack: 100, weight: 0.5, color: 15 },
   { type: "item", id: "core:berry", stack: 100, weight: 0.1, spoilHours: 4, eat: { food: 4, water: 2 }, color: 8 },

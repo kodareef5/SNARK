@@ -5,7 +5,8 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_USE, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_STALE } from "../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_MOVE, CMD_RESPAWN, CMD_USE, OWN_MARKERS, OWN_OPEN, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_STALE, SESSION_DEAD } from "../shared/net/protocol.ts";
+import type { Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
@@ -21,6 +22,36 @@ export interface OwnContext {
   readonly survival: Survival;
   /** The record of the container a session has open, or null. */
   openOf(c: Client): EntityRecord | null;
+  closeOpen(c: Client): void;
+  respawn(c: Client, index: number): number;
+}
+
+/** Write the slots of `inv` that changed after version `since` (all the occupied ones if `full`). */
+function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, since: number, full: boolean): void {
+  const w = ctx.game.beginOwn(OWN_SLOTS);
+  w.bits(box, 1);
+  w.u8(inv.cap);
+  w.bool(full);
+  const at = w.pos;
+  w.u8(0);
+  let n = 0;
+  for (let s = 0; s < inv.cap; s++) {
+    if (full ? inv.item[s] === 0 : inv.mod[s]! <= since) continue;
+    w.u8(s);
+    w.u16(inv.item[s]!);
+    if (inv.item[s] !== 0) {
+      w.u16(inv.count[s]!);
+      w.u8(inv.quality[s]!);
+      w.u16(inv.dur[s]!);
+      w.u32(inv.spoilAt[s]!);
+    }
+    n++;
+  }
+  const end = w.pos;
+  w.pos = at;
+  w.u8(n); // written over the zero placeholder
+  w.pos = end;
+  ctx.game.endOwn(c);
 }
 
 /** Bring one client up to date with its survivor's vitals and inventory. */
@@ -42,34 +73,60 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
   }
   const inv = ctx.items.inv(rec);
   if (inv.version !== c.sentInv) {
-    const full = c.sentInv < 0;
-    const w = game.beginOwn(OWN_SLOTS);
-    w.bits(BOX_SELF, 1);
-    w.u8(inv.cap);
-    w.bool(full);
-    const at = w.pos;
-    w.u8(0);
-    let n = 0;
-    for (let s = 0; s < inv.cap; s++) {
-      if (full ? inv.item[s] === 0 : inv.mod[s]! <= c.sentInv) continue;
-      w.u8(s);
-      w.u16(inv.item[s]!);
-      if (inv.item[s] !== 0) {
-        w.u16(inv.count[s]!);
-        w.u8(inv.quality[s]!);
-        w.u16(inv.dur[s]!);
-        w.u32(inv.spoilAt[s]!);
-      }
-      n++;
-    }
-    const end = w.pos;
-    w.pos = at;
-    w.u8(n); // written over the zero placeholder
-    w.pos = end;
-    game.endOwn(c);
+    sendSlots(ctx, c, BOX_SELF, inv, c.sentInv, c.sentInv < 0);
     c.sentInv = inv.version;
     // What is carried changes how the body moves.
     if (c.ent >= 0) refreshMods(ctx.world.reg, ctx.world.ents, c.ent, rec.genome, inv.weight(ctx.items.table));
+  }
+
+  // The container it has open: announced when it changes, then kept up to date like its own.
+  const open = ctx.openOf(c);
+  const openPid = open ? open.pid : 0;
+  if (openPid !== c.sentOpen) {
+    const w = game.beginOwn(OWN_OPEN);
+    w.bool(open !== null);
+    if (open) {
+      w.u8(ctx.items.inv(open).cap);
+      w.string(open.name);
+    }
+    game.endOwn(c);
+    c.sentOpen = openPid;
+    c.sentOpenVersion = -1;
+  }
+  if (open) {
+    const box = ctx.items.inv(open);
+    if (box.version !== c.sentOpenVersion) {
+      sendSlots(ctx, c, BOX_OPEN, box, c.sentOpenVersion, c.sentOpenVersion < 0);
+      c.sentOpenVersion = box.version;
+    }
+  }
+
+  if (rec.markersVersion !== c.sentMarkers) {
+    const w = game.beginOwn(OWN_MARKERS);
+    w.u8(rec.markers.length);
+    for (const m of rec.markers) {
+      w.u8(m.kind);
+      w.f32(m.x);
+      w.f32(m.y);
+      w.f32(m.z);
+      w.u32(m.tick);
+    }
+    game.endOwn(c);
+    c.sentMarkers = rec.markersVersion;
+  }
+
+  // Dead: told once where it may return.
+  if (c.state === SESSION_DEAD && !c.sentRespawn) {
+    const w = game.beginOwn(OWN_RESPAWN);
+    const spawns = ctx.world.spawns;
+    w.u8(spawns.length);
+    for (const p of spawns) {
+      w.string(p.name);
+      w.f32(p.x);
+      w.f32(p.z);
+    }
+    game.endOwn(c);
+    c.sentRespawn = true;
   }
 }
 
@@ -95,6 +152,16 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (fromSlot >= src.cap || toSlot >= ctx.items.inv(b).cap) return RESULT_INVALID;
     if (src.item[fromSlot] !== expect || expect === 0) return RESULT_STALE;
     return ctx.items.move(a, fromSlot, b, toSlot, count) > 0 ? RESULT_OK : RESULT_INVALID;
+  });
+
+  ctx.game.handle(CMD_CLOSE, (c: Client) => {
+    ctx.closeOpen(c);
+    return RESULT_OK;
+  });
+
+  ctx.game.handle(CMD_RESPAWN, (c: Client, r: BitReader) => {
+    const index = r.u8();
+    return r.overflow ? RESULT_INVALID : ctx.respawn(c, index);
   });
 
   ctx.game.handle(CMD_USE, (c: Client, r: BitReader) => {

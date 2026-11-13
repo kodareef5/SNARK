@@ -40,6 +40,11 @@ const COMP_IDENTITY = 6;
 // They are read once: the inventory becomes slots, the food is refilled. They are never written.
 const COMP_SLOTS = 7;
 const COMP_VITALS4 = 8;
+const COMP_MARKERS = 5;
+/** Dead flag and expiry tick. */
+const COMP_STATE = 9;
+/** An inventory's slot index travels in one byte. */
+const MAX_INVENTORY_SLOTS = 255;
 /** Bytes per structure slot in a chunk blob. */
 const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
 
@@ -220,7 +225,28 @@ export class WorldStore {
     w.string(rec.name);
     const inv = rec.inv;
     const used = inv ? inv.used() : 0;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + rec.extra.size);
+    const hasState = rec.dead || rec.expiresAt !== 0;
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + rec.extra.size);
+    if (rec.markers.length > 0) {
+      c.reset();
+      c.varint(rec.markers.length);
+      for (const m of rec.markers) {
+        c.u8(m.kind);
+        c.f32(m.x);
+        c.f32(m.y);
+        c.f32(m.z);
+        c.uint53(m.tick);
+      }
+      w.varint(COMP_MARKERS);
+      w.blob(c.bytes());
+    }
+    if (hasState) {
+      c.reset();
+      c.bool(rec.dead);
+      c.uint53(rec.expiresAt);
+      w.varint(COMP_STATE);
+      w.blob(c.bytes());
+    }
     if (inv && used > 0) {
       c.reset();
       c.varint(inv.cap);
@@ -298,12 +324,21 @@ export class WorldStore {
         const blob = r.blob(1 << 20);
         c.reset(blob);
         if (component === COMP_INVENTORY) {
-          // Round 1: a list of items and counts. Lay them out in slots.
-          const inv = (rec.inv ??= new Inventory(40));
+          // Round 1: a list of items and counts. Lay them out in slots, in an
+          // inventory large enough for all of them: converting must not lose anything.
+          const pairs: [number, number][] = [];
+          let need = 0;
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
             const item = this.item(c.varint(), row.pid);
             const count = c.varint();
-            if (item !== 0) inv.add(item, count, 0, 0, 0, this.reg);
+            if (item === 0) continue;
+            pairs.push([item, count]);
+            need += Math.ceil(count / (this.reg.stack[item] || 1));
+          }
+          if (need > MAX_INVENTORY_SLOTS) throw new Error(`entity ${row.pid}: its round 1 inventory needs ${need} slots and at most ${MAX_INVENTORY_SLOTS} can be represented`);
+          const inv = (rec.inv = new Inventory(Math.max(40, need)));
+          for (const [item, count] of pairs) {
+            if (inv.add(item, count, 0, 0, 0, this.reg) !== 0) throw new Error(`entity ${row.pid}: could not convert its round 1 inventory`);
           }
         } else if (component === COMP_SLOTS) {
           const inv = (rec.inv = new Inventory(c.varint()));
@@ -336,6 +371,12 @@ export class WorldStore {
           g.father = c.uint53();
           g.female = c.bool();
         } else if (component === COMP_IDENTITY) rec.keyHash = blob;
+        else if (component === COMP_MARKERS) {
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) rec.markers.push({ kind: c.u8(), x: c.f32(), y: c.f32(), z: c.f32(), tick: c.uint53() });
+        } else if (component === COMP_STATE) {
+          rec.dead = c.bool();
+          rec.expiresAt = c.uint53();
+        }
         else rec.extra.set(component, blob);
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }

@@ -115,11 +115,11 @@ export class Items {
     const src = this.inv(from);
     const dst = this.inv(to);
     if (src.total(item) < n || dst.room(item, 0, this.table) < n) return false;
-    // Slot by slot, so each stack keeps its own spoil clock.
+    // Slot by slot, each stack bringing its own spoil clock with it.
     for (let s = src.cap - 1; s >= 0 && n > 0; s--) {
       if (src.item[s] !== item) continue;
       const k = Math.min(n, src.count[s]!);
-      if (dst.add(item, k, src.quality[s]!, src.dur[s]!, this.world.tick, this.table) !== 0) throw new Error("room was checked");
+      if (dst.add(item, k, src.quality[s]!, src.dur[s]!, this.world.tick, this.table, src.spoilAt[s]!) !== 0) throw new Error("room was checked");
       src.remove(s, k);
       n -= k;
     }

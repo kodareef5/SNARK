@@ -12,6 +12,7 @@ import {
   C_COMMAND,
   PROTOCOL_VERSION,
   REJECT_DENIED,
+  REJECT_FULL,
   REJECT_KICKED,
   RESULT_BUSY,
   RESULT_OK,
@@ -321,4 +322,51 @@ test("a name stays with its device key across a restart", () => {
   expect(ada.state).toBe("active");
   expect(h2.host.records.byPid.size).toBe(1);
   h2.host.shutdown();
+});
+
+test("a command typed before the session is active is not sent and does not break the ones after it", () => {
+  const h = new Harness();
+  const s = h.join("early");
+  // Still connecting: nothing goes out, and no sequence number is used up.
+  expect(s.text("pos")).toBe(0);
+  expect(s.text("who")).toBe(0);
+  h.run(500);
+  expect(s.state).toBe("active");
+  expect(h.say(s, "pos").length).toBe(1);
+  expect(h.say(s, "who")).toEqual(["early  alive"]);
+  expect(h.client(s)!.strikes).toBe(0);
+  expect(h.server.stats.malformed).toBe(0);
+});
+
+test("a full server still lets a survivor back into its lingering body, and silent connections hold no slot", () => {
+  const h = new Harness({ maxClients: 2 });
+  const ada = h.join("ada");
+  h.join("bo");
+  h.run(500);
+  expect(h.server.playerCount).toBe(2);
+  const cy = h.join("cy");
+  h.run(300);
+  expect(cy.state).toBe("closed");
+  expect(cy.closeReason).toBe(REJECT_FULL);
+
+  // Connections that never say hello do not take slots, and are dropped after five seconds.
+  const silent = [h.net.connect(), h.net.connect(), h.net.connect()];
+  h.run(1000);
+  expect(silent.every((e) => e.open)).toBe(true);
+
+  // Ada's connection drops. Her body lingers and still fills her slot, yet she, and only she, can come back.
+  const handle = ada.ownHandle;
+  ada.close();
+  h.run(1000);
+  const dee = h.join("dee");
+  h.run(300);
+  expect(dee.closeReason).toBe(REJECT_FULL);
+  const again = h.join("ada");
+  h.run(500);
+  expect(again.state).toBe("active");
+  expect(again.ownHandle).toBe(handle);
+  expect(h.server.playerCount).toBe(2);
+  h.run(5000);
+  expect(silent.every((e) => !e.open)).toBe(true);
+  expect(h.server.playerCount).toBe(2);
 });

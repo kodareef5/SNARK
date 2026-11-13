@@ -44,6 +44,7 @@ export const S_SLOT = 20;
 export const S_SLOT_HELD = 21;
 export const S_SLOT_TEXT = 22;
 export const S_SWATCH = 23;
+export const S_PROMPT = 24;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -70,4 +71,5 @@ export const STYLES: readonly Style[] = [
   /* S_SLOT_HELD */ style(0xe8d24acc, 0x000000, 11),
   /* S_SLOT_TEXT */ style(0, 0xffffff, 11, 2, true),
   /* S_SWATCH */ style(0x808080ff, 0xffffff, 11, 0, true),
+  /* S_PROMPT */ style(0, 0xffffff, 13, 1, true),
 ];

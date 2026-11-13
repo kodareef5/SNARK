@@ -65,6 +65,8 @@ export class HudModel {
   /** A word across the top while the session has no body: "SPECTATING", "DEAD". */
   banner = "";
   crosshair = true;
+  /** What the use button would do to the thing looked at, or nothing. */
+  prompt = "";
   private readoutAge = 0;
 
   /** Rewrite the readout from the numbers above. */
@@ -118,6 +120,7 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   for (let i = 0; i < remote.count; i++) {
     model.markers.push({ kind: (remote.flags[i]! & VIEW_FLAG_PLAYER) !== 0 ? "player" : "creature", u: mapU(world.hf, remote.x[i]!), v: mapV(world.hf, remote.z[i]!) });
   }
+  for (const m of session.markers) model.markers.push({ kind: "death", u: mapU(world.hf, m.x), v: mapV(world.hf, m.z) });
   model.markers.push({ kind: "self", u: mapU(world.hf, b.x), v: mapV(world.hf, b.z) });
   model.vitals[1]!.fraction = b.staminaMax > 0 ? b.stamina / (b.staminaMax * STAMINA_UNITS) : 0;
   if (session.hasVitals) {

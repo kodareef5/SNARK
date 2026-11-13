@@ -94,27 +94,31 @@ export class Inventory {
 
   /**
    * Add `n` of `item`, topping up matching stacks before using empty slots.
-   * Returns how many did not fit. New stacks of a spoiling item start their
-   * clock at `now`; a topped-up stack keeps its own, older, clock.
+   * Returns how many did not fit. Items made now start their spoil clock at
+   * `now`. Items that already existed (a transfer) bring their clock with
+   * them as `spoilAt`: a new stack keeps it, and a stack they join becomes as
+   * old as its oldest part. Moving food never makes it fresher.
    */
-  add(item: number, n: number, quality: number, dur: number, now: number, t: ItemTable): number {
+  add(item: number, n: number, quality: number, dur: number, now: number, t: ItemTable, spoilAt = 0): number {
     const stack = t.stack[item]!;
     if (stack === 0) return n;
+    const spoil = t.spoilTicks[item]!;
+    const clock = spoil === 0 ? 0 : spoilAt > 0 ? spoilAt : now + spoil;
     if (stack > 1) {
       for (let s = 0; s < this.cap && n > 0; s++) {
         if (this.item[s] !== item || this.quality[s] !== quality) continue;
         const fit = Math.min(n, stack - this.count[s]!);
         if (fit <= 0) continue;
         this.count[s] = this.count[s]! + fit;
+        if (spoilAt > 0 && (this.spoilAt[s] === 0 || spoilAt < this.spoilAt[s]!)) this.spoilAt[s] = spoilAt;
         this.mod[s] = ++this.version;
         n -= fit;
       }
     }
-    const spoil = t.spoilTicks[item]!;
     for (let s = 0; s < this.cap && n > 0; s++) {
       if (this.item[s] !== 0) continue;
       const fit = Math.min(n, stack);
-      this.set(s, item, fit, quality, dur, spoil > 0 ? now + spoil : 0);
+      this.set(s, item, fit, quality, dur, clock);
       n -= fit;
     }
     return n;

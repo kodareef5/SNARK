@@ -6,7 +6,8 @@ import { MODE_GHOST, MODE_WALK } from "../../shared/sim/character.ts";
 import { Genome, POINT_CAP, STAT_NAMES } from "../../shared/sim/genome.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
-import { refreshMods, statOf } from "../survival.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { CAUSE_KILLED, statOf } from "../survival.ts";
 
 const needsBody = "this needs a body; you have none right now";
 
@@ -91,7 +92,8 @@ export function addAdminCommands(con: Console): void {
         g.tamed[stat] = points;
         ctx.host.records.dirty.add(rec.pid);
         const world = ctx.host.world;
-        if (c.ent >= 0) refreshMods(world.reg, world.ents, c.ent, g);
+        // Everything the points feed: vitals' maxima, movement (with what is carried), the level others see.
+        ctx.host.refreshBody(rec);
         const value = statOf(world.reg.defs[rec.kind] as SpeciesDef, g, stat, 0);
         return `${STAT_NAMES[stat]}: ${points} points, value ${Number(value.toFixed(3))}`;
       },
@@ -132,6 +134,54 @@ export function addAdminCommands(con: Console): void {
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
         const e = ctx.host.spawnCreature(id, c.body.x + Math.sin(a) * 4, c.body.z + Math.cos(a) * 4, level);
         return e < 0 ? "no room for it there" : `spawned ${id} level ${world.ents.level[e]}`;
+      },
+    },
+    {
+      name: "suicide",
+      usage: "",
+      help: "Die where you stand. Everything you carry is left in a cache.",
+      admin: false,
+      run(ctx) {
+        const c = ctx.client;
+        const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
+        if (!c || !rec || c.ent < 0) return needsBody;
+        ctx.host.survival.gods.delete(rec.pid);
+        ctx.host.survival.add(rec, V_HEALTH, -1e9, CAUSE_KILLED);
+        return "";
+      },
+    },
+    {
+      name: "kill",
+      usage: "",
+      help: "Kill the creature or survivor you are looking at, up to 60 metres away.",
+      admin: true,
+      run(ctx) {
+        const c = ctx.client;
+        if (!c || c.ent < 0) return needsBody;
+        const ents = ctx.host.world.ents;
+        const hit = ctx.host.death.target(c, 60);
+        const rec = hit >= 0 ? ctx.host.records.byPid.get(ents.pid[hit]!) : undefined;
+        if (!rec || !rec.vitals) return "nothing alive there";
+        const what = rec.name || ctx.host.world.reg.ids[rec.kind]!;
+        ctx.host.survival.gods.delete(rec.pid);
+        ctx.host.survival.add(rec, V_HEALTH, -1e9, CAUSE_KILLED);
+        return `killed ${what}`;
+      },
+    },
+    {
+      name: "god",
+      usage: "",
+      help: "Take no harm, or stop taking none.",
+      admin: true,
+      run(ctx) {
+        const c = ctx.client;
+        const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
+        if (!c || !rec) return "this needs a survivor";
+        const gods = ctx.host.survival.gods;
+        if (gods.delete(rec.pid)) return "god off";
+        gods.add(rec.pid);
+        ctx.host.survival.add(rec, V_HEALTH, 0);
+        return "god on";
       },
     },
   ];

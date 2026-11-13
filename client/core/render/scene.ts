@@ -25,6 +25,9 @@ export interface RenderWorld {
 
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
+const BEAM_MESH = "core:beam";
+/** Palette colour of the beam over a place of death. */
+const BEAM_COLOR = 8;
 
 interface ChunkBatch {
   /** Table version the instances were built from; -1 forces a rebuild. */
@@ -65,6 +68,9 @@ export class Scene {
   private readonly cursor: Uint32Array;
   private readonly transient: InstanceWriter;
   private readonly waterMesh: number;
+  private readonly beamMesh: number;
+  /** Places to mark with a beam: x, y, z each. Set by the app before `build`. */
+  readonly beams: number[] = [];
   /** Linear RGB of the open sky and of deep water. */
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
@@ -89,6 +95,7 @@ export class Scene {
     this.transient = new InstanceWriter(this.packet.transient);
 
     this.waterMesh = pack.meshIndex.get(WATER_MESH) ?? -1;
+    this.beamMesh = pack.meshIndex.get(BEAM_MESH) ?? -1;
     for (let k = 0; k < 3; k++) {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
@@ -126,8 +133,23 @@ export class Scene {
     this.terrain.select(cam, p, this.viewDistance);
     this.structures(cam);
     if (remote) this.entities(cam, remote);
+    if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
     return p;
+  }
+
+  /** A tall thin beam over each marked place, visible from far off. */
+  private markBeams(cam: Camera): void {
+    const p = this.packet;
+    const first = p.transientCount;
+    let n = 0;
+    for (let i = 0; i + 2 < this.beams.length && n < 16; i += 3) {
+      this.transient.set(first + n, this.beams[i]! - cam.x, this.beams[i + 1]! - cam.y, this.beams[i + 2]! - cam.z, 0, BEAM_COLOR);
+      p.transientIds[first + n] = 0;
+      n++;
+    }
+    this.draw(this.beamMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0);
+    p.transientCount = first + n;
   }
 
   /** The water surface: tiles of one flat mesh over the map, drawn last because they are see-through. */

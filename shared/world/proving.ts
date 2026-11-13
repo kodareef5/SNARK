@@ -18,6 +18,12 @@ import type { StructureStore } from "./structures.ts";
 export const PROVING_ID = "proving:1";
 export const PROVING_DIMS: MapDims = { chunksX: 8, chunksZ: 8 };
 export const PROVING_SPAWN = { x: 256, z: 240, yaw: 0 };
+/** Where a dead survivor may return. */
+export const PROVING_SPAWNS = [
+  { name: "Plaza", ...PROVING_SPAWN },
+  { name: "Slopes", x: 228, z: 282, yaw: 0 },
+  { name: "Poolside", x: 208, z: 256, yaw: 49152 },
+];
 /** Where the boot probe stands one creature: in clear view of the spawn point, hiding nothing else it checks. */
 /** Half a metre below the plaza, so the bowl is a pool and low ground beyond the plaza holds ponds. */
 export const PROVING_SEA_LEVEL = -0.5;

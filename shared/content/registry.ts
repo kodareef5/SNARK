@@ -35,6 +35,9 @@ export interface Registry {
   readonly stack: Uint16Array;
   readonly weight: Float32Array;
   readonly spoilTicks: Uint32Array;
+  /** Radius and height of anything that stands in the world as an entity; zero otherwise. */
+  readonly bodyRadius: Float32Array;
+  readonly bodyHeight: Float32Array;
 }
 
 export interface CompileResult {
@@ -71,6 +74,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
         if (!(STAT_NAMES as readonly string[]).includes(stat)) errors.push(`${d.id}: unknown stat "${stat}"`);
         else if (!Array.isArray(curve) || curve.length !== 3 || !(curve[0] > 0) || !(curve[1] >= 0) || !(curve[2] >= 0)) errors.push(`${d.id}: stats.${stat} must be [base > 0, perWild >= 0, perTamed >= 0]`);
       }
+    } else if (d.type === "prop") {
+      positive(d, "radius", d.radius, 8);
+      positive(d, "height", d.height, 32);
     } else if (d.type === "structure") {
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
       positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
@@ -101,6 +107,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const stack = new Uint16Array(n);
   const weight = new Float32Array(n);
   const spoilTicks = new Uint32Array(n);
+  const bodyRadius = new Float32Array(n);
+  const bodyHeight = new Float32Array(n);
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
@@ -110,14 +118,17 @@ export function compileContent(input: readonly Def[]): CompileResult {
       halfX[i] = d.half[0];
       halfY[i] = d.half[1];
       halfZ[i] = d.half[2];
-    } else if (d.type === "species") move[i] = moveParams(d);
-    else {
+    } else if (d.type === "species" || d.type === "prop") {
+      if (d.type === "species") move[i] = moveParams(d);
+      bodyRadius[i] = d.radius;
+      bodyHeight[i] = d.height;
+    } else {
       stack[i] = d.stack;
       weight[i] = d.weight ?? 0.1;
       spoilTicks[i] = Math.round((d.spoilHours ?? 0) * GAME_HOUR_TICKS);
     }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight }, errors };
 }
 
 function moveParams(d: SpeciesDef): MoveParams {

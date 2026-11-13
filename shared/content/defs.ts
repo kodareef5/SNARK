@@ -59,4 +59,20 @@ export interface ItemDef {
   readonly color?: number;
 }
 
-export type Def = SpeciesDef | StructureDef | ItemDef;
+/**
+ * A thing that stands in the world as an entity but does not move or live: an
+ * item cache, later a dropped bag or a corpse. It has a body to look at and
+ * click on, and its record can hold an inventory.
+ */
+export interface PropDef {
+  readonly type: "prop";
+  readonly id: string;
+  readonly mesh: string;
+  readonly color: number;
+  readonly radius: number;
+  readonly height: number;
+  /** Inventory slots of its record. */
+  readonly slots?: number;
+}
+
+export type Def = SpeciesDef | StructureDef | ItemDef | PropDef;

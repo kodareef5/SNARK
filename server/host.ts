@@ -9,14 +9,16 @@ import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
 import { addCoreCommands } from "./commands/core.ts";
 import { Console } from "./console.ts";
+import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Creatures } from "./creatures.ts";
+import { DEADLINE_DESPAWN, Death } from "./death.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
-import { Records } from "./records.ts";
-import { Survival, refreshMods } from "./survival.ts";
+import { Records, type EntityRecord } from "./records.ts";
+import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 
 export interface HostOptions {
@@ -65,6 +67,8 @@ export interface Host {
   readonly creatures: Creatures;
   readonly items: Items;
   readonly survival: Survival;
+  readonly death: Death;
+  readonly deadlines: DeadlineHeap;
   readonly persistence: Persistence | null;
   readonly loaded: LoadReport | null;
   readonly console: Console;
@@ -72,6 +76,12 @@ export interface Host {
   readonly dev: boolean;
   /** Spawn a wild creature by content id. Returns its entity index, or -1. */
   spawnCreature(id: string, x: number, z: number, level: number): number;
+  /**
+   * Recompute everything derived from a record's stat points and what it
+   * carries: vitals' maxima, movement modifiers, and the level others see.
+   * Call after changing either.
+   */
+  refreshBody(rec: EntityRecord): void;
   /** Run a console line as the operator, or as `client`. Returns what it printed. */
   exec(line: string, client?: Client): string;
   /** Commit and close the store. */
@@ -90,7 +100,9 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const survivor = reg.index.get("core:survivor")!;
   const eyeHeight = (reg.defs[survivor] as SpeciesDef).eyeHeight;
   const names = new Map<string, number>();
-  const survival = new Survival(world, records);
+  // One heap for everything that happens at a tick; entries are dispatched by kind in onStep.
+  const deadlines = new DeadlineHeap();
+  const survival = new Survival(world, records, deadlines);
   const items = new Items(world, records);
   // A save's ledger must match what the save holds, or the save is not trusted.
   if (persistence) {
@@ -113,13 +125,18 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     if (e >= 0 && persistence) persistence.attach(records.byPid.get(world.ents.pid[e]!)!, e);
     return e;
   };
+  const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines });
+  survival.onDeath = (rec, cause) => death.die(rec, cause);
   if (loaded && !loaded.fresh) {
-    // Every saved record that is not a survivor is a creature: put it back where it stood.
+    // Every saved record that is not a survivor goes back where it stood: creatures to live, caches to wait.
     const survivors = new Set(persistence!.survivors.values());
     for (const rec of records.byPid.values()) {
       if (survivors.has(rec.pid)) continue;
-      const e = creatures.adopt(rec);
-      if (e >= 0) persistence!.attach(rec, e);
+      if (reg.defs[rec.kind]?.type === "prop") death.place(rec);
+      else {
+        const e = creatures.adopt(rec);
+        if (e >= 0) persistence!.attach(rec, e);
+      }
     }
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
@@ -149,16 +166,14 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     }
     // A survivor has stat points like any body, all of them its own to place.
     rec.genome ??= new Genome();
-    refreshMods(reg, world.ents, c.ent, rec.genome, items.inv(rec).weight(items.table));
-    survival.init(rec);
-    survival.suspend(rec, false);
-    world.ents.setLook(c.ent, rec.genome.level, rec.genome.colors, rec.name);
     c.pid = rec.pid;
     if (persistence) persistence.attach(rec, c.ent);
     else {
       records.entOf.set(rec.pid, c.ent);
       world.ents.pid[c.ent] = rec.pid;
     }
+    refreshBody(rec);
+    survival.suspend(rec, false);
   };
   game.onBodyGone = (c) => {
     // Out of the world, a survivor neither eats nor drowns.
@@ -177,6 +192,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     }
   };
   game.onEnter = (c) => {
+    // A survivor that joins dead has no body yet, but it is still that survivor.
+    if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
     focus.set(c.id, c.chunk);
     creatures.playerMoved(-1, c.chunk);
   };
@@ -198,7 +215,11 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       const rec = records.byPid.get(c.pid);
       if (rec) survival.setSubmerged(rec, world.ents.y[c.ent]! + eyeHeight < world.hf.seaLevel);
     }
-    survival.step(tick);
+    deadlines.run(tick, (kind, pid, stamp) => {
+      if (kind === DEADLINE_VITALS) survival.due(pid, stamp);
+      else if (kind === DEADLINE_DESPAWN) death.despawn(pid, stamp);
+    });
+    death.step();
     creatures.step(tick);
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };
@@ -206,9 +227,17 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     const rec = records.byPid.get(c.pid);
     if (rec) survival.landed(rec, speed);
   };
-  const own: OwnContext = { world, game, records, items, survival, openOf: () => null };
+  const own: OwnContext = { world, game, records, items, survival, openOf: (c) => death.openOf(c), closeOpen: (c) => death.close(c), respawn: (c, index) => death.respawn(c, index) };
   game.onReplicate = (c) => syncOwn(own, c);
   addOwnCommands(own);
+
+  function refreshBody(rec: EntityRecord): void {
+    survival.init(rec);
+    const e = records.entOf.get(rec.pid);
+    if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
+    refreshMods(reg, world.ents, e, rec.genome, rec.inv ? items.inv(rec).weight(items.table) : 0);
+    world.ents.setLook(e, rec.genome ? rec.genome.level : 1, rec.genome ? rec.genome.colors : null, rec.name);
+  }
 
   const con = new Console();
   addCoreCommands(con);
@@ -220,12 +249,15 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     creatures,
     items,
     survival,
+    death,
+    deadlines,
     persistence,
     loaded,
     console: con,
     adminPassword: opts.adminPassword || null,
     dev: opts.dev ?? false,
     spawnCreature,
+    refreshBody,
     exec: (line, client) => con.exec({ host, client: client ?? null }, line),
     shutdown() {
       if (!persistence) return;

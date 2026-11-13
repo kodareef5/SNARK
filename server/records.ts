@@ -14,6 +14,14 @@ import type { Genome } from "../shared/sim/genome.ts";
 import type { Inventory } from "../shared/sim/items.ts";
 import type { Vitals } from "../shared/sim/vitals.ts";
 
+export interface Marker {
+  kind: number;
+  x: number;
+  y: number;
+  z: number;
+  tick: number;
+}
+
 export class EntityRecord {
   readonly pid: number;
   /** Content index of the species. */
@@ -32,6 +40,13 @@ export class EntityRecord {
   genome: Genome | null = null;
   /** Hash of the device key that owns this survivor; null until one claims it. */
   keyHash: Uint8Array | null = null;
+  /** A survivor waiting to respawn. */
+  dead = false;
+  /** Tick at which a cache disappears with whatever is left in it; 0 for things that stay. */
+  expiresAt = 0;
+  /** Places this survivor should be able to find again, oldest first. */
+  readonly markers: Marker[] = [];
+  markersVersion = 0;
   /** Component blobs this build does not understand, kept byte for byte. */
   readonly extra = new Map<number, Uint8Array>();
 

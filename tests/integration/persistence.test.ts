@@ -3,10 +3,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { OP_DEATH } from "../../server/death.ts";
 import { createHost } from "../../server/host.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { BitReader } from "../../shared/net/codec.ts";
+import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { HOLDERS, OP_BURN, OP_MINT, OP_TRANSFER, START } from "../fixtures/crash-child.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -117,6 +118,48 @@ test("an item whose content is gone stops the load, and a ledger that does not b
   createHost(full, { dbPath: db, allowLedgerMismatch: true }).persistence!.store.close();
 });
 
+test("a round 1 inventory is converted whole: nothing is dropped for want of slots", () => {
+  const db = join(dir, "legacy.db");
+  const reg = coreRegistry();
+  const stone = reg.index.get("core:stone")!;
+  const host = createHost(reg, { dbPath: db });
+  const pid = host.records.create(reg.index.get("core:grazer")!, "mule").pid;
+  host.shutdown();
+
+  // Rewrite the record as round 1 saved it: a list of items and counts, here 5,000 stone,
+  // which is fifty stacks and more than the forty slots a fresh inventory has.
+  const legacy = (count: number): void => {
+    const store = new WorldStore(db, reg);
+    const c = new BitWriter(64);
+    c.varint(1);
+    c.varint(store.toSaved[stone]!);
+    c.varint(count);
+    const w = new BitWriter(256);
+    w.u8(1);
+    w.string("mule");
+    w.varint(1);
+    w.varint(1); // component 1: round 1's inventory
+    w.blob(c.bytes());
+    store.db.query("UPDATE entities SET data = ? WHERE pid = ?").run(w.bytes().slice(), pid);
+    store.db.query("DELETE FROM meta WHERE key = 'ledger'").run();
+    store.close();
+  };
+  legacy(5000);
+  const back = createHost(reg, { dbPath: db });
+  const inv = back.records.byPid.get(pid)!.inv!;
+  expect(inv.total(stone)).toBe(5000);
+  expect(inv.cap).toBe(50);
+  expect(back.items.audit()).toEqual([]); // the books open at what the save holds
+  back.shutdown();
+  // Saved again in the new form, it loads the same.
+  const again = createHost(reg, { dbPath: db });
+  expect(again.records.byPid.get(pid)!.inv!.total(stone)).toBe(5000);
+  again.shutdown();
+  // More than can be represented is refused outright, never trimmed.
+  legacy(30000);
+  expect(() => createHost(reg, { dbPath: db })).toThrow(/needs 300 slots/);
+});
+
 test("commit callbacks run only after the transaction is durable", () => {
   const host = createHost(coreRegistry(), { dbPath: join(dir, "ack.db") });
   const p = host.persistence!;
@@ -134,8 +177,8 @@ test("commit callbacks run only after the transaction is durable", () => {
   host.shutdown();
 });
 
-async function runUntilKilled(db: string, seed: number, minAcks: number): Promise<number> {
-  const proc = Bun.spawn(["bun", join(import.meta.dir, "../fixtures/crash-child.ts"), db, String(seed)], { stdout: "pipe", stderr: "inherit" });
+async function runUntilKilled(db: string, seed: number, minAcks: number, mode = ""): Promise<number> {
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../fixtures/crash-child.ts"), db, String(seed), mode], { stdout: "pipe", stderr: "inherit" });
   const decoder = new TextDecoder();
   let text = "";
   let killed = false;
@@ -204,4 +247,37 @@ test("killing the process at any moment loses no acknowledged trade and conserve
     for (const rec of records) expect(rec.inv?.total(stone) ?? 0).toBe(balance.get(rec.pid)!);
     expect(burned).toBeGreaterThan(0);
   }
+});
+
+test("killing the process while survivors die, are looted and return never leaves one both alive and cached, or its things nowhere", async () => {
+  const db = join(dir, "deaths.db");
+  const reg = coreRegistry();
+  let deaths = 0;
+  for (const [seed, minAcks] of [[5, 30], [6, 45], [7, 25]] as const) {
+    await runUntilKilled(db, seed, minAcks, "death");
+    // Loading audits the ledger: an item in two places, or in none, stops it here.
+    const host = createHost(reg, { dbPath: db });
+    expect(host.items.audit()).toEqual([]);
+    const survivors = [...host.persistence!.survivors.values()].map((pid) => host.records.byPid.get(pid)!);
+    expect(survivors.length).toBe(HOLDERS);
+    const caches = [...host.records.byPid.values()].filter((r) => r.expiresAt > 0);
+    for (const s of survivors) {
+      // Dead means its things went to a cache in the same commit: it holds nothing, and it has a marker.
+      if (s.dead) {
+        expect(s.inv === null || s.inv.used() === 0).toBe(true);
+        expect(s.markers.length).toBeGreaterThan(0);
+      }
+      expect(s.markers.length).toBeLessThanOrEqual(5);
+    }
+    for (const c of caches) {
+      // A cache always holds something, has a body to find, and a time to go.
+      expect(c.inv!.used()).toBeGreaterThan(0);
+      expect(host.records.entOf.has(c.pid)).toBe(true);
+      expect(c.expiresAt).toBeGreaterThan(0);
+    }
+    const journal = host.persistence!.store.journal();
+    deaths = journal.filter((j) => j.op === OP_DEATH).length;
+    host.shutdown();
+  }
+  expect(deaths).toBeGreaterThan(10);
 });

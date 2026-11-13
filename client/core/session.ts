@@ -21,8 +21,12 @@ import {
   INPUT_REDUNDANCY,
   InputBuffer,
   MARGIN_UNKNOWN,
+  MAX_NAME_BYTES,
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
+  OWN_MARKERS,
+  OWN_OPEN,
+  OWN_RESPAWN,
   OWN_SESSION,
   OWN_SLOTS,
   OWN_VITALS,
@@ -126,6 +130,12 @@ export class ClientSession {
   hasVitals = false;
   /** A mirror of the survivor's own inventory; null until the server sends it. */
   inventory: Inventory | null = null;
+  /** The container the server says this survivor has open, and a mirror of what is in it. */
+  open: { name: string; inventory: Inventory } | null = null;
+  /** Places to find again (where it died), oldest first. */
+  readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
+  /** Where a dead survivor may return. */
+  readonly respawnPoints: { name: string; x: number; z: number }[] = [];
   /** Called with the sequence number and code when the server answers a command. */
   onResult: ((seq: number, code: number) => void) | null = null;
   /** Predicted local body after the latest simulated tick. */
@@ -192,12 +202,15 @@ export class ClientSession {
 
   /**
    * Send a command; `args` appends the op's arguments. Returns its sequence
-   * number. Commands are not predicted and not resent: what happened shows up
-   * in the state the server sends.
+   * number, or 0 if the session is not active and nothing was sent. Commands
+   * are not predicted and not resent: what happened shows up in the state the
+   * server sends.
    */
   command(op: number, args?: (w: BitWriter) => void): number {
+    // Not connected: nothing is sent, so no sequence number is used. The server
+    // expects them without gaps.
+    if (this.state !== "active") return 0;
     const seq = (this.commandSeq = (this.commandSeq + 1) & 0xffff);
-    if (this.state !== "active") return seq;
     const w = this.w;
     w.reset();
     writeCommand(w, seq, op);
@@ -392,9 +405,16 @@ export class ClientSession {
       const cap = r.u8();
       const full = r.bool();
       const count = r.u8();
-      if (r.overflow || box !== BOX_SELF) return;
-      let inv = this.inventory;
-      if (!inv || inv.cap !== cap || full) inv = this.inventory = new Inventory(cap);
+      if (r.overflow) return;
+      let inv: Inventory | null;
+      if (box === BOX_SELF) {
+        inv = this.inventory;
+        if (!inv || inv.cap !== cap || full) inv = this.inventory = new Inventory(cap);
+      } else {
+        if (!this.open) return;
+        if (this.open.inventory.cap !== cap || full) this.open.inventory = new Inventory(cap);
+        inv = this.open.inventory;
+      }
       for (let k = 0; k < count; k++) {
         const slot = r.u8();
         const item = r.u16();
@@ -405,6 +425,27 @@ export class ClientSession {
         if (r.overflow || slot >= cap) return;
         inv.set(slot, item, n, quality, dur, spoilAt);
       }
+    } else if (component === OWN_OPEN) {
+      if (!r.bool()) this.open = null;
+      else {
+        const cap = r.u8();
+        const name = r.string(64);
+        if (!r.overflow) this.open = { name, inventory: new Inventory(cap) };
+      }
+    } else if (component === OWN_MARKERS) {
+      const count = r.u8();
+      const list = [];
+      for (let k = 0; k < count; k++) list.push({ kind: r.u8(), x: r.f32(), y: r.f32(), z: r.f32(), tick: r.u32() });
+      if (r.overflow) return;
+      this.markers.length = 0;
+      this.markers.push(...list);
+    } else if (component === OWN_RESPAWN) {
+      const count = r.u8();
+      const list = [];
+      for (let k = 0; k < count; k++) list.push({ name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32() });
+      if (r.overflow) return;
+      this.respawnPoints.length = 0;
+      this.respawnPoints.push(...list);
     }
   }
 

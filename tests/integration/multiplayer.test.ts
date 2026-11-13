@@ -265,3 +265,31 @@ test("a crowded scene is delivered within the byte budget and still converges", 
     expect(Math.abs(seen.z[i]! - ents.z[e]!)).toBeLessThan(0.005);
   }
 });
+
+test("named entities are budgeted with their names: a crowd of them stays within the snapshot budget", () => {
+  const h = new Harness({ snapshotBytes: 1100 }, 3, 30);
+  const watcher = h.join("watcher");
+  h.run(1500); // structures have arrived; from here only snapshots flow
+  const kind = h.reg.index.get("core:grazer")!;
+  const ents = h.world.ents;
+  for (let i = 0; i < 40; i++) {
+    const e = ents.create(kind, 240 + (i % 8) * 4, 0, 225 + Math.floor(i / 8) * 4, 0);
+    ents.setLook(e, 100 + i, [3, 5, 6, 7, 9, 12], `creature number ${String(i).padStart(2, "0")}`.padEnd(24, "x"));
+  }
+  const sent = h.ends[0]!.peer;
+  let last = sent.bytesSent;
+  let largest = 0;
+  h.run(1500, () => {
+    largest = Math.max(largest, sent.bytesSent - last);
+    last = sent.bytesSent;
+  });
+  // The budget bounds the deferrable part; the header and the client's own body come on top.
+  expect(largest).toBeLessThanOrEqual(1100 + 60);
+  expect(largest).toBeGreaterThan(900); // and the budget was actually used
+  const seen = new RemoteSample();
+  watcher.sampleRemote(seen);
+  expect(seen.count).toBe(40);
+  expect(new Set(seen.name.slice(0, 40)).size).toBe(40);
+  expect(seen.name[0]!.length).toBe(24);
+  expect(watcher.stats.undecodable).toBe(0);
+});

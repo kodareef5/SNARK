@@ -18,7 +18,7 @@ export const MAX_TILES = 1024;
 export const TILE_QUADS = 32;
 /** Buffer id for the per-frame instance data carried in the packet itself. */
 export const TRANSIENT_BUFFER = 0xffffffff;
-/** Instances of water surface a frame may carry besides entities. */
+/** Instances a frame may carry besides entities: water surface tiles and marker beams. */
 export const MAX_WATER_TILES = 64;
 /** Draw flag: see-through. Drawn after everything opaque, blended, both faces, without writing depth. */
 export const DRAW_BLEND = 1;
@@ -67,9 +67,9 @@ export class FramePacket {
   readonly tileOrigin = new Int32Array(MAX_TILES * 2);
 
   transientCount = 0;
-  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 1) * INSTANCE_BYTES);
+  readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17) * INSTANCE_BYTES);
   /** Entity slot index of each transient instance, for picking. */
-  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 1);
+  readonly transientIds = new Uint32Array(MAX_VIEW + MAX_WATER_TILES + 17);
 
   /** Triangles submitted, for budgets and benchmarks. */
   triangles = 0;

@@ -2,7 +2,7 @@
 
 import type { HudModel } from "../hud.ts";
 import { K_BAR, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_STAMINA, S_TEXT, S_WATER } from "./style.ts";
+import { S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_STAMINA, S_TEXT, S_WATER } from "./style.ts";
 
 export const KEY_READOUT = 1;
 export const KEY_MINIMAP_FRAME = 10;
@@ -12,6 +12,7 @@ export const KEY_VITAL = 20;
 export const KEY_CROSS = 30;
 export const KEY_STATUS = 31;
 export const KEY_BANNER = 32;
+export const KEY_PROMPT = 33;
 export const KEY_MARKER = 100;
 /** Index of the minimap picture in the frame's image table. */
 export const IMAGE_MINIMAP = 1;
@@ -53,7 +54,10 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     y += rowH;
   }
 
-  if (m.crosshair) f.add(KEY_CROSS, K_PANEL, W / 2 - 2, H / 2 - 2, 4, 4, S_CROSS);
+  if (m.crosshair) {
+    f.add(KEY_CROSS, K_PANEL, W / 2 - 2, H / 2 - 2, 4, 4, S_CROSS);
+    if (m.prompt !== "") f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, m.prompt.slice(0, 38));
+  }
   // The status line sits left of the vitals, or above them where there is no room beside.
   if (m.status !== "") {
     if (W < 640) f.text(KEY_STATUS, MARGIN, H - MARGIN - m.vitals.length * rowH - lh - 4, W - MARGIN * 2, S_TEXT, m.status);

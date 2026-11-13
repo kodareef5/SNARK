@@ -9,11 +9,17 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { buildHud } from "./hud.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { UiFrame } from "./nodes.ts";
+import { buildMap, buildRespawn, respawnClick } from "./screens.ts";
+import { SESSION_DEAD } from "../../../shared/net/protocol.ts";
 
 export class Ui {
   readonly frame = new UiFrame();
   readonly console = new ConsoleState();
   readonly inventory = new InventoryScreen();
+  /** The full map is up. */
+  map = false;
+  /** The session is dead and choosing where to return: the mouse is free for that. */
+  private dead = false;
   /** Content and palette, for naming and colouring items. Set by the app once it has them. */
   registry: Registry | null = null;
   palette: Uint8Array | null = null;
@@ -25,7 +31,7 @@ export class Ui {
 
   /** The mouse should steer the camera (the shell holds pointer lock) rather than move a cursor. */
   get wantsPointerLock(): boolean {
-    return !this.console.open && !this.inventory.open;
+    return !this.console.open && !this.inventory.open && !this.map && !this.dead;
   }
 
   /**
@@ -41,11 +47,13 @@ export class Ui {
       return true;
     }
     if (!con.open) {
-      // The inventory leaves the keyboard to the body: you can keep walking with it open.
-      if (code === "KeyI" || (code === "Escape" && this.inventory.open)) {
+      // Screens leave the keyboard to the body: you can keep walking with them open.
+      if (code === "KeyI" || code === "KeyM" || (code === "Escape" && (this.inventory.open || this.map))) {
         if (down && !repeat) {
-          this.inventory.open = code === "KeyI" ? !this.inventory.open : false;
-          this.inventory.held = -1;
+          if (code === "KeyM") this.map = !this.map;
+          else if (code === "Escape") this.map = false;
+          if (code === "KeyI" && !this.inventory.open) this.inventory.open = true;
+          else if (code !== "KeyM") this.inventory.close(session);
         }
         return true;
       }
@@ -60,7 +68,9 @@ export class Ui {
         con.open = false;
         return true;
       case "Enter":
-        con.submit((line) => session?.text(line));
+        con.submit((line) => {
+          if (!session || (session.text(line) === 0 && session.state !== "active")) con.print("not connected; nothing was sent");
+        });
         return true;
       case "ArrowUp":
         con.recall(-1);
@@ -80,7 +90,9 @@ export class Ui {
 
   /** Pointer went down (0), up (1) or moved (2) over an interactive node. */
   pointer(kind: number, key: number, _x: number, _y: number, button: number, session: ClientSession | null): void {
-    if (session && this.inventory.open && !this.console.open) this.inventory.pointer(kind, key, button, session);
+    if (!session || this.console.open) return;
+    if (kind === 0 && respawnClick(key, session)) return;
+    if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
 
   /** A text field's content changed. */
@@ -94,7 +106,12 @@ export class Ui {
     f.begin(aspect);
     buildHud(f, hud);
     // The console covers whatever screen is up; that screen waits underneath, undrawn, so nothing clickable hides behind it.
-    if (!this.console.open) this.inventory.build(f, session, this.registry, this.palette);
+    this.dead = session?.sessionState === SESSION_DEAD;
+    if (!this.console.open) {
+      if (this.dead && session) buildRespawn(f, session);
+      else if (this.map && session) buildMap(f, session, hud);
+      else this.inventory.build(f, session, this.registry, this.palette);
+    }
     if (session) this.console.absorb(session);
     this.console.build(f);
   }

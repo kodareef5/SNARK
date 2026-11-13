@@ -30,6 +30,7 @@ import {
   RESULT_BUSY,
   RESULT_INVALID,
   SESSION_ALIVE,
+  SESSION_DEAD,
   SESSION_SPECTATING,
   S_CHUNK,
   S_CHUNK_DROP,
@@ -44,7 +45,7 @@ import {
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
-import { Body, MODE_GHOST, stepBody, stepOut } from "../shared/sim/character.ts";
+import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { F_AWAKE, F_PLAYER } from "../shared/sim/entities.ts";
 import { sortU32 } from "../shared/sort.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
@@ -86,6 +87,9 @@ const MAX_PACKETS_PER_TICK = 8;
 const MAX_RELIABLE_PER_TICK = 32;
 /** Malformed messages tolerated before disconnecting. */
 const MAX_STRIKES = 8;
+/** Connections that may be waiting to say hello, and how long each may take. */
+const MAX_PENDING = 64;
+const HELLO_TICKS = 150;
 /** Commands a client may have waiting, and how many run per tick. */
 const COMMAND_QUEUE = 16;
 const COMMANDS_PER_TICK = 4;
@@ -101,7 +105,10 @@ export type CommandHandler = (c: Client, r: BitReader) => number;
  * connection under the same name and key takes it over, body and all.
  */
 export class Client {
-  readonly id: number;
+  /** Slot in `GameServer.clients`, or -1 until its hello is accepted. */
+  id: number;
+  /** Tick by which a new connection must have said hello. */
+  helloBy = 0;
   conn: Connection;
   active = false;
   /** The connection is gone; the body stays until `lingerUntil`. */
@@ -132,6 +139,9 @@ export class Client {
   heldYaw = 0;
   heldPitch = 0;
   heldButtons = 0;
+  /** Buttons that went down on the tick just stepped. */
+  pressed = 0;
+  private before = 0;
   /** Newest input tick received. */
   newestInput = 0;
   /** Newest snapshot the client says it decoded. */
@@ -159,7 +169,18 @@ export class Client {
   /** Versions of owner-private state this connection has been sent; -1 means nothing yet. */
   sentVitals = -1;
   sentInv = -1;
-  sentMods = -1;
+  sentMarkers = -1;
+  sentRespawn = false;
+  /** Persistent id of the container this session has open, or 0; and what of it has been sent. */
+  open = 0;
+  sentOpen = 0;
+  sentOpenVersion = -1;
+
+  /** Note which buttons went down this tick. */
+  edges(): void {
+    this.pressed = this.heldButtons & ~this.before;
+    this.before = this.heldButtons;
+  }
 
   constructor(id: number, conn: Connection, chunks: number) {
     this.id = id;
@@ -186,7 +207,10 @@ export class Client {
     this.admin = false;
     this.cheatAttempts = 0;
     this.ownDirty = false;
-    this.sentVitals = this.sentInv = -1;
+    this.sentVitals = this.sentInv = this.sentMarkers = this.sentOpenVersion = -1;
+    this.sentRespawn = false;
+    this.open = this.sentOpen = 0;
+    this.pressed = this.before = 0;
   }
 }
 
@@ -211,10 +235,16 @@ export class GameServer {
   onReplicate: ((c: Client) => void) | null = null;
   /** A session's body touched down at this many metres per second. */
   onLand: ((c: Client, speed: number) => void) | null = null;
-  /** Where a returning survivor was last seen, or null for a new one. */
-  savedPosition: ((name: string) => { x: number; y: number; z: number; yaw: number } | null) | null = null;
+  /** Where a returning survivor was last seen, or null for a new one. `dead` means it joins with no body, to choose where to respawn. */
+  savedPosition: ((name: string) => { x: number; y: number; z: number; yaw: number; dead?: boolean } | null) | null = null;
 
   private readonly handlers: (CommandHandler | null)[] = new Array(256).fill(null);
+  /**
+   * Connections that have not said hello yet. They hold no slot: a slot is
+   * taken only once a hello is accepted, so a returning survivor can reclaim
+   * its lingering session even when every slot is in use.
+   */
+  private readonly pending = new Set<Client>();
   private readonly survivor: number;
   private readonly w = new BitWriter(16384);
   private readonly r = new BitReader();
@@ -271,6 +301,7 @@ export class GameServer {
         c.heldPitch = inputs.pitch[i]!;
         c.heldButtons = inputs.buttons[i]!;
       } else this.stats.heldInputs++;
+      c.edges();
       const b = c.body;
       const e = c.ent;
       if (e >= 0) {
@@ -285,6 +316,7 @@ export class GameServer {
 
     for (const c of this.clients) if (c?.active && c.queue.length > 0) this.runCommands(c);
     for (const c of this.clients) if (c?.closed && T >= c.lingerUntil) this.finalize(c);
+    for (const c of this.pending) if (T >= c.helloBy) this.reject(c, REJECT_MALFORMED);
 
     this.onStep?.(T);
 
@@ -360,6 +392,28 @@ export class GameServer {
     return true;
   }
 
+  /** The session's body dies: it is removed, and the session waits, unmoving, where it fell. */
+  kill(c: Client): void {
+    this.dropBody(c);
+    this.makeDead(c);
+    c.ownDirty = true;
+  }
+
+  /** Bring a dead session back to life at a place (or near it, if the spot is taken). */
+  revive(c: Client, x: number, z: number, yaw: number): boolean {
+    if (c.state !== SESSION_DEAD || !this.spawnBody(c, { x, y: this.world.hf.heightAt(x, z), z, yaw })) return false;
+    c.ownDirty = true;
+    return true;
+  }
+
+  private makeDead(c: Client): void {
+    const b = c.body;
+    b.vx = b.vy = b.vz = 0;
+    b.grounded = false;
+    b.mode = MODE_NONE;
+    c.state = SESSION_DEAD;
+  }
+
   private makeGhost(c: Client): void {
     const b = c.body;
     b.y += SPECTATOR_LIFT;
@@ -369,28 +423,34 @@ export class GameServer {
     c.state = SESSION_SPECTATING;
   }
 
-  /** Create the session's entity where its survivor was last seen, or near the spawn point. */
-  private spawnBody(c: Client): boolean {
+  /**
+   * Create the session's entity at `at`, or where its survivor was last seen,
+   * or near the spawn point; on the first free spot around that place if the
+   * place itself is taken.
+   */
+  private spawnBody(c: Client, at?: { x: number; y: number; z: number; yaw: number }): boolean {
     const world = this.world;
     const kind = this.survivor;
     const p = world.reg.move[kind]!;
-    let x = world.spawn.x;
-    let z = world.spawn.z;
+    const want = at ?? this.savedPosition?.(c.name) ?? null;
+    const cx = at ? at.x : world.spawn.x;
+    const cz = at ? at.z : world.spawn.z;
+    let x = cx;
+    let z = cz;
     let y = 0;
-    let yaw = world.spawn.yaw;
-    const saved = this.savedPosition?.(c.name);
-    if (saved && capsuleFree(world, saved.x, saved.y, saved.z, p.radius, p.height)) {
-      x = saved.x;
-      y = saved.y;
-      z = saved.z;
-      yaw = saved.yaw;
+    let yaw = at ? at.yaw : world.spawn.yaw;
+    if (want && capsuleFree(world, want.x, want.y, want.z, p.radius, p.height) && !(at && this.occupied(want.x, want.z))) {
+      x = want.x;
+      y = want.y;
+      z = want.z;
+      yaw = want.yaw;
     } else {
-      // First free spot on rings around the spawn point.
+      // First free spot on rings around the place.
       for (let k = 0; k < 96; k++) {
         const ring = Math.ceil(k / 8);
         const a = (k * TAU) / 8 + ring * 0.4;
-        x = world.spawn.x + detSin(a) * ring * 1.5;
-        z = world.spawn.z + detCos(a) * ring * 1.5;
+        x = cx + detSin(a) * ring * 1.5;
+        z = cz + detCos(a) * ring * 1.5;
         if (capsuleFree(world, x, world.hf.heightAt(x, z), z, p.radius, p.height) && !this.occupied(x, z)) break;
       }
       y = world.hf.heightAt(x, z);
@@ -420,8 +480,7 @@ export class GameServer {
   }
 
   private accept(conn: Connection): void {
-    const slot = this.clients.indexOf(null);
-    if (slot < 0) {
+    if (this.pending.size >= MAX_PENDING) {
       const w = this.w;
       w.reset();
       w.bits(S_REJECT, 4);
@@ -430,8 +489,9 @@ export class GameServer {
       conn.close();
       return;
     }
-    const c = new Client(slot, conn, chunkCount(this.world.dims));
-    this.clients[slot] = c;
+    const c = new Client(-1, conn, chunkCount(this.world.dims));
+    c.helloBy = this.world.tick + HELLO_TICKS;
+    this.pending.add(c);
     this.bind(c, conn);
   }
 
@@ -442,6 +502,7 @@ export class GameServer {
 
   /** The connection closed. A living body stays for a while; anything else leaves now. */
   private remove(c: Client, conn: Connection): void {
+    if (this.pending.delete(c)) return;
     if (this.clients[c.id] !== c || c.conn !== conn || c.closed) return;
     if (c.active && c.ent >= 0 && this.opts.lingerTicks > 0) {
       c.closed = true;
@@ -556,13 +617,18 @@ export class GameServer {
     for (const other of this.clients) {
       if (!other?.active || other.name !== name) continue;
       if (!other.closed) return this.refuse(c, REJECT_NAME);
-      this.clients[c.id] = null;
+      this.pending.delete(c);
       other.relink(c.conn);
       this.bind(other, c.conn);
       this.welcome(other);
       return true;
     }
 
+    const slot = this.clients.indexOf(null);
+    if (slot < 0) return this.refuse(c, REJECT_FULL);
+    this.pending.delete(c);
+    this.clients[slot] = c;
+    c.id = slot;
     c.name = name;
     c.key = key;
     c.kind = this.survivor;
@@ -574,7 +640,17 @@ export class GameServer {
       b.y = world.hf.heightAt(b.x, b.z);
       this.makeGhost(c);
       c.chunk = chunkAt(world.dims, b.x, b.z);
-    } else if (!this.spawnBody(c)) return this.refuse(c, REJECT_FULL);
+    } else {
+      const saved = this.savedPosition?.(name);
+      if (saved?.dead) {
+        // It died before it left: it returns with no body, to choose where to respawn.
+        c.body.x = saved.x;
+        c.body.y = saved.y;
+        c.body.z = saved.z;
+        this.makeDead(c);
+        c.chunk = chunkAt(world.dims, saved.x, saved.z);
+      } else if (!this.spawnBody(c)) return this.refuse(c, REJECT_FULL);
+    }
     c.active = true;
     this.onEnter?.(c);
     this.welcome(c);

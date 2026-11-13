@@ -14,6 +14,8 @@ export const F_GROUNDED = 2;
 /** Stepped every tick. Cleared while the entity's chunk sleeps. */
 export const F_AWAKE = 4;
 export const F_PLAYER = 8;
+/** A thing that stands where it is put: never stepped, never woken. */
+export const F_PROP = 16;
 
 export class EntityStore {
   readonly dims: MapDims;
@@ -127,9 +129,15 @@ export class EntityStore {
     return i;
   }
 
-  /** Set what others see of an entity. Clients that already see it are sent it again. */
+  /** Set what others see of an entity. If anything changed, clients that already see it are sent it again. */
   setLook(i: number, level: number, colors: ArrayLike<number> | null, name: string): void {
-    this.level[i] = level > 65535 ? 65535 : level;
+    if (level > 65535) level = 65535;
+    // 24 characters is at most 72 bytes, which is what a snapshot will carry.
+    if (name.length > 24) name = name.slice(0, 24);
+    let same = this.level[i] === level && this.name[i] === name;
+    for (let k = 0; k < 6 && same; k++) same = this.colors[i * 6 + k] === (colors ? colors[k]! : 0);
+    if (same) return;
+    this.level[i] = level;
     for (let k = 0; k < 6; k++) this.colors[i * 6 + k] = colors ? colors[k]! : 0;
     this.name[i] = name;
     this.rev[i] = (this.rev[i]! + 1) & 15;

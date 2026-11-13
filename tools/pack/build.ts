@@ -14,6 +14,7 @@ import { boxMesh, buildPack, type SourceMesh } from "./write.ts";
 
 export const MISSING_MESH = "core:missing";
 export const WATER_MESH = "core:water";
+export const BEAM_MESH = "core:beam";
 
 /** One tile of water surface: a flat square facing up, centred on its origin. */
 function waterMesh(): SourceMesh {
@@ -26,12 +27,15 @@ function waterMesh(): SourceMesh {
 
 /** Graybox meshes for content. Their single colour is region 0, so the definition's colour applies per instance. */
 export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
-  const meshes: SourceMesh[] = [{ id: MISSING_MESH, lods: [boxMesh([0.5, 0.5, 0.5], 0)] }, waterMesh()];
+  // The beam marks a place from far off: where a survivor died.
+  const beam = boxMesh([0.15, 40, 0.15], REGION_BASE);
+  for (let i = 1; i < beam.positions.length; i += 3) beam.positions[i]! += 40;
+  const meshes: SourceMesh[] = [{ id: MISSING_MESH, lods: [boxMesh([0.5, 0.5, 0.5], 0)] }, waterMesh(), { id: BEAM_MESH, lods: [beam] }];
   for (const d of defs) {
     if (d.type === "item" || d.mesh !== "box") continue;
     if (d.type === "structure") meshes.push({ id: d.id, lods: [boxMesh(d.half, REGION_BASE)] });
     else {
-      // A species stands on its origin: lift the box so its base is at y = 0.
+      // A species or a prop stands on its origin: lift the box so its base is at y = 0.
       const lod = boxMesh([d.radius, d.height / 2, d.radius], REGION_BASE);
       for (let i = 1; i < lod.positions.length; i += 3) lod.positions[i]! += d.height / 2;
       meshes.push({ id: d.id, lods: [lod] });

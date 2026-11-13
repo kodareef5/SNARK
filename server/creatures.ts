@@ -12,7 +12,7 @@
 
 import { TICK_DT, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { Body, MODE_SWIM, stepBody } from "../shared/sim/character.ts";
-import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER } from "../shared/sim/entities.ts";
+import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import { rollWild } from "../shared/sim/genome.ts";
 import { Rng } from "../shared/rng.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
@@ -90,6 +90,13 @@ export class Creatures {
     return e;
   }
 
+  /** Take a creature out of the simulation for good. Its record is the caller's to delete. */
+  remove(e: number): void {
+    this.sleep(e);
+    this.records.entOf.delete(this.world.ents.pid[e]!);
+    this.world.ents.destroy(e);
+  }
+
   /** Whether a player is keeping this chunk simulated. */
   isChunkAwake(chunk: number): boolean {
     return this.chunkRefs[chunk]! > 0;
@@ -153,7 +160,7 @@ export class Creatures {
   private wake(e: number): void {
     const ents = this.world.ents;
     const flags = ents.flags[e]!;
-    if ((flags & F_ALIVE) === 0 || (flags & F_PLAYER) !== 0 || this.awakeSlot[e]! >= 0) return;
+    if ((flags & F_ALIVE) === 0 || (flags & (F_PLAYER | F_PROP)) !== 0 || this.awakeSlot[e]! >= 0) return;
     this.awakeSlot[e] = this.awakeCount;
     this.awake[this.awakeCount++] = e;
     ents.flags[e] = flags | F_AWAKE;

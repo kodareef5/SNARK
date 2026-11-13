@@ -9,7 +9,7 @@ import { MF_NO_SPRINT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim
 import type { EntityStore } from "../shared/sim/entities.ts";
 import { STAT_NAMES, statValue, type Genome, type StatName } from "../shared/sim/genome.ts";
 import { MICRO, ratePerTick } from "../shared/sim/lazy.ts";
-import { DeadlineHeap } from "../shared/sim/schedule.ts";
+import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_OXYGEN, V_WATER, Vitals } from "../shared/sim/vitals.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -73,7 +73,8 @@ export const CAUSE_THIRST = 2;
 export const CAUSE_DROWNED = 3;
 export const CAUSE_FALL = 4;
 export const CAUSE_KILLED = 5;
-export const CAUSE_NAMES = ["", "starved", "died of thirst", "drowned", "fell", "was killed"];
+/** Each completes "You ...". */
+export const CAUSE_NAMES = ["", "starved", "died of thirst", "drowned", "fell to your death", "were killed"];
 
 const perSecond = (points: number): number => Math.round((points * MICRO) / TICK_RATE);
 /** Points per second. */
@@ -93,7 +94,7 @@ const LANDING_DAMAGE = 7;
  * runs out, which fires whether or not anyone is near.
  */
 export class Survival {
-  readonly deadlines = new DeadlineHeap();
+  readonly deadlines: DeadlineHeap;
   /** Records whose food has run out. */
   readonly starving = new Set<number>();
   /** Called when a body's health reaches zero. */
@@ -107,9 +108,20 @@ export class Survival {
   private readonly suspended = new Set<number>();
   private pendingCause = 0;
 
-  constructor(world: ServerWorld, records: Records) {
+  /** `deadlines` is the world's one heap; whoever runs it passes DEADLINE_VITALS entries to `due`. */
+  constructor(world: ServerWorld, records: Records, deadlines: DeadlineHeap) {
     this.world = world;
     this.records = records;
+    this.deadlines = deadlines;
+  }
+
+  /** Set every vital to its maximum (a respawn). */
+  refill(rec: EntityRecord): void {
+    const v = rec.vitals;
+    if (!v) return;
+    v.rebase(this.world.tick);
+    for (let i = 0; i < V_COUNT; i++) v.value[i] = v.max[i]!;
+    this.records.dirty.add(rec.pid);
   }
 
   /** Give a record vitals if its species has any, full; or refresh their maxima after its stats changed. */
@@ -182,14 +194,10 @@ export class Survival {
     this.gods.delete(pid);
   }
 
-  /** Run the deadlines that are due. */
-  step(tick: number): void {
-    this.deadlines.run(tick, (kind, pid, stamp) => {
-      if (kind !== DEADLINE_VITALS) return;
-      const rec = this.records.byPid.get(pid);
-      // Stale if the record is gone or its vitals have changed since this was scheduled.
-      if (rec?.vitals && rec.vitals.version === stamp) this.update(rec);
-    });
+  /** A DEADLINE_VITALS entry came due. Stale if the record is gone or its vitals have changed since it was scheduled. */
+  due(pid: number, stamp: number): void {
+    const rec = this.records.byPid.get(pid);
+    if (rec?.vitals && rec.vitals.version === stamp) this.update(rec);
   }
 
   /** Set every rate from the body's circumstances, then schedule the next moment something runs out. */

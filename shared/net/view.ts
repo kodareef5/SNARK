@@ -38,8 +38,22 @@ const OP_CREATE = 1;
 const OP_REMOVE = 2;
 
 const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + 4 + 16 + 2 + 48;
-export const MAX_NAME_LENGTH = 24;
+/** Longest name carried, in bytes. */
+export const MAX_NAME_LENGTH = 72;
+
 const UPDATE_BITS = 24 + 2 + 2 + 64 + 1 + 10 + 1 + 4;
+
+/** Bits a create for entry `j` of `v` takes at most: the fixed part plus its name's bytes. */
+function createBits(v: EntityView, j: number): number {
+  const name = v.name[j]!;
+  if (name === "") return CREATE_BITS;
+  let bytes = 1;
+  for (let i = 0; i < name.length; i++) {
+    const c = name.charCodeAt(i);
+    bytes += c < 0x80 ? 1 : c < 0x800 ? 2 : 3;
+  }
+  return CREATE_BITS + bytes * 8;
+}
 
 export function quantX(x: number): number {
   return Math.round(x * POS_UNITS);
@@ -183,7 +197,7 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
       opKind[n] = K_CREATE;
       opCur[n] = j++;
       optIndex[optional++] = n;
-      optionalBits += CREATE_BITS;
+      optionalBits += createBits(cur, j - 1);
     } else {
       opBase[n] = i;
       opCur[n] = j;
@@ -209,7 +223,8 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
     let allowed = 0;
     let bits = 0;
     for (; allowed < optional; allowed++) {
-      const cost = opKind[optIndex[(start + allowed) % optional]!] === K_CREATE ? CREATE_BITS : UPDATE_BITS;
+      const at = optIndex[(start + allowed) % optional]!;
+      const cost = opKind[at] === K_CREATE ? createBits(cur, opCur[at]!) : UPDATE_BITS;
       if (bits + cost > budgetBits) break;
       bits += cost;
     }
