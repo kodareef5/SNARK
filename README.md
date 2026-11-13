@@ -25,16 +25,24 @@ around it trees, rocks, bushes, and a herd of wandering placeholder creatures.
 
 | Key | Does |
 | --- | --- |
-| Click | Capture the mouse; then hold to strike a tree or rock |
+| Click | Capture the mouse; then the weapon in hand: hold to swing, hold and let go to draw and loose a bow, press to fire a gun |
+| Right mouse | Aim: the view narrows, far more through a scope |
 | W A S D, Space, Shift | Walk, jump (rise when swimming), sprint |
+| C, X | Crouch, lie prone; press again to stand |
+| 1 to 0 | Take that hotbar slot in hand, or put it away |
+| R, F | Reload; strike with whatever is held |
+| V | Look from behind the body, or from its eyes |
 | E | Pick a bush, open a cache, close it |
-| I, C, M | Inventory, character (stats, engrams, crafting), map |
+| I, P, M, O | Inventory, character (stats, engrams, crafting), map, settings |
 | Backquote or Tab | Console. `help` lists commands |
 | Escape | Close a screen |
 
 Under `bun run dev` cheats need no password: type `enablecheats`, then try
 `give stone 50`, `spawn grazer 150`, `tp 172 256`, `ghost`, `settime 21`,
-`spectate`. On a real server set `SNARK_ADMIN_PASSWORD`; without it cheats are
+`spectate`. For a fight: `kit bow`, `kit rifle`, `kit grenades` (then move the
+weapon to the hotbar in the inventory and press its number), `dummy flak` for
+something to shoot, `armor flak` to wear a set, `place wall_wood` for something
+to burn, `buff burning`, and `rule` for the server's damage rules. On a real server set `SNARK_ADMIN_PASSWORD`; without it cheats are
 off.
 
 ## Commands
@@ -43,7 +51,7 @@ off.
 | --- | --- |
 | `bun run check` | Policy rules, type checks for every zone, and all tests. Under three seconds today; fails above 20 s |
 | `bun run bench` | Builds the sizing target (8 km, 500,000 structures, 2.6 million resource nodes, 30,000 creatures, 100 players) and holds each measurement to a budget |
-| `bun run snap` | Draws the proving ground to `artifacts/snap.png` with a software rasterizer. No browser. `-- --ui` draws the interface over it |
+| `bun run snap` | Draws the proving ground to `artifacts/snap.png` with a software rasterizer. No browser. `-- --ui` draws the interface over it; `-- --poses N` a line-up of bodies in motion; `-- --fight bow` a survivor mid-fight as its own client shows it |
 | `bun run probe` | Opens installed Chrome headless once and prints the page's self-check report. `-- --bench` adds frame times |
 | `bun run dev` | Development server with client rebuild on change |
 | `bun run build` | Builds the client into `client/dist` |

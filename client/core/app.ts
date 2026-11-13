@@ -35,10 +35,10 @@ const REACH = 3.5;
 /** Bit in replicated entity flags marking a prop: a thing that can be opened. */
 const VIEW_FLAG_PROP = 8;
 
-/** The camera's field of view, top to bottom, radians: as it is, aiming a bow or a gun, and through a scope. */
+/** The camera's field of view, top to bottom, radians, until the settings say; and what aiming a bow or a gun, and looking through a scope, leave of it. */
 const BASE_FOV = 1.2217;
-const AIM_FOV = 0.96;
-const SCOPE_FOV = 0.3;
+const AIM_FOV = 0.79;
+const SCOPE_FOV = 0.25;
 
 export class App {
   readonly session: ClientSession;
@@ -257,16 +257,19 @@ export class App {
     this.view.thirdPerson = third;
     cam.aspect = aspect;
     // Aiming narrows the view: a little with a bow or a gun, a great deal through a scope. The mouse slows to match.
-    let want = BASE_FOV;
+    // The player's own field of view is the widest it goes; aiming narrows it in proportion.
+    const settings = this.ui.settings;
+    const base = (settings.fov * Math.PI) / 180;
+    let want = base;
     const aimed = this.reg.weapon[session.own.held];
     if (alive && this.steer && (c.buttons & BTN_SECONDARY) !== 0 && aimed && aimed.clip > 0) {
       const inv = session.inventory;
       const fitted = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.attach[inv.hotbar + session.held]! : 0;
-      want = (this.reg.defs[fitted] as ItemDef | null)?.attachment === "scope" ? SCOPE_FOV : AIM_FOV;
+      want = base * ((this.reg.defs[fitted] as ItemDef | null)?.attachment === "scope" ? SCOPE_FOV : AIM_FOV);
     }
     this.fov += (want - this.fov) * Math.min(1, dt / 70);
     cam.fovY = this.fov;
-    c.zoom = this.fov / BASE_FOV;
+    c.zoom = (this.fov / base) * settings.sensitivity;
     // The body itself, posed from what the prediction says it is doing.
     const body = this.body;
     body.kind = session.ownKind;
@@ -307,7 +310,7 @@ export class App {
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps);
     this.feedback.absorb(session, this.reg, nowMs);
-    this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs);
+    this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.damageNumbers && this.ui.settings.damageNumbers);
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);

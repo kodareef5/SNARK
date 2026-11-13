@@ -13,7 +13,9 @@ import { cpus, tmpdir, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { Camera } from "../client/core/render/camera.ts";
 import { Scene } from "../client/core/render/scene.ts";
-import { ClientSession } from "../client/core/session.ts";
+import { ClientSession, RemoteSample } from "../client/core/session.ts";
+import { AnimState, HumanAnim } from "../shared/anim/pose.ts";
+import { ACT_NONE, ACT_SWING } from "../shared/sim/weapon.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { createHost, type Host } from "../server/host.ts";
 import { WorldStore } from "../server/persist/store.ts";
@@ -406,6 +408,88 @@ record("creatures awake after (players wandered into denser ground)", host.creat
 record("tick time, median, 30k creatures", baseline, "ms");
 record("tick time, median, 300k creatures (same players)", percentile(after, 0.5), "ms", Math.round((baseline * 1.5 + 0.5) * 100) / 100);
 
+// ---------------------------------------------------------------- combat
+section("Combat: 100 players shooting twice a second, things in the air, and a blast in a base");
+const pack = parsePack(buildCorePack());
+{
+  // Bodies are hit by zone, posed with the clips a real server has.
+  world.anim = new HumanAnim(pack.clips);
+  const ents = world.ents;
+  const k = (name: string): number => reg.index.get(`core:${name}`)!;
+  const [bow, arrow, rifle, round] = [k("bow"), k("arrow_stone"), k("rifle"), k("round_rifle")];
+  // Nobody dies of it: the load must stay what it is.
+  for (const c of host.game.clients) if (c?.active) host.survival.gods.add(c.pid);
+  const shots = host.projectiles;
+  const firedBefore = shots.fired;
+  const struckBefore = shots.struck;
+  const aimRng = new Rng(99);
+  const fight: number[] = [];
+  let most = 0;
+  for (let i = 0; i < 600; i++) {
+    if (i % 15 === 0) {
+      for (const c of host.game.clients) {
+        if (!c?.active || c.ent < 0) continue;
+        const rec = host.records.byPid.get(c.pid);
+        if (!rec) continue;
+        // Level, give or take, in any direction: across the fight for those in it. Half shoot arrows, half rifles.
+        ents.yaw[c.ent] = aimRng.int(65536);
+        ents.pitch[c.ent] = Math.round((aimRng.float() - 0.4) * 2000);
+        if (c.id % 2 === 0) shots.launch(c, rec, bow, 0, arrow, 1);
+        else shots.launch(c, rec, rifle, 0, round, 1);
+      }
+    }
+    run(1, fight);
+    if (shots.flyingCount > most) most = shots.flyingCount;
+  }
+  fight.sort((a, b) => a - b);
+  record("shots fired", shots.fired - firedBefore, "");
+  record("shots that hit a body", shots.struck - struckBefore, "");
+  record("most arrows in the air at once", most, "");
+  record("tick time, median", percentile(fight, 0.5), "ms", 8);
+  record("tick time, 99th percentile", percentile(fight, 0.99), "ms", 16);
+
+  // Two thousand arrows in the air at once, shot high so that they stay there.
+  const step = shots.step.bind(shots);
+  const stepTimes: number[] = [];
+  shots.step = () => {
+    const t = performance.now();
+    step();
+    stepTimes.push(performance.now() - t);
+  };
+  const archers = host.game.clients.filter((c) => c?.active && c.ent >= 0).slice(0, 20);
+  for (const c of archers) {
+    const rec = host.records.byPid.get(c!.pid)!;
+    for (let n = 0; n < 100; n++) {
+      ents.yaw[c!.ent] = aimRng.int(65536);
+      ents.pitch[c!.ent] = 9000 + aimRng.int(5000);
+      shots.launch(c!, rec, bow, 0, arrow, 1);
+    }
+  }
+  record("things in the air", shots.flyingCount, "");
+  run(60, null);
+  stepTimes.sort((a, b) => a - b);
+  record("fly 2,000 things one tick, median", percentile(stepTimes, 0.5), "ms", 2);
+  record("fly 2,000 things one tick, 99th percentile", percentile(stepTimes, 0.99), "ms", 4);
+  shots.step = step;
+
+  // A grenade's blast in the middle of a 2,000-piece base.
+  const [bx, bz] = centers[0]!;
+  const by = hf.heightAt(bx, bz) + 1;
+  const src = { by: null, x: bx, z: bz, item: k("grenade"), base: 788, type: 4, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  const builtBefore = host.combat.structureHits;
+  const blasts: number[] = [];
+  for (let n = 0; n < 20; n++) {
+    const t = performance.now();
+    host.combat.blast(src, bx + n * 1.5 - 15, by, bz + (n % 5) * 2 - 4, 5);
+    blasts.push(performance.now() - t);
+  }
+  blasts.sort((a, b) => a - b);
+  record("things built that 20 blasts damaged", host.combat.structureHits - builtBefore, "");
+  record("one blast in a 2,000-piece base, median", percentile(blasts, 0.5), "ms", 1);
+  record("one blast in a 2,000-piece base, worst", blasts[blasts.length - 1]!, "ms", 4);
+  record("items the ledger cannot account for", host.items.audit().length, "", 0);
+}
+
 // ---------------------------------------------------------------- restart
 section("Restart");
 persistence.commit = commit;
@@ -423,7 +507,6 @@ store.close();
 
 // ---------------------------------------------------------------- client frame
 section("Client frame build (headless): standing 60 m from a 2,000-piece base");
-const pack = parsePack(buildCorePack());
 const scene = new Scene({ dims: DIMS, hf, structs: restored }, reg, pack);
 const cam = new Camera();
 cam.x = centers[0]![0] + 60;
@@ -451,6 +534,42 @@ scene.structureDistance = Infinity;
 packet = scene.build(cam, null);
 record("draw calls if every base to the horizon were instanced", packet.drawCount, "");
 record("triangles if every base to the horizon were instanced", packet.triangles, "");
+
+section("Client frame build (headless): 300 survivors in view, posed every frame");
+{
+  scene.structureDistance = 256;
+  const crowd = new RemoteSample();
+  const survivor = reg.index.get("core:survivor")!;
+  const st = new AnimState();
+  const crowdRng = new Rng(5);
+  // A crowd on the ground ahead of the camera, 5 to 60 m off: walking, running, a third of them swinging.
+  cam.yaw = Math.PI / 2 + Math.PI;
+  for (let i = 0; i < 300; i++) {
+    crowd.id[i] = i + 1;
+    crowd.kind[i] = survivor;
+    crowd.x[i] = cam.x - 5 - crowdRng.float() * 55;
+    crowd.z[i] = cam.z + (crowdRng.float() - 0.5) * 50;
+    crowd.y[i] = hf.heightAt(crowd.x[i]!, crowd.z[i]!);
+    crowd.yaw[i] = crowdRng.float() * Math.PI * 2;
+    st.setMotion(crowdRng.float() * 7, crowdRng.float() * 2, 0, 0);
+    st.setAction(i % 3 === 0 ? ACT_SWING : ACT_NONE, i % 2, 100 + (i % 12));
+    crowd.anim[i] = st.pack();
+  }
+  crowd.count = 300;
+  crowd.tick = 110;
+  const posed: number[] = [];
+  for (let i = 0; i < 200; i++) {
+    crowd.tick += 0.5;
+    const t = performance.now();
+    packet = scene.build(cam, crowd);
+    posed.push(performance.now() - t);
+  }
+  posed.sort((a, b) => a - b);
+  record("bodies posed in the frame", scene.characters.posed, "");
+  record("frame build with them, median", percentile(posed, 0.5), "ms", 4);
+  record("frame build with them, 99th percentile", percentile(posed, 0.99), "ms", 8);
+  record("draw calls", packet.drawCount, "", 400);
+}
 
 rmSync(dir, { recursive: true, force: true });
 const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);

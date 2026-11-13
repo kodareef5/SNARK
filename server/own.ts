@@ -5,7 +5,7 @@
 
 import type { ItemDef, RecipeDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
@@ -13,6 +13,7 @@ import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Progression } from "./progression.ts";
+import type { Rules } from "./rules.ts";
 import type { Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -27,6 +28,7 @@ export interface OwnContext {
   closeOpen(c: Client): void;
   respawn(c: Client, index: number): number;
   readonly progression: Progression;
+  readonly rules: Rules;
   /** Recompute what follows from a record's stats, load and equipment. */
   refresh(rec: EntityRecord): void;
   /** Put `n` of what is in a slot on the ground by the body. False if that could not be done. */
@@ -99,6 +101,12 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     c.sentInv = inv.version;
     // What is carried changes how the body moves, and what it holds and wears is seen by others.
     if (c.ent >= 0) ctx.refresh(rec);
+  }
+  if (ctx.rules.version !== c.sentRules) {
+    const w = game.beginOwn(OWN_RULES);
+    w.u8(ctx.rules.values.damageNumbers !== 0 ? 1 : 0);
+    game.endOwn(c);
+    c.sentRules = ctx.rules.version;
   }
   if (rec.buffsVersion !== c.sentBuffs) {
     const w = game.beginOwn(OWN_BUFFS);

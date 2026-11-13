@@ -13,6 +13,8 @@ import { buildHud } from "./hud.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { UiFrame } from "./nodes.ts";
 import { buildMap, buildRespawn, respawnClick } from "./screens.ts";
+import { Settings } from "../settings.ts";
+import { buildSettings, settingsClick } from "./settings.ts";
 import { SESSION_CREATING, SESSION_DEAD } from "../../../shared/net/protocol.ts";
 
 export class Ui {
@@ -27,6 +29,9 @@ export class Ui {
   map = false;
   /** The character screen (stats, engrams, crafting) is up. */
   character = false;
+  /** The settings screen is up; and what it sets. */
+  options = false;
+  readonly settings = new Settings();
   /** The session is dead and choosing where to return: the mouse is free for that. */
   private dead = false;
   /** Content and palette, for naming and colouring items. Set by the app once it has them. */
@@ -40,7 +45,7 @@ export class Ui {
 
   /** The mouse should steer the camera (the shell holds pointer lock) rather than move a cursor. */
   get wantsPointerLock(): boolean {
-    return !this.console.open && !this.inventory.open && !this.map && !this.character && !this.dead && !this.creating;
+    return !this.console.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.dead && !this.creating;
   }
 
   /**
@@ -57,14 +62,16 @@ export class Ui {
     }
     if (!con.open) {
       // Screens leave the keyboard to the body: you can keep walking with them open.
-      if (code === "KeyI" || code === "KeyM" || code === "KeyP" || (code === "Escape" && (this.inventory.open || this.map || this.character))) {
+      if (code === "KeyI" || code === "KeyM" || code === "KeyP" || code === "KeyO" || (code === "Escape" && (this.inventory.open || this.map || this.character || this.options))) {
         if (down && !repeat) {
           // One screen at a time: opening one puts the others away.
           const map = code === "KeyM" && !this.map;
           const character = code === "KeyP" && !this.character;
+          const options = code === "KeyO" && !this.options;
           const inventory = code === "KeyI" && !this.inventory.open;
           this.map = map;
           this.character = character;
+          this.options = options;
           if (inventory) this.inventory.open = true;
           else this.inventory.close(session);
         }
@@ -110,6 +117,7 @@ export class Ui {
     }
     if (kind === 0 && respawnClick(key, session)) return;
     if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;
+    if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
 
@@ -135,6 +143,7 @@ export class Ui {
       else if (this.dead && session) buildRespawn(f, session);
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
+      else if (this.options) buildSettings(f, this.settings);
       else this.inventory.build(f, session, this.registry, this.palette);
     }
     if (session) this.console.absorb(session);

@@ -25,6 +25,7 @@ import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
+import { Rules } from "./rules.ts";
 import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
@@ -84,6 +85,9 @@ export interface Host {
   readonly death: Death;
   readonly combat: Combat;
   readonly buffs: Buffs;
+  readonly rules: Rules;
+  /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
+  setRule(name: string, value: number): boolean;
   readonly projectiles: Projectiles;
   readonly progression: Progression;
   /** Null for a world whose map has no resource nodes. */
@@ -150,7 +154,9 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const progression = new Progression(world, records, items, deadlines);
   const harvest = world.nodeField ? new Harvest(world, game, records, items, progression, deadlines, (opts.seed ?? 1) + 31) : null;
   const buffs = new Buffs(world, records, survival, deadlines);
-  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, harvest }, (opts.seed ?? 1) + 53);
+  const rules = new Rules();
+  if (persistence && !loaded!.fresh) rules.restore(persistence.store.meta("rules"));
+  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, harvest }, (opts.seed ?? 1) + 53);
   const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 71);
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   combat.onThrow = (c, rec, item, quality) => projectiles.lob(c, rec, item, quality);
@@ -306,7 +312,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     if (rec) survival.landed(rec, speed);
   };
   const own: OwnContext = {
-    world, game, records, items, survival, progression,
+    world, game, records, items, survival, progression, rules,
     openOf: (c) => death.openOf(c),
     closeOpen: (c) => death.close(c),
     respawn: (c, index) => death.respawn(c, index),
@@ -373,6 +379,12 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     death,
     combat,
     buffs,
+    rules,
+    setRule(name, value) {
+      if (!rules.set(name, value)) return false;
+      persistence?.store.setMeta("rules", rules.serialize());
+      return true;
+    },
     projectiles,
     progression,
     harvest,

@@ -195,6 +195,8 @@ export class Client {
   sentHeld = -2;
   /** The version of what is acting on its body that this connection has been sent; -1 for not yet. */
   sentBuffs = -1;
+  /** The version of the server's rules this connection has been told; -1 for not yet. */
+  sentRules = -1;
   /** Persistent id of the container this session has open, or 0; and what of it has been sent. */
   open = 0;
   sentOpen = 0;
@@ -239,6 +241,7 @@ export class Client {
     this.sentLook = null;
     this.sentHeld = -2;
     this.sentBuffs = -1;
+    this.sentRules = -1;
     this.open = this.sentOpen = 0;
     this.pressed = this.before = 0;
   }

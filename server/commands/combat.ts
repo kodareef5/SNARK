@@ -3,6 +3,10 @@
 import { parseNumber } from "../../shared/console.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { V_TORPOR } from "../../shared/sim/vitals.ts";
+import { SLOT_OF_ZONE, ZONE_COUNT, ZONE_NAMES } from "../../shared/anim/human.ts";
+import { PIECE_SCALE } from "../../shared/sim/damage.ts";
+import { QUALITY_MUL } from "../../shared/sim/items.ts";
+import { RULE_NAMES, type RuleName } from "../rules.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
 import type { Host } from "../host.ts";
 import type { EntityRecord } from "../records.ts";
@@ -77,6 +81,76 @@ export function addCombatCommands(con: Console): void {
           out.push(`${made} ${def.label ?? what}${made < n ? ` (${n - made} did not fit)` : ""}`);
         }
         return `gave ${out.join(", ")}`;
+      },
+    },
+    {
+      name: "armor",
+      usage: `<${TIERS.join("|")}|off>`,
+      help: "Put a full set of armor on yourself, in place of whatever you wear; or take off what you wear.",
+      admin: true,
+      run(ctx, args) {
+        const c = ctx.client;
+        const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
+        if (!c || !rec) return "this needs a survivor";
+        const tier = args[0] ?? "";
+        if (tier !== "off" && !TIERS.includes(tier)) return `no armor "${tier}"; one of ${TIERS.join(", ")}, or off`;
+        const items = ctx.host.items;
+        const inv = items.inv(rec);
+        if (inv.armor < 0) return "you cannot wear armor";
+        // What is worn now is destroyed, on the books; the new set is made, on the books.
+        for (let k = 0; k < PIECES.length; k++) if (inv.item[inv.armor + k] !== 0) items.burn(rec, inv.armor + k, 1);
+        if (tier === "off") return "armor off";
+        const reg = ctx.host.world.reg;
+        let worn = 0;
+        for (const piece of PIECES) if (dress(ctx.host, rec, reg.index.get(`core:${tier}_${piece}`)!)) worn++;
+        return worn === PIECES.length ? `wearing ${tier}` : `wearing ${worn} pieces of ${tier}; your bag had no room to make the rest`;
+      },
+    },
+    {
+      name: "hitzones",
+      usage: "",
+      help: "What a hit on each part of your body is multiplied by, the armor over each part, and the last blow the server resolved.",
+      admin: false,
+      run(ctx) {
+        const c = ctx.client;
+        const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
+        if (!c || !rec) return "this needs a survivor";
+        const reg = ctx.host.world.reg;
+        const zones = reg.zoneMul[rec.kind];
+        if (!zones) return "your body has no zones";
+        const inv = ctx.host.items.inv(rec);
+        const lines: string[] = [];
+        for (let z = 1; z < ZONE_COUNT; z++) {
+          const at = inv.armor >= 0 ? inv.armor + SLOT_OF_ZONE[z]! : -1;
+          const rating = at >= 0 && inv.item[at] !== 0 && inv.dur[at]! > 0 ? reg.armor[inv.item[at]!]! * (QUALITY_MUL[inv.quality[at]!] ?? 1) * PIECE_SCALE : 0;
+          lines.push(`${ZONE_NAMES[z]!.padEnd(11)} x${zones[z]}  armor ${Math.round(rating)}  takes ${Math.round((100 / (100 + rating)) * zones[z]! * 100)}%`);
+        }
+        const last = ctx.host.combat.last;
+        if (ctx.host.combat.hits > 0) lines.push(`last blow: ${Number(last.damage.toFixed(1))} to the ${ZONE_NAMES[last.zone] ?? "body"}, ${Number(last.blocked.toFixed(1))} stopped by armor${last.killed ? ", fatal" : ""}`);
+        return lines.join("\n");
+      },
+    },
+    {
+      name: "rule",
+      usage: "[name value]",
+      help: "Show the server's rules, or set one: playerDamage, creatureDamage, structureDamage, selfDamage (multipliers), headshots, damageNumbers (0 or 1).",
+      admin: true,
+      run(ctx, args) {
+        const rules = ctx.host.rules;
+        if (args.length === 0) return RULE_NAMES.map((name) => `${name} ${rules.values[name]}`).join("\n");
+        const value = parseNumber(args[1]);
+        if (args.length !== 2 || !ctx.host.setRule(args[0]!, value)) return `usage: rule <${RULE_NAMES.join("|")}> <0 to 100>`;
+        return `${args[0]} ${rules.values[args[0] as RuleName]}`;
+      },
+    },
+    {
+      name: "audit",
+      usage: "",
+      help: "Check every item in the world against the ledger of what was made and destroyed.",
+      admin: true,
+      run(ctx) {
+        const wrong = ctx.host.items.audit();
+        return wrong.length === 0 ? "the ledger balances" : wrong.join("\n");
       },
     },
     {

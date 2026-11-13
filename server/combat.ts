@@ -40,6 +40,7 @@ import type { Harvest } from "./harvest.ts";
 import { Past } from "./history.ts";
 import type { Items } from "./items.ts";
 import type { Progression } from "./progression.ts";
+import type { Rules } from "./rules.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { STAT_MELEE, statOf, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
@@ -62,6 +63,7 @@ export interface CombatContext {
   readonly progression: Progression;
   readonly creatures: Creatures;
   readonly buffs: Buffs;
+  readonly rules: Rules;
   readonly harvest: Harvest | null;
 }
 
@@ -504,7 +506,10 @@ export class Combat {
     hit.torporInstant = src.torporInstant;
     hit.torporOver = src.torporOver;
     hit.takes = reg.takes[vkind]?.[hit.type] ?? 1;
-    hit.zone = reg.zoneMul[vkind]?.[zone] ?? 1;
+    // The server's rules: whether where it landed matters, and what this pairing of who and whom is worth.
+    const rules = this.ctx.rules.values;
+    hit.zone = rules.headshots !== 0 ? (reg.zoneMul[vkind]?.[zone] ?? 1) : 1;
+    hit.rule = vkind !== this.survivor ? rules.creatureDamage : by === victim ? rules.selfDamage : rules.playerDamage;
     const vinv = victim.inv;
     let piece = -1;
     let worn = 0;
@@ -604,6 +609,7 @@ export class Combat {
     hit.draw = src.draw;
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
     hit.takes = takes[src.type]!;
+    hit.rule = this.ctx.rules.values.structureDamage;
     resolveDamage();
     if (!(harm.health > 0)) return 0;
     const before = t.hp[slot]!;

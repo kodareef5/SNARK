@@ -167,6 +167,8 @@ export const OWN_LOOK = 8;
 export const OWN_HELD = 9;
 /** What is acting on the body for a time: count u8, then for each a buff (u16 content index) and the tick it ends (u32; 0 for one with no end). */
 export const OWN_BUFFS = 10;
+/** The server's rules that a client acts on: flags u8 (bit 0: the damage of hits may be shown as numbers). */
+export const OWN_RULES = 11;
 
 export const MARKER_DEATH = 1;
 

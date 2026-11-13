@@ -50,8 +50,13 @@ two of the hundred are full clients.
 | Terrain tiles selected | 142 | 200 |
 | Structure draw calls within 256 m of a 2,000-piece base | 24 | 300 |
 | Triangles submitted | 314,816 | 1,500,000 |
+| 100 players shooting twice a second (arrows and rifle rounds), with 300,000 creatures in the world: tick, median / 99th percentile | 4.41 ms / 9.55 ms | 8 ms / 16 ms |
+| Fly 2,000 arrows one tick, median / 99th percentile | 0.83 ms / 3.82 ms | 2 ms / 4 ms |
+| One grenade blast in a 2,000-piece base, median / worst of 20 | 0.07 ms / 0.35 ms | 1 ms / 4 ms |
+| Client frame build with 300 survivors posed in view, median / 99th percentile | 0.47 ms / 0.92 ms | 4 ms / 8 ms |
 
-All 32 budgets are met. The 99th percentile tick uses 12% of the 33.3 ms step.
+The last four rows were added with round 3's combat, on the same machine and
+day, and the benchmark now holds 42 budgets. All are met. The 99th percentile tick uses 12% of the 33.3 ms step.
 
 ## What the results say
 

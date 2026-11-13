@@ -26,6 +26,7 @@ import {
   MAX_TEXT_BYTES,
   CMD_CREATE,
   OWN_BUFFS,
+  OWN_RULES,
   OWN_HELD,
   OWN_LOOK,
   OWN_MARKERS,
@@ -223,6 +224,8 @@ export class ClientSession {
    */
   readonly vitals = new Vitals();
   hasVitals = false;
+  /** A rule of the server's: the damage of hits may be shown as numbers. */
+  damageNumbers = true;
   /** What is acting on this client's body for a time: each a buff (content index) and the tick it ends (0 for no end). */
   readonly buffs: { buff: number; until: number }[] = [];
   /** Shots this client's own body fired, as its prediction has them, oldest first. Whoever draws them empties this. */
@@ -620,6 +623,10 @@ export class ClientSession {
       if (r.overflow) return;
       this.markers.length = 0;
       this.markers.push(...list);
+    } else if (component === OWN_RULES) {
+      const flags = r.u8();
+      if (r.overflow) return;
+      this.damageNumbers = (flags & 1) !== 0;
     } else if (component === OWN_BUFFS) {
       const n = r.u8();
       const got: { buff: number; until: number }[] = [];
