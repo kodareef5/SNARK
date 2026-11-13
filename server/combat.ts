@@ -176,20 +176,29 @@ export class Combat {
     return inv.hotbar >= 0 && rec.held >= 0 && inv.item[inv.hotbar + rec.held] !== 0 ? inv.hotbar + rec.held : -1;
   }
 
+  /** A creature's bite landed: what is in front of its jaws is hit, as by any blow. */
+  bite(e: number): void {
+    const rec = this.ctx.records.byPid.get(this.ctx.world.ents.pid[e]!);
+    if (rec) this.strikeBy(e, rec, null);
+  }
+
   /** A swing landed: find what is in front, and hit it. */
   private strike(c: Client): void {
-    const { world, records, items, harvest } = this.ctx;
-    const rec = records.byPid.get(c.pid);
-    if (!rec) return;
+    const rec = this.ctx.records.byPid.get(c.pid);
+    if (rec) this.strikeBy(c.ent, rec, c);
+  }
+
+  /** The blow of body `e`, whose record is `rec`: a survivor's (`c` its session) with what it holds, or a creature's with what it is. */
+  private strikeBy(e: number, rec: EntityRecord, c: Client | null): void {
+    const { world, items, harvest } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
-    const e = c.ent;
     const kind = ents.kind[e]!;
-    // What it swings: the thing in its hands if that is for swinging and not worn out, or its bare hands.
-    const inv = items.inv(rec);
-    const slot = this.heldSlot(rec);
-    let item = slot >= 0 ? inv.item[slot]! : 0;
-    if (item !== 0 && (reg.weapon[item]?.kind !== W_MELEE || (reg.uses[item]! > 0 && inv.dur[slot]! === 0))) item = 0;
+    // What it swings: the thing in its hands if that is for swinging and not worn out, or its bare hands. A creature has only itself.
+    const inv = c ? items.inv(rec) : null;
+    const slot = inv ? this.heldSlot(rec) : -1;
+    let item = inv && slot >= 0 ? inv.item[slot]! : 0;
+    if (inv && item !== 0 && (reg.weapon[item]?.kind !== W_MELEE || (reg.uses[item]! > 0 && inv.dur[slot]! === 0))) item = 0;
     const reach = reg.reach[item !== 0 ? item : kind]!;
     const d = this.dir;
     lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
@@ -208,7 +217,7 @@ export class Combat {
     src.item = item;
     src.base = reg.damage[item !== 0 ? item : kind]!;
     src.type = item !== 0 ? reg.damageType[item]! : DMG_MELEE;
-    src.quality = item !== 0 ? (QUALITY_MUL[inv.quality[slot]!] ?? 1) : 1;
+    src.quality = inv && item !== 0 ? (QUALITY_MUL[inv.quality[slot]!] ?? 1) : 1;
     src.draw = 1;
     src.attack = statOf(reg.defs[kind] as SpeciesDef, rec.genome, STAT_MELEE, 1);
     src.torporInstant = src.torporOver = src.torporSeconds = 0;
@@ -219,7 +228,7 @@ export class Combat {
       this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
       // A blow wears what struck it.
       if (wears) items.wear(rec, slot, 1);
-    } else if (what === HIT_NODE && harvest) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
+    } else if (what === HIT_NODE && harvest && c) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
     else if (what === HIT_STRUCTURE && this.hitStructure(src, ref, ox + d[0]! * worldT, oy + d[1]! * worldT, oz + d[2]! * worldT) > 0 && wears) items.wear(rec, slot, 1);
   }
 
@@ -570,7 +579,7 @@ export class Combat {
     last.wear = hit.armor > 0 ? harm.wear : 0;
     last.killed = killed;
     if (!killed && (ents.flags[target]! & F_ALIVE) !== 0) {
-      creatures.provoke(target, ax, az);
+      creatures.provoke(target, ax, az, by ? (records.entOf.get(by.pid) ?? -1) : -1);
       // What the hit leaves behind: torpor at once, torpor to come as a dose, and whatever the round carries. Armor that stopped the harm stopped these in the same measure.
       const from = by ? by.pid : 0;
       if (harm.torpor > 0) survival.add(victim, V_TORPOR, harm.torpor);

@@ -61,6 +61,23 @@ export interface SpeciesDef {
   readonly killXp?: number;
   /** It stands where it is put and does nothing: a target to practise on. */
   readonly still?: boolean;
+  /**
+   * What it does about others: runs from what hurts it ("flees", the
+   * default), goes for what hurts it ("defends"), or goes for any survivor it
+   * sees ("hunts").
+   */
+  readonly temper?: "flees" | "defends" | "hunts";
+  /** How far off it notices what it hunts, metres. Defaults to 20. */
+  readonly sight?: number;
+  /** How far from where a hunt began it will be led before it gives up, metres. Defaults to 60. */
+  readonly leash?: number;
+  /**
+   * Its bite, for the damage its `fists` say: how far from its eye it reaches
+   * (past its own length), the ticks one takes and the tick of those on which
+   * it lands. Defaults to its attack clip's length and two fifths of the way
+   * through.
+   */
+  readonly bite?: { readonly reach: number; readonly ticks?: number; readonly lands?: number };
   /** Torpor it loses each second. Defaults to 1. Its most is its torpidity stat; a species without that stat cannot be knocked out. */
   readonly torporDrain?: number;
 }

@@ -70,6 +70,7 @@ test("tranquilizer arrows: torpor at once and more to come, a creature goes down
   const g = spawn("grazer", 8, 1);
   const ents = h.world.ents;
   // It is held still for the test: a grazer wanders, and runs when hurt.
+  h.host.creatures.mind.stay(g.e, h.world.tick + 1e6);
   survival.gods.add(g.rec.pid);
   const slot = arm("bow", "bow", 400);
   // Tranquilizer arrows, not stone ones.
@@ -83,7 +84,11 @@ test("tranquilizer arrows: torpor at once and more to come, a creature goes down
   const health = survival.value(g.rec, V_HEALTH);
   let shots = 0;
   // Arrows until it drops. Each does 20 to its body: 40 torpor at once and 50 more over five seconds.
-  while (!g.rec.out && shots < 12) {
+  let tries = 0;
+  while (!g.rec.out && shots < 12 && tries++ < 40) {
+    // (Hurt, it runs, and faster than an arrow can be led by aiming where it is: it is stood still again before each.)
+    h.host.creatures.mind.stay(g.e, h.world.tick + 1e6);
+    h.run(300);
     aim(pilot, Math.hypot(ents.x[g.e]! - ents.x[h.ent(s)]!, ents.z[g.e]! - ents.z[h.ent(s)]!), 0.9);
     pilot.yaw = Math.atan2(ents.x[g.e]! - ents.x[h.ent(s)]!, ents.z[g.e]! - ents.z[h.ent(s)]!);
     const before = h.host.combat.hits;

@@ -1,4 +1,6 @@
-// Creatures: spawning, dormancy, and a placeholder wander behaviour.
+// Creatures: spawning, dormancy, and stepping. What each decides to do is
+// server/behavior.ts; here it is done, by the movement and the action step
+// everything is driven through.
 //
 // The cost model, which later AI must keep:
 //   - A chunk is awake while a player is within `wakeRadius` chunks of it.
@@ -12,6 +14,9 @@
 
 import { TICK_DT, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { Body, MODE_SWIM, stepBody } from "../shared/sim/character.ts";
+import { ACT_NONE, actionOut, stepAction } from "../shared/sim/weapon.ts";
+import { Behavior } from "./behavior.ts";
+import type { GameServer } from "./game.ts";
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import { rollWild } from "../shared/sim/genome.ts";
 import { Rng } from "../shared/rng.ts";
@@ -20,8 +25,6 @@ import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** How long a creature that was hurt runs for. */
-const FLEE_TICKS = 150;
 /** Palette indices wild creatures may roll for a colour region. */
 const WILD_COLORS = [3, 5, 6, 7, 9, 12, 15];
 
@@ -41,13 +44,15 @@ export class Creatures {
   private readonly awakeSlot: Int32Array;
   /** Players keeping each chunk awake. */
   private readonly chunkRefs: Uint16Array;
-  private readonly aiNext: Uint32Array;
-  private readonly aiMove: Int8Array;
+  /** What each creature has decided to do. */
+  readonly mind: Behavior;
+  /** Called when a creature's bite lands, with its entity: whoever resolves blows finds what it hit. */
+  onStrike: ((e: number) => void) | null = null;
   /** 1 for kinds that stand where they are put. */
   private readonly still: Uint8Array;
   private readonly body = new Body();
 
-  constructor(world: ServerWorld, records: Records, survival: Survival, seed: number, wakeRadius = 3) {
+  constructor(world: ServerWorld, game: GameServer, records: Records, survival: Survival, seed: number, wakeRadius = 3) {
     this.world = world;
     this.records = records;
     this.survival = survival;
@@ -57,21 +62,15 @@ export class Creatures {
     this.awake = new Int32Array(cap);
     this.awakeSlot = new Int32Array(cap).fill(-1);
     this.chunkRefs = new Uint16Array(chunkCount(world.dims));
-    this.aiNext = new Uint32Array(cap);
-    this.aiMove = new Int8Array(cap);
+    this.mind = new Behavior(world, game, seed + 7);
     this.still = Uint8Array.from(world.reg.defs, (d) => (d?.type === "species" && d.still ? 1 : 0));
   }
 
-  /**
-   * Something at (x, z) hurt creature `e`. For now every creature does the
-   * same: it runs the other way for a few seconds. Behaviour proper replaces this.
-   */
-  provoke(e: number, x: number, z: number): void {
+  /** Something at (x, z) hurt creature `e`; `by` is the entity that did it, or -1. What it does about it is its temper's. */
+  provoke(e: number, x: number, z: number, by = -1): void {
     const ents = this.world.ents;
-    if (this.awakeSlot[e]! < 0 || this.still[ents.kind[e]!]) return;
-    ents.yaw[e] = Math.round((Math.atan2(ents.x[e]! - x, ents.z[e]! - z) / (Math.PI * 2)) * 65536) & 0xffff;
-    this.aiMove[e] = 127;
-    this.aiNext[e] = this.world.tick + FLEE_TICKS;
+    if (this.awakeSlot[e]! < 0 || this.still[ents.kind[e]!] || ents.driven[e] !== 0) return;
+    this.mind.provoke(e, x, z, by);
   }
 
   /** Create a wild creature with a rolled genome. Returns its entity index, or -1 if there is no room. */
@@ -101,8 +100,7 @@ export class Creatures {
     refreshMods(this.world.reg, ents, e, rec.genome);
     ents.setLook(e, rec.genome ? rec.genome.level : 1, rec.genome ? rec.genome.colors : null, rec.name);
     this.records.entOf.set(rec.pid, e);
-    this.aiNext[e] = 0;
-    this.aiMove[e] = 0;
+    this.mind.reset(e);
     // New bodies start full; loaded ones keep their numbers and get their deadline back.
     if (rec.vitals) this.survival.restore(rec, true);
     else this.survival.init(rec);
@@ -134,31 +132,38 @@ export class Creatures {
     const world = this.world;
     const ents = world.ents;
     const b = this.body;
-    const rng = this.rng;
+    const mind = this.mind;
     let stepped = 0;
     for (let n = this.awakeCount - 1; n >= 0; n--) {
       const e = this.awake[n]!;
       // A session's inputs are driving it: it is stepped with that session's body, not here.
       if (ents.driven[e] !== 0) continue;
-      if (this.still[ents.kind[e]!]) {
+      const kind = ents.kind[e]!;
+      if (this.still[kind]) {
         // It stands; it only falls, if it was put down in the air.
         if ((ents.flags[e]! & F_GROUNDED) !== 0) continue;
-      } else if (tick >= this.aiNext[e]!) {
-        // Wander: pick a heading and walk, or stand, for a few seconds.
-        this.aiMove[e] = rng.int(3) === 0 ? 0 : 90;
-        ents.yaw[e] = rng.int(65536);
-        this.aiNext[e] = tick + 30 + rng.int(150);
-      }
+      } else mind.steer(e, tick, ents.act[e]!);
       const flags = ents.flags[e]!;
-      const move = this.aiMove[e]!;
-      // At rest on the ground or afloat: nothing would change, so nothing is computed.
-      if (move === 0 && ents.vx[e] === 0 && ents.vz[e] === 0 && ((flags & F_GROUNDED) !== 0 || (ents.mode[e] === MODE_SWIM && ents.vy[e] === 0))) continue;
+      const move = mind.move[e]!;
+      const pressed = mind.pressed[e]!;
+      // At rest on the ground or afloat, doing nothing and asked for nothing: nothing would change, so nothing is computed.
+      if (move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (ents.mode[e] === MODE_SWIM && ents.vy[e] === 0))) continue;
       ents.loadBody(e, b);
-      stepBody(world, b, 0, move, ents.yaw[e]!, 0, 0, world.reg.move[ents.kind[e]!]!, TICK_DT);
+      const buttons = mind.buttons[e]! | pressed;
+      stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, world.reg.move[kind]!, TICK_DT);
+      // Its jaws, if it has any, through the step every blow goes through.
+      const jaws = world.reg.weapon[kind];
+      let struck = false;
+      if (jaws) {
+        stepAction(b, buttons, pressed, jaws);
+        struck = actionOut.strike;
+      }
       stepped++;
       // Walking into a sleeping chunk puts the creature to sleep there.
       const crossed = ents.storeBody(e, b);
-      ents.pose(e);
+      ents.pitch[e] = mind.pitch[e]!;
+      ents.pose(e, tick);
+      if (struck) this.onStrike?.(e);
       if (crossed && this.chunkRefs[ents.chunk[e]!] === 0) this.sleep(e);
     }
     this.stepped = stepped;

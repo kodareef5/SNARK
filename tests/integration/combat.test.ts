@@ -307,6 +307,9 @@ test("killing a creature gives the killer what it yields and the experience of i
   const z0 = ents.z[e]!;
   h.run(1500);
   expect(ents.z[e]! - z0).toBeGreaterThan(3);
+  // (It is made to stand, so that it can be reached: it runs faster than a survivor swings.)
+  h.host.creatures.mind.stay(e, h.world.tick + 1e6);
+  h.run(400);
   // Brought to its last point and struck again, it dies, and the killer has its hide and meat.
   h.host.survival.add(grec, V_HEALTH, -(h.host.survival.value(grec, V_HEALTH) - 1));
   h.say(s, `tp ${ents.x[e]!.toFixed(3)} ${(ents.z[e]! - 1.3).toFixed(3)}`, 60);

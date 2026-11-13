@@ -100,6 +100,10 @@ export interface Registry {
   readonly isBed: Uint8Array;
   /** Per species: the speed from which it is seen to run and not walk, metres per second. */
   readonly runAt: Float32Array;
+  /** Per species: its temper (0 flees, 1 defends, 2 hunts), how far it sees what it hunts and how far it will be led, metres. */
+  readonly temper: Uint8Array;
+  readonly sight: Float32Array;
+  readonly leash: Float32Array;
   /** Per item: ticks one of it burns (0: it is no fuel); what it becomes over a fire (0: nothing) and the ticks that takes. */
   readonly fuelTicks: Uint16Array;
   readonly cooksInto: Uint16Array;
@@ -326,6 +330,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const burning = new Uint8Array(n);
   const isBed = new Uint8Array(n);
   const runAt = new Float32Array(n);
+  const temper = new Uint8Array(n);
+  const sight = new Float32Array(n);
+  const leash = new Float32Array(n);
   const fuelTicks = new Uint16Array(n);
   const cooksInto = new Uint16Array(n);
   const cookTicks = new Uint16Array(n);
@@ -428,7 +435,17 @@ export function compileContent(input: readonly Def[]): CompileResult {
     if (d.type === "structure" && d.opens !== undefined) opens[i] = index.get(d.opens)!;
     if (d.type === "structure" && d.lights !== undefined) lights[i] = index.get(d.lights)!;
     // Half as fast again as it walks, it is running.
-    if (d.type === "species") runAt[i] = d.walkSpeed * 1.5;
+    if (d.type === "species") {
+      runAt[i] = d.walkSpeed * 1.5;
+      temper[i] = Math.max(0, ["flees", "defends", "hunts"].indexOf(d.temper ?? "flees"));
+      sight[i] = d.sight ?? 20;
+      leash[i] = d.leash ?? 60;
+      // Its jaws are what it swings: one bite a blow, as long as its clip, landing part way through.
+      if (d.bite) {
+        reach[i] = d.bite.reach;
+        weapon[i] = { kind: W_MELEE, hold: HOLD_HANDS, swingTicks: d.bite.ticks ?? 27, strikeTick: d.bite.lands ?? 11, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true };
+      }
+    }
     if (d.type === "item") {
       fuelTicks[i] = Math.round((d.fuel ?? 0) * TICK_RATE);
       if (d.cooks) {
@@ -446,7 +463,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
   for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
   // And a fire that is burning, as the fire it is.
   for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

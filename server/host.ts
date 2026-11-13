@@ -164,7 +164,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     if (wrong.length > 0 && !opts.allowLedgerMismatch) throw new Error("the item ledger does not balance:\n" + wrong.join("\n"));
     persistence.ledger = items;
   }
-  const creatures = new Creatures(world, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
+  const creatures = new Creatures(world, game, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
   /** Chunk each session's focus is keeping awake. */
   const focus = new Map<number, number>();
   const recordOf = (name: string) => {
@@ -185,6 +185,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const rules = new Rules();
   if (persistence && !loaded!.fresh) rules.restore(persistence.store.meta("rules"));
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, harvest }, (opts.seed ?? 1) + 53);
+  // A creature's bite is a blow like any other.
+  creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const chat = new Chat({ game, records, rules, tribes });

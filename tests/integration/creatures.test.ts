@@ -9,6 +9,8 @@ import { F_AWAKE } from "../../shared/sim/entities.ts";
 import { V_FOOD, V_HEALTH } from "../../shared/sim/vitals.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { Harness } from "../fixtures/net.ts";
+import { MIND_FLEE, MIND_HUNT, MIND_WANDER, TEMPER_DEFENDS, TEMPER_FLEES, TEMPER_HUNTS } from "../../server/behavior.ts";
+import { flatGround } from "../fixtures/arena.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-creatures-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -123,4 +125,126 @@ test("creatures keep their genome, hunger and place across a restart", () => {
     expect(h2.world.ents.z[e]).toBeCloseTo(r.z, 3);
   }
   h2.host.shutdown();
+});
+
+const reg = compileContent(CORE_CONTENT).registry!;
+
+test("a raptor goes for a survivor it sees, runs it down and bites; led too far from where it began it gives up, rests, and loses what it cannot see", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const ada = h.join("ada");
+  h.run(500);
+  h.say(ada, "enablecheats");
+  const g = flatGround(h, 120, 24);
+  const [x0, z0] = [g.x + 8, g.z + 12];
+  h.say(ada, `tp ${x0.toFixed(3)} ${z0.toFixed(3)}`);
+  const ents = h.world.ents;
+  const mind = h.host.creatures.mind;
+  const combat = h.host.combat;
+  const me = (): number => h.ent(ada);
+  const rec = h.host.records.byPid.get(h.client(ada)!.pid)!;
+  // Sixteen metres off, in the open: within its sight.
+  const e = h.host.spawnCreature("core:raptor", x0 + 16, z0, 1);
+  const raptor = h.host.records.byPid.get(ents.pid[e]!)!;
+  const far = (): number => Math.hypot(ents.x[e]! - ents.x[me()]!, ents.z[e]! - ents.z[me()]!);
+  expect([reg.temper[ents.kind[e]!], reg.sight[ents.kind[e]!], reg.leash[ents.kind[e]!]]).toEqual([TEMPER_HUNTS, 22, 60]);
+  // It thinks twice a second: within a second it is after her, and looking at her.
+  h.run(1000);
+  expect([mind.mind[e], mind.targetOf(e), mind.hunts]).toEqual([MIND_HUNT, me(), 1]);
+  // It runs her down and bites: the blow is its own, through the one damage function, and takes what its jaws do.
+  const full = h.host.survival.value(rec, V_HEALTH);
+  let ran = 0;
+  for (let k = 0; k < 40 && h.host.survival.value(rec, V_HEALTH) >= full; k++) {
+    h.run(250);
+    ran = Math.max(ran, Math.hypot(ents.vx[e]!, ents.vz[e]!));
+  }
+  expect(full - h.host.survival.value(rec, V_HEALTH)).toBeGreaterThan(10);
+  expect([combat.last.by, combat.last.victim, mind.bites > 0]).toEqual([raptor.pid, rec.pid, true]);
+  expect(far()).toBeLessThan(3.2);
+  // It ran at her (faster than it walks), and stopped to bite.
+  expect(ran).toBeGreaterThan(reg.move[ents.kind[e]!]!.walkSpeed * 1.5);
+  // She is kept alive for the rest.
+  h.host.survival.gods.add(rec.pid);
+
+  // Led away east, twelve metres ahead of it at a time: it follows, until it is sixty metres from where it began; then it gives up, with her still in plain sight.
+  let led = 0;
+  for (let k = 0; k < 60 && mind.mind[e] === MIND_HUNT; k++) {
+    h.say(ada, `tp ${(ents.x[e]! + 12).toFixed(3)} ${z0.toFixed(3)}`, 60);
+    h.run(500);
+    led = ents.x[e]! - (x0 + 16);
+  }
+  expect([mind.mind[e], mind.gaveUp]).toEqual([MIND_WANDER, 1]);
+  expect(led).toBeGreaterThan(55);
+  expect(led).toBeLessThan(72);
+  expect(far()).toBeLessThan(22);
+  // It wants a rest before another hunt: for some seconds it leaves her be, though she stands in front of it. Then it is after her again.
+  h.run(3000);
+  expect(mind.hunts).toBe(1);
+  h.run(5000);
+  expect([mind.mind[e], mind.hunts]).toEqual([MIND_HUNT, 2]);
+  // Out of its sight (far off), it loses her.
+  h.say(ada, `tp ${(x0).toFixed(3)} ${z0.toFixed(3)}`, 60);
+  h.run(1500);
+  expect([mind.mind[e], mind.gaveUp, far() > 40]).toEqual([MIND_WANDER, 2, true]);
+  expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a hunter does not see through what is built; a parasaur runs from what hurts it and bites nobody; one that only defends itself leaves a survivor be until it is hurt", () => {
+  const wary = CORE_CONTENT.find((d) => d.id === "core:raptor")!;
+  const { registry } = compileContent([...CORE_CONTENT, { ...wary, id: "core:raptor_wary", temper: "defends" } as (typeof CORE_CONTENT)[number]]);
+  const h = new Harness({}, 1, 60, { dev: true }, registry!);
+  const ada = h.join("ada");
+  h.run(500);
+  h.say(ada, "enablecheats");
+  const g = flatGround(h, 60, 40);
+  const [x0, z0] = [g.x + 30, g.z + 6];
+  h.say(ada, `tp ${x0.toFixed(3)} ${z0.toFixed(3)}`);
+  const ents = h.world.ents;
+  const mind = h.host.creatures.mind;
+  const rec = h.host.records.byPid.get(h.client(ada)!.pid)!;
+  h.host.survival.gods.add(rec.pid);
+  const me = h.ent(ada);
+  // A wall five pieces long, four metres in front of her; a raptor ten metres beyond it.
+  const wall = registry!.index.get("core:wall_wood")!;
+  const walls = [-2, -1, 0, 1, 2].map((k) => h.world.structs.add(wall, x0 + k * 3, g.y + 1.5, z0 + 4, 0, 0, 10000));
+  const hunter = h.host.spawnCreature("core:raptor", x0, z0 + 14, 1);
+  mind.stay(hunter, h.world.tick + 60);
+  h.run(2500);
+  expect([mind.mind[hunter], mind.hunts]).toEqual([MIND_WANDER, 0]);
+  // The wall gone, it sees her at once.
+  mind.stay(hunter, h.world.tick + 30);
+  for (const ref of walls) h.world.structs.remove(ref);
+  h.run(2000);
+  expect([mind.mind[hunter], mind.targetOf(hunter)]).toEqual([MIND_HUNT, me]);
+  h.host.creatures.remove(hunter);
+
+  // A parasaur stands six metres off and does nothing about her. Hurt, it runs the other way, fast, and bites nobody.
+  const para = h.host.spawnCreature("core:parasaur", x0, z0 + 8, 1);
+  expect(registry!.temper[ents.kind[para]!]).toBe(TEMPER_FLEES);
+  mind.stay(para, h.world.tick + 90);
+  h.run(2000);
+  expect(mind.mind[para]).toBe(MIND_WANDER);
+  const bites = mind.bites;
+  h.host.creatures.provoke(para, ents.x[me]!, ents.z[me]!, me);
+  expect(mind.mind[para]).toBe(MIND_FLEE);
+  h.run(4000);
+  expect(ents.z[para]! - (z0 + 8)).toBeGreaterThan(12);
+  expect(mind.bites).toBe(bites);
+  // After a few seconds it has stopped running.
+  h.run(2500);
+  expect(mind.mind[para]).toBe(MIND_WANDER);
+  h.host.creatures.remove(para);
+
+  // One that only defends itself: it sees her and leaves her be. Hurt by her, it goes for her.
+  const w = h.host.spawnCreature("core:raptor_wary", x0 + 6, z0 + 6, 1);
+  expect(registry!.temper[ents.kind[w]!]).toBe(TEMPER_DEFENDS);
+  mind.stay(w, h.world.tick + 30);
+  h.run(3000);
+  expect(mind.mind[w]).toBe(MIND_WANDER);
+  h.host.creatures.provoke(w, ents.x[me]!, ents.z[me]!, me);
+  expect([mind.mind[w], mind.targetOf(w)]).toEqual([MIND_HUNT, me]);
+  // What it hunts dies: it has nothing to hunt, and wanders.
+  h.host.survival.gods.delete(rec.pid);
+  h.say(ada, "suicide");
+  h.run(1500);
+  expect(mind.mind[w]).toBe(MIND_WANDER);
 });
