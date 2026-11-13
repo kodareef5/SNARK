@@ -7,7 +7,7 @@ import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../cli
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPAWN_PANEL } from "../../client/core/ui/screens.ts";
-import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TITLE } from "../../client/core/ui/character.ts";
+import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder } from "../../client/core/ui/character.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_USE, MARKER_DEATH, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
@@ -434,37 +434,71 @@ test("the respawn and map screens fit every window shape, and a click on a place
   }
 });
 
-test("the character screen fits every window shape and its buttons send what they say", () => {
+test("the character screen fits every window shape on every tab and page, and its buttons send what they say", () => {
   const engram = (name: string) => reg.index.get(name)!;
-  const engrams = reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : []));
+  const engrams = engramOrder(reg);
   const recipes = reg.defs.flatMap((d, k) => (d?.type === "recipe" ? [k] : []));
   for (const [name, aspect] of ASPECTS) {
     const { session, sent } = fakeSession(new Inventory(40));
     Object.assign(session, {
       sessionState: SESSION_ALIVE,
       ownKind: reg.index.get("core:survivor")!,
-      progress: { xp: 99999, level: 20, statPoints: 19, engramPoints: 250, engrams: [engram("core:engram-pick"), engram("core:engram-hatchet")], jobs: [{ recipe: reg.index.get("core:make-hatchet")!, left: 3, doneAt: 5 }], version: 1 },
+      // Level 20 with every engram learned but two: the lists are as long as they get.
+      progress: { xp: 99999, level: 20, statPoints: 19, engramPoints: 250, engrams: engrams.filter((e) => e !== engram("core:engram-waterskin") && e !== engram("core:engram-rifle")), jobs: [{ recipe: reg.index.get("core:make-hatchet")!, left: 3, doneAt: 5 }], version: 1 },
     });
     const ui = new Ui();
     ui.registry = reg;
     expect(ui.key("KeyP", true, false, session)).toBe(true);
     expect(ui.wantsPointerLock).toBe(false);
-    ui.build(aspect, fullHud(), session);
     const f = ui.frame;
-    for (let i = 0; i < f.count; i++) {
-      const n = f.nodes[i]!;
-      const where = `${name} key=${n.key}`;
-      expect(n.x, where).toBeGreaterThanOrEqual(-0.01);
-      expect(n.y, where).toBeGreaterThanOrEqual(-0.01);
-      expect(n.x + n.w, where).toBeLessThanOrEqual(f.width + 0.01);
-      expect(n.y + n.h, where).toBeLessThanOrEqual(f.height + 0.01);
-      if (n.key >= KEY_CHAR_PANEL && n.kind === K_TEXT) expect(textWidth(n.text, n.style), where).toBeLessThanOrEqual(n.w + 0.01);
-      for (let j = i + 1; j < f.count; j++) {
-        const q = f.nodes[j]!;
-        if (n.interactive && q.interactive) expect(overlaps(f, i, j), where).toBe(false);
-        if (n.key >= KEY_CHAR_PANEL && q.key >= KEY_CHAR_PANEL && n.kind === K_TEXT && q.kind === K_TEXT) expect(overlaps(f, i, j), `${where} and ${q.key}`).toBe(false);
+    const fits = (where: string): void => {
+      for (let i = 0; i < f.count; i++) {
+        const n = f.nodes[i]!;
+        const at = `${where} key=${n.key}`;
+        expect(n.x, at).toBeGreaterThanOrEqual(-0.01);
+        expect(n.y, at).toBeGreaterThanOrEqual(-0.01);
+        expect(n.x + n.w, at).toBeLessThanOrEqual(f.width + 0.01);
+        expect(n.y + n.h, at).toBeLessThanOrEqual(f.height + 0.01);
+        if (n.key >= KEY_CHAR_PANEL && n.kind === K_TEXT) expect(textWidth(n.text, n.style), at).toBeLessThanOrEqual(n.w + 0.01);
+        for (let j = i + 1; j < f.count; j++) {
+          const q = f.nodes[j]!;
+          if (n.interactive && q.interactive) expect(overlaps(f, i, j), at).toBe(false);
+          if (n.key >= KEY_CHAR_PANEL && q.key >= KEY_CHAR_PANEL && n.kind === K_TEXT && q.kind === K_TEXT) expect(overlaps(f, i, j), `${at} and ${q.key}`).toBe(false);
+        }
       }
+    };
+    /** Find a row by going through the pages of the tab shown; returns whether it was found, leaving its page up. */
+    const seek = (key: number): boolean => {
+      for (ui.sheet.page = 0; ; ui.sheet.page++) {
+        ui.build(aspect, fullHud(), session);
+        if (f.find(key)) return true;
+        if (ui.sheet.page >= ui.sheet.pages - 1) return false;
+      }
+    };
+    // Every tab, every page.
+    const seen = new Set<number>();
+    for (let tab = 0; tab < 3; tab++) {
+      ui.pointer(0, KEY_CHAR_TAB + tab, 0, 0, 0, session);
+      expect(ui.sheet.page).toBe(0);
+      ui.build(aspect, fullHud(), session);
+      for (let page = 0; page < ui.sheet.pages; page++) {
+        ui.build(aspect, fullHud(), session);
+        fits(`${name} tab ${tab} page ${page}`);
+        for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CHAR_STAT) seen.add(f.nodes[i]!.key);
+        if (page + 1 < ui.sheet.pages) ui.pointer(0, KEY_CHAR_PAGE + 1, 0, 0, 0, session);
+      }
+      // The pager stops at the last page and at the first.
+      ui.pointer(0, KEY_CHAR_PAGE + 1, 0, 0, 0, session);
+      expect(ui.sheet.page).toBe(ui.sheet.pages - 1);
+      for (let i = 0; i < 40; i++) ui.pointer(0, KEY_CHAR_PAGE, 0, 0, 0, session);
+      expect(ui.sheet.page).toBe(0);
     }
+    // Between them the pages showed every engram's row, and nothing twice on one page (the fit check).
+    for (let n = 0; n < engrams.length; n++) expect(seen.has(KEY_CHAR_ENGRAM + n * 2)).toBe(true);
+    expect(ui.sheet.pages).toBeGreaterThanOrEqual(1);
+
+    ui.pointer(0, KEY_CHAR_TAB, 0, 0, 0, session);
+    ui.build(aspect, fullHud(), session);
     expect(f.find(KEY_CHAR_TITLE)!.text).toBe("Level 20  99999 xp");
     expect(f.find(KEY_CHAR_POINTS)!.text).toBe("19 stat points  250 engram points");
     expect(f.find(KEY_CHAR_JOBS)!.text).toBe("making hatchet (3 to go)");
@@ -473,20 +507,36 @@ test("the character screen fits every window shape and its buttons send what the
     expect(f.find(KEY_CHAR_STAT + speed * 2)!.text).toBe("speed");
     expect(f.find(KEY_CHAR_STAT + speed * 2 + 1)!.text).toBe("+");
     expect(f.find(KEY_CHAR_STAT + STAT_NAMES.indexOf("torpidity") * 2)).toBeNull();
-    // Known engrams say so and offer nothing; the third can be learned; only recipes of known engrams are listed.
+    // The stats tab shows no engrams.
+    expect(f.find(KEY_CHAR_ENGRAM)).toBeNull();
+    ui.pointer(0, KEY_CHAR_STAT + speed * 2 + 1, 0, 0, 0, session);
+    ui.pointer(0, KEY_CHAR_STAT + speed * 2, 0, 0, 0, session); // the line, not the button
+
+    // Engrams, lowest level first: known ones say so and offer nothing; one within reach can be learned; one too high cannot.
+    ui.pointer(0, KEY_CHAR_TAB + 1, 0, 0, 0, session);
+    expect((reg.defs[engrams[0]!] as { level: number }).level).toBe(1);
     const pickEngram = engrams.indexOf(engram("core:engram-pick"));
+    expect(seek(KEY_CHAR_ENGRAM + pickEngram * 2)).toBe(true);
     expect(f.find(KEY_CHAR_ENGRAM + pickEngram * 2)!.text).toBe("Stone pick: known");
     expect(f.find(KEY_CHAR_ENGRAM + pickEngram * 2 + 1)).toBeNull();
-    const third = engrams.indexOf(engram("core:engram-waterskin"));
-    expect(f.find(KEY_CHAR_ENGRAM + third * 2 + 1)!.text).toBe("learn");
-    const pickRow = recipes.indexOf(reg.index.get("core:make-pick")!);
-    expect(f.find(KEY_CHAR_RECIPE + pickRow * 2)!.text.startsWith("pick: 1 stone, 1 wood")).toBe(true);
-    expect(f.find(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:make-waterskin")!) * 2)).toBeNull();
+    const skin = engrams.indexOf(engram("core:engram-waterskin"));
+    expect(seek(KEY_CHAR_ENGRAM + skin * 2)).toBe(true);
+    expect(f.find(KEY_CHAR_ENGRAM + skin * 2 + 1)!.text).toBe("learn");
+    ui.pointer(0, KEY_CHAR_ENGRAM + skin * 2 + 1, 0, 0, 0, session);
+    const rifle = engrams.indexOf(engram("core:engram-rifle"));
+    expect(seek(KEY_CHAR_ENGRAM + rifle * 2)).toBe(true);
+    expect(f.find(KEY_CHAR_ENGRAM + rifle * 2)!.text).toBe("Long rifle: level 35, 18 points");
+    expect(f.find(KEY_CHAR_ENGRAM + rifle * 2 + 1)).toBeNull();
 
-    ui.pointer(0, KEY_CHAR_STAT + speed * 2 + 1, 0, 0, 0, session);
-    ui.pointer(0, KEY_CHAR_ENGRAM + third * 2 + 1, 0, 0, 0, session);
+    // Making: only what a known engram unlocks.
+    ui.pointer(0, KEY_CHAR_TAB + 2, 0, 0, 0, session);
+    const pickRow = recipes.indexOf(reg.index.get("core:make-pick")!);
+    expect(seek(KEY_CHAR_RECIPE + pickRow * 2)).toBe(true);
+    expect(f.find(KEY_CHAR_RECIPE + pickRow * 2)!.text.startsWith("pick: 1 stone, 1 wood")).toBe(true);
     ui.pointer(0, KEY_CHAR_RECIPE + pickRow * 2 + 1, 0, 0, 0, session);
-    ui.pointer(0, KEY_CHAR_STAT + speed * 2, 0, 0, 0, session); // the line, not the button
+    expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:make-waterskin")!) * 2)).toBe(false);
+    expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:make-flak_shirt")!) * 2)).toBe(true);
+
     expect(sent.map((c) => c.op)).toEqual([CMD_SPEND, CMD_LEARN, CMD_CRAFT]);
     expect(sent[0]!.bytes[0]).toBe(speed);
     expect(new BitReader(sent[1]!.bytes).u16()).toBe(engram("core:engram-waterskin"));

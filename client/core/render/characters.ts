@@ -14,11 +14,13 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import { Pose } from "../../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
-import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_HAIR, LOOK_SEX, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
+import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
 import { HumanAnim, humanPose, type AnimState } from "../../../shared/anim/pose.ts";
 import { Solved, solve } from "../../../shared/anim/skeleton.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
-import type { Pack } from "../../../shared/pack/pack.ts";
+import { lodVertices, type Pack } from "../../../shared/pack/pack.ts";
+import { REGION_BASE } from "../../../shared/pack/palette.ts";
+import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 
 /** A body is not drawn when its origin is farther than this outside the view: no pose reaches farther from where it stands. */
@@ -28,8 +30,8 @@ export const BODY_LOD_NEAR = 14;
 export const BODY_LOD_FAR = 45;
 /** Levels of detail a body mesh may have. */
 const LODS = 3;
-/** Meshes one body can be: its slots, hair and a beard. */
-const PARTS = SLOT_COUNT + 2;
+/** Meshes one body can be: its slots, hair, a beard, something on its head, and something in its hand. */
+const PARTS = SLOT_COUNT + 4;
 const MANNEQUIN = "core:mannequin";
 const PLAIN = defaultLook();
 
@@ -42,6 +44,21 @@ interface BodySet {
   beard: Int32Array;
   /** Where the joints of the body these meshes were made on rest. */
   rest: Float32Array;
+  /** Per armor set (by its place in `Characters.sets`): the pack mesh worn in each body slot, -1 where the set has none. */
+  armor: Int32Array[];
+}
+
+/** What a worn item draws: which body slot, which armor set, and its three colours. */
+interface Worn {
+  slot: number;
+  set: number;
+  colors: readonly [number, number, number];
+}
+
+/** What a held item draws: its mesh and the bone it hangs on. */
+interface Held {
+  mesh: number;
+  bone: number;
 }
 
 interface BodyKind {
@@ -57,6 +74,10 @@ export class Characters {
   /** Bodies posed this frame. */
   posed = 0;
   private readonly kinds: (BodyKind | null)[];
+  /** Per content index: what wearing or holding that item draws, or null. */
+  private readonly worn: (Worn | null)[];
+  private readonly held: (Held | null)[];
+  private readonly wornColor = new Uint8Array(6);
   private readonly pose = new Pose(HUMAN_BONES);
   private readonly solved = new Solved(HUMAN_BONES);
   private readonly scales = new Float32Array(HUMAN_BONES * 3);
@@ -71,6 +92,8 @@ export class Characters {
   private readonly colors = new Uint8Array(MAX_SKINNED * 6);
   private readonly id = new Uint32Array(MAX_SKINNED);
   private readonly near = new Uint8Array(MAX_SKINNED);
+  /** Added to each vertex before its bone: where the bone a held thing hangs on rests. Zero for the body's own meshes. */
+  private readonly offset = new Float32Array(MAX_SKINNED * 3);
   private readonly counts: Uint32Array;
   private readonly cursor: Uint32Array;
 
@@ -82,6 +105,20 @@ export class Characters {
       const m = pack.meshIndex.get(id);
       return m !== undefined && pack.header.meshes[m]!.skeleton === HUMAN.id ? m : -1;
     };
+    // Armor sets and held things, from the items that name them.
+    const sets: string[] = [];
+    this.worn = reg.defs.map((d) => {
+      if (d?.type !== "item" || !d.wear) return null;
+      if (!sets.includes(d.wear.set)) sets.push(d.wear.set);
+      return { slot: SLOT_NAMES.indexOf(d.wear.slot), set: sets.indexOf(d.wear.set), colors: d.wear.colors };
+    });
+    this.held = reg.defs.map((d) => {
+      const mesh = d?.type === "item" && d.weapon?.mesh ? find(d.weapon.mesh) : -1;
+      if (mesh < 0) return null;
+      // Every vertex of a held thing follows the same bone: the first vertex says which.
+      const lod = pack.header.meshes[mesh]!.lods[0]!;
+      return { mesh, bone: lodVertices(pack, lod)[7]! };
+    });
     const setOf = (base: string): BodySet | null => {
       const slots = Int32Array.from(SLOT_NAMES, (name) => find(`${base}/${name}`));
       const first = slots.find((m) => m >= 0);
@@ -92,6 +129,7 @@ export class Characters {
         hair: Int32Array.from(HAIR_STYLES, (s) => find(`${base}/hair/${s.id}`)),
         beard: Int32Array.from(BEARD_STYLES, (s) => find(`${base}/beard/${s.id}`)),
         rest: rig === undefined ? HUMAN.rest : Float32Array.from(pack.header.rigs[rig]!.rest),
+        armor: sets.map((set) => Int32Array.from(SLOT_NAMES, (name) => find(`${base}/armor/${set}/${name}`))),
       };
     };
     this.kinds = reg.defs.map((d) => {
@@ -117,11 +155,13 @@ export class Characters {
    * Pose one body and queue its meshes. `x, y, z` is its origin relative to the
    * camera, `yaw` its facing in radians, `tick` the moment (it may fall between
    * ticks). `look` is its 28-byte look at `lookAt`, or null for a body that has
-   * none and is drawn in the six colour regions of `colors` at `colorAt`. `own`
-   * draws it in the near pass; `headless` leaves out the head and what grows on
-   * it, for looking out of it. Returns false when the frame has no room left.
+   * none and is drawn in the six colour regions of `colors` at `colorAt`. `gear`
+   * holds what it has in hand and what it wears at `gearAt` (see
+   * `EntityStore.gear`), or is null. `own` draws it in the near pass; `headless`
+   * leaves out the head and what is on it, for looking out of it. Returns false
+   * when the frame has no room left.
    */
-  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, id: number, own: boolean, headless: boolean): boolean {
+  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean): boolean {
     const k = this.kinds[kind];
     if (!k || p.boneCount + HUMAN_BONES > MAX_BONES || this.count + PARTS > MAX_SKINNED) return false;
     // A modelled body that was given no look gets the plain one, so its regions have colours.
@@ -143,21 +183,47 @@ export class Characters {
     this.posed++;
     const far2 = x * x + y * y + z * z;
     const lod = own || far2 < BODY_LOD_NEAR * BODY_LOD_NEAR ? 0 : far2 < BODY_LOD_FAR * BODY_LOD_FAR ? 1 : 2;
-    for (let part = 0; part < PARTS; part++) {
-      let m: number;
-      if (part < SLOT_COUNT) m = set.slots[part]!;
-      else if (!view) continue;
-      else m = part === SLOT_COUNT ? (set.hair[view[LOOK_HAIR]!] ?? -1) : (set.beard[view[LOOK_BEARD]!] ?? -1);
-      if (m < 0 || (headless && (part === SLOT_HEAD || part >= SLOT_COUNT))) continue;
+    const queue = (m: number, tint: Uint8Array | null, tintAt: number, bone: number): void => {
       const n = this.count++;
       this.key[n] = m * LODS + lod;
       this.firstBone[n] = first;
       this.region0[n] = k.color;
-      if (view) this.colors.set(this.lookColor, n * 6);
-      else for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
+      for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = tint ? tint[tintAt + q]! : 0;
       this.id[n] = id;
       this.near[n] = own ? 1 : 0;
+      // A held thing is modelled around its grip: it hangs where its bone rests on this body.
+      for (let a = 0; a < 3; a++) this.offset[n * 3 + a] = bone < 0 ? 0 : set.rest[bone * 3 + a]!;
+    };
+    const tint = view ? this.lookColor : colors;
+    const tintAt = view ? 0 : colorAt;
+    let covered = false;
+    for (let slot = 0; slot < SLOT_COUNT; slot++) {
+      const worn = gear ? this.worn[gear[gearAt + GEAR_WORN + slot]!] : null;
+      const piece = worn && worn.slot === slot ? (set.armor[worn.set]?.[slot] ?? -1) : -1;
+      const hidden = headless && slot === SLOT_HEAD;
+      if (piece >= 0 && !hidden) {
+        // The piece in its own three colours, on this body's skin.
+        const c = this.wornColor;
+        c.set(view ? this.lookColor : colors.subarray(colorAt, colorAt + 6));
+        c[REGION_MAIN - REGION_BASE] = worn!.colors[0];
+        c[REGION_SECOND - REGION_BASE] = worn!.colors[1];
+        c[REGION_TRIM - REGION_BASE] = worn!.colors[2];
+        queue(piece, c, 0, -1);
+        if (slot === SLOT_HEAD) covered = true;
+      }
+      // What is worn takes the place of the body under it, except on the head, where it goes over.
+      const body = set.slots[slot]!;
+      if (body >= 0 && !hidden && (piece < 0 || slot === SLOT_HEAD)) queue(body, tint, tintAt, -1);
     }
+    if (view && !headless) {
+      // Hair is under anything worn on the head; a beard is not.
+      const hair = covered ? -1 : (set.hair[view[LOOK_HAIR]!] ?? -1);
+      if (hair >= 0) queue(hair, tint, tintAt, -1);
+      const beard = set.beard[view[LOOK_BEARD]!] ?? -1;
+      if (beard >= 0) queue(beard, tint, tintAt, -1);
+    }
+    const inHand = gear ? this.held[gear[gearAt + GEAR_HELD]!] : null;
+    if (inHand) queue(inHand.mesh, tint, tintAt, inHand.bone);
     return true;
   }
 
@@ -182,7 +248,7 @@ export class Characters {
     for (let i = 0; i < this.count; i++) {
       if (this.near[i] !== want) continue;
       const at = this.cursor[this.key[i]!]!++;
-      writer.setSkinned(at, this.firstBone[i]!, this.region0[i]!);
+      writer.setSkinned(at, this.firstBone[i]!, this.region0[i]!, this.offset[i * 3]!, this.offset[i * 3 + 1]!, this.offset[i * 3 + 2]!);
       writer.regions(at, this.colors, i * 6);
       p.transientIds[at] = this.id[i]!;
     }

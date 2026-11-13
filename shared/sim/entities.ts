@@ -15,6 +15,11 @@ const posed = new AnimState();
 /** Everything in a packed pose state below the action. */
 const POSE_BELOW_ACTION = (1 << ANIM_ACTION_SHIFT) - 1;
 
+/** What `EntityStore.gear` holds: the item in hand, then the piece worn in each of the five armor slots. */
+export const GEAR_HELD = 0;
+export const GEAR_WORN = 1;
+export const GEAR_COUNT = 6;
+
 export const F_ALIVE = 1;
 export const F_GROUNDED = 2;
 /** Stepped every tick. Cleared while the entity's chunk sleeps. */
@@ -66,6 +71,12 @@ export class EntityStore {
   readonly name: string[];
   /** A survivor's look (shared/anim/look.ts), or null: most entities have none. */
   readonly look: (Uint8Array | null)[];
+  /**
+   * What it holds and wears, as content indices: GEAR_HELD, then one per armor
+   * slot. Null for an entity that carries no equipment. Replaced, never changed
+   * in place.
+   */
+  readonly gear: (Uint16Array | null)[];
   readonly rev: Uint8Array;
 
   /** Chunk the entity is linked into, or -1. */
@@ -108,6 +119,7 @@ export class EntityStore {
     this.colors = new Uint8Array(cap * 6);
     this.name = new Array<string>(cap).fill("");
     this.look = new Array<Uint8Array | null>(cap).fill(null);
+    this.gear = new Array<Uint16Array | null>(cap).fill(null);
     this.rev = new Uint8Array(cap);
     this.chunk = new Int32Array(cap).fill(-1);
     this.chunkHead = new Int32Array(chunkCount(dims)).fill(-1);
@@ -148,6 +160,7 @@ export class EntityStore {
     this.colors.fill(0, i * 6, i * 6 + 6);
     this.name[i] = "";
     this.look[i] = null;
+    this.gear[i] = null;
     this.rev[i] = (this.rev[i]! + 1) & 15;
     this.link(i, chunkAt(this.dims, x, z));
     return i;
@@ -170,6 +183,16 @@ export class EntityStore {
   /** Give an entity a look, or take it away. Clients that already see it are sent it again. */
   setBodyLook(i: number, look: Uint8Array | null): void {
     this.look[i] = look;
+    this.rev[i] = (this.rev[i]! + 1) & 15;
+  }
+
+  /** Say what an entity holds and wears (GEAR_COUNT content indices). Clients that see it are told only if it changed. */
+  setGear(i: number, gear: ArrayLike<number>): void {
+    const old = this.gear[i];
+    let same = old !== null && old !== undefined;
+    for (let k = 0; k < GEAR_COUNT && same; k++) same = old![k] === gear[k];
+    if (same) return;
+    this.gear[i] = Uint16Array.from({ length: GEAR_COUNT }, (_, k) => gear[k] ?? 0);
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 

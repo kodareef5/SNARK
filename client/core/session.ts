@@ -25,6 +25,7 @@ import {
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
   CMD_CREATE,
+  OWN_HELD,
   OWN_LOOK,
   OWN_MARKERS,
   OWN_OPEN,
@@ -55,6 +56,7 @@ import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -104,6 +106,8 @@ export class RemoteSample {
   /** A survivor's look, LOOK_BYTES each, where `hasLook` is 1. */
   readonly look = new Uint8Array(MAX_VIEW * LOOK_BYTES);
   readonly hasLook = new Uint8Array(MAX_VIEW);
+  /** What each holds and wears: GEAR_COUNT content indices each, zeros for nothing. */
+  readonly gear = new Uint16Array(MAX_VIEW * GEAR_COUNT);
 }
 
 const HISTORY = 128;
@@ -144,6 +148,8 @@ export class ClientSession {
   admin = false;
   /** This survivor's look, once the server has said what it is. */
   ownLook: Uint8Array | null = null;
+  /** The hotbar slot in this survivor's hands, 0 to 9, or -1. */
+  held = -1;
   /** Added to the tick to get the time of day. */
   dayOffset = 0;
   /** Text from the server, oldest first. `logVersion` counts every line ever added. */
@@ -349,6 +355,9 @@ export class ClientSession {
       const look = b.look[j]!;
       out.hasLook[n] = look ? 1 : 0;
       if (look) out.look.set(look, n * LOOK_BYTES);
+      const gear = b.gear[j]!;
+      if (gear) out.gear.set(gear, n * GEAR_COUNT);
+      else out.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
       for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
       if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
@@ -484,16 +493,17 @@ export class ClientSession {
     } else if (component === OWN_SLOTS) {
       const box = r.bits(1);
       const cap = r.u8();
+      const bag = r.u8();
       const full = r.bool();
       const count = r.u8();
-      if (r.overflow) return;
+      if (r.overflow || bag > cap) return;
       let inv: Inventory | null;
       if (box === BOX_SELF) {
         inv = this.inventory;
-        if (!inv || inv.cap !== cap || full) inv = this.inventory = new Inventory(cap);
+        if (!inv || inv.cap !== cap || inv.bag !== bag || full) inv = this.inventory = new Inventory(cap, bag);
       } else {
         if (!this.open) return;
-        if (this.open.inventory.cap !== cap || full) this.open.inventory = new Inventory(cap);
+        if (this.open.inventory.cap !== cap || this.open.inventory.bag !== bag || full) this.open.inventory = new Inventory(cap, bag);
         inv = this.open.inventory;
       }
       for (let k = 0; k < count; k++) {
@@ -503,8 +513,13 @@ export class ClientSession {
         const quality = item === 0 ? 0 : r.u8();
         const dur = item === 0 ? 0 : r.u16();
         const spoilAt = item === 0 ? 0 : r.u32();
+        const holds = item !== 0 && r.bool();
+        const ammo = holds ? r.u16() : 0;
+        const loaded = holds ? r.u8() : 0;
+        const attach = holds ? r.u16() : 0;
         if (r.overflow || slot >= cap) return;
         inv.set(slot, item, n, quality, dur, spoilAt);
+        if (holds) inv.setGear(slot, ammo, loaded, attach);
       }
     } else if (component === OWN_OPEN) {
       if (!r.bool()) this.open = null;
@@ -520,6 +535,9 @@ export class ClientSession {
       if (r.overflow) return;
       this.markers.length = 0;
       this.markers.push(...list);
+    } else if (component === OWN_HELD) {
+      const held = r.u8();
+      if (!r.overflow) this.held = held === 255 ? -1 : held;
     } else if (component === OWN_LOOK) {
       const look = new Uint8Array(LOOK_BYTES);
       for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();

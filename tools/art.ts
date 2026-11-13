@@ -7,7 +7,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { BODY_SCALES, HAIR_STYLES, BEARD_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_SKIN, SEX_IDS } from "../shared/anim/look.ts";
+import { BODY_SCALES, HAIR_STYLES, BEARD_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_MAIN, REGION_SECOND, REGION_SKIN, REGION_TRIM, SEX_IDS } from "../shared/anim/look.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { defaultPalette } from "../shared/pack/palette.ts";
 import { convertHumanClips, type ClipSpec } from "./pack/anim.ts";
@@ -42,10 +42,45 @@ const eye: ColorRule = (r, g, b) => {
   return light < 40 ? BLACK : REGION_EYE;
 };
 const hair: MaterialRule = { image: null, color: () => REGION_HAIR };
+/**
+ * An outfit's texture as three colour regions by how light it is: the darker
+ * part is the second colour, the bulk is the main one, and the lightest details
+ * are the trim. A worn piece says what colours they are.
+ */
+const threeTones = (dark: number, light: number): ColorRule => (r, g, b) => {
+  const lum = (r + g + b) / 3;
+  return lum < dark ? REGION_SECOND : lum < light ? REGION_MAIN : REGION_TRIM;
+};
+/** Share of an outfit's surface that is its second colour, and the share that is not its trim. */
+const SECOND_SHARE = 0.28;
+const TRIM_FROM = 0.9;
+
+/** Triangles each part of an outfit gets at each level of detail. */
+const ARMOR_TRIANGLES = "900,320,100";
+/** The outfit files, as the pack names them after the sex. */
+const OUTFIT_FILES = [
+  "Male_Peasant_Arms", "Male_Peasant_Body", "Male_Peasant_Feet", "Male_Peasant_Legs", "Male_Ranger_Arms", "Male_Ranger_Body", "Male_Ranger_Feet_Boots", "Male_Ranger_Head_Hood", "Male_Ranger_Legs",
+  "Female_Peasant_Arms", "Female_Peasant_Body", "Female_Peasant_Feet", "Female_Peasant_Legs", "Female_Ranger_Arms", "Female_Ranger_Body", "Female_Ranger_Feet", "Female_Ranger_Head_Hood", "Female_Ranger_Legs",
+];
+/** An armor set is an outfit's parts. The peasant has nothing for the head, so the cloth set borrows the ranger's hood. */
+const ARMOR_SETS = [
+  { id: "cloth", parts: ["Peasant_Arms", "Peasant_Body", "Peasant_Feet", "Peasant_Legs", "Ranger_Head_Hood"], texture: "T_Peasant_BaseColor.png" },
+  { id: "hide", parts: ["Ranger_Arms", "Ranger_Body", "Ranger_Feet", "Ranger_Legs", "Ranger_Head_Hood"], texture: "T_Ranger_BaseColor.png" },
+];
 
 /** Run Blender over a source file and read what it wrote. */
+const reduced = new Map<string, Gltf>();
 function reduce(dir: string, source: string, triangles: string): Gltf {
-  const out = join(dir, `${source.replace(/[^a-z0-9]+/gi, "_")}.glb`);
+  const key = `${source} ${triangles}`;
+  const done = reduced.get(key);
+  if (done) return done;
+  const gltf = runBlender(dir, source, triangles);
+  reduced.set(key, gltf);
+  return gltf;
+}
+
+function runBlender(dir: string, source: string, triangles: string): Gltf {
+  const out = join(dir, `${source.replace(/[^a-z0-9]+/gi, "_")}_${triangles.replace(/,/g, "_")}.glb`);
   const run = Bun.spawnSync(["blender", "--background", "--factory-startup", "--python", join(ROOT, "tools/blender/reduce.py"), "--", join(RAW, source), out, triangles], { stdout: "pipe", stderr: "pipe" });
   if (run.exitCode !== 0 || !run.stdout.toString().includes("reduce: wrote")) {
     throw new Error(`Blender did not convert ${source}. Is it installed (brew install --cask blender)?\n${run.stdout.toString().slice(-600)}${run.stderr.toString().slice(-600)}`);
@@ -88,11 +123,37 @@ function convertBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
             rig,
             scale,
             materials: { MI_Hair_1: hair, MI_Hair_2: hair },
-            whole: { id: `${id}/${kind}/${style.id}`, onto: body.rig.rest },
+            whole: `${id}/${kind}/${style.id}`,
+            onto: body.rig.rest,
           });
           warn(`${id}/${kind}/${style.id}`, piece.warnings);
           meshes.push(...piece.meshes);
         }
+      }
+      // Armor sets: an outfit's parts together, cut by body slot like the body, fitted to this body's joints.
+      const Sex = b.sex === SEX_IDS[0] ? "Male" : "Female";
+      const skinOf: MaterialRule = { image: readPng(join(RAW, `outfits-fantasy/T_Regular_${Sex}_Dark_BaseColor.png`)), color: skin };
+      for (const set of ARMOR_SETS) {
+        const parts = set.parts.flatMap((part) => {
+          const file = OUTFIT_FILES.find((f) => f === `${Sex}_${part}` || f.startsWith(`${Sex}_${part}`));
+          return file ? [reduce(dir, `outfits-fantasy/${file}.gltf`, ARMOR_TRIANGLES)] : [];
+        });
+        // Once to see how light the outfit's surface is, triangle by triangle; then again, cut at those shares.
+        const image = readPng(join(RAW, `outfits-fantasy/${set.texture}`));
+        const seen: number[] = [];
+        const options = (color: ColorRule) => ({
+          id: `${id}/armor/${set.id}`,
+          rig,
+          scale,
+          onto: body.rig.rest,
+          materials: { MI_Peasant: { image, color }, MI_Ranger: { image, color }, MI_Regular_Male: skinOf, MI_Regular_Female: skinOf },
+        });
+        convertBody(parts, options((r, g, bl) => (seen.push((r + g + bl) / 3), REGION_MAIN)));
+        seen.sort((p, q) => p - q);
+        const at = (share: number): number => seen[Math.floor((seen.length - 1) * share)] ?? 0;
+        const armor = convertBody(parts, options(threeTones(at(SECOND_SHARE), at(TRIM_FROM))));
+        warn(`${id}/armor/${set.id}`, armor.warnings);
+        meshes.push(...armor.meshes);
       }
     }
   } finally {

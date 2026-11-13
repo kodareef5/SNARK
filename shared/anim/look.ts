@@ -48,6 +48,13 @@ export const REGION_SKIN = REGION_BASE;
 export const REGION_CLOTH = REGION_BASE + 1;
 export const REGION_EYE = REGION_BASE + 2;
 export const REGION_HAIR = REGION_BASE + 3;
+/**
+ * Colour regions of a worn piece's mesh: its main colour takes the place of
+ * what a bare body wears, and two more follow. A piece says what they are.
+ */
+export const REGION_MAIN = REGION_CLOTH;
+export const REGION_SECOND = REGION_BASE + 4;
+export const REGION_TRIM = REGION_BASE + 5;
 /** Palette colour of what a body wears under everything else. */
 const CLOTH_COLOR = 4;
 

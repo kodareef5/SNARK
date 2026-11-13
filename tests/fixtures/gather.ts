@@ -2,6 +2,7 @@
 // survivor in front of it, looking at it.
 
 import type { ClientSession } from "../../client/core/session.ts";
+import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../../shared/net/protocol.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import type { NodeSpot } from "../../shared/world/nodes.ts";
 import type { Harness, Pilot } from "./net.ts";
@@ -54,4 +55,29 @@ export function swing(h: Harness, pilot: Pilot, n: number, swingTicks: number): 
   h.run(((swingTicks * n - 5) * 1000) / 30);
   pilot.buttons &= ~4;
   h.run(700);
+}
+
+/**
+ * Take an item the survivor carries in hand, as a player does: move it from
+ * wherever it is to a hotbar slot, then select that slot. Returns the slot it
+ * ends up in (an index into the whole inventory).
+ */
+export function takeInHand(h: Harness, s: ClientSession, item: number, hotbar = 0): number {
+  const inv = s.inventory!;
+  const to = inv.hotbar + hotbar;
+  const from = inv.item.indexOf(item);
+  if (from < 0) throw new Error("the survivor does not carry that");
+  if (from !== to) {
+    s.command(CMD_MOVE, (w) => {
+      w.bits(BOX_SELF, 1);
+      w.u8(from);
+      w.bits(BOX_SELF, 1);
+      w.u8(to);
+      w.u16(0);
+      w.u16(item);
+    });
+  }
+  s.command(CMD_SELECT, (w) => w.u8(hotbar));
+  h.run(200);
+  return to;
 }

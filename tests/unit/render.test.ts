@@ -278,7 +278,7 @@ test("the viewer's own body is drawn last and in front: headless from its own ey
   const view = provingView(W, H);
   const { raster, reg } = view;
   const kind = reg.index.get("core:survivor")!;
-  const own: OwnBody = { kind, x: 256, y: view.hf.heightAt(256, 240), z: 240, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, id: 7 };
+  const own: OwnBody = { kind, x: 256, y: view.hf.heightAt(256, 240), z: 240, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(6), id: 7 };
   view.scene.own = own;
   view.remote.count = 0;
   view.cam.x = own.x;

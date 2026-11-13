@@ -31,6 +31,8 @@ export const DEADLINE_DESPAWN = 2;
 export const OP_DEATH = 3;
 /** How long a cache waits to be collected: fifteen minutes. */
 export const CACHE_TICKS = 15 * 60 * TICK_RATE;
+/** A bag of dropped things lasts two minutes. */
+export const BAG_TICKS = 2 * 60 * TICK_RATE;
 export const MAX_MARKERS = 5;
 /** How far a body can reach to use something, metres from its eye. */
 export const REACH = 3.5;
@@ -54,6 +56,7 @@ export class Death {
   private readonly ctx: DeathContext;
   private readonly survivor: number;
   private readonly cache: number;
+  private readonly bag: number;
   private readonly dir = [0, 0, 0];
   private readonly w = new BitWriter(64);
 
@@ -62,6 +65,34 @@ export class Death {
     const reg = ctx.world.reg;
     this.survivor = reg.index.get("core:survivor")!;
     this.cache = reg.index.get("core:cache")!;
+    this.bag = reg.index.get("core:bag") ?? this.cache;
+  }
+
+  /**
+   * Put `n` of what is in `slot` (0 for all of it) on the ground just ahead
+   * of the body, in a bag anyone can open, which is gone with what is left in
+   * it after two minutes. False, changing nothing, if the body is not in the
+   * world or nothing moved.
+   */
+  drop(rec: EntityRecord, slot: number, n: number): boolean {
+    const { world, records, items } = this.ctx;
+    const e = records.entOf.get(rec.pid);
+    if (e === undefined) return false;
+    const ents = world.ents;
+    const bag = records.create(this.bag, "bag");
+    if (items.move(rec, slot, bag, 0, n) === 0) {
+      records.delete(bag.pid);
+      return false;
+    }
+    lookDirection(ents.yaw[e]!, 0, this.dir);
+    bag.x = ents.x[e]! + this.dir[0]! * 0.8;
+    bag.z = ents.z[e]! + this.dir[2]! * 0.8;
+    const ground = world.hf.heightAt(bag.x, bag.z);
+    bag.y = ground > ents.y[e]! ? ground : ents.y[e]!;
+    bag.expiresAt = world.tick + BAG_TICKS;
+    records.dirty.add(bag.pid);
+    this.place(bag);
+    return true;
   }
 
   private clientOf(pid: number): Client | null {
@@ -111,8 +142,9 @@ export class Death {
     rec.markers.push({ kind: MARKER_DEATH, x: rec.x, y: rec.y, z: rec.z, tick: world.tick });
     if (rec.markers.length > MAX_MARKERS) rec.markers.shift();
     rec.markersVersion++;
-    // 3. The survivor is dead until it chooses where to return.
+    // 3. The survivor is dead until it chooses where to return, with nothing in its hands.
     rec.dead = true;
+    rec.held = -1;
     records.dirty.add(rec.pid);
     this.count++;
     // 4. The record of it, in the same commit.

@@ -17,7 +17,8 @@
 //     op 2 bits: 0 update, 1 create, 2 remove
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4,
 //             pose state 31, then its appearance: revision 4, level varint,
-//             [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8]
+//             [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8],
+//             [gear? 1][6 x 16]
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
 //             [motion? 1][12] [look? 1][6] [action? 1][13]
 //
@@ -33,6 +34,7 @@
 import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK } from "../anim/pose.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { WORLD_MIN_Y } from "../coords.ts";
+import { GEAR_COUNT } from "../sim/entities.ts";
 import type { BitReader, BitWriter } from "./codec.ts";
 
 export const VIEW_RING = 32;
@@ -46,7 +48,7 @@ const OP_REMOVE = 2;
 
 const ANIM_BITS = ANIM_MOTION_BITS + ANIM_LOOK_BITS + ANIM_ACTION_BITS;
 const LOOK_MASK = (1 << ANIM_LOOK_BITS) - 1;
-const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 4 + 16 + 3 + 48;
+const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 4 + 16 + 4 + 48;
 /** Longest name carried, in bytes. */
 export const MAX_NAME_LENGTH = 72;
 
@@ -55,7 +57,7 @@ const UPDATE_BITS = 24 + 2 + 2 + 64 + 1 + 10 + 1 + 4 + 3 + ANIM_BITS;
 /** Bits a create for entry `j` of `v` takes at most: the fixed part plus its name's bytes. */
 function createBits(v: EntityView, j: number): number {
   const name = v.name[j]!;
-  const look = v.look[j] ? LOOK_BYTES * 8 : 0;
+  const look = (v.look[j] ? LOOK_BYTES * 8 : 0) + (v.gear[j] ? GEAR_COUNT * 16 : 0);
   if (name === "") return CREATE_BITS + look;
   let bytes = 1;
   for (let i = 0; i < name.length; i++) {
@@ -104,15 +106,18 @@ export class EntityView {
   readonly name: string[] = new Array<string>(MAX_VIEW).fill("");
   /** A survivor's look (LOOK_BYTES), shared by reference and never changed in place; null for none. */
   readonly look: (Uint8Array | null)[] = new Array<Uint8Array | null>(MAX_VIEW).fill(null);
+  /** What it holds and wears (GEAR_COUNT content indices), shared by reference; null for none. */
+  readonly gear: (Uint16Array | null)[] = new Array<Uint16Array | null>(MAX_VIEW).fill(null);
 
   /** Set the appearance of the entry just pushed. `colors` is read from `at`, six bytes. */
-  appear(rev: number, level: number, colors: Uint8Array, at: number, name: string, look: Uint8Array | null): void {
+  appear(rev: number, level: number, colors: Uint8Array, at: number, name: string, look: Uint8Array | null, gear: Uint16Array | null): void {
     const n = this.count - 1;
     this.rev[n] = rev;
     this.level[n] = level;
     for (let k = 0; k < 6; k++) this.colors[n * 6 + k] = colors[at + k]!;
     this.name[n] = name;
     this.look[n] = look;
+    this.gear[n] = gear;
   }
 
   push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number): boolean {
@@ -133,7 +138,7 @@ export class EntityView {
 
   copyFrom(o: EntityView, i: number): boolean {
     if (!this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!)) return false;
-    this.appear(o.rev[i]!, o.level[i]!, o.colors, i * 6, o.name[i]!, o.look[i]!);
+    this.appear(o.rev[i]!, o.level[i]!, o.colors, i * 6, o.name[i]!, o.look[i]!, o.gear[i]!);
     return true;
   }
 }
@@ -294,6 +299,9 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
       const look = cur.look[ci]!;
       w.bool(look !== null);
       if (look) for (let q = 0; q < LOOK_BYTES; q++) w.u8(look[q]!);
+      const gear = cur.gear[ci]!;
+      w.bool(gear !== null);
+      if (gear) for (let q = 0; q < GEAR_COUNT; q++) w.u16(gear[q]!);
       next.copyFrom(cur, ci);
     } else {
       w.bits(OP_UPDATE, 2);
@@ -373,9 +381,14 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
         look = new Uint8Array(LOOK_BYTES);
         for (let q = 0; q < LOOK_BYTES; q++) look[q] = r.u8();
       }
+      let gear: Uint16Array | null = null;
+      if (r.bool()) {
+        gear = new Uint16Array(GEAR_COUNT);
+        for (let q = 0; q < GEAR_COUNT; q++) gear[q] = r.u16();
+      }
       if (present) i++;
       if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim)) return false;
-      next.appear(rev, level, scratchColors, 0, name, look);
+      next.appear(rev, level, scratchColors, 0, name, look, gear);
     } else if (op === OP_UPDATE) {
       if (!present) return false;
       let qx = base!.qx[i]!;
@@ -401,7 +414,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (r.bool()) anim = (anim & ~(LOOK_MASK << ANIM_LOOK_SHIFT)) | (r.bits(ANIM_LOOK_BITS) << ANIM_LOOK_SHIFT);
       if (r.bool()) anim = (anim & ((1 << ANIM_ACTION_SHIFT) - 1)) | (r.bits(ANIM_ACTION_BITS) << ANIM_ACTION_SHIFT);
       if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0)) return false;
-      next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!);
+      next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!);
       i++;
     } else return false;
     if (r.overflow) return false;

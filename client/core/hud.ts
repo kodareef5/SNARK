@@ -10,6 +10,9 @@
 // with +Y up, so facing north puts +X on your left).
 
 import { TICK_RATE } from "../../shared/coords.ts";
+import type { ItemDef } from "../../shared/content/defs.ts";
+import type { Registry } from "../../shared/content/registry.ts";
+import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
 import { SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
@@ -31,6 +34,40 @@ export interface Vital {
   label: string;
   /** 0..1. */
   fraction: number;
+}
+
+/** One hotbar slot as the HUD shows it: a few letters of the item's name, its colour, and a number (a count, or rounds loaded). */
+export interface HotbarCell {
+  label: string;
+  /** 0xRRGGBB, or -1 for an empty slot. */
+  tint: number;
+  number: string;
+}
+
+/** Fill the HUD's hotbar from what the survivor carries. */
+export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg: Registry, palette: Uint8Array): void {
+  const first = inv ? inv.hotbar : -1;
+  m.held = held;
+  if (first < 0) {
+    m.hotbar.length = 0;
+    return;
+  }
+  for (let i = 0; i < HOTBAR_SLOTS; i++) {
+    const cell = (m.hotbar[i] ??= { label: "", tint: -1, number: "" });
+    const item = inv!.item[first + i]!;
+    const def = item === 0 ? null : (reg.defs[item] as ItemDef | null);
+    if (!def) {
+      cell.label = "";
+      cell.tint = -1;
+      cell.number = "";
+      continue;
+    }
+    const name = def.label ?? def.id.slice(def.id.indexOf(":") + 1);
+    const c = (def.color ?? 15) * 4;
+    cell.label = name.slice(0, 4);
+    cell.tint = (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!;
+    cell.number = inv!.count[first + i]! > 1 ? String(inv!.count[first + i]) : def.weapon?.ammo ? String(inv!.loaded[first + i]) : "";
+  }
 }
 
 export class HudModel {
@@ -67,6 +104,9 @@ export class HudModel {
   crosshair = true;
   /** What the use button would do to the thing looked at, or nothing. */
   prompt = "";
+  /** The ten hotbar slots, or none for a body that has no hotbar. `held` is the one in hand, or -1. */
+  readonly hotbar: HotbarCell[] = [];
+  held = -1;
   private readoutAge = 0;
 
   /** Rewrite the readout from the numbers above. */

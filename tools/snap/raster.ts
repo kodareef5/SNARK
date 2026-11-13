@@ -162,9 +162,10 @@ export class Rasterizer {
       if (skinned) {
         // Each vertex follows one bone of this instance's body.
         const first = view.getUint16(at + 12, true);
+        const px = view.getFloat32(at, true), py = view.getFloat32(at + 4, true), pz = view.getFloat32(at + 8, true);
         for (let v = 0; v < n; v++) {
           const b = (first + lod.bones[v]!) * BONE_FLOATS;
-          const lx = lod.positions[v * 3]!, ly = lod.positions[v * 3 + 1]!, lz = lod.positions[v * 3 + 2]!;
+          const lx = lod.positions[v * 3]! + px, ly = lod.positions[v * 3 + 1]! + py, lz = lod.positions[v * 3 + 2]! + pz;
           out[v * 3] = bones[b]! * lx + bones[b + 1]! * ly + bones[b + 2]! * lz + bones[b + 3]!;
           out[v * 3 + 1] = bones[b + 4]! * lx + bones[b + 5]! * ly + bones[b + 6]! * lz + bones[b + 7]!;
           out[v * 3 + 2] = bones[b + 8]! * lx + bones[b + 9]! * ly + bones[b + 10]! * lz + bones[b + 11]!;

@@ -6,18 +6,20 @@
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { MARKER_DEATH, RESULT_OK, SESSION_ALIVE, SESSION_CREATING } from "../../shared/net/protocol.ts";
+import { CMD_SELECT, MARKER_DEATH, RESULT_OK, SESSION_ALIVE, SESSION_CREATING } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls } from "./controls.ts";
-import { HudModel, minimapImage, updateHud } from "./hud.ts";
+import { HudModel, fillHotbar, minimapImage, updateHud } from "./hud.ts";
 import { Camera } from "./render/camera.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { handleIndex } from "../../shared/ids.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
+import { ARMOR_SLOTS } from "../../shared/sim/items.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { RemoteSample, type ClientSession } from "./session.ts";
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "./ui/hud.ts";
@@ -48,7 +50,7 @@ export class App {
   /** Height of the camera's eye above the body's feet, or -1 before the first frame. */
   private eye = -1;
   private readonly aim = [0, 0, 0];
-  private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, id: 0 };
+  private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
 
   constructor(session: ClientSession, reg: Registry, pack: Pack) {
     this.session = session;
@@ -67,6 +69,13 @@ export class App {
       return true;
     }
     if (this.ui.captureKeyboard) return false;
+    const digit = /^Digit(\d)$/.exec(code);
+    if (digit) {
+      // 1 to 9 and then 0 take a hotbar slot in hand; the key of what is in hand puts it away.
+      const slot = (Number(digit[1]) + 9) % 10;
+      if (down && !repeat) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
+      return true;
+    }
     if (code === "KeyV") {
       // Out of the body's eyes, or over its shoulder.
       if (down && !repeat) this.view.thirdPerson = !this.view.thirdPerson;
@@ -163,6 +172,7 @@ export class App {
     body.firstPerson = false;
     body.id = 0;
     body.look = creator.look;
+    body.gear.fill(0);
     body.state.unpack(0);
     body.state.seed = 0;
     this.scene!.own = body;
@@ -241,6 +251,13 @@ export class App {
     body.firstPerson = !third;
     body.id = handleIndex(session.ownHandle);
     body.look = session.ownLook;
+    // What it holds and wears, read off its own slots.
+    const inv = session.inventory;
+    body.gear.fill(0);
+    if (inv && inv.hotbar >= 0) {
+      if (session.held >= 0) body.gear[GEAR_HELD] = inv.item[inv.hotbar + session.held]!;
+      for (let k = 0; k < ARMOR_SLOTS; k++) body.gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
+    }
     body.state.mode = session.own.mode;
     body.state.grounded = session.own.grounded;
     body.state.stance = session.own.stance;
@@ -256,6 +273,7 @@ export class App {
     this.scene.hour = hourOfDay(session.serverTick, session.dayOffset);
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps);
+    fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     hud.prompt = session.sessionState === SESSION_ALIVE ? this.prompt(world, eyeNow) : "";
     this.ui.build(aspect, hud, session);
     return packet;

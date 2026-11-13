@@ -41,6 +41,12 @@ export interface SpeciesDef {
   readonly waterPerHour?: number;
   /** Inventory slots. Defaults to none. */
   readonly slots?: number;
+  /** It carries equipment: after its bag come ten hotbar slots and five armor slots. */
+  readonly equips?: boolean;
+  /** Damage of a bare-handed strike. Defaults to 8. */
+  readonly fists?: number;
+  /** What a kill of one yields, each an item and a range. */
+  readonly drops?: readonly { readonly item: string; readonly min: number; readonly max: number }[];
   /** How points become values, per stat: [base, gain per wild point, gain per tamed point]. */
   readonly stats?: { readonly [S in StatName]?: StatCurve };
 }
@@ -72,6 +78,79 @@ export interface ItemDef {
   readonly color?: number;
   /** A tool: what it works on ("wood", "stone"), how many times stronger than bare hands, and how many uses it lasts. */
   readonly tool?: { readonly on: string; readonly power: number; readonly uses: number };
+  /** Something held and attacked with. */
+  readonly weapon?: WeaponFacet;
+  /** Something a weapon is loaded with. */
+  readonly ammo?: AmmoFacet;
+  /** Something worn in an armor slot. */
+  readonly wear?: WearFacet;
+  /** Something fitted to a weapon: what kind of thing it is. A weapon lists the attachment items it takes. */
+  readonly attachment?: "scope" | "silencer" | "light" | "laser";
+}
+
+/** How a kind of damage is named. Armor, species and structure materials each say what they make of a type. */
+export type DamageType = "melee" | "pierce" | "bullet" | "fire" | "explosive";
+
+export interface WeaponFacet {
+  /**
+   * "melee" strikes what is in reach. "bow" is drawn and loosed: the longer the
+   * draw, the faster and harder the shot. "gun" fires what is loaded as it is
+   * (a crossbow is one). "thrown" is thrown itself.
+   */
+  readonly kind: "melee" | "bow" | "gun" | "thrown";
+  /** Melee and thrown: damage of one hit at primitive quality, and its type. */
+  readonly damage?: number;
+  readonly type?: DamageType;
+  /** Melee: how far it reaches, metres. Defaults to 2.5. */
+  readonly reach?: number;
+  /** Bow and gun: the ammunition items it takes, and what it multiplies their damage by. */
+  readonly ammo?: readonly string[];
+  readonly power?: number;
+  /** Rounds it holds. Defaults to 1. */
+  readonly clip?: number;
+  /** Seconds to reload (for a bow, to nock the next arrow), to draw a bow fully, and between two shots or swings. */
+  readonly reload?: number;
+  readonly draw?: number;
+  readonly interval?: number;
+  /** Thrown: metres per second it leaves the hand at, and seconds until it goes off (0 for on impact). */
+  readonly speed?: number;
+  readonly fuse?: number;
+  /** Uses before it breaks, at primitive quality. */
+  readonly uses: number;
+  /** Works under water. */
+  readonly wet?: boolean;
+  /** Attachment items that fit it. */
+  readonly fits?: readonly string[];
+  /** Mesh held in the hand, and how the body holds it. */
+  readonly mesh?: string;
+  readonly hold: "tool" | "bow" | "rifle" | "pistol" | "spear";
+}
+
+export interface AmmoFacet {
+  readonly damage: number;
+  readonly type: DamageType;
+  /** Metres per second at full power, and its fall in metres per second squared. Omitted: it arrives the tick it is fired. */
+  readonly speed?: number;
+  readonly gravity?: number;
+  /** Torpor, as multiples of the damage done: at once, and then spread over some seconds. */
+  readonly torpor?: { readonly instant: number; readonly over: number; readonly seconds: number };
+  /** A buff the target is given. */
+  readonly buff?: string;
+  /** Chance, 0 to 1, that a spent one can be picked up again. */
+  readonly recover?: number;
+  readonly mesh?: string;
+}
+
+export interface WearFacet {
+  readonly slot: "head" | "torso" | "hands" | "legs" | "feet";
+  /** Armor rating at primitive quality: damage is multiplied by 100 / (100 + armor). */
+  readonly armor: number;
+  /** Durability at primitive quality. */
+  readonly uses: number;
+  /** Mesh set drawn in place of the body's slot: "<set>" names meshes "<body>/armor/<set>/<slot>". */
+  readonly set: string;
+  /** Palette colours of its three colour regions: main, second, trim. */
+  readonly colors: readonly [number, number, number];
 }
 
 /**

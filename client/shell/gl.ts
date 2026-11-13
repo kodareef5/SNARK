@@ -57,7 +57,7 @@ void main() {
     // A body with bones: the instance names its first bone where a rigid one has its yaw.
     int n = (int(iYaw * 65535.0 + 0.5) + int(aBone)) * 3;
     ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
-    vec4 v = vec4(l, 1.0);
+    vec4 v = vec4(l + iPos, 1.0);
     p = vec3(dot(texelFetch(uBones, at, 0), v), dot(texelFetch(uBones, at + ivec2(1, 0), 0), v), dot(texelFetch(uBones, at + ivec2(2, 0), 0), v));
   } else {
     float t = iYaw * 6.283185307;

@@ -90,7 +90,9 @@ test("a save that uses removed content refuses to load unless told to drop it", 
 test("an item whose content is gone stops the load, and a ledger that does not balance stops it too", () => {
   const db = join(dir, "items.db");
   const full = coreRegistry();
-  const meat = full.index.get("core:meat")!;
+  // An item that nothing else needs once what makes it is gone too.
+  const meat = full.index.get("core:waterskin")!;
+  const gone = new Set(["core:waterskin", "core:make-waterskin", "core:engram-waterskin"]);
   const stone = full.index.get("core:stone")!;
   const host = createHost(full, { dbPath: db });
   const rec = host.records.create(full.index.get("core:grazer")!, "mule");
@@ -99,12 +101,12 @@ test("an item whose content is gone stops the load, and a ledger that does not b
   host.shutdown();
 
   // Round 1 dropped such items without a word.
-  const without = compileContent(CORE_CONTENT.filter((d) => d.id !== "core:meat")).registry!;
+  const without = compileContent(CORE_CONTENT.filter((d) => !gone.has(d.id))).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/content this build does not have/);
   const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true } });
   expect(forced.records.byPid.get(rec.pid)!.inv!.total(without.index.get("core:stone")!)).toBe(250);
   expect(forced.items.audit()).toEqual([]);
-  forced.persistence!.store.close(); // not committed: the save keeps its meat
+  forced.persistence!.store.close(); // not committed: the save keeps what it had
 
   const back = createHost(full, { dbPath: db });
   expect(back.records.byPid.get(rec.pid)!.inv!.total(meat)).toBe(30);

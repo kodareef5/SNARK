@@ -42,7 +42,13 @@ export interface Registry {
   readonly soft: Uint8Array;
   /** Hits a node of this kind takes before it is used up. */
   readonly nodeHits: Float32Array;
+  /** The armor slot an item is worn in (0 head, 1 torso, 2 hands, 3 legs, 4 feet), or -1. */
+  readonly wearSlot: Int8Array;
+  /** Uses an item has at primitive quality before it breaks: a tool's, a weapon's, a worn piece's. 0 for things that do not wear. */
+  readonly uses: Uint16Array;
 }
+
+export const WEAR_SLOTS: readonly string[] = ["head", "torso", "hands", "legs", "feet"];
 
 export interface CompileResult {
   registry: Registry | null;
@@ -109,6 +115,23 @@ export function compileContent(input: readonly Def[]): CompileResult {
       if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
       if (d.spoilHours !== undefined && !(d.spoilHours > 0)) errors.push(`${d.id}: spoilHours must be positive`);
+      // Anything that wears, holds rounds or takes an attachment is one thing to a slot.
+      if ((d.weapon || d.wear || d.tool) && d.stack !== 1 && d.weapon?.kind !== "thrown") errors.push(`${d.id}: a tool, weapon or worn piece must have stack 1`);
+      const w = d.weapon;
+      if (w) {
+        positive(d, "weapon.uses", w.uses, 60000);
+        if ((w.kind === "melee" || w.kind === "thrown") && !(w.damage! > 0 && w.type)) errors.push(`${d.id}: a ${w.kind} weapon needs damage and a type`);
+        if ((w.kind === "bow" || w.kind === "gun") && !(w.ammo && w.ammo.length > 0)) errors.push(`${d.id}: a ${w.kind} needs the ammunition it takes`);
+        if (w.kind === "bow" && !(w.draw! > 0)) errors.push(`${d.id}: a bow needs a draw time`);
+        if (w.clip !== undefined && !(Number.isInteger(w.clip) && w.clip >= 1 && w.clip <= 255)) errors.push(`${d.id}: weapon.clip must be a whole number from 1 to 255`);
+      }
+      if (d.ammo && !(d.ammo.damage >= 0)) errors.push(`${d.id}: ammo.damage must not be negative`);
+      if (d.ammo?.recover !== undefined && !(d.ammo.recover >= 0 && d.ammo.recover <= 1)) errors.push(`${d.id}: ammo.recover must be from 0 to 1`);
+      if (d.wear) {
+        if (!WEAR_SLOTS.includes(d.wear.slot)) errors.push(`${d.id}: wear.slot must be one of ${WEAR_SLOTS.join(", ")}`);
+        if (!(d.wear.armor >= 0)) errors.push(`${d.id}: wear.armor must not be negative`);
+        positive(d, "wear.uses", d.wear.uses, 60000);
+      }
     }
     if (d.type === "species" || d.type === "structure" || d.type === "prop" || d.type === "node") {
       if (d.mesh.length === 0) errors.push(`${d.id}: mesh is required`);
@@ -117,6 +140,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
   }
   // References between definitions must name something of the right type.
   const typeOf = new Map(input.map((d) => [d.id, d.type]));
+  const items = new Map(input.flatMap((d) => (d.type === "item" ? [[d.id, d] as const] : [])));
   const want = (d: Def, id: string, type: string) => {
     if (typeOf.get(id) !== type) errors.push(`${d.id}: "${id}" is not ${type === "item" ? "an item" : `a ${type}`}`);
   };
@@ -126,6 +150,11 @@ export function compileContent(input: readonly Def[]): CompileResult {
       want(d, d.makes, "item");
       for (const n of d.needs) want(d, n.item, "item");
     } else if (d.type === "engram") for (const r of d.unlocks) want(d, r, "recipe");
+    else if (d.type === "species") for (const drop of d.drops ?? []) want(d, drop.item, "item");
+    else if (d.type === "item") {
+      for (const a of d.weapon?.ammo ?? []) if (!items.get(a)?.ammo) errors.push(`${d.id}: "${a}" is not ammunition`);
+      for (const a of d.weapon?.fits ?? []) if (!items.get(a)?.attachment) errors.push(`${d.id}: "${a}" is not an attachment`);
+    }
   }
   if (input.length >= 65535) errors.push("too many definitions for a 16-bit index");
   if (errors.length > 0) return { registry: null, errors };
@@ -146,6 +175,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const bodyHeight = new Float32Array(n);
   const soft = new Uint8Array(n);
   const nodeHits = new Float32Array(n);
+  const wearSlot = new Int8Array(n).fill(-1);
+  const uses = new Uint16Array(n);
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
@@ -167,9 +198,11 @@ export function compileContent(input: readonly Def[]): CompileResult {
       stack[i] = d.stack;
       weight[i] = d.weight ?? 0.1;
       spoilTicks[i] = Math.round((d.spoilHours ?? 0) * GAME_HOUR_TICKS);
+      if (d.wear) wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
+      uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? 0;
     }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses }, errors };
 }
 
 function moveParams(d: SpeciesDef): MoveParams {

@@ -1,5 +1,6 @@
-// The character screen: level and experience, stat points to place, engrams to
-// learn, and what can be made. Every button is a command; the numbers are the
+// The character screen: level and experience, and under three tabs the stat
+// points to place, the engrams to learn, and what can be made. A list longer
+// than the panel is paged. Every button is a command; the numbers are the
 // server's.
 
 import type { EngramDef, ItemDef, RecipeDef, SpeciesDef } from "../../../shared/content/defs.ts";
@@ -15,15 +16,24 @@ export const KEY_CHAR_PANEL = 1100;
 export const KEY_CHAR_TITLE = 1101;
 export const KEY_CHAR_POINTS = 1102;
 export const KEY_CHAR_JOBS = 1103;
+/** The three tabs: stats, engrams, making. */
+export const KEY_CHAR_TAB = 1104;
+/** Previous page, next page, and "page 2 of 5". */
+export const KEY_CHAR_PAGE = 1107;
 /** Per stat: its line, then its "+" button. */
 export const KEY_CHAR_STAT = 1110;
-/** Per engram (by its place among engrams in content order): its line, then its button. */
+/** Per engram (by its place among engrams, lowest level first): its line, then its button. */
 export const KEY_CHAR_ENGRAM = 1200;
-/** Per recipe, likewise. */
+/** Per recipe (by its place among recipes in content order), likewise. */
 export const KEY_CHAR_RECIPE = 1400;
+export const TAB_STATS = 0;
+export const TAB_ENGRAMS = 1;
+export const TAB_MAKE = 2;
+const TABS: readonly string[] = ["Stats", "Engrams", "Make"];
 const ROW = 22;
 const PAD = 12;
 const BUTTON = 58;
+const CHOSEN = 0x3f6ea8;
 
 /** Content indices of every definition of a type, in content order. */
 function ofType(reg: Registry, type: string): number[] {
@@ -32,71 +42,122 @@ function ofType(reg: Registry, type: string): number[] {
   return out;
 }
 
-export function buildCharacter(f: UiFrame, session: ClientSession, reg: Registry): void {
-  const p = session.progress;
-  const species = reg.defs[session.ownKind] as SpeciesDef | null;
-  const stats = STAT_NAMES.map((name, i) => ({ name, i })).filter((s) => species?.stats?.[s.name]);
-  const engrams = ofType(reg, "engram");
-  const recipes = ofType(reg, "recipe").filter((r) => engrams.some((e) => p.engrams.includes(e) && (reg.defs[e] as EngramDef).unlocks.includes(reg.ids[r]!)));
-  const w = Math.min(f.width - 16, 500);
-  const titleH = lineHeight(S_TITLE);
-  const lh = lineHeight(S_LABEL);
-  const h = PAD * 2 + titleH + lh * 2 + 8 + (stats.length + engrams.length + recipes.length) * ROW + 12;
-  const x = Math.round((f.width - w) / 2);
-  const y0 = Math.max(4, Math.round((f.height - h) / 2));
-  const cols = columns(w - PAD * 2 - BUTTON - 8, S_LABEL);
-  f.add(KEY_CHAR_PANEL, K_PANEL, x, y0, w, h, S_PANEL);
-  f.text(KEY_CHAR_TITLE, x + PAD, y0 + PAD, w - PAD * 2, S_TITLE, `Level ${p.level}  ${p.xp} xp`);
-  let y = y0 + PAD + titleH;
-  f.text(KEY_CHAR_POINTS, x + PAD, y, w - PAD * 2, S_LABEL, `${p.statPoints} stat points  ${p.engramPoints} engram points`);
-  y += lh;
-  const job = p.jobs[0];
-  const making = job ? `making ${itemLabel(reg, reg.index.get((reg.defs[job.recipe] as RecipeDef).makes)!)} (${p.jobs.reduce((n, j) => n + j.left, 0)} to go)` : "nothing being made";
-  f.text(KEY_CHAR_JOBS, x + PAD, y, w - PAD * 2, S_LABEL, making.slice(0, columns(w - PAD * 2, S_LABEL)));
-  y += lh + 8;
-
-  const row = (key: number, text: string, button: string): void => {
-    f.text(key, x + PAD, y + 2, w - PAD * 2 - BUTTON - 8, S_LABEL, text.slice(0, cols));
-    if (button !== "") {
-      const b = f.add(key + 1, K_BUTTON, x + w - PAD - BUTTON, y + 1, BUTTON, ROW - 3, S_BUTTON);
-      b.text = button;
-      b.interactive = true;
-    }
-    y += ROW;
-  };
-  for (const s of stats) row(KEY_CHAR_STAT + s.i * 2, s.name, p.statPoints > 0 ? "+" : "");
-  engrams.forEach((e, n) => {
-    const def = reg.defs[e] as EngramDef;
-    const known = p.engrams.includes(e);
-    const can = !known && p.level >= def.level && p.engramPoints >= def.cost;
-    row(KEY_CHAR_ENGRAM + n * 2, known ? `${def.label}: known` : `${def.label}: level ${def.level}, ${def.cost} points`, can ? "learn" : "");
-  });
-  recipes.forEach((r) => {
-    const def = reg.defs[r] as RecipeDef;
-    const needs = def.needs.map((n) => `${n.count} ${itemLabel(reg, reg.index.get(n.item)!)}`).join(", ");
-    const label = (reg.defs[reg.index.get(def.makes)!] as ItemDef).label ?? itemLabel(reg, reg.index.get(def.makes)!);
-    row(KEY_CHAR_RECIPE + ofType(reg, "recipe").indexOf(r) * 2, `${label}: ${needs}`, "make");
-  });
+/** Every engram, the lowest level first; ties in content order. */
+export function engramOrder(reg: Registry): number[] {
+  return ofType(reg, "engram").sort((a, b) => (reg.defs[a] as EngramDef).level - (reg.defs[b] as EngramDef).level || a - b);
 }
 
-/** A press on one of the screen's buttons. Returns true if it was one. */
-export function characterClick(key: number, session: ClientSession, reg: Registry): boolean {
-  if (key >= KEY_CHAR_STAT && key < KEY_CHAR_ENGRAM && (key - KEY_CHAR_STAT) % 2 === 1) {
-    const stat = (key - KEY_CHAR_STAT - 1) / 2;
-    session.command(CMD_SPEND, (w) => w.u8(stat));
-    return true;
+export class CharacterScreen {
+  tab = TAB_STATS;
+  /** Page of the list on the tab shown, from 0. */
+  page = 0;
+  /** Pages the list on the tab shown has, as of the last build. */
+  pages = 1;
+
+  build(f: UiFrame, session: ClientSession, reg: Registry): void {
+    const p = session.progress;
+    const species = reg.defs[session.ownKind] as SpeciesDef | null;
+    const w = Math.min(f.width - 16, 500);
+    const h = Math.min(f.height - 16, 560);
+    const titleH = lineHeight(S_TITLE);
+    const lh = lineHeight(S_LABEL);
+    const x = Math.round((f.width - w) / 2);
+    const y0 = Math.round((f.height - h) / 2);
+    const inner = w - PAD * 2;
+    const cols = columns(inner - BUTTON - 8, S_LABEL);
+    f.add(KEY_CHAR_PANEL, K_PANEL, x, y0, w, h, S_PANEL);
+    f.text(KEY_CHAR_TITLE, x + PAD, y0 + PAD, inner, S_TITLE, `Level ${p.level}  ${p.xp} xp`);
+    let y = y0 + PAD + titleH;
+    f.text(KEY_CHAR_POINTS, x + PAD, y, inner, S_LABEL, `${p.statPoints} stat points  ${p.engramPoints} engram points`);
+    y += lh;
+    const job = p.jobs[0];
+    const making = job ? `making ${itemLabel(reg, reg.index.get((reg.defs[job.recipe] as RecipeDef).makes)!)} (${p.jobs.reduce((n, j) => n + j.left, 0)} to go)` : "nothing being made";
+    f.text(KEY_CHAR_JOBS, x + PAD, y, inner, S_LABEL, making.slice(0, columns(inner, S_LABEL)));
+    y += lh + 6;
+    const tabW = (inner - 8) / TABS.length;
+    TABS.forEach((label, i) => {
+      const b = f.add(KEY_CHAR_TAB + i, K_BUTTON, x + PAD + i * (tabW + 4), y, tabW, ROW + 2, S_BUTTON);
+      b.text = label;
+      b.interactive = true;
+      if (i === this.tab) b.tint = CHOSEN;
+    });
+    y += ROW + 10;
+
+    // The rows of the tab shown: a key, a line, and what its button says ("" for none).
+    const rows: { key: number; text: string; button: string }[] = [];
+    if (this.tab === TAB_STATS) {
+      STAT_NAMES.forEach((name, i) => {
+        if (species?.stats?.[name]) rows.push({ key: KEY_CHAR_STAT + i * 2, text: name, button: p.statPoints > 0 ? "+" : "" });
+      });
+    } else if (this.tab === TAB_ENGRAMS) {
+      engramOrder(reg).forEach((e, n) => {
+        const def = reg.defs[e] as EngramDef;
+        const known = p.engrams.includes(e);
+        const can = !known && p.level >= def.level && p.engramPoints >= def.cost;
+        rows.push({ key: KEY_CHAR_ENGRAM + n * 2, text: known ? `${def.label}: known` : `${def.label}: level ${def.level}, ${def.cost} points`, button: can ? "learn" : "" });
+      });
+    } else {
+      const known = new Set(p.engrams.flatMap((e) => (reg.defs[e] as EngramDef).unlocks));
+      ofType(reg, "recipe").forEach((r, n) => {
+        const def = reg.defs[r] as RecipeDef;
+        if (!known.has(def.id)) return;
+        const needs = def.needs.map((need) => `${need.count} ${itemLabel(reg, reg.index.get(need.item)!)}`).join(", ");
+        const label = (reg.defs[reg.index.get(def.makes)!] as ItemDef).label ?? itemLabel(reg, reg.index.get(def.makes)!);
+        rows.push({ key: KEY_CHAR_RECIPE + n * 2, text: `${label}: ${needs}`, button: "make" });
+      });
+    }
+    const perPage = Math.max(1, Math.floor((y0 + h - PAD - ROW - 6 - y) / ROW));
+    this.pages = Math.max(1, Math.ceil(rows.length / perPage));
+    if (this.page >= this.pages) this.page = this.pages - 1;
+    for (const row of rows.slice(this.page * perPage, (this.page + 1) * perPage)) {
+      f.text(row.key, x + PAD, y + 2, inner - BUTTON - 8, S_LABEL, row.text.slice(0, cols));
+      if (row.button !== "") {
+        const b = f.add(row.key + 1, K_BUTTON, x + w - PAD - BUTTON, y + 1, BUTTON, ROW - 3, S_BUTTON);
+        b.text = row.button;
+        b.interactive = true;
+      }
+      y += ROW;
+    }
+    if (this.pages > 1) {
+      const py = y0 + h - PAD - ROW;
+      const prev = f.add(KEY_CHAR_PAGE, K_BUTTON, x + PAD, py, BUTTON, ROW, S_BUTTON);
+      prev.text = "<";
+      prev.interactive = true;
+      const next = f.add(KEY_CHAR_PAGE + 1, K_BUTTON, x + w - PAD - BUTTON, py, BUTTON, ROW, S_BUTTON);
+      next.text = ">";
+      next.interactive = true;
+      f.text(KEY_CHAR_PAGE + 2, x + PAD + BUTTON + 8, py + 3, inner - BUTTON * 2 - 16, S_LABEL, `page ${this.page + 1} of ${this.pages}`);
+    }
   }
-  if (key >= KEY_CHAR_ENGRAM && key < KEY_CHAR_RECIPE && (key - KEY_CHAR_ENGRAM) % 2 === 1) {
-    const e = ofType(reg, "engram")[(key - KEY_CHAR_ENGRAM - 1) / 2];
-    if (e === undefined) return false;
-    session.command(CMD_LEARN, (w) => w.u16(e));
-    return true;
+
+  /** A press on one of the screen's buttons. Returns true if it was one. */
+  click(key: number, session: ClientSession, reg: Registry): boolean {
+    if (key >= KEY_CHAR_TAB && key < KEY_CHAR_TAB + TABS.length) {
+      this.tab = key - KEY_CHAR_TAB;
+      this.page = 0;
+      return true;
+    }
+    if (key === KEY_CHAR_PAGE || key === KEY_CHAR_PAGE + 1) {
+      this.page = Math.max(0, Math.min(this.pages - 1, this.page + (key === KEY_CHAR_PAGE ? -1 : 1)));
+      return true;
+    }
+    if (key >= KEY_CHAR_STAT && key < KEY_CHAR_ENGRAM && (key - KEY_CHAR_STAT) % 2 === 1) {
+      const stat = (key - KEY_CHAR_STAT - 1) / 2;
+      session.command(CMD_SPEND, (w) => w.u8(stat));
+      return true;
+    }
+    if (key >= KEY_CHAR_ENGRAM && key < KEY_CHAR_RECIPE && (key - KEY_CHAR_ENGRAM) % 2 === 1) {
+      const e = engramOrder(reg)[(key - KEY_CHAR_ENGRAM - 1) / 2];
+      if (e === undefined) return false;
+      session.command(CMD_LEARN, (w) => w.u16(e));
+      return true;
+    }
+    if (key >= KEY_CHAR_RECIPE && key < KEY_CHAR_RECIPE + 400 && (key - KEY_CHAR_RECIPE) % 2 === 1) {
+      const r = ofType(reg, "recipe")[(key - KEY_CHAR_RECIPE - 1) / 2];
+      if (r === undefined) return false;
+      session.command(CMD_CRAFT, (w) => (w.u16(r), w.u8(1)));
+      return true;
+    }
+    return false;
   }
-  if (key >= KEY_CHAR_RECIPE && key < KEY_CHAR_RECIPE + 400 && (key - KEY_CHAR_RECIPE) % 2 === 1) {
-    const r = ofType(reg, "recipe")[(key - KEY_CHAR_RECIPE - 1) / 2];
-    if (r === undefined) return false;
-    session.command(CMD_CRAFT, (w) => (w.u16(r), w.u8(1)));
-    return true;
-  }
-  return false;
 }

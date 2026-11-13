@@ -137,17 +137,16 @@ export class Harvest {
     // Bushes are picked with the use key; trees and rocks are struck.
     if (byHand !== (def.material === undefined)) return false;
 
-    // The best tool for this material that the body carries. Each hit wears it.
+    // The tool in its hands, if that is one for this material and not worn out. Each hit wears it.
     let power = 1;
     let toolSlot = -1;
     const inv = this.items.inv(rec);
-    if (def.material !== undefined) {
-      for (let s = 0; s < inv.cap; s++) {
-        const tool = inv.item[s] !== 0 ? (reg.defs[inv.item[s]!] as ItemDef).tool : undefined;
-        if (tool && tool.on === def.material && tool.power > power) {
-          power = tool.power;
-          toolSlot = s;
-        }
+    const held = inv.hotbar >= 0 && rec.held >= 0 ? inv.hotbar + rec.held : -1;
+    if (def.material !== undefined && held >= 0 && inv.item[held] !== 0 && inv.dur[held]! > 0) {
+      const tool = (reg.defs[inv.item[held]!] as ItemDef).tool;
+      if (tool && tool.on === def.material) {
+        power = tool.power;
+        toolSlot = held;
       }
     }
     for (const y of def.yields) {
@@ -155,14 +154,8 @@ export class Harvest {
       const n = (y.min + this.rng.int(y.max - y.min + 1)) * power;
       if (n > 0) this.items.mint(rec, reg.index.get(y.item)!, n);
     }
-    if (toolSlot >= 0) {
-      if (inv.dur[toolSlot]! <= 1) this.items.burn(rec, toolSlot, 1);
-      else {
-        inv.dur[toolSlot] = inv.dur[toolSlot]! - 1;
-        inv.mod[toolSlot] = ++inv.version;
-        this.records.dirty.add(rec.pid);
-      }
-    }
+    // At no uses left it is broken: still there, no use until it is repaired.
+    if (toolSlot >= 0) this.items.wear(rec, toolSlot, 1);
     this.progression.addXp(rec, def.xp);
     this.hits++;
 

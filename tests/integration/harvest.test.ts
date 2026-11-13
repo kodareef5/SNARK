@@ -5,11 +5,11 @@ import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
 import { SWING_TICKS } from "../../server/harvest.ts";
 import { WorldStore } from "../../server/persist/store.ts";
-import { CMD_CRAFT, CMD_LEARN, CMD_SPEND, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
+import { CMD_CRAFT, CMD_LEARN, CMD_REPAIR, CMD_SPEND, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { BTN_USE } from "../../shared/sim/character.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
-import { nodesOf, standFacing, swing as holdSwing } from "../fixtures/gather.ts";
+import { nodesOf, standFacing, swing as holdSwing, takeInHand } from "../fixtures/gather.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-harvest-"));
@@ -99,32 +99,64 @@ test("a pick gets three times the stone and flint besides, wears with each hit, 
   expect(byHand).toBeLessThanOrEqual(6);
   expect(have("core:flint")).toBe(0); // flint needs a tool
 
-  // A pick with four uses left.
+  // A pick in the bag is no help: it works from the hand.
   h.say(s, "give pick");
-  const slot = items.inv(rec).item.indexOf(id("core:pick"));
-  expect(items.inv(rec).dur[slot]).toBe(60);
-  items.inv(rec).dur[slot] = 4;
+  swing(1);
+  expect(have("core:flint")).toBe(0);
+  expect(items.inv(rec).dur[items.inv(rec).item.indexOf(id("core:pick"))]).toBe(60);
+  // In hand, with four uses left.
+  const slot = takeInHand(h, s, id("core:pick"));
+  expect(slot).toBe(items.inv(rec).hotbar);
+  expect(rec.held).toBe(0);
+  items.inv(rec).setDur(slot, 4);
+  const withPick = have("core:stone");
   swing(3);
-  expect(have("core:stone") - byHand).toBeGreaterThanOrEqual(9);
+  expect(have("core:stone") - withPick).toBeGreaterThanOrEqual(9);
   expect(have("core:flint")).toBeGreaterThanOrEqual(9);
   expect(items.inv(rec).dur[slot]).toBe(1);
   expect(s.inventory!.dur[slot]).toBe(1); // the client sees the wear
   swing(1);
-  expect(have("core:pick")).toBe(0); // broken, and off the books
-  expect(items.burned[id("core:pick")]).toBe(1);
+  // Broken: still there, still on the books, and no more use than a bare hand.
+  expect(have("core:pick")).toBe(1);
+  expect(items.inv(rec).dur[slot]).toBe(0);
+  expect(items.burned[id("core:pick")]).toBe(0);
+  const flint = have("core:flint");
   const before = have("core:stone");
-  swing(1); // back to bare hands
+  swing(1);
   expect(have("core:stone") - before).toBeLessThanOrEqual(2);
-  expect(harvest.hits).toBe(8);
+  expect(have("core:flint")).toBe(flint);
+  expect(items.inv(rec).dur[slot]).toBe(0);
+  expect(harvest.hits).toBe(9);
+  // Repairing it takes half of what it is made of (one stone, one wood, ten thatch), rounded up, and makes it whole.
+  const codes: number[] = [];
+  s.onResult = (_seq, code) => codes.push(code);
+  const repair = (): number => {
+    codes.length = 0;
+    s.command(CMD_REPAIR, (w) => w.u8(slot));
+    h.run(200);
+    return codes[0]!;
+  };
+  expect(repair()).toBe(RESULT_SHORT); // no wood, no thatch
+  h.say(s, "give wood 3");
+  h.say(s, "give thatch 8");
+  const stone = have("core:stone");
+  expect(repair()).toBe(RESULT_OK);
+  expect(items.inv(rec).dur[slot]).toBe(60);
+  expect([stone - have("core:stone"), have("core:wood"), have("core:thatch")]).toEqual([1, 2, 3]);
+  expect(repair()).toBe(RESULT_INVALID); // nothing to mend
+  expect(items.audit()).toEqual([]);
+  swing(1);
+  expect(have("core:flint")).toBeGreaterThan(flint);
+  expect(harvest.hits).toBe(10);
 
   // Far from anything, swinging does nothing.
   h.say(s, "tp 256 240");
   swing(4);
-  expect(harvest.hits).toBe(8);
+  expect(harvest.hits).toBe(10);
   // Six metres from the rock, looking straight at it: out of reach.
   expect(standFacing(h, s, pilot, nodesOf(h, "core:rock", rock.x + 30, rock.z)[0]!, 6)).toBe(true);
   swing(3);
-  expect(harvest.hits).toBe(8);
+  expect(harvest.hits).toBe(10);
 
   // A bush: the primary button does nothing to it; the use key picks it.
   const bush = nodesOf(h, "core:bush", 256, 256).find((b) => standFacing(h, s, pilot, b, 1.4))!;
@@ -212,7 +244,7 @@ test("experience earns levels, levels earn points, points buy stats and engrams,
   };
 
   // Level 1: nothing to spend, the hatchet is out of reach, and a recipe needs its engram.
-  expect([prog.levelOf(0), prog.levelOf(4.9), prog.levelOf(5), prog.levelOf(39), prog.levelOf(40), prog.levelOf(1e9)]).toEqual([1, 1, 2, 3, 4, 20]);
+  expect([prog.levelOf(0), prog.levelOf(4.9), prog.levelOf(5), prog.levelOf(39), prog.levelOf(40), prog.levelOf(1e9)]).toEqual([1, 1, 2, 3, 4, 100]);
   expect(send(() => s.command(CMD_SPEND, (w) => w.u8(SPEED)))).toBe(RESULT_SHORT);
   expect(send(() => learn(s, hatchet))).toBe(RESULT_SHORT);
   expect(send(() => craft(s, makePick))).toBe(RESULT_DENIED);
@@ -280,7 +312,7 @@ test("a crafting job goes on across a restart, and waits when there is no room f
   const inv = h2.host.items.inv(rec2);
   const skin = id("core:waterskin");
   h2.host.items.mint(rec2, skin, inv.cap);
-  expect(inv.used()).toBe(inv.cap);
+  expect(inv.used()).toBe(inv.bag); // the bag is full; the hotbar and armor slots are not where made things go
   while (h2.world.tick < doneAt + 90) h2.server.tick();
   expect(inv.total(id("core:pick"))).toBe(0);
   expect(rec2.jobs[0]!.left).toBe(2); // still waiting, nothing lost

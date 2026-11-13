@@ -3,17 +3,17 @@
 // Also the handlers for the slot commands, which are the only way a client
 // can ask for its inventory to change.
 
-import type { ItemDef } from "../shared/content/defs.ts";
+import type { ItemDef, RecipeDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_USE, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_VITALS, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
-import type { Inventory } from "../shared/sim/items.ts";
+import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Progression } from "./progression.ts";
-import { refreshMods, type Survival } from "./survival.ts";
+import type { Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
 export interface OwnContext {
@@ -27,6 +27,10 @@ export interface OwnContext {
   closeOpen(c: Client): void;
   respawn(c: Client, index: number): number;
   readonly progression: Progression;
+  /** Recompute what follows from a record's stats, load and equipment. */
+  refresh(rec: EntityRecord): void;
+  /** Put `n` of what is in a slot on the ground by the body. False if that could not be done. */
+  drop(rec: EntityRecord, slot: number, n: number): boolean;
 }
 
 /** Write the slots of `inv` that changed after version `since` (all the occupied ones if `full`). */
@@ -34,6 +38,7 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
   const w = ctx.game.beginOwn(OWN_SLOTS);
   w.bits(box, 1);
   w.u8(inv.cap);
+  w.u8(inv.bag);
   w.bool(full);
   const at = w.pos;
   w.u8(0);
@@ -47,6 +52,14 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
       w.u8(inv.quality[s]!);
       w.u16(inv.dur[s]!);
       w.u32(inv.spoilAt[s]!);
+      // What a weapon holds.
+      const holds = inv.ammo[s] !== 0 || inv.attach[s] !== 0;
+      w.bool(holds);
+      if (holds) {
+        w.u16(inv.ammo[s]!);
+        w.u8(inv.loaded[s]!);
+        w.u16(inv.attach[s]!);
+      }
     }
     n++;
   }
@@ -84,8 +97,14 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
   if (inv.version !== c.sentInv) {
     sendSlots(ctx, c, BOX_SELF, inv, c.sentInv, c.sentInv < 0);
     c.sentInv = inv.version;
-    // What is carried changes how the body moves.
-    if (c.ent >= 0) refreshMods(ctx.world.reg, ctx.world.ents, c.ent, rec.genome, inv.weight(ctx.items.table));
+    // What is carried changes how the body moves, and what it holds and wears is seen by others.
+    if (c.ent >= 0) ctx.refresh(rec);
+  }
+  if (rec.held !== c.sentHeld) {
+    const w = game.beginOwn(OWN_HELD);
+    w.u8(rec.held < 0 ? 255 : rec.held);
+    game.endOwn(c);
+    c.sentHeld = rec.held;
   }
 
   // The container it has open: announced when it changes, then kept up to date like its own.
@@ -217,6 +236,109 @@ export function addOwnCommands(ctx: OwnContext): void {
     return r.overflow ? RESULT_INVALID : rec ? ctx.progression.craft(rec, recipe, count) : RESULT_DENIED;
   });
 
+  const reg = ctx.world.reg;
+  const itemDef = (kind: number): ItemDef | null => {
+    const d = reg.defs[kind];
+    return d?.type === "item" ? d : null;
+  };
+  /** The session's own inventory, for a command that names a slot of it; null without a body. */
+  const bagOf = (c: Client): { rec: EntityRecord; inv: Inventory } | null => {
+    const rec = mine(c);
+    return rec ? { rec, inv: ctx.items.inv(rec) } : null;
+  };
+
+  ctx.game.handle(CMD_SELECT, (c: Client, r: BitReader) => {
+    const slot = r.u8();
+    const own = bagOf(c);
+    if (r.overflow || (slot !== 255 && slot >= HOTBAR_SLOTS)) return RESULT_INVALID;
+    if (!own || own.inv.hotbar < 0) return RESULT_DENIED;
+    // An empty slot is nothing to hold.
+    own.rec.held = slot !== 255 && own.inv.item[own.inv.hotbar + slot] !== 0 ? slot : -1;
+    ctx.records.dirty.add(own.rec.pid);
+    ctx.refresh(own.rec);
+    return RESULT_OK;
+  });
+
+  ctx.game.handle(CMD_LOAD, (c: Client, r: BitReader) => {
+    const slot = r.u8();
+    const ammo = r.u16();
+    const own = bagOf(c);
+    if (r.overflow) return RESULT_INVALID;
+    if (!own) return RESULT_DENIED;
+    const { rec, inv } = own;
+    const weapon = slot < inv.cap ? itemDef(inv.item[slot]!)?.weapon : undefined;
+    if (!weapon?.ammo || !weapon.ammo.includes(reg.ids[ammo] ?? "")) return RESULT_INVALID;
+    if (inv.ammo[slot] === ammo) return RESULT_OK;
+    // Rounds of the other kind come out first; the new kind goes in when the weapon is reloaded.
+    if (!ctx.items.unload(rec, slot)) return RESULT_FULL;
+    inv.setGear(slot, ammo, 0, inv.attach[slot]!);
+    ctx.records.dirty.add(rec.pid);
+    return RESULT_OK;
+  });
+
+  ctx.game.handle(CMD_ATTACH, (c: Client, r: BitReader) => {
+    const slot = r.u8();
+    const from = r.u8();
+    const own = bagOf(c);
+    if (r.overflow) return RESULT_INVALID;
+    if (!own) return RESULT_DENIED;
+    const { rec, inv } = own;
+    if (slot >= inv.cap || from >= inv.cap) return RESULT_INVALID;
+    const weapon = itemDef(inv.item[slot]!)?.weapon;
+    if (!weapon?.fits || !weapon.fits.includes(reg.ids[inv.item[from]!] ?? "")) return RESULT_INVALID;
+    return ctx.items.attach(rec, slot, from) ? RESULT_OK : RESULT_INVALID;
+  });
+
+  ctx.game.handle(CMD_DETACH, (c: Client, r: BitReader) => {
+    const slot = r.u8();
+    const own = bagOf(c);
+    if (r.overflow) return RESULT_INVALID;
+    if (!own) return RESULT_DENIED;
+    if (slot >= own.inv.cap || own.inv.attach[slot] === 0) return RESULT_INVALID;
+    return ctx.items.detach(own.rec, slot) ? RESULT_OK : RESULT_FULL;
+  });
+
+  ctx.game.handle(CMD_UNLOAD, (c: Client, r: BitReader) => {
+    const slot = r.u8();
+    const own = bagOf(c);
+    if (r.overflow) return RESULT_INVALID;
+    if (!own) return RESULT_DENIED;
+    if (slot >= own.inv.cap || own.inv.loaded[slot] === 0) return RESULT_INVALID;
+    return ctx.items.unload(own.rec, slot) ? RESULT_OK : RESULT_FULL;
+  });
+
+  ctx.game.handle(CMD_REPAIR, (c: Client, r: BitReader) => {
+    const slot = r.u8();
+    const own = bagOf(c);
+    if (r.overflow) return RESULT_INVALID;
+    if (!own) return RESULT_DENIED;
+    const { rec, inv } = own;
+    if (slot >= inv.cap || inv.item[slot] === 0) return RESULT_INVALID;
+    const item = inv.item[slot]!;
+    const max = ctx.items.maxDur(item, inv.quality[slot]!);
+    const recipe = reg.defs.find((d): d is RecipeDef => d?.type === "recipe" && d.makes === reg.ids[item]);
+    if (max === 0 || !recipe || inv.dur[slot]! >= max) return RESULT_INVALID;
+    // Half of what it is made of, in proportion to how worn it is, and never nothing.
+    const worn = 1 - inv.dur[slot]! / max;
+    const cost = recipe.needs.map((n) => ({ item: reg.index.get(n.item)!, count: Math.max(1, Math.ceil(n.count * 0.5 * worn)) }));
+    for (const n of cost) if (inv.total(n.item) < n.count) return RESULT_SHORT;
+    for (const n of cost) if (!ctx.items.burnItem(rec, n.item, n.count)) throw new Error("the ingredients were counted");
+    ctx.items.mend(rec, slot);
+    return RESULT_OK;
+  });
+
+  ctx.game.handle(CMD_DROP, (c: Client, r: BitReader) => {
+    const slot = r.u8();
+    const count = r.u16();
+    const expect = r.u16();
+    const own = bagOf(c);
+    if (r.overflow) return RESULT_INVALID;
+    if (!own) return RESULT_DENIED;
+    if (slot >= own.inv.cap) return RESULT_INVALID;
+    if (own.inv.item[slot] !== expect || expect === 0) return RESULT_STALE;
+    return ctx.drop(own.rec, slot, count) ? RESULT_OK : RESULT_FULL;
+  });
+
   ctx.game.handle(CMD_USE, (c: Client, r: BitReader) => {
     const slot = r.u8();
     const expect = r.u16();
@@ -227,6 +349,13 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (slot >= inv.cap) return RESULT_INVALID;
     const item = inv.item[slot]!;
     if (item !== expect || item === 0) return RESULT_STALE;
+    // Something worn: using it puts it on, or takes it off again.
+    const worn = reg.wearSlot[item]!;
+    if (worn >= 0 && inv.armor >= 0) {
+      const to = slot >= inv.armor ? inv.free() : inv.armor + worn;
+      if (to < 0) return RESULT_FULL;
+      return ctx.items.move(rec, slot, rec, to, 0) > 0 ? RESULT_OK : RESULT_INVALID;
+    }
     const eat = (ctx.world.reg.defs[item] as ItemDef).eat;
     if (!eat) return RESULT_INVALID;
     if (!ctx.items.burn(rec, slot, 1)) return RESULT_STALE;

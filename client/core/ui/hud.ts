@@ -2,7 +2,7 @@
 
 import type { HudModel } from "../hud.ts";
 import { K_BAR, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_STAMINA, S_TEXT, S_WATER } from "./style.ts";
+import { S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT, S_SLOT_TEXT, S_STAMINA, S_SWATCH, S_TEXT, S_WATER } from "./style.ts";
 
 export const KEY_READOUT = 1;
 export const KEY_MINIMAP_FRAME = 10;
@@ -13,6 +13,8 @@ export const KEY_CROSS = 30;
 export const KEY_STATUS = 31;
 export const KEY_BANNER = 32;
 export const KEY_PROMPT = 33;
+/** Per hotbar slot: its box, its swatch, its number. */
+export const KEY_HOTBAR = 40;
 export const KEY_MARKER = 100;
 /** Index of the minimap picture in the frame's image table. */
 export const IMAGE_MINIMAP = 1;
@@ -52,6 +54,28 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.text(KEY_VITAL + i * 2, W - MARGIN - barW - labelW, y, labelW, S_LABEL, v.label);
     f.add(KEY_VITAL + i * 2 + 1, K_BAR, W - MARGIN - barW, y + 5, barW, 8, VITAL_STYLE[v.id] ?? S_HEALTH).value = v.fraction;
     y += rowH;
+  }
+
+  // The hotbar, bottom centre; on a narrow canvas above the vitals, which would be in its way.
+  if (m.hotbar.length > 0) {
+    const cell = 34;
+    const gap = 3;
+    const total = m.hotbar.length * (cell + gap) - gap;
+    const x0 = Math.round((W - total) / 2);
+    const lift = (W < 700 ? m.vitals.length * rowH + 6 : 0) + (m.status !== "" ? lh + 4 : 0);
+    const y0 = H - MARGIN - cell - lift;
+    const small = lineHeight(S_SLOT_TEXT);
+    for (let i = 0; i < m.hotbar.length; i++) {
+      const c = m.hotbar[i]!;
+      const x = x0 + i * (cell + gap);
+      const box = f.add(KEY_HOTBAR + i * 3, K_PANEL, x, y0, cell, cell, S_SLOT);
+      if (i === m.held) box.tint = 0x5a6a7a;
+      if (c.tint < 0) continue;
+      const swatch = f.add(KEY_HOTBAR + i * 3 + 1, K_PANEL, x + 3, y0 + 3, cell - 6, cell - 6 - small, S_SWATCH);
+      swatch.tint = c.tint;
+      swatch.text = c.label;
+      f.text(KEY_HOTBAR + i * 3 + 2, x + 2, y0 + cell - small, cell - 4, S_SLOT_TEXT, c.number);
+    }
   }
 
   if (m.crosshair) {

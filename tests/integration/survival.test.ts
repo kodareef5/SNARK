@@ -11,7 +11,7 @@ import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import type { Inventory } from "../../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH } from "../../shared/sim/vitals.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
-import { nodesOf, standFacing, swing } from "../fixtures/gather.ts";
+import { nodesOf, standFacing, swing, takeInHand } from "../fixtures/gather.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-life-"));
@@ -63,6 +63,7 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   say((c) => c.command(CMD_LEARN, (w) => w.u16(id("core:engram-pick"))));
   say((c) => c.command(CMD_CRAFT, (w) => (w.u16(id("core:make-pick")), w.u8(1))), 2600);
   expect(have("core:pick")).toBe(1);
+  takeInHand(h, s, id("core:pick"));
   expect(standFacing(h, s, pilot, rock, 1.9)).toBe(true);
   swing(h, pilot, 2, SWING_TICKS);
   expect(have("core:flint")).toBeGreaterThanOrEqual(2);

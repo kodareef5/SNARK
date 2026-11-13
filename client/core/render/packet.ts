@@ -25,8 +25,9 @@ export const DRAW_BLEND = 1;
 /**
  * Draw flag: the mesh follows bones. Each vertex names a bone; each instance
  * carries, where a rigid instance has its yaw, the index of its first bone in
- * `bones`. Instance positions are unused: a bone's rows already hold the whole
- * way from the mesh to the camera-relative world.
+ * `bones`. A bone's rows hold the whole way from the mesh to the
+ * camera-relative world; the instance's position is added to each vertex
+ * first, which is how a thing held is hung on a bone of a rig it was not made on.
  */
 export const DRAW_SKINNED = 2;
 /** Draw flag: no checker pattern. A checker fixed to the world would crawl over a moving body. */
@@ -44,7 +45,7 @@ export const BONES_PER_ROW = 256;
 export const BONE_ROWS = 64;
 export const MAX_BONES = BONES_PER_ROW * BONE_ROWS;
 /** Instances a frame may carry for bodies with bones: every body is several meshes. */
-export const MAX_SKINNED = MAX_VIEW * 8;
+export const MAX_SKINNED = MAX_VIEW * 10;
 
 export interface BufferUpload {
   /** Chunk index the instances belong to. */
@@ -138,9 +139,14 @@ export class InstanceWriter {
     this.bytes.fill(0, at + 1, at + 6);
   }
 
-  /** A body with bones: its first bone's index goes where a rigid instance has its yaw. */
-  setSkinned(i: number, firstBone: number, region0: number): void {
-    this.set(i, 0, 0, 0, firstBone, region0);
+  /**
+   * A mesh that follows a body's bones: the body's first bone goes where a
+   * rigid instance has its yaw. `x, y, z` is added to every vertex before its
+   * bone is applied: zero for a mesh made on the body's rig, and for a thing
+   * held, where on that rig the bone it hangs on rests.
+   */
+  setSkinned(i: number, firstBone: number, region0: number, x = 0, y = 0, z = 0): void {
+    this.set(i, x, y, z, firstBone, region0);
   }
 
   /** Give instance `i` its own colour regions. A zero leaves that region as `set` wrote it. */

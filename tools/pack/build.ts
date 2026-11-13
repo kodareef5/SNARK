@@ -15,6 +15,7 @@ import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { REGION_BASE, WATER_COLOR, defaultPalette } from "../../shared/pack/palette.ts";
 import { importGlb } from "./glb.ts";
 import { mannequinMeshes } from "./mannequin.ts";
+import { weaponMeshes } from "./weapons.ts";
 import { boxMesh, buildPack, unpackMeshes, type SourceMesh } from "./write.ts";
 
 export const MISSING_MESH = "core:missing";
@@ -85,7 +86,7 @@ export function coreBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
 
 export function buildCorePack(extra: SourceMesh[] = []): Uint8Array {
   const bodies = coreBodies();
-  return buildPack([...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...bodies.meshes, ...extra], defaultPalette(), coreClips(), bodies.rigs);
+  return buildPack([...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes(), ...bodies.meshes, ...extra], defaultPalette(), coreClips(), bodies.rigs);
 }
 
 function findGlbs(dir: string, out: string[] = []): string[] {

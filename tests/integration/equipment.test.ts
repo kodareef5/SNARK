@@ -1,0 +1,601 @@
+import { afterAll, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { App } from "../../client/core/app.ts";
+import { DRAW_NEAR, DRAW_SKINNED } from "../../client/core/render/packet.ts";
+import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
+import { KEY_HOTBAR } from "../../client/core/ui/hud.ts";
+import { KEY_INV_ACTION, KEY_INV_PANEL, KEY_INV_ROW_LABEL, KEY_INV_SLOT, KEY_INV_INFO } from "../../client/core/ui/inventory.ts";
+import { K_TEXT, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
+import { BAG_TICKS } from "../../server/death.ts";
+import type { EngramDef, ItemDef, RecipeDef } from "../../shared/content/defs.ts";
+import { BitReader, type BitWriter } from "../../shared/net/codec.ts";
+import {
+  BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_SELECT, CMD_UNLOAD, CMD_USE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID,
+  RESULT_OK, RESULT_STALE,
+} from "../../shared/net/protocol.ts";
+import { Rng } from "../../shared/rng.ts";
+import { BTN_USE } from "../../shared/sim/character.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
+import { ARMOR_SLOTS, GEAR_SLOTS, HOTBAR_SLOTS, Inventory, QUALITY_MUL, fitsSlot, moveSlot } from "../../shared/sim/items.ts";
+import { Harness } from "../fixtures/net.ts";
+import { corePack } from "../fixtures/pack.ts";
+import { coreRegistry } from "../fixtures/world.ts";
+
+const dir = mkdtempSync(join(tmpdir(), "snark-gear-"));
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+const reg = coreRegistry();
+const id = (name: string): number => reg.index.get(`core:${name}`)!;
+
+/** A survivor with cheats, its record, and helpers that send one command and report the server's answer. */
+function setup(host = {}) {
+  const h = new Harness({}, 1, 60, { dev: true, ...host });
+  const s = h.join("ada");
+  h.run(400);
+  h.say(s, "enablecheats");
+  const rec = h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!;
+  const codes = new Map<number, number>();
+  s.onResult = (seq, code) => codes.set(seq, code);
+  const send = (op: number, args: (w: BitWriter) => void, who: ClientSession = s): number => {
+    const seq = who.command(op, args);
+    h.run(150);
+    return codes.get(seq) ?? -1;
+  };
+  const move = (from: number, to: number, item: number, count = 0): number =>
+    send(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.u8(from), w.bits(BOX_SELF, 1), w.u8(to), w.u16(count), w.u16(item)));
+  const inv = (): Inventory => h.host.items.inv(rec);
+  const give = (name: string, n = 1): number => {
+    expect(h.host.items.mint(rec, id(name), n)).toBe(n);
+    h.run(100);
+    return inv().item.lastIndexOf(id(name));
+  };
+  return { h, s, rec, send, move, inv, give, items: h.host.items };
+}
+
+test("an inventory with an equipment tail: things land in the bag, an armor slot takes only its piece, and a weapon moves with what it holds", () => {
+  const inv = new Inventory(8 + GEAR_SLOTS, 8);
+  expect([inv.bag, inv.hotbar, inv.armor, inv.cap]).toEqual([8, 8, 18, 23]);
+  expect(new Inventory(40).hotbar).toBe(-1);
+  // Adding fills the bag and nothing else, however much there is.
+  expect(inv.add(id("stone"), 1000, 0, 0, 0, reg)).toBe(200);
+  expect(inv.used()).toBe(8);
+  for (let s = inv.bag; s < inv.cap; s++) expect(inv.item[s]).toBe(0);
+  expect(inv.room(id("stone"), 0, reg)).toBe(0);
+  expect(inv.free()).toBe(-1);
+  inv.set(0, id("flak_shirt"), 1, 2, 77, 0);
+  inv.set(1, id("rifle"), 1, 3, 50, 0);
+  inv.setGear(1, id("round_rifle"), 1, id("scope"));
+  // A shirt goes on the torso and nowhere else that is worn; anything goes in the hotbar.
+  const torso = inv.armor + 1;
+  expect(reg.wearSlot[id("flak_shirt")]).toBe(1);
+  expect(fitsSlot(inv, torso, id("flak_shirt"), reg)).toBe(true);
+  expect(fitsSlot(inv, inv.armor, id("flak_shirt"), reg)).toBe(false);
+  expect(fitsSlot(inv, torso, id("stone"), reg)).toBe(false);
+  expect(moveSlot(inv, 0, inv, inv.armor + 3, 0, reg)).toBe(0);
+  expect(moveSlot(inv, 2, inv, torso, 0, reg)).toBe(0);
+  expect(moveSlot(inv, 0, inv, torso, 0, reg)).toBe(1);
+  expect([inv.item[torso], inv.quality[torso], inv.dur[torso]]).toEqual([id("flak_shirt"), 2, 77]);
+  // Swapping a worn piece for something that cannot be worn there is refused both ways.
+  expect(moveSlot(inv, torso, inv, 3, 0, reg)).toBe(0);
+  expect(moveSlot(inv, 3, inv, torso, 0, reg)).toBe(0);
+  // The rifle moves to the hotbar with its round and its scope, and swaps back with them.
+  expect(moveSlot(inv, 1, inv, inv.hotbar + 4, 0, reg)).toBe(1);
+  expect([inv.item[inv.hotbar + 4], inv.ammo[inv.hotbar + 4], inv.loaded[inv.hotbar + 4], inv.attach[inv.hotbar + 4], inv.quality[inv.hotbar + 4]]).toEqual([id("rifle"), id("round_rifle"), 1, id("scope"), 3]);
+  expect([inv.item[1], inv.ammo[1], inv.loaded[1], inv.attach[1]]).toEqual([0, 0, 0, 0]);
+  expect(moveSlot(inv, inv.hotbar + 4, inv, 5, 0, reg)).toBe(1);
+  expect([inv.item[5], inv.loaded[5], inv.attach[5]]).toEqual([id("rifle"), 1, id("scope")]);
+  expect([inv.item[inv.hotbar + 4], inv.count[inv.hotbar + 4], inv.loaded[inv.hotbar + 4]]).toEqual([id("stone"), 100, 0]);
+  // Six qualities, each better than the last.
+  for (let q = 1; q < QUALITY_MUL.length; q++) expect(QUALITY_MUL[q]!).toBeGreaterThan(QUALITY_MUL[q - 1]!);
+  expect([HOTBAR_SLOTS, ARMOR_SLOTS]).toEqual([10, 5]);
+});
+
+test("the content hangs together: every engram can be reached, every recipe made, every weapon fed, every piece drawn", () => {
+  const levels = reg.defs.find((d) => d?.type === "levels")!;
+  expect(levels.type === "levels" && levels.xp.length).toBe(100);
+  const pack = corePack();
+  const items = reg.defs.filter((d): d is ItemDef => d?.type === "item");
+  const recipes = reg.defs.filter((d): d is RecipeDef => d?.type === "recipe");
+  const engrams = reg.defs.filter((d): d is EngramDef => d?.type === "engram");
+  // Every recipe is unlocked by exactly one engram, and no engram asks for a level that does not exist.
+  for (const r of recipes) expect(engrams.filter((e) => e.unlocks.includes(r.id)).length, r.id).toBe(1);
+  for (const e of engrams) expect(e.level, e.id).toBeLessThanOrEqual(100);
+  // All the points a survivor ever gets buy every engram, with room to spare.
+  const points = levels.type === "levels" ? levels.engramPoints.reduce((a, b) => a + b, 0) : 0;
+  expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));
+  const weapons = items.filter((d) => d.weapon);
+  expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bow", "crossbow", "grenade", "hatchet", "pick", "pistol", "rifle", "spear"]);
+  for (const d of weapons) {
+    // Each has a mesh that follows a hand, and each bow and gun has a recipe for at least one thing it fires.
+    const mesh = pack.header.meshes[pack.meshIndex.get(d.weapon!.mesh!)!]!;
+    expect(mesh.skeleton, d.id).toBe("human");
+    for (const a of d.weapon!.ammo ?? []) expect(items.find((x) => x.id === a)?.ammo, a).toBeDefined();
+    if (d.weapon!.ammo) expect(d.weapon!.ammo.some((a) => recipes.some((r) => r.makes === a))).toBe(true);
+    expect(recipes.some((r) => r.makes === d.id), d.id).toBe(true);
+  }
+  // Twenty pieces of armor: four tiers of five, each tier better than the last, each drawn on both bodies.
+  const worn = items.filter((d) => d.wear);
+  expect(worn.length).toBe(20);
+  const rating = (tier: string): number => worn.find((d) => d.id === `core:${tier}_shirt`)!.wear!.armor;
+  expect([rating("cloth"), rating("hide"), rating("chitin"), rating("flak")]).toEqual([10, 20, 50, 100]);
+  for (const d of worn) {
+    for (const sex of ["m", "f"]) expect(pack.meshIndex.has(`core:human_${sex}/armor/${d.wear!.set}/${d.wear!.slot}`), `${d.id} on ${sex}`).toBe(true);
+    expect(recipes.some((r) => r.makes === d.id), d.id).toBe(true);
+  }
+  // What a kill yields and what recipes need are things that exist; the pack has the flying meshes too.
+  for (const need of recipes.flatMap((r) => r.needs)) expect(reg.index.has(need.item), need.item).toBe(true);
+  for (const mesh of ["core:arrow", "core:dart"]) expect(pack.meshIndex.has(mesh)).toBe(true);
+});
+
+test("a survivor takes things in hand and puts armor on, and everyone sees it", () => {
+  const { h, s, rec, send, move, inv, give } = setup();
+  const bo = h.join("bo", { latencyMs: 30 });
+  h.run(400);
+  const ents = h.world.ents;
+  const e = h.ent(s);
+  const seenByBo = (): number[] => {
+    const seen = new RemoteSample();
+    bo.sampleRemote(seen);
+    expect(seen.count).toBe(1);
+    return [...seen.gear.subarray(0, GEAR_COUNT)];
+  };
+  expect(inv().cap).toBe(40 + GEAR_SLOTS);
+  expect(s.inventory!.bag).toBe(40);
+  expect(seenByBo()).toEqual([0, 0, 0, 0, 0, 0]);
+  expect(s.held).toBe(-1);
+
+  // A bow to hotbar slot 3, then in hand.
+  const bow = give("bow");
+  expect(inv().dur[bow]).toBe(50);
+  const hot = inv().hotbar;
+  expect(move(bow, hot + 2, id("bow"))).toBe(RESULT_OK);
+  expect(send(CMD_SELECT, (w) => w.u8(2))).toBe(RESULT_OK);
+  expect([rec.held, s.held]).toEqual([2, 2]);
+  expect(ents.gear[e]![GEAR_HELD]).toBe(id("bow"));
+  expect(seenByBo()[GEAR_HELD]).toBe(id("bow"));
+  // An empty slot is nothing to hold; neither is a slot that does not exist.
+  expect(send(CMD_SELECT, (w) => w.u8(5))).toBe(RESULT_OK);
+  expect([rec.held, seenByBo()[GEAR_HELD]]).toEqual([-1, 0]);
+  expect(send(CMD_SELECT, (w) => w.u8(10))).toBe(RESULT_INVALID);
+  expect(send(CMD_SELECT, (w) => w.u8(2))).toBe(RESULT_OK);
+  expect(send(CMD_SELECT, (w) => w.u8(255))).toBe(RESULT_OK);
+  expect(rec.held).toBe(-1);
+  expect(send(CMD_SELECT, (w) => w.u8(2))).toBe(RESULT_OK);
+  // Moving it out of the slot leaves the hand empty; moving it back fills it again.
+  expect(move(hot + 2, 0, id("bow"))).toBe(RESULT_OK);
+  expect(seenByBo()[GEAR_HELD]).toBe(0);
+  expect(move(0, hot + 2, id("bow"))).toBe(RESULT_OK);
+  expect(seenByBo()[GEAR_HELD]).toBe(id("bow"));
+
+  // A flak shirt by using it; hide pants by moving them; a hat cannot go on the feet.
+  const shirt = give("flak_shirt");
+  const armor = inv().armor;
+  expect(send(CMD_USE, (w) => (w.u8(shirt), w.u16(id("flak_shirt"))))).toBe(RESULT_OK);
+  expect(inv().item[armor + 1]).toBe(id("flak_shirt"));
+  const pants = give("hide_pants");
+  expect(move(pants, armor + 3, id("hide_pants"))).toBe(RESULT_OK);
+  const hat = give("cloth_hat");
+  expect(move(hat, armor + 4, id("cloth_hat"))).toBe(RESULT_INVALID);
+  expect(move(hat, armor, id("cloth_hat"))).toBe(RESULT_OK);
+  expect(seenByBo()).toEqual([id("bow"), id("cloth_hat"), id("flak_shirt"), 0, id("hide_pants"), 0]);
+  expect([...ents.gear[e]!.subarray(GEAR_WORN)]).toEqual([id("cloth_hat"), id("flak_shirt"), 0, id("hide_pants"), 0]);
+  // Using what is worn takes it off; a second shirt swaps with the first.
+  expect(send(CMD_USE, (w) => (w.u8(armor), w.u16(id("cloth_hat"))))).toBe(RESULT_OK);
+  expect(inv().item[armor]).toBe(0);
+  expect(inv().total(id("cloth_hat"))).toBe(1);
+  const second = give("chitin_shirt");
+  expect(send(CMD_USE, (w) => (w.u8(second), w.u16(id("chitin_shirt"))))).toBe(RESULT_OK);
+  expect([inv().item[armor + 1], inv().item[second]]).toEqual([id("chitin_shirt"), id("flak_shirt")]);
+  expect(seenByBo()[GEAR_WORN + 1]).toBe(id("chitin_shirt"));
+  // Stone is not worn, and a stale picture of a slot is refused.
+  const stone = give("stone", 5);
+  expect(send(CMD_USE, (w) => (w.u8(stone), w.u16(id("stone"))))).toBe(RESULT_INVALID);
+  expect(send(CMD_USE, (w) => (w.u8(second), w.u16(id("bow"))))).toBe(RESULT_STALE);
+  expect(h.host.items.audit()).toEqual([]);
+  expect(bo.stats.undecodable + s.stats.undecodable).toBe(0);
+});
+
+test("a weapon is set to its ammunition, loaded, fired empty, fitted and stripped, and every round stays on the books", () => {
+  const { h, s, rec, send, inv, give, items } = setup();
+  const rifle = give("rifle");
+  const rounds = give("round_rifle", 12);
+  const darts = give("dart_tranq", 5);
+  const scope = give("scope");
+  const arrows = give("arrow_stone", 9);
+  void [rounds, darts, arrows];
+  const total = (name: string): number => items.total(id(name));
+
+  // The rifle takes rifle rounds and darts, not arrows; and stone is not ammunition at all.
+  expect(send(CMD_LOAD, (w) => (w.u8(rifle), w.u16(id("arrow_stone"))))).toBe(RESULT_INVALID);
+  expect(send(CMD_LOAD, (w) => (w.u8(arrows), w.u16(id("round_rifle"))))).toBe(RESULT_INVALID);
+  expect(send(CMD_LOAD, (w) => (w.u8(rifle), w.u16(id("round_rifle"))))).toBe(RESULT_OK);
+  expect([inv().ammo[rifle], inv().loaded[rifle]]).toEqual([id("round_rifle"), 0]);
+  expect(s.inventory!.ammo[rifle]).toBe(id("round_rifle"));
+  // Loading moves one round out of the stack into the rifle (it holds one); nothing is made or lost.
+  expect(items.load(rec, rifle, id("round_rifle"), 1)).toBe(1);
+  expect([inv().loaded[rifle], inv().total(id("round_rifle")), total("round_rifle")]).toEqual([1, 11, 12]);
+  expect(items.load(rec, rifle, id("round_rifle"), 1)).toBe(1); // already full
+  expect(inv().total(id("round_rifle"))).toBe(11);
+  h.run(100);
+  expect(s.inventory!.loaded[rifle]).toBe(1);
+  // Firing it spends the round for good.
+  expect(items.spend(rec, rifle)).toBe(true);
+  expect(items.spend(rec, rifle)).toBe(false);
+  expect([total("round_rifle"), items.burned[id("round_rifle")]]).toEqual([11, 1]);
+  // Switching to darts with a round in it puts the round back first.
+  items.load(rec, rifle, id("round_rifle"), 1);
+  expect(send(CMD_LOAD, (w) => (w.u8(rifle), w.u16(id("dart_tranq"))))).toBe(RESULT_OK);
+  expect([inv().ammo[rifle], inv().loaded[rifle], inv().total(id("round_rifle"))]).toEqual([id("dart_tranq"), 0, 11]);
+  items.load(rec, rifle, id("dart_tranq"), 1);
+  expect(send(CMD_UNLOAD, (w) => w.u8(rifle))).toBe(RESULT_OK);
+  expect([inv().loaded[rifle], inv().total(id("dart_tranq"))]).toEqual([0, 5]);
+  expect(send(CMD_UNLOAD, (w) => w.u8(rifle))).toBe(RESULT_INVALID);
+
+  // A pistol holds six and takes what there is.
+  const pistol = give("pistol");
+  give("round_pistol", 4);
+  expect(items.load(rec, pistol, id("round_pistol"), 6)).toBe(4);
+  expect(inv().total(id("round_pistol"))).toBe(0);
+  give("round_pistol", 10);
+  expect(items.load(rec, pistol, id("round_pistol"), 6)).toBe(6);
+  expect([inv().total(id("round_pistol")), total("round_pistol")]).toEqual([8, 14]);
+
+  // The scope fits the rifle and not the bow; a second attachment swaps with the first; detaching returns it.
+  const bow = give("bow");
+  expect(send(CMD_ATTACH, (w) => (w.u8(bow), w.u8(scope)))).toBe(RESULT_INVALID);
+  expect(send(CMD_ATTACH, (w) => (w.u8(rifle), w.u8(scope)))).toBe(RESULT_OK);
+  expect([inv().attach[rifle], inv().item[scope], total("scope")]).toEqual([id("scope"), 0, 1]);
+  const silencer = give("silencer");
+  expect(send(CMD_ATTACH, (w) => (w.u8(rifle), w.u8(silencer)))).toBe(RESULT_OK);
+  expect([inv().attach[rifle], inv().item[silencer]]).toEqual([id("silencer"), id("scope")]);
+  expect(send(CMD_DETACH, (w) => w.u8(rifle))).toBe(RESULT_OK);
+  expect([inv().attach[rifle], total("silencer"), inv().total(id("silencer"))]).toEqual([0, 1, 1]);
+  expect(send(CMD_DETACH, (w) => w.u8(rifle))).toBe(RESULT_INVALID);
+  expect(send(CMD_ATTACH, (w) => (w.u8(rifle), w.u8(rifle)))).toBe(RESULT_INVALID);
+  expect(items.audit()).toEqual([]);
+
+  // With a full bag there is nowhere for rounds or an attachment to come out to.
+  items.load(rec, rifle, id("dart_tranq"), 1);
+  send(CMD_ATTACH, (w) => (w.u8(rifle), w.u8(inv().item.indexOf(id("scope")))));
+  items.mint(rec, id("waterskin"), 60);
+  expect(inv().free()).toBe(-1);
+  items.burnItem(rec, id("dart_tranq"), inv().total(id("dart_tranq"))); // no stack of darts left to top up
+  items.mint(rec, id("waterskin"), 5);
+  expect(send(CMD_UNLOAD, (w) => w.u8(rifle))).toBe(RESULT_FULL);
+  expect(send(CMD_DETACH, (w) => w.u8(rifle))).toBe(RESULT_FULL);
+  expect([inv().loaded[rifle], inv().attach[rifle]]).toEqual([1, id("scope")]);
+  // Destroying the rifle destroys what is in it and on it, on the books.
+  const dartsBurned = items.burned[id("dart_tranq")]!;
+  expect(items.burn(rec, rifle, 1)).toBe(true);
+  expect([items.burned[id("dart_tranq")]! - dartsBurned, items.burned[id("scope")], total("scope")]).toEqual([1, 1, 0]);
+  expect(items.audit()).toEqual([]);
+});
+
+test("what is dropped lies in a bag anyone can open, and is gone, on the books, after two minutes", () => {
+  const { h, s, rec, send, inv, give, items } = setup();
+  const bo = h.join("bo");
+  h.run(300);
+  const stone = give("stone", 80);
+  const rifle = give("rifle");
+  items.load(rec, rifle, id("round_rifle"), 0);
+  give("round_rifle", 3);
+  items.load(rec, rifle, id("round_rifle"), 1);
+  const before = h.world.ents.count;
+  // Thirty stone, then the loaded rifle.
+  expect(send(CMD_DROP, (w) => (w.u8(stone), w.u16(30), w.u16(id("stone"))))).toBe(RESULT_OK);
+  expect(send(CMD_DROP, (w) => (w.u8(rifle), w.u16(0), w.u16(id("rifle"))))).toBe(RESULT_OK);
+  expect(send(CMD_DROP, (w) => (w.u8(rifle), w.u16(0), w.u16(id("rifle"))))).toBe(RESULT_STALE);
+  expect(h.world.ents.count).toBe(before + 2);
+  expect([inv().total(id("stone")), inv().total(id("rifle")), items.total(id("stone")), items.total(id("round_rifle"))]).toEqual([50, 0, 80, 3]);
+  const bags = [...h.host.records.byPid.values()].filter((r) => r.name === "bag");
+  expect(bags.length).toBe(2);
+  // The bag lies just ahead of the survivor.
+  const e = h.ent(s);
+  expect(Math.hypot(bags[0]!.x - h.world.ents.x[e]!, bags[0]!.z - h.world.ents.z[e]!)).toBeCloseTo(0.8, 2);
+  expect(items.audit()).toEqual([]);
+
+  // Bo walks up, opens the rifle's bag with the use key, and takes the rifle with its round still in it.
+  h.say(bo, "enablecheats");
+  h.say(bo, `tp ${(bags[1]!.x - 1.2).toFixed(2)} ${bags[1]!.z.toFixed(2)}`);
+  const p = h.pilots[1]!;
+  p.yaw = Math.PI / 2;
+  p.pitch = -0.9;
+  h.run(300);
+  p.buttons = BTN_USE;
+  h.run(100);
+  p.buttons = 0;
+  h.run(300);
+  expect(bo.open?.name).toBe("bag");
+  expect(bo.open!.inventory.item[0]).toBe(id("rifle"));
+  expect(bo.open!.inventory.loaded[0]).toBe(1);
+  bo.command(CMD_MOVE, (w) => (w.bits(BOX_OPEN, 1), w.u8(0), w.bits(BOX_SELF, 1), w.u8(0), w.u16(0), w.u16(id("rifle"))));
+  h.run(300);
+  const boRec = h.host.records.byPid.get(h.world.ents.pid[h.ent(bo)]!)!;
+  expect([items.inv(boRec).item[0], items.inv(boRec).loaded[0], items.inv(boRec).ammo[0]]).toEqual([id("rifle"), 1, id("round_rifle")]);
+  // An emptied bag is gone at once; the other waits out its two minutes, and its stone goes with it.
+  h.run(600);
+  expect([...h.host.records.byPid.values()].filter((r) => r.name === "bag").length).toBe(1);
+  const burned = items.burned[id("stone")]!;
+  for (let t = 0; t < BAG_TICKS + 60; t++) h.server.tick();
+  expect([...h.host.records.byPid.values()].filter((r) => r.name === "bag").length).toBe(0);
+  expect(items.burned[id("stone")]! - burned).toBe(30);
+  expect(h.world.ents.count).toBe(before);
+  expect(items.audit()).toEqual([]);
+  // A session without a body drops nothing.
+  h.say(s, "suicide");
+  h.run(300);
+  expect(rec.dead).toBe(true);
+  expect(send(CMD_DROP, (w) => (w.u8(0), w.u16(0), w.u16(id("stone"))))).toBe(RESULT_DENIED);
+});
+
+test("equipment survives death in the cache and a restart in the save: rounds loaded, attachment fitted, armor worn, slot in hand", () => {
+  const db = join(dir, "gear.db");
+  const { h, s, rec, send, move, inv, give, items } = setup({ dbPath: db });
+  const rifle = give("rifle");
+  give("round_rifle", 7);
+  const scope = give("scope");
+  const hot = inv().hotbar;
+  expect(move(rifle, hot + 1, id("rifle"))).toBe(RESULT_OK);
+  expect(send(CMD_ATTACH, (w) => (w.u8(hot + 1), w.u8(scope)))).toBe(RESULT_OK);
+  items.load(rec, hot + 1, id("round_rifle"), 1);
+  const hat = give("flak_hat");
+  expect(send(CMD_USE, (w) => (w.u8(hat), w.u16(id("flak_hat"))))).toBe(RESULT_OK);
+  expect(send(CMD_SELECT, (w) => w.u8(1))).toBe(RESULT_OK);
+  inv().setDur(hot + 1, 31);
+  h.run(400);
+  const pid = rec.pid;
+  s.close();
+  h.run(200);
+  h.host.shutdown();
+
+  const h2 = new Harness({}, 1, 60, { dbPath: db, dev: true });
+  expect(h2.host.items.audit()).toEqual([]);
+  const rec2 = h2.host.records.byPid.get(pid)!;
+  const inv2 = h2.host.items.inv(rec2);
+  expect([inv2.cap, inv2.bag]).toEqual([55, 40]);
+  expect([inv2.item[hot + 1], inv2.ammo[hot + 1], inv2.loaded[hot + 1], inv2.attach[hot + 1], inv2.dur[hot + 1]]).toEqual([id("rifle"), id("round_rifle"), 1, id("scope"), 31]);
+  expect(inv2.item[inv2.armor]).toBe(id("flak_hat"));
+  expect(rec2.held).toBe(1);
+  expect(h2.host.items.total(id("round_rifle"))).toBe(7);
+  const again = h2.join("ada");
+  h2.run(500);
+  expect(again.held).toBe(1);
+  expect([...h2.world.ents.gear[h2.ent(again)]!]).toEqual([id("rifle"), id("flak_hat"), 0, 0, 0, 0]);
+  expect(again.inventory!.loaded[hot + 1]).toBe(1);
+
+  // Death: everything goes to the cache as it was, the hand is empty, and the books still balance.
+  h2.say(again, "enablecheats");
+  h2.say(again, "suicide");
+  h2.run(300);
+  expect(rec2.dead).toBe(true);
+  expect(rec2.held).toBe(-1);
+  const cache = [...h2.host.records.byPid.values()].find((r) => r.name.endsWith("cache"))!;
+  const kept = cache.inv!;
+  expect([kept.item[hot + 1], kept.loaded[hot + 1], kept.attach[hot + 1]]).toEqual([id("rifle"), 1, id("scope")]);
+  expect(kept.item[kept.armor]).toBe(id("flak_hat"));
+  expect(h2.host.items.audit()).toEqual([]);
+  h2.host.shutdown();
+});
+
+test("fuzz: no stream of equipment commands, valid or not, makes or loses an item", () => {
+  const h = new Harness({}, 3, 60, { dev: true });
+  const sessions = ["ada", "bo", "cy"].map((name) => h.join(name));
+  h.run(400);
+  const items = h.host.items;
+  const recs = sessions.map((s) => h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!);
+  const stock = ["rifle", "pistol", "bow", "crossbow", "round_rifle", "round_pistol", "arrow_stone", "dart_tranq", "scope", "silencer", "laser", "flak_shirt", "hide_pants", "cloth_hat", "chitin_boots", "flak_gloves", "stone", "berry", "pick", "grenade"];
+  for (const rec of recs) for (const name of stock) items.mint(rec, id(name), reg.stack[id(name)]! > 1 ? 30 : 2);
+  const rng = new Rng(2026);
+  const ops = [CMD_MOVE, CMD_SELECT, CMD_LOAD, CMD_ATTACH, CMD_DETACH, CMD_UNLOAD, CMD_REPAIR, CMD_DROP, CMD_USE];
+  for (let round = 0; round < 400; round++) {
+    const k = rng.int(sessions.length);
+    const s = sessions[k]!;
+    const inv = s.inventory!;
+    // Mostly slots that hold something and items that are really there; sometimes anything at all.
+    const slot = (): number => (rng.int(5) === 0 ? rng.int(256) : rng.int(inv.cap));
+    const item = (at: number): number => (rng.int(6) === 0 ? rng.int(reg.defs.length) : (inv.item[at] ?? 0));
+    const op = ops[rng.int(ops.length)]!;
+    const a = slot();
+    const b = slot();
+    s.command(op, (w) => {
+      if (op === CMD_MOVE) (w.bits(rng.int(2), 1), w.u8(a), w.bits(rng.int(2), 1), w.u8(b), w.u16(rng.int(3) === 0 ? rng.int(40) : 0), w.u16(item(a)));
+      else if (op === CMD_SELECT) w.u8(rng.int(4) === 0 ? 255 : rng.int(12));
+      else if (op === CMD_LOAD) (w.u8(a), w.u16(item(b)));
+      else if (op === CMD_ATTACH) (w.u8(a), w.u8(b));
+      else if (op === CMD_DROP) (w.u8(a), w.u16(rng.int(2) === 0 ? 0 : rng.int(20)), w.u16(item(a)));
+      else if (op === CMD_USE) (w.u8(a), w.u16(item(a)));
+      else w.u8(a);
+    });
+    // The server reloads and fires on its own account now and then, as the weapon step will.
+    const rec = recs[k]!;
+    const own = items.inv(rec);
+    const at = rng.int(own.cap);
+    const def = reg.defs[own.item[at]!] as ItemDef | null;
+    if (def?.weapon?.ammo) {
+      if (own.ammo[at] !== 0 && rng.int(2) === 0) items.load(rec, at, own.ammo[at]!, def.weapon.clip ?? 1);
+      else items.spend(rec, at);
+    }
+    if (rng.int(7) === 0 && own.item[at] !== 0 && reg.uses[own.item[at]!]! > 0) items.wear(rec, at, 1 + rng.int(30));
+    h.run(40);
+    if (round % 20 === 19) {
+      expect(items.audit()).toEqual([]);
+      for (const rec2 of recs) {
+        const own2 = items.inv(rec2);
+        // Nothing is worn where it does not belong, and nothing holds what it cannot.
+        for (let w = 0; w < ARMOR_SLOTS; w++) if (own2.item[own2.armor + w] !== 0) expect(reg.wearSlot[own2.item[own2.armor + w]!]).toBe(w);
+        for (let sl = 0; sl < own2.cap; sl++) {
+          const d = reg.defs[own2.item[sl]!] as ItemDef | null;
+          if (own2.loaded[sl]! > 0) expect(d?.weapon?.ammo?.includes(reg.ids[own2.ammo[sl]!]!)).toBe(true);
+          if (own2.loaded[sl]! > 0) expect(own2.loaded[sl]!).toBeLessThanOrEqual(d!.weapon!.clip ?? 1);
+          if (own2.attach[sl] !== 0) expect(d?.weapon?.fits?.includes(reg.ids[own2.attach[sl]!]!)).toBe(true);
+          if (own2.item[sl] === 0) expect([own2.ammo[sl], own2.loaded[sl], own2.attach[sl]]).toEqual([0, 0, 0]);
+        }
+      }
+    }
+  }
+  h.run(500);
+  expect(items.audit()).toEqual([]);
+  // Every client's picture of its own slots is the server's.
+  sessions.forEach((s, k) => {
+    const own = items.inv(recs[k]!);
+    for (let sl = 0; sl < own.cap; sl++) {
+      expect([s.inventory!.item[sl], s.inventory!.count[sl], s.inventory!.dur[sl], s.inventory!.ammo[sl], s.inventory!.loaded[sl], s.inventory!.attach[sl]]).toEqual([own.item[sl]!, own.count[sl]!, own.dur[sl]!, own.ammo[sl]!, own.loaded[sl]!, own.attach[sl]!]);
+    }
+    expect(s.held).toBe(recs[k]!.held);
+    expect(s.stats.undecodable).toBe(0);
+  });
+  expect(h.server.stats.malformed).toBe(0);
+});
+
+test("the client draws what is worn and held, and the hotbar and inventory screens show and send it", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const pack = corePack();
+  const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  let packet = app.frame(0, 1280, 720);
+  const run = (ms: number, w = 1280, ht = 720): void => h.run(ms, (now) => (packet = app.frame(now, w, ht)));
+  run(500);
+  const s = app.session;
+  const rec = h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!;
+  const items = h.host.items;
+  const give = (name: string, n = 1): void => void items.mint(rec, id(name), n);
+  for (const name of ["rifle", "bow", "scope", "flak_shirt", "hide_hat"]) give(name);
+  give("round_rifle", 9);
+  give("arrow_stone", 30);
+  run(200);
+  const f = app.ui.frame;
+  const sent: number[] = [];
+  const command = s.command.bind(s);
+  s.command = (op, args) => (sent.push(op), command(op, args));
+  const inv = s.inventory!;
+  const slotOf = (name: string): number => inv.item.indexOf(id(name));
+  const cell = (slot: number): number => KEY_INV_SLOT + slot * 3;
+  const click = (key: number, button = 0): void => {
+    app.pointer(0, key, 0, 0, button);
+    run(120);
+  };
+
+  // The hotbar is on the HUD: ten cells, empty.
+  expect(f.find(KEY_HOTBAR)).not.toBeNull();
+  expect(f.find(KEY_HOTBAR + 9 * 3)).not.toBeNull();
+  expect(f.find(KEY_HOTBAR + 1)).toBeNull();
+  // The inventory screen has the bag, a hotbar row and an armor row, on every window shape.
+  app.key("KeyI", true);
+  for (const [name, aspect] of [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]] as const) {
+    app.ui.build(aspect, app.hud, s);
+    fits(f, name);
+    expect(f.find(cell(inv.hotbar + 9))!.interactive).toBe(true);
+    expect(f.find(cell(inv.armor + 4))!.interactive).toBe(true);
+    expect(f.find(KEY_INV_ROW_LABEL)!.text).toBe("Hotbar: keys 1 to 0");
+    expect(f.find(KEY_INV_ACTION + 3)!.text).toBe("Detach");
+  }
+  run(50);
+  // Pick the rifle up and put it in the first hotbar cell; the bow in the second.
+  click(cell(slotOf("rifle")));
+  click(cell(inv.hotbar));
+  click(cell(slotOf("bow")));
+  click(cell(inv.hotbar + 1));
+  expect([inv.item[inv.hotbar], inv.item[inv.hotbar + 1]]).toEqual([id("rifle"), id("bow")]);
+  // Rounds put down on the rifle set what it takes; the scope put down on it is fitted; arrows on the rifle are just a move.
+  click(cell(slotOf("round_rifle")));
+  click(cell(inv.hotbar));
+  expect(inv.ammo[inv.hotbar]).toBe(id("round_rifle"));
+  expect(inv.total(id("round_rifle"))).toBe(9); // the stack stayed where it was
+  click(cell(slotOf("scope")));
+  click(cell(inv.hotbar));
+  expect(inv.attach[inv.hotbar]).toBe(id("scope"));
+  expect(sent.slice(-4)).toEqual([CMD_MOVE, CMD_MOVE, CMD_LOAD, CMD_ATTACH]);
+  // Right click puts the shirt on; the hat too.
+  click(cell(slotOf("flak_shirt")), 2);
+  click(cell(slotOf("hide_hat")), 2);
+  expect([inv.item[inv.armor], inv.item[inv.armor + 1]]).toEqual([id("hide_hat"), id("flak_shirt")]);
+  // Hovering the rifle says what it is, how worn, and what is in and on it.
+  items.load(rec, inv.hotbar, id("round_rifle"), 1);
+  run(100);
+  app.pointer(2, cell(inv.hotbar), 0, 0, 0);
+  run(34);
+  expect(f.find(KEY_INV_INFO)!.text).toBe("primitive long rifle  70/70  1 rifle round  + scope");
+  expect(f.find(cell(inv.hotbar) + 2)!.text).toBe("1"); // the rounds in it
+  // Detach and unload buttons act on what is picked up.
+  click(cell(inv.hotbar));
+  click(KEY_INV_ACTION + 3);
+  click(cell(inv.hotbar));
+  click(KEY_INV_ACTION + 2);
+  expect([inv.attach[inv.hotbar], inv.loaded[inv.hotbar], inv.total(id("scope")), inv.total(id("round_rifle"))]).toEqual([0, 0, 1, 9]);
+  expect(sent.slice(-2)).toEqual([CMD_DETACH, CMD_UNLOAD]);
+  // Drop: the scope goes on the ground.
+  click(cell(slotOf("scope")));
+  click(KEY_INV_ACTION);
+  expect(inv.total(id("scope"))).toBe(0);
+  expect(sent[sent.length - 1]).toBe(CMD_DROP);
+  app.key("KeyI", true);
+  run(50);
+  expect(f.find(KEY_INV_PANEL)).toBeNull();
+
+  // Number keys: 1 takes the rifle in hand, 2 the bow, 2 again puts it away, 5 is an empty slot.
+  app.key("Digit1", true);
+  run(150);
+  expect(s.held).toBe(0);
+  expect(f.find(KEY_HOTBAR)!.tint).toBe(0x5a6a7a);
+  expect(f.find(KEY_HOTBAR + 1)!.text).toBe("long");
+  expect(f.find(KEY_HOTBAR + 2)!.text).toBe("0");
+  // Its own body, from its own eyes: the hat and the head are not drawn, the shirt and the rifle are.
+  const meshes = (): string[] => [...packet!.drawMesh.subarray(0, packet!.drawCount)].filter((_, d) => (packet!.drawFlags[d]! & DRAW_NEAR) !== 0).map((m) => pack.header.meshes[m]!.id);
+  expect(meshes().sort()).toEqual(["core:human_m/armor/hide/torso", "core:human_m/feet", "core:human_m/hands", "core:human_m/legs", "core:rifle"]);
+  app.key("Digit2", true);
+  run(150);
+  expect(s.held).toBe(1);
+  expect(meshes()).toContain("core:bow");
+  app.key("Digit2", true);
+  run(150);
+  expect(s.held).toBe(-1);
+  app.key("Digit5", true);
+  run(150);
+  expect(s.held).toBe(-1);
+  app.key("Digit0", true);
+  run(150);
+  expect(sent.slice(-5).every((op) => op === CMD_SELECT)).toBe(true);
+
+  // Seen by another: the hood over the head, no hair under it, the shirt in place of the bare torso, the bow in hand.
+  app.key("Digit2", true);
+  const bo = new App(h.join("bo", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  let seen = bo.frame(0, 1280, 720);
+  h.say(bo.session, "enablecheats");
+  h.run(600, (now) => {
+    app.frame(now, 1280, 720);
+    seen = bo.frame(now, 1280, 720);
+  });
+  // Bo turns to look at ada, who stands a little way off.
+  const e = h.ent(s);
+  const eb = h.ent(bo.session);
+  const ents = h.world.ents;
+  bo.controls.yaw = Math.atan2(ents.x[e]! - ents.x[eb]!, ents.z[e]! - ents.z[eb]!);
+  h.run(300, (now) => {
+    app.frame(now, 1280, 720);
+    seen = bo.frame(now, 1280, 720);
+  });
+  const others = [...seen!.drawMesh.subarray(0, seen!.drawCount)].filter((_, d) => (seen!.drawFlags[d]! & (DRAW_SKINNED | DRAW_NEAR)) === DRAW_SKINNED).map((m) => pack.header.meshes[m]!.id);
+  expect(others.sort()).toEqual(["core:bow", "core:human_m/armor/hide/head", "core:human_m/armor/hide/torso", "core:human_m/feet", "core:human_m/hands", "core:human_m/head", "core:human_m/legs"]);
+});
+
+/** Nothing off the canvas, no text wider than its box, no two controls sharing space. */
+function fits(f: UiFrame, where: string): void {
+  for (let i = 0; i < f.count; i++) {
+    const n = f.nodes[i]!;
+    const at = `${where} key=${n.key}`;
+    expect(n.x, at).toBeGreaterThanOrEqual(-0.01);
+    expect(n.y, at).toBeGreaterThanOrEqual(-0.01);
+    expect(n.x + n.w, at).toBeLessThanOrEqual(f.width + 0.01);
+    expect(n.y + n.h, at).toBeLessThanOrEqual(f.height + 0.01);
+    if (n.kind === K_TEXT) expect(textWidth(n.text, n.style), `${at} "${n.text}"`).toBeLessThanOrEqual(n.w + 0.01);
+    for (let j = i + 1; j < f.count; j++) {
+      const q = f.nodes[j]!;
+      const over = n.x < q.x + q.w - 0.01 && q.x < n.x + n.w - 0.01 && n.y < q.y + q.h - 0.01 && q.y < n.y + n.h - 0.01;
+      if (n.interactive && q.interactive) expect(over, `${at} and ${q.key}`).toBe(false);
+    }
+  }
+}
+
+void BitReader;
+void CMD_REPAIR;

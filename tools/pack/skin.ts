@@ -44,13 +44,14 @@ export interface BodyOptions {
   materials: Readonly<Record<string, MaterialRule>>;
   /** Id of the rig these meshes are made on. */
   rig: string;
+  /** Make one mesh with this id instead of cutting by slot (hair, a beard). */
+  whole?: string;
   /**
-   * Make one mesh with this id instead of cutting by slot (hair, a beard).
-   * Its vertices are moved from where the source's joints rest to where
-   * `onto`'s do, bone by bone, so that it sits right on a body it was not
-   * modelled on.
+   * Where the joints of the body it will be worn on rest. Vertices are moved,
+   * bone by bone, from where the source's joints rest to these, so that a piece
+   * sits right on a body it was not modelled on.
    */
-  whole?: { id: string; onto: readonly number[] };
+  onto?: readonly number[];
 }
 
 export interface ConvertedBody {
@@ -121,21 +122,28 @@ export function rigOf(g: Gltf, id: string, scale: number): PackRig {
   return { id, skeleton: HUMAN.id, rest: rest.map((v) => +v.toFixed(5)) };
 }
 
-/** Convert every skinned mesh of `g`. Nodes named "..._LOD<n>" are level n; others level 0. */
-export function convertBody(g: Gltf, opts: BodyOptions): ConvertedBody {
-  const json = g.json;
-  const nodes = json.nodes ?? [];
+/**
+ * Convert every skinned mesh of the given files into one set of meshes. Nodes
+ * named "..._LOD<n>" are level n; others level 0. Several files are several
+ * parts of one thing (an outfit's body, arms, legs and feet).
+ */
+export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions): ConvertedBody {
+  const list = Array.isArray(sources) ? (sources as readonly Gltf[]) : [sources as Gltf];
   const warnings: string[] = [];
-  const world = restMatrices(g);
-  const boneOf = boneOfJoints(g);
-  const rig = rigOf(g, opts.rig, opts.scale);
   const whole = opts.whole;
   const partCount = whole ? 1 : SLOT_COUNT;
   /** parts[level][slot] */
   const levels: Part[][] = [];
   const rgb = [0, 0, 0];
   const warned = new Set<string>();
+  let rig = rigOf(list[0]!, opts.rig, opts.scale);
 
+  for (const g of list) {
+  const json = g.json;
+  const nodes = json.nodes ?? [];
+  const world = restMatrices(g);
+  const boneOf = boneOfJoints(g);
+  rig = rigOf(g, opts.rig, opts.scale);
   nodes.forEach((node) => {
     if (node.mesh === undefined || node.skin === undefined) return;
     const level = Number(/_LOD(\d)$/i.exec(node.name ?? "")?.[1] ?? 0);
@@ -192,7 +200,7 @@ export function convertBody(g: Gltf, opts: BodyOptions): ConvertedBody {
         for (let k = 0; k < 3; k++) {
           let p = (m[k]! * x + m[4 + k]! * y + m[8 + k]! * z + m[12 + k]!) * opts.scale;
           // A piece made on another body moves, bone by bone, to where this one's joints are.
-          if (whole) p += whole.onto[best * 3 + k]! - rig.rest[best * 3 + k]!;
+          if (opts.onto) p += opts.onto[best * 3 + k]! - rig.rest[best * 3 + k]!;
           model[v * 3 + k] = p;
         }
       }
@@ -240,8 +248,9 @@ export function convertBody(g: Gltf, opts: BodyOptions): ConvertedBody {
       }
     }
   });
+  }
 
-  if (levels.length === 0) throw new Error(`${g.path}: no skinned mesh`);
+  if (levels.length === 0) throw new Error(`${list[0]!.path}: no skinned mesh`);
   const meshes: SourceMesh[] = [];
   for (let slot = 0; slot < partCount; slot++) {
     const lods: SourceLod[] = [];
@@ -250,12 +259,11 @@ export function convertBody(g: Gltf, opts: BodyOptions): ConvertedBody {
       if (p.indices.length === 0) break;
       lods.push({ positions: Float32Array.from(p.positions), colors: Uint8Array.from(p.colors), bones: Uint8Array.from(p.bones), indices: Uint32Array.from(p.indices) });
     }
-    const id = whole ? whole.id : `${opts.id}/${SLOT_NAMES[slot]}`;
-    if (lods.length === 0) {
-      if (!whole) warnings.push(`no triangles in the ${SLOT_NAMES[slot]} slot`);
-      continue;
-    }
+    const id = whole ?? `${opts.id}/${SLOT_NAMES[slot]}`;
+    // A set need not have a piece for every slot.
+    if (lods.length === 0) continue;
     meshes.push({ id, lods, skeleton: HUMAN.id, rig: opts.rig });
   }
-  return { meshes, rig, warnings };
+  // Made to sit on another body's joints, it is on that body's rig.
+  return { meshes, rig: opts.onto ? { id: opts.rig, skeleton: HUMAN.id, rest: [...opts.onto] } : rig, warnings };
 }

@@ -46,6 +46,8 @@ const COMP_MARKERS = 5;
 const COMP_STATE = 9;
 /** A survivor's look: the bytes of shared/anim/look.ts. */
 const COMP_LOOK = 10;
+/** Slots as component 7 has them, with the bag's size and, for weapons, what each holds. */
+const COMP_SLOTS2 = 11;
 /** Experience, learned engrams, crafting jobs. */
 const COMP_PROGRESSION = 4;
 /** An inventory's slot index travels in one byte. */
@@ -234,7 +236,7 @@ export class WorldStore {
     w.string(rec.name);
     const inv = rec.inv;
     const used = inv ? inv.used() : 0;
-    const hasState = rec.dead || rec.expiresAt !== 0;
+    const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
     w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + rec.extra.size);
     if (hasProgress) {
@@ -268,12 +270,15 @@ export class WorldStore {
       c.reset();
       c.bool(rec.dead);
       c.uint53(rec.expiresAt);
+      // One more than the hotbar slot in hand; 0 for none. Older saves end before this.
+      c.u8(rec.held + 1);
       w.varint(COMP_STATE);
       w.blob(c.bytes());
     }
     if (inv && used > 0) {
       c.reset();
       c.varint(inv.cap);
+      c.varint(inv.bag);
       c.varint(used);
       for (let slot = 0; slot < inv.cap; slot++) {
         if (inv.item[slot] === 0) continue;
@@ -283,8 +288,16 @@ export class WorldStore {
         c.u8(inv.quality[slot]!);
         c.varint(inv.dur[slot]!);
         c.varint(inv.spoilAt[slot]!);
+        // What a weapon holds: the kind of round, how many, and an attachment.
+        const holds = inv.ammo[slot] !== 0 || inv.attach[slot] !== 0;
+        c.bool(holds);
+        if (holds) {
+          c.varint(inv.ammo[slot] === 0 ? 0 : this.toSaved[inv.ammo[slot]!]!);
+          c.u8(inv.loaded[slot]!);
+          c.varint(inv.attach[slot] === 0 ? 0 : this.toSaved[inv.attach[slot]!]!);
+        }
       }
-      w.varint(COMP_SLOTS);
+      w.varint(COMP_SLOTS2);
       w.blob(c.bytes());
     }
     const v = rec.vitals;
@@ -383,6 +396,26 @@ export class WorldStore {
             const spoilAt = c.varint();
             if (item !== 0 && slot < inv.cap) inv.set(slot, item, count, quality, dur, spoilAt);
           }
+        } else if (component === COMP_SLOTS2) {
+          const cap = c.varint();
+          const inv = (rec.inv = new Inventory(cap, c.varint()));
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) {
+            const slot = c.varint();
+            const item = this.item(c.varint(), row.pid);
+            const count = c.varint();
+            const quality = c.u8();
+            const dur = c.varint();
+            const spoilAt = c.varint();
+            const holds = c.bool();
+            // 0 is "none"; anything else must be content this build has.
+            const held = (saved: number): number => (saved === 0 ? 0 : this.item(saved, row.pid));
+            const ammo = holds ? held(c.varint()) : 0;
+            const loaded = holds ? c.u8() : 0;
+            const attach = holds ? held(c.varint()) : 0;
+            if (item === 0 || slot >= inv.cap) continue;
+            inv.set(slot, item, count, quality, dur, spoilAt);
+            if (holds) inv.setGear(slot, ammo, ammo === 0 ? 0 : loaded, attach);
+          }
         } else if (component === COMP_VITALS) {
           // Round 1 food only: dropped; the survival system starts this body full.
         } else if (component === COMP_VITALS4) {
@@ -426,6 +459,7 @@ export class WorldStore {
         } else if (component === COMP_STATE) {
           rec.dead = c.bool();
           rec.expiresAt = c.uint53();
+          rec.held = c.pos + 8 <= blob.length * 8 ? c.u8() - 1 : -1;
         }
         else rec.extra.set(component, blob);
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);

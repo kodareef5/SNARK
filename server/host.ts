@@ -24,6 +24,8 @@ import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
+import { ARMOR_SLOTS } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 
 export interface HostOptions {
@@ -273,7 +275,14 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     const rec = records.byPid.get(c.pid);
     if (rec) survival.landed(rec, speed);
   };
-  const own: OwnContext = { world, game, records, items, survival, progression, openOf: (c) => death.openOf(c), closeOpen: (c) => death.close(c), respawn: (c, index) => death.respawn(c, index) };
+  const own: OwnContext = {
+    world, game, records, items, survival, progression,
+    openOf: (c) => death.openOf(c),
+    closeOpen: (c) => death.close(c),
+    respawn: (c, index) => death.respawn(c, index),
+    refresh: (rec) => refreshBody(rec),
+    drop: (rec, slot, n) => death.drop(rec, slot, n),
+  };
   game.onReplicate = (c) => {
     syncOwn(own, c);
     harvest?.sync(c, game.opts.structRadius);
@@ -289,7 +298,15 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     // A survivor's level is what its experience has earned; a creature's is its points.
     const level = rec.kind === survivor ? progression.levelOf(rec.xp) : rec.genome ? rec.genome.level : 1;
     world.ents.setLook(e, level, rec.genome ? rec.genome.colors : null, rec.name);
+    // What it holds and wears is seen by others.
+    const inv = rec.inv;
+    if (inv && inv.hotbar >= 0) {
+      gear[GEAR_HELD] = rec.held >= 0 ? inv.item[inv.hotbar + rec.held]! : 0;
+      for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
+      world.ents.setGear(e, gear);
+    }
   }
+  const gear = new Uint16Array(GEAR_COUNT);
 
   const con = new Console();
   addCoreCommands(con);

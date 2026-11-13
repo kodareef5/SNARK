@@ -6,7 +6,7 @@ import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { buildCharacter, characterClick } from "./character.ts";
+import { CharacterScreen } from "./character.ts";
 import { CreatorScreen } from "./creator.ts";
 import { buildHud } from "./hud.ts";
 import { InventoryScreen } from "./inventory.ts";
@@ -19,6 +19,7 @@ export class Ui {
   readonly console = new ConsoleState();
   readonly inventory = new InventoryScreen();
   readonly creator = new CreatorScreen();
+  readonly sheet = new CharacterScreen();
   /** The session has no survivor yet and is making one: the creator is the whole interface. */
   creating = false;
   /** The full map is up. */
@@ -107,7 +108,7 @@ export class Ui {
       return;
     }
     if (kind === 0 && respawnClick(key, session)) return;
-    if (kind === 0 && this.character && this.registry && characterClick(key, session, this.registry)) return;
+    if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
 
@@ -129,7 +130,7 @@ export class Ui {
       if (this.creating && session) this.creator.build(f, this.palette, session.name);
       else if (this.dead && session) buildRespawn(f, session);
       else if (this.map && session) buildMap(f, session, hud);
-      else if (this.character && session && this.registry) buildCharacter(f, session, this.registry);
+      else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else this.inventory.build(f, session, this.registry, this.palette);
     }
     if (session) this.console.absorb(session);

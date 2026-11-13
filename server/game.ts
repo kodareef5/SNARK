@@ -183,6 +183,8 @@ export class Client {
   sentRespawn = false;
   /** The look this connection has been told is its own (by reference), or null. */
   sentLook: Uint8Array | null = null;
+  /** The hotbar slot this connection has been told is in its hands; -2 for not told yet. */
+  sentHeld = -2;
   /** Persistent id of the container this session has open, or 0; and what of it has been sent. */
   open = 0;
   sentOpen = 0;
@@ -225,6 +227,7 @@ export class Client {
     this.sentVitals = this.sentInv = this.sentMarkers = this.sentOpenVersion = -1;
     this.sentRespawn = false;
     this.sentLook = null;
+    this.sentHeld = -2;
     this.open = this.sentOpen = 0;
     this.pressed = this.before = 0;
   }
@@ -795,7 +798,7 @@ export class GameServer {
     for (let k = 0; k < n; k++) {
       const i = ids[k]!;
       cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!);
-      cur.appear(ents.rev[i]!, ents.level[i]!, ents.colors, i * 6, ents.name[i]!, ents.look[i]!);
+      cur.appear(ents.rev[i]!, ents.level[i]!, ents.colors, i * 6, ents.name[i]!, ents.look[i]!, ents.gear[i]!);
     }
 
     const age = T - c.ackTick;

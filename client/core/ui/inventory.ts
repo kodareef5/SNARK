@@ -2,17 +2,23 @@
 // when a container is open, a second grid for what is in it. Click a stack to
 // pick it up, click another slot (in either grid) to put it down: onto an
 // empty slot, a matching stack, or swapping with a different one. Middle click
-// picks up half. Right click eats or uses. Every action is a command; what the
-// grids show is what the server last said, so nothing here can get out of
-// step with it.
+// picks up half. Right click eats, uses, or puts on. Every action is a command;
+// what the grids show is what the server last said, so nothing here can get out
+// of step with it.
+//
+// A survivor's own inventory has two more rows under its bag: the ten hotbar
+// slots and the five armor slots. They are slots like the others. Putting
+// ammunition down on a weapon that takes it sets the weapon to that kind;
+// putting an attachment down on a weapon that fits it fits it. Four buttons act
+// on the stack that is picked up: drop, repair, unload, detach.
 
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_MOVE, CMD_USE } from "../../../shared/net/protocol.ts";
-import type { Inventory } from "../../../shared/sim/items.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_USE } from "../../../shared/net/protocol.ts";
+import { ARMOR_SLOTS, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, type Inventory } from "../../../shared/sim/items.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_LABEL, S_PANEL, S_SLOT, S_SLOT_HELD, S_SLOT_TEXT, S_SWATCH, S_TITLE } from "./style.ts";
+import { S_BUTTON, S_LABEL, S_PANEL, S_SLOT, S_SLOT_HELD, S_SLOT_TEXT, S_SWATCH, S_TITLE } from "./style.ts";
 
 export const KEY_INV_PANEL = 290;
 export const KEY_INV_TITLE = 291;
@@ -23,6 +29,11 @@ export const KEY_OPEN_TITLE = 294;
 export const KEY_INV_SLOT = 300;
 /** Slot `s` of the open container, the same way. */
 export const KEY_OPEN_SLOT = 600;
+/** Labels of the hotbar and armor rows, and the four buttons that act on the picked-up stack. */
+export const KEY_INV_ROW_LABEL = 280;
+export const KEY_INV_ACTION = 284;
+const ACTIONS: readonly string[] = ["Drop", "Repair", "Unload", "Detach"];
+const ARMOR_LABELS: readonly string[] = ["head", "torso", "hands", "legs", "feet"];
 const CELL = 42;
 const GAP = 3;
 const PAD = 12;
@@ -43,6 +54,8 @@ export class InventoryScreen {
   hoverBox = BOX_SELF;
   hover = -1;
   private hadOpen = false;
+  /** Content, as of the last build: what a slot's item is decides what putting something down on it means. */
+  private registry: Registry | null = null;
 
   private box(session: ClientSession, which: number): Inventory | null {
     return which === BOX_OPEN ? (session.open?.inventory ?? null) : session.inventory;
@@ -75,6 +88,19 @@ export class InventoryScreen {
       this.hover = slot;
       return;
     }
+    if (kind === 0 && key >= KEY_INV_ACTION && key < KEY_INV_ACTION + ACTIONS.length) {
+      // One of the four buttons: it acts on the stack picked up from the survivor's own slots.
+      const own = session.inventory;
+      const from = this.held;
+      this.held = -1;
+      if (!own || from < 0 || this.heldBox !== BOX_SELF || own.item[from] === 0) return;
+      const op = [CMD_DROP, CMD_REPAIR, CMD_UNLOAD, CMD_DETACH][key - KEY_INV_ACTION]!;
+      session.command(op, (w) => {
+        w.u8(from);
+        if (op === CMD_DROP) (w.u16(0), w.u16(own.item[from]!));
+      });
+      return;
+    }
     const inv = this.box(session, box);
     if (kind !== 0 || slot < 0 || !inv) return;
     if (button === 2) {
@@ -96,6 +122,17 @@ export class InventoryScreen {
     this.held = -1;
     if (!src || (fromBox === box && from === slot) || src.item[from] === 0) return;
     const count = this.half ? Math.max(1, src.count[from]! >> 1) : 0;
+    // Put down on a weapon of your own: ammunition it takes sets what it is loaded with, an attachment that fits is fitted.
+    const target = fromBox === BOX_SELF && box === BOX_SELF && this.registry ? (this.registry.defs[inv.item[slot]!] as ItemDef | null)?.weapon : undefined;
+    const what = this.registry?.ids[src.item[from]!] ?? "";
+    if (target?.ammo?.includes(what)) {
+      session.command(CMD_LOAD, (w) => (w.u8(slot), w.u16(src.item[from]!)));
+      return;
+    }
+    if (target?.fits?.includes(what)) {
+      session.command(CMD_ATTACH, (w) => (w.u8(slot), w.u8(from)));
+      return;
+    }
     session.command(CMD_MOVE, (w) => {
       w.bits(fromBox, 1);
       w.u8(from);
@@ -117,23 +154,33 @@ export class InventoryScreen {
     const heldInv = this.box(session, this.heldBox);
     if (this.held >= 0 && (!heldInv || heldInv.item[this.held] === 0)) this.held = -1;
 
+    this.registry = reg;
     const cols = Math.max(4, Math.min(10, Math.floor((f.width - PAD * 4) / (CELL + GAP))));
     const w = cols * (CELL + GAP) - GAP + PAD * 2;
     const titleH = lineHeight(S_TITLE);
     const infoH = lineHeight(S_LABEL);
-    const gridH = (inv: Inventory): number => Math.ceil(inv.cap / cols) * (CELL + GAP);
-    const ownH = titleH + gridH(own) + infoH + PAD * 2 + 6;
-    const otherH = other ? titleH + gridH(other) + PAD * 2 : 0;
+    const rows = (n: number): number => Math.ceil(n / cols) * (CELL + GAP);
+    // A survivor's own slots: the bag, then (if it has them) the hotbar and the armor, each under a label.
+    const tail = own.hotbar >= 0;
+    const tailH = tail ? infoH * 2 + rows(HOTBAR_SLOTS) + rows(ARMOR_SLOTS) + 4 : 0;
+    const actionH = tail ? 28 : 0;
+    const ownH = titleH + rows(own.bag) + tailH + infoH + actionH + PAD * 2 + 6;
+    const otherH = other ? titleH + rows(other.bag) + PAD * 2 : 0;
     const x0 = Math.round((f.width - w) / 2);
     let y = Math.max(4, Math.round((f.height - ownH - otherH - (other ? 8 : 0)) / 2));
     const tick = session.serverTick;
 
-    const grid = (inv: Inventory, which: number, base: number, top: number): void => {
-      for (let s = 0; s < inv.cap; s++) {
-        const x = x0 + PAD + (s % cols) * (CELL + GAP);
-        const yy = top + Math.floor(s / cols) * (CELL + GAP);
+    /** Slots `from` .. `from + n - 1` of `inv` as a grid starting at `top`. */
+    const grid = (inv: Inventory, which: number, base: number, top: number, from: number, n: number): void => {
+      for (let i = 0; i < n; i++) {
+        const s = from + i;
+        const x = x0 + PAD + (i % cols) * (CELL + GAP);
+        const yy = top + Math.floor(i / cols) * (CELL + GAP);
+        const inHand = which === BOX_SELF && inv.hotbar >= 0 && s === inv.hotbar + session.held;
         const cell = f.add(base + s * 3, K_BUTTON, x, yy, CELL, CELL, this.held === s && this.heldBox === which ? S_SLOT_HELD : S_SLOT);
         cell.interactive = true;
+        // What is in hand has a lighter cell.
+        if (inHand && cell.style === S_SLOT) cell.tint = 0x5a6a7a;
         const item = inv.item[s]!;
         if (item === 0) continue;
         const def = reg.defs[item] as ItemDef | null;
@@ -141,7 +188,9 @@ export class InventoryScreen {
         const c = (def?.color ?? 15) * 4;
         if (palette) swatch.tint = (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!;
         swatch.text = itemLabel(reg, item).slice(0, 4);
-        f.text(base + s * 3 + 2, x + 2, yy + CELL - lineHeight(S_SLOT_TEXT), CELL - 4, S_SLOT_TEXT, inv.count[s]! > 1 ? String(inv.count[s]) : "");
+        // A stack shows how many; a weapon shows the rounds in it.
+        const number = inv.count[s]! > 1 ? String(inv.count[s]) : def?.weapon?.ammo ? String(inv.loaded[s]) : "";
+        f.text(base + s * 3 + 2, x + 2, yy + CELL - lineHeight(S_SLOT_TEXT), CELL - 4, S_SLOT_TEXT, number);
       }
     };
     const fit = (text: string): string => text.slice(0, Math.floor((w - PAD * 2) / (18 * 0.6)));
@@ -149,12 +198,30 @@ export class InventoryScreen {
     if (other) {
       f.add(KEY_OPEN_PANEL, K_PANEL, x0, y, w, otherH, S_PANEL);
       f.text(KEY_OPEN_TITLE, x0 + PAD, y + PAD, w - PAD * 2, S_TITLE, fit(session.open!.name));
-      grid(other, BOX_OPEN, KEY_OPEN_SLOT, y + PAD + titleH + 4);
+      grid(other, BOX_OPEN, KEY_OPEN_SLOT, y + PAD + titleH + 4, 0, other.bag);
       y += otherH + 8;
     }
     f.add(KEY_INV_PANEL, K_PANEL, x0, y, w, ownH, S_PANEL);
     f.text(KEY_INV_TITLE, x0 + PAD, y + PAD, w - PAD * 2, S_TITLE, fit(`Inventory  ${own.weight(reg).toFixed(1)} kg`));
-    grid(own, BOX_SELF, KEY_INV_SLOT, y + PAD + titleH + 4);
+    let top = y + PAD + titleH + 4;
+    grid(own, BOX_SELF, KEY_INV_SLOT, top, 0, own.bag);
+    top += rows(own.bag);
+    if (tail) {
+      f.text(KEY_INV_ROW_LABEL, x0 + PAD, top, w - PAD * 2, S_LABEL, "Hotbar: keys 1 to 0");
+      top += infoH;
+      grid(own, BOX_SELF, KEY_INV_SLOT, top, own.hotbar, HOTBAR_SLOTS);
+      top += rows(HOTBAR_SLOTS);
+      f.text(KEY_INV_ROW_LABEL + 1, x0 + PAD, top, w - PAD * 2, S_LABEL, `Worn: ${ARMOR_LABELS.join(", ")}`.slice(0, Math.floor((w - PAD * 2) / 7.2)));
+      top += infoH;
+      grid(own, BOX_SELF, KEY_INV_SLOT, top, own.armor, ARMOR_SLOTS);
+      top += rows(ARMOR_SLOTS) + 4;
+      const bw = (w - PAD * 2 - GAP * (ACTIONS.length - 1)) / ACTIONS.length;
+      ACTIONS.forEach((label, i) => {
+        const b = f.add(KEY_INV_ACTION + i, K_BUTTON, x0 + PAD + i * (bw + GAP), top, bw, 24, S_BUTTON);
+        b.text = label;
+        b.interactive = true;
+      });
+    }
 
     // One line about the stack under the pointer, or the one picked up.
     const shownBox = this.held >= 0 ? this.heldBox : this.hoverBox;
@@ -166,6 +233,13 @@ export class InventoryScreen {
       const spoil = inv.spoilAt[shown]!;
       info = `${itemLabel(reg, item)} x${inv.count[shown]}  ${(reg.weight[item]! * inv.count[shown]!).toFixed(1)} kg`;
       if (spoil > 0) info += `  spoils in ${Math.max(0, Math.ceil((spoil - tick) / 30))} s`;
+      // Something that wears: its quality and what is left of it. A weapon: what is in it and on it.
+      const uses = reg.uses[item]!;
+      if (uses > 0 && reg.stack[item] === 1) {
+        info = `${QUALITY_NAMES[inv.quality[shown]!] ?? ""} ${itemLabel(reg, item)}  ${inv.dur[shown]}/${Math.round(uses * (QUALITY_MUL[inv.quality[shown]!] ?? 1))}`;
+        if (inv.ammo[shown] !== 0) info += `  ${inv.loaded[shown]} ${itemLabel(reg, inv.ammo[shown]!)}`;
+        if (inv.attach[shown] !== 0) info += `  + ${itemLabel(reg, inv.attach[shown]!)}`;
+      }
     }
     f.text(KEY_INV_INFO, x0 + PAD, y + ownH - PAD - infoH, w - PAD * 2, S_LABEL, info.slice(0, Math.floor((w - PAD * 2) / 7.2)));
   }

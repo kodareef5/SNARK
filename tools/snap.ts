@@ -7,6 +7,7 @@
 //   bun run snap -- --poses 2 --face 90       a line-up of bodies in motion: kinds 2 and 3, seen from the side
 //   bun run snap -- --looks                   a line-up of looks: both sexes, every hair, every slider at its ends
 //   bun run snap -- --creator 1               what a new survivor sees: the creator, on its first or second tab
+//   bun run snap -- --gear                    a line-up of armor tiers and held weapons
 //
 // Yaw and pitch are in degrees. Yaw 0 faces +Z (north); positive yaw turns toward +X.
 
@@ -163,6 +164,54 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
 }
 
 /**
+ * Replace the bodies in view with a line-up of equipment. Front row: each
+ * armor tier in full on one sex, then the other, with a weapon in hand. Back
+ * row: bare bodies holding each weapon in turn, and one wearing odd pieces.
+ */
+export function gearScene(view: ProvingView, facing: number): void {
+  const r = view.remote;
+  r.count = 0;
+  r.tick = 0;
+  const kind = view.reg.index.get("core:survivor")!;
+  const item = (name: string): number => view.reg.index.get(`core:${name}`) ?? 0;
+  const pieces = ["hat", "shirt", "gloves", "pants", "boots"];
+  const tiers = ["cloth", "hide", "chitin", "flak"];
+  const weapons = ["hatchet", "pick", "spear", "bow", "crossbow", "rifle", "pistol", "grenade"];
+  const rows: { sex: number; held: string; worn: string[] }[][] = [[], []];
+  tiers.forEach((tier, i) => {
+    for (const sex of [0, 1]) rows[0]!.push({ sex, held: weapons[(i * 2 + sex + 3) % weapons.length]!, worn: pieces.map((p) => `${tier}_${p}`) });
+  });
+  weapons.forEach((w, i) => rows[1]!.push({ sex: i % 2, held: w, worn: [] }));
+  rows[1]!.push({ sex: 0, held: "", worn: ["hide_hat", "", "", "flak_pants", "cloth_boots"] });
+  rows.forEach((row, j) => {
+    row.forEach((b, i) => {
+      const n = r.count++;
+      const look = defaultLook();
+      look[LOOK_SEX] = b.sex;
+      look[LOOK_HAIR] = 1 + ((i + j) % 4);
+      look[LOOK_SKIN] = (i * 3 + j) % SKIN_TONES;
+      r.id[n] = 1024 * (n + 1);
+      r.kind[n] = kind;
+      r.x[n] = 256 + (row.length / 2 - 0.5 - i) * 1.25;
+      r.z[n] = 228 + j * 2.6;
+      r.y[n] = view.hf.heightAt(r.x[n]!, r.z[n]!);
+      r.yaw[n] = facing;
+      r.flags[n] = 1;
+      r.anim[n] = 0;
+      r.hasLook[n] = 1;
+      r.look.set(look, n * LOOK_BYTES);
+      r.gear[n * 6] = b.held === "" ? 0 : item(b.held);
+      for (let k = 0; k < 5; k++) r.gear[n * 6 + 1 + k] = b.worn[k] ? item(b.worn[k]!) : 0;
+    });
+  });
+  const cam = view.cam;
+  cam.x = 256;
+  cam.z = 211;
+  cam.y = view.hf.heightAt(cam.x, cam.z) + 4.6;
+  cam.fovY = 0.27;
+}
+
+/**
  * Replace the bodies in view with a line-up of looks. Front row: each sex
  * plain, then with every hair style and a beard. Back row: each sex with every
  * slider at its low end and at its high end, and four made at random.
@@ -265,6 +314,7 @@ if (import.meta.main) {
   if (pos) [view.cam.x, view.cam.y, view.cam.z] = pos as [number, number, number];
   view.cam.yaw = (Number(arg("yaw") ?? 0) * Math.PI) / 180;
   view.cam.pitch = (Number(arg("pitch") ?? -4) * Math.PI) / 180;
+  if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
   const t0 = performance.now();

@@ -97,6 +97,21 @@ export const CMD_CRAFT = 8;
 /** Make this session's survivor with a look: 28 bytes (shared/anim/look.ts). Only while the session is creating. */
 export const CMD_CREATE = 9;
 
+/** Take a hotbar slot's item in hand: slot u8, 0 to 9, or 255 to put away what is held. */
+export const CMD_SELECT = 10;
+/** Set the weapon in a slot of your own to take a kind of ammunition: weapon slot u8, ammunition item u16. Rounds of another kind in it go back to the bag. */
+export const CMD_LOAD = 11;
+/** Fit an attachment to a weapon, both in slots of your own: weapon slot u8, attachment slot u8. */
+export const CMD_ATTACH = 12;
+/** Take the attachment off the weapon in a slot of your own: slot u8. */
+export const CMD_DETACH = 13;
+/** Take the rounds out of the weapon in a slot of your own: slot u8. */
+export const CMD_UNLOAD = 14;
+/** Repair the thing in a slot of your own, for a share of what it is made of: slot u8. */
+export const CMD_REPAIR = 15;
+/** Drop from a slot of your own onto the ground: slot u8, count u16 (0 = the whole stack), expected item u16. */
+export const CMD_DROP = 16;
+
 /** Boxes a slot command can address. Nothing else can be named: no ids travel. */
 export const BOX_SELF = 0;
 /** Whatever container the session has open, if any. */
@@ -119,9 +134,10 @@ export const OWN_SESSION = 1;
 /** base tick u32, then for health, food, water, oxygen: value uint53, rate svarint, max uint53 (millionths of a point). */
 export const OWN_VITALS = 2;
 /**
- * box 1 bit, capacity u8, full 1 bit (forget every slot first), count u8, then
- * per slot: index u8, item u16, and if the item is not 0: count u16, quality u8,
- * durability u16, spoil tick u32.
+ * box 1 bit, capacity u8, bag size u8, full 1 bit (forget every slot first),
+ * count u8, then per slot: index u8, item u16, and if the item is not 0: count
+ * u16, quality u8, durability u16, spoil tick u32, and 1 bit for "it holds
+ * something", then if so: ammunition item u16, rounds u8, attachment item u16.
  */
 export const OWN_SLOTS = 3;
 
@@ -141,6 +157,9 @@ export const OWN_PROGRESSION = 7;
 
 /** The survivor's own look: 28 bytes. Sent when it gets a body. */
 export const OWN_LOOK = 8;
+
+/** Which hotbar slot is in the survivor's hands: u8, 255 for none. */
+export const OWN_HELD = 9;
 
 export const MARKER_DEATH = 1;
 

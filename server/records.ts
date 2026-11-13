@@ -49,6 +49,8 @@ export class EntityRecord {
   keyHash: Uint8Array | null = null;
   /** A survivor's look, as the character creator made it (shared/anim/look.ts); null for anything else. */
   look: Uint8Array | null = null;
+  /** Which hotbar slot is in its hands, 0 to 9, or -1 for none. */
+  held = -1;
   /** A survivor waiting to respawn. */
   dead = false;
   /** Tick at which a cache disappears with whatever is left in it; 0 for things that stay. */

@@ -19,5 +19,9 @@ humanoid skeleton, converted from the libraries in [raw](../raw/README.md). It
 is a pack with no meshes; the core pack copies its clips.
 
 `core/human-bodies.snpk` is written by the same command: the two modelled
-bodies cut into body slots, with hair and beards fitted to each, and the rig
-each was made on. Making it needs Blender; reading it does not.
+bodies cut into body slots, with hair, beards, and two armor sets (the peasant
+and ranger outfits) fitted to each, and the rig each was made on. Making it
+needs Blender; reading it does not.
+
+Weapons and tools held in the hand are a few boxes each, written as code in
+`tools/pack/weapons.ts`.
