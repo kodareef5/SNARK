@@ -32,6 +32,7 @@ import { scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { Rng } from "../shared/rng.ts";
+import { rollWild } from "../shared/sim/genome.ts";
 import { Heightfield, TERRAIN_CELL } from "../shared/world/heightfield.ts";
 import { poseAt, type Pose } from "../shared/world/snap.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
@@ -175,7 +176,7 @@ const mapHash = hashBytes(new Uint8Array(hf.heights.buffer, 0, 4096));
 // Trees, rocks and bushes over the whole map: 160 slots a chunk, most of them holding one.
 const nodeKinds = ["core:tree", "core:tree", "core:tree", "core:rock", "core:rock", "core:bush"].map((id) => reg.index.get(id)!);
 const nodeSource = scatterNodes(DIMS, hf, 0xbe7c, 160, nodeKinds, reg.halfY, () => true);
-const world = createWorld(reg, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 1024, undefined, nodeSource);
+const world = createWorld(reg, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 2048, undefined, nodeSource);
 record("terrain build, 8 km at 2 m", performance.now() - t0, "ms");
 const rng = new Rng(2026);
 t0 = performance.now();
@@ -221,7 +222,7 @@ for (let i = 0; i < PLAYERS; i++) {
   // Two real clients among the bots check that the load does not break prediction.
   if (i === 0 || i === 50) {
     const end = net.connect();
-    sessions.push(new ClientSession(end, { name: `bot${i}`, key: new Uint8Array(KEY_BYTES).fill(i + 1), registry: reg, resolveMap: () => hf, nodes: () => nodeSource }));
+    sessions.push(new ClientSession(end, { name: `bot${i}`, key: new Uint8Array(KEY_BYTES).fill(i + 1), registry: reg, look: defaultLook(), resolveMap: () => hf, nodes: () => nodeSource }));
     continue;
   }
   bots.push(new Bot(net, `bot${i}`, reg.hash, 100 + i));
@@ -657,6 +658,115 @@ section("Voice: 100 survivors in one crowd, all talking at once");
   for (const w of wires) voice.disconnect(w.peer);
 }
 
+// ---------------------------------------------------------------- breeding
+section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and ten survivors among them");
+{
+  const ents = world.ents;
+  const records = host.records;
+  const breeding = host.breeding;
+  const parasaur = reg.index.get("core:parasaur")!;
+  const eggKind = reg.index.get("core:egg_parasaur")!;
+  const berry = reg.index.get("core:berry")!;
+  // On open ground east of a base nobody is at. Ten of the survivors are put there, one of them a real client, who owns all of it.
+  const ox = centers[60]![0] + 70;
+  const oz = centers[60]![1] - 30;
+  // (Those who were not in the fight, so that all ten are alive: bot50, the second real client, and the nine after it.)
+  const keepers = host.game.clients.filter((c) => c?.active && c.ent >= 0 && Number(c.name.slice(3)) >= 50 && Number(c.name.slice(3)) < 60).map((c) => c!);
+  const owner = records.byPid.get(keepers.find((c) => c.name === "bot50")!.pid)!;
+  const stand = (): void => keepers.forEach((c, i) => ents.setPosition(c.ent, ox + 8 + i * 7, hf.heightAt(ox + 8 + i * 7, oz + 32), oz + 32));
+  stand();
+  run(90, null);
+  const quiet: number[] = [];
+  run(300, quiet);
+  quiet.sort((a, b) => a - b);
+
+  const place = rng;
+  const put = (i: number, row: number): number => {
+    // Where its place in the rows is, or as near as the trees and rocks there allow.
+    for (let k = 0; k < 60; k++) {
+      const wide = 0.4 + k * 0.05;
+      const e = host.spawnCreature("core:parasaur", ox + (i % 20) * 4 + place.range(-wide, wide), oz + row * 4 + Math.floor(i / 20) * 4 + place.range(-wide, wide), 1 + place.int(60));
+      if (e >= 0) return e;
+    }
+    throw new Error(`no room for the breeding base (${ents.count} of ${ents.cap} bodies in the world)`);
+  };
+  // Three hundred grown, female and male by turns four metres apart, all somebody's and all told they may.
+  t0 = performance.now();
+  for (let i = 0; i < 300; i++) {
+    const rec = records.byPid.get(ents.pid[put(i, 0)]!)!;
+    rec.genome!.female = i % 2 === 0;
+    host.taming.give(rec, owner, 1);
+    rec.mating = true;
+  }
+  // A hundred and fifty young of every age, each with berries in it to eat as it grows.
+  const span = reg.matureTicks[parasaur]!;
+  for (let i = 0; i < 150; i++) {
+    const e = put(i, 16);
+    const rec = records.byPid.get(ents.pid[e]!)!;
+    rec.team = owner.team;
+    rec.grown = world.tick + 1 + Math.floor(((i + 1) / 151) * span);
+    rec.born = rec.grown - span;
+    ents.setYoung(e, rec.born, rec.grown);
+    host.items.mint(rec, berry, 60);
+    host.refreshBody(rec);
+    host.creatures.mind.stay(e, 0xffffffff);
+    host.creatures.claimed(e);
+    host.taming.meal(rec);
+  }
+  // A hundred eggs lying among them, each to hatch at a moment of its own within the hour.
+  for (let i = 0; i < 100; i++) {
+    const egg = records.create(eggKind, "parasaur egg");
+    egg.genome = rollWild(place, 1 + place.int(60), [3, 5, 6, 7, 9, 12, 15]);
+    egg.x = ox + 2 + (i % 20) * 4;
+    egg.z = oz + 26 + Math.floor(i / 20) * 1.2;
+    egg.y = hf.heightAt(egg.x, egg.z);
+    egg.egg = { species: parasaur, laidAt: world.tick, hatchAt: world.tick + 2000 + i * 1000, carrier: 0 };
+    host.death.place(egg);
+  }
+  breeding.resume();
+  record("set the base down", performance.now() - t0, "ms");
+  stand();
+  run(60, null);
+  record("pairs, a second after they were told", breeding.pairCount, "");
+  const real = sessions[1]!;
+  const sentAt = keepers.map((c) => (c.conn as LoopbackEnd).bytesSent);
+  const busy: number[] = [];
+  run(300, busy);
+  busy.sort((a, b) => a - b);
+  const perKeeper = keepers.reduce((sum, c, i) => sum + (c.conn as LoopbackEnd).bytesSent - sentAt[i]!, 0) / keepers.length / (300 / TICK_RATE) / 1024;
+  record("tick time there before the base, median", percentile(quiet, 0.5), "ms");
+  record("tick time with the base awake and mating, median", percentile(busy, 0.5), "ms", Math.round((percentile(quiet, 0.5) * 1.5 + 0.5) * 100) / 100);
+  record("tick time with the base awake and mating, 99th percentile", percentile(busy, 0.99), "ms", 16);
+  record("downstream per survivor at the base", perKeeper, "KB/s", 34);
+  // What the real client there is shown: all of the other nine, whatever else there is to show.
+  const shown = new RemoteSample();
+  real.sampleRemote(shown);
+  const survivorKind = reg.index.get("core:survivor")!;
+  let others = 0;
+  for (let i = 0; i < shown.count; i++) if (shown.kind[i] === survivorKind) others++;
+  record("bodies the real client there is shown (of at most 512)", shown.count, "");
+  record("survivors there it is not shown, of the other nine", 9 - Math.min(9, others), "", 0);
+  // The look for pairs, by itself: every willing female against every willing male, once a second.
+  const looks: number[] = [];
+  const passTick = world.tick - (world.tick % TICK_RATE);
+  for (let k = 0; k < 60; k++) {
+    const t = performance.now();
+    breeding.step(passTick);
+    looks.push(performance.now() - t);
+  }
+  looks.sort((a, b) => a - b);
+  record("the look for pairs, median (one tick in thirty)", percentile(looks, 0.5), "ms", 0.5);
+  record("the look for pairs, worst", looks[looks.length - 1]!, "ms", 2);
+  // Half a minute after they began, every pair has done on the same tick: 150 females lay at once.
+  const laying: number[] = [];
+  run(600, laying);
+  laying.sort((a, b) => a - b);
+  record("matings that came to something", breeding.mated, "");
+  record("eggs laid by them", breeding.laid, "");
+  record("worst tick while they all laid", laying[laying.length - 1]!, "ms", 33.3);
+  record("meals the young ate of what they carry, in all of that", host.taming.meals, "");
+}
+
 // ---------------------------------------------------------------- restart
 section("Restart");
 persistence.commit = commit;
@@ -735,6 +845,50 @@ section("Client frame build (headless): 300 survivors in view, posed every frame
   record("bodies posed in the frame", scene.characters.posed, "");
   record("frame build with them, median", percentile(posed, 0.5), "ms", 4);
   record("frame build with them, 99th percentile", percentile(posed, 0.99), "ms", 8);
+  record("draw calls", packet.drawCount, "", 400);
+}
+
+section("Client frame build (headless): a breeding base in view, as many bodies as a client is ever shown");
+{
+  // All a view holds: ten survivors, 300 grown creatures, 150 young of every age, and eggs for the rest.
+  const base = new RemoteSample();
+  const kinds = { survivor: reg.index.get("core:survivor")!, parasaur: reg.index.get("core:parasaur")!, raptor: reg.index.get("core:raptor")!, egg: reg.index.get("core:egg_parasaur")! };
+  const st = new AnimState();
+  const baseRng = new Rng(9);
+  cam.yaw = Math.PI / 2 + Math.PI;
+  const n = base.id.length;
+  for (let i = 0; i < n; i++) {
+    base.id[i] = i + 1;
+    base.kind[i] = i < 10 ? kinds.survivor : i < 460 ? (i % 3 === 0 ? kinds.raptor : kinds.parasaur) : kinds.egg;
+    base.x[i] = cam.x - 6 - baseRng.float() * 70;
+    base.z[i] = cam.z + (baseRng.float() - 0.5) * 60;
+    base.y[i] = hf.heightAt(base.x[i]!, base.z[i]!);
+    base.yaw[i] = baseRng.float() * Math.PI * 2;
+    base.flags[i] = i < 460 ? 1 : 1 | 8;
+    // The young: born at a moment of their own, grown a thousand ticks after. A third of everything is walking.
+    if (i >= 310) {
+      base.born[i] = 1000 + Math.floor(baseRng.float() * 1000);
+      base.grown[i] = base.born[i]! + 1000;
+    }
+    st.setMotion(i < 460 && i % 3 === 1 ? 2 + baseRng.float() * 4 : 0, 0, 0, 0);
+    st.setAction(ACT_NONE, 0, 0);
+    base.anim[i] = st.pack();
+  }
+  base.count = n;
+  base.tick = 2000;
+  const built: number[] = [];
+  for (let i = 0; i < 200; i++) {
+    base.tick += 0.5;
+    const t = performance.now();
+    packet = scene.build(cam, base);
+    built.push(performance.now() - t);
+  }
+  built.sort((a, b) => a - b);
+  record("bodies in view", n, "");
+  record("bodies posed in the frame (those the camera can see)", scene.characters.posed, "");
+  record("bones used, of the 16,384 a frame has", packet.boneCount, "", 16384);
+  record("frame build with them, median", percentile(built, 0.5), "ms", 4);
+  record("frame build with them, 99th percentile", percentile(built, 0.99), "ms", 8);
   record("draw calls", packet.drawCount, "", 400);
 }
 

@@ -12,10 +12,15 @@ from here.
 | `dev.ts` | `bun run dev` | Server plus client rebuild on change |
 | `build-client.ts` | `bun run build` | Bundle the shell, copy the page, write the core pack |
 | `pack/` | `bun tools/pack/build.ts` | glTF import, pack writer, graybox meshes |
-| `simhash.ts` | `bun tools/simhash.ts`, `node tools/simhash.ts` | State hash of a fixed scenario, for comparing engines |
+| `simhash.ts` | `bun tools/simhash.ts`, `node tools/simhash.ts` | Four hashes of fixed scenarios (movement, human pose, snapping, creature pose), for comparing engines |
+| `art.ts`, `blender/` | `bun run art`, `bun run art -- --creatures` | Converts third-party models in `assets/raw` into what the pack build reads in `assets/source`. Needs Blender; building the game does not |
+| `fit-zones.ts` | `bun tools/fit-zones.ts` | Fits the hit capsules to the modelled bodies and measures the match |
 
 `check.ts` holds the allow-list of development packages, the zone import table,
 the shell line budget, and the check time budget. Changing any of them is a
 decision recorded in [decisions](../planning/decisions.md).
 
 `snap` options: `--pos x,y,z --yaw degrees --pitch degrees --size WxH --out file`.
+Scenes: `--ui`, `--poses N`, `--looks`, `--gear`, `--fight bow`, `--creator`,
+`--house`, `--build`, `--falling`, and `--creatures` (with `--near` for a rider
+up close, `--young` for each species at four ages beside its egg).
