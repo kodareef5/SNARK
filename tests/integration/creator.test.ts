@@ -261,7 +261,7 @@ test("only a session in the creator can create, only once, and only with a look 
     expect(ada.sessionState).toBe(SESSION_CREATING);
   }
   // Too short to be a look at all.
-  const w = new BitWriter(64);
+  const w = new BitWriter(128);
   const short = ada.command(CMD_CREATE, (x) => x.u8(1));
   h.run(200);
   expect(results.get(short)).toBe(RESULT_INVALID);

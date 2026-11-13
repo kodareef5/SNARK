@@ -2,8 +2,8 @@
 //
 // The arithmetic is shared/sim/breeding.ts and shared/sim/genome.ts. This
 // keeps the state, and almost none of it steps (D77): an egg is a record with
-// the tick it hatches at; a young one is a record with the ticks it was born
-// and will be grown, and grows a hundredth at a time, each a moment known in
+// the tick it hatches at; a young one is a record with the ticks its growing
+// takes and the tick it ends, and grows a hundredth at a time, each a moment known in
 // advance. So an egg hatches, and a young one is grown, on the same tick
 // watched or not, and across a restart.
 //
@@ -29,7 +29,7 @@
 import { TICK_RATE } from "../shared/coords.ts";
 import { EVENT_TAMED, ORDER_MATE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
-import { GROWN, MATE_RANGE, MATE_TICKS, growthStep, litter, mateWait, stageOf, stepTick } from "../shared/sim/breeding.ts";
+import { GROWN, MATE_RANGE, MATE_TICKS, growthStep, litter, mateWait, maturity, stageOf, stepTick } from "../shared/sim/breeding.ts";
 import { MF_NO_SPRINT } from "../shared/sim/character.ts";
 import { F_AWAKE } from "../shared/sim/entities.ts";
 import { breed } from "../shared/sim/genome.ts";
@@ -106,7 +106,7 @@ export class Breeding {
     for (const rec of records.byPid.values()) {
       if (rec.egg) {
         const e = records.entOf.get(rec.pid);
-        if (e !== undefined) world.ents.setYoung(e, rec.egg.laidAt, rec.egg.hatchAt);
+        if (e !== undefined) world.ents.setYoung(e, rec.egg.span, rec.egg.hatchAt);
         const at = rec.egg.hatchAt > world.tick ? rec.egg.hatchAt : world.tick + 1;
         rec.egg.hatchAt = at;
         deadlines.push(at, DEADLINE_BREED, rec.pid, at);
@@ -237,7 +237,8 @@ export class Breeding {
     const tick = world.tick;
     const n = litter(this.rng.float());
     const eggKind = reg.breedEgg[mother.kind]!;
-    const hatchAt = tick + Math.max(1, Math.ceil(reg.incubateTicks[mother.kind]! / speed(rules.values.hatchSpeed)));
+    const span = Math.max(1, Math.ceil(reg.incubateTicks[mother.kind]! / speed(rules.values.hatchSpeed)));
+    const hatchAt = tick + span;
     const id = reg.ids[mother.kind]!;
     const what = id.slice(id.indexOf(":") + 1);
     const facing = (ents.yaw[e]! / 65536) * Math.PI * 2;
@@ -245,7 +246,7 @@ export class Breeding {
       // Each of a litter is its own draw of what its parents have.
       const egg = records.create(eggKind !== 0 ? eggKind : mother.kind, `${what} egg`);
       egg.genome = breed(mother.genome!, father.genome!, mother.pid, father.pid, this.rng, MUTATION_COLORS);
-      egg.egg = { species: mother.kind, laidAt: tick, hatchAt, carrier: eggKind !== 0 ? 0 : mother.pid };
+      egg.egg = { species: mother.kind, span, hatchAt, carrier: eggKind !== 0 ? 0 : mother.pid };
       // Just behind her, where it can be seen and she is not in the way of it; more than one lie fanned out. If there is no room there (a wall at her back), under her.
       const a = facing + Math.PI + (k - (n - 1) / 2) * 0.7;
       const off = reg.bodyRadius[mother.kind]! + 0.45;
@@ -272,7 +273,7 @@ export class Breeding {
   private put(egg: EntityRecord): void {
     this.ctx.place(egg);
     const e = this.ctx.records.entOf.get(egg.pid);
-    if (e !== undefined) this.ctx.world.ents.setYoung(e, egg.egg!.laidAt, egg.egg!.hatchAt);
+    if (e !== undefined) this.ctx.world.ents.setYoung(e, egg.egg!.span, egg.egg!.hatchAt);
   }
 
   /** Take an egg out of the world for good. */
@@ -309,9 +310,9 @@ export class Breeding {
     rec.y = y;
     rec.z = z;
     rec.yaw = egg.yaw;
-    rec.born = tick;
     // Never so fast that a hundredth of it is less than a tick.
-    rec.grown = tick + Math.max(GROWN, Math.ceil(reg.matureTicks[info.species]! / speed(rules.values.matureSpeed)));
+    rec.span = Math.max(GROWN, Math.ceil(reg.matureTicks[info.species]! / speed(rules.values.matureSpeed)));
+    rec.grown = tick + rec.span;
     const e = creatures.adopt(rec);
     if (e < 0) {
       // No room in the world for another body: it waits a moment longer in the egg.
@@ -330,7 +331,7 @@ export class Breeding {
   /** Set the tick a young one is next a hundredth more grown. */
   private next(rec: EntityRecord): void {
     const tick = this.ctx.world.tick;
-    const at = stepTick(rec.born, rec.grown, growthStep(rec.born, rec.grown, tick) + 1);
+    const at = stepTick(rec.span, rec.grown, growthStep(rec.span, rec.grown, tick) + 1);
     const due = at > tick ? at : tick + 1;
     rec.growDue = due;
     this.ctx.deadlines.push(due, DEADLINE_BREED, rec.pid, due);
@@ -340,7 +341,7 @@ export class Breeding {
   private grow(rec: EntityRecord): void {
     const { world, records } = this.ctx;
     if (world.tick >= rec.grown) {
-      rec.born = rec.grown = rec.growDue = 0;
+      rec.span = rec.grown = rec.growDue = 0;
       const e = records.entOf.get(rec.pid);
       if (e !== undefined) world.ents.setYoung(e, 0, 0);
       this.grownUp++;
@@ -446,12 +447,12 @@ export class Breeding {
   /** What a session looking into a creature is shown of its breeding. */
   subject(rec: EntityRecord): { mating: boolean; female: boolean; stage: number; maturity: number; mate: number; wait: number } {
     const tick = this.ctx.world.tick;
-    const step = growthStep(rec.born, rec.grown, tick);
+    const step = growthStep(rec.span, rec.grown, tick);
     return {
       mating: rec.mating,
       female: rec.genome ? rec.genome.female : false,
       stage: stageOf(step),
-      maturity: rec.grown !== 0 ? Math.max(0, Math.min(1, (tick - rec.born) / (rec.grown - rec.born))) : 1,
+      maturity: maturity(rec.span, rec.grown, tick),
       mate: rec.mating ? this.progress(rec) : 0,
       // Seconds until a female may mate again.
       wait: rec.mateReadyAt > tick ? Math.ceil((rec.mateReadyAt - tick) / TICK_RATE) : 0,

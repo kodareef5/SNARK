@@ -60,8 +60,16 @@ const COMP_VITALS53 = 17;
 const COMP_TEAM = 13;
 /** Taming: how well a tamed creature was tamed; and, for one lying there being tamed, what it has been given so far and for whom. */
 const COMP_TAME = 15;
-/** Breeding: whether a creature is willing to mate and when a female may again; when a young one was born and will be grown; and, for an egg, what will hatch from it and when. */
+/** Breeding as it was first kept, with the ticks a young one was born and an egg was laid. Still read. */
 const COMP_BREED = 16;
+/**
+ * Breeding: whether a creature is willing to mate and when a female may
+ * again; for a young one, the ticks its growing takes and the tick it will be
+ * grown; and, for an egg, what will hatch from it, the ticks that takes and
+ * the tick it does. A span and an end, never a beginning: growing made
+ * slower part way through would put the beginning before the world's (D92).
+ */
+const COMP_BREED2 = 18;
 /** The state of something built: the ref of the structure it belongs to, whether it is locked, and its PIN plus one. */
 const COMP_FIXTURE = 14;
 /** Experience, learned engrams, crafting jobs. */
@@ -260,16 +268,16 @@ export class WorldStore {
       c.reset();
       c.bool(rec.mating);
       c.uint53(rec.mateReadyAt);
-      c.uint53(rec.born);
+      c.uint53(rec.span);
       c.uint53(rec.grown);
       c.bool(rec.egg !== null);
       if (rec.egg) {
         c.varint(this.toSaved[rec.egg.species]!);
-        c.uint53(rec.egg.laidAt);
+        c.uint53(rec.egg.span);
         c.uint53(rec.egg.hatchAt);
         c.uint53(rec.egg.carrier);
       }
-      w.varint(COMP_BREED);
+      w.varint(COMP_BREED2);
       w.blob(c.bytes());
     }
     if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0) {
@@ -554,14 +562,19 @@ export class WorldStore {
               rec.saddle = saved === 0 ? 0 : (this.toRuntime[saved] ?? 0);
             }
           }
-        } else if (component === COMP_BREED) {
+        } else if (component === COMP_BREED || component === COMP_BREED2) {
+          // The first of each pair was once a beginning: the span is from it to the end.
+          const began = component === COMP_BREED;
           rec.mating = c.bool();
           rec.mateReadyAt = c.uint53();
-          rec.born = c.uint53();
+          const first = c.uint53();
           rec.grown = c.uint53();
+          rec.span = !began ? first : rec.grown > first ? rec.grown - first : 0;
           if (c.bool()) {
             const species = this.toRuntime[c.varint()] ?? 0;
-            rec.egg = { species, laidAt: c.uint53(), hatchAt: c.uint53(), carrier: c.uint53() };
+            const laid = c.uint53();
+            const hatchAt = c.uint53();
+            rec.egg = { species, span: !began ? laid : hatchAt > laid ? hatchAt - laid : 1, hatchAt, carrier: c.uint53() };
           }
         } else if (component === COMP_FIXTURE) {
           rec.at = c.u32();

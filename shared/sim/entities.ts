@@ -72,12 +72,12 @@ export class EntityStore {
   /**
    * More of what others are told when it enters their view, each 0 for none:
    * the team that owns it; the entity it sits on, plus one; and for the young
-   * the ticks it was born and will be grown. Changed only through the setters,
+   * the ticks its growing takes and the tick it ends. Changed only through the setters,
    * so `rev` follows.
    */
   readonly team: Uint32Array;
   readonly seat: Uint32Array;
-  readonly born: Uint32Array;
+  readonly span: Uint32Array;
   readonly grown: Uint32Array;
   /**
    * What others are told about a body when it enters their view: level, six
@@ -140,7 +140,7 @@ export class EntityStore {
     this.driven = new Uint8Array(cap);
     this.team = new Uint32Array(cap);
     this.seat = new Uint32Array(cap);
-    this.born = new Uint32Array(cap);
+    this.span = new Uint32Array(cap);
     this.grown = new Uint32Array(cap);
     this.level = new Uint16Array(cap);
     this.colors = new Uint8Array(cap * 6);
@@ -191,7 +191,7 @@ export class EntityStore {
     this.driven[i] = 0;
     this.team[i] = 0;
     this.seat[i] = 0;
-    this.born[i] = 0;
+    this.span[i] = 0;
     this.grown[i] = 0;
     this.level[i] = 0;
     this.colors.fill(0, i * 6, i * 6 + 6);
@@ -231,10 +231,10 @@ export class EntityStore {
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
-  /** Say when a young entity was born and when it will be grown (both 0 for one that is grown). */
-  setYoung(i: number, born: number, grown: number): void {
-    if (this.born[i] === born && this.grown[i] === grown) return;
-    this.born[i] = born;
+  /** Say how many ticks a young entity's growing takes and the tick it will be grown (both 0 for one that is grown). */
+  setYoung(i: number, span: number, grown: number): void {
+    if (this.span[i] === span && this.grown[i] === grown) return;
+    this.span[i] = span;
     this.grown[i] = grown;
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }

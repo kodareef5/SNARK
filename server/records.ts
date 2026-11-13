@@ -108,23 +108,24 @@ export class EntityRecord {
   /**
    * Breeding (server/breeding.ts). For a creature that is somebody's: whether
    * it is willing to mate, and the tick from which a female may again (0:
-   * now). For a young one: the ticks it was born and will be grown (both 0
-   * for one that is grown, or was never young), and the tick it is next a
-   * hundredth more grown (not saved: worked out again from the other two).
+   * now). For a young one: the ticks its growing takes and the tick it will be
+   * grown (both 0 for one that is grown, or was never young), and the tick
+   * it is next a hundredth more grown (not saved: worked out again from the
+   * other two).
    */
   mating = false;
   mateReadyAt = 0;
-  born = 0;
+  span = 0;
   grown = 0;
   growDue = 0;
   /**
    * For an egg: the species that will hatch from it (a content index), the
-   * ticks it was laid and will hatch, and, for young that are carried and not
+   * ticks its hatching takes and the tick it will hatch, and, for young that are carried and not
    * laid, the mother carrying them (a persistent id; 0 for an egg that lies
    * on the ground). What hatches has the genome of this record. Null for
    * anything else.
    */
-  egg: { species: number; laidAt: number; hatchAt: number; carrier: number } | null = null;
+  egg: { species: number; span: number; hatchAt: number; carrier: number } | null = null;
   /** For a bed: the tick from which someone may next return to life at it. */
   readyAt = 0;
   /** For a fire that is burning: how far it has been worked out (shared/sim/station.ts), and the tick it is next due to be looked at. Null when it is out. */

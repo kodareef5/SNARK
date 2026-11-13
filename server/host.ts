@@ -2,7 +2,7 @@
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -47,6 +47,8 @@ import { Rules, type RuleName } from "./rules.ts";
 import { rowOf } from "./settings/catalog.ts";
 import { Lists } from "./settings/lists.ts";
 import { timersOf } from "./settings/rules.ts";
+import { tuningOf } from "./settings/tune.ts";
+import { deriveRegistry } from "../shared/content/tuning.ts";
 import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
@@ -130,6 +132,8 @@ export interface Host {
   readonly breeding: Breeding;
   /** The server's settings that are lists naming classes, as tables; and what they named that this build lacks. */
   readonly lists: Lists;
+  /** What of the settings that change content was passed over as the server started, in words. */
+  readonly passed: readonly string[];
   /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
   /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
@@ -171,7 +175,27 @@ export const BED_WAIT_TICKS = 5 * 60 * TICK_RATE;
 /** How often the clocks of decay are saved: once a minute, in ticks. */
 const DECAY_SAVE_TICKS = 1800;
 
-export function createHost(reg: Registry, opts: HostOptions = {}): Host {
+/**
+ * Content as a server on these rules has it: what its settings make of the
+ * definitions `content` came from. For whoever builds a world before the host
+ * that will run it: the world must be made of this.
+ */
+export function contentFor(content: Registry, rules: Rules): Registry {
+  return deriveRegistry(content, tuningOf(rules, new Lists(rules, content), content).tuning);
+}
+
+export function createHost(content: Registry, opts: HostOptions = {}): Host {
+  // The files are the truth at every start (D88): nothing of the rules is read from the save.
+  const rules = opts.config ?? new Rules(opts.rules);
+  const lists = new Lists(rules, content);
+  // Some settings change what content says. They are applied to the definitions, once, before anything reads them (D90):
+  // from here on `reg` is content as this server has it, and there is no other.
+  const tuned = tuningOf(rules, lists, content);
+  lists.warm();
+  const derived = deriveRegistry(content, tuned.tuning);
+  // A world made before its host was made of some content already: it must be this content, and then its registry is the one.
+  if (opts.world && opts.world.reg.hash !== derived.hash) throw new Error("a world made before its host must be made of the content the host's settings give: contentFor(content, rules)");
+  const reg = opts.world ? opts.world.reg : derived;
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, opts.store) : null;
   // A save supplies its own structures; only a new world gets the proving ground's.
   const world = opts.world ?? createProvingWorld(reg, { populate: !store || store.fresh });
@@ -179,12 +203,14 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   if (opts.clips && opts.rigs) world.rigs = buildRigs(opts.rigs, opts.clips);
   let settingsAt: { dirty: boolean; version: number } | null = null;
   const records = new Records(opts.worldId ?? 1);
-  // The files are the truth at every start (D88): nothing of the rules is read from the save.
-  const rules = opts.config ?? new Rules(opts.rules);
-  const lists = new Lists(rules, reg);
   // The most survivors at once: what whoever assembles the world says, else ARK's command-line flag, else its file's setting.
   const seats = rules.flag("WinLiveMaxPlayers");
-  const game = new GameServer(world, { ...opts.game, maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")) });
+  const game = new GameServer(world, {
+    password: rules.text("ServerPassword"),
+    motdSeconds: rules.num("Duration"),
+    ...opts.game,
+    maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")),
+  });
   const persistence = store ? new Persistence(world, records, store) : null;
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
@@ -436,8 +462,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     tribes.version++;
     // The server's name and its message of the day, if it has them: each line of the message its own.
     const name = rules.text("SessionName");
-    if (name !== "") game.sendText(c, TEXT_NOTICE, name);
-    for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_NOTICE, line.trim());
+    if (name !== "") game.sendText(c, TEXT_MOTD, name);
+    for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
   };
   game.onPresence = (c) => {
     tribes.version++;
@@ -556,7 +582,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     const rider = riding.riderOf(e);
     const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0);
     // A young one can carry a share of what a grown one can: the same load is that much more of it.
-    const strength = youngShare(growthStep(rec.born, rec.grown, world.tick));
+    const strength = youngShare(growthStep(rec.span, rec.grown, world.tick));
     refreshMods(reg, world.ents, e, rec.genome, load / strength, buffs.speedOf(rec), buffs.rooted(rec), rec.out);
     // A survivor's level is what its experience has earned; a creature's is its points.
     const level = rec.kind === survivor ? progression.levelOf(rec.xp) : rec.genome ? rec.genome.level : 1;
@@ -641,6 +667,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     console: con,
     adminPassword: opts.adminPassword || rules.text("ServerAdminPassword") || null,
     lists,
+    passed: tuned.passed,
     dev: opts.dev ?? false,
     spawnCreature,
     refreshBody,

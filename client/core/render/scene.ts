@@ -263,7 +263,7 @@ export class Scene {
         st.seed = bodySeed(remote.id[i]!);
         const look = remote.hasLook[i] !== 0 ? remote.look : null;
         // A young one is drawn small, and larger as it grows.
-        const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.born[i]!, remote.grown[i]!, remote.tick) : 1;
+        const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
         if (!ch.add(p, kind, x, y, z, yaw, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size)) break;
       }
     }

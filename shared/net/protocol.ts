@@ -1,10 +1,12 @@
-// Wire protocol, version 4. Message layouts live here and nowhere else.
+// Wire protocol, version 5. Message layouts live here and nowhere else.
 //
 // Every message starts with a 4-bit type. Channels are fixed per type:
 //
 //   client -> server
-//     HELLO     reliable     version u16, content hash u32, clip hash u32, name string,
-//                            flags u8, device key (16 bytes), and with HELLO_LOOK a look (28 bytes)
+//     HELLO     reliable     version u16, content hash u32 (of the definitions as they were
+//                            written, before any server tuned them), clip hash u32, name string,
+//                            flags u8, device key (16 bytes), with HELLO_LOOK a look (28 bytes),
+//                            and the server's password, a string ("" for none)
 //     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths),
 //                            newest tick u32, count-1 (3 bits),
 //                            then inputs newest first; each after the first is
@@ -14,7 +16,11 @@
 //     WELCOME   reliable     version u16, tick u32, own handle u32, species u16,
 //                            session state 2 bits, admin 1 bit, day offset u32,
 //                            map id string, map hash u32, chunksX u8+1, chunksZ u8+1,
-//                            own body, yaw u16
+//                            own body, yaw u16; then content as this server has it: its
+//                            hash u32 and the tuning that makes it (a string: see
+//                            shared/content/tuning.ts); the clock's three scales (f64 each:
+//                            the whole cycle, the day, the night); and the seconds its
+//                            message of the day is shown (u16)
 //     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8,
 //                            session state 2 bits, own body, entity delta (see view.ts)
 //     CHUNK     reliable     chunk u16, version u32, final 1 bit, count 16 bits, slots,
@@ -46,7 +52,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -73,6 +79,11 @@ export const REJECT_NAME = 5;
 /** Wrong device key for the name, spectating not allowed, or too many password attempts. */
 export const REJECT_DENIED = 6;
 export const REJECT_KICKED = 7;
+/** The server asks a password of everyone who joins, and this was not it. */
+export const REJECT_PASSWORD = 8;
+/** The longest a server's password may be, and the longest a tuning: bytes. */
+export const MAX_PASSWORD_BYTES = 64;
+export const MAX_TUNING_BYTES = 1 << 20;
 
 /** HELLO flag: join without a body. */
 export const HELLO_SPECTATE = 1;
@@ -231,8 +242,8 @@ export const OWN_MARKERS = 5;
 export const OWN_RESPAWN = 6;
 
 /**
- * experience u32, level u16, unspent stat points u16, unspent engram points u16,
- * learned engrams (count u8, content index u16 each), crafting jobs (count u8,
+ * experience u32, level u16, unspent stat points u16, unspent engram points
+ * (varint), learned engrams (count varint, content index u16 each), crafting jobs (count u8,
  * then recipe u16, units left u8, tick the current unit is done u32 each).
  */
 export const OWN_PROGRESSION = 7;
@@ -244,8 +255,17 @@ export const OWN_LOOK = 8;
 export const OWN_HELD = 9;
 /** What is acting on the body for a time: count u8, then for each a buff (u16 content index) and the tick it ends (u32; 0 for one with no end). */
 export const OWN_BUFFS = 10;
-/** The server's rules that a client acts on: flags u8 (bit 0: the damage of hits may be shown as numbers; bit 1: there is a global text channel). */
+/** The server's rules that a client acts on, and that may change while it runs: flags u16, the RULE_ bits. */
 export const OWN_RULES = 11;
+/** The damage of hits may be shown as numbers; there is a global text channel; a mark is shown when a ranged hit lands. */
+export const RULE_DAMAGE_NUMBERS = 1;
+export const RULE_GLOBAL_CHAT = 2;
+export const RULE_HIT_MARKERS = 4;
+/** The body may be looked at from behind; a crosshair is shown; the map shows where its reader is; a beam marks where a survivor died. */
+export const RULE_THIRD_PERSON = 8;
+export const RULE_CROSSHAIR = 16;
+export const RULE_MAP_LOCATION = 32;
+export const RULE_CORPSE_LOCATOR = 64;
 /**
  * Who the survivor is with: its team (varint), its tribe's name (a string;
  * empty for a survivor alone, and then nothing more of the tribe follows), its
@@ -317,6 +337,8 @@ export const TEXT_NOTICE = 1;
 export const TEXT_GLOBAL = 2;
 export const TEXT_LOCAL = 3;
 export const TEXT_TRIBE = 4;
+/** What the server says to whoever joins: its name, and its message of the day. Shown as a notice, for as long as the server says. */
+export const TEXT_MOTD = 5;
 /** Characters of a chat line, at most; and of a tribe's name. */
 export const MAX_CHAT_CHARS = 120;
 export const MAX_TRIBE_NAME = 24;
@@ -436,7 +458,7 @@ export function readBody(r: BitReader, b: Body): void {
 }
 
 /** Write a HELLO. `key` must be KEY_BYTES long. */
-export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null): void {
+export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = ""): void {
   w.bits(C_HELLO, 4);
   w.u16(version);
   w.u32(contentHash);
@@ -445,6 +467,7 @@ export function writeHello(w: BitWriter, version: number, contentHash: number, c
   w.u8(look ? flags | HELLO_LOOK : flags & ~HELLO_LOOK);
   for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
   if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
+  w.string(password);
 }
 
 /** Start a COMMAND; the caller appends the op's arguments. */

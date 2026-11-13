@@ -3,7 +3,7 @@
 // to the tribe; Tab changes channel while it is open, Enter says the line and
 // shuts it, Escape shuts it. Who reads a line is the server's decision.
 
-import { MAX_CHAT_CHARS, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
+import { MAX_CHAT_CHARS, TEXT_GLOBAL, TEXT_LOCAL, TEXT_MOTD, TEXT_NOTICE, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
 import { columns, lineHeight, wrap, K_BUTTON, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
 import { S_CHAT, S_CHAT_LOCAL, S_CHAT_NOTICE, S_CHAT_PANEL, S_CHAT_TAG, S_CHAT_TRIBE, S_INPUT } from "./style.ts";
@@ -27,14 +27,16 @@ const FADE_TICKS = 2 * 30;
 
 const CHANNELS: readonly number[] = [TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE];
 const TAG: Record<number, string> = { [TEXT_GLOBAL]: "Global", [TEXT_LOCAL]: "Local", [TEXT_TRIBE]: "Tribe" };
-const ROW_STYLE: Record<number, number> = { [TEXT_NOTICE]: S_CHAT_NOTICE, [TEXT_GLOBAL]: S_CHAT, [TEXT_LOCAL]: S_CHAT_LOCAL, [TEXT_TRIBE]: S_CHAT_TRIBE };
+const ROW_STYLE: Record<number, number> = { [TEXT_NOTICE]: S_CHAT_NOTICE, [TEXT_MOTD]: S_CHAT_NOTICE, [TEXT_GLOBAL]: S_CHAT, [TEXT_LOCAL]: S_CHAT_LOCAL, [TEXT_TRIBE]: S_CHAT_TRIBE };
 /** What a line begins with, so that its channel is told by more than its colour. */
-const PREFIX: Record<number, string> = { [TEXT_NOTICE]: "", [TEXT_GLOBAL]: "", [TEXT_LOCAL]: "[Local] ", [TEXT_TRIBE]: "[Tribe] " };
+const PREFIX: Record<number, string> = { [TEXT_NOTICE]: "", [TEXT_MOTD]: "", [TEXT_GLOBAL]: "", [TEXT_LOCAL]: "[Local] ", [TEXT_TRIBE]: "[Tribe] " };
 
 interface Row {
   text: string;
   channel: number;
   at: number;
+  /** Ticks it stays up with the box shut. */
+  hold: number;
 }
 
 export class ChatState {
@@ -42,8 +44,9 @@ export class ChatState {
   /** The channel the line being typed will go out on. */
   channel = TEXT_GLOBAL;
   input = "";
-  /** What has been said and what the server has told this client, oldest first: the channel, the text, and the tick it arrived. */
-  readonly lines: { channel: number; text: string; at: number }[] = [];
+  /** What has been said and what the server has told this client, oldest first: the channel, the text, the tick it arrived, and the ticks it stays up with the box shut. */
+  readonly lines: { channel: number; text: string; at: number; hold: number }[] = [];
+  private readonly live: number[] = [];
   private seen = 0;
   private readonly rows: Row[] = [];
   private rowsFor = "";
@@ -91,8 +94,8 @@ export class ChatState {
     this.input = "";
   }
 
-  print(channel: number, text: string, at: number): void {
-    this.lines.push({ channel, text, at });
+  print(channel: number, text: string, at: number, hold = SHOW_TICKS): void {
+    this.lines.push({ channel, text, at, hold: hold > FADE_TICKS ? hold : FADE_TICKS });
     if (this.lines.length > LINES) this.lines.shift();
     this.version++;
   }
@@ -105,7 +108,9 @@ export class ChatState {
     const log = session.log;
     for (let i = Math.max(0, log.length - fresh); i < log.length; i++) {
       const l = log[i]!;
-      if (l.channel >= TEXT_NOTICE && l.channel <= TEXT_TRIBE) this.print(l.channel, l.text, session.serverTick);
+      // The server's message of the day stays up as long as the server says.
+      if (l.channel === TEXT_MOTD) this.print(l.channel, l.text, session.serverTick, session.motdSeconds * 30);
+      else if (l.channel >= TEXT_NOTICE && l.channel <= TEXT_TRIBE) this.print(l.channel, l.text, session.serverTick);
     }
   }
 
@@ -127,26 +132,28 @@ export class ChatState {
       for (const line of this.lines) {
         parts.length = 0;
         wrap((PREFIX[line.channel] ?? "") + line.text, cols, parts);
-        for (const text of parts) this.rows.push({ text, channel: line.channel, at: line.at });
+        for (const text of parts) this.rows.push({ text, channel: line.channel, at: line.at, hold: line.hold });
       }
     }
     const room = Math.max(1, Math.floor((bottom - top - inputH - 4) / lh));
     const most = Math.min(this.open ? MAX_ROWS : SHUT_ROWS, room);
     const rowsBottom = bottom - inputH - 4;
-    // Shut, a line is shown for a while after it arrives; open, whatever fits.
-    let first = this.rows.length;
-    while (first > 0 && this.rows.length - first < most && (this.open || now - this.rows[first - 1]!.at < SHOW_TICKS)) first--;
-    const shown = this.rows.length - first;
+    // Shut, a line is shown for a while after it arrives, each for its own while; open, whatever fits. The newest that are to be shown, in the order they came.
+    const live = this.live;
+    live.length = 0;
+    for (let i = this.rows.length - 1; i >= 0 && live.length < most; i--) if (this.open || now - this.rows[i]!.at < this.rows[i]!.hold) live.push(i);
+    live.reverse();
+    const shown = live.length;
     if (this.open) {
       const h = most * lh + inputH + 12;
       f.add(KEY_CHAT_PANEL, K_PANEL, MARGIN - 4, bottom - h + 4, w + 8, h, S_CHAT_PANEL);
     }
     let y = rowsBottom - shown * lh;
-    for (let i = first; i < this.rows.length; i++) {
-      const row = this.rows[i]!;
-      const n = f.text(KEY_CHAT_ROW + (i - first), MARGIN, y, w - 8, ROW_STYLE[row.channel] ?? S_CHAT, row.text);
+    for (let k = 0; k < shown; k++) {
+      const row = this.rows[live[k]!]!;
+      const n = f.text(KEY_CHAT_ROW + k, MARGIN, y, w - 8, ROW_STYLE[row.channel] ?? S_CHAT, row.text);
       if (!this.open) {
-        const left = SHOW_TICKS - (now - row.at);
+        const left = row.hold - (now - row.at);
         n.alpha = left >= FADE_TICKS ? 1 : Math.max(0, left / FADE_TICKS);
       }
       y += lh;

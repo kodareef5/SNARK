@@ -114,11 +114,12 @@ export class Feedback {
    * What to show at `nowMs`, seen by `cam`, whose facing is `yaw` radians.
    * `alive` is whether this client has a living body; `numbers` whether the
    * damage of hits is shown as numbers (the server allows it and the player
-   * wants it). The mark that a hit landed is shown either way.
+   * wants it); `marks` whether the mark that a hit landed is shown at all
+   * (the server's rule).
    */
-  fill(m: CombatModel, cam: Camera, yaw: number, alive: boolean, nowMs: number, numbers = true): void {
+  fill(m: CombatModel, cam: Camera, yaw: number, alive: boolean, nowMs: number, numbers = true, marks = true): void {
     const markAge = nowMs - this.markAt;
-    m.mark = markAge < MARK_MS ? 1 - markAge / MARK_MS : 0;
+    m.mark = marks && markAge < MARK_MS ? 1 - markAge / MARK_MS : 0;
     m.markKill = this.markKill;
     m.markHead = this.markHead;
 

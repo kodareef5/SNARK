@@ -23,7 +23,8 @@ import { buildRigs, type Rig } from "../shared/anim/rigs.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { defaultPalette } from "../shared/pack/palette.ts";
 import { buildPack } from "./pack/write.ts";
-import { compileContent } from "../shared/content/registry.ts";
+import { compileContent, type Registry } from "../shared/content/registry.ts";
+import { deriveRegistry, type Tuning } from "../shared/content/tuning.ts";
 import { TICK_DT } from "../shared/coords.ts";
 import { Rng } from "../shared/rng.ts";
 import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, stepBody } from "../shared/sim/character.ts";
@@ -31,8 +32,59 @@ import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../share
 import { StructureStore } from "../shared/world/structures.ts";
 import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../shared/world/snap.ts";
 
-export function simHash(ticks = 3000): string {
-  const reg = compileContent(CORE_CONTENT).registry!;
+/**
+ * A tuning with something of everything in it, and numbers that do not come
+ * out even: what a server's settings might make of content.
+ */
+export const FIXED_TUNING: Tuning = {
+  stack: 2.5,
+  stacks: { "core:thatch": { n: 543, plain: true }, "core:wood": { n: 70 } },
+  costs: { "core:hatchet": [{ item: "core:thatch", count: 2.4 }, { item: "core:wood", count: 3 }] },
+  engrams: { "core:engram-hatchet": { level: 3, cost: 2, auto: 0 }, "core:engram-pick": { hidden: true } },
+  xp: [0, 7, 19.5, 44, 81],
+  most: 100,
+  points: [1, 2, 3],
+  tameXp: [0, 12, 30],
+  stamina: 1.7,
+  staminaOf: { "core:survivor": 0.37 },
+  spoil: 3.3,
+  fuel: 0.45,
+  nodeHits: 1.6,
+};
+
+/**
+ * Content as that tuning has it, hashed: the registry's own hash, the tables
+ * it changes, and the movement scenario run on the survivor it makes. Equal
+ * on both engines means a client derives what its server did, to the bit.
+ */
+export function tunedHash(): string {
+  const reg = deriveRegistry(compileContent(CORE_CONTENT).registry!, FIXED_TUNING);
+  const f = new Float64Array(1);
+  const bytes = new Uint8Array(f.buffer);
+  let h = reg.hash;
+  const add = (v: number): void => {
+    f[0] = v;
+    for (let k = 0; k < 8; k++) h = Math.imul(h ^ bytes[k]!, 0x01000193);
+  };
+  for (let i = 0; i < reg.defs.length; i++) {
+    add(reg.stack[i]!);
+    add(reg.spoilTicks[i]!);
+    add(reg.fuelTicks[i]!);
+    add(reg.nodeHits[i]!);
+    add(reg.recipeMakes[i]!);
+    for (const v of reg.recipeOf[i] ?? []) add(v);
+    const m = reg.move[i];
+    if (m) {
+      add(m.staminaSprint);
+      add(m.staminaJump);
+      add(m.staminaRegen);
+    }
+  }
+  return (h >>> 0).toString(16).padStart(8, "0") + simHash(600, reg);
+}
+
+export function simHash(ticks = 3000, content: Registry | null = null): string {
+  const reg = content ?? compileContent(CORE_CONTENT).registry!;
   const hf = buildProvingHeightfield();
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   populateProving(structs, hf, reg);
@@ -252,4 +304,4 @@ export function creatureHash(): string {
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash());
+if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash());

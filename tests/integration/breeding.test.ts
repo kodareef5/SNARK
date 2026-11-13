@@ -1,5 +1,7 @@
 // Breeding: a pair that may, the egg, what hatches, and its growing up, at the reference's numbers.
 
+import { Database } from "bun:sqlite";
+import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,9 +19,8 @@ import type { Rules } from "../../server/settings/rules.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, ORDER_ALL, ORDER_FOLLOW, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK } from "../../shared/net/protocol.ts";
-import { MATE_TICKS, growthStep, youngHunger, youngScale, youngShare } from "../../shared/sim/breeding.ts";
+import { MATE_TICKS, growthStep, maturity, youngHunger, youngScale, youngShare } from "../../shared/sim/breeding.ts";
 import { BTN_USE, MF_ROOTED, stanceEye } from "../../shared/sim/character.ts";
 import { F_PROP } from "../../shared/sim/entities.ts";
 import { STAT_COUNT } from "../../shared/sim/genome.ts";
@@ -122,10 +123,10 @@ test("a female and a male of one tribe, both told they may, have an egg after ha
   expect([breeding.mated, breeding.pairCount, laid.length >= 1 && laid.length <= 3, laid.length === breeding.laid]).toEqual([1, 0, true, true]);
   const egg = laid[0]!;
   const info = egg.egg!;
-  expect(Math.abs(info.laidAt - began - MATE_TICKS)).toBeLessThanOrEqual(TICK_RATE + 6);
-  expect([egg.kind, egg.name, info.species, info.carrier, info.hatchAt - info.laidAt]).toEqual([id("egg_parasaur"), "parasaur egg", id("parasaur"), 0, 5142 * TICK_RATE]);
+  expect(Math.abs(info.hatchAt - info.span - began - MATE_TICKS)).toBeLessThanOrEqual(TICK_RATE + 6);
+  expect([egg.kind, egg.name, info.species, info.carrier, info.span]).toEqual([id("egg_parasaur"), "parasaur egg", id("parasaur"), 0, 5142 * TICK_RATE]);
   const ee = h.host.records.entOf.get(egg.pid)!;
-  expect([(ents.flags[ee]! & F_PROP) !== 0, ents.born[ee], ents.grown[ee]]).toEqual([true, info.laidAt, info.hatchAt]);
+  expect([(ents.flags[ee]! & F_PROP) !== 0, ents.span[ee], ents.grown[ee]]).toEqual([true, info.span, info.hatchAt]);
   // It lies just behind her, clear of her.
   const off = Math.hypot(egg.x - ents.x[f.e]!, egg.z - ents.z[f.e]!);
   expect([off > reg.bodyRadius[id("parasaur")]!, off < 2]).toEqual([true, true]);
@@ -137,7 +138,7 @@ test("a female and a male of one tribe, both told they may, have an egg after ha
     expect(g.tamed[s]).toBe(0);
   }
   // She rests between eighteen and forty-eight hours; he does not.
-  const rest = (f.rec.mateReadyAt - info.laidAt) / TICK_RATE / 3600;
+  const rest = (f.rec.mateReadyAt - (info.hatchAt - info.span)) / TICK_RATE / 3600;
   expect(rest).toBeGreaterThanOrEqual(18);
   expect(rest).toBeLessThan(48);
   expect(m.rec.mateReadyAt).toBe(0);
@@ -150,7 +151,7 @@ test("a female and a male of one tribe, both told they may, have an egg after ha
   const seen = new RemoteSample();
   ada.sampleRemote(seen);
   const i = seen.kind.subarray(0, seen.count).indexOf(id("egg_parasaur"));
-  expect([i >= 0, seen.name[i], seen.born[i], seen.grown[i]]).toEqual([true, "parasaur egg", info.laidAt, info.hatchAt]);
+  expect([i >= 0, seen.name[i], seen.span[i], seen.grown[i]]).toEqual([true, "parasaur egg", info.span, info.hatchAt]);
   ada.command(CMD_CLOSE);
   h.run(200);
   // (From the side of it away from her, so that she is not what is looked at.)
@@ -210,7 +211,7 @@ test("no pair of two of one sex, of two tribes, too far apart, or with one that 
   expect(eggs(h).length).toBe(0);
   h.run(6500);
   expect([eggs(h).length >= 1, breeding.mated]).toEqual([true, 1]);
-  expect(Math.abs(eggs(h)[0]!.egg!.laidAt - last - MATE_TICKS)).toBeLessThanOrEqual(TICK_RATE + 6);
+  expect(Math.abs(eggs(h)[0]!.egg!.hatchAt - eggs(h)[0]!.egg!.span - last - MATE_TICKS)).toBeLessThanOrEqual(TICK_RATE + 6);
 
   // Nobody tells another tribe's creature anything; nothing is told to mate by a whistle; and what does not breed is not told at all.
   expect(order(h, bob, far.e, ORDER_UNMATE)).toBe(RESULT_NOT_YOURS);
@@ -245,16 +246,16 @@ test("an egg hatches and what hatches is grown on the ticks they were due, watch
     h.run(32000);
     const egg = eggs(h)[0]!;
     const info = { ...egg.egg! };
-    expect(info.hatchAt - info.laidAt).toBe(hatchTicks);
+    expect(info.span).toBe(hatchTicks);
     const mother = f.rec.pid;
-    const rest = f.rec.mateReadyAt - info.laidAt;
+    const rest = f.rec.mateReadyAt - (info.hatchAt - info.span);
     if (away) {
       // Stopped and started with the egg unhatched: it lies where it lay, hatches when it would have, and she is still resting.
       restart();
       const again = h.host.records.byPid.get(egg.pid)!;
       const ee = h.host.records.entOf.get(egg.pid)!;
       expect([again.egg, (h.world.ents.flags[ee]! & F_PROP) !== 0, h.world.ents.grown[ee]]).toEqual([info, true, info.hatchAt]);
-      expect(h.host.records.byPid.get(mother)).toMatchObject({ mating: true, mateReadyAt: info.laidAt + rest });
+      expect(h.host.records.byPid.get(mother)).toMatchObject({ mating: true, mateReadyAt: (info.hatchAt - info.span) + rest });
     }
     // The tick it is grown on, noted as it happens: that is when its body is told it is young no longer.
     let grownAt = -1;
@@ -271,27 +272,27 @@ test("an egg hatches and what hatches is grown on the ticks they were due, watch
     const baby = young(h)[0]!;
     // Every egg of the litter has hatched, each into one young.
     expect([eggs(h).length, young(h).length >= 1]).toEqual([0, true]);
-    expect([baby.born, baby.grown - baby.born, baby.team, baby.kind]).toEqual([info.hatchAt, growTicks, 0, id("parasaur")]);
+    expect([baby.grown - baby.span, baby.span, baby.team, baby.kind]).toEqual([info.hatchAt, growTicks, 0, id("parasaur")]);
     if (away) {
       // And again with it a third grown.
       h.run(30000);
-      const before = { born: baby.born, grown: baby.grown, food: baby.vitals!.at(V_FOOD, h.world.tick), tick: h.world.tick };
+      const before = { span: baby.span, grown: baby.grown, food: baby.vitals!.at(V_FOOD, h.world.tick), tick: h.world.tick };
       restart();
       watch();
       const again = h.host.records.byPid.get(baby.pid)!;
-      expect({ born: again.born, grown: again.grown, food: again.vitals!.at(V_FOOD, h.world.tick), tick: h.world.tick }).toEqual(before);
+      expect({ span: again.span, grown: again.grown, food: again.vitals!.at(V_FOOD, h.world.tick), tick: h.world.tick }).toEqual(before);
       const e = h.host.records.entOf.get(baby.pid)!;
-      expect([h.world.ents.born[e], h.world.ents.grown[e]]).toEqual([before.born, before.grown]);
+      expect([h.world.ents.span[e], h.world.ents.grown[e]]).toEqual([before.span, before.grown]);
     }
     const pid = baby.pid;
     const due = baby.grown;
     const now = (): EntityRecord => h.host.records.byPid.get(pid)!;
     while (h.world.tick <= due + 5) h.run(500);
-    expect([now().born, now().grown, grownAt, h.host.breeding.grownUp >= 1]).toEqual([0, 0, due, true]);
+    expect([now().span, now().grown, grownAt, h.host.breeding.grownUp >= 1]).toEqual([0, 0, due, true]);
     expect(h.host.items.audit()).toEqual([]);
     // What it has in it a hundred ticks after it was grown: nobody fed it, so only what it was born with, less what it burned.
     const v = now().vitals!;
-    const done = { egg: info.hatchAt - info.laidAt, grew: grownAt - info.hatchAt, food: v.at(V_FOOD, due + 100), health: v.max[V_HEALTH]!, level: now().genome!.level, rest };
+    const done = { egg: info.span, grew: grownAt - info.hatchAt, food: v.at(V_FOOD, due + 100), health: v.max[V_HEALTH]!, level: now().genome!.level, rest };
     h.host.shutdown();
     void ada;
     return done;
@@ -337,17 +338,17 @@ test("what hatches is nobody's and helpless until someone takes it; then it is t
   }
 
   // Nobody's; it has the genome that was in the egg; and its body says when it was born and will be grown.
-  expect([baby.team, breeding.unclaimed(baby), baby.genome === first.genome, baby.grown - baby.born, ents.born[e], ents.grown[e], ents.team[e]]).toEqual([0, true, true, Math.ceil((95238 * TICK_RATE) / 1000), baby.born, baby.grown, 0]);
+  expect([baby.team, breeding.unclaimed(baby), baby.genome === first.genome, baby.span, ents.span[e], ents.grown[e], ents.team[e]]).toEqual([0, true, true, Math.ceil((95238 * TICK_RATE) / 1000), baby.span, baby.grown, 0]);
   const full = (stat: number): number => statOf(def, baby.genome, stat, 0);
   /** Its limits and its hunger are what its hundredth says: a tenth of a grown one's health and food at birth, and 510 times its hunger. */
   const asItShouldBe = (): void => {
-    const step = growthStep(baby.born, baby.grown, baby.vitals!.tick);
+    const step = growthStep(baby.span, baby.grown, baby.vitals!.tick);
     expect(baby.vitals!.max[V_HEALTH]! / 1e6).toBeCloseTo(full(STAT_HEALTH) * youngShare(step), 3);
     expect(baby.vitals!.max[V_FOOD]! / 1e6).toBeCloseTo(full(STAT_FOOD) * youngShare(step), 3);
     expect(baby.vitals!.rate[V_FOOD]).toBe(-Math.round((0.27 * 1e6 * youngHunger(step)) / GAME_HOUR_TICKS));
   };
   asItShouldBe();
-  expect(growthStep(baby.born, baby.grown, h.world.tick)).toBeLessThan(10);
+  expect(growthStep(baby.span, baby.grown, h.world.tick)).toBeLessThan(10);
   // Just hatched, it is a baby.
   const stages = new Set<number>([breeding.subject(baby).stage]);
 
@@ -356,12 +357,12 @@ test("what hatches is nobody's and helpless until someone takes it; then it is t
   const cast = (who: number, up: number, ux: number, uz: number): number => h.host.combat.castBodies(h.ent(ada), ents.x[who]! + ux * 4, ents.y[who]! + up, ents.z[who]! + uz * 4, -ux, 0, -uz, 4.5);
   const [ux, uz] = [(first.x - ents.x[f.e]!) / off, (first.z - ents.z[f.e]!) / off];
   expect([cast(m.e, 1.6, 1, 0), cast(e, 1.6, ux, uz), cast(e, 0.4, ux, uz)]).toEqual([m.e, -1, e]);
-  expect(youngScale(reg.birthScale[baby.kind]!, baby.born, baby.grown, h.world.tick)).toBeLessThan(0.35);
+  expect(youngScale(reg.birthScale[baby.kind]!, baby.span, baby.grown, h.world.tick)).toBeLessThan(0.35);
   // And every client is told the two ticks it draws it small by.
   const seen = new RemoteSample();
   ada.sampleRemote(seen);
   const i = seen.id.subarray(0, seen.count).indexOf(e);
-  expect([i >= 0, seen.born[i], seen.grown[i], seen.team[i]]).toEqual([true, baby.born, baby.grown, 0]);
+  expect([i >= 0, seen.span[i], seen.grown[i], seen.team[i]]).toEqual([true, baby.span, baby.grown, 0]);
 
   // It stands where it hatched whatever is done to it. Lying unconscious it is nothing to tame. An aggressive creature does not take it for a wild one.
   const [x0, z0] = [ents.x[e]!, ents.z[e]!];
@@ -439,7 +440,7 @@ test("what hatches is nobody's and helpless until someone takes it; then it is t
   expect(survival.value(baby, V_FOOD)).toBeGreaterThan(0);
   h.run(3000);
   // Grown: it is as any of its kind, and may be told it may mate.
-  expect([baby.born, baby.grown, ents.born[e], ents.grown[e], breeding.grownUp, breeding.subject(baby).stage]).toEqual([0, 0, 0, 0, 1, 3]);
+  expect([baby.span, baby.grown, ents.span[e], ents.grown[e], breeding.grownUp, breeding.subject(baby).stage]).toEqual([0, 0, 0, 0, 1, 3]);
   expect(baby.vitals!.max[V_HEALTH]! / 1e6).toBeCloseTo(full(STAT_HEALTH), 3);
   expect(baby.vitals!.max[V_FOOD]! / 1e6).toBeCloseTo(full(STAT_FOOD), 3);
   expect(baby.vitals!.rate[V_FOOD]).toBe(-Math.round((0.27 * 1e6) / GAME_HOUR_TICKS));
@@ -476,7 +477,7 @@ test("a species that bears its young alive goes the same way with no egg: carrie
   const ofB = carried.filter((r) => r.egg!.carrier === b.rec.pid);
   expect([h.host.breeding.mated, ofA.length >= 1, ofB.length >= 1, ofA.length + ofB.length === carried.length]).toEqual([2, true, true, true]);
   // Nothing was laid: what is carried has no body, and is of its own kind.
-  for (const r of carried) expect([r.kind, h.host.records.entOf.get(r.pid), r.egg!.hatchAt - r.egg!.laidAt]).toEqual([parasaur, undefined, (600 * TICK_RATE) / 100]);
+  for (const r of carried) expect([r.kind, h.host.records.entOf.get(r.pid), r.egg!.span]).toEqual([parasaur, undefined, (600 * TICK_RATE) / 100]);
   const bodies = (): number => {
     let n = 0;
     for (let i = 0; i < h.world.ents.cap; i++) if ((h.world.ents.flags[i]! & 1) !== 0 && h.world.ents.kind[i] === parasaur) n++;
@@ -499,7 +500,7 @@ test("a species that bears its young alive goes the same way with no egg: carrie
   const me2 = h.host.records.entOf.get(pa)!;
   expect([born.length, eggs(h).length, h.host.breeding.hatched]).toEqual([ofA.length, 0, ofA.length]);
   for (const r of born) {
-    expect([r.born, r.team, r.kind, r.genome!.mother, r.grown - r.born]).toEqual([due, 0, parasaur, mother.pid, 3000 * TICK_RATE]);
+    expect([r.grown - r.span, r.team, r.kind, r.genome!.mother, r.span]).toEqual([due, 0, parasaur, mother.pid, 3000 * TICK_RATE]);
     expect([r.x, r.z]).toEqual([h.world.ents.x[me2]!, h.world.ents.z[me2]!]);
   }
   expect(h.host.items.audit()).toEqual([]);
@@ -540,7 +541,7 @@ test("a development server reads a folder of its own, with taming, hatching and 
   expect(mine.length).toBe(1);
   // Made young by hand, for the asking of it to be grown.
   const rec = mine[0]!;
-  rec.born = h.world.tick;
+  rec.span = 100000;
   rec.grown = h.world.tick + 100000;
   h.host.refreshBody(rec);
   expect(rec.vitals!.max[V_HEALTH]! / 1e6).toBeCloseTo(statOf(reg.defs[rec.kind] as SpeciesDef, rec.genome, STAT_HEALTH, 0) * 0.1, 3);
@@ -594,4 +595,97 @@ test("a whole client, looking at an egg, is told when it will hatch; looking at 
   app.key("KeyE", false);
   run(400);
   expect([baby.team, app.ui.naming.open, app.ui.frame.find(KEY_NAME_TITLE)!.text]).toEqual([me.team, true, `Yours: a young parasaur, level ${baby.genome!.level}`]);
+});
+
+test("a world saved when a young one's birth and an egg's laying were kept as ticks is read as it was: each is now how long its growing takes and when it ends", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-breed-old-"));
+  const dbPath = join(dir, "world.db");
+  let h = new Harness({}, 1, 60, { dev: true, dbPath });
+  // Long enough that what is put in it below could have begun in it: a beginning was a tick of the world.
+  h.run(60000);
+  const g = flatGround(h, 20, 20);
+  // A young one a third grown, an egg part way to hatching, and a grown female who has lately laid.
+  const young = h.host.records.byPid.get(h.world.ents.pid[h.host.spawnCreature("core:parasaur", g.x + 5, g.z + 5, 4)]!)!;
+  young.span = 1500;
+  young.grown = h.world.tick + 1000;
+  h.world.ents.setYoung(h.host.records.entOf.get(young.pid)!, young.span, young.grown);
+  const egg = h.host.records.create(id("egg_parasaur"), "parasaur egg");
+  egg.genome = young.genome;
+  egg.x = g.x + 9;
+  egg.z = g.z + 5;
+  egg.y = g.y;
+  egg.egg = { species: id("parasaur"), span: 1200, hatchAt: h.world.tick + 800, carrier: 0 };
+  h.host.death.place(egg);
+  const mother = h.host.records.byPid.get(h.world.ents.pid[h.host.spawnCreature("core:parasaur", g.x + 13, g.z + 5, 4)]!)!;
+  mother.mating = true;
+  mother.mateReadyAt = h.world.tick + 777777;
+  for (const r of [young, egg, mother]) h.host.records.dirty.add(r.pid);
+  h.host.breeding.resume();
+  h.run(1000);
+  expect([young.grown - young.span > 0, egg.egg.hatchAt - egg.egg.span > 0]).toEqual([true, true]);
+  const was = { young: [young.span, young.grown], egg: { ...egg.egg }, mother: [mother.mating, mother.mateReadyAt, mother.span, mother.grown] };
+  const pids = [young.pid, egg.pid, mother.pid];
+  h.host.shutdown();
+
+  // The save, as the build before this one wrote it: breeding as component 16, with a beginning where there is now a span.
+  const db = new Database(dbPath);
+  let rewritten = 0;
+  for (const row of db.query("SELECT pid, data FROM entities").all() as { pid: number; data: Uint8Array }[]) {
+    const r = new BitReader(row.data);
+    const w = new BitWriter(row.data.length + 64);
+    w.u8(r.u8());
+    w.string(r.string(256));
+    const n = r.varint();
+    w.varint(n);
+    for (let k = 0; k < n; k++) {
+      const component = r.varint();
+      const blob = r.blob(1 << 20);
+      if (component !== 18) {
+        w.varint(component);
+        w.blob(blob);
+        continue;
+      }
+      const c = new BitReader(blob);
+      const o = new BitWriter(96);
+      o.bool(c.bool());
+      o.uint53(c.uint53());
+      const span = c.uint53();
+      const grown = c.uint53();
+      o.uint53(grown === 0 ? 0 : grown - span);
+      o.uint53(grown);
+      const isEgg = c.bool();
+      o.bool(isEgg);
+      if (isEgg) {
+        o.varint(c.varint());
+        const hatching = c.uint53();
+        const hatchAt = c.uint53();
+        o.uint53(hatchAt - hatching);
+        o.uint53(hatchAt);
+        o.uint53(c.uint53());
+      }
+      expect([c.overflow, o.overflow]).toEqual([false, false]);
+      w.varint(16);
+      w.blob(o.bytes());
+      rewritten++;
+    }
+    expect([r.overflow, w.overflow]).toEqual([false, false]);
+    db.query("UPDATE entities SET data = ? WHERE pid = ?").run(w.bytes().slice(), row.pid);
+  }
+  db.close();
+  expect(rewritten).toBe(3);
+
+  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  const [y, e, m] = pids.map((pid) => h.host.records.byPid.get(pid)!);
+  expect({ young: [y!.span, y!.grown], egg: { ...e!.egg }, mother: [m!.mating, m!.mateReadyAt, m!.span, m!.grown] }).toEqual(was);
+  // Its body says so too, and it goes on growing from where it was.
+  const ye = h.host.records.entOf.get(y!.pid)!;
+  expect([h.world.ents.span[ye], h.world.ents.grown[ye], h.host.breeding.subject(y!).maturity]).toEqual([1500, was.young[1]!, maturity(1500, was.young[1]!, h.world.tick)]);
+  expect(h.host.breeding.subject(y!).maturity).toBeGreaterThan(0.33);
+  // Saved again, it is written the new way, and read the same.
+  h.run(1000);
+  h.host.shutdown();
+  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  expect([h.host.records.byPid.get(pids[0]!)!.span, h.host.records.byPid.get(pids[1]!)!.egg]).toEqual([1500, was.egg]);
+  h.host.shutdown();
+  rmSync(dir, { recursive: true, force: true });
 });

@@ -15,7 +15,10 @@ import { StructureStore } from "../shared/world/structures.ts";
 import { History } from "./history.ts";
 
 export interface ServerWorld extends CollisionWorld {
+  /** Content as this server has it: what its settings make of the definitions (shared/content/tuning.ts). */
   readonly reg: Registry;
+  /** How fast the clock runs, as multiples of its own pace: the whole cycle, and the day and the night within it. */
+  readonly clock: { cycle: number; day: number; night: number };
   readonly dims: MapDims;
   readonly hf: Heightfield;
   readonly structs: StructureStore;
@@ -55,6 +58,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
   const ents = new EntityStore(dims, entityCap);
   return {
     reg,
+    clock: { cycle: 1, day: 1, night: 1 },
     dims,
     hf,
     nodeField,

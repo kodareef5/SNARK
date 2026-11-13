@@ -322,6 +322,10 @@ export interface EngramDef {
   readonly cost: number;
   /** Recipes it unlocks. */
   readonly unlocks: readonly string[];
+  /** It is not offered: nobody can learn it. Whoever knows it already still does. */
+  readonly hidden?: boolean;
+  /** It is learned without asking, and for nothing, by whoever reaches this level. */
+  readonly auto?: number;
 }
 
 /** The level table: experience needed to reach each level (index 0 is level 1), and engram points gained on reaching it. */
@@ -330,6 +334,10 @@ export interface LevelsDef {
   readonly id: string;
   readonly xp: readonly number[];
   readonly engramPoints: readonly number[];
+  /** The most experience a survivor may have. Omitted: what the last level takes. */
+  readonly most?: number;
+  /** Tamed creatures: a table of their own, and the most they may have. Omitted: the survivors'. */
+  readonly tame?: { readonly xp: readonly number[]; readonly most?: number };
 }
 
 /**

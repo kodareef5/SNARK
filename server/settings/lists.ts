@@ -12,6 +12,10 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { field, isList, toNumber, unquote } from "./ini.ts";
 import type { Rules } from "./rules.ts";
 
+/** The settings that are lists of names, and those that are lists of a name and a multiplier. */
+const NAMES = ["PreventDinoTameClassNames", "PreventBreedingForClassNames"];
+const MULTIPLIERS = ["HarvestResourceItemAmountClassMultipliers", "DinoClassDamageMultipliers", "TamedDinoClassDamageMultipliers", "DinoClassResistanceMultipliers", "TamedDinoClassResistanceMultipliers"];
+
 export class Lists {
   /** Entries that named something this build does not have: the setting and the name. */
   readonly missing: { setting: string; name: string }[] = [];
@@ -26,13 +30,25 @@ export class Lists {
     this.reg = reg;
   }
 
-  private index(setting: string, name: string): number {
-    const i = this.reg.index.get(name);
-    if (i === undefined && !this.told.has(`${setting} ${name}`)) {
+  /**
+   * The content a setting names, as its index: 0, and counted in `missing`,
+   * if this build has none of that name, or has one that is not of the type
+   * the setting is about.
+   */
+  index(setting: string, name: string, type?: string): number {
+    const i = this.reg.index.get(name) ?? 0;
+    if (i !== 0 && (type === undefined || this.reg.defs[i]!.type === type)) return i;
+    if (!this.told.has(`${setting} ${name}`)) {
       this.told.add(`${setting} ${name}`);
       this.missing.push({ setting, name });
     }
-    return i ?? 0;
+    return 0;
+  }
+
+  /** Work every table out now, so that whatever names nothing here is known as the server starts and not when the table is first wanted. */
+  warm(): void {
+    for (const name of NAMES) this.kinds(name);
+    for (const name of MULTIPLIERS) this.multipliers(name);
   }
 
   /** The content named by a list of names (`Key="core:raptor"`, any number of lines), as content indices. */

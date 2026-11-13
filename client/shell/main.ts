@@ -53,6 +53,8 @@ async function boot(): Promise<void> {
     name: params.get("name") ?? `survivor${Math.floor(performance.now() * 1000) % 100000}`,
     key: deviceKey(),
     spectate: params.has("spectate"),
+    // A server that asks a password is given the one in the address: ?password=...
+    password: params.get("password") ?? "",
     registry: reg,
     clipHash: pack.clips.hash,
     // The self-check and the bench go straight into the world; so does ?quick. Anyone else new meets the creator.

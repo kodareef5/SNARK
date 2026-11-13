@@ -117,7 +117,7 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
   const w = new BitWriter(1 << 16);
   const r = new BitReader();
   const colors = new Uint8Array(6);
-  const belongs = (v: EntityView, i: number): number[] => [v.team[i]!, v.seat[i]!, v.born[i]!, v.grown[i]!];
+  const belongs = (v: EntityView, i: number): number[] => [v.team[i]!, v.seat[i]!, v.span[i]!, v.grown[i]!];
   /** What the server holds for the client, and what the client holds, after sending `cur` on top of them. */
   const send = (cur: EntityView, sent: EntityView | null, held: EntityView | null): [EntityView, EntityView] => {
     const next = new EntityView();
@@ -130,7 +130,7 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
     expect(got.count).toBe(cur.count);
     return [next, got];
   };
-  const make = (qx: number, rev: number, team: number, seat: number, born: number, grown: number): EntityView => {
+  const make = (qx: number, rev: number, team: number, seat: number, span: number, grown: number): EntityView => {
     const v = new EntityView();
     // A tame someone sits on; a wild creature with nothing to say; a young one, far along the id space.
     v.push(3, 1, 7, qx, 200, 300, 5, 1, 0);
@@ -140,7 +140,7 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
     v.appear(0, 1, colors, 0, "", null, null);
     v.push(MAX_VIEW + 9000, 2, 9, 120, 200, 300, 5, 1, 0);
     v.appear(0, 1, colors, 0, "", null, null);
-    v.belong(0, 0, born, grown);
+    v.belong(0, 0, span, grown);
     return v;
   };
   let [sent, held] = send(make(100, 0, 0xfffffff, 41, 1234567, 4000000000), null, null);

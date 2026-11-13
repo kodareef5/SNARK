@@ -33,6 +33,15 @@ export interface Registry {
   readonly index: ReadonlyMap<string, number>;
   /** Changes whenever any definition changes. Client and server must match. */
   readonly hash: number;
+  /**
+   * For content a server's settings have tuned (shared/content/tuning.ts):
+   * the hash of the definitions before they were, the tuning as text, and the
+   * registry of them untuned. For content as it was written: its own hash,
+   * "", and null.
+   */
+  readonly baseHash: number;
+  readonly tuning: string;
+  readonly source: Registry | null;
   /** Structure collider half extents by index; 0 for everything else. */
   readonly halfX: Float32Array;
   readonly halfY: Float32Array;
@@ -144,7 +153,14 @@ const MELEE_REACH = 2.6;
 /** The longest any timing of a weapon may be, in ticks: what a body's act counter holds. */
 const MAX_ACT_TICKS = 250;
 /** The longest one piece of fuel may burn, or one thing take to cook: thirty days. */
-const MAX_BURN_SECONDS = 30 * 86400;
+export const MAX_BURN_SECONDS = 30 * 86400;
+/** The longest a thing may keep before it spoils, in game hours: what its clock holds, with room to spare. */
+export const MAX_SPOIL_HOURS = 1e6;
+/** The most blows a node may take, and the most levels a table may have. */
+export const MAX_NODE_HITS = 10000;
+export const MAX_LEVELS = 10000;
+/** What sprinting costs a second, what rest gives back a second, and what a jump costs, where a species does not say. */
+export const STAMINA_DEFAULT = { sprint: 5, regen: 8, jump: 6 };
 
 export const WEAR_SLOTS: readonly string[] = ["head", "torso", "hands", "legs", "feet"];
 
@@ -199,7 +215,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       positive(d, "height", d.height, 32);
     } else if (d.type === "node") {
       for (let a = 0; a < 3; a++) positive(d, `half[${a}]`, d.half[a]!, MAX_STRUCTURE_HALF);
-      positive(d, "hits", d.hits, 10000);
+      positive(d, "hits", d.hits, MAX_NODE_HITS);
       positive(d, "respawnHours", d.respawnHours, 1e6);
       for (const y of d.yields) if (!(y.min >= 0 && y.max >= y.min)) errors.push(`${d.id}: a yield's range must be 0 <= min <= max`);
     } else if (d.type === "recipe") {
@@ -209,9 +225,13 @@ export function compileContent(input: readonly Def[]): CompileResult {
     } else if (d.type === "engram") {
       positive(d, "level", d.level, 1000);
       if (!(d.cost >= 0)) errors.push(`${d.id}: cost must not be negative`);
+      if (d.auto !== undefined && !(d.auto >= 0 && d.auto <= 1000)) errors.push(`${d.id}: auto must be a level from 0 to 1000`);
     } else if (d.type === "levels") {
-      if (d.xp.length < 2 || d.xp[0] !== 0 || d.xp.some((v, i) => i > 0 && v <= d.xp[i - 1]!)) errors.push(`${d.id}: xp must start at 0 and rise`);
+      for (const [name, xp] of [["xp", d.xp], ["tame.xp", d.tame?.xp]] as const) {
+        if (xp !== undefined && (xp.length < 2 || xp.length > MAX_LEVELS || xp[0] !== 0 || xp.some((v, i) => i > 0 && !(v > xp[i - 1]!)))) errors.push(`${d.id}: ${name} must start at 0 and rise, for at most ${MAX_LEVELS} levels`);
+      }
       if (d.engramPoints.length !== d.xp.length) errors.push(`${d.id}: engramPoints must have one entry per level`);
+      if ((d.most !== undefined && !(d.most > 0)) || (d.tame?.most !== undefined && !(d.tame.most > 0))) errors.push(`${d.id}: the most experience must be above 0`);
     } else if (d.type === "material") {
       for (const [type, v] of Object.entries(d.takes)) {
         if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);
@@ -243,7 +263,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       // A fuel burns, and a thing cooks, for some time and not for ever: each at least a tick, and no more than the tables hold.
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
       if (d.cooks !== undefined) positive(d, "cooks.seconds", d.cooks.seconds, MAX_BURN_SECONDS);
-      if (d.spoilHours !== undefined && !(d.spoilHours > 0)) errors.push(`${d.id}: spoilHours must be positive`);
+      if (d.spoilHours !== undefined && !(d.spoilHours > 0 && d.spoilHours <= MAX_SPOIL_HOURS)) errors.push(`${d.id}: spoilHours must be above 0 and at most ${MAX_SPOIL_HOURS}`);
       // Anything that wears, holds rounds or takes an attachment is one thing to a slot.
       if ((d.weapon || d.wear || d.tool) && d.stack !== 1 && d.weapon?.kind !== "thrown") errors.push(`${d.id}: a tool, weapon or worn piece must have stack 1`);
       const w = d.weapon;
@@ -434,7 +454,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
     } else if (d.type === "item") {
       stack[i] = d.stack;
       weight[i] = d.weight ?? 0.1;
-      spoilTicks[i] = Math.round((d.spoilHours ?? 0) * GAME_HOUR_TICKS);
+      // Never so short that it rounds to nothing, which is how a thing that keeps is told.
+      spoilTicks[i] = d.spoilHours !== undefined ? Math.max(1, Math.round(d.spoilHours * GAME_HOUR_TICKS)) : 0;
       if (d.wear) wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
       uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? 0;
       armor[i] = d.wear?.armor ?? 0;
@@ -521,7 +542,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
   for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
   // And a fire that is burning, as the fire it is.
   for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  return { registry: { defs, ids, index, hash, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */
@@ -577,9 +598,9 @@ function moveParams(d: SpeciesDef): MoveParams {
     swimSprintMul: 1.5,
     accelSwim: d.walkSpeed * 3,
     // Whole stamina units per tick, so both sides count the same integers.
-    staminaSprint: Math.round(((d.stamina?.sprint ?? 5) * STAMINA_UNITS) / TICK_RATE),
-    staminaRegen: Math.round(((d.stamina?.regen ?? 8) * STAMINA_UNITS) / TICK_RATE),
-    staminaJump: Math.round((d.stamina?.jump ?? 6) * STAMINA_UNITS),
+    staminaSprint: Math.round(((d.stamina?.sprint ?? STAMINA_DEFAULT.sprint) * STAMINA_UNITS) / TICK_RATE),
+    staminaRegen: Math.round(((d.stamina?.regen ?? STAMINA_DEFAULT.regen) * STAMINA_UNITS) / TICK_RATE),
+    staminaJump: Math.round((d.stamina?.jump ?? STAMINA_DEFAULT.jump) * STAMINA_UNITS),
     // Whole units per tick, so both sides turn the same.
     turnRate: d.turn === undefined ? 0 : Math.max(1, Math.round(((d.turn / 360) * 65536) / TICK_RATE)),
     strafe: d.strafe !== false,

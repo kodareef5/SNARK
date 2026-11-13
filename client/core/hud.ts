@@ -221,7 +221,8 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
     model.markers.push({ kind: (remote.flags[i]! & VIEW_FLAG_PLAYER) !== 0 ? "player" : "creature", u: mapU(world.hf, remote.x[i]!), v: mapV(world.hf, remote.z[i]!) });
   }
   for (const m of session.markers) model.markers.push({ kind: "death", u: mapU(world.hf, m.x), v: mapV(world.hf, m.z) });
-  model.markers.push({ kind: "self", u: mapU(world.hf, b.x), v: mapV(world.hf, b.z) });
+  // Where its reader is, unless the server's map does not say.
+  if (session.mapLocation) model.markers.push({ kind: "self", u: mapU(world.hf, b.x), v: mapV(world.hf, b.z) });
   model.vitals[1]!.fraction = b.staminaMax > 0 ? b.stamina / (b.staminaMax * STAMINA_UNITS) : 0;
   if (session.hasVitals) {
     const v = session.vitals;
@@ -236,7 +237,7 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   model.out = session.sessionState === SESSION_ALIVE && (b.mflags & MF_OUT) !== 0;
   model.clock = formatHour(hourOfDay(session.latestSnapshot, session.dayOffset));
   model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? "DEAD" : model.out ? "UNCONSCIOUS" : "";
-  model.crosshair = model.banner === "";
+  model.crosshair = model.banner === "" && session.crosshair;
   if (model.readoutDue(6)) model.formatReadout();
 }
 

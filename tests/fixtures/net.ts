@@ -43,6 +43,10 @@ export interface JoinOptions {
   manual?: boolean;
   /** The look a new survivor is made with. Defaults to the plain one; null arrives in the creator instead. */
   look?: Uint8Array | null;
+  /** The server's password, if it asks one. */
+  password?: string;
+  /** Content as this client has it, if not the harness's own. */
+  registry?: Registry;
 }
 
 export class Harness {
@@ -79,7 +83,8 @@ export class Harness {
       name,
       key: opts.key ?? testKey(name),
       spectate: opts.spectate ?? false,
-      registry: this.reg,
+      registry: opts.registry ?? this.reg,
+      ...(opts.password !== undefined ? { password: opts.password } : {}),
       clipHash: this.world.anim.set.hash,
       ...(opts.look === null ? {} : { look: opts.look ?? defaultLook() }),
       resolveMap: (_id, hash) => (hash === this.world.mapHash ? this.hf : null),

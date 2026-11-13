@@ -20,6 +20,7 @@ import {
   MARGIN_UNKNOWN,
   MAX_CLIENT_MESSAGE,
   MAX_NAME_BYTES,
+  MAX_PASSWORD_BYTES,
   OWN_SESSION,
   PROTOCOL_VERSION,
   REJECT_CONTENT,
@@ -27,6 +28,7 @@ import {
   REJECT_FULL,
   REJECT_MALFORMED,
   REJECT_NAME,
+  REJECT_PASSWORD,
   REJECT_VERSION,
   RESULT_BUSY,
   RESULT_INVALID,
@@ -75,6 +77,10 @@ export interface GameOptions {
   lingerTicks: number;
   /** Who may spectate: nobody, sessions that have enabled cheats, or anyone (including at login). */
   spectators: "off" | "admin" | "anyone";
+  /** Asked of everyone who joins; "" asks nothing. */
+  password: string;
+  /** Seconds a client shows the message of the day for. */
+  motdSeconds: number;
 }
 
 const DEFAULTS: GameOptions = {
@@ -86,7 +92,16 @@ const DEFAULTS: GameOptions = {
   maxClients: 128,
   lingerTicks: 150,
   spectators: "admin",
+  password: "",
+  motdSeconds: 20,
 };
+
+/** Whether two texts are the same, in a time that does not say how much of one was right. */
+function sameText(a: string, b: string): boolean {
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i % (b.length || 1));
+  return diff === 0;
+}
 
 /** Unreliable messages accepted from one client per tick before the rest are dropped. */
 const MAX_PACKETS_PER_TICK = 8;
@@ -312,6 +327,8 @@ export class GameServer {
   private readonly pending = new Set<Client>();
   private readonly survivor: number;
   private readonly w = new BitWriter(16384);
+  /** A welcome carries the server's tuning, which may be long: a writer of its own, with room for it. */
+  private readonly welcomeW: BitWriter;
   private readonly r = new BitReader();
   private readonly cur = new EntityView();
   private readonly ids = new Uint32Array(MAX_VIEW);
@@ -324,6 +341,7 @@ export class GameServer {
     this.world = world;
     this.opts = { ...DEFAULTS, ...opts };
     this.clients = new Array(this.opts.maxClients).fill(null);
+    this.welcomeW = new BitWriter(1024 + world.reg.tuning.length * 4);
     this.entityOffsets = nearestFirst(this.opts.entityRadius);
     this.structOffsets = nearestFirst(this.opts.structRadius);
     this.survivor = world.reg.index.get("core:survivor")!;
@@ -749,6 +767,8 @@ export class GameServer {
 
   private hello(c: Client, r: BitReader): boolean {
     const version = r.u16();
+    // Another version lays the rest out its own way: nothing more of it is read.
+    if (!r.overflow && version !== PROTOCOL_VERSION) return this.refuse(c, REJECT_VERSION);
     const contentHash = r.u32();
     const clipHash = r.u32();
     const name = r.string(MAX_NAME_BYTES);
@@ -760,12 +780,15 @@ export class GameServer {
       look = new Uint8Array(LOOK_BYTES);
       for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();
     }
+    const password = r.string(MAX_PASSWORD_BYTES);
     if (r.overflow) return false;
     if (look && !validLook(look)) return this.refuse(c, REJECT_MALFORMED);
     const world = this.world;
-    if (version !== PROTOCOL_VERSION) return this.refuse(c, REJECT_VERSION);
-    // The same definitions and the same clips: a body must be posed alike on both sides.
-    if (contentHash !== world.reg.hash || clipHash !== world.anim.set.hash) return this.refuse(c, REJECT_CONTENT);
+    // The same definitions and the same clips: a body must be posed alike on both sides. The definitions as they were
+    // written: what this server's settings make of them the client is told as it is welcomed, and makes of them itself.
+    if (contentHash !== world.reg.baseHash || clipHash !== world.anim.set.hash) return this.refuse(c, REJECT_CONTENT);
+    // The server's password, asked of everyone who joins: of one coming back to a body that is waiting, too.
+    if (this.opts.password !== "" && !sameText(password, this.opts.password)) return this.refuse(c, REJECT_PASSWORD);
     if (!NAME.test(name)) return this.refuse(c, REJECT_NAME);
     if (this.authorize && !this.authorize(name, key)) return this.refuse(c, REJECT_DENIED);
     // One body per survivor. A second login is refused unless the first
@@ -828,7 +851,7 @@ export class GameServer {
   private welcome(c: Client): void {
     const world = this.world;
     const ents = world.ents;
-    const w = this.w;
+    const w = this.welcomeW;
     w.reset();
     w.bits(S_WELCOME, 4);
     w.u16(PROTOCOL_VERSION);
@@ -845,6 +868,13 @@ export class GameServer {
     if (c.ent >= 0) ents.loadBody(c.ent, c.body);
     writeBody(w, c.body);
     w.u16(c.heldYaw);
+    // Content as this server has it, and how to make it of content as it was written.
+    w.u32(world.reg.hash);
+    w.string(world.reg.tuning);
+    w.f64(world.clock.cycle);
+    w.f64(world.clock.day);
+    w.f64(world.clock.night);
+    w.u16(Math.min(65535, Math.max(0, Math.round(this.opts.motdSeconds))));
     c.conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -920,7 +950,7 @@ export class GameServer {
       const i = ids[k]!;
       cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!);
       cur.appear(ents.rev[i]!, ents.level[i]!, ents.colors, i * 6, ents.name[i]!, ents.look[i]!, ents.gear[i]!);
-      cur.belong(ents.team[i]!, ents.seat[i]!, ents.born[i]!, ents.grown[i]!);
+      cur.belong(ents.team[i]!, ents.seat[i]!, ents.span[i]!, ents.grown[i]!);
     }
 
     const age = T - c.ackTick;

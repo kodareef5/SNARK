@@ -503,7 +503,7 @@ export class Combat {
         st.unpack(past.anim);
         st.seed = bodySeed(i);
         // A young one is its kind's shape made small about where it stands. The ray is made large about there instead, and what it meets made small again.
-        const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.born[i]!, world.ents.grown[i]!, tick) : 1;
+        const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
         const zone =
           size === 1
             ? rayCreature(this.rig[kind]!, st, tick, reg.runAt[kind]!, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach)
@@ -514,7 +514,7 @@ export class Combat {
           best = i;
         }
       } else {
-        const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.born[i]!, world.ents.grown[i]!, tick) : 1;
+        const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
         const r = reg.bodyRadius[kind]! * size;
         const t = rayBox(rx, ry, rz, ux, uy, uz, past.x - r, past.y, past.z - r, past.x + r, past.y + reg.bodyHeight[kind]! * size, past.z + r);
         if (t < reach) {

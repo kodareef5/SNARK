@@ -706,8 +706,8 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
     const rec = records.byPid.get(ents.pid[e]!)!;
     rec.team = owner.team;
     rec.grown = world.tick + 1 + Math.floor(((i + 1) / 151) * span);
-    rec.born = rec.grown - span;
-    ents.setYoung(e, rec.born, rec.grown);
+    rec.span = span;
+    ents.setYoung(e, rec.span, rec.grown);
     host.items.mint(rec, berry, 60);
     host.refreshBody(rec);
     host.creatures.mind.stay(e, 0xffffffff);
@@ -721,7 +721,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
     egg.x = ox + 2 + (i % 20) * 4;
     egg.z = oz + 26 + Math.floor(i / 20) * 1.2;
     egg.y = hf.heightAt(egg.x, egg.z);
-    egg.egg = { species: parasaur, laidAt: world.tick, hatchAt: world.tick + 2000 + i * 1000, carrier: 0 };
+    egg.egg = { species: parasaur, span: 2000 + i * 1000, hatchAt: world.tick + 2000 + i * 1000, carrier: 0 };
     host.death.place(egg);
   }
   breeding.resume();
@@ -868,8 +868,8 @@ section("Client frame build (headless): a breeding base in view, as many bodies 
     base.flags[i] = i < 460 ? 1 : 1 | 8;
     // The young: born at a moment of their own, grown a thousand ticks after. A third of everything is walking.
     if (i >= 310) {
-      base.born[i] = 1000 + Math.floor(baseRng.float() * 1000);
-      base.grown[i] = base.born[i]! + 1000;
+      base.span[i] = 1000 + Math.floor(baseRng.float() * 1000);
+      base.grown[i] = base.span[i]! + 1000;
     }
     st.setMotion(i < 460 && i % 3 === 1 ? 2 + baseRng.float() * 4 : 0, 0, 0, 0);
     st.setAction(ACT_NONE, 0, 0);

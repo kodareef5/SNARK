@@ -3,8 +3,10 @@
 // The numbers are the reference game's where it publishes them. Nothing here
 // keeps state or steps: server/breeding.ts holds the state as moments (when a
 // pair has done, when an egg hatches, when a young one is next a hundredth
-// more grown), and a client draws a young one at its size from the two ticks
-// it is told (born, and grown).
+// more grown), and a client draws a young one at its size from the two numbers
+// it is told: how many ticks its growing takes, and the tick it ends. Not the
+// tick it began: growing up made slower part way through would put that
+// before the world began (D92).
 
 import { TICK_RATE } from "../coords.ts";
 
@@ -44,18 +46,27 @@ export function mateWait(draw: number): number {
 }
 
 /**
- * How far grown, in whole hundredths: 0 at the tick it was born, GROWN from
- * the tick it is grown. One that was never young (both ticks 0) is grown.
+ * How far grown, in whole hundredths, is one whose growing takes `span` ticks
+ * and ends at tick `grown`: 0 as it begins, GROWN from the tick it is grown.
+ * One that was never young (`grown` 0) is grown.
  */
-export function growthStep(born: number, grown: number, tick: number): number {
+export function growthStep(span: number, grown: number, tick: number): number {
   if (grown === 0 || tick >= grown) return GROWN;
-  if (tick <= born) return 0;
-  return Math.floor(((tick - born) * GROWN) / (grown - born));
+  const left = grown - tick;
+  if (left >= span) return 0;
+  return Math.floor(((span - left) * GROWN) / span);
 }
 
-/** The first tick at which one born and grown at these ticks is `step` hundredths grown. */
-export function stepTick(born: number, grown: number, step: number): number {
-  return step >= GROWN ? grown : born + Math.ceil((step * (grown - born)) / GROWN);
+/** The first tick at which one whose growing takes `span` ticks and ends at `grown` is `step` hundredths grown. */
+export function stepTick(span: number, grown: number, step: number): number {
+  return step >= GROWN ? grown : grown - span + Math.ceil((step * span) / GROWN);
+}
+
+/** How far along its growing it is at `tick`, 0 to 1: 1 for one that is grown or was never young. */
+export function maturity(span: number, grown: number, tick: number): number {
+  if (grown === 0 || tick >= grown) return 1;
+  const left = grown - tick;
+  return left >= span ? 0 : (span - left) / span;
 }
 
 /** Which of STAGES a young one `step` hundredths grown is in. */
@@ -79,12 +90,10 @@ export function youngHunger(step: number): number {
 }
 
 /**
- * How big one born and grown at these ticks is at `tick` (which may fall
- * between ticks), as a share of a grown one: `birth` when it is born, 1 when
- * it is grown, evenly between.
+ * How big one whose growing takes `span` ticks and ends at `grown` is at
+ * `tick` (which may fall between ticks), as a share of a grown one: `birth`
+ * when it is born, 1 when it is grown, evenly between.
  */
-export function youngScale(birth: number, born: number, grown: number, tick: number): number {
-  if (grown === 0 || tick >= grown) return 1;
-  if (tick <= born) return birth;
-  return birth + ((1 - birth) * (tick - born)) / (grown - born);
+export function youngScale(birth: number, span: number, grown: number, tick: number): number {
+  return birth + (1 - birth) * maturity(span, grown, tick);
 }

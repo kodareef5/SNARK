@@ -575,7 +575,7 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   expect([laid[0]!.genome!.mother, laid[0]!.genome!.father, mother.mateReadyAt > h.world.tick]).toEqual([mother.pid, (rec.genome!.female ? mateRec : rec).pid, true]);
   const egg = laid[0]!;
   const hatchAt = egg.egg!.hatchAt;
-  expect(hatchAt - egg.egg!.laidAt).toBe(Math.ceil((5142 * TICK_RATE) / 500));
+  expect(egg.egg!.span).toBe(Math.ceil((5142 * TICK_RATE) / 500));
   // She waits by the egg, on the side away from the mother.
   const off = Math.hypot(egg.x - ents.x[motherEnt]!, egg.z - ents.z[motherEnt]!);
   const [ux, uz] = [(egg.x - ents.x[motherEnt]!) / off, (egg.z - ents.z[motherEnt]!) / off];
@@ -583,7 +583,7 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   while (h.world.tick <= hatchAt + 5) h.run(500);
   let baby = [...h.host.records.byPid.values()].find((r) => r.grown !== 0 && r.x === egg.x && r.z === egg.z)!;
   let babyEnt = h.host.records.entOf.get(baby.pid)!;
-  expect([baby.born, baby.team, breeding.unclaimed(baby), baby.genome === egg.genome]).toEqual([hatchAt, 0, true, true]);
+  expect([baby.grown - baby.span, baby.team, breeding.unclaimed(baby), baby.genome === egg.genome]).toEqual([hatchAt, 0, true, true]);
   // She takes it, names it, and puts berries in it. It is hers, small, and eating.
   expect(use(babyEnt, 0.08)).toBe(-1);
   expect([baby.team, ada.tamed.at(-1)?.te]).toEqual([me.team, 255]);
@@ -604,12 +604,12 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
 
   // The world stops and starts with it a third grown. Everything is whose it was and called what it was; the young one is still young, and grows.
   const [dollyPid, matePid, babyPid, grownAt] = [rec.pid, mateRec.pid, baby.pid, baby.grown];
-  const before = { born: baby.born, grown: baby.grown, berries: h.host.items.inv(baby).total(id("berry")), food: baby.vitals!.at(V_FOOD, h.world.tick) };
+  const before = { span: baby.span, grown: baby.grown, berries: h.host.items.inv(baby).total(id("berry")), food: baby.vitals!.at(V_FOOD, h.world.tick) };
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
   const get = (pid: number): EntityRecord => h.host.records.byPid.get(pid)!;
   // (Asked before a tick has passed: it has in it exactly what it had.)
-  expect({ born: get(babyPid).born, grown: get(babyPid).grown, berries: h.host.items.inv(get(babyPid)).total(id("berry")), food: get(babyPid).vitals!.at(V_FOOD, h.world.tick) }).toEqual(before);
+  expect({ span: get(babyPid).span, grown: get(babyPid).grown, berries: h.host.items.inv(get(babyPid)).total(id("berry")), food: get(babyPid).vitals!.at(V_FOOD, h.world.tick) }).toEqual(before);
   ada = h.join("ada");
   h.run(600);
   ents = h.world.ents;
@@ -621,11 +621,11 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   const team = get(h.client(ada)!.pid).team;
   expect([rec.name, rec.team, rec.saddle, rec.mating, rec.genome!.level, ents.name[dolly]]).toEqual(["Dolly", team, id("saddle_parasaur"), true, 14, "Dolly"]);
   expect([get(matePid).team, get(matePid).mating]).toEqual([team, true]);
-  expect([baby.name, baby.team, ents.team[babyEnt], ents.born[babyEnt], ents.grown[babyEnt]]).toEqual(["Pip", team, team, before.born, before.grown]);
+  expect([baby.name, baby.team, ents.team[babyEnt], ents.span[babyEnt], ents.grown[babyEnt]]).toEqual(["Pip", team, team, before.span, before.grown]);
   while (h.world.tick <= grownAt + 5) h.run(500);
   // Grown: full size, a grown one's limits, alive and fed; and it has eaten of what she gave it since.
   // (Any other of the litter, which nobody took, has grown too.)
-  expect([baby.born, baby.grown, ents.grown[babyEnt], h.host.breeding.grownUp >= 1, h.host.taming.meals >= 1]).toEqual([0, 0, 0, true, true]);
+  expect([baby.span, baby.grown, ents.grown[babyEnt], h.host.breeding.grownUp >= 1, h.host.taming.meals >= 1]).toEqual([0, 0, 0, true, true]);
   expect(h.host.survival.value(baby, V_HEALTH)).toBeGreaterThan(0);
   expect(h.host.survival.value(baby, V_FOOD)).toBeGreaterThan(0);
   expect(h.host.items.inv(baby).total(id("berry"))).toBeLessThan(before.berries);

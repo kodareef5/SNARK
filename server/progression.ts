@@ -43,6 +43,9 @@ export class Progression {
   private readonly levels: LevelsDef | null;
   /** Per recipe content index: the engram that unlocks it, or 0. */
   private readonly engramOf: Uint16Array;
+  /** The engrams that are learned without asking, by content index. */
+  private readonly autos: number[] = [];
+  private readonly survivor: number;
 
   constructor(world: ServerWorld, records: Records, items: Items, deadlines: DeadlineHeap) {
     this.world = world;
@@ -53,50 +56,88 @@ export class Progression {
     this.levels = (reg.defs.find((d) => d?.type === "levels") as LevelsDef | undefined) ?? null;
     this.engramOf = new Uint16Array(reg.defs.length);
     reg.defs.forEach((d, k) => {
-      if (d?.type === "engram") for (const r of d.unlocks) this.engramOf[reg.index.get(r)!] = k;
+      if (d?.type !== "engram") return;
+      for (const r of d.unlocks) this.engramOf[reg.index.get(r)!] = k;
+      if (d.auto !== undefined) this.autos.push(k);
     });
+    this.survivor = reg.index.get("core:survivor") ?? 0;
   }
 
-  /** The level a given experience has reached. */
-  levelOf(xp: number): number {
-    const table = this.levels?.xp;
+  /** The level a given experience has reached: a survivor's, or by the table tames have if they have their own. */
+  levelOf(xp: number, tame = false): number {
+    const table = (tame ? this.levels?.tame?.xp : undefined) ?? this.levels?.xp;
     if (!table) return 1;
     let level = 1;
     while (level < table.length && xp >= table[level]!) level++;
     return level;
   }
 
+  /** The level the experience of `rec` has reached: levels gained since it was made or tamed, plus one. */
+  level(rec: EntityRecord): number {
+    return this.levelOf(rec.xp, rec.kind !== this.survivor);
+  }
+
+  /** The most experience `rec` may have: what content or the server says, or what its last level takes. */
+  most(rec: EntityRecord): number {
+    const l = this.levels;
+    if (!l) return Infinity;
+    const tame = rec.kind !== this.survivor;
+    const table = (tame ? l.tame?.xp : undefined) ?? l.xp;
+    return (tame ? l.tame?.most : l.most) ?? table[table.length - 1]!;
+  }
+
   /** Stat points not yet placed: one per level gained, less those spent. */
   statPoints(rec: EntityRecord): number {
     let spent = 0;
     if (rec.genome) for (let i = 0; i < STAT_COUNT; i++) spent += rec.genome.tamed[i]!;
-    return Math.max(0, this.levelOf(rec.xp) - 1 - spent);
+    return Math.max(0, this.level(rec) - 1 - spent);
   }
 
-  /** Engram points not yet spent. */
+  /** Engram points not yet spent. What is learned without asking costs nothing. */
   engramPoints(rec: EntityRecord): number {
     const table = this.levels?.engramPoints ?? [];
     let have = 0;
-    for (let l = 0; l < this.levelOf(rec.xp); l++) have += table[l] ?? 0;
-    for (const e of rec.engrams) have -= (this.world.reg.defs[e] as EngramDef).cost;
+    for (let l = 0; l < this.level(rec); l++) have += table[l] ?? 0;
+    for (const e of rec.engrams) {
+      const def = this.world.reg.defs[e] as EngramDef;
+      if (def.auto === undefined) have -= def.cost;
+    }
     return Math.max(0, have);
+  }
+
+  /** Whether `rec` knows an engram: it learned it, or it is one learned without asking and `rec` has reached its level. */
+  knows(rec: EntityRecord, engram: number): boolean {
+    if (rec.engrams.includes(engram)) return true;
+    const def = this.world.reg.defs[engram];
+    return def?.type === "engram" && def.auto !== undefined && this.level(rec) >= def.auto;
+  }
+
+  /** Every engram `rec` knows: those it learned, then those learned without asking. Not stored, so it cannot drift: the same list for the same level under the same content. */
+  known(rec: EntityRecord): readonly number[] {
+    if (this.autos.length === 0) return rec.engrams;
+    const out = [...rec.engrams];
+    for (const e of this.autos) if (!rec.engrams.includes(e) && this.knows(rec, e)) out.push(e);
+    return out;
   }
 
   /**
    * Give experience. What is earned (`source` a kill, a harvest, a thing
    * made) is multiplied by the server's rule for all experience and by its
    * rule for that way of earning it; what is given outright is given as it
-   * is. Returns what was added.
+   * is. Nothing has more than it may. Returns what was added.
    */
   addXp(rec: EntityRecord, amount: number, source = XP_GIVEN): number {
     if (!(amount > 0)) return 0;
     if (source !== XP_GIVEN && this.rules) amount *= this.rules.num("XPMultiplier") * this.rules.num(XP_RULES[source]!);
+    // No more than it may have.
+    const room = this.most(rec) - rec.xp;
+    if (amount > room) amount = room;
     if (!(amount > 0)) return 0;
-    const before = this.levelOf(rec.xp);
+    const before = this.level(rec);
     rec.xp += amount;
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
-    if (this.levelOf(rec.xp) !== before) this.onChange?.(rec);
+    if (this.level(rec) !== before) this.onChange?.(rec);
     return amount;
   }
 
@@ -117,8 +158,10 @@ export class Progression {
 
   learn(rec: EntityRecord, engram: number): number {
     const def = this.world.reg.defs[engram];
-    if (def?.type !== "engram" || rec.engrams.includes(engram)) return RESULT_INVALID;
-    if (this.levelOf(rec.xp) < def.level || this.engramPoints(rec) < def.cost) return RESULT_SHORT;
+    if (def?.type !== "engram" || this.knows(rec, engram)) return RESULT_INVALID;
+    // One the server does not offer is nobody's to learn.
+    if (def.hidden) return RESULT_DENIED;
+    if (this.level(rec) < def.level || this.engramPoints(rec) < def.cost) return RESULT_SHORT;
     rec.engrams.push(engram);
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
@@ -129,7 +172,7 @@ export class Progression {
   craft(rec: EntityRecord, recipe: number, count: number): number {
     const def = this.world.reg.defs[recipe];
     if (def?.type !== "recipe" || !(count >= 1 && count <= 100)) return RESULT_INVALID;
-    if (!rec.engrams.includes(this.engramOf[recipe]!)) return RESULT_DENIED;
+    if (!this.knows(rec, this.engramOf[recipe]!)) return RESULT_DENIED;
     if (rec.jobs.length >= MAX_JOBS) return RESULT_FULL;
     if (rec.jobs.length === 0 && !this.canStart(rec, def)) return RESULT_SHORT;
     rec.jobs.push({ recipe, left: count, doneAt: 0 });

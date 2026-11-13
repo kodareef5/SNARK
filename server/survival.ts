@@ -179,7 +179,7 @@ export class Survival {
    */
   private maxima(def: SpeciesDef, rec: EntityRecord): number[] {
     const g = rec.genome;
-    const share = youngShare(growthStep(rec.born, rec.grown, this.world.tick));
+    const share = youngShare(growthStep(rec.span, rec.grown, this.world.tick));
     return [statOf(def, g, STAT_HEALTH, 0) * share, statOf(def, g, STAT_FOOD, def.food?.max ?? 0) * share, def.waterPerHour ? statOf(def, g, STAT_WATER, 100) : 0, statOf(def, g, STAT_OXYGEN, 0), torporMax(def, g)];
   }
 
@@ -348,7 +348,7 @@ export class Survival {
     }
     // Lying unconscious, a creature that can be tamed hungers at the reference's rate for that, which is fast.
     // A young one hungers many times as fast as a grown one, less so the more grown it is.
-    const step = growthStep(rec.born, rec.grown, tick);
+    const step = growthStep(rec.span, rec.grown, tick);
     v.rate[V_FOOD] = eats ? -(step < GROWN ? Math.round((def.food!.perHour * MICRO * youngHunger(step)) / GAME_HOUR_TICKS) : rec.out && def.taming ? ratePerSecond(proneHunger(def.taming)) : ratePerTick(def.food!.perHour)) : 0;
     v.rate[V_WATER] = drinks ? -ratePerTick(def.waterPerHour!) : 0;
     v.rate[V_OXYGEN] = breathes ? (under ? -OXYGEN_DRAIN : OXYGEN_REFILL) : 0;

@@ -8,7 +8,7 @@ import type { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import type { NodeDef } from "../../shared/content/defs.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { CMD_ORDER, CMD_STRUCT, ORDER_MATE, REJECT_FULL, REJECT_KICKED, RESULT_DENIED, RESULT_FULL, RESULT_LOCKED, RESULT_OK, RESULT_PIN, RESULT_WAIT, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CMD_ORDER, CMD_STRUCT, ORDER_MATE, REJECT_FULL, REJECT_KICKED, RESULT_DENIED, RESULT_FULL, RESULT_LOCKED, RESULT_OK, RESULT_PIN, RESULT_WAIT, TEXT_MOTD, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { V_FOOD, V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { STRUCT_PIN, STRUCT_REPAIR, STRUCT_USE } from "../../shared/world/upkeep.ts";
@@ -41,8 +41,8 @@ function world(server: string[] = [], mode: string[] = [], argv: string[] = [], 
   return { h, ada, at, me };
 }
 
-/** What a session has been told as notices since `from`. */
-const notices = (s: ClientSession, from = 0): string[] => s.log.slice(Math.max(0, s.log.length - (s.logVersion - from))).filter((l) => l.channel === TEXT_NOTICE).map((l) => l.text);
+/** What a session has been told as notices since `from`; or, of another channel, what it has been told on that. */
+const notices = (s: ClientSession, from = 0, channel = TEXT_NOTICE): string[] => s.log.slice(Math.max(0, s.log.length - (s.logVersion - from))).filter((l) => l.channel === channel).map((l) => l.text);
 
 /** A wild creature, knocked out, in front of ada. */
 function knockedOut(h: Harness, at: { x: number; z: number }, species: string, far: number): { e: number; rec: EntityRecord } {
@@ -207,9 +207,9 @@ test("riding and breeding are switched off by the server, breeding also for a ki
   const { h, ada, at, f, me } = pair([], ["MaxPersonalTamedDinos=2"]);
   const e = h.host.spawnCreature("core:parasaur", at.x, at.z + 1.5, 1);
   const baby = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
-  baby.born = h.world.tick;
+  baby.span = 100000;
   baby.grown = h.world.tick + 100000;
-  h.world.ents.setYoung(e, baby.born, baby.grown);
+  h.world.ents.setYoung(e, baby.span, baby.grown);
   h.host.refreshBody(baby);
   expect(h.host.breeding.unclaimed(baby)).toBe(true);
   const told = ada.logVersion;
@@ -304,7 +304,7 @@ test("a session: the server's name and message of the day, its admin password, h
   let h = new Harness({}, 1, 60, { config: loadConfig({ gus: "[SessionSettings]\nSessionName=The Proving Ground\n[MessageOfTheDay]\nMessage=Welcome\\nBe kind\n[ServerSettings]\nServerAdminPassword=opensesame\n[/Script/Engine.GameSession]\nMaxPlayers=2\n" }).rules });
   const ada = h.join("ada");
   h.run(600);
-  expect(notices(ada)).toEqual(["The Proving Ground", "Welcome", "Be kind"]);
+  expect(notices(ada, 0, TEXT_MOTD)).toEqual(["The Proving Ground", "Welcome", "Be kind"]);
   // Its admin password, from its file: without it, no cheats; with it, cheats.
   expect([h.say(ada, "enablecheats")[0], h.say(ada, "enablecheats nope")[0], h.say(ada, "enablecheats opensesame")[0]]).toEqual(["wrong password", "wrong password", "cheats enabled"]);
   // Two seats: the third to come is told the server is full.

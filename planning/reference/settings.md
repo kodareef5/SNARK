@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 515 of them: 63 take effect, 51 more will by the end of round 5,
+is listed here, 515 of them: 86 take effect, 28 more will by the end of round 5,
 207 wait for a feature that is not built yet, and 194 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -23,6 +23,8 @@ may change a setting without a restart.
 | `XPMultiplier` | 1 | Experience gained by survivors and tames. Higher is more. Each gain is also multiplied by its source's own multiplier. | yes |
 | `TamingSpeedMultiplier` | 1 | What each piece of food is worth to a creature being tamed. Higher is faster. | yes |
 | `HarvestAmountMultiplier` | 1 | What each harvesting blow yields. Higher is more. | yes |
+| `HarvestHealthMultiplier` | 1 | Health of trees, rocks and bushes. Higher takes more blows and gives more in all. | no |
+| `ItemStackSizeMultiplier` | 1 | Stack sizes. What stacks to 1 is left alone. | no; clients are told |
 | `PlayerDamageMultiplier` | 1 | Damage survivors deal. Higher is more. | yes |
 | `PlayerResistanceMultiplier` | 1 | Damage survivors take. Higher takes more: 0.5 halves it. | yes |
 | `DinoDamageMultiplier` | 1 | Damage wild creatures deal. Higher is more. | yes |
@@ -31,6 +33,9 @@ may change a setting without a restart.
 | `TamedDinoResistanceMultiplier` | 1 | Damage tamed creatures take. Higher takes more. | yes |
 | `StructureResistanceMultiplier` | 1 | Damage things built take. Higher takes more. | yes |
 | `ShowFloatingDamageText` | False | The damage of a hit is shown as a number where it landed. | yes; clients are told |
+| `AllowHitMarkers` | True | A mark is shown at the crosshair when a hit lands. | yes; clients are told |
+| `PlayerCharacterStaminaDrainMultiplier` | 1 | How fast survivors tire. Higher is faster. | no; clients are told |
+| `DinoCharacterStaminaDrainMultiplier` | 1 | How fast creatures tire. Higher is faster. | no; clients are told |
 | `MaxTamedDinos` | 5000 | Tamed creatures the whole server may hold. | yes |
 | `MaxPersonalTamedDinos` | 0 | Tamed creatures one tribe may hold. 0 is no limit. *Official servers use 500 in PvE and 300 in PvP.* | yes |
 | `DisableStructureDecayPvE` | False | Nothing built decays. | yes |
@@ -43,8 +48,12 @@ may change a setting without a restart.
 | `ForceAllStructureLocking` | False | Everything that can be locked is locked when it is built. | yes |
 | `PreventOutOfTribePinCodeUse` | False | A PIN opens nothing for those outside the tribe. | yes |
 | `serverPVE` | False | Survivors, their tames and what they build cannot be harmed by other tribes. What is built decays when its tribe stays away. | yes |
+| `AllowThirdPersonPlayer` | True | The body may be looked at from behind. | yes; clients are told |
+| `ServerCrosshair` | True | A crosshair is shown. | yes; clients are told |
+| `ShowMapPlayerLocation` | True | The map shows where its reader is. | yes; clients are told |
 | `globalVoiceChat` | False | A voice is heard by everyone, wherever they are. | yes |
 | `ProximityChat` | False | What is written reaches only those near. | yes; clients are told |
+| `ServerPassword` | none | Asked of everyone who joins. *A browser gives it in the address it opens: `?password=...`.* | no |
 | `ServerAdminPassword` | none | Asked of whoever would use cheats. | no |
 | `KickIdlePlayersPeriod` | 3600 | Seconds without doing anything before a survivor is put off the server. Needs -EnableIdlePlayerKick. | yes |
 
@@ -60,6 +69,7 @@ may change a setting without a restart.
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
 | `Message` | none | Said to each survivor who joins. \n begins a new line. | no |
+| `Duration` | 20 | Seconds it is shown. | no; clients are told |
 
 ### GameUserSettings.ini `[/Script/Engine.GameSession]`
 
@@ -87,9 +97,21 @@ may change a setting without a restart.
 | `KillXPMultiplier` | 1 | Experience from kills. Higher is more. | yes |
 | `HarvestXPMultiplier` | 1 | Experience from harvesting. Higher is more. | yes |
 | `CraftXPMultiplier` | 1 | Experience from making things. Higher is more. | yes |
+| `OverrideMaxExperiencePointsPlayer` | 0 | The most experience a survivor may have. 0 leaves it to the level table. | no; clients are told |
+| `OverrideMaxExperiencePointsDino` | 0 | The most experience a tame may have. 0 leaves it to the level table. | no |
+| `LevelExperienceRampOverrides` | none | The level table: `(ExperiencePointsForLevel[0]=5,ExperiencePointsForLevel[1]=20,…)`, each the total needed. The first line is survivors', the second tames'. | no; clients are told |
+| `OverridePlayerLevelEngramPoints` | none | Engram points given at each level, one line for each level in order: the first is level 1. A level gives at most 65,535. | no; clients are told |
+| `OverrideNamedEngramEntries` | none | An engram's level, cost and whether it is offered: `(EngramClassName="core:engram-hatchet",EngramHidden=False,EngramPointsCost=3,EngramLevelRequirement=3,RemoveEngramPreReq=True)`. | no; clients are told |
+| `EngramEntryAutoUnlocks` | none | An engram learned without asking at a level: `(EngramClassName="…",LevelToAutoUnlock=0)`. | no; clients are told |
+| `bAutoUnlockAllEngrams` | False | Every engram is learned as its level is reached. | no; clients are told |
+| `bOnlyAllowSpecifiedEngrams` | False | Only the engrams named in OverrideNamedEngramEntries are offered. | no; clients are told |
 | `PlayerHarvestingDamageMultiplier` | 1 | What a survivor's blow does to a tree or a rock. Higher fells it sooner. | yes |
 | `HarvestResourceItemAmountClassMultipliers` | none | Yield of one resource: `(ClassName="core:thatch",Multiplier=2.0)`. | yes |
 | `ResourceNoReplenishRadiusPlayers` | 1 | How far from a survivor nodes will not grow back. Higher is further. | yes |
+| `GlobalSpoilingTimeMultiplier` | 1 | How long things keep before they spoil. Higher is longer. *ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied.* | no |
+| `FuelConsumptionIntervalMultiplier` | 1 | How long a piece of fuel burns. Higher is longer. *Direction taken from the name; the reference gives none.* | no |
+| `ConfigOverrideItemCraftingCosts` | none | What a thing is made of: `(ItemClassString="core:hatchet",BaseCraftingResourceRequirements=((ResourceItemTypeString="core:thatch",BaseResourceRequirement=1.0,bCraftingRequireExactResourceType=false),…))`. | no; clients are told |
+| `ConfigOverrideItemMaxQuantity` | none | One thing's stack size: `(ItemClassString="core:arrow_stone",Quantity=(MaxItemQuantity=543,bIgnoreMultiplier=True))`. | no; clients are told |
 | `DinoClassDamageMultipliers` | none | Damage one wild species deals: `(ClassName="core:raptor",Multiplier=2.0)`. | yes |
 | `TamedDinoClassDamageMultipliers` | none | Damage one tamed species deals. | yes |
 | `DinoClassResistanceMultipliers` | none | How well one wild species resists damage. Higher takes less: 2.0 halves it. *The reverse of the settings for a whole class, where higher takes more: ARK's reference and its operators both say so.* | yes |
@@ -103,6 +125,7 @@ may change a setting without a restart.
 | `MaxNumberOfPlayersInTribe` | 0 | The most members a tribe may have. 0 is no limit. | yes |
 | `MaxFallSpeedMultiplier` | 1 | The speed of a fall at which it begins to hurt. Higher survives longer falls. | yes |
 | `FastDecayInterval` | 43200 | Seconds before a foundation or pillar joined to nothing decays. Needs FastDecayUnsnappedCoreStructures. | yes |
+| `bUseCorpseLocator` | True | A beam marks where a survivor died. | yes; clients are told |
 
 ### Command line
 
@@ -120,34 +143,19 @@ may change a setting without a restart.
 
 | Setting | Default | What it does | From |
 | --- | --- | --- | --- |
-| `HarvestHealthMultiplier` | 1 | Health of trees, rocks and bushes. Higher takes more blows and gives more in all. | phase 5 |
 | `ResourcesRespawnPeriodMultiplier` | 1 | Time before a harvested node grows back. Lower is sooner. | phase 6 |
-| `ItemStackSizeMultiplier` | 1 | Stack sizes. What stacks to 1 is left alone. | phase 5 |
 | `DayCycleSpeedScale` | 1 | Speed of the game clock through the whole day. Higher is faster; about 0.035 is a day as long as a real one. | phase 7 |
 | `DayTimeSpeedScale` | 1 | Speed of the clock by day. Higher is a shorter day. | phase 7 |
 | `NightTimeSpeedScale` | 1 | Speed of the clock by night. Higher is a shorter night. | phase 7 |
 | `DifficultyOffset` | 1 | Difficulty is offset x (map difficulty - 0.5) + 0.5. Wild creatures are levelled in 30 steps of the difficulty. Ignored when OverrideOfficialDifficulty is set. *One host gives the default as 0.2.* | phase 8 |
 | `OverrideOfficialDifficulty` | 0 | The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150. *A patch note says the most is 5; hosts recommend up to 6. Not verified.* | phase 8 |
-| `AllowHitMarkers` | True | A mark is shown when a ranged hit lands. | phase 5 |
 | `PlayerCharacterFoodDrainMultiplier` | 1 | How fast survivors hunger. Higher is faster. | phase 6 |
 | `PlayerCharacterWaterDrainMultiplier` | 1 | How fast survivors thirst. Higher is faster. | phase 6 |
-| `PlayerCharacterStaminaDrainMultiplier` | 1 | How fast survivors tire. Higher is faster. | phase 5 |
 | `PlayerCharacterHealthRecoveryMultiplier` | 1 | How fast survivors mend. Higher is faster. | phase 6 |
 | `DinoCharacterFoodDrainMultiplier` | 1 | How fast creatures hunger, wild and tamed. Higher is faster, and one being tamed eats sooner. | phase 6 |
-| `DinoCharacterStaminaDrainMultiplier` | 1 | How fast creatures tire. Higher is faster. | phase 5 |
 | `DinoCharacterHealthRecoveryMultiplier` | 1 | How fast creatures mend. Higher is faster. | phase 6 |
 | `OxygenSwimSpeedStatMultiplier` | 1 | Swimming speed gained by each level of oxygen. Higher is more. | phase 6 |
-| `AllowThirdPersonPlayer` | True | The body may be looked at from behind. | phase 5 |
-| `ServerCrosshair` | True | A crosshair is shown. | phase 5 |
-| `ShowMapPlayerLocation` | True | The map shows where its reader is. | phase 5 |
-| `ServerPassword` | none | Asked of everyone who joins. | phase 5 |
 | `AutoSavePeriodMinutes` | 15 | Minutes between saves. Here the world is saved continuously; this is how often the live file is read again. | phase 6 |
-
-### GameUserSettings.ini `[MessageOfTheDay]`
-
-| Setting | Default | What it does | From |
-| --- | --- | --- | --- |
-| `Duration` | 20 | Seconds it is shown. | phase 5 |
 
 ### Game.ini `[/script/shootergame.shootergamemode]`
 
@@ -155,21 +163,9 @@ may change a setting without a restart.
 | --- | --- | --- | --- |
 | `MatingSpeedMultiplier` | 1 | How fast a pair's mating goes. Higher is faster. | phase 6 |
 | `BabyFoodConsumptionSpeedMultiplier` | 1 | How fast the young hunger. Lower eats less. | phase 6 |
-| `OverrideMaxExperiencePointsPlayer` | 0 | The most experience a survivor may have. 0 leaves it to the level table. | phase 5 |
-| `OverrideMaxExperiencePointsDino` | 0 | The most experience a tame may have. 0 leaves it to the level table. | phase 5 |
-| `LevelExperienceRampOverrides` | none | The level table: `(ExperiencePointsForLevel[0]=5,ExperiencePointsForLevel[1]=20,…)`, each the total needed. The first line is survivors', the second tames'. | phase 5 |
-| `OverridePlayerLevelEngramPoints` | none | Engram points given at each level, one line for each level in order. | phase 5 |
-| `OverrideNamedEngramEntries` | none | An engram's level, cost and whether it is offered: `(EngramClassName="core:engram-hatchet",EngramHidden=False,EngramPointsCost=3,EngramLevelRequirement=3,RemoveEngramPreReq=True)`. | phase 5 |
-| `EngramEntryAutoUnlocks` | none | An engram learned without asking at a level: `(EngramClassName="…",LevelToAutoUnlock=0)`. | phase 5 |
-| `bAutoUnlockAllEngrams` | False | Every engram is learned as its level is reached. | phase 5 |
-| `bOnlyAllowSpecifiedEngrams` | False | Only the engrams named in OverrideNamedEngramEntries are offered. | phase 5 |
-| `GlobalSpoilingTimeMultiplier` | 1 | How long things keep before they spoil. Higher is longer. *ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied.* | phase 5 |
 | `GlobalItemDecompositionTimeMultiplier` | 1 | How long a dropped bag lies. Higher is longer. | phase 6 |
 | `GlobalCorpseDecompositionTimeMultiplier` | 1 | How long what a dead survivor leaves lies. Higher is longer. | phase 6 |
 | `UseCorpseLifeSpanMultiplier` | 1 | The same again, as a second factor. *How it overlaps the one above is not explained; they are multiplied.* | phase 6 |
-| `FuelConsumptionIntervalMultiplier` | 1 | How long a piece of fuel burns. Higher is longer. *Direction taken from the name; the reference gives none.* | phase 5 |
-| `ConfigOverrideItemCraftingCosts` | none | What a thing is made of: `(ItemClassString="core:hatchet",BaseCraftingResourceRequirements=((ResourceItemTypeString="core:thatch",BaseResourceRequirement=1.0,bCraftingRequireExactResourceType=false),…))`. | phase 5 |
-| `ConfigOverrideItemMaxQuantity` | none | One thing's stack size: `(ItemClassString="core:arrow_stone",Quantity=(MaxItemQuantity=543,bIgnoreMultiplier=True))`. | phase 5 |
 | `WildDinoCharacterFoodDrainMultiplier` | 1 | How fast wild creatures hunger. Higher is faster. | phase 6 |
 | `TamedDinoCharacterFoodDrainMultiplier` | 1 | How fast tamed creatures hunger. Higher is faster. *How it combines with DinoCharacterFoodDrainMultiplier is not documented; they are multiplied.* | phase 6 |
 | `WildDinoTorporDrainMultiplier` | 1 | How fast wild creatures shake off torpor. Higher is faster. | phase 6 |
@@ -178,7 +174,6 @@ may change a setting without a restart.
 | `PerLevelStatsMultiplier_DinoWild[n]` | 1 each | What a creature gains from each level it was born or found with. | phase 8 |
 | `PerLevelStatsMultiplier_DinoTamed[n]` | 1 each; [0] 0.2, [8] 0.17 | What a tamed creature gains from each level its owner gives it. | phase 8 |
 | `PlayerBaseStatMultipliers[n]` | 1 each; [6] 0, [8] 0, [9] 0, [10] 0, [11] 0 | What a new survivor's stats begin at. Those at 0 cannot be raised. | phase 8 |
-| `bUseCorpseLocator` | True | A beam marks where a survivor died. | phase 5 |
 | `bUseSingleplayerSettings` | False | ARK's single-player factors are applied on top of what the files give. | phase 9 |
 
 ### Command line

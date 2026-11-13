@@ -212,7 +212,7 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
     r.flags[n] = 1;
     r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
     for (let q = 0; q < 6; q++) r.colors[n * 6 + q] = colors[q] ?? 0;
-    r.born[n] = r.grown[n] = r.seat[n] = 0;
+    r.span[n] = r.grown[n] = r.seat[n] = 0;
     st.speed = 0;
     st.dir = 0;
     st.pitch = 0;
@@ -254,7 +254,6 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
   // Or the young: each kind grown, then newborn, a third grown and three quarters grown, its egg, and a survivor for size.
   if (process.argv.includes("--young")) {
     r.count = 0;
-    // Late enough that one three quarters grown was born after the world began.
     const now = tick + 1000;
     r.tick = now;
     kinds.forEach((kind, j) => {
@@ -262,7 +261,7 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
       const gap = j === 0 ? 4.2 : 2.6;
       [1, 0, 0.3, 0.75].forEach((m, i) => {
         const n = put(kind, 250 + i * gap, z, j === 0 ? [9, 16, 13, 8] : [5, 15, 11]);
-        r.born[n] = m < 1 ? now - m * 1000 : 0;
+        r.span[n] = m < 1 ? 1000 : 0;
         r.grown[n] = m < 1 ? now - m * 1000 + 1000 : 0;
       });
       const egg = put(view.reg.index.get(j === 0 ? "core:egg_parasaur" : "core:egg_raptor")!, 250 + 4 * gap - 1, z, []);

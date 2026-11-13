@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BIRTH_HUNGER, BIRTH_SCALE, BIRTH_SHARE, GROWN, MATE_RANGE, MATE_SECONDS, STAGES, growthStep, litter, mateWait, stageOf, stepTick, youngHunger, youngScale, youngShare } from "../../shared/sim/breeding.ts";
+import { BIRTH_HUNGER, BIRTH_SCALE, BIRTH_SHARE, GROWN, MATE_RANGE, MATE_SECONDS, STAGES, growthStep, litter, mateWait, maturity, stageOf, stepTick, youngHunger, youngScale, youngShare } from "../../shared/sim/breeding.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 test("one mating in ten gives twins and one in fifty triplets; a female then waits between eighteen and forty-eight hours", () => {
@@ -29,25 +29,29 @@ test("one mating in ten gives twins and one in fifty triplets; a female then wai
   expect([MATE_SECONDS, MATE_RANGE]).toEqual([30, 8]);
 });
 
-test("growing up is a hundred steps, each beginning on a tick known from the two it was born and will be grown on", () => {
+test("growing up is a hundred steps, each beginning on a tick known from how long it takes and when it ends", () => {
   const rng = new Rng(11);
   for (let k = 0; k < 300; k++) {
     const born = 1 + rng.int(1000000);
     // From the least a young one is ever given (a hundred ticks) to more than a parasaur takes.
     const span = k < 20 ? GROWN + k : GROWN + rng.int(4000000);
     const grown = born + span;
-    expect([growthStep(born, grown, born - 5), growthStep(born, grown, born), growthStep(born, grown, grown - 1) < GROWN, growthStep(born, grown, grown), growthStep(born, grown, grown + 99)]).toEqual([0, 0, true, GROWN, GROWN]);
+    expect([growthStep(span, grown, born - 5), growthStep(span, grown, born), growthStep(span, grown, grown - 1) < GROWN, growthStep(span, grown, grown), growthStep(span, grown, grown + 99)]).toEqual([0, 0, true, GROWN, GROWN]);
     let last = born;
     for (let step = 1; step <= GROWN; step++) {
-      const at = stepTick(born, grown, step);
+      const at = stepTick(span, grown, step);
       // The first tick of the step: on it the step is this one, and a tick before it was the one before.
-      expect([growthStep(born, grown, at), growthStep(born, grown, at - 1), at > last]).toEqual([step, step - 1, true]);
+      expect([growthStep(span, grown, at), growthStep(span, grown, at - 1), at > last]).toEqual([step, step - 1, true]);
       last = at;
     }
-    expect(stepTick(born, grown, GROWN)).toBe(grown);
+    expect(stepTick(span, grown, GROWN)).toBe(grown);
+    expect([maturity(span, grown, born), maturity(span, grown, born + span / 2), maturity(span, grown, grown)]).toEqual([0, 0.5, 1]);
   }
   // One that was never young is grown.
-  expect([growthStep(0, 0, 0), growthStep(0, 0, 12345)]).toEqual([GROWN, GROWN]);
+  expect([growthStep(0, 0, 0), growthStep(0, 0, 12345), maturity(0, 0, 7)]).toEqual([GROWN, GROWN, 1]);
+  // One whose growing was made slower part way through would have begun before the world did. Nothing is kept of when it
+  // began, only how long it takes and when it ends: at tick 0 this one is seven tenths grown, and its next step is on a tick to come.
+  expect([growthStep(1000, 300, 0), growthStep(1000, 300, 299), stepTick(1000, 300, 71), maturity(1000, 300, 100)]).toEqual([70, 99, 10, 0.8]);
 });
 
 test("a baby to a tenth grown, a juvenile to half, an adolescent until it is grown; a tenth of a grown one's health and food at birth, and 510 times its hunger", () => {
@@ -64,8 +68,8 @@ test("a baby to a tenth grown, a juvenile to half, an adolescent until it is gro
   }
   expect(sum / GROWN).toBeCloseTo((BIRTH_HUNGER + 1) / 2, 9);
   // Drawn a quarter of a grown one's size at birth, full size when grown, evenly between; and at any moment between ticks.
-  expect([youngScale(BIRTH_SCALE, 100, 300, 100), youngScale(BIRTH_SCALE, 100, 300, 300), youngScale(BIRTH_SCALE, 0, 0, 5)]).toEqual([0.25, 1, 1]);
-  expect(youngScale(BIRTH_SCALE, 100, 300, 200.5)).toBeCloseTo(0.25 + 0.75 * (100.5 / 200), 12);
+  expect([youngScale(BIRTH_SCALE, 200, 300, 100), youngScale(BIRTH_SCALE, 200, 300, 300), youngScale(BIRTH_SCALE, 0, 0, 5)]).toEqual([0.25, 1, 1]);
+  expect(youngScale(BIRTH_SCALE, 200, 300, 200.5)).toBeCloseTo(0.25 + 0.75 * (100.5 / 200), 12);
 });
 
 test("the two creatures that breed do so at the reference's times, each laying an egg of its own", () => {

@@ -6,7 +6,7 @@
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP } from "../../shared/net/protocol.ts";
+import { CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, REJECT_PASSWORD, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -29,7 +29,7 @@ import { handleIndex } from "../../shared/ids.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS } from "../../shared/sim/items.ts";
 import { Viewpoint } from "./viewpoint.ts";
-import { RemoteSample, type ClientSession } from "./session.ts";
+import { CLOSED_BAD_CONTENT, RemoteSample, type ClientSession } from "./session.ts";
 import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import { youngScale } from "../../shared/sim/breeding.ts";
@@ -77,7 +77,8 @@ export class App {
   /** When false the body is not steered (the self-check holds still). */
   steer = true;
 
-  private readonly reg: Registry;
+  /** The content this app's parts were last handed: the session's, which a server's settings may have tuned since. */
+  private shown: Registry;
   private readonly pack: Pack;
   private last = -1;
   /** Height of the camera's eye above the body's feet, or -1 before the first frame. */
@@ -85,9 +86,15 @@ export class App {
   private readonly aim = [0, 0, 0];
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
 
+  /** Content as the server has it: the session's. Until the server has welcomed it, content as it was written. */
+  private get reg(): Registry {
+    return this.session.registry;
+  }
+
+  /** `reg` is the content the session was given. What is read from then on is the session's own (see `reg`). */
   constructor(session: ClientSession, reg: Registry, pack: Pack) {
     this.session = session;
-    this.reg = reg;
+    this.shown = reg;
     this.pack = pack;
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
@@ -237,7 +244,7 @@ export class App {
     }
     if (code === "KeyV") {
       // Out of the body's eyes, or over its shoulder.
-      if (down && !repeat) this.view.thirdPerson = !this.view.thirdPerson;
+      if (down && !repeat && this.session.thirdPerson) this.view.thirdPerson = !this.view.thirdPerson;
       return true;
     }
     return this.controls.key(code, down);
@@ -288,7 +295,7 @@ export class App {
   /** How big body `i` of those in view is, as a share of its kind's size: less than 1 for one that is young. */
   private sizeOf(i: number): number {
     const r = this.remote;
-    return r.grown[i] !== 0 && (r.flags[i]! & VIEW_FLAG_PROP) === 0 ? youngScale(this.reg.birthScale[r.kind[i]!]!, r.born[i]!, r.grown[i]!, r.tick) : 1;
+    return r.grown[i] !== 0 && (r.flags[i]! & VIEW_FLAG_PROP) === 0 ? youngScale(this.reg.birthScale[r.kind[i]!]!, r.span[i]!, r.grown[i]!, r.tick) : 1;
   }
 
   /**
@@ -441,7 +448,8 @@ export class App {
     this.nowMs = nowMs;
 
     if (session.state === "closed") {
-      hud.status = `disconnected (reason ${session.closeReason})`;
+      // The two a player can do something about are said in words.
+      hud.status = session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
       return null;
     }
@@ -454,6 +462,12 @@ export class App {
       hud.status = "connecting";
       this.ui.build(aspect, hud, session);
       return null;
+    }
+    // The server has said what its content is: every part reads that from now on.
+    if (this.shown !== session.registry) {
+      this.shown = session.registry;
+      this.ui.registry = this.shown;
+      this.shots.reg = this.shown;
     }
     if (!this.scene) {
       this.scene = new Scene(world, this.reg, this.pack);
@@ -477,6 +491,8 @@ export class App {
     const bx = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX;
     const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
     const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
+    // By the server's rule the body may not be looked at from behind; a rider still sees its mount so.
+    if (!session.thirdPerson) this.view.thirdPerson = false;
     // A spectator has no body to look past: always from the eye.
     const third = this.view.thirdPerson;
     if (!alive) this.view.thirdPerson = false;
@@ -557,12 +573,12 @@ export class App {
     // A beam over each place it died, so the place can be seen from far off.
     const beams = this.scene.beams;
     beams.length = 0;
-    for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
+    if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
     this.scene.hour = hourOfDay(session.serverTick, session.dayOffset);
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps);
     this.feedback.absorb(session, this.reg, nowMs);
-    this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.damageNumbers && this.ui.settings.damageNumbers);
+    this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.damageNumbers && this.ui.settings.damageNumbers, session.hitMarkers);
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);

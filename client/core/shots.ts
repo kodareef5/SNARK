@@ -62,7 +62,8 @@ export class Shots {
   private now = 0;
   private readonly meshOfAmmo: Int32Array;
   private readonly tracerMesh: number;
-  private readonly reg: Registry;
+  /** Content as the server has it; whoever owns this says when that changes. */
+  reg: Registry;
   private readonly dir = [0, 0, 0];
   /** The whole tick the flights have been flown through. */
   private tick = -1;

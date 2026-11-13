@@ -11,6 +11,7 @@
 // small and positive.
 
 import type { Registry } from "../../shared/content/registry.ts";
+import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
@@ -27,6 +28,14 @@ import {
   CMD_CREATE,
   OWN_BUFFS,
   OWN_RULES,
+  RULE_CORPSE_LOCATOR,
+  RULE_CROSSHAIR,
+  RULE_DAMAGE_NUMBERS,
+  RULE_GLOBAL_CHAT,
+  RULE_HIT_MARKERS,
+  RULE_MAP_LOCATION,
+  RULE_THIRD_PERSON,
+  MAX_TUNING_BYTES,
   OWN_TRIBE,
   OWN_VOICE,
   CMD_CHAT,
@@ -88,7 +97,10 @@ export interface SessionOptions {
   key: Uint8Array;
   /** Join without a body, if the server allows it. */
   spectate?: boolean;
+  /** Content as it was written. What a server's settings make of it is `ClientSession.registry`, once it has said. */
   registry: Registry;
+  /** The server's password, if it asks one. */
+  password?: string;
   /** Hash of the animation clips this client draws with (`Pack.clips.hash`); the server must pose with the same. */
   clipHash?: number;
   /**
@@ -100,6 +112,17 @@ export interface SessionOptions {
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, if it has any: the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
+}
+
+/** Content as a server's tuning has it, or null if the tuning is no tuning or what it makes does not compile. */
+function derive(reg: Registry, tuning: string): Registry | null {
+  const t = parseTuning(tuning);
+  if (!t) return null;
+  try {
+    return deriveRegistry(reg, t);
+  } catch {
+    return null;
+  }
 }
 
 /** Remote entities at the current render time, filled by `sampleRemote`. */
@@ -145,10 +168,10 @@ export class RemoteSample {
   readonly hasLook = new Uint8Array(MAX_VIEW);
   /** What each holds and wears: GEAR_COUNT content indices each, zeros for nothing. */
   readonly gear = new Uint16Array(MAX_VIEW * GEAR_COUNT);
-  /** Each 0 for none: the team that owns it; the entity it sits on, plus one; the ticks it was born and will be grown. */
+  /** Each 0 for none: the team that owns it; the entity it sits on, plus one; the ticks its growing takes and the tick it will be grown. */
   readonly team = new Uint32Array(MAX_VIEW);
   readonly seat = new Uint32Array(MAX_VIEW);
-  readonly born = new Uint32Array(MAX_VIEW);
+  readonly span = new Uint32Array(MAX_VIEW);
   readonly grown = new Uint32Array(MAX_VIEW);
 }
 
@@ -167,6 +190,8 @@ const SMOOTH_LIMIT = 3;
 const NODE_RADIUS = 3;
 const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
+/** What this client makes of its content with the server's tuning is not what the server has: it cannot play there. */
+export const CLOSED_BAD_CONTENT = -3;
 /** Lines of server text kept for the console. */
 const LOG_LINES = 200;
 
@@ -271,6 +296,22 @@ export class ClientSession {
   /** Rules of the server's: the damage of hits may be shown as numbers; there is a text channel that reaches everyone. */
   damageNumbers = true;
   globalChat = true;
+  /** More of the server's rules that a client acts on: whether a ranged hit is marked, the body may be seen from behind, a crosshair is shown, the map shows where its reader is, and a beam marks where the survivor died. */
+  hitMarkers = true;
+  thirdPerson = true;
+  crosshair = true;
+  mapLocation = true;
+  corpseLocator = true;
+  /** Seconds the server's message of the day is shown. */
+  motdSeconds = 20;
+  /** How fast the server's clock runs: the whole cycle, and the day and the night within it. */
+  readonly clock = { cycle: 1, day: 1, night: 1 };
+  /**
+   * Content as the server has it: what its tuning makes of the definitions
+   * this client was given (shared/content/tuning.ts). Until the server has
+   * welcomed it, the definitions as they were written.
+   */
+  registry: Registry;
   /**
    * Who this survivor is with, as the server last said: its team, its tribe's
    * name ("" alone), its rank, the members, and an invitation it has yet to
@@ -356,6 +397,7 @@ export class ClientSession {
   private commandSeq = 0;
 
   constructor(conn: Connection, opts: SessionOptions) {
+    this.registry = opts.registry;
     this.name = opts.name;
     this.conn = conn;
     this.opts = opts;
@@ -368,7 +410,7 @@ export class ClientSession {
       }
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, opts.registry.hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null);
+    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "");
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -499,7 +541,7 @@ export class ClientSession {
       for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
       out.team[n] = b.team[j]!;
       out.seat[n] = b.seat[j]!;
-      out.born[n] = b.born[j]!;
+      out.span[n] = b.span[j]!;
       out.grown[n] = b.grown[j]!;
       if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
@@ -531,10 +573,10 @@ export class ClientSession {
     const inp = this.inputs;
     const buttons = inp.buttons[i]!;
     // The body is stepped as what the server last said it is: its own species, or a creature it drives.
-    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.opts.registry.move[this.own.kind] ?? this.move!, TICK_DT);
+    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.move[this.own.kind] ?? this.move!, TICK_DT);
     if (this.driving >= 0) {
       // What it drives has jaws: its bite is stepped here as the server steps it, so the two agree on what the body is doing.
-      const jaws = this.opts.registry.weapon[this.own.kind];
+      const jaws = this.registry.weapon[this.own.kind];
       if (jaws) {
         const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
         stepAction(this.own, buttons, buttons & ~was, jaws);
@@ -545,7 +587,7 @@ export class ClientSession {
     }
     // What it does with what it holds, as the server will step it: the same buttons, and those that went down since the tick before.
     const before = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
-    stepAction(this.own, buttons, buttons & ~before, this.opts.registry.weapon[this.own.held] ?? FISTS);
+    stepAction(this.own, buttons, buttons & ~before, this.registry.weapon[this.own.held] ?? FISTS);
     // A shot left, on a tick stepped for the first time (a replay after a correction steps old ticks again): noted, to be drawn at once.
     if (actionOut.fire && t > this.firedTick) {
       this.firedTick = t;
@@ -710,10 +752,15 @@ export class ClientSession {
       this.markers.length = 0;
       this.markers.push(...list);
     } else if (component === OWN_RULES) {
-      const flags = r.u8();
+      const flags = r.u16();
       if (r.overflow) return;
-      this.damageNumbers = (flags & 1) !== 0;
-      this.globalChat = (flags & 2) !== 0;
+      this.damageNumbers = (flags & RULE_DAMAGE_NUMBERS) !== 0;
+      this.globalChat = (flags & RULE_GLOBAL_CHAT) !== 0;
+      this.hitMarkers = (flags & RULE_HIT_MARKERS) !== 0;
+      this.thirdPerson = (flags & RULE_THIRD_PERSON) !== 0;
+      this.crosshair = (flags & RULE_CROSSHAIR) !== 0;
+      this.mapLocation = (flags & RULE_MAP_LOCATION) !== 0;
+      this.corpseLocator = (flags & RULE_CORPSE_LOCATOR) !== 0;
     } else if (component === OWN_VOICE) {
       const slot = r.u16();
       const token = new Uint8Array(TOKEN_BYTES);
@@ -763,9 +810,9 @@ export class ClientSession {
       const xp = r.u32();
       const level = r.u16();
       const statPoints = r.u16();
-      const engramPoints = r.u16();
+      const engramPoints = r.varint();
       const engrams: number[] = [];
-      for (let k = r.u8(); k > 0 && !r.overflow; k--) engrams.push(r.u16());
+      for (let k = r.varint(); k > 0 && !r.overflow; k--) engrams.push(r.u16());
       const jobs: { recipe: number; left: number; doneAt: number }[] = [];
       for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ recipe: r.u16(), left: r.u8(), doneAt: r.u32() });
       if (r.overflow) return;
@@ -856,15 +903,30 @@ export class ClientSession {
     const dims = { chunksX: r.u8() + 1, chunksZ: r.u8() + 1 };
     readBody(r, this.own);
     const yaw = r.u16();
-    const reg = this.opts.registry;
-    const hf = r.overflow || version !== PROTOCOL_VERSION ? null : this.opts.resolveMap(mapId, mapHash, dims);
-    const move = reg.move[this.ownKind];
-    if (!hf || !move) {
+    const contentHash = r.u32();
+    const tuning = r.string(MAX_TUNING_BYTES);
+    const cycle = r.f64();
+    const day = r.f64();
+    const night = r.f64();
+    const motdSeconds = r.u16();
+    const refuse = (reason: number): void => {
       this.state = "closed";
-      this.closeReason = CLOSED_BAD_MAP;
+      this.closeReason = reason;
       this.conn.close();
-      return;
-    }
+    };
+    if (r.overflow || version !== PROTOCOL_VERSION) return refuse(CLOSED_BAD_MAP);
+    // Content as this server has it: made here, of the same definitions, by the same function. If what comes of it is not
+    // what the server has, this client would predict and show other numbers than the server's, and does not stay.
+    const reg = derive(this.registry, tuning);
+    if (!reg || reg.hash !== contentHash) return refuse(CLOSED_BAD_CONTENT);
+    const hf = this.opts.resolveMap(mapId, mapHash, dims);
+    const move = reg.move[this.ownKind];
+    if (!hf || !move) return refuse(CLOSED_BAD_MAP);
+    this.registry = reg;
+    this.clock.cycle = cycle;
+    this.clock.day = day;
+    this.clock.night = night;
+    this.motdSeconds = motdSeconds;
     const source = this.opts.nodes?.(hf, reg) ?? null;
     this.nodeField = source ? new NodeField(dims, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, source) : null;
     this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), ...(this.nodeField ? { nodes: this.nodeField.store } : {}) };
@@ -1006,7 +1068,7 @@ export class ClientSession {
     if (chunk >= world.structs.chunks.length) return;
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
     const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
-    const kinds = this.opts.registry.defs.length;
+    const kinds = this.registry.defs.length;
     for (let i = 0; i < count; i++) {
       const slot = r.u16();
       const kind = r.u16();
