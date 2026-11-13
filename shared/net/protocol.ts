@@ -70,15 +70,36 @@ export const SESSION_SPECTATING = 2;
 
 /** Command ops. */
 export const CMD_TEXT = 1;
+/** Move items between slots: from box 1 bit, slot u8, to box 1 bit, slot u8, count u16 (0 = the whole stack), expected item u16. */
+export const CMD_MOVE = 2;
+/** Eat or use what is in one of your own slots: slot u8, expected item u16. */
+export const CMD_USE = 3;
+
+/** Boxes a slot command can address. Nothing else can be named: no ids travel. */
+export const BOX_SELF = 0;
+/** Whatever container the session has open, if any. */
+export const BOX_OPEN = 1;
 
 export const RESULT_OK = 0;
 /** Too many commands in flight; try again. */
 export const RESULT_BUSY = 1;
 export const RESULT_INVALID = 2;
 export const RESULT_DENIED = 3;
+/** The slot does not hold what the client thought: its picture was out of date. */
+export const RESULT_STALE = 4;
+export const RESULT_FULL = 5;
+export const RESULT_FAR = 6;
 
 /** OWN components. */
 export const OWN_SESSION = 1;
+/** base tick u32, then for health, food, water, oxygen: value uint53, rate svarint, max uint53 (millionths of a point). */
+export const OWN_VITALS = 2;
+/**
+ * box 1 bit, capacity u8, full 1 bit (forget every slot first), count u8, then
+ * per slot: index u8, item u16, and if the item is not 0: count u16, quality u8,
+ * durability u16, spoil tick u32.
+ */
+export const OWN_SLOTS = 3;
 
 export const TEXT_CONSOLE = 0;
 export const TEXT_NOTICE = 1;

@@ -3,6 +3,7 @@
 //   bun run snap                              from the spawn point, looking north
 //   bun run snap -- --pos 240,6,250 --yaw 30 --pitch -15 --size 1280x720 --out artifacts/house.png
 //   bun run snap -- --ui --console "help"     with the interface drawn over it
+//   bun run snap -- --ui --inventory          with the inventory screen open
 //
 // Yaw and pitch are in degrees. Yaw 0 faces +Z (north); positive yaw turns toward +X.
 
@@ -11,7 +12,8 @@ import { dirname, resolve } from "node:path";
 import { Camera } from "../client/core/render/camera.ts";
 import type { FramePacket } from "../client/core/render/packet.ts";
 import { Scene } from "../client/core/render/scene.ts";
-import { RemoteSample } from "../client/core/session.ts";
+import { RemoteSample, type ClientSession } from "../client/core/session.ts";
+import { Inventory } from "../shared/sim/items.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
@@ -116,7 +118,25 @@ if (import.meta.main) {
       for (const line of ["> help", "enablecheats <password>", "help [command]", "pos", "spectate", "time", "who"]) ui.console.print(line);
       ui.console.edit(typed);
     }
-    ui.build(w! / h!, hud, null);
+    let session: ClientSession | null = null;
+    if (args.includes("--inventory")) {
+      // A stand-in inventory, to look at the screen without a server.
+      const inv = new Inventory(40);
+      const item = (id: string): number => view.reg.index.get(id)!;
+      inv.set(0, item("core:stone"), 100, 0, 0, 0);
+      inv.set(1, item("core:stone"), 37, 0, 0, 0);
+      inv.set(2, item("core:berry"), 24, 0, 0, 9000);
+      inv.set(3, item("core:fiber"), 180, 0, 0, 0);
+      inv.set(12, item("core:meat"), 3, 0, 0, 4000);
+      inv.set(13, item("core:waterskin"), 1, 0, 0, 0);
+      session = { inventory: inv, serverTick: 1000, logVersion: 0, log: [] } as unknown as ClientSession;
+      ui.registry = view.reg;
+      ui.palette = view.pack.palette;
+      ui.inventory.open = true;
+      ui.inventory.held = 1;
+      ui.inventory.hover = 2;
+    }
+    ui.build(w! / h!, hud, session);
     drawUi(view.raster.color, w!, h!, ui.frame);
   }
   const out = resolve(arg("out") ?? "artifacts/snap.png");

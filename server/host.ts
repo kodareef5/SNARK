@@ -1,6 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop.
 // Used by server/main.ts and by tests; neither needs to know the wiring.
 
+import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
@@ -10,10 +11,12 @@ import { addCoreCommands } from "./commands/core.ts";
 import { Console } from "./console.ts";
 import { Creatures } from "./creatures.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
+import { Items } from "./items.ts";
+import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records } from "./records.ts";
-import { refreshMods } from "./survival.ts";
+import { Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 
 export interface HostOptions {
@@ -35,6 +38,8 @@ export interface HostOptions {
   adminPassword?: string;
   /** Development server: cheats need no password. Never set in a public deployment. */
   dev?: boolean;
+  /** Load a save whose item ledger does not match its contents, instead of refusing. */
+  allowLedgerMismatch?: boolean;
 }
 
 /** Ticks between console lines accepted from one session. */
@@ -58,6 +63,8 @@ export interface Host {
   readonly records: Records;
   readonly game: GameServer;
   readonly creatures: Creatures;
+  readonly items: Items;
+  readonly survival: Survival;
   readonly persistence: Persistence | null;
   readonly loaded: LoadReport | null;
   readonly console: Console;
@@ -81,8 +88,18 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
+  const eyeHeight = (reg.defs[survivor] as SpeciesDef).eyeHeight;
   const names = new Map<string, number>();
-  const creatures = new Creatures(world, records, opts.seed ?? 1, opts.wakeRadius ?? 3);
+  const survival = new Survival(world, records);
+  const items = new Items(world, records);
+  // A save's ledger must match what the save holds, or the save is not trusted.
+  if (persistence) {
+    items.restore(loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null));
+    const wrong = items.audit();
+    if (wrong.length > 0 && !opts.allowLedgerMismatch) throw new Error("the item ledger does not balance:\n" + wrong.join("\n"));
+    persistence.ledger = items;
+  }
+  const creatures = new Creatures(world, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
   /** Chunk each session's focus is keeping awake. */
   const focus = new Map<number, number>();
   const recordOf = (name: string) => {
@@ -132,7 +149,10 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     }
     // A survivor has stat points like any body, all of them its own to place.
     rec.genome ??= new Genome();
-    refreshMods(reg, world.ents, c.ent, rec.genome);
+    refreshMods(reg, world.ents, c.ent, rec.genome, items.inv(rec).weight(items.table));
+    survival.init(rec);
+    survival.suspend(rec, false);
+    world.ents.setLook(c.ent, rec.genome.level, rec.genome.colors, rec.name);
     c.pid = rec.pid;
     if (persistence) persistence.attach(rec, c.ent);
     else {
@@ -141,6 +161,9 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     }
   };
   game.onBodyGone = (c) => {
+    // Out of the world, a survivor neither eats nor drowns.
+    const gone = records.byPid.get(c.pid);
+    if (gone) survival.suspend(gone, true);
     if (persistence) persistence.detach(c.pid);
     else {
       const rec = records.byPid.get(c.pid);
@@ -169,9 +192,23 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
       focus.set(c.id, c.chunk);
       creatures.playerMoved(was, c.chunk);
     }
+    // A head under water starts the air running out; coming up stops it.
+    for (const c of game.clients) {
+      if (!c?.active || c.ent < 0) continue;
+      const rec = records.byPid.get(c.pid);
+      if (rec) survival.setSubmerged(rec, world.ents.y[c.ent]! + eyeHeight < world.hf.seaLevel);
+    }
+    survival.step(tick);
     creatures.step(tick);
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };
+  game.onLand = (c, speed) => {
+    const rec = records.byPid.get(c.pid);
+    if (rec) survival.landed(rec, speed);
+  };
+  const own: OwnContext = { world, game, records, items, survival, openOf: () => null };
+  game.onReplicate = (c) => syncOwn(own, c);
+  addOwnCommands(own);
 
   const con = new Console();
   addCoreCommands(con);
@@ -181,6 +218,8 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
     records,
     game,
     creatures,
+    items,
+    survival,
     persistence,
     loaded,
     console: con,

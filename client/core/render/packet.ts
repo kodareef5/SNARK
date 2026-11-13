@@ -105,4 +105,10 @@ export class InstanceWriter {
     this.bytes[at] = region0;
     this.bytes.fill(0, at + 1, at + 6);
   }
+
+  /** Give instance `i` its own colour regions. A zero leaves that region as `set` wrote it. */
+  regions(i: number, colors: Uint8Array, from: number): void {
+    const at = i * INSTANCE_BYTES + 14;
+    for (let q = 0; q < 6; q++) if (colors[from + q] !== 0) this.bytes[at + q] = colors[from + q]!;
+  }
 }

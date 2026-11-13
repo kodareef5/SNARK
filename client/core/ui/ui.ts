@@ -5,12 +5,18 @@
 import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
+import type { Registry } from "../../../shared/content/registry.ts";
 import { buildHud } from "./hud.ts";
+import { InventoryScreen } from "./inventory.ts";
 import { UiFrame } from "./nodes.ts";
 
 export class Ui {
   readonly frame = new UiFrame();
   readonly console = new ConsoleState();
+  readonly inventory = new InventoryScreen();
+  /** Content and palette, for naming and colouring items. Set by the app once it has them. */
+  registry: Registry | null = null;
+  palette: Uint8Array | null = null;
 
   /** A text field has the keyboard: keys must not also drive the body. */
   get captureKeyboard(): boolean {
@@ -19,7 +25,7 @@ export class Ui {
 
   /** The mouse should steer the camera (the shell holds pointer lock) rather than move a cursor. */
   get wantsPointerLock(): boolean {
-    return !this.console.open;
+    return !this.console.open && !this.inventory.open;
   }
 
   /**
@@ -34,7 +40,17 @@ export class Ui {
       if (down && !repeat) con.open = !con.open;
       return true;
     }
-    if (!con.open) return false;
+    if (!con.open) {
+      // The inventory leaves the keyboard to the body: you can keep walking with it open.
+      if (code === "KeyI" || (code === "Escape" && this.inventory.open)) {
+        if (down && !repeat) {
+          this.inventory.open = code === "KeyI" ? !this.inventory.open : false;
+          this.inventory.held = -1;
+        }
+        return true;
+      }
+      return false;
+    }
     if (!down) return code === "Escape" || code === "Enter" || code === "Tab" || code === "ArrowUp" || code === "ArrowDown" || code === "PageUp" || code === "PageDown";
     switch (code) {
       case "Tab":
@@ -62,8 +78,10 @@ export class Ui {
     return false;
   }
 
-  /** Pointer events on interactive nodes. Nothing on the current screens is clickable except text fields. */
-  pointer(_kind: number, _key: number, _x: number, _y: number, _button: number): void {}
+  /** Pointer went down (0), up (1) or moved (2) over an interactive node. */
+  pointer(kind: number, key: number, _x: number, _y: number, button: number, session: ClientSession | null): void {
+    if (session && this.inventory.open && !this.console.open) this.inventory.pointer(kind, key, button, session);
+  }
 
   /** A text field's content changed. */
   input(key: number, value: string): void {
@@ -75,6 +93,8 @@ export class Ui {
     const f = this.frame;
     f.begin(aspect);
     buildHud(f, hud);
+    // The console covers whatever screen is up; that screen waits underneath, undrawn, so nothing clickable hides behind it.
+    if (!this.console.open) this.inventory.build(f, session, this.registry, this.palette);
     if (session) this.console.absorb(session);
     this.console.build(f);
   }

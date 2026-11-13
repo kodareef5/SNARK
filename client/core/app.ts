@@ -37,6 +37,8 @@ export class App {
     this.session = session;
     this.reg = reg;
     this.pack = pack;
+    this.ui.registry = reg;
+    this.ui.palette = pack.palette;
   }
 
   /** A key went down, repeated, or went up. Returns true if the page should not also act on it. */
@@ -70,7 +72,7 @@ export class App {
 
   /** Pointer went down (0), up (1) or moved (2) over an interactive node; position in canvas units. */
   pointer(kind: number, key: number, x: number, y: number, button: number): void {
-    this.ui.pointer(kind, key, x, y, button);
+    this.ui.pointer(kind, key, x, y, button, this.session);
   }
 
   /**

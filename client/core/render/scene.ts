@@ -276,6 +276,7 @@ export class Scene {
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       const at = this.cursor[mesh]!++;
       this.transient.set(at, x, y, z, Math.round((remote.yaw[i]! / (2 * Math.PI)) * 65536) & 0xffff, this.colorOfKind[kind]!);
+      this.transient.regions(at, remote.colors, i * 6);
       p.transientIds[at] = remote.id[i]!;
     }
     p.transientCount = total;

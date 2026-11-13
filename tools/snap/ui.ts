@@ -52,7 +52,8 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
       }
       continue;
     }
-    if (fa > 0) rect(n.x, n.y, n.w, n.h, st.fill >>> 24, (st.fill >>> 16) & 255, (st.fill >>> 8) & 255, fa);
+    if (n.tint >= 0) rect(n.x, n.y, n.w, n.h, n.tint >> 16, (n.tint >> 8) & 255, n.tint & 255, 1);
+    else if (fa > 0) rect(n.x, n.y, n.w, n.h, st.fill >>> 24, (st.fill >>> 16) & 255, (st.fill >>> 8) & 255, fa);
     if (n.kind === K_BAR) {
       rect(n.x, n.y, n.w * Math.max(0, Math.min(1, n.value)), n.h, ir, ig, ib, 1);
       continue;

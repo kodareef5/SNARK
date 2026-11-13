@@ -22,7 +22,7 @@ test("HUD coordinates, compass and minimap markers follow the map convention", (
   expect(hud.compass).toBe("N");
   expect(hud.nearby).toBe(1);
   expect(hud.markers.map((m) => m.kind)).toEqual(["player", "self"]);
-  expect(hud.vitals.map((v) => v.id)).toEqual(["health", "stamina", "food", "water"]);
+  expect(hud.vitals.map((v) => v.id)).toEqual(["health", "stamina", "food", "water", "oxygen"]);
 
   // Walking north lowers latitude; north is up on the minimap.
   const v0 = hud.markers[1]!.v;

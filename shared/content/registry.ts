@@ -8,6 +8,7 @@ import { TICK_RATE } from "../coords.ts";
 import { hashString } from "../hash.ts";
 import { STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
 import { STAT_NAMES } from "../sim/genome.ts";
+import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
 import type { Def, SpeciesDef } from "./defs.ts";
 
 export const MISSING = 0;
@@ -30,6 +31,10 @@ export interface Registry {
   readonly halfZ: Float32Array;
   /** Movement parameters by index; null for everything that is not a species. */
   readonly move: readonly (MoveParams | null)[];
+  /** Item columns, zero for content that is not an item. See shared/sim/items.ts. */
+  readonly stack: Uint16Array;
+  readonly weight: Float32Array;
+  readonly spoilTicks: Uint32Array;
 }
 
 export interface CompileResult {
@@ -72,7 +77,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
       positive(d, "half[2]", d.half[2], MAX_STRUCTURE_HALF);
       positive(d, "hp", d.hp, 1e9);
     } else {
-      if (!(Number.isInteger(d.stack) && d.stack >= 1)) errors.push(`${d.id}: stack must be a positive integer`);
+      if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
+      if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
+      if (d.spoilHours !== undefined && !(d.spoilHours > 0)) errors.push(`${d.id}: spoilHours must be positive`);
     }
     if (d.type !== "item") {
       if (d.mesh.length === 0) errors.push(`${d.id}: mesh is required`);
@@ -91,6 +98,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const halfY = new Float32Array(n);
   const halfZ = new Float32Array(n);
   const move: (MoveParams | null)[] = new Array(n).fill(null);
+  const stack = new Uint16Array(n);
+  const weight = new Float32Array(n);
+  const spoilTicks = new Uint32Array(n);
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
@@ -101,8 +111,13 @@ export function compileContent(input: readonly Def[]): CompileResult {
       halfY[i] = d.half[1];
       halfZ[i] = d.half[2];
     } else if (d.type === "species") move[i] = moveParams(d);
+    else {
+      stack[i] = d.stack;
+      weight[i] = d.weight ?? 0.1;
+      spoilTicks[i] = Math.round((d.spoilHours ?? 0) * GAME_HOUR_TICKS);
+    }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks }, errors };
 }
 
 function moveParams(d: SpeciesDef): MoveParams {

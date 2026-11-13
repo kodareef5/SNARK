@@ -1,6 +1,7 @@
-// Child process for the crash test. Trades items between holders forever,
-// committing after every batch and printing "acked <seq>" only once the commit
-// has returned. The parent kills it without warning.
+// Child process for the crash test. Trades items between holders forever, and
+// now and then creates or destroys some, committing after every batch and
+// printing "acked <seq>" only once the commit has returned. The parent kills
+// it without warning.
 //
 //   bun tests/fixtures/crash-child.ts <db path> <seed>
 
@@ -13,6 +14,8 @@ import { coreRegistry } from "./world.ts";
 export const HOLDERS = 8;
 export const START = 1000;
 export const OP_TRANSFER = 1;
+export const OP_MINT = 11;
+export const OP_BURN = 12;
 
 if (import.meta.main) {
   const [dbPath, seed] = process.argv.slice(2);
@@ -22,10 +25,11 @@ if (import.meta.main) {
   const stone = reg.index.get("core:stone")!;
   const grazer = reg.index.get("core:grazer")!;
   if (host.loaded!.fresh) {
-    for (let i = 0; i < HOLDERS; i++) host.records.give(host.records.create(grazer, `holder${i}`).pid, stone, START);
+    for (let i = 0; i < HOLDERS; i++) host.items.mint(host.records.create(grazer, `holder${i}`), stone, START);
     p.commit();
   }
   const pids = [...host.records.byPid.keys()].sort((a, b) => a - b);
+  const rec = (pid: number) => host.records.byPid.get(pid)!;
   const rng = new Rng(Number(seed));
   const w = new BitWriter(64);
   writeSync(1, "ready\n");
@@ -34,12 +38,24 @@ if (import.meta.main) {
       const from = pids[rng.int(HOLDERS)]!;
       const to = pids[rng.int(HOLDERS)]!;
       const count = 1 + rng.int(40);
-      if (!host.records.transfer(from, to, stone, count)) continue;
+      const kind = rng.int(8);
       w.reset();
       w.uint53(from);
-      w.uint53(to);
-      w.varint(count);
-      p.journal(OP_TRANSFER, w.bytes());
+      if (kind === 0) {
+        const made = host.items.mint(rec(from), stone, count);
+        if (made === 0) continue;
+        w.varint(made);
+        p.journal(OP_MINT, w.bytes());
+      } else if (kind === 1) {
+        if (!host.items.burnItem(rec(from), stone, count)) continue;
+        w.varint(count);
+        p.journal(OP_BURN, w.bytes());
+      } else {
+        if (!host.items.give(rec(from), rec(to), stone, count)) continue;
+        w.uint53(to);
+        w.varint(count);
+        p.journal(OP_TRANSFER, w.bytes());
+      }
     }
     host.world.tick++;
     p.commit();

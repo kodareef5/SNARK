@@ -45,6 +45,8 @@ export interface UiNode {
   interactive: boolean;
   /** Should hold the keyboard focus, for K_INPUT. */
   focus: boolean;
+  /** A fill colour of the node's own, 0xRRGGBB, instead of its style's; -1 for none. */
+  tint: number;
 }
 
 export interface UiImage {
@@ -73,7 +75,7 @@ export class UiFrame {
   add(key: number, kind: number, x: number, y: number, w: number, h: number, style: number): UiNode {
     let n = this.nodes[this.count];
     if (!n) {
-      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", value: 0, image: 0, interactive: false, focus: false };
+      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", value: 0, image: 0, interactive: false, focus: false, tint: -1 };
       this.nodes.push(n);
     }
     this.count++;
@@ -89,6 +91,7 @@ export class UiFrame {
     n.image = 0;
     n.interactive = false;
     n.focus = false;
+    n.tint = -1;
     return n;
   }
 

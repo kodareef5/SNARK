@@ -15,8 +15,15 @@
 //   count varint, then per op in ascending id order:
 //     id gap varint: this id minus the previous id (first: id + 1), so always >= 1
 //     op 2 bits: 0 update, 1 create, 2 remove
-//     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4
+//     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4,
+//             then its appearance: revision 4, level varint, [colours? 1][6 x 8],
+//             [name? 1][string]
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
+//
+// Appearance (level, colour regions, name) changes rarely, so it rides only on
+// create. A change bumps the entity's revision, which makes the next delta
+// send a create for it again. It therefore arrives with the entity, never
+// before or after, and loss is handled by the same baselines as everything else.
 
 import { WORLD_MIN_Y } from "../coords.ts";
 import type { BitReader, BitWriter } from "./codec.ts";
@@ -30,7 +37,8 @@ const OP_UPDATE = 0;
 const OP_CREATE = 1;
 const OP_REMOVE = 2;
 
-const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4;
+const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + 4 + 16 + 2 + 48;
+export const MAX_NAME_LENGTH = 24;
 const UPDATE_BITS = 24 + 2 + 2 + 64 + 1 + 10 + 1 + 4;
 
 export function quantX(x: number): number {
@@ -63,6 +71,20 @@ export class EntityView {
   /** 10-bit yaw. */
   readonly yaw = new Uint16Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
+  /** Appearance: revision (4 bits), level, six colour regions, name. */
+  readonly rev = new Uint8Array(MAX_VIEW);
+  readonly level = new Uint16Array(MAX_VIEW);
+  readonly colors = new Uint8Array(MAX_VIEW * 6);
+  readonly name: string[] = new Array<string>(MAX_VIEW).fill("");
+
+  /** Set the appearance of the entry just pushed. `colors` is read from `at`, six bytes. */
+  look(rev: number, level: number, colors: Uint8Array, at: number, name: string): void {
+    const n = this.count - 1;
+    this.rev[n] = rev;
+    this.level[n] = level;
+    for (let k = 0; k < 6; k++) this.colors[n * 6 + k] = colors[at + k]!;
+    this.name[n] = name;
+  }
 
   push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number): boolean {
     const n = this.count;
@@ -80,7 +102,9 @@ export class EntityView {
   }
 
   copyFrom(o: EntityView, i: number): boolean {
-    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!);
+    if (!this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!)) return false;
+    this.look(o.rev[i]!, o.level[i]!, o.colors, i * 6, o.name[i]!);
+    return true;
   }
 }
 
@@ -116,6 +140,8 @@ export class ViewRing {
     }
   }
 }
+
+const scratchColors = new Uint8Array(6);
 
 // Encoder scratch: one entry per merged entity.
 const opKind = new Uint8Array(MAX_VIEW * 2);
@@ -161,7 +187,7 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
     } else {
       opBase[n] = i;
       opCur[n] = j;
-      if (base!.gen[i] !== cur.gen[j]) {
+      if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
         opKind[n] = K_REPLACE;
         written++;
       } else if (base!.qx[i] === cur.qx[j] && base!.qy[i] === cur.qy[j] && base!.qz[i] === cur.qz[j] && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
@@ -223,6 +249,16 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
       w.bits(cur.qz[ci]!, 22);
       w.bits(cur.yaw[ci]!, 10);
       w.bits(cur.flags[ci]!, 4);
+      w.bits(cur.rev[ci]!, 4);
+      w.varint(cur.level[ci]!);
+      const c0 = ci * 6;
+      const colors = cur.colors;
+      const coloured = (colors[c0]! | colors[c0 + 1]! | colors[c0 + 2]! | colors[c0 + 3]! | colors[c0 + 4]! | colors[c0 + 5]!) !== 0;
+      w.bool(coloured);
+      if (coloured) for (let q = 0; q < 6; q++) w.u8(colors[c0 + q]!);
+      const name = cur.name[ci]!;
+      w.bool(name !== "");
+      if (name !== "") w.string(name);
       next.copyFrom(cur, ci);
     } else {
       w.bits(OP_UPDATE, 2);
@@ -281,8 +317,14 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const qz = r.bits(22);
       const yaw = r.bits(10);
       const flags = r.bits(4);
+      const rev = r.bits(4);
+      const level = r.varint();
+      if (r.bool()) for (let q = 0; q < 6; q++) scratchColors[q] = r.u8();
+      else scratchColors.fill(0);
+      const name = r.bool() ? r.string(MAX_NAME_LENGTH) : "";
       if (present) i++;
-      if (kind > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags)) return false;
+      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags)) return false;
+      next.look(rev, level, scratchColors, 0, name);
     } else if (op === OP_UPDATE) {
       if (!present) return false;
       let qx = base!.qx[i]!;
@@ -304,6 +346,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (r.bool()) yaw = r.bits(10);
       if (r.bool()) flags = r.bits(4);
       if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags)) return false;
+      next.look(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!);
       i++;
     } else return false;
     if (r.overflow) return false;

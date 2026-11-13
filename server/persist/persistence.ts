@@ -19,7 +19,12 @@ import type { WorldStore } from "./store.ts";
 export interface PersistenceOptions {
   /** Live entity positions refreshed per commit. */
   lazyRowsPerCommit: number;
+  /** Journal entries kept; older ones are deleted. */
+  journalKeep: number;
 }
+
+/** Commits between journal prunings. */
+const PRUNE_EVERY = 512;
 
 export interface LoadReport {
   fresh: boolean;
@@ -44,6 +49,8 @@ export class Persistence {
   /** Newest journal entry known to be on disk. */
   durableSeq = 0;
   readonly survivors = new Map<string, number>();
+  /** The item ledger, saved in the same transaction as the records it accounts for. */
+  ledger: { dirty: boolean; serialize(): string } | null = null;
 
   private readonly world: ServerWorld;
   private readonly records: Records;
@@ -60,7 +67,7 @@ export class Persistence {
     this.world = world;
     this.records = records;
     this.store = store;
-    this.opts = { lazyRowsPerCommit: 256, ...opts };
+    this.opts = { lazyRowsPerCommit: 256, journalKeep: 100_000, ...opts };
     world.structs.onChunkChanged = (chunk) => this.dirtyChunks.add(chunk);
   }
 
@@ -81,8 +88,7 @@ export class Persistence {
     if (store.fresh) world.structs.chunks.forEach((t, chunk) => t && this.dirtyChunks.add(chunk));
     for (const rec of store.loadEntities()) this.records.byPid.set(rec.pid, rec);
     for (const [name, pid] of store.survivors()) this.survivors.set(name, pid);
-    const last = store.journal().at(-1);
-    this.journalSeq = this.durableSeq = last ? last.seq : 0;
+    this.journalSeq = this.durableSeq = store.lastJournalSeq();
     return { fresh: store.fresh, tick: world.tick, structures, records: this.records.byPid.size };
   }
 
@@ -164,6 +170,9 @@ export class Persistence {
           store.saveEntity(rec);
         }
         for (const j of this.pending) store.appendJournal(j.seq, j.tick, j.op, j.data);
+        if (this.ledger?.dirty) store.setMeta("ledger", this.ledger.serialize());
+        // The journal is an audit trail, not the state: keep the recent part.
+        if (this.commits % PRUNE_EVERY === PRUNE_EVERY - 1) store.pruneJournal(this.opts.journalKeep);
         for (const [name, pid] of this.newSurvivors) store.saveSurvivor(name, pid);
         store.setMeta("tick", world.tick);
         store.setMeta("day_offset", world.dayOffset);
@@ -183,6 +192,7 @@ export class Persistence {
     this.pending.length = 0;
     this.newSurvivors.length = 0;
     this.durableSeq = this.journalSeq;
+    if (this.ledger) this.ledger.dirty = false;
     this.commits++;
     for (const cb of callbacks) cb();
   }

@@ -20,6 +20,8 @@ import { Database, type Statement } from "bun:sqlite";
 import type { Registry } from "../../shared/content/registry.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { COLOR_REGIONS, Genome, STAT_COUNT } from "../../shared/sim/genome.ts";
+import { Inventory } from "../../shared/sim/items.ts";
+import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { ChunkTable, StructureStore } from "../../shared/world/structures.ts";
 import { EntityRecord } from "../records.ts";
 
@@ -34,6 +36,10 @@ const COMP_VITALS = 2;
 const COMP_GENOME = 3;
 // 4 (progression) and 5 (markers) are reserved; see planning/architecture/gameplay-model.md.
 const COMP_IDENTITY = 6;
+// Components 1 and 2 are round 1's inventory (item and count pairs) and food.
+// They are read once: the inventory becomes slots, the food is refilled. They are never written.
+const COMP_SLOTS = 7;
+const COMP_VITALS4 = 8;
 /** Bytes per structure slot in a chunk blob. */
 const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
 
@@ -73,6 +79,8 @@ export class WorldStore {
   readonly missingContent: string[] = [];
   readonly fresh: boolean;
 
+  private readonly reg: Registry;
+  private readonly allowMissing: boolean;
   private readonly putMeta: Statement;
   private readonly putChunk: Statement;
   private readonly putEntity: Statement;
@@ -87,6 +95,8 @@ export class WorldStore {
   constructor(path: string, reg: Registry, opts: StoreOptions = {}) {
     const db = new Database(path, { create: true });
     this.db = db;
+    this.reg = reg;
+    this.allowMissing = opts.allowMissingContent ?? false;
     db.exec("PRAGMA journal_mode = WAL");
     db.exec(`PRAGMA synchronous = ${opts.synchronous ?? "NORMAL"}`);
     db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID");
@@ -208,22 +218,35 @@ export class WorldStore {
     w.reset();
     w.u8(RECORD_FORMAT);
     w.string(rec.name);
-    w.varint((rec.items.size > 0 ? 1 : 0) + (rec.foodTick >= 0 ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + rec.extra.size);
-    if (rec.items.size > 0) {
+    const inv = rec.inv;
+    const used = inv ? inv.used() : 0;
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + rec.extra.size);
+    if (inv && used > 0) {
       c.reset();
-      c.varint(rec.items.size);
-      for (const [item, count] of rec.items) {
-        c.varint(this.toSaved[item]!);
-        c.varint(count);
+      c.varint(inv.cap);
+      c.varint(used);
+      for (let slot = 0; slot < inv.cap; slot++) {
+        if (inv.item[slot] === 0) continue;
+        c.varint(slot);
+        c.varint(this.toSaved[inv.item[slot]!]!);
+        c.varint(inv.count[slot]!);
+        c.u8(inv.quality[slot]!);
+        c.varint(inv.dur[slot]!);
+        c.varint(inv.spoilAt[slot]!);
       }
-      w.varint(COMP_INVENTORY);
+      w.varint(COMP_SLOTS);
       w.blob(c.bytes());
     }
-    if (rec.foodTick >= 0) {
+    const v = rec.vitals;
+    if (v) {
       c.reset();
-      c.uint53(rec.food0);
-      c.uint53(rec.foodTick);
-      w.varint(COMP_VITALS);
+      c.uint53(v.tick);
+      for (let i = 0; i < V_COUNT; i++) {
+        c.uint53(v.value[i]!);
+        c.svarint(v.rate[i]!);
+        c.uint53(v.max[i]!);
+      }
+      w.varint(COMP_VITALS4);
       w.blob(c.bytes());
     }
     const g = rec.genome;
@@ -275,14 +298,34 @@ export class WorldStore {
         const blob = r.blob(1 << 20);
         c.reset(blob);
         if (component === COMP_INVENTORY) {
+          // Round 1: a list of items and counts. Lay them out in slots.
+          const inv = (rec.inv ??= new Inventory(40));
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
-            const item = this.toRuntime[c.varint()]!;
+            const item = this.item(c.varint(), row.pid);
             const count = c.varint();
-            if (item !== 0) rec.items.set(item, count);
+            if (item !== 0) inv.add(item, count, 0, 0, 0, this.reg);
+          }
+        } else if (component === COMP_SLOTS) {
+          const inv = (rec.inv = new Inventory(c.varint()));
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) {
+            const slot = c.varint();
+            const item = this.item(c.varint(), row.pid);
+            const count = c.varint();
+            const quality = c.u8();
+            const dur = c.varint();
+            const spoilAt = c.varint();
+            if (item !== 0 && slot < inv.cap) inv.set(slot, item, count, quality, dur, spoilAt);
           }
         } else if (component === COMP_VITALS) {
-          rec.food0 = c.uint53();
-          rec.foodTick = c.uint53();
+          // Round 1 food only: dropped; the survival system starts this body full.
+        } else if (component === COMP_VITALS4) {
+          const v = (rec.vitals = new Vitals());
+          v.tick = c.uint53();
+          for (let i = 0; i < V_COUNT; i++) {
+            v.value[i] = c.uint53();
+            v.rate[i] = c.svarint();
+            v.max[i] = c.uint53();
+          }
         } else if (component === COMP_GENOME) {
           const g = (rec.genome = new Genome());
           if (blob.length < STAT_COUNT * 3 + COLOR_REGIONS) throw new Error(`entity ${row.pid}: short genome`);
@@ -302,8 +345,25 @@ export class WorldStore {
     return out;
   }
 
+  /** Runtime index of a saved item index. An item whose content is gone stops the load unless the operator chose to drop such things. */
+  private item(saved: number, pid: number): number {
+    const item = this.toRuntime[saved] ?? 0;
+    if (item === 0 && !this.allowMissing) throw new Error(`save uses content this build does not have: an item held by record ${pid}`);
+    return item;
+  }
+
   appendJournal(seq: number, tick: number, op: number, data: Uint8Array): void {
     this.putJournal.run(seq, tick, op, data);
+  }
+
+  /** Sequence number of the newest journal entry, or 0. */
+  lastJournalSeq(): number {
+    return Number((this.db.query("SELECT MAX(seq) AS seq FROM journal").get() as { seq: number | null }).seq ?? 0);
+  }
+
+  /** Delete journal entries older than the newest `keep`. */
+  pruneJournal(keep: number): void {
+    this.db.query("DELETE FROM journal WHERE seq <= (SELECT MAX(seq) FROM journal) - ?").run(keep);
   }
 
   journal(afterSeq = 0): JournalEntry[] {

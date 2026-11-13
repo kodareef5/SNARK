@@ -44,7 +44,7 @@ import {
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
-import { Body, MODE_GHOST, stepBody } from "../shared/sim/character.ts";
+import { Body, MODE_GHOST, stepBody, stepOut } from "../shared/sim/character.ts";
 import { F_AWAKE, F_PLAYER } from "../shared/sim/entities.ts";
 import { sortU32 } from "../shared/sort.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
@@ -156,6 +156,10 @@ export class Client {
   textReadyAt = 0;
   /** The session component (state, role, handle, day offset) must be sent. */
   ownDirty = false;
+  /** Versions of owner-private state this connection has been sent; -1 means nothing yet. */
+  sentVitals = -1;
+  sentInv = -1;
+  sentMods = -1;
 
   constructor(id: number, conn: Connection, chunks: number) {
     this.id = id;
@@ -182,6 +186,7 @@ export class Client {
     this.admin = false;
     this.cheatAttempts = 0;
     this.ownDirty = false;
+    this.sentVitals = this.sentInv = -1;
   }
 }
 
@@ -202,6 +207,10 @@ export class GameServer {
   onBodyGone: ((c: Client) => void) | null = null;
   /** Called once per tick after bodies move and commands run, before replication. */
   onStep: ((tick: number) => void) | null = null;
+  /** Called for each connected session just before its snapshot: the moment to send owner-private state. */
+  onReplicate: ((c: Client) => void) | null = null;
+  /** A session's body touched down at this many metres per second. */
+  onLand: ((c: Client, speed: number) => void) | null = null;
   /** Where a returning survivor was last seen, or null for a new one. */
   savedPosition: ((name: string) => { x: number; y: number; z: number; yaw: number } | null) | null = null;
 
@@ -269,6 +278,7 @@ export class GameServer {
         stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[ents.kind[e]!]!, TICK_DT);
         ents.storeBody(e, b);
         ents.yaw[e] = c.heldYaw;
+        if (stepOut.landSpeed > 0) this.onLand?.(c, stepOut.landSpeed);
       } else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[c.kind]!, TICK_DT);
       c.chunk = chunkAt(world.dims, b.x, b.z);
     }
@@ -287,6 +297,7 @@ export class GameServer {
         c.chunk = chunkAt(world.dims, c.body.x, c.body.z);
       }
       if (c.ownDirty) this.sendOwn(c);
+      this.onReplicate?.(c);
       if (snap) this.snapshot(c, T);
       this.syncChunks(c, T);
     }
@@ -314,6 +325,19 @@ export class GameServer {
       w.string(line.length > 330 ? line.slice(0, 330) : line);
       c.conn.send(CH_RELIABLE, w.bytes());
     }
+  }
+
+  /** Start an OWN message for `component`; write its fields to the returned writer, then call `endOwn`. */
+  beginOwn(component: number): BitWriter {
+    const w = this.w;
+    w.reset();
+    w.bits(S_OWN, 4);
+    w.u8(component);
+    return w;
+  }
+
+  endOwn(c: Client): void {
+    c.conn.send(CH_RELIABLE, this.w.bytes());
   }
 
   /** Every client must be sent its session component again (the day offset changed). */
@@ -635,6 +659,7 @@ export class GameServer {
     for (let k = 0; k < n; k++) {
       const i = ids[k]!;
       cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf);
+      cur.look(ents.rev[i]!, ents.level[i]!, ents.colors, i * 6, ents.name[i]!);
     }
 
     const age = T - c.ackTick;

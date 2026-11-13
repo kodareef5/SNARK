@@ -4,7 +4,13 @@ import { HudModel } from "../../client/core/hud.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT, KEY_CONSOLE_PANEL, KEY_CONSOLE_ROW, MAX_LINE } from "../../client/core/ui/console.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
+import type { ClientSession } from "../../client/core/session.ts";
+import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
+import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { CMD_MOVE, CMD_USE } from "../../shared/net/protocol.ts";
+import { Inventory } from "../../shared/sim/items.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 import { BTN_JUMP, BTN_PRIMARY, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
 
 const ASPECTS: [string, number][] = [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]];
@@ -28,10 +34,38 @@ function fullHud(): HudModel {
   m.clock = "23:59";
   m.status = "disconnected (reason -2)";
   m.banner = "SPECTATING";
-  m.vitals.push({ id: "oxygen", label: "Oxygen", fraction: 0.5 });
+  m.vitals[4]!.fraction = 0.5;
   for (let i = 0; i < 80; i++) m.markers.push({ kind: i % 2 ? "player" : "creature", u: (i % 9) / 8, v: (i % 7) / 6 });
   m.markers.push({ kind: "self", u: 1, v: 1 });
   return m;
+}
+
+const reg = coreRegistry();
+const stone = reg.index.get("core:stone")!;
+const berry = reg.index.get("core:berry")!;
+
+/** Just enough of a session for the interface: an inventory, a clock, and a record of what was sent. */
+function fakeSession(inv: Inventory) {
+  const sent: { op: number; bytes: Uint8Array }[] = [];
+  const session = {
+    inventory: inv,
+    serverTick: 1000,
+    logVersion: 0,
+    log: [],
+    command(op: number, args?: (w: BitWriter) => void): number {
+      const w = new BitWriter(32);
+      args?.(w);
+      sent.push({ op, bytes: w.bytes().slice() });
+      return sent.length;
+    },
+  } as unknown as ClientSession;
+  return { session, sent };
+}
+
+function fullInventory(): Inventory {
+  const inv = new Inventory(40);
+  for (let s = 0; s < 40; s++) inv.set(s, s % 3 === 0 ? berry : stone, 100, 0, 0, s % 3 === 0 ? 99999 : 0);
+  return inv;
 }
 
 function overlaps(f: UiFrame, a: number, b: number): boolean {
@@ -44,10 +78,13 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
   for (const [name, aspect] of ASPECTS) {
     for (const consoleOpen of [false, true]) {
       const ui = new Ui();
+      ui.registry = reg;
       ui.console.open = consoleOpen;
+      ui.inventory.open = true;
+      ui.inventory.hover = 3;
       for (let i = 0; i < 60; i++) ui.console.print(`line ${i} ` + "word ".repeat(i));
       ui.console.edit("x".repeat(200));
-      ui.build(aspect, fullHud(), null);
+      ui.build(aspect, fullHud(), fakeSession(fullInventory()).session);
       const f = ui.frame;
       expect(f.height).toBe(720);
       expect(f.width).toBe(Math.round(720 * aspect));
@@ -73,9 +110,10 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
           const p = f.nodes[a]!;
           const q = f.nodes[b]!;
           if (p.interactive && q.interactive) expect(overlaps(f, a, b), `${name}: controls ${p.key} and ${q.key}`).toBe(false);
-          const consoleRow = (k: number) => k >= KEY_CONSOLE_PANEL;
-          // The console covers the HUD on purpose; within one layer, text must not collide.
-          if (p.kind === K_TEXT && q.kind === K_TEXT && consoleRow(p.key) === consoleRow(q.key)) {
+          // Layers: the HUD, the console, a screen. One may cover another on purpose;
+          // within a layer, text must not collide.
+          const layer = (k: number) => (k >= KEY_INV_PANEL ? 2 : k >= KEY_CONSOLE_PANEL ? 1 : 0);
+          if (p.kind === K_TEXT && q.kind === K_TEXT && layer(p.key) === layer(q.key)) {
             expect(overlaps(f, a, b), `${name}: text ${p.key} "${p.text}" and ${q.key} "${q.text}"`).toBe(false);
           }
         }
@@ -85,6 +123,13 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       expect(f.find(KEY_VITAL + 9)!.value).toBe(0.5);
       expect(f.find(KEY_BANNER)!.text).toBe("SPECTATING");
       expect(f.find(KEY_CONSOLE_INPUT) !== null).toBe(consoleOpen);
+      // All forty slots are on the canvas, each with its count; under the console the screen is not drawn at all.
+      expect(f.find(KEY_INV_PANEL) !== null).toBe(!consoleOpen);
+      if (!consoleOpen) {
+        expect(f.find(KEY_INV_SLOT + 39 * 3)!.interactive).toBe(true);
+        expect(f.find(KEY_INV_SLOT + 39 * 3 + 2)!.text).toBe("100");
+        expect(f.find(KEY_INV_INFO)!.text).toContain("berry x100");
+      }
       // At most 64 markers are drawn, and the local player is the last, so it is on top.
       let markers = 0;
       for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_MARKER && f.nodes[i]!.key < KEY_MARKER + 100) markers++;
@@ -227,4 +272,66 @@ test("controls: keys and mouse become one input sample", () => {
   expect(c.pitch).toBe(1.5);
   c.look(0, 100000);
   expect(c.pitch).toBe(-1.5);
+});
+
+test("the inventory screen turns clicks into commands and never changes anything by itself", () => {
+  const inv = new Inventory(40);
+  inv.set(0, stone, 80, 0, 0, 0);
+  inv.set(5, berry, 9, 0, 0, 5000);
+  const { session, sent } = fakeSession(inv);
+  const ui = new Ui();
+  ui.registry = reg;
+  const key = (slot: number) => KEY_INV_SLOT + slot * 3;
+  const decode = (bytes: Uint8Array): number[] => {
+    const r = new BitReader(bytes);
+    return [r.bits(1), r.u8(), r.bits(1), r.u8(), r.u16(), r.u16()];
+  };
+
+  // Closed: clicks do nothing. I opens it; the mouse is then free, and the keyboard still walks.
+  ui.pointer(0, key(0), 0, 0, 0, session);
+  expect(ui.key("KeyI", true, false, session)).toBe(true);
+  expect(ui.inventory.open).toBe(true);
+  expect(ui.wantsPointerLock).toBe(false);
+  expect(ui.captureKeyboard).toBe(false);
+  expect(ui.key("KeyW", true, false, session)).toBe(false);
+
+  // Click a stack, click an empty slot: one move of the whole stack, naming what the client thinks it is moving.
+  ui.pointer(0, key(0), 0, 0, 0, session);
+  expect(ui.inventory.held).toBe(0);
+  expect(sent.length).toBe(0);
+  ui.pointer(0, key(7), 0, 0, 0, session);
+  expect(sent.map((c) => c.op)).toEqual([CMD_MOVE]);
+  expect(decode(sent[0]!.bytes)).toEqual([0, 0, 0, 7, 0, stone]);
+  expect(ui.inventory.held).toBe(-1);
+  expect(inv.count[0]).toBe(80); // the mirror waits for the server
+
+  // Middle click picks up half; putting a stack back on its own slot cancels; an empty slot cannot be picked up.
+  ui.pointer(0, key(5), 0, 0, 1, session);
+  ui.pointer(0, key(6), 0, 0, 0, session);
+  expect(decode(sent[1]!.bytes)).toEqual([0, 5, 0, 6, 4, berry]);
+  ui.pointer(0, key(0), 0, 0, 0, session);
+  ui.pointer(0, key(0), 0, 0, 0, session);
+  ui.pointer(0, key(20), 0, 0, 0, session);
+  expect(sent.length).toBe(2);
+  expect(ui.inventory.held).toBe(-1);
+
+  // Right click uses; on an empty slot it does nothing.
+  ui.pointer(0, key(5), 0, 0, 2, session);
+  ui.pointer(0, key(21), 0, 0, 2, session);
+  expect(sent.map((c) => c.op)).toEqual([CMD_MOVE, CMD_MOVE, CMD_USE]);
+  const r = new BitReader(sent[2]!.bytes);
+  expect([r.u8(), r.u16()]).toEqual([5, berry]);
+
+  // A held stack that the server takes away is let go of; hovering describes a stack.
+  ui.pointer(0, key(5), 0, 0, 0, session);
+  inv.set(5, 0, 0, 0, 0, 0);
+  ui.build(16 / 9, new HudModel(), session);
+  expect(ui.inventory.held).toBe(-1);
+  ui.pointer(2, key(0), 0, 0, 0, session);
+  ui.build(16 / 9, new HudModel(), session);
+  expect(ui.frame.find(KEY_INV_INFO)!.text).toBe("stone x80  40.0 kg");
+  expect(ui.frame.find(key(0) + 1)!.text).toBe("ston");
+  expect(ui.key("Escape", true, false, session)).toBe(true);
+  expect(ui.inventory.open).toBe(false);
+  expect(ui.wantsPointerLock).toBe(true);
 });

@@ -17,6 +17,8 @@ export const CORE_CONTENT: readonly Def[] = [
     sprintMul: 1.6,
     jumpSpeed: 7,
     food: { max: 100, perHour: 6 },
+    waterPerHour: 9,
+    slots: 40,
     stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015] },
   },
   {
@@ -41,8 +43,11 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "structure", id: "core:pillar", mesh: "box", color: 6, half: [0.25, 3, 0.25], hp: 800 },
   { type: "structure", id: "core:step", mesh: "box", color: 7, half: [1, 0.15, 0.5], hp: 400 },
   { type: "structure", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
-  { type: "item", id: "core:fiber", stack: 200 },
-  { type: "item", id: "core:stone", stack: 100 },
+  { type: "item", id: "core:fiber", stack: 200, weight: 0.01, color: 7 },
+  { type: "item", id: "core:stone", stack: 100, weight: 0.5, color: 15 },
+  { type: "item", id: "core:berry", stack: 100, weight: 0.1, spoilHours: 4, eat: { food: 4, water: 2 }, color: 8 },
+  { type: "item", id: "core:meat", stack: 20, weight: 0.1, spoilHours: 1, eat: { food: 25, health: 5 }, color: 3 },
+  { type: "item", id: "core:waterskin", stack: 1, weight: 1, eat: { water: 60 }, label: "water skin", color: 14 },
 ];
 
 /** The same definitions as a pack, for stacking other packs on top. */

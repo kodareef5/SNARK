@@ -24,6 +24,10 @@ export interface SpeciesDef {
   readonly stamina?: { readonly sprint: number; readonly regen: number; readonly jump: number };
   /** Food capacity and loss per in-game hour. Omitted for species that do not eat. */
   readonly food?: { readonly max: number; readonly perHour: number };
+  /** Water lost per in-game hour. Omitted for species that do not drink. */
+  readonly waterPerHour?: number;
+  /** Inventory slots. Defaults to none. */
+  readonly slots?: number;
   /** How points become values, per stat: [base, gain per wild point, gain per tamed point]. */
   readonly stats?: { readonly [S in StatName]?: StatCurve };
 }
@@ -41,7 +45,18 @@ export interface StructureDef {
 export interface ItemDef {
   readonly type: "item";
   readonly id: string;
+  /** Largest stack. 1 for things that carry their own quality and durability. */
   readonly stack: number;
+  /** Kilograms each. Defaults to 0.1. */
+  readonly weight?: number;
+  /** In-game hours one lasts before it spoils. Omitted for things that keep. */
+  readonly spoilHours?: number;
+  /** What eating one restores, in points. */
+  readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
+  /** Name shown in the interface. Defaults to the id without its namespace. */
+  readonly label?: string;
+  /** Palette index of its swatch in the interface. */
+  readonly color?: number;
 }
 
 export type Def = SpeciesDef | StructureDef | ItemDef;

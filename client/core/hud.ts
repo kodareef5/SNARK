@@ -13,6 +13,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
+import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../../shared/sim/vitals.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 
@@ -46,12 +47,13 @@ export class HudModel {
   fps = 0;
   corrections = 0;
   nearby = 0;
-  /** Stamina comes from the predicted body. The rest are placeholders until vitals replicate. */
+  /** Stamina comes from the predicted body; the others from vitals evaluated at the server's tick. */
   readonly vitals: Vital[] = [
     { id: "health", label: "Health", fraction: 1 },
     { id: "stamina", label: "Stamina", fraction: 1 },
     { id: "food", label: "Food", fraction: 1 },
     { id: "water", label: "Water", fraction: 1 },
+    { id: "oxygen", label: "Oxygen", fraction: 1 },
   ];
   readonly markers: Marker[] = [];
   /** Lines of text at the top left. Rewritten a few times a second, not every frame. */
@@ -118,6 +120,15 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   }
   model.markers.push({ kind: "self", u: mapU(world.hf, b.x), v: mapV(world.hf, b.z) });
   model.vitals[1]!.fraction = b.staminaMax > 0 ? b.stamina / (b.staminaMax * STAMINA_UNITS) : 0;
+  if (session.hasVitals) {
+    const v = session.vitals;
+    const tick = session.serverTick;
+    const fraction = (i: number): number => (v.max[i]! > 0 ? v.at(i, tick) / v.max[i]! : 1);
+    model.vitals[0]!.fraction = fraction(V_HEALTH);
+    model.vitals[2]!.fraction = fraction(V_FOOD);
+    model.vitals[3]!.fraction = fraction(V_WATER);
+    model.vitals[4]!.fraction = fraction(V_OXYGEN);
+  }
   model.clock = formatHour(hourOfDay(session.latestSnapshot, session.dayOffset));
   model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? "DEAD" : "";
   model.crosshair = model.banner === "";

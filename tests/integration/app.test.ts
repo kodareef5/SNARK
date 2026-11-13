@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { KEY_CONSOLE_INPUT, KEY_CONSOLE_ROW } from "../../client/core/ui/console.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_READOUT, KEY_STATUS, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
+import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { buildCorePack } from "../../tools/pack/build.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -120,4 +122,55 @@ test("a closed connection is reported on the interface", () => {
   h.run(300, (now) => (packet = app.frame(now, 1280, 720)));
   expect(packet).toBeNull();
   expect(app.ui.frame.find(KEY_STATUS)!.text).toBe("disconnected (reason 7)");
+});
+
+test("the inventory screen moves and eats through the server, and the HUD bars are the server's numbers", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const app = client(h, "ada");
+  const run = (ms: number) => h.run(ms, (now) => app.frame(now, 1280, 720));
+  const type = (line: string) => {
+    app.key("Backquote", true);
+    app.textInput(KEY_CONSOLE_INPUT, line);
+    app.key("Enter", true);
+    app.key("Backquote", true);
+    run(300);
+  };
+  run(500);
+  type("enablecheats");
+  type("give stone 150");
+  type("give berry 5");
+  const rec = h.host.records.byPid.get(h.client(app.session)!.pid)!;
+  const inv = h.host.items.inv(rec);
+  h.host.survival.add(rec, V_FOOD, -30);
+  run(300);
+  // The food bar is what the server holds.
+  expect(app.ui.frame.find(KEY_VITAL + 5)!.value).toBeCloseTo(h.host.survival.value(rec, V_FOOD) / 100, 4);
+
+  app.key("KeyI", true);
+  run(50);
+  const slot = (s: number) => KEY_INV_SLOT + s * 3;
+  expect(app.ui.frame.find(slot(0) + 2)!.text).toBe("100");
+  expect(app.ui.frame.find(slot(1) + 2)!.text).toBe("50");
+  // Pick up the 50 and put it in slot 9.
+  app.pointer(0, slot(1), 0, 0, 0);
+  app.pointer(0, slot(9), 0, 0, 0);
+  run(300);
+  expect(inv.count[9]).toBe(50);
+  expect(inv.item[1]).toBe(0);
+  expect(app.ui.frame.find(slot(9) + 2)!.text).toBe("50");
+  expect(app.ui.frame.find(slot(1) + 2)).toBeNull();
+  // Eat a berry with a right click.
+  const berries = app.session.inventory!.item.indexOf(h.reg.index.get("core:berry")!);
+  const food = h.host.survival.value(rec, V_FOOD);
+  app.pointer(0, slot(berries), 0, 0, 2);
+  run(300);
+  expect(inv.count[berries]).toBe(4);
+  expect(h.host.survival.value(rec, V_FOOD)).toBeGreaterThan(food + 3.9);
+  expect(app.ui.frame.find(slot(berries) + 2)!.text).toBe("4");
+  // The screen leaves the keyboard to the body.
+  const z = h.world.ents.z[h.ent(app.session)]!;
+  app.key("KeyW", true);
+  run(1000);
+  expect(h.world.ents.z[h.ent(app.session)]!).toBeGreaterThan(z + 2);
+  expect(h.host.items.audit()).toEqual([]);
 });

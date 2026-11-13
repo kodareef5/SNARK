@@ -2,7 +2,7 @@
 //
 // The simulation's hot columns (position, velocity, flags) live in typed arrays
 // and change every tick. Everything else about a survivor or creature (name,
-// inventory, and later stat points, colours, ancestry, progression) lives here,
+// inventory, vitals, stat points, colours, ancestry, progression) lives here,
 // changes only when a command or deadline touches it, and is what a save must
 // never lose or duplicate.
 //
@@ -11,6 +11,8 @@
 
 import { makePid } from "../shared/ids.ts";
 import type { Genome } from "../shared/sim/genome.ts";
+import type { Inventory } from "../shared/sim/items.ts";
+import type { Vitals } from "../shared/sim/vitals.ts";
 
 export class EntityRecord {
   readonly pid: number;
@@ -22,11 +24,10 @@ export class EntityRecord {
   y = 0;
   z = 0;
   yaw = 0;
-  /** Item content index -> count. */
-  readonly items = new Map<number, number>();
-  /** Food as a lazy quantity: millionths of a point at `foodTick`. A tick of -1 means the species does not eat. */
-  food0 = 0;
-  foodTick = -1;
+  /** What it carries. Edited only through server/items.ts; null until something is put in. */
+  inv: Inventory | null = null;
+  /** Health, food, water, oxygen; null for bodies that have none. Owned by server/survival.ts. */
+  vitals: Vitals | null = null;
   /** Stat points, colours and ancestry; null for bodies that have none. */
   genome: Genome | null = null;
   /** Hash of the device key that owns this survivor; null until one claims it. */
@@ -67,35 +68,5 @@ export class Records {
     this.entOf.delete(pid);
     this.dirty.delete(pid);
     this.deleted.push(pid);
-  }
-
-  give(pid: number, item: number, count: number): void {
-    const rec = this.byPid.get(pid)!;
-    rec.items.set(item, (rec.items.get(item) ?? 0) + count);
-    this.dirty.add(pid);
-  }
-
-  /**
-   * Move items between two records. All or nothing; both records join the next
-   * commit, so a crash can never save one side without the other.
-   */
-  transfer(from: number, to: number, item: number, count: number): boolean {
-    const a = this.byPid.get(from);
-    const b = this.byPid.get(to);
-    if (!a || !b || from === to || !(count > 0) || !Number.isInteger(count)) return false;
-    const have = a.items.get(item) ?? 0;
-    if (have < count) return false;
-    if (have === count) a.items.delete(item);
-    else a.items.set(item, have - count);
-    b.items.set(item, (b.items.get(item) ?? 0) + count);
-    this.dirty.add(from);
-    this.dirty.add(to);
-    return true;
-  }
-
-  totalOf(item: number): number {
-    let n = 0;
-    for (const rec of this.byPid.values()) n += rec.items.get(item) ?? 0;
-    return n;
   }
 }

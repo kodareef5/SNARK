@@ -96,6 +96,44 @@ export function addAdminCommands(con: Console): void {
         return `${STAT_NAMES[stat]}: ${points} points, value ${Number(value.toFixed(3))}`;
       },
     },
+    {
+      name: "give",
+      usage: "<item> [count]",
+      help: "Create items in your inventory. The item may be named without its namespace.",
+      admin: true,
+      run(ctx, args) {
+        const c = ctx.client;
+        const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
+        if (!c || !rec) return "this needs a survivor";
+        const reg = ctx.host.world.reg;
+        const item = reg.index.get(args[0] ?? "") ?? reg.index.get(`core:${args[0]}`);
+        if (item === undefined || !ctx.host.items.isItem(item)) return `no item "${args[0] ?? ""}"`;
+        const count = args[1] === undefined ? 1 : parseNumber(args[1]);
+        if (!Number.isInteger(count) || count < 1 || count > 10000) return "count must be a whole number from 1 to 10000";
+        const made = ctx.host.items.mint(rec, item, count);
+        return made === count ? `gave ${made} ${reg.ids[item]}` : `gave ${made} ${reg.ids[item]}; ${count - made} did not fit`;
+      },
+    },
+    {
+      name: "spawn",
+      usage: "<species> [level]",
+      help: "Put a wild creature four metres in front of you.",
+      admin: true,
+      run(ctx, args) {
+        const c = ctx.client;
+        if (!c) return needsBody;
+        const world = ctx.host.world;
+        const reg = world.reg;
+        const id = reg.index.has(args[0] ?? "") ? args[0]! : `core:${args[0]}`;
+        const kind = reg.index.get(id);
+        if (kind === undefined || reg.defs[kind]!.type !== "species") return `no species "${args[0] ?? ""}"`;
+        const level = args[1] === undefined ? 1 : parseNumber(args[1]);
+        if (!Number.isInteger(level) || level < 1 || level > 1000) return "level must be a whole number from 1 to 1000";
+        const a = (c.heldYaw / 65536) * 2 * Math.PI;
+        const e = ctx.host.spawnCreature(id, c.body.x + Math.sin(a) * 4, c.body.z + Math.cos(a) * 4, level);
+        return e < 0 ? "no room for it there" : `spawned ${id} level ${world.ents.level[e]}`;
+      },
+    },
   ];
   con.add(...commands);
 }

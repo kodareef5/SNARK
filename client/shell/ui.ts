@@ -26,6 +26,7 @@ interface Bound {
   value: number;
   version: number;
   interactive: boolean;
+  tint: number;
   order: number;
   seen: number;
 }
@@ -51,6 +52,7 @@ export class UiView {
     root.addEventListener("pointerdown", forward(0));
     root.addEventListener("pointerup", forward(1));
     root.addEventListener("pointermove", forward(2));
+    root.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
   /** Make the page match `f`, scaled so the canvas is `heightPx` tall. Writes only what changed. */
@@ -79,10 +81,11 @@ export class UiView {
         s.height = `${n.h * scale}px`;
         s.lineHeight = `${n.h * scale}px`;
       }
-      if (rescaled || b.style !== n.style) {
+      if (rescaled || b.style !== n.style || b.tint !== n.tint) {
         b.style = n.style;
+        b.tint = n.tint;
         const st = STYLES[n.style]!;
-        s.background = (st.fill & 255) === 0 ? "none" : rgba(st.fill);
+        s.background = n.tint >= 0 ? rgb(n.tint) : (st.fill & 255) === 0 ? "none" : rgba(st.fill);
         s.color = rgb(st.ink);
         s.fontSize = `${st.font * scale}px`;
         s.textAlign = st.align === 1 ? "center" : st.align === 2 ? "right" : "left";
@@ -155,7 +158,7 @@ export class UiView {
     el.dataset.k = String(n.key);
     el.style.pointerEvents = "none";
     this.root.append(el);
-    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", value: NaN, version: 0, interactive: false, order: -1, seen: 0 };
+    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", value: NaN, version: 0, interactive: false, tint: -2, order: -1, seen: 0 };
     this.bound.set(n.key, b);
     return b;
   }

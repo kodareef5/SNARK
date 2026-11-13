@@ -7,7 +7,7 @@ import { createHost } from "../../server/host.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { BitReader } from "../../shared/net/codec.ts";
-import { HOLDERS, OP_TRANSFER, START } from "../fixtures/crash-child.ts";
+import { HOLDERS, OP_BURN, OP_MINT, OP_TRANSFER, START } from "../fixtures/crash-child.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -29,7 +29,7 @@ test("a world survives restart: tick, structures, records and where a survivor s
   const crate = h.world.structs.chunks.findIndex((t) => t && t.live > 20);
   expect(h.world.structs.remove(crate * 65536 + 3)).toBe(true);
   const pid = h.world.ents.pid[h.ent(ada)]!;
-  h.host.records.give(pid, stone, 40);
+  h.host.items.mint(h.host.records.byPid.get(pid)!, stone, 40);
   h.run(500);
   const where = { x: h.world.ents.x[h.ent(ada)]!, z: h.world.ents.z[h.ent(ada)]! };
   expect(where.z).toBeGreaterThan(248);
@@ -55,7 +55,8 @@ test("a world survives restart: tick, structures, records and where a survivor s
   });
   const t = h2.world.structs.chunks[Math.floor(added / 65536)]!;
   expect(t.hp[added & 0xffff]).toBe(777);
-  expect(h2.host.records.byPid.get(pid)!.items.get(stone)).toBe(40);
+  expect(h2.host.records.byPid.get(pid)!.inv!.total(stone)).toBe(40);
+  expect(h2.host.items.audit()).toEqual([]);
 
   // The same name returns to the same body, where it logged out.
   const again = h2.join("ada");
@@ -83,6 +84,37 @@ test("a save that uses removed content refuses to load unless told to drop it", 
   const back = createHost(full, { dbPath: db });
   expect(back.world.structs.count).toBe(createHost(full).world.structs.count);
   back.shutdown();
+});
+
+test("an item whose content is gone stops the load, and a ledger that does not balance stops it too", () => {
+  const db = join(dir, "items.db");
+  const full = coreRegistry();
+  const berry = full.index.get("core:berry")!;
+  const stone = full.index.get("core:stone")!;
+  const host = createHost(full, { dbPath: db });
+  const rec = host.records.create(full.index.get("core:grazer")!, "mule");
+  expect(host.items.mint(rec, berry, 30)).toBe(30);
+  expect(host.items.mint(rec, stone, 250)).toBe(250);
+  host.shutdown();
+
+  // Round 1 dropped such items without a word.
+  const without = compileContent(CORE_CONTENT.filter((d) => d.id !== "core:berry")).registry!;
+  expect(() => createHost(without, { dbPath: db })).toThrow(/content this build does not have/);
+  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true } });
+  expect(forced.records.byPid.get(rec.pid)!.inv!.total(without.index.get("core:stone")!)).toBe(250);
+  expect(forced.items.audit()).toEqual([]);
+  forced.persistence!.store.close(); // not committed: the save keeps its berries
+
+  const back = createHost(full, { dbPath: db });
+  expect(back.records.byPid.get(rec.pid)!.inv!.total(berry)).toBe(30);
+  // Tamper with the books: one stack grows without a mint.
+  const inv = back.records.byPid.get(rec.pid)!.inv!;
+  inv.set(39, stone, 99, 0, 0, 0);
+  back.records.dirty.add(rec.pid);
+  expect(back.items.audit().length).toBe(1);
+  back.shutdown();
+  expect(() => createHost(full, { dbPath: db })).toThrow(/ledger does not balance[\s\S]*core:stone: 349 in the world, ledger says 250/);
+  createHost(full, { dbPath: db, allowLedgerMismatch: true }).persistence!.store.close();
 });
 
 test("commit callbacks run only after the transaction is durable", () => {
@@ -130,6 +162,7 @@ test("killing the process at any moment loses no acknowledged trade and conserve
     const store = new WorldStore(db, reg);
     const journal = store.journal();
     const records = store.loadEntities().sort((a, b) => a.pid - b.pid);
+    const ledgerText = String(store.meta("ledger"));
     store.close();
 
     // Nothing acknowledged is missing, and each run added to the same history.
@@ -138,22 +171,37 @@ test("killing the process at any moment loses no acknowledged trade and conserve
     journalled = journal.length;
     expect(journal.map((j) => j.seq)).toEqual(journal.map((_, i) => i + 1));
 
-    // Conservation: no item created or destroyed.
-    expect(records.length).toBe(HOLDERS);
-    expect(records.reduce((n, r) => n + (r.items.get(stone) ?? 0), 0)).toBe(HOLDERS * START);
-
     // Atomicity: the saved inventories are exactly the journal applied to the start.
+    expect(records.length).toBe(HOLDERS);
     const balance = new Map(records.map((r) => [r.pid, START]));
+    let minted = HOLDERS * START;
+    let burned = 0;
     const r = new BitReader();
     for (const j of journal) {
-      expect(j.op).toBe(OP_TRANSFER);
       r.reset(j.data);
       const from = r.uint53();
-      const to = r.uint53();
-      const count = r.varint();
-      balance.set(from, balance.get(from)! - count);
-      balance.set(to, balance.get(to)! + count);
+      if (j.op === OP_MINT) {
+        const n = r.varint();
+        minted += n;
+        balance.set(from, balance.get(from)! + n);
+      } else if (j.op === OP_BURN) {
+        const n = r.varint();
+        burned += n;
+        balance.set(from, balance.get(from)! - n);
+      } else {
+        expect(j.op).toBe(OP_TRANSFER);
+        const to = r.uint53();
+        const count = r.varint();
+        balance.set(from, balance.get(from)! - count);
+        balance.set(to, balance.get(to)! + count);
+      }
     }
-    for (const rec of records) expect(rec.items.get(stone) ?? 0).toBe(balance.get(rec.pid)!);
+    // Conservation: what exists is what was created minus what was destroyed, and
+    // the ledger saved with it says the same.
+    expect(records.reduce((n, rec) => n + (rec.inv?.total(stone) ?? 0), 0)).toBe(minted - burned);
+    const ledger = JSON.parse(ledgerText) as Record<string, [number, number]>;
+    expect(ledger["core:stone"]).toEqual([minted, burned]);
+    for (const rec of records) expect(rec.inv?.total(stone) ?? 0).toBe(balance.get(rec.pid)!);
+    expect(burned).toBeGreaterThan(0);
   }
 });

@@ -41,6 +41,14 @@ export class EntityStore {
   readonly speedQ: Uint16Array;
   readonly swimQ: Uint16Array;
   readonly mflags: Uint8Array;
+  /**
+   * What others are told about a body when it enters their view: level, six
+   * region colours, a name. `rev` changes whenever any of it does.
+   */
+  readonly level: Uint16Array;
+  readonly colors: Uint8Array;
+  readonly name: string[];
+  readonly rev: Uint8Array;
 
   /** Chunk the entity is linked into, or -1. */
   readonly chunk: Int32Array;
@@ -75,6 +83,10 @@ export class EntityStore {
     this.speedQ = new Uint16Array(cap);
     this.swimQ = new Uint16Array(cap);
     this.mflags = new Uint8Array(cap);
+    this.level = new Uint16Array(cap);
+    this.colors = new Uint8Array(cap * 6);
+    this.name = new Array<string>(cap).fill("");
+    this.rev = new Uint8Array(cap);
     this.chunk = new Int32Array(cap).fill(-1);
     this.chunkHead = new Int32Array(chunkCount(dims)).fill(-1);
     this.next = new Int32Array(cap).fill(-1);
@@ -107,8 +119,20 @@ export class EntityStore {
     this.speedQ[i] = 1000;
     this.swimQ[i] = 1000;
     this.mflags[i] = 0;
+    this.level[i] = 0;
+    this.colors.fill(0, i * 6, i * 6 + 6);
+    this.name[i] = "";
+    this.rev[i] = (this.rev[i]! + 1) & 15;
     this.link(i, chunkAt(this.dims, x, z));
     return i;
+  }
+
+  /** Set what others see of an entity. Clients that already see it are sent it again. */
+  setLook(i: number, level: number, colors: ArrayLike<number> | null, name: string): void {
+    this.level[i] = level > 65535 ? 65535 : level;
+    for (let k = 0; k < 6; k++) this.colors[i * 6 + k] = colors ? colors[k]! : 0;
+    this.name[i] = name;
+    this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
   /** Copy an entity's predicted state into `b`. */

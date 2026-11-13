@@ -24,6 +24,9 @@ import {
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
   OWN_SESSION,
+  OWN_SLOTS,
+  OWN_VITALS,
+  BOX_SELF,
   PITCH_LIMIT,
   PROTOCOL_VERSION,
   SESSION_ALIVE,
@@ -43,6 +46,8 @@ import {
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { Inventory } from "../../shared/sim/items.ts";
+import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
@@ -69,6 +74,10 @@ export class RemoteSample {
   /** Radians. */
   readonly yaw = new Float32Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
+  readonly level = new Uint16Array(MAX_VIEW);
+  /** Six colour regions per entity; zero means the species' own colour. */
+  readonly colors = new Uint8Array(MAX_VIEW * 6);
+  readonly name: string[] = new Array<string>(MAX_VIEW).fill("");
 }
 
 const HISTORY = 128;
@@ -108,6 +117,15 @@ export class ClientSession {
   /** Text from the server, oldest first. `logVersion` counts every line ever added. */
   readonly log: TextLine[] = [];
   logVersion = 0;
+  /**
+   * The survivor's vitals as the server last described them: values at a tick
+   * and their rates. Evaluate with `vitals.at(i, serverTick)`; no further
+   * messages are needed while the rates hold. `hasVitals` is false until told.
+   */
+  readonly vitals = new Vitals();
+  hasVitals = false;
+  /** A mirror of the survivor's own inventory; null until the server sends it. */
+  inventory: Inventory | null = null;
   /** Called with the sequence number and code when the server answers a command. */
   onResult: ((seq: number, code: number) => void) | null = null;
   /** Predicted local body after the latest simulated tick. */
@@ -267,6 +285,9 @@ export class ClientSession {
       out.id[n] = id;
       out.kind[n] = b.kind[j]!;
       out.flags[n] = b.flags[j]!;
+      out.level[n] = b.level[j]!;
+      out.name[n] = b.name[j]!;
+      for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
       if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);
@@ -348,7 +369,48 @@ export class ClientSession {
       this.admin = admin;
       this.ownHandle = handle;
       this.dayOffset = dayOffset;
+    } else if (component === OWN_VITALS) {
+      const v = this.vitals;
+      const tick = r.u32();
+      const fields = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      for (let i = 0; i < V_COUNT * 3; i += 3) {
+        fields[i] = r.uint53();
+        fields[i + 1] = r.svarint();
+        fields[i + 2] = r.uint53();
+      }
+      if (r.overflow) return;
+      v.tick = tick;
+      for (let i = 0; i < V_COUNT; i++) {
+        v.value[i] = fields[i * 3]!;
+        v.rate[i] = fields[i * 3 + 1]!;
+        v.max[i] = fields[i * 3 + 2]!;
+      }
+      v.version++;
+      this.hasVitals = true;
+    } else if (component === OWN_SLOTS) {
+      const box = r.bits(1);
+      const cap = r.u8();
+      const full = r.bool();
+      const count = r.u8();
+      if (r.overflow || box !== BOX_SELF) return;
+      let inv = this.inventory;
+      if (!inv || inv.cap !== cap || full) inv = this.inventory = new Inventory(cap);
+      for (let k = 0; k < count; k++) {
+        const slot = r.u8();
+        const item = r.u16();
+        const n = item === 0 ? 0 : r.u16();
+        const quality = item === 0 ? 0 : r.u8();
+        const dur = item === 0 ? 0 : r.u16();
+        const spoilAt = item === 0 ? 0 : r.u32();
+        if (r.overflow || slot >= cap) return;
+        inv.set(slot, item, n, quality, dur, spoilAt);
+      }
     }
+  }
+
+  /** The server tick as best this client knows it, for evaluating vitals and spoil clocks. */
+  get serverTick(): number {
+    return Math.floor(this.renderClock);
   }
 
   private welcome(r: BitReader): void {
