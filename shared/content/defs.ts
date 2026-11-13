@@ -69,6 +69,15 @@ export interface StructureDef {
   /** Collider half extents in metres; the structure's position is the box centre. */
   readonly half: readonly [number, number, number];
   readonly hp: number;
+  /** What it is made of: a material definition, which says what each kind of damage does to it. Omitted: nothing harms it. */
+  readonly material?: string;
+}
+
+/** What something built is made of: what it takes of each kind of damage. A kind not given does nothing to it. */
+export interface MaterialDef {
+  readonly type: "material";
+  readonly id: string;
+  readonly takes: { readonly [T in DamageType]?: number };
 }
 
 export interface ItemDef {
@@ -122,9 +131,10 @@ export interface WeaponFacet {
   readonly reload?: number;
   readonly draw?: number;
   readonly interval?: number;
-  /** Thrown: metres per second it leaves the hand at, and seconds until it goes off (0 for on impact). */
+  /** Thrown: metres per second it leaves the hand at, seconds until it goes off, and how far its blast reaches, metres. */
   readonly speed?: number;
   readonly fuse?: number;
+  readonly blast?: number;
   /** Uses before it breaks, at primitive quality. */
   readonly uses: number;
   /** Works under water. */
@@ -270,4 +280,4 @@ export interface BuffDef {
   readonly good?: boolean;
 }
 
-export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef | BuffDef;
+export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef | BuffDef | MaterialDef;

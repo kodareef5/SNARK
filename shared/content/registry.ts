@@ -72,6 +72,12 @@ export interface Registry {
   readonly ammoTorporOver: Float32Array;
   readonly ammoTorporSeconds: Float32Array;
   readonly ammoBuff: Uint16Array;
+  /** Per structure: what it takes of each DMG_ type, from its material. Null for everything else, and for a structure nothing harms. */
+  readonly structTakes: readonly (Float32Array | null)[];
+  /** A thrown weapon: metres per second off the hand, ticks until it goes off, and how far its blast reaches. */
+  readonly throwSpeed: Float32Array;
+  readonly fuseTicks: Uint16Array;
+  readonly blast: Float32Array;
 }
 
 /** How far bare hands and a melee weapon reach unless content says otherwise. */
@@ -144,6 +150,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
     } else if (d.type === "levels") {
       if (d.xp.length < 2 || d.xp[0] !== 0 || d.xp.some((v, i) => i > 0 && v <= d.xp[i - 1]!)) errors.push(`${d.id}: xp must start at 0 and rise`);
       if (d.engramPoints.length !== d.xp.length) errors.push(`${d.id}: engramPoints must have one entry per level`);
+    } else if (d.type === "material") {
+      for (const [type, v] of Object.entries(d.takes)) {
+        if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);
+      }
     } else if (d.type === "buff") {
       if (d.seconds !== undefined) positive(d, "seconds", d.seconds, 86400);
       for (const [name, v] of [["speed", d.speed], ["dealt", d.dealt], ["taken", d.taken]] as const) {
@@ -199,6 +209,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       for (const n of d.needs) want(d, n.item, "item");
     } else if (d.type === "engram") for (const r of d.unlocks) want(d, r, "recipe");
     else if (d.type === "species") for (const drop of d.drops ?? []) want(d, drop.item, "item");
+    else if (d.type === "structure" && d.material !== undefined) want(d, d.material, "material");
     else if (d.type === "item") {
       for (const a of d.weapon?.ammo ?? []) if (!items.get(a)?.ammo) errors.push(`${d.id}: "${a}" is not ammunition`);
       for (const a of d.weapon?.fits ?? []) if (!items.get(a)?.attachment) errors.push(`${d.id}: "${a}" is not an attachment`);
@@ -241,6 +252,11 @@ export function compileContent(input: readonly Def[]): CompileResult {
   const ammoTorporOver = new Float32Array(n);
   const ammoTorporSeconds = new Float32Array(n);
   const ammoBuff = new Uint16Array(n);
+  const structTakes: (Float32Array | null)[] = new Array(n).fill(null);
+  const throwSpeed = new Float32Array(n);
+  const fuseTicks = new Uint16Array(n);
+  const blast = new Float32Array(n);
+  const materials = new Map(sorted.flatMap((o) => (o.type === "material" ? [[o.id, o] as const] : [])));
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
@@ -250,6 +266,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
       halfX[i] = d.half[0];
       halfY[i] = d.half[1];
       halfZ[i] = d.half[2];
+      if (d.type === "structure" && d.material !== undefined) {
+        const m = materials.get(d.material)!;
+        structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
+      }
       if (d.type === "node") {
         nodeHits[i] = d.hits;
         if (d.soft) soft[i] = 1;
@@ -277,6 +297,9 @@ export function compileContent(input: readonly Def[]): CompileResult {
         weapon[i] = weaponParams(d.weapon);
         reach[i] = d.weapon.reach ?? MELEE_REACH;
         power[i] = d.weapon.power ?? 1;
+        throwSpeed[i] = d.weapon.speed ?? 0;
+        fuseTicks[i] = Math.min(65535, Math.round((d.weapon.fuse ?? 0) * TICK_RATE));
+        blast[i] = d.weapon.blast ?? 0;
       }
       if (d.ammo) {
         ammoSpeed[i] = d.ammo.speed ?? 0;
@@ -295,7 +318,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       }
     }
   }
-  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff }, errors };
+  return { registry: { defs, ids, index, hash, halfX, halfY, halfZ, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */

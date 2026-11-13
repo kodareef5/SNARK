@@ -231,11 +231,11 @@ export class Characters {
    * Queue a rigid mesh that has a place and a direction of its own: an arrow
    * in the air, the line of a round. Its origin goes to (x, y, z) relative to
    * the camera and its +Z along the unit direction (dx, dy, dz), stretched
-   * `length` times along that. It is drawn through the bone path with one bone
-   * of its own, which is how a mesh gets a tilt as well as a facing. False
-   * when the frame has no room left.
+   * `length` times along that and `wide` times across it. It is drawn through
+   * the bone path with one bone of its own, which is how a mesh gets a tilt
+   * and a size as well as a facing. False when the frame has no room left.
    */
-  loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number): boolean {
+  loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1): boolean {
     if (p.boneCount + 1 > MAX_BONES || this.count + 1 > MAX_SKINNED) return false;
     // Right is level and square to the direction; up is square to both.
     let rx = dz;
@@ -254,16 +254,16 @@ export class Characters {
     const first = p.boneCount++;
     const o = first * BONE_FLOATS;
     const b = p.bones;
-    b[o] = rx;
-    b[o + 1] = ux;
+    b[o] = rx * wide;
+    b[o + 1] = ux * wide;
     b[o + 2] = dx * length;
     b[o + 3] = x;
     b[o + 4] = 0;
-    b[o + 5] = uy;
+    b[o + 5] = uy * wide;
     b[o + 6] = dy * length;
     b[o + 7] = y;
-    b[o + 8] = rz;
-    b[o + 9] = uz;
+    b[o + 8] = rz * wide;
+    b[o + 9] = uz * wide;
     b[o + 10] = dz * length;
     b[o + 11] = z;
     const n = this.count++;

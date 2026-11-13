@@ -159,6 +159,30 @@ export class StructureStore {
   }
 
   /**
+   * Take `points` from a structure's health. At none left it is removed.
+   * Returns what it has left (0 if it is gone), or -1 if there is no such
+   * structure. Authority only.
+   */
+  damage(ref: number, points: number): number {
+    const chunk = Math.floor(ref / 65536);
+    const slot = ref & 0xffff;
+    const t = this.chunks[chunk];
+    if (!t || slot >= t.high || t.kind[slot] === 0) return -1;
+    if (!(points > 0)) return t.hp[slot]!;
+    const left = t.hp[slot]! - points;
+    if (left <= 0) {
+      this.remove(ref);
+      return 0;
+    }
+    // Its health is part of what is saved and sent: the slot has changed.
+    t.version++;
+    t.hp[slot] = left;
+    t.mod[slot] = t.version;
+    this.onChunkChanged?.(chunk);
+    return left;
+  }
+
+  /**
    * Set a slot to replicated or loaded contents. `kind` 0 empties it. Does not
    * advance the table version; follow with `setVersion`.
    */

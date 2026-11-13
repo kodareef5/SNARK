@@ -190,6 +190,8 @@ export const EVENT_KILL = 4;
  * ended (3 x f32).
  */
 export const EVENT_SHOT = 5;
+/** BLAST, to whoever is near: something went off. Where (3 x f32) and how far it reached (f32, metres). */
+export const EVENT_BLAST = 6;
 
 export const TEXT_CONSOLE = 0;
 export const TEXT_NOTICE = 1;

@@ -153,6 +153,7 @@ export function createHost(reg: Registry, opts: HostOptions = {}): Host {
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, harvest }, (opts.seed ?? 1) + 53);
   const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 71);
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
+  combat.onThrow = (c, rec, item, quality) => projectiles.lob(c, rec, item, quality);
   // Whoever killed it has what a kill gives, while it is still there to be asked about; then it dies.
   survival.onDeath = (rec, cause, by) => {
     // Taking the body out of the world looks at its vitals again: it dies once.

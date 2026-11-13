@@ -80,6 +80,26 @@ export function addCombatCommands(con: Console): void {
       },
     },
     {
+      name: "place",
+      usage: "<structure>",
+      help: "Stand something built three metres in front of you, facing you: wall, wall_wood, wall_thatch, wall_metal, crate, and the rest.",
+      admin: true,
+      run(ctx, args) {
+        const c = ctx.client;
+        if (!c || c.ent < 0) return "this needs a body; you have none right now";
+        const world = ctx.host.world;
+        const reg = world.reg;
+        const kind = reg.index.get(args[0] ?? "") ?? reg.index.get(`core:${args[0]}`);
+        const def = kind === undefined ? null : reg.defs[kind]!;
+        if (kind === undefined || def?.type !== "structure") return `no structure "${args[0] ?? ""}"`;
+        const a = (c.heldYaw / 65536) * 2 * Math.PI;
+        const x = c.body.x + Math.sin(a) * 3;
+        const z = c.body.z + Math.cos(a) * 3;
+        const ref = world.structs.add(kind, x, world.hf.heightAt(x, z) + def.half[1], z, c.heldYaw, 0, def.hp);
+        return ref < 0 ? "no room for it there" : `placed ${def.id} (${def.hp} health)`;
+      },
+    },
+    {
       name: "buff",
       usage: "<name> [seconds] | off <name>",
       help: "Put something on yourself that acts for a time (burning, stunned, tranquilized, injured, god), or take it off.",

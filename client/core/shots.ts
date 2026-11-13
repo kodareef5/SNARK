@@ -13,7 +13,7 @@
 
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
-import { EVENT_SHOT } from "../../shared/net/protocol.ts";
+import { EVENT_BLAST, EVENT_SHOT } from "../../shared/net/protocol.ts";
 import { FLIGHT_TICKS, HITSCAN_RANGE, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -25,6 +25,8 @@ import type { ClientSession, RemoteSample } from "./session.ts";
 
 /** How long the line of a round is shown, milliseconds. */
 export const TRACER_MS = 90;
+/** How long the flash of a blast is shown. */
+export const BLAST_MS = 220;
 const MAX_FLYING = 256;
 const MAX_TRACERS = 32;
 /** A picture of one's own shot starts ahead of the eye and a little below it, so that it is seen to leave. */
@@ -54,6 +56,10 @@ interface Tracer {
 export class Shots {
   readonly flying: Flying[] = [];
   readonly tracers: Tracer[] = [];
+  /** Things that have just gone off: where, how far the blast reached, and when. */
+  readonly blasts: { x: number; y: number; z: number; radius: number; born: number }[] = [];
+  private readonly blastMesh: number;
+  private now = 0;
   private readonly meshOfAmmo: Int32Array;
   private readonly tracerMesh: number;
   private readonly reg: Registry;
@@ -65,6 +71,7 @@ export class Shots {
     this.reg = reg;
     this.meshOfAmmo = Int32Array.from(reg.defs, (d) => (d?.type === "item" && d.ammo?.mesh ? (pack.meshIndex.get(d.ammo.mesh) ?? -1) : -1));
     this.tracerMesh = pack.meshIndex.get("core:tracer") ?? -1;
+    this.blastMesh = pack.meshIndex.get("core:blast") ?? -1;
   }
 
   /** Take in the shots this client fired itself since the last frame, and those it was told of. */
@@ -87,6 +94,11 @@ export class Shots {
     const events = session.events;
     let kept = 0;
     for (const ev of events) {
+      if (ev.kind === EVENT_BLAST) {
+        if (this.blasts.length >= MAX_TRACERS) this.blasts.shift();
+        this.blasts.push({ x: ev.x, y: ev.y, z: ev.z, radius: ev.far, born: nowMs });
+        continue;
+      }
       if (ev.kind !== EVENT_SHOT) {
         events[kept++] = ev;
         continue;
@@ -117,6 +129,8 @@ export class Shots {
   /** Fly every picture up to the whole tick `tick`, against the world and the bodies being drawn. */
   step(world: CollisionWorld, remote: RemoteSample | null, tick: number, nowMs: number): void {
     while (this.tracers.length > 0 && nowMs >= this.tracers[0]!.until) this.tracers.shift();
+    while (this.blasts.length > 0 && nowMs >= this.blasts[0]!.born + BLAST_MS) this.blasts.shift();
+    this.now = nowMs;
     const whole = Math.floor(tick);
     // A clock that jumped is not caught up on tick by tick.
     if (this.tick < 0 || whole - this.tick > 8 || whole < this.tick) this.tick = whole - 1;
@@ -156,6 +170,11 @@ export class Shots {
       const speed = Math.sqrt(f.vx * f.vx + f.vy * f.vy + f.vz * f.vz);
       if (!(speed > 0) || !cam.boxVisible(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1)) continue;
       if (!ch.loose(p, f.mesh, x, y, z, f.vx / speed, f.vy / speed, f.vz / speed, 1)) return;
+    }
+    // A blast: a flash that swells from a quarter of its reach to most of it, and is gone.
+    for (const b of this.blasts) {
+      const size = b.radius * (0.25 + 0.75 * Math.min(1, (this.now - b.born) / BLAST_MS)) * 0.9;
+      if (this.blastMesh >= 0 && !ch.loose(p, this.blastMesh, b.x - cam.x, b.y - cam.y, b.z - cam.z, 0, 0, 1, size, size)) return;
     }
     if (this.tracerMesh < 0) return;
     for (const t of this.tracers) if (!ch.loose(p, this.tracerMesh, t.x - cam.x, t.y - cam.y, t.z - cam.z, t.dx, t.dy, t.dz, t.length)) return;

@@ -88,6 +88,9 @@ export function weaponMeshes(): SourceMesh[] {
     // In flight: the head leads along +Z, the origin at the head so that a stuck one stands out of what it hit.
     { id: "core:arrow", lods: [build([[0, 0, -0.36, 0.006, 0.006, 0.36, WOOD_LIGHT], [0, 0, 0.02, 0.014, 0.004, 0.03, STONE], [0, 0, -0.66, 0.003, 0.03, 0.05, STRING], [0, 0, -0.66, 0.03, 0.003, 0.05, STRING]], null)] },
     { id: "core:dart", lods: [build([[0, 0, -0.07, 0.005, 0.005, 0.08, METAL], [0, 0, -0.16, 0.014, 0.014, 0.03, 9]], null)] },
+    // A grenade out of the hand, and the flash of one going off: a cube a metre across, stretched to the size of the blast when it is drawn.
+    { id: "core:grenade_thrown", lods: [build([[0, 0.05, 0, 0.04, 0.05, 0.04, 7], [0, 0.11, 0, 0.014, 0.014, 0.014, METAL]], null)] },
+    { id: "core:blast", lods: [build([[0, 0, 0, 0.5, 0.5, 0.5, 6]], null)] },
     // The line a round leaves: a metre of it along +Z from the origin, stretched to the length of the shot when it is drawn.
     { id: "core:tracer", lods: [build([[0, 0, 0.5, 0.006, 0.006, 0.5, 6]], null)] },
   ];

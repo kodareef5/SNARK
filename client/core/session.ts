@@ -49,6 +49,7 @@ import {
   EVENT_KILL,
   EVENT_NAME_BYTES,
   EVENT_SHOT,
+  EVENT_BLAST,
   S_OWN,
   S_REJECT,
   S_RESULT,
@@ -157,7 +158,7 @@ export interface CombatEvent {
   bearing: number;
   /** Who killed this body, or what this body killed. */
   name: string;
-  /** What it was killed with (content index; 0 for bare hands), and from how many metres. */
+  /** What it was killed with (content index; 0 for bare hands), and from how many metres. For a blast: how far it reached. */
   item: number;
   far: number;
   /** What was killed: its level, and the experience that gave. */
@@ -680,6 +681,11 @@ export class ClientSession {
       ev.vy = r.f32();
       ev.vz = r.f32();
       if (ev.flies) ev.back = r.u8();
+    } else if (kind === EVENT_BLAST) {
+      ev.x = r.f32();
+      ev.y = r.f32();
+      ev.z = r.f32();
+      ev.far = r.f32();
     } else if (kind === EVENT_HIT) {
       ev.x = r.f32();
       ev.y = r.f32();

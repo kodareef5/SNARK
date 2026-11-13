@@ -29,9 +29,9 @@ import { Rng } from "../shared/rng.ts";
 import { stanceEye } from "../shared/sim/character.ts";
 import { DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
-import { QUALITY_MUL } from "../shared/sim/items.ts";
-import { W_MELEE } from "../shared/sim/weapon.ts";
-import { HIT_NODE, HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
+import { ARMOR_SLOTS, QUALITY_MUL } from "../shared/sim/items.ts";
+import { W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
+import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
 import type { Buffs } from "./buffs.ts";
 import type { Creatures } from "./creatures.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
@@ -131,6 +131,14 @@ export class Combat {
   t = 0;
   /** A shot left `c`'s weapon: `weapon` at `quality` fired a round of `ammo`, drawn `draw` (0 to 1). Set by whoever flies it. */
   onFire: ((c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number) => void) | null = null;
+  /** A thrown thing left `c`'s hand: one of `item`, of `quality`. Set by whoever flies it. */
+  onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number) => void) | null = null;
+  /** Hits landed on things built, and the last of them: which, how much it took, and what it has left (0: it is gone). */
+  structureHits = 0;
+  readonly lastStructure = { ref: 0, damage: 0, left: 0 };
+  private readonly refs = new Uint32Array(4096);
+  private readonly found: number[] = [];
+  private readonly share: number[] = [];
   /** Set by `killed`, which the hurt in progress may call. */
   private died = false;
 
@@ -181,25 +189,29 @@ export class Combat {
     const oz = ents.z[e]!;
     const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
     const ref = rayHit.ref;
-    const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : rayHit.t, SWING_WIDTH);
+    const worldT = rayHit.t;
+    const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH);
+    // What the blow brings, whatever it lands on.
+    const src = this.src;
+    src.by = rec;
+    src.x = ox;
+    src.z = oz;
+    src.item = item;
+    src.base = reg.damage[item !== 0 ? item : kind]!;
+    src.type = item !== 0 ? reg.damageType[item]! : DMG_MELEE;
+    src.quality = item !== 0 ? (QUALITY_MUL[inv.quality[slot]!] ?? 1) : 1;
+    src.draw = 1;
+    src.attack = statOf(reg.defs[kind] as SpeciesDef, rec.genome, STAT_MELEE, 1);
+    src.torporInstant = src.torporOver = src.torporSeconds = 0;
+    src.buff = 0;
+    const wears = item !== 0 && reg.uses[item]! > 0;
     if (target >= 0) {
       const t = this.t;
-      const src = this.src;
-      src.by = rec;
-      src.x = ox;
-      src.z = oz;
-      src.item = item;
-      src.base = reg.damage[item !== 0 ? item : kind]!;
-      src.type = item !== 0 ? reg.damageType[item]! : DMG_MELEE;
-      src.quality = item !== 0 ? (QUALITY_MUL[inv.quality[slot]!] ?? 1) : 1;
-      src.draw = 1;
-      src.attack = statOf(reg.defs[kind] as SpeciesDef, rec.genome, STAT_MELEE, 1);
-      src.torporInstant = src.torporOver = src.torporSeconds = 0;
-      src.buff = 0;
       this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
       // A blow wears what struck it.
-      if (item !== 0 && reg.uses[item]! > 0) items.wear(rec, slot, 1);
+      if (wears) items.wear(rec, slot, 1);
     } else if (what === HIT_NODE && harvest) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
+    else if (what === HIT_STRUCTURE && this.hitStructure(src, ref, ox + d[0]! * worldT, oy + d[1]! * worldT, oz + d[2]! * worldT) > 0 && wears) items.wear(rec, slot, 1);
   }
 
   /** A reload ended: the rounds go from the bag into the weapon. */
@@ -222,6 +234,10 @@ export class Combat {
     if (!rec) return;
     const slot = this.heldSlot(rec);
     const inv = items.inv(rec);
+    if (slot >= 0 && world.reg.weapon[inv.item[slot]!]?.kind === W_THROWN) {
+      this.throwIt(c, rec, slot);
+      return;
+    }
     if (slot < 0 || !items.spend(rec, slot)) {
       // The step supposed a round that the weapon does not have.
       world.ents.rounds[c.ent] = slot >= 0 ? inv.loaded[slot]! : 0;
@@ -230,6 +246,16 @@ export class Combat {
     const weapon = inv.item[slot]!;
     if (world.reg.uses[weapon]! > 0) items.wear(rec, slot, 1);
     this.onFire?.(c, rec, weapon, inv.quality[slot]!, inv.ammo[slot]!, c.drawn);
+  }
+
+  /** A thrown thing left the hand: one fewer of them is carried, and it is on its way. */
+  private throwIt(c: Client, rec: EntityRecord, slot: number): void {
+    const items = this.ctx.items;
+    const inv = items.inv(rec);
+    const item = inv.item[slot]!;
+    const quality = inv.quality[slot]!;
+    if (!items.burn(rec, slot, 1)) return;
+    this.onThrow?.(c, rec, item, quality);
   }
 
   /**
@@ -479,12 +505,27 @@ export class Combat {
     hit.torporOver = src.torporOver;
     hit.takes = reg.takes[vkind]?.[hit.type] ?? 1;
     hit.zone = reg.zoneMul[vkind]?.[zone] ?? 1;
-    // The piece worn over the part hit, if it is not worn out.
     const vinv = victim.inv;
-    const piece = vinv && vinv.armor >= 0 ? vinv.armor + SLOT_OF_ZONE[zone]! : -1;
-    if (piece >= 0 && vinv!.item[piece] !== 0 && vinv!.dur[piece]! > 0) hit.armor = reg.armor[vinv!.item[piece]!]! * (QUALITY_MUL[vinv!.quality[piece]!] ?? 1) * PIECE_SCALE;
+    let piece = -1;
+    let worn = 0;
+    if (vinv && vinv.armor >= 0 && zone !== ZONE_NONE) {
+      // Aimed: the piece worn over the part hit, if it is not worn out, counted five times.
+      piece = vinv.armor + SLOT_OF_ZONE[zone]!;
+      if (vinv.item[piece] !== 0 && vinv.dur[piece]! > 0) hit.armor = reg.armor[vinv.item[piece]!]! * (QUALITY_MUL[vinv.quality[piece]!] ?? 1) * PIECE_SCALE;
+    } else if (vinv && vinv.armor >= 0) {
+      // Not aimed (a blast): everything worn stands against it together, each piece counted once.
+      for (let k = 0; k < ARMOR_SLOTS; k++) {
+        const at = vinv.armor + k;
+        if (vinv.item[at] === 0 || vinv.dur[at]! === 0) continue;
+        hit.armor += reg.armor[vinv.item[at]!]! * (QUALITY_MUL[vinv.quality[at]!] ?? 1);
+        worn++;
+      }
+    }
     resolveDamage();
-    if (harm.wear > 0 && hit.armor > 0) items.wear(victim, piece, harm.wear);
+    if (harm.wear > 0 && hit.armor > 0) {
+      if (piece >= 0) items.wear(victim, piece, harm.wear);
+      else for (let k = 0; k < ARMOR_SLOTS; k++) if (vinv!.item[vinv!.armor + k] !== 0 && vinv!.dur[vinv!.armor + k]! > 0) items.wear(victim, vinv!.armor + k, Math.ceil(harm.wear / worn));
+    }
 
     const vc = this.clientOf(victim.pid);
     const ax = src.x;
@@ -540,6 +581,136 @@ export class Combat {
         w.u16(Math.min(65535, Math.round(far * 10)));
       }
       game.endOwn(vc);
+    }
+  }
+
+  /**
+   * What `src` brings, times `share`, lands on the structure `ref` at
+   * (x, y, z). What it is made of says what that kind of damage does to it;
+   * at no health left it is gone. Returns the damage done.
+   */
+  hitStructure(src: Source, ref: number, x: number, y: number, z: number, share = 1): number {
+    const { world, buffs, game } = this.ctx;
+    const structs = world.structs;
+    const t = structs.chunks[Math.floor(ref / 65536)];
+    const slot = ref & 0xffff;
+    if (!t || slot >= t.high || t.kind[slot] === 0) return 0;
+    const takes = world.reg.structTakes[t.kind[slot]!];
+    if (!takes) return 0;
+    resetHit();
+    hit.base = src.base * share;
+    hit.type = src.type;
+    hit.quality = src.quality;
+    hit.draw = src.draw;
+    hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
+    hit.takes = takes[src.type]!;
+    resolveDamage();
+    if (!(harm.health > 0)) return 0;
+    const before = t.hp[slot]!;
+    const left = structs.damage(ref, harm.health);
+    const done = left === 0 ? before : harm.health;
+    this.structureHits++;
+    this.lastStructure.ref = ref;
+    this.lastStructure.damage = done;
+    this.lastStructure.left = left;
+    const ac = src.by ? this.clientOf(src.by.pid) : null;
+    if (ac) {
+      const w = game.begin(S_EVENT);
+      w.u8(EVENT_HIT);
+      w.f32(x);
+      w.f32(y);
+      w.f32(z);
+      w.bits(ZONE_NONE, 4);
+      w.u16(Math.min(65535, Math.max(1, Math.round(done))));
+      w.bool(left === 0);
+      w.bool(false);
+      game.endOwn(ac);
+    }
+    return done;
+  }
+
+  /**
+   * Something went off at (x, y, z). Every body within `radius` that it has a
+   * clear line to, and everything built within it, takes what `src` brings:
+   * all of it within a metre, and less the further off, to nothing at the edge.
+   */
+  blast(src: Source, x: number, y: number, z: number, radius: number): void {
+    const world = this.ctx.world;
+    const ents = world.ents;
+    const reg = world.reg;
+    const dims = world.dims;
+    const fade = (far: number): number => (far <= 1 ? 1 : far >= radius ? 0 : 1 - (far - 1) / (radius - 1));
+    const base = src.base;
+    // Who is in reach is found first: a blast that kills changes the lists it would be walking.
+    const found = this.found;
+    const share = this.share;
+    found.length = share.length = 0;
+    const x0 = Math.max(0, Math.floor((x - radius - 2) / CHUNK_METRES));
+    const x1 = Math.min(dims.chunksX - 1, Math.floor((x + radius + 2) / CHUNK_METRES));
+    const z0 = Math.max(0, Math.floor((z - radius - 2) / CHUNK_METRES));
+    const z1 = Math.min(dims.chunksZ - 1, Math.floor((z + radius + 2) / CHUNK_METRES));
+    for (let cz = z0; cz <= z1; cz++) {
+      for (let cx = x0; cx <= x1; cx++) {
+        for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
+          if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
+          const kind = ents.kind[i]!;
+          const mx = ents.x[i]! - x;
+          const my = ents.y[i]! + reg.bodyHeight[kind]! * 0.5 - y;
+          const mz = ents.z[i]! - z;
+          // From the blast to the nearest of the body, about: its middle, less its girth.
+          const mid = Math.sqrt(mx * mx + my * my + mz * mz);
+          const far = Math.max(0, mid - reg.bodyRadius[kind]!);
+          if (far >= radius) continue;
+          // Something of the world between the two shields it.
+          if (mid > 0.5 && castWorld(world, x, y + 0.1, z, mx / mid, (my - 0.1) / mid, mz / mid, mid - 0.3) !== HIT_NONE) continue;
+          found.push(i);
+          share.push(fade(far));
+        }
+      }
+    }
+    for (let k = 0; k < found.length; k++) {
+      const i = found[k]!;
+      if ((ents.flags[i]! & F_ALIVE) === 0) continue;
+      src.base = base * share[k]!;
+      const kind = ents.kind[i]!;
+      const by = ents.y[i]! + reg.bodyHeight[kind]! * 0.5;
+      this.land(src, i, ZONE_NONE, ents.x[i]!, by, ents.z[i]!, Math.sqrt((ents.x[i]! - x) * (ents.x[i]! - x) + (by - y) * (by - y) + (ents.z[i]! - z) * (ents.z[i]! - z)));
+    }
+    src.base = base;
+    // Everything built within reach, by how near its nearest point is.
+    const structs = world.structs;
+    const n = structs.query(x - radius, z - radius, x + radius, z + radius, this.refs);
+    found.length = share.length = 0;
+    for (let k = 0; k < n; k++) {
+      const ref = this.refs[k]!;
+      const t = structs.chunks[Math.floor(ref / 65536)]!;
+      const slot = ref & 0xffff;
+      const kind = t.kind[slot]!;
+      // The blast in the box's own frame, and the point of the box nearest it.
+      const a = (t.yaw[slot]! * Math.PI * 2) / 65536;
+      const sn = Math.sin(a);
+      const cs = Math.cos(a);
+      const px = x - t.x[slot]!;
+      const pz = z - t.z[slot]!;
+      const lx = cs * px - sn * pz;
+      const ly = y - t.y[slot]!;
+      const lz = sn * px + cs * pz;
+      const hx = structs.halfXOf(kind);
+      const hy = structs.halfYOf(kind);
+      const hz = structs.halfZOf(kind);
+      const ex = lx - Math.max(-hx, Math.min(hx, lx));
+      const ey = ly - Math.max(-hy, Math.min(hy, ly));
+      const ez = lz - Math.max(-hz, Math.min(hz, lz));
+      const far = Math.sqrt(ex * ex + ey * ey + ez * ez);
+      if (far >= radius) continue;
+      found.push(ref);
+      share.push(fade(far));
+    }
+    for (let k = 0; k < found.length; k++) {
+      const ref = found[k]!;
+      const t = structs.chunks[Math.floor(ref / 65536)]!;
+      const slot = ref & 0xffff;
+      this.hitStructure(src, ref, t.x[slot]!, t.y[slot]!, t.z[slot]!, share[k]!);
     }
   }
 
