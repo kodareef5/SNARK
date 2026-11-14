@@ -163,15 +163,10 @@ export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: numb
 /** Filled by groundUnder: the unit normal of the ground where the body touches it. */
 export const ground = { nx: 0, ny: 1, nz: 0 };
 
-// The last groundUnder call, which movement asks again at the same place several times a substep.
+// The last groundUnder call, which movement asks again at the same place several times a substep: its ground, and its x, z, r,
+// answer and normal.
 let lastHf: Heightfield | null = null;
-let lastX = NaN;
-let lastZ = NaN;
-let lastR = NaN;
-let lastY = 0;
-let lastNx = 0;
-let lastNy = 1;
-let lastNz = 0;
+const last = new Float64Array([NaN, NaN, NaN, 0, 0, 1, 0]);
 /** While groundUnder runs, per face under the sphere: the most its plane could hold the centre up, or -Infinity where it misses. */
 let faceTop = new Float64Array(32);
 /** While groundUnder tries edges: the height the sphere's centre must reach so far, and where it touches, from the centre. */
@@ -182,21 +177,22 @@ const held = new Float64Array(4);
  * it as they are drawn. Its lower sphere then rests on a face, an edge or a corner of them, and `ground` is the normal there.
  */
 export function groundUnder(hf: Heightfield, x: number, z: number, r: number): number {
-  if (x === lastX && z === lastZ && r === lastR && hf === lastHf) {
-    ground.nx = lastNx;
-    ground.ny = lastNy;
-    ground.nz = lastNz;
-    return lastY;
+  if (x === last[0] && z === last[1] && r === last[2] && hf === lastHf) {
+    ground.nx = last[4]!;
+    ground.ny = last[5]!;
+    ground.nz = last[6]!;
+    return last[3]!;
   }
   const cell = hf.cell;
   const nx = hf.nx;
   const hts = hf.heights;
   const minY = hf.minY;
   const stepY = hf.stepY;
-  let i0 = Math.floor((x - r) / cell);
-  let i1 = Math.floor((x + r) / cell);
-  let j0 = Math.floor((z - r) / cell);
-  let j1 = Math.floor((z + r) / cell);
+  const perCell = 1 / cell;
+  let i0 = Math.floor((x - r) * perCell);
+  let i1 = Math.floor((x + r) * perCell);
+  let j0 = Math.floor((z - r) * perCell);
+  let j1 = Math.floor((z + r) * perCell);
   if (i0 < 0) i0 = 0;
   if (j0 < 0) j0 = 0;
   if (i1 > nx - 2) i1 = nx - 2;
@@ -204,8 +200,8 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
   if (i0 > i1) i0 = i1;
   if (j0 > j1) j0 = j1;
   const wide = i1 - i0 + 1;
-  const cells = wide * (j1 - j0 + 1);
-  if (faceTop.length < 2 * cells) faceTop = new Float64Array(4 * cells);
+  const deep = j1 - j0 + 1;
+  if (faceTop.length < 2 * wide * deep) faceTop = new Float64Array(4 * wide * deep);
   const faces = faceTop;
   // The height the sphere's centre must reach so far, and where it touches, measured from the centre.
   let best = -Infinity;
@@ -220,13 +216,17 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
   // root of any other face from above, and a face that could not beat the best even so is left at that bound.
   let refG2 = -1;
   let refS = 1;
-  const perCell = 1 / cell;
-  let first = (Math.floor(z * perCell) - j0) * wide + Math.floor(x * perCell) - i0;
-  if (first < 0 || first >= cells) first = 0;
-  for (let n = 0; n < cells; n++) {
-    const slot = n + first < cells ? n + first : n + first - cells;
-    const j = j0 + Math.floor(slot / wide);
-    const i = i0 + slot - (j - j0) * wide;
+  let ia = Math.floor(x * perCell) - i0;
+  let ja = Math.floor(z * perCell) - j0;
+  ia = ia < 0 ? 0 : ia >= wide ? wide - 1 : ia;
+  ja = ja < 0 ? 0 : ja >= deep ? deep - 1 : ja;
+  for (let n = 0, cells = wide * deep; n < cells; n++) {
+    // Rows and columns from the axis's cell round to it.
+    const row = (n / wide) | 0;
+    const col = n - row * wide;
+    const j = j0 + (ja + row < deep ? ja + row : ja + row - deep);
+    const i = i0 + (ia + col < wide ? ia + col : ia + col - wide);
+    const slot = (j - j0) * wide + i - i0;
     const k = j * nx + i;
     const h00 = minY + hts[k]! * stepY;
     const h10 = minY + hts[k + 1]! * stepY;
@@ -234,12 +234,24 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
     const h11 = minY + hts[k + nx + 1]! * stepY;
     const dx = x - i * cell;
     const dz = z - j * cell;
-    // How far the axis is to the lower face's side of the diagonal.
+    // How far the axis is to the lower face's side of the diagonal, and how far it is from the cell, sideways squared.
     const across = (dx - dz) * Math.SQRT1_2;
+    const outX = dx < 0 ? -dx : dx > cell ? dx - cell : 0;
+    const outZ = dz < 0 ? -dz : dz > cell ? dz - cell : 0;
+    const room = r * r - outX * outX - outZ * outZ;
     for (let upper = 0; upper < 2; upper++) {
       const f = 2 * slot + upper;
       if (upper === 1 ? across >= r : across <= -r) {
         faces[f] = -Infinity;
+        continue;
+      }
+      // Nothing on the face is above its highest corner, and the sphere is no deeper than its radius cut that far off, so a
+      // face below the best even so is left at that bound.
+      let corner = h00 > h11 ? h00 : h11;
+      const third = upper === 1 ? h01 : h10;
+      if (third > corner) corner = third;
+      if (corner < best && (corner + r <= best || (best - corner) * (best - corner) >= room)) {
+        faces[f] = best;
         continue;
       }
       const gx = (upper === 1 ? h11 - h01 : h10 - h00) * perCell;
@@ -303,13 +315,15 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
         const h11 = minY + hts[k + nx + 1]! * stepY;
         const ax = i * cell - x;
         const az = j * cell - z;
-        // The diagonal, then the sides. The side toward -Z is also the upper face's of the cell before in z, and the side toward
-        // -X the lower face's of the cell before in x. The sides toward +X and +Z are tried with the last cells.
-        if (lower > held[0]! && upper > held[0]!) edgeUnder(h00, h11, ax, az, Math.SQRT1_2, Math.SQRT1_2, diagonal, r);
-        if (lower > held[0]! && (j === j0 || faces[f - 2 * wide + 1]! > held[0]!)) edgeUnder(h00, h10, ax, az, 1, 0, cell, r);
-        if (upper > held[0]! && (i === i0 || faces[f - 2]! > held[0]!)) edgeUnder(h00, h01, ax, az, 0, 1, cell, r);
-        if (i === i1 && lower > held[0]!) edgeUnder(h10, h11, ax + cell, az, 0, 1, cell, r);
-        if (j === j1 && upper > held[0]!) edgeUnder(h01, h11, ax, az + cell, 1, 0, cell, r);
+        // The diagonal, then the sides, each only if its line passes within the radius. The side toward -Z is also the upper
+        // face's of the cell before in z, and the side toward -X the lower face's of the cell before in x. The sides toward +X
+        // and +Z are tried with the last cells.
+        const across = (az - ax) * Math.SQRT1_2;
+        if (across < r && across > -r && lower > held[0]! && upper > held[0]!) edgeUnder(h00, h11, ax, az, Math.SQRT1_2, Math.SQRT1_2, diagonal, r);
+        if (az < r && az > -r && lower > held[0]! && (j === j0 || faces[f - 2 * wide + 1]! > held[0]!)) edgeUnder(h00, h10, ax, az, 1, 0, cell, r);
+        if (ax < r && ax > -r && upper > held[0]! && (i === i0 || faces[f - 2]! > held[0]!)) edgeUnder(h00, h01, ax, az, 0, 1, cell, r);
+        if (i === i1 && ax + cell < r && ax + cell > -r && lower > held[0]!) edgeUnder(h10, h11, ax + cell, az, 0, 1, cell, r);
+        if (j === j1 && az + cell < r && az + cell > -r && upper > held[0]!) edgeUnder(h01, h11, ax, az + cell, 1, 0, cell, r);
       }
     }
     best = held[0]!;
@@ -318,14 +332,14 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
     cz = held[3]!;
   }
   lastHf = hf;
-  lastX = x;
-  lastZ = z;
-  lastR = r;
-  lastY = best - r;
-  lastNx = ground.nx = -cx / r;
-  lastNy = ground.ny = -cy / r;
-  lastNz = ground.nz = -cz / r;
-  return lastY;
+  last[0] = x;
+  last[1] = z;
+  last[2] = r;
+  last[3] = best - r;
+  last[4] = ground.nx = -cx / r;
+  last[5] = ground.ny = -cy / r;
+  last[6] = ground.nz = -cz / r;
+  return best - r;
 }
 
 /**

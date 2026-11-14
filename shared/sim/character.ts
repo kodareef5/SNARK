@@ -465,14 +465,15 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   if (vy <= 0) {
     const under = groundUnder(hf, x, z, r);
     const low = y - p.stepDown;
-    if (y - under <= GROUND_PROBE || restsOnStructure(w, x, y, z, r, height, GROUND_PROBE)) grounded = true;
+    if (y - under <= GROUND_PROBE) grounded = true;
     else if (walking && nothingBuilt(w, x, z, r, low, y + tall)) {
       // Only the ground is near, and where the body rests on it is known.
       if (under >= low) {
         y = under;
         grounded = true;
       }
-    } else if (walking && !capsuleFree(w, x, low, z, r, height)) {
+    } else if (restsOnStructure(w, x, y, z, r, height, GROUND_PROBE)) grounded = true;
+    else if (walking && !capsuleFree(w, x, low, z, r, height)) {
       let lo = low;
       let hi = y;
       for (let k = 0; k < SETTLE_ITERATIONS; k++) {
