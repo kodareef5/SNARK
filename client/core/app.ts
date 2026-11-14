@@ -4,6 +4,8 @@
 import type { AssetPort } from "./assets/port.ts";
 import { tierOf } from "./assets/tiers.ts";
 import { keptLine } from "./settings.ts";
+import { stressThings, type Mark } from "./stress.ts";
+import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
@@ -74,6 +76,11 @@ export class App {
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
   scene: Scene | null = null;
+  /** Draw the stress meshes, if the pack has them. `marks` are the rocks whose colour says which level is on the screen. */
+  stress = false;
+  marks: Mark[] = [];
+  /** Show the asset library's state on the status line. */
+  debug = false;
   private readonly stream: { manifest: Manifest; port: AssetPort } | undefined;
   /** Smoothed. */
   fps = 60;
@@ -441,10 +448,15 @@ export class App {
     if (!this.scene) {
       this.scene = new Scene(world, this.reg, this.pack, this.stream);
       this.scene.shots = this.shots;
+      if (this.stress) {
+        const made = stressThings(this.scene.assets, world.hf, PROVING_SPAWN, world.hf.heightAt(PROVING_SPAWN.x, PROVING_SPAWN.z) + 1.62);
+        this.scene.things = made.things;
+        this.marks = made.marks;
+      }
       this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z));
       this.ui.frame.images[IMAGE_MINIMAP] = { width: MINIMAP_SIZE, height: MINIMAP_SIZE, data: minimapImage(world.hf, this.pack.palette, MINIMAP_SIZE), version: 1 };
     }
-    hud.status = "";
+    hud.status = this.debug ? this.scene.assets.line() : "";
 
     // The eye interpolates between the last two predicted ticks, so motion is smooth at any frame rate.
     const cam = this.cam;

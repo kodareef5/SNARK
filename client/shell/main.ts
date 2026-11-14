@@ -8,10 +8,10 @@ import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
-import { SKY_COLOR } from "../../shared/pack/palette.ts";
+import { LEVEL_COLOURS, SKY_COLOR } from "../../shared/pack/palette.ts";
 import { PROVING_ID, buildProvingHeightfield, provingMapHash, provingNodes } from "../../shared/world/proving.ts";
 import { App } from "../core/app.ts";
-import { probePasses, provingProbes } from "../core/selfcheck.ts";
+import { probePasses, provingProbes, type Probe } from "../core/selfcheck.ts";
 import { ClientSession } from "../core/session.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
@@ -66,6 +66,8 @@ async function boot(): Promise<void> {
     nodes: provingNodes,
   });
   const app = new App(session, reg, pack, { manifest, port });
+  app.stress = params.has("stress");
+  app.debug = app.stress || params.has("debug");
   app.steer = !selfcheck;
   const intervals: number[] = [];
   let previous = 0;
@@ -146,7 +148,11 @@ async function boot(): Promise<void> {
     if (selfcheck && frames >= 0 && ++frames >= 90 && (!voiced || voice.report.played >= 50 || frames >= 690)) {
       frames = -1;
       const heard = !voiced || (voice.report.played >= 50 && voice.report.odd === 0 && voice.report.errors === 0 && (!voiceListen || voice.report.heard.length > 0));
-      const probes = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, params.has("creature")).map((p) => {
+      // In the stress scene three rocks hang in the sky, each drawn at another level, and a level is all one colour.
+      const rocks = app.marks.map((m) => ({ ...m, drawn: app.scene!.things[m.thing]!.level }));
+      const at = [0, 0, 0];
+      const stressed = rocks.flatMap((m): Probe[] => (app.cam.project(m.x, m.y, m.z, at) ? [{ name: `rock at level ${m.level}`, sx: at[0]!, sy: at[1]!, rgb: [0, 1, 2].map((c) => pack.palette[LEVEL_COLOURS[m.level]! * 4 + c]!) as Probe["rgb"], mode: "hue" }] : []));
+      const probes = [...provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, params.has("creature")), ...stressed].map((p) => {
         const got = renderer.readPixel(p.sx, p.sy);
         return { name: p.name, expected: p.rgb, got, ok: probePasses(p, got[0], got[1], got[2]) };
       });
@@ -154,7 +160,8 @@ async function boot(): Promise<void> {
       const misplaced = view.misplaced(app.ui.frame);
       const report = {
         // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0,
+        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
+        rocks: rocks.map((m) => [m.level, m.drawn]),
         restored,
         assets: { ...app.scene?.assets.residency.stats, kept: port.cache },
         ...(voiced ? { voice: voice.report } : {}),

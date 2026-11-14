@@ -82,3 +82,6 @@ function hsl(h: number, s: number, l: number): [number, number, number] {
   };
   return [f(0), f(8), f(4)];
 }
+
+/** The colour of each level of a stress mesh, finest first: red, yellow, green, blue, orange. A picture then shows which level was drawn. */
+export const LEVEL_COLOURS: readonly number[] = [8, 6, 7, 14, 3];

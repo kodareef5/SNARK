@@ -3,13 +3,12 @@
 // show what the library does with a part that cannot be had.
 
 import type { Manifest } from "../../shared/pack/manifest.ts";
-import { defaultPalette } from "../../shared/pack/palette.ts";
+import { LEVEL_COLOURS, defaultPalette } from "../../shared/pack/palette.ts";
 import { Rng } from "../../shared/rng.ts";
 import { splitPack, type SplitFile } from "./split.ts";
 import { buildPack, type SourceLod, type SourceMesh } from "./write.ts";
 
-/** The palette colour of each level, finest first. */
-export const LEVEL_COLOURS: readonly number[] = [2, 6, 9, 12, 15];
+export { LEVEL_COLOURS };
 
 export interface StressOptions {
   /** How many rocks. 64 where not given. */
@@ -140,12 +139,17 @@ export function stressMeshes(opts: StressOptions = {}): SourceMesh[] {
  * mesh file is longer than it is, as one written for a file since cut short would.
  */
 export function stressSet(opts: StressOptions = {}): { files: SplitFile[]; manifest: Manifest } {
-  const { files, manifest } = splitPack(buildPack(stressMeshes(opts), defaultPalette()), "stress");
+  const set = splitPack(buildPack(stressMeshes(opts), defaultPalette()), "stress");
+  spoilStress(set.files, set.manifest);
+  return set;
+}
+
+/** Lists the finest level of the three bad rocks wrongly, in the manifest of a split pack that holds them. */
+export function spoilStress(files: readonly SplitFile[], manifest: Manifest): void {
   const real = files[1]!.bytes.length;
   const finest = (id: string) => manifest.meshes.find((m) => m.id === id)!.levels[0]!;
   finest("stress:bad_hash").parts[0]!.hash = "0000000000000000";
   manifest.files[1]!.bytes = real + 2 * finest("stress:bad_range").parts[0]!.bytes + 64;
   finest("stress:bad_range").at = real + 32;
   finest("stress:bad_short").at = real - (finest("stress:bad_short").parts[0]!.bytes >> 1);
-  return { files, manifest };
 }

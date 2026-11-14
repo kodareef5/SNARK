@@ -487,3 +487,22 @@ test("a scene whose levels stream never draws what the card lacks, and ends with
   expect(uploads).toBeGreaterThan(first.assetUploads.length + 4);
   expect(stream.raster.color).toEqual(whole.raster.color);
 });
+
+test("a loose thing is drawn where it stands, at a level chosen for its distance, and not when it is out of view", () => {
+  const view = provingView(320, 180);
+  const { scene, cam, pack } = view;
+  cam.yaw = 0;
+  const mesh = pack.meshIndex.get("core:raptor")!;
+  const ahead = { mesh, x: cam.x, y: cam.y - 1, z: cam.z + 400, level: -1 };
+  const behind = { mesh, x: cam.x, y: cam.y - 1, z: cam.z - 30, level: -1 };
+  scene.things = [ahead, behind];
+  const p = scene.build(cam, view.remote);
+  const draws = [...Array(p.drawCount).keys()].filter((i) => p.drawMesh[i] === mesh);
+  expect(draws.length).toBe(1);
+  // 400 m off, a raptor is drawn coarse, and the thing remembers the level for the next frame.
+  expect(p.drawLod[draws[0]!]).toBeGreaterThanOrEqual(2);
+  expect([ahead.level, behind.level]).toEqual([p.drawLod[draws[0]!]!, -1]);
+  ahead.z = cam.z + 8;
+  scene.build(cam, view.remote);
+  expect(ahead.level).toBe(0);
+});

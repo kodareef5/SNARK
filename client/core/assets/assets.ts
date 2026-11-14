@@ -55,6 +55,13 @@ export class Assets {
     return true;
   }
 
+  /** The state of the library in a line, for a developer's eye. */
+  line(): string {
+    const r = this.residency;
+    const mb = (bytes: number): string => (bytes / 1048576).toFixed(1);
+    return `assets: ${mb(r.ledger)} MB on the card, ${r.flying} coming, ${mb(r.waiting)} MB waiting, ${mb(r.stats.fetched)} MB fetched, ${mb(r.stats.cached)} MB from the cache, ${r.stats.failed} failed, ${r.stats.dead} given up, ${r.stats.skipped} left out, x${r.relax.toFixed(2)}`;
+  }
+
   /** Ends a frame: what the graphics card must take on and let go goes into the packet. */
   end(packet: FramePacket, nowMs: number): void {
     this.residency.end(packet.assetUploads, packet.assetDrops, nowMs);

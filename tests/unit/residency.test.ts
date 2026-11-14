@@ -6,8 +6,11 @@ import { IN_FLIGHT, OVERFLOW, SMALL_LANES, SMALL_PART } from "../../client/core/
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { buildCorePack } from "../../tools/pack/build.ts";
 import { stressSet } from "../../tools/pack/stress.ts";
 import { FakeNet, type NetOptions } from "../fixtures/assetnet.ts";
+import { stressThings } from "../../client/core/stress.ts";
+import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { FRAME_MS, assetWorld, type Thing } from "../fixtures/assetworld.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -218,4 +221,27 @@ test("asked to keep everything, the library asks the port for every level outsid
   expect(w.port.filled).toEqual(stream);
   expect(w.card.held.size).toBe(before);
   expect(w.r.cache).toEqual({ used: 0, limit: 0, mode: "none", filling: 0 });
+});
+
+test("the stress scene hangs three rocks ahead at distances that ask for three levels, and keeps the rest to the sides", () => {
+  const flat = { heightAt: () => 0 } as unknown as Heightfield;
+  const core = new Assets(REG, parsePack(buildCorePack()));
+  expect(stressThings(core, flat, { x: 0, z: 0 }, 1.6)).toEqual({ things: [], marks: [] });
+
+  const assets = new Assets(REG, BOOT, SET.manifest, new FakeNet(SET.files.map((f) => f.bytes)));
+  const { things, marks } = stressThings(assets, flat, { x: 100, z: 50 }, 1.6);
+  // 24 rocks, the three listed wrongly, and the plate.
+  expect(things.length).toBe(28);
+  expect(marks.map((m) => m.level)).toEqual([1, 2, 3]);
+  for (const m of marks) {
+    const far = Math.hypot(m.x - 100, m.y - 1.6, m.z - 50);
+    // The level is the one that distance asks for, with room either way.
+    expect([assets.choose(assets.table.error[things[m.thing]!.mesh]!, far * 0.85, -1), assets.choose(assets.table.error[things[m.thing]!.mesh]!, far * 1.15, -1)]).toEqual([m.level, m.level]);
+    expect(m.y).toBeGreaterThan(1.6);
+  }
+  // Everything on the ground is at least 30 degrees to one side of straight ahead.
+  for (const t of things.slice(3)) expect(Math.abs(Math.atan2(t.x - 100, t.z - 50))).toBeGreaterThan((29.9 * Math.PI) / 180);
+  // The rocks listed wrongly are near enough that their finest level is wanted.
+  for (const t of things.slice(24, 27)) expect(assets.choose(assets.table.error[t.mesh]!, Math.hypot(t.x - 100, t.z - 50), -1)).toBe(0);
+  expect(assets.line()).toMatch(/^assets: 0\.0 MB on the card, 0 coming/);
 });

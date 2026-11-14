@@ -8,7 +8,9 @@ import { formatReport, loadConfigFolder } from "../server/settings/config.ts";
 import { buildClient } from "./build-client.ts";
 
 const root = resolve(import.meta.dir, "..");
-await buildClient();
+/** With --stress the stress meshes are built in, and the page at ?stress=1 draws them. */
+const stress = process.argv.includes("--stress");
+await buildClient({ stress });
 // Settings come from DEV_CONFIG or the folder named after --config, then from ARK-style command-line arguments.
 const args = process.argv.slice(2);
 const named = args.indexOf("--config");
@@ -20,11 +22,11 @@ const server = startServer({ dev: true, port: Number(process.env.PORT ?? 8787), 
 console.log(`SNARK dev: http://localhost:${server.port}   (self-check: http://localhost:${server.port}/?selfcheck=1)`);
 
 let pending: ReturnType<typeof setTimeout> | undefined;
-for (const dir of ["client/core", "client/shell", "client/voice", "shared", "content"]) {
+for (const dir of ["client/core", "client/shell", "client/voice", "client/assets", "shared", "content"]) {
   watch(resolve(root, dir), { recursive: true }, () => {
     clearTimeout(pending);
     pending = setTimeout(() => {
-      buildClient().then(
+      buildClient({ stress }).then(
         (r) => console.log(`client rebuilt (${r.jsBytes} bytes)`),
         (err) => console.error(String(err)),
       );

@@ -2,7 +2,8 @@
 // headless at ?selfcheck=1 and exits 0 or 1 on the report the page posts back. CHROME sets the browser path. Flags: --bench, --no-voice, --voice,
 // --lose, which takes the page's graphics context away and gives it back before it reports, and --slow, which puts
 // the page's asset fetches on a link of 300 ms, 1,500 KB/s and 2% loss. --twice loads the page a second time in the same
-// browser profile, and passes if that time no part of an asset file came over the network.
+// browser profile, and passes if that time no part of an asset file came over the network. --stress builds the stress
+// meshes in and has the page draw them: three rocks must each show the colour of the level their distance asks for.
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,12 +25,12 @@ if (!chrome) {
   process.exit(2);
 }
 
-await buildClient();
+await buildClient({ stress: process.argv.includes("--stress") });
 const server = startServer({ dev: true, port: 0, probeScene: true });
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
 // Unless --no-voice is given, the page talks to itself through the server. VOICE_FLAGS give Chrome a fake microphone, grant it
 // without a prompt, and let sound start without a gesture.
-const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}${process.argv.includes("--slow") ? "&assetnet=300,1500,2" : ""}`;
+const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}${process.argv.includes("--slow") ? "&assetnet=300,1500,2" : ""}${process.argv.includes("--stress") ? "&stress=1" : ""}`;
 const VOICE_FLAGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
 const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
 

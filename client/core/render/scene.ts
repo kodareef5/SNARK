@@ -64,6 +64,15 @@ const BEAM_MESH = "core:beam";
 /** Palette colour of the beam over a place of death. */
 const BEAM_COLOR = 8;
 
+/** A mesh stood somewhere by itself, with no entity or structure behind it. `level` is the level it was last drawn at, or -1. */
+export interface Thing {
+  mesh: number;
+  x: number;
+  y: number;
+  z: number;
+  level: number;
+}
+
 interface ChunkBatch {
   /** The table's `shape` when the instances were built. */
   shape: number;
@@ -94,6 +103,8 @@ export class Scene {
   viewHeight = 720;
   /** The time of this frame, in milliseconds, for what the asset library waits on. */
   now = 0;
+  /** Loose meshes to draw: the stress scene's. */
+  things: Thing[] = [];
 
   /** Pack mesh index per content index. */
   readonly meshOfKind: Uint16Array;
@@ -218,6 +229,7 @@ export class Scene {
     if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
     if (this.falling && this.falling.count > 0) this.showFalling(cam, this.falling);
     if (this.ghost.kind !== 0) this.showGhost(cam);
+    if (this.things.length > 0) this.showThings(cam);
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody);
@@ -322,6 +334,29 @@ export class Scene {
     this.draw(this.meshOfKind[g.kind]!, 0, TRANSIENT_BUFFER, first, 1, 0, 0, 0);
     if (p.drawCount > d) p.drawFlags[d] = DRAW_BLEND;
     p.transientCount = first + 1;
+  }
+
+  private showThings(cam: Camera): void {
+    const p = this.packet;
+    const errors = this.assets.table.error;
+    let wanted = -1;
+    for (const t of this.things) {
+      const r = this.radiusOfMesh[t.mesh]!;
+      const [x, y, z] = [t.x - cam.x, t.y - cam.y, t.z - cam.z];
+      if (p.transientCount === p.transientIds.length || !cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+      const far = Math.sqrt(x * x + y * y + z * z);
+      wanted = this.assets.choose(errors[t.mesh]!, far, wanted < 0 ? t.level : wanted);
+      this.assets.want(t.mesh, wanted, far);
+      const first = p.transientCount;
+      this.transient.set(first, x, y, z, 0, 0);
+      p.transientIds[first] = 0;
+      const d = p.drawCount;
+      this.draw(t.mesh, wanted, TRANSIENT_BUFFER, first, 1, 0, 0, 0);
+      // What was drawn, which is coarser than what was wanted until that has come.
+      t.level = p.drawCount > d ? p.drawLod[d]! : -1;
+      wanted = -1;
+      p.transientCount = first + 1;
+    }
   }
 
   private markBeams(cam: Camera): void {
