@@ -21,8 +21,6 @@ export const boxFace = { axis: -1, sign: 0 };
 
 const TO_RAD = TAU / YAW_UNITS;
 const SEGMENT = 8;
-/** Half the distance over which the ground's slope is measured for a normal. */
-const NORMAL_STEP = 0.25;
 /** Metres a box is grown sideways for a ray, so that rounding leaves no crack between two boxes that share a face. */
 const SEAL = 1e-6;
 const found = new Found(256);
@@ -70,6 +68,10 @@ export function rayBox(ox: number, oy: number, oz: number, dx: number, dy: numbe
   }
   return t0;
 }
+
+/** The first sample of the cell rayGround last met the ground in, and whether that was the cell's upper triangle, over its -X, +Z corner. */
+let groundCell = 0;
+let groundUpper = false;
 
 /**
  * Distance along the ray to the ground, or Infinity within `maxT`. The ray walks the cells it crosses in order and meets the
@@ -144,7 +146,7 @@ export function rayGround(hf: Heightfield, ox: number, oy: number, oz: number, d
       const sb = ub - vb;
       // How far over the ground the ray is, at each end and where it crosses the diagonal.
       const fa = qa - groundIn(h00, h10, h01, h11, ua, va, sa < 0);
-      if (fa < 0) return ta;
+      if (fa < 0) return metAt(k, sa < 0, ta);
       let tm = tb;
       let fm = qb - groundIn(h00, h10, h01, h11, ub, vb, sa < 0);
       if (sa < 0 !== sb < 0) {
@@ -152,10 +154,10 @@ export function rayGround(hf: Heightfield, ox: number, oy: number, oz: number, d
         tm = ta + (tb - ta) * share;
         fm = (qa + (qb - qa) * share) - groundIn(h00, h10, h01, h11, ua + (ub - ua) * share, va + (vb - va) * share, sa < 0);
       }
-      if (fm < 0) return ta + ((tm - ta) * fa) / (fa - fm);
+      if (fm < 0) return metAt(k, sa < 0, ta + ((tm - ta) * fa) / (fa - fm));
       if (tm < tb) {
         const fb = qb - groundIn(h00, h10, h01, h11, ub, vb, sb < 0);
-        if (fb < 0) return tm + ((tb - tm) * fm) / (fm - fb);
+        if (fb < 0) return metAt(k, sb < 0, tm + ((tb - tm) * fm) / (fm - fb));
       }
     }
     if (tb >= t1) return Infinity;
@@ -180,6 +182,12 @@ function clamp01(v: number): number {
 /** The ground at (u, v) within a cell, in stored units, on its upper triangle or its lower one. heightAt splits a cell the same way. */
 function groundIn(h00: number, h10: number, h01: number, h11: number, u: number, v: number, upper: boolean): number {
   return upper ? h00 + (h11 - h01) * u + (h01 - h00) * v : h00 + (h10 - h00) * u + (h11 - h10) * v;
+}
+
+function metAt(cell: number, upper: boolean, t: number): number {
+  groundCell = cell;
+  groundUpper = upper;
+  return t;
 }
 
 /** The direction must be a unit vector, and `maxT` is in metres. Fills `rayHit` and returns the HIT_ kind. */
@@ -255,13 +263,16 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
   rayHit.t = best;
   rayHit.ref = ref;
   if (kind === HIT_TERRAIN) {
-    const x = ox + dx * best;
-    const z = oz + dz * best;
-    const sx = hf.heightAt(x + NORMAL_STEP, z) - hf.heightAt(x - NORMAL_STEP, z);
-    const sz = hf.heightAt(x, z + NORMAL_STEP) - hf.heightAt(x, z - NORMAL_STEP);
-    const l = Math.sqrt(sx * sx + 4 * NORMAL_STEP * NORMAL_STEP + sz * sz);
+    // The face met, as drawn: its rise per metre along x and along z.
+    const k = groundCell;
+    const nx = hf.nx;
+    const hts = hf.heights;
+    const rise = hf.stepY / hf.cell;
+    const sx = (groundUpper ? hts[k + nx + 1]! - hts[k + nx]! : hts[k + 1]! - hts[k]!) * rise;
+    const sz = (groundUpper ? hts[k + nx]! - hts[k]! : hts[k + nx + 1]! - hts[k + 1]!) * rise;
+    const l = Math.sqrt(sx * sx + 1 + sz * sz);
     rayHit.nx = -sx / l;
-    rayHit.ny = (2 * NORMAL_STEP) / l;
+    rayHit.ny = 1 / l;
     rayHit.nz = -sz / l;
   } else if (kind !== HIT_NONE && faceAxis >= 0) {
     // The face normal, turned back out of the box's frame. Going in, x' = c x - s z and z' = s x + c z.
