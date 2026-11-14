@@ -1,9 +1,9 @@
-// What the server does with the inputs a client sends, and with the ones it does not.
+// What passes between a client and the server: inputs and the lack of them, commands, acknowledgements, and what tells one message from another.
 
 import { expect, test } from "bun:test";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { InputBuffer, PROTOCOL_VERSION, RESULT_BUSY, RESULT_OK, S_SNAPSHOT, writeHello, writeInputs } from "../../shared/net/protocol.ts";
+import { InputBuffer, OWN_HELD, PROTOCOL_VERSION, RESULT_BUSY, RESULT_OK, S_OWN, S_SNAPSHOT, writeHello, writeInputs } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
 import { BTN_PRIMARY, BTN_PRONE, BTN_SPRINT, BTN_USE, STANCE_PRONE } from "../../shared/sim/character.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
@@ -84,7 +84,7 @@ test("a client that acknowledges 0 is sent a whole snapshot next", () => {
   let age = -1;
   end.onMessage = (_channel, data) => {
     r.reset(data);
-    if (r.bits(4) !== S_SNAPSHOT) return;
+    if (r.u8() !== S_SNAPSHOT) return;
     tick = r.u32();
     age = r.u8();
   };
@@ -113,4 +113,17 @@ test("a client that acknowledges 0 is sent a whole snapshot next", () => {
   end.send(CH_UNRELIABLE, w.bytes());
   h.run(1000 / 30);
   expect(age).toBeGreaterThan(0);
+});
+
+test("a server message's type has a byte to itself, so one past the fifteenth is not taken for another", () => {
+  const h = new Harness();
+  const ada = h.join("ada");
+  h.run(300);
+  // In four bits this type is S_OWN, and what follows it would be read as the item in hand.
+  const w = h.server.begin(S_OWN + 16);
+  w.u8(OWN_HELD);
+  w.u8(3);
+  h.server.endOwn(h.client(ada)!);
+  h.run(100);
+  expect([ada.held, ada.state]).toEqual([-1, "active"]);
 });

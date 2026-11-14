@@ -23,7 +23,7 @@ class Idle implements Connection {
   }
 
   send(_channel: number, data: Uint8Array): void {
-    if ((data[0]! & 15) === S_REJECT) this.reason = (data[0]! >> 4) | ((data[1]! & 15) << 4);
+    if (data[0] === S_REJECT) this.reason = data[1]!;
   }
 
   close(): void {

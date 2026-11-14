@@ -132,22 +132,23 @@ test("a page of another version than the server is told to reload, whichever sid
     h.run(300, (now) => void app.frame(now, 1280, 720));
     return [session.state, session.closeReason, app.ui.frame.find(KEY_STATUS)!.text];
   };
-  /** Rewrites the version, which follows the four bits of a message's type, in messages of that type to `end`. */
-  const reversion = (end: LoopbackEnd, type: number, version: number): void => {
+  /** Rewrites the version, which follows a message's type, in messages of that type to `end`. The type is four bits from a client and a byte from the server. */
+  const reversion = (end: LoopbackEnd, type: number, version: number, fromServer: boolean): void => {
     const deliver = end.onMessage!;
     end.onMessage = (channel, data) => {
-      if ((data[0]! & 15) === type) {
+      if ((fromServer ? data[0]! : data[0]! & 15) === type) {
         data = data.slice();
-        data[0] = type | ((version & 15) << 4);
+        if (fromServer) data[1] = version;
+        else data[0] = type | ((version & 15) << 4);
       }
       deliver(channel, data);
     };
   };
   const sentence = "disconnected: this page is not the server's version; reload it";
   // Its hello says the version before, as a page loaded before the server was updated would.
-  expect(status((h) => reversion(h.ends[0]!.peer, C_HELLO, PROTOCOL_VERSION - 1))).toEqual(["closed", REJECT_VERSION, sentence]);
+  expect(status((h) => reversion(h.ends[0]!.peer, C_HELLO, PROTOCOL_VERSION - 1, false))).toEqual(["closed", REJECT_VERSION, sentence]);
   // A welcome of another version is not read past its version.
-  expect(status((h) => reversion(h.ends[0]!, S_WELCOME, PROTOCOL_VERSION + 1))).toEqual(["closed", CLOSED_BAD_VERSION, sentence]);
+  expect(status((h) => reversion(h.ends[0]!, S_WELCOME, PROTOCOL_VERSION + 1, true))).toEqual(["closed", CLOSED_BAD_VERSION, sentence]);
 });
 
 test("a snapshot that outgrows the server's writer is counted and not sent, and the client is whole again once one fits", () => {

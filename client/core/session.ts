@@ -595,7 +595,7 @@ export class ClientSession {
     this.stats.bytesIn += data.length;
     const r = this.r;
     r.reset(data);
-    const type = r.bits(4);
+    const type = r.u8();
     if (type === S_SNAPSHOT) {
       if (this.state === "active") this.snapshot(r);
     } else if (type === S_CHUNK) this.chunk(r);

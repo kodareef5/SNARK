@@ -331,7 +331,7 @@ test("client: on a server that scales stamina, stacks, what things are made of a
   const deliver = end.onMessage!;
   let seen = false;
   end.onMessage = (channel, data) => {
-    if (channel === CH_RELIABLE && !seen && (data[0]! & 15) === 1) {
+    if (channel === CH_RELIABLE && !seen && data[0] === 1) {
       seen = true;
       data = data.slice();
       data[data.length - 40] ^= 0xff;

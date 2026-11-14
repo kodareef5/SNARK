@@ -515,7 +515,7 @@ export class GameServer {
   private close(conn: Connection, reason: number): void {
     const w = this.w;
     w.reset();
-    w.bits(S_REJECT, 4);
+    w.u8(S_REJECT);
     w.u8(reason);
     conn.send(CH_RELIABLE, w.bytes());
     conn.close();
@@ -532,7 +532,7 @@ export class GameServer {
     const w = this.w;
     for (const line of text.split("\n")) {
       w.reset();
-      w.bits(S_TEXT, 4);
+      w.u8(S_TEXT);
       w.u8(channel);
       // 330 characters is under the client's byte limit even at three bytes each.
       w.string(line.length > 330 ? line.slice(0, 330) : line);
@@ -544,7 +544,7 @@ export class GameServer {
   beginOwn(component: number): BitWriter {
     const w = this.w;
     w.reset();
-    w.bits(S_OWN, 4);
+    w.u8(S_OWN);
     w.u8(component);
     return w;
   }
@@ -557,7 +557,7 @@ export class GameServer {
   begin(type: number): BitWriter {
     const w = this.w;
     w.reset();
-    w.bits(type, 4);
+    w.u8(type);
     return w;
   }
 
@@ -866,7 +866,7 @@ export class GameServer {
   private result(c: Client, seq: number, code: number): void {
     const w = this.w;
     w.reset();
-    w.bits(S_RESULT, 4);
+    w.u8(S_RESULT);
     w.u16(seq);
     w.u8(code);
     c.conn.send(CH_RELIABLE, w.bytes());
@@ -996,7 +996,7 @@ export class GameServer {
     const ents = world.ents;
     const w = this.welcomeW;
     w.reset();
-    w.bits(S_WELCOME, 4);
+    w.u8(S_WELCOME);
     w.u16(PROTOCOL_VERSION);
     w.u32(world.tick);
     w.u32(c.ent >= 0 ? ents.handleOf(c.ent) : 0);
@@ -1024,7 +1024,7 @@ export class GameServer {
   private sendOwn(c: Client): void {
     const w = this.w;
     w.reset();
-    w.bits(S_OWN, 4);
+    w.u8(S_OWN);
     w.u8(OWN_SESSION);
     w.bits(c.state, 2);
     w.bool(c.admin);
@@ -1127,7 +1127,7 @@ export class GameServer {
 
     const w = this.w;
     w.reset();
-    w.bits(S_SNAPSHOT, 4);
+    w.u8(S_SNAPSHOT);
     w.u32(T);
     w.u8(base ? age : 0);
     // Before the first input there is no margin. Sending 0 - T would tell a client joining a
@@ -1184,7 +1184,7 @@ export class GameServer {
         c.known[chunk] = 0;
         if (c.syncChunk === chunk) c.syncChunk = -1;
         w.reset();
-        w.bits(S_CHUNK_DROP, 4);
+        w.u8(S_CHUNK_DROP);
         w.u16(chunk);
         c.conn.send(CH_RELIABLE, w.bytes());
       }
@@ -1246,7 +1246,7 @@ export class GameServer {
     const z0 = chunkCz(dims, chunk) * CHUNK_SIZE;
     const w = this.w;
     w.reset();
-    w.bits(S_CHUNK, 4);
+    w.u8(S_CHUNK);
     w.u16(chunk);
     w.u32(target);
     const header = w.pos;

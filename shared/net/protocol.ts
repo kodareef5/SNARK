@@ -1,4 +1,5 @@
-// Message layouts live here and nowhere else. Every message starts with a 4-bit type, and each type has a fixed channel.
+// Message layouts live here and nowhere else. Every message starts with its type, and each type has a fixed channel. A client's
+// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 13 to 255 are free.
 //
 //   client -> server
 //     HELLO     reliable     version u16, content hash u32 (of the definitions as written, untuned), clip hash u32,
