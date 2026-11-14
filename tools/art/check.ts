@@ -190,24 +190,20 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
     return i;
   };
   const onRim = new Set<number>();
-  const broken = new Set<number>();
   for (const [key, [fore, back]] of edges) {
     const [u, v] = [Math.floor(key / n), key % n];
     if (fore + back === 1) {
       openEdges++;
       rim[rimOf(u)] = rimOf(v);
       onRim.add(u).add(v);
-      broken.add(find(u));
     } else if (fore + back > 2) crowded++;
-    else if (fore !== back) {
-      flipped++;
-      broken.add(find(u));
-    }
+    else if (fore !== back) flipped++;
   }
   const holes = new Set([...onRim].map(rimOf)).size;
 
-  // A part's volume, measured about its own middle, is below zero when its faces look inward. An open part is
-  // judged only if it holds enough volume for its area to be a body and not a sheet.
+  // A part's volume, measured about its own middle, is below zero when its faces look inward. A part is judged only if
+  // it holds enough volume for its area to be a body and not a sheet: what a simplified level leaves of a small part
+  // (two triangles back to back) and a thin card hold none to speak of, and either sign.
   const parts = new Map<number, { faces: number[]; sum: [number, number, number]; count: number }>();
   for (let f = 0; f < faces.length; f += 3) {
     const g = find(faces[f]!);
@@ -220,7 +216,7 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
     }
   }
   let insideOut = 0;
-  for (const [g, part] of parts) {
+  for (const part of parts.values()) {
     const mid = part.sum.map((s) => s / part.count);
     let volume = 0;
     let area = 0;
@@ -232,7 +228,7 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
       const vx = c[0]! - a[0]!, vy = c[1]! - a[1]!, vz = c[2]! - a[2]!;
       area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
     }
-    if (volume < 0 && (!broken.has(g) || -volume > 0.002 * area ** 1.5)) insideOut++;
+    if (-volume > 0.002 * area ** 1.5) insideOut++;
   }
   return { parts: parts.size, openEdges, holes, flipped, insideOut, crowded, collapsed };
 }
