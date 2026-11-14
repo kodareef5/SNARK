@@ -22,6 +22,7 @@ import {
   REJECT_CONTENT,
   REJECT_DENIED,
   REJECT_KICKED,
+  TEXT_NOTICE,
   REJECT_FULL,
   REJECT_MALFORMED,
   REJECT_NAME,
@@ -278,6 +279,7 @@ export class Client {
 }
 
 const SESSION_LOGIN = event("session.login");
+const CONTAINER_OPEN = event("container.open");
 const NAME_SET = event("name.set");
 
 export class GameServer {
@@ -443,6 +445,13 @@ export class GameServer {
       if (snap) this.snapshot(c, T);
       this.syncChunks(c, T);
     }
+  }
+
+  /** Whether modules let a session open a box, a body or a creature's bag. A session refused is told why. */
+  mayOpen(c: Client, pid: number): boolean {
+    const refused = this.bus.before(CONTAINER_OPEN, { byPid: c.pid, pid });
+    if (refused !== "") this.sendText(c, TEXT_NOTICE, refused);
+    return refused === "";
   }
 
   reject(c: Client, reason: number): void {

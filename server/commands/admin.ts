@@ -109,7 +109,7 @@ export function addAdminCommands(con: Console): void {
         if (typeof item === "string") return item;
         const count = args[1] === undefined ? 1 : parseNumber(args[1]);
         if (!Number.isInteger(count) || count < 1 || count > 10000) return "count must be a whole number from 1 to 10000";
-        const made = ctx.host.items.mint(rec, item, count);
+        const made = ctx.host.items.mint(rec, item, count, 0, 0, -1, "given");
         return made === count ? `gave ${made} ${reg.ids[item]}` : `gave ${made} ${reg.ids[item]}; ${count - made} did not fit`;
       },
     },

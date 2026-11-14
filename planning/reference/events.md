@@ -10,7 +10,7 @@ marked "may change". An **after** event says what has happened, in values, and
 is delivered once a tick, before the commit. The module contract is in
 `server/api/module.ts`.
 
-There are 82 events: 40 raised today, 23 with a place in the code and not
+There are 82 events: 53 raised today, 10 with a place in the code and not
 raised yet, and 19 that wait for a feature.
 
 The ARK column says what a plugin for ARK's unofficial server API hooks for the
@@ -168,11 +168,11 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `build.place` | before | `byPid`, `team`, `kind`, `x`, `y`, `z`, `yaw`, `target` |  | the is-allowed-to-build question | `server/build.ts` | stub |
-| `build.placed` | after | `byPid`, `ref`, `kind` |  | the placed-structure call and its overrides | `server/build.ts` | stub |
-| `structure.act` | before | `byPid`, `ref`, `action` |  | demolish, pick-up and access | `server/build.ts` | stub |
-| `structure.gone` | after | `ref`, `kind`, `team`, `cause`, `byPid` |  | the structure's death, and auto-demolish | `server/build.ts` | stub |
-| `structure.owner` | after | `from`, `to`, `n` |  | the change of team | `server/tribes.ts` | stub |
+| `build.place` | before | `byPid`, `team`, `kind`, `x`, `y`, `z`, `yaw`, `target` |  | the is-allowed-to-build question | `server/build.ts` | wired |
+| `build.placed` | after | `byPid`, `ref`, `kind` |  | the placed-structure call and its overrides | `server/build.ts` | wired |
+| `structure.act` | before | `byPid`, `ref`, `action` |  | demolish, pick-up and access | `server/build.ts` | wired |
+| `structure.gone` | after | `ref`, `kind`, `team`, `cause`, `byPid` |  | the structure's death, and auto-demolish | `server/build.ts` | wired |
+| `structure.owner` | after | `from`, `to`, `n` |  | the change of team | `server/tribes.ts` | wired |
 
 - **`build.place`.** A piece is about to be set down.
 - **`build.placed`.** A piece was set down.
@@ -184,14 +184,14 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `item.gain` (hot) | before | `pid`, `item`, `why`, `n` | `n` | the allow-add question and the item-added notice | `server/items.ts` | stub |
-| `item.move` | before | `byPid`, `from`, `to`, `item`, `n` |  | the remote-inventory questions | `server/own.ts` | stub |
-| `item.use` | before | `byPid`, `item` |  | the allow-use question and the use request | `server/own.ts` | stub |
-| `item.drop` | before | `byPid`, `item`, `n` |  | the drop request | `server/own.ts` | stub |
-| `container.open` | before | `byPid`, `pid` |  | inventory access | `server/host.ts` | stub |
-| `craft.start` | before | `pid`, `item`, `count` | `count` | the can-craft question and the craft request | `server/progression.ts` | stub |
-| `craft.done` | after | `pid`, `item`, `n` |  | the finish-crafting call | `server/progression.ts` | stub |
-| `harvest` | after | `pid`, `node`, `item`, `n` |  | the harvested call | `server/harvest.ts` | stub |
+| `item.gain` (hot) | before | `pid`, `item`, `why`, `n` | `n` | the allow-add question and the item-added notice | `server/items.ts` | wired |
+| `item.move` | before | `byPid`, `from`, `to`, `item`, `n` |  | the remote-inventory questions | `server/own.ts` | wired |
+| `item.use` | before | `byPid`, `item` |  | the allow-use question and the use request | `server/own.ts` | wired |
+| `item.drop` | before | `byPid`, `item`, `n` |  | the drop request | `server/own.ts` | wired |
+| `container.open` | before | `byPid`, `pid` |  | inventory access | `server/game.ts` | wired |
+| `craft.start` | before | `pid`, `item`, `count` | `count` | the can-craft question and the craft request | `server/progression.ts` | wired |
+| `craft.done` | after | `pid`, `item`, `n` |  | the finish-crafting call | `server/progression.ts` | wired |
+| `harvest` | after | `pid`, `node`, `item`, `n` |  | the harvested call | `server/harvest.ts` | wired |
 
 - **`item.gain`.** A stack is about to be made: harvested, crafted, given by an admin.
 - **`item.move`.** A stack is about to move between two inventories.

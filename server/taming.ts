@@ -419,6 +419,7 @@ export class Taming {
     const dz = ents.z[e]! - ents.z[c.ent]!;
     const reach = 3.5 + world.reg.bodyRadius[rec.kind]!;
     if (c.drive !== e && dx * dx + dz * dz > reach * reach) return RESULT_FAR;
+    if (c.open !== rec.pid && !this.ctx.game.mayOpen(c, rec.pid)) return RESULT_DENIED;
     c.open = c.open === rec.pid ? 0 : rec.pid;
     return RESULT_OK;
   }

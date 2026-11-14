@@ -428,7 +428,7 @@ export class Death {
     const pid = hit >= 0 && there?.egg == null && ((ents.flags[hit]! & F_PROP) !== 0 || (there !== undefined && there.keyHash === null && (there.out || (this.canOpen?.(c, there) ?? false)))) ? ents.pid[hit]! : 0;
     const box = pid !== 0 ? there : undefined;
     if (box && c.open !== pid) {
-      c.open = pid;
+      if (this.ctx.game.mayOpen(c, pid)) c.open = pid;
       return;
     }
     // A structure with nothing in front of it, such as a door or a box. A refusal code is sent to the session.

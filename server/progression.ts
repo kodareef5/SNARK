@@ -27,6 +27,8 @@ const XP_GAIN = event("xp.gain");
 const LEVEL_UP = event("level.up");
 const STAT_SPEND = event("stat.spend");
 const ENGRAM_LEARN = event("engram.learn");
+const CRAFT_START = event("craft.start");
+const CRAFT_DONE = event("craft.done");
 /** Where experience came from, as a module is told it, by XP_ source. */
 const XP_WORDS: readonly string[] = ["given", "kill", "harvest", "craft"];
 
@@ -177,6 +179,11 @@ export class Progression {
     if (!this.knows(rec, this.engramOf[item]!)) return RESULT_DENIED;
     if (rec.jobs.length >= MAX_JOBS) return RESULT_FULL;
     if (rec.jobs.length === 0 && !this.canStart(rec, craft)) return RESULT_SHORT;
+    // A module may refuse the job, or change how many are made.
+    const asked = { pid: rec.pid, item: this.world.reg.ids[item]!, count };
+    if (this.bus.before(CRAFT_START, asked) !== "") return RESULT_DENIED;
+    count = Math.floor(Number(asked.count));
+    if (!(count >= 1 && count <= 100)) return RESULT_DENIED;
     rec.jobs.push({ item, left: count, doneAt: 0 });
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
@@ -200,7 +207,8 @@ export class Progression {
       this.deadlines.push(job.doneAt, DEADLINE_CRAFT, pid, job.doneAt);
       return;
     }
-    this.items.mint(rec, product, made, 0, tool ? tool.uses : 0);
+    const got = this.items.mint(rec, product, made, 0, tool ? tool.uses : 0, -1, "craft");
+    this.bus.after(CRAFT_DONE, { pid: rec.pid, item: def.id, n: got });
     job.left--;
     job.doneAt = 0;
     rec.progVersion++;

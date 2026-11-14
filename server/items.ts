@@ -7,13 +7,17 @@ import { GEAR_SLOTS, Inventory, QUALITY_MUL, moveSlot, type ItemTable } from "..
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
+import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
 /** For a record whose kind declares no slots (a cache, a test fixture). */
 const DEFAULT_SLOTS = 40;
 
+const ITEM_GAIN = event("item.gain");
+
 export class Items {
   /** The registry, except while a save made under other tuning is brought up to date. */
   table: ItemTable;
+  bus: Bus = NO_BUS;
   readonly minted: Float64Array;
   readonly burned: Float64Array;
   dirty = false;
@@ -100,9 +104,19 @@ export class Items {
     if (inv.version !== before) this.records.dirty.add(rec.pid);
   }
 
-  /** Returns how many fit, which is how many it created. `at` is the tick it happens at. When given, the inventory is not settled first. */
-  mint(rec: EntityRecord, item: number, n: number, quality = 0, dur = 0, at = -1): number {
+  /**
+   * Returns how many fit, which is how many it created. `at` is the tick it happens at. When given, the inventory is not
+   * settled first. `why` says where the stack comes from, for a module that is asked about it: it may make it smaller
+   * or larger, or refuse it.
+   */
+  mint(rec: EntityRecord, item: number, n: number, quality = 0, dur = 0, at = -1, why = ""): number {
     if (!this.isItem(item) || !(n > 0) || !Number.isInteger(n)) return 0;
+    if (this.bus.n[ITEM_GAIN] !== 0) {
+      const asked = { pid: rec.pid, item: this.reg.ids[item]!, why, n };
+      if (this.bus.before(ITEM_GAIN, asked) !== "") return 0;
+      n = Math.floor(Number(asked.n));
+      if (!(n > 0)) return 0;
+    }
     // 0 means new, with all its uses.
     if (dur === 0) dur = this.maxDur(item, quality);
     const made = n - (at < 0 ? this.inv(rec) : rec.inv!).add(item, n, quality, dur, at < 0 ? this.world.tick : at, this.table);

@@ -98,20 +98,20 @@ ev("imprint", "after", "pid byPid quality", "the imprint call", "server/breeding
 ev("creature.unclaim", "after", "pid team", "claim and unclaim", "server/taming.ts", "decay", "A tame stopped being anybody's.");
 ev("carry.allow", "before", "pid byPid", "the can-carry question", "server/riding.ts", "flyers", "A creature is about to pick a body up.");
 
-ev("build.place", "before", "byPid team kind x y z yaw target", "the is-allowed-to-build question", "server/build.ts", "stub", "A piece is about to be set down.");
-ev("build.placed", "after", "byPid ref kind", "the placed-structure call and its overrides", "server/build.ts", "stub", "A piece was set down.");
-ev("structure.act", "before", "byPid ref action", "demolish, pick-up and access", "server/build.ts", "stub", "A piece is about to be picked up, demolished, repaired, locked or opened.");
-ev("structure.gone", "after", "ref kind team cause byPid", "the structure's death, and auto-demolish", "server/build.ts", "stub", "A piece is gone: destroyed, fallen, picked up, demolished or decayed.");
-ev("structure.owner", "after", "from to n", "the change of team", "server/tribes.ts", "stub", "Structures changed owner.");
+ev("build.place", "before", "byPid team kind x y z yaw target", "the is-allowed-to-build question", "server/build.ts", "wired", "A piece is about to be set down.");
+ev("build.placed", "after", "byPid ref kind", "the placed-structure call and its overrides", "server/build.ts", "wired", "A piece was set down.");
+ev("structure.act", "before", "byPid ref action", "demolish, pick-up and access", "server/build.ts", "wired", "A piece is about to be picked up, demolished, repaired, locked or opened.");
+ev("structure.gone", "after", "ref kind team cause byPid", "the structure's death, and auto-demolish", "server/build.ts", "wired", "A piece is gone: destroyed, fallen, picked up, demolished or decayed.");
+ev("structure.owner", "after", "from to n", "the change of team", "server/tribes.ts", "wired", "Structures changed owner.");
 
-ev("item.gain", "before", "pid item why n!", "the allow-add question and the item-added notice", "server/items.ts", "stub", "A stack is about to be made: harvested, crafted, given by an admin.", true);
-ev("item.move", "before", "byPid from to item n", "the remote-inventory questions", "server/own.ts", "stub", "A stack is about to move between two inventories.");
-ev("item.use", "before", "byPid item", "the allow-use question and the use request", "server/own.ts", "stub", "An item is about to be eaten, drunk or used.");
-ev("item.drop", "before", "byPid item n", "the drop request", "server/own.ts", "stub", "A stack is about to be dropped.");
-ev("container.open", "before", "byPid pid", "inventory access", "server/host.ts", "stub", "A box, a body or a creature's bag is about to be opened.");
-ev("craft.start", "before", "pid item count!", "the can-craft question and the craft request", "server/progression.ts", "stub", "A crafting job is about to be queued.");
-ev("craft.done", "after", "pid item n", "the finish-crafting call", "server/progression.ts", "stub", "Something was made.");
-ev("harvest", "after", "pid node item n", "the harvested call", "server/harvest.ts", "stub", "A node gave something.");
+ev("item.gain", "before", "pid item why n!", "the allow-add question and the item-added notice", "server/items.ts", "wired", "A stack is about to be made: harvested, crafted, given by an admin.", true);
+ev("item.move", "before", "byPid from to item n", "the remote-inventory questions", "server/own.ts", "wired", "A stack is about to move between two inventories.");
+ev("item.use", "before", "byPid item", "the allow-use question and the use request", "server/own.ts", "wired", "An item is about to be eaten, drunk or used.");
+ev("item.drop", "before", "byPid item n", "the drop request", "server/own.ts", "wired", "A stack is about to be dropped.");
+ev("container.open", "before", "byPid pid", "inventory access", "server/game.ts", "wired", "A box, a body or a creature's bag is about to be opened.");
+ev("craft.start", "before", "pid item count!", "the can-craft question and the craft request", "server/progression.ts", "wired", "A crafting job is about to be queued.");
+ev("craft.done", "after", "pid item n", "the finish-crafting call", "server/progression.ts", "wired", "Something was made.");
+ev("harvest", "after", "pid node item n", "the harvested call", "server/harvest.ts", "wired", "A node gave something.");
 
 ev("tribe.create", "before", "pid name!", "the new-tribe call", "server/tribes.ts", "wired", "A tribe is about to be founded.");
 ev("tribe.created", "after", "pid team name", "", "server/tribes.ts", "wired", "A tribe was founded.");

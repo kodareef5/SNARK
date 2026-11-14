@@ -285,6 +285,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   survival.rules = rules;
   survival.bus = bus;
   const items = new Items(world, records);
+  items.bus = bus;
   if (persistence) {
     items.restore(loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null));
     const wrong = items.audit();
@@ -366,7 +367,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   fixtures.rules = rules;
   fixtures.index();
   const stations = new Stations(world, records, items, fixtures, deadlines);
-  const build = new Build({ world, game, records, items, tribes, rules, fixtures, light: (ref) => stations.toggle(ref), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, light: (ref) => stations.toggle(ref), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   persistence?.sidecar("decay", build.decay, DECAY_SAVE_TICKS);

@@ -841,7 +841,7 @@ export class Combat {
     if (rider) progression.addXp(rider, base / 2, XP_KILL);
     for (const drop of def.drops ?? []) {
       const n = drop.min + this.rng.int(drop.max - drop.min + 1);
-      if (n > 0) items.mint(killer, reg.index.get(drop.item)!, n);
+      if (n > 0) items.mint(killer, reg.index.get(drop.item)!, n, 0, 0, -1, "kill");
     }
     const kc = this.clientOf(killer.pid);
     if (kc) {

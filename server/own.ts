@@ -3,7 +3,7 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
@@ -21,6 +21,16 @@ import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
 
 const SESSION_CREATE = event("session.create");
+const ITEM_MOVE = event("item.move");
+const ITEM_USE = event("item.use");
+const ITEM_DROP = event("item.drop");
+
+/** Asks modules about something a session is about to do with an item. A session refused is told why. */
+function asked(ctx: OwnContext, c: Client, ev: number, data: Record<string, number | string>): boolean {
+  const refused = ctx.game.bus.before(ev, data);
+  if (refused !== "") ctx.game.sendText(c, TEXT_NOTICE, refused);
+  return refused === "";
+}
 
 /** The world's spawn points come first, then as many beds as fit. */
 export const MAX_RESPAWN_POINTS = 16;
@@ -340,6 +350,8 @@ export function addOwnCommands(ctx: OwnContext): void {
     const src = ctx.items.inv(a);
     if (fromSlot >= src.cap || toSlot >= ctx.items.inv(b).cap) return RESULT_INVALID;
     if (src.item[fromSlot] !== expect || expect === 0) return RESULT_STALE;
+    // A module is asked about a stack that changes hands, not one moved about in one inventory.
+    if (a !== b && !asked(ctx, c, ITEM_MOVE, { byPid: c.pid, from: a.pid, to: b.pid, item: reg.ids[expect]!, n: count === 0 ? src.count[fromSlot]! : count })) return RESULT_DENIED;
     if (ctx.items.move(a, fromSlot, b, toSlot, count) === 0) return RESULT_INVALID;
     // A loaded weapon swapped into the hands for a spent one of its kind must not fire at once.
     const me = ctx.records.byPid.get(c.pid);
@@ -486,6 +498,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (!own) return RESULT_DENIED;
     if (slot >= own.inv.cap) return RESULT_INVALID;
     if (own.inv.item[slot] !== expect || expect === 0) return RESULT_STALE;
+    if (!asked(ctx, c, ITEM_DROP, { byPid: c.pid, item: reg.ids[expect]!, n: count === 0 ? own.inv.count[slot]! : count })) return RESULT_DENIED;
     return ctx.drop(own.rec, slot, count) ? RESULT_OK : RESULT_FULL;
   });
 
@@ -508,6 +521,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     }
     const eat = (ctx.world.reg.defs[item] as ItemDef).eat;
     if (!eat) return RESULT_INVALID;
+    if (!asked(ctx, c, ITEM_USE, { byPid: c.pid, item: reg.ids[item]! })) return RESULT_DENIED;
     if (!ctx.items.burn(rec, slot, 1)) return RESULT_STALE;
     if (eat.food) ctx.survival.add(rec, V_FOOD, eat.food);
     if (eat.water) ctx.survival.add(rec, V_WATER, eat.water);

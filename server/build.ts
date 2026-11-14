@@ -4,7 +4,7 @@
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { TEXT_NOTICE, RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { stanceEye } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
@@ -23,6 +23,7 @@ import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
+import { event, type Bus } from "./events/bus.ts";
 
 /** A place command with this target means open ground. */
 export const NO_TARGET = 0xffffffff;
@@ -49,7 +50,16 @@ export interface BuildContext {
   /** Returns a new empty cache at that place. */
   /** `owner` is the survivor a refund is for, so that its refunds share a cache and are counted as its own. */
   spill(x: number, y: number, z: number, name: string, owner?: number): EntityRecord;
+  readonly bus: Bus;
 }
+
+const BUILD_PLACE = event("build.place");
+const BUILD_PLACED = event("build.placed");
+const STRUCTURE_ACT = event("structure.act");
+const STRUCTURE_GONE = event("structure.gone");
+/** What is done to a piece, as a module is told it, by STRUCT_ action. And why one is gone, by GONE_ cause. */
+const ACT_WORDS: readonly string[] = ["pickup", "demolish", "repair", "lock", "unlock", "pin", "use", "light"];
+const GONE_WORDS: readonly string[] = ["taken", "destroyed", "fell"];
 
 /** A survivor who picked up or demolished a piece is owed what stood on it. `action` says which. `cache` takes what does not fit. */
 interface Claim {
@@ -124,12 +134,16 @@ export class Build {
     };
   }
 
+  /** The survivor taking a piece up or down, while it does. 0 for a piece that goes any other way. */
+  private taker = 0;
+
   /** A structure is about to go. One that falls whole is queued to land. Otherwise its fixture record goes too, and its contents go to a cache. */
   private leaving(ref: number, cause: number): void {
     const { world, fixtures } = this.ctx;
     const t = world.structs.chunks[Math.floor(ref / 65536)]!;
     const slot = ref & 0xffff;
     const kind = t.kind[slot]!;
+    this.ctx.bus.after(STRUCTURE_GONE, { ref, kind: world.reg.ids[kind]!, team: t.owner[slot]!, cause: GONE_WORDS[cause] ?? "", byPid: this.taker });
     const rec = fixtures.release(ref);
     if (cause === GONE_FELL && world.reg.fallsWhole[kind] === 1) {
       this.landing.push({ rec, kind, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, yaw: t.yaw[slot]!, owner: t.owner[slot]!, hp: t.hp[slot]! });
@@ -249,6 +263,7 @@ export class Build {
       if (this.collapse.busy) this.collapse.built();
     } else {
       const box = fixtures.ensure(ref);
+      if (c.open !== box.pid && !this.ctx.game.mayOpen(c, box.pid)) return RESULT_DENIED;
       c.open = c.open === box.pid ? 0 : box.pid;
     }
     this.used++;
@@ -318,6 +333,11 @@ export class Build {
     const ents = world.ents;
     const far = Math.hypot(ents.x[e]! - x, ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!) - y, ents.z[e]! - z);
     if (far > ACT_REACH + Math.hypot(reg.halfX[kind]!, reg.halfY[kind]!, reg.halfZ[kind]!)) return RESULT_FAR;
+    const refused = this.ctx.bus.before(STRUCTURE_ACT, { byPid: rec.pid, ref, action: ACT_WORDS[action] ?? "" });
+    if (refused !== "") {
+      this.ctx.game.sendText(c, TEXT_NOTICE, refused);
+      return RESULT_DENIED;
+    }
     const mine = tribes.may(rec, t.owner[slot]!);
     const item = reg.pieceItem[kind]!;
     const tick = world.tick;
@@ -385,7 +405,9 @@ export class Build {
     let n = this.claims.findIndex((q) => q.pid === rec.pid && q.action === action);
     if (n < 0 && this.claims.length < 65535) n = this.claims.push({ pid: rec.pid, action, cache: null }) - 1;
     this.claim = n + 1;
+    this.taker = rec.pid;
     this.ctx.world.structs.remove(ref, GONE_TAKEN, this.ctx.world.tick);
+    this.taker = 0;
     this.claim = 0;
     return this.claims[n] ?? { pid: rec.pid, action, cache: null };
   }
@@ -530,6 +552,11 @@ export class Build {
     if (obstructed(structs, reg.parts, kind, px, py, pz, pose.yaw) || this.bodyIn(kind, px, py, pz, pose.yaw)) return RESULT_OBSTRUCTED;
     if (this.enemyNear(rec.team, px, pz)) return RESULT_ENEMY_NEAR;
     if (!this.support.stands(kind, pose.x, pose.y, pose.z, pose.yaw)) return RESULT_NO_SUPPORT;
+    const refused = this.ctx.bus.before(BUILD_PLACE, { byPid: rec.pid, team: rec.team, kind: reg.ids[kind]!, x: px, y: py, z: pz, yaw: pose.yaw, target });
+    if (refused !== "") {
+      this.ctx.game.sendText(c, TEXT_NOTICE, refused);
+      return RESULT_DENIED;
+    }
     const def = reg.defs[kind] as StructureDef;
     const ref = structs.add(kind, px, py, pz, pose.yaw, rec.team, def.hp);
     if (ref < 0) return RESULT_FULL;
@@ -545,6 +572,7 @@ export class Build {
     }
     this.collapse.built();
     this.onPlaced?.(rec, ref);
+    this.ctx.bus.after(BUILD_PLACED, { byPid: rec.pid, ref, kind: reg.ids[kind]! });
     return RESULT_OK;
   }
 

@@ -48,6 +48,7 @@ const TRIBE_JOIN = event("tribe.join");
 const TRIBE_JOINED = event("tribe.joined");
 const TRIBE_LEAVE = event("tribe.leave");
 const TRIBE_RENAMED = event("tribe.renamed");
+const STRUCTURE_OWNER = event("structure.owner");
 
 export class Tribes {
   rules: Rules | null = null;
@@ -145,7 +146,8 @@ export class Tribes {
     this.invites.delete(rec.pid);
     const was = rec.team;
     // What it built and tamed joins the tribe, and stays if it later leaves.
-    this.world.structs.reown(was, tribe.id);
+    const moved = this.world.structs.reown(was, tribe.id);
+    if (moved > 0) this.bus.after(STRUCTURE_OWNER, { from: was, to: tribe.id, n: moved });
     for (const other of this.records.byPid.values()) {
       if (other.team !== was || other === rec) continue;
       other.team = tribe.id;

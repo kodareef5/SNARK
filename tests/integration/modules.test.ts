@@ -5,11 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../../server/settings/config.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
-import { CMD_LEARN, CMD_RESPAWN, CMD_SPEND, REJECT_DENIED, REJECT_NAME, RESULT_DENIED, RESULT_OK, SESSION_ALIVE, SESSION_DEAD, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
-import { BTN_PRIMARY } from "../../shared/sim/character.ts";
+import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_DROP, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, REJECT_DENIED, REJECT_NAME, RESULT_DENIED, RESULT_OK, SESSION_ALIVE, SESSION_DEAD, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
+import { BTN_PRIMARY, BTN_USE } from "../../shared/sim/character.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { Builder } from "../../client/core/build.ts";
+import { stanceEye } from "../../shared/sim/character.ts";
+import { lookDirection } from "../../shared/world/ray.ts";
+import { NO_PIN, STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { builder } from "../fixtures/build.ts";
+import { nodesOf, standFacing } from "../fixtures/gather.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import type { ModuleDef } from "../../server/api/module.ts";
 import { EVENTS, eventFaults, eventIndex } from "../../server/events/catalog.ts";
@@ -470,4 +476,172 @@ test("an arrow that strikes is told of, with who loosed it, what it was and whom
   expect(struck).toEqual([`projectile.hit: {"byPid":${rec(ada).pid},"ammo":"core:arrow_stone","target":${rec(bob).pid}}`]);
   const blow = JSON.parse(all.heard.lines.find((l) => l.startsWith("damaged"))!.slice(9));
   expect(blow).toMatchObject({ victim: rec(bob).pid, byPid: rec(ada).pid, item: "core:bow", type: "pierce" });
+});
+
+test("a module hears what is built, opened, made, moved and gathered, and may refuse each or change how much", () => {
+  const wired = wiredOf("build", "structure", "item", "container", "craft", "harvest");
+  expect(wired.length).toBe(13);
+  const all = listener("all", wired);
+  const { h, sessions, hold, act, has, structs } = builder(["ada", "bob"], 40, 40, { modules: [all.def], ...quiet });
+  const [ada, bob] = sessions as [(typeof sessions)[0], (typeof sessions)[0]];
+  let rule: (e: Parameters<NonNullable<typeof all.heard.each>>[0]) => void = () => {};
+  all.heard.each = (e) => rule(e);
+  const said = (name: string): Record<string, unknown>[] => all.heard.lines.filter((l) => l.startsWith(`${name}: `)).map((l) => JSON.parse(l.slice(name.length + 2)));
+  const rec = (c: typeof ada) => h.host.records.byPid.get(h.client(c)!.pid)!;
+  const [adaPid, bobPid] = [rec(ada).pid, rec(bob).pid];
+  const item = (name: string): number => h.reg.index.get(`core:${name}`)!;
+  const codes: number[] = [];
+  ada.onResult = (_seq, code) => void codes.push(code);
+  const result = (): number => {
+    h.run(200);
+    return codes.pop() ?? -1;
+  };
+  /** Sets down the foundation in `c`'s hand five metres ahead, as the client does. Returns the result code. */
+  const found = (c: typeof ada, pilot: number): number => {
+    hold(c, "foundation");
+    h.pilots[pilot]!.yaw = pilot === 0 ? 0 : Math.PI;
+    h.pilots[pilot]!.pitch = Math.atan2(-1.62, 5);
+    h.run(100);
+    const b = new Builder();
+    const dir = [0, 0, 0];
+    lookDirection(Math.round((h.pilots[pilot]!.yaw / (2 * Math.PI)) * 65536) & 0xffff, Math.round((h.pilots[pilot]!.pitch / (Math.PI / 2)) * 16384), dir);
+    b.update(c, c.world!, h.reg, c.own.x, c.own.y + stanceEye(h.reg.move[c.ownKind]!, c.own.stance), c.own.z, dir[0]!, dir[1]!, dir[2]!, h.pilots[pilot]!.yaw, 0);
+    let code = -1;
+    c.onResult = (_seq, got) => void (code = got);
+    b.place(c, h.reg);
+    h.run(200);
+    c.onResult = c === ada ? (_seq, got) => void codes.push(got) : null;
+    return code;
+  };
+
+  // A module refuses the first piece, and the piece stays in the hand.
+  rule = (e) => {
+    if (e.name === "build.place") e.refuse("no building in the plaza");
+  };
+  const built = structs.count;
+  expect([found(ada, 0), structs.count, ada.log[ada.log.length - 1]!.text]).toEqual([RESULT_DENIED, built, "no building in the plaza"]);
+  rule = () => {};
+  expect(found(ada, 0)).toBe(RESULT_OK);
+  const ref = h.host.build.last;
+  expect(said("build.place").pop()).toMatchObject({ byPid: adaPid, team: rec(ada).team, kind: "core:foundation_wood", target: 0xffffffff });
+  expect(said("build.placed").pop()).toEqual({ byPid: adaPid, ref, kind: "core:foundation_wood" });
+
+  // Picking it up may be refused. When it is not, the piece is gone and is back in the hand, which is a stack made.
+  rule = (e) => {
+    if (e.name === "structure.act") e.refuse("this base is under protection");
+  };
+  expect([act(ada, ref, STRUCT_PICKUP), structs.count]).toEqual([RESULT_DENIED, built + 1]);
+  rule = () => {};
+  expect(act(ada, ref, STRUCT_PICKUP)).toBe(RESULT_OK);
+  expect(said("structure.act").pop()).toEqual({ byPid: adaPid, ref, action: "pickup" });
+  expect(said("structure.gone").pop()).toEqual({ ref, kind: "core:foundation_wood", team: rec(ada).team, cause: "taken", byPid: adaPid });
+  expect(said("item.gain").pop()).toEqual({ pid: adaPid, item: "core:piece_foundation_wood", why: "", n: 1 });
+  // A piece that is destroyed has nobody's name on its going.
+  expect(found(ada, 0)).toBe(RESULT_OK);
+  structs.damage(h.host.build.last, 1e9, h.world.tick);
+  h.run(100);
+  expect(said("structure.gone").pop()).toMatchObject({ cause: "destroyed", byPid: 0 });
+
+  // A stack given by an admin may be made larger, or not made.
+  rule = (e) => {
+    if (e.name === "item.gain" && e.data.item === "core:stone") e.data.n = Number(e.data.n) * 2;
+    if (e.name === "item.gain" && e.data.item === "core:flint") e.refuse("none of that here");
+  };
+  h.say(ada, "give stone 5");
+  h.say(ada, "give flint 5");
+  expect(said("item.gain").filter((g) => g.item === "core:stone").pop()).toEqual({ pid: adaPid, item: "core:stone", why: "given", n: 5 });
+  expect([has(ada, "stone"), has(ada, "flint")]).toEqual([10, 0]);
+  rule = () => {};
+
+  // A box is opened, unless a module says not, and a stack is put in it, unless a module says not.
+  h.say(ada, "place storage_box");
+  const boxRef = [...Array(structs.chunks.length).keys()].flatMap((chunk) => {
+    const t = structs.chunks[chunk];
+    return t ? [...Array(t.high).keys()].filter((k) => t.kind[k] === item("storage_box")).map((k) => chunk * 65536 + k) : [];
+  })[0]!;
+  rule = (e) => {
+    if (e.name === "container.open") e.refuse("it is sealed");
+  };
+  const open = (): number => {
+    ada.command(CMD_STRUCT, (w) => (w.u32(boxRef), w.u8(STRUCT_USE), w.u16(NO_PIN)));
+    return result();
+  };
+  expect([open(), h.client(ada)!.open]).toEqual([RESULT_DENIED, 0]);
+  rule = () => {};
+  expect(open()).toBe(RESULT_OK);
+  const boxPid = h.client(ada)!.open;
+  expect(said("container.open").pop()).toEqual({ byPid: adaPid, pid: boxPid });
+  const stoneAt = (): number => ada.inventory!.item.indexOf(item("stone"));
+  const move = (): void => void ada.command(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.varint(stoneAt()), w.bits(BOX_OPEN, 1), w.varint(0), w.u16(4), w.u16(item("stone"))));
+  rule = (e) => {
+    if (e.name === "item.move") e.refuse("nothing goes in today");
+  };
+  move();
+  expect([result(), has(ada, "stone")]).toEqual([RESULT_DENIED, 10]);
+  rule = () => {};
+  move();
+  expect([result(), has(ada, "stone")]).toEqual([RESULT_OK, 6]);
+  expect(said("item.move").pop()).toEqual({ byPid: adaPid, from: adaPid, to: boxPid, item: "core:stone", n: 4 });
+
+  // Dropping and eating are each asked about.
+  h.say(ada, "give berry 3");
+  rule = (e) => {
+    if (e.name === "item.drop" || e.name === "item.use") e.refuse("not now");
+  };
+  ada.command(CMD_DROP, (w) => (w.varint(stoneAt()), w.u16(2), w.u16(item("stone"))));
+  expect(result()).toBe(RESULT_DENIED);
+  const berryAt = (): number => ada.inventory!.item.indexOf(item("berry"));
+  ada.command(CMD_USE, (w) => (w.varint(berryAt()), w.u16(item("berry"))));
+  expect([result(), has(ada, "stone"), has(ada, "berry")]).toEqual([RESULT_DENIED, 6, 3]);
+  rule = () => {};
+  ada.command(CMD_DROP, (w) => (w.varint(stoneAt()), w.u16(2), w.u16(item("stone"))));
+  expect(result()).toBe(RESULT_OK);
+  ada.command(CMD_USE, (w) => (w.varint(berryAt()), w.u16(item("berry"))));
+  expect([result(), has(ada, "stone"), has(ada, "berry")]).toEqual([RESULT_OK, 4, 2]);
+  expect([said("item.drop").pop(), said("item.use").pop()]).toEqual([{ byPid: adaPid, item: "core:stone", n: 2 }, { byPid: adaPid, item: "core:berry" }]);
+
+  // A pick is made: the job may be refused, and the count changed.
+  h.say(ada, "give wood 4");
+  h.say(ada, "give thatch 40");
+  ada.command(CMD_LEARN, (w) => w.u16(item("engram-pick")));
+  h.run(200);
+  codes.length = 0;
+  rule = (e) => {
+    if (e.name === "craft.start") e.refuse("the forge is cold");
+  };
+  ada.command(CMD_CRAFT, (w) => (w.u16(item("pick")), w.u8(1)));
+  expect(result()).toBe(RESULT_DENIED);
+  rule = (e) => {
+    if (e.name === "craft.start") e.data.count = 2;
+  };
+  ada.command(CMD_CRAFT, (w) => (w.u16(item("pick")), w.u8(1)));
+  expect(result()).toBe(RESULT_OK);
+  h.run(6000);
+  expect(said("craft.start").pop()).toEqual({ pid: adaPid, item: "core:pick", count: 1 });
+  expect(said("craft.done")).toEqual([{ pid: adaPid, item: "core:pick", n: 1 }, { pid: adaPid, item: "core:pick", n: 1 }]);
+  expect(has(ada, "pick")).toBe(2);
+  expect(said("item.gain").filter((g) => g.why === "craft").length).toBe(2);
+  rule = () => {};
+
+  // Bob sets a foundation down, and it comes with him into Ada's tribe.
+  expect(found(bob, 1)).toBe(RESULT_OK);
+  const [was, team] = [rec(bob).team, rec(ada).team];
+  h.say(ada, "tribe create Masons");
+  h.say(ada, "tribe invite bob");
+  h.say(bob, "tribe accept");
+  expect(said("structure.owner")).toEqual([{ from: was, to: team, n: 1 }]);
+
+  // Ada picks a bush.
+  expect(nodesOf(h, "core:bush", 256, 256).some((b) => standFacing(h, ada, h.pilots[0]!, b, 1.4))).toBe(true);
+  h.pilots[0]!.buttons = BTN_USE;
+  h.run(100);
+  h.pilots[0]!.buttons = 0;
+  h.run(300);
+  const picked = said("harvest");
+  expect(picked.length).toBeGreaterThan(0);
+  expect(picked[0]).toMatchObject({ pid: adaPid, node: "core:bush" });
+  expect(said("item.gain").filter((g) => g.why === "harvest").length).toBe(picked.length);
+  expect(h.host.items.audit()).toEqual([]);
+  expect(names(all.heard.lines)).toEqual([...wired].sort());
+  void bobPid;
 });

@@ -19,6 +19,7 @@ import type { Lists } from "./settings/lists.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
+import { event } from "./events/bus.ts";
 
 export const DEADLINE_NODE = 3;
 export const TAG_NODES = 1;
@@ -33,6 +34,8 @@ interface Touched {
   /** Tick it grows back, or 0 while it still stands. */
   respawnAt: number;
 }
+
+const HARVEST = event("harvest");
 
 export class Harvest {
   readonly field: NodeField;
@@ -156,7 +159,8 @@ export class Harvest {
       let n = 0;
       for (let b = 0; b < blows; b++) n += (y.min + this.rng.int(y.max - y.min + 1)) * power;
       n = Math.round(n * amount * (each?.get(item) ?? 1));
-      if (n > 0) this.items.mint(rec, item, n);
+      const got = n > 0 ? this.items.mint(rec, item, n, 0, 0, -1, "harvest") : 0;
+      if (got > 0) this.items.bus.after(HARVEST, { pid: rec.pid, node: def.id, item: y.item, n: got });
     }
     this.progression.addXp(rec, def.xp * blows, XP_HARVEST);
     this.hits++;
