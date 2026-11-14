@@ -43,7 +43,8 @@ export class Assets {
   begin(nowMs: number, height: number, fovY: number): void {
     this.scale = height / (2 * Math.tan(fovY / 2));
     const r = this.residency;
-    r.budget = this.tier.gpuBytes * this.squeeze;
+    // A squeeze takes the whole card down, so what is reserved comes off what is left of it.
+    r.budget = Math.max(0, this.tier.gpuBytes * this.squeeze - r.reserved);
     r.texBudget = r.budget * this.tier.textureShare;
     r.cap = stepOf(this.tier.texture);
     r.format = this.format;
@@ -67,7 +68,7 @@ export class Assets {
   line(): string {
     const r = this.residency;
     const mb = (bytes: number): string => (bytes / 1048576).toFixed(1);
-    return `assets: ${mb(r.ledger)} MB on the card${r.texLedger > 0 ? `, ${mb(r.texLedger)} of it textures` : ""}, ${r.flying} coming, ${mb(r.waiting)} MB waiting, ${mb(r.stats.fetched)} MB fetched, ${mb(r.stats.cached)} MB from the cache, ${r.stats.failed} failed, ${r.stats.dead} given up, ${r.stats.skipped} left out, x${r.relax.toFixed(2)}`;
+    return `assets: ${mb(r.ledger)} MB on the card${r.texLedger > 0 ? `, ${mb(r.texLedger)} of it textures` : ""}${r.reserved > 0 ? ` and ${mb(r.reserved)} reserved` : ""}, ${r.flying} coming, ${mb(r.waiting)} MB waiting, ${mb(r.stats.fetched)} MB fetched, ${mb(r.stats.cached)} MB from the cache, ${r.stats.failed} failed, ${r.stats.dead} given up, ${r.stats.skipped} left out, x${r.relax.toFixed(2)}`;
   }
 
   /**
