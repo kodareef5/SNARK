@@ -249,7 +249,8 @@ new Sheet(SERVER_ROWS, "map", "Other")
 new Sheet(SERVER_ROWS, "snark", "Admin and session")
   .i("ViewCap", 1024, "The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this.", live({ min: 64, max: 2048, note: "Ours. ARK has no key." }))
   .i("SnapshotBytesMax", 1100, "The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor.", live({ min: 600, max: 2200, note: "Ours. ARK has no key." }))
-  .i("PendingPerAddress", 8, "The most connections from one network address that may be waiting to join at once. One more closes the one that has waited longest, or is itself turned away if none has waited half a second. 0 is no limit: set it behind a proxy, where every survivor comes from one address.", live({ max: 1000, note: "Ours. ARK has no key." }));
+  .i("PendingPerAddress", 8, "The most connections from one network address that may be waiting to join at once. One more closes the one that has waited longest, or is itself turned away if none has waited half a second. 0 is no limit: set it behind a proxy, where every survivor comes from one address.", live({ max: 1000, note: "Ours. ARK has no key." }))
+  .t("AllowedOrigins", "", "The web sites whose pages may connect besides the server's own, as origins such as https://play.example.com, separated by commas or spaces. * is any site. A server whose page is served from elsewhere, or behind a proxy that does not pass the Host on, names that site here. A program that is not a browser is not asked.", live({ live: true, note: "Ours. ARK has no key." }));
 
 new Sheet(SERVER_ROWS, "snark", "Damage")
   .b("HeadMultipliers", true, "Where a hit lands matters: a head counts for more. Off, every part counts once.", live({ live: true, note: "Ours. ARK has no key; this is its behaviour." }))
