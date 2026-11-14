@@ -28,6 +28,7 @@
 | `fixtures.test.ts`, `stations.test.ts` | Doors, locks, PINs, boxes and a vault; a campfire that cooks unwatched and a bed to return to life at |
 | `creatures.test.ts` | Dormancy and deadlines while dormant; creatures as models; what wild ones do |
 | `taming.test.ts` | Taming at the reference's numbers; orders, stances, eating, levels |
+| `dodo.test.ts` | A dodo tamed on berries as the wiki's table has it, and one running from harm at its speed |
 | `riding.test.ts` | Saddles, getting on and off, riding with no corrections, a rider hit on the seat |
 | `breaches.test.ts` | What the review of 2026-11-14 found open: a wall with a hair between its pieces, a box or a mount kept after leave to use it ended, getting off with no room, a vault coming down on a body, PIN guessing, and what a dead tame leaves |
 | `breeding.test.ts` | Pairs, eggs, what hatches, growing up; watched against unwatched across restarts; live birth |

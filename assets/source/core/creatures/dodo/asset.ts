@@ -1,6 +1,7 @@
 // The dodo. Its design is ref/DESIGN.md, drawn in ref/concept/. rig.py holds the skeleton and the shared helpers;
 // the numbers here that rig.py also uses are checked against it by ref/blockout/preview.py.
 
+import { DODO_DYES } from "../../../../../content/creatures/dodo.ts";
 import type { CreatureAsset } from "../../../../../tools/art/spec.ts";
 
 export default {
@@ -25,27 +26,36 @@ export default {
     { zone: "legL", on: "shank_l", from: "shank_l", to: "toes_l", covers: ["shank_l", "toes_l"] },
     { zone: "legR", on: "shank_r", from: "shank_r", to: "toes_r", covers: ["shank_r", "toes_r"] },
   ],
-  // Measured from each bone's joint at rest (rig.py: SOCKETS gives the same points in the bird's frame).
+  // Measured from each bone's joint at rest (rig.py: SOCKETS gives the same points in the bird's frame). What each is
+  // for is ref/FUNCTIONS.md's; no system reads one yet.
   sockets: [
+    // Where a peck lands and where it eats.
     { name: "beak_tip", bone: "skull", offset: [0, -0.05, 0.182] },
+    // The middle of the skull: where a look at it aims, and the middle of the head's hit zone.
     { name: "head", bone: "skull", offset: [0, 0.04, 0.005] },
+    // The mating heart, its name and its state.
     { name: "overhead", bone: "skull", offset: [0, 0.17, 0] },
+    // Where a creature that carries it takes hold: talons, jaws, a pouch.
     { name: "carry_point", bone: "belly", offset: [0, 0.1, -0.025] },
+    // Where a survivor's arms hold it.
     { name: "hold_point", bone: "chest", offset: [0, -0.205, -0.01] },
+    // Where its eggs and droppings come out.
     { name: "vent", bone: "pelvis", offset: [0, -0.11, -0.15] },
+    // Footsteps.
     { name: "foot_l", bone: "toes_l", offset: [0, -0.02, 0.022] },
     { name: "foot_r", bone: "toes_r", offset: [0, -0.02, 0.022] },
   ],
-  // The six regions of the function list, in its order, painted in the region maps below. Where each lies is in
-  // ref/DESIGN.md. `sample` is the default dye, the palette colour nearest the concept's; `material` is the block-out's
-  // own material for the region, read only if `materials` is taken away to build the block-out alone.
+  // The six regions under ARK's names, in its order, painted in the region maps below. Where each lies is in
+  // ref/DESIGN.md. `sample` is the default bird's dye, the first colour of each region's set in the content;
+  // `material` is the block-out's own material for the region, read only if `materials` is taken away to build the
+  // block-out alone.
   regions: [
-    { name: "Body", material: "body", sample: 99 },
-    { name: "Face", material: "face", sample: 186 },
-    { name: "Beak", material: "beak", sample: 171 },
-    { name: "Forehead, Neck and Feet", material: "forehead_neck_feet", sample: 225 },
-    { name: "Head", material: "head", sample: 107 },
-    { name: "Wings and Patterning", material: "wings_patterning", sample: 128 },
+    { name: "Body", material: "body", sample: DODO_DYES[0]! },
+    { name: "Face", material: "face", sample: DODO_DYES[1]! },
+    { name: "Beak", material: "beak", sample: DODO_DYES[2]! },
+    { name: "Forehead, Neck and Feet", material: "forehead_neck_feet", sample: DODO_DYES[3]! },
+    { name: "Head", material: "head", sample: DODO_DYES[4]! },
+    { name: "Wings and Patterning", material: "wings_patterning", sample: DODO_DYES[5]! },
   ],
   // The model's two materials (rig.py: MATERIALS says which parts are on which). The pictures are D4's, in tex/.
   materials: {
