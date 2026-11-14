@@ -3,7 +3,10 @@
 
 import { expect, test } from "bun:test";
 import type { EntityRecord } from "../../server/records.ts";
+import { STAT_HEALTH, statOf } from "../../server/survival.ts";
 import { ZONE_NONE, ZONE_TORSO } from "../../shared/anim/human.ts";
+import type { EngramDef, SpeciesDef } from "../../shared/content/defs.ts";
+import { RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { DMG_BULLET, DMG_EXPLOSIVE, DMG_MELEE } from "../../shared/sim/damage.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -49,6 +52,27 @@ test("food keeps four times as long in a creature as in a survivor's hands, and 
   expect(items.move(raptor, from, me, to, 1)).toBe(1);
   expect([items.inv(me).spoilAt[to]! - h.world.tick, left(raptor)]).toEqual([100, 400]);
   expect(items.audit()).toEqual([]);
+});
+
+test("a survivor saved before ARK's level table keeps what it spent and learned, is never short of points below nothing, and stops at level 105", () => {
+  const { h, me } = world();
+  const prog = h.host.progression;
+  // The old table's last level took 157,980 experience, which is level 78 now. She had placed its 99 stat points and
+  // learned every engram: she keeps both, and has no stat point to place until level 101.
+  me.xp = 157980;
+  me.genome!.tamed[STAT_HEALTH] = 99;
+  me.engrams.push(...h.reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : [])));
+  const cost = me.engrams.reduce((sum, e) => sum + (h.reg.defs[e] as EngramDef).cost, 0);
+  const health = statOf(h.reg.defs[me.kind] as SpeciesDef, me.genome, STAT_HEALTH, 0);
+  expect([prog.level(me), prog.statPoints(me), prog.engramPoints(me)]).toEqual([78, 0, 1884 - cost]);
+  expect([prog.spend(me, STAT_HEALTH), me.genome!.tamed[STAT_HEALTH], health]).toEqual([RESULT_SHORT, 99, 100 * (1 + 99 * 0.1)]);
+  expect(me.engrams.every((e) => prog.knows(me, e))).toBe(true);
+  // With less experience than her engrams cost under this table, she has none to spend and still knows them.
+  me.xp = 450;
+  expect([prog.level(me), cost > 76, prog.engramPoints(me), prog.knows(me, me.engrams[0]!)]).toEqual([10, true, 0, true]);
+  // More experience than the last level takes is left as it is, and gains nothing.
+  me.xp = 5e6;
+  expect([prog.level(me), prog.addXp(me, 100), me.xp, prog.most(me)]).toEqual([105, 0, 5e6, 4098538]);
 });
 
 test("a saddle of 25 halves a round or a blow and takes a fifth off an explosion (Saddles)", () => {

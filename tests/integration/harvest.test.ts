@@ -239,7 +239,7 @@ test("experience earns levels, levels earn points, points buy stats and engrams,
     return codes[0]!;
   };
 
-  expect([prog.levelOf(0), prog.levelOf(4.9), prog.levelOf(5), prog.levelOf(39), prog.levelOf(40), prog.levelOf(1e9)]).toEqual([1, 1, 2, 3, 4, 100]);
+  expect([prog.levelOf(0), prog.levelOf(4.9), prog.levelOf(5), prog.levelOf(39), prog.levelOf(40), prog.levelOf(1e9)]).toEqual([1, 1, 2, 3, 4, 105]);
   expect(send(() => s.command(CMD_SPEND, (w) => w.u8(SPEED)))).toBe(RESULT_SHORT);
   expect(send(() => learn(s, hatchet))).toBe(RESULT_SHORT);
   expect(send(() => craft(s, makePick))).toBe(RESULT_DENIED);
