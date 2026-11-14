@@ -1,10 +1,11 @@
 // The authoritative game loop. It owns no socket or clock. The transport and the calls to
 // tick() come from outside, so tests run a whole server in memory.
 
-import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
+import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { TAU, detCos, detSin } from "../shared/math/scalar.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import {
+  CMD_VIEW,
   C_COMMAND,
   C_HELLO,
   C_INPUT,
@@ -31,6 +32,7 @@ import {
   RESULT_BUSY,
   RESULT_DENIED,
   RESULT_INVALID,
+  RESULT_OK,
   SESSION_ALIVE,
   SESSION_CREATING,
   SESSION_DEAD,
@@ -49,7 +51,7 @@ import {
   writeBody,
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
-import { MAX_VIEW, SentView, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
+import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
@@ -65,8 +67,12 @@ import { NO_BUS, event, type Bus } from "./events/bus.ts";
 export interface GameOptions {
   /** In ticks. */
   snapshotEvery: number;
-  /** Byte budget for the deferrable part of one snapshot. */
+  /** Byte budget for the deferrable part of one snapshot, for a client that has not asked for another. */
   snapshotBytes: number;
+  /** The most a client may ask for. */
+  snapshotBytesMax: number;
+  /** The most entities any client is shown, up to MAX_VIEW. A client that has not asked is shown VIEW_DEFAULT of them. */
+  viewCap: number;
   /** Interest radii, in chunks. */
   entityRadius: number;
   structRadius: number;
@@ -83,6 +89,8 @@ export interface GameOptions {
 const DEFAULTS: GameOptions = {
   snapshotEvery: 1,
   snapshotBytes: 1100,
+  snapshotBytesMax: 1100,
+  viewCap: 1024,
   entityRadius: 3,
   structRadius: 3,
   chunkSlotsPerTick: 256,
@@ -111,6 +119,8 @@ const MAX_PENDING = 64;
 const HELLO_TICKS = 150;
 const COMMAND_QUEUE = 16;
 const COMMANDS_PER_TICK = 4;
+/** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
+const SNAPSHOT_BYTES_MIN = 600;
 const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** Metres. */
 const SPECTATOR_LIFT = 1.6;
@@ -195,6 +205,13 @@ export class Client {
   /** Removed rows of the chunk being synced go as grouped removals, not row by row. */
   syncByRemoval = false;
   rotate = 0;
+  /** The most entities it is shown and its snapshot byte budget, where it has asked. 0 for the server's own. */
+  viewCap = 0;
+  snapshotBytes = 0;
+  /** What CMD_VIEW last asked for, held to the server's limits, and the tick from which those two may next change. */
+  wantView = 0;
+  wantBytes = 0;
+  viewReadyAt = 0;
   strikes = 0;
   packets = 0;
   reliable = 0;
@@ -254,6 +271,7 @@ export class Client {
     this.subscribed.length = 0;
     this.syncChunk = -1;
     this.rotate = 0;
+    this.viewCap = this.snapshotBytes = this.wantView = this.wantBytes = this.viewReadyAt = 0;
     this.strikes = 0;
     this.cmdSeq = 0;
     this.queue.length = 0;
@@ -291,7 +309,8 @@ export class GameServer {
   private readonly newNames = new Map<string, { n: number; since: number }>();
   /** Wrong passwords, for joining and for cheats, by the address they came from. */
   readonly guesses = new Guesses();
-  readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0 };
+  /** `overflows` counts snapshots that outgrew the writer and were not sent. */
+  readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0, overflows: 0 };
   /** May this device key use this name? Called before anything is created. */
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
   /** A session became active (it has a body or a spectator's focus). */
@@ -321,13 +340,17 @@ export class GameServer {
   /** Connections that have not said hello hold no slot, so a returning survivor can reclaim its lingering session on a full server. */
   private readonly pending = new Set<Client>();
   private readonly survivor: number;
-  private readonly w = new BitWriter(16384);
+  private readonly w: BitWriter;
   /** Sized for the tuning string a welcome carries. */
   private readonly welcomeW: BitWriter;
   private readonly r = new BitReader();
   /** The entities around each chunk that is some client's centre this tick, gathered once and shared by every client centred there. */
   private readonly around: SentView[] = [];
+  /** For each of those lists, each entry's place in the order it was chosen in. A client is sent the entries below its cap. */
+  private readonly ranks: Uint16Array[] = [];
   private gathered = 0;
+  /** `opts.viewCap`, held to what a view can hold. */
+  private readonly cap: number;
   /** Per chunk: the tick `around[aroundAt]` was gathered for it. */
   private readonly aroundTick: Uint32Array;
   private readonly aroundAt: Uint16Array;
@@ -342,6 +365,9 @@ export class GameServer {
     this.world = world;
     this.opts = { ...DEFAULTS, ...opts };
     this.clients = new Array(this.opts.maxClients).fill(null);
+    this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
+    // Removes are sent whatever they cost, 6.7 KB for 2,048 of them, and an update can take two bytes more than it was budgeted at.
+    this.w = new BitWriter(Math.max(16384, 8192 + 2 * Math.max(this.opts.snapshotBytes, this.opts.snapshotBytesMax)));
     this.welcomeW = new BitWriter(1024 + world.reg.tuning.length * 4);
     this.aroundTick = new Uint32Array(chunkCount(world.dims));
     this.aroundAt = new Uint16Array(chunkCount(world.dims));
@@ -733,12 +759,23 @@ export class GameServer {
       const seq = r.u16();
       const op = r.u8();
       const handler = this.handlers[op];
-      const code = !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
+      // What a session is shown is its own to ask in any state, so that is answered here.
+      const code = op === CMD_VIEW ? this.askView(c, r) : !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
       this.stats.commands++;
       // The handler may have ended the session (a kick, too many password attempts).
       if (this.clients[c.id] !== c || c.closed || !c.conn.open) return;
       this.result(c, seq, code);
     }
+  }
+
+  /** CMD_VIEW. The snapshot takes up what was asked. */
+  private askView(c: Client, r: BitReader): number {
+    const view = r.u16();
+    const bytes = r.u16();
+    if (r.overflow) return RESULT_INVALID;
+    c.wantView = Math.max(1, Math.min(view, this.cap));
+    c.wantBytes = Math.max(SNAPSHOT_BYTES_MIN, Math.min(bytes, this.opts.snapshotBytesMax));
+    return RESULT_OK;
   }
 
   /** A result with no sequence number, for news no command asked for. */
@@ -920,12 +957,13 @@ export class GameServer {
   }
 
   /**
-   * The entities a client centred on `chunk` may see at tick `T`, sorted by index. Every client centred there shares the list,
-   * so it includes each one's own body, and the delta writer leaves that out. With more entities than a view holds, players
-   * go in first, then anything moving or acting, then idle entities and props, so a crowd of idle creatures never hides a player.
+   * Where in `around` and `ranks` the entities are that a client centred on `chunk` may see at tick `T`, sorted by index. Every
+   * client centred there shares the list, so it includes each one's own body, and the delta writer leaves that out. Players are
+   * chosen first, then anything moving or acting, then idle entities and props, so with more entities than the server's cap or
+   * a client's own, a crowd of idle creatures never hides a player.
    */
-  private viewAround(chunk: number, T: number): SentView {
-    if (this.aroundTick[chunk] === T) return this.around[this.aroundAt[chunk]!]!;
+  private viewAround(chunk: number, T: number): number {
+    if (this.aroundTick[chunk] === T) return this.aroundAt[chunk]!;
     const world = this.world;
     const ents = world.ents;
     const dims = world.dims;
@@ -935,6 +973,7 @@ export class GameServer {
     const movers = this.movers;
     const idle = this.idle;
     const offsets = this.entityOffsets;
+    const cap = this.cap;
     let n = 0;
     let nm = 0;
     let ni = 0;
@@ -945,33 +984,45 @@ export class GameServer {
       for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
         const f = ents.flags[i]!;
         if ((f & F_PLAYER) !== 0) {
-          if (n < MAX_VIEW) ids[n++] = i;
+          if (n < cap) ids[n++] = i;
         } else if ((f & F_PROP) === 0 && (ents.vx[i] !== 0 || ents.vz[i] !== 0 || ents.vy[i] !== 0 || ents.act[i] !== 0 || ents.driven[i] !== 0)) {
-          if (nm < MAX_VIEW) movers[nm++] = i;
-        } else if (ni < MAX_VIEW) idle[ni++] = i;
+          if (nm < cap) movers[nm++] = i;
+        } else if (ni < cap) idle[ni++] = i;
       }
     }
-    for (let k = 0; k < nm && n < MAX_VIEW; k++) ids[n++] = movers[k]!;
-    for (let k = 0; k < ni && n < MAX_VIEW; k++) ids[n++] = idle[k]!;
+    for (let k = 0; k < nm && n < cap; k++) ids[n++] = movers[k]!;
+    for (let k = 0; k < ni && n < cap; k++) ids[n++] = idle[k]!;
+    // Each is sorted with the rank it was chosen at. An index is under 2^20 (shared/ids.ts), so the two fit one number.
+    for (let k = 0; k < n; k++) ids[k] = ids[k]! * MAX_VIEW + k;
     sortU32(ids, n);
     const at = this.gathered++;
     const cur = (this.around[at] ??= new SentView());
+    const rank = (this.ranks[at] ??= new Uint16Array(MAX_VIEW));
     cur.count = 0;
     for (let k = 0; k < n; k++) {
-      const i = ids[k]!;
+      const i = Math.floor(ids[k]! / MAX_VIEW);
+      rank[k] = ids[k]! % MAX_VIEW;
       cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!);
       cur.urgent[k] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
     }
     this.aroundTick[chunk] = T;
     this.aroundAt[chunk] = at;
-    return cur;
+    return at;
   }
 
   private snapshot(c: Client, T: number): void {
     const ents = this.world.ents;
     // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
     const self = c.drive >= 0 ? -1 : c.ent;
-    const cur = this.viewAround(c.chunk, T);
+    const at = this.viewAround(c.chunk, T);
+    const cur = this.around[at]!;
+    // What it asked for takes effect once a second at most, so that it cannot have its view sent over and over.
+    if ((c.wantView !== c.viewCap || c.wantBytes !== c.snapshotBytes) && T >= c.viewReadyAt) {
+      c.viewCap = c.wantView;
+      c.snapshotBytes = c.wantBytes;
+      c.viewReadyAt = T + TICK_RATE;
+    }
+    const limit = c.viewCap !== 0 ? c.viewCap : Math.min(VIEW_DEFAULT, this.cap);
 
     const age = T - c.ackTick;
     const base = c.ackTick > 0 && age < VIEW_RING ? c.views.find(c.ackTick) : null;
@@ -993,7 +1044,14 @@ export class GameServer {
     // 0 for its own body, else the index of the entity it drives plus one.
     w.varint(c.drive + 1);
     writeBody(w, c.body);
-    c.rotate = writeViewDelta(w, base, cur, next, this.opts.snapshotBytes * 8 - w.pos, c.rotate, ents, self);
+    const bytes = c.snapshotBytes !== 0 ? c.snapshotBytes : this.opts.snapshotBytes;
+    c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? this.ranks[at]! : null, limit);
+    if (w.overflow) {
+      // Part of a snapshot is of no use. Nothing is sent, and the view the client would have held is forgotten.
+      this.stats.overflows++;
+      next.tick = 0;
+      return;
+    }
     c.lastSnapshot = T;
     c.conn.send(CH_UNRELIABLE, w.bytes());
   }

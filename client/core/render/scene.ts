@@ -14,12 +14,14 @@ import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
 import { AnimState, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
+import { MAX_VIEW } from "../../../shared/net/view.ts";
+import { sortU32 } from "../../../shared/sort.ts";
 import type { Falling } from "../rubble.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters } from "./characters.ts";
-import { DRAW_BLEND, FramePacket, InstanceWriter, MAX_DRAWS, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
+import { DRAW_BLEND, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
 import { NIGHT_LIGHT, UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { TerrainLod } from "./terrain.ts";
 
@@ -140,6 +142,12 @@ export class Scene {
   /** Index of an entity to leave out of the remote bodies, because `own` is that body as the viewer predicts it (a mount). -1 for none. */
   skip = -1;
   private readonly seatAt = [0, 0, 0];
+  /** The bodies in view this frame: which remote entity each is, its place (x, y, z, yaw), and whether it gets only one bone. */
+  private readonly bodyFrom = new Uint16Array(MAX_VIEW);
+  private readonly bodyAt = new Float64Array(MAX_VIEW * 4);
+  private readonly bodyRigid = new Uint8Array(MAX_VIEW);
+  /** Scratch for sorting them: survivors before the rest, then by distance, with the body's number in the low bits. */
+  private readonly bodyOrder = new Uint32Array(MAX_VIEW);
   private readonly mountState = new AnimState();
   private readonly state = new AnimState();
   private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags);
@@ -222,6 +230,8 @@ export class Scene {
     }
 
     this.terrain.select(cam, p, this.viewDistance);
+    // The selection stops at a full list, so a full list has left tiles out.
+    if (p.tileCount === MAX_TILES) p.dropped++;
     this.structures(cam, this.world.structs, 0);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS);
     if (remote) this.entities(cam, remote);
@@ -241,8 +251,15 @@ export class Scene {
     const p = this.packet;
     const ch = this.characters;
     const st = this.state;
+    const own = this.own;
     ch.begin();
     if (remote) {
+      // First which bodies are in view and where, then which of them the frame has the bones to pose.
+      const from = this.bodyFrom;
+      const place = this.bodyAt;
+      const rigid = this.bodyRigid;
+      let n = 0;
+      let wanted = 0;
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
         if (!ch.has(kind) || remote.id[i] === this.skip) continue;
@@ -253,7 +270,6 @@ export class Scene {
         // A rider is drawn on its mount's seat. The viewer's own mount is placed as predicted, any other as the server sent it.
         const on = remote.seat[i]! - 1;
         if (on >= 0) {
-          const own = this.own;
           const at = this.seatAt;
           let found = false;
           if (own && own.id === on) {
@@ -277,15 +293,44 @@ export class Scene {
         }
         const r = ch.reach(kind);
         if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, y + (r > 2.2 ? r : 2.2), z + r)) continue;
+        from[n] = i;
+        place[n * 4] = x;
+        place[n * 4 + 1] = y;
+        place[n * 4 + 2] = z;
+        place[n * 4 + 3] = yaw;
+        wanted += ch.bones(kind);
+        n++;
+      }
+      // The tier's bones, less those of the viewer's own body, which comes last, and at the top tier those of loose things.
+      const budget = Math.min(this.assets.tier.bones, MAX_BONES - LOOSE_BONES) - (own && ch.has(own.kind) ? ch.bones(own.kind) : 0);
+      rigid.fill(0, 0, n);
+      if (wanted > budget) {
+        // Survivors are posed first, then whatever is nearest, while one bone is left for each body still waiting. Those get that one.
+        const order = this.bodyOrder;
+        for (let k = 0; k < n; k++) {
+          const far = Math.sqrt(place[k * 4]! * place[k * 4]! + place[k * 4 + 1]! * place[k * 4 + 1]! + place[k * 4 + 2]! * place[k * 4 + 2]!);
+          order[k] = (ch.human(remote.kind[from[k]!]!) ? 0 : 0x80000000) + Math.min(Math.floor(far * 256), 0xfffff) * MAX_VIEW + k;
+        }
+        sortU32(order, n);
+        let left = budget - n;
+        let k = 0;
+        for (; k < n; k++) {
+          const more = ch.bones(remote.kind[from[order[k]! % MAX_VIEW]!]!) - 1;
+          if (more > left) break;
+          left -= more;
+        }
+        for (; k < n; k++) rigid[order[k]! % MAX_VIEW] = 1;
+      }
+      for (let k = 0; k < n; k++) {
+        const i = from[k]!;
+        const kind = remote.kind[i]!;
         st.unpack(remote.anim[i]!);
         st.seed = bodySeed(remote.id[i]!);
         const look = remote.hasLook[i] !== 0 ? remote.look : null;
         const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
-        if (!ch.add(p, kind, x, y, z, yaw, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size)) break;
+        ch.add(p, kind, place[k * 4]!, place[k * 4 + 1]!, place[k * 4 + 2]!, place[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size, rigid[k] !== 0);
       }
-    }
-    // Pitched props, such as an arrow where it landed, then the shots in the air.
-    if (remote) {
+      // Pitched props, such as an arrow where it landed.
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
         if (this.pitched[kind] === 0) continue;
@@ -296,11 +341,11 @@ export class Scene {
         st.unpack(remote.anim[i]!);
         const pitch = (st.pitch / PITCH_STEPS) * (Math.PI / 2);
         const level = Math.cos(pitch);
-        if (!ch.loose(p, this.meshOfKind[kind]!, x, y, z, Math.sin(remote.yaw[i]!) * level, Math.sin(pitch), Math.cos(remote.yaw[i]!) * level, 1)) break;
+        ch.loose(p, this.meshOfKind[kind]!, x, y, z, Math.sin(remote.yaw[i]!) * level, Math.sin(pitch), Math.cos(remote.yaw[i]!) * level, 1);
       }
     }
+    // Then the shots in the air.
     this.shots?.draw(ch, p, cam, this.shotTick);
-    const own = this.own;
     if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson);
     ch.flush(p, this.transient, false, this.drawBody);
   }
@@ -343,7 +388,11 @@ export class Scene {
     for (const t of this.things) {
       const r = this.radiusOfMesh[t.mesh]!;
       const [x, y, z] = [t.x - cam.x, t.y - cam.y, t.z - cam.z];
-      if (p.transientCount === p.transientIds.length || !cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+      if (p.transientCount === p.transientIds.length) {
+        p.dropped++;
+        continue;
+      }
       const far = Math.sqrt(x * x + y * y + z * z);
       wanted = this.assets.choose(errors[t.mesh]!, far, wanted < 0 ? t.level : wanted);
       this.assets.want(t.mesh, wanted, far);
@@ -368,6 +417,7 @@ export class Scene {
       p.transientIds[first + n] = 0;
       n++;
     }
+    p.dropped += Math.floor(this.beams.length / 3) - n;
     this.draw(this.beamMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0);
     p.transientCount = first + n;
   }
@@ -384,7 +434,11 @@ export class Scene {
         const x = tx * WATER_TILE + half - cam.x;
         const z = tz * WATER_TILE + half - cam.z;
         const y = sea - cam.y;
-        if (n === MAX_WATER_TILES || !cam.boxVisible(x - half, y - 0.1, z - half, x + half, y + 0.1, z + half)) continue;
+        if (!cam.boxVisible(x - half, y - 0.1, z - half, x + half, y + 0.1, z + half)) continue;
+        if (n === MAX_WATER_TILES) {
+          p.dropped++;
+          continue;
+        }
         this.transient.set(first + n, x, y, z, 0, WATER_COLOR);
         p.transientIds[first + n] = 0;
         n++;
@@ -534,7 +588,10 @@ export class Scene {
   private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags = 0): void {
     const p = this.packet;
     const n = p.drawCount;
-    if (n === MAX_DRAWS) return;
+    if (n === MAX_DRAWS) {
+      p.dropped++;
+      return;
+    }
     const lod = this.assets.level(mesh, wanted);
     if (lod < 0) {
       p.skipped++;
