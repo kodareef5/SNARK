@@ -98,11 +98,16 @@ const NODES: NodeDef[] = [
   // Limestone boulders. Only these hold a little ore, as the rocks always have here.
   { type: "node", id: id("rock"), mesh: "box", color: 15, half: [0.9, 0.6, 0.8], hits: 10, respawnHours: 2, material: "stone", yields: [...ROCK_YIELDS, { item: "core:ore", min: 0, max: 1, tool: true }], xp: 1, size: [0.6, 1.5] },
   { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: 2, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.6, 1.4] },
+  // A metal rock, darker and veined, which a player learns to spot. It is harder than limestone, and a pick gets its ore.
+  { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: 2, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }], xp: 1, size: [0.7, 1.4] },
   // Berry bushes.
   { type: "node", id: id("bush"), mesh: "box", color: 16, half: [0.5, 0.4, 0.5], soft: true, hits: 4, respawnHours: 1, yields: [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }], xp: 0.5, size: [0.75, 1.25] },
   // Saw palmetto bears a few berries. A fern bears none.
   { type: "node", id: id("palmetto"), mesh: "box", color: 17, half: [0.7, 0.5, 0.7], soft: true, hits: 4, respawnHours: 1, yields: [{ item: "core:fiber", min: 3, max: 6 }, { item: "core:berry", min: 1, max: 3 }], xp: 0.5, size: [0.7, 1.3] },
   { type: "node", id: id("fern"), mesh: "box", color: 7, half: [0.45, 0.35, 0.45], soft: true, hits: 3, respawnHours: 1, yields: [{ item: "core:fiber", min: 3, max: 6 }], xp: 0.5, size: [0.7, 1.3] },
+  // Sea grape is a berry bush of the shore. Creeper, a mass of vine, gives fibre and nothing else.
+  { type: "node", id: id("seagrape"), mesh: "box", color: 12, half: [0.9, 0.8, 0.9], soft: true, hits: 4, respawnHours: 1, yields: [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 4 }], xp: 0.5, size: [0.75, 1.3] },
+  { type: "node", id: id("creeper"), mesh: "box", color: 16, half: [0.8, 0.6, 0.5], soft: true, hits: 3, respawnHours: 1, yields: [{ item: "core:fiber", min: 4, max: 8 }], xp: 0.5, size: [0.7, 1.4] },
 ];
 
 /** Levels are the reference game's. */

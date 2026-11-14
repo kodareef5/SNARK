@@ -322,8 +322,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
   // turned from down to up: negating that column of its bone gives that hash again. It was 57387346 until draw flags took
   // 16 bits each, and hashed a byte each it was that still; then 2089007614 until the nodes here were turned and sized,
-  // stood on their bases and were drawn sized, and seven more kinds' grey boxes numbered the meshes after the tree's on.
-  expect(hash).toBe(1755989135);
+  // stood on their bases and were drawn sized, and seven more kinds' grey boxes numbered the meshes after the tree's on;
+  // then 1755989135 until three more kinds' grey boxes did the same.
+  expect(hash).toBe(3019125801);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

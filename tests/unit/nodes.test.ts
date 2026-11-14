@@ -18,7 +18,7 @@ const CHUNKS = PROVING_DIMS.chunksX * PROVING_DIMS.chunksZ;
 const field = (): NodeField => new NodeField(PROVING_DIMS, reg, provingNodes(hf, reg));
 const kind = (id: string) => reg.index.get(id)!;
 const spot = (): NodeSpot => ({ kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 });
-const KINDS = ["core:tree", "core:palm", "core:fig", "core:banyan", "core:mangrove", "core:rock", "core:rubble", "core:bush", "core:palmetto", "core:fern"];
+const KINDS = ["core:tree", "core:palm", "core:fig", "core:banyan", "core:mangrove", "core:rock", "core:rubble", "core:metal_rock", "core:bush", "core:palmetto", "core:fern", "core:seagrape", "core:creeper"];
 
 test("where nodes stand is a pure function of the map: the same every time, dry, off the plaza, on the ground, and of every kind", () => {
   const a = provingNodes(hf, reg);

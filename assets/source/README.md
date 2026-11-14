@@ -145,9 +145,12 @@ the grey box of its `half` (with its `top` for a crown) at every node.
 | `core:mangrove` | trees | mangroves at the water |
 | `core:rock` | rocks | pale coastal limestone boulders |
 | `core:rubble` | rocks | the rubble of buildings |
+| `core:metal_rock` | rocks | darker, veined stone that holds ore, to be spotted from far off |
 | `core:bush` | plants | berry bushes |
 | `core:palmetto` | plants | saw palmetto |
 | `core:fern` | plants | ferns |
+| `core:seagrape` | plants | sea grape by the shore, a berry bush |
+| `core:creeper` | plants | masses of vine, picked for fibre |
 
 `core:tree`, `core:rock` and `core:bush` are the kinds old worlds hold, so the
 hardwoods, the limestone and the berry bushes take their places there.
@@ -204,10 +207,15 @@ hardwoods, the limestone and the berry bushes take their places there.
 - It is turned every way, so it must hold up from every side.
 - Its level is chosen by distance as any piece's is, with each level's error
   (measured, or stated in metres at modelled size) taken at the kind's largest
-  size, for every node of the kind whatever its own size: all of a mesh's
-  nodes in a chunk are one draw at one level. Near and far, the same node at the
-  same distance gets the same level. Its textures are chosen the same way. Its
-  coarsest level is what the far layer will draw out to kilometres.
+  size, for every node of the kind whatever its own size. The distance is not
+  the chunk's but that of the 16 m square of the chunk the node stands in, so
+  the ferns across the chunk a player stands in are not drawn as finely as the
+  ones at his feet. A mesh's nodes in neighbouring squares of one level are one
+  draw, and squares one level apart share a draw at the finer where that costs
+  fewer than 4,096 triangles, so a node is drawn at its square's level or one
+  finer. The far layer will choose by the same squares, so near and far, the
+  same node gets the same level or one apart. Its textures are chosen the same
+  way. Its coarsest level is what the far layer will draw out to kilometres.
 - A soft kind (`soft`, the bushes) is walked through, and its boxes are what a
   look meets when it is picked.
 - A node mesh may use colour regions 0 to 4: region 0 is the kind's `color`.

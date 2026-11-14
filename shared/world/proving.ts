@@ -189,8 +189,8 @@ const OTHER_KINDS = 130;
  * The proving ground's nodes, as its map file holds them. Every node stands 3 m or more beyond the plaza's edge. The first layer
  * scatters trees, rocks and bushes over all of that, as it always has, so a world saved before the second came keeps every node
  * where it was and of its kind. The second grows the other kinds from 130 m out, so the woods nearest the plaza are as they
- * were, by a simple rule: mangroves, palms and palmetto by the water, palms, figs and ferns on the low ground, and figs,
- * banyans and rubble higher up.
+ * were, by a simple rule: mangroves, palms, palmetto and sea grape by the water, palms, figs, ferns and creeper on the low
+ * ground, and figs, banyans, rubble and metal rocks higher up.
  */
 export function provingNodeLayers(hf: Heightfield): NodeLayer[] {
   const side = PROVING_DIMS.chunksX * 64;
@@ -216,9 +216,9 @@ export function provingNodeLayers(hf: Heightfield): NodeLayer[] {
       seed: 0x51ac,
       perChunk: PROVING_ZONED_PER_CHUNK,
       zones: [
-        { bare: 6, kinds: [["core:mangrove", 4], ["core:palm", 3], ["core:palmetto", 3]] },
-        { bare: 8, kinds: [["core:palm", 3], ["core:fig", 1], ["core:fern", 3], ["core:palmetto", 2], ["core:rubble", 1]] },
-        { bare: 8, kinds: [["core:fig", 2], ["core:banyan", 1], ["core:fern", 3], ["core:rubble", 2], ["core:palm", 1]] },
+        { bare: 6, kinds: [["core:mangrove", 4], ["core:palm", 3], ["core:palmetto", 3], ["core:seagrape", 2]] },
+        { bare: 8, kinds: [["core:palm", 3], ["core:fig", 1], ["core:fern", 3], ["core:palmetto", 2], ["core:rubble", 1], ["core:creeper", 1]] },
+        { bare: 8, kinds: [["core:fig", 2], ["core:banyan", 1], ["core:fern", 3], ["core:rubble", 2], ["core:palm", 1], ["core:metal_rock", 1]] },
       ],
       zoneCell: ZONE_CELL,
       zone,

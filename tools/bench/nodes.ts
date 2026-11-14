@@ -1,8 +1,16 @@
-// Rows for resource nodes: working them out from the map, filling a chunk, a body's step and rays among them, and building
-// a chunk of them for drawing. `bun tools/bench/nodes.ts` runs these alone.
+// Rows for resource nodes: working them out from the map, filling a chunk, a body's step and rays among them, building a
+// chunk of them for drawing, and what a dense wood costs to draw with levels chosen by chunk or by cell. `bun
+// tools/bench/nodes.ts` runs these alone.
 
+import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { Scene } from "../../client/core/render/scene.ts";
+import { NODE_CELLS, Scene } from "../../client/core/render/scene.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import type { Def } from "../../shared/content/defs.ts";
+import { compileContent } from "../../shared/content/registry.ts";
+import { parsePack } from "../../shared/pack/pack.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
+import { buildPack, type SourceMesh } from "../pack/write.ts";
 import { CHUNK_SIZE, TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
@@ -128,9 +136,76 @@ export function benchNodes(section: Section, record: Row): void {
   record("draw a frame over the forest, nothing changed", best(5, 20, () => scene.build(cam, null)) / 1000, "ms");
 }
 
+/** A mesh of `tris[l]` triangles at level l, spread through a box `half` wide and `tall` high on its origin, stating `errors`. */
+function standIn(id: string, tris: readonly number[], errors: readonly number[], half: number, tall: number, rng: Rng): SourceMesh {
+  return {
+    id,
+    lods: tris.map((n, l) => {
+      const positions = new Float32Array(n * 9);
+      for (let k = 0; k < n; k++) {
+        const [x, y, z] = [rng.range(-half, half), rng.range(0, tall), rng.range(-half, half)];
+        positions.set([x, y, z, x + 0.3, y, z, x, y + 0.3, z + 0.1], k * 9);
+      }
+      return { positions, colors: new Uint8Array(n * 3).fill(7), indices: Uint32Array.from({ length: n * 3 }, (_, i) => i), ...(l > 0 ? { error: errors[l - 1]! } : {}) };
+    }),
+  };
+}
+
+/**
+ * Every slot of 5 by 5 chunks filled, a tree for every three plants, at the triangles the artists give: 8,000 for a tree's
+ * finest level and 400 for a plant's, four variants of each. Seen on the medium tier at 1,080 rows from 1.6 m up, in the middle of
+ * a chunk and at its corner, all round. Returns the triangles and draws a frame, choosing levels by cells of each size.
+ */
+function denseWood(sides: readonly number[]): { tris: number; draws: number }[] {
+  const rng = new Rng(17);
+  const tree = { tris: [8000, 3000, 1000, 300, 8], errors: [0.012, 0.05, 0.2, 1] };
+  const plant = { tris: [400, 150, 40, 12], errors: [0.005, 0.02, 0.08] };
+  const meshes = [1, 2, 3, 4].flatMap((v) => [standIn(`test:wood_${v}`, tree.tris, tree.errors, 4, 12, rng), standIn(`test:plant_${v}`, plant.tris, plant.errors, 0.6, 0.8, rng)]);
+  const node = (name: string, half: [number, number, number], size: [number, number], soft: boolean): Def => ({ type: "node", id: `test:${name}`, mesh: "box", color: 7, half, hits: 5, respawnHours: 1, yields: [], xp: 1, size, soft, variants: [1, 2, 3, 4].map((v) => ({ mesh: `test:${name}_${v}` })) });
+  const reg = compileContent([...CORE_CONTENT, node("wood", [0.4, 5, 0.4], [0.8, 1.25], false), node("plant", [0.5, 0.4, 0.5], [0.7, 1.3], true)]).registry!;
+  const pack = parsePack(buildPack(meshes, defaultPalette()));
+  const dims = { chunksX: 5, chunksZ: 5 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
+  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, 0);
+  const [wood, plant1] = [reg.index.get("test:wood")!, reg.index.get("test:plant")!];
+  const field = new NodeField(dims, reg, scatterNodes(dims, hf, 3, 256, nodeForms(reg), () => [wood, plant1, plant1, plant1]));
+  field.retain(12, 2, 1, () => false);
+  const scene = new Scene({ dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), nodes: field.store }, reg, pack);
+  scene.assets.tier = tierOf("medium");
+  scene.viewHeight = 1080;
+  const cam = new Camera();
+  cam.aspect = 16 / 9;
+  return sides.map((side) => {
+    scene.nodeCells = side;
+    for (const t of field.store.chunks) if (t) t.shape++;
+    let [tris, draws, frames] = [0, 0, 0];
+    for (const [x, z] of [[160, 160], [130, 130]] as const) {
+      for (let k = 0; k < 8; k++) {
+        [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [x, 1.6, z, (k * Math.PI) / 4, -0.05];
+        scene.build(cam, null);
+        const p = scene.build(cam, null);
+        tris += p.triangles;
+        draws += p.drawCount;
+        frames++;
+      }
+    }
+    return { tris: tris / frames, draws: draws / frames };
+  });
+}
+
+/** Rows for what a dense wood costs to draw, its levels chosen by the chunk and by cells of 16 and 8 m. */
+export function benchDenseWood(section: Section, record: Row): void {
+  section("A dense wood from inside it: every slot of 5 by 5 chunks filled, trees of 8,000 triangles and plants of 400");
+  const [chunk, cells, fine] = denseWood([1, NODE_CELLS, 8]);
+  for (const [name, at] of [["by the chunk", chunk!], [`by ${64 / NODE_CELLS} m cells`, cells!], ["by 8 m cells", fine!]] as const) {
+    record(`triangles a frame, levels chosen ${name}`, at.tris / 1e6, "M");
+    record(`draws a frame, levels chosen ${name}`, at.draws, "");
+  }
+}
+
 if (import.meta.main) {
-  benchNodes(
-    (title) => console.log(`\n${title}`),
-    (name, value, unit, budget = null) => console.log(`  ${name.padEnd(58)} ${value.toFixed(value < 10 ? 3 : 1).padStart(12)} ${unit}${budget === null ? "" : value <= budget ? `  ok (budget ${budget})` : `  MISS (budget ${budget})`}`),
-  );
+  const section = (title: string): void => console.log(`\n${title}`);
+  const record: Row = (name, value, unit, budget = null) => console.log(`  ${name.padEnd(58)} ${value.toFixed(value < 10 ? 3 : 1).padStart(12)} ${unit}${budget === null ? "" : value <= budget ? `  ok (budget ${budget})` : `  MISS (budget ${budget})`}`);
+  benchNodes(section, record);
+  benchDenseWood(section, record);
 }

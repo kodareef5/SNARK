@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 39 classes: 24 built, 4 partly built, and 11 stubs that
-wait for a feature. The core pack holds 253 definitions, and 77 renames of ids
+wait for a feature. The core pack holds 256 definitions, and 77 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -194,7 +194,7 @@ ARK's names: `takes` is the structure settings' damage by type; `decayDays` is D
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `node` | a foliage type and its harvest component | built | `mesh`, `color`, `half`, `hits`, `respawnHours`, `yields`, `xp` | `top`, `soft`, `material`, `variants`, `size`, `depleted` | 10 |
+| `node` | a foliage type and its harvest component | built | `mesh`, `color`, `half`, `hits`, `respawnHours`, `yields`, `xp` | `top`, `soft`, `material`, `variants`, `size`, `depleted` | 13 |
 
 - **`node`** on shelf `nodes`. A tree, a rock, a bush: harvested, used up, and grown back. Each node is one of its variants, turned and sized by its place.
 
@@ -377,7 +377,7 @@ built.
 
 **`material`** (4): mat_thatch, mat_wood, mat_stone, mat_metal.
 
-**`node`** (10): tree, palm, fig, banyan, mangrove, rock, rubble, bush, palmetto, fern.
+**`node`** (13): tree, palm, fig, banyan, mangrove, rock, rubble, metal_rock, bush, palmetto, fern, seagrape, creeper.
 
 **`prop/container`** (2): cache, bag.
 

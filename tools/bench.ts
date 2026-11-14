@@ -42,7 +42,7 @@ import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
 import { benchAgent } from "./bench/agent.ts";
 import { benchCollide } from "./bench/collide.ts";
-import { benchNodes } from "./bench/nodes.ts";
+import { benchDenseWood, benchNodes } from "./bench/nodes.ts";
 import { benchHunt } from "./bench/hunt.ts";
 import { benchLatency } from "./bench/latency.ts";
 import { benchPoses } from "./bench/poses.ts";
@@ -1183,6 +1183,7 @@ section("Asset library (headless): 64 rocks of five levels and a 263,169-vertex 
 benchAgent(section, record);
 benchCollide(section, record);
 benchNodes(section, record);
+benchDenseWood(section, record);
 benchHunt(section, record);
 benchLatency(section, record);
 benchPoses(section, record);
