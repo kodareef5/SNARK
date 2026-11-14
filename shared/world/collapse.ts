@@ -1,12 +1,13 @@
 // Works a collapse out over shared support nodes (support.ts), within a work budget per call, so a large collapse takes more ticks
 // and never a longer one. A piece found standing is judged again when a piece near it is removed. Authority only, because it removes structures.
 
+import { CHUNK_SIZE, MAX_CHUNKS_PER_AXIS, STRUCT_UNITS } from "../coords.ts";
 import type { PieceTables } from "./snap.ts";
 import { Found, GONE_FELL, GONE_TAKEN, type StructureStore } from "./structures.ts";
 import { COST_NODE, Support, type SupportNode } from "./support.ts";
 
-/** Packs lattice x and z into one key. z is less than this. */
-const KEY = 4194304;
+/** Packs lattice x and z into one key. z is less than this on the largest map there can be. */
+const KEY = MAX_CHUNKS_PER_AXIS * CHUNK_SIZE * STRUCT_UNITS;
 
 /** The most pieces one call removes. The rest go in the next call. */
 const WAVE_MAX = 1024;
