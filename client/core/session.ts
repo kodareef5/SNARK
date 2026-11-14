@@ -617,7 +617,7 @@ export class ClientSession {
   private nodes(r: BitReader): void {
     const chunk = r.u16();
     r.u32();
-    const count = r.u8();
+    const count = r.u16();
     const gone: number[] = [];
     for (let k = 0; k < count; k++) gone.push(r.u8());
     const field = this.nodeField;
