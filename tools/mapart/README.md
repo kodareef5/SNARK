@@ -2,11 +2,54 @@
 
 Offline source/art tools only. They add no dependency to the engine or its build.
 
-## Current delivery: round two
+## Current delivery: round three
 
-The original geographic pipeline below remains authoritative for source layers. The current art finish is **round2.py**, followed by **round2_balance.py**. Do not use the old `finish.py` entry point to export the round-two delivery: its all-features-at-all-scales treatment is the artistic behavior replaced in this round. Its registration/overlap helpers are still used for the close original paintings.
+Round three keeps the accepted room paintings and most distant land, repaints
+water at its own scales, and adds distinct far landmark pictures. A retained
+round-two finish at each scale is a deliberate production input, verified
+against all 85 pre-change tiles. This avoids re-rendering accepted land through
+a changed pipeline. New z0/z1 originals supply selected land and water; 15 new
+z2 originals supply water; z2 `0_0` and all 64 z3 originals remain unchanged.
 
-Saved originals are sufficient to reproduce the current artwork; no image calls or downloads are needed when the base vectors and PNGs are present:
+Reproduce the delivered artwork offline from kept files, with no image calls,
+network request, or git access:
+
+```sh
+tools/mapart/.venv/bin/python tools/mapart/reference.py
+tools/mapart/.venv/bin/python tools/mapart/round3.py 0
+tools/mapart/.venv/bin/python tools/mapart/round3.py 1
+tools/mapart/.venv/bin/python tools/mapart/round3.py 2
+tools/mapart/.venv/bin/python tools/mapart/round3.py 3
+tools/mapart/.venv/bin/python tools/mapart/round3_export.py
+tools/mapart/.venv/bin/python tools/mapart/round3_measure.py
+tools/mapart/.venv/bin/python tools/mapart/round3_review.py
+```
+
+| Tool | Purpose |
+|---|---|
+| round3_bathy.py | Download the exact NOAA coastal DEM subset if needed; read true coordinate arrays instead of stale regional bounding attributes; freeze a lossless georeferenced Float32 subset; render the initial depth guide. Not needed for offline finishing when the retained GeoTIFF exists. |
+| round3_contexts.py [1 or 2] | Recreate four z1 reference pairs (argument 1), or prepare the 15 new native z2 contexts and prompts (default 2). Generation only; uses frozen generation-time parents. |
+| round3.py Z | Assemble/align the new originals, preserve accepted land outside local story selections, constrain broad water pigment to observed depth, keep native brush marks, and replace the far mainland mechanical coast trace. Writes continuous unbalanced masters. |
+| round3_symbols.py | Four individual wreck interiors, keeping saved centres and bearings; size exaggeration only at z0/z1. |
+| round3_export.py | Symmetric broad wash calibration, wrecks, and exact 1,024² tile cuts. No tile-edge retouch. |
+| round3_measure.py | Every join, exact reconstruction, broad RGB differences at three blur radii, fixed water-pigment classification, base integrity, original inventory and retained native-detail correlations. |
+| round3_review.py | Round-two/three comparison, all zooms, all tile contact sheets, landmark/coast details, worst joins and a marker-overlay study. All review evidence is under reports/round3/. |
+
+`paintings/z*/retained-paint.png` is kept artwork, not an ignored intermediate.
+`paintings/z1/water-parent.png` and `reports/round3/z0-registered-study.png` record
+generation-time parents. New exact prompts are beside the replaced originals.
+The existing registration-image caches remain ignored; the finishing result
+must be identical with or without them. `base/bathymetry/README.md` explains the
+depth datum and the distinction between observed underwater forms and artistic
+wash. No data or engine coordinate convention from round two is replaced.
+
+Do not use the round-one/two export entry points for the current delivery.
+
+## Historical delivery: round two
+
+The original geographic pipeline below remains authoritative for source layers. The historical round-two art finish was **round2.py**, followed by **round2_balance.py**. These instructions document that earlier delivery; they do not reproduce round three. Do not use the old `finish.py` entry point to export round two: its all-features-at-all-scales treatment was replaced in that round. Its registration/overlap helpers are still used for close original paintings.
+
+With the original files from the round-two revision, no image calls or downloads are needed when the base vectors and PNGs are present:
 
 ```sh
 tools/mapart/.venv/bin/python tools/mapart/reference.py
