@@ -74,3 +74,60 @@ test("a fuel that burns for most of an hour and a thing that cooks as long are h
   expect(bad.some((e) => /core:wood.*fuel/.test(e))).toBe(true);
   expect(bad.some((e) => /core:meat.*cook/.test(e))).toBe(true);
 });
+
+const food = (id: string) => ({ id, type: "item", class: "consumable", stack: 50, eat: { food: 5 } }) as const;
+const orchard: ContentPack = {
+  name: "orchard",
+  requires: ["core"],
+  defs: [food("orchard:plum"), { id: "orchard:bow_long", extends: "core:bow" }],
+  adds: [
+    { to: "core:parasaur", field: "eats", items: [{ item: "orchard:plum", food: 30, affinity: 30 }] },
+    { to: "core:bow", field: "weapon.ammo", items: ["core:dart_tranq"] },
+  ],
+};
+const marsh: ContentPack = {
+  name: "marsh",
+  requires: ["core"],
+  defs: [food("marsh:reed"), food("marsh:berry"), { id: "marsh:parasaur_bog", extends: "core:parasaur", variant: "bog" }],
+  adds: [{ to: "core:parasaur", field: "eats", items: [{ item: "marsh:reed", food: 10, affinity: 10 }] }],
+  remaps: [
+    { from: "core:berry", to: "marsh:berry" },
+    { from: "core:fiber", to: null },
+  ],
+};
+
+test("two packs add to one list without knowing of each other, and a remap changes what is named and not what exists", () => {
+  const { registry, errors } = compilePacks([CORE_PACK, orchard, marsh]);
+  expect(errors).toEqual([]);
+  const reg = registry!;
+  const def = (id: string) => reg.defs[reg.index.get(id)!]! as unknown as Record<string, any>;
+  const foods = (id: string): string[] => def(id).eats.map((e: { item: string }) => e.item);
+
+  // The core's own food first, remapped, then each pack's in pack order. A copy starts with what its parent was given.
+  expect(foods("core:parasaur")).toEqual(["marsh:berry", "orchard:plum", "marsh:reed"]);
+  expect(foods("marsh:parasaur_bog")).toEqual(["marsh:berry", "orchard:plum", "marsh:reed"]);
+  expect(def("core:bow").weapon.ammo).toEqual(["core:arrow_stone", "core:arrow_tranq", "core:arrow_flame", "core:dart_tranq"]);
+  expect(def("orchard:bow_long").weapon.ammo).toEqual(def("core:bow").weapon.ammo);
+  // A bush gives the new berry and no fiber. Both are still defined, so what a save holds of them loads.
+  expect(def("core:bush").yields).toEqual([{ item: "marsh:berry", min: 3, max: 6 }]);
+  expect([reg.index.has("core:berry"), reg.index.has("core:fiber")]).toEqual([true, true]);
+  // What is made of fiber is still made of fiber: a remap reaches the open lists and nothing else.
+  expect(def("core:spear").craft.needs.map((n: { item: string }) => n.item)).toContain("core:fiber");
+
+  // A to B and B to C is A to C.
+  const chain = compilePacks([CORE_PACK, orchard, { ...marsh, remaps: [{ from: "core:berry", to: "marsh:berry" }, { from: "marsh:berry", to: "orchard:plum" }] }]);
+  expect(chain.errors).toEqual([]);
+  expect((chain.registry!.defs[chain.registry!.index.get("core:bush")!] as unknown as Record<string, any>).yields[0].item).toBe("orchard:plum");
+});
+
+test("adding and remapping mistakes are reported with the pack at fault", () => {
+  const bad = (more: Partial<ContentPack>): string[] => compilePacks([CORE_PACK, { name: "t", requires: ["core"], defs: [food("t:plum")], ...more }]).errors;
+  expect(bad({ adds: [{ to: "core:wyvern", field: "eats", items: [] }] })).toEqual(['pack "t": adds to "core:wyvern", which is not defined']);
+  expect(bad({ adds: [{ to: "core:grazer", field: "stats", items: [] }] })).toEqual(['pack "t": "stats" of core:grazer is not a list that packs may add to']);
+  expect(bad({ adds: [{ to: "core:bow", field: "weapon.reload", items: [] }] })).toEqual(['pack "t": "weapon.reload" of core:bow is not a list that packs may add to']);
+  expect(bad({ adds: [{ to: "core:berry", field: "weapon.ammo", items: ["core:arrow_stone"] }] })).toEqual(['pack "t": "weapon.ammo" of core:berry is not a list that packs may add to']);
+  expect(bad({ adds: [{ to: "core:grazer", field: "eats", items: [{ item: "core:wall", food: 1, affinity: 1 }] }] })).toEqual(['core:grazer: "core:wall" is not an item']);
+  expect(bad({ remaps: [{ from: "core:berry", to: "t:pear" }] })).toEqual(['pack "t": remaps "core:berry" to "t:pear", and "t:pear" is not defined']);
+  expect(bad({ remaps: [{ from: "core:berry", to: "core:grazer" }] })).toEqual(['pack "t": remaps "core:berry" to "core:grazer", which is not of type item']);
+  expect(bad({ remaps: [{ from: "core:berry", to: "t:plum" }, { from: "t:plum", to: "core:berry" }] })).toEqual(['pack "t": "core:berry" is remapped in a circle', 'pack "t": "t:plum" is remapped in a circle']);
+});
