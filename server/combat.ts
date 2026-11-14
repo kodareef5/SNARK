@@ -42,6 +42,9 @@ const SWING_WIDTH = 0.14;
 const MAX_NEAR = 256;
 /** From a chunk's middle to its corner. */
 const CHUNK_REACH = CHUNK_METRES * Math.SQRT1_2;
+/** How many times a saddle's rating counts against a blow, an arrow or a round, and against an explosion. ARK's. */
+const SADDLE_DIRECT = 4;
+const SADDLE_BLAST = 1;
 
 export interface CombatContext {
   readonly world: ServerWorld;
@@ -593,8 +596,8 @@ export class Combat {
         worn++;
       }
     } else if (victim.saddle !== 0) {
-      // A saddle is armor for its wearer wherever the hit lands. In ARK, damage is multiplied by 100 / (100 + twice its rating).
-      hit.armor = reg.saddleArmor[victim.saddle]! * 2;
+      // A saddle is armor for its wearer wherever the hit lands.
+      hit.armor = reg.saddleArmor[victim.saddle]! * (hit.type === DMG_EXPLOSIVE ? SADDLE_BLAST : SADDLE_DIRECT);
     }
     resolveDamage();
     if (harm.wear > 0 && hit.armor > 0 && vinv && vinv.armor >= 0) {

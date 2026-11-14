@@ -3,6 +3,9 @@
 
 import { expect, test } from "bun:test";
 import type { EntityRecord } from "../../server/records.ts";
+import { ZONE_NONE, ZONE_TORSO } from "../../shared/anim/human.ts";
+import { DMG_BULLET, DMG_EXPLOSIVE, DMG_MELEE } from "../../shared/sim/damage.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -46,4 +49,24 @@ test("food keeps four times as long in a creature as in a survivor's hands, and 
   expect(items.move(raptor, from, me, to, 1)).toBe(1);
   expect([items.inv(me).spoilAt[to]! - h.world.tick, left(raptor)]).toEqual([100, 400]);
   expect(items.audit()).toEqual([]);
+});
+
+test("a saddle of 25 halves a round or a blow and takes a fifth off an explosion (Saddles)", () => {
+  const { h, at, creature } = world();
+  const rec = creature("parasaur", 4);
+  const e = h.host.records.entOf.get(rec.pid)!;
+  const ents = h.world.ents;
+  /** The health a hit of `base` points takes. */
+  const hit = (base: number, type: number, zone: number): number => {
+    const before = h.host.survival.value(rec, V_HEALTH);
+    h.host.combat.land({ by: null, x: at.x, z: at.z, item: 0, base, type, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 }, e, zone, ents.x[e]!, ents.y[e]! + 1, ents.z[e]!, 3);
+    return before - h.host.survival.value(rec, V_HEALTH);
+  };
+  expect(reg.saddleArmor[id("saddle_parasaur")]).toBe(25);
+  expect(hit(20, DMG_BULLET, ZONE_TORSO)).toBeCloseTo(20, 3);
+  rec.saddle = id("saddle_parasaur");
+  // The page's examples: a pistol round of 60 does 30, and an explosion of 750 does 600. These are a tenth of the second.
+  expect(hit(60, DMG_BULLET, ZONE_TORSO)).toBeCloseTo(30, 3);
+  expect(hit(60, DMG_MELEE, ZONE_TORSO)).toBeCloseTo(30, 3);
+  expect(hit(75, DMG_EXPLOSIVE, ZONE_NONE)).toBeCloseTo(60, 3);
 });
