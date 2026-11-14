@@ -99,7 +99,8 @@ test("harvesting: what a blow yields by the rule for all of it and for each thin
 
 test("a node does not grow back while a survivor is near it: how near is the server's rule", () => {
   for (const [radius, grows] of [[1, false], [0.1, true]] as const) {
-    const { h, ada, me } = world([], [`ResourceNoReplenishRadiusPlayers=${radius}`]);
+    // The hour a node takes to grow back, brought down to two game hours.
+    const { h, ada, me } = world(["ResourcesRespawnPeriodMultiplier=0.07778"], [`ResourceNoReplenishRadiusPlayers=${radius}`]);
     const tree = nodesOf(h, "core:tree", 256, 256).find((t) => standFacing(h, ada, h.pilots[0]!, t))!;
     const table = h.host.harvest!.field.store.chunks[tree.chunk]!;
     while (table.kind[tree.index] !== 0) h.host.harvest!.strike(h.client(ada)!, tree.chunk, tree.index);
@@ -108,6 +109,23 @@ test("a node does not grow back while a survivor is near it: how near is the ser
     expect([radius, table.kind[tree.index] !== 0]).toEqual([radius, grows]);
     void me;
   }
+});
+
+test("a node does not grow back by a foundation or a pillar, as the reference game has it, but does by a box; how near is the server's rule", () => {
+  const regrows = (piece: string, rules: string[], mode: string[] = []): boolean => {
+    const { h, ada } = world(["ResourcesRespawnPeriodMultiplier=0.07778", ...rules], mode);
+    const tree = nodesOf(h, "core:tree", 256, 256).find((t) => standFacing(h, ada, h.pilots[0]!, t))!;
+    const table = h.host.harvest!.field.store.chunks[tree.chunk]!;
+    while (table.kind[tree.index] !== 0) h.host.harvest!.strike(h.client(ada)!, tree.chunk, tree.index);
+    // Built 4 m off, and she goes far away.
+    h.world.structs.add(id(piece), tree.x + 4, tree.y + h.world.structs.halfYOf(id(piece)), tree.z, 0, 1, 1000);
+    h.say(ada, "tp 256 240");
+    h.run((2 * 140 + 35) * 1000);
+    return table.kind[tree.index] !== 0;
+  };
+  expect([regrows("foundation_wood", []), regrows("pillar_stone", []), regrows("storage_box", [])]).toEqual([false, false, true]);
+  // Both of its settings scale the 12 m, and each other: at a fifth of it, 4 m off is far enough.
+  expect([regrows("foundation_wood", ["StructurePreventResourceRadiusMultiplier=0.2"]), regrows("foundation_wood", [], ["ResourceNoReplenishRadiusStructures=0.2"]), regrows("foundation_wood", ["StructurePreventResourceRadiusMultiplier=0.5"], ["ResourceNoReplenishRadiusStructures=2"])]).toEqual([true, true, false]);
 });
 
 test("taming: nothing is tamed if the server says so, nor a kind it names; and a tribe, and the server, hold no more tames than they may", () => {

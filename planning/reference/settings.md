@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 523 of them: 134 take effect,
-194 wait for a feature that is not built yet, and 195 have no meaning in this
+is listed here, 523 of them: 136 take effect,
+192 wait for a feature that is not built yet, and 195 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -50,6 +50,7 @@ may change a setting without a restart.
 | `DinoCharacterStaminaDrainMultiplier` | 1 | How fast creatures tire. Higher is faster. | no; clients are told |
 | `DinoCharacterHealthRecoveryMultiplier` | 1 | How fast creatures mend. Higher is faster. | no |
 | `OxygenSwimSpeedStatMultiplier` | 1 | Swimming speed gained by each level of oxygen. Higher is more. | no |
+| `StructurePreventResourceRadiusMultiplier` | 1 | How far from a foundation or pillar nodes will not grow back. Higher is further. | yes |
 | `MaxTamedDinos` | 5000 | Tamed creatures the whole server may hold. | yes |
 | `MaxPersonalTamedDinos` | 0 | Tamed creatures one tribe may hold. 0 is no limit. *Official servers use 500 in PvE and 300 in PvP.* | yes |
 | `DisableStructureDecayPvE` | False | Nothing built decays. | yes |
@@ -132,6 +133,7 @@ may change a setting without a restart.
 | `PlayerHarvestingDamageMultiplier` | 1 | What a survivor's blow does to a tree or a rock. Higher fells it sooner. | yes |
 | `HarvestResourceItemAmountClassMultipliers` | none | Yield of one resource: `(ClassName="core:thatch",Multiplier=2.0)`. | yes |
 | `ResourceNoReplenishRadiusPlayers` | 1 | How far from a survivor nodes will not grow back. Higher is further. | yes |
+| `ResourceNoReplenishRadiusStructures` | 1 | How far from a foundation or pillar nodes will not grow back. Higher is further. | yes |
 | `GlobalSpoilingTimeMultiplier` | 1 | How long things keep before they spoil. Higher is longer. *ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied.* | no |
 | `GlobalItemDecompositionTimeMultiplier` | 1 | How long a dropped bag lies. Higher is longer. | yes |
 | `GlobalCorpseDecompositionTimeMultiplier` | 1 | How long what a dead survivor leaves lies. Higher is longer. | yes |
@@ -311,13 +313,6 @@ what is built next.
 | `ClampResourceHarvestDamage` | False | A creature's harvesting blow counts for no more than the health the node has left. | GameUserSettings.ini |
 | `AllowRaidDinoFeeding` | False | Raid creatures may be fed, and so kept. | GameUserSettings.ini |
 | `DinoHarvestingDamageMultiplier` | 3.2 | What a tamed creature's blow does to a tree or a rock. | Game.ini |
-
-### Nodes that do not grow back near what is built
-
-| Setting | Default | What it does | Where |
-| --- | --- | --- | --- |
-| `StructurePreventResourceRadiusMultiplier` | 1 | How far from something built nodes will not grow back. Higher is further. | GameUserSettings.ini |
-| `ResourceNoReplenishRadiusStructures` | 1 | How far from something built nodes will not grow back. Higher is further. | Game.ini |
 
 ### Farming, irrigation, and upkeep of the body
 

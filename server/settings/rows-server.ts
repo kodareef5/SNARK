@@ -58,7 +58,7 @@ s.under("Vitals")
 s.under("Harvesting")
   .b("ClampResourceHarvestDamage", false, "A creature's harvesting blow counts for no more than the health the node has left.", plan("dinoHarvest"))
   .b("UseOptimizedHarvestingHealth", false, "A cheaper way of harvesting at high amounts, with fewer rare things.", none("unreal"))
-  .f("StructurePreventResourceRadiusMultiplier", 1, "How far from something built nodes will not grow back. Higher is further.", plan("regrowth"));
+  .f("StructurePreventResourceRadiusMultiplier", 1, "How far from a foundation or pillar nodes will not grow back. Higher is further.", live({ live: true }));
 
 s.under("Creatures")
   .i("MaxTamedDinos", 5000, "Tamed creatures the whole server may hold.", live({ live: true }))

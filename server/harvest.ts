@@ -12,6 +12,8 @@ import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { chunkCount, chunkCx, chunkCz, TICK_RATE } from "../shared/coords.ts";
 import type { NodeField, NodeSpot } from "../shared/world/nodes.ts";
 import { HIT_NODE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
+import { ROLE_FOUNDATION, ROLE_PILLAR } from "../shared/world/snap.ts";
+import { Found } from "../shared/world/structures.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import { XP_HARVEST, type Progression } from "./progression.ts";
@@ -25,7 +27,10 @@ export const DEADLINE_NODE = 3;
 export const TAG_NODES = 1;
 /** Metres from the eye, for picking with the use key. */
 const REACH = 3.5;
-/** Metres. A node does not grow back while a survivor is this close. It tries again after RETRY_TICKS. */
+/**
+ * Metres. A node does not grow back while a survivor is this close, nor a foundation or a pillar, which is what the reference
+ * game counts as built. It tries again after RETRY_TICKS.
+ */
 const CROWDED = 12;
 const RETRY_TICKS = 30 * TICK_RATE;
 
@@ -59,6 +64,7 @@ export class Harvest {
   private readonly dir = [0, 0, 0];
   private readonly spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
   private readonly per: number;
+  private readonly found = new Found();
 
   constructor(world: ServerWorld, game: GameServer, records: Records, items: Items, progression: Progression, deadlines: DeadlineHeap, seed: number) {
     this.world = world;
@@ -190,23 +196,45 @@ export class Harvest {
     const chunk = key >> 8;
     const index = key & 255;
     this.field.source.at(chunk, index, this.spot);
-    const ents = this.world.ents;
-    const crowded = CROWDED * (this.rules ? this.rules.num("ResourceNoReplenishRadiusPlayers") : 1);
-    for (const c of this.game.clients) {
-      if (!c?.active || c.ent < 0) continue;
-      const dx = ents.x[c.ent]! - this.spot.x;
-      const dz = ents.z[c.ent]! - this.spot.z;
-      if (dx * dx + dz * dz < crowded * crowded) {
-        t.respawnAt = this.world.tick + RETRY_TICKS;
-        this.deadlines.push(t.respawnAt, DEADLINE_NODE, key, t.respawnAt);
-        this.dirty.add(chunk);
-        return;
-      }
+    if (this.held(this.spot.x, this.spot.z)) {
+      t.respawnAt = this.world.tick + RETRY_TICKS;
+      this.deadlines.push(t.respawnAt, DEADLINE_NODE, key, t.respawnAt);
+      this.dirty.add(chunk);
+      return;
     }
     this.touched.delete(key);
     this.field.set(chunk, index, true);
     this.version[chunk] = this.version[chunk]! + 1;
     this.dirty.add(chunk);
+  }
+
+  /** Whether a survivor, or a foundation or pillar built there, keeps a node at (x, z) from growing back. */
+  private held(x: number, z: number): boolean {
+    const rules = this.rules;
+    const ents = this.world.ents;
+    const near = CROWDED * (rules ? rules.num("ResourceNoReplenishRadiusPlayers") : 1);
+    for (const c of this.game.clients) {
+      if (!c?.active || c.ent < 0) continue;
+      const dx = ents.x[c.ent]! - x;
+      const dz = ents.z[c.ent]! - z;
+      if (dx * dx + dz * dz < near * near) return true;
+    }
+    // A free-standing thing (a box, a fire, a bed) does not count, nor a wall or a ceiling by itself.
+    const built = CROWDED * (rules ? rules.num("ResourceNoReplenishRadiusStructures") * rules.num("StructurePreventResourceRadiusMultiplier") : 1);
+    const structs = this.world.structs;
+    const role = this.world.reg.role;
+    const n = structs.query(x - built, z - built, x + built, z + built, this.found);
+    for (let i = 0; i < n; i++) {
+      const ref = this.found.refs[i]!;
+      const t = structs.chunks[Math.floor(ref / 65536)]!;
+      const slot = ref & 0xffff;
+      const r = role[t.kind[slot]!];
+      if (r !== ROLE_FOUNDATION && r !== ROLE_PILLAR) continue;
+      const dx = t.x[slot]! - x;
+      const dz = t.z[slot]! - z;
+      if (dx * dx + dz * dz < built * built) return true;
+    }
+    return false;
   }
 
   /** Marks every chunk with a touched node for saving. */
