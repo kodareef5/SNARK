@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CATALOG, catalogCounts, catalogFaults, rowOf } from "../../server/settings/catalog.ts";
 import { field, isList, parseIni, toNumber, toSwitch, unquote, writeNode, type IniList } from "../../server/settings/ini.ts";
+import { CLASSES } from "../../shared/content/classes.ts";
 import { FEATURES } from "../../server/settings/row.ts";
 import { Rules, readValue } from "../../server/settings/rules.ts";
 import { SETTINGS_PAGE, settingsPage } from "../../tools/settings.ts";
@@ -14,8 +15,8 @@ test("every row of the catalogue is whole: one of each name, a meaning, a defaul
   const n = catalogCounts();
   expect(n.all).toBeGreaterThan(450);
   expect(n.live + n.todo + n.planned + n.none).toBe(n.all);
-  // Every feature in FEATURES has a planned row that waits for it.
-  const waited = new Set(CATALOG.filter((r) => r.status === "planned").map((r) => r.waits));
+  // Every feature in FEATURES has something that waits for it: a planned setting, or a class of content.
+  const waited = new Set<string>([...CATALOG.filter((r) => r.status === "planned").map((r) => r.waits), ...CLASSES.map((r) => r.waits)]);
   expect(Object.keys(FEATURES).filter((f) => !waited.has(f))).toEqual([]);
 });
 

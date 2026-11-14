@@ -35,28 +35,8 @@ export type Place =
   /** ARK's live file only. */
   | "dynamic";
 
-/** Features this engine does not have yet. A planned row waits for one. */
-export const FEATURES = {
-  spawner: "Wild creatures that spawn and respawn by region",
-  imprinting: "Imprinting and baby care",
-  tameBonus: "Taming bonuses in a tame's stats, passive taming, mate boost, unfertilised eggs",
-  defences: "Defences: turrets, spikes, and explosives that are set",
-  limits: "Structure limits, platforms, caves, and where building is prevented",
-  decay: "Decay in finer grain, and of tamed creatures; unclaiming",
-  offline: "Offline protection, PvP timers, and hardcore",
-  tribes: "Tribes in depth: alliances, the log, wars, merges, cooldowns",
-  dinoHarvest: "Creatures that harvest, and raid creatures",
-  regrowth: "Nodes that do not grow back near what is built",
-  farming: "Farming, irrigation, and upkeep of the body",
-  loot: "Loot: supply crates, fishing, quality, item stat clamps, custom recipes",
-  passiveXp: "Experience over time, from notes and events, and by what was killed",
-  flyers: "Flyers",
-  weather: "Weather, temperature, and disease",
-  transfers: "Transfers between servers",
-  ops: "Operations: RCON, ban and admin lists, exclusive join, logs, filters, the live file by URL",
-  polish: "Small behaviours of things already built",
-} as const;
-export type Feature = keyof typeof FEATURES;
+export { FEATURES, type Feature } from "../../shared/features.ts";
+import type { Feature } from "../../shared/features.ts";
 
 /** Why a setting has no meaning here. */
 export const NOT_HERE = {

@@ -1,0 +1,417 @@
+// The class table: every kind of content, as ARK organises its own, with what each must and may declare and the assets
+// it expects. A definition's `type` is its family and its class is a leaf of this table. A field its class neither must
+// nor may declare is refused. The reference page, the shape checks and the asset slots are all derived from these rows.
+
+import { FEATURES, type Feature } from "../features.ts";
+import type { BuffDef, Def, EngramDef, ItemDef, LevelsDef, MaterialDef, NodeDef, PropDef, RecipeDef, ShapeDef, SpeciesDef, StructureDef } from "./defs.ts";
+
+/** "built": systems read it. "partial": part of it lives in code. "stub": the row exists and nothing reads it yet. */
+export type Status = "built" | "partial" | "stub";
+
+export interface Field {
+  kind: "text" | "number" | "switch" | "vec3" | "list" | "facet";
+  /** ARK's name for the same thing, or "" for a field of our own. */
+  ark: string;
+  /** Paths in the field that name other definitions, and the class or family each must be. "" is the field itself, "[]" each entry. */
+  refs?: Record<string, string>;
+  /** Packs may add entries to it, and a remap rewrites what it names. */
+  open?: boolean;
+}
+
+export interface Slot {
+  asset: "mesh" | "rig" | "clip" | "icon" | "sound" | "effect";
+  need: "must" | "may";
+  /** A slot with several values has one asset for each key. "*" stands for keys the content names. */
+  keys?: readonly string[];
+  /** The asset's id by today's naming: "{mesh}", "{mesh}/{key}", "{id}/icon". */
+  from: string;
+  /** What is used when the slot is empty: "box", "shape", "swatch", "none", another slot ("#mesh"), or a mesh id. */
+  fallback: string;
+}
+
+export interface ClassRow {
+  /** "item/weapon". A family with one class is its own leaf: "node". */
+  id: string;
+  type: Def["type"] | StubType;
+  parent: string | null;
+  /** An abstract class groups others and no definition is of it. */
+  abstract: boolean;
+  ark: string;
+  status: Status;
+  waits: Feature | "";
+  /** Where its definitions sit under their pack: "items/weapons". */
+  shelf: string;
+  must: readonly string[];
+  may: readonly string[];
+  /** At least one of these must be present. */
+  any: readonly string[];
+  slots: Readonly<Record<string, Slot>>;
+  doc: string;
+}
+
+/** Families that have a row and no definition type yet. */
+export type StubType = "damage" | "loot" | "spawns" | "map" | "game";
+
+const f = (kind: Field["kind"], ark = "", more: Partial<Field> = {}): Field => ({ kind, ark, ...more });
+
+type Fields<D> = { [K in Exclude<keyof D, "type" | "id">]-?: Field };
+
+const ITEM = {
+  stack: f("number", "MaxItemQuantity"),
+  weight: f("number", "BaseItemWeight"),
+  spoilHours: f("number", "SpoilingTime"),
+  eat: f("facet", "UseItemAddCharacterStatusValues"),
+  fuel: f("number"),
+  saddle: f("facet", "equipment type DinoSaddle", { refs: { fits: "species/creature" } }),
+  dose: f("facet", "UseItemAddCharacterStatusValues"),
+  cooks: f("facet", "", { refs: { into: "item" } }),
+  label: f("text", "DescriptiveNameBase"),
+  color: f("number"),
+  tool: f("facet"),
+  weapon: f("facet", "WeaponTemplate", { refs: { "ammo[]": "item/ammo", "fits[]": "item/attachment" }, open: true }),
+  ammo: f("facet", "", { refs: { buff: "buff" } }),
+  wear: f("facet", "equipment type and ItemStatInfos"),
+  attachment: f("text", "item type WeaponAttachment"),
+  places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
+} satisfies Fields<ItemDef>;
+
+const SPECIES = {
+  mesh: f("text"),
+  skeleton: f("text"),
+  color: f("number"),
+  radius: f("number"),
+  height: f("number"),
+  eyeHeight: f("number"),
+  walkSpeed: f("number"),
+  sprintMul: f("number"),
+  jumpSpeed: f("number"),
+  crouch: f("facet"),
+  prone: f("facet"),
+  turn: f("number"),
+  strafe: f("switch"),
+  swimSpeed: f("number"),
+  stamina: f("facet"),
+  food: f("facet"),
+  waterPerHour: f("number"),
+  slots: f("number"),
+  equips: f("switch"),
+  fists: f("number"),
+  drops: f("list", "DeathHarvestingComponent", { refs: { "[].item": "item" }, open: true }),
+  stats: f("facet", "MaxStatusValues and the per-level gains"),
+  takes: f("facet", "DamageTypeAdjusters"),
+  zones: f("facet"),
+  killXp: f("number"),
+  still: f("switch"),
+  temper: f("text"),
+  sight: f("number"),
+  leash: f("number"),
+  bite: f("facet", "AttackInfos"),
+  taming: f("facet", "RequiredTameAffinity"),
+  eats: f("list", "DinoSettings food effectiveness", { refs: { "[].item": "item" }, open: true }),
+  torporDrain: f("number"),
+  breeds: f("facet", "EggItemsToSpawn, BabyAgeSpeed", { refs: { egg: "prop/egg" } }),
+} satisfies Fields<SpeciesDef>;
+
+const STRUCTURE = {
+  mesh: f("text"),
+  color: f("number"),
+  half: f("vec3"),
+  shape: f("text", "SnapPoints", { refs: { "": "shape" } }),
+  hp: f("number", "Health"),
+  material: f("text", "StructureSettingsClass", { refs: { "": "material" } }),
+  slots: f("number", "an inventory component"),
+  opens: f("text", "", { refs: { "": "structure" } }),
+  locked: f("switch"),
+  falls: f("switch"),
+  decayDays: f("number", "DecayDestructionPeriod"),
+  lights: f("text", "", { refs: { "": "structure" } }),
+  lit: f("switch"),
+  bed: f("switch"),
+} satisfies Fields<StructureDef>;
+
+const NODE = {
+  mesh: f("text"),
+  color: f("number"),
+  half: f("vec3"),
+  top: f("facet"),
+  soft: f("switch"),
+  hits: f("number", "MaxHarvestHealth"),
+  respawnHours: f("number", "the replenish timing"),
+  material: f("text"),
+  yields: f("list", "the harvest component's item entries", { refs: { "[].item": "item" }, open: true }),
+  xp: f("number"),
+} satisfies Fields<NodeDef>;
+
+const PROP = {
+  mesh: f("text"),
+  color: f("number"),
+  radius: f("number"),
+  height: f("number"),
+  slots: f("number"),
+  pitched: f("switch"),
+} satisfies Fields<PropDef>;
+
+const RECIPE = {
+  makes: f("text", "", { refs: { "": "item" } }),
+  count: f("number"),
+  needs: f("list", "BaseCraftingResourceRequirements", { refs: { "[].item": "item" } }),
+  seconds: f("number", "BlueprintTimeToCraft"),
+  xp: f("number", "BaseCraftingXP"),
+} satisfies Fields<RecipeDef>;
+
+const ENGRAM = {
+  label: f("text"),
+  level: f("number", "RequiredCharacterLevel"),
+  cost: f("number", "RequiredEngramPoints"),
+  unlocks: f("list", "BluePrintEntry", { refs: { "[]": "recipe" } }),
+  hidden: f("switch", "EngramHidden"),
+  auto: f("number", "EngramEntryAutoUnlocks"),
+} satisfies Fields<EngramDef>;
+
+const LEVELS = {
+  xp: f("list", "LevelExperienceRampOverrides"),
+  engramPoints: f("list", "OverridePlayerLevelEngramPoints"),
+  most: f("number", "OverrideMaxExperiencePointsPlayer"),
+  tame: f("facet", "the tames' ramp"),
+} satisfies Fields<LevelsDef>;
+
+const BUFF = {
+  label: f("text"),
+  color: f("number"),
+  seconds: f("number", "DeactivateAfterTime"),
+  again: f("text"),
+  health: f("number", "ValuesToAddPerSecond"),
+  torpor: f("number", "ValuesToAddPerSecond"),
+  speed: f("number", "CharacterMultiplier"),
+  dealt: f("number", "CharacterMultiplier"),
+  taken: f("number", "CharacterMultiplier"),
+  root: f("switch"),
+  immune: f("switch"),
+  good: f("switch"),
+} satisfies Fields<BuffDef>;
+
+const MATERIAL = {
+  takes: f("facet", "the structure settings' damage by type"),
+  decayDays: f("number", "DecayDestructionPeriodMultiplier"),
+} satisfies Fields<MaterialDef>;
+
+const SHAPE = {
+  role: f("text", "the snap type"),
+  boxes: f("list"),
+  doorway: f("switch"),
+} satisfies Fields<ShapeDef>;
+
+/** Every field of every family that has a definition type. */
+export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>>>> = {
+  item: ITEM,
+  species: SPECIES,
+  structure: STRUCTURE,
+  node: NODE,
+  prop: PROP,
+  recipe: RECIPE,
+  engram: ENGRAM,
+  levels: LEVELS,
+  buff: BUFF,
+  material: MATERIAL,
+  shape: SHAPE,
+};
+
+const mesh = (need: Slot["need"], from: string, fallback: string): Slot => ({ asset: "mesh", need, from, fallback });
+const icon: Slot = { asset: "icon", need: "may", from: "{id}/icon", fallback: "swatch" };
+const ITEM_SLOTS = { icon, dropped: mesh("may", "{id}/dropped", "core:bag") };
+const BODY_PARTS = ["head", "torso", "hands", "legs", "feet"] as const;
+
+interface RowIn<K extends string> {
+  parent?: string;
+  abstract?: boolean;
+  ark: string;
+  status?: Status;
+  waits?: Feature;
+  shelf: string;
+  must?: readonly K[];
+  may?: readonly K[];
+  any?: readonly K[];
+  slots?: Record<string, Slot>;
+  doc: string;
+}
+
+const rows: ClassRow[] = [];
+
+/** Adds a class of a family whose fields are `_fields`. The keys of must, may and any are checked against them. */
+function row<T extends Record<string, Field>>(id: string, type: ClassRow["type"], _fields: T, r: RowIn<Extract<keyof T, string>>): void {
+  rows.push({
+    id,
+    type,
+    parent: r.parent ?? null,
+    abstract: r.abstract ?? false,
+    ark: r.ark,
+    status: r.status ?? "built",
+    waits: r.waits ?? "",
+    shelf: r.shelf,
+    must: r.must ?? [],
+    may: r.may ?? [],
+    any: r.any ?? [],
+    slots: r.slots ?? {},
+    doc: r.doc,
+  });
+}
+
+const NONE = {};
+const ANY_ITEM = ["weight", "label", "color"] as const;
+
+row("item", "item", ITEM, { abstract: true, ark: "PrimalItem", shelf: "items", doc: "Anything that is carried." });
+row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours"], slots: ITEM_SLOTS, doc: "A material: gathered, stacked, and spent in crafting." });
+row("item/consumable", "item", ITEM, { parent: "item", ark: "PrimalItemConsumable_", shelf: "items/consumables", must: ["stack"], may: [...ANY_ITEM, "eat", "dose", "spoilHours", "cooks", "fuel"], any: ["eat", "dose"], slots: ITEM_SLOTS, doc: "Something eaten, drunk or fed for what it does to a body." });
+row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool"], slots: { held: mesh("must", "{weapon.mesh}", "none"), ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool." });
+row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: "items/ammo", must: ["stack", "ammo"], may: ANY_ITEM, slots: { shot: mesh("may", "{ammo.mesh}", "core:tracer"), ...ITEM_SLOTS }, doc: "What a bow or gun fires." });
+row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it." });
+row("item/equipment", "item", ITEM, { parent: "item", abstract: true, ark: "item type Equipment", shelf: "items/equipment", doc: "Worn by a body, in a slot." });
+row("item/armor", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, hat to boots", shelf: "items/armor", must: ["stack", "wear"], may: ANY_ITEM, slots: { worn: mesh("must", "{body}/armor/{wear.set}/{wear.slot}", "the body's own part in the piece's colours"), ...ITEM_SLOTS }, doc: "A piece worn on the head, torso, hands, legs or feet." });
+row("item/saddle", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, DinoSaddle", shelf: "items/saddles", must: ["stack", "saddle"], may: ANY_ITEM, slots: { worn: mesh("may", "{id}/worn", "none"), ...ITEM_SLOTS }, doc: "Worn by a tamed creature so that it can be ridden." });
+row("item/structure", "item", ITEM, { parent: "item", ark: "PrimalItemStructure_", shelf: "items/structures", must: ["stack", "places"], may: ANY_ITEM, slots: { preview: mesh("may", "{id}/preview", "#mesh of its structure"), ...ITEM_SLOTS }, doc: "Set down as a structure." });
+row("item/egg", "item", ITEM, { parent: "item/consumable", ark: "PrimalItemConsumable_Egg_", status: "stub", waits: "eggs", shelf: "items/eggs", must: ["stack"], may: [...ANY_ITEM, "eat", "spoilHours"], slots: ITEM_SLOTS, doc: "An egg in the hand. Today an egg is a prop that lies where it was laid." });
+row("item/shield", "item", ITEM, { parent: "item/equipment", ark: "equipment type Shield", status: "stub", waits: "cosmetics", shelf: "items/shields", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Held in the other hand to block." });
+row("item/costume", "item", ITEM, { parent: "item/equipment", ark: "equipment types Costume and Trophy", status: "stub", waits: "cosmetics", shelf: "items/costumes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Worn for its look alone." });
+row("item/skin", "item", ITEM, { parent: "item", ark: "PrimalItemSkin_", status: "stub", waits: "cosmetics", shelf: "items/skins", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Changes the look of the item it is put on." });
+row("item/dye", "item", ITEM, { parent: "item", ark: "PrimalItemDye_", status: "stub", waits: "cosmetics", shelf: "items/dyes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Colours a region of what it is used on." });
+row("item/artifact", "item", ITEM, { parent: "item", ark: "PrimalItemArtifact_", status: "stub", waits: "bosses", shelf: "items/artifacts", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Found once in its place and spent to call a boss." });
+
+row("recipe", "recipe", RECIPE, { ark: "the crafting cost on the item", shelf: "recipes", must: ["makes", "count", "needs", "seconds", "xp"], doc: "What an item is made of. ARK keeps this on the item, and so will we." });
+row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "unlocks"], may: ["hidden", "auto"], slots: { icon: { ...icon, fallback: "#icon of its item" } }, doc: "Learned with points at a level, for good, to craft what it unlocks." });
+row("levels", "levels", LEVELS, { ark: "the level ramp of the game data", shelf: "rules", must: ["xp", "engramPoints"], may: ["most", "tame"], doc: "The experience each level takes and the engram points it gives." });
+
+const BODY = ["mesh", "color", "radius", "height", "eyeHeight", "walkSpeed", "sprintMul", "jumpSpeed"] as const;
+const HUMAN_SLOTS = {
+  body: { asset: "mesh", need: "must", keys: BODY_PARTS, from: "{mesh}_{sex}/{key}", fallback: "{mesh}/{key}, then core:mannequin/{key}" },
+  hair: { asset: "mesh", need: "may", keys: ["*"], from: "{mesh}_{sex}/hair/{key}", fallback: "none" },
+  beard: { asset: "mesh", need: "may", keys: ["*"], from: "{mesh}_{sex}/beard/{key}", fallback: "none" },
+  icon,
+} satisfies Record<string, Slot>;
+row("species", "species", SPECIES, { abstract: true, ark: "a character", shelf: "species", doc: "A kind of body that lives." });
+row("species/survivor", "species", SPECIES, { parent: "species", ark: "the player's character", shelf: "survivors", must: [...BODY, "skeleton", "stats", "equips"], may: ["crouch", "prone", "swimSpeed", "stamina", "food", "waterPerHour", "slots", "fists", "drops", "takes", "zones", "killXp", "torporDrain"], slots: HUMAN_SLOTS, doc: "The body a player has." });
+row("species/creature", "species", SPECIES, {
+  parent: "species",
+  ark: "a creature's character, its status component and its entry",
+  shelf: "creatures",
+  must: [...BODY, "stats"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds"],
+  slots: {
+    body: mesh("must", "{mesh}", "box"),
+    rig: { asset: "rig", need: "may", from: "{mesh}", fallback: "drawn rigid and hit as a box" },
+    clip: { asset: "clip", need: "must", keys: ["idle", "walk", "run", "attack", "death"], from: "{mesh}/{key}", fallback: "run to walk to idle to the rest pose; attack and death to idle" },
+    move: { asset: "clip", need: "may", keys: ["jump", "swim", "eat", "sleep"], from: "{mesh}/{key}", fallback: "swim to walk; the rest to idle" },
+    icon,
+    sound: { asset: "sound", need: "may", keys: ["*"], from: "{id}/sound/{key}", fallback: "none" },
+  },
+  doc: "A wild thing that may be tamed, ridden and bred.",
+});
+row("species/target", "species", SPECIES, { parent: "species", ark: "none, ours", shelf: "targets", must: [...BODY, "still"], may: ["skeleton", "stats", "slots", "equips", "zones", "takes", "torporDrain", "crouch", "prone", "stamina", "fists"], slots: HUMAN_SLOTS, doc: "A body that stands where it is put, to be practised on." });
+
+const BUILT = ["mesh", "color", "half", "hp"] as const;
+const STRUCTURE_SLOTS = { mesh: mesh("must", "{mesh}", "shape"), destroyed: mesh("may", "{id}/destroyed", "none"), preview: mesh("may", "{id}/preview", "#mesh") };
+row("structure", "structure", STRUCTURE, { abstract: true, ark: "APrimalStructure", shelf: "structures", doc: "Anything built or standing in the world that is not alive." });
+row("structure/piece", "structure", STRUCTURE, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up." });
+row("structure/container", "structure", STRUCTURE, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." });
+row("structure/station", "structure", STRUCTURE, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. Today that is fuel burning and food cooking." });
+row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it." });
+row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material"], slots: { mesh: mesh("must", "{mesh}", "box") }, doc: "Part of a map: set there with the world and joined to nothing." });
+row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." });
+row("shape", "shape", SHAPE, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." });
+row("material", "material", MATERIAL, { ark: "StructureSettings and its tier", shelf: "materials", must: ["takes"], may: ["decayDays"], doc: "What each type of damage does to what is built of it, and how long it lasts unvisited." });
+
+row("node", "node", NODE, { ark: "a foliage type and its harvest component", shelf: "nodes", must: ["mesh", "color", "half", "hits", "respawnHours", "yields", "xp"], may: ["top", "soft", "material"], slots: { mesh: mesh("must", "{mesh}", "box"), depleted: mesh("may", "{id}/depleted", "hidden") }, doc: "A tree, a rock, a bush: harvested, used up, and grown back." });
+
+const PROP_BODY = ["mesh", "color", "radius", "height"] as const;
+const PROP_SLOTS = { mesh: mesh("must", "{mesh}", "box") };
+row("prop", "prop", PROP, { abstract: true, ark: "an actor that is not alive", shelf: "props", doc: "Stands in the world and neither moves nor lives." });
+row("prop/container", "prop", PROP, { parent: "prop", ark: "a death cache, a dropped bag", shelf: "props/containers", must: [...PROP_BODY, "slots"], slots: PROP_SLOTS, doc: "Holds what was dropped or left by the dead." });
+row("prop/projectile", "prop", PROP, { parent: "prop", ark: "a projectile actor", status: "partial", shelf: "props/projectiles", must: PROP_BODY, may: ["pitched"], slots: PROP_SLOTS, doc: "Something loosed or thrown, where it lies. How it flies is on the ammunition." });
+row("prop/egg", "prop", PROP, { parent: "prop", ark: "a dropped fertilised egg", shelf: "props/eggs", must: PROP_BODY, slots: PROP_SLOTS, doc: "An egg where it was laid, until it hatches." });
+row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", status: "stub", waits: "loot", shelf: "props/crates", must: PROP_BODY, may: ["slots"], slots: PROP_SLOTS, doc: "Comes down with loot and goes when it is emptied." });
+
+row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "speed", "dealt", "taken", "root", "immune", "good"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: "none" } }, doc: "Acts on a body for a time." });
+
+row("damage", "damage", NONE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
+row("loot", "loot", NONE, { ark: "a crate's item sets, a death inventory template", status: "stub", waits: "loot", shelf: "loot", doc: "Sets of items with weights, counts and qualities, drawn from when something is opened or dies." });
+row("spawns", "spawns", NONE, { ark: "NPCSpawnEntriesContainer", status: "stub", waits: "spawner", shelf: "spawns", doc: "Which creatures live in a place, in what share and at what levels." });
+row("map", "map", NONE, { ark: "a level and the game data it names", status: "stub", waits: "maps", shelf: "maps", doc: "A world: its ground, its zones, and what spawns, grows and drops in each. Today the one map is code." });
+row("game", "game", NONE, { ark: "PrimalGameData", status: "stub", waits: "polish", shelf: "game", doc: "What a game names once: the survivor's species, the death cache, the dropped bag, the standing buffs." });
+
+export const CLASSES: readonly ClassRow[] = rows;
+const BY_ID = new Map(CLASSES.map((r) => [r.id, r]));
+
+export function classRow(id: string): ClassRow | undefined {
+  return BY_ID.get(id);
+}
+
+/** What is wrong with the table itself. Empty when it is sound. */
+export function classFaults(): string[] {
+  const out: string[] = [];
+  const families = new Set(CLASSES.map((r) => r.type as string));
+  const names = (target: string): boolean => BY_ID.has(target) || families.has(target);
+  if (BY_ID.size !== CLASSES.length) out.push("a class id is used twice");
+  const shelves = new Map<string, string>();
+  for (const r of CLASSES) {
+    const fields = (FIELDS as Record<string, Record<string, Field>>)[r.type] ?? {};
+    if (r.parent !== null && !BY_ID.has(r.parent)) out.push(`${r.id}: its parent "${r.parent}" is no class`);
+    if (r.id !== r.type && !r.id.startsWith(r.type + "/")) out.push(`${r.id}: a class is named after its family, "${r.type}/…"`);
+    if (r.status === "stub" && !(r.waits in FEATURES)) out.push(`${r.id}: a stub names the feature it waits for`);
+    if (r.status === "built" && r.waits !== "") out.push(`${r.id}: a built class waits for nothing`);
+    if (r.abstract && (r.must.length > 0 || r.may.length > 0)) out.push(`${r.id}: an abstract class declares nothing`);
+    for (const k of r.must) if (r.may.includes(k)) out.push(`${r.id}: "${k}" is both must and may`);
+    for (const k of [...r.must, ...r.may, ...r.any]) if (!(k in fields)) out.push(`${r.id}: "${k}" is no field of ${r.type}`);
+    for (const k of r.any) if (!r.may.includes(k) && !r.must.includes(k)) out.push(`${r.id}: "${k}" is asked for and not allowed`);
+    for (const [name, slot] of Object.entries(r.slots)) {
+      if (slot.fallback === "") out.push(`${r.id}#${name}: a slot says what stands in when it is empty`);
+      if (slot.from === "") out.push(`${r.id}#${name}: a slot says where its asset is found`);
+    }
+    if (!r.abstract) {
+      const before = shelves.get(r.shelf);
+      if (before !== undefined && before !== r.type) out.push(`${r.id}: shelf "${r.shelf}" is also ${before}'s`);
+      shelves.set(r.shelf, r.type);
+    }
+  }
+  for (const [type, fields] of Object.entries(FIELDS)) {
+    for (const [name, field] of Object.entries(fields)) {
+      for (const target of Object.values(field.refs ?? {})) if (!names(target)) out.push(`${type}.${name}: names "${target}", which is no class`);
+      // Every field belongs to some class of its family, or nothing could declare it.
+      if (!CLASSES.some((r) => r.type === type && (r.must.includes(name) || r.may.includes(name)))) out.push(`${type}.${name}: no class may declare it`);
+    }
+  }
+  return out;
+}
+
+/**
+ * The class of a definition that does not say, from the fields it has. `eggs` holds the ids species name as their egg.
+ * This is how today's content is read until every definition declares its class.
+ */
+export function inferClass(d: Def, eggs: ReadonlySet<string>): string {
+  if (d.type === "item") return d.weapon ? "item/weapon" : d.ammo ? "item/ammo" : d.attachment ? "item/attachment" : d.wear ? "item/armor" : d.saddle ? "item/saddle" : d.places ? "item/structure" : d.eat || d.dose ? "item/consumable" : "item/resource";
+  if (d.type === "species") return d.still ? "species/target" : d.equips ? "species/survivor" : "species/creature";
+  if (d.type === "structure") return d.bed ? "structure/bed" : d.lights !== undefined || d.lit ? "structure/station" : d.slots ? "structure/container" : d.shape !== undefined ? "structure/piece" : "structure/static";
+  if (d.type === "prop") return eggs.has(d.id) ? "prop/egg" : d.slots ? "prop/container" : "prop/projectile";
+  return d.type;
+}
+
+/** The ids that species name as their egg. */
+export function eggIds(defs: readonly Def[]): Set<string> {
+  const out = new Set<string>();
+  for (const d of defs) if (d.type === "species" && d.breeds?.egg) out.add(d.breeds.egg);
+  return out;
+}
+
+/** What is wrong with `d` as a definition of class `id`: a missing field, a field its class does not allow. */
+export function defFaults(d: Def, id: string): string[] {
+  const r = BY_ID.get(id);
+  if (!r || r.abstract) return [`${d.id}: "${id}" is no class a definition can be of`];
+  if (r.type !== d.type) return [`${d.id}: class ${id} is of family ${r.type}, and this is a ${d.type}`];
+  const out: string[] = [];
+  const has = d as unknown as Record<string, unknown>;
+  for (const k of r.must) if (has[k] === undefined) out.push(`${d.id}: a ${id} must declare "${k}"`);
+  if (r.any.length > 0 && !r.any.some((k) => has[k] !== undefined)) out.push(`${d.id}: a ${id} must declare one of ${r.any.map((k) => `"${k}"`).join(", ")}`);
+  for (const k of Object.keys(has)) {
+    if (k === "type" || k === "id" || has[k] === undefined) continue;
+    if (!r.must.includes(k) && !r.may.includes(k)) out.push(`${d.id}: a ${id} may not declare "${k}"`);
+  }
+  return out;
+}
