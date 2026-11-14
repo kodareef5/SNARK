@@ -11,6 +11,7 @@ import { convertHumanClips, type ClipSpec } from "./pack/anim.ts";
 import { readGltf, type Gltf } from "./pack/gltf.ts";
 import { readPng } from "./pack/png-read.ts";
 import { convertBody, type ColorRule, type MaterialRule } from "./pack/skin.ts";
+import { withLevels } from "./pack/simplify.ts";
 import { buildPack, unpackMeshes, type SourceMesh } from "./pack/write.ts";
 import { existsSync } from "node:fs";
 import type { Clip } from "../shared/anim/clip.ts";
@@ -237,7 +238,7 @@ function convertCreatures(dir: string): { meshes: SourceMesh[]; rigs: PackRig[];
     if (run.exitCode !== 0 || !existsSync(glb)) throw new Error(`Blender did not convert ${file}. Is it installed (brew install --cask blender)?\n${run.stdout.toString().slice(-600)}${run.stderr.toString().slice(-600)}`);
     const made = convertCreature(readGltf(glb), DINO, spec);
     for (const w of made.warnings) console.warn(`${file}: ${w}`);
-    out.meshes.push(made.mesh);
+    out.meshes.push(withLevels(made.mesh));
     out.rigs.push(made.rig);
     out.clips.push(...made.clips);
     console.log(`  ${spec.id.padEnd(16)} ${made.rig.names!.length} bones, ${made.mesh.lods[0]!.indices.length / 3} triangles, ${made.rig.caps!.length / 9} capsules, clips ${made.clips.map((c) => `${c.id.split("/")[1]} ${c.frames}`).join(", ")}`);
@@ -247,10 +248,12 @@ function convertCreatures(dir: string): { meshes: SourceMesh[]; rigs: PackRig[];
 
 if (import.meta.main && process.argv.includes("--repack")) {
   // The files again in today's pack format, made from themselves: no raw art and no Blender. How far each level lies
-  // from the finest is measured afresh.
+  // from the finest is measured afresh. A creature's coarser levels are made afresh from its finest.
   for (const file of [HUMAN_CLIPS_FILE, HUMAN_BODIES_FILE, CREATURES_FILE]) {
     const pack = parsePack(new Uint8Array(readFileSync(file)));
-    const meshes = unpackMeshes(pack).map((m) => ({ ...m, lods: m.lods.map(({ error: _, ...lod }) => lod) }));
+    const measured = unpackMeshes(pack).map((m) => ({ ...m, lods: m.lods.map(({ error: _, ...lod }) => lod) }));
+    const meshes = file === CREATURES_FILE ? measured.map((m) => withLevels({ ...m, lods: [m.lods[0]!] })) : measured;
+    for (const m of meshes) if (m.lods.length > 1) console.log(`  ${m.id.padEnd(34)} ${m.lods.map((l) => String(l.indices.length / 3).padStart(5)).join(" ")} triangles`);
     const again = buildPack(meshes, defaultPalette(), pack.clips.clips, pack.header.rigs);
     writeFileSync(file, again);
     console.log(`${file}\n${again.length} bytes`);

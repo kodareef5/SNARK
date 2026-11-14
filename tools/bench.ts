@@ -1043,6 +1043,7 @@ section("Client frame build (headless): a breeding base in view, as many bodies 
   record("bodies in view", n, "");
   record("bodies posed in the frame (those the camera can see)", scene.characters.posed, "");
   record("bones used, of the 16,384 a frame has", packet.boneCount, "", 16384);
+  record("triangles submitted", packet.triangles, "", 1500000);
   record("frame build with them, median", percentile(built, 0.5), "ms", 4);
   record("frame build with them, 99th percentile", percentile(built, 0.99), "ms", 8);
   record("draw calls", packet.drawCount, "", 400);

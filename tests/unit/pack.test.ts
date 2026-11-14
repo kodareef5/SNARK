@@ -208,7 +208,8 @@ test("the manifest lists every level with the bytes that hold it, and reads back
       levels++;
     }
   }
-  expect(levels).toBe(77 + 40 * 3);
+  // 75 meshes of one level, 40 body meshes of three, and two creatures of five.
+  expect(levels).toBe(75 + 40 * 3 + 2 * 5);
 
   // What the client knows of the meshes comes out the same from the file as from the pack it describes.
   const [a, b] = [new AssetTable(parseManifest(text), pack), new AssetTable(describePack(pack, { name: "", bytes: file.length }), pack)];

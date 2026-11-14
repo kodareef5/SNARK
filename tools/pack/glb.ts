@@ -4,6 +4,7 @@
 import { decodeUtf8 } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import type { SourceLod, SourceMesh } from "./write.ts";
+import { withLevels } from "./simplify.ts";
 
 interface Gltf {
   scene?: number;
@@ -151,7 +152,8 @@ export function importGlb(file: Uint8Array, id: string, palette: Uint8Array): Im
     const l = lods.get(level)!;
     return { positions: Float32Array.from(l.positions), colors: Uint8Array.from(l.colors), indices: Uint32Array.from(l.indices) };
   });
-  const mesh: SourceMesh = { id, lods: out };
+  // An export with no levels of its own gets ours.
+  const mesh: SourceMesh = withLevels({ id, lods: out });
   if (collider) mesh.collider = collider;
   return { mesh, worstColorError, warnings };
 }

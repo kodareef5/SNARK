@@ -69,10 +69,11 @@ sending inputs every tick; two of the hundred are full clients.
 | Client frame build, 99th percentile | 0.25 ms | 2 ms |
 | Terrain tiles selected | 142 | 200 |
 | Structure draw calls within 256 m of a 2,000-piece base | 24 | 300 |
-| Triangles submitted | 311,984 | 1,500,000 |
+| Triangles submitted, with the 20,000-piece chunk of the siege in view | 551,984 | 1,500,000 |
 | Client frame build with 300 survivors posed in view, median / 99th percentile | 0.50 ms / 1.04 ms | 4 ms / 8 ms |
 | Client frame build with all a view holds (512 bodies: ten survivors, 450 creatures of every age, eggs), median / 99th percentile | 0.49 ms / 1.63 ms | 4 ms / 8 ms |
 | The same: bones used, of the 16,384 a frame has | 12,628 | 16,384 |
+| The same: triangles submitted on the medium tier, with the bases behind them. The bodies alone are 568,784 of these. They were 665,204 before creatures had levels, and are 321,796 on low poly, 659,396 on high and 681,596 on ultra | 1,069,070 | 1,500,000 |
 | Client: take in the 1,512 falling pieces and move the 256 shown, worst frame | 0.33 ms | 1 ms |
 | Client frame build while they fall, median / 99th percentile | 0.05 ms / 0.07 ms | 1.5 ms / 3 ms |
 

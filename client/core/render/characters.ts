@@ -20,7 +20,8 @@ import { BONE_FLOATS, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNE
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
 /** Distances at which a body drops to its second and third level of detail, metres. */
-const LODS = 3;
+/** The most levels of detail a mesh has. */
+const LODS = 5;
 /** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, and a held item. */
 const PARTS = SLOT_COUNT + 4;
 const PLAIN = defaultLook();
