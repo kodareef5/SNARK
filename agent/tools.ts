@@ -2,21 +2,24 @@
 // and `call` a tool by name. A call resolves from inside a later tick, so the clock that ticks it is the only clock.
 
 import { RemoteSample, type ClientSession, type TextLine } from "../client/core/session.ts";
-import type { ItemDef } from "../shared/content/defs.ts";
+import type { ItemDef, PropDef } from "../shared/content/defs.ts";
 import { find } from "../shared/content/find.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_USE, MAX_CHAT_CHARS, RESULT_OK, SESSION_ALIVE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
 import { STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { Inventory } from "../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../shared/sim/vitals.ts";
+import { NO_PIN } from "../shared/world/upkeep.ts";
 import { Commands, resultWords } from "./commands.ts";
+import { Controller, VIEW_PROP, type Target } from "./controller.ts";
 import type { Answer, ToolDef, ToolHost } from "./mcp.ts";
 import { compass, observe, shortName, type FarLayer } from "./observe.ts";
 
 export const INSTRUCTIONS =
   "You play one survivor in SNARK, a survival game, through these tools. You can do what a player can and no more. " +
   "Positions are x and z in metres: north is +z and east is -x. Things have ids: n12.3 is a tree, rock or bush, s65539 is something built, e7 is a creature, a player or a bag. " +
-  "Every answer has a state: done, running (still going; ask status), blocked (it stopped short, and reason says why), danger (it stopped because you are in danger) or refused (nothing was done).";
+  "Every answer has a state: done, running (still going; ask status), blocked (it stopped short, and reason says why), danger (it stopped because you are in danger) or refused (nothing was done). " +
+  "walk_to, harvest and open take time and only one of them runs at once. An answer lists dangers while there are any: a hunter near, health falling, breath running out.";
 
 /** Chat lines a survivor may say at once, and the milliseconds that earn another, as server/chat.ts counts them. */
 const CHAT_BURST = 5;
@@ -28,13 +31,18 @@ const CHANNELS: Record<string, number> = { global: TEXT_GLOBAL, local: TEXT_LOCA
 const CHANNEL_WORDS: Record<number, string> = { [TEXT_GLOBAL]: "global", [TEXT_LOCAL]: "local", [TEXT_TRIBE]: "tribe", [TEXT_NOTICE]: "notice" };
 
 const wait = { type: "number", description: "Seconds to wait for it to finish before answering running, 0 to 50." };
+const thing = { type: "string", description: "An id from observe." };
 const DEFS: ToolDef[] = [
   { name: "observe", description: "Look around: a map of the ground about you in letters, north up, and the nearest trees, rocks, bushes, boxes, doors, creatures and players with their ids. Use it before walking anywhere.", inputSchema: { type: "object", properties: { radius: { type: "number", description: "Metres each way, 8 to 96. Default 32." }, cell: { enum: [1, 2, 4], description: "Metres a letter covers. Default 2. A letter shows the most solid thing in its square, so a doorway may only show at 1. A letter of 1 m shows at most 32 m each way, and one of 2 m at most 64." } } } },
+  { name: "walk_to", description: "Walk to a place, or up to a thing, round whatever is in between. Give x and z, or an id. Ground floor only: it climbs no stairs, and it swims only to get out of water.", inputSchema: { type: "object", properties: { x: { type: "number" }, z: { type: "number" }, id: thing, within: { type: "number", description: "How near to come, in metres: to the place, or to the thing's side. Default 0.6." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } } } },
+  { name: "harvest", description: "Gather from a tree, a rock or a bush: walk to it, then strike it, or pick it, until it is used up or you have enough. It stops after a minute.", inputSchema: { type: "object", properties: { id: thing, until: { type: "object", description: "Stop once this many more of an item are carried. Left out: when the node is used up.", properties: { item: { type: "string" }, count: { type: "integer" } }, required: ["item", "count"] }, tool: { type: "string", description: "An item you carry to take in hand first, such as hatchet for wood or pick for stone." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["id"] } },
+  { name: "open", description: "Open a box or a bag, or swing a door: walk to it and use it. What a box holds is in the answer and in status, and move_item moves things in and out of it. It shuts when you walk away.", inputSchema: { type: "object", properties: { id: thing, pin: { type: "integer", description: "The PIN of a locked thing that is not your tribe's, 0 to 9999." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["id"] } },
   { name: "move_item", description: "Move a stack between slots of your inventory (self) and the box you have open (box). Slots are numbered as status lists them.", inputSchema: { type: "object", properties: { from: { enum: ["self", "box"] }, slot: { type: "integer" }, to: { enum: ["self", "box"] }, to_slot: { type: "integer", description: "Left out: onto a stack of the same item, else the first empty slot." }, count: { type: "integer", description: "Left out: the whole stack." } }, required: ["from", "slot", "to"] } },
   { name: "craft", description: "Make an item you know the engram for, from what you carry.", inputSchema: { type: "object", properties: { recipe: { type: "string", description: "The item, such as hatchet." }, count: { type: "integer", description: "1 to 100. Default 1." }, learn: { type: "boolean", description: "Spend engram points to learn it first if you do not know it." }, wait_s: wait }, required: ["recipe"] } },
   { name: "eat", description: "Eat or drink something you carry.", inputSchema: { type: "object", properties: { item: { type: "string", description: "Left out: the first thing you carry that can be eaten." } } } },
   { name: "say", description: "Say a line of chat. Five at once, then one every two seconds.", inputSchema: { type: "object", properties: { channel: { enum: ["global", "local", "tribe"], description: "Everyone, those within 60 m, or your tribe." }, text: { type: "string", description: `At most ${MAX_CHAT_CHARS} characters.` } }, required: ["channel", "text"] } },
-  { name: "status", description: "How you are: place, vitals, what you carry, the box you have open, what you are making, and chat heard since you last asked.", inputSchema: { type: "object", properties: {} } },
+  { name: "status", description: "How you are and how the running task is doing: place, vitals, what you carry, the box you have open, what you are making, and chat heard since you last asked.", inputSchema: { type: "object", properties: { wait_s: { ...wait, description: "Seconds to wait for the running task to end before answering, 0 to 50. Default 0." } } } },
+  { name: "cancel", description: "Stop the running task where it is.", inputSchema: { type: "object", properties: {} } },
   { name: "console", description: "Type a line at the server's console, as a player does with the backquote key. Most commands need admin rights.", inputSchema: { type: "object", properties: { line: { type: "string" } }, required: ["line"] } },
 ];
 
@@ -79,6 +87,7 @@ export class Agent implements ToolHost {
   readonly commands: Commands;
   /** Everyone else in view, as of the last tick. */
   readonly remote = new RemoteSample();
+  readonly controller: Controller;
   private readonly withConsole: boolean;
   private readonly far: FarLayer | undefined;
   private readonly run: Record<string, (a: Record<string, unknown>) => Answer | Promise<Answer>>;
@@ -97,6 +106,7 @@ export class Agent implements ToolHost {
   constructor(session: ClientSession, opts: AgentOptions = {}) {
     this.session = session;
     this.commands = new Commands(session);
+    this.controller = new Controller(session, this.remote, this.commands);
     this.withConsole = opts.console ?? false;
     this.far = opts.far;
     this.gone = new Promise((resolve) => (this.lost = resolve));
@@ -106,11 +116,15 @@ export class Agent implements ToolHost {
         if (cell !== 1 && cell !== 2 && cell !== 4) throw new Bad("cell must be 1, 2 or 4");
         return observe(this.session, this.remote, amount(a, "radius", 8, 96, 32), cell, this.far) as Answer;
       },
+      walk_to: (a) => this.walkTo(a),
+      harvest: (a) => this.harvest(a),
+      open: (a) => this.open(a),
       move_item: (a) => this.moveItem(a),
       craft: (a) => this.craft(a),
       eat: (a) => this.eat(a),
       say: (a) => this.say(a),
-      status: () => this.status(),
+      status: (a) => this.status(a),
+      cancel: () => ({ state: "done", cancelled: this.controller.cancel() }),
       console: (a) => this.typed(a),
     };
   }
@@ -121,8 +135,10 @@ export class Agent implements ToolHost {
     this.commands.step(now);
     const s = this.session;
     if (s.state === "closed") return this.lost(this.down());
-    s.update(now, 0, 0, s.ownYaw, 0, 0);
     if (s.state === "active") s.sampleRemote(this.remote);
+    const c = this.controller;
+    c.step(now);
+    s.update(now, c.moveX, c.moveZ, c.yaw, c.pitch, c.buttons);
     for (let i = 0; i < this.waiting.length; ) {
       if (this.waiting[i]!(now)) this.waiting.splice(i, 1);
       else i++;
@@ -141,8 +157,13 @@ export class Agent implements ToolHost {
       if (err instanceof Bad) return refused(err.message);
       throw err;
     };
+    // Whatever was asked, the answer says what threatens the survivor.
+    const warned = (answer: Answer): Answer => {
+      const dangers = this.controller.dangers();
+      return dangers.length > 0 && answer.state !== "refused" ? { ...answer, dangers } : answer;
+    };
     try {
-      return Promise.race([Promise.resolve(run(args)).catch(bad), this.gone]);
+      return Promise.race([Promise.resolve(run(args)).then(warned, bad), this.gone]);
     } catch (err) {
       return Promise.resolve(bad(err));
     }
@@ -239,15 +260,86 @@ export class Agent implements ToolHost {
     return lines.filter((l) => CHANNEL_WORDS[l.channel] !== undefined).map((l) => `[${CHANNEL_WORDS[l.channel]}] ${l.text}`);
   }
 
-  private status(): Answer {
+  /** Resolves when the running task ends, or after `seconds` with how far it has got. */
+  private finish(seconds: number): Promise<Answer> {
+    const c = this.controller;
+    const by = this.now + seconds * 1000;
+    return this.until((now) => c.ended ?? (now >= by ? { state: "running", ...c.progress() } : null));
+  }
+
+  /** What `id` names, if no task is in the way of starting one. */
+  private target(a: Record<string, unknown>): Target {
+    const busy = this.controller.busy;
+    if (busy) throw new Bad(`${busy} is still running: cancel it, or wait for it with status`);
+    const found = this.controller.locate(text(a, "id"));
+    if (typeof found === "string") throw new Bad(found);
+    return found;
+  }
+
+  private walkTo(a: Record<string, unknown>): Promise<Answer> {
+    const hf = this.session.world!.hf;
+    const c = this.controller;
+    const near = amount(a, "within", 0.3, 50, 0.6);
+    const seconds = amount(a, "wait_s", 0, 50, 25);
+    // Latitude and longitude will be a third way to name a place, once shared/world/coords.ts has them.
+    if (a.id === undefined && (a.x === undefined || a.z === undefined)) throw new Bad("give x and z, or an id");
+    const target = a.id !== undefined ? this.target(a) : c.place(amount(a, "x", 0, hf.sizeX, 0), amount(a, "z", 0, hf.sizeZ, 0));
+    if (c.busy) throw new Bad(`${c.busy} is still running: cancel it, or wait for it with status`);
+    c.walkTo(this.now, target, near);
+    return this.finish(seconds);
+  }
+
+  private harvest(a: Record<string, unknown>): Promise<Answer> {
     const s = this.session;
+    const seconds = amount(a, "wait_s", 0, 50, 25);
+    let item = 0;
+    let count = 0;
+    if (a.until !== undefined) {
+      if (typeof a.until !== "object" || a.until === null) throw new Bad("until must be an item and a count");
+      item = this.item(text(a.until as Record<string, unknown>, "item"));
+      count = whole(a.until as Record<string, unknown>, "count", 1, 10000);
+    }
+    const tool = a.tool === undefined ? 0 : this.item(text(a, "tool"));
+    if (tool !== 0 && (s.inventory?.total(tool) ?? 0) === 0) return Promise.resolve(refused(`you carry no ${this.nameOf(tool)}`));
+    const target = this.target(a);
+    if (target.chunk < 0) throw new Bad("only a tree, a rock or a bush can be harvested");
+    this.controller.harvest(this.now, target, item, count, tool);
+    return this.finish(seconds);
+  }
+
+  private async open(a: Record<string, unknown>): Promise<Answer> {
+    const s = this.session;
+    const reg = s.registry;
+    const seconds = amount(a, "wait_s", 0, 50, 25);
+    const pin = a.pin === undefined ? NO_PIN : whole(a, "pin", 0, 9999);
+    const target = this.target(a);
+    // Of bodies only a bag or a cache: the use button on a creature would climb onto it.
+    const can = target.ref >= 0 ? reg.structSlots[target.kind]! > 0 || reg.opens[target.kind] !== 0 : target.entity >= 0 && (target.flags & VIEW_PROP) !== 0 && (reg.defs[target.kind] as PropDef).class === "container";
+    if (!can) throw new Bad("only a box, a bag or a door can be opened");
+    this.controller.open(this.now, target, pin);
+    const answer = await this.finish(seconds);
+    if (answer.state !== "done" || !s.open) return answer;
+    // What it holds follows the news that it is open.
+    await this.pause(3000 / TICK_RATE);
+    return s.open ? { ...answer, box: this.box() } : answer;
+  }
+
+  private box(): Record<string, unknown> {
+    const open = this.session.open!;
+    return { name: open.name, size: open.inventory.cap, slots: this.slots(open.inventory) };
+  }
+
+  private async status(a: Record<string, unknown>): Promise<Answer> {
+    const s = this.session;
+    const c = this.controller;
+    const task: Answer = c.busy ? await this.finish(amount(a, "wait_s", 0, 50, 0)) : (c.ended ?? { state: "done", task: null });
     const inv = s.inventory;
     const jobs = s.progress.jobs.map((j) => [this.nameOf(j.item), j.left]);
     return {
-      state: "done",
+      ...task,
       self: this.self(),
       ...(inv ? { inventory: this.slots(inv), hotbar_slots: [inv.hotbar, inv.hotbar + 9] } : {}),
-      ...(s.open ? { box: { name: s.open.name, size: s.open.inventory.cap, slots: this.slots(s.open.inventory) } } : {}),
+      ...(s.open ? { box: this.box() } : {}),
       ...(jobs.length > 0 ? { making: jobs } : {}),
       heard: this.heard(),
     };
@@ -388,6 +480,8 @@ export class Agent implements ToolHost {
     });
     const code = await this.result(seq);
     if (code === RESULT_OK) await this.pause(3000 / TICK_RATE);
-    return this.outcome(seq, code, { moved: this.nameOf(item), to_slot: to, left: src.item[slot] === item ? src.count[slot]! : 0 });
+    // A bag emptied is gone, and with it what was open.
+    const now = invOf(fromBox);
+    return this.outcome(seq, code, { moved: this.nameOf(item), to_slot: to, left: now === src && src.item[slot] === item ? src.count[slot]! : 0 });
   }
 }

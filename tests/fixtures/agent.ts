@@ -22,6 +22,8 @@ export interface Play {
   call(tool: string, args?: Record<string, unknown>, ms?: number): Promise<Answer>;
   /** The reply to one raw line, with no time passing. */
   line(text: string): Promise<string | null>;
+  /** Types a console line a fifth of a second after the last, which is as often as the tool allows. Returns what the server printed. */
+  typed(line: string): Promise<string[]>;
   /** The content index of a core item. */
   id(name: string): number;
 }
@@ -52,5 +54,9 @@ export function play(host: HostOptions = {}, opts: AgentOptions = { console: tru
     if (!reply?.result) throw new Error(`${tool} was not answered: ${JSON.stringify(reply)}`);
     return JSON.parse(reply.result.content[0].text);
   };
-  return { h, s, agent, rec: h.host.records.byPid.get(h.client(s)!.pid)!, run, ask, call, line: (text) => mcp.handle(text), id: (item) => h.reg.index.get(`core:${item}`)! };
+  const typed: Play["typed"] = async (line) => {
+    run(200);
+    return (await call("console", { line })).lines as string[];
+  };
+  return { h, s, agent, rec: h.host.records.byPid.get(h.client(s)!.pid)!, run, ask, call, typed, line: (text) => mcp.handle(text), id: (item) => h.reg.index.get(`core:${item}`)! };
 }
