@@ -351,6 +351,8 @@ export class ClientSession {
   private readonly opts: SessionOptions;
   private move: MoveParams | null = null;
   private readonly inputs = new InputBuffer(HISTORY);
+  /** Buttons seen down on any frame since the last tick was sampled. */
+  private tapped = 0;
   private readonly bodies: Body[] = [];
   private readonly bodyTick = new Uint32Array(HISTORY);
   private readonly views = new ViewRing(() => new EntityView());
@@ -435,7 +437,10 @@ export class ClientSession {
     return a < 0 ? 0 : a > 1 ? 1 : a;
   }
 
-  /** Samples the given input for every tick that elapses. moveX and moveZ are -1..1 (right, forward). yaw and pitch are radians. */
+  /**
+   * Samples the given input for every tick that elapses. moveX and moveZ are -1..1 (right, forward). yaw and pitch are radians.
+   * A button down on any frame since the last tick is down for the next one, so a press shorter than a tick is not lost between two.
+   */
   update(nowMs: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
     if (this.state !== "active") return;
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
@@ -459,12 +464,14 @@ export class ClientSession {
     this.ownYaw = yaw;
     this.ownPitch = pitch;
 
+    this.tapped |= buttons;
     const target = Math.floor(this.tickClock);
     let steps = 0;
     while (this.simTick < target && steps < MAX_STEPS_PER_UPDATE) {
       const t = ++this.simTick;
       steps++;
-      this.inputs.set(t, qx, qz, qyaw, qpitch, buttons);
+      this.inputs.set(t, qx, qz, qyaw, qpitch, this.tapped | buttons);
+      this.tapped = 0;
       this.ownPrev.copy(this.own);
       this.step(t);
     }
