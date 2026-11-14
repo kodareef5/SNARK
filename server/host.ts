@@ -269,6 +269,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const game = new GameServer(world, {
     password: rules.text("ServerPassword"),
     motdSeconds: rules.num("Duration"),
+    viewCap: rules.num("ViewCap"),
+    snapshotBytesMax: rules.num("SnapshotBytesMax"),
     ...opts.game,
     maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")),
   });

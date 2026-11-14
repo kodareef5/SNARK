@@ -246,6 +246,10 @@ new Sheet(SERVER_ROWS, "map", "Other")
   .f("VolcanoIntensity", 1, "One of ARK's maps.", none("expansion", { game: "E" }))
   .i("VolcanoInterval", 0, "One of ARK's maps.", none("expansion", { game: "E" }));
 
+new Sheet(SERVER_ROWS, "snark", "Admin and session")
+  .i("ViewCap", 1024, "The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this.", live({ min: 64, max: 2048, note: "Ours. ARK has no key." }))
+  .i("SnapshotBytesMax", 1100, "The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor.", live({ min: 600, max: 2200, note: "Ours. ARK has no key." }));
+
 new Sheet(SERVER_ROWS, "snark", "Damage")
   .b("HeadMultipliers", true, "Where a hit lands matters: a head counts for more. Off, every part counts once.", live({ live: true, note: "Ours. ARK has no key; this is its behaviour." }))
   .f("SelfDamageMultiplier", 1, "What a survivor's own blast does to them.", live({ live: true, note: "Ours. ARK has no key; 1 is its behaviour." }))
