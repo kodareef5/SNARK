@@ -524,7 +524,11 @@ export class ClientSession {
         if (!a || v.tick > a.tick) a = v;
       } else if (!b || v.tick < b.tick) b = v;
     }
-    if (!b) b = a;
+    if (!b) {
+      // Nothing newer has come: everyone stands as the newest snapshot has them, and that is the moment drawn.
+      b = a;
+      if (a) out.tick = this.shown = a.tick;
+    }
     if (!b) return;
     const k = a && a !== b ? (at - a.tick) / (b.tick - a.tick) : 1;
     let i = 0;
