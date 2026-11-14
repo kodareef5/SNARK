@@ -61,6 +61,8 @@ function pool(most: number): { run(job: EncodeJob): Promise<void>; close(): Prom
     const t: Thread = { worker: new Worker(new URL("./encode-worker.ts", import.meta.url)), done: null };
     t.worker.on("message", () => t.done?.());
     t.worker.on("error", (failed) => t.done?.(failed));
+    // A thread that stops with a job in hand fails it. One that had finished has nothing to fail.
+    t.worker.on("exit", (code) => t.done?.(new Error(`textures: an encoding thread stopped with code ${code}`)));
     all.push(t);
     return t;
   };
