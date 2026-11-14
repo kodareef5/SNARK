@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
-import { S_FAR } from "../../shared/net/protocol.ts";
+import { CMD_FAR, CMD_MAP_ZOOM, S_FAR } from "../../shared/net/protocol.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { FarCells, farTopMetres, readFar } from "../../shared/world/tactical.ts";
@@ -109,6 +109,11 @@ test("far cells stop at the reach asked and at FarRadius, leave out boxes, beds 
   expect(run(a, 2048, 8000, () => !a.far.chunks.has(at900))).toBeGreaterThan(0);
   run(a, 2048, 1100);
   expect(stats.far).toBe(sent + 1);
+
+  // A survivor out cold may still say how far it wants them, since its client asks only once.
+  h.host.records.byPid.get(h.client(a)!.pid)!.out = true;
+  expect([h.server.allows!(h.client(a)!, CMD_FAR), h.server.allows!(h.client(a)!, CMD_MAP_ZOOM)]).toEqual([true, false]);
+  h.host.records.byPid.get(h.client(a)!.pid)!.out = false;
 
   // At FarRadius 0 a new base is sent to nobody, and a newcomer is sent nothing at all.
   expect(h.host.setSetting("FarRadius", "0")).toBe("");
