@@ -28,6 +28,7 @@ import type { Heightfield } from "../shared/world/heightfield.ts";
 import { NodeField } from "../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_SPAWN, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
+import { findAssets } from "./art/assets.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { splitPack } from "./pack/split.ts";
 import { HudModel, mapU, mapV } from "../client/core/hud.ts";
@@ -166,13 +167,19 @@ function idWithSeed(seed: number): number {
   return 0;
 }
 
-/** One row per modelled creature: standing, walking, running and striking, with a survivor beside it for size and a rider on the second. */
-export function creaturesScene(view: ProvingView, tick: number, facing: number): void {
+/**
+ * One row per modelled creature: standing, walking, running and striking, with a survivor beside it for size and a rider on the second.
+ * `samples` gives each species the six region colours to be drawn in.
+ */
+export function creaturesScene(view: ProvingView, tick: number, facing: number, samples: ReadonlyMap<string, readonly number[]> = new Map()): void {
   const r = view.remote;
   r.count = 0;
   r.tick = tick;
   const st = new AnimState();
-  const kinds = ["core:parasaur", "core:raptor"].map((id) => view.reg.index.get(id)!);
+  // Every creature that is drawn on a skeleton of its own.
+  const species = view.reg.defs.flatMap((d) => (d?.type === "species" && d.class === "creature" && d.skeleton !== undefined ? [d] : []));
+  const kinds = species.map((d) => view.reg.index.get(d.id)!);
+  const colours = species.map((d) => samples.get(d.id) ?? [d.color]);
   // Speed in steps of 0.6 m/s, and whether it is striking.
   const rows: readonly (readonly [number, boolean])[] = [[0, false], [4, false], [12, false], [0, true]];
   const put = (kind: number, x: number, z: number, colors: readonly number[]): number => {
@@ -199,9 +206,10 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
   };
   kinds.forEach((kind, j) => {
     const z = 232 + j * 9;
-    const gap = j === 0 ? 9 : 5;
+    // Wide enough apart for the creature's length.
+    const gap = Math.round(species[j]!.radius * 8.2);
     rows.forEach(([speed, strike], i) => {
-      const n = put(kind, 256 + (1.5 - i) * gap, z, j === 0 ? [9, 16, 13, 8] : [5, 15, 11]);
+      const n = put(kind, 256 + (1.5 - i) * gap, z, colours[j]!);
       st.speed = speed;
       // Each body is a little further into its clip, and the strike is part way through.
       r.id[n] = idWithSeed(i * 5) + 1024 * (n + 1);
@@ -209,7 +217,7 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
       r.anim[n] = st.pack();
       st.setAction(ACT_NONE, HOLD_HANDS, 0);
     });
-    put(view.reg.index.get("core:survivor")!, 256 + 1.5 * gap + (j === 0 ? 5.5 : 2.6), z, []);
+    put(view.reg.index.get("core:survivor")!, 256 + 1.5 * gap + species[j]!.radius * 5, z, []);
     // A rider sits on the second creature of the row, in the low stance a rider has.
     const mount = r.count - 4;
     const rider = put(view.reg.index.get("core:survivor")!, r.x[mount]!, z, []);
@@ -232,14 +240,17 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
     r.tick = now;
     kinds.forEach((kind, j) => {
       const z = 232 + j * 7;
-      const gap = j === 0 ? 4.2 : 2.6;
+      const gap = species[j]!.radius * 4;
       [1, 0, 0.3, 0.75].forEach((m, i) => {
-        const n = put(kind, 250 + i * gap, z, j === 0 ? [9, 16, 13, 8] : [5, 15, 11]);
+        const n = put(kind, 250 + i * gap, z, colours[j]!);
         r.span[n] = m < 1 ? 1000 : 0;
         r.grown[n] = m < 1 ? now - m * 1000 + 1000 : 0;
       });
-      const egg = put(view.reg.index.get(j === 0 ? "core:egg_parasaur" : "core:egg_raptor")!, 250 + 4 * gap - 1, z, []);
-      r.flags[egg] = 1 | 8;
+      const laid = view.reg.index.get(species[j]!.breeds?.egg ?? "");
+      if (laid !== undefined) {
+        const egg = put(laid, 250 + 4 * gap - 1, z, []);
+        r.flags[egg] = 1 | 8;
+      }
       put(view.reg.index.get("core:survivor")!, 250 + 4 * gap + 0.2, z, []);
     });
     cam.x = 258.5;
@@ -582,7 +593,11 @@ if (import.meta.main) {
   if (args.includes("--falling")) fallingScene(view, Number(arg("falling") ?? 450));
   if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
-  if (args.includes("--creatures")) creaturesScene(view, Number(arg("tick") ?? 40), (Number(arg("face") ?? 90) * Math.PI) / 180);
+  if (args.includes("--creatures")) {
+    // Each creature in the colours its asset is reviewed in.
+    const samples = new Map((await findAssets()).flatMap((a) => (a.spec.kind === "creature" ? [[a.id, a.spec.regions.map((region) => region.sample)] as const] : [])));
+    creaturesScene(view, Number(arg("tick") ?? 40), (Number(arg("face") ?? 90) * Math.PI) / 180, samples);
+  }
   if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
   const t0 = performance.now();
   const packet = view.render();
