@@ -113,6 +113,7 @@ export class Combat {
   private readonly dir = [0, 0, 0];
   private readonly st = new AnimState();
   private readonly near = new Int32Array(MAX_NEAR);
+  private readonly nearT = new Float32Array(MAX_NEAR);
   private readonly past = new Past();
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
   /** Content index of the tranquilized buff. Each hit with torpor over time gives one, carrying its strength. */
@@ -315,6 +316,7 @@ export class Combat {
     // Gather every body whose bounding sphere could touch the ray. A body judged in the past may have moved since, so the search is padded.
     let n = 0;
     const near = this.near;
+    const nearT = this.nearT;
     const slack = width + (this.at < 0 ? 0 : REWIND_REACH) + (sweep > 0 ? SWEEP_REACH : 0);
     const pad = BODY_REACH + slack;
     const ex = ox + dx * maxT;
@@ -346,7 +348,18 @@ export class Combat {
           const pz = ents.z[i]! - oz;
           const t = px * dx + py * dy + pz * dz;
           if (t < -r || t > maxT + r || px * px + py * py + pz * pz - t * t > r * r) continue;
-          if (n < MAX_NEAR) near[n++] = i;
+          if (n < MAX_NEAR) {
+            nearT[n] = t;
+            near[n++] = i;
+            continue;
+          }
+          // Full. The farthest along the ray gives way, so the nearest body is always among those tested.
+          let far = 0;
+          for (let k = 1; k < MAX_NEAR; k++) if (nearT[k]! > nearT[far]!) far = k;
+          if (t < nearT[far]!) {
+            nearT[far] = t;
+            near[far] = i;
+          }
         }
       }
     }

@@ -9,7 +9,6 @@ import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOUR
 import { Body, STANCE_CROUCH, STANCE_STAND } from "../shared/sim/character.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
-import { HIT_NONE, castWorld } from "../shared/world/ray.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Tribes } from "./tribes.ts";
@@ -101,11 +100,14 @@ export class Riding {
         const z = ents.z[e]! + fz * off;
         const y = Math.max(world.hf.heightAt(x, z), ents.y[e]!);
         if (!capsuleFree(world, x, y, z, p.radius, p.height)) continue;
-        // Nothing built or grown may stand between the mount and the spot, or a mount beside a wall would set its rider down inside the base.
-        const chest = p.height * 0.5;
-        const [dx, dy, dz] = [x - ents.x[e]!, y - ents.y[e]!, z - ents.z[e]!];
-        const far = Math.hypot(dx, dy, dz);
-        if (castWorld(world, ents.x[e]!, ents.y[e]! + chest, ents.z[e]!, dx / far, dy / far, dz / far, far) !== HIT_NONE) continue;
+        // The body must fit all the way from the mount to the spot, or a mount beside a wall would set its rider down inside the base.
+        let clear = true;
+        for (let k = 1, steps = Math.ceil(off / (p.radius * 0.5)); k < steps && clear; k++) {
+          const sx = ents.x[e]! + (fx * off * k) / steps;
+          const sz = ents.z[e]! + (fz * off * k) / steps;
+          clear = capsuleFree(world, sx, Math.max(world.hf.heightAt(sx, sz), ents.y[e]!), sz, p.radius, p.height);
+        }
+        if (!clear) continue;
         b.x = x;
         b.y = y;
         b.z = z;

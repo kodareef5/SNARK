@@ -523,7 +523,11 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   const r = p.radius;
   let mx = moveX / 127;
   let mz = moveZ / 127;
-  if ((b.mflags & (MF_ROOTED | MF_OUT)) !== 0) mx = mz = 0;
+  if ((b.mflags & (MF_ROOTED | MF_OUT)) !== 0) {
+    mx = mz = 0;
+    // Nor does it rise by the jump button. An unconscious swimmer would otherwise never drown.
+    buttons &= ~BTN_JUMP;
+  }
   const m2 = mx * mx + mz * mz;
   if (m2 > 1) {
     const inv = 1 / Math.sqrt(m2);

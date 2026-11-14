@@ -127,6 +127,17 @@ export class Buffs {
     return rec.buffs.some((b) => this.def(b.buff)?.root === true);
   }
 
+  /**
+   * The body died: every buff ends, and so does what each was doing to its vitals. Does not touch the vitals themselves,
+   * which death is in the middle of settling.
+   */
+  died(rec: EntityRecord): void {
+    rec.buffs.length = 0;
+    rec.buffsVersion++;
+    if (this.immune.delete(rec.pid)) this.survival.gods.delete(rec.pid);
+    this.survival.dropExtra(rec.pid);
+  }
+
   /** Recomputes the record's rates and immunity after its buffs change, then calls onChange. */
   private apply(rec: EntityRecord): void {
     let health = 0;

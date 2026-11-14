@@ -313,8 +313,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     // Removing the body touches its vitals again. It must die only once.
     if (rec.dead) return;
     combat.killed(rec, by);
-    rec.buffs.length = 0;
-    rec.buffsVersion++;
+    buffs.died(rec);
     death.die(rec, cause);
   };
   // Unconsciousness, an injury and any buff change how a body moves.
@@ -676,6 +675,9 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       if (item !== was || slot !== (inHand.get(rec.pid) ?? -1)) {
         ents.act[e] = item !== 0 ? ACT_EQUIP : ACT_NONE;
         ents.actTicks[e] = 0;
+        // What this tick's action step decided was decided for the thing it held before. Combat resolves it after commands run.
+        const session = sessionOf(rec.pid);
+        if (session) session.did = 0;
       }
       inHand.set(rec.pid, slot);
     }

@@ -293,6 +293,11 @@ export class Survival {
   }
 
   /** Call when a record is deleted. */
+  /** Ends what buffs were adding to a body's rates, without settling its vitals. */
+  dropExtra(pid: number): void {
+    this.extra.delete(pid);
+  }
+
   forget(pid: number): void {
     this.starving.delete(pid);
     this.submerged.delete(pid);
@@ -331,7 +336,8 @@ export class Survival {
       rec.out = false;
       // Harm from someone takes the blame over starving or drowning, whether it was a blow or a buff they left on it.
       const by = this.pendingBy !== 0 ? this.pendingBy : ex && ex.health < 0 ? ex.by : 0;
-      this.onDeath?.(rec, by !== 0 ? this.pendingCause || CAUSE_KILLED : airless ? CAUSE_DROWNED : starved ? CAUSE_STARVED : parched ? CAUSE_THIRST : this.pendingCause || CAUSE_KILLED, by);
+      // What struck the last blow is the cause. Only a death no blow caused is drowning, starving or thirst.
+      this.onDeath?.(rec, this.pendingCause !== 0 ? this.pendingCause : by !== 0 ? CAUSE_KILLED : airless ? CAUSE_DROWNED : starved ? CAUSE_STARVED : parched ? CAUSE_THIRST : CAUSE_KILLED, by);
       return;
     }
     if (paused) {
