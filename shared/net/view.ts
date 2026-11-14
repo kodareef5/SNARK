@@ -34,13 +34,25 @@ const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 4 + 16 + 4 + 48
 /** In bytes. */
 export const MAX_NAME_LENGTH = 72;
 
-const UPDATE_BITS = 24 + 2 + 2 + 64 + 1 + 10 + 1 + 4 + 3 + ANIM_BITS;
+/** The appearance of every entity, by entity index. `EntityStore` has these columns. */
+export interface Looks {
+  readonly level: Uint16Array;
+  /** Six bytes for each entity. */
+  readonly colors: Uint8Array;
+  readonly name: string[];
+  readonly look: (Uint8Array | null)[];
+  readonly gear: (Uint16Array | null)[];
+  readonly team: Uint32Array;
+  readonly seat: Uint32Array;
+  readonly span: Uint32Array;
+  readonly grown: Uint32Array;
+}
 
-/** An upper bound on the bits a create for entry `j` of `v` takes. */
-function createBits(v: EntityView, j: number): number {
-  const name = v.name[j]!;
+/** An upper bound on the bits a create for entity `id` takes. */
+function createBits(v: Looks, id: number): number {
+  const name = v.name[id]!;
   // The optional fields: a look, gear, a team, a seat, an age.
-  const look = (v.look[j] ? LOOK_BYTES * 8 : 0) + (v.gear[j] ? GEAR_COUNT * 16 : 0) + (v.team[j] !== 0 ? 40 : 0) + (v.seat[j] !== 0 ? 40 : 0) + (v.span[j] !== 0 || v.grown[j] !== 0 ? 64 : 0);
+  const look = (v.look[id] ? LOOK_BYTES * 8 : 0) + (v.gear[id] ? GEAR_COUNT * 16 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 40 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
   if (name === "") return CREATE_BITS + look;
   let bytes = 1;
   for (let i = 0; i < name.length; i++) {
@@ -66,7 +78,8 @@ export function dequantY(q: number): number {
   return q / POS_UNITS + WORLD_MIN_Y;
 }
 
-export class EntityView {
+/** The fields a delta compares. The server keeps these for each view it sent, and reads appearance from the store when it writes a create. */
+export class SentView {
   /** Server tick of this view. 0 marks an unused or invalid view. */
   tick = 0;
   count = 0;
@@ -82,8 +95,35 @@ export class EntityView {
   readonly flags = new Uint8Array(MAX_VIEW);
   /** Packed as `AnimState.pack` does. */
   readonly anim = new Uint32Array(MAX_VIEW);
-  /** Appearance: revision (4 bits), level, six colour regions, name. */
+  /** Appearance revision, 4 bits. A change makes the next delta send a create. */
   readonly rev = new Uint8Array(MAX_VIEW);
+  /** Not sent. 1 for an entity whose changes go before the others when a snapshot cannot carry them all: a player, or a mount one drives. */
+  readonly urgent = new Uint8Array(MAX_VIEW);
+
+  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0): boolean {
+    const n = this.count;
+    if (n === MAX_VIEW) return false;
+    this.id[n] = id;
+    this.gen[n] = gen;
+    this.kind[n] = kind;
+    this.qx[n] = qx;
+    this.qy[n] = qy;
+    this.qz[n] = qz;
+    this.yaw[n] = yaw;
+    this.flags[n] = flags;
+    this.anim[n] = anim;
+    this.rev[n] = rev;
+    this.count = n + 1;
+    return true;
+  }
+
+  copyFrom(o: SentView, i: number): boolean {
+    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!);
+  }
+}
+
+/** A view as a client holds it: each entity with its appearance. */
+export class EntityView extends SentView {
   readonly level = new Uint16Array(MAX_VIEW);
   readonly colors = new Uint8Array(MAX_VIEW * 6);
   readonly name: string[] = new Array<string>(MAX_VIEW).fill("");
@@ -118,51 +158,35 @@ export class EntityView {
     this.team[n] = this.seat[n] = this.span[n] = this.grown[n] = 0;
   }
 
-  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number): boolean {
-    const n = this.count;
-    if (n === MAX_VIEW) return false;
-    this.id[n] = id;
-    this.gen[n] = gen;
-    this.kind[n] = kind;
-    this.qx[n] = qx;
-    this.qy[n] = qy;
-    this.qz[n] = qz;
-    this.yaw[n] = yaw;
-    this.flags[n] = flags;
-    this.anim[n] = anim;
-    this.count = n + 1;
-    return true;
-  }
-
-  copyFrom(o: EntityView, i: number): boolean {
-    if (!this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!)) return false;
+  override copyFrom(o: EntityView, i: number): boolean {
+    if (!super.copyFrom(o, i)) return false;
     this.appear(o.rev[i]!, o.level[i]!, o.colors, i * 6, o.name[i]!, o.look[i]!, o.gear[i]!);
     this.belong(o.team[i]!, o.seat[i]!, o.span[i]!, o.grown[i]!);
     return true;
   }
 }
 
-export class ViewRing {
-  private readonly views: EntityView[] = [];
+export class ViewRing<V extends SentView> {
+  private readonly views: V[] = [];
 
-  constructor() {
-    for (let i = 0; i < VIEW_RING; i++) this.views.push(new EntityView());
+  constructor(make: () => V) {
+    for (let i = 0; i < VIEW_RING; i++) this.views.push(make());
   }
 
-  find(tick: number): EntityView | null {
+  find(tick: number): V | null {
     const v = this.views[tick % VIEW_RING]!;
     return tick !== 0 && v.tick === tick ? v : null;
   }
 
   /** Returns the slot for `tick`, emptied. */
-  alloc(tick: number): EntityView {
+  alloc(tick: number): V {
     const v = this.views[tick % VIEW_RING]!;
     v.tick = tick;
     v.count = 0;
     return v;
   }
 
-  at(i: number): EntityView {
+  at(i: number): V {
     return this.views[i]!;
   }
 
@@ -180,8 +204,12 @@ const scratchColors = new Uint8Array(6);
 const opKind = new Uint8Array(MAX_VIEW * 2);
 const opBase = new Int16Array(MAX_VIEW * 2);
 const opCur = new Int16Array(MAX_VIEW * 2);
-/** Positions in the op list of the ops that may be deferred. */
+/** Positions in the op list of the ops that may be deferred: those of urgent entities, and the rest. */
+const urgIndex = new Int16Array(MAX_VIEW * 2);
 const optIndex = new Int16Array(MAX_VIEW * 2);
+/** Bits each deferrable op takes. Exact for an update but for its id gap, an upper bound for a create. */
+const opBits = new Uint16Array(MAX_VIEW * 2);
+let admitted = 0;
 const K_KEEP = 0;
 const K_UPDATE = 1;
 const K_CREATE = 2;
@@ -190,13 +218,39 @@ const K_REPLACE = 4;
 const K_STALE = 5;
 const K_SKIP = 6;
 
+function varintBits(v: number): number {
+  return v < 0x80 ? 8 : v < 0x4000 ? 16 : v < 0x200000 ? 24 : 32;
+}
+
+/**
+ * Lets through a window of the `count` ops in `list` that fits `budgetBits`, starting at `rotate`, and defers the rest.
+ * Sets `admitted` and returns where the next window starts, so no entity starves.
+ */
+function admit(list: Int16Array, count: number, rotate: number, budgetBits: number): number {
+  const start = rotate % count;
+  let allowed = 0;
+  let bits = 0;
+  for (; allowed < count; allowed++) {
+    const cost = opBits[list[(start + allowed) % count]!]!;
+    if (bits + cost > budgetBits) break;
+    bits += cost;
+  }
+  for (let t = allowed; t < count; t++) {
+    const k = list[(start + t) % count]!;
+    opKind[k] = opKind[k] === K_CREATE ? K_SKIP : K_STALE;
+  }
+  admitted = allowed;
+  return (start + allowed) % count;
+}
+
 /**
  * Encodes `cur` (the true state, sorted by id) against `base` (the view the client has, or null) and fills `next` with the
  * view the client will hold after applying it. `budgetBits` bounds the deferrable ops. A deferred op is left out, and `next`
- * records the stale state the client is left with, so later deltas stay correct. `rotate` is where deferral started last
- * time. Returns its new value.
+ * records the stale state the client is left with, so later deltas stay correct. Urgent entities are deferred last.
+ * `rotate` is where deferral started last time. Returns its new value. `looks` gives the appearance a create carries. The entry of `cur` with id `skip` is left out,
+ * so clients around one place can share one `cur`.
  */
-export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: EntityView, next: EntityView, budgetBits: number, rotate: number): number {
+export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1): number {
   const nb = base ? base.count : 0;
   const nc = cur.count;
   let i = 0;
@@ -204,58 +258,90 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
   let n = 0;
   let optional = 0;
   let optionalBits = 0;
+  let urgent = 0;
+  let urgentBits = 0;
   let written = 0;
+  /** One more than the id of the last op, for the size of the next op's id gap. A deferred op between two makes the real gap larger. */
+  let last = 0;
   while (i < nb || j < nc) {
     const bid = i < nb ? base!.id[i]! : 0xffffffff;
     const cid = j < nc ? cur.id[j]! : 0xffffffff;
+    if (cid === skip) {
+      j++;
+      continue;
+    }
+    let bits = 0;
     if (bid < cid) {
       opKind[n] = K_REMOVE;
       opBase[n] = i++;
       written++;
+      last = bid + 1;
     } else if (cid < bid) {
       opKind[n] = K_CREATE;
-      opCur[n] = j++;
-      optIndex[optional++] = n;
-      optionalBits += createBits(cur, j - 1);
+      opCur[n] = j;
+      bits = createBits(looks, cid);
+      last = cid + 1;
     } else {
       opBase[n] = i;
       opCur[n] = j;
       if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
         opKind[n] = K_REPLACE;
         written++;
-      } else if (base!.qx[i] === cur.qx[j] && base!.qy[i] === cur.qy[j] && base!.qz[i] === cur.qz[j] && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j] && base!.anim[i] === cur.anim[j]) {
-        opKind[n] = K_KEEP;
+        last = cid + 1;
       } else {
+        const dx = cur.qx[j]! - base!.qx[i]!;
+        const dy = cur.qy[j]! - base!.qy[i]!;
+        const dz = cur.qz[j]! - base!.qz[i]!;
+        const moved = dx !== 0 || dy !== 0 || dz !== 0;
+        const changed = cur.anim[j]! ^ base!.anim[i]!;
+        if (!moved && changed === 0 && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
+          opKind[n] = K_KEEP;
+          i++;
+          j++;
+          n++;
+          continue;
+        }
         opKind[n] = K_UPDATE;
-        optIndex[optional++] = n;
-        optionalBits += UPDATE_BITS;
+        // The id gap, the op, and one bit for each of the six parts that may follow.
+        bits = varintBits(cid + 1 - last) + 2 + 6;
+        if (moved) bits += dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127 ? 25 : 65;
+        if (base!.yaw[i] !== cur.yaw[j]) bits += 10;
+        if (base!.flags[i] !== cur.flags[j]) bits += 4;
+        if ((changed & ANIM_MOTION_MASK) !== 0) bits += ANIM_MOTION_BITS;
+        if (((changed >>> ANIM_LOOK_SHIFT) & LOOK_MASK) !== 0) bits += ANIM_LOOK_BITS;
+        if (changed >>> ANIM_ACTION_SHIFT !== 0) bits += ANIM_ACTION_BITS;
+        last = cid + 1;
       }
       i++;
-      j++;
     }
+    if (bits !== 0) {
+      opBits[n] = bits;
+      if (cur.urgent[j] === 1) {
+        urgIndex[urgent++] = n;
+        urgentBits += bits;
+      } else {
+        optIndex[optional++] = n;
+        optionalBits += bits;
+      }
+    }
+    if (cid <= bid) j++;
     n++;
   }
 
-  // Over budget. A rotating window of deferrable ops goes through and the rest wait, so no entity starves.
-  if (optionalBits > budgetBits && optional > 0) {
-    const start = rotate % optional;
-    let allowed = 0;
-    let bits = 0;
-    for (; allowed < optional; allowed++) {
-      const at = optIndex[(start + allowed) % optional]!;
-      const cost = opKind[at] === K_CREATE ? createBits(cur, opCur[at]!) : UPDATE_BITS;
-      if (bits + cost > budgetBits) break;
-      bits += cost;
-    }
-    for (let t = allowed; t < optional; t++) {
-      const k = optIndex[(start + t) % optional]!;
-      opKind[k] = opKind[k] === K_CREATE ? K_SKIP : K_STALE;
-    }
-    written += allowed;
-    rotate = (start + allowed) % optional;
-  } else {
-    written += optional;
+  // Over budget. Urgent ops go first. A rotating window of the others goes through and the rest wait.
+  if (urgentBits + optionalBits <= budgetBits) {
+    written += urgent + optional;
     rotate = 0;
+  } else if (urgentBits <= budgetBits) {
+    written += urgent;
+    if (optional > 0) {
+      rotate = admit(optIndex, optional, rotate, budgetBits - urgentBits);
+      written += admitted;
+    }
+  } else {
+    rotate = admit(urgIndex, urgent, rotate, budgetBits);
+    written += admitted;
+    if (optional > 0) admit(optIndex, optional, 0, 0);
   }
 
   w.varint(written);
@@ -285,31 +371,31 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
       w.bits(cur.flags[ci]!, 4);
       w.bits(cur.anim[ci]!, ANIM_BITS);
       w.bits(cur.rev[ci]!, 4);
-      w.varint(cur.level[ci]!);
-      const c0 = ci * 6;
-      const colors = cur.colors;
+      w.varint(looks.level[id]!);
+      const c0 = id * 6;
+      const colors = looks.colors;
       const coloured = (colors[c0]! | colors[c0 + 1]! | colors[c0 + 2]! | colors[c0 + 3]! | colors[c0 + 4]! | colors[c0 + 5]!) !== 0;
       w.bool(coloured);
       if (coloured) for (let q = 0; q < 6; q++) w.u8(colors[c0 + q]!);
-      const name = cur.name[ci]!;
+      const name = looks.name[id]!;
       w.bool(name !== "");
       if (name !== "") w.string(name);
-      const look = cur.look[ci]!;
+      const look = looks.look[id]!;
       w.bool(look !== null);
       if (look) for (let q = 0; q < LOOK_BYTES; q++) w.u8(look[q]!);
-      const gear = cur.gear[ci]!;
+      const gear = looks.gear[id]!;
       w.bool(gear !== null);
       if (gear) for (let q = 0; q < GEAR_COUNT; q++) w.u16(gear[q]!);
       // Team, seat and growth are each sent only when set.
-      w.bool(cur.team[ci] !== 0);
-      if (cur.team[ci] !== 0) w.varint(cur.team[ci]!);
-      w.bool(cur.seat[ci] !== 0);
-      if (cur.seat[ci] !== 0) w.varint(cur.seat[ci]!);
-      const young = cur.span[ci] !== 0 || cur.grown[ci] !== 0;
+      w.bool(looks.team[id] !== 0);
+      if (looks.team[id] !== 0) w.varint(looks.team[id]!);
+      w.bool(looks.seat[id] !== 0);
+      if (looks.seat[id] !== 0) w.varint(looks.seat[id]!);
+      const young = looks.span[id] !== 0 || looks.grown[id] !== 0;
       w.bool(young);
       if (young) {
-        w.u32(cur.span[ci]!);
-        w.u32(cur.grown[ci]!);
+        w.u32(looks.span[id]!);
+        w.u32(looks.grown[id]!);
       }
       next.copyFrom(cur, ci);
     } else {

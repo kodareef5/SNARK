@@ -181,7 +181,8 @@ test("a view fills with players first, then what moves, then what stands: a crow
   // A view that full takes a while to arrive whole.
   h.run(4000);
   const hers = seen(ada);
-  expect(hers.count).toBe(MAX_VIEW);
+  // Clients around one place share one list of MAX_VIEW entities, and her own body is one of them.
+  expect(hers.count).toBe(MAX_VIEW - 1);
   expect(indexOf(hers, "bob")).toBeGreaterThanOrEqual(0);
   let grazers = 0;
   let dummies = 0;

@@ -40,6 +40,8 @@ export const GONE_DESTROYED = 1;
 export const GONE_FELL = 2;
 /** Removals a chunk remembers, so a client can be sent each as one batch. */
 export const GONE_KEPT = 8;
+/** Changed slots a chunk remembers, so a client a few changes behind is sent those without a scan of every slot. */
+export const RECENT = 256;
 
 /**
  * Structures of one chunk removed together. `version` is the chunk's version, (x, y, z) is where it began in metres (for a fall,
@@ -59,9 +61,21 @@ export interface GoneBatch {
 export class ChunkTable {
   /** Bumped on every change to this chunk. 0 means never touched. */
   version = 0;
+  /** Bumped when a slot's kind, position or yaw changes. Damage, repair and a change of owner leave it alone, so what is drawn need not be rebuilt for them. */
+  shape = 0;
+  /** The free list must be rebuilt before the authority next adds to this chunk. */
+  freeStale = false;
   /** The last GONE_KEPT removals, oldest first. goneFloor is the version of the newest removal dropped from the list. */
   readonly gone: GoneBatch[] = [];
   goneFloor = 0;
+  /**
+   * A ring of the last RECENT changes the authority made: the slot, and the version the change gave it. Versions ascend.
+   * A client at `recentFloor` or later finds every slot it lacks here. Null until the first change.
+   */
+  recentSlot: Uint16Array | null = null;
+  recentVer: Uint32Array | null = null;
+  recentCount = 0;
+  recentFloor = 0;
   /** Per slot, the id of the query that last counted it. Scratch for queries that cover several cells. */
   stamp: Uint32Array;
   /** Slots [0, high) have been used at some point. */
@@ -92,6 +106,17 @@ export class ChunkTable {
     this.hp = new Float32Array(cap);
     this.mod = new Uint32Array(cap);
     this.stamp = new Uint32Array(cap);
+  }
+
+  /** Records that the authority changed `slot` at the current version. */
+  touch(slot: number): void {
+    const slots = (this.recentSlot ??= new Uint16Array(RECENT));
+    const vers = (this.recentVer ??= new Uint32Array(RECENT));
+    const at = this.recentCount % RECENT;
+    if (this.recentCount >= RECENT) this.recentFloor = vers[at]!;
+    slots[at] = slot;
+    vers[at] = this.version;
+    this.recentCount++;
   }
 
   log(batch: GoneBatch): void {
@@ -150,6 +175,9 @@ export class StructureStore {
   private nodeRef: Uint32Array;
   /** Per node: next node + 1, or 0. */
   private nodeNext: Int32Array;
+  /** The bottom and top of each node's structure, in metres, so a query with a height band rejects without loading the chunk table. */
+  private nodeBottom: Float32Array;
+  private nodeTop: Float32Array;
   private nodeHigh = 0;
   private nodeFree = 0;
   private queryId = 0;
@@ -162,6 +190,10 @@ export class StructureStore {
 
   /** Kinds that bodies pass through. Rays and drawing still see them. */
   private readonly soft: Uint8Array | null;
+  /** Per kind, in metres from a structure's origin: the bottom and top of its boxes, and how far they reach sideways at any yaw. */
+  private readonly low: Float32Array;
+  private readonly high: Float32Array;
+  readonly spread: Float32Array;
 
   constructor(dims: MapDims, halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array, soft: Uint8Array | null = null, parts: PartTable | null = null) {
     this.dims = dims;
@@ -176,6 +208,29 @@ export class StructureStore {
     this.heads = new Array(chunkCount(dims)).fill(null);
     this.nodeRef = new Uint32Array(1024);
     this.nodeNext = new Int32Array(1024);
+    this.nodeBottom = new Float32Array(1024);
+    this.nodeTop = new Float32Array(1024);
+    const kinds = halfX.length;
+    this.low = new Float32Array(kinds);
+    this.high = new Float32Array(kinds);
+    this.spread = new Float32Array(kinds);
+    const box = this.parts.box;
+    for (let k = 0; k < kinds; k++) {
+      // The box of half sizes too, which the support rules measure by.
+      let low = -halfY[k]!;
+      let high = halfY[k]!;
+      let spread = 0;
+      for (let p = this.parts.start[k]! * 6, end = this.parts.start[k + 1]! * 6; p < end; p += 6) {
+        low = Math.min(low, box[p + 1]! - box[p + 4]!);
+        high = Math.max(high, box[p + 1]! + box[p + 4]!);
+        const fx = Math.abs(box[p]!) + box[p + 3]!;
+        const fz = Math.abs(box[p + 2]!) + box[p + 5]!;
+        spread = Math.max(spread, Math.sqrt(fx * fx + fz * fz));
+      }
+      this.low[k] = low;
+      this.high[k] = high;
+      this.spread[k] = spread;
+    }
   }
 
   /** Snaps the position to the 1/512 m lattice. Returns the ref, or -1 if the kind is unknown or the chunk is full. Authority only. */
@@ -187,6 +242,12 @@ export class StructureStore {
     const chunk = chunkAt(this.dims, x, z);
     const t = (this.chunks[chunk] ??= new ChunkTable());
     let slot: number;
+    if (t.freeStale) {
+      // Rows were loaded or applied since the list was kept. A client applies rows every tick and never adds, so it never pays for this.
+      t.free.length = 0;
+      for (let s = t.high - 1; s >= 0; s--) if (t.kind[s] === 0) t.free.push(s);
+      t.freeStale = false;
+    }
     if (t.free.length > 0) slot = t.free.pop()!;
     else {
       if (t.high >= MAX_SLOTS_PER_CHUNK) return -1;
@@ -194,6 +255,7 @@ export class StructureStore {
     }
     t.version++;
     this.write(chunk, t, slot, kind, x, y, z, yaw & 0xffff, owner, hp, t.version);
+    t.touch(slot);
     this.onChunkChanged?.(chunk);
     return chunk * 65536 + slot;
   }
@@ -221,6 +283,7 @@ export class StructureStore {
       last.count++;
     } else t.log({ version: t.version, cause, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, stamp, runs: [slot, 1], count: 1 });
     this.erase(chunk, t, slot, t.version);
+    t.touch(slot);
     t.free.push(slot);
     this.onChunkChanged?.(chunk);
     return true;
@@ -247,6 +310,7 @@ export class StructureStore {
           this.onRemove?.(sorted[k]!, cause);
           if (count === 0) t.version++;
           this.erase(chunk, t, slot, t.version);
+          t.touch(slot);
           t.free.push(slot);
           // Slots come in ascending order, so an adjacent slot extends the last run.
           if (runs.length > 0 && runs[runs.length - 2]! + runs[runs.length - 1]! === slot) runs[runs.length - 1]!++;
@@ -274,6 +338,7 @@ export class StructureStore {
     t.version++;
     this.erase(chunk, t, slot, t.version);
     this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, t.version);
+    t.touch(slot);
     this.onChunkChanged?.(chunk);
     return true;
   }
@@ -287,6 +352,7 @@ export class StructureStore {
     t.version++;
     t.hp[slot] = hp;
     t.mod[slot] = t.version;
+    t.touch(slot);
     this.onChunkChanged?.(chunk);
     return true;
   }
@@ -307,6 +373,7 @@ export class StructureStore {
     t.version++;
     t.hp[slot] = left;
     t.mod[slot] = t.version;
+    t.touch(slot);
     this.onChunkChanged?.(chunk);
     return left;
   }
@@ -325,6 +392,7 @@ export class StructureStore {
         any = true;
         t.owner[slot] = to;
         t.mod[slot] = t.version;
+        t.touch(slot);
         n++;
       }
       if (any) this.onChunkChanged?.(chunk);
@@ -335,6 +403,13 @@ export class StructureStore {
   /** Sets a slot to replicated or loaded contents. `kind` 0 empties it. Does not advance the table version, so follow with setVersion. */
   put(chunk: number, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number): void {
     const t = (this.chunks[chunk] ??= new ChunkTable());
+    if (kind !== 0 && slot < t.high && t.kind[slot] === kind && t.x[slot] === Math.fround(x) && t.y[slot] === Math.fround(y) && t.z[slot] === Math.fround(z) && t.yaw[slot] === yaw) {
+      // The same piece in the same place: only its health or owner changed, so the grid and what is drawn stand.
+      t.owner[slot] = owner;
+      t.hp[slot] = hp;
+      t.mod[slot] = mod;
+      return;
+    }
     if (slot < t.high && t.kind[slot] !== 0) this.erase(chunk, t, slot, mod);
     if (kind !== 0) this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, mod);
     else {
@@ -344,12 +419,14 @@ export class StructureStore {
     }
   }
 
-  /** Call after loading or applying a delta. Rebuilds the free list. */
+  /** Call after loading or applying a delta. */
   setVersion(chunk: number, version: number): void {
     const t = (this.chunks[chunk] ??= new ChunkTable());
     t.version = version;
-    t.free.length = 0;
-    for (let s = t.high - 1; s >= 0; s--) if (t.kind[s] === 0) t.free.push(s);
+    // What was loaded or applied is not in the log of changes.
+    t.recentCount = 0;
+    t.recentFloor = version;
+    t.freeStale = true;
     this.onChunkChanged?.(chunk);
   }
 
@@ -362,8 +439,11 @@ export class StructureStore {
     this.onChunkChanged?.(chunk);
   }
 
-  /** Writes the refs of structures whose grid cells overlap the rectangle to `out` and returns the count. Conservative, so callers test exactly. */
-  query(minX: number, minZ: number, maxX: number, maxZ: number, out: Found): number {
+  /**
+   * Writes the refs of structures whose grid cells overlap the rectangle, and whose boxes reach into the height band if one
+   * is given, to `out` and returns the count. Conservative, so callers test exactly.
+   */
+  query(minX: number, minZ: number, maxX: number, maxZ: number, out: Found, minY = -Infinity, maxY = Infinity): number {
     let cx0 = Math.floor(minX / GRID_CELL);
     let cx1 = Math.floor(maxX / GRID_CELL);
     let cz0 = Math.floor(minZ / GRID_CELL);
@@ -388,8 +468,11 @@ export class StructureStore {
         if (!cells) continue;
         let node = cells[(cz & 15) * CELLS + (cx & 15)]!;
         while (node !== 0) {
-          const ref = this.nodeRef[node - 1]!;
-          node = this.nodeNext[node - 1]!;
+          const at = node - 1;
+          node = this.nodeNext[at]!;
+          // The grid has no height, so a tall building puts every storey in the same cells.
+          if (this.nodeTop[at]! < minY || this.nodeBottom[at]! > maxY) continue;
+          const ref = this.nodeRef[at]!;
           if (!single) {
             const t = this.chunks[Math.floor(ref / 65536)]!;
             const slot = ref & 0xffff;
@@ -436,6 +519,7 @@ export class StructureStore {
     t.owner[slot] = owner;
     t.hp[slot] = hp;
     t.mod[slot] = mod;
+    t.shape++;
     t.live++;
     this.count++;
     this.footprint(kind, x, z, yaw);
@@ -446,6 +530,8 @@ export class StructureStore {
         const cell = (cz & 15) * CELLS + (cx & 15);
         const node = this.allocNode();
         this.nodeRef[node] = ref;
+        this.nodeBottom[node] = y + this.low[kind]!;
+        this.nodeTop[node] = y + this.high[kind]!;
         this.nodeNext[node] = cells[cell]!;
         cells[cell] = node + 1;
       }
@@ -483,6 +569,7 @@ export class StructureStore {
     t.owner[slot] = 0;
     t.hp[slot] = 0;
     t.mod[slot] = mod;
+    t.shape++;
     t.live--;
     this.count--;
   }
@@ -524,6 +611,12 @@ export class StructureStore {
       const next = new Int32Array(cap);
       next.set(this.nodeNext);
       this.nodeNext = next;
+      const bottom = new Float32Array(cap);
+      bottom.set(this.nodeBottom);
+      this.nodeBottom = bottom;
+      const top = new Float32Array(cap);
+      top.set(this.nodeTop);
+      this.nodeTop = top;
     }
     return this.nodeHigh++;
   }

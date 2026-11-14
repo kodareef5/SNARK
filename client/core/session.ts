@@ -339,7 +339,7 @@ export class ClientSession {
   private readonly inputs = new InputBuffer(HISTORY);
   private readonly bodies: Body[] = [];
   private readonly bodyTick = new Uint32Array(HISTORY);
-  private readonly views = new ViewRing();
+  private readonly views = new ViewRing(() => new EntityView());
   private readonly w = new BitWriter(256);
   private readonly r = new BitReader();
   private readonly serverBody = new Body();

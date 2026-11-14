@@ -46,12 +46,12 @@ import {
   writeBody,
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
-import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
+import { MAX_VIEW, SentView, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
-import { GONE_TAKEN } from "../shared/world/structures.ts";
+import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
@@ -167,7 +167,7 @@ export class Client {
   /** Newest snapshot the client says it decoded. */
   ackTick = 0;
   lastSnapshot = 0;
-  readonly views = new ViewRing();
+  readonly views = new ViewRing(() => new SentView());
   /** Structure table version the client holds, per chunk. */
   readonly known: Uint32Array;
   /** Version of each chunk's used-up nodes the client holds. */
@@ -297,7 +297,13 @@ export class GameServer {
   /** Sized for the tuning string a welcome carries. */
   private readonly welcomeW: BitWriter;
   private readonly r = new BitReader();
-  private readonly cur = new EntityView();
+  /** The entities around each chunk that is some client's centre this tick, gathered once and shared by every client centred there. */
+  private readonly around: SentView[] = [];
+  private gathered = 0;
+  /** Per chunk: the tick `around[aroundAt]` was gathered for it. */
+  private readonly aroundTick: Uint32Array;
+  private readonly aroundAt: Uint16Array;
+  private readonly changed = new Uint16Array(RECENT);
   private readonly ids = new Uint32Array(MAX_VIEW);
   private readonly movers = new Uint32Array(MAX_VIEW);
   private readonly idle = new Uint32Array(MAX_VIEW);
@@ -309,6 +315,8 @@ export class GameServer {
     this.opts = { ...DEFAULTS, ...opts };
     this.clients = new Array(this.opts.maxClients).fill(null);
     this.welcomeW = new BitWriter(1024 + world.reg.tuning.length * 4);
+    this.aroundTick = new Uint32Array(chunkCount(world.dims));
+    this.aroundAt = new Uint16Array(chunkCount(world.dims));
     this.entityOffsets = nearestFirst(this.opts.entityRadius);
     this.structOffsets = nearestFirst(this.opts.structRadius);
     this.survivor = world.reg.index.get("core:survivor")!;
@@ -395,6 +403,7 @@ export class GameServer {
     world.history.record(T);
 
     const snap = T % this.opts.snapshotEvery === 0;
+    this.gathered = 0;
     for (const c of this.clients) {
       if (!c?.active || c.closed) continue;
       // Commands and systems may have moved or replaced the body since it stepped.
@@ -849,17 +858,18 @@ export class GameServer {
     return false;
   }
 
-  private snapshot(c: Client, T: number): void {
+  /**
+   * The entities a client centred on `chunk` may see at tick `T`, sorted by index. Every client centred there shares the list,
+   * so it includes each one's own body, and the delta writer leaves that out. With more entities than a view holds, players
+   * go in first, then anything moving or acting, then idle entities and props, so a crowd of idle creatures never hides a player.
+   */
+  private viewAround(chunk: number, T: number): SentView {
+    if (this.aroundTick[chunk] === T) return this.around[this.aroundAt[chunk]!]!;
     const world = this.world;
     const ents = world.ents;
     const dims = world.dims;
-    // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
-    const e = c.drive >= 0 ? -1 : c.ent;
-
-    // The view fills in three classes: players, then anything moving or acting, then idle entities and props.
-    // A crowd of idle creatures never hides a player.
-    const ccx = chunkCx(dims, c.chunk);
-    const ccz = chunkCz(dims, c.chunk);
+    const ccx = chunkCx(dims, chunk);
+    const ccz = chunkCz(dims, chunk);
     const ids = this.ids;
     const movers = this.movers;
     const idle = this.idle;
@@ -872,7 +882,6 @@ export class GameServer {
       const cz = ccz + offsets[o + 1]!;
       if (cx < 0 || cz < 0 || cx >= dims.chunksX || cz >= dims.chunksZ) continue;
       for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
-        if (i === e) continue;
         const f = ents.flags[i]!;
         if ((f & F_PLAYER) !== 0) {
           if (n < MAX_VIEW) ids[n++] = i;
@@ -884,14 +893,24 @@ export class GameServer {
     for (let k = 0; k < nm && n < MAX_VIEW; k++) ids[n++] = movers[k]!;
     for (let k = 0; k < ni && n < MAX_VIEW; k++) ids[n++] = idle[k]!;
     sortU32(ids, n);
-    const cur = this.cur;
+    const at = this.gathered++;
+    const cur = (this.around[at] ??= new SentView());
     cur.count = 0;
     for (let k = 0; k < n; k++) {
       const i = ids[k]!;
-      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!);
-      cur.appear(ents.rev[i]!, ents.level[i]!, ents.colors, i * 6, ents.name[i]!, ents.look[i]!, ents.gear[i]!);
-      cur.belong(ents.team[i]!, ents.seat[i]!, ents.span[i]!, ents.grown[i]!);
+      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!);
+      cur.urgent[k] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
     }
+    this.aroundTick[chunk] = T;
+    this.aroundAt[chunk] = at;
+    return cur;
+  }
+
+  private snapshot(c: Client, T: number): void {
+    const ents = this.world.ents;
+    // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
+    const self = c.drive >= 0 ? -1 : c.ent;
+    const cur = this.viewAround(c.chunk, T);
 
     const age = T - c.ackTick;
     const base = c.ackTick > 0 && age < VIEW_RING ? c.views.find(c.ackTick) : null;
@@ -913,7 +932,7 @@ export class GameServer {
     // 0 for its own body, else the index of the entity it drives plus one.
     w.varint(c.drive + 1);
     writeBody(w, c.body);
-    c.rotate = writeViewDelta(w, base, cur, next, this.opts.snapshotBytes * 8 - w.pos, c.rotate);
+    c.rotate = writeViewDelta(w, base, cur, next, this.opts.snapshotBytes * 8 - w.pos, c.rotate, ents, self);
     c.lastSnapshot = T;
     c.conn.send(CH_UNRELIABLE, w.bytes());
   }
@@ -956,6 +975,41 @@ export class GameServer {
     }
   }
 
+  /**
+   * Collects into `changed` the slots of `t` changed since version `from`, from its log. Returns how many, or -1 if the
+   * log does not reach back that far or holds more than `most`.
+   */
+  private changedSince(t: ChunkTable, from: number, byRemoval: boolean, most: number): number {
+    const slots = t.recentSlot;
+    const vers = t.recentVer;
+    if (!slots || !vers || from < t.recentFloor) return -1;
+    let n = 0;
+    for (let k = 1, held = Math.min(t.recentCount, RECENT); k <= held; k++) {
+      const at = (t.recentCount - k) % RECENT;
+      const version = vers[at]!;
+      if (version <= from) break;
+      const slot = slots[at]!;
+      // A slot changed twice is sent for its later change only.
+      if (t.mod[slot] !== version || (byRemoval && t.kind[slot] === 0)) continue;
+      if (n === most) return -1;
+      this.changed[n++] = slot;
+    }
+    return n;
+  }
+
+  private row(w: BitWriter, t: ChunkTable, s: number, x0: number, z0: number): void {
+    const kind = t.kind[s]!;
+    w.u16(s);
+    w.u16(kind);
+    if (kind === 0) return;
+    w.bits(Math.round((t.x[s]! - x0) * STRUCT_UNITS), 15);
+    w.bits(Math.round((t.z[s]! - z0) * STRUCT_UNITS), 15);
+    w.svarint(Math.round(t.y[s]! * STRUCT_UNITS));
+    w.u16(t.yaw[s]!);
+    w.varint(t.owner[s]!);
+    w.f32(t.hp[s]!);
+  }
+
   /** Returns the budget left, or 0 if the chunk is unfinished. */
   private sendChunk(c: Client, chunk: number, t: ChunkTable, budget: number): number {
     // One unfinished chunk keeps its place across ticks. A chunk that finishes within the tick leaves that
@@ -983,23 +1037,19 @@ export class GameServer {
     w.bits(0, 1 + 16);
     let count = 0;
     let s = cursor;
-    for (; s < t.high && count < budget; s++) {
-      if (t.mod[s]! <= from) continue;
-      const kind = t.kind[s]!;
-      if (kind === 0 && byRemoval) continue;
-      w.u16(s);
-      w.u16(kind);
-      if (kind !== 0) {
-        w.bits(Math.round((t.x[s]! - x0) * STRUCT_UNITS), 15);
-        w.bits(Math.round((t.z[s]! - z0) * STRUCT_UNITS), 15);
-        w.svarint(Math.round(t.y[s]! * STRUCT_UNITS));
-        w.u16(t.yaw[s]!);
-        w.varint(t.owner[s]!);
-        w.f32(t.hp[s]!);
+    let final = true;
+    // A client a few changes behind is sent those from the chunk's log. Otherwise every slot is looked at.
+    const logged = cursor === 0 ? this.changedSince(t, from, byRemoval, budget) : -1;
+    if (logged >= 0) {
+      for (; count < logged; count++) this.row(w, t, this.changed[count]!, x0, z0);
+    } else {
+      for (; s < t.high && count < budget; s++) {
+        if (t.mod[s]! <= from || (byRemoval && t.kind[s] === 0)) continue;
+        this.row(w, t, s, x0, z0);
+        count++;
       }
-      count++;
+      final = s >= t.high;
     }
-    const final = s >= t.high;
     const rows = count;
     // Removals go with the last rows, each as runs of slots.
     let removals = 0;

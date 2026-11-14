@@ -3,7 +3,7 @@ import { tokenize, parseNumber } from "../../shared/console.ts";
 import { TICK_DT, WORLD_MAX_Y } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { readBody, writeBody } from "../../shared/net/protocol.ts";
-import { EntityView, MAX_VIEW, readViewDelta, writeViewDelta } from "../../shared/net/view.ts";
+import { EntityView, MAX_VIEW, SentView, readViewDelta, writeViewDelta, type Looks } from "../../shared/net/view.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_JUMP, BTN_SPRINT, Body, MODE_GHOST, MODE_NONE, STAMINA_UNITS, stepBody } from "../../shared/sim/character.ts";
 import { CLOCK_HOUR_TICKS, DAY_TICKS, UNIT_CLOCK, cycleTicks, dayTick, formatHour, hourOfDay, isDay, offsetForHour } from "../../shared/sim/clock.ts";
@@ -172,12 +172,27 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
   const r = new BitReader();
   const colors = new Uint8Array(6);
   const belongs = (v: EntityView, i: number): number[] => [v.team[i]!, v.seat[i]!, v.span[i]!, v.grown[i]!];
+  /** The appearance of each entity of `v` by its id, as the entity store has it. */
+  const looksOf = (v: EntityView): Looks => {
+    const n = MAX_VIEW + 9001;
+    const looks = { level: new Uint16Array(n), colors: new Uint8Array(n * 6), name: new Array<string>(n).fill(""), look: new Array<Uint8Array | null>(n).fill(null), gear: new Array<Uint16Array | null>(n).fill(null), team: new Uint32Array(n), seat: new Uint32Array(n), span: new Uint32Array(n), grown: new Uint32Array(n) };
+    for (let i = 0; i < v.count; i++) {
+      const id = v.id[i]!;
+      looks.level[id] = v.level[i]!;
+      looks.name[id] = v.name[i]!;
+      looks.team[id] = v.team[i]!;
+      looks.seat[id] = v.seat[i]!;
+      looks.span[id] = v.span[i]!;
+      looks.grown[id] = v.grown[i]!;
+    }
+    return looks;
+  };
   /** What the server holds for the client, and what the client holds, after sending `cur` on top of them. */
-  const send = (cur: EntityView, sent: EntityView | null, held: EntityView | null): [EntityView, EntityView] => {
-    const next = new EntityView();
+  const send = (cur: EntityView, sent: SentView | null, held: EntityView | null): [SentView, EntityView] => {
+    const next = new SentView();
     const got = new EntityView();
     w.reset();
-    writeViewDelta(w, sent, cur, next, 1 << 20, 0);
+    writeViewDelta(w, sent, cur, next, 1 << 20, 0, looksOf(cur));
     r.reset(w.bytes());
     expect(readViewDelta(r, held, got)).toBe(true);
     expect(r.overflow).toBe(false);
@@ -197,7 +212,7 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
     v.belong(0, 0, span, grown);
     return v;
   };
-  let [sent, held] = send(make(100, 0, 0xfffffff, 41, 1234567, 4000000000), null, null);
+  let [sent, held]: [SentView | null, EntityView | null] = send(make(100, 0, 0xfffffff, 41, 1234567, 4000000000), null, null);
   expect(belongs(held, 0)).toEqual([0xfffffff, 41, 0, 0]);
   expect(belongs(held, 1)).toEqual([0, 0, 0, 0]);
   expect(belongs(held, 2)).toEqual([0, 0, 1234567, 4000000000]);
@@ -210,5 +225,5 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
   [sent, held] = send(make(101, 1, 5, 0, 1234567, 4000000000), sent, held);
   expect(belongs(held, 0)).toEqual([5, 0, 0, 0]);
   expect(held.name[0]).toBe("Rex");
-  expect(belongs(sent, 0)).toEqual([5, 0, 0, 0]);
+  expect(sent.rev[0]).toBe(1);
 });
