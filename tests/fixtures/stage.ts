@@ -137,12 +137,13 @@ export class Stage {
 /**
  * A square `side` metres across that stands on its origin and faces +z, drawn with one material that has a texture
  * for each of `roles`. Seen from in front its picture is upright. With `mirrored` it is two halves, and the right
- * half shows the picture of the left one mirrored, as the two sides of a body share one picture.
+ * half shows the picture of the left one mirrored, as the two sides of a body share one picture. The picture is laid
+ * `times` across it and as many down.
  */
-export function squareMesh(id: string, side: number, roles: readonly TextureRole[], material: Partial<PackMaterial> = {}, mirrored = false): SourceMesh {
+export function squareMesh(id: string, side: number, roles: readonly TextureRole[], material: Partial<PackMaterial> = {}, mirrored = false, times = 1): SourceMesh {
   const h = side / 2;
   const xs = mirrored ? [-h, 0, 0, h] : [-h, h];
-  const us = mirrored ? [0, 1, 1, 0] : [0, 1];
+  const us = (mirrored ? [0, 1, 1, 0] : [0, 1]).map((u) => u * times);
   const positions: number[] = [];
   const uvs: number[] = [];
   const tangents: number[] = [];
@@ -150,9 +151,9 @@ export function squareMesh(id: string, side: number, roles: readonly TextureRole
   for (let q = 0; q < xs.length; q += 2) {
     const first = positions.length / 3;
     positions.push(xs[q]!, 0, 0, xs[q + 1]!, 0, 0, xs[q + 1]!, side, 0, xs[q]!, side, 0);
-    uvs.push(us[q]!, 1, us[q + 1]!, 1, us[q + 1]!, 0, us[q]!, 0);
+    uvs.push(us[q]!, times, us[q + 1]!, times, us[q + 1]!, 0, us[q]!, 0);
     // The tangent runs the way u grows, and the bitangent up the picture: on the other side of it where the picture is mirrored.
-    const way = us[q + 1]! - us[q]!;
+    const way = Math.sign(us[q + 1]! - us[q]!);
     for (let v = 0; v < 4; v++) tangents.push(way, 0, 0, way);
     indices.push(first, first + 1, first + 2, first, first + 2, first + 3);
   }

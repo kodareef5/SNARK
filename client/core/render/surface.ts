@@ -162,7 +162,10 @@ export function skinMode(flags: number, entries: boolean): number {
 /** A number as GLSL writes it. */
 const f = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
-/** The vertex text. Its attributes 0 and 2 to 6 are the flat program's, and `uSkin` is what `skinMode` gives. */
+/**
+ * The vertex text. Its attributes 0 and 2 to 6 are the flat program's, `uSkin` is what `skinMode` gives, and `uUv` is
+ * what the mesh's stored texture coordinates span (PackMesh.uv): 0, 0, 1, 1 for a mesh that does not say.
+ */
 export const SURFACE_VERTEX = `#version 300 es
 layout(location=0) in vec3 aPos;
 layout(location=2) in vec3 iPos;
@@ -177,6 +180,7 @@ layout(location=10) in uvec4 aBones;
 layout(location=11) in vec4 aWeights;
 uniform mat4 uViewProj;
 uniform vec3 uOffset, uCenter, uHalf;
+uniform vec4 uUv;
 uniform float uSkin, uGrey;
 uniform highp sampler2D uPalette, uBones;
 out vec3 vRel, vNormal;
@@ -217,14 +221,15 @@ void main() {
   vRel = p;
   vNormal = normalize(n);
   vTangent = vec4(normalize(t), aTangent.w);
-  vUv = aUv;
+  vUv = uUv.xy + aUv * uUv.zw;
   gl_Position = uViewProj * vec4(p, 1.0);
 }`;
 
 /**
  * The fragment text for a variant of the textures: `astc` keeps a normal's x in the colour channels and its y in
- * alpha, the others keep them in red and green. The base colour is an sRGB texture, so it is sampled as light.
- * `uCutoff` is the material's for a cut-out draw and 0 for any other.
+ * alpha, the others keep them in red and green. The base colour is an sRGB texture, so it is sampled as light, and
+ * every texture repeats, since a material may run along a mesh more than once. `uCutoff` is the material's for a
+ * cut-out draw and 0 for any other.
  */
 export function surfaceFragment(format: TextureFormat): string {
   return `#version 300 es

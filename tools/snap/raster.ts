@@ -7,7 +7,7 @@ import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE
 import { NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
-import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { TEXTURE_ROLES, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -23,9 +23,21 @@ interface DecodedLod {
   colors: Uint8Array;
   bones: Uint8Array;
   indices: Uint32Array;
-  /** What a level drawn with materials has besides, and a body with skin entries besides that. */
-  surface?: { uvs: Float32Array; normals: Float32Array; tangents: Float32Array };
+  /** Read from the pack, where the level is drawn with materials. A manifest's rasterizer has it from an upload of its own. */
+  surface?: DecodedSurface;
+}
+
+/** What a level drawn with materials has for each vertex besides, and on a body the skin entries. */
+interface DecodedSurface {
+  uvs: Float32Array;
+  normals: Float32Array;
+  tangents: Float32Array;
   skin?: { joints: Uint8Array; weights: Float32Array };
+}
+
+/** `range` is what the mesh's stored texture coordinates span, where it says (PackMesh.uv). */
+function surfaceOf(entries: Uint8Array, skin: Uint8Array | null, range: readonly number[] | undefined): DecodedSurface {
+  return skin && skin.length > 0 ? { ...decodeSurface(entries, range), skin: decodeSkin(skin) } : decodeSurface(entries, range);
 }
 
 /** A texture on the card: its pictures as numbers from 0 to 1, smallest first, picture k being 1 << k pixels across. A base colour is held as light. */
@@ -65,19 +77,20 @@ function bilinear(t: Texture, k: number, u: number, v: number, weight: number, o
   const y = v * size - 0.5;
   const fx = x - Math.floor(x);
   const fy = y - Math.floor(y);
-  const x0 = Math.min(Math.max(Math.floor(x), 0), size - 1);
-  const x1 = Math.min(Math.max(Math.floor(x) + 1, 0), size - 1);
-  const y0 = Math.min(Math.max(Math.floor(y), 0), size - 1);
-  const y1 = Math.min(Math.max(Math.floor(y) + 1, 0), size - 1);
+  // The picture repeats: past one edge is the other.
+  const x0 = Math.floor(x) & (size - 1);
+  const x1 = (Math.floor(x) + 1) & (size - 1);
+  const y0 = Math.floor(y) & (size - 1);
+  const y1 = (Math.floor(y) + 1) & (size - 1);
   const a = (y0 * size + x0) * t.channels, b = (y0 * size + x1) * t.channels, c = (y1 * size + x0) * t.channels, d = (y1 * size + x1) * t.channels;
   const wa = weight * (1 - fx) * (1 - fy), wb = weight * fx * (1 - fy), wc = weight * (1 - fx) * fy, wd = weight * fx * fy;
   for (let i = 0; i < t.channels; i++) out[i]! += p[a + i]! * wa + p[b + i]! * wb + p[c + i]! * wc + p[d + i]! * wd;
 }
 
 /**
- * Samples a texture as a graphics card does when it filters between pixels and between pictures, takes no account of
- * slant, and holds a coordinate past the edge at the edge. `spread` is the base-two logarithm of how much of the
- * texture's width one step between screen pixels crosses.
+ * Samples a texture as a graphics card does when it filters between pixels and between pictures, repeats the texture
+ * both ways and takes no account of slant. `spread` is the base-two logarithm of how much of the texture's width one
+ * step between screen pixels crosses.
  */
 function sample(t: Texture, u: number, v: number, spread: number, out: Float64Array): void {
   const top = t.pictures.length - 1;
@@ -145,6 +158,8 @@ export class Rasterizer {
   private readonly lods = new Map<number, DecodedLod>();
   /** Given a manifest, only what a packet has uploaded may be drawn, as on a graphics card. Levels are kept by slot. */
   private readonly manifest: Manifest | null;
+  /** Given a manifest: the surfaces uploaded, by the slot of their level, each with its own slot. */
+  private readonly surfaces = new Map<number, { slot: number; surface: DecodedSurface }>();
   private packet!: FramePacket;
   /** The matrix and near distance in use: the packet's main pass or its near pass. */
   private matrix!: Float32Array;
@@ -186,14 +201,21 @@ export class Rasterizer {
     for (const u of packet.uploads) this.buffers.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
     for (const id of packet.drops) this.buffers.delete(id);
     if (this.manifest) {
-      for (const u of packet.assetUploads) this.lods.set(u.slot, this.decodeUpload(u));
-      for (const slot of packet.assetDrops) this.lods.delete(slot);
+      for (const u of packet.assetUploads) {
+        if (u.of === undefined) this.lods.set(u.slot, this.decodeUpload(u));
+        else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), this.manifest.meshes[u.mesh]!.uv) });
+      }
+      for (const slot of packet.assetDrops) {
+        this.lods.delete(slot);
+        for (const [level, s] of this.surfaces) if (s.slot === slot) this.surfaces.delete(level);
+      }
     }
-    for (const u of packet.texUploads) this.texture(u);
+    // A texture that is let go goes first, with any copy of it being made. Then rows begin a copy, add to it or complete it.
     for (const slot of packet.texDrops) {
       this.textures.delete(slot);
       this.making.delete(slot);
     }
+    for (const u of packet.texUploads) this.texture(u);
 
     const sky = [packet.sky[0]! * 255, packet.sky[1]! * 255, packet.sky[2]! * 255];
     for (let i = 0; i < this.width * this.height; i++) {
@@ -331,41 +353,33 @@ export class Rasterizer {
     if (level >= m.lods.length) throw new Error(`a draw of ${m.id} at level ${level}, which it does not have`);
     lod = { ...vertices(lodVertices(this.pack, m.lods[level]!), m.lods[level]!.vertexCount, m), indices: readIndices(this.pack, m.lods[level]!) };
     const surface = lodSurface(this.pack, m.lods[level]!);
-    const skin = lodSkin(this.pack, m.lods[level]!);
-    if (surface) lod.surface = decodeSurface(surface);
-    if (skin) lod.skin = decodeSkin(skin);
+    if (surface) lod.surface = surfaceOf(surface, lodSkin(this.pack, m.lods[level]!), m.uv);
     this.lods.set(key, lod);
     return lod;
   }
 
-  /**
-   * A level from the bytes a packet uploads: its indices, padded to a multiple of 4, and then its vertices. Where the
-   * bytes run on, as the level's do in the pack, its surface and then its skin are read from them.
-   */
+  /** A level from the bytes a packet uploads: its indices, padded to a multiple of 4, and then its vertices. */
   private decodeUpload(u: AssetUpload): DecodedLod {
     const view = new DataView(u.data.buffer, u.data.byteOffset, u.data.byteLength);
     const indices = new Uint32Array(u.indexCount);
     for (let i = 0; i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
-    const mesh = this.manifest!.meshes[u.mesh]!;
-    const n = mesh.levels[u.level]!.verts;
-    const rest = u.data.subarray((u.indexCount * u.indexBytes + 3) & ~3);
-    const lod: DecodedLod = { ...vertices(rest, n, mesh), indices };
-    const surfaceEnd = n * (VERTEX_BYTES + SURFACE_BYTES);
-    if (rest.length >= surfaceEnd) lod.surface = decodeSurface(rest.subarray(n * VERTEX_BYTES, surfaceEnd));
-    if (rest.length >= surfaceEnd + n * SKIN_BYTES) lod.skin = decodeSkin(rest.subarray(surfaceEnd, surfaceEnd + n * SKIN_BYTES));
-    return lod;
+    const verts = u.data.subarray((u.indexCount * u.indexBytes + 3) & ~3);
+    return { ...vertices(verts, verts.length / VERTEX_BYTES, this.manifest!.meshes[u.mesh]!), indices };
   }
 
-  /** Takes rows of a texture that is being made. The upload marked `last` puts it in its slot. */
+  /**
+   * Takes rows of a copy of a texture. The first row of its one-pixel picture begins the copy, and the upload marked
+   * `last` puts it in its slot, where the copy before it was drawn with until then.
+   */
   private texture(u: TextureUpload): void {
     if (u.format !== "rgba") throw new Error(`texture ${u.slot} comes as ${u.format}, and only the rgba variant is read here`);
-    let t = this.making.get(u.slot);
-    if (!t || t.top !== u.top) {
+    if (u.size === 1 && u.row === 0) {
       const pictures: Uint8Array[] = [];
       for (let size = 1; size <= u.top; size <<= 1) pictures.push(new Uint8Array(pictureBytes("rgba", u.role, size)));
-      t = { role: u.role, top: u.top, pictures, left: pictures.reduce((sum, p) => sum + p.length, 0) };
-      this.making.set(u.slot, t);
+      this.making.set(u.slot, { role: u.role, top: u.top, pictures, left: pictures.reduce((sum, p) => sum + p.length, 0) });
     }
+    const t = this.making.get(u.slot);
+    if (!t || t.top !== u.top) throw new Error(`texture ${u.slot} is sent rows of a copy that was not begun`);
     const picture = t.pictures[Math.log2(u.size)]!;
     const row = picture.length / u.size;
     picture.set(u.data.subarray(0, u.rows * row), u.row * row);
@@ -378,13 +392,15 @@ export class Rasterizer {
 
   /**
    * A draw with a material: a run of its level's indices, drawn as the SURFACE program draws it, with no checker and
-   * nothing seen through. A texture's slot is its place in the pack's list. The base colour and the masks must be on
-   * the card. A normal or packed map that is not there reads as NEUTRAL, as one the material lacks does.
+   * nothing seen through. A texture's slot is its place in the manifest's list, which is the pack's. The level's
+   * surface, the base colour and the masks must be on the card. A normal or packed map that is not there reads as
+   * NEUTRAL, as one the material lacks does.
    */
   private textured(p: FramePacket, d: number): void {
     const lod = this.decode(p.drawMesh[d]!, p.drawLod[d]!, p.drawSlot[d]!);
+    const surface = this.manifest ? this.surfaces.get(p.drawSlot[d]!)?.surface : lod.surface;
     const material = (this.manifest ?? this.pack.header).materials?.[p.drawMaterial[d]!];
-    if (!lod.surface) throw new Error(`draw ${d} is textured, and the surface of its level is not on the graphics card`);
+    if (!surface) throw new Error(`draw ${d} is textured, and the surface of its level is not on the graphics card`);
     if (!material) throw new Error(`draw ${d} uses material ${p.drawMaterial[d]}, which the pack does not have`);
     const flags = p.drawFlags[d]!;
     const maps = TEXTURE_ROLES.map((role, k) => {
@@ -392,7 +408,7 @@ export class Rasterizer {
       if (!t && material[role] >= 0 && role !== "normal" && role !== "mro") throw new Error(`draw ${d} uses ${material.id}, whose ${role} texture is not on the graphics card`);
       return t ?? NEUTRALS[k]!;
     });
-    const s: Surfaced = { maps, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: lod.surface.uvs, tangents: lod.surface.tangents };
+    const s: Surfaced = { maps, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -405,7 +421,7 @@ export class Rasterizer {
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
       const at = inst * INSTANCE_BYTES;
-      this.pose(p, d, lod, view, at);
+      this.pose(p, d, lod, surface, view, at);
       regionDyes(this.dyes, this.pack.palette, data, at + 14, material.grey);
       const kind = transient ? PICK_ENTITY : PICK_STRUCTURE;
       const id = transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
@@ -420,9 +436,9 @@ export class Rasterizer {
    * The vertex stage of a textured draw, as SURFACE_VERTEX has it: where an instance's vertices are, camera-relative,
    * into `scratch`, and their normals and tangents into `frames`.
    */
-  private pose(p: FramePacket, d: number, lod: DecodedLod, view: DataView, at: number): void {
-    const { positions, skin } = lod;
-    const { normals, tangents } = lod.surface!;
+  private pose(p: FramePacket, d: number, lod: DecodedLod, surface: DecodedSurface, view: DataView, at: number): void {
+    const { positions } = lod;
+    const { normals, tangents, skin } = surface;
     const n = positions.length / 3;
     if (this.scratch.length < n * 3) this.scratch = new Float32Array(n * 3);
     if (this.frames.length < n * 6) this.frames = new Float32Array(n * 6);

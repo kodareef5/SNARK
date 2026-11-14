@@ -216,6 +216,30 @@ test("each mask channel dyes with its own region's colour, and what the weights 
   expect(apart(out, [0, 1, 2].map((c) => 0.75 + dyes[3 + c]! / 4))).toBeLessThan(1e-12);
 });
 
+test("a material repeats where a mesh's texture coordinates run past one texture", () => {
+  // The coordinates of this square run from 0 to 2 each way, which its mesh says, and the picture's quarters are four greys.
+  const pack = packOf(squareMesh("test:wall", 4, ["base"], {}, false, 2));
+  expect(pack.header.meshes[0]!.uv).toEqual([0, 0, 2, 2]);
+  const stage = facing(pack, 4, 3);
+  stage.sun = [0, 0, 1];
+  stage.begin();
+  stage.textures("test:wall/", { base: picture(64, (x, y) => [60 + (x >> 5) * 120 + (y >> 5) * 40, 0, 0, 255]) });
+  stage.add("test:wall", 0, { x: 0, y: 0, z: 0 });
+  const pixels = stage.render();
+  const at = seen(stage, 4);
+  // By copy of the picture, four of them, and by quarter of it: the reds drawn, away from where quarters and copies meet.
+  const reds = Array.from({ length: 16 }, () => new Set<number>());
+  for (let i = 0; i < W * H; i++) {
+    const [x, y] = [at[i * 2]! * 128, at[i * 2 + 1]! * 128];
+    if (Number.isNaN(x) || [x % 64, y % 64].some((t) => t < 4 || t > 60 || Math.abs(t - 32) < 4)) continue;
+    reds[(x > 64 ? 4 : 0) + (y > 64 ? 8 : 0) + (x % 64 > 32 ? 1 : 0) + (y % 64 > 32 ? 2 : 0)]!.add(pixels[i * 4]!);
+  }
+  const first = reds.slice(0, 4).map((set) => Math.min(...set));
+  expect(first.map((red, k) => first.every((other, j) => j === k || Math.abs(other - red) > 15))).toEqual([true, true, true, true]);
+  // Every copy shows each quarter as the first copy does, to within what seeing it a little aslant changes.
+  reds.forEach((set, k) => expect([set.size > 0, Math.min(...set) >= first[k % 4]! - 2, Math.max(...set) <= first[k % 4]! + 2]).toEqual([true, true, true]));
+});
+
 test("a region's colour dyes the pixels its mask covers and no others, and a pixel half in two regions is the even mix of their colours", () => {
   // Four bands from left to right: region 0, region 1, half of each, and a band that is region 3 in its lower half
   // and never dyed in its upper. The base is one light grey, and the material's grey is that grey as light.
@@ -244,8 +268,8 @@ test("a region's colour dyes the pixels its mask covers and no others, and a pix
   const counts = [0, 0, 0, 0, 0];
   for (let i = 0; i < W * H; i++) {
     const [x, y] = [at[i * 2]! * 64, at[i * 2 + 1]! * 64];
-    // Pixels within a texel of where two bands meet show some of each.
-    if (Number.isNaN(x) || Math.abs(x - Math.round(x / 16) * 16) < 1 || (x > 47 && Math.abs(y - 32) < 1)) continue;
+    // Pixels within a texel of where two bands meet show some of each, and so do those at the picture's edge, past which it repeats.
+    if (Number.isNaN(x) || Math.abs(x - Math.round(x / 16) * 16) < 1 || (x > 47 && Math.abs(y - 32) < 1) || y < 1 || y > 63) continue;
     const pixel = (p: Uint8ClampedArray): number[] => [...p.subarray(i * 4, i * 4 + 3)];
     const where = band(Math.floor(x)) + (x > 48 && y < 32 ? 1 : 0);
     counts[where]!++;
@@ -460,10 +484,19 @@ test("a textured draw needs its level's surface, its base colour and its masks o
   const rows = (row: number, n: number, last: boolean) => ({ slot: slot("base"), role: "base" as const, format: "rgba" as const, top: 64, size: 64, row, rows: n, data: white.subarray(0, n * 256), last });
   const small = uploads.filter((u) => u.slot === slot("base") && u.size < 64).map((u) => ({ ...u, last: false }));
   expect(frame(stage, () => stage.packet.texUploads.push(...small, rows(0, 40, false)))).toEqual(all);
-  expect(apart(frame(stage, () => stage.packet.texUploads.push(rows(40, 24, true))), all)).toBeGreaterThan(20);
-  expect(() => frame(stage, () => stage.packet.texUploads.push(rows(0, 40, true)))).toThrow("bytes of it not sent");
-  // Dropped, it is gone.
-  expect(() => frame(stage, () => stage.packet.texDrops.push(slot("mask2")))).toThrow("whose mask2 texture is not on the graphics card");
+  const whitened = frame(stage, () => stage.packet.texUploads.push(rows(40, 24, true)));
+  expect(apart(whitened, all)).toBeGreaterThan(20);
+  // A copy begins with its one-pixel picture, and is complete when every row of it has come.
+  expect(() => frame(stage, () => stage.packet.texUploads.push(rows(0, 40, false)))).toThrow("rows of a copy that was not begun");
+  expect(() => frame(stage, () => stage.packet.texUploads.push(...small, rows(0, 40, true)))).toThrow("bytes of it not sent");
+  // A frame's drops come before its uploads: a texture let go and begun again in one frame is there, and one let go is not.
+  const again = uploads.filter((u) => u.slot === slot("mask2"));
+  const dropped = (send: boolean) => () => {
+    stage.packet.texDrops.push(slot("mask2"));
+    if (send) stage.packet.texUploads.push(...again);
+  };
+  expect(frame(stage, dropped(true))).toEqual(whitened);
+  expect(() => frame(stage, dropped(false))).toThrow("whose mask2 texture is not on the graphics card");
 
   // A normal map and a packed map still on their way read as one pixel of NEUTRAL would.
   const bare = new Stage(whole);
@@ -476,16 +509,19 @@ test("a textured draw needs its level's surface, its base colour and its masks o
   });
   expect(neutral).toEqual(without);
 
-  // Given a manifest, a level is what was uploaded. Its first part alone can be drawn flat and not with materials.
+  // Given a manifest, a level is what was uploaded, and its surface and skin come as an upload of their own, in a
+  // slot of their own. Until they have, and once they are dropped, the level is not drawn with materials.
   const manifest = describePack(whole, { name: "tube", bytes: tubePack().length });
   const level = manifest.meshes[0]!.levels[0]!;
-  const upload = (parts: number) => ({ slot: 5, mesh: 0, level: 0, indexCount: level.tris * 3, indexBytes: level.index, data: whole.blob.subarray(level.at - whole.blobAt, level.at - whole.blobAt + level.parts.slice(0, parts).reduce((n, p) => n + p.bytes, 0)) });
+  const [first, surface, skin] = level.parts.map((p) => p.bytes) as [number, number, number];
+  const bytes = whole.blob.subarray(level.at - whole.blobAt, level.at - whole.blobAt + first + surface + skin);
   const card = new Stage(whole, W, H, manifest);
-  const streamed = (parts: number): Uint8ClampedArray =>
-    frame(card, () => {
-      card.packet.texUploads.push(...uploads);
-      card.packet.assetUploads.push(upload(parts));
-    });
-  expect(() => streamed(1)).toThrow("the surface of its level is not on the graphics card");
-  expect(streamed(3)).toEqual(all);
+  const levelUp = () => {
+    card.packet.texUploads.push(...uploads);
+    card.packet.assetUploads.push({ slot: 5, mesh: 0, level: 0, indexCount: level.tris * 3, indexBytes: level.index, data: bytes.subarray(0, first) });
+  };
+  const surfaceUp = () => card.packet.assetUploads.push({ slot: 9, mesh: 0, level: 0, indexCount: 0, indexBytes: level.index, of: 5, skinAt: surface, data: bytes.subarray(first) });
+  expect(() => frame(card, levelUp)).toThrow("the surface of its level is not on the graphics card");
+  expect(frame(card, surfaceUp)).toEqual(all);
+  expect(() => frame(card, () => card.packet.assetDrops.push(9))).toThrow("the surface of its level is not on the graphics card");
 });
