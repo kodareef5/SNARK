@@ -45,6 +45,8 @@ let disk: Folder | null = null;
 const onDisk = new Map<string, number>();
 let diskBytes = 0;
 let diskLimit = 0;
+/** Done when the disk has been looked at. A part that arrives sooner waits for it, and is not lost to the cache. */
+let opened: Promise<void> = Promise.resolve();
 /** Parts asked for only to be kept, and how many of them are being fetched. */
 const toFill: Ask[] = [];
 let filling = 0;
@@ -80,6 +82,7 @@ async function forget(downTo: number): Promise<void> {
 }
 
 async function fromDisk(a: Ask): Promise<Uint8Array | null> {
+  await opened;
   if (!disk || !onDisk.has(a.hash)) return null;
   try {
     const h = await (await disk.getFileHandle(a.hash)).createSyncAccessHandle();
@@ -102,6 +105,7 @@ async function fromDisk(a: Ask): Promise<Uint8Array | null> {
 }
 
 async function toDisk(hash: string, data: Uint8Array, again = true): Promise<void> {
+  await opened;
   if (!disk || onDisk.has(hash) || data.length > diskLimit) return;
   await forget(diskLimit - data.length);
   try {
@@ -123,6 +127,7 @@ async function toDisk(hash: string, data: Uint8Array, again = true): Promise<voi
 
 /** Fetches what was asked for only to be kept, two at a time, behind what the scene is waiting for. */
 async function fill(): Promise<void> {
+  await opened;
   if (filling >= 2) return;
   const a = toFill.shift();
   if (!a) return;
@@ -199,7 +204,7 @@ async function answer(a: Ask): Promise<void> {
 scope.onmessage = (e) => {
   const m = e.data as { ask?: Ask; cancel?: number; net?: number[]; open?: number; fill?: Ask[] };
   if (m.net) net = m.net;
-  if (m.open !== undefined) void openDisk(m.open);
+  if (m.open !== undefined) opened = openDisk(m.open);
   if (m.fill) {
     toFill.push(...m.fill);
     void fill();

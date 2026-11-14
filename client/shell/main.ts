@@ -87,6 +87,8 @@ async function boot(): Promise<void> {
   const times: number[] = [];
 
   let restored = 0;
+  let keptBefore = 0;
+  let still = 0;
   canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
   canvas.addEventListener("webglcontextrestored", () => {
     renderer.init();
@@ -145,7 +147,10 @@ async function boot(): Promise<void> {
     // The self-check reads pixels back and reports on the 90th drawn frame. With voice it first waits for a
     // second of played voice, or for ten seconds to report that none was.
     const voiced = voiceCheck || voiceListen;
-    if (selfcheck && frames >= 0 && ++frames >= 90 && (!voiced || voice.report.played >= 50 || frames >= 690)) {
+    // Parts are written to disk a little after they arrive. The report waits until that has been still for half a second.
+    still = port.cache.used === keptBefore ? still + 1 : 0;
+    keptBefore = port.cache.used;
+    if (selfcheck && frames >= 0 && ++frames >= 90 && still >= 30 && (!voiced || voice.report.played >= 50 || frames >= 690)) {
       frames = -1;
       const heard = !voiced || (voice.report.played >= 50 && voice.report.odd === 0 && voice.report.errors === 0 && (!voiceListen || voice.report.heard.length > 0));
       // In the stress scene three rocks hang in the sky, each drawn at another level, and a level is all one colour.
