@@ -86,6 +86,8 @@ export interface GameOptions {
   /** "" for none. */
   password: string;
   motdSeconds: number;
+  /** The most connections from one address that may be waiting to say hello. 0 for no limit. */
+  pendingPerAddress: number;
 }
 
 const DEFAULTS: GameOptions = {
@@ -101,6 +103,7 @@ const DEFAULTS: GameOptions = {
   spectators: "admin",
   password: "",
   motdSeconds: 20,
+  pendingPerAddress: 8,
 };
 
 /** Constant-time, so timing does not leak how much of a password matched. */
@@ -116,9 +119,11 @@ const MAX_PACKETS_PER_TICK = 8;
 const MAX_RELIABLE_PER_TICK = 32;
 /** Malformed messages tolerated before disconnecting. */
 const MAX_STRIKES = 8;
-/** Connections waiting to say hello, and the ticks each may take. */
+/** Connections waiting to say hello, and the ticks each may take while there is room. */
 const MAX_PENDING = 64;
 const HELLO_TICKS = 150;
+/** With no room, one that has waited this long is put out for a newcomer. A client says hello at once, so this is a slow link's round trip. */
+const HELLO_GRACE_TICKS = 15;
 const COMMAND_QUEUE = 16;
 const COMMANDS_PER_TICK = 4;
 /** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
@@ -142,11 +147,16 @@ export const DID_RELOAD = 4;
 /** Read every argument and check r.overflow before acting. Returns a RESULT code. */
 export type CommandHandler = (c: Client, r: BitReader) => number;
 
-/** One survivor's session. It outlives its connection by lingerTicks, and a reconnect with the same name and key takes it over. */
+/** A connection that has not said hello, and the tick it came on. It holds no slot and none of a session's memory. */
+interface Pending {
+  readonly conn: Connection;
+  readonly since: number;
+}
+
+/** One survivor's session, made when its hello is accepted. It outlives its connection by lingerTicks, and a reconnect with the same name and key takes it over. */
 export class Client {
-  /** Slot in `GameServer.clients`, or -1 until its hello is accepted. */
+  /** Slot in `GameServer.clients`. */
   id: number;
-  helloBy = 0;
   conn: Connection;
   active = false;
   /** The connection is gone; the body stays until `lingerUntil`. */
@@ -345,8 +355,8 @@ export class GameServer {
   savedPosition: ((name: string) => { x: number; y: number; z: number; yaw: number; dead?: boolean } | null) | null = null;
 
   private readonly handlers: (CommandHandler | null)[] = new Array(256).fill(null);
-  /** Connections that have not said hello hold no slot, so a returning survivor can reclaim its lingering session on a full server. */
-  private readonly pending = new Set<Client>();
+  /** Connections that have not said hello, oldest first. They hold no slot, so a returning survivor can reclaim its lingering session on a full server. */
+  private readonly pending = new Set<Pending>();
   private readonly survivor: number;
   private readonly w: BitWriter;
   /** Sized for the tuning string a welcome carries. */
@@ -466,7 +476,7 @@ export class GameServer {
 
     for (const c of this.clients) if (c?.active && c.queue.length > 0) this.runCommands(c);
     for (const c of this.clients) if (c?.closed && T >= c.lingerUntil) this.finalize(c);
-    for (const c of this.pending) if (T >= c.helloBy) this.reject(c, REJECT_MALFORMED);
+    for (const p of this.pending) if (T - p.since >= HELLO_TICKS) this.turnAway(p, REJECT_MALFORMED);
 
     this.onStep?.(T);
     // History records the world as this tick's snapshots show it.
@@ -498,12 +508,22 @@ export class GameServer {
 
   reject(c: Client, reason: number): void {
     c.left = reason === REJECT_KICKED ? "kicked" : "refused";
+    this.close(c.conn, reason);
+  }
+
+  /** Tells a connection why, and closes it. */
+  private close(conn: Connection, reason: number): void {
     const w = this.w;
     w.reset();
     w.bits(S_REJECT, 4);
     w.u8(reason);
-    c.conn.send(CH_RELIABLE, w.bytes());
-    c.conn.close();
+    conn.send(CH_RELIABLE, w.bytes());
+    conn.close();
+  }
+
+  private turnAway(p: Pending, reason: number): void {
+    this.pending.delete(p);
+    this.close(p.conn, reason);
   }
 
   /** One message per line. */
@@ -690,20 +710,39 @@ export class GameServer {
   }
 
   private accept(conn: Connection): void {
-    // A full server reconnecting at once is not an attack.
-    if (this.pending.size >= Math.max(MAX_PENDING, this.opts.maxClients)) {
-      const w = this.w;
-      w.reset();
-      w.bits(S_REJECT, 4);
-      w.u8(REJECT_FULL);
-      conn.send(CH_RELIABLE, w.bytes());
-      conn.close();
-      return;
+    const T = this.world.tick;
+    const share = conn.address === undefined ? 0 : this.opts.pendingPerAddress;
+    let first: Pending | null = null;
+    let own: Pending | null = null;
+    let mine = 0;
+    for (const p of this.pending) {
+      first ??= p;
+      if (share === 0 || p.conn.address !== conn.address) continue;
+      own ??= p;
+      mine++;
     }
-    const c = new Client(-1, conn, chunkCount(this.world.dims));
-    c.helloBy = this.world.tick + HELLO_TICKS;
-    this.pending.add(c);
-    this.bind(c, conn);
+    // With no room, among its own address's share or among them all, the one that has waited longest makes way. A client says
+    // hello at once, so one that has had the time and said nothing was holding the place, and holding places keeps nobody out.
+    // If none has had the time, as when a full server reconnects at once, the newcomer is the one turned away.
+    const out = share > 0 && mine >= share ? own : this.pending.size >= Math.max(MAX_PENDING, this.opts.maxClients) ? first : null;
+    if (out) {
+      if (T - out.since < HELLO_GRACE_TICKS) return this.close(conn, REJECT_FULL);
+      this.turnAway(out, REJECT_FULL);
+    }
+    const p: Pending = { conn, since: T };
+    this.pending.add(p);
+    conn.onMessage = (channel, data) => this.greet(p, channel, data);
+    conn.onClose = () => void this.pending.delete(p);
+  }
+
+  /** The first message of a connection must be its hello. Anything else ends it. */
+  private greet(p: Pending, channel: number, data: Uint8Array): void {
+    if (!this.pending.delete(p)) return;
+    const r = this.r;
+    r.reset(data);
+    if (channel === CH_RELIABLE && data.length <= MAX_CLIENT_MESSAGE && r.bits(4) === C_HELLO && this.hello(p.conn, r)) return;
+    this.stats.malformed++;
+    this.close(p.conn, REJECT_MALFORMED);
   }
 
   private bind(c: Client, conn: Connection): void {
@@ -713,7 +752,6 @@ export class GameServer {
 
   /** The connection closed. A living body lingers, anything else leaves now. */
   private remove(c: Client, conn: Connection): void {
-    if (this.pending.delete(c)) return;
     if (this.clients[c.id] !== c || c.conn !== conn || c.closed) return;
     if (c.active && c.ent >= 0 && this.opts.lingerTicks > 0) {
       this.release(c);
@@ -755,7 +793,6 @@ export class GameServer {
       if (over && !(type === C_COMMAND && c.active)) ok = false;
       else if (type === C_INPUT && c.active) ok = this.input(c, r);
       else if (type === C_COMMAND && c.active && channel === CH_RELIABLE) ok = this.command(c, r, data, over);
-      else if (type === C_HELLO && !c.active && channel === CH_RELIABLE) ok = this.hello(c, r);
       else ok = false;
     }
     if (!ok) {
@@ -835,10 +872,11 @@ export class GameServer {
     c.conn.send(CH_RELIABLE, w.bytes());
   }
 
-  private hello(c: Client, r: BitReader): boolean {
+  /** False if the hello is malformed. One that is refused is told why. Only one that is accepted is given a session. */
+  private hello(conn: Connection, r: BitReader): boolean {
     const version = r.u16();
     // Another version lays the rest out differently, so nothing more is read.
-    if (!r.overflow && version !== PROTOCOL_VERSION) return this.refuse(c, REJECT_VERSION);
+    if (!r.overflow && version !== PROTOCOL_VERSION) return this.refuse(conn, REJECT_VERSION);
     const contentHash = r.u32();
     const clipHash = r.u32();
     const name = r.string(MAX_NAME_BYTES);
@@ -852,75 +890,71 @@ export class GameServer {
     }
     const password = r.string(MAX_PASSWORD_BYTES);
     if (r.overflow) return false;
-    if (look && !validLook(look)) return this.refuse(c, REJECT_MALFORMED);
+    if (look && !validLook(look)) return this.refuse(conn, REJECT_MALFORMED);
     const world = this.world;
     // The client hashes content as written. The welcome tells it this server's tuning, and it derives the rest.
-    if (contentHash !== world.reg.baseHash || clipHash !== world.anim.set.hash) return this.refuse(c, REJECT_CONTENT);
+    if (contentHash !== world.reg.baseHash || clipHash !== world.anim.set.hash) return this.refuse(conn, REJECT_CONTENT);
     // A reconnect to a lingering body is asked too.
     if (this.opts.password !== "") {
-      const who = c.conn.address ?? name;
-      if (this.guesses.wait(who, world.tick) > 0) return this.refuse(c, REJECT_PASSWORD);
+      const who = conn.address ?? name;
+      if (this.guesses.wait(who, world.tick) > 0) return this.refuse(conn, REJECT_PASSWORD);
       if (!sameText(password, this.opts.password)) {
         this.guesses.wrong(who, world.tick);
-        return this.refuse(c, REJECT_PASSWORD);
+        return this.refuse(conn, REJECT_PASSWORD);
       }
       this.guesses.right(who);
     }
-    if (!NAME.test(name)) return this.refuse(c, REJECT_NAME);
+    if (!NAME.test(name)) return this.refuse(conn, REJECT_NAME);
     // A module may turn a login away, or a name nobody has had before. A survivor's name is who it is, so it is not reworded.
     const isNew = this.savedPosition?.(name) == null;
-    if (isNew && this.bus.before(NAME_SET, { what: "survivor", text: name }) !== "") return this.refuse(c, REJECT_NAME);
-    if (this.bus.before(SESSION_LOGIN, { name, address: c.conn.address ?? "", isNew }) !== "") return this.refuse(c, REJECT_DENIED);
-    if (this.authorize && !this.authorize(name, key)) return this.refuse(c, REJECT_DENIED);
+    if (isNew && this.bus.before(NAME_SET, { what: "survivor", text: name }) !== "") return this.refuse(conn, REJECT_NAME);
+    if (this.bus.before(SESSION_LOGIN, { name, address: conn.address ?? "", isNew }) !== "") return this.refuse(conn, REJECT_DENIED);
+    if (this.authorize && !this.authorize(name, key)) return this.refuse(conn, REJECT_DENIED);
     // One body per survivor. A second login with the session's own key is its device back, and takes over the body. Nothing
     // may have closed the connection that device lost, so one still open is dropped here as if it had closed.
     for (const other of this.clients) {
       if (!other?.active || other.name !== name) continue;
       if (!other.closed) {
-        if (!key.every((b, i) => b === other.key[i])) return this.refuse(c, REJECT_NAME);
+        if (!key.every((b, i) => b === other.key[i])) return this.refuse(conn, REJECT_NAME);
         const old = other.conn;
-        const w = this.w;
-        w.reset();
-        w.bits(S_REJECT, 4);
-        w.u8(REJECT_NAME);
-        old.send(CH_RELIABLE, w.bytes());
         old.onMessage = null;
+        this.close(old, REJECT_NAME);
         this.remove(other, old);
-        old.close();
         // It had no body to linger in, so the session ended and this is a login like any other.
         if (!other.active) break;
       }
-      this.pending.delete(c);
-      other.relink(c.conn);
-      this.bind(other, c.conn);
+      other.relink(conn);
+      this.bind(other, conn);
       this.welcome(other);
       this.onPresence?.(other);
       return true;
     }
 
+    // A dead survivor joins dead, whatever it asks. As a spectator it could ask for its body back and get one that cannot die.
+    const spectate = (flags & HELLO_SPECTATE) !== 0 && !this.savedPosition?.(name)?.dead;
+    if (spectate && this.opts.spectators !== "anyone") return this.refuse(conn, REJECT_DENIED);
     // Every new name leaves a survivor record for good, so one address may make only so many an hour.
-    if (c.conn.address !== undefined && this.savedPosition && this.savedPosition(name) === null) {
-      const made = this.newNames.get(c.conn.address);
+    if (conn.address !== undefined && this.savedPosition && this.savedPosition(name) === null) {
+      const made = this.newNames.get(conn.address);
       if (made && world.tick - made.since < NEW_NAME_TICKS) {
-        if (made.n >= NEW_NAMES) return this.refuse(c, REJECT_DENIED);
+        if (made.n >= NEW_NAMES) return this.refuse(conn, REJECT_DENIED);
         made.n++;
       } else {
         if (this.newNames.size > 4096) this.newNames.clear();
-        this.newNames.set(c.conn.address, { n: 1, since: world.tick });
+        this.newNames.set(conn.address, { n: 1, since: world.tick });
       }
     }
     const slot = this.clients.indexOf(null);
-    if (slot < 0) return this.refuse(c, REJECT_FULL);
-    this.pending.delete(c);
+    if (slot < 0) return this.refuse(conn, REJECT_FULL);
+    // Nothing was kept for the connection until here. A session's memory is given only to a hello that is let in.
+    const c = new Client(slot, conn, chunkCount(world.dims));
     this.clients[slot] = c;
-    c.id = slot;
+    this.bind(c, conn);
     c.name = name;
     c.key = key;
     c.look = look;
     c.kind = this.survivor;
-    // A dead survivor joins dead, whatever it asks. As a spectator it could ask for its body back and get one that cannot die.
-    if ((flags & HELLO_SPECTATE) !== 0 && !this.savedPosition?.(name)?.dead) {
-      if (this.opts.spectators !== "anyone") return this.refuse(c, REJECT_DENIED);
+    if (spectate) {
       const b = c.body;
       b.x = world.spawn.x;
       b.z = world.spawn.z;
@@ -945,7 +979,10 @@ export class GameServer {
         this.makeDead(c);
         c.state = SESSION_CREATING;
         c.chunk = chunkAt(world.dims, b.x, b.z);
-      } else if (!this.spawnBody(c)) return this.refuse(c, REJECT_FULL);
+      } else if (!this.spawnBody(c)) {
+        this.clients[slot] = null;
+        return this.refuse(conn, REJECT_FULL);
+      }
     }
     c.active = true;
     c.activeAt = this.world.tick;
@@ -997,8 +1034,8 @@ export class GameServer {
     c.ownDirty = false;
   }
 
-  private refuse(c: Client, reason: number): boolean {
-    this.reject(c, reason);
+  private refuse(conn: Connection, reason: number): boolean {
+    this.close(conn, reason);
     return true;
   }
 
