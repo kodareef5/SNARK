@@ -187,8 +187,8 @@ test("the tube gets two more levels with its surface and two flat ones, with no 
 
   // Drawn flat, every level is the same creature: its four regions where the masks have them, and one palette colour
   // for the horn, which no region dyes.
-  const horn = 146;
-  expect([...palette.subarray(horn * 4, horn * 4 + 3)]).toEqual([194, 194, 128]);
+  const horn = 174;
+  expect([...palette.subarray(horn * 4, horn * 4 + 3)]).toEqual([207, 201, 151]);
   const right = mesh.lods.map((lod) => {
     let [good, all] = [0, 0];
     for (let t = 0; t < tris(lod); t++) {
@@ -206,7 +206,7 @@ test("the tube gets two more levels with its surface and two flat ones, with no 
   for (const lod of mesh.lods) expect([...new Set(lod.colors)].sort((a, b) => a - b)).toEqual([horn, 240, 241, 242, 243]);
 
   // Where the last level with a surface hands over to the first flat one, the mean colour holds to within 10 of 255
-  // a channel for four dyes, and 18 for one dye all over. The horn is 20 off in red, there being no nearer palette
+  // a channel for four dyes, and 18 for one dye all over. The horn is 14 off in blue, there being no nearer palette
   // colour, and the lowest eighth is dyed at half strength in the pictures and wholly when flat.
   for (const [dyes, within] of [[[8, 7, 14, 6, 0, 0], 10], [[9, 9, 9, 9, 0, 0], 18]] as const) {
     const [textured, flat] = [texturedMean(mesh.lods[2]!, source.materials!, maps, dyes), flatMean(mesh.lods[3]!, dyes)];

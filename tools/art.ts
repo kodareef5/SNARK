@@ -2,12 +2,12 @@
 //
 //   bun run art -- core:raptor            build it: Blender, conversion, the check and the review sheet
 //   bun run art -- --all                  every asset
-//   bun run art -- core:raptor --check    measure the pack it has. No Blender.
+//   bun run art -- core:raptor --check    measure the pack it has, and the pictures its materials name. No Blender.
 //   bun run art -- core:raptor --sheet    draw the review sheet of the pack it has. No Blender.
 //   bun run art -- --all --repack         the packs again in today's format, made from themselves
 //
 // --source DIR looks in another tree than assets/source. --out DIR is where sheets go (artifacts/art).
-// --repack --levels also makes a creature's coarser levels afresh from its finest.
+// --repack --levels also makes a creature's coarser levels afresh from its finest, with its pictures where it has them.
 // Building the game needs none of this: the packs are committed.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -49,7 +49,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
       continue;
     }
     if (has("repack")) {
-      const again = repack(new Uint8Array(readFileSync(asset.file)), has("levels"));
+      const again = repack(new Uint8Array(readFileSync(asset.file)), has("levels"), asset);
       writeFileSync(asset.file, again);
       say(`${asset.id}: ${asset.file}, ${again.length} bytes`);
       continue;
@@ -71,7 +71,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
     } else file = new Uint8Array(readFileSync(asset.file));
 
     const pack = parsePack(file);
-    const report = checkAsset(asset, pack);
+    const report = checkAsset(asset, pack, !only || has("check"));
     report.faults.unshift(...faults);
     if (!only || has("check")) say(reportLines(report).join("\n"));
     if (!only || has("sheet")) sheet(asset, pack, report, outDir, say);

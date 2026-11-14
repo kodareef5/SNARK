@@ -52,25 +52,64 @@ const BODY: readonly (readonly [number, number, number])[] = [
   [104, 66, 38], [58, 38, 28], [78, 124, 176], [86, 140, 92], [124, 134, 142], [170, 124, 48],
 ];
 
-/** RGBA bytes for all 256 entries. Entries 22..213 are a hue and lightness ramp for dyes. */
+/** Dyes: this many hues, from red round to rose, at this many lightnesses from dark to light. */
+const DYE_HUES = 12;
+const DYE_ROWS = 5;
+/**
+ * Natural tones, in rings round grey: how far a ring's colours are from grey (the spread of their channels, of 1), and
+ * the hues on it in degrees. Warm and cool grey; taupe and stone; red-brown, brown, tan and khaki; rust, straw and
+ * olive. Each hue of each ring runs from near black to near white in this many steps.
+ */
+const EARTH: readonly (readonly [number, readonly number[]])[] = [[0.04, [40, 220]], [0.11, [28, 56]], [0.22, [20, 31, 42, 53]], [0.33, [16, 36, 56]]];
+const EARTH_STEPS = 12;
+
+/** Entries 22..213: the dyes, row by row, then the natural tones, a run from dark to light for each hue of each ring. */
+export function rampColours(): [number, number, number][] {
+  const out: [number, number, number][] = [];
+  for (let row = 0; row < DYE_ROWS; row++) for (let hue = 0; hue < DYE_HUES; hue++) out.push(hsl(hue / DYE_HUES, 0.7, 0.22 + 0.145 * row));
+  EARTH.forEach(([spread, hues], ring) => {
+    hues.forEach((hue, k) => {
+      for (let step = 0; step < EARTH_STEPS; step++) {
+        // Neighbouring runs are half a step apart, so the colours of one fall between those of the next.
+        const l = 0.09 + (0.83 * (step + ((ring + k) % 2) / 2)) / (EARTH_STEPS - 0.5);
+        // Near black and near white there is no room to be far from grey.
+        out.push(hsl(hue / 360, Math.min(0.6, spread / (1 - Math.abs(2 * l - 1))), l));
+      }
+    });
+  });
+  return out;
+}
+
+/** RGBA bytes for all 256 entries. */
 export function defaultPalette(): Uint8Array {
   const out = new Uint8Array(PALETTE_SIZE * 4);
+  const ramp = rampColours();
   for (let i = 0; i < PALETTE_SIZE; i++) {
     let rgb: readonly [number, number, number] = FIXED[0]!;
     if (i < FIXED.length) rgb = FIXED[i]!;
     else if (i >= SKIN_BASE && i < REGION_BASE) rgb = BODY[i - SKIN_BASE]!;
-    else if (i < REGION_BASE) {
-      const n = i - FIXED.length;
-      const hue = (n % 24) / 24;
-      const row = Math.floor(n / 24);
-      rgb = hsl(hue, row % 3 === 2 ? 0.35 : 0.7, 0.18 + 0.09 * row);
-    }
+    else if (i < REGION_BASE) rgb = ramp[i - FIXED.length] ?? FIXED[0]!;
     out[i * 4] = rgb[0];
     out[i * 4 + 1] = rgb[1];
     out[i * 4 + 2] = rgb[2];
     out[i * 4 + 3] = 255;
   }
   return out;
+}
+
+/** The fixed colour nearest an sRGB colour of 255 a channel: a palette index below REGION_BASE, and never 0. */
+export function nearestColour(palette: Uint8Array, r: number, g: number, b: number): number {
+  let best = 1;
+  let least = Infinity;
+  for (let i = 1; i < REGION_BASE; i++) {
+    const [dr, dg, db] = [palette[i * 4]! - r, palette[i * 4 + 1]! - g, palette[i * 4 + 2]! - b];
+    const d = dr * dr + dg * dg + db * db;
+    if (d < least) {
+      least = d;
+      best = i;
+    }
+  }
+  return best;
 }
 
 function hsl(h: number, s: number, l: number): [number, number, number] {

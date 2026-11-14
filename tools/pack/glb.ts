@@ -23,6 +23,11 @@ export interface ImportOptions {
    * one. Where this is not given, a joint's bone is its place in the model's own skin.
    */
   bones?: readonly string[];
+  /**
+   * The palette colour or region a material is drawn flat in, by its name, where whoever has its pictures knows
+   * better than its one colour in the model. Undefined for a material to be matched by that colour.
+   */
+  flat?: (material: string) => number | undefined;
 }
 
 export interface ImportReport {
@@ -77,6 +82,8 @@ export function importGlb(file: Uint8Array, id: string, palette: Uint8Array, opt
     const m = material === undefined ? undefined : json.materials?.[material];
     const region = /^region([0-5])$/i.exec(m?.name ?? "");
     if (region) return REGION_BASE + Number(region[1]);
+    const given = opts.flat?.(m?.name ?? "");
+    if (given !== undefined) return given;
     const base = m?.pbrMetallicRoughness?.baseColorFactor ?? [0.8, 0.8, 0.8, 1];
     // Base colour is linear and the palette is sRGB.
     const srgb = base.slice(0, 3).map((c) => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055));

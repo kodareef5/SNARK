@@ -45,10 +45,14 @@ for script in job["scripts"]:
     runpy.run_path(os.path.join(folder, script), run_name="__main__")
     print(f"build: ran {script}")
 
+# Tangents are written wherever a mesh has texture coordinates. A vertex on the
+# seam of a mirrored half is then written twice, once for each side, which is
+# what lets each side be lit its own way.
 common = dict(
     export_format="GLB",
     export_yup=True,
     export_apply=True,
+    export_tangents=True,
     export_materials="EXPORT",
     export_image_format="NONE",
 )

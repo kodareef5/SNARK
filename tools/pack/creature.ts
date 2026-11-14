@@ -7,6 +7,7 @@ import { REGION_BASE, REGION_COUNT } from "../../shared/pack/palette.ts";
 import { ZONES, type CreatureAsset } from "../art/spec.ts";
 import { convertClips, type ClipSpec } from "./anim.ts";
 import { nodeParents, readAccessor, restMatrices, type Gltf } from "./gltf.ts";
+import { fourHeaviest } from "./surface.ts";
 import type { SourceLod, SourceMesh } from "./write.ts";
 
 /** The most bones a rig may have (shared/anim/rigs.ts), and the most joints that may weigh on one vertex of a model. */
@@ -15,7 +16,11 @@ export const MOST_WEIGHTS = 4;
 
 export interface ConvertedCreature {
   rig: PackRig;
-  /** The levels the model came with. One, unless its mesh objects are named "..._LOD<n>". */
+  /**
+   * The levels the model came with. One, unless its mesh objects are named "..._LOD<n>". Where the asset gives its
+   * materials pictures, it is the finest level alone, with its surface and four bones a vertex, and a triangle's
+   * section is the place of its material among the asset's `materials`.
+   */
   mesh: SourceMesh;
   clips: Clip[];
   /** Counted over every level: vertices, those no joint weighs on, those more than MOST_WEIGHTS do, and those more than one does. */
@@ -88,23 +93,42 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
 
   // Every primitive of every skinned mesh of a level goes into one mesh. A vertex follows the one joint that weighs most on it.
   const materials = spec.regions.map((r) => r.material);
-  const levels: { positions: number[]; colors: number[]; bones: number[]; indices: number[] }[] = [];
+  // With pictures the finest level alone is read, with its surface: a primitive is a section, drawn with its material.
+  const pictured = Object.keys(spec.materials ?? {});
+  const levels: { positions: number[]; colors: number[]; bones: number[]; indices: number[]; uvs: number[]; normals: number[]; tangents: number[]; joints: number[]; weights: number[]; sections: number[] }[] = [];
   const weights = { vertices: 0, none: 0, over: 0, shared: 0 };
+  let passed = 0;
   for (const node of nodes) {
     if (node.mesh === undefined || node.skin === undefined) continue;
-    const level = (levels[Number(/_LOD(\d)$/i.exec(node.name ?? "")?.[1] ?? 0)] ??= { positions: [], colors: [], bones: [], indices: [] });
+    const at = Number(/_LOD(\d)$/i.exec(node.name ?? "")?.[1] ?? 0);
+    if (pictured.length > 0 && at > 0) {
+      passed++;
+      continue;
+    }
+    const level = (levels[at] ??= { positions: [], colors: [], bones: [], indices: [], uvs: [], normals: [], tangents: [], joints: [], weights: [], sections: [] });
     const { positions, colors, bones, indices } = level;
     for (const prim of g.json.meshes![node.mesh]!.primitives) {
-      const pos = readAccessor(g, prim.attributes.POSITION!);
-      const joints = readAccessor(g, prim.attributes.JOINTS_0!);
-      const weight = readAccessor(g, prim.attributes.WEIGHTS_0!);
-      const more = prim.attributes.WEIGHTS_1 === undefined ? null : readAccessor(g, prim.attributes.WEIGHTS_1);
+      const a = prim.attributes;
+      const pos = readAccessor(g, a.POSITION!);
+      const joints = readAccessor(g, a.JOINTS_0!);
+      const weight = readAccessor(g, a.WEIGHTS_0!);
+      const more = a.WEIGHTS_1 === undefined ? null : readAccessor(g, a.WEIGHTS_1);
       const material = g.json.materials?.[prim.material ?? -1]?.name ?? "";
       let region = materials.indexOf(material);
-      if (region < 0 || region >= REGION_COUNT) {
+      const section = pictured.indexOf(material);
+      if (pictured.length > 0) {
+        if (section < 0) faults.push(`material "${material}" has no pictures in asset.ts`);
+        if (a.TEXCOORD_0 === undefined || a.NORMAL === undefined) throw new Error(`${g.path}: material "${material}" is on faces with no texture coordinates or no normals`);
+      } else if (region < 0 || region >= REGION_COUNT) {
         warnings.push(`material "${material}" is not one of the regions: read as the first`);
         region = 0;
       }
+      const uv = pictured.length > 0 ? readAccessor(g, a.TEXCOORD_0!) : null;
+      const normal = uv && readAccessor(g, a.NORMAL!);
+      const tangent = uv && a.TANGENT !== undefined ? readAccessor(g, a.TANGENT) : null;
+      // Every set of joints and weights, for the four bones that weigh most on a vertex.
+      const sets: { joints: Float64Array; weights: Float64Array }[] = [];
+      for (let s = 0; uv && a[`JOINTS_${s}`] !== undefined && a[`WEIGHTS_${s}`] !== undefined; s++) sets.push({ joints: readAccessor(g, a[`JOINTS_${s}`]!).data, weights: readAccessor(g, a[`WEIGHTS_${s}`]!).data });
       const base = positions.length / 3;
       for (let v = 0; v < pos.count; v++) {
         for (let k = 0; k < 3; k++) positions.push(pos.data[v * 3 + k]! * scale);
@@ -119,13 +143,28 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
         if (count > 1) weights.shared++;
         if (more) for (let k = 0; k < more.size; k++) if (more.data[v * more.size + k]! > 0) count++;
         if (count > MOST_WEIGHTS) weights.over++;
-        bones.push(boneOfNode.get(skin.joints[joints.data[v * 4 + best]!]!) ?? 0);
-        colors.push(REGION_BASE + region);
+        if (!uv || !normal) {
+          bones.push(boneOfNode.get(skin.joints[joints.data[v * 4 + best]!]!) ?? 0);
+          colors.push(REGION_BASE + region);
+          continue;
+        }
+        // Joints that are left out weigh on the bone above them, so two of a vertex's joints may be one bone.
+        const four = fourHeaviest(sets.flatMap((s) => [...s.joints.subarray(v * 4, v * 4 + 4)].map((j) => boneOfNode.get(skin.joints[j]!) ?? 0)), sets.flatMap((s) => [...s.weights.subarray(v * 4, v * 4 + 4)]));
+        bones.push(four.bones[0] ?? 0);
+        // Its flat colour is read off the pictures, when the levels are made.
+        colors.push(0);
+        for (let k = 0; k < 4; k++) level.joints.push(four.bones[k] ?? 0);
+        for (let k = 0; k < 4; k++) level.weights.push(four.weights[k] ?? (k === 0 && four.bones.length === 0 ? 1 : 0));
+        level.uvs.push(uv.data[v * 2]!, uv.data[v * 2 + 1]!);
+        level.normals.push(normal.data[v * 3]!, normal.data[v * 3 + 1]!, normal.data[v * 3 + 2]!);
+        if (tangent) level.tangents.push(tangent.data[v * 4]!, tangent.data[v * 4 + 1]!, tangent.data[v * 4 + 2]!, tangent.data[v * 4 + 3]! < 0 ? -1 : 1);
       }
       const index = readAccessor(g, prim.indices!);
       for (let i = 0; i < index.count; i++) indices.push(base + index.data[i]!);
+      if (uv) for (let i = 0; i < index.count; i += 3) level.sections.push(Math.max(section, 0));
     }
   }
+  if (passed > 0) warnings.push(`${passed} mesh objects are levels of the model's own, which a creature with pictures does not keep: its levels are made from its finest`);
   const fine = levels[0];
   if (!fine || fine.positions.length === 0) throw new Error(`${g.path}: no skinned mesh`);
   for (let l = 0; l < levels.length; l++) {
@@ -212,6 +251,13 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
   warnings.push(...made.warnings);
   for (const c of spec.clips) if (!made.clips.some((m) => m.id === `${id}/${c.name}`)) faults.push(`clip "${c.name}" was not made`);
   const rig: PackRig = { id, skeleton: skeleton.id, rest: rest.map((v) => +v.toFixed(5)), names, parent, caps, sockets };
-  const lods = levels.map((l): SourceLod => ({ positions: Float32Array.from(l.positions), colors: Uint8Array.from(l.colors), indices: Uint32Array.from(l.indices), bones: Uint8Array.from(l.bones) }));
+  const lods = levels.map((l): SourceLod => {
+    const lod: SourceLod = { positions: Float32Array.from(l.positions), colors: Uint8Array.from(l.colors), indices: Uint32Array.from(l.indices), bones: Uint8Array.from(l.bones) };
+    if (pictured.length === 0) return lod;
+    Object.assign(lod, { uvs: Float32Array.from(l.uvs), normals: Float32Array.from(l.normals), joints: Uint8Array.from(l.joints), weights: Float32Array.from(l.weights), sections: Uint8Array.from(l.sections) });
+    // Tangents are kept only where every part of the model has them.
+    if (l.tangents.length === l.colors.length * 4) lod.tangents = Float32Array.from(l.tangents);
+    return lod;
+  });
   return { rig, mesh: { id, skeleton: skeleton.id, rig: id, lods }, clips: made.clips, weights, warnings, faults };
 }
