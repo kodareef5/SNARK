@@ -75,6 +75,25 @@ test("a survivor saved before ARK's level table keeps what it spent and learned,
   expect([prog.level(me), prog.addXp(me, 100), me.xp, prog.most(me)]).toEqual([105, 0, 5e6, 4098538]);
 });
 
+test("a wild creature carries off nothing of what it kills; a tribe's creature gets the hide and the meat (Raw Meat, Hide, Baryonyx)", () => {
+  const { h, me, creature } = world();
+  const items = h.host.items;
+  const ents = h.world.ents;
+  /** `by` kills a grazer with one bite. Returns the stacks it then carries. */
+  const kills = (by: EntityRecord): number => {
+    const prey = creature("grazer", -4);
+    const e = h.host.records.entOf.get(prey.pid)!;
+    h.host.combat.land({ by, x: ents.x[e]!, z: ents.z[e]!, item: 0, base: 1e6, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 }, e, ZONE_TORSO, ents.x[e]!, ents.y[e]! + 1, ents.z[e]!, 2);
+    expect([h.host.combat.last.killed, h.host.combat.last.by]).toEqual([true, by.pid]);
+    return items.inv(by).used();
+  };
+  const raptor = creature("raptor", 4);
+  expect([raptor.team, kills(raptor)]).toEqual([0, 0]);
+  raptor.team = me.team;
+  expect(kills(raptor)).toBe(2);
+  expect([items.inv(raptor).total(id("hide")) >= 4, items.inv(raptor).total(id("meat")) >= 3, items.audit()]).toEqual([true, true, []]);
+});
+
 test("a saddle of 25 halves a round or a blow and takes a fifth off an explosion (Saddles)", () => {
   const { h, at, creature } = world();
   const rec = creature("parasaur", 4);

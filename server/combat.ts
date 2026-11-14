@@ -829,7 +829,10 @@ export class Combat {
     return scale >= 0 ? scale : 1;
   }
 
-  /** A body's health reached zero and `by` (a pid, or 0) did it. Called before the body leaves the world. The killer gets the XP and the drops. */
+  /**
+   * A body's health reached zero and `by` (a pid, or 0) did it. Called before the body leaves the world. The killer gets
+   * the XP, and the drops unless it is wild: a wild creature carries nothing off, as in ARK.
+   */
   killed(rec: EntityRecord, by: number): void {
     this.died = true;
     const { world, records, items, progression, game } = this.ctx;
@@ -842,7 +845,8 @@ export class Combat {
     const xp = progression.addXp(killer, base, XP_KILL);
     const rider = this.riderOf?.(killer) ?? null;
     if (rider) progression.addXp(rider, base / 2, XP_KILL);
-    for (const drop of def.drops ?? []) {
+    const wild = killer.team === 0 && killer.kind !== this.survivor;
+    for (const drop of wild ? [] : (def.drops ?? [])) {
       const n = drop.min + this.rng.int(drop.max - drop.min + 1);
       if (n > 0) items.mint(killer, reg.index.get(drop.item)!, n, 0, 0, -1, "kill");
     }
