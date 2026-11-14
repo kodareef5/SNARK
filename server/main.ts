@@ -50,6 +50,8 @@ export interface ServerOptions {
   /** See `HostOptions.config` and `HostOptions.live`. */
   config?: Rules;
   live?: () => string | null;
+  /** Sees every request first, and answers it or returns null to pass it on. Only the device probe's server has one (tools/device.ts). */
+  routes?: (req: Request, url: URL) => Response | Promise<Response> | null;
 }
 
 export interface RunningServer {
@@ -196,6 +198,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) } } : {}),
     async fetch(req, srv) {
       const url = new URL(req.url);
+      const answered = opts.routes?.(req, url);
+      if (answered) return answered;
       if (url.pathname === "/ws" || url.pathname === "/voice") {
         // A page on another site may not use its visitor's browser, and that visitor's address, to reach this server.
         const origin = req.headers.get("origin");
