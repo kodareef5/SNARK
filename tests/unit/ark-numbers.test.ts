@@ -21,6 +21,12 @@ test("arrows, rounds and darts stack to 100, fiber and metal ore to 300 (Stone A
   expect([stack("fiber"), stack("ore")]).toEqual([300, 300]);
 });
 
+test("every other stack is ARK's too: metal ingots 300, cooked meat 50, and the rest as they were; a berry keeps ten minutes (Metal Ingot, Cooked Meat, Amarberry, and each item's own page)", () => {
+  const stack = (name: string): number => reg.stack[at(name)]!;
+  expect([stack("ingot"), stack("meat_cooked"), keeps("berry")]).toEqual([300, 50, 600]);
+  expect(["hide", "chitin", "gunpowder", "narcotic", "stone", "wood", "thatch", "flint", "berry", "grenade", "waterskin"].map(stack)).toEqual([200, 100, 100, 100, 100, 100, 200, 100, 100, 10, 1]);
+});
+
 test("a stack saved above the size its item now has stays whole: it takes no more, moves as it is, and joins another only up to the size", () => {
   // 300 fiber in one slot, under a table that allows 200.
   const fiber = at("fiber");
