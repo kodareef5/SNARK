@@ -55,12 +55,12 @@ test("a ghost flies where it looks, ignores walls, and stays inside the map's bo
   expect(b.x).toBe(256);
   expect(b.y).toBe(2);
   expect(Math.abs(b.z - 252)).toBeLessThan(0.001); // 12 m/s for a second
-  // Looking straight up, forward is up; jump also rises.
+  // Looking straight up, forward is up, and jump also rises.
   const y = b.y;
   for (let i = 0; i < 30; i++) stepBody(world, b, 0, 127, 0, 16384, 0, p, TICK_DT);
   expect(Math.abs(b.y - y - 12)).toBeLessThan(0.001);
   expect(Math.abs(b.z - 252)).toBeLessThan(0.001);
-  // Straight down through the ground, sprinting, for a long time: it stops at the world's floor.
+  // Down through the ground for a long time, it stops at the world's floor.
   for (let i = 0; i < 3000; i++) stepBody(world, b, 0, 127, 0, -16384, BTN_SPRINT, p, TICK_DT);
   expect(b.y).toBe(-1024);
   for (let i = 0; i < 6000; i++) stepBody(world, b, 127, 127, 9000, 16384, BTN_SPRINT | BTN_JUMP, p, TICK_DT);
@@ -95,7 +95,7 @@ test("console lines split into words, with quotes grouping", () => {
 });
 
 test("the time of day is the world clock plus an offset, and setting it changes only the offset", () => {
-  // A day of 50.4 minutes at the clock's own pace: 2.1 seconds to the game minute.
+  // A day is 50.4 minutes at a scale of 1, which is 2.1 seconds to the game minute.
   expect([DAY_TICKS, CLOCK_HOUR_TICKS / 60 / 30, DAY_TICKS / 30 / 60, cycleTicks()]).toEqual([24 * CLOCK_HOUR_TICKS, 2.1, 50.4, DAY_TICKS]);
   expect(hourOfDay(0, 0)).toBe(0);
   expect(formatHour(hourOfDay(CLOCK_HOUR_TICKS * 13 + CLOCK_HOUR_TICKS / 2, 0))).toBe("13:30");
@@ -108,7 +108,6 @@ test("the time of day is the world clock plus an offset, and setting it changes 
     expect(offset).toBeLessThan(DAY_TICKS);
     const got = hourOfDay(tick, offset);
     expect(Math.min(Math.abs(got - hour), 24 - Math.abs(got - hour))).toBeLessThan(1 / CLOCK_HOUR_TICKS);
-    // A day later it is the same time.
     expect(dayTick(tick + DAY_TICKS, offset)).toBe(dayTick(tick, offset));
   }
 });
@@ -118,13 +117,11 @@ test("the clock at the server's three scales: a closed form that is what steppin
   for (let n = 0; n < 60; n++) {
     const c = n === 0 ? UNIT_CLOCK : { cycle: Math.exp((rng.float() - 0.5) * 6), day: Math.exp((rng.float() - 0.5) * 4), night: Math.exp((rng.float() - 0.5) * 4) };
     const whole = cycleTicks(c);
-    // The day is from six to eighteen, and takes twelve of the clock's hours at the cycle's pace times the day's; the night the same at the night's.
+    // Day is 06:00 to 18:00: twelve clock hours at the cycle's pace times the day's. Night is the other twelve at the night's.
     const day = (12 * CLOCK_HOUR_TICKS) / (c.cycle * c.day);
     const night = (12 * CLOCK_HOUR_TICKS) / (c.cycle * c.night);
     expect(whole).toBeCloseTo(day + night, 6);
-    // A tick is worth what the hour it falls in says: the cycle's pace times the day's between sunrise and sunset, times the
-    // night's outside them, and something between the two in the one tick that crosses from one to the other. Nothing else:
-    // that is all stepping a clock would do.
+    // Each tick advances the clock at the day's pace or the night's. Only the tick that crosses sunrise or sunset is between the two.
     const byDay = (c.cycle * c.day) / CLOCK_HOUR_TICKS;
     const byNight = (c.cycle * c.night) / CLOCK_HOUR_TICKS;
     const span = Math.min(40000, Math.floor(whole) - 1);
@@ -141,7 +138,7 @@ test("the clock at the server's three scales: a closed form that is what steppin
       }
     }
     expect(crossings).toBeLessThanOrEqual(2);
-    // It never runs backwards, is the same a whole day and night later, and passes sunrise and sunset where it should.
+    // It never runs backwards, repeats after a whole cycle, and reaches 06:00 and 18:00 at the ticks the scales give.
     const dawn = (6 * CLOCK_HOUR_TICKS) / (c.cycle * c.night);
     expect([hourOfDay(dawn, 0, c), hourOfDay(dawn + day, 0, c)].map((h) => Math.round(h * 1e6) / 1e6)).toEqual([6, 18]);
     let last = -1;
@@ -150,7 +147,7 @@ test("the clock at the server's three scales: a closed form that is what steppin
       expect(h).toBeGreaterThanOrEqual(last);
       last = h;
     }
-    // Any hour can be asked for at any tick: the offset is a whole number of ticks, and the hour is then that, to within half a tick's worth.
+    // The offset for any hour is a whole number of ticks, so the hour is right to within half a tick's worth.
     for (let k = 0; k < 20; k++) {
       const tick = rng.int(2 ** 31);
       const want = rng.range(0, 24);
@@ -160,9 +157,9 @@ test("the clock at the server's three scales: a closed form that is what steppin
       expect(Math.min(Math.abs(got - want), 24 - Math.abs(got - want))).toBeLessThanOrEqual((0.51 * c.cycle * Math.max(c.day, c.night)) / CLOCK_HOUR_TICKS);
     }
   }
-  // The cycle ten times as fast is a day of five minutes; the day alone twice as fast is a short day and the same night.
+  // Cycle x10 is a five-minute day. Day x2 alone shortens the day and leaves the night.
   expect([cycleTicks({ cycle: 10, day: 1, night: 1 }) / 30 / 60, cycleTicks({ cycle: 1, day: 2, night: 1 }) / 30 / 60, cycleTicks({ cycle: 1, day: 1, night: 4 }) / 30 / 60].map((m) => Math.round(m * 100) / 100)).toEqual([5.04, 37.8, 31.5]);
-  // About 0.035 is a day as long as a real one.
+  // A cycle scale of about 0.035 makes a day last a real day.
   expect(cycleTicks({ cycle: 0.035, day: 1, night: 1 }) / 30 / 3600).toBeCloseTo(24, 0);
   expect([isDay(5.99), isDay(6), isDay(17.99), isDay(18)]).toEqual([false, true, true, false]);
 });
@@ -201,7 +198,7 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
   };
   const make = (qx: number, rev: number, team: number, seat: number, span: number, grown: number): EntityView => {
     const v = new EntityView();
-    // A tame someone sits on; a wild creature with nothing to say; a young one, far along the id space.
+    // A ridden tame, a wild creature with no extras, and a young one far along the id space.
     v.push(3, 1, 7, qx, 200, 300, 5, 1, 0);
     v.appear(rev, 12, colors, 0, "Rex", null, null);
     v.belong(team, seat, 0, 0);
@@ -216,12 +213,12 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
   expect(belongs(held, 0)).toEqual([0xfffffff, 41, 0, 0]);
   expect(belongs(held, 1)).toEqual([0, 0, 0, 0]);
   expect(belongs(held, 2)).toEqual([0, 0, 1234567, 4000000000]);
-  // It moves: an update says nothing of whose it is, and the client still knows.
+  // An update does not repeat the team, and the client keeps it.
   [sent, held] = send(make(101, 0, 0xfffffff, 41, 1234567, 4000000000), sent, held);
   expect(held.qx[0]).toBe(101);
   expect(belongs(held, 0)).toEqual([0xfffffff, 41, 0, 0]);
   expect(belongs(held, 2)).toEqual([0, 0, 1234567, 4000000000]);
-  // Its rider gets down and it changes hands: its revision moved, so it is sent whole again.
+  // Its rider gets down and it changes hands. The revision moved, so it is sent as a create again.
   [sent, held] = send(make(101, 1, 5, 0, 1234567, 4000000000), sent, held);
   expect(belongs(held, 0)).toEqual([5, 0, 0, 0]);
   expect(held.name[0]).toBe("Rex");
