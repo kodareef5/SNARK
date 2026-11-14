@@ -12,6 +12,7 @@ import type { EntityRecord } from "../../server/records.ts";
 import { CATALOG, catalogCounts, catalogFaults } from "../../server/settings/catalog.ts";
 import { formatReport, loadConfig, loadConfigFolder } from "../../server/settings/config.ts";
 import { FEATURES, NOT_HERE } from "../../server/settings/row.ts";
+import { EVENTS } from "../../server/events/catalog.ts";
 import { CLASSES } from "../../shared/content/classes.ts";
 import { Rules } from "../../server/settings/rules.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -352,8 +353,8 @@ test("catalogue: every setting of ARK's the research found is in it as taking ef
     else if (row.status === "none") expect([row.name, row.waits in NOT_HERE]).toEqual([row.name, true]);
     else expect([row.name, row.status, row.waits]).toEqual([row.name, "live", ""]);
   }
-  // Every feature in FEATURES has something waiting for it: a setting, or a class of content.
-  const waited = new Set<string>([...CATALOG.filter((r) => r.status === "planned").map((r) => r.waits), ...CLASSES.map((r) => r.waits)]);
+  // Every feature in FEATURES has something waiting for it: a setting, a class of content or an event.
+  const waited = new Set<string>([...CATALOG.filter((r) => r.status === "planned").map((r) => r.waits), ...CLASSES.map((r) => r.waits), ...EVENTS.map((r) => r.waits)]);
   expect(Object.keys(FEATURES).filter((f) => !waited.has(f))).toEqual([]);
   // Every live setting's name appears in some test file.
   const tests = ["integration", "unit"].flatMap((d) => readdirSync(resolve(import.meta.dir, "..", d)).filter((f) => f.endsWith(".ts")).map((f) => readFileSync(resolve(import.meta.dir, "..", d, f), "utf8"))).join("\n");

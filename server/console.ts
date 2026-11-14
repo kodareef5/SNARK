@@ -31,8 +31,12 @@ export const OP_ADMIN = 2;
 export class Console {
   readonly commands = new Map<string, ConsoleCommand>();
 
+  /** Throws if a name is taken: one command silently replacing another is a mistake. */
   add(...commands: ConsoleCommand[]): void {
-    for (const c of commands) this.commands.set(c.name, c);
+    for (const c of commands) {
+      if (this.commands.has(c.name)) throw new Error(`there is already a command "${c.name}"`);
+      this.commands.set(c.name, c);
+    }
   }
 
   isAdmin(ctx: CommandContext): boolean {

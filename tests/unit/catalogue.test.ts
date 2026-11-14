@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
 import { CLASSES, FIELDS, classFaults, classOf, defFaults, type Field } from "../../shared/content/classes.ts";
 import type { Def } from "../../shared/content/defs.ts";
@@ -82,8 +83,8 @@ test("a definition says its class, and its class says what it may be", () => {
   expect(compileContent([{ ...spear, eat: { food: 1 } } as Def]).errors).toContain('core:spear: class item/weapon may not declare "eat"');
 });
 
-test("every feature that something waits for is waited for: by a setting or by a class", () => {
-  const waited = new Set<string>([...CATALOG.filter((r) => r.status === "planned").map((r) => r.waits), ...CLASSES.map((r) => r.waits)]);
+test("every feature that is not built is waited for: by a setting, a class of content or an event", () => {
+  const waited = new Set<string>([...CATALOG.filter((r) => r.status === "planned").map((r) => r.waits), ...CLASSES.map((r) => r.waits), ...EVENTS.map((r) => r.waits)]);
   expect(Object.keys(FEATURES).filter((f) => !waited.has(f))).toEqual([]);
 });
 

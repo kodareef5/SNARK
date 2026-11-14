@@ -40,6 +40,9 @@ import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
+import type { ModuleDef } from "./api/module.ts";
+import { Bus } from "./events/bus.ts";
+import { Modules } from "./events/modules.ts";
 import { workerKeeper } from "./persist/keeper.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
@@ -69,6 +72,12 @@ export interface HostOptions {
   keeper?: "inline" | "worker";
   /** Back the save up beside itself at every autosave mark (AutoSavePeriodMinutes). */
   backups?: boolean;
+  /** Modules to load, in order (server/api/module.ts). */
+  modules?: readonly ModuleDef[];
+  /** A clock in milliseconds, for timing what modules do. Without one nothing is timed. */
+  now?: () => number;
+  /** Where the host's own lines go. The console, where not given. */
+  log?: (line: string) => void;
   game?: Partial<GameOptions>;
   store?: StoreOptions;
   /** For a new world: wild creatures scattered near the spawn point, their species (core:grazer by default), and hunters further off. */
@@ -155,6 +164,9 @@ export interface Host {
   readonly persistence: Persistence | null;
   readonly loaded: LoadReport | null;
   readonly console: Console;
+  /** Carries events to modules. */
+  readonly bus: Bus;
+  readonly modules: Modules;
   readonly adminPassword: string | null;
   readonly dev: boolean;
   /** `id` is a content id. Returns the entity index, or -1. */
@@ -621,6 +633,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       settingsAt.version = rules.version;
       settingsAt.dirty = true;
     }
+    // What happened this tick is told to modules before it is committed.
+    modules.step(tick);
+    bus.flush();
     if (persistence && opts.backups && tick % liveEvery === 0) persistence.keeper.backup();
     if (persistence && !persistence.tryCommit(commitEvery)) {
       const late = tick - persistence.failing!.since;
@@ -745,6 +760,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   /** The held slot of each record at its last refresh. */
   const inHand = new Map<number, number>();
 
+  const say = opts.log ?? ((line: string) => console.log(line));
+  const bus = new Bus();
+  bus.log = say;
+  if (opts.now) bus.now = opts.now;
   const con = new Console();
   addCoreCommands(con);
   addAdminCommands(con);
@@ -752,6 +771,30 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   addSocialCommands(con);
   addCreatureCommands(con);
   addSettingsCommands(con);
+  // After the server's own commands, so a module can take no name of theirs.
+  const modules = new Modules(
+    {
+      bus,
+      world: {
+        get tick() {
+          return world.tick;
+        },
+        online: () => game.clients.flatMap((c) => (c?.active && !c.closed ? [{ pid: c.pid, name: c.name }] : [])),
+      },
+      act: {
+        tell: (pid, text) => notice(pid, text),
+        broadcast: (text) => {
+          for (const c of game.clients) if (c?.active && !c.closed) game.sendText(c, TEXT_NOTICE, text);
+        },
+      },
+      addCommand: (module, c) => {
+        if (con.commands.has(c.name.toLowerCase())) throw new Error(`module ${module}: there is already a command "${c.name}"`);
+        con.add({ name: c.name.toLowerCase(), usage: c.usage, help: c.help, admin: c.admin, run: (ctx, args) => c.run({ pid: ctx.client?.pid ?? 0, name: ctx.client?.name ?? "(operator)", operator: ctx.client === null }, args) });
+      },
+      log: say,
+    },
+    opts.modules ?? [],
+  );
   const host: Host = {
     world,
     records,
@@ -789,6 +832,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     persistence,
     loaded,
     console: con,
+    bus,
+    modules,
     adminPassword: opts.adminPassword || rules.text("ServerAdminPassword") || null,
     lists,
     passed: tuned.passed,

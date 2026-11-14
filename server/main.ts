@@ -1,4 +1,4 @@
-// bun server/main.ts [--dev] [--config dir] [--port 8787] [--db var/world.db] [--restore backup-folder] [--no-backups] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--config dir] [--port 8787] [--db var/world.db] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
@@ -9,10 +9,11 @@ import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
 import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
 import type { Rules } from "./settings/rules.ts";
+import type { ModuleDef } from "./api/module.ts";
 import { restoreBackup } from "./persist/backup.ts";
 import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import { parsePack } from "../shared/pack/pack.ts";
 
@@ -34,6 +35,8 @@ export interface ServerOptions {
   /** Paths of a certificate and its private key (PEM). With both, the server speaks TLS, which a browser requires for a microphone off localhost. */
   cert?: string;
   key?: string;
+  /** See `HostOptions.modules`. */
+  modules?: readonly ModuleDef[];
   /** See `HostOptions.config` and `HostOptions.live`. */
   config?: Rules;
   live?: () => string | null;
@@ -85,7 +88,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   if (!existsSync(packFile)) throw new Error(`${packFile} is missing: build the client first (bun run build)`);
   const pack = parsePack(new Uint8Array(readFileSync(packFile)));
   const clips = pack.clips;
-  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.live ? { live: opts.live } : {}) };
+  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
@@ -274,6 +277,16 @@ if (import.meta.main) {
   const { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
   const live = liveFileOf(folder);
+  // Modules: each `--module <file>`, then every file of the config folder's `modules`, by name.
+  const files = args.flatMap((a, i) => (a === "--module" && args[i + 1] ? [resolve(args[i + 1]!)] : []));
+  const beside = folder === "" ? "" : join(folder, "modules");
+  if (beside !== "" && existsSync(beside)) for (const name of readdirSync(beside).sort()) if (name.endsWith(".ts")) files.push(resolve(beside, name));
+  const modules: ModuleDef[] = [];
+  for (const file of files) {
+    const def = ((await import(file)) as { default?: ModuleDef }).default;
+    if (!def || typeof def.setup !== "function") throw new Error(`${file} is not a module: it exports no default with a setup`);
+    modules.push(def);
+  }
   const restore = value("--restore");
   if (restore !== undefined) {
     if (!value("--db")) throw new Error("--restore needs --db: the save to put the backup in place of");
@@ -289,6 +302,7 @@ if (import.meta.main) {
     ...(live ? { live } : {}),
     dbPath: value("--db"),
     noBackups: args.includes("--no-backups"),
+    modules,
     cert: value("--cert"),
     key: value("--key"),
     adminPassword: process.env.SNARK_ADMIN_PASSWORD,

@@ -159,6 +159,19 @@ export function addCoreCommands(con: Console): void {
       },
     },
     {
+      name: "modules",
+      usage: "",
+      help: "List the modules that are loaded, and what each handler has cost.",
+      admin: true,
+      run(ctx) {
+        const names = ctx.host.modules.names;
+        if (names.length === 0) return "no modules are loaded";
+        const lines = [`modules: ${names.join(", ")}`];
+        for (const s of ctx.host.bus.stats()) lines.push(`  ${s.module} ${s.event}: ${s.calls} calls, ${s.ms.toFixed(1)} ms in all, ${s.worst.toFixed(2)} ms at worst${s.off ? ", switched off" : ""}`);
+        return lines.join("\n");
+      },
+    },
+    {
       name: "backup",
       usage: "",
       help: "Copy the save into a new backup folder beside it now.",

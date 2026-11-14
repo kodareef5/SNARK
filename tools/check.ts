@@ -28,10 +28,13 @@ const ZONES: Zone[] = [
   { dir: "client/core", may: ["shared", "content", "client/core"], builtins: false },
   { dir: "client/voice", may: ["shared", "client/core", "client/voice"], builtins: false },
   { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/shell"], builtins: false },
-  { dir: "server", may: ["shared", "content", "server"], builtins: true },
+  { dir: "server", may: ["shared", "content", "server", "server/api"], builtins: true },
+  // What a module is written against. It names nothing of the server's own.
+  { dir: "server/api", may: ["shared", "server/api"], builtins: false },
+  { dir: "modules", may: ["shared", "server/api", "modules"], builtins: false },
   { dir: "tools", may: "*", builtins: true },
   // Tests never touch the DOM zones. Logic that needs a test belongs in client/core.
-  { dir: "tests", may: ["shared", "content", "client/core", "server", "tools", "tests"], builtins: true },
+  { dir: "tests", may: ["shared", "content", "client/core", "server", "server/api", "modules", "tools", "tests"], builtins: true },
 ];
 
 /** Directories where results must be bit-identical on JavaScriptCore and V8. */
