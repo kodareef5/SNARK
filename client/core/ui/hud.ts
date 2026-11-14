@@ -1,4 +1,5 @@
-import { ACTION_DRAW, ACTION_NONE, type HudModel } from "../hud.ts";
+import { ACTION_DRAW, ACTION_NONE, MAX_MARKERS, MINIMAP_SIZE, type HudModel, type MarkerKind } from "../hud.ts";
+import { WHOLE_MAP } from "../tactical.ts";
 import { K_BAR, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUFF, S_DARK, S_TORPOR, S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT, S_SLOT_TEXT, S_STAMINA, S_SWATCH, S_TEXT, S_WATER } from "./style.ts";
 
@@ -24,15 +25,18 @@ export const KEY_ACTION = 34;
 export const KEY_AMMO = 35;
 /** Per hotbar slot: its box, its swatch, its number. */
 export const KEY_HOTBAR = 40;
-export const KEY_MARKER = 100;
-/** Index of the minimap picture in the frame's image table. */
+/** One mark for each marker on the minimap, MAX_MARKERS at most. */
+export const KEY_MARKER = 4000;
+/** Indices of the minimap's picture and the map screen's in the frame's image table. */
 export const IMAGE_MINIMAP = 1;
+export const IMAGE_MAP = 2;
 
-export const MINIMAP_SIZE = 160;
+export { MINIMAP_SIZE };
 const MARGIN = 12;
-const MAX_MARKERS = 64;
 const VITAL_STYLE: Record<string, number> = { health: S_HEALTH, stamina: S_STAMINA, food: S_FOOD, water: S_WATER, oxygen: S_OXYGEN, torpor: S_TORPOR };
-const MARKER_STYLE: Record<string, number> = { self: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH };
+export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mate: S_MARK_SELF, tame: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH };
+/** Colours of the kinds that have no style of their own. */
+export const MARKER_TINT: Partial<Record<MarkerKind, number>> = { mate: 0x6fd0ff, tame: 0xe8d24a };
 
 const HOTBAR_CELL = 34;
 
@@ -72,11 +76,15 @@ export function buildHud(f: UiFrame, m: HudModel): void {
   const mapY = W < 640 ? 10 + m.readout.length * lh + 8 : MARGIN;
   f.add(KEY_MINIMAP_FRAME, K_PANEL, mapX - 1, mapY - 1, MINIMAP_SIZE + 2, MINIMAP_SIZE + 2, S_FRAME);
   f.add(KEY_MINIMAP, K_IMAGE, mapX, mapY, MINIMAP_SIZE, MINIMAP_SIZE, S_FRAME).image = IMAGE_MINIMAP;
-  const count = Math.min(m.markers.length, MAX_MARKERS);
-  // The model lists the local player last, so drawing in order keeps it on top.
-  for (let i = m.markers.length - count; i < m.markers.length; i++) {
+  // The minimap is a window on the map. The model lists the most important marker first, so drawing from the last keeps those on top.
+  const view = m.chart ? m.chart.mini.view : WHOLE_MAP;
+  let shown = 0;
+  for (let i = Math.min(m.markers.length, MAX_MARKERS) - 1; i >= 0; i--) {
     const k = m.markers[i]!;
-    f.add(KEY_MARKER + i - (m.markers.length - count), K_PANEL, mapX + k.u * MINIMAP_SIZE - 2, mapY + k.v * MINIMAP_SIZE - 2, 4, 4, MARKER_STYLE[k.kind] ?? S_MARK_SELF);
+    const u = (k.u - view.u0) / view.du;
+    const v = (k.v - view.v0) / view.dv;
+    if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+    f.add(KEY_MARKER + shown++, K_PANEL, mapX + u * MINIMAP_SIZE - 2, mapY + v * MINIMAP_SIZE - 2, 4, 4, MARKER_STYLE[k.kind]).tint = MARKER_TINT[k.kind] ?? -1;
   }
   f.text(KEY_CLOCK, mapX, mapY + MINIMAP_SIZE + 4, MINIMAP_SIZE, S_LABEL, m.clock);
 

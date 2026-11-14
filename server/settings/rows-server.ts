@@ -246,10 +246,18 @@ new Sheet(SERVER_ROWS, "map", "Other")
   .f("VolcanoIntensity", 1, "One of ARK's maps.", none("expansion", { game: "E" }))
   .i("VolcanoInterval", 0, "One of ARK's maps.", none("expansion", { game: "E" }));
 
+new Sheet(SERVER_ROWS, "snark", "Admin and session")
+  .i("ViewCap", 1024, "The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this.", live({ min: 64, max: 2048, note: "Ours. ARK has no key." }))
+  .i("SnapshotBytesMax", 1100, "The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor.", live({ min: 600, max: 2200, note: "Ours. ARK has no key." }));
+
 new Sheet(SERVER_ROWS, "snark", "Damage")
   .b("HeadMultipliers", true, "Where a hit lands matters: a head counts for more. Off, every part counts once.", live({ live: true, note: "Ours. ARK has no key; this is its behaviour." }))
   .f("SelfDamageMultiplier", 1, "What a survivor's own blast does to them.", live({ live: true, note: "Ours. ARK has no key; 1 is its behaviour." }))
   .b("FullFriendlyFire", false, "Members of a tribe can hurt each other, their tames and what they built with anything, not only with blasts.", live({ live: true, note: "Ours. ARK has no key; off is its behaviour as far as the research could tell." }));
+
+new Sheet(SERVER_ROWS, "snark", "PvP and PvE")
+  .i("TacticalRadius", 512, "Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's.", live({ live: true, max: 16384, note: "Ours. ARK's map shows no structures." }))
+  .t("MapPlayers", "off", "Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked.", live({ live: true, note: "Ours. ARK marks nobody. Any other word is off." }));
 
 const c = new Sheet(SERVER_ROWS, "cli", "Command line");
 c.flag("UseDynamicConfig", "The live file is read, and read again while the server runs.", live())

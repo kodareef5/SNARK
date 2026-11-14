@@ -89,6 +89,14 @@ export interface SpeciesDef extends Named {
   readonly breeds?: { readonly egg?: string; readonly incubate: number; readonly mature: number; readonly scale?: number };
   /** A name shared by every variant of a creature, for settings that speak of all of them at once. */
   readonly tag?: string;
+  /**
+   * Its colour set: for each of the six colour regions in order, a name and the palette colours a wild one may take, each
+   * with a weight, or null for a region that takes no colour. Omitted, every region draws evenly from WILD_COLORS
+   * (shared/content/registry.ts).
+   */
+  readonly regions?: readonly ({ readonly name: string; readonly colors: readonly (readonly [palette: number, weight: number])[] } | null)[];
+  /** The palette colours a mutation may give one of its regions. Defaults to MUTATION_COLORS. */
+  readonly mutations?: readonly number[];
   // The rest are stubs: declared, checked and read by nothing yet. The catalogue says what each waits for.
   /** What kind of variant of its base it is: "alpha", "event". */
   readonly variant?: string;
@@ -440,19 +448,25 @@ export interface SpawnsDef extends Named {
 /** A place on a map where something spawns or drops. */
 export interface MapZone {
   readonly kind: "spawn" | "crate" | "biome";
-  /** Centre x and z, and radius, in metres. */
+  /** Centre x and z, in metres. */
   readonly at: readonly [number, number];
-  readonly radius: number;
+  /** A circle of this radius, in metres. */
+  readonly radius?: number;
+  /** In place of `radius`: a box of this half width and half depth. */
+  readonly half?: readonly [number, number];
   readonly spawns?: string;
   readonly crate?: string;
 }
 
-/** A world. A stub: the one map is code (shared/world/proving.ts). */
+/**
+ * A world. Its ground is the map file that carries its id (shared/world/mapfile.ts), and a server is started with that file.
+ * Until creatures spawn by region, a new world's herd starts in the first spawn zone and its hunters in the last.
+ */
 export interface MapDef extends Named {
   readonly type: "map";
   readonly id: string;
   readonly label?: string;
-  /** Its size in chunks, east to west and north to south. */
+  /** Its size in chunks along x and along z, and its sea level. Each must be what its file holds. */
   readonly chunks: readonly [number, number];
   readonly seaLevel?: number;
   readonly game?: string;

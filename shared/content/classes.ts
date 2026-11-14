@@ -127,6 +127,8 @@ const SPECIES = {
   torporDrain: f("number"),
   breeds: f("facet", "EggItemsToSpawn, BabyAgeSpeed", { refs: { egg: "prop/egg" } }),
   tag: f("text", "DinoNameTag"),
+  regions: f("list", "the ColorSetDefinitions of RandomColorSetsMale, PreventColorizationRegions"),
+  mutations: f("list"),
   variant: stub("spawner", "text", "a child blueprint's kind"),
   attacks: stub("polish", "list", "AttackInfos"),
   loot: stub("loot", "text", "DeathInventoryTemplates", { refs: { "": "loot" } }),
@@ -237,10 +239,10 @@ const SPAWNS = {
 } satisfies Fields<SpawnsDef>;
 
 const MAP = {
-  label: f("text"),
+  label: stub("maps", "text"),
   chunks: f("list"),
   seaLevel: f("number"),
-  game: f("text", "the game data a level names", { refs: { "": "game" } }),
+  game: stub("maps", "text", "the game data a level names", { refs: { "": "game" } }),
   zones: f("list", "zone managers and crate volumes", { refs: { "[].spawns": "spawns", "[].crate": "prop/crate" } }),
 } satisfies Fields<MapDef>;
 
@@ -352,7 +354,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },
@@ -392,7 +394,7 @@ row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color
 row("damage", "damage", DAMAGE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", may: ["label", "torpor", "trueShare", "melee"], doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
 row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "stub", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts and qualities, drawn from when something is opened or dies." });
 row("spawns", "spawns", SPAWNS, { ark: "NPCSpawnEntriesContainer", status: "stub", waits: "spawner", shelf: "spawns", must: ["entries"], may: ["limits"], doc: "Which creatures live in a place, in what share and at what levels." });
-row("map", "map", MAP, { ark: "a level and the game data it names", status: "stub", waits: "maps", shelf: "maps", must: ["chunks"], may: ["label", "seaLevel", "game", "zones"], doc: "A world: its ground, its zones, and what spawns, grows and drops in each. Today the one map is code." });
+row("map", "map", MAP, { ark: "a level and the game data it names", status: "partial", waits: "maps", shelf: "maps", must: ["chunks"], may: ["label", "seaLevel", "game", "zones"], doc: "A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. Today a spawn zone is where a new world's creatures start." });
 row("game", "game", GAME, { ark: "PrimalGameData", status: "stub", waits: "polish", shelf: "game", must: ["survivor", "cache", "bag"], may: ["levels", "buffs"], doc: "What a game names once: the survivor's species, the death cache, the dropped bag, the standing buffs." });
 
 row("rename", "rename", RENAME, { ark: "a redirect for a class that was renamed", shelf: "renames", must: ["to"], doc: "An id that is no longer defined, and what it is called now. Saves and settings that use it still read." });

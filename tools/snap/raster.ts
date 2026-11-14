@@ -2,7 +2,7 @@
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { NEAR_BODY } from "../../client/core/render/camera.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
@@ -167,17 +167,18 @@ export class Rasterizer {
     if (this.scratch.length < n * 3) this.scratch = new Float32Array(n * 3);
     const out = this.scratch;
     const skinned = (p.drawFlags[d]! & DRAW_SKINNED) !== 0;
+    const one = (p.drawFlags[d]! & DRAW_ONE_BONE) !== 0;
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0;
     const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
       const at = inst * INSTANCE_BYTES;
       if (skinned) {
-        // Each vertex follows one bone of this instance's body.
+        // Each vertex follows one bone of this instance's body, or with DRAW_ONE_BONE all of them its first.
         const first = view.getUint16(at + 12, true);
         const px = view.getFloat32(at, true), py = view.getFloat32(at + 4, true), pz = view.getFloat32(at + 8, true);
         for (let v = 0; v < n; v++) {
-          const b = (first + lod.bones[v]!) * BONE_FLOATS;
+          const b = (first + (one ? 0 : lod.bones[v]!)) * BONE_FLOATS;
           const lx = lod.positions[v * 3]! + px, ly = lod.positions[v * 3 + 1]! + py, lz = lod.positions[v * 3 + 2]! + pz;
           out[v * 3] = bones[b]! * lx + bones[b + 1]! * ly + bones[b + 2]! * lz + bones[b + 3]!;
           out[v * 3 + 1] = bones[b + 4]! * lx + bones[b + 5]! * ly + bones[b + 6]! * lz + bones[b + 7]!;

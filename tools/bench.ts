@@ -34,9 +34,13 @@ import { poseAt, type Pose } from "../shared/world/snap.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { AUDIO_HEADER, AUTH_BYTES, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, VOICE_BATCH, flagsOf, readBatch, writeAudio, writeAuth } from "../shared/voice/packet.ts";
 import type { VoicePeer } from "../server/voice.ts";
+import { crowdRows, fullViewRows } from "./bench/limits.ts";
+import { benchTactical } from "./bench/tactical.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
+import { benchAgent } from "./bench/agent.ts";
+import { benchPoses } from "./bench/poses.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -180,7 +184,7 @@ const mapHash = hashBytes(new Uint8Array(hf.heights.buffer, 0, 4096));
 // Trees, rocks and bushes cover the whole map, at 160 slots a chunk, most of them filled.
 const nodeKinds = ["core:tree", "core:tree", "core:tree", "core:rock", "core:rock", "core:bush"].map((id) => reg.index.get(id)!);
 const nodeSource = scatterNodes(DIMS, hf, 0xbe7c, 160, nodeKinds, reg.halfY, () => true);
-const world = createWorld(reg, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 2048, undefined, nodeSource);
+const world = createWorld(reg, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 4096, undefined, nodeSource);
 record("terrain build, 8 km at 2 m", performance.now() - t0, "ms");
 const rng = new Rng(2026);
 t0 = performance.now();
@@ -745,6 +749,8 @@ let siegeChunk = -1;
   record("commit time under it, 99th percentile (a commit that writes the chunk)", percentile(commitTimes, 0.99), "ms", 10);
 }
 
+benchTactical(host, siegeChunk, (ticks) => run(ticks, null), section, record);
+
 // ---------------------------------------------------------------- breeding
 section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and ten survivors among them");
 {
@@ -831,7 +837,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   const survivorKind = reg.index.get("core:survivor")!;
   let others = 0;
   for (let i = 0; i < shown.count; i++) if (shown.kind[i] === survivorKind) others++;
-  record("bodies the real client there is shown (of at most 512)", shown.count, "");
+  record("bodies the real client there is shown (of the 512 a client is shown until it asks)", shown.count, "");
   record("survivors there it is not shown, of the other nine", 9 - Math.min(9, others), "", 0);
   // Time the pair search alone. It checks every willing female against every willing male, once a second.
   const looks: number[] = [];
@@ -853,6 +859,10 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   record("worst tick while they all laid", laying[laying.length - 1]!, "ms", 33.3);
   record("meals the young ate of what they carry, in all of that", host.taming.meals, "");
 }
+
+// ---------------------------------------------------------------- crowd
+// Back where the brawl was. The second real client is alive, and asks for all a view holds.
+crowdRows({ section, record, percentile }, host, run, sessions[1]!, centers[0]![0] + 70, centers[0]![1]);
 
 // ---------------------------------------------------------------- restart
 section("Between ticks");
@@ -882,7 +892,7 @@ section("Restart under other settings: the save of the sizing target, every time
 {
   // Starts a host on the save twice, under the settings it was saved under and under settings that change every timer and
   // rate a load converts. The difference is the cost of the conversion.
-  const fresh = (content: typeof reg): ServerWorld => createWorld(content, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 2048, undefined, nodeSource);
+  const fresh = (content: typeof reg): ServerWorld => createWorld(content, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 4096, undefined, nodeSource);
   const start = (rules: Rules): { host: Host; ms: number } => {
     Bun.gc(true);
     const at = performance.now();
@@ -1006,7 +1016,7 @@ section("Client frame build (headless): 300 survivors in view, posed every frame
   record("draw calls", packet.drawCount, "", 400);
 }
 
-section("Client frame build (headless): a breeding base in view, as many bodies as a client is ever shown");
+section("Client frame build (headless): a breeding base in view, the 512 bodies a client is shown until it asks for more");
 {
   // A full view: ten survivors, 300 grown creatures, 150 young of every age, and eggs for the rest.
   const base = new RemoteSample();
@@ -1014,7 +1024,7 @@ section("Client frame build (headless): a breeding base in view, as many bodies 
   const st = new AnimState();
   const baseRng = new Rng(9);
   cam.yaw = Math.PI / 2 + Math.PI;
-  const n = base.id.length;
+  const n = 512;
   for (let i = 0; i < n; i++) {
     base.id[i] = i + 1;
     base.kind[i] = i < 10 ? kinds.survivor : i < 460 ? (i % 3 === 0 ? kinds.raptor : kinds.parasaur) : kinds.egg;
@@ -1044,12 +1054,14 @@ section("Client frame build (headless): a breeding base in view, as many bodies 
   built.sort((a, b) => a - b);
   record("bodies in view", n, "");
   record("bodies posed in the frame (those the camera can see)", scene.characters.posed, "");
-  record("bones used, of the 16,384 a frame has", packet.boneCount, "", 16384);
+  record("bones used, of the 16,384 medium poses with", packet.boneCount, "", 16384);
   record("triangles submitted", packet.triangles, "", 1500000);
   record("frame build with them, median", percentile(built, 0.5), "ms", 4);
   record("frame build with them, 99th percentile", percentile(built, 0.99), "ms", 8);
   record("draw calls", packet.drawCount, "", 400);
 }
+
+fullViewRows({ section, record, percentile }, scene, cam, reg, hf);
 
 section("Client frame build (headless): that house coming down 60 m off");
 {
@@ -1081,7 +1093,7 @@ section("Client frame build (headless): that house coming down 60 m off");
   taking.sort((a, b) => a - b);
   fallFrames.sort((a, b) => a - b);
   record("pieces told of", falling.taken, "");
-  record("most shown falling at once", most, "", 256);
+  record("most shown falling at once", most, "", 1024);
   record("take them in and move them, worst frame", taking[taking.length - 1]!, "ms", 1);
   record("frame build while they fall, median", percentile(fallFrames, 0.5), "ms", 1.5);
   record("frame build while they fall, 99th percentile", percentile(fallFrames, 0.99), "ms", 3);
@@ -1147,6 +1159,9 @@ section("Asset library (headless): 64 rocks of five levels and a 263,169-vertex 
   record("2,000 things: choose, want and draw each, with the strict card, median", percentile(frames, 0.5), "ms", 0.15);
   record("2,000 things: the same, 99th percentile", percentile(frames, 0.99), "ms", 0.5);
 }
+
+benchAgent(section, record);
+benchPoses(section, record);
 
 rmSync(dir, { recursive: true, force: true });
 const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);

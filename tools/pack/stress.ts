@@ -1,11 +1,17 @@
 // Meshes made to load the asset library: many rocks with five levels each, and one plate too large for 16-bit indices.
 // Each level is a different colour, so a picture shows which level was drawn. Three more rocks are listed wrongly, to
 // show what the library does with a part that cannot be had.
+//
+// And textures made to load the texture path: the stress cards. Every step of a base colour card is one flat colour,
+// so a pixel on the screen names the step it was sampled from.
 
-import type { Manifest } from "../../shared/pack/manifest.ts";
+import type { Manifest, ManifestTexture } from "../../shared/pack/manifest.ts";
 import { LEVEL_COLOURS, defaultPalette } from "../../shared/pack/palette.ts";
+import { stepOf, topIn, type TextureRole } from "../../shared/pack/texture.ts";
 import { Rng } from "../../shared/rng.ts";
+import { asPicture, packedMips } from "./image.ts";
 import { splitPack, type SplitFile } from "./split.ts";
+import { rgbaTexture, writeTextureFile } from "./texture.ts";
 import { buildPack, type SourceLod, type SourceMesh } from "./write.ts";
 
 export { LEVEL_COLOURS };
@@ -152,4 +158,69 @@ export function spoilStress(files: readonly SplitFile[], manifest: Manifest): vo
   manifest.files[1]!.bytes = real + 2 * finest("stress:bad_range").parts[0]!.bytes + 64;
   finest("stress:bad_range").at = real + 32;
   finest("stress:bad_short").at = real - (finest("stress:bad_short").parts[0]!.bytes >> 1);
+}
+
+export interface StressCard {
+  id: string;
+  role: TextureRole;
+  top: number;
+}
+
+/** The colour of a base colour card's steps, the 64-pixel step first: white, red, yellow, green, cyan, blue, magenta. Every channel is 0 or 255, which any block format holds exactly. */
+export const STEP_COLOURS: readonly (readonly [number, number, number])[] = [[255, 255, 255], [255, 0, 0], [255, 255, 0], [0, 255, 0], [0, 255, 255], [0, 0, 255], [255, 0, 255]];
+
+/**
+ * The eight bands of the two mask cards from left to right, as the weights of regions 0 to 5 out of 255: nothing, then
+ * each region whole and touching the next, then half of region 0 with half of region 5. Card 0 holds the first three
+ * weights of a band and card 7 the last three, so the last band is a mix that takes both masks to draw.
+ */
+export const MASK_BANDS: readonly (readonly number[])[] = [
+  [0, 0, 0, 0, 0, 0],
+  [255, 0, 0, 0, 0, 0],
+  [0, 255, 0, 0, 0, 0],
+  [0, 0, 255, 0, 0, 0],
+  [0, 0, 0, 255, 0, 0],
+  [0, 0, 0, 0, 255, 0],
+  [0, 0, 0, 0, 0, 255],
+  [128, 0, 0, 0, 0, 127],
+];
+
+/**
+ * Card 0 is a mask and card 7 the second mask that goes with it. Both are the same at every step. The six between
+ * are base colour, and one of them goes to 4096.
+ */
+export const STRESS_CARDS: readonly StressCard[] = [
+  { id: "stress:card_0", role: "mask", top: 1024 },
+  { id: "stress:card_1", role: "base", top: 4096 },
+  { id: "stress:card_2", role: "base", top: 2048 },
+  { id: "stress:card_3", role: "base", top: 1024 },
+  { id: "stress:card_4", role: "base", top: 1024 },
+  { id: "stress:card_5", role: "base", top: 512 },
+  { id: "stress:card_6", role: "base", top: 256 },
+  { id: "stress:card_7", role: "mask2", top: 1024 },
+];
+
+/** The picture of a card that is `size` pixels across, as RGBA8. */
+export function cardPicture(card: StressCard, size: number): Uint8Array {
+  const out = new Uint8Array(size * size * 4).fill(255);
+  if (card.role === "base") {
+    for (let i = 0; i < size * size; i++) out.set(STEP_COLOURS[Math.max(0, stepOf(size))]!, i * 4);
+    return out;
+  }
+  // Eight bands do not fit in fewer pixels, so the smallest pictures of a mask card are its mips.
+  if (size < 8) return packedMips(asPicture(cardPicture(card, 8)))[Math.log2(size)]!;
+  const first = card.role === "mask" ? 0 : 3;
+  const bands = MASK_BANDS.map((weights) => weights.slice(first, first + 3));
+  for (let i = 0; i < size * size; i++) out.set(bands[(((i % size) * 8) / size) | 0]!, i * 4);
+  return out;
+}
+
+/**
+ * The cards as a texture file in the rgba variant, which stops at 1024, and the manifest's entry for each. `index` is
+ * the place the file will have in the manifest's list.
+ */
+export function stressTextures(index: number, cards: readonly StressCard[] = STRESS_CARDS): { file: SplitFile; textures: ManifestTexture[] } {
+  const mips = (card: StressCard): Uint8Array[] => Array.from({ length: Math.log2(topIn("rgba", card.top)) + 1 }, (_, i) => cardPicture(card, 1 << i));
+  const { bytes, placed } = writeTextureFile("rgba", cards.map((card) => rgbaTexture(card.role, mips(card))));
+  return { file: { name: "stress.tex.rgba.sntx", role: "tex", bytes }, textures: cards.map((card, i) => ({ ...card, in: { rgba: { file: index, ...placed[i]! } } })) };
 }

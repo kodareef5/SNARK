@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_CLOSE, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_CLOSE, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -55,7 +55,9 @@ import { deriveRegistry } from "../shared/content/tuning.ts";
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
-import { createProvingWorld, type ServerWorld } from "./world.ts";
+import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
+import { parseMap } from "../shared/world/mapfile.ts";
+import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
@@ -86,7 +88,9 @@ export interface HostOptions {
   startingHunters?: number;
   /** Chunks around a player in which creatures are simulated. */
   wakeRadius?: number;
-  /** Use this world instead of creating the proving ground. Its structures are kept only if the save is new. */
+  /** A map file's bytes (shared/world/mapfile.ts). Without one, and without `world`, the proving ground. */
+  map?: Uint8Array<ArrayBuffer>;
+  /** Use this world instead of creating one from a map file. Its structures are kept only if the save is new. */
   world?: ServerWorld;
   seed?: number;
   /** Password for `enablecheats`. Without one, cheats are off unless `dev` is set. */
@@ -95,6 +99,8 @@ export interface HostOptions {
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
   allowLedgerMismatch?: boolean;
+  /** Load a save made on another map, or on other bytes of this one, instead of refusing. */
+  allowMapMismatch?: boolean;
   /** The animation clips of the asset pack the clients are served. They decide where hit zones are. */
   clips?: ClipSet;
   /** The rigs of that pack. Creatures are posed and hit on the rigs that have their own bones. */
@@ -126,6 +132,8 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 
 export interface Host {
   readonly world: ServerWorld;
+  /** The map file the world stands on, for clients to fetch. Null for a world made in code and handed to the host. */
+  readonly mapFile: Uint8Array<ArrayBuffer> | null;
   readonly records: Records;
   readonly game: GameServer;
   readonly creatures: Creatures;
@@ -144,6 +152,7 @@ export interface Host {
   readonly taming: Taming;
   readonly riding: Riding;
   readonly breeding: Breeding;
+  readonly tactical: Tactical;
   /** The list settings that name classes, as tables, and the names this build lacks. */
   readonly lists: Lists;
   /** The content-changing settings the server skipped at startup, one line each. */
@@ -240,8 +249,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const storeOptions = { ...opts.store, allowNetworkDisk: opts.store?.allowNetworkDisk ?? rules.flag("AllowNetworkSave") === true };
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, storeOptions) : null;
   if (store) opened.push(store);
-  // A save supplies its own structures. Only a new world gets the proving ground's.
-  const world = opts.world ?? createProvingWorld(reg, { populate: !store || store.fresh });
+  // A save supplies its own structures. Only a new world gets the map's.
+  const mapFile = opts.world ? null : (opts.map ?? provingFile(reg));
+  const world = opts.world ?? createMapWorld(reg, parseMap(mapFile!), { populate: !store || store.fresh });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
@@ -261,6 +271,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const game = new GameServer(world, {
     password: rules.text("ServerPassword"),
     motdSeconds: rules.num("Duration"),
+    viewCap: rules.num("ViewCap"),
+    snapshotBytesMax: rules.num("SnapshotBytesMax"),
     ...opts.game,
     maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")),
   });
@@ -273,7 +285,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     bus.after(SESSION_JOIN, { pid: c.pid, name: c.name, isNew: made.delete(c.pid) });
   };
   let started = false;
-  const persistence = store ? new Persistence(world, records, store) : null;
+  const persistence = store ? new Persistence(world, records, store, { allowMapMismatch: opts.allowMapMismatch ?? false }) : null;
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
@@ -528,17 +540,22 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const rng = new Rng((opts.seed ?? 1) + 17);
     // A wild creature's level is one of thirty steps, each the size of the server's difficulty.
     const difficulty = difficultyOf(rules);
-    // The herd is scattered north of the spawn point. A position inside a structure is retried. ARK's -NoDinos places none.
-    const none = rules.flag("NoDinos") === true;
-    let wanted = none ? 0 : (opts.startingCreatures ?? 0);
-    for (let tries = wanted * 20; wanted > 0 && tries > 0; tries--) {
-      if (spawnCreature(opts.startingSpecies ?? "core:grazer", rng.range(226, 286), rng.range(244, 300), wildLevel(1 + rng.int(30), difficulty)) >= 0) wanted--;
-    }
-    // Hunters start at the far edge of that ground, too far to see a new arrival.
-    let hunters = none ? 0 : (opts.startingHunters ?? 0);
-    for (let tries = hunters * 20; hunters > 0 && tries > 0; tries--) {
-      if (spawnCreature("core:raptor", rng.range(226, 286), rng.range(288, 300), wildLevel(1 + rng.int(30), difficulty)) >= 0) hunters--;
-    }
+    // A place off the zone or inside a structure is tried again. A map with no spawn zone starts empty, and so does ARK's -NoDinos.
+    const scatter = (zone: ServerWorld["zones"][number] | undefined, species: string, wanted: number): void => {
+      if (!zone || rules.flag("NoDinos") === true) return;
+      const [cx, cz] = zone.at;
+      const [hx, hz] = zone.half ?? [zone.radius ?? 0, zone.radius ?? 0];
+      for (let tries = wanted * 20; wanted > 0 && tries > 0; tries--) {
+        const x = rng.range(cx - hx, cx + hx);
+        const z = rng.range(cz - hz, cz + hz);
+        const level = wildLevel(1 + rng.int(30), difficulty);
+        if (!zone.half && (x - cx) * (x - cx) + (z - cz) * (z - cz) > hx * hx) continue;
+        if (spawnCreature(species, x, z, level) >= 0) wanted--;
+      }
+    };
+    // The herd starts in the map's first spawn zone and the hunters in its last.
+    scatter(world.zones[0], opts.startingSpecies ?? "core:grazer", opts.startingCreatures ?? 0);
+    scatter(world.zones[world.zones.length - 1], "core:raptor", opts.startingHunters ?? 0);
   }
 
   // A name belongs to the first device key that takes a body under it.
@@ -688,7 +705,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       settingsAt.dirty = true;
     }
     // What happened this tick is told to modules before it is committed.
-    if (!started) bus.after(SERVER_START, { tick, map: "proving", fresh: loaded ? loaded.fresh : true });
+    if (!started) bus.after(SERVER_START, { tick, map: world.mapId, fresh: loaded ? loaded.fresh : true });
     started = true;
     if (bus.n[SERVER_TICK] !== 0) bus.after(SERVER_TICK, { tick });
     if (tick % TICK_RATE === 0) bus.after(SERVER_SECOND, { tick });
@@ -778,9 +795,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     },
     drop: (rec, slot, n) => death.drop(rec, slot, n),
   };
+  const tactical = new Tactical(world, game, records, rules);
   game.onReplicate = (c) => {
     syncOwn(own, c);
     harvest?.sync(c, game.opts.structRadius);
+    tactical.sync(c);
   };
   progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
@@ -864,6 +883,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   );
   const host: Host = {
     world,
+    mapFile,
     records,
     game,
     creatures,
@@ -882,6 +902,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     taming,
     riding,
     breeding,
+    tactical,
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
       const row = rowOf(name);
@@ -931,7 +952,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
   game.handle(CMD_CHAT, (c, r) => {
     const channel = r.bits(3);
-    const words = r.string(MAX_TEXT_BYTES);
+    const words = r.string(MAX_CHAT_BYTES);
     if (r.overflow) return RESULT_INVALID;
     return chat.say(c, channel, words);
   });

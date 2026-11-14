@@ -11,8 +11,12 @@ import { compilePacks, type ContentPack } from "../../shared/content/packs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { FEATURES } from "../../shared/features.ts";
 import { CORE_PACK } from "../../content/core.ts";
+import { CREATURES } from "../../content/creatures/index.ts";
 import { CATALOGUE_PAGE, cataloguePage } from "../../tools/catalogue.ts";
 
+// What the creature files bring is counted apart, so a new creature moves no number here.
+const ofCreatures = new Set(CREATURES.map((d) => `${d.type} ${d.id}`));
+const rest = CORE_CONTENT.filter((d) => !ofCreatures.has(`${d.type} ${d.id}`));
 const classes = CORE_CONTENT.map(classOf);
 
 test("the class table is sound: parents exist, stubs name what they wait for, slots have fallbacks, references name classes", () => {
@@ -21,9 +25,9 @@ test("the class table is sound: parents exist, stubs name what they wait for, sl
   expect(Object.keys(FIELDS).filter((type) => !CLASSES.some((r) => r.type === type))).toEqual([]);
 });
 
-test("the core pack's 244 definitions fall into the classes, each passing its row, and 77 old ids are renamed", () => {
+test("the core pack's definitions fall into the classes, each passing its row, and old ids are renamed", () => {
   const counts: Record<string, number> = {};
-  for (const c of classes) counts[c] = (counts[c] ?? 0) + 1;
+  for (const d of rest) counts[classOf(d)] = (counts[classOf(d)] ?? 0) + 1;
   expect(counts).toEqual({
     "item/resource": 11,
     "item/consumable": 5,
@@ -31,12 +35,10 @@ test("the core pack's 244 definitions fall into the classes, each passing its ro
     "item/ammo": 7,
     "item/attachment": 4,
     "item/armor": 20,
-    "item/saddle": 2,
     "item/structure": 27,
-    engram: 73,
+    engram: 71,
     levels: 1,
     "species/survivor": 1,
-    "species/creature": 3,
     "species/target": 1,
     "structure/piece": 33,
     "structure/container": 3,
@@ -48,11 +50,17 @@ test("the core pack's 244 definitions fall into the classes, each passing its ro
     node: 3,
     "prop/container": 2,
     "prop/projectile": 2,
-    "prop/egg": 2,
     buff: 7,
-    rename: 77,
+    rename: 75,
   });
-  expect(CORE_CONTENT.length).toBe(321);
+  expect(rest.length).toBe(310);
+  // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
+  expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length);
+  const brought: Record<string, number> = {};
+  for (const d of CREATURES) brought[classOf(d)] = (brought[classOf(d)] ?? 0) + 1;
+  expect(Object.keys(brought).filter((c) => !["species/creature", "prop/egg", "item/saddle", "engram", "rename"].includes(c))).toEqual([]);
+  const files = readdirSync(join(import.meta.dir, "../../content/creatures")).filter((f) => f !== "index.ts");
+  expect(brought["species/creature"], "every file in content/creatures has one species and is listed in index.ts").toBe(files.length);
   expect(CORE_CONTENT.flatMap(defFaults)).toEqual([]);
   expect(compileContent(CORE_CONTENT).errors).toEqual([]);
 });

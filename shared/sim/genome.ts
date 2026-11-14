@@ -51,14 +51,37 @@ export function statValue(curve: StatCurve, g: Genome, stat: number): number {
   return curve[0] * (1 + (g.wild[stat]! + g.mutated[stat]!) * curve[1]) * (1 + g.tamed[stat]! * curve[2]);
 }
 
-/** Spreads level - 1 points at random over WILD_STATS. */
-export function rollWild(rng: Rng, level: number, regionColors: readonly number[]): Genome {
+/**
+ * A species' colour set, as the registry compiles it. Region r's entries are start[r] up to start[r + 1]: the palette
+ * colours it may take, and the sum of their weights so far. A region with no entries takes no colour.
+ */
+export interface ColorSet {
+  readonly start: Uint32Array;
+  readonly palette: Uint8Array;
+  readonly upTo: Float64Array;
+}
+
+/** The colour region `r` takes at `draw`, which is uniform in [0, 1). 0, undyed, for a region that takes none. */
+function colorAt(set: ColorSet, r: number, draw: number): number {
+  let i = set.start[r]!;
+  const last = set.start[r + 1]! - 1;
+  if (last < i) return 0;
+  const at = draw * set.upTo[last]!;
+  while (i < last && set.upTo[i]! <= at) i++;
+  return set.palette[i]!;
+}
+
+/**
+ * Spreads level - 1 points at random over WILD_STATS. `colors` is a species' colour set, or one list that every region
+ * draws from evenly. Either way each region takes one draw, so the stream is as long for every species.
+ */
+export function rollWild(rng: Rng, level: number, colors: readonly number[] | ColorSet): Genome {
   const g = new Genome();
   for (let n = level - 1; n > 0; n--) {
     const s = WILD_STATS[rng.int(WILD_STATS.length)]!;
     if (g.wild[s]! < POINT_CAP) g.wild[s]!++;
   }
-  for (let r = 0; r < COLOR_REGIONS; r++) g.colors[r] = regionColors[rng.int(regionColors.length)]!;
+  for (let r = 0; r < COLOR_REGIONS; r++) g.colors[r] = "upTo" in colors ? colorAt(colors, r, rng.float()) : colors[rng.int(colors.length)]!;
   g.female = rng.int(2) === 0;
   return g;
 }

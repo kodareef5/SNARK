@@ -1,0 +1,40 @@
+import type { Def } from "../../shared/content/defs.ts";
+import { crafting } from "../craft.ts";
+
+export const PARASAUR: readonly Def[] = [
+  {
+    type: "species", class: "creature",
+    id: "core:parasaur",
+    tag: "parasaur",
+    mesh: "core:parasaur",
+    skeleton: "dino",
+    color: 9,
+    radius: 1.1,
+    height: 2.6,
+    eyeHeight: 2.4,
+    walkSpeed: 2.6,
+    sprintMul: 2.4,
+    jumpSpeed: 4,
+    turn: 110,
+    strafe: false,
+    fists: 12,
+    bite: { reach: 4.6 },
+    slots: 30,
+    // The reference game's taming numbers.
+    taming: { a0: 1500, a1: 75, foodBase: 0.001929, proneMult: 864.01, k: 0.4 },
+    eats: [{ item: "core:berry", food: 20, affinity: 20 }],
+    // The reference game's rate, 0.001929 a second. Its young start at 510 times that.
+    food: { max: 1500, perHour: 0.27 },
+    // The reference game's times, in seconds.
+    breeds: { egg: "core:egg_parasaur", incubate: 5142, mature: 95238 },
+    drops: [{ item: "core:hide", min: 8, max: 16 }, { item: "core:meat", min: 8, max: 14 }],
+    zones: { head: 1.5 },
+    killXp: 6,
+    torporDrain: 0.3,
+    stats: { health: [200, 0.2, 0.054], stamina: [200, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1500, 0.1, 0.1], weight: [255, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
+  },
+  { type: "prop", class: "egg", id: "core:egg_parasaur", mesh: "core:egg", color: 9, radius: 0.3, height: 0.7 },
+  { type: "item", class: "saddle", id: "core:saddle_parasaur", stack: 1, weight: 10, label: "parasaur saddle", color: 3, saddle: { fits: "core:parasaur", armor: 25 } },
+  crafting("core:saddle_parasaur", { needs: [{ item: "core:hide", count: 80 }, { item: "core:fiber", count: 50 }, { item: "core:wood", count: 15 }], seconds: 10, xp: 6 }),
+  { type: "engram", id: "core:engram-saddle_parasaur", label: "Parasaur saddle", level: 9, cost: 9, item: "core:saddle_parasaur" },
+];

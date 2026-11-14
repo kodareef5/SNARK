@@ -22,7 +22,7 @@ function client(h: Harness, name: string): App {
 function consoleRows(app: App): string[] {
   const out: string[] = [];
   const f = app.ui.frame;
-  for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CONSOLE_ROW) out.push(f.nodes[i]!.text);
+  for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CONSOLE_ROW && f.nodes[i]!.key < KEY_CONSOLE_ROW + 60) out.push(f.nodes[i]!.text);
   return out;
 }
 
