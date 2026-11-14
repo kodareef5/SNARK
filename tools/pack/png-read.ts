@@ -1,6 +1,4 @@
-// Minimal PNG reader for source textures: 8 bits a channel, RGB or RGBA, not
-// interlaced, which is what the packs in assets/raw use. Anything else is an
-// error that says what the file is.
+// Reads only 8-bit RGB or RGBA PNGs without interlacing, which is what the packs in assets/raw use.
 
 import { readFileSync } from "node:fs";
 import { inflateSync } from "node:zlib";

@@ -1,14 +1,5 @@
-// Runs a fixed, seeded movement scenario and prints a hash of every body state
-// along the way. The same file runs under Bun (JavaScriptCore) and Node (V8);
-// equal hashes mean the simulation is bit-identical across the two engines,
-// which is what client prediction relies on.
-//
-// A second hash covers poses: every kind of motion at whole and fractional
-// ticks, solved to bone positions, and what a set of rays hits. Equal pose
-// hashes mean the server and a browser agree on where every bone is.
-//
-//   bun tools/simhash.ts
-//   node tools/simhash.ts
+// Prints hashes of fixed, seeded scenarios. The same file runs under Bun (JavaScriptCore) and Node (V8). Equal hashes mean
+// the simulation is bit-identical across the two engines, which client prediction relies on.
 
 import { readFileSync } from "node:fs";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -32,10 +23,7 @@ import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../share
 import { StructureStore } from "../shared/world/structures.ts";
 import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../shared/world/snap.ts";
 
-/**
- * A tuning with something of everything in it, and numbers that do not come
- * out even: what a server's settings might make of content.
- */
+/** A tuning with an entry of every kind and numbers that do not come out even, as a server's settings might produce. */
 export const FIXED_TUNING: Tuning = {
   stack: 2.5,
   stacks: { "core:thatch": { n: 543, plain: true }, "core:wood": { n: 70 } },
@@ -53,9 +41,8 @@ export const FIXED_TUNING: Tuning = {
 };
 
 /**
- * Content as that tuning has it, hashed: the registry's own hash, the tables
- * it changes, and the movement scenario run on the survivor it makes. Equal
- * on both engines means a client derives what its server did, to the bit.
+ * Hashes the tuned registry: its own hash, the tables the tuning changes, and the movement scenario on the tuned survivor.
+ * Equal on both engines means a client derives exactly what its server did.
  */
 export function tunedHash(): string {
   const reg = deriveRegistry(compileContent(CORE_CONTENT).registry!, FIXED_TUNING);
@@ -99,7 +86,7 @@ export function simHash(ticks = 3000, content: Registry | null = null): string {
     b.z = z!;
     b.y = hf.heightAt(b.x, b.z);
     b.grounded = true;
-    // Different modifiers per body; one tires quickly, one is a ghost.
+    // Each body has different modifiers. One tires quickly and one is a ghost.
     b.speedQ = 700 + i * 90;
     b.swimQ = 1600 - i * 70;
     if (i === 3) b.staminaMax = 12;
@@ -119,7 +106,7 @@ export function simHash(ticks = 3000, content: Registry | null = null): string {
         inp[0] = rng.int(255) - 127;
         inp[1] = rng.int(255) - 127;
         inp[2] = rng.int(65536);
-        // Jump and sprint, and now and then a wish to crouch or lie down.
+        // Jump and sprint, and now and then crouch or prone.
         inp[3] = rng.int(4) | (rng.int(6) === 0 ? BTN_CROUCH : 0) | (rng.int(11) === 0 ? BTN_PRONE : 0);
         inp[4] = rng.int(32769) - 16384;
       }
@@ -141,11 +128,7 @@ export function simHash(ticks = 3000, content: Registry | null = null): string {
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-/**
- * The clips as the game has them: those the art conversion wrote and those
- * written as code, through the pack's own encoding. Built from files and
- * modules both engines can read.
- */
+/** Converted and authored clips, passed through the pack's own encoding. Built only from files and modules both engines can read. */
 export function sourceClips(): HumanAnim {
   const converted = parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/human-clips.snpk", import.meta.url)))).clips.clips;
   return new HumanAnim(parsePack(buildPack([], defaultPalette(), [...converted, ...authoredClips()])).clips);
@@ -169,7 +152,7 @@ export function poseHash(): string {
     }
   };
   let n = 0;
-  // Standing, crouched, prone, in the air, in water; every third speed, direction and pitch.
+  // Standing, crouched, prone, in the air and in water, over a spread of speeds, directions and pitches.
   for (const [mode, grounded, stance] of [[1, 1, 0], [1, 1, 1], [1, 1, 2], [1, 0, 0], [2, 0, 0]] as const) {
     for (let speed = 0; speed <= 15; speed += 3) {
       for (let dir = 0; dir < 16; dir += 3) {
@@ -182,7 +165,7 @@ export function poseHash(): string {
           st.pitch = pitch;
           st.seed = (n * 37) % 1024;
           const tick = n * 7.25;
-          // Every third one is partway through a swing, of a hand or of a tool; some of the rest hold a bow or a gun, and are doing something with it.
+          // Every third pose is partway through a swing of a hand or a tool. Some of the rest hold a bow or a gun mid-action.
           if (n % 3 === 0) st.setAction(ACT_SWING, n % 2 === 0 ? HOLD_HANDS : HOLD_TOOL, Math.floor(tick) - (n % 17));
           else if (n % 5 === 1) st.setAction([ACT_DRAW, ACT_HOLD, ACT_RELOAD, ACT_COOL, ACT_NONE][n % 7 % 5]!, [HOLD_BOW, HOLD_RIFLE, HOLD_PISTOL][n % 3]!, Math.floor(tick) - (n % 11));
           else st.setAction(ACT_NONE, HOLD_HANDS, 0);
@@ -191,7 +174,7 @@ export function poseHash(): string {
           solve(HUMAN, pose, solved);
           mix(rot);
           mix(pos);
-          // A ray at chest height from the front and one down through the head.
+          // Rays from the front at chest height, down through the head, and from the side at 0.4 m.
           for (const [ox, oy, oz, dx, dy, dz] of [[0.05, 1.3, 3, 0, 0, -1], [0.02, 3, 0.03, 0, -1, 0], [2, 0.4, 0.1, -1, 0, 0]] as const) {
             h1 = Math.imul(h1 ^ rayZones(HUMAN, solved, ox, oy, oz, dx, dy, dz, 10), 0x01000193);
             f[0] = zoneHit.t;
@@ -205,10 +188,8 @@ export function poseHash(): string {
 }
 
 /**
- * Building: from a first piece at each of many facings, pieces joined on at
- * random, each where the shared arithmetic puts it, with what a look from
- * above chooses and whether each place is free. Equal hashes mean the client's
- * preview and the server's check agree to the last unit on both engines.
+ * Joins random building pieces onto a first piece at many facings, and hashes each pose, whether its place is free, and
+ * what a look from above picks. Equal hashes mean the client's preview and the server's check agree on both engines.
  */
 export function snapHash(): string {
   const reg = compileContent(CORE_CONTENT).registry!;
@@ -252,17 +233,13 @@ export function snapHash(): string {
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-/** The rigs that are skeletons in themselves, with their clips, as `bun run art -- --creatures` wrote them. */
+/** The creature rigs and their clips, as `bun run art -- --creatures` wrote them. */
 export function sourceRigs(): Map<string, Rig> {
   const pack = parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/creatures.snpk", import.meta.url))));
   return buildRigs(pack.header.rigs, pack.clips);
 }
 
-/**
- * A fourth hash: every creature at every third speed, striking and not, at
- * whole and fractional ticks, as the bytes of where each of its bones is, and
- * what a few rays hit on it.
- */
+/** Every creature at every third speed, striking and not, at whole and fractional ticks. Hashes its bone transforms and what two rays hit. */
 export function creatureHash(): string {
   const st = new AnimState();
   let h1 = 0x811c9dc5;
@@ -290,7 +267,7 @@ export function creatureHash(): string {
           solve(rig, rig.a, rig.solved);
           mix(rot);
           mix(pos);
-          // A ray at it from the side, at the height of its middle, and one down its length from in front.
+          // One ray from the side at mid height, and one along its length from the front.
           for (const [ox, oy, oz, dx, dz] of [[-20, rig.mid, 0.3, 1, 0], [0.05, rig.mid * 1.2, 30, 0, -1]] as const) {
             f[0] = rayCreature(rig, st, tick, 4, 0, 0, 0, (n * 4099) & 0xffff, ox, oy, oz, dx, 0, dz, 60);
             f[1] = zoneHit.t;

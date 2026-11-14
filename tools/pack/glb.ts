@@ -1,16 +1,5 @@
-// glTF binary (.glb) import: Blender exports become pack meshes.
-//
-// Conventions an exported file follows:
-//   - One file is one asset. Its mesh id is given by the caller (from the path).
-//   - Node names ending in _LOD1, _LOD2 ... are lower levels of detail. Anything
-//     else is level 0.
-//   - A node named COL (or starting with COL_ / UCX_) is the collision box; its
-//     bounding box is recorded and it is not drawn.
-//   - A material named region0 .. region5 marks a colour region. Any other
-//     material is matched to the nearest palette colour by its base colour.
-//   - Axes and units are glTF's own, which are also the engine's: +Y up, metres.
-//
-// Textures, normals, skins and animations are ignored in this version.
+// Imports a .glb as one pack mesh. Nodes ending in _LOD<n> are lower levels of detail, and a node named COL, COL_* or
+// UCX_* is the undrawn collision box. Materials named region0 to region5 are colour regions. Others match the nearest palette colour.
 
 import { decodeUtf8 } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
@@ -82,7 +71,7 @@ export function importGlb(file: Uint8Array, id: string, palette: Uint8Array): Im
     const region = /^region([0-5])$/i.exec(m?.name ?? "");
     if (region) return REGION_BASE + Number(region[1]);
     const base = m?.pbrMetallicRoughness?.baseColorFactor ?? [0.8, 0.8, 0.8, 1];
-    // Base colour is linear; the palette is sRGB.
+    // Base colour is linear and the palette is sRGB.
     const srgb = base.slice(0, 3).map((c) => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055));
     let best = 0;
     let bestD = Infinity;
@@ -139,7 +128,7 @@ export function importGlb(file: Uint8Array, id: string, palette: Uint8Array): Im
         }
         if (!isCollider) {
           for (let t = 0; t + 2 < idx.length; t += 3) {
-            // A mirrored transform reverses winding; restore it.
+            // A mirrored transform reverses winding, so restore it.
             if (flip) lod.indices.push(base + idx[t]!, base + idx[t + 2]!, base + idx[t + 1]!);
             else lod.indices.push(base + idx[t]!, base + idx[t + 1]!, base + idx[t + 2]!);
           }

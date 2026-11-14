@@ -1,11 +1,10 @@
-// Draws an interface frame over a picture, the way the browser binder would
-// place it: same rectangles, same colours, a bitmap font instead of a real one.
+// Draws an interface frame over a picture with the browser binder's rectangles and colours, and a bitmap font in place of a real one.
 
 import { K_BAR, K_IMAGE, K_INPUT, type UiFrame } from "../../client/core/ui/nodes.ts";
 import { CHAR_ADVANCE, STYLES } from "../../client/core/ui/style.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./font.ts";
 
-/** Blend the interface onto `color` (RGBA, `width` by `height`). */
+/** `color` is RGBA, `width` by `height`. */
 export function drawUi(color: Uint8ClampedArray, width: number, height: number, f: UiFrame): void {
   const scale = height / f.height;
   const rect = (x: number, y: number, w: number, h: number, r: number, g: number, b: number, a: number): void => {

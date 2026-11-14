@@ -1,5 +1,4 @@
-// Reading glTF 2 files: the binary form (.glb) or JSON with a buffer beside it.
-// Only what the art conversion needs: nodes, accessors, skins and animations.
+// Reads glTF 2 files, binary (.glb) or JSON with buffers beside it. Only what the art conversion needs.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -39,7 +38,6 @@ export interface Gltf {
 const COMPONENT_BYTES: Record<number, number> = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 };
 const TYPE_SIZE: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
 
-/** Read a .glb, or a .gltf whose buffers are files beside it. */
 export function readGltf(path: string): Gltf {
   const file = new Uint8Array(readFileSync(path));
   if (path.endsWith(".glb")) {
@@ -66,7 +64,7 @@ export function readGltf(path: string): Gltf {
   return { path, json, buffers };
 }
 
-/** All of an accessor's numbers, with normalized integers scaled to -1..1 or 0..1. */
+/** Normalized integers are scaled to -1..1 or 0..1. */
 export function readAccessor(g: Gltf, index: number): { data: Float64Array; size: number; count: number } {
   const a = g.json.accessors![index]!;
   if (a.sparse || a.bufferView === undefined) throw new Error(`${g.path}: sparse accessors are not supported`);
@@ -95,7 +93,7 @@ export function readAccessor(g: Gltf, index: number): { data: Float64Array; size
   return { data, size, count: a.count };
 }
 
-/** Parent of every node, -1 for roots. */
+/** -1 for roots. */
 export function nodeParents(g: Gltf): Int32Array {
   const parent = new Int32Array(g.json.nodes?.length ?? 0).fill(-1);
   g.json.nodes?.forEach((n, i) => n.children?.forEach((c) => (parent[c] = i)));

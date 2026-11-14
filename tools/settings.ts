@@ -1,9 +1,5 @@
-// Writes the reference page of server settings from the catalogue.
-//
-//   bun run settings            writes planning/reference/settings.md
-//
-// The page is derived, never edited: a test fails if it is not what this
-// would write.
+// Writes planning/reference/settings.md from the catalogue (bun run settings). The page is derived, never edited.
+// A test fails if the page is not what this tool writes.
 
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -27,7 +23,7 @@ const PLACES: Record<Place, string> = {
 function shown(row: Row): string {
   if (row.kind === "struct" || row.kind === "names" || row.kind === "lines") return "none";
   if (row.kind === "indexed") {
-    // All one number, or that number with the indexes that differ.
+    // One number for all, then the indexes that differ from it.
     const d = row.def as readonly number[];
     const most = d.filter((v) => v === d[1]).length >= d.length / 2 ? d[1]! : d[0]!;
     const odd = d.flatMap((v, n) => (v === most ? [] : [`[${n}] ${v}`]));

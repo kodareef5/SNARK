@@ -1,9 +1,5 @@
-// The mannequin: a body made of the skeleton's own hit capsules.
-//
-// One capsule per bone that can be hit, each following its bone, cut into the
-// five body slots like any other body. It stands in for a modelled body where
-// none is in the pack, and it is the picture of what the server hits: a shot
-// that lands on a capsule of this mesh lands in that zone.
+// The mannequin is a body made of the skeleton's own hit capsules, cut into the five body slots. It stands in where
+// the pack has no modelled body, and it shows what the server hits.
 
 import { B_HEAD, HUMAN, SLOT_COUNT, SLOT_FEET, SLOT_HANDS, SLOT_HEAD, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
@@ -26,11 +22,7 @@ interface Part {
   indices: number[];
 }
 
-/**
- * Add a capsule from a to b with radius r, following `bone`. The faces lie
- * just inside the true surface at their middles and on it at their corners,
- * so nothing drawn is outside what can be hit.
- */
+/** The faces touch the true surface at their corners and lie slightly inside it at their middles, so nothing drawn is outside what can be hit. */
 function addCapsule(part: Part, bone: number, a: readonly number[], b: readonly number[], r: number, color: number): void {
   // An axis along the capsule and two across it.
   let ux = b[0]! - a[0]!, uy = b[1]! - a[1]!, uz = b[2]! - a[2]!;
@@ -58,7 +50,7 @@ function addCapsule(part: Part, bone: number, a: readonly number[], b: readonly 
     part.colors.push(color);
     part.bones.push(bone);
   };
-  // Rings from the tip at a to the tip at b: the a end's cap, then the b end's.
+  // Rings run from the tip at a to the tip at b.
   const rows = 2 * (RINGS + 1);
   for (let row = 0; row < rows; row++) {
     const atA = row <= RINGS;
@@ -70,7 +62,7 @@ function addCapsule(part: Part, bone: number, a: readonly number[], b: readonly 
     for (let side = 0; side < SIDES; side++) {
       const i0 = base + row * SIDES + side, i1 = base + row * SIDES + ((side + 1) % SIDES);
       const j0 = i0 + SIDES, j1 = i1 + SIDES;
-      // Row 0 and the last row are single points repeated; their degenerate triangles are skipped.
+      // Row 0 and the last row are single points repeated, so their degenerate triangles are skipped.
       if (row > 0) part.indices.push(i0, j1, i1);
       if (row + 2 < rows) part.indices.push(i0, j0, j1);
     }
@@ -88,7 +80,7 @@ export function mannequinMeshes(): SourceMesh[] {
     const color = slot === SLOT_HEAD || slot === SLOT_HANDS ? SKIN : slot === SLOT_FEET ? SHOE : REGION_BASE;
     addCapsule(parts[slot]!, b, end(s.capA, b), end(s.capB, b), s.capR[b]!, color);
   }
-  // A visor, so that which way it faces can be seen: a flat capsule across the front of the head, inside it.
+  // A visor across the front of the head shows which way the mannequin faces.
   const head = end(s.capB, B_HEAD);
   const r = s.capR[B_HEAD]!;
   addCapsule(parts[SLOT_HEAD]!, B_HEAD, [head[0]! - r * 0.45, head[1]!, head[2]! + r * 0.78], [head[0]! + r * 0.45, head[1]!, head[2]! + r * 0.78], r * 0.2, VISOR);

@@ -1,8 +1,5 @@
-// Builds the core asset pack: a graybox mesh for every definition whose mesh is
-// "box", the mannequin, the clips converted by `bun run art`, plus every .glb
-// under assets/source (id "<folder>:<file name>").
-//
-//   bun tools/pack/build.ts        writes client/dist/assets/core.snpk
+// Builds the core asset pack. Run directly, it also imports every .glb under assets/source as "<folder>:<file name>"
+// and writes client/dist/assets/core.snpk.
 
 import { mkdirSync, readFileSync, readdirSync, statSync, existsSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -22,7 +19,7 @@ export const MISSING_MESH = "core:missing";
 export const WATER_MESH = "core:water";
 export const BEAM_MESH = "core:beam";
 
-/** One tile of water surface: a flat square facing up, centred on its origin. */
+/** A flat square facing up, centred on its origin. */
 function waterMesh(): SourceMesh {
   const h = WATER_TILE / 2;
   return {
@@ -33,7 +30,7 @@ function waterMesh(): SourceMesh {
 
 export const EGG_MESH = "core:egg";
 
-/** An egg: a rounded shape standing on its blunt end, 0.6 across and 0.7 tall, its base at y = 0. */
+/** Stands on its blunt end, 0.6 across and 0.7 tall, with its base at y = 0. */
 function eggMesh(): SourceMesh {
   const around = 10;
   const up = 7;
@@ -41,7 +38,7 @@ function eggMesh(): SourceMesh {
   const indices: number[] = [];
   for (let j = 0; j <= up; j++) {
     const v = j / up;
-    // Fatter below the middle than above it, as an egg is.
+    // Fatter below the middle than above it.
     const r = 0.3 * Math.sin(Math.PI * v) * (1.12 - 0.3 * v);
     const y = 0.35 - 0.35 * Math.cos(Math.PI * v);
     for (let i = 0; i < around; i++) {
@@ -53,7 +50,7 @@ function eggMesh(): SourceMesh {
     for (let i = 0; i < around; i++) {
       const a = j * around + i;
       const b = j * around + ((i + 1) % around);
-      // The first ring and the last are points: one triangle there, two between.
+      // The first and last rings are single points, so a band that touches one needs only one triangle.
       if (j > 0) indices.push(a, b, a + around);
       if (j < up - 1) indices.push(b, b + around, a + around);
     }
@@ -61,15 +58,14 @@ function eggMesh(): SourceMesh {
   return { id: EGG_MESH, lods: [{ positions: Float32Array.from(positions), colors: new Uint8Array(positions.length / 3).fill(REGION_BASE), indices: Uint32Array.from(indices) }] };
 }
 
-/** Graybox meshes for content. Their single colour is region 0, so the definition's colour applies per instance. */
+/** Their single colour is region 0, so the definition's colour applies per instance. */
 export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
-  // The beam marks a place from far off: where a survivor died.
+  // The beam marks where a survivor died, visible from far off.
   const beam = boxMesh([0.15, 40, 0.15], REGION_BASE);
   for (let i = 1; i < beam.positions.length; i += 3) beam.positions[i]! += 40;
   const meshes: SourceMesh[] = [{ id: MISSING_MESH, lods: [boxMesh([0.5, 0.5, 0.5], 0)] }, waterMesh(), { id: BEAM_MESH, lods: [beam] }, eggMesh()];
   for (const d of defs) {
     if (d.type === "structure" && d.mesh === "shape") {
-      // Its shape's boxes, each where it stands in the piece.
       const shape = defs.find((s) => s.type === "shape" && s.id === d.shape);
       if (shape?.type !== "shape") continue;
       const positions: number[] = [];
@@ -88,7 +84,7 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
     if ((d.type !== "species" && d.type !== "structure" && d.type !== "prop" && d.type !== "node") || d.mesh !== "box") continue;
     if (d.type === "structure") meshes.push({ id: d.id, lods: [boxMesh(d.half, REGION_BASE)] });
     else if (d.type === "node") {
-      // A node stands on its base; its position is the centre of its collider.
+      // A node's position is the centre of its collider.
       const lod = boxMesh(d.half, REGION_BASE);
       if (d.top) {
         const top = boxMesh(d.top.half, d.top.color);
@@ -100,7 +96,7 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
       }
       meshes.push({ id: d.id, lods: [lod] });
     } else {
-      // A species or a prop stands on its origin: lift the box so its base is at y = 0.
+      // A species or prop stands on its origin, so the box is lifted to put its base at y = 0.
       const lod = boxMesh([d.radius, d.height / 2, d.radius], REGION_BASE);
       for (let i = 1; i < lod.positions.length; i += 3) lod.positions[i]! += d.height / 2;
       meshes.push({ id: d.id, lods: [lod] });
@@ -112,7 +108,7 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
 const SOURCE = resolve(import.meta.dir, "../../assets/source");
 let sourceClips: readonly Clip[] | null = null;
 
-/** The clips `bun run art` wrote, read once, and the ones written as code. */
+/** Clips from `bun run art`, clips written as code, and the creatures' clips. Read once. */
 export function coreClips(): readonly Clip[] {
   if (sourceClips) return sourceClips;
   const file = join(SOURCE, "core/human-clips.snpk");
@@ -122,7 +118,7 @@ export function coreClips(): readonly Clip[] {
 
 let sourceBodies: { meshes: SourceMesh[]; rigs: PackRig[] } | null = null;
 
-/** The modelled bodies `bun run art` wrote, read once: meshes and the rigs they were made on. */
+/** Written by `bun run art`. Read once. */
 export function coreBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
   if (sourceBodies) return sourceBodies;
   const file = join(SOURCE, "core/human-bodies.snpk");
@@ -133,7 +129,7 @@ export function coreBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
 
 let sourceCreatures: { meshes: SourceMesh[]; rigs: PackRig[]; clips: readonly Clip[] } | null = null;
 
-/** The creatures `bun run art -- --creatures` wrote, read once: a mesh, a rig that is a whole skeleton, and clips for each. */
+/** Written by `bun run art -- --creatures`. Read once. */
 export function coreCreatures(): { meshes: SourceMesh[]; rigs: PackRig[]; clips: readonly Clip[] } {
   if (sourceCreatures) return sourceCreatures;
   const file = join(SOURCE, "core/creatures.snpk");

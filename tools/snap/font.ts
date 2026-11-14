@@ -1,6 +1,5 @@
-// A 5 by 7 bitmap font for drawing interface text into snapshots. Five bytes
-// per character from space (32) to tilde (126), one byte per column, bit 0 at
-// the top. It only has to be legible in a PNG; the browser uses a real font.
+// A 5 by 7 bitmap font for interface text in snapshots. Each character from space (32) to tilde (126) is five bytes,
+// one per column, with bit 0 at the top.
 
 const HEX =
   "0000000000" + "00005f0000" + "0007000700" + "147f147f14" + "242a7f2a12" + "2313086462" + "3649552250" + "0005030000" +
@@ -22,7 +21,7 @@ export const GLYPH_HEIGHT = 7;
 const COLUMNS = new Uint8Array(HEX.length / 2);
 for (let i = 0; i < COLUMNS.length; i++) COLUMNS[i] = parseInt(HEX.slice(i * 2, i * 2 + 2), 16);
 
-/** Whether the pixel at (col, row) of `code`'s glyph is set. Unknown characters draw as a box. */
+/** Unknown characters draw as a box. */
 export function glyphPixel(code: number, col: number, row: number): boolean {
   if (code < 32 || code > 126) return col === 0 || col === GLYPH_WIDTH - 1 || row === 0 || row === GLYPH_HEIGHT - 1;
   return ((COLUMNS[(code - 32) * GLYPH_WIDTH + col]! >> row) & 1) !== 0;

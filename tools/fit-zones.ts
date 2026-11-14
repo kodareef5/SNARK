@@ -1,19 +1,5 @@
-// Fits the skeleton's hit capsules to the modelled bodies and says how well
-// they match what is drawn.
-//
-//   bun tools/fit-zones.ts            print fitted rows for shared/anim/human.ts, then measure them
-//   bun tools/fit-zones.ts --check    measure the capsules human.ts has now
-//
-// For each bone that can be hit, it takes every vertex that follows the bone
-// on either body (a hand's fingers with the hand, a foot's toes with the foot,
-// the right side mirrored onto the left), and fits a capsule along the bone:
-// the axis through the middle of the vertices, a radius most of them lie
-// within, and ends where they end. Then it draws each body in nine kinds of
-// motion from five sides with the software rasterizer, casts a ray through
-// every pixel, and tabulates the zone drawn against the zone hit.
-//
-// The fit is a starting point. Rows in human.ts may be adjusted by hand; this
-// tool's table is how to tell whether an adjustment helped.
+// Fits the skeleton's hit capsules to the modelled bodies and prints rows for shared/anim/human.ts, then tabulates
+// the zone drawn against the zone hit. With --check it only measures the capsules human.ts has now.
 
 import { readFileSync } from "node:fs";
 import { bodySeed } from "../client/core/render/scene.ts";
@@ -82,8 +68,8 @@ function fit(): string[] {
       along.push(t);
       for (let a = 0; a < 3; a++) across[a]!.push(pts[i * 3 + a]! - t * u[a]!);
     }
-    // The axis passes through the middle of the vertices' spread, seen along itself. (Not their
-    // median: a face is modelled far more finely than the back of a head, and would pull it forward.)
+    // The axis passes through the middle of the vertices' spread, not their median. A face is modelled far more
+    // finely than the back of a head and would pull the median forward.
     const mid = across.map((list) => {
       const sorted = [...list].sort((p, q) => p - q);
       return (percentile(sorted, 0.04) + percentile(sorted, 0.96)) / 2;
@@ -108,7 +94,7 @@ function fit(): string[] {
   return rows;
 }
 
-/** Draw a body in every kind of motion from every side and tabulate zone drawn against zone hit. */
+/** Draws a body in nine motions from five sides, casts a ray through every pixel, and tabulates zone drawn against zone hit. */
 function measure(sex: number): void {
   const SIZE = 128;
   const view = provingView(SIZE, SIZE);

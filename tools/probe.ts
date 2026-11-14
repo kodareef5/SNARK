@@ -1,19 +1,5 @@
-// The boot probe: the only place this project launches a browser.
-//
-// Builds the client, starts the server on a free port, opens installed Chrome
-// headless at ?selfcheck=1, waits for the report the page posts back, prints
-// it and exits 0 or 1. No packages. Run on demand; it is not part of the check.
-//
-//   bun run probe
-//   CHROME=/path/to/chrome bun run probe
-//   bun run probe -- --bench     also fly the camera for 900 frames and report frame times
-//   bun run probe -- --no-voice  leave out the voice loop (the page talking to itself through the server)
-//   bun run probe -- --voice     also open a second page beside the first, which must hear the first talking
-//
-// The frame times of a headless browser on this machine say little about a
-// player's. For a real number, run `bun run dev` and open
-// http://localhost:8787/?bench=1 on the device in question: the same report is
-// printed by the dev server.
+// The boot probe is the only place this project launches a browser, and it is not part of the check. It opens installed Chrome
+// headless at ?selfcheck=1 and exits 0 or 1 on the report the page posts back. CHROME sets the browser path. Flags: --bench, --no-voice, --voice.
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -38,8 +24,8 @@ if (!chrome) {
 await buildClient();
 const server = startServer({ dev: true, port: 0, probeScene: true });
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
-// The page also talks to itself: a microphone that is not one (Chrome's own stand-in, which beeps), allowed
-// without asking, and sound that may start without a touch.
+// Unless --no-voice is given, the page talks to itself through the server. VOICE_FLAGS give Chrome a fake microphone, grant it
+// without a prompt, and let sound start without a gesture.
 const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${process.argv.includes("--no-voice") ? "" : "&voice=1"}`;
 const VOICE_FLAGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
 const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
@@ -48,7 +34,7 @@ const timeout = new Promise<null>((r) => setTimeout(() => r(null), 30000));
 const report = (await Promise.race([server.nextSelfcheck(), timeout])) as { ok?: boolean } | null;
 let second: { ok?: boolean } | null | undefined;
 if (report && process.argv.includes("--voice")) {
-  // The first page goes on talking; a second, with a profile of its own, joins beside it and listens.
+  // The first page keeps talking. A second page with its own profile joins and must hear it.
   const profile2 = mkdtempSync(join(tmpdir(), "snark-probe-"));
   const listener = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile2}`, `http://localhost:${server.port}/?selfcheck=1&voice=listen&name=listener`], { stdout: "ignore", stderr: "ignore" });
   second = (await Promise.race([server.nextSelfcheck(), new Promise<null>((r) => setTimeout(() => r(null), 30000))])) as { ok?: boolean } | null;
@@ -59,7 +45,8 @@ if (report && process.argv.includes("--voice")) {
 browser.kill();
 await browser.exited;
 if (report && process.argv.includes("--bench")) {
-  // A second page load of the same fixed scene, with the camera flying itself.
+  // A second page load flies the camera through the same fixed scene. Headless frame times say little about a player's.
+  // For a real number, run `bun run dev` and open http://localhost:8787/?bench=1 on the device in question.
   const flying = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", `--user-data-dir=${profile}`, `http://localhost:${server.port}/?bench=1&name=bench`], { stdout: "ignore", stderr: "ignore" });
   await Promise.race([server.bench, new Promise((r) => setTimeout(r, 40000))]);
   flying.kill();

@@ -1,16 +1,5 @@
-// Turns a rigged, animated model of a creature into what the pack holds: a
-// rig that is a whole skeleton, one mesh on it, and its clips.
-//
-// A creature's skeleton is data. This reads the model's own joints, leaves
-// out the ones a spec says to (the ends of chains, a root that never moves),
-// lets the spec hang a bone on another parent than the model has it on, and
-// writes the rest as bones resting at identity, as every skeleton here does
-// (shared/anim/skeleton.ts). So a different model needs a different spec and
-// content, and nothing else.
-//
-// A vertex follows the one joint that weighs most on it. A material is a
-// colour region. Hit capsules are fitted to the vertices of the bones each
-// covers: few and large. Sockets are places measured on the mesh.
+// Turns a rigged, animated creature model into a rig that is a whole skeleton, one mesh on it, and its clips.
+// The skeleton is data, so a different model needs only a different spec and content.
 
 import type { Clip } from "../../shared/anim/clip.ts";
 import type { PackRig } from "../../shared/pack/pack.ts";
@@ -19,23 +8,22 @@ import { convertClips, type ClipSpec } from "./anim.ts";
 import { nodeParents, readAccessor, restMatrices, type Gltf } from "./gltf.ts";
 import type { SourceMesh } from "./write.ts";
 
-/** How a family of models (everything on one set of bones) is read. */
+/** One per family of models that share a set of bones. */
 export interface SkeletonSpec {
   /** Id shared by every rig on these bones. */
   id: string;
-  /** The joint that becomes the root bone: the one whose travel the clips keep. */
+  /** The joint that becomes the root bone, whose travel the clips keep. */
   root: string;
-  /** Joints left out. What they carried follows the nearest joint above that is kept. */
+  /** Joints left out. Their vertices follow the nearest kept joint above. */
   drop: RegExp;
-  /** Bones that hang on another bone than the model's joint hangs on: bone name to parent name. */
+  /** Bone name to parent name, for bones that hang on a different parent than in the model. */
   reparent: Readonly<Record<string, string>>;
   /**
-   * Hit capsules: the zone, the bone that carries it, the joints it runs
-   * from and to (any of the model's, kept or not), and every bone whose
-   * vertices it covers.
+   * Hit capsules. `on` is the bone that carries the capsule, `from` and `to` are any joints of the model (kept or
+   * not), and `covers` lists the bones whose vertices it fits.
    */
   zones: readonly { zone: number; on: string; from: string; to: string; covers: readonly string[] }[];
-  /** Named places: on which bone, and how to find the place among the vertices of which bones. */
+  /** Named places on a bone, found at the top or front of the vertices of the bones in `of`. */
   sockets: readonly { name: string; bone: string; of: readonly string[]; at: "top" | "front" }[];
 }
 
@@ -46,7 +34,7 @@ export interface CreatureSpec {
   scale: number;
   /** The model's materials in the order of the colour regions they become. */
   regions: readonly string[];
-  /** Animations of the model, and the name each clip gets after the rig's id. */
+  /** A clip's id is "<rig id>/<name>". */
   clips: readonly { source: string; name: string; loop: boolean }[];
 }
 
@@ -71,7 +59,7 @@ export function convertCreature(g: Gltf, skeleton: SkeletonSpec, spec: CreatureS
   if (!skin) throw new Error(`${g.path}: no skin`);
   const nameOf = (n: number): string => nodes[n]!.name ?? "";
 
-  // The bones: the skin's joints that are kept, the root first and every parent before its children.
+  // Bones are the kept joints of the skin, the root first and every parent before its children.
   const kept = skin.joints.filter((n) => !skeleton.drop.test(nameOf(n)));
   const parentName = (n: number): string | null => {
     const moved = skeleton.reparent[nameOf(n)];
@@ -86,7 +74,7 @@ export function convertCreature(g: Gltf, skeleton: SkeletonSpec, spec: CreatureS
       const name = nameOf(n);
       if (names.includes(name)) continue;
       const p = parentName(n);
-      // A kept joint with nothing kept above it but the root's own ancestors hangs on the root.
+      // A kept joint with no kept joint above it hangs on the root.
       if (p === null || names.includes(p)) {
         names.push(name);
         grew = true;
@@ -105,7 +93,7 @@ export function convertCreature(g: Gltf, skeleton: SkeletonSpec, spec: CreatureS
   const scale = spec.scale;
   const rest = names.flatMap((_, b) => [0, 1, 2].map((k) => world[nodeOfBone[b]!]![12 + k]! * scale));
 
-  // Every joint, kept or not, as the bone its vertices follow.
+  // Maps every joint, kept or not, to the bone its vertices follow.
   const boneOfNode = new Map<number, number>();
   for (const n of skin.joints) {
     let at = n;
@@ -113,7 +101,7 @@ export function convertCreature(g: Gltf, skeleton: SkeletonSpec, spec: CreatureS
     boneOfNode.set(n, at >= 0 ? names.indexOf(nameOf(at)) : 0);
   }
 
-  // The mesh: every primitive of every skinned mesh, as one.
+  // Every primitive of every skinned mesh goes into one mesh. A vertex follows the one joint that weighs most on it.
   const positions: number[] = [];
   const colors: number[] = [];
   const bones: number[] = [];
@@ -145,7 +133,6 @@ export function convertCreature(g: Gltf, skeleton: SkeletonSpec, spec: CreatureS
   if (positions.length === 0) throw new Error(`${g.path}: no skinned mesh`);
   if (positions.length / 3 > 65535) throw new Error(`${g.path}: too many vertices for one mesh`);
 
-  // The vertices of a set of bones, for fitting things to.
   const vertsOf = (covers: readonly string[]): number[] => {
     const set = new Set(covers.map(bone));
     const out: number[] = [];
@@ -153,7 +140,7 @@ export function convertCreature(g: Gltf, skeleton: SkeletonSpec, spec: CreatureS
     return out;
   };
 
-  // Hit capsules: along the line from one joint to another, as long as the vertices it covers reach and as wide as most of them are far from it.
+  // A hit capsule runs along the line between two joints, as far as its vertices reach, with a radius that holds 85% of them.
   const caps: number[] = [];
   const jointAt = (name: string): number[] => {
     const n = nodes.findIndex((node) => node.name === name);
@@ -181,14 +168,14 @@ export function convertCreature(g: Gltf, skeleton: SkeletonSpec, spec: CreatureS
       away.push(Math.hypot(r[0]! - t * d[0]!, r[1]! - t * d[1]!, r[2]! - t * d[2]!));
     }
     const radius = Math.max(0.03, percentile(away, 0.85));
-    // The round ends reach past the segment by the radius: the segment stops that much short of where the vertices do.
+    // The round ends reach past the segment, so the segment stops short of where the vertices end.
     let t0 = percentile(along, 0.03) + radius * 0.6;
     let t1 = percentile(along, 0.97) - radius * 0.6;
     if (t1 < t0) t0 = t1 = (t0 + t1) / 2;
     caps.push(carrier, z.zone, ...[t0, t1].flatMap((t) => d.map((c, k) => +(from[k]! + c * t - rest[carrier * 3 + k]!).toFixed(4))), +radius.toFixed(4));
   }
 
-  // Sockets: the top of the back, the front of the head, relative to the bone that carries them.
+  // Socket positions are relative to the bone that carries them.
   const sockets = skeleton.sockets.map((s) => {
     const b = bone(s.bone);
     const verts = vertsOf(s.of);
@@ -196,12 +183,12 @@ export function convertCreature(g: Gltf, skeleton: SkeletonSpec, spec: CreatureS
     let y = rest[b * 3 + 1]!;
     let z = rest[b * 3 + 2]!;
     if (s.at === "top") {
-      // The highest the body is within a short way, fore and aft, of the bone.
+      // The highest vertex within a short way of the bone, fore and aft.
       y = -Infinity;
       for (const v of verts) if (Math.abs(positions[v * 3 + 2]! - z) < 0.35 * scale * 4 && Math.abs(positions[v * 3]!) < 0.2 * scale * 4 && positions[v * 3 + 1]! > y) y = positions[v * 3 + 1]!;
       if (y === -Infinity) y = rest[b * 3 + 1]!;
     } else {
-      // The furthest forward of them, at the height and side it is.
+      // The vertex furthest forward.
       for (const v of verts) {
         if (positions[v * 3 + 2]! <= z) continue;
         x = positions[v * 3]!;

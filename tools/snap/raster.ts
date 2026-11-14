@@ -1,13 +1,5 @@
-// Software rasterizer: executes a frame packet on the CPU.
-//
-// It exists so that rendering can be looked at and tested without a browser.
-// It reads the same packet, the same pack bytes and the same shading constants
-// as the WebGL2 shell, so a wrong culling decision, level of detail, transform
-// or colour region shows up here first. It also records what is under every
-// pixel (terrain, which structure, which entity), which tests assert on.
-//
-// It is not fast and does not try to be: z-buffered triangles, flat shading,
-// near-plane clipping, perspective-correct checker.
+// Software rasterizer that executes a frame packet on the CPU, so rendering can be looked at and tested without a browser.
+// It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { NEAR_BODY } from "../../client/core/render/camera.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
@@ -33,11 +25,11 @@ export class Rasterizer {
   readonly height: number;
   readonly color: Uint8ClampedArray;
   readonly depth: Float32Array;
-  /** What each pixel shows: PICK_SKY, PICK_TERRAIN, PICK_STRUCTURE or PICK_ENTITY. */
+  /** PICK_* per pixel. */
   readonly pickKind: Uint8Array;
   /** Structure ref (chunk * 65536 + slot) or entity slot index. */
   readonly pickId: Uint32Array;
-  /** For a body with bones: one more than the bone the triangle under the pixel follows. 0 elsewhere. */
+  /** One more than the bone the triangle under the pixel follows. 0 where no skinned body is drawn. */
   readonly pickBone: Uint8Array;
   trianglesDrawn = 0;
 
@@ -46,7 +38,7 @@ export class Rasterizer {
   private readonly buffers = new Map<number, { data: Uint8Array; slots: Uint16Array }>();
   private readonly lods = new Map<number, DecodedLod>();
   private packet!: FramePacket;
-  /** The matrix and near distance triangles are drawn with: the packet's own, or its near pass. */
+  /** The matrix and near distance in use: the packet's main pass or its near pass. */
   private matrix!: Float32Array;
   private nearClip = 0.05;
   /** Triangles are drawn without the checker. */
@@ -54,7 +46,7 @@ export class Rasterizer {
   /** What `pickBone` gets for the triangle being drawn. */
   private bone = 0;
   private scratch = new Float32Array(3 * 1024);
-  // Clip scratch: up to 4 vertices of (rel x, y, z, clip x, y, w, ndc depth).
+  // Clip scratch: up to 4 vertices of (camera-relative x, y, z, screen x, y, 1/w, NDC depth).
   private readonly poly = new Float64Array(4 * 7);
 
   constructor(width: number, height: number, pack: Pack, hf: Heightfield) {
@@ -93,7 +85,7 @@ export class Rasterizer {
     this.bone = 0;
     this.terrain(packet);
     for (let d = 0; d < packet.drawCount; d++) {
-      // The viewer's own body: over everything drawn so far, with its own near plane.
+      // The viewer's own body draws over everything so far, with its own near plane.
       if ((packet.drawFlags[d]! & DRAW_NEAR) !== 0 && this.matrix !== packet.nearViewProj) {
         this.matrix = packet.nearViewProj;
         this.nearClip = NEAR_BODY;
@@ -222,7 +214,7 @@ export class Rasterizer {
     return lod;
   }
 
-  /** Draw one triangle given camera-relative positions. Counter-clockwise faces the viewer. */
+  /** Positions are camera-relative. Counter-clockwise faces the viewer. */
   private triangle(pos: Float32Array, ia: number, ib: number, ic: number, colorIndex: number, solid: boolean, pickKind: number, pickId: number, blend = false): void {
     const p = this.packet;
     const ax = pos[ia * 3]!, ay = pos[ia * 3 + 1]!, az = pos[ia * 3 + 2]!;
@@ -287,7 +279,7 @@ export class Rasterizer {
     const r = pal[colorIndex * 4]! * light;
     const g = pal[colorIndex * 4 + 1]! * light;
     const b = pal[colorIndex * 4 + 2]! * light;
-    // Checker sample point: world position, pushed slightly behind the face.
+    // The checker samples the world position, pushed slightly behind the face.
     const sx = p.camX - nx * CHECK_INSET;
     const sy = p.camY - ny * CHECK_INSET;
     const sz = p.camZ - nz * CHECK_INSET;

@@ -1,8 +1,5 @@
-// Development server: builds the client, starts the world, rebuilds the client
-// when client or shared sources change. Restart it for server changes
-// (`bun --watch tools/dev.ts` does that automatically).
-//
-//   bun run dev
+// Development server. It rebuilds the client when client, shared or content sources change. Restart it for
+// server changes, or run `bun --watch tools/dev.ts`.
 
 import { watch } from "node:fs";
 import { resolve } from "node:path";
@@ -12,7 +9,7 @@ import { buildClient } from "./build-client.ts";
 
 const root = resolve(import.meta.dir, "..");
 await buildClient();
-// A development server's settings: its own folder, or the one named after `--config`; then anything given ARK's way on the command line.
+// Settings come from DEV_CONFIG or the folder named after --config, then from ARK-style command-line arguments.
 const args = process.argv.slice(2);
 const named = args.indexOf("--config");
 const folder = named >= 0 && args[named + 1] ? args[named + 1]! : DEV_CONFIG;

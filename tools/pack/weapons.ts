@@ -1,19 +1,5 @@
-// Meshes of things held in the hand, written as code: a few boxes each, in the
-// game's palette. Enough to read at a glance what someone is holding and where
-// it points.
-//
-// A held thing follows one bone, the prop bone of the hand that holds it, and
-// is modelled in that bone's space with the grip at the origin. In the
-// skeleton's T-pose the right arm runs along -X with the palm down, so:
-//
-//   right hand   the thing's length runs along +Z (a tool's head, a barrel's
-//                muzzle), and +Y is its top. With the arm hanging, it points
-//                forward; raised to the shoulder, it points where the body looks.
-//   left hand    a bow: its limbs run along Y and it shoots along +X, which is
-//                where the left arm points, so it is upright and aimed when
-//                that arm is held out.
-//
-// Arrows and darts in flight are rigid meshes of their own, pointing along +Z.
+// A held mesh follows the prop bone of the hand that holds it, with the grip at the origin. In the right hand its length
+// runs along +Z and +Y is its top. A bow in the left hand has its limbs along Y and shoots along +X. Projectiles point along +Z.
 
 import { B_PROP_L, B_PROP_R, HUMAN } from "../../shared/anim/human.ts";
 import { boxMesh, type SourceLod, type SourceMesh } from "./write.ts";
@@ -26,7 +12,6 @@ const SLATE = 4;
 const STRING = 10;
 const STONE = 15;
 
-/** Boxes gathered into one level of detail. Each: centre, half extents, colour. */
 type Box = readonly [cx: number, cy: number, cz: number, hx: number, hy: number, hz: number, color: number];
 
 function build(boxes: readonly Box[], bone: number | null): SourceLod {
@@ -45,12 +30,11 @@ function build(boxes: readonly Box[], bone: number | null): SourceLod {
   return lod;
 }
 
-/** A thing held: follows a prop bone of the humanoid skeleton. */
 function held(id: string, bone: number, boxes: readonly Box[]): SourceMesh {
   return { id, lods: [build(boxes, bone)], skeleton: HUMAN.id };
 }
 
-/** A bow's limbs as short straight pieces along Y, their ends drawn back toward the archer at -X; then its string. */
+/** The limbs are short straight pieces along Y, with their ends drawn back toward the archer at -X. */
 function bow(): Box[] {
   const boxes: Box[] = [[0, 0, 0, 0.022, 0.09, 0.02, WOOD]];
   const pieces = 5;
@@ -68,7 +52,7 @@ function bow(): Box[] {
   return boxes;
 }
 
-/** Every held thing and every thing that flies, by the mesh id content names. */
+/** Ids are the mesh ids that content names. */
 export function weaponMeshes(): SourceMesh[] {
   return [
     held("core:hatchet", B_PROP_R, [[0, 0, 0.12, 0.014, 0.014, 0.23, WOOD], [0, 0.03, 0.3, 0.01, 0.065, 0.045, STONE]]),
@@ -85,13 +69,13 @@ export function weaponMeshes(): SourceMesh[] {
     ]),
     held("core:pistol", B_PROP_R, [[0, -0.035, 0, 0.014, 0.055, 0.02, WOOD], [0, 0.035, 0.07, 0.014, 0.022, 0.11, SLATE], [0, 0.04, 0.2, 0.008, 0.008, 0.03, DARK]]),
     held("core:grenade", B_PROP_R, [[0, 0, 0.03, 0.04, 0.05, 0.04, 7], [0, 0.06, 0.03, 0.014, 0.014, 0.014, METAL]]),
-    // In flight: the head leads along +Z, the origin at the head so that a stuck one stands out of what it hit.
+    // The origin is at the head, so a stuck arrow stands out of what it hit.
     { id: "core:arrow", lods: [build([[0, 0, -0.36, 0.006, 0.006, 0.36, WOOD_LIGHT], [0, 0, 0.02, 0.014, 0.004, 0.03, STONE], [0, 0, -0.66, 0.003, 0.03, 0.05, STRING], [0, 0, -0.66, 0.03, 0.003, 0.05, STRING]], null)] },
     { id: "core:dart", lods: [build([[0, 0, -0.07, 0.005, 0.005, 0.08, METAL], [0, 0, -0.16, 0.014, 0.014, 0.03, 9]], null)] },
-    // A grenade out of the hand, and the flash of one going off: a cube a metre across, stretched to the size of the blast when it is drawn.
+    // The blast is a cube a metre across, scaled to the size of the explosion when drawn.
     { id: "core:grenade_thrown", lods: [build([[0, 0.05, 0, 0.04, 0.05, 0.04, 7], [0, 0.11, 0, 0.014, 0.014, 0.014, METAL]], null)] },
     { id: "core:blast", lods: [build([[0, 0, 0, 0.5, 0.5, 0.5, 6]], null)] },
-    // The line a round leaves: a metre of it along +Z from the origin, stretched to the length of the shot when it is drawn.
+    // The tracer is a metre long along +Z from the origin, scaled to the length of the shot when drawn.
     { id: "core:tracer", lods: [build([[0, 0, 0.5, 0.006, 0.006, 0.5, 6]], null)] },
   ];
 }

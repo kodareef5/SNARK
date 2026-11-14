@@ -146,12 +146,12 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
   });
 }
 
-/** A box mesh, one colour, outward-facing triangles. Used for graybox content. */
+/** One colour, outward-facing triangles. */
 export function boxMesh(half: readonly [number, number, number], color: number): SourceLod {
   const [hx, hy, hz] = half;
   const positions: number[] = [];
   const indices: number[] = [];
-  // Each face: a corner and two edge vectors whose cross product points outward.
+  // Each face is a corner and two edge vectors whose cross product points outward.
   const faces: [number[], number[], number[]][] = [
     [[hx, -hy, -hz], [0, 2 * hy, 0], [0, 0, 2 * hz]], // +X
     [[-hx, -hy, hz], [0, 2 * hy, 0], [0, 0, -2 * hz]], // -X

@@ -1,28 +1,17 @@
-// The one command every change must pass: `bun run check`.
-//
-// It enforces the rules that keep this project fast to change:
-//   - zone import boundaries (who may import whom)
-//   - no browser test suite and no browser automation packages
-//   - zero runtime packages, allow-listed development packages
-//   - deterministic maths inside the simulation
-//   - a small DOM/WebGL shell, and a small browser side of voice
-//   - a wall-clock budget for the whole check
-//
-// Raising a budget or widening an allow-list is a decision, not a fix.
-// Record it in planning/decisions.md in the same change.
+// `bun run check`, the one command every change must pass. It enforces the rules that keep this project fast to change.
+// Raising a budget or widening an allow-list is a decision. Record it in planning/decisions.md in the same change.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 
-/** Whole-check wall clock budget in seconds. */
+/** Wall-clock budget for the whole check. */
 const BUDGET_SECONDS = 20;
-/** Non-blank, non-comment lines allowed in client/shell. */
+/** Non-blank, non-comment lines allowed in client/shell, which has no tests. */
 const SHELL_MAX_LINES = 900;
-/** And in client/voice: the browser's side of voice, which like the shell has no tests. */
+/** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
-/** Development packages allowed in package.json. */
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
 
 interface Zone {

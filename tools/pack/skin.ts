@@ -1,21 +1,5 @@
-// Turns a skinned, textured glTF body into what the game draws: meshes cut by
-// body slot, every vertex on one bone of the 28-bone skeleton, every triangle
-// one palette colour or colour region.
-//
-// The source is what tools/blender/reduce.py wrote: the original body at a few
-// levels of detail, still on its 65-joint skeleton, still with texture
-// coordinates. Three things are decided here:
-//
-//   bone     a vertex follows the bone of ours that the joints it was weighted
-//            to add up to most strongly. Fingers fold into one bone, toes into
-//            another.
-//   colour   a triangle takes the colour its texture has at its middle, turned
-//            into a palette index or a colour region by a rule per material.
-//   slot     a triangle belongs to the slot of the bone most of its corners
-//            follow, so a worn piece can replace exactly that part.
-//
-// The body's own joint positions become its rig: the same bones as the
-// skeleton, resting where this body has them.
+// Turns a skinned, textured glTF body from tools/blender/reduce.py into meshes cut by body slot. Every vertex
+// follows one bone of the 28-bone skeleton, and every triangle has one palette colour or colour region.
 
 import {
   B_FINGERS_L, B_FINGERS_R, B_HAND_L, B_HAND_R, B_PROP_L, B_PROP_R, B_THUMB_L, B_THUMB_R, B_TOE_L, B_TOE_R, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_NAMES,
@@ -26,7 +10,7 @@ import { multiply4, nodeParents, readAccessor, restMatrices, type Gltf } from ".
 import { sampleImage, type Image } from "./png-read.ts";
 import type { SourceLod, SourceMesh } from "./write.ts";
 
-/** A texture colour (0..255 each) to a palette index or colour region. */
+/** Maps a texture colour, 0 to 255 per channel, to a palette index or colour region. */
 export type ColorRule = (r: number, g: number, b: number) => number;
 
 export interface MaterialRule {
@@ -38,19 +22,15 @@ export interface MaterialRule {
 export interface BodyOptions {
   /** Mesh id prefix, such as "core:human_m". Slot meshes are "<id>/head" and so on. */
   id: string;
-  /** Scale applied to the source, so that the body is the size the skeleton is. */
+  /** Applied to the source so the body is the size of the skeleton. */
   scale: number;
-  /** Rule per material name. A primitive whose material has no rule is left out, with a warning. */
+  /** Keyed by material name. A primitive whose material has no rule is left out, with a warning. */
   materials: Readonly<Record<string, MaterialRule>>;
-  /** Id of the rig these meshes are made on. */
+  /** Rig id. */
   rig: string;
   /** Make one mesh with this id instead of cutting by slot (hair, a beard). */
   whole?: string;
-  /**
-   * Where the joints of the body it will be worn on rest. Vertices are moved,
-   * bone by bone, from where the source's joints rest to these, so that a piece
-   * sits right on a body it was not modelled on.
-   */
+  /** Joint rest positions of the body it will be worn on. Each vertex moves by its bone's offset, so the piece fits that body. */
   onto?: readonly number[];
 }
 
@@ -66,12 +46,12 @@ interface Part {
   colors: number[];
   bones: number[];
   indices: number[];
-  /** (source vertex, colour) to vertex of this part, and source vertex to any one of its copies. */
+  /** seen maps (source vertex, colour) to a vertex of this part. any maps a source vertex to any one of its copies. */
   seen: Map<number, number>;
   any: Map<number, number>;
 }
 
-/** Which of our bones each joint of the source skeleton moves, by node index. */
+/** The human bone each source joint moves, by node index. */
 function boneOfJoints(g: Gltf): Map<number, number> {
   const nodes = g.json.nodes ?? [];
   const parent = nodeParents(g);
@@ -86,12 +66,12 @@ function boneOfJoints(g: Gltf): Map<number, number> {
   nodes.forEach((node, i) => {
     const name = node.name ?? "";
     const side = /_l$/.test(name) ? 0 : 1;
-    // Every finger joint folds into the one fingers bone of its hand, every thumb joint into the thumb.
+    // Every finger joint folds into its hand's one fingers bone, and every thumb joint into the thumb.
     if (/^(index|middle|ring|pinky)_/.test(name)) out.set(i, side === 0 ? B_FINGERS_L : B_FINGERS_R);
     else if (/^thumb_/.test(name)) out.set(i, side === 0 ? B_THUMB_L : B_THUMB_R);
     else if (/^ball_/.test(name)) out.set(i, side === 0 ? B_TOE_L : B_TOE_R);
     else {
-      // Anything else follows the nearest joint above it that is one of ours.
+      // Any other joint follows the nearest mapped joint above it.
       for (let j = i; j >= 0; j = parent[j]!) {
         const bone = direct.get(j);
         if (bone !== undefined) {
@@ -104,7 +84,7 @@ function boneOfJoints(g: Gltf): Map<number, number> {
   return out;
 }
 
-/** Where the source's joints rest, scaled, as positions of our 28 bones. */
+/** The source's joint rest positions, scaled, as positions of the 28 human bones. */
 export function rigOf(g: Gltf, id: string, scale: number): PackRig {
   const nodes = g.json.nodes ?? [];
   const world = restMatrices(g);
@@ -115,18 +95,14 @@ export function rigOf(g: Gltf, id: string, scale: number): PackRig {
     if (i < 0) throw new Error(`${g.path}: no joint named "${name}"`);
     for (let k = 0; k < 3; k++) rest[bone * 3 + k] = world[i]![12 + k]! * scale;
   });
-  // The prop bones have no joint in the source: they sit in the palm as they do on the skeleton.
+  // The prop bones have no source joint. They sit in the palm as they do on the skeleton.
   for (const [prop, hand] of [[B_PROP_L, B_HAND_L], [B_PROP_R, B_HAND_R]] as const) {
     for (let k = 0; k < 3; k++) rest[prop * 3 + k] = rest[hand * 3 + k]! + HUMAN.rest[prop * 3 + k]! - HUMAN.rest[hand * 3 + k]!;
   }
   return { id, skeleton: HUMAN.id, rest: rest.map((v) => +v.toFixed(5)) };
 }
 
-/**
- * Convert every skinned mesh of the given files into one set of meshes. Nodes
- * named "..._LOD<n>" are level n; others level 0. Several files are several
- * parts of one thing (an outfit's body, arms, legs and feet).
- */
+/** Nodes named "..._LOD<n>" are level n, others level 0. Several files are parts of one thing, such as an outfit's pieces. */
 export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions): ConvertedBody {
   const list = Array.isArray(sources) ? (sources as readonly Gltf[]) : [sources as Gltf];
   const warnings: string[] = [];
@@ -151,7 +127,7 @@ export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions):
     const parts = levels[level]!;
     const skin = json.skins![node.skin]!;
     const inverse = skin.inverseBindMatrices === undefined ? null : readAccessor(g, skin.inverseBindMatrices).data;
-    // What carries a vertex of this mesh to model space at rest, per joint: world(joint) * inverseBind(joint).
+    // Per joint, world(joint) * inverseBind(joint) carries a vertex of this mesh to model space at rest.
     const bind = skin.joints.map((j, k) => (inverse ? multiply4(world[j]!, inverse.subarray(k * 16, k * 16 + 16)) : world[j]!));
     for (const prim of json.meshes![node.mesh]!.primitives) {
       if ((prim.mode ?? 4) !== 4) continue;
@@ -178,7 +154,7 @@ export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions):
       const count = pos.length / 3;
       const index = prim.indices === undefined ? Float64Array.from({ length: count }, (_, i) => i) : readAccessor(g, prim.indices).data;
 
-      // Per source vertex: where it is in model space, and the bone it follows.
+      // A vertex follows the human bone that its joint weights add up to most strongly.
       const model = new Float64Array(count * 3);
       const bone = new Uint8Array(count);
       const sum = new Float64Array(HUMAN_BONES);
@@ -199,7 +175,6 @@ export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions):
         const x = pos[v * 3]!, y = pos[v * 3 + 1]!, z = pos[v * 3 + 2]!;
         for (let k = 0; k < 3; k++) {
           let p = (m[k]! * x + m[4 + k]! * y + m[8 + k]! * z + m[12 + k]!) * opts.scale;
-          // A piece made on another body moves, bone by bone, to where this one's joints are.
           if (opts.onto) p += opts.onto[best * 3 + k]! - rig.rest[best * 3 + k]!;
           model[v * 3 + k] = p;
         }
@@ -208,7 +183,7 @@ export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions):
       for (let t = 0; t + 2 < index.length; t += 3) {
         const i0 = index[t]!, i1 = index[t + 1]!, i2 = index[t + 2]!;
         if (i0 === i1 || i1 === i2 || i0 === i2) continue;
-        // The colour at the middle of the triangle.
+        // A triangle takes the texture colour at its middle.
         let color = 0;
         if (rule.image) {
           const u = (uv![i0 * 2]! + uv![i1 * 2]! + uv![i2 * 2]!) / 3;
@@ -216,14 +191,14 @@ export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions):
           sampleImage(rule.image, u, w, 2, rgb);
           color = rule.color(rgb[0]!, rgb[1]!, rgb[2]!);
         } else color = rule.color(0, 0, 0);
-        // The slot most corners belong to; the first corner's when all three differ.
+        // A triangle goes to the slot most of its corners belong to, or the first corner's when all three differ.
         let slot = 0;
         if (!whole) {
           const s0 = HUMAN.slot[bone[i0]!]!, s1 = HUMAN.slot[bone[i1]!]!, s2 = HUMAN.slot[bone[i2]!]!;
           slot = s1 === s2 ? s1 : s0;
         }
         const part = parts[slot]!;
-        // A triangle is drawn in the colour of its last vertex, so that vertex is one of this colour.
+        // A triangle is drawn in the colour of its last vertex, so that vertex must have this colour.
         const corner = (i: number): number => {
           const key = i * 256 + color;
           let at = part.seen.get(key);
@@ -237,11 +212,11 @@ export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions):
           }
           return at;
         };
-        // The other two corners take any copy of their vertex that exists: their colour is not used.
+        // The other two corners take any existing copy of their vertex, because their colour is not used.
         const shared = (i: number): number => part.any.get(i) ?? corner(i);
         part.indices.push(shared(i0), shared(i1), corner(i2));
       }
-      // Vertex keys are per primitive: another primitive's vertex numbers mean other vertices.
+      // Vertex keys are per primitive, because another primitive numbers its own vertices.
       for (const p of parts) {
         p.seen.clear();
         p.any.clear();
@@ -264,6 +239,6 @@ export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions):
     if (lods.length === 0) continue;
     meshes.push({ id, lods, skeleton: HUMAN.id, rig: opts.rig });
   }
-  // Made to sit on another body's joints, it is on that body's rig.
+  // A piece fitted onto another body's joints is on that body's rig.
   return { meshes, rig: opts.onto ? { id: opts.rig, skeleton: HUMAN.id, rest: [...opts.onto] } : rig, warnings };
 }

@@ -1,15 +1,12 @@
-// Core content: the survivor body and the graybox pieces of the proving ground.
-// Colours are palette indices; see shared/pack/palette.ts.
+// Colours are palette indices. See shared/pack/palette.ts.
 
 import type { Def } from "../shared/content/defs.ts";
 import { BUILDING_CONTENT } from "./building.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
-/** Bare ids get the pack's namespace. */
 const id = (name: string): string => `core:${name}`;
 
-// Armor: four tiers of five pieces. A tier is a mesh set, three colours, and a rating and
-// durability shared by its pieces; a full set of a tier rates five times one piece.
+// Every piece of an armor tier has the same rating and durability, so a full set rates five times one piece.
 const ARMOR_TIERS: readonly { tier: string; set: string; armor: number; uses: number; weight: number; colors: readonly [number, number, number] }[] = [
   { tier: "cloth", set: "cloth", armor: 10, uses: 25, weight: 0.4, colors: [1, 15, 225] },
   { tier: "hide", set: "hide", armor: 20, uses: 45, weight: 1.5, colors: [227, 228, 225] },
@@ -30,7 +27,6 @@ const ARMOR: Def[] = ARMOR_TIERS.flatMap((t) =>
 const ATTACHMENTS = [id("scope"), id("silencer"), id("flashlight"), id("laser")];
 const ARROWS = [id("arrow_stone"), id("arrow_tranq"), id("arrow_flame")];
 
-/** Materials, weapons, ammunition, attachments and armor. */
 const GEAR: Def[] = [
   { type: "item", id: id("hide"), stack: 200, weight: 0.01, color: 227 },
   { type: "item", id: id("chitin"), stack: 100, weight: 0.05, color: 9 },
@@ -40,16 +36,15 @@ const GEAR: Def[] = [
   { type: "item", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, dose: { torpor: 40, seconds: 8 } },
 
   { type: "item", id: id("spear"), stack: 1, weight: 2, color: 3, weapon: { kind: "melee", damage: 30, type: "pierce", reach: 3, uses: 20, mesh: id("spear"), hold: "spear" } },
-  // A bow gives its arrow more the longer it is drawn: a quarter of the damage undrawn, all of it after 1.2 s.
+  // A bow does a quarter of the arrow's damage undrawn and all of it after 1.2 s of draw.
   { type: "item", id: id("bow"), stack: 1, weight: 4, color: 3, weapon: { kind: "bow", ammo: ARROWS, power: 1, reload: 0.66, draw: 1.2, uses: 50, mesh: id("bow"), hold: "bow" } },
-  // A crossbow is always fully drawn and works under water; a stone arrow from it does 95.
+  // A stone arrow from a crossbow does 95.
   { type: "item", id: id("crossbow"), stack: 1, weight: 6, color: 4, weapon: { kind: "gun", ammo: ARROWS, power: 95 / 55, reload: 2.6, uses: 100, wet: true, mesh: id("crossbow"), hold: "rifle" } },
   { type: "item", id: id("rifle"), stack: 1, weight: 9, label: "long rifle", color: 228, weapon: { kind: "gun", ammo: [id("round_rifle"), id("dart_tranq"), id("dart_shock")], power: 1, reload: 4.5, uses: 70, fits: ATTACHMENTS, mesh: id("rifle"), hold: "rifle" } },
   { type: "item", id: id("pistol"), stack: 1, weight: 3, color: 2, weapon: { kind: "gun", ammo: [id("round_pistol")], power: 1, clip: 6, reload: 2.2, interval: 0.35, uses: 60, fits: ATTACHMENTS, mesh: id("pistol"), hold: "pistol" } },
   { type: "item", id: id("grenade"), stack: 10, weight: 1, color: 7, weapon: { kind: "thrown", damage: 788, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" } },
 
   { type: "item", id: id("arrow_stone"), stack: 50, weight: 0.2, label: "stone arrow", color: 15, ammo: { damage: 55, type: "pierce", speed: 70, gravity: 9.81, recover: 0.5, mesh: id("arrow") } },
-  // Little damage and much torpor: twice the damage at once, and two and a half times more over five seconds.
   { type: "item", id: id("arrow_tranq"), stack: 50, weight: 0.2, label: "tranquilizer arrow", color: 9, ammo: { damage: 20, type: "pierce", speed: 70, gravity: 9.81, torpor: { instant: 2, over: 2.5, seconds: 5 }, mesh: id("arrow") } },
   { type: "item", id: id("arrow_flame"), stack: 50, weight: 0.2, label: "flame arrow", color: 3, ammo: { damage: 55, type: "fire", speed: 70, gravity: 9.81, buff: id("burning"), mesh: id("arrow") } },
   { type: "item", id: id("round_rifle"), stack: 50, weight: 0.1, label: "rifle round", color: 6, ammo: { damage: 280, type: "bullet" } },
@@ -65,7 +60,7 @@ const GEAR: Def[] = [
 ];
 
 type Needs = readonly (readonly [item: string, count: number])[];
-/** One engram that unlocks one recipe for one thing: the usual case. */
+/** One engram that unlocks one recipe. */
 function making(name: string, label: string, level: number, cost: number, count: number, seconds: number, needs: Needs): Def[] {
   return [
     { type: "recipe", id: id(`make-${name}`), makes: id(name), count, needs: needs.map(([item, n]) => ({ item: id(item), count: n })), seconds, xp: Math.max(1, Math.round(level / 3)) },
@@ -73,7 +68,7 @@ function making(name: string, label: string, level: number, cost: number, count:
   ];
 }
 
-/** What each armor piece of a tier costs, and the level and points of its engram. */
+/** level and cost are the tier engram's level and points. */
 const ARMOR_MAKING: Readonly<Record<string, { level: number; cost: number; needs: Readonly<Record<string, Needs>> }>> = {
   cloth: { level: 3, cost: 3, needs: { hat: [["fiber", 10]], shirt: [["fiber", 40]], gloves: [["fiber", 20]], pants: [["fiber", 50]], boots: [["fiber", 25], ["hide", 6]] } },
   hide: { level: 15, cost: 9, needs: { hat: [["hide", 15], ["fiber", 6]], shirt: [["hide", 20], ["fiber", 8]], gloves: [["hide", 10], ["fiber", 4]], pants: [["hide", 25], ["fiber", 10]], boots: [["hide", 12], ["fiber", 5]] } },
@@ -81,7 +76,7 @@ const ARMOR_MAKING: Readonly<Record<string, { level: number; cost: number; needs
   flak: { level: 56, cost: 16, needs: { hat: [["ingot", 10], ["hide", 7], ["fiber", 3]], shirt: [["ingot", 13], ["hide", 10], ["fiber", 4]], gloves: [["ingot", 6], ["hide", 5], ["fiber", 2]], pants: [["ingot", 16], ["hide", 12], ["fiber", 5]], boots: [["ingot", 8], ["hide", 6], ["fiber", 4]] } },
 };
 
-/** Recipes and engrams for everything in GEAR that is made. Levels are those the reference game asks. */
+/** Levels are the reference game's. */
 const MAKING: Def[] = [
   ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]]),
   ...making("narcotic", "Narcotic", 6, 6, 1, 4, [["berry", 5], ["meat", 1]]),
@@ -103,7 +98,7 @@ const MAKING: Def[] = [
   ...making("laser", "Laser attachment", 50, 24, 1, 6, [["ingot", 50], ["stone", 40]]),
   ...making("dart_tranq", "Tranquilizer dart", 62, 30, 1, 4, [["narcotic", 3], ["ingot", 2]]),
   ...making("dart_shock", "Shock dart", 96, 60, 1, 4, [["narcotic", 6], ["ingot", 4], ["gunpowder", 4]]),
-  // A tier of armor is one engram that unlocks its five pieces.
+  // One engram unlocks all five pieces of an armor tier.
   ...ARMOR_TIERS.flatMap((t): Def[] => {
     const m = ARMOR_MAKING[t.tier]!;
     return [
@@ -113,7 +108,7 @@ const MAKING: Def[] = [
   }),
 ];
 
-/** One hundred levels. The first twenty are as they were; after that each takes a little more than the one before. */
+/** One hundred levels. */
 const LEVELS: Def = (() => {
   const xp = [0, 5, 20, 40, 70, 120, 180, 260, 360, 480, 620, 780, 960, 1160, 1380, 1620, 1880, 2160, 2460, 2780];
   const engramPoints = [0, 8, 8, 8, 8, 8, 12, 12, 12, 12, 12, 16, 16, 16, 16, 16, 20, 20, 20, 20];
@@ -145,7 +140,6 @@ export const CORE_CONTENT: readonly Def[] = [
     slots: 40,
     equips: true,
     fists: 8,
-    // A head counts three times.
     zones: { head: 3 },
     killXp: 10,
     // Knocked out at 200 torpor, and out for most of a minute.
@@ -165,15 +159,13 @@ export const CORE_CONTENT: readonly Def[] = [
     jumpSpeed: 5,
     food: { max: 400, perHour: 12 },
     drops: [{ item: "core:hide", min: 4, max: 9 }, { item: "core:meat", min: 3, max: 6 }],
-    // A rifle round does less to a creature than to a survivor.
     takes: { bullet: 0.7 },
     killXp: 4,
-    // Torpor grows with level as health does; once down it stays down for minutes.
+    // Once down it stays down for minutes.
     torporDrain: 0.6,
     stats: { health: [220, 0.2, 0.054], stamina: [180, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [400, 0.1, 0.1], weight: [200, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
   },
-  // Creatures whose bodies came as models: each a mesh, a skeleton and clips in the pack under its own id.
-  // A parasaur: large, slow to turn, and easily frightened.
+  // Modelled creatures. Each has a mesh, a skeleton and clips in the pack under its own id.
   {
     type: "species",
     id: "core:parasaur",
@@ -191,12 +183,12 @@ export const CORE_CONTENT: readonly Def[] = [
     fists: 12,
     bite: { reach: 4.6 },
     slots: 30,
-    // The reference's taming numbers for a parasaur; a herbivore, it eats berries.
+    // The reference game's taming numbers.
     taming: { a0: 1500, a1: 75, foodBase: 0.001929, proneMult: 864.01, k: 0.4 },
     eats: [{ item: "core:berry", food: 20, affinity: 20 }],
-    // Awake it hungers at the reference's rate for it (0.001929 a second): little, and its young 510 times that.
+    // The reference game's rate, 0.001929 a second. Its young start at 510 times that.
     food: { max: 1500, perHour: 0.27 },
-    // The reference's times: an egg hatches in 5,142 seconds, and what hatches is grown in 95,238.
+    // The reference game's times, in seconds.
     breeds: { egg: "core:egg_parasaur", incubate: 5142, mature: 95238 },
     drops: [{ item: "core:hide", min: 8, max: 16 }, { item: "core:meat", min: 8, max: 14 }],
     zones: { head: 1.5 },
@@ -204,7 +196,6 @@ export const CORE_CONTENT: readonly Def[] = [
     torporDrain: 0.3,
     stats: { health: [200, 0.2, 0.054], stamina: [200, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1500, 0.1, 0.1], weight: [255, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
   },
-  // A raptor: small, quick, and it hunts.
   {
     type: "species",
     id: "core:raptor",
@@ -225,10 +216,10 @@ export const CORE_CONTENT: readonly Def[] = [
     leash: 60,
     bite: { reach: 2.6 },
     slots: 20,
-    // The reference's taming numbers for a raptor; it eats meat, raw before cooked.
+    // The reference game's taming numbers.
     taming: { a0: 1200, a1: 60, foodBase: 0.001543, proneMult: 648.09, k: 3.125 },
     eats: [{ item: "core:meat", food: 50, affinity: 50 }, { item: "core:meat_cooked", food: 25, affinity: 25 }],
-    // The reference's rate again: 0.001543 a second.
+    // The reference game's rate, 0.001543 a second.
     food: { max: 1200, perHour: 0.216 },
     breeds: { egg: "core:egg_raptor", incubate: 7199, mature: 133333 },
     drops: [{ item: "core:hide", min: 5, max: 10 }, { item: "core:meat", min: 4, max: 8 }],
@@ -237,7 +228,7 @@ export const CORE_CONTENT: readonly Def[] = [
     torporDrain: 0.3,
     stats: { health: [200, 0.2, 0.054], stamina: [150, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1200, 0.1, 0.1], weight: [140, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [180, 0.06, 0] },
   },
-  // Something to hit: a survivor's shape and a survivor's zones, with health enough to outlast the practice.
+  // A practice target with a survivor's shape and zones.
   {
     type: "species",
     id: "core:dummy",
@@ -257,9 +248,7 @@ export const CORE_CONTENT: readonly Def[] = [
     stats: { health: [100000, 0, 0], torpidity: [200, 0, 0] },
     torporDrain: 4,
   },
-  // What things are built of, and what each kind of damage does to it, as the reference has it. The tiers
-  // differ in what can harm them, not in health. Thatch gives to anything but an arrow or a round; wood to
-  // fire and blasts; stone to blasts, which do more to it than to wood; metal to blasts, grudgingly.
+  // Damage multipliers by material, as in the reference game. The tiers differ in what can harm them, not in health.
   { type: "material", id: "core:mat_thatch", takes: { melee: 1, fire: 4, explosive: 1 }, decayDays: 4 },
   { type: "material", id: "core:mat_wood", takes: { fire: 3, explosive: 1 }, decayDays: 8 },
   { type: "material", id: "core:mat_stone", takes: { explosive: 2.3325 }, decayDays: 12 },
@@ -271,41 +260,36 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "structure", id: "core:ceiling", mesh: "box", color: 4, half: [1.5, 0.1, 1.5], hp: 10000, material: "core:mat_stone" },
   { type: "structure", id: "core:pillar", mesh: "box", color: 6, half: [0.25, 3, 0.25], hp: 6250, material: "core:mat_stone" },
   { type: "structure", id: "core:step", mesh: "box", color: 7, half: [1, 0.15, 0.5], hp: 400, material: "core:mat_wood" },
-  // The floor of the plaza is the map's own: nothing harms it.
+  // The plaza floor has no material, so nothing harms it.
   { type: "structure", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
-  // What survivors build with, in every material: content/building.ts.
   ...BUILDING_CONTENT,
-  // A grenade between the hand and the bang.
   { type: "prop", id: "core:grenade_live", mesh: "core:grenade_thrown", color: 7, radius: 0.08, height: 0.12 },
-  // What a survivor leaves where it dies: everything it carried.
+  // Holds everything a survivor carried when it died.
   { type: "prop", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
-  // What is dropped on the ground lies in one of these.
+  // Holds items dropped on the ground.
   { type: "prop", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
-  // What a female lays, one prop for each species that lays: it lies where it was laid until it hatches.
+  // One egg prop for each species that lays.
   { type: "prop", id: "core:egg_parasaur", mesh: "core:egg", color: 9, radius: 0.3, height: 0.7 },
   { type: "prop", id: "core:egg_raptor", mesh: "core:egg", color: 5, radius: 0.3, height: 0.7 },
-  // What can act on a body for a time.
   { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8 },
   { type: "buff", id: "core:tranquilized", label: "Tranquilized", color: 9, seconds: 5, again: "stack" },
-  // A narcotic at work: one after another, each begins when the last has done.
+  // A narcotic at work. Doses run one after another.
   { type: "buff", id: "core:drugged", label: "Drugged", color: 9, seconds: 8 },
   { type: "buff", id: "core:stunned", label: "Stunned", color: 6, seconds: 3, root: true },
   { type: "buff", id: "core:injured", label: "Injured", color: 8, speed: 0.8 },
   { type: "buff", id: "core:god", label: "God", color: 14, immune: true, good: true },
-  // An arrow that missed and did not break, standing where it landed until someone walks over it.
+  // A missed arrow that did not break. It stays where it landed until someone walks over it.
   { type: "prop", id: "core:arrow_stuck", mesh: "core:arrow", color: 15, radius: 0.1, height: 0.1, pitched: true },
   { type: "item", id: "core:fiber", stack: 200, weight: 0.01, color: 7 },
   { type: "item", id: "core:stone", stack: 100, weight: 0.5, color: 15 },
   { type: "item", id: "core:berry", stack: 100, weight: 0.1, spoilHours: 4, eat: { food: 4, water: 2 }, color: 8 },
   { type: "item", id: "core:meat", stack: 20, weight: 0.1, spoilHours: 1, eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 } },
-  // Saddles: each fits one kind of creature, lets it be ridden, and is its armor.
   { type: "item", id: "core:saddle_parasaur", stack: 1, weight: 10, label: "parasaur saddle", color: 3, saddle: { fits: "core:parasaur", armor: 25 } },
   { type: "item", id: "core:saddle_raptor", stack: 1, weight: 10, label: "raptor saddle", color: 3, saddle: { fits: "core:raptor", armor: 25 } },
   { type: "recipe", id: "core:make-saddle_parasaur", makes: "core:saddle_parasaur", count: 1, needs: [{ item: "core:hide", count: 80 }, { item: "core:fiber", count: 50 }, { item: "core:wood", count: 15 }], seconds: 10, xp: 6 },
   { type: "recipe", id: "core:make-saddle_raptor", makes: "core:saddle_raptor", count: 1, needs: [{ item: "core:hide", count: 110 }, { item: "core:fiber", count: 65 }, { item: "core:wood", count: 20 }], seconds: 10, xp: 8 },
   { type: "engram", id: "core:engram-saddle_parasaur", label: "Parasaur saddle", level: 9, cost: 9, unlocks: ["core:make-saddle_parasaur"] },
   { type: "engram", id: "core:engram-saddle_raptor", label: "Raptor saddle", level: 18, cost: 9, unlocks: ["core:make-saddle_raptor"] },
-  // Cooked, it feeds more and keeps twice as long.
   { type: "item", id: "core:meat_cooked", stack: 20, weight: 0.1, spoilHours: 2, eat: { food: 35, health: 8 }, color: 3, label: "cooked meat" },
   { type: "item", id: "core:waterskin", stack: 1, weight: 1, eat: { water: 60 }, label: "water skin", color: 14 },
   { type: "item", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
@@ -315,8 +299,6 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "item", id: "core:hatchet", stack: 1, weight: 1, color: 5, tool: { on: "wood", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 20, type: "melee", uses: 60, mesh: "core:hatchet", hold: "tool" } },
   ...GEAR,
 
-  // Resource nodes. By hand a tree gives thatch and a little wood, a rock a little stone;
-  // the right tool gives three times as much, and flint from rocks.
   {
     type: "node",
     id: "core:tree",
@@ -362,9 +344,8 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "engram", id: "core:engram-hatchet", label: "Stone hatchet", level: 2, cost: 3, unlocks: ["core:make-hatchet"] },
   { type: "engram", id: "core:engram-waterskin", label: "Water skin", level: 3, cost: 6, unlocks: ["core:make-waterskin"] },
   ...MAKING,
-  // Experience to reach each level, and engram points gained on reaching it. Level 1 is free.
   LEVELS,
 ];
 
-/** The same definitions as a pack, for stacking other packs on top. */
+/** CORE_CONTENT as a pack, for stacking other packs on top. */
 export const CORE_PACK: ContentPack = { name: "core", defs: CORE_CONTENT as readonly Def[] as unknown as ContentPack["defs"] };

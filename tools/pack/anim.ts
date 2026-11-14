@@ -1,12 +1,5 @@
-// Turns glTF animations made on a 65-joint game skeleton into clips for the
-// 28-bone skeleton of shared/anim/human.ts.
-//
-// The method needs only that the source rests in the same pose as ours (a
-// T-pose facing +Z): for every joint and frame, take how far the joint has
-// turned from its rest in model space, and express that turn relative to the
-// same turn of its parent bone. Because our bones rest at identity, the result
-// is directly a clip. Bone lengths and joint placement of the source do not
-// matter, so one conversion serves every body.
+// Turns glTF animations into clips for a skeleton whose bones rest at identity, such as shared/anim/human.ts. The source
+// must rest in the same pose as the target (for the human, a T-pose facing +Z). Its bone lengths do not matter.
 
 import type { Clip } from "../../shared/anim/clip.ts";
 import { Pose } from "../../shared/anim/clip.ts";
@@ -16,7 +9,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { quatMul, quatMulConj, quatNlerp, quatNormalize, quatRotate } from "../../shared/math/quat.ts";
 import { nodeParents, readAccessor, type Gltf } from "./gltf.ts";
 
-/** Source joint that drives each of our bones, by name; null for bones the source does not have. */
+/** The source joint that drives each human bone, by name. Null for bones the source does not have. */
 export const HUMAN_SOURCE_JOINTS: readonly (string | null)[] = [
   "pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head",
   "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l",
@@ -28,15 +21,14 @@ export const HUMAN_SOURCE_JOINTS: readonly (string | null)[] = [
 ];
 
 export interface ClipSpec {
-  /** Name of the animation in the source file. */
+  /** Animation name in the source file. */
   source: string;
-  /** Id of the clip to make. */
   id: string;
-  /** Continues from its end to its start. Defaults to true when the source name ends in "_Loop". */
+  /** Defaults to true when the source name ends in "_Loop". */
   loop?: boolean;
-  /** A gait: start the loop where the left foot is farthest forward, so gaits blend in step. */
+  /** Starts the loop where the left foot is farthest forward, so gaits blend in step. */
   gait?: boolean;
-  /** Keep only this range of source frames (inclusive). */
+  /** Inclusive range of source frames to keep. */
   from?: number;
   to?: number;
 }
@@ -72,24 +64,18 @@ function sample(track: Track, time: number, out: Float64Array): void {
   else for (let k = 0; k < size; k++) out[k] = values[lo * size + k]! + (values[hi * size + k]! - values[lo * size + k]!) * t;
 }
 
-/**
- * Convert the animations named in `specs`. Throws if the file lacks a joint;
- * reports an animation that is missing as a warning and skips it.
- */
+/** Throws if the file lacks a joint. A missing animation is skipped with a warning. */
 export function convertHumanClips(g: Gltf, specs: readonly ClipSpec[]): { clips: Clip[]; warnings: string[] } {
   const made = convertClips(g, HUMAN_SOURCE_JOINTS, HUMAN.parent, specs);
-  // A gait starts where the left foot is farthest forward, so that gaits blend in step.
   const clips = made.clips.map((clip, i) => (made.specs[i]!.gait && clip.loop ? rotated(clip, leftFootForward(clip)) : clip));
   return { clips, warnings: made.warnings };
 }
 
 /**
- * The same for any skeleton whose bones rest at identity: `joints` names the
- * source joint that drives each bone (null for a bone the source does not
- * have), `parents` each bone's parent among the bones (-1 for the root, which
- * is the one bone whose travel is kept), and positions are multiplied by
- * `scale`. A bone's parent here need not be its joint's parent in the source.
- * Returns the clips made and the spec each was made from.
+ * `joints` names the source joint that drives each bone, or null. `parents` gives each bone's parent, with -1 for the
+ * root, the only bone whose travel is kept. A bone's parent need not be its joint's parent in the source. Each bone's
+ * rotation is its joint's turn from rest in model space, relative to the same turn of its parent bone.
+ * Returns the clips and, in the same order, the spec each came from.
  */
 export function convertClips(g: Gltf, joints: readonly (string | null)[], parents: ArrayLike<number>, specs: readonly ClipSpec[], scale = 1): { clips: Clip[]; specs: ClipSpec[]; warnings: string[] } {
   const BONES = joints.length;
@@ -171,7 +157,7 @@ export function convertClips(g: Gltf, joints: readonly (string | null)[], parent
       const out = readAccessor(g, s.output);
       let values = out.data;
       if (s.interpolation === "CUBICSPLINE") {
-        // Keep the values, drop the tangents: at one key per frame the difference cannot be seen.
+        // Drops the tangents. At one key per frame the difference cannot be seen.
         const picked = new Float64Array(times.length * out.size);
         for (let k = 0; k < times.length; k++) for (let c = 0; c < out.size; c++) picked[k * out.size + c] = values[(k * 3 + 1) * out.size + c]!;
         values = picked;
@@ -204,7 +190,7 @@ export function convertClips(g: Gltf, joints: readonly (string | null)[], parent
         else if (t.path === "scale") localS[t.node] = value[0]!;
       }
       solveWorld();
-      // How far each joint has turned from rest, in model space: world(t) * world(rest)^-1.
+      // Each joint's turn from rest in model space is world(t) * world(rest)^-1.
       for (let b = 0; b < BONES; b++) {
         const j = joint[b]!;
         if (j < 0) continue;

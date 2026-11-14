@@ -1,11 +1,5 @@
-// Benchmarks at the sizing target (planning/decisions.md D15): an 8 km map,
-// 500,000 structures, 30,000 creatures, 100 players, one process.
-//
-//   bun run bench
-//
-// Each row is a measurement and the budget it is held to. A miss is printed as
-// a miss. Results are for the machine they ran on; record them with it in
-// planning/quality/performance.md.
+// Benchmarks at the sizing target (planning/decisions.md D15). Each row is a measurement and the budget it is held to.
+// Results are for the machine they ran on. Record them with it in planning/quality/performance.md.
 
 import { heapStats } from "bun:jsc";
 import { mkdtempSync, rmSync, statSync, writeFileSync, mkdirSync } from "node:fs";
@@ -132,7 +126,7 @@ class Bot {
 
   private seq = 0;
 
-  /** Ask to move a whole stack between two of its own slots, as the inventory screen would. */
+  /** Sends the inventory screen's CMD_MOVE for a whole stack between two slots of the bot's inventory. */
   move(from: number, to: number, item: number): void {
     const w = this.w;
     w.reset();
@@ -166,8 +160,7 @@ class Bot {
   }
 }
 
-// The server's settings: ARK's defaults, or those of a config folder named after `--config` (config/boosted-50x, say),
-// to hold a boosted server to the same budgets. Content is what those settings make of it, for the server and every client.
+// Settings are ARK's defaults, or those of the config folder named after --config, to hold a boosted server to the same budgets.
 const configAt = process.argv.indexOf("--config");
 const configFolder = configAt >= 0 ? (process.argv[configAt + 1] ?? "") : "";
 const benchRules = configFolder !== "" ? loadConfigFolder(configFolder).rules : new Rules();
@@ -182,7 +175,7 @@ section("World at target scale");
 let t0 = performance.now();
 const hf = buildTerrain();
 const mapHash = hashBytes(new Uint8Array(hf.heights.buffer, 0, 4096));
-// Trees, rocks and bushes over the whole map: 160 slots a chunk, most of them holding one.
+// Trees, rocks and bushes cover the whole map, at 160 slots a chunk, most of them filled.
 const nodeKinds = ["core:tree", "core:tree", "core:tree", "core:rock", "core:rock", "core:bush"].map((id) => reg.index.get(id)!);
 const nodeSource = scatterNodes(DIMS, hf, 0xbe7c, 160, nodeKinds, reg.halfY, () => true);
 const world = createWorld(reg, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 2048, undefined, nodeSource);
@@ -194,7 +187,7 @@ record(`place ${STRUCTURES} structures in ${BASES} bases`, performance.now() - t
 record("structures placed", world.structs.count, "");
 
 const dbPath = join(dir, "world.db");
-// More seats than ARK's seventy: the sizing target is a hundred players, and a dozen more come to watch a house fall.
+// More seats than ARK's 70, because the sizing target is 100 players.
 const host: Host = createHost(reg, { dbPath, world, config: benchRules, commitEvery: 6, game: { maxClients: 128 } });
 const persistence = host.persistence!;
 t0 = performance.now();
@@ -210,7 +203,7 @@ persistence.commit();
 record(`commit ${CREATURES} new creature records`, performance.now() - t0, "ms");
 
 // ---------------------------------------------------------------- players
-// 40 players in one fight; 60 in pairs at 30 other bases.
+// 40 players are in one fight, and 60 are in pairs at 30 other bases.
 const net = new LoopbackNet(7);
 host.game.listen(net);
 const places = new Map<string, { x: number; y: number; z: number; yaw: number }>();
@@ -290,8 +283,8 @@ const fight = host.game.clients.filter((c) => c && Number(c.name.slice(3)) < 40)
 const spread = host.game.clients.filter((c) => c && Number(c.name.slice(3)) >= 40).map((c) => down[c!.id]!);
 const mean = (a: number[]): number => a.reduce((s, v) => s + v, 0) / a.length;
 record("downstream per client in a 40-player fight", mean(fight) / 1024, "KB/s", 34);
-// First guess was 8 KB/s and the first run measured 11.7: about 90 creatures in interest, most of them
-// walking, each sent every tick. 16 KB/s is 12.5 Mbit/s for a full server. See performance.md.
+// The first run measured 11.7 KB/s, from about 90 creatures in interest, most of them walking and sent every tick.
+// 16 KB/s is 12.5 Mbit/s for a full server. See performance.md.
 record("downstream per client at a quiet base", mean(spread) / 1024, "KB/s", 16);
 record("upstream per client", mean(bots.map((b, i) => (b.end.bytesSent - recvBefore[i]!) / seconds)) / 1024, "KB/s", 2);
 record("prediction corrections on the two real clients", sessions.reduce((n, s) => n + s.stats.corrections, 0), "");
@@ -316,7 +309,7 @@ section("Resource nodes: map data plus a sparse overlay");
   const field = host.harvest!.field;
   record("node rows held in memory, near 100 players", field.store.count, "");
   record("memory those rows take (34 bytes each)", mb(field.store.count * 34), "MB", 40);
-  // Fill and empty chunks nobody is near: what a player walking into new ground costs.
+  // Filling a chunk nobody is near is what a player walking into new ground costs.
   const far: number[] = [];
   for (let chunk = 0; chunk < DIMS.chunksX * DIMS.chunksZ && far.length < 400; chunk += 37) if (!field.isLoaded(chunk)) far.push(chunk);
   t0 = performance.now();
@@ -341,10 +334,9 @@ section("Everyone working: 100 players striking nodes and moving items");
     if (i % 15 !== 0) continue;
     for (const c of host.game.clients) {
       if (!c?.active || c.ent < 0) continue;
-      // The nearest thing to hand: the first node in the body's own chunk.
+      // Strike the first node in the body's own chunk.
       const table = harvest.field.store.chunks[c.chunk];
       if (table) for (let slot = 0; slot < table.high; slot++) if (table.kind[slot] !== 0 && harvest.strike(c, c.chunk, slot)) break;
-      // And shuffle a stack about, through the same command the inventory screen sends.
       const rec = host.records.byPid.get(c.pid);
       const bot = botOf.get(c.conn);
       if (rec?.inv && bot) {
@@ -363,7 +355,7 @@ section("Everyone working: 100 players striking nodes and moving items");
   const busy = host.game.clients.map((c, i) => (c ? ((c.conn as LoopbackEnd).bytesSent - quiet[i]!) / seconds : 0));
   const atBase = host.game.clients.filter((c) => c && Number(c.name.slice(3)) >= 40).map((c) => busy[c!.id]!);
   record("downstream per client at a base, working", mean(atBase) / 1024, "KB/s", 16);
-  // Owner state costs bytes only when it changes; the allowance for a busy survivor is 0.3 KB/s.
+  // Owner state costs bytes only when it changes. The allowance for a busy survivor is 0.3 KB/s.
   record("of which added by working (inventory, experience, nodes)", (mean(atBase) - mean(spread)) / 1024, "KB/s", 0.3);
   record("nodes used up", harvest.goneCount, "");
   const wrong = host.items.audit();
@@ -391,7 +383,7 @@ section("Stored stacks: 600,000 stacks in 10,000 containers nobody is near");
   run(300, stored);
   stored.sort((a, b) => a - b);
   commitTimes.sort((a, b) => a - b);
-  // Nothing about a stored stack runs: the tick and the commit are what they were.
+  // A stored stack runs no code, so the tick and the commit keep their budgets.
   record("tick time, median, with them in the world", percentile(stored, 0.5), "ms", 8);
   record("commit time, 99th percentile, with them in the world", percentile(commitTimes, 0.99), "ms", 10);
   t0 = performance.now();
@@ -406,7 +398,7 @@ const baseline = percentile(times, 0.5);
 t0 = performance.now();
 const awakeBefore = host.creatures.awakeCount;
 for (let n = 0; n < DORMANT_EXTRA; ) {
-  // Only where no player is near: these must be dormant for the comparison to mean anything.
+  // Spawn only in chunks that are not awake. The comparison needs these creatures dormant.
   const x = rng.range(200, 7990);
   const z = rng.range(200, 7990);
   if (host.creatures.isChunkAwake(chunkAt(DIMS, x, z))) continue;
@@ -427,12 +419,12 @@ record("tick time, median, 300k creatures (same players)", percentile(after, 0.5
 section("Combat: 100 players shooting twice a second, things in the air, and a blast in a base");
 const pack = parsePack(buildCorePack());
 {
-  // Bodies are hit by zone, posed with the clips a real server has.
+  // Zone hits need bodies posed with the clips a real server has.
   world.anim = new HumanAnim(pack.clips);
   const ents = world.ents;
   const k = (name: string): number => reg.index.get(`core:${name}`)!;
   const [bow, arrow, rifle, round] = [k("bow"), k("arrow_stone"), k("rifle"), k("round_rifle")];
-  // Nobody dies of it: the load must stay what it is.
+  // Nobody dies, so the load stays constant.
   for (const c of host.game.clients) if (c?.active) host.survival.gods.add(c.pid);
   const shots = host.projectiles;
   const firedBefore = shots.fired;
@@ -446,7 +438,7 @@ const pack = parsePack(buildCorePack());
         if (!c?.active || c.ent < 0) continue;
         const rec = host.records.byPid.get(c.pid);
         if (!rec) continue;
-        // Level, give or take, in any direction: across the fight for those in it. Half shoot arrows, half rifles.
+        // Aim is roughly level, in a random direction. Half shoot arrows and half shoot rifles.
         ents.yaw[c.ent] = aimRng.int(65536);
         ents.pitch[c.ent] = Math.round((aimRng.float() - 0.4) * 2000);
         if (c.id % 2 === 0) shots.launch(c, rec, bow, 0, arrow, 1);
@@ -463,7 +455,7 @@ const pack = parsePack(buildCorePack());
   record("tick time, median", percentile(fight, 0.5), "ms", 8);
   record("tick time, 99th percentile", percentile(fight, 0.99), "ms", 16);
 
-  // Two thousand arrows in the air at once, shot high so that they stay there.
+  // 2,000 arrows in the air at once, shot high so they stay there.
   const step = shots.step.bind(shots);
   const stepTimes: number[] = [];
   shots.step = () => {
@@ -507,10 +499,10 @@ const pack = parsePack(buildCorePack());
 
 // ---------------------------------------------------------------- collapse
 section("Collapse: a 1,500-piece house loses every foundation at once, with the 40 of the fight watching");
-/** The pieces of that house as a client is told of them going, for the client's side of it further down. */
+/** The house's pieces as the Rubble a client receives, for the client frame section below. */
 const wreck: Rubble[] = [];
 {
-  // Twelve foundations square and three storeys, of real building pieces, beside the fight.
+  // 12 by 12 foundations and three storeys of real building pieces, beside the fight.
   const structs = world.structs;
   const piece = (name: string): number => reg.index.get(`core:${name}_stone`)!;
   const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
@@ -540,7 +532,7 @@ const wreck: Rubble[] = [];
   }
   const pieces = structs.count - before;
   record("pieces in the house", pieces, "");
-  // What asking whether one piece stands costs, as when a piece is set down.
+  // The same support query runs when a piece is placed.
   t0 = performance.now();
   let asked = 0;
   for (const line of tiles) for (const ref of line) asked += host.build.support.standsRef(ref) ? 1 : 0;
@@ -593,7 +585,7 @@ const wreck: Rubble[] = [];
 // ---------------------------------------------------------------- voice
 section("Voice: 100 survivors in one crowd, all talking at once");
 {
-  // Everyone within talking range of everyone: the most the relay can be asked to do.
+  // Everyone is within talking range of everyone, which is the relay's worst case.
   const voice = host.voice;
   const ents = world.ents;
   const crowd = centers[0]!;
@@ -628,14 +620,14 @@ section("Voice: 100 survivors in one crowd, all talking at once");
   let relay = 0;
   let clock = 1000;
   let seq = 0;
-  // Two seconds of it: every 20 ms each of them sends a frame, and the world ticks on underneath, three ticks to five frames.
+  // Two seconds. Every 20 ms each survivor sends a frame, and the world ticks three times per five frames.
   const frames = 100;
   for (let f = 0; f < frames; f++) {
     const t = performance.now();
     for (const w of wires) voice.receive(w.peer, packet.subarray(0, writeAudio(packet, flags, seq, seq * FRAME_SAMPLES, opus)), clock);
     voice.flush();
     relay += performance.now() - t;
-    // Whose voices each was sent in this one moment.
+    // Record how many speakers each listener was sent in this frame.
     for (const w of wires) {
       if (w.heard.size > mostAtOnce) mostAtOnce = w.heard.size;
       w.heard.clear();
@@ -644,7 +636,7 @@ section("Voice: 100 survivors in one crowd, all talking at once");
     clock += 20;
     if (f % 5 === 1 || f % 5 === 3 || f % 5 === 4) run(1, null);
   }
-  // Working out who hears whom, by itself, while they are all still talking.
+  // Time the routing step alone, while everyone is still talking.
   const routes: number[] = [];
   const due = world.tick - (world.tick % 3);
   for (let k = 0; k < 60; k++) {
@@ -677,10 +669,10 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   const parasaur = reg.index.get("core:parasaur")!;
   const eggKind = reg.index.get("core:egg_parasaur")!;
   const berry = reg.index.get("core:berry")!;
-  // On open ground east of a base nobody is at. Ten of the survivors are put there, one of them a real client, who owns all of it.
+  // On open ground east of an empty base. Ten survivors stand there, and one of them, a real client, owns the creatures.
   const ox = centers[60]![0] + 70;
   const oz = centers[60]![1] - 30;
-  // (Those who were not in the fight, so that all ten are alive: bot50, the second real client, and the nine after it.)
+  // bot50 (the second real client) and the nine after it were not in the fight, so all ten are alive.
   const keepers = host.game.clients.filter((c) => c?.active && c.ent >= 0 && Number(c.name.slice(3)) >= 50 && Number(c.name.slice(3)) < 60).map((c) => c!);
   const owner = records.byPid.get(keepers.find((c) => c.name === "bot50")!.pid)!;
   const stand = (): void => keepers.forEach((c, i) => ents.setPosition(c.ent, ox + 8 + i * 7, hf.heightAt(ox + 8 + i * 7, oz + 32), oz + 32));
@@ -692,7 +684,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
 
   const place = rng;
   const put = (i: number, row: number): number => {
-    // Where its place in the rows is, or as near as the trees and rocks there allow.
+    // At its place in the rows, or as near as the trees and rocks allow.
     for (let k = 0; k < 60; k++) {
       const wide = 0.4 + k * 0.05;
       const e = host.spawnCreature("core:parasaur", ox + (i % 20) * 4 + place.range(-wide, wide), oz + row * 4 + Math.floor(i / 20) * 4 + place.range(-wide, wide), 1 + place.int(60));
@@ -700,7 +692,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
     }
     throw new Error(`no room for the breeding base (${ents.count} of ${ents.cap} bodies in the world)`);
   };
-  // Three hundred grown, female and male by turns four metres apart, all somebody's and all told they may.
+  // 300 adults, alternating female and male four metres apart, all tamed and all set to mate.
   t0 = performance.now();
   for (let i = 0; i < 300; i++) {
     const rec = records.byPid.get(ents.pid[put(i, 0)]!)!;
@@ -708,7 +700,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
     host.taming.give(rec, owner, 1);
     rec.mating = true;
   }
-  // A hundred and fifty young of every age, each with berries in it to eat as it grows.
+  // 150 young of every age, each carrying berries to eat as it grows.
   const span = reg.matureTicks[parasaur]!;
   for (let i = 0; i < 150; i++) {
     const e = put(i, 16);
@@ -723,7 +715,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
     host.creatures.claimed(e);
     host.taming.meal(rec);
   }
-  // A hundred eggs lying among them, each to hatch at a moment of its own within the hour.
+  // 100 eggs, each with its own hatch time within the hour.
   for (let i = 0; i < 100; i++) {
     const egg = records.create(eggKind, "parasaur egg");
     egg.genome = rollWild(place, 1 + place.int(60), [3, 5, 6, 7, 9, 12, 15]);
@@ -748,7 +740,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   record("tick time with the base awake and mating, median", percentile(busy, 0.5), "ms", Math.round((percentile(quiet, 0.5) * 1.5 + 0.5) * 100) / 100);
   record("tick time with the base awake and mating, 99th percentile", percentile(busy, 0.99), "ms", 16);
   record("downstream per survivor at the base", perKeeper, "KB/s", 34);
-  // What the real client there is shown: all of the other nine, whatever else there is to show.
+  // The real client there must be shown all nine other survivors, however many creatures are in view.
   const shown = new RemoteSample();
   real.sampleRemote(shown);
   const survivorKind = reg.index.get("core:survivor")!;
@@ -756,7 +748,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   for (let i = 0; i < shown.count; i++) if (shown.kind[i] === survivorKind) others++;
   record("bodies the real client there is shown (of at most 512)", shown.count, "");
   record("survivors there it is not shown, of the other nine", 9 - Math.min(9, others), "", 0);
-  // The look for pairs, by itself: every willing female against every willing male, once a second.
+  // Time the pair search alone. It checks every willing female against every willing male, once a second.
   const looks: number[] = [];
   const passTick = world.tick - (world.tick % TICK_RATE);
   for (let k = 0; k < 60; k++) {
@@ -767,7 +759,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   looks.sort((a, b) => a - b);
   record("the look for pairs, median (one tick in thirty)", percentile(looks, 0.5), "ms", 0.5);
   record("the look for pairs, worst", looks[looks.length - 1]!, "ms", 2);
-  // Half a minute after they began, every pair has done on the same tick: 150 females lay at once.
+  // Half a minute after they began, every pair finishes on the same tick, so 150 females lay at once.
   const laying: number[] = [];
   run(600, laying);
   laying.sort((a, b) => a - b);
@@ -795,8 +787,8 @@ store.close();
 // ---------------------------------------------------------------- restart under other settings
 section("Restart under other settings: the save of the sizing target, every timer and rate brought over");
 {
-  // The whole host on the save, twice: under the settings it was saved under, and under others that move everything a
-  // setting can move at a load. The difference is what bringing the world over costs.
+  // Starts a host on the save twice, under the settings it was saved under and under settings that change every timer and
+  // rate a load converts. The difference is the cost of the conversion.
   const fresh = (content: typeof reg): ServerWorld => createWorld(content, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 2048, undefined, nodeSource);
   const start = (rules: Rules): { host: Host; ms: number } => {
     Bun.gc(true);
@@ -813,7 +805,7 @@ section("Restart under other settings: the save of the sizing target, every time
     game: `[/script/shootergame.shootergamemode]\nEggHatchSpeedMultiplier=${was("EggHatchSpeedMultiplier") * 2}\nBabyMatureSpeedMultiplier=${was("BabyMatureSpeedMultiplier") * 0.5}\nMatingIntervalMultiplier=${was("MatingIntervalMultiplier") * 2}\nGlobalSpoilingTimeMultiplier=${was("GlobalSpoilingTimeMultiplier") * 2}\nFuelConsumptionIntervalMultiplier=${was("FuelConsumptionIntervalMultiplier") * 0.5}\nGlobalCorpseDecompositionTimeMultiplier=${was("GlobalCorpseDecompositionTimeMultiplier") * 2}\nGlobalItemDecompositionTimeMultiplier=${was("GlobalItemDecompositionTimeMultiplier") * 2}\n`,
   }).rules;
   const moved = start(other);
-  // Eggs, young, waits, bags, the top of every stack, every fire, every node growing back, and every body's rates.
+  // The load converts eggs, young, mating waits, bags, the spoil time of every stack, fires, respawning nodes and every body's rates.
   record("start a host on it under other settings", moved.ms, "ms", 5000);
   record("of that, the bringing over", Math.max(0, moved.ms - same.ms), "ms", 2000);
   let rated = 0;
@@ -821,7 +813,7 @@ section("Restart under other settings: the save of the sizing target, every time
   record("bodies rated again", rated, "");
   t0 = performance.now();
   moved.host.persistence!.commit();
-  // Everything that changed, written in one commit with the settings it was changed under.
+  // One commit writes everything that changed, with the settings it changed under.
   record("the first commit after it", performance.now() - t0, "ms", 5000);
   record("the item ledger still balances after it (0 is yes)", moved.host.items.audit().length, "", 0);
   moved.host.shutdown();
@@ -864,7 +856,7 @@ section("Client frame build (headless): 300 survivors in view, posed every frame
   const survivor = reg.index.get("core:survivor")!;
   const st = new AnimState();
   const crowdRng = new Rng(5);
-  // A crowd on the ground ahead of the camera, 5 to 60 m off: walking, running, a third of them swinging.
+  // A crowd 5 to 60 m ahead of the camera, walking or running, a third of them swinging.
   cam.yaw = Math.PI / 2 + Math.PI;
   for (let i = 0; i < 300; i++) {
     crowd.id[i] = i + 1;
@@ -895,7 +887,7 @@ section("Client frame build (headless): 300 survivors in view, posed every frame
 
 section("Client frame build (headless): a breeding base in view, as many bodies as a client is ever shown");
 {
-  // All a view holds: ten survivors, 300 grown creatures, 150 young of every age, and eggs for the rest.
+  // A full view: ten survivors, 300 grown creatures, 150 young of every age, and eggs for the rest.
   const base = new RemoteSample();
   const kinds = { survivor: reg.index.get("core:survivor")!, parasaur: reg.index.get("core:parasaur")!, raptor: reg.index.get("core:raptor")!, egg: reg.index.get("core:egg_parasaur")! };
   const st = new AnimState();
@@ -910,7 +902,7 @@ section("Client frame build (headless): a breeding base in view, as many bodies 
     base.y[i] = hf.heightAt(base.x[i]!, base.z[i]!);
     base.yaw[i] = baseRng.float() * Math.PI * 2;
     base.flags[i] = i < 460 ? 1 : 1 | 8;
-    // The young: born at a moment of their own, grown a thousand ticks after. A third of everything is walking.
+    // Each young has its own span, so they are at different ages. A third of the survivors and creatures walk.
     if (i >= 310) {
       base.span[i] = 1000 + Math.floor(baseRng.float() * 1000);
       base.grown[i] = base.span[i]! + 1000;
@@ -939,7 +931,7 @@ section("Client frame build (headless): a breeding base in view, as many bodies 
 
 section("Client frame build (headless): that house coming down 60 m off");
 {
-  // The pieces arrive as the server's waves would bring them: a hundred or so a tick.
+  // The pieces arrive about a hundred a tick, as the server's waves would send them.
   cam.x = wreck[0]!.ox - 30;
   cam.z = wreck[0]!.oz + 18;
   cam.y = hf.heightAt(cam.x, cam.z) + 8;

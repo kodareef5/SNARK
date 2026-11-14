@@ -1,8 +1,5 @@
-// Converts third-party art in assets/raw into what the pack build reads in
-// assets/source. Run it when the raw files or the conversion change, and
-// commit what it writes; building the game does not need it.
-//
-//   bun run art
+// Converts third-party art in assets/raw into what the pack build reads in assets/source. Run `bun run art` when
+// the raw files or the conversion change, and commit the output. Building the game does not need it.
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,20 +23,19 @@ export const HUMAN_CLIPS_FILE = join(ROOT, "assets/source/core/human-clips.snpk"
 export const HUMAN_BODIES_FILE = join(ROOT, "assets/source/core/human-bodies.snpk");
 export const CREATURES_FILE = join(ROOT, "assets/source/core/creatures.snpk");
 
-/** Triangles a whole body, a head of hair and a beard get at each level of detail. */
+/** Triangle counts at each level of detail. */
 const BODY_TRIANGLES = "4400,1500,420";
 const HAIR_TRIANGLES = "420,150,48";
 
-// Colour rules: what a texture's colour means in the game's palette.
+// Palette indices.
 const WHITE = 10;
 const BLACK = 11;
-/** Skin, unless it is the grey of what the model wears under everything else. */
+/** Grey is the model's underclothes. Anything else is skin. */
 const skin: ColorRule = (r, g, b) => {
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   return max > 0 && (max - min) / max < 0.22 ? REGION_CLOTH : REGION_SKIN;
 };
-/** The white of an eye, its pupil, and between them the iris. */
 const eye: ColorRule = (r, g, b) => {
   const light = (r + g + b) / 3;
   const max = Math.max(r, g, b);
@@ -47,11 +43,7 @@ const eye: ColorRule = (r, g, b) => {
   return light < 40 ? BLACK : REGION_EYE;
 };
 const hair: MaterialRule = { image: null, color: () => REGION_HAIR };
-/**
- * An outfit's texture as three colour regions by how light it is: the darker
- * part is the second colour, the bulk is the main one, and the lightest details
- * are the trim. A worn piece says what colours they are.
- */
+/** Three colour regions by lightness. The worn item supplies the colours. */
 const threeTones = (dark: number, light: number): ColorRule => (r, g, b) => {
   const lum = (r + g + b) / 3;
   return lum < dark ? REGION_SECOND : lum < light ? REGION_MAIN : REGION_TRIM;
@@ -60,20 +52,18 @@ const threeTones = (dark: number, light: number): ColorRule => (r, g, b) => {
 const SECOND_SHARE = 0.28;
 const TRIM_FROM = 0.9;
 
-/** Triangles each part of an outfit gets at each level of detail. */
+/** Triangle counts for each part of an outfit, at each level of detail. */
 const ARMOR_TRIANGLES = "900,320,100";
-/** The outfit files, as the pack names them after the sex. */
 const OUTFIT_FILES = [
   "Male_Peasant_Arms", "Male_Peasant_Body", "Male_Peasant_Feet", "Male_Peasant_Legs", "Male_Ranger_Arms", "Male_Ranger_Body", "Male_Ranger_Feet_Boots", "Male_Ranger_Head_Hood", "Male_Ranger_Legs",
   "Female_Peasant_Arms", "Female_Peasant_Body", "Female_Peasant_Feet", "Female_Peasant_Legs", "Female_Ranger_Arms", "Female_Ranger_Body", "Female_Ranger_Feet", "Female_Ranger_Head_Hood", "Female_Ranger_Legs",
 ];
-/** An armor set is an outfit's parts. The peasant has nothing for the head, so the cloth set borrows the ranger's hood. */
+/** The peasant outfit has no head part, so the cloth set borrows the ranger's hood. */
 const ARMOR_SETS = [
   { id: "cloth", parts: ["Peasant_Arms", "Peasant_Body", "Peasant_Feet", "Peasant_Legs", "Ranger_Head_Hood"], texture: "T_Peasant_BaseColor.png" },
   { id: "hide", parts: ["Ranger_Arms", "Ranger_Body", "Ranger_Feet", "Ranger_Legs", "Ranger_Head_Hood"], texture: "T_Ranger_BaseColor.png" },
 ];
 
-/** Run Blender over a source file and read what it wrote. */
 const reduced = new Map<string, Gltf>();
 function reduce(dir: string, source: string, triangles: string): Gltf {
   const key = `${source} ${triangles}`;
@@ -93,7 +83,6 @@ function runBlender(dir: string, source: string, triangles: string): Gltf {
   return readGltf(out);
 }
 
-/** Both bodies cut into slots, and every hair and beard fitted to each. */
 function convertBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
   const dir = mkdtempSync(join(tmpdir(), "snark-art-"));
   const meshes: SourceMesh[] = [];
@@ -118,7 +107,7 @@ function convertBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
       warn(id, body.warnings);
       meshes.push(...body.meshes);
       rigs.push(body.rig);
-      // Hair and beards are modelled on one head or the other; each is fitted to this one.
+      // Each hair and beard was modelled on one of the two heads and is fitted to this body.
       for (const [kind, styles] of [["hair", HAIR_STYLES], ["beard", BEARD_STYLES]] as const) {
         for (const style of styles) {
           if (style.source === null) continue;
@@ -135,7 +124,7 @@ function convertBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
           meshes.push(...piece.meshes);
         }
       }
-      // Armor sets: an outfit's parts together, cut by body slot like the body, fitted to this body's joints.
+      // An armor set is an outfit's parts together, cut by body slot and fitted to this body's joints.
       const Sex = b.sex === SEX_IDS[0] ? "Male" : "Female";
       const skinOf: MaterialRule = { image: readPng(join(RAW, `outfits-fantasy/T_Regular_${Sex}_Dark_BaseColor.png`)), color: skin };
       for (const set of ARMOR_SETS) {
@@ -143,7 +132,7 @@ function convertBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
           const file = OUTFIT_FILES.find((f) => f === `${Sex}_${part}` || f.startsWith(`${Sex}_${part}`));
           return file ? [reduce(dir, `outfits-fantasy/${file}.gltf`, ARMOR_TRIANGLES)] : [];
         });
-        // Once to see how light the outfit's surface is, triangle by triangle; then again, cut at those shares.
+        // The first pass samples how light each triangle is. The second cuts the regions at those shares.
         const image = readPng(join(RAW, `outfits-fantasy/${set.texture}`));
         const seen: number[] = [];
         const options = (color: ColorRule) => ({
@@ -167,7 +156,6 @@ function convertBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
   return { meshes, rigs };
 }
 
-/** Clips taken from each animation library, and the ids they get. */
 const LIBRARY_1: readonly ClipSpec[] = [
   { source: "Idle_Loop", id: "human/idle" },
   { source: "Walk_Loop", id: "human/walk", gait: true },
@@ -204,10 +192,8 @@ const LIBRARY_2: readonly ClipSpec[] = [
 ];
 
 /**
- * The dinosaurs of the stand-in pack share one set of bones. The model's own
- * root never moves and the ends of its chains carry nothing; its hind feet
- * hang on that root in the model, held to the legs by the animation, and here
- * hang on the legs.
+ * The pack's dinosaurs share one skeleton. The model's root never moves and its chain ends carry nothing, so both
+ * are dropped. The model hangs the hind feet on that root, and here they hang on the lower legs.
  */
 const DINO: SkeletonSpec = {
   id: "dino",
@@ -238,13 +224,11 @@ const DINO_CLIPS = (prefix: string): CreatureSpec["clips"] => [
   { source: `${prefix}_Jump`, name: "jump", loop: false },
   { source: `${prefix}_Death`, name: "death", loop: false },
 ];
-/** The creatures made from that pack: which file, how large, which material is which colour region. */
 const DINOSAURS: readonly { file: string; spec: CreatureSpec }[] = [
   { file: "dinosaurs/Parasaurolophus.fbx", spec: { id: "core:parasaur", scale: 0.6, regions: ["Green", "LightGreen", "LightYellow", "Red"], clips: DINO_CLIPS("Parasaurolophus") } },
   { file: "dinosaurs/Velociraptor.fbx", spec: { id: "core:raptor", scale: 0.28, regions: ["Brown", "LightBrown", "Black"], clips: DINO_CLIPS("Velociraptor") } },
 ];
 
-/** Every creature: its model turned into a glTF file by Blender, and that read here. */
 function convertCreatures(dir: string): { meshes: SourceMesh[]; rigs: PackRig[]; clips: Clip[] } {
   const out = { meshes: [] as SourceMesh[], rigs: [] as PackRig[], clips: [] as Clip[] };
   for (const { file, spec } of DINOSAURS) {
@@ -262,7 +246,6 @@ function convertCreatures(dir: string): { meshes: SourceMesh[]; rigs: PackRig[];
 }
 
 if (import.meta.main && process.argv.includes("--creatures")) {
-  // Only the creatures: the rest is as it was.
   const dir = mkdtempSync(join(tmpdir(), "snark-art-"));
   const made = convertCreatures(dir);
   const pack = buildPack(made.meshes, defaultPalette(), made.clips, made.rigs);

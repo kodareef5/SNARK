@@ -1,25 +1,20 @@
-// What survivors build with: the pieces of a house, in four materials.
-//
-// A piece's form is a shape, shared by every material it is made in; the
-// material says what it is worth in health and what harms it. Sizes and
-// health are the reference's: a foundation is three metres square and a wall
-// three by three. Every height here is a whole number of 1/256 m, so that a
-// piece set on another stands exactly on the lattice structures are kept on.
+// Sizes and health are the reference game's. Every piece height is a whole number of 1/256 m, so a piece set
+// on another stands exactly on the structure lattice.
 
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 
 const box = (x: number, y: number, z: number, hx: number, hy: number, hz: number): ShapeBox => ({ at: [x, y, z], half: [hx, hy, hz] });
 
-/** A side of a piece, a wall's height and thickness, and how thick a floor is: metres. */
+/** Metres. */
 export const SPAN = 3;
 export const WALL_HEIGHT = 3;
 export const WALL_THICK = 0.2;
 export const FLOOR_THICK = 0.25;
 export const FOUNDATION_THICK = 0.375;
-/** The doorway: wide enough for a survivor with room to spare, and higher than one stands. */
+/** Wider than a survivor and taller than one stands. */
 export const DOOR_WIDTH = 1.4;
 export const DOOR_HEIGHT = 2.3125;
-/** The window: at the height of a standing survivor's eyes, and too low for any body to get through, even lying down in a jump. */
+/** At a standing survivor's eye height, and too short for any body to get through, even prone in a jump. */
 const WINDOW_WIDTH = 1.2;
 const WINDOW_SILL = 1.2;
 const WINDOW_HEIGHT = 0.7;
@@ -31,7 +26,7 @@ const T = WALL_THICK / 2;
 const post = (SPAN - DOOR_WIDTH) / 4;
 const lintel = (WALL_HEIGHT - DOOR_HEIGHT) / 2;
 const jamb = (SPAN - WINDOW_WIDTH) / 4;
-/** From one floor to the next: a wall's height. A ceiling's top is level with the top of the walls that hold it. */
+/** Floor to floor. A ceiling's top is level with the top of the walls that hold it. */
 export const RISE = WALL_HEIGHT;
 
 const shape = (name: string, role: ShapeDef["role"], boxes: ShapeBox[]): ShapeDef => ({ type: "shape", id: `core:shape_${name}`, role, boxes });
@@ -39,9 +34,7 @@ const shape = (name: string, role: ShapeDef["role"], boxes: ShapeBox[]): ShapeDe
 const SHAPES: readonly ShapeDef[] = [
   shape("foundation", "foundation", [box(0, 0, 0, H, FOUNDATION_THICK / 2, H)]),
   shape("wall", "wall", [box(0, 0, 0, H, WH, T)]),
-  // A wall with a doorway: a post either side and the piece above.
   { ...shape("doorframe", "wall", [box(-H + post, 0, 0, post, WH, T), box(H - post, 0, 0, post, WH, T), box(0, WH - lintel, 0, DOOR_WIDTH / 2, lintel, T)]), doorway: true },
-  // A wall with a window: a post either side, the piece below the sill, and the piece above.
   shape("windowframe", "wall", [
     box(-H + jamb, 0, 0, jamb, WH, T),
     box(H - jamb, 0, 0, jamb, WH, T),
@@ -50,10 +43,10 @@ const SHAPES: readonly ShapeDef[] = [
   ]),
   shape("ceiling", "ceiling", [box(0, 0, 0, H, FLOOR_THICK / 2, H)]),
   shape("pillar", "pillar", [box(0, 0, 0, 0.25, WH, 0.25)]),
-  // A door fills its doorway. Open, it stands at a right angle on its hinge, at the doorway's left as seen from in front.
+  // An open door stands at a right angle on its hinge, at the doorway's left as seen from the front.
   shape("door", "door", [box(0, 0, 0, DOOR_WIDTH / 2, DOOR_HEIGHT / 2, 0.04)]),
   shape("door_open", "door", [box(-DOOR_WIDTH / 2 + 0.04, 0, DOOR_WIDTH / 2, 0.04, DOOR_HEIGHT / 2, DOOR_WIDTH / 2)]),
-  // Stairs: ten steps from one floor to the next, each a block from the bottom up to its tread. They rise toward +Z.
+  // Each step is a block from the bottom up to its tread. The stairs rise toward +Z.
   shape(
     "stairs",
     "stairs",
@@ -67,11 +60,10 @@ const SHAPES: readonly ShapeDef[] = [
 interface Tier {
   readonly name: string;
   readonly color: number;
-  /** Health of each piece it is made in. */
   readonly hp: { readonly [piece: string]: number };
 }
 
-/** Wood, stone and metal are made in every piece, at the same health; thatch in few, and weaker. */
+/** Wood, stone and metal come in every piece, at the same health. */
 const FULL = { foundation: 15000, wall: 10000, doorframe: 10000, windowframe: 10000, ceiling: 10000, pillar: 6250, door: 6250, stairs: 10000 };
 const TIERS: readonly Tier[] = [
   { name: "thatch", color: 18, hp: { foundation: 2400, wall: 1600, doorframe: 1600, ceiling: 1600, door: 1000 } },
@@ -83,21 +75,17 @@ const TIERS: readonly Tier[] = [
 function piece(tier: Tier, name: string, shapeName = name): StructureDef {
   const form = SHAPES.find((s) => s.id === `core:shape_${shapeName}`)!;
   const base: StructureDef = { type: "structure", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes), color: tier.color, hp: tier.hp[name.replace("_open", "")]!, material: `core:mat_${tier.name}` };
-  // A door and the same door stood open are each what the other becomes when used. A door is its tribe's to open until they say otherwise.
   if (name === "door") return { ...base, opens: `core:door_open_${tier.name}`, locked: true };
   if (name === "door_open") return { ...base, opens: `core:door_${tier.name}`, locked: true };
   return base;
 }
 
-/** Things that hold things: set down on the ground or on a floor, joined to nothing. */
+/** Free-standing pieces, set on the ground or on a floor and joined to nothing. */
 const STORES: readonly { name: string; label: string; half: readonly [number, number, number]; color: number; hp: number; material: string; slots?: number; falls?: boolean; fire?: boolean; bed?: boolean; stack: number; weight: number; level: number; cost: number; needs: Needs }[] = [
   { name: "storage_box", label: "Storage box", half: [0.5, 0.3125, 0.375], color: 3, hp: 500, material: "wood", slots: 15, stack: 100, weight: 4, level: 4, cost: 6, needs: [["wood", 25], ["thatch", 20], ["fiber", 10]] },
   { name: "storage_large", label: "Large storage box", half: [0.75, 0.5, 0.4375], color: 3, hp: 2400, material: "wood", slots: 45, stack: 100, weight: 8, level: 16, cost: 9, needs: [["wood", 50], ["thatch", 35], ["fiber", 25]] },
-  // A vault: what is in it outlasts what it stands on.
   { name: "vault", label: "Vault", half: [0.75, 1.25, 0.625], color: 11, hp: 50000, material: "metal", slots: 350, falls: true, stack: 5, weight: 40, level: 52, cost: 60, needs: [["ingot", 300], ["paste", 60]] },
-  // A fire to cook on: it holds its fuel and what is cooking, and is lit and put out.
   { name: "campfire", label: "Campfire", half: [0.5, 0.1875, 0.5], color: 5, hp: 500, material: "stone", slots: 3, fire: true, stack: 3, weight: 4, level: 2, cost: 3, needs: [["thatch", 12], ["flint", 1], ["stone", 16], ["wood", 2]] },
-  // A bed: where its tribe may return to life.
   { name: "bed", label: "Simple bed", half: [0.5, 0.25, 1], color: 18, hp: 500, material: "wood", bed: true, stack: 3, weight: 6, level: 7, cost: 8, needs: [["wood", 15], ["thatch", 80], ["fiber", 30], ["hide", 40]] },
 ];
 
@@ -107,7 +95,6 @@ function store(s: (typeof STORES)[number]): Def[] {
   return [
     { type: "shape", id: shapeId, role: "thing", boxes: [box(0, 0, 0, s.half[0], s.half[1], s.half[2])] },
     { type: "structure", id: `core:${s.name}`, mesh: "shape", shape: shapeId, half: s.half, color: s.color, hp: s.hp, material: `core:mat_${s.material}`, decayDays: 16, ...(s.slots ? { slots: s.slots } : {}), ...(s.falls ? { falls: true } : {}), ...(s.bed ? { bed: true } : {}), ...(s.fire ? { lights: `core:${s.name}_lit` } : {}) },
-    // A fire burning is the same thing in the same place, in the colour of fire.
     ...(s.fire ? [{ type: "structure", id: `core:${s.name}_lit`, mesh: "shape", shape: shapeId, half: s.half, color: 8, hp: s.hp, material: `core:mat_${s.material}`, decayDays: 16, slots: s.slots!, lights: `core:${s.name}`, lit: true } as StructureDef] : []),
     { type: "item", id: item, stack: s.stack, weight: s.weight, label: s.label.toLowerCase(), color: s.color, places: [`core:${s.name}`] },
     { type: "recipe", id: `core:make-piece_${s.name}`, makes: item, count: 1, needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(s.level / 3)) },
@@ -117,7 +104,7 @@ function store(s: (typeof STORES)[number]): Def[] {
 
 type Needs = readonly (readonly [item: string, count: number])[];
 
-/** What each piece costs to make in each material, the level at which its engram may be learnt, and the points that takes. */
+/** One material's recipes. level is the level at which a piece's engram can be learnt, and cost the points it takes. */
 interface Making {
   readonly label: string;
   readonly weight: number;
@@ -178,7 +165,7 @@ const MAKING: { readonly [tier: string]: Making } = {
   },
 };
 
-/** The item for a piece, what it is set down as, the recipe that makes it and the engram that teaches the recipe. A wall is also set down as a doorframe or a windowframe, where the material has them. */
+/** A wall item also places as a doorframe or a windowframe, where the material has them. */
 function kit(tier: Tier, name: string): Def[] {
   const m = MAKING[tier.name]!;
   const forms = name === "wall" ? ["wall", "doorframe", "windowframe"].filter((f) => f in tier.hp) : [name];
@@ -196,12 +183,11 @@ export const BUILDING_CONTENT: readonly Def[] = [
   ...SHAPES,
   ...TIERS.flatMap((tier) => [
     ...Object.keys(tier.hp).map((name) => piece(tier, name)),
-    // A door stood open is another kind of thing in the same place.
+    // The open door is a separate structure.
     piece(tier, "door_open"),
     ...Object.keys(MAKING[tier.name]!.pieces).flatMap((name) => kit(tier, name)),
   ]),
   ...STORES.flatMap(store),
-  // What holds metal together: ground shell and stone.
   { type: "item", id: "core:paste", stack: 100, weight: 0.01, label: "cementing paste", color: 15 },
   { type: "recipe", id: "core:make-paste", makes: "core:paste", count: 1, needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 },
   { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 15, cost: 3, unlocks: ["core:make-paste"] },

@@ -1,22 +1,5 @@
-// Draws the proving ground to a PNG without a browser.
-//
-//   bun run snap                              from the spawn point, looking north
-//   bun run snap -- --pos 240,6,250 --yaw 30 --pitch -15 --size 1280x720 --out artifacts/house.png
-//   bun run snap -- --ui --console "help"     with the interface drawn over it
-//   bun run snap -- --ui --inventory          with the inventory screen open
-//   bun run snap -- --ui --chat               with the chat box open (--chat shut: only what was said)
-//   bun run snap -- --poses 2 --face 90       a line-up of bodies in motion: kinds 2 and 3, seen from the side
-//   bun run snap -- --creatures --face 60     the creatures that came as models: standing, walking, running, striking
-//   bun run snap -- --creatures --young       each of them grown, newborn, a third and three quarters grown, and its egg
-//   bun run snap -- --looks                   a line-up of looks: both sexes, every hair, every slider at its ends
-//   bun run snap -- --creator 1               what a new survivor sees: the creator, on its first or second tab
-//   bun run snap -- --gear                    a line-up of armor tiers and held weapons
-//   bun run snap -- --house stone             a small house of building pieces, in thatch, wood, stone or metal
-//   bun run snap -- --house wood --falling 450  that house 450 ms after its south-west foundation went and took the rest with it
-//   bun run snap -- --build                   a survivor building: a foundation and a wall set down, a doorframe shown where it would go
-//   bun run snap -- --build --menu            the same survivor asking what can be done to the wall
-//
-// Yaw and pitch are in degrees. Yaw 0 faces +Z (north); positive yaw turns toward +X.
+// Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
+// Scene flags: --poses N, --creatures, --looks, --gear, --creator TAB, --house TIER, --falling MS, --build, --fight WHAT, --ui (--console TEXT, --inventory, --chat).
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -54,11 +37,7 @@ import { encodePng } from "./snap/png.ts";
 import { Rasterizer } from "./snap/raster.ts";
 import { drawUi } from "./snap/ui.ts";
 
-/**
- * A house two pieces square, set down in front of the spawn point and looked at
- * from its corner: a doorway with its door stood open, a window, stairs up to a
- * part of an upper floor, and a pillar under the corner of it.
- */
+/** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
 function houseScene(view: ProvingView, tier: string): void {
   const { reg, structs, hf } = view;
   const made = (piece: string): number => reg.index.get(`core:${piece}_${tier}`) ?? reg.index.get(`core:${piece}_wood`)!;
@@ -69,7 +48,7 @@ function houseScene(view: ProvingView, tier: string): void {
   const Q = 16384;
   for (const ox of [-1.5, 1.5]) for (const oz of [-1.5, 1.5]) add("foundation", ox, ground + FOUNDATION_THICK / 2, oz);
   const wy = floor + WALL_HEIGHT / 2;
-  // The south side faces the camera: a doorway and a window. The others are walls.
+  // The south side faces the camera and has a doorway and a window.
   add("doorframe", -1.5, wy, -3);
   add("door_open", -1.5, floor + DOOR_HEIGHT / 2, -3);
   add("windowframe", 1.5, wy, -3);
@@ -79,13 +58,13 @@ function houseScene(view: ProvingView, tier: string): void {
   }
   add("wall", -3, wy, 1.5, Q);
   add("windowframe", -3, wy, -1.5, Q);
-  // Half a floor above, reached by stairs along the east wall.
+  // Half an upper floor, reached by stairs along the east wall.
   const up = floor + WALL_HEIGHT + FLOOR_THICK / 2;
   add("ceiling", -1.5, up, 1.5);
   add("ceiling", 1.5, up, 1.5);
   add("stairs", 1.5, floor + (WALL_HEIGHT + FLOOR_THICK) / 2, -1.5);
   add("pillar", -0.25, floor + WALL_HEIGHT / 2, 0.25);
-  // Outside, by the door: a storage box, a large one, and a vault.
+  // Outside, by the door.
   const thing = (name: string, x: number, z: number): void => void structs.add(reg.index.get(`core:${name}`)!, cx + x, Math.ceil(hf.heightAt(cx + x, cz + z) * 512) / 512 + reg.halfY[reg.index.get(`core:${name}`)!]!, cz + z, 0, 0, 1);
   thing("storage_box", -4.2, -4.6);
   thing("storage_large", -5.8, -4.2);
@@ -97,11 +76,7 @@ function houseScene(view: ProvingView, tier: string): void {
   view.cam.pitch = (-17 * Math.PI) / 180;
 }
 
-/**
- * The house of `houseScene` on its way down: every piece of it gone from the
- * world and shown as a client would show it `ms` after being told, the
- * collapse having begun at its south-west foundation.
- */
+/** Removes houseScene's house and shows it falling as a client would, `ms` after the removal, from the south-west foundation. */
 function fallingScene(view: ProvingView, ms: number): void {
   const { reg, structs, hf } = view;
   const [cx, cz] = [PROVING_SPAWN.x - 24, PROVING_SPAWN.z - 2];
@@ -132,7 +107,6 @@ export interface ProvingView {
   cam: Camera;
   remote: RemoteSample;
   raster: Rasterizer;
-  /** Build the packet for the current camera and draw it. */
   render(): FramePacket;
 }
 
@@ -143,7 +117,7 @@ export function provingView(width = 640, height = 360): ProvingView {
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   populateProving(structs, hf, reg);
   const pack = parsePack(buildCorePack());
-  // Every chunk's nodes, as a client standing anywhere would have them filled in around it.
+  // Fills every chunk's nodes, as a client near each would have them.
   const nodes = new NodeField(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, provingNodes(hf, reg));
   nodes.retain(0, 64, 1, () => false);
   const scene = new Scene({ dims: PROVING_DIMS, hf, structs, nodes: nodes.store }, reg, pack);
@@ -183,23 +157,14 @@ function idWithSeed(seed: number): number {
   return 0;
 }
 
-/**
- * Replace the bodies in view with a line-up on the plaza: eight moments of one
- * kind of motion side by side, and of the next kind behind them. `first` picks
- * the kind; `facing` is the bodies' yaw (a quarter turn shows them from the side).
- */
-/**
- * The creatures whose bodies came as models, each in a row: standing, walking,
- * running and striking, at four moments of each, with a survivor beside the
- * first of each row for size.
- */
+/** One row per modelled creature: standing, walking, running and striking, with a survivor beside it for size and a rider on the second. */
 export function creaturesScene(view: ProvingView, tick: number, facing: number): void {
   const r = view.remote;
   r.count = 0;
   r.tick = tick;
   const st = new AnimState();
   const kinds = ["core:parasaur", "core:raptor"].map((id) => view.reg.index.get(id)!);
-  // speed (in steps of 0.6 m/s), and whether it is striking
+  // Speed in steps of 0.6 m/s, and whether it is striking.
   const rows: readonly (readonly [number, boolean])[] = [[0, false], [4, false], [12, false], [0, true]];
   const put = (kind: number, x: number, z: number, colors: readonly number[]): number => {
     const n = r.count++;
@@ -229,14 +194,14 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
     rows.forEach(([speed, strike], i) => {
       const n = put(kind, 256 + (1.5 - i) * gap, z, j === 0 ? [9, 16, 13, 8] : [5, 15, 11]);
       st.speed = speed;
-      // Each a little further on in its clip, and a strike part way through.
+      // Each body is a little further into its clip, and the strike is part way through.
       r.id[n] = idWithSeed(i * 5) + 1024 * (n + 1);
       if (strike) st.setAction(ACT_SWING, HOLD_HANDS, tick - 10);
       r.anim[n] = st.pack();
       st.setAction(ACT_NONE, HOLD_HANDS, 0);
     });
     put(view.reg.index.get("core:survivor")!, 256 + 1.5 * gap + (j === 0 ? 5.5 : 2.6), z, []);
-    // And one sitting on the second of the row: tied to its seat, low, as a rider is.
+    // A rider sits on the second creature of the row, in the low stance a rider has.
     const mount = r.count - 4;
     const rider = put(view.reg.index.get("core:survivor")!, r.x[mount]!, z, []);
     r.seat[rider] = r.id[mount]! + 1;
@@ -251,7 +216,7 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
   cam.fovY = 0.6;
   cam.yaw = 0;
   cam.pitch = -0.19;
-  // Or the young: each kind grown, then newborn, a third grown and three quarters grown, its egg, and a survivor for size.
+  // With --young, each kind is shown grown, newborn, a third grown and three quarters grown, with its egg and a survivor for size.
   if (process.argv.includes("--young")) {
     r.count = 0;
     const now = tick + 1000;
@@ -275,7 +240,7 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
     cam.pitch = -0.2;
     return;
   }
-  // Or close to the raptors' row, for a look at feet and jaws.
+  // With --near, the camera is close to the raptors' row.
   if (process.argv.includes("--near")) {
     cam.x = 259;
     cam.z = 233;
@@ -290,7 +255,7 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
   r.count = 0;
   r.tick = tick;
   const kind = view.reg.index.get("core:survivor")!;
-  // speed, dir, pitch, mode, stance, grounded; then, for a body that is swinging, how it holds what it swings
+  // Speed, dir, pitch, mode, stance, grounded. Then, for a body in an action, its hold, the act (a swing by default) and the item held.
   const rows: readonly (readonly [number, number, number, number, number, number, number?, number?, string?])[] = [
     [0, 0, 0, 1, 0, 1], // idle
     [3, 0, 0, 1, 0, 1], // walk
@@ -322,15 +287,14 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
     [0, 0, 0, 1, 0, 1, HOLD_RIFLE, ACT_NONE, "crossbow"], // a crossbow
   ];
   const hatchet = view.reg.index.get("core:hatchet")!;
-  // Two kinds of motion to a picture, one behind the other; eight moments of each, left to right.
+  // A picture shows two kinds of motion, one behind the other, with eight moments of each from left to right.
   const columns = 8;
   const st = new AnimState();
   const shown = rows.slice(first, first + 2);
   shown.forEach((row, j) => {
     for (let i = 0; i < columns; i++) {
       const n = r.count++;
-      // A body's clock runs ahead of the world's by a seed made from its id.
-      // Pick ids whose seed is the column, times three ticks: each column is a later moment.
+      // A body's clock runs ahead of the world's by a seed made from its id. Ids are picked so each column is three ticks later.
       r.id[n] = idWithSeed(i * 3) + 1024 * (n + 1);
       r.kind[n] = kind;
       r.x[n] = 256 + (3.5 - i) * 1.3;
@@ -343,7 +307,7 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
       st.mode = row[3];
       st.stance = row[4];
       st.grounded = row[5] === 1;
-      // A swing is shown from its first tick to its last, left to right, whatever the body's own clock says.
+      // Each column is two ticks further into the action, regardless of the body's own clock.
       if (row[6] === undefined) st.setAction(ACT_NONE, HOLD_HANDS, 0);
       else st.setAction(row[7] ?? ACT_SWING, row[6], tick - i * 2);
       r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
@@ -353,7 +317,7 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
       r.anim[n] = st.pack();
     }
   });
-  // From far off through a narrow lens, so that the bodies at the edges are not stretched.
+  // A distant camera with a narrow field of view keeps the bodies at the edges from stretching.
   const cam = view.cam;
   cam.x = 256;
   cam.z = 211;
@@ -361,11 +325,7 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
   cam.fovY = 0.25;
 }
 
-/**
- * Replace the bodies in view with a line-up of equipment. Front row: each
- * armor tier in full on one sex, then the other, with a weapon in hand. Back
- * row: bare bodies holding each weapon in turn, and one wearing odd pieces.
- */
+/** The front row wears each armor tier in full on each sex, weapon in hand. The back row holds each weapon in turn, plus one body in odd pieces. */
 export function gearScene(view: ProvingView, facing: number): void {
   const r = view.remote;
   r.count = 0;
@@ -409,11 +369,7 @@ export function gearScene(view: ProvingView, facing: number): void {
   cam.fovY = 0.27;
 }
 
-/**
- * Replace the bodies in view with a line-up of looks. Front row: each sex
- * plain, then with every hair style and a beard. Back row: each sex with every
- * slider at its low end and at its high end, and four made at random.
- */
+/** The front row is every hair style on each sex, some bearded. The back row is each sex with every slider at each end, then six random looks. */
 export function looksScene(view: ProvingView, facing: number): void {
   const r = view.remote;
   r.count = 0;
@@ -464,11 +420,7 @@ export function looksScene(view: ProvingView, facing: number): void {
   cam.fovY = 0.27;
 }
 
-/**
- * A whole client against a whole server, in this process, drawn after `ms` of
- * play: the world as its scene has it and its interface over that. `setup`
- * may steer it before the picture is taken.
- */
+/** A whole client against a whole server in this process, drawn with its interface. `setup` steers it before the picture is taken. */
 export function clientPicture(width: number, height: number, look: Uint8Array | null, setup: (app: App, run: (ms: number) => void, h: Harness) => void): Uint8ClampedArray {
   const h = new Harness({}, 1, 60, { dev: true });
   const pack = parsePack(buildCorePack());
@@ -479,7 +431,7 @@ export function clientPicture(width: number, height: number, look: Uint8Array | 
   setup(app, run, h);
   run(50);
   const raster = new Rasterizer(width, height, pack, app.session.world!.hf);
-  // The rasterizer has seen none of the uploads earlier frames carried: have the scene send them again.
+  // The rasterizer saw none of the uploads earlier frames carried, so the scene sends them again.
   app.scene!.resetUploads();
   packet = app.frame(h.now + 1, width, height);
   raster.render(packet!);
@@ -498,7 +450,7 @@ if (import.meta.main) {
     const tab = Number(arg("creator") ?? 0) || 0;
     const pixels = clientPicture(w!, h!, null, (app) => {
       app.ui.creator.tab = tab;
-      // Something other than the plain look, so that the controls show what they do.
+      // A random look, so the controls show what they do.
       randomLook(new Rng(5), app.ui.creator.look);
     });
     const out = resolve(arg("out") ?? "artifacts/creator.png");
@@ -508,8 +460,8 @@ if (import.meta.main) {
     process.exit(0);
   }
   if (args.includes("--fight")) {
-    // A survivor facing a dummy in flak, six metres off, caught in the middle of something:
-    // "punch" (up close, as the blow lands), "bow" (at full draw), "loosed" (the arrow in the air), "rifle" (the round's line).
+    // A survivor faces a dummy in flak six metres off. --fight takes "punch" (up close, as the blow lands), "bow" (at full draw),
+    // "loosed" (the arrow in the air) or "rifle" (the round's tracer).
     const what = arg("fight") ?? "bow";
     const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
       const s = app.session;
@@ -557,7 +509,7 @@ if (import.meta.main) {
     process.exit(0);
   }
   if (args.includes("--build")) {
-    // A survivor who has set down a foundation and a wall, with a doorframe in hand, looking at where it would go.
+    // A survivor has placed a foundation and a wall, and holds a doorframe aimed at where it would go.
     const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
       const s = app.session;
       const rec = hh.host.records.byPid.get(hh.world.ents.pid[hh.ent(s)]!)!;
@@ -580,7 +532,7 @@ if (import.meta.main) {
       app.controls.pitch = Math.atan2(-1.62, 5.5);
       run(300);
       click();
-      // A wall on its far edge; then, looking a little to the left, the same piece as a doorframe on its west edge, not yet set down.
+      // Places a wall on the far edge. Then, looking a little left, previews the same item as a doorframe on the west edge.
       s.command(CMD_SELECT, (wr) => wr.u8(1));
       app.controls.pitch = Math.atan2(-1.62, 6.6);
       run(300);
@@ -591,7 +543,7 @@ if (import.meta.main) {
       app.controls.pitch = Math.atan2(-1.62, 5.4);
       run(300);
       if (args.includes("--menu")) {
-        // Instead: the piece put away, a few steps toward the wall, and the use key held on it.
+        // With --menu, the survivor puts the piece away, walks toward the wall and holds the use key on it.
         s.command(CMD_SELECT, (wr) => wr.u8(255));
         app.controls.yaw = 0.25;
         app.controls.pitch = 0.05;
@@ -670,7 +622,7 @@ if (import.meta.main) {
       ui.inventory.hover = 2;
     }
     if (args.includes("--chat")) {
-      // Things said on each channel, and the box open on the tribe's with a line being typed.
+      // Lines on each channel, and the chat box open on the tribe channel with a line being typed.
       session ??= { inventory: null, serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "Night Shift" } } as unknown as ClientSession;
       const said: [number, string][] = [
         [TEXT_NOTICE, "bob joined Night Shift."],
