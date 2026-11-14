@@ -1,9 +1,9 @@
-// What the client knows of every asset without its bytes: its levels, its size, what it hangs on. Meshes are read from
-// the manifest, and rigs and clips from the boot pack, which is whole at start.
+// What the client knows of every asset without its bytes: its levels, its size, what it hangs on, what it is drawn
+// with. Meshes and materials are read from the manifest, and rigs and clips from the boot pack, which is whole at start.
 
 import type { Slot } from "../../../shared/content/classes.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
-import type { Pack } from "../../../shared/pack/pack.ts";
+import type { Pack, PackMaterial } from "../../../shared/pack/pack.ts";
 
 export class AssetTable {
   /** Meshes. A mesh is known by its index here, which is its index in the manifest. */
@@ -12,6 +12,12 @@ export class AssetTable {
   readonly tris: readonly (readonly number[])[];
   /** How far, in metres, each level's surface lies from the finest level's (see PackLod). */
   readonly error: readonly (readonly number[])[];
+  /** The sections of each level of each mesh: a material, its first index and how many indices, for each. None on a flat level. */
+  readonly sections: readonly (readonly (readonly number[])[])[];
+  /** The first level of each mesh that is flat. Every level from it on is drawn in palette colours on any tier. */
+  readonly flat: Uint8Array;
+  /** The materials that sections name. */
+  readonly materials: readonly PackMaterial[];
   /** Radius, in metres, of a sphere about the mesh's origin that holds it. */
   readonly radius: Float32Array;
   /** The skeleton each mesh follows, or "". */
@@ -30,6 +36,9 @@ export class AssetTable {
     this.index = new Map(meshes.map((m, i) => [m.id, i]));
     this.tris = meshes.map((m) => m.levels.map((l) => l.tris));
     this.error = meshes.map((m) => m.levels.map((l) => l.error));
+    this.sections = meshes.map((m) => m.levels.map((l) => l.sections ?? []));
+    this.flat = Uint8Array.from(meshes, (m) => m.flat ?? 0);
+    this.materials = manifest.materials ?? [];
     this.radius = Float32Array.from(meshes, (m) => Math.hypot(m.half[0], m.half[1], m.half[2]) + Math.hypot(m.center[0], m.center[1], m.center[2]));
     this.skeleton = meshes.map((m) => m.skeleton ?? "");
     this.rig = Int16Array.from(meshes, (m) => m.rig ?? -1);
