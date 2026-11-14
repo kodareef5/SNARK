@@ -71,6 +71,23 @@ test("a world survives restart: tick, structures, records and where a survivor s
   h2.host.shutdown();
 });
 
+test("a first start that stopped before its first commit left no world, so the next start is the first again", () => {
+  const db = join(dir, "stillborn.db");
+  const reg = coreRegistry();
+  const whole = createHost(reg).world.structs.count;
+  // A start that got as far as opening the file: a bad map file, a port in use, a module that throws.
+  new WorldStore(db, reg).close();
+  // And one that was killed in its first ticks.
+  createHost(reg, { dbPath: db }).persistence!.store.close();
+  const host = createHost(reg, { dbPath: db });
+  expect(host.loaded).toEqual({ fresh: true, tick: 0, structures: whole, records: 0 });
+  for (let n = 0; n < 12; n++) host.game.tick();
+  host.shutdown();
+  const again = createHost(reg, { dbPath: db });
+  expect(again.loaded).toEqual({ fresh: false, tick: 12, structures: whole, records: 0 });
+  again.shutdown();
+});
+
 test("a save that uses removed content refuses to load unless told to drop it", () => {
   const db = join(dir, "content.db");
   const full = coreRegistry();

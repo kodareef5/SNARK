@@ -111,6 +111,7 @@ export class WorldStore {
   readonly missingContent: string[] = [];
   /** Saved indices of ids that were renamed to more than one thing, and what they are now. */
   private readonly split = new Map<number, readonly number[]>();
+  /** No commit has landed in the file, so it holds no world. */
   readonly fresh: boolean;
 
   private readonly reg: Registry;
@@ -157,7 +158,8 @@ export class WorldStore {
       db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID");
 
       const current = Number(this.meta("schema_version") ?? 0);
-      this.fresh = current === 0;
+      // Every commit writes the tick. A file with tables and no tick is a first start that stopped before its first commit.
+      this.fresh = this.meta("tick") === null;
       if (current > SCHEMA_VERSION) throw new Error(`save has schema ${current}; this build understands up to ${SCHEMA_VERSION}`);
       if (current < SCHEMA_VERSION) {
         // The save as it was, kept beside it before its form changes. An older copy of the same form is left alone.
