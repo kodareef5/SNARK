@@ -21,6 +21,9 @@ import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import type { Def } from "../../shared/content/defs.ts";
+import { compileContent } from "../../shared/content/registry.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_MELEE, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
 
 const ASPECTS: [string, number][] = [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]];
@@ -586,6 +589,57 @@ test("the character screen fits every window shape on every tab and page, and it
     ui.key("KeyM", true, false, session);
     expect([ui.character, ui.map]).toEqual([false, true]);
   }
+});
+
+test("with hundreds of engrams and things to make, each button of the character screen still does what its row says", () => {
+  // 230 more things to make, each with its engram: past the hundredth engram and the two hundredth thing.
+  const more: Def[] = [];
+  for (let i = 0; i < 230; i++) {
+    more.push({ type: "item", class: "resource", id: `core:thing${i}`, label: `thing ${i}`, stack: 10, craft: { needs: [{ item: "core:stone", count: 1 }], seconds: 1, xp: 1 } });
+    more.push({ type: "engram", id: `core:engram-thing${i}`, label: `Thing ${i}`, level: 1, cost: 0, item: `core:thing${i}` });
+  }
+  const made = compileContent([...CORE_CONTENT, ...more]);
+  expect(made.errors).toEqual([]);
+  const big = made.registry!;
+  const engrams = engramOrder(big);
+  expect(engrams.length).toBeGreaterThan(230);
+  const { session, sent } = fakeSession(new Inventory(40));
+  const progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [], version: 1 };
+  Object.assign(session, { sessionState: SESSION_ALIVE, ownKind: big.index.get("core:survivor")!, progress });
+  const ui = new Ui();
+  ui.registry = big;
+  ui.key("KeyP", true, false, session);
+  const f = ui.frame;
+  /** Presses the button of the row whose line starts with `words`, paging to it. */
+  const press = (tab: number, words: string): void => {
+    ui.pointer(0, KEY_CHAR_TAB + tab, 0, 0, 0, session);
+    for (ui.sheet.page = 0; ; ui.sheet.page++) {
+      ui.build(16 / 9, fullHud(), session);
+      const keys = new Set<number>();
+      for (let i = 0; i < f.count; i++) {
+        expect(keys.has(f.nodes[i]!.key), `key ${f.nodes[i]!.key} twice`).toBe(false);
+        keys.add(f.nodes[i]!.key);
+      }
+      for (let i = 0; i < f.count; i++) {
+        if (!f.nodes[i]!.text.startsWith(words)) continue;
+        // A row is its line, then its button.
+        return ui.pointer(0, f.nodes[i]!.key + 1, 0, 0, 0, session);
+      }
+      if (ui.sheet.page >= ui.sheet.pages - 1) throw new Error(`no row says ${words}`);
+    }
+  };
+  for (const i of [3, 150, 229]) press(1, `Thing ${i}:`);
+  progress.engrams = engrams;
+  for (const i of [3, 150, 229]) press(2, `thing ${i}:`);
+  const asked = sent.map((c) => [c.op, big.ids[new BitReader(c.bytes).u16()]]);
+  expect(asked).toEqual([
+    [CMD_LEARN, "core:engram-thing3"],
+    [CMD_LEARN, "core:engram-thing150"],
+    [CMD_LEARN, "core:engram-thing229"],
+    [CMD_CRAFT, "core:thing3"],
+    [CMD_CRAFT, "core:thing150"],
+    [CMD_CRAFT, "core:thing229"],
+  ]);
 });
 
 test("the chat box: a key for each channel, Tab to change it, Enter to say the line, and the keyboard while it is open", () => {
