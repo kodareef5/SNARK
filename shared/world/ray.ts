@@ -3,7 +3,7 @@
 
 import { YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
-import type { CollisionWorld } from "./collide.ts";
+import { PAD, type CollisionWorld } from "./collide.ts";
 import { Found } from "./structures.ts";
 
 export const HIT_NONE = 0;
@@ -111,7 +111,9 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
       const az = oz + dz * from;
       const bx = ox + dx * to;
       const bz = oz + dz * to;
-      const n = structs.query(ax < bx ? ax : bx, az < bz ? az : bz, ax > bx ? ax : bx, az > bz ? az : bz, found);
+      const ay = oy + dy * from;
+      const by = oy + dy * to;
+      const n = structs.query(ax < bx ? ax : bx, az < bz ? az : bz, ax > bx ? ax : bx, az > bz ? az : bz, found, (ay < by ? ay : by) - PAD, (ay > by ? ay : by) + PAD);
       for (let i = 0; i < n; i++) {
         const r = found.refs[i]!;
         const t = structs.chunks[Math.floor(r / 65536)]!;

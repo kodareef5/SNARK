@@ -21,6 +21,8 @@ export interface CollisionWorld {
 export const push = { x: 0, y: 0, z: 0, depth: 0 };
 
 const found = new Found();
+/** Metres added to a cheap reject, so that rounding never rejects a touch. */
+export const PAD = 0.01;
 
 /**
  * The capsule stands with its feet at (x, y, z), radius r and total height h. On an overlap deeper than `slack`, fills `push`
@@ -31,6 +33,11 @@ export function capsuleBox(structs: StructureStore, ref: number, x: number, y: n
   const slot = ref & 0xffff;
   const kind = t.kind[slot]!;
   if (structs.isSoft(kind)) return false;
+  // Too far off sideways to touch at any yaw. Most of a grid cell's structures are.
+  const dx = x - t.x[slot]!;
+  const dz = z - t.z[slot]!;
+  const far = structs.spread[kind]! + r + PAD;
+  if (dx * dx + dz * dz >= far * far) return false;
   return capsuleKind(structs.parts, kind, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, x, y, z, r, h, slack);
 }
 
@@ -144,13 +151,14 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
   const hf = w.hf;
   if (x < 0 || z < 0 || x > hf.sizeX || z > hf.sizeZ) return false;
   if (y < hf.heightAt(x, z) - SKIN) return false;
-  const n = w.structs.query(x - r, z - r, x + r, z + r, found);
+  const top = y + (h > 2 * r ? h : 2 * r) + PAD;
+  const n = w.structs.query(x - r, z - r, x + r, z + r, found, y - PAD, top);
   for (let i = 0; i < n; i++) {
     if (capsuleBox(w.structs, found.refs[i]!, x, y, z, r, h, SKIN)) return false;
   }
   const nodes = w.nodes;
   if (nodes) {
-    const m = nodes.query(x - r, z - r, x + r, z + r, found);
+    const m = nodes.query(x - r, z - r, x + r, z + r, found, y - PAD, top);
     for (let i = 0; i < m; i++) {
       if (capsuleBox(nodes, found.refs[i]!, x, y, z, r, h, SKIN)) return false;
     }
@@ -160,13 +168,15 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
 
 /** True when lowering the capsule by `probe` meets an upward push from a structure or node. */
 export function restsOnStructure(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number, probe: number): boolean {
-  const n = w.structs.query(x - r, z - r, x + r, z + r, found);
+  const low = y - probe - PAD;
+  const top = y - probe + (h > 2 * r ? h : 2 * r) + PAD;
+  const n = w.structs.query(x - r, z - r, x + r, z + r, found, low, top);
   for (let i = 0; i < n; i++) {
     if (capsuleBox(w.structs, found.refs[i]!, x, y - probe, z, r, h, 0) && push.y > 0.7 * push.depth) return true;
   }
   const nodes = w.nodes;
   if (nodes) {
-    const m = nodes.query(x - r, z - r, x + r, z + r, found);
+    const m = nodes.query(x - r, z - r, x + r, z + r, found, low, top);
     for (let i = 0; i < m; i++) {
       if (capsuleBox(nodes, found.refs[i]!, x, y - probe, z, r, h, 0) && push.y > 0.7 * push.depth) return true;
     }

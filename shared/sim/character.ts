@@ -220,13 +220,13 @@ const found = new Found();
  * straight up. These are the quantized values sent on the wire.
  */
 export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
+  stepOut.landSpeed = 0;
   if (b.mode === MODE_NONE) {
     b.vx = 0;
     b.vy = 0;
     b.vz = 0;
     return;
   }
-  stepOut.landSpeed = 0;
   // The facing follows the look, at once or at turnRate. The body then moves the way it faces.
   if (p.turnRate <= 0 || b.mode === MODE_GHOST) b.yaw = yaw & 0xffff;
   else {
@@ -327,6 +327,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const maxZ = hf.sizeZ - r;
   const maxSide2 = r * r;
   const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
+  const tall = height > 2 * r ? height : 2 * r;
 
   let x = b.x;
   let y = b.y;
@@ -372,13 +373,16 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
 
     // Structures: push out along the shortest exit, a few rounds.
     let blocked = false;
+    /** The last round touched nothing, and the body has not moved since. */
+    let clear = false;
     for (let iter = 0; iter < RESOLVE_ITERATIONS; iter++) {
       let moved = false;
       // Structures, then resource nodes. Both stores hold boxes.
       for (let pass = 0; pass < 2; pass++) {
         const store = pass === 0 ? structs : w.nodes;
         if (!store) continue;
-        const count = store.query(nx - r, nz - r, nx + r, nz + r, found);
+        // A radius of margin each way, for what a push within the round may bring into reach.
+        const count = store.query(nx - r, nz - r, nx + r, nz + r, found, ny - r, ny + tall + r);
         for (let k = 0; k < count; k++) {
           if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, height, 0)) continue;
           nx += push.x;
@@ -396,10 +400,16 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
           moved = true;
         }
       }
-      if (!moved) break;
+      if (!moved) {
+        clear = true;
+        break;
+      }
     }
     h = hf.heightAt(nx, nz);
-    if (ny < h && h - ny <= p.stepUp) ny = h;
+    if (ny < h && h - ny <= p.stepUp) {
+      ny = h;
+      clear = false;
+    }
 
     // Step up: a grounded body blocked by something low climbs onto it.
     if (blocked && walking) {
@@ -421,14 +431,16 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
         nx = tx;
         ny = hi;
         nz = tz;
+        clear = false;
       }
     }
 
-    // Commit only a legal position reached by a bounded move.
+    // Commit only a legal position reached by a bounded move. A body the last round found clear of every structure is
+    // clear of them at capsuleFree's smaller reach too, so only the ground is asked again.
     const ddx = nx - x;
     const ddz = nz - z;
     const ddy = ny - y;
-    if (ddx * ddx + ddz * ddz > maxSide2 || ddy > maxRise || ddy < -maxRise || !capsuleFree(w, nx, ny, nz, r, height)) {
+    if (ddx * ddx + ddz * ddz > maxSide2 || ddy > maxRise || ddy < -maxRise || (clear ? nx < 0 || nz < 0 || nx > hf.sizeX || nz > hf.sizeZ || ny < h - SKIN : !capsuleFree(w, nx, ny, nz, r, height))) {
       vx = 0;
       vz = 0;
       if (vy > 0) vy = 0;
@@ -622,7 +634,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
       for (let pass = 0; pass < 2; pass++) {
         const store = pass === 0 ? structs : w.nodes;
         if (!store) continue;
-        const count = store.query(nx - r, nz - r, nx + r, nz + r, found);
+        const count = store.query(nx - r, nz - r, nx + r, nz + r, found, ny - r, ny + (p.height > 2 * r ? p.height : 2 * r) + r);
         for (let k = 0; k < count; k++) {
           if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, p.height, 0)) continue;
           nx += push.x;
