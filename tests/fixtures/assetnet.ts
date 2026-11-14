@@ -1,10 +1,12 @@
 // A network made of numbers, for the asset library: a delay, a rate, a share of requests that fail, and a seed.
-// It serves parts of the files it is given, one or several to a request, checks each against the hash asked for as
-// the browser's worker will, and never delivers what was cancelled. Asked to, it keeps the parts it has delivered as
-// the worker does. The same seed and the same requests give the same arrivals.
+// It serves parts of the files it is given, one or several to a request, inflates those stored deflated and checks
+// each against the hash asked for as the browser's worker will, and never delivers what was cancelled. Asked to, it
+// keeps the parts it has delivered as the worker does. The same seed and the same requests give the same arrivals.
 
+import { inflateRawSync } from "node:zlib";
 import { FAIL_HASH, FAIL_NET, FAIL_RANGE, type AssetArrival, type AssetPart, type AssetPort, type AssetRequest } from "../../client/core/assets/port.ts";
 import { Rng } from "../../shared/rng.ts";
+import { unfilterPart } from "../../shared/pack/stored.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 
 export interface NetOptions {
@@ -28,6 +30,16 @@ interface Transfer {
   left: number;
   /** A request that will fail does so when this many bytes are left. */
   failAt: number;
+}
+
+/** A part's bytes as fetched, inflated and its filter undone where it is stored deflated, as the worker does. Null if they do not come back. */
+function opened(got: Uint8Array, part: AssetPart): Uint8Array | null {
+  if (part.inflated === undefined) return got;
+  try {
+    return unfilterPart(new Uint8Array(inflateRawSync(got)), part.inflated);
+  } catch {
+    return null;
+  }
 }
 
 export class FakeNet implements AssetPort {
@@ -102,13 +114,17 @@ export class FakeNet implements AssetPort {
         const bytes = got.reduce((sum, part) => sum + part.length, 0);
         const linked = t.link.reduce((sum, p) => sum + p.length, 0);
         // A range that runs off the end comes back short.
-        if (got.some((part, k) => part.length < parts[k]!.length)) this.finish(t, null, FAIL_NET, bytes);
-        else if (got.some((part, k) => parts[k]!.hash !== "" && partHash(part) !== parts[k]!.hash)) this.finish(t, null, FAIL_HASH, linked);
+        if (got.some((part, k) => part.length < parts[k]!.length)) {
+          this.finish(t, null, FAIL_NET, bytes);
+          continue;
+        }
+        const open = got.map((part, k) => opened(part, parts[k]!));
+        if (open.some((part, k) => part === null || (parts[k]!.hash !== "" && partHash(part) !== parts[k]!.hash))) this.finish(t, null, FAIL_HASH, linked);
         else {
           for (const p of t.link) this.over.set(`${t.request.file}:${p.offset}`, (this.over.get(`${t.request.file}:${p.offset}`) ?? 0) + 1);
           for (const p of parts) this.kept?.add(`${t.request.file}:${p.offset}`);
           // Several parts come as one run of bytes, in the order asked.
-          this.finish(t, got.length === 1 ? got[0]!.slice() : Buffer.concat(got), 0, linked, bytes - linked);
+          this.finish(t, open.length === 1 ? open[0]!.slice() : Buffer.concat(open as Uint8Array[]), 0, linked, bytes - linked);
         }
       }
     }

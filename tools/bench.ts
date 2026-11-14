@@ -46,6 +46,7 @@ import { benchLatency } from "./bench/latency.ts";
 import { benchPoses } from "./bench/poses.ts";
 import { benchTextured } from "./bench/textured.ts";
 import { benchTextures } from "./bench/textures.ts";
+import { benchParts } from "./bench/parts.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -1181,6 +1182,7 @@ benchLatency(section, record);
 benchPoses(section, record);
 benchTextured(section, record);
 await benchTextures(section, record);
+await benchParts(section, record);
 
 rmSync(dir, { recursive: true, force: true });
 const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);
