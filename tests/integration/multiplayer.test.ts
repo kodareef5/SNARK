@@ -27,8 +27,8 @@ test("two clients join, move, and see each other where the server says they are"
   expect(b.state).toBe("active");
   expect(h.server.playerCount).toBe(2);
 
-  h.pilots[0]!.moveZ = 1; // ada walks north
-  h.pilots[1]!.moveX = 1; // bo strafes
+  h.pilots[0]!.moveZ = 1;
+  h.pilots[1]!.moveX = 1;
   h.run(3000);
   h.pilots[0]!.moveZ = 0;
   h.pilots[1]!.moveX = 0;
@@ -38,12 +38,11 @@ test("two clients join, move, and see each other where the server says they are"
   const ea = h.ent(a);
   const eb = h.ent(b);
   expect(ents.z[ea]! - 240).toBeGreaterThan(12); // 3 s at 4.5 m/s
-  // Each client's prediction of itself equals the authoritative body exactly once at rest.
   expect(a.own.x).toBe(ents.x[ea]!);
   expect(a.own.z).toBe(ents.z[ea]!);
   expect(b.own.x).toBe(ents.x[eb]!);
 
-  // Each sees the other within wire precision (1/256 m).
+  // Wire precision is 1/256 m.
   const seen = new RemoteSample();
   a.sampleRemote(seen);
   expect(seen.count).toBe(1);
@@ -54,7 +53,7 @@ test("two clients join, move, and see each other where the server says they are"
   expect(seen.count).toBe(1);
   expect(Math.abs(seen.z[0]! - ents.z[ea]!)).toBeLessThan(0.005);
 
-  // Both received every structure within interest (3 chunks) by chunk sync, and none beyond.
+  // Structure interest is 3 chunks.
   for (const s of [a, b]) {
     const e = h.ent(s);
     const cx = chunkCx(h.world.dims, ents.chunk[e]!);
@@ -75,7 +74,6 @@ test("on a clean link, prediction is never corrected", () => {
   h.run(1000);
   const rng = new Rng(5);
   const settled = s.stats.corrections;
-  // Roam through structures, slopes and stairs for 40 seconds.
   for (let i = 0; i < 80; i++) {
     wander(h.pilots[0]!, rng);
     h.run(500);
@@ -86,8 +84,8 @@ test("on a clean link, prediction is never corrected", () => {
 });
 
 test("a client that joins a world that has been running for a while can move", () => {
-  // Round 1 missed this: before any input arrived the server reported a margin
-  // of minus its own tick, and the client jumped its clock out of the input window.
+  // Before any input arrives the server must not report a margin of minus its own tick, or the client
+  // jumps its clock out of the input window.
   for (const [upMs, latencyMs] of [[100, 0], [1000, 30], [3000, 80], [20000, 150]] as const) {
     const h = new Harness();
     h.run(upMs);
@@ -109,7 +107,7 @@ test("a client whose clock has run far ahead is told so and comes back", () => {
   const h = new Harness();
   const s = h.join("skew", { latencyMs: 20 });
   h.run(1000);
-  s.tickClock += 300; // ten seconds ahead: every input it sends is outside the server's window
+  s.tickClock += 300; // ten seconds ahead, so every input it sends is outside the server's window
   h.pilots[0]!.moveZ = 1;
   h.run(5000); // about two seconds to come back, then it walks
   h.pilots[0]!.moveZ = 0;
@@ -133,7 +131,6 @@ test("under latency, jitter and loss, clients stay playable and converge", () =>
   for (let i = 0; i < 40; i++) {
     for (const p of h.pilots) wander(p, rng);
     h.run(500, () => {
-      // The local body must always be in legal space, even mid-correction.
       for (const s of sessions) {
         const m = h.reg.move[s.ownKind]!;
         if (!capsuleFree(s.world!, s.own.x, s.own.y, s.own.z, m.radius, m.height)) throw new Error("client body in solid");
@@ -149,7 +146,7 @@ test("under latency, jitter and loss, clients stay playable and converge", () =>
   for (const s of sessions) {
     const e = h.ent(s);
     worst = Math.max(worst, Math.hypot(s.own.x - ents.x[e]!, s.own.y - ents.y[e]!, s.own.z - ents.z[e]!));
-    // 5% loss with 4-fold input redundancy: a missed input needs four losses in a row.
+    // With 5% loss and 4-fold input redundancy, a missed input needs four losses in a row.
     expect(s.stats.snapshots).toBeGreaterThan(500);
   }
   expect(worst).toBe(0);
@@ -181,8 +178,7 @@ test("a hostile client cannot move faster, teleport, or crash the server", () =>
   for (let i = 0; i < 300; i++) {
     const px = ents.x[mallory.ent]!;
     const pz = ents.z[mallory.ent]!;
-    // Every tick: inputs for many future ticks at once, with out-of-range fields,
-    // plus garbage, truncated and oversized messages.
+    // Each tick sends inputs for many future ticks with out-of-range fields, then a junk message that is sometimes oversized.
     for (let k = 0; k < 6; k++) {
       w.reset();
       w.bits(C_INPUT, 4);
@@ -208,10 +204,9 @@ test("a hostile client cannot move faster, teleport, or crash the server", () =>
     const m = h.reg.move[ents.kind[mallory.ent]!]!;
     expect(capsuleFree(h.world, ents.x[mallory.ent]!, ents.y[mallory.ent]!, ents.z[mallory.ent]!, m.radius, m.height)).toBe(true);
   }
-  // Sprint speed is 7.2 m/s: 0.24 m per tick, however many inputs were sent.
+  // Sprint speed is 7.2 m/s, which is 0.24 m per tick.
   expect(maxStep).toBeLessThan(0.25);
   expect(Math.hypot(ents.x[mallory.ent]! - x0, ents.z[mallory.ent]! - z0)).toBeLessThan(0.24 * 300);
-  // Flooding with malformed messages ends in disconnection, and the honest player is unaffected.
   expect(h.server.stats.malformed).toBeGreaterThan(0);
   for (let i = 0; i < 400 && !closed; i++) {
     end.send(CH_RELIABLE, new Uint8Array([0xff, 0xff]));
@@ -242,7 +237,6 @@ test("a crowded scene is delivered within the byte budget and still converges", 
   const h = new Harness({ snapshotBytes: 300 }, 3, 30);
   const watcher = h.join("watcher");
   h.run(300);
-  // 120 server-side bodies milling around the spawn.
   const kind = h.reg.index.get("core:grazer")!;
   const ents = h.world.ents;
   const rng = new Rng(8);
@@ -270,7 +264,7 @@ test("a crowded scene is delivered within the byte budget and still converges", 
 test("named entities are budgeted with their names: a crowd of them stays within the snapshot budget", () => {
   const h = new Harness({ snapshotBytes: 1100 }, 3, 30);
   const watcher = h.join("watcher");
-  h.run(1500); // structures have arrived; from here only snapshots flow
+  h.run(1500); // structures have arrived, so from here only snapshots flow
   const kind = h.reg.index.get("core:grazer")!;
   const ents = h.world.ents;
   for (let i = 0; i < 40; i++) {
@@ -284,9 +278,9 @@ test("named entities are budgeted with their names: a crowd of them stays within
     largest = Math.max(largest, sent.bytesSent - last);
     last = sent.bytesSent;
   });
-  // The budget bounds the deferrable part; the header and the client's own body come on top.
+  // The budget bounds the deferrable part. The header and the client's own body come on top.
   expect(largest).toBeLessThanOrEqual(1100 + 60);
-  expect(largest).toBeGreaterThan(900); // and the budget was actually used
+  expect(largest).toBeGreaterThan(900); // the budget was used
   const seen = new RemoteSample();
   watcher.sampleRemote(seen);
   expect(seen.count).toBe(40);

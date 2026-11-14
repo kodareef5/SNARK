@@ -31,7 +31,6 @@ test("a client is told how another body moves, where it looks and how low it hol
   };
   expect(look().pack()).toBe(0); // standing still, looking level
 
-  // Bo sprints forward, looking up.
   const p = h.pilots[1]!;
   p.moveZ = 1;
   p.pitch = 0.6;
@@ -39,10 +38,8 @@ test("a client is told how another body moves, where it looks and how low it hol
   h.run(1500);
   expect([look().speed, st.dir, st.stance, st.grounded, st.mode]).toEqual([12, 0, STANCE_STAND, true, 1]);
   expect(st.pitch).toBe(12);
-  // What the client holds is what the server holds, bit for bit, a few ticks ago.
   expect(seen.anim[0]).toBe(ents.anim[eb]!);
 
-  // Strafing to its right while crouched; then lying down; then in the air.
   p.moveZ = 0;
   p.moveX = 1;
   p.pitch = -0.3;
@@ -52,7 +49,7 @@ test("a client is told how another body moves, where it looks and how low it hol
   expect(b.own.stance).toBe(STANCE_CROUCH);
   p.buttons = BTN_PRONE;
   h.run(1000);
-  // A crawl is 0.9 m/s, which is between one and two steps of the speed that is sent.
+  // A crawl is 0.9 m/s, between one and two steps of the sent speed.
   expect([look().dir, st.stance]).toEqual([12, STANCE_PRONE]);
   expect(st.speed === 1 || st.speed === 2).toBe(true);
   p.moveX = 0;
@@ -65,7 +62,6 @@ test("a client is told how another body moves, where it looks and how low it hol
   p.buttons = 0;
   h.run(1500);
   expect(look().grounded).toBe(true);
-  // Bo's own client predicted every one of those changes of stance: nothing had to be corrected.
   expect(b.stats.corrections).toBe(0);
   expect(a.stats.undecodable).toBe(0);
 });
@@ -93,7 +89,7 @@ test("stance is predicted: a client under latency and loss converges, and looks 
   expect(a.own.x).toBe(ents.x[e]!);
   expect(a.own.y).toBe(ents.y[e]!);
   expect(a.own.z).toBe(ents.z[e]!);
-  // The eye the server casts from when this body uses something is the crouched one.
+  // The server casts from this eye when the body uses something.
   const move = h.reg.move[ents.kind[e]!]!;
   expect(stanceEye(move, ents.stance[e]!)).toBeCloseTo(1.08, 5);
 });
@@ -108,7 +104,6 @@ test("history holds where every moving entity was for the last sixteen ticks, an
   const ea = h.ent(a);
   h.pilots[0]!.moveZ = 1;
   h.pilots[0]!.yaw = 1;
-  // Record the truth as it happens, then ask history for it afterwards.
   const truth = new Map<number, { x: number; z: number; yaw: number; anim: number }>();
   let last = h.world.tick;
   h.run(1000, () => {
@@ -132,7 +127,6 @@ test("history holds where every moving entity was for the last sixteen ticks, an
   expect(history.clamp(now + 5, now)).toBe(now);
   expect(history.clamp(now - 3, now)).toBe(now - 3);
 
-  // Between two ticks it is between the two places.
   const t0 = truth.get(now - 4)!;
   const t1 = truth.get(now - 3)!;
   expect(history.sample(now - 3.75, ea, past)).toBe(true);
@@ -142,7 +136,6 @@ test("history holds where every moving entity was for the last sixteen ticks, an
   expect(past.anim).toBe(t1.anim);
   expect(history.sample(now + 0.5, ea, past)).toBe(false);
 
-  // A slot that held someone else then is nobody now: bo leaves, and bo's slot has no past.
   const eb = h.ent(b);
   h.ends[1]!.close();
   h.run(6000); // past the linger
@@ -152,7 +145,7 @@ test("history holds where every moving entity was for the last sixteen ticks, an
 });
 
 test("history follows what is awake: a sleeping creature has no row, and its past is where it stands", () => {
-  // Nobody near: creatures sleep.
+  // With no player near, creatures sleep.
   const h = new Harness({}, 1, 60, { startingCreatures: 30 });
   const history = h.world.history;
   const ents = h.world.ents;
@@ -164,14 +157,12 @@ test("history follows what is awake: a sleeping creature has no row, and its pas
   expect(history.at(h.world.tick - 5, sleeper, past)).toBe(true);
   expect([past.x, past.z]).toEqual([ents.x[sleeper]!, ents.z[sleeper]!]);
 
-  // A player arrives: the creatures around it wake and are remembered from where they stood.
   const a = h.join("ada");
   h.run(400);
   const awake = h.host.creatures.awakeCount;
   expect(awake).toBeGreaterThan(5);
   expect(history.rows).toBe(awake + 1);
   h.run(3000);
-  // Every awake creature's past matches a record kept alongside.
   const e = h.host.creatures.awake[0]!;
   const was = { x: ents.x[e]!, z: ents.z[e]! };
   const at = h.world.tick;
@@ -179,16 +170,14 @@ test("history follows what is awake: a sleeping creature has no row, and its pas
   expect(history.at(at, e, past)).toBe(true);
   expect([past.x, past.z]).toEqual([was.x, was.z]);
 
-  // The player leaves: everything goes back to sleep and the rows are given back.
   h.ends[0]!.close();
   h.run(6000);
   expect(h.host.creatures.awakeCount).toBe(0);
   expect(history.rows).toBe(0);
-  // Rows are reused and the table grows when it must: track a thousand by hand.
   for (let i = 0; i < 1000; i++) history.track(i);
   expect(history.rows).toBe(1000);
   history.record(h.world.tick + 1);
-  // Slots that hold no entity were let go by the record; the rest stay.
+  // record() drops rows whose slot holds no entity.
   expect(history.rows).toBeLessThanOrEqual(ents.count);
   void a;
 });
@@ -201,15 +190,14 @@ test("history costs what is awake, not what exists", () => {
   const t0 = performance.now();
   for (let tick = 1; tick <= 300; tick++) history.record(tick);
   const perTick = (performance.now() - t0) / 300;
-  // 5,000 awake among 300,000: thirty writes a row. Measured at about 0.02 ms.
+  // 5,000 awake among 300,000. Measured at about 0.02 ms a tick.
   expect(perTick).toBeLessThan(0.3);
-  // 8,192 rows of 16 ticks, and one index per slot: under 4 MB where a copy of everything took 96.
+  // 8,192 rows of 16 ticks and one index per slot. A copy of everything took 96 MB.
   expect(history.bytes).toBeLessThan(4 * 1024 * 1024);
 });
 
 test("what a client draws of a remote body is what the server would test a shot against", () => {
-  // Ada stands still and watches; bo runs about, crouches, jumps. At ada's own render time, the
-  // body she is shown is where history says it was at that moment, in the same pose.
+  // At ada's render time, the body she draws must be where history has it at that tick, in the same pose.
   for (const link of [{ latencyMs: 20 }, { latencyMs: 110, jitterMs: 10 }]) {
     const h = new Harness({}, 4);
     const a = h.join("ada", link);
@@ -244,7 +232,6 @@ test("what a client draws of a remote body is what the server would test a shot 
       const off = Math.hypot(seen.x[0]! - past.x, seen.y[0]! - past.y, seen.z[0]! - past.z);
       if (off > worst) worst = off;
       if (seen.anim[0] === past.anim) samePose++;
-      // Rays at the body as ada draws it, tested against the body as the server remembers it.
       drawn.unpack(seen.anim[0]!);
       tested.unpack(past.anim);
       drawn.seed = tested.seed = (seen.id[0]! * 37) % 1024;
@@ -268,10 +255,9 @@ test("what a client draws of a remote body is what the server would test a shot 
       }
     }
     expect(compared).toBeGreaterThan(200);
-    // The place agrees to within wire precision and the blend between snapshots.
+    // Wire precision plus the blend between snapshots.
     expect(worst).toBeLessThan(0.03);
     expect(samePose / compared).toBeGreaterThan(0.97);
-    // The rays found every part of the body, and nearly all land in the same zone on both.
     expect(zones[ZONE_HEAD]!).toBeGreaterThan(20);
     expect(zones[ZONE_TORSO]!).toBeGreaterThan(200);
     expect(zones[ZONE_LEG_L]!).toBeGreaterThan(50);
@@ -315,7 +301,6 @@ test("no pose reaches outside the sphere the hit test rejects by, and a body cos
   expect(worst).toBeLessThan(BODY_REACH - 0.1);
   expect(worst).toBeGreaterThan(1.2);
 
-  // Posing a body and testing a ray against all twenty capsules.
   st.unpack(0);
   st.speed = 7;
   const rounds = 20000;
@@ -327,6 +312,6 @@ test("no pose reaches outside the sphere the hit test rejects by, and a body cos
   const micros = ((performance.now() - t0) / rounds) * 1000;
   expect(hits).toBeGreaterThan(rounds * 0.4);
   expect(zoneHit.t).toBeGreaterThan(3);
-  // Budget: 15 microseconds a body. Measured at about one; the bound allows a slow or busy machine.
+  // Measured at about one microsecond. The bound allows a slow or busy machine.
   expect(micros).toBeLessThan(15);
 });

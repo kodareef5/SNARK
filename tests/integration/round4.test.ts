@@ -1,6 +1,4 @@
-// Round 4, end to end: one story for each of its parts. What each piece does in
-// detail is in the tests beside this one; these tell whether the pieces make a
-// game together, through the commands a client sends and what it is sent back.
+// End-to-end stories, one for each part of round 4. The tests beside this one cover each piece in detail.
 
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -43,14 +41,14 @@ const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const TICK_MS = 1000 / 30;
 const U = STRUCT_UNITS;
 
-/** What a session has been told since `from`, on one channel. */
+/** Text on one channel since log version `from`. */
 const heard = (s: ClientSession, channel: number, from: number): string[] =>
   s.log
     .slice(Math.max(0, s.log.length - (s.logVersion - from)))
     .filter((l) => l.channel === channel)
     .map((l) => l.text);
 
-/** A voice socket as the server sees one, keeping what it was sent. */
+/** Keeps what the server sent it. */
 class Wire implements VoiceSocket {
   readonly got: Uint8Array[] = [];
   send(data: Uint8Array): boolean {
@@ -62,7 +60,6 @@ class Wire implements VoiceSocket {
 
 test("round 4, social: on a poor link, two survivors found a tribe and cannot hurt each other, write on three channels, and hear each other through the server while they are near and not when they are not", () => {
   const h = new Harness({}, 1, 60, { dev: true });
-  // Sixty milliseconds each way, fifteen of jitter, and one snapshot in fifty lost.
   const link = { latencyMs: 60, jitterMs: 15, loss: 0.02 };
   const [ada, bob, cy] = ["ada", "bob", "cy"].map((n) => h.join(n, link)) as [ClientSession, ClientSession, ClientSession];
   const all = [ada, bob, cy];
@@ -71,7 +68,7 @@ test("round 4, social: on a poor link, two survivors found a tribe and cannot hu
   const g = flatGround(h, 8, 70);
   const at = { x: g.x + 4, z: g.z + 2 };
   const place = (s: ClientSession, far: number): void => void h.say(s, `tp ${at.x.toFixed(3)} ${(at.z + far).toFixed(3)}`, 500);
-  // Ada, Bob a step and a half north of her, and Cy sixty-six metres off: out of earshot of anything said near.
+  // Cy stands 66 m off, out of range of local chat and voice.
   place(ada, 0);
   place(bob, 1.5);
   place(cy, 66);
@@ -89,25 +86,21 @@ test("round 4, social: on a poor link, two survivors found a tribe and cannot hu
     return h.host.combat.hits - before;
   };
 
-  // Strangers: her fist lands, and hurts.
   const whole = h.host.survival.value(rec(bob), V_HEALTH);
   expect(punch()).toBe(1);
   const hurt = h.host.survival.value(rec(bob), V_HEALTH);
   expect(hurt).toBeLessThan(whole);
-  // A tribe: she founds it, asks him face to face, and he joins. Each is shown the other in it.
   expect(h.say(ada, "tribe create Night Shift", 500)[0]).toContain("You founded Night Shift");
   expect(h.say(ada, "tribe invite bob", 500)[0]).toBe("You invited bob.");
   expect(h.say(bob, "tribe accept", 500)[0]).toContain("You joined Night Shift");
   expect([rec(bob).team, rec(cy).team === rec(ada).team]).toEqual([rec(ada).team, false]);
   for (const s of [ada, bob]) expect([s.tribe.name, s.tribe.members.map((m) => m.name)]).toEqual(["Night Shift", ["ada", "bob"]]);
   expect(cy.tribe.name).toBe("");
-  // Her fist still lands, and does nothing.
   h.run(1500);
   const before = h.host.survival.value(rec(bob), V_HEALTH);
   punch();
   expect(h.host.survival.value(rec(bob), V_HEALTH)).toBeGreaterThanOrEqual(before);
 
-  // Three channels: everyone; those near; the tribe.
   const marks = (): number[] => all.map((s) => s.logVersion);
   const since = (from: number[], channel: number): string[][] => all.map((s, i) => heard(s, channel, from[i]!));
   let from = marks();
@@ -122,10 +115,9 @@ test("round 4, social: on a poor link, two survivors found a tribe and cannot hu
   cy.chat(TEXT_TRIBE, "to mine");
   ada.chat(TEXT_TRIBE, "to ours");
   h.run(600);
-  // (Cy has no tribe: what she says to it goes to nobody.)
+  // Cy has no tribe, so her tribe message reaches nobody.
   expect(since(from, TEXT_TRIBE)).toEqual([["ada: to ours"], ["ada: to ours"], []]);
 
-  // Voice. Each opens a socket to the server with the token it was given; nobody is told where anyone else's is.
   const voice = h.host.voice;
   let now = 100000;
   const wires = all.map((s) => {
@@ -138,7 +130,7 @@ test("round 4, social: on a poor link, two survivors found a tribe and cannot hu
   const noise = new Rng(3);
   const buf = new Uint8Array(AUDIO_HEADER + 64);
   const seqs = all.map(() => 0);
-  /** Session `i` says `n` frames, twenty milliseconds apart, as loud as `mode`; the world goes on under it. */
+  /** Session `i` sends `n` frames 20 ms apart while the world runs. */
   const say = (i: number, n: number, mode = MODE_TALK): void => {
     for (let k = 0; k < n; k++) {
       const seq = seqs[i]!++;
@@ -153,7 +145,7 @@ test("round 4, social: on a poor link, two survivors found a tribe and cannot hu
     }
   };
   const down = all.map(() => new Downlink());
-  /** The frames a session has been sent since last asked, by who spoke them. */
+  /** Frames a session received since the last call, counted by speaker. */
   const heardBy = (i: number): Record<string, number> => {
     const out: Record<string, number> = {};
     for (const packet of wires[i]!.wire.got) {
@@ -171,11 +163,10 @@ test("round 4, social: on a poor link, two survivors found a tribe and cannot hu
   };
   expect(VOICE_RANGE[MODE_TALK]).toBe(25);
   hush();
-  // Side by side, each hears the other; Cy, far off, hears neither, and nobody hears themselves.
   say(0, 25);
   say(1, 25);
   expect([heardBy(0), heardBy(1), heardBy(2)]).toEqual([{ bob: 25 }, { ada: 25 }, {}]);
-  // He walks thirty metres off: her talk no longer reaches him, nor his her. A yell does.
+  // Thirty metres is out of talk range but within a yell's.
   place(bob, 30);
   hush();
   say(0, 25);
@@ -183,8 +174,8 @@ test("round 4, social: on a poor link, two survivors found a tribe and cannot hu
   expect([heardBy(0), heardBy(1), heardBy(2)]).toEqual([{}, {}, {}]);
   say(0, 25, MODE_YELL);
   expect([heardBy(1), heardBy(2)]).toEqual([{ ada: 25 }, {}]);
-  // Back beside her, he hears her talk again. This time one frame in fifty is dropped on the way to him, as the server
-  // drops what a slow listener cannot take: what he plays has no stall in it, only the lost frames covered over.
+  // One frame in fifty is dropped on the way to him, as the server drops frames for a slow listener.
+  // Playback must not stall, only conceal the lost frames.
   place(bob, 1.5);
   hush();
   say(0, 100);
@@ -204,9 +195,7 @@ test("round 4, social: on a poor link, two survivors found a tribe and cannot hu
   expect([jb.stats.restarts, jb.stats.missing, jb.stats.late]).toEqual([0, 2, 0]);
   expect(jb.stats.played).toBe(98);
   expect(played).toBeGreaterThanOrEqual(100);
-  // Through all of it the server refused nothing and nobody was sent a frame they should not have had.
   expect([voice.stats.malformed, voice.stats.limited, voice.stats.dropped]).toEqual([0, 0, 0]);
-  // And the game itself held up on that link: nothing a client could not read, and the books balance.
   for (const s of all) expect(s.stats.undecodable).toBe(0);
   expect(h.host.items.audit()).toEqual([]);
 });
@@ -220,7 +209,6 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   const rec = (s: ClientSession) => h.host.records.byPid.get(h.client(s)!.pid)!;
   const kindAt = (ref: number): number => h.world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!;
   const hpAt = (ref: number): number => h.world.structs.chunks[Math.floor(ref / 65536)]!.hp[ref & 0xffff]!;
-  /** Ask for something to be done to a thing built, and say what the server answered. */
   const act = (s: ClientSession, ref: number, action: number): number => {
     let code = -1;
     s.onResult = (seq, c) => void (seq !== 0 && (code = c));
@@ -228,14 +216,14 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
     h.run(150);
     return code;
   };
-  /** Take the piece of this name in hand and ask for it in place `socket` of `target`. */
+  /** Places `piece` on socket `socket` of `target`. */
   const put = (s: ClientSession, piece: string, target: number, socket: number, turn = 0, variant = 0): { code: number; ref: number } => made.join(s, piece, target, socket, turn, variant);
   const ok = (s: ClientSession, piece: string, target: number, socket: number, turn = 0, variant = 0): number => {
     const r = put(s, piece, target, socket, turn, variant);
     expect([piece, r.code]).toEqual([piece, RESULT_OK]);
     return r.ref;
   };
-  /** Give a survivor one of a thing that is set down by itself, and set it down at (x, z): on the ground, or on top of `target`. */
+  /** Places a free-standing item at (x, z), on the ground or on top of `target`. */
   const setDown = (s: ClientSession, item: string, x: number, z: number, target = NO_TARGET): number => {
     h.say(s, `give ${item} 1`);
     const inv = s.inventory!;
@@ -250,14 +238,13 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
     return h.host.build.last;
   };
 
-  // A tribe of two; Cy is a stranger.
   h.say(ada, "tribe create Masons");
   h.say(ada, "tribe invite bob");
   expect(h.say(bob, "tribe accept")[0]).toContain("You joined Masons");
   const team = rec(ada).team;
   expect([rec(bob).team, rec(cy).team === team]).toEqual([team, false]);
 
-  // Bob makes a wall as anything is made: he learns it, and it is made of what he has gathered.
+  // Bob learns and crafts one wall, which uses all 40 wood, 10 thatch and 7 fiber.
   h.say(bob, "addxp 20000");
   for (const [item, n] of [["wood", 40], ["thatch", 10], ["fiber", 7]] as const) h.say(bob, `give ${item} ${n}`);
   bob.command(CMD_LEARN, (w: BitWriter) => w.u16(id("engram-piece_wall_wood")));
@@ -266,16 +253,17 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   h.run(6000);
   expect([count(bob, "wall"), made.has(bob, "wood"), made.has(bob, "thatch"), made.has(bob, "fiber")]).toEqual([STOCK + 1, 0, 0, 0]);
 
-  // The slope: ten degrees, rising to the north. The house goes across it, its first foundation at the uphill end.
+  // The slope is ten degrees, rising to the north. The first foundation is at the uphill end.
   const hf = h.world.hf;
-  // (The strip is eight metres wide and the ground is sampled every two: the house keeps to the six in which every sample is the strip's.)
+  // The strip is eight metres wide and the ground is sampled every two, so the house keeps to the six metres
+  // where every sample is the strip's.
   const [fx, fz] = [SLOPE_X0 + 4.5, SLOPE_Z0 + 31];
   expect(hf.heightAt(fx, fz + 1.5) - hf.heightAt(fx, fz - 1.5)).toBeCloseTo(3 * SLOPE_TANS[0]!, 2);
   const stand = (s: ClientSession, x: number, z: number, y?: number): void => void h.say(s, y === undefined ? `tp ${x.toFixed(3)} ${z.toFixed(3)}` : `tp ${x.toFixed(3)} ${y.toFixed(3)} ${z.toFixed(3)}`);
   stand(ada, fx - 1, fz + 5);
   stand(bob, fx - 2.5, fz + 5);
   stand(cy, fx - 4, fz + 6);
-  // Turned half way round, so that what the house calls north is downhill. Its top stands just clear of the highest ground under it.
+  // Yaw 32768 turns it half way round, so the house's north is downhill. Its top stands just clear of the highest ground under it.
   made.hold(ada, "foundation");
   let code = -1;
   ada.onResult = (_seq, c) => void (code = c);
@@ -289,26 +277,25 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   const nw = ok(ada, "foundation", sw, 0);
   const se = ok(ada, "foundation", sw, 1);
   const ne = ok(ada, "foundation", nw, 1);
-  // All four at one height: the downhill pair stand clear of the ground, by what the slope falls in six metres.
+  // The downhill pair stand clear of the ground by what the slope falls in six metres.
   expect(new Set([sw, nw, se, ne].map((r) => rowOf(r)[2])).size).toBe(1);
   expect(rowOf(nw)[3]! / U).toBeCloseTo(fz - 3, 3);
   expect(floor - hf.heightAt(fx, fz - 4.5)).toBeGreaterThan(1);
-  // The doorway is in the uphill wall, where the floor meets the ground; Ada builds the ground floor, the stairs and the floor above.
+  // The doorway is in the uphill wall, where the floor meets the ground.
   const frame = ok(ada, "wall", sw, 2, 0, 1);
   const walls = [ok(ada, "wall", se, 2), ok(ada, "wall", se, 1), ok(ada, "wall", ne, 1), ok(ada, "wall", ne, 0), ok(ada, "wall", nw, 0, 0, 2), ok(ada, "wall", nw, 3), ok(ada, "wall", sw, 3)];
   ok(ada, "stairs", ne, 0, 0);
   const upSW = ok(ada, "ceiling", frame, 1);
   ok(ada, "ceiling", walls[0]!, 1);
   ok(ada, "ceiling", walls[4]!, 1);
-  // Bob, of her tribe, builds on what she built: the upper walls (the last of them the one he made) and the roof.
+  // Bob's eight upper walls include the one he made.
   const upper = [frame, ...walls].map((w) => ok(bob, "wall", w, 0));
   for (const k of [0, 1, 5, 4]) ok(bob, "ceiling", upper[k]!, 1);
   expect(count(bob, "wall")).toBe(STOCK + 1 - 8);
-  // Cy may not: it is not her tribe's.
   expect(put(cy, "wall", upper[2]!, 0).code).toBe(RESULT_NOT_YOURS);
   const door = ok(ada, "door", frame, 0);
 
-  // A porch out over the fall of the slope: each foundation stands further clear of the ground, until one would stand too high.
+  // Porch foundations run out over the fall of the slope. Two metres clear is the most, which on ten degrees refuses the third.
   stand(ada, rowOf(nw)[1]! / U, rowOf(nw)[3]! / U, floor);
   const porch: number[] = [];
   let refused = -1;
@@ -320,14 +307,11 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
       stand(ada, rowOf(from)[1]! / U, rowOf(from)[3]! / U, floor);
     } else refused = r.code;
   }
-  // Two metres clear is the most: on ten degrees that is the third one out.
   expect([porch.length, refused]).toEqual([2, RESULT_TOO_HIGH]);
-  // On the last of the porch, a wall along its west edge and a roof over it.
   const far = porch[1]!;
   const shelter = ok(ada, "wall", far, 1);
   const awning = ok(ada, "ceiling", shelter, 1);
 
-  // In through the doorway from uphill; the door is hers to open, and Bob's; Cy, at the step, finds it locked.
   const ents = h.world.ents;
   const [doorX, doorZ] = [rowOf(frame)[1]! / U, rowOf(frame)[3]! / U];
   stand(cy, doorX - 1.2, doorZ + 2);
@@ -345,7 +329,6 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   expect(ents.z[h.ent(ada)]!).toBeLessThan(doorZ - 0.5);
   expect(Math.abs(ents.y[h.ent(ada)]! - floor)).toBeLessThan(0.05);
   expect([act(ada, door, STRUCT_USE), kindAt(door), act(cy, door, STRUCT_USE)]).toEqual([RESULT_OK, id("door_wood"), RESULT_LOCKED]);
-  // Up the stairs, which rise downhill from the middle of the house, and she is a storey up.
   stand(ada, rowOf(ne)[1]! / U, rowOf(ne)[3]! / U + 3, floor);
   pilot.yaw = Math.PI;
   h.run(300);
@@ -355,22 +338,19 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   h.run(300);
   expect(ents.y[h.ent(ada)]!).toBeGreaterThan(floor + RISE - 0.35);
 
-  // A fire on the ground uphill of the house, with wood and meat on it, lit; and everyone goes away for a minute.
   stand(ada, fx - 1.5, fz + 7.5);
   const fire = setDown(ada, "piece_campfire", fx - 1.5, fz + 6);
   const hearth = h.host.fixtures.ensure(fire);
   h.host.items.mint(hearth, id("wood"), 2);
   h.host.items.mint(hearth, id("meat"), 3);
   expect([act(cy, fire, STRUCT_LIGHT), act(ada, fire, STRUCT_LIGHT), kindAt(fire)]).toEqual([RESULT_NOT_YOURS, RESULT_OK, id("campfire_lit")]);
-  // A bed on the upper floor, over the doorway.
   const bed = setDown(ada, "piece_bed", rowOf(upSW)[1]! / U, rowOf(upSW)[3]! / U, upSW);
   const bedTop = h.world.structs.chunks[Math.floor(bed / 65536)]!.y[bed & 0xffff]! + 0.25;
   for (const s of [ada, bob, cy]) stand(s, fx + 150, fz - 150);
   h.run(62000);
-  // Nobody was there: the wood burned out when it was due to, and all three pieces are cooked.
   expect([kindAt(fire), h.host.items.inv(hearth).total(id("meat_cooked")), h.host.items.inv(hearth).total(id("meat")), h.host.items.inv(hearth).total(id("wood"))]).toEqual([id("campfire"), 3, 0, 0]);
 
-  // She dies out there, and comes back to life at her bed: upstairs, standing on it.
+  // Her bed is offered after the world's spawn points, at index `spawns`.
   h.say(ada, "suicide");
   h.run(300);
   expect(ada.sessionState).toBe(SESSION_DEAD);
@@ -383,20 +363,20 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   expect([code, ada.sessionState]).toEqual([RESULT_OK, SESSION_ALIVE]);
   expect([Math.abs(ada.own.x - rowOf(upSW)[1]! / U) < 0.5, Math.abs(ada.own.y - bedTop) < 0.1, bedTop - floor > 3]).toEqual([true, true, true]);
 
-  // Grenades on the far foundation of the porch, by the table: 788 to wood each, 15,000 to go through. Nineteen leave it standing.
+  // A grenade does 788 to a wooden foundation of 15,000, so nineteen leave it standing and the twentieth takes it.
   stand(bob, rowOf(nw)[1]! / U, rowOf(nw)[3]! / U, floor);
   h.run(500);
   const grenade = id("grenade");
   const [gx, gy, gz] = [rowOf(far)[1]! / U, rowOf(far)[2]! / U, rowOf(far)[3]! / U];
   const src: Source = { by: rec(cy), x: gx, z: gz - 10, item: grenade, base: reg.damage[grenade]!, type: DMG_EXPLOSIVE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
   expect([reg.damage[grenade], reg.blast[grenade], reg.maxHp[kindAt(far)]]).toEqual([788, 5, 15000]);
-  // (Each lands under its east edge, the far side from the wall, which takes what three metres leave of it.)
+  // Each lands under the east edge, three metres from the wall on the west edge.
   const burst = (): void => h.host.combat.blast(src, gx + 1.4, gy - FOUNDATION_THICK / 2 - 0.05, gz, reg.blast[grenade]!);
   expect(rowOf(shelter)[1]! / U).toBeCloseTo(gx - 1.5, 2);
   for (let k = 0; k < 19; k++) burst();
   h.run(200);
   expect([hpAt(far), kindAt(far) !== 0, kindAt(shelter) !== 0, kindAt(awning) !== 0]).toEqual([15000 - 19 * 788, true, true, true]);
-  // The twentieth takes it, and what stood on it falls: the wall, and the roof the wall held. Bob, on the porch's other piece, sees them go.
+  // With it fall the wall on it and the roof that wall held.
   const fallen = h.host.build.fallen;
   const houseCount = structs.count;
   burst();
@@ -404,10 +384,9 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   expect([kindAt(far), kindAt(shelter), kindAt(awning), h.host.build.fallen - fallen, houseCount - structs.count]).toEqual([0, 0, 0, 2, 3]);
   const bobsView = bob.world!.structs.chunks[Math.floor(far / 65536)]!;
   expect([bobsView.kind[far & 0xffff], bobsView.kind[shelter & 0xffff], bobsView.kind[awning & 0xffff], bobsView.kind[porch[0]! & 0xffff] !== 0]).toEqual([0, 0, 0, true]);
-  // The rest stands: the house was out of its reach, and the porch's first piece took what its distance left of each.
+  // The house was out of the blast's reach. The porch's first piece took partial damage.
   expect([hpAt(sw), hpAt(nw) > 0, kindAt(porch[0]!) !== 0, hpAt(porch[0]!) < 15000]).toEqual([15000, true, true, true]);
 
-  // The world stops and starts. Everything is as it was: the house, the door shut and its tribe's, the bed, the fire out with its meat, the tribe; and the books balance.
   expect(h.host.items.audit()).toEqual([]);
   const standing = structs.count;
   const cooked = hearth.pid;
@@ -419,12 +398,11 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   expect([h.world.structs.count, kindAt(door), kindAt(fire), kindAt(bed), kindAt(far), hpAt(porch[0]!) < 15000]).toEqual([standing, id("door_wood"), id("campfire"), id("bed"), 0, true]);
   expect(h.host.items.inv(h.host.records.byPid.get(cooked)!).total(id("meat_cooked"))).toBe(3);
   expect([ada.tribe.name, bob.tribe.name, cy.tribe.name, rec(bob).team]).toEqual(["Masons", "Masons", "", team]);
-  // Still shut to the stranger, still open to the tribe.
   for (const s of [bob, cy]) h.say(s, "enablecheats");
   stand(cy, doorX - 1.2, doorZ + 2);
   stand(bob, doorX + 1.2, doorZ + 2);
   expect([act(cy, door, STRUCT_USE), act(bob, door, STRUCT_USE), kindAt(door)]).toEqual([RESULT_LOCKED, RESULT_OK, id("door_open_wood")]);
-  // And Bob, dying, is offered the tribe's bed.
+  // Ada's bed is a respawn point for the whole tribe.
   h.say(bob, "suicide");
   h.run(400);
   expect(bob.respawnPoints.length).toBe(h.world.spawns.length + 1);
@@ -445,7 +423,7 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   let ents = h.world.ents;
   const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
   const pilot = h.pilots[0]!;
-  /** Turn to entity `e`, `up` of the way up it. */
+  /** `up` is the fraction of the body's height to aim at. */
   const lookAt = (e: number, up: number): void => {
     const self = h.ent(ada);
     const eye = ents.y[self]! + stanceEye(h.reg.move[ents.kind[self]!]!, 0);
@@ -454,7 +432,7 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
     pilot.pitch = Math.atan2(ents.y[e]! + h.reg.bodyHeight[ents.kind[e]!]! * up - eye, Math.hypot(dx, dz));
     h.run(200);
   };
-  /** Look at it and press the use button. Returns what the server said unasked, or -1. */
+  /** Returns the result the server sent with no sequence number, or -1. */
   const use = (e: number, up = 0.5): number => {
     lookAt(e, up);
     let told = -1;
@@ -465,7 +443,6 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
     h.run(250);
     return told;
   };
-  /** Send a command and say what the server answered. */
   const ask = (op: number, write: (w: BitWriter) => unknown): number => {
     let code = -1;
     ada.onResult = (seq, c) => void (seq !== 0 && (code = c));
@@ -473,7 +450,7 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
     h.run(200);
     return code;
   };
-  /** Give her some of an item and put all of it into slot `slot` of the creature she has open. */
+  /** `slot` is a slot of the creature she has open. */
   const stock = (item: string, n: number, slot: number): void => {
     h.say(ada, `give ${item} ${n}`);
     const inv = ada.inventory!;
@@ -481,7 +458,6 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
     h.run(200);
   };
 
-  // 1. A raptor eighteen metres off sees her, runs her down, and bites. She has the means to end it.
   const raptor = h.host.spawnCreature("core:raptor", at.x + 18, at.z, 5);
   const mind = h.host.creatures.mind;
   const whole = h.host.survival.value(me, V_HEALTH);
@@ -493,9 +469,9 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   expect(h.say(ada, "kill")[0]).toBe("killed core:raptor");
   h.host.survival.refill(me);
 
-  // 2. A parasaur of level 10, knocked out four metres from her, and fed berries. The reference's arithmetic: it needs
-  //    1500 + 75 x 10 = 2250; a berry is worth 20 x 4 = 80, so 29 berries; lying there it wants one every 12 seconds;
-  //    and 29 of them leave an effectiveness of 1 / (1 + 0.4 x 29 / 80) = 87.3%, which is four more levels.
+  // The reference's arithmetic for a level 10 parasaur on berries: it needs 1500 + 75 x 10 = 2250 and a berry is
+  // worth 20 x 4 = 80, so 29 berries. Knocked out, it eats one every 12 seconds. 29 berries leave an effectiveness
+  // of 1 / (1 + 0.4 x 29 / 80) = 87.3%, which is four more levels.
   h.say(ada, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
   let dolly = h.host.spawnCreature("core:parasaur", at.x, at.z + 4, 10);
   let rec = h.host.records.byPid.get(ents.pid[dolly]!)!;
@@ -521,12 +497,10 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   expect(Math.abs(wonAt - down - 29 * 12 * TICK_RATE)).toBeLessThan(30);
   expect(ada.tamed.at(-1)).toEqual({ handle: ents.handleOf(dolly), kind: id("parasaur"), level: 14, te: 87 });
 
-  // 3. She names it, and it is called that by everyone.
   expect(ask(CMD_NAME, (w) => (w.u32(ents.handleOf(dolly)), w.string("Dolly")))).toBe(RESULT_OK);
   expect([rec.name, ents.name[dolly]]).toEqual(["Dolly", "Dolly"]);
   ada.tamed.length = 0;
 
-  // 4. A saddle on it, and she rides: her inputs drive it, and nothing the server says corrects where she thought it was.
   if (!ada.open) ask(CMD_OPEN, (w) => w.u32(dolly));
   stock("saddle_parasaur", 1, 5);
   expect(ask(CMD_FEED, (w) => (w.varint(5), w.u16(id("saddle_parasaur"))))).toBe(RESULT_OK);
@@ -553,8 +527,8 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   h.run(400);
   expect([h.client(ada)!.drive, ents.driven[dolly], ents.seat[h.ent(ada)]]).toEqual([-1, 0, 0]);
 
-  // 5. A mate for it, of the other sex, had for the asking; both told they may. Half a minute, and there is an egg.
-  //    (Hatching five hundred times as fast and growing up a thousand times: ten seconds, and ninety-five.)
+  // Mating takes half a minute. At 500 times the hatch speed and 1000 times the growth speed, hatching takes
+  // ten seconds and growing up ninety-five.
   h.say(ada, "setting EggHatchSpeedMultiplier 500");
   h.say(ada, "setting BabyMatureSpeedMultiplier 1000");
   const mate = h.host.spawnCreature("core:parasaur", ents.x[dolly]! + 4, ents.z[dolly]! + 1, 12);
@@ -576,7 +550,6 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   const egg = laid[0]!;
   const hatchAt = egg.egg!.hatchAt;
   expect(egg.egg!.span).toBe(Math.ceil((5142 * TICK_RATE) / 500));
-  // She waits by the egg, on the side away from the mother.
   const off = Math.hypot(egg.x - ents.x[motherEnt]!, egg.z - ents.z[motherEnt]!);
   const [ux, uz] = [(egg.x - ents.x[motherEnt]!) / off, (egg.z - ents.z[motherEnt]!) / off];
   h.say(ada, `tp ${(egg.x + ux * 1.5).toFixed(3)} ${(egg.z + uz * 1.5).toFixed(3)}`);
@@ -584,7 +557,6 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   let baby = [...h.host.records.byPid.values()].find((r) => r.grown !== 0 && r.x === egg.x && r.z === egg.z)!;
   let babyEnt = h.host.records.entOf.get(baby.pid)!;
   expect([baby.grown - baby.span, baby.team, breeding.unclaimed(baby), baby.genome === egg.genome]).toEqual([hatchAt, 0, true, true]);
-  // She takes it, names it, and puts berries in it. It is hers, small, and eating.
   expect(use(babyEnt, 0.08)).toBe(-1);
   expect([baby.team, ada.tamed.at(-1)?.te]).toEqual([me.team, 255]);
   expect(ask(CMD_NAME, (w) => (w.u32(ents.handleOf(babyEnt)), w.string("Pip")))).toBe(RESULT_OK);
@@ -595,20 +567,19 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   stock("berry", 80, 0);
   ada.command(CMD_CLOSE);
   h.run(200);
-  // (Hungry as it is, it has one as soon as she shuts it.)
+  // Hungry, it eats as soon as she closes its inventory.
   const stocked = h.host.items.inv(baby).total(id("berry"));
   expect([stocked <= 80, stocked >= 78]).toEqual([true, true]);
   h.run(30000);
   expect(h.host.items.inv(baby).total(id("berry"))).toBeLessThan(stocked);
   expect(h.host.items.audit()).toEqual([]);
 
-  // The world stops and starts with it a third grown. Everything is whose it was and called what it was; the young one is still young, and grows.
   const [dollyPid, matePid, babyPid, grownAt] = [rec.pid, mateRec.pid, baby.pid, baby.grown];
   const before = { span: baby.span, grown: baby.grown, berries: h.host.items.inv(baby).total(id("berry")), food: baby.vitals!.at(V_FOOD, h.world.tick) };
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
   const get = (pid: number): EntityRecord => h.host.records.byPid.get(pid)!;
-  // (Asked before a tick has passed: it has in it exactly what it had.)
+  // Read before a tick has passed, so the values are exactly what was saved.
   expect({ span: get(babyPid).span, grown: get(babyPid).grown, berries: h.host.items.inv(get(babyPid)).total(id("berry")), food: get(babyPid).vitals!.at(V_FOOD, h.world.tick) }).toEqual(before);
   ada = h.join("ada");
   h.run(600);
@@ -623,8 +594,7 @@ test("round 4, creatures: a survivor is hunted by a raptor; tames a parasaur at 
   expect([get(matePid).team, get(matePid).mating]).toEqual([team, true]);
   expect([baby.name, baby.team, ents.team[babyEnt], ents.span[babyEnt], ents.grown[babyEnt]]).toEqual(["Pip", team, team, before.span, before.grown]);
   while (h.world.tick <= grownAt + 5) h.run(500);
-  // Grown: full size, a grown one's limits, alive and fed; and it has eaten of what she gave it since.
-  // (Any other of the litter, which nobody took, has grown too.)
+  // Unclaimed litter mates have grown too, so grownUp may exceed 1.
   expect([baby.span, baby.grown, ents.grown[babyEnt], h.host.breeding.grownUp >= 1, h.host.taming.meals >= 1]).toEqual([0, 0, 0, true, true]);
   expect(h.host.survival.value(baby, V_HEALTH)).toBeGreaterThan(0);
   expect(h.host.survival.value(baby, V_FOOD)).toBeGreaterThan(0);

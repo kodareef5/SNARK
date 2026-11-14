@@ -1,5 +1,4 @@
-// What is done to a piece after it is built: taken back, mended, taken down,
-// and left to decay.
+// Pickup, repair, demolition and decay of built pieces.
 
 import { expect, test } from "bun:test";
 import { rmSync, mkdtempSync } from "node:fs";
@@ -27,7 +26,7 @@ const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const U = STRUCT_UNITS;
 
-/** Set a foundation on open ground `dx`, `dz` metres from where the builders stand, and return its ref. */
+/** Places a piece on open ground `dx`, `dz` metres from the builders. Returns its ref. */
 function found(made: ReturnType<typeof builder>, s: ClientSession, dx: number, dz: number, piece = "foundation"): number {
   const { h, at } = made;
   s.command(CMD_SELECT, (w: BitWriter) => w.u8(PIECES.indexOf(piece)));
@@ -45,16 +44,16 @@ test("the arithmetic of it: half back for taking down, the missing part for mend
   const named = (): [string, number][] => Array.from({ length: cost.n }, (_, k) => [reg.ids[cost.item[k]!]!, cost.count[k]!]);
   expect(refundOf(reg, wall)).toBe(true);
   expect(named()).toEqual([["core:wood", 20], ["core:thatch", 5], ["core:fiber", 3]]);
-  // A quarter gone: a quarter of each, and never less than the part of one.
+  // A quarter gone costs a quarter of each, rounded up, and never less than one.
   expect(repairCostOf(reg, wall, 7500)).toBe(true);
   expect(named()).toEqual([["core:wood", 10], ["core:thatch", 3], ["core:fiber", 2]]);
   expect(repairCostOf(reg, wall, 9999)).toBe(true);
   expect(named()).toEqual([["core:wood", 1], ["core:thatch", 1], ["core:fiber", 1]]);
-  // Whole, there is nothing to mend; a doorframe is made of what a wall is, being set down from one.
+  // A doorframe is placed from a wall item, so it refunds as a wall.
   expect(repairCostOf(reg, wall, 10000)).toBe(false);
   expect(refundOf(reg, id("doorframe_wood"))).toBe(true);
   expect(named()[0]).toEqual(["core:wood", 20]);
-  // Something nobody makes gives nothing back.
+  // A structure with no recipe refunds nothing.
   expect(refundOf(reg, id("block"))).toBe(false);
   expect([structName(reg, wall), structName(reg, id("doorframe_wood")), structName(reg, id("foundation_stone")), structName(reg, id("block"))]).toEqual(["wooden wall", "wooden doorframe", "stone foundation", "block"]);
   expect([REPAIR_WAIT_TICKS, ACT_REACH]).toEqual([180 * TICK_RATE, 4]);
@@ -70,43 +69,39 @@ test("a piece is taken back while it is whole, mended for the part that is missi
   const wall = join(ada, "wall", f, 2).ref;
   expect([count(ada, "foundation"), count(ada, "wall")]).toEqual([STOCK - 1, STOCK - 1]);
 
-  // Taken back: it is in her hands again and gone from the world, hers and everyone's.
   expect(act(ada, wall, STRUCT_PICKUP)).toBe(RESULT_OK);
   expect([there(wall), count(ada, "wall"), h.host.build.pickedUp]).toEqual([false, STOCK, 1]);
   expect(bob.world!.structs.chunks[Math.floor(wall / 65536)]!.kind[wall & 0xffff]).toBe(0);
-  // Not by someone of another tribe, whatever he asks; nor is what is not there anyone's to act on, nor an action that is none.
   for (const action of [STRUCT_PICKUP, STRUCT_DEMOLISH, STRUCT_REPAIR]) expect(act(bob, f, action)).toBe(RESULT_NOT_YOURS);
   expect([act(ada, wall, STRUCT_PICKUP), act(ada, f, 9), act(ada, 0x7fff0000, STRUCT_DEMOLISH)]).toEqual([RESULT_INVALID, RESULT_INVALID, RESULT_INVALID]);
-  // Not from far off.
   h.say(ada, `tp ${at.x.toFixed(3)} ${(at.z + 16).toFixed(3)}`);
   expect(act(ada, f, STRUCT_PICKUP)).toBe(RESULT_FAR);
   h.say(ada, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
 
-  // Harmed, it cannot be taken back; and it cannot be mended while the harm is fresh, nor without the means.
   const second = join(ada, "wall", f, 2).ref;
   structs.damage(second, 2500, h.world.tick);
   h.host.build.hurt(second);
   h.run(100);
   expect([act(ada, second, STRUCT_PICKUP), act(ada, second, STRUCT_REPAIR)]).toEqual([RESULT_DAMAGED, RESULT_WAIT]);
-  // Three minutes on (all but a second of them gone by already):
+  // The harm is backdated so that the three minute wait ends in one second.
   h.host.build.hurt(second, h.world.tick - REPAIR_WAIT_TICKS + TICK_RATE);
   expect(act(ada, second, STRUCT_REPAIR)).toBe(RESULT_WAIT);
   h.run(1000);
   expect(act(ada, second, STRUCT_REPAIR)).toBe(RESULT_SHORT);
   for (const what of ["wood", "thatch", "fiber"]) h.say(ada, `give ${what} 50`);
   expect(act(ada, second, STRUCT_REPAIR)).toBe(RESULT_OK);
-  // A quarter of it was missing: a quarter of 40, 10 and 7, each rounded up.
+  // A quarter was missing, so it cost a quarter of 40, 10 and 7, each rounded up.
   expect([hp(second), has(ada, "wood"), has(ada, "thatch"), has(ada, "fiber")]).toEqual([10000, 40, 47, 48]);
   expect(bob.world!.structs.chunks[Math.floor(second / 65536)]!.hp[second & 0xffff]).toBe(10000);
   expect([act(ada, second, STRUCT_REPAIR), act(ada, second, STRUCT_PICKUP)]).toEqual([RESULT_INVALID, RESULT_OK]);
 
-  // Taken down: gone, and half of what a wall is made of comes back.
+  // Demolition refunds half: 20 wood, 5 thatch and 3 fiber.
   const third = join(ada, "wall", f, 2).ref;
   expect(act(ada, third, STRUCT_DEMOLISH)).toBe(RESULT_OK);
   expect([there(third), count(ada, "wall"), has(ada, "wood"), has(ada, "thatch"), has(ada, "fiber")]).toEqual([false, STOCK - 1, 60, 52, 51]);
   expect([h.host.build.pickedUp, h.host.build.demolished, h.host.build.repaired, h.host.build.fallen]).toEqual([2, 1, 1, 0]);
 
-  // With the rule that a piece may be taken back only for a while: after that it may not, though it may still be taken down.
+  // StructurePickupTimeAfterPlacement is in seconds. Once it has passed the piece can still be demolished.
   h.say(ada, "setting StructurePickupTimeAfterPlacement 2");
   const late = join(ada, "wall", f, 2).ref;
   const soon = join(ada, "wall", f, 1).ref;
@@ -127,7 +122,7 @@ test("what stood on a piece that is taken back or taken down comes back the same
     for (const t of structs.chunks) if (t) for (let k = 0; k < t.high; k++) if (t.kind[k] !== 0 && t.owner[k] === team) n++;
     return n;
   };
-  /** A foundation with a wall on each side, a wall on one of those, and a floor over it: seven pieces. */
+  /** A foundation with a wall on each side, a wall on one of those, and a ceiling: seven pieces. */
   const hut = (dx: number): number => {
     const f = found(made, ada, dx, 5);
     const walls = [0, 1, 2, 3].map((k) => join(ada, "wall", f, k).ref);
@@ -137,17 +132,17 @@ test("what stood on a piece that is taken back or taken down comes back the same
   };
   const first = hut(0);
   expect([mine(), count(ada, "foundation"), count(ada, "wall"), count(ada, "ceiling")]).toEqual([7, STOCK - 1, STOCK - 5, STOCK - 1]);
-  // The foundation is taken back. Everything that stood on it comes down with nothing to hold it, and comes back as pieces.
+  // Picking up the foundation returns the six pieces that stood on it as items.
   const seen = bob.rubble.length;
   expect(act(ada, first, STRUCT_PICKUP)).toBe(RESULT_OK);
   h.run(1500);
   expect([mine(), count(ada, "foundation"), count(ada, "wall"), count(ada, "ceiling")]).toEqual([0, STOCK, STOCK, STOCK]);
   expect([h.host.build.pickedUp, h.host.build.returned, h.host.build.fallen, h.host.build.collapse.claimed, h.host.build.pending]).toEqual([1, 6, 0, 6, 0]);
-  // Nobody watching saw anything fall: the pieces were simply taken away.
+  // Returned pieces are removed without rubble.
   expect(bob.rubble.length).toBe(seen);
   expect(bob.world!.structs.chunks.every((t) => !t || t.kind.subarray(0, t.high).every((k, s) => k === 0 || t.owner[s] !== team))).toBe(true);
 
-  // Taken down instead, each piece gives half of what it is made of: a foundation 80/20/15, five walls 40/10/7, a floor 60/15/10.
+  // Demolished, each piece refunds half its cost. A foundation costs 80/20/15, a wall 40/10/7 and a ceiling 60/15/10.
   const next = hut(0);
   expect(act(ada, next, STRUCT_DEMOLISH)).toBe(RESULT_OK);
   h.run(1500);
@@ -155,7 +150,7 @@ test("what stood on a piece that is taken back or taken down comes back the same
   expect([has(ada, "wood"), has(ada, "thatch"), has(ada, "fiber")]).toEqual([40 + 5 * 20 + 30, 10 + 5 * 5 + 7, 7 + 5 * 3 + 5]);
   expect([h.host.build.demolished, h.host.build.returned, h.host.build.fallen]).toEqual([1, 12, 0]);
 
-  // Her hands full of things that do not stack: a piece she has none of cannot be taken back.
+  // Her inventory is full of hatchets, which do not stack, and she holds no pillar item to stack onto.
   const rec = h.host.records.byPid.get(h.client(ada)!.pid)!;
   const third = hut(6);
   const pillar = found(made, ada, 2, 3, "pillar");
@@ -165,7 +160,7 @@ test("what stood on a piece that is taken back or taken down comes back the same
   h.run(300);
   expect(act(ada, pillar, STRUCT_PICKUP)).toBe(RESULT_FULL);
   expect(mine()).toBe(8);
-  // Taken down, the hut gives back what will not fit: it lies in a cache where the hut stood, all of it.
+  // What does not fit goes into a cache where the hut stood.
   const wood = has(ada, "wood");
   const caches = (): { name: string; inv: ReturnType<typeof h.host.items.inv> }[] => [...h.host.records.byPid.values()].filter((r) => r.name === "building materials").map((r) => ({ name: r.name, inv: h.host.items.inv(r) }));
   expect(caches().length).toBe(0);
@@ -174,7 +169,7 @@ test("what stood on a piece that is taken back or taken down comes back the same
   expect(mine()).toBe(1);
   const spilled = caches();
   expect(spilled.length).toBe(1);
-  // Wood she holds a stack of with room in it took some; the rest is in the cache.
+  // Her partly filled stack of wood took some. The rest is in the cache.
   const back = { wood: 40 + 5 * 20 + 30 };
   expect(has(ada, "wood") - wood + spilled[0]!.inv.total(id("wood"))).toBe(back.wood);
   expect(spilled[0]!.inv.total(id("wood"))).toBeGreaterThan(0);
@@ -185,35 +180,34 @@ test("what stood on a piece that is taken back or taken down comes back the same
 test("what its tribe has not come near decays: anyone may take it down then, a piece by itself soonest; coming near winds the clock; and the clocks are kept with the world", () => {
   const dir = mkdtempSync(joinPath(tmpdir(), "snark-decay-"));
   const dbPath = joinPath(dir, "world.db");
-  // Started as ARK's servers that clear decayed bases are: with the flag that lets the server take down what has decayed.
+  // ARK's -AutoDestroyStructures flag lets the server take down what has decayed.
   let made = builder(["ada", "bob"], 40, 40, { dbPath, config: loadConfig({}, ["-AutoDestroyStructures"]).rules });
   let { h, sessions, join, structs, act, has } = made;
   let [ada, bob] = sessions as [ClientSession, ClientSession];
   const decay = () => h.host.build.decay;
-  // A wall on a foundation, and a foundation by itself.
   const f = found(made, ada, 0, 5);
   const wall = join(ada, "wall", f, 2).ref;
   const alone = found(made, ada, 6, 5);
   h.say(bob, `tp ${(made.at.x + 5).toFixed(3)} ${(made.at.z + 2).toFixed(3)}`);
-  // As ARK has it, nothing decays on a server that is not PvE unless it is switched on; and a foundation joined to nothing
-  // decays no sooner than anything else unless that is switched on, and then in a time of its own.
+  // As in ARK, a non-PvE server has no decay unless PvPStructureDecay is on, and a lone foundation decays no sooner
+  // than other pieces unless FastDecayUnsnappedCoreStructures is on.
   expect([decay().active(), decay().period(id("foundation_wood"), true) === decay().period(id("foundation_wood"), false)]).toEqual([false, true]);
   expect(h.say(ada, "setting PvPStructureDecay True")[0]).toContain("PvPStructureDecay=True");
   expect(decay().active()).toBe(true);
   h.say(ada, "setting FastDecayUnsnappedCoreStructures True");
   expect(decay().period(id("foundation_wood"), true)).toBe(43200 * TICK_RATE);
-  // Wood lasts eight days unvisited. Here, a ten-thousandth of that, 69 s; and a foundation by itself, four seconds.
+  // Wood lasts eight days unvisited. A ten-thousandth of that is 69 s. A lone foundation gets FastDecayInterval, four seconds.
   h.say(ada, "setting PvEStructureDecayPeriodMultiplier 0.0001");
   h.say(ada, "setting FastDecayInterval 4");
   expect([decay().period(id("wall_wood"), false), decay().period(id("foundation_wood"), true), decay().period(id("wall_thatch"), false), decay().period(id("wall_stone"), false), decay().period(id("wall_metal"), true)]).toEqual([2074, 120, 1037, 3110, 120]);
-  // While she is there, nothing of hers decays, however long.
+  // Nothing of hers decays while she is near.
   h.run(8000);
   expect([decay().expired(alone, h.world.tick), act(bob, alone, STRUCT_DEMOLISH)]).toEqual([false, RESULT_NOT_YOURS]);
-  // She goes. Five seconds on (and the five between looks) the foundation by itself has decayed; the other, and its wall, have not.
+  // She leaves. The wait covers the four seconds plus one DECAY_EVERY interval between checks.
   h.ends[0]!.close();
   h.run(4400 + (DECAY_EVERY / TICK_RATE) * 1000);
   expect([alone, f, wall].map((ref) => decay().expired(ref, h.world.tick))).toEqual([true, false, false]);
-  // It still stands. The clocks are part of the world: after a restart it is as decayed as it was, not new.
+  // The decay clocks are saved, so a restart does not reset them.
   expect(structs.chunks[Math.floor(alone / 65536)]!.kind[alone & 0xffff]).toBe(id("foundation_wood"));
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
@@ -222,7 +216,7 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   structs = h.world.structs;
   expect(structs.chunks[Math.floor(alone / 65536)]!.kind[alone & 0xffff]).toBe(id("foundation_wood"));
   expect([alone, f, wall].map((ref) => decay().expired(ref, h.world.tick))).toEqual([true, false, false]);
-  // Anyone may take down what has decayed, and has what it gives; what has not is still not his.
+  // Anyone may demolish a decayed piece and gets its refund.
   act = (s, ref, action) => {
     let code = -1;
     s.onResult = (_seq, c) => void (code = c);
@@ -235,14 +229,14 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   const wood = has(bob, "wood");
   expect(act(bob, alone, STRUCT_DEMOLISH)).toBe(RESULT_OK);
   expect(has(bob, "wood") - wood).toBe(40);
-  // She comes back before the rest has gone: being near winds its clock, and it is as fresh as new.
+  // Her visit resets the clock, so 45 s after she leaves nothing has expired.
   h.run(30000);
   ada = h.join("ada");
   h.run(6000);
   h.ends[h.ends.length - 1]!.close();
   h.run(45000);
   expect([f, wall].map((ref) => decay().expired(ref, h.world.tick))).toEqual([false, false]);
-  // Left for its whole time, it decays; and with the rule that says so, the server takes it down itself, giving nothing to anyone.
+  // After the full period it expires, and with AutoDestroyOldStructuresMultiplier the server removes it itself.
   h.run(30000);
   expect([f, wall].map((ref) => decay().expired(ref, h.world.tick))).toEqual([true, true]);
   h.say(bob, "enablecheats");
@@ -250,7 +244,6 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
   h.run(6000);
   expect([f, wall].map((ref) => structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff])).toEqual([0, 0]);
   expect([decay().destroyed, h.host.build.fallen]).toEqual([2, 0]);
-  // With decay turned off nothing is ever decayed.
   h.say(bob, "setting DisableStructureDecayPvE True");
   expect([decay().active(), h.host.rules.on("DisableStructureDecayPvE")]).toEqual([false, true]);
   expect(h.host.items.audit()).toEqual([]);
@@ -273,9 +266,9 @@ test("in the whole client: a piece looked at is named with how whole it is; the 
   const g = flatGround(h, 14, 14);
   s.text(`tp ${(g.x + 7).toFixed(3)} ${(g.z + 2).toFixed(3)}`);
   run(300);
-  // A wall of her own three metres in front of her, set there by the server's hand, and one of nobody she knows beside it.
+  // Team 99999 is no tribe she belongs to.
   const rec = h.host.records.byPid.get(h.client(s)!.pid)!;
-  // (Each on the south edge of a foundation, so that it stands.)
+  // Each wall is on the south edge of a foundation, so that it has support.
   h.world.structs.add(id("foundation_wood"), g.x + 7, g.y + 0.1875, g.z + 6.5, 0, rec.team, 15000);
   h.world.structs.add(id("foundation_wood"), g.x + 11, g.y + 0.1875, g.z + 6.5, 0, 99999, 15000);
   const wall = h.world.structs.add(id("wall_wood"), g.x + 7, g.y + 1.875, g.z + 5, 0, rec.team, 10000);
@@ -287,7 +280,7 @@ test("in the whole client: a piece looked at is named with how whole it is; the 
   const f = app.ui.frame;
   expect([app.aimed, f.find(KEY_PROMPT)!.text]).toEqual([wall, "hold E  wooden wall  10000/10000"]);
   expect(f.find(KEY_STRUCT_PANEL)).toBeNull();
-  // A tap of the use key is not a question; held, it is. The mouse is then free, and the body does not go on using.
+  // A tap of the use key does not open the list. Holding it does, and frees the mouse.
   app.key("KeyE", true);
   run(100);
   app.key("KeyE", false);
@@ -300,11 +293,9 @@ test("in the whole client: a piece looked at is named with how whole it is; the 
   expect([0, 1, 2].map((n) => f.find(KEY_STRUCT_BUTTON + n)!.text)).toEqual(["1  Take it back", "2  Mend it", "3  Take it down"]);
   expect([0, 1, 2].map((n) => f.find(KEY_STRUCT_DETAIL + n)!.text)).toEqual(["into your hands, as it was", "it is whole", "gives 20 wood, 5 thatch, 3 fiber"]);
   app.key("KeyE", false);
-  // Escape puts it away and changes nothing.
   expect(app.key("Escape", true)).toBe(true);
   run(100);
   expect([app.ui.structure.open, f.find(KEY_STRUCT_PANEL), h.host.build.demolished]).toEqual([false, null, 0]);
-  // Harmed, the list says what mending costs; taking it back is refused, and the screen says why.
   h.world.structs.damage(wall, 5000, h.world.tick);
   run(300);
   expect(f.find(KEY_PROMPT)!.text).toBe("hold E  wooden wall  5000/10000");
@@ -317,7 +308,6 @@ test("in the whole client: a piece looked at is named with how whole it is; the 
   expect([app.ui.structure.open, f.find(KEY_PROMPT)!.text, h.host.build.pickedUp]).toEqual([false, "It is damaged: mend it first", 0]);
   run(3000);
   expect(f.find(KEY_PROMPT)!.text).toBe("hold E  wooden wall  5000/10000");
-  // A press on the third line takes it down: it is gone, and half of it is in her hands.
   app.key("KeyE", true);
   run(500);
   app.key("KeyE", false);
@@ -325,7 +315,7 @@ test("in the whole client: a piece looked at is named with how whole it is; the 
   run(300);
   expect([h.host.build.demolished, s.inventory!.total(id("wood")), h.world.structs.chunks[Math.floor(wall / 65536)]!.kind[wall & 0xffff]]).toEqual([1, 20, 0]);
   expect(f.find(KEY_PROMPT)).toBeNull();
-  // Another's wall is named, without the hint; the list can be asked for, and the server says whose it is.
+  // Another tribe's wall shows no "hold E" hint.
   s.text(`tp ${(g.x + 11).toFixed(3)} ${(g.z + 2).toFixed(3)}`);
   run(400);
   expect([app.aimed, f.find(KEY_PROMPT)!.text]).toEqual([theirs, "wooden wall  10000/10000"]);

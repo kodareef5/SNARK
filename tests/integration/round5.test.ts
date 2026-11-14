@@ -1,7 +1,4 @@
-// Round 5's exit condition, as four stories: an operator starts a boosted
-// server from a folder of ARK's two files; a rate changes under a world that
-// is running, and under one that is stopped; a client plays on content its
-// server has tuned; and the catalogue accounts for every setting ARK has.
+// Round 5 end to end: the operator, live changes, the client on tuned content, and the settings catalogue.
 
 import { expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
@@ -34,7 +31,6 @@ const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const pack = parsePack(buildCorePack());
 const CONFIG = resolve(import.meta.dir, "../../config");
 
-/** A server on those rules with ada in it, with cheats, on level ground. */
 function camp(rules: Rules, host: { dbPath?: string } = {}) {
   const h = new Harness({}, 1, 60, { dev: true, config: rules, ...host });
   const ada = h.join("ada");
@@ -48,7 +44,6 @@ function camp(rules: Rules, host: { dbPath?: string } = {}) {
   return { h, ada, at, me, of };
 }
 
-/** Run the world on by exactly one tick. */
 function oneTick(h: Harness): void {
   const t = h.world.tick;
   while (h.world.tick === t) h.run(4);
@@ -56,7 +51,6 @@ function oneTick(h: Harness): void {
 
 test("operator: a server started from the 50x folder says what it applied, and a survivor there earns, gathers, tames, hatches and raises at the factors its files give; and a file written for ARK itself still starts a server", () => {
   const { rules, report } = loadConfigFolder(join(CONFIG, "boosted-50x"));
-  // What it says as it starts: everything in the two files was understood, and takes effect.
   const said = formatReport(report, rules);
   expect(said[0]).toBe("settings: 15 applied, 0 not yet effective, 0 of no meaning here, 0 unknown, 0 refused");
   for (const line of ["XPMultiplier=50", "TamingSpeedMultiplier=50", "HarvestAmountMultiplier=50", "ItemStackSizeMultiplier=10", "EggHatchSpeedMultiplier=50", "BabyMatureSpeedMultiplier=50", "MatingIntervalMultiplier=0.02"]) {
@@ -66,7 +60,7 @@ test("operator: a server started from the 50x folder says what it applied, and a
   const fast = camp(rules);
   type Camp = typeof plain;
 
-  // A tree felled by hand: the same twelve blows and the same draws, fifty times the thatch and fifty times the experience.
+  // The same twelve blows make the same draws, so thatch and experience scale by exactly fifty.
   const fell = (m: Camp) => {
     const tree = nodesOf(m.h, "core:tree", 256, 256).find((t) => standFacing(m.h, m.ada, m.h.pilots[0]!, t))!;
     const table = m.h.host.harvest!.field.store.chunks[tree.chunk]!;
@@ -80,10 +74,10 @@ test("operator: a server started from the 50x folder says what it applied, and a
   };
   const [slow, quick] = [fell(plain), fell(fast)];
   expect([slow.blows, slow.xp, quick.blows, quick.xp, quick.thatch]).toEqual([12, 12, 12, 600, slow.thatch * 50]);
-  // It fits: a stack of thatch is ten times the size there.
+  // The thatch fits because a stack holds ten times as much there.
   expect([plain.h.world.reg.stack[id("thatch")], fast.h.world.reg.stack[id("thatch")]]).toEqual([200, 2000]);
 
-  // A raptor of level 150, knocked out and hungry, with meat in it: what its first piece is worth to its taming.
+  // Returns the affinity a level 150 raptor gains from its first piece of meat.
   const feed = (m: Camp) => {
     m.h.say(m.ada, `tp ${m.at.x.toFixed(3)} ${m.at.z.toFixed(3)}`);
     const rec = m.of(m.h.host.spawnCreature("core:raptor", m.at.x, m.at.z + 3, 150));
@@ -99,11 +93,9 @@ test("operator: a server started from the 50x folder says what it applied, and a
   };
   const [wary, eager] = [feed(plain), feed(fast)];
   expect([wary.affinity > 0, eager.affinity / wary.affinity]).toEqual([true, 50]);
-  // On the 50x server it is hers within a few pieces; on the other it has hardly begun.
   for (let k = 0; k < 400 && eager.rec.tame; k++) fast.h.run(1000);
   expect([eager.rec.team, eager.rec.tame, fast.h.host.taming.bites <= 4, wary.rec.team]).toEqual([fast.me.team, null, true, 0]);
 
-  // A pair of hers, told they may mate.
   const pair = (m: Camp) => {
     const own = (dx: number, female: boolean): EntityRecord => {
       const rec = m.of(m.h.host.spawnCreature("core:parasaur", m.at.x + dx, m.at.z + 12, 10));
@@ -122,20 +114,19 @@ test("operator: a server started from the 50x folder says what it applied, and a
   const [long, short] = [pair(plain), pair(fast)];
   const incubate = plain.h.reg.incubateTicks[id("parasaur")]!;
   const mature = plain.h.reg.matureTicks[id("parasaur")]!;
-  // Half a minute together, or a fiftieth of it; an egg that takes an hour and a half, or a fiftieth of that; and a
-  // mother who waits most of a day or two, or a fiftieth of that.
+  // Mating takes half a minute, an egg an hour and a half, and a mother's wait 18 to 48 hours. Each is a fiftieth on the 50x server.
   expect([long.took >= MATE_TICKS, long.took < MATE_TICKS + 2 * TICK_RATE, short.took <= MATE_TICKS / 50 + 2 * TICK_RATE]).toEqual([true, true, true]);
   expect([long.egg.egg!.span, short.egg.egg!.span]).toEqual([incubate, Math.ceil(incubate / 50)]);
   const waits = (m: Camp, mother: EntityRecord): number => (mother.mateReadyAt - m.h.world.tick) / TICK_RATE / 3600;
   expect([waits(plain, long.mother) > 17.9, waits(plain, long.mother) < 48, waits(fast, short.mother) > 17.9 / 50, waits(fast, short.mother) < 48 / 50]).toEqual([true, true, true, true]);
-  // On the 50x server it hatches on the tick it said, a hundred and three seconds after it was laid.
+  // A fiftieth of the incubation is 103 seconds.
   const hatchAt = short.egg.egg!.hatchAt;
   while (fast.h.world.tick < hatchAt + 2) fast.h.run(500);
-  // (One egg, or twins: every one of them.)
+  // A mating may lay one egg or twins. Every one hatches.
   const babies = [...fast.h.host.records.byPid.values()].filter((r) => r.grown !== 0 && r.egg === null);
   const baby = babies[0]!;
   expect([fast.h.host.breeding.hatched, babies.length, baby.grown - baby.span, baby.span]).toEqual([fast.h.host.breeding.laid, fast.h.host.breeding.laid, hatchAt, Math.ceil(mature / 50)]);
-  // She takes them and puts berries in them; they grow up in a fiftieth of the day and more it would take, eating as they go.
+  // Growing up takes 95,238 seconds, a fiftieth of that here.
   for (const one of babies) {
     fast.h.host.taming.give(one, fast.me, 1);
     fast.h.host.items.mint(one, id("berry"), 2000);
@@ -149,8 +140,8 @@ test("operator: a server started from the 50x folder says what it applied, and a
   expect([fast.h.world.tick, baby.grown, baby.span, baby.dead, fast.h.host.breeding.grownUp, fast.h.host.items.inv(baby).total(id("berry")) < 2000]).toEqual([grown, 0, 0, false, babies.length, true]);
   expect(fast.h.host.items.audit()).toEqual([]);
 
-  // A file written for ARK itself, with keys for things this engine has not built: the server starts, uses what it can,
-  // and lists the rest as waiting, each with what it waits for.
+  // A file written for ARK has keys for features this engine lacks. The server starts and lists each as waiting,
+  // with the feature it waits for.
   const arks = loadConfig({
     gus: "[ServerSettings]\nTamingSpeedMultiplier=3\nDinoCountMultiplier=1.5\nPreventOfflinePvP=True\nRCONEnabled=True\nRCONPort=27020\nActiveMods=731604991\nAllowFlyerCarryPvE=True\nSomeModsOwnKey=1\n[SessionSettings]\nSessionName=My ARK server\n",
     game: "[/script/shootergame.shootergamemode]\nBabyCuddleIntervalMultiplier=0.5\nbDisableStructurePlacementCollision=True\nCropGrowthSpeedMultiplier=2\n",
@@ -173,7 +164,6 @@ test("operator: a server started from the 50x folder says what it applied, and a
   ]);
   expect(theirs).toContain("  not yet   DinoCountMultiplier  (GameUserSettings.ini:3): waits for: wild creatures that spawn and respawn by region");
   expect(theirs.filter((l) => l.startsWith("  unknown   ") || l.startsWith("  no use    ")).map((l) => l.replace(/^\s+(unknown|no use)\s+(\S+).*$/, "$1 $2"))).toEqual(["no use ActiveMods", "unknown SomeModsOwnKey"]);
-  // The other example folders read as cleanly.
   const folders = readdirSync(CONFIG, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
   expect(folders.sort()).toEqual(["boosted-10x", "boosted-50x", "dev", "official"]);
   for (const name of folders) {
@@ -184,7 +174,6 @@ test("operator: a server started from the 50x folder says what it applied, and a
 
 test("live: a rate changed under a running world times an egg and a young one again, the same watched and unwatched; and a world stopped under one set of files is brought to another once, even if the server dies on the way", () => {
   const files = (hatch: number, mature: number) => loadConfig({ game: `[/script/shootergame.shootergamemode]\nEggHatchSpeedMultiplier=${hatch}\nBabyMatureSpeedMultiplier=${mature}\n` }).rules;
-  /** A world with an egg and a young one in it, each part way. With someone standing by, or nobody in the world at all. */
   const world = (watched: boolean, host: { dbPath?: string } = {}) => {
     const h = new Harness({}, 1, 60, { dev: true, config: files(10, 10), ...host });
     const g = flatGround(h, 30, 30);
@@ -216,7 +205,7 @@ test("live: a rate changed under a running world times an egg and a young one ag
     return { h, egg, young };
   };
 
-  // While it runs. The rule is changed; the tick after, each has left what it had left at the new speed, and says so.
+  // A change while the server runs takes effect on the next tick.
   const story = (watched: boolean) => {
     const { h, egg, young } = world(watched);
     const was = { hatchAt: egg.egg!.hatchAt, grown: young.grown, step: growthStep(young.span, young.grown, h.world.tick) };
@@ -226,7 +215,6 @@ test("live: a rate changed under a running world times an egg and a young one ag
     expect([egg.egg!.hatchAt, young.grown, growthStep(young.span, young.grown, t)]).toEqual([t + leftAtSpeed(was.hatchAt - t, 10, 40), t + (was.grown - t) * 2, was.step]);
     const e = h.host.records.entOf.get(young.pid)!;
     expect([h.world.ents.span[e], h.world.ents.grown[e]]).toEqual([young.span, young.grown]);
-    // The egg hatches on that tick and no other.
     const hatchAt = egg.egg!.hatchAt;
     while (h.world.tick < hatchAt - 1) oneTick(h);
     expect(h.host.breeding.hatched).toBe(0);
@@ -236,7 +224,7 @@ test("live: a rate changed under a running world times an egg and a young one ag
   };
   expect(story(true)).toEqual(story(false));
 
-  // While it is stopped. Saved under one set of files:
+  // A world saved under one set of rules and loaded under another is converted by the same arithmetic.
   const dir = mkdtempSync(join(tmpdir(), "snark-exit-"));
   const dbPath = join(dir, "world.db");
   const saved = world(false, { dbPath });
@@ -249,21 +237,20 @@ test("live: a rate changed under a running world times an egg and a young one ag
     const [egg, young] = pids.map((pid) => h.host.records.byPid.get(pid)!);
     return { h, now: [h.world.tick, egg!.egg!.hatchAt - h.world.tick, egg!.egg!.span, young!.grown - h.world.tick, growthStep(young!.span, young!.grown, h.world.tick)] };
   };
-  // started under another: brought over, by the same arithmetic.
   const want = [T, leftAtSpeed(was.hatch, 10, 40), 2250, was.grown * 2, was.step];
   const first = load(files(40, 5), 1e9);
   expect(first.now).toEqual(want);
-  // That server dies before it has written a thing. The next one brings the world over the same way: not twice, not otherwise.
+  // The first load never commits (commitEvery 1e9). The next converts the save the same way, not twice.
   const second = load(files(40, 5));
   expect(second.now).toEqual(want);
-  // This one lives long enough to write it, and what it was brought to.
+  // This one runs long enough to commit the converted save and the rules it was converted under.
   second.h.run(2000);
   const later = second.h.world.tick;
   second.h.host.shutdown();
-  // The third finds it brought over already, and leaves it alone.
+  // The third load finds the save already converted.
   const third = load(files(40, 5));
   expect([third.now, third.h.host.loadedUnder!.EggHatchSpeedMultiplier]).toEqual([[later, want[1]! - (later - T), 2250, want[3]! - (later - T), growthStep(third.h.host.records.byPid.get(pids[1]!)!.span, third.h.host.records.byPid.get(pids[1]!)!.grown, later)], 40]);
-  // And back under the first files: back to what it would have had left, to the tick's rounding.
+  // Loaded under the first rules again, the timers convert back, to the tick's rounding.
   third.h.host.shutdown();
   const back = load(files(10, 10));
   expect([back.now[1], back.now[2], back.now[3]]).toEqual([leftAtSpeed(want[1]! - (later - T), 40, 10), 9000, leftAtPeriod(want[3]! - (later - T), 2, 1)]);
@@ -276,7 +263,6 @@ test("client: on a server that scales stamina, stacks, what things are made of a
     gus: "[ServerSettings]\nPlayerCharacterStaminaDrainMultiplier=3\nItemStackSizeMultiplier=2.5\n",
     game: '[/script/shootergame.shootergamemode]\nConfigOverrideItemCraftingCosts=(ItemClassString="core:hatchet",BaseCraftingResourceRequirements=((ResourceItemTypeString="core:thatch",BaseResourceRequirement=2.0,bCraftingRequireExactResourceType=false),(ResourceItemTypeString="core:wood",BaseResourceRequirement=3.0,bCraftingRequireExactResourceType=false)))\nOverrideNamedEngramEntries=(EngramClassName="core:engram-hatchet",EngramPointsCost=1,EngramLevelRequirement=1)\nOverrideNamedEngramEntries=(EngramClassName="core:engram-waterskin",EngramHidden=True)\n',
   }).rules;
-  /** The whole client on a server: it sprints for two seconds, and its sheet is opened. */
   const play = (config: Rules) => {
     const h = new Harness({}, 1, 60, { dev: true, config });
     const app = new App(h.join("ada", { latencyMs: 30 }, { manual: true }), reg, pack);
@@ -298,10 +284,8 @@ test("client: on a server that scales stamina, stacks, what things are made of a
     app.key("ShiftLeft", false);
     app.key("KeyW", false);
     run(500);
-    // Then more wood than she can walk with, to see how it is stacked.
     s.text("give wood 600");
     run(500);
-    // The sheet: its engrams, then (the hatchet learned) what she can make.
     app.key("KeyP", true);
     app.key("KeyP", false);
     app.ui.sheet.tab = TAB_ENGRAMS;
@@ -314,7 +298,7 @@ test("client: on a server that scales stamina, stacks, what things are made of a
     };
     const engrams = rows(KEY_CHAR_ENGRAM);
     const me = h.host.records.byPid.get(h.client(s)!.pid)!;
-    // (A few levels, so that she can learn the hatchet on either server.)
+    // Enough levels to learn the hatchet on either server.
     h.host.progression.addXp(me, 100);
     expect(h.host.progression.learn(me, id("engram-hatchet"))).toBe(0);
     app.ui.sheet.tab = TAB_ENGRAMS + 1;
@@ -325,24 +309,19 @@ test("client: on a server that scales stamina, stacks, what things are made of a
   };
   const plain = play(new Rules());
   const tuned = play(rules);
-  // Never put right by the server, on either: the client steps its body by the numbers the server steps it by.
   expect([plain.corrections, tuned.corrections]).toEqual([0, 0]);
-  // Sprinting costs three times the stamina there, in her own prediction and on the bar that shows it.
   expect(Math.round((tuned.spent / plain.spent) * 10) / 10).toBe(3);
   expect(tuned.bar).toBeCloseTo(tuned.s.own.staminaMax > 0 ? 1 - tuned.spent / (tuned.s.own.staminaMax * STAMINA_UNITS) : 0, 1);
   expect(tuned.bar).toBeLessThan(plain.bar);
-  // What she holds is stacked as the server stacks it.
   expect([plain.stacks, tuned.stacks]).toEqual([[100, 100, 100, 100, 100, 100], [250, 250, 100]]);
-  // Her sheet says what the server says: the hatchet at its level and cost there, the water skin not offered at all;
   expect(plain.engrams).toContain("Stone hatchet: level 2, 3 points");
   expect(plain.engrams.some((l) => l.startsWith("Water skin"))).toBe(true);
   expect(tuned.engrams).toContain("Stone hatchet: level 1, 1 points");
   expect(tuned.engrams.some((l) => l.startsWith("Water skin"))).toBe(false);
-  // and what a hatchet is made of there.
   expect([plain.recipes.find((l) => l.startsWith("hatchet")), tuned.recipes.find((l) => l.startsWith("hatchet"))]).toEqual(["hatchet: 1 flint, 1 wood, 10 thatch", "hatchet: 2 thatch, 3 wood"]);
   expect([tuned.s.registry.hash === tuned.h.world.reg.hash, tuned.s.registry === tuned.h.reg, plain.s.registry === plain.h.reg]).toEqual([true, false, true]);
 
-  // A client that would make other content of what it is told: the tuning turned over on its way to it.
+  // A byte of the tuning is flipped on its way to the client, so the client derives other content.
   const h = new Harness({}, 1, 60, { config: rules });
   const session = h.join("mallory", {}, { manual: true });
   const end = h.ends[h.ends.length - 1]!;
@@ -364,7 +343,6 @@ test("client: on a server that scales stamina, stacks, what things are made of a
 test("catalogue: every setting of ARK's the research found is in it as taking effect, waiting for a feature it names, or of no meaning here with the reason; each that takes effect is held by a test; and the reference page is the catalogue", () => {
   expect(catalogFaults()).toEqual([]);
   const counts = catalogCounts();
-  // Nothing is left "to come this round".
   expect([counts.all, counts.todo, counts.live + counts.planned + counts.none]).toEqual([515, 0, 515]);
   expect(counts.live).toBeGreaterThanOrEqual(114);
   for (const row of CATALOG) {
@@ -372,13 +350,13 @@ test("catalogue: every setting of ARK's the research found is in it as taking ef
     else if (row.status === "none") expect([row.name, row.waits in NOT_HERE]).toEqual([row.name, true]);
     else expect([row.name, row.status, row.waits]).toEqual([row.name, "live", ""]);
   }
-  // Every feature that settings wait for has settings waiting for it: the list that guides what is built next.
+  // Every feature in FEATURES has at least one setting waiting for it.
   const waited = new Set(CATALOG.filter((r) => r.status === "planned").map((r) => r.waits));
   expect(Object.keys(FEATURES).filter((f) => !waited.has(f))).toEqual([]);
-  // One assertion for each setting that takes effect: its name is in a test.
+  // Every live setting's name appears in some test file.
   const tests = ["integration", "unit"].flatMap((d) => readdirSync(resolve(import.meta.dir, "..", d)).filter((f) => f.endsWith(".ts")).map((f) => readFileSync(resolve(import.meta.dir, "..", d, f), "utf8"))).join("\n");
   expect(CATALOG.filter((r) => r.status === "live" && !tests.includes(r.name)).map((r) => r.name)).toEqual([]);
-  // The reference names every one of them, under its own name.
+  // The reference page names every setting, with a leading - for a flag.
   const page = readFileSync(resolve(import.meta.dir, "../../planning/reference/settings.md"), "utf8");
   expect(CATALOG.filter((r) => !page.includes(`\`${r.kind === "flag" ? "-" : ""}${r.name}`)).map((r) => r.name)).toEqual([]);
 });

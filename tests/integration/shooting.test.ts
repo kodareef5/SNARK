@@ -37,7 +37,7 @@ const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const TICK_MS = 1000 / 30;
 const EYE = 1.62;
 
-/** A survivor with cheats at the south end of a level range, looking north up it. */
+/** The survivor stands at the south end of a level range, looking north. */
 function range(deep: number, link = {}, registry = reg) {
   const h = new Harness({}, 1, 60, { dev: true }, registry);
   const s = h.join("ada", link);
@@ -51,7 +51,7 @@ function range(deep: number, link = {}, registry = reg) {
   pilot.pitch = 0;
   h.run(300);
   const rec = h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!;
-  /** A dummy `far` metres up the range, facing down it. */
+  /** A dummy `far` metres up the range, facing the shooter. */
   const dummy = (far: number, armor?: string): { e: number; rec: EntityRecord } => {
     const e = h.host.spawnCreature("core:dummy", at.x, at.z + far, 1);
     expect(e).toBeGreaterThanOrEqual(0);
@@ -64,7 +64,7 @@ function range(deep: number, link = {}, registry = reg) {
     h.run(200);
     return { e, rec: drec };
   };
-  /** Take a weapon of a kit in hand and wait until it is loaded and ready. */
+  /** Waits until the weapon is loaded and ready. Returns its slot. */
   const arm = (kit: string, weapon: string, ms = 6000): number => {
     h.say(s, `kit ${kit}`);
     const slot = takeInHand(h, s, registry.index.get(`core:${weapon}`)!);
@@ -76,13 +76,12 @@ function range(deep: number, link = {}, registry = reg) {
   return { h, s, pilot, rec, at, dummy, arm };
 }
 
-/** Point the pilot from the shooter's eye at a point `far` metres north and `height` above the ground. */
+/** Aims from the shooter's eye at a point `far` metres north and `height` above the ground. */
 function aim(pilot: Pilot, far: number, height: number, side = 0): void {
   pilot.yaw = Math.atan2(side, far);
   pilot.pitch = Math.atan2(height - EYE, Math.hypot(far, side));
 }
 
-/** Press the trigger once and let the shot be resolved. */
 function pull(h: Harness, pilot: Pilot, ms = 400): void {
   pilot.buttons |= BTN_PRIMARY;
   h.run(TICK_MS * 3);
@@ -90,7 +89,7 @@ function pull(h: Harness, pilot: Pilot, ms = 400): void {
   h.run(ms);
 }
 
-/** Draw a bow for `ticks` and let go. */
+/** Draws the bow for `ticks` and lets go. */
 function loose(h: Harness, pilot: Pilot, ticks: number, ms = 1500): void {
   pilot.buttons |= BTN_PRIMARY;
   h.run(TICK_MS * ticks);
@@ -98,7 +97,7 @@ function loose(h: Harness, pilot: Pilot, ticks: number, ms = 1500): void {
   h.run(ms);
 }
 
-/** How far an arrow let go at `draw` falls below its line of aim by the time it has gone `far` metres. */
+/** Metres an arrow loosed at `draw` falls below its line of aim over `far` metres. */
 function drop(far: number, draw: number): number {
   const t = far / launchSpeed(70, draw);
   return 0.5 * 9.81 * t * t;
@@ -115,7 +114,7 @@ test("a rifle round arrives the tick it is fired: a head, a chest, flak, and a c
   h.run(100);
   pull(h, pilot);
   expect([combat.last.zone, combat.last.damage, combat.last.victim]).toEqual([ZONE_HEAD, 840, bare.rec.pid]);
-  // The round is spent, the rifle is worn by one use, and it reloads by itself: four and a half seconds.
+  // The rifle reloads by itself in four and a half seconds.
   expect([inv.loaded[slot], inv.dur[slot]]).toEqual([0, 69]);
   expect(h.host.projectiles.flyingCount).toBe(0);
   h.run(4600);
@@ -124,11 +123,10 @@ test("a rifle round arrives the tick it is fired: a head, a chest, flak, and a c
   h.run(100);
   pull(h, pilot, 4800);
   expect([combat.last.zone, combat.last.damage]).toEqual([ZONE_TORSO, 280]);
-  // The one who fired is told where it landed: sixty metres off, at chest height.
   const told = s.events.filter((ev) => ev.kind === EVENT_HIT);
   expect(told.map((ev) => ev.damage)).toEqual([840, 280]);
   expect(told[1]!.z - h.world.ents.z[h.ent(s)]!).toBeGreaterThan(59);
-  // Flak on the chest: the piece counts five times, a sixth gets through, and the shirt is worn by what it stopped.
+  // A flak piece counts five times, so a sixth gets through. The shirt loses one durability for each sixteen points stopped.
   h.host.death.die(bare.rec, 0);
   const clad = dummy(60, "flak");
   pull(h, pilot, 4800);
@@ -137,14 +135,12 @@ test("a rifle round arrives the tick it is fired: a head, a chest, flak, and a c
   expect(combat.last.wear).toBe(Math.ceil((280 - 280 / 6) / 16));
   const dinv = h.host.items.inv(clad.rec);
   expect(dinv.dur[dinv.armor + 1]).toBe(120 - combat.last.wear);
-  // A miss hits nothing and still costs the round.
   aim(pilot, 60, 3.2);
   h.run(100);
   const hits = combat.hits;
   pull(h, pilot, 4800);
   expect(combat.hits).toBe(hits);
   expect(h.host.projectiles.fired).toBe(4);
-  // A creature takes seven tenths of a bullet.
   h.host.death.die(clad.rec, 0);
   const e = h.host.spawnCreature("core:grazer", h.world.ents.x[h.ent(s)]!, h.world.ents.z[h.ent(s)]! + 6, 1);
   aim(pilot, 6, 0.8);
@@ -163,12 +159,11 @@ test("an arrow flies and falls: aimed above its mark by its drop it lands on it,
   const combat = h.host.combat;
   const shots = h.host.projectiles;
   const arrows = inv.total(id("arrow_stone"));
-  // Fully drawn, at the chest, thirty metres: aimed straight at it the arrow falls 0.9 m and lands low.
+  // Aimed straight at the chest at thirty metres, a fully drawn arrow falls 0.9 m and lands low.
   aim(pilot, 30, 1.25);
   loose(h, pilot, 45);
   expect(shots.fired).toBe(1);
   expect(shots.lastEnd.on === d.e ? shots.lastEnd.y - h.world.ents.y[d.e]! : 0).toBeLessThan(0.6);
-  // Held over by its drop, it lands where it was meant: all of its damage, to the chest and to the head.
   const before = combat.hits;
   aim(pilot, 30, 1.25 + drop(30, 1));
   loose(h, pilot, 45);
@@ -177,17 +172,16 @@ test("an arrow flies and falls: aimed above its mark by its drop it lands on it,
   aim(pilot, 30, 1.66 + drop(30, 1));
   loose(h, pilot, 45);
   expect([combat.last.zone, combat.last.damage]).toEqual([ZONE_HEAD, 165]);
-  // Half drawn it is slower, falls further, and does five eighths.
+  // Damage runs from a quarter undrawn to all of it at 36 ticks of draw, so half drawn is about five eighths.
   aim(pilot, 30, 1.25 + drop(30, 0.5));
   loose(h, pilot, 19.5);
   expect(combat.last.zone).toBe(ZONE_TORSO);
   expect(combat.last.damage).toBeGreaterThan(55 * (0.25 + (0.75 * 17) / 36) - 0.01);
   expect(combat.last.damage).toBeLessThan(55 * (0.25 + (0.75 * 20) / 36) + 0.01);
-  // Let go at once, the string is let down: nothing leaves.
+  // A draw of four ticks is too short to fire.
   const fired = shots.fired;
   loose(h, pilot, 4);
   expect(shots.fired).toBe(fired);
-  // Each shot nocked the next from the bag, and wore the bow.
   expect(inv.loaded[slot]).toBe(1);
   expect(inv.total(id("arrow_stone"))).toBe(arrows - fired);
   expect(inv.dur[slot]).toBe(50 - fired);
@@ -202,7 +196,6 @@ test("an arrow that misses stands where it landed about half the time, is seen b
   const shots = h.host.projectiles;
   const ents = h.world.ents;
   const had = inv.total(id("arrow_stone")) + 1;
-  // Twenty arrows into the ground, twenty metres up the range.
   for (let n = 0; n < 20; n++) {
     aim(pilot, 20, 0, (n % 5) - 2);
     loose(h, pilot, 40, 1100);
@@ -213,7 +206,7 @@ test("an arrow that misses stands where it landed about half the time, is seen b
   const stood = shots.stuckCount;
   expect(stood).toBeGreaterThanOrEqual(5);
   expect(stood).toBeLessThanOrEqual(15);
-  // Each is a thing in the world, tilted the way it flew: downward, pointing north.
+  // A stuck arrow is an entity, pitched down the way it flew.
   const kind = id("arrow_stuck");
   const standing: number[] = [];
   for (let e = 0; e < ents.cap; e++) if ((ents.flags[e]! & 1) !== 0 && ents.kind[e] === kind) standing.push(e);
@@ -222,13 +215,12 @@ test("an arrow that misses stands where it landed about half the time, is seen b
     expect(ents.pitch[e]!).toBeLessThan(-200);
     expect(ents.y[e]! - h.world.hf.heightAt(ents.x[e]!, ents.z[e]!)).toBeLessThan(0.2);
   }
-  // A client sees them as it sees anything.
   const remote = new RemoteSample();
   s.sampleRemote(remote);
   let seen = 0;
   for (let i = 0; i < remote.count; i++) if (remote.kind[i] === kind) seen++;
   expect(seen).toBe(stood);
-  // Fired and not yet picked up, every one of them is off the books; walking over them puts them back on.
+  // A fired arrow is off the ledger until someone walks over it.
   expect(inv.total(id("arrow_stone")) + inv.loaded[inv.hotbar]!).toBe(had - 20);
   expect(h.host.items.audit()).toEqual([]);
   const first = standing[0]!;
@@ -238,7 +230,6 @@ test("an arrow that misses stands where it landed about half the time, is seen b
   expect((ents.flags[first]! & 1) === 0 || ents.kind[first] !== kind).toBe(true);
   expect(inv.total(id("arrow_stone")) + inv.loaded[inv.hotbar]!).toBe(had - 20 + shots.recovered);
   expect(h.host.items.audit()).toEqual([]);
-  // The rest stand for a minute from when they landed, and then are gone.
   h.say(s, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
   const left = shots.stuckCount;
   expect(left).toBe(stood - shots.recovered);
@@ -248,7 +239,7 @@ test("an arrow that misses stands where it landed about half the time, is seen b
   expect(h.host.items.audit()).toEqual([]);
 });
 
-/** Bob walks a beat across the range while Ada, `latencyMs` away from the server each way, shoots at where she sees him. */
+/** Bob strafes across the range while Ada, `latencyMs` from the server each way, aims at where she sees him. */
 function strafing(latencyMs: number, sprint = true) {
   const h = new Harness({}, 1, 60, { dev: true });
   const ada = h.join("ada", { latencyMs });
@@ -261,14 +252,13 @@ function strafing(latencyMs: number, sprint = true) {
   h.say(ada, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
   h.say(bob, `tp ${at.x.toFixed(3)} ${(at.z + 14).toFixed(3)}`);
   const [pa, pb] = [h.pilots[0]!, h.pilots[1]!];
-  // Bob faces south, toward Ada, and runs his beat sideways: six metres each way.
   pb.yaw = Math.PI;
   h.run(400);
   const brec = h.host.records.byPid.get(h.world.ents.pid[h.ent(bob)]!)!;
   h.host.survival.gods.add(brec.pid);
   const remote = new RemoteSample();
   const seen = { x: 0, y: 0, z: 0, ok: false };
-  /** Where Ada's own screen has Bob, this frame. */
+  /** Sets `seen` to where Ada's client draws Bob this frame. */
   const look = (): void => {
     ada.sampleRemote(remote);
     seen.ok = false;
@@ -280,7 +270,7 @@ function strafing(latencyMs: number, sprint = true) {
       seen.ok = true;
     }
   };
-  /** Each frame: Bob turns at the ends of his beat, and Ada keeps her aim on the chest of the Bob she sees, led by `lead` seconds of his walking. */
+  /** Each frame Bob turns at the ends of his beat, and Ada aims at the chest of the Bob she sees, led by `lead` seconds of his walking. */
   const frame = (lead = 0, over = 0) => (): void => {
     const bx = h.world.ents.x[h.ent(bob)]!;
     if (bx > at.x + 6) pb.moveX = -1;
@@ -299,7 +289,7 @@ function strafing(latencyMs: number, sprint = true) {
   return { h, ada, bob, pa, pb, brec, frame, at };
 }
 
-/** How fast a survivor is going, as the server has it. */
+/** Horizontal speed on the server. */
 function speedOf(h: Harness, s: ClientSession): number {
   const e = h.ent(s);
   return Math.hypot(h.world.ents.vx[e]!, h.world.ents.vz[e]!);
@@ -317,7 +307,7 @@ test("lag compensation: at every latency within the cap, a shot aimed at the bod
     let fired = 0;
     let hit = 0;
     let moving = 0;
-    // Twelve shots, some of them just as he turns: a round every seven tenths of a second, a reload when the six are gone.
+    // The pistol holds six rounds, so the twelve shots include a reload.
     for (let n = 0; n < 12; n++) {
       if (inv.loaded[inv.hotbar] === 0) h.run(2600, frame());
       const before = combat.hits;
@@ -330,10 +320,9 @@ test("lag compensation: at every latency within the cap, a shot aimed at the bod
       if (combat.hits > before && combat.last.victim === brec.pid) hit++;
     }
     expect(h.host.projectiles.fired).toBe(fired);
-    // He was running for most of them: six metres a second across a body half a metre wide.
+    // He was sprinting for most shots, at six metres a second across a body half a metre wide.
     expect(moving).toBeGreaterThanOrEqual(8);
     expect(hit).toBe(fired);
-    // How far back the server looked: further the further away she is, and never past the cap.
     const back = h.world.tick - combat.viewTick(h.client(ada)!);
     expect(back).toBeGreaterThanOrEqual(1.5);
     expect(back).toBeLessThanOrEqual(REWIND_TICKS);
@@ -343,20 +332,20 @@ test("lag compensation: at every latency within the cap, a shot aimed at the bod
 
 test("an arrow at a runner must be led by its flight and by nothing else: led so, it hits at any latency within the cap", () => {
   for (const latencyMs of [0, 75]) {
-    // He walks: a sprint would run out of breath partway through, and his pace must hold for the lead to be right.
+    // He walks, because a sprint would run out of stamina partway and the lead needs a steady pace.
     const { h, ada, pa, brec, frame, bob } = strafing(latencyMs, false);
     h.say(ada, "kit bow");
     takeInHand(h, ada, id("bow"));
     h.run(2500, frame());
     const combat = h.host.combat;
-    // Fourteen metres at seventy metres a second: a fifth of a second of his walking, nine decimetres, and two of drop.
+    // Fourteen metres at 70 m/s is a fifth of a second: 0.9 m of his walking and 0.2 m of drop.
     const flight = 14 / 70;
     let hit = 0;
     let tried = 0;
     for (let n = 0; n < 8; n++) {
       pa.buttons |= BTN_PRIMARY;
       h.run(1500, frame(flight, drop(14, 1)));
-      // Let go only while he runs steadily: a turn during the flight is his luck, not her aim.
+      // She lets go only while he moves steadily, because a turn during the flight would dodge a correct lead.
       const off = (): number => Math.abs(h.world.ents.x[h.ent(bob)]! - h.world.ents.x[h.ent(ada)]!);
       for (let wait = 0; wait < 80 && (speedOf(h, bob) < 4.4 || off() > 3); wait++) h.run(50, frame(flight, drop(14, 1)));
       expect(ada.own.act).toBe(ACT_HOLD);
@@ -373,7 +362,7 @@ test("an arrow at a runner must be led by its flight and by nothing else: led so
 test("water stops what is fired into it; what is fired from a crossbow goes on under it, slowly", () => {
   const { h, s, pilot, rec } = range(20);
   const w = h.world;
-  // A spot on the shore: dry ground with the sea a few metres off in some direction.
+  // Finds a spot on the shore, with the sea a few metres off toward `yaw`.
   let shore: { x: number; z: number; yaw: number } | null = null;
   for (let x = 40; x < w.hf.sizeX - 40 && !shore; x += 8) {
     for (let z = 40; z < w.hf.sizeZ - 40 && !shore; z += 8) {
@@ -399,7 +388,6 @@ test("water stops what is fired into it; what is fired from a crossbow goes on u
   expect(shots.lastEnd.on).toBe(-2);
   expect(shots.lastEnd.y).toBeCloseTo(w.hf.seaLevel, 3);
   expect(shots.stuckCount).toBe(0);
-  // The same shot from a crossbow goes through the surface and on to the bottom.
   takeInHand(h, s, id("crossbow"), 1);
   h.run(4000);
   expect(h.host.items.inv(rec).loaded[h.host.items.inv(rec).hotbar + 1]).toBe(1);
@@ -411,20 +399,19 @@ test("water stops what is fired into it; what is fired from a crossbow goes on u
 });
 
 test("nothing tunnels: at a thousand metres a second a dart still stops at a wall a hand thick, and at the body in front of one", () => {
-  // The same content with one change: the tranquilizer dart leaves at 1,000 m/s, thirty-three metres a tick.
+  // 1,000 m/s is thirty-three metres a tick.
   const defs = CORE_CONTENT.map((d): Def => (d.id === "core:dart_tranq" ? { ...(d as ItemDef), ammo: { ...(d as ItemDef).ammo!, speed: 1000 } } : d));
   const fast = compileContent(defs).registry!;
   const { h, s, pilot, rec, at, dummy } = range(64, {}, fast);
   const k = (name: string): number => fast.index.get(`core:${name}`)!;
   h.say(s, "kit rifle");
   const slot = takeInHand(h, s, k("rifle"));
-  // Darts, not rounds.
   const inv = h.host.items.inv(rec);
   h.run(200);
   h.host.items.load(rec, slot, k("dart_tranq"), 1);
   h.run(300);
   expect([inv.ammo[slot], inv.loaded[slot]]).toEqual([k("dart_tranq"), 1]);
-  // A wall across the range at forty metres, ten centimetres thick.
+  // The wall is 0.2 m thick, so its near face is 39.9 m off.
   const wall = k("wall");
   for (let i = -2; i <= 2; i++) h.world.structs.add(wall, at.x + i * 3, at.y + 1.5, at.z + 40, 0, 0, 1500);
   const shots = h.host.projectiles;
@@ -434,7 +421,7 @@ test("nothing tunnels: at a thousand metres a second a dart still stops at a wal
   expect(shots.fired).toBe(1);
   expect(shots.lastEnd.on).toBe(-1);
   expect(shots.lastEnd.z).toBeCloseTo(at.z + 39.9, 1);
-  // A body in front of the wall takes it, wherever in its piece the body stands.
+  // A body in front of the wall is hit wherever it stands within a tick's flight.
   for (const far of [9, 20, 33.4, 39]) {
     const d = dummy(far);
     aim(pilot, far, 1.25);
@@ -450,7 +437,6 @@ test("nothing tunnels: at a thousand metres a second a dart still stops at a wal
 });
 
 test("flown a tick at a time, a shot lands where one flown a thousand times a second does", () => {
-  // Ten thousand shots at an upright capsule over level ground, each flown both ways: by the tick, in straight pieces, and by the millisecond.
   const rng = new Rng(9);
   const g = 9.81;
   let differ = 0;
@@ -461,12 +447,12 @@ test("flown a tick at a time, a shot lands where one flown a thousand times a se
     const side = (rng.float() - 0.5) * 1.6;
     const draw = rng.float();
     const speed = launchSpeed(70, draw);
-    // Aimed near the capsule, held over by about the drop, with some error.
+    // Aimed near the capsule, raised by about the drop, with some error.
     const t = far / speed;
     const up = 1.0 + 0.5 * g * t * t + (rng.float() - 0.5) * 2.4;
     const len = Math.hypot(side, up - EYE, far);
     const v = [(side / len) * speed, ((up - EYE) / len) * speed, (far / len) * speed];
-    // The capsule: from the knees to the head, a quarter metre thick, standing straight ahead.
+    // Returns 1 for the capsule (0.5 to 1.6 m up, radius 0.25), 2 for the ground, 0 for neither.
     const hits = (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, length: number): number => {
       const tc = rayCapsule(ox, oy, oz, dx, dy, dz, 0, 0.5, far, 0, 1.6, far, 0.25);
       const tg = dy < 0 && oy + dy * length <= 0 ? -oy / dy : Infinity;
@@ -515,7 +501,6 @@ test("whoever is near a shot is told of it, and the one who fired is not", () =>
   expect(heard.length).toBe(1);
   expect(s.events.filter((ev) => ev.kind === EVENT_SHOT).length).toBe(0);
   const shot = heard[0]!;
-  // From her eye, an arrow, flying north at full speed.
   expect(Math.hypot(shot.x - at.x, shot.z - at.z)).toBeLessThan(0.1);
   expect(shot.y - at.y).toBeCloseTo(EYE, 1);
   expect([shot.item, shot.flies]).toEqual([id("arrow_stone"), true]);
@@ -537,12 +522,11 @@ test("the client shows shots: its own arrow at once, another's when told, the li
     });
   run(500);
   const s = app.session;
-  // Both clients are driven a frame at a time, so everything they do is done with frames running.
+  // Both clients are driven frame by frame, so every wait runs frames.
   const say = (who: App, line: string): void => {
     who.session.text(line);
     run(200);
   };
-  /** Move what is carried to a hotbar slot and take it in hand. */
   const hold = (item: number, hotbar: number): void => {
     const inv = s.inventory!;
     const from = inv.item.indexOf(item);
@@ -557,7 +541,6 @@ test("the client shows shots: its own arrow at once, another's when told, the li
   const g = flatGround(h, 24, 44);
   const at = { x: g.x + 12, z: g.z + 1.5 };
   say(app, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
-  // Eve stands off to one side, looking across the range.
   say(eve, `tp ${(at.x + 8).toFixed(3)} ${(at.z + 10).toFixed(3)}`);
   eve.controls.yaw = -Math.PI / 2;
   say(app, "kit bow");
@@ -566,12 +549,11 @@ test("the client shows shots: its own arrow at once, another's when told, the li
   const meshes = (p: typeof packet): string[] => [...p!.drawMesh.subarray(0, p!.drawCount)].filter((_, d) => (p!.drawFlags[d]! & DRAW_SKINNED) !== 0).map((m) => pack.header.meshes[m]!.id);
   const f = app.ui.frame;
 
-  // The bow in hand: the line above the hotbar says what is on the string and what is in the bag.
+  // The ammo line reads loaded / in the bag.
   hold(id("bow"), 0);
   run(1500);
   expect(f.find(KEY_AMMO)!.text).toBe("stone arrow  1 / 39");
   expect(f.find(KEY_ACTION)).toBeNull();
-  // Drawing: the bar under the crosshair fills.
   app.controls.yaw = 0;
   app.controls.pitch = 0.05;
   app.controls.mouseButton(0, true);
@@ -582,7 +564,7 @@ test("the client shows shots: its own arrow at once, another's when told, the li
   run(1200);
   expect(f.find(KEY_ACTION)!.value).toBe(1);
   expect(app.shots.flying.length).toBe(0);
-  // Let go: the arrow is in the air on her own screen within a frame or two, before the server could have said so.
+  // Her own arrow is drawn within a frame or two, before the server has fired it.
   app.controls.mouseButton(0, false);
   run(70);
   expect(app.shots.flying.length).toBe(1);
@@ -590,20 +572,16 @@ test("the client shows shots: its own arrow at once, another's when told, the li
   expect(meshes(packet)).toContain("core:arrow");
   const mine = app.shots.flying[0]!;
   expect(Math.hypot(mine.vx, mine.vy, mine.vz)).toBeCloseTo(70, 0);
-  // The server flies it too, and Eve is told and draws her own picture of it.
   run(130);
   expect(h.host.projectiles.fired).toBe(1);
   expect(eve.shots.flying.length).toBe(1);
   expect(meshes(seen)).toContain("core:arrow");
-  // Both pictures end where the arrow comes down, about where the server's did.
   run(2500);
   expect(app.shots.flying.length).toBe(0);
   expect(eve.shots.flying.length).toBe(0);
   expect(h.host.projectiles.lastEnd.on).toBe(-1);
-  // The bar showed the next arrow being nocked, and the line counts one fewer.
   expect(f.find(KEY_AMMO)!.text).toBe("stone arrow  1 / 38");
 
-  // Arrows into the ground until one stands: it is drawn tilted, by both, as a thing in the world.
   app.controls.pitch = -0.2;
   for (let n = 0; n < 12 && h.host.projectiles.stuckCount === 0; n++) {
     app.controls.mouseButton(0, true);
@@ -618,7 +596,6 @@ test("the client shows shots: its own arrow at once, another's when told, the li
   run(300);
   expect(meshes(seen)).toContain("core:arrow");
 
-  // The rifle: a round leaves a line for a moment, on her screen at once and on Eve's when told.
   hold(id("rifle"), 1);
   run(5200);
   expect(f.find(KEY_AMMO)!.text).toBe("rifle round  1 / 29");
@@ -631,10 +608,10 @@ test("the client shows shots: its own arrow at once, another's when told, the li
   run(TRACER_MS + 120);
   expect(app.shots.tracers.length).toBe(0);
   expect(meshes(packet)).not.toContain("core:tracer");
-  // The reload shows as a bar of its own.
+  // The action bar also shows the reload.
   expect(f.find(KEY_ACTION)).not.toBeNull();
   expect(eve.session.events.length).toBe(0);
-  // Aiming narrows the view and slows the mouse to match.
+  // Aiming narrows the view and slows the mouse by the same ratio.
   const wide = app.cam.fovY;
   app.controls.mouseButton(2, true);
   run(600);
@@ -647,12 +624,12 @@ test("the client shows shots: its own arrow at once, another's when told, the li
 });
 
 test("a creature that came as a model is hit where its capsules are, in the pose it is in: its head for half as much again, its body for what the round does", () => {
-  // A parasaur that stands where it is put, so that where its head is can be known.
+  // `still` keeps the parasaur where it is put, so the test can compute where its head is.
   const wild = CORE_CONTENT.find((d) => d.id === "core:parasaur")!;
   const { registry } = compileContent([...CORE_CONTENT, { ...wild, id: "core:parasaur_still", still: true } as Def]);
   const { h, s, pilot, at, arm } = range(64, {}, registry!);
   const kind = registry!.index.get("core:parasaur_still")!;
-  // Thirty metres up the range, turned a quarter so that it stands side on: its head to the shooter's right.
+  // Thirty metres up the range, turned a quarter turn to face +X, so it stands side on.
   const e = h.host.spawnCreature("core:parasaur_still", at.x, at.z + 30, 150);
   expect(e).toBeGreaterThanOrEqual(0);
   const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
@@ -662,7 +639,7 @@ test("a creature that came as a model is hit where its capsules are, in the pose
   const st = new AnimState();
   st.unpack(h.world.ents.anim[e]!);
   st.seed = bodySeed(e);
-  // Where the middles of its head and of its body are now, in its own space; facing +X, what is ahead of it is to the east.
+  // The middle of a bone's capsule, in model space. The creature faces +X, so model z runs along world +X.
   const middle = (bone: string): number[] => {
     creaturePose(rig, st, h.world.tick, registry!.runAt[kind]!, rig.a);
     solve(rig, rig.a, rig.solved);
@@ -675,30 +652,28 @@ test("a creature that came as a model is hit where its capsules are, in the pose
   const combat = h.host.combat;
   const health = (): number => h.host.survival.value(rec, V_HEALTH);
   const full = health();
-  // Its body, side on: what a rifle round does to a creature.
   const body = middle("Body");
   aim(pilot, 30 - body[0]!, body[1]!, body[2]!);
   h.run(100);
   pull(h, pilot, 4800);
   expect([combat.last.victim, combat.last.zone, combat.last.damage]).toEqual([rec.pid, ZONE_TORSO, 280]);
-  // (It has mended a little in the seconds the rifle took to reload.)
+  // It has mended a little in the seconds the rifle took to reload.
   expect(full - health()).toBeGreaterThan(270);
   expect(full - health()).toBeLessThanOrEqual(280);
-  // Its head, where the idle clip has it at this tick: half as much again.
+  // The head is where the idle clip has it at this tick.
   st.unpack(h.world.ents.anim[e]!);
   const head = middle("Head");
   aim(pilot, 30 - head[0]!, head[1]!, head[2]!);
   h.run(100);
   pull(h, pilot, 4800);
   expect([combat.last.zone, combat.last.damage]).toEqual([ZONE_HEAD, 420]);
-  // Over its back, where a box about it would have been: nothing.
+  // A shot over its back, inside its bounding box, hits nothing.
   const before = combat.hits;
   aim(pilot, 30, rig.mid * 2.4, -1.5);
   h.run(100);
   pull(h, pilot, 4800);
   expect(combat.hits).toBe(before);
 
-  // And it is drawn on its bones, where it is: one mesh that follows its skeleton.
   const pack = corePack();
   const scene = new Scene(s.world!, registry!, pack);
   const remote = new RemoteSample();

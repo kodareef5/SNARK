@@ -1,5 +1,3 @@
-// Saddles and riding: a survivor on a creature of its tribe.
-
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,7 +19,6 @@ import { coreRegistry } from "../fixtures/world.ts";
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 
-/** Ada and Bob with cheats on a long level strip, and a tamed creature of Ada's standing three metres in front of her. */
 function stable(species: string, host: { dbPath?: string } = {}) {
   const h = new Harness({}, 1, 60, { dev: true, ...host });
   const ada = h.join("ada");
@@ -38,7 +35,7 @@ function stable(species: string, host: { dbPath?: string } = {}) {
   const e = h.host.spawnCreature(`core:${species}`, at.x, at.z + 3.2, 1);
   const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
   h.host.creatures.mind.stay(e, 0);
-  // Knocked out, hungry, with a piece of what it likes in it, and hers to be: tamed at once.
+  // Knocked out and hungry with its food in it, the creature tames at once.
   h.host.survival.add(rec, V_TORPOR, rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
   h.run(100);
   h.host.survival.add(rec, V_FOOD, -80);
@@ -49,7 +46,7 @@ function stable(species: string, host: { dbPath?: string } = {}) {
   return { h, ada, bob, at, me, e, rec };
 }
 
-/** Look at entity `e` and press the use button. Returns what the server said unasked, or -1. */
+/** Returns the result the server sent with no sequence number, or -1. */
 function press(h: Harness, s: ClientSession, e: number): number {
   const ents = h.world.ents;
   const me = h.ent(s);
@@ -68,7 +65,6 @@ function press(h: Harness, s: ClientSession, e: number): number {
   return told;
 }
 
-/** Give a survivor a saddle and have it put on the creature it is looking into. */
 function saddle(h: Harness, s: ClientSession, e: number, item: string): number {
   h.say(s, `give ${item} 1`);
   let code = -1;
@@ -89,11 +85,9 @@ test("a saddle is put on a creature of one's tribe that it fits; saddled, the us
   let { h, ada, bob, at, me, e, rec } = stable("raptor", { dbPath });
   const ents = h.world.ents;
   const riding = h.host.riding;
-  // Without a saddle the use button looks into it; and getting on is refused for want of one.
   expect(press(h, ada, e)).toBe(-1);
   expect([ada.open !== null, ada.subject?.saddled, h.client(ada)!.drive]).toEqual([true, false, -1]);
   expect(riding.mount(h.client(ada)!, e)).toBe(RESULT_SHORT);
-  // A parasaur's saddle does not fit a raptor; a raptor's does, and is then on it and not among what it carries.
   expect(saddle(h, ada, e, "saddle_parasaur")).toBe(RESULT_INVALID);
   expect(h.host.items.inv(rec).total(id("saddle_parasaur"))).toBe(1);
   ada.command(CMD_MOVE, (w: BitWriter) => (w.bits(BOX_OPEN, 1), w.varint(0), w.bits(BOX_SELF, 1), w.varint(ada.inventory!.free()), w.u16(0), w.u16(id("saddle_parasaur"))));
@@ -103,27 +97,23 @@ test("a saddle is put on a creature of one's tribe that it fits; saddled, the us
   expect([rec.saddle, h.host.items.inv(rec).total(id("saddle_raptor")), ada.subject?.saddled]).toEqual([id("saddle_raptor"), 0, true]);
   ada.command(4);
   h.run(200);
-  // Not hers to ride for someone of another tribe: his press does nothing to it.
   expect([riding.mount(h.client(bob)!, e), press(h, bob, e), h.client(bob)!.drive]).toEqual([RESULT_NOT_YOURS, -1, -1]);
-  // Hers: the use button gets on it. Her inputs drive it now; she sits on its back, low, where its seat is.
+  // seat is the mount's entity index plus one, and 0 off a mount.
   expect(press(h, ada, e)).toBe(-1);
   expect([h.client(ada)!.drive, ada.driving, riding.mounted, ents.driven[e], ents.seat[h.ent(ada)]]).toEqual([e, e, 1, 1, e + 1]);
   expect(ents.stance[h.ent(ada)]).toBe(STANCE_CROUCH);
   expect(Math.hypot(ents.x[h.ent(ada)]! - ents.x[e]!, ents.z[h.ent(ada)]! - ents.z[e]!)).toBeLessThan(1);
   expect(ents.y[h.ent(ada)]! - ents.y[e]!).toBeGreaterThan(0.3);
-  // Nobody else gets on while she is; and its saddle does not come off under her.
   let code = -1;
   ada.onResult = (seq, c) => void (seq !== 0 && (code = c));
   ada.command(CMD_ORDER, (w: BitWriter) => (w.u32(e), w.u8(ORDER_UNSADDLE)));
   h.run(150);
   expect([code, riding.mount(h.client(bob)!, e)]).toEqual([RESULT_BUSY, RESULT_NOT_YOURS]);
-  // Bob sees her on it: her body is tied to its seat.
   const remote = new RemoteSample();
   bob.sampleRemote(remote);
   const seen = Array.from(remote.id.subarray(0, remote.count)).indexOf(h.ent(ada));
   expect(remote.seat[seen]).toBe(e + 1);
 
-  // The use button again gets off: she stands on the ground beside it, and it is its own again.
   h.pilots[0]!.buttons = BTN_USE;
   h.run(100);
   h.pilots[0]!.buttons = 0;
@@ -134,7 +124,7 @@ test("a saddle is put on a creature of one's tribe that it fits; saddled, the us
   expect(beside).toBeLessThan(2.2);
   expect(Math.abs(ents.y[h.ent(ada)]! - at.y)).toBeLessThan(0.1);
 
-  // The saddle is part of the world; taken off, it is among what the creature carries again, unless there is no room.
+  // The saddle survives a restart. Unsaddling needs a free slot on the creature.
   const pid = rec.pid;
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
@@ -168,7 +158,6 @@ test("ridden, a mount goes where its rider's inputs send it with nothing correct
   expect(press(h, ada, e)).toBe(-1);
   expect(ada.driving).toBe(e);
   const pilot = h.pilots[0]!;
-  // Forward, along the strip: it runs as a raptor runs, she with it, and what her client predicted was never put right.
   pilot.yaw = Math.PI / 2;
   pilot.pitch = 0;
   h.run(1500);
@@ -181,7 +170,7 @@ test("ridden, a mount goes where its rider's inputs send it with nothing correct
   expect(ada.stats.corrections - corrections).toBe(0);
   expect(Math.hypot(ada.own.x - ents.x[e]!, ada.own.z - ents.z[e]!)).toBeLessThan(1.5);
   expect(Math.hypot(ents.x[h.ent(ada)]! - ents.x[e]!, ents.z[h.ent(ada)]! - ents.z[e]!)).toBeLessThan(1);
-  // She looks behind her: it does not face there at once, but comes round at the rate a raptor turns (240 degrees a second).
+  // A raptor turns 240 degrees a second, so 200 ms brings it round about 48 degrees.
   pilot.moveZ = 0;
   h.run(500);
   const facing = ents.yaw[e]!;
@@ -194,7 +183,6 @@ test("ridden, a mount goes where its rider's inputs send it with nothing correct
   expect(Math.abs((((ents.yaw[e]! - 49152 + 32768) & 0xffff) - 32768))).toBeLessThan(400);
   expect(ada.stats.corrections - corrections).toBe(0);
 
-  // A wild parasaur in front of it: her primary button is its bite, a blow of the mount's own.
   const prey = h.host.spawnCreature("core:parasaur", ents.x[e]! - 2.5, ents.z[e]!, 1);
   const wild = h.host.records.byPid.get(ents.pid[prey]!)!;
   h.host.creatures.mind.stay(prey, h.world.tick + 3000);
@@ -206,7 +194,6 @@ test("ridden, a mount goes where its rider's inputs send it with nothing correct
   pilot.buttons = 0;
   h.run(500);
   expect([h.host.combat.last.by, h.host.combat.last.victim, h.host.combat.last.killed]).toEqual([rec.pid, wild.pid, true]);
-  // What it earned by the kill is its own, and half as much again is hers.
   expect(rec.xp - xp[0]!).toBeGreaterThan(0);
   expect(me.xp - xp[1]!).toBeCloseTo((rec.xp - xp[0]!) / 2, 5);
   expect(ada.stats.corrections - corrections).toBe(0);
@@ -222,21 +209,20 @@ test("a rider is shot where she sits; a saddle is her mount's armor; a mount tha
   press(h, ada, e);
   expect(ada.driving).toBe(e);
   h.run(500);
-  // She sits two metres up. A ray at the height of her head, where she is on its back, finds her head; under her, the mount; where she stood before, nothing.
   const rider = h.ent(ada);
   expect(ents.y[rider]! - at.y).toBeGreaterThan(1.2);
-  // From her side, rays a little above where she sits find her, in one part of her or another; one well over her head finds nothing.
+  // Rays from her side at rising heights find her in some zone. The highest passes over her head.
   const rays = [0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.1, 1.3].map((up) => [combat.castBodies(h.ent(bob), ents.x[rider]! - 12, ents.y[rider]! + up, ents.z[rider]!, 1, 0, 0, 40), combat.zone]);
   const found = rays.filter((r) => r[0] === rider);
   expect(found.length).toBeGreaterThan(2);
   expect(found.every((r) => r[1] !== ZONE_NONE)).toBe(true);
   expect(rays[rays.length - 1]![0]).toBe(-1);
-  // Under her, the mount; where she stood before she got on, nothing.
+  // A ray under her finds the mount. One at the spot she stood on before mounting finds nothing.
   expect(combat.castBodies(h.ent(bob), ents.x[rider]! - 12, at.y + 1.0, ents.z[rider]!, 1, 0, 0, 40)).toBe(e);
   expect(combat.castBodies(h.ent(bob), at.x - 12, at.y + 1.5, at.z, 1, 0, 0, 11.5)).toBe(-1);
   expect(ZONE_NONE).toBe(0);
 
-  // The same blow to the mount, with its saddle and without: with it, two thirds.
+  // A saddle cuts a 60 point blow to two thirds.
   const blow = (): number => {
     const before = h.host.survival.value(rec, V_HEALTH);
     combat.land({ by: null, x: at.x, z: at.z, item: 0, base: 60, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 }, e, 2, ents.x[e]!, ents.y[e]! + 1, ents.z[e]!, 3);
@@ -244,7 +230,6 @@ test("a rider is shot where she sits; a saddle is her mount's armor; a mount tha
   };
   const saddled = blow();
   expect(saddled).toBeCloseTo(40, 1);
-  // Knocked out under her: she is put off, standing beside it; it is not to be got on while it lies there.
   h.host.survival.add(rec, V_TORPOR, rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
   h.run(300);
   expect([rec.out, ada.driving, h.client(ada)!.drive, ents.seat[rider], h.host.riding.dismounted]).toEqual([true, -1, -1, 0, 1]);
@@ -280,13 +265,12 @@ test("in the whole client: riding, the mount is drawn where the rider predicts i
   app.controls.yaw = 0;
   app.controls.pitch = -0.2;
   run(400);
-  // The use key on it: she is on it.
   app.key("KeyE", true);
   run(80);
   app.key("KeyE", false);
   run(500);
   expect([s.driving, h.client(s)!.drive]).toEqual([e, e]);
-  // It is the body drawn as her own, at the place her client predicts; the copy the server shows is not drawn besides.
+  // The mount is drawn as her own body. scene.skip keeps the server's copy from being drawn too.
   app.controls.key("KeyW", true);
   const packet = run(1500);
   const scene = app.scene!;
@@ -296,9 +280,8 @@ test("in the whole client: riding, the mount is drawn where the rider predicts i
   let mounts = 0;
   for (let d = 0; d < packet.drawCount; d++) if (packet.drawMesh[d] === mesh && (packet.drawFlags[d]! & DRAW_SKINNED) !== 0) mounts += packet.drawInstances[d]!;
   expect(mounts).toBe(1);
-  // The camera is behind and above it, not in its head.
   expect(Math.hypot(app.cam.x - s.own.x, app.cam.y - s.own.y, app.cam.z - s.own.z)).toBeGreaterThan(2);
-  // F looks into what she rides without getting off.
+  // F opens the mount's inventory without dismounting.
   app.controls.key("KeyW", false);
   app.key("KeyF", true);
   run(300);

@@ -1,4 +1,4 @@
-// The seams round 4 is built on: the body a session drives, who is seen first, and whose a thing is.
+// The mechanisms round 4 builds on: the body a session drives, view priority, teams, torpor and container sizes.
 
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -28,7 +28,6 @@ const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const EYE = 1.62;
 
-/** Everyone else a session sees, by name where they have one. */
 function seen(s: ClientSession): RemoteSample {
   const out = new RemoteSample();
   s.sampleRemote(out);
@@ -60,7 +59,7 @@ test("possess: a session's keys drive a creature in place of its own body, predi
 
   const e = h.host.spawnCreature("core:grazer", at.x, at.z + 3, 1);
   expect(e).toBeGreaterThanOrEqual(0);
-  // Looking at it, wherever it has wandered to; then the cheat.
+  // The grazer wanders, so each try aims at it again.
   let said: string[] = [];
   for (let tries = 0; tries < 6 && c.drive < 0; tries++) {
     const far = Math.hypot(ents.x[e]! - ents.x[me]!, ents.z[e]! - ents.z[me]!);
@@ -72,13 +71,12 @@ test("possess: a session's keys drive a creature in place of its own body, predi
   expect(said[0]).toBe("driving core:grazer");
   expect(c.drive).toBe(e);
   expect(ents.driven[e]).toBe(1);
-  // What cannot be taken: a second thing, its own body, another player, and what someone else drives.
   expect(game.take(c, h.ent(bob))).toBe(false);
   expect(game.take(h.client(bob)!, e)).toBe(false);
   expect(game.take(h.client(bob)!, h.ent(bob))).toBe(false);
   expect(game.take(h.client(bob)!, h.ent(ada))).toBe(false);
 
-  // The switch arrives as the body in a snapshot: one correction, and the client is stepping a grazer.
+  // The switch arrives as the body in a snapshot and costs one correction.
   h.run(400);
   expect(ada.driving).toBe(e);
   expect(ada.bodyKind).toBe(id("grazer"));
@@ -86,7 +84,6 @@ test("possess: a session's keys drive a creature in place of its own body, predi
   const settled = ada.stats.corrections + ada.stats.stateCorrections;
   const [mx, mz] = [ents.x[me]!, ents.z[me]!];
   const [gx, gz] = [ents.x[e]!, ents.z[e]!];
-  // Walk it, turn it, run it, jump it.
   pilot.pitch = 0;
   pilot.yaw = 0.3;
   pilot.moveZ = 1;
@@ -102,7 +99,7 @@ test("possess: a session's keys drive a creature in place of its own body, predi
   expect(ada.stats.corrections + ada.stats.stateCorrections - settled).toBe(0);
   expect(Math.hypot(ents.x[e]! - gx, ents.z[e]! - gz)).toBeGreaterThan(6);
   expect([ada.own.x, ada.own.y, ada.own.z]).toEqual([ents.x[e]!, ents.y[e]!, ents.z[e]!]);
-  // Its own body stood where it was left, and is seen there: by Bob, and by Ada herself, who is no longer in it.
+  // Ada's view now includes her own body, because she is no longer in it.
   expect([ents.x[me]!, ents.z[me]!]).toEqual([mx, mz]);
   const hers = seen(ada);
   const his = seen(bob);
@@ -114,7 +111,6 @@ test("possess: a session's keys drive a creature in place of its own body, predi
   for (let i = 0; i < his.count; i++) if (his.kind[i] === id("grazer") && Math.hypot(his.x[i]! - ents.x[e]!, his.z[i]! - ents.z[e]!) < 0.1) grazer = i;
   expect(grazer).toBeGreaterThanOrEqual(0);
 
-  // Letting go: the creature is its own again, and the keys move the survivor.
   expect(h.say(ada, "possess off")[0]).toBe("back in your own body");
   expect(h.say(ada, "possess off")[0]).toBe("you are driving nothing");
   h.run(300);
@@ -131,7 +127,6 @@ test("possess: a session's keys drive a creature in place of its own body, predi
   expect(Math.hypot(ents.x[me]! - mx, ents.z[me]! - mz)).toBeGreaterThan(4);
   expect([ada.own.x, ada.own.z]).toEqual([ents.x[me]!, ents.z[me]!]);
 
-  // What it drives dying under it hands the keys back without being asked.
   expect(game.take(c, e)).toBe(true);
   h.run(300);
   expect(ada.driving).toBe(e);
@@ -140,7 +135,6 @@ test("possess: a session's keys drive a creature in place of its own body, predi
   h.run(400);
   expect([c.drive, ada.driving]).toEqual([-1, -1]);
   expect(ada.bodyKind).toBe(id("survivor"));
-  // And a session that leaves lets go of what it had.
   const e2 = h.host.spawnCreature("core:grazer", ents.x[me]!, ents.z[me]! + 3, 1);
   expect(game.take(c, e2)).toBe(true);
   ada.close();
@@ -160,7 +154,7 @@ test("a view fills with players first, then what moves, then what stands: a crow
   const ents = w.ents;
   const g = flatGround(h, 12, 12);
   const a = { x: g.x + 6, z: g.z + 6 };
-  // Somewhere for Bob to stand in the next chunk over: further from Ada than everything in her own.
+  // Bob stands in another chunk, so he is further from Ada than everything in her own.
   const p = reg.move[id("survivor")]!;
   let b: { x: number; z: number } | null = null;
   for (let r = CHUNK_SIZE; r < CHUNK_SIZE * 2 && !b; r += 3) {
@@ -174,7 +168,6 @@ test("a view fills with players first, then what moves, then what stands: a crow
   expect(b).not.toBeNull();
   h.say(ada, `tp ${a.x.toFixed(3)} ${a.z.toFixed(3)}`);
   h.say(bob, `tp ${b!.x.toFixed(3)} ${b!.z.toFixed(3)}`);
-  // A crowd in Ada's chunk that stands still: more of it than a view holds.
   const rng = new Rng(5);
   let crowd = 0;
   for (let i = 0; i < 4000 && crowd < MAX_VIEW + 90; i++) {
@@ -182,7 +175,6 @@ test("a view fills with players first, then what moves, then what stands: a crow
     if (chunkAt(w.dims, x, z) === chunkAt(w.dims, a.x, a.z) && h.host.spawnCreature("core:dummy", x, z, 1) >= 0) crowd++;
   }
   expect(crowd).toBe(MAX_VIEW + 90);
-  // And one creature beside Bob, which he drives.
   const e = h.host.spawnCreature("core:grazer", b!.x, b!.z + 2, 1);
   expect(h.server.take(h.client(bob)!, e)).toBe(true);
   h.pilots[1]!.moveZ = 1;
@@ -198,10 +190,8 @@ test("a view fills with players first, then what moves, then what stands: a crow
     if (hers.kind[i] === id("dummy")) dummies++;
   }
   expect(grazers).toBe(1);
-  // The rest of the room went to the crowd; what did not fit is what stood furthest down the list.
   expect(dummies).toBeGreaterThanOrEqual(MAX_VIEW - 2 - 60);
   expect(dummies).toBeLessThan(crowd);
-  // Bob, with nothing around him, sees Ada past the same crowd.
   expect(indexOf(seen(bob), "ada")).toBeGreaterThanOrEqual(0);
   expect(ada.stats.undecodable + bob.stats.undecodable).toBe(0);
 });
@@ -217,11 +207,9 @@ test("every survivor is on a team: its own, seen by others as it moves, kept thr
   expect(ta).toBeGreaterThan(0);
   expect(tb).toBeGreaterThan(0);
   expect(ta).not.toBe(tb);
-  // A creature of the wild is nobody's.
   const e = h.host.spawnCreature("core:grazer", 250, 250, 1);
   expect(h.host.records.byPid.get(h.world.ents.pid[e]!)!.team).toBe(0);
   expect(h.world.ents.team[h.ent(ada)]).toBe(ta);
-  // Each sees the other's team, and goes on seeing it once the other has moved.
   expect(seen(ada).team[indexOf(seen(ada), "bob")]).toBe(tb);
   h.pilots[1]!.moveZ = 1;
   h.run(1500);
@@ -244,14 +232,14 @@ test("every survivor is on a team: its own, seen by others as it moves, kept thr
   expect(recOf(h2, again).team).toBe(ta);
   const tc = recOf(h2, cy).team;
   expect([0, ta, tb]).not.toContain(tc);
-  // A team's number is drawn where records' are, so it is never also a record's.
+  // Team numbers come from the same sequence as record ids, so a team number is never also a record's.
   const seqs = new Set([...h2.host.records.byPid.keys()].map((pid) => pid % 2 ** 32));
   for (const t of [ta, tb, tc]) expect(seqs.has(t)).toBe(false);
   h2.host.shutdown();
 });
 
 test("torpor follows the reference: its most grows 6% a level whatever the level went into, and it is shaken off faster by level and not at all while a dose acts", () => {
-  // The numbers of the reference's raptor: 180 at level 1, shaking off 0.3 a second.
+  // The reference's raptor: 180 torpor at level 1, draining 0.3 a second.
   const raptor = { stats: { torpidity: [180, 0.06, 0] }, torporDrain: 0.3 } as unknown as SpeciesDef;
   const level = (n: number) => rollWild(new Rng(n), n, [1]);
   expect(wildLevels(null)).toBe(0);
@@ -265,7 +253,6 @@ test("torpor follows the reference: its most grows 6% a level whatever the level
   expect(torporDrain(raptor, level(30))).toBeCloseTo(0.4984, 3);
   expect(torporDrain(raptor, level(150))).toBeCloseTo(1.036, 2);
 
-  // In the world: a grazer of level 40, dosed.
   const h = new Harness({}, 1, 60, { dev: true });
   const s = h.join("ada");
   h.run(500);
@@ -283,7 +270,7 @@ test("torpor follows the reference: its most grows 6% a level whatever the level
   expect(drain).toBeGreaterThan(0.6 * 1.4);
   h.run(10000);
   expect(torpor()).toBeCloseTo(100 - drain * 10, 1);
-  // A dose of 5 a second for 8 seconds: 40 in all, with nothing shaken off meanwhile.
+  // A dose of 5 a second for 8 seconds adds 40, with no drain meanwhile.
   const before = torpor();
   expect(buffs.give(rec, id("tranquilized"), 0, 8, 5)).toBe(true);
   h.run(4000);
@@ -292,7 +279,6 @@ test("torpor follows the reference: its most grows 6% a level whatever the level
   expect(rec.buffs.length).toBe(0);
   expect(torpor()).toBeCloseTo(before + 40, 0);
   expect(torpor()).toBeLessThanOrEqual(before + 40);
-  // Then it goes on shaking it off as before.
   const after = torpor();
   h.run(10000);
   expect(torpor()).toBeCloseTo(after - drain * 10, 1);
@@ -314,7 +300,7 @@ test("a thing holds what its kind says: a bag ten stacks, a cache sixty, a survi
 });
 
 test("a container of 350 slots: every slot is shown, reached by number past a byte's worth, and kept through a restart", () => {
-  // The cache of this content is a vault's size.
+  // This content's cache has a vault's 350 slots.
   const big = compileContent(CORE_CONTENT.map((d) => (d.id === "core:cache" ? { ...d, slots: 350 } : d))).registry!;
   const db = join(dir, "vault.db");
   const h = new Harness({}, 1, 60, { dev: true, dbPath: db }, big);
@@ -324,7 +310,6 @@ test("a container of 350 slots: every slot is shown, reached by number past a by
   const stone = big.index.get("core:stone")!;
   const { records, items } = h.host;
   const box = records.create(big.index.get("core:cache")!, "vault");
-  // 340 full stacks, in the first 340 slots.
   const stack = big.stack[stone]!;
   expect(items.mint(box, stone, stack * 340)).toBe(stack * 340);
   expect(items.inv(box).cap).toBe(350);
@@ -352,7 +337,7 @@ test("a container of 350 slots: every slot is shown, reached by number past a by
   s.onResult = (_seq, code) => codes.push(code);
   const move = (fromBox: number, from: number, toBox: number, to: number, count: number): number =>
     s.command(CMD_MOVE, (w) => (w.bits(fromBox, 1), w.varint(from), w.bits(toBox, 1), w.varint(to), w.u16(count), w.u16(stone)));
-  // Within it, to its last slot; out of it, from a slot past 255; and to a slot it does not have.
+  // To its last slot, out from a slot past 255, and to slot 350, which it does not have.
   move(BOX_OPEN, 339, BOX_OPEN, 349, 0);
   move(BOX_OPEN, 300, BOX_SELF, 2, 7);
   move(BOX_OPEN, 299, BOX_OPEN, 350, 0);

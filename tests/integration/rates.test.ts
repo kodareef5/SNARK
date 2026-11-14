@@ -1,5 +1,4 @@
-// The settings that are plain factors and switches: each does what ARK's
-// reference says of it, and in that direction.
+// ARK settings that are plain multipliers and switches. Each must act as ARK's reference says, in the same direction.
 
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
@@ -21,14 +20,13 @@ import { coreRegistry } from "../fixtures/world.ts";
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 
-/** Rules from the text of the two files (`[ServerSettings]` and the game mode's section are written for the caller) and a command line. */
+/** The section headers are added for the caller. */
 function rulesOf(server: string[] = [], mode: string[] = [], argv: string[] = []) {
   const made = loadConfig({ gus: ["[ServerSettings]", ...server].join("\n"), game: ["[/script/shootergame.shootergamemode]", ...mode].join("\n") }, argv);
   expect([made.report.refused, made.report.unknown]).toEqual([[], []]);
   return made.rules;
 }
 
-/** A world on those rules with ada in it, with cheats, on level ground. */
 function world(server: string[] = [], mode: string[] = [], argv: string[] = [], host = {}) {
   const h = new Harness({}, 1, 60, { dev: true, config: rulesOf(server, mode, argv), ...host });
   const ada = h.join("ada");
@@ -41,10 +39,9 @@ function world(server: string[] = [], mode: string[] = [], argv: string[] = [], 
   return { h, ada, at, me };
 }
 
-/** What a session has been told as notices since `from`; or, of another channel, what it has been told on that. */
+/** Text on one channel since log version `from`. */
 const notices = (s: ClientSession, from = 0, channel = TEXT_NOTICE): string[] => s.log.slice(Math.max(0, s.log.length - (s.logVersion - from))).filter((l) => l.channel === channel).map((l) => l.text);
 
-/** A wild creature, knocked out, in front of ada. */
 function knockedOut(h: Harness, at: { x: number; z: number }, species: string, far: number): { e: number; rec: EntityRecord } {
   const e = h.host.spawnCreature(`core:${species}`, at.x, at.z + far, 1);
   const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
@@ -64,13 +61,11 @@ test("experience earned is multiplied by the rule for all of it and by the rule 
     return said;
   };
   expect([gain(XP_KILL), gain(XP_HARVEST), gain(XP_CRAFT), gain(XP_GIVEN)]).toEqual([60, 150, 15, 10]);
-  // At ARK's defaults each is what it was.
   const plain = world();
   expect([XP_KILL, XP_HARVEST, XP_CRAFT].map((s) => plain.h.host.progression.addXp(plain.me, 10, s))).toEqual([10, 10, 10]);
 });
 
 test("harvesting: what a blow yields by the rule for all of it and for each thing, how much of the node a blow takes, and the experience of it", () => {
-  /** Strike the nearest tree until it is used up: the blows it took, what was gathered, and the experience. */
   const fell = (server: string[], mode: string[]) => {
     const { h, ada, me } = world(server, mode);
     const tree = nodesOf(h, "core:tree", 256, 256).find((t) => standFacing(h, ada, h.pilots[0]!, t))!;
@@ -86,10 +81,10 @@ test("harvesting: what a blow yields by the rule for all of it and for each thin
   };
   const plain = fell([], []);
   expect([plain.blows, plain.xp, plain.thatch > 20, plain.wood > 0]).toEqual([12, 12, true, true]);
-  // Three times the yield of everything, and twice again of thatch: the same blows, the same draws.
+  // The same blows make the same draws, so the yields scale exactly: thatch by 3 times 2, wood by 3.
   const rich = fell(["HarvestAmountMultiplier=3"], ['HarvestResourceItemAmountClassMultipliers=(ClassName="core:thatch",Multiplier=2.0)', "HarvestXPMultiplier=4"]);
   expect([rich.blows, rich.thatch, rich.wood, rich.xp]).toEqual([12, plain.thatch * 6, plain.wood * 3, 48]);
-  // A blow that takes twice as much of the node fells it in half the blows, each worth two: twelve blows' worth in all, by twelve draws.
+  // Six blows at double damage are each worth two, so the yield is still twelve draws.
   const strong = fell([], ["PlayerHarvestingDamageMultiplier=2"]);
   const yields = (reg.defs[id("tree")] as NodeDef).yields;
   const within = (name: string, n: number): boolean => {
@@ -97,7 +92,7 @@ test("harvesting: what a blow yields by the rule for all of it and for each thin
     return n >= y.min * 12 && n <= y.max * 12;
   };
   expect([strong.blows, strong.xp, within("thatch", strong.thatch), within("wood", strong.wood), within("thatch", plain.thatch), within("wood", plain.wood)]).toEqual([6, 12, true, true, true, true]);
-  // One that takes half lands as a blow one time in two, by the server's own dice: about twice the swings, and no more gathered.
+  // At half damage a swing lands one time in two by the server's dice, so it takes about twice the swings.
   const weak = fell([], ["PlayerHarvestingDamageMultiplier=0.5"]);
   expect([weak.blows > 14, weak.blows < 40, weak.xp]).toEqual([true, true, 12]);
 });
@@ -108,7 +103,7 @@ test("a node does not grow back while a survivor is near it: how near is the ser
     const tree = nodesOf(h, "core:tree", 256, 256).find((t) => standFacing(h, ada, h.pilots[0]!, t))!;
     const table = h.host.harvest!.field.store.chunks[tree.chunk]!;
     while (table.kind[tree.index] !== 0) h.host.harvest!.strike(h.client(ada)!, tree.chunk, tree.index);
-    // She stands a metre and a half from it for the two game hours it takes, and a little more.
+    // She stands 1.5 m away for the two game hours a regrow takes, plus a little.
     h.run(((2 * 140 + 5) * 1000));
     expect([radius, table.kind[tree.index] !== 0]).toEqual([radius, grows]);
     void me;
@@ -116,15 +111,13 @@ test("a node does not grow back while a survivor is near it: how near is the ser
 });
 
 test("taming: nothing is tamed if the server says so, nor a kind it names; and a tribe, and the server, hold no more tames than they may", () => {
-  // Switched off: what is knocked out is only knocked out.
   let made = world([], ["bDisableDinoTaming=True"]);
   expect(knockedOut(made.h, made.at, "raptor", 3).rec.tame).toBeNull();
-  // One kind named: it cannot be; another can. A name this build does not have is counted and said, and stops nothing.
+  // An unknown species is reported in lists.missing and stops nothing.
   made = world([], ['PreventDinoTameClassNames="core:raptor"', 'PreventDinoTameClassNames="core:wyvern"']);
   expect([knockedOut(made.h, made.at, "raptor", 3).rec.tame, knockedOut(made.h, made.at, "parasaur", 7).rec.tame !== null]).toEqual([null, true]);
   expect(made.h.host.lists.missing).toEqual([{ setting: "PreventDinoTameClassNames", name: "core:wyvern" }]);
 
-  // One tame to a tribe. The first is hers; the second, fed all it needs, is not, and she is told why.
   made = world(["MaxPersonalTamedDinos=1", "TamingSpeedMultiplier=100"]);
   const { h, ada, at, me } = made;
   const feed = (species: string, far: number): EntityRecord => {
@@ -142,13 +135,11 @@ test("taming: nothing is tamed if the server says so, nor a kind it names; and a
   expect([second.team, second.tame !== null, second.tame!.by]).toEqual([0, true, 0]);
   expect(notices(ada, told)).toEqual(["Your tribe has as many tamed creatures as it may (1)."]);
   expect(h.host.taming.full(me.team)).toBe("Your tribe has as many tamed creatures as it may (1).");
-  // The server's own limit, over every tribe.
   expect(world(["MaxTamedDinos=0"]).h.host.taming.full(7)).toBe("This server has as many tamed creatures as it may (0).");
   expect(world().h.host.taming.full(7)).toBe("");
 });
 
 test("riding and breeding are switched off by the server, breeding also for a kind it names; and a young one is not taken by a tribe that is full", () => {
-  /** Two of ada's, a female and a male, four metres apart, and what telling each to mate comes to. */
   const pair = (mode: string[], server: string[] = []) => {
     const made = world(server, mode);
     const { h, ada, at, me } = made;
@@ -177,7 +168,6 @@ test("riding and breeding are switched off by the server, breeding also for a ki
   expect(pair(['PreventBreedingForClassNames="core:parasaur"']).codes).toEqual([RESULT_DENIED, RESULT_DENIED]);
   expect(pair(['PreventBreedingForClassNames="core:raptor"']).pairs).toBe(1);
 
-  // Riding off: the use button on a saddled creature of hers looks into it, and does not put her on it.
   const press = (h: Harness, s: ClientSession, e: number, up = 0.5): number => {
     const ents = h.world.ents;
     const self = h.ent(s);
@@ -203,7 +193,7 @@ test("riding and breeding are switched off by the server, breeding also for a ki
     expect([off, h.client(ada)!.drive === f.e]).toEqual([off, drive]);
   }
 
-  // A tribe that may hold two tames, and holds two: what hatches is not hers to take, and she is told why.
+  // The pair already fills the tribe's limit of two.
   const { h, ada, at, f, me } = pair([], ["MaxPersonalTamedDinos=2"]);
   const e = h.host.spawnCreature("core:parasaur", at.x, at.z + 1.5, 1);
   const baby = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
@@ -246,7 +236,6 @@ test("things built: how soon after harm one may be mended, whether what can be l
     h.run(150);
     return code;
   };
-  /** Ada and Bob, a storage box of hers on the ground by them, and a wooden wall of hers that has just been harmed. */
   const yard = (server: string[], mode: string[]) => {
     const made = builder(["ada", "bob"], 40, 40, { config: rulesOf(server, mode) });
     const { h, at } = made;
@@ -268,18 +257,16 @@ test("things built: how soon after harm one may be mended, whether what can be l
     });
     return found;
   };
-  // ARK's three minutes: too soon after ten seconds. A server that says five seconds: mended after ten. One that says none: at once.
+  // 180 s is ARK's default.
   for (const [seconds, after, code] of [[180, 10, RESULT_WAIT], [5, 10, RESULT_OK], [0, 0, RESULT_OK]] as const) {
     const { h, ada, wall } = yard([], [`StructureDamageRepairCooldown=${seconds}`]);
     h.run(after * 1000);
     expect([seconds, act(h, ada, wall, STRUCT_REPAIR)]).toEqual([seconds, code]);
   }
-  // A box is open to anyone unless it is locked; with the rule, it is locked from the start, and its tribe's alone.
   for (const [force, code] of [[false, RESULT_OK], [true, RESULT_LOCKED]] as const) {
     const { h, bob, box } = yard(force ? ["ForceAllStructureLocking=True"] : [], []);
     expect([force, act(h, bob, box, STRUCT_USE)]).toEqual([force, code]);
   }
-  // A PIN lets one who is not of the tribe in; with the rule, it lets nobody in but the tribe.
   for (const [prevent, code] of [[false, RESULT_OK], [true, RESULT_LOCKED]] as const) {
     const { h, ada, bob, box } = yard(["ForceAllStructureLocking=True", ...(prevent ? ["PreventOutOfTribePinCodeUse=True"] : [])], []);
     expect(act(h, ada, box, STRUCT_PIN, 4321)).toBe(RESULT_OK);
@@ -295,30 +282,27 @@ test("a fall hurts from the speed the server says", () => {
     h.host.survival.landed(me, 20);
     return before - h.host.survival.value(me, V_HEALTH);
   };
-  // Safe to 12 m/s, then 7 health for each metre a second over: 56 at 20. With the speed doubled, 24 is safe and 20 is nothing.
+  // Safe to 12 m/s, then 7 health for each m/s over, so 56 at 20. Doubled, 24 m/s is safe. Halved, (20 - 6) * 7 is 98.
   expect([harm([]), harm(["MaxFallSpeedMultiplier=2"]), harm(["MaxFallSpeedMultiplier=0.5"])]).toEqual([56, 0, 98]);
 });
 
 test("a session: the server's name and message of the day, its admin password, how many it seats, the idle put off, and a world begun with no creatures", () => {
-  // Its name and its message, each line its own, said to whoever joins.
   let h = new Harness({}, 1, 60, { config: loadConfig({ gus: "[SessionSettings]\nSessionName=The Proving Ground\n[MessageOfTheDay]\nMessage=Welcome\\nBe kind\n[ServerSettings]\nServerAdminPassword=opensesame\n[/Script/Engine.GameSession]\nMaxPlayers=2\n" }).rules });
   const ada = h.join("ada");
   h.run(600);
   expect(notices(ada, 0, TEXT_MOTD)).toEqual(["The Proving Ground", "Welcome", "Be kind"]);
-  // Its admin password, from its file: without it, no cheats; with it, cheats.
   expect([h.say(ada, "enablecheats")[0], h.say(ada, "enablecheats nope")[0], h.say(ada, "enablecheats opensesame")[0]]).toEqual(["wrong password", "wrong password", "cheats enabled"]);
-  // Two seats: the third to come is told the server is full.
   const bob = h.join("bob");
   const cy = h.join("cy");
   h.run(600);
   expect([h.server.playerCount, bob.closeReason, cy.closeReason]).toEqual([2, 0, REJECT_FULL]);
-  // ARK's command-line flag says the same, and is stronger.
+  // ARK's command-line flag overrides the file.
   h = new Harness({}, 1, 60, { config: loadConfig({ gus: "[/Script/Engine.GameSession]\nMaxPlayers=2\n" }, ["-WinLiveMaxPlayers=1"]).rules });
   const [dee, eve] = [h.join("dee"), h.join("eve")];
   h.run(600);
   expect([dee.closeReason, eve.closeReason]).toEqual([0, REJECT_FULL]);
 
-  // The idle are put off only if the server was started to: here, after ten seconds of doing nothing. One who keeps moving stays.
+  // The idle kick needs -EnableIdlePlayerKick as well as a period.
   for (const [argv, gone] of [[[], false], [["-EnableIdlePlayerKick"], true]] as const) {
     h = new Harness({}, 1, 60, { config: rulesOf(["KickIdlePlayersPeriod=10"], [], [...argv]) });
     const still = h.join("still");
@@ -332,18 +316,17 @@ test("a session: the server's name and message of the day, its admin password, h
     expect([argv.length, still.closeReason === REJECT_KICKED, busy.closeReason]).toEqual([argv.length, gone, 0]);
   }
 
-  // Started with -NoDinos, a new world has none, whatever else it was asked for.
   const creatures = (argv: string[]): number => new Harness({}, 1, 60, { config: rulesOf([], [], argv), startingCreatures: 6, startingHunters: 2 }).world.ents.count;
   expect([creatures([]), creatures(["-NoDinos"])]).toEqual([8, 0]);
 });
 
 test("decay by the server's own rules: only where it is PvE or says so, never where it is switched off; and the server takes down what has decayed only if it was started to", () => {
-  /** A wooden wall of a tribe nobody of is near, left for 80 s where wood lasts 69: whether anything decays here, whether it has, and whether it still stands. */
+  /** A wall of an absent tribe, left 80 s where wood lasts 69 s. Returns [decay is on, the wall has expired, it still stands]. */
   const left = (server: string[], argv: string[] = []): boolean[] => {
     const { h, at } = world(["PvEStructureDecayPeriodMultiplier=0.0001", ...server], [], argv);
     const ref = h.world.structs.add(id("wall_wood"), at.x + 6, at.y + 1.5, at.z + 6, 0, 99999, 100);
     const decay = h.host.build.decay;
-    // Looked at for the first time: its time starts.
+    // The first look starts its timer.
     decay.expired(ref, h.world.tick);
     h.run(80000);
     return [decay.active(), decay.expired(ref, h.world.tick), h.world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff] !== 0];
@@ -352,10 +335,10 @@ test("decay by the server's own rules: only where it is PvE or says so, never wh
   expect(left(["serverPVE=True"])).toEqual([true, true, true]);
   expect(left(["PvPStructureDecay=True"])).toEqual([true, true, true]);
   expect(left(["serverPVE=True", "DisableStructureDecayPvE=True"])).toEqual([false, false, true]);
-  // The multiplier says after how many periods; the flag on the command line says whether at all. Each without the other does nothing.
+  // Auto-destroy needs both the multiplier, which counts periods, and the command-line flag.
   expect(left(["serverPVE=True", "AutoDestroyOldStructuresMultiplier=1"])).toEqual([true, true, true]);
   expect(left(["serverPVE=True"], ["-AutoDestroyStructures"])).toEqual([true, true, true]);
   expect(left(["serverPVE=True", "AutoDestroyOldStructuresMultiplier=1"], ["-AutoDestroyStructures"])).toEqual([true, false, false]);
-  // Two periods: not yet at 80 s.
+  // Two periods are not up at 80 s.
   expect(left(["serverPVE=True", "AutoDestroyOldStructuresMultiplier=2"], ["-AutoDestroyStructures"])).toEqual([true, true, true]);
 });

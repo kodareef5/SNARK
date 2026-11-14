@@ -1,5 +1,4 @@
-// A server configured as ARK's is: its two files, the command line, the live
-// file and the console, and what is said of everything that was read.
+// ARK-style configuration: the two files, the command line, the live file and the console, and the report on everything read.
 
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -65,14 +64,14 @@ TamingSpeedMultiplier=9
 this line is nonsense
 `;
 
-/** The number of the first line of `text` that begins with `start`, as a place in `file`. */
+/** "file:line" of the nth line of `text` that starts with `start`. */
 const at = (file: string, text: string, start: string, nth = 0): string => `${file}:${text.split("\n").flatMap((l, i) => (l.startsWith(start) ? [i + 1] : []))[nth]}`;
 const gusAt = (start: string, nth = 0): string => at("GameUserSettings.ini", GUS, start, nth);
 const gameAt = (start: string, nth = 0): string => at("Game.ini", GAME, start, nth);
 
 test("the two files are read as ARK's are: each key in its own section of its own file, and everything said of: applied, not yet, no use, unknown, refused", () => {
   const { rules, report } = loadConfig({ gus: GUS, game: GAME });
-  // What takes effect has the values the files gave, whatever the case of the key.
+  // Keys match in any letter case.
   expect([rules.num("TamingSpeedMultiplier"), rules.on("ProximityChat"), rules.num("EggHatchSpeedMultiplier"), rules.num("MatingIntervalMultiplier")]).toEqual([3, false, 25, 0.1]);
   expect(report.applied.map((a) => [a.row.name, a.where])).toEqual([
     ["TamingSpeedMultiplier", gusAt("TamingSpeedMultiplier=3")],
@@ -92,16 +91,16 @@ test("the two files are read as ARK's are: each key in its own section of its ow
     ["PreventDinoTameClassNames", gameAt("PreventDinoTame")],
     ["OverrideNamedEngramEntries", gameAt("OverrideNamedEngramEntries")],
   ]);
-  // What is not effective yet, or waits for a feature, is read and checked all the same, and holds its value for when it is.
+  // A setting that waits for a feature is still read, checked and held.
   expect([rules.num("XPMultiplier"), rules.on("serverPVE"), rules.text("ServerAdminPassword"), rules.num("DinoCountMultiplier"), rules.num("MaxTamedDinos"), rules.text("SessionName"), rules.num("Port"), rules.text("Message"), rules.num("Duration"), rules.num("MaxPlayers"), rules.num("BabyCuddleIntervalMultiplier")]).toEqual([2.5, true, "hunter2", 2, 5000, "The Proving Ground", 9000, "Welcome\\nBe kind", 30, 40, 0.1]);
   expect(report.waiting.map((w) => w.row.name)).toEqual(["DinoCountMultiplier", "BabyCuddleIntervalMultiplier"]);
   expect(report.nothing.map((x) => x.row.name)).toEqual(["ActiveMods"]);
-  // An indexed setting changes at its index and nowhere else; a list is its lines in order.
+  // An indexed setting changes only at its index. The 0.17 at index 8 is ARK's default.
   expect(rules.indexed("PerLevelStatsMultiplier_DinoTamed")).toEqual([0.4, 1, 1, 1, 1, 1, 1, 1, 0.17, 1, 1, 1]);
   expect([rules.numbers("OverridePlayerLevelEngramPoints"), rules.list("PreventDinoTameClassNames"), rules.list("OverrideNamedEngramEntries").length]).toEqual([[8, 12], ["core:raptor", "core:parasaur"], 1]);
-  // A key the catalogue does not know; a section that is not ARK's, said once; ARK's client settings, not said at all.
+  // An unknown section is reported once. ARK's client settings section is not reported at all.
   expect(report.unknown).toEqual([{ key: "Gravity", where: gusAt("Gravity") }, { key: "[SomeMod]", where: gusAt("Knob") }]);
-  // What will not do, with where it was written and why. A key in the wrong file is one of them: ARK would ignore it without a word.
+  // A key in the wrong file is refused. ARK would ignore it silently.
   expect(report.refused.map((r) => [r.key, r.where, r.why])).toEqual([
     ["TamingSpeedMultiplier", gusAt("TamingSpeedMultiplier=fast"), 'wants a number, got "fast"'],
     ["EggHatchSpeedMultiplier", gusAt("EggHatch"), "belongs in Game.ini [/script/shootergame.shootergamemode]"],
@@ -111,7 +110,6 @@ test("the two files are read as ARK's are: each key in its own section of its ow
     ["BabyMatureSpeedMultiplier", gameAt("BabyMature"), "wants a number from 0.001 to 100000, got 0"],
     ["TamingSpeedMultiplier", gameAt("TamingSpeed"), "belongs in GameUserSettings.ini [ServerSettings]"],
   ]);
-  // The report, as whoever starts the server reads it. A password is never shown.
   const lines = formatReport(report, rules);
   expect(lines[0]).toBe("settings: 16 applied, 2 not yet effective, 1 of no meaning here, 2 unknown, 7 refused");
   expect(lines).toContain(`  applied   ServerAdminPassword=****  (${gusAt("ServerAdminPassword")})`);
@@ -126,25 +124,23 @@ test("the two files are read as ARK's are: each key in its own section of its ow
 test("each source is stronger than the one before it: default, files, command line, live file, console", () => {
   const gus = "[ServerSettings]\nTamingSpeedMultiplier=3\nglobalVoiceChat=True\nPvEStructureDecayPeriodMultiplier=2\n";
   const game = "[/script/shootergame.shootergamemode]\nEggHatchSpeedMultiplier=4\nPreventDinoTameClassNames=\"core:raptor\"\n";
-  // ARK's forms on the command line: `Map?Key=Value?Key=Value`, `-Flag`, `-Flag=value`. Ours, with two dashes, are handed back.
+  // ARK's command-line forms are `Map?Key=Value?Key=Value`, `-Flag` and `-Flag=value`. SNARK's own two-dash arguments are handed back in `ours`.
   const argv = ["--dev", "TheIsland?TamingSpeedMultiplier=5?StructureResistanceMultiplier=0.5?EggHatchSpeedMultiplier=9?Nonsense=1", "-UseDynamicConfig", "-port=9100", "-NoBattlEye", "-Bogus", "--port", "8800", "--db", "var/x.db"];
   const live = "TamingSpeedMultiplier=8\nEggHatchSpeedMultiplier=2.0\nServerPassword=nope\nPreventDinoTameClassNames=\"core:parasaur\"\n";
   const { rules, report, ours } = loadConfig({ gus, game, live }, argv);
   expect(ours).toEqual(["--dev", "--port", "8800", "--db", "var/x.db"]);
-  // The live file beat the command line, which beat the file; what only the file gave is the file's.
   expect([rules.num("TamingSpeedMultiplier"), rules.num("StructureResistanceMultiplier"), rules.num("EggHatchSpeedMultiplier"), rules.on("globalVoiceChat"), rules.num("PvEStructureDecayPeriodMultiplier")]).toEqual([8, 0.5, 2, true, 2]);
   expect(["TamingSpeedMultiplier", "StructureResistanceMultiplier", "EggHatchSpeedMultiplier", "globalVoiceChat", "XPMultiplier"].map((n) => rules.sourceOf(rowOf(n)!))).toEqual(["live file", "command line", "live file", "file", "default"]);
   expect([rules.flag("UseDynamicConfig"), rules.flag("port"), rules.flag("NoDinos"), rules.flag("NoBattlEye")]).toEqual([true, "9100", false, true]);
-  // The command line cannot give a Game.ini setting; the live file cannot give one that is read at start, nor a list that is.
   const why = (key: string): string[] => report.refused.filter((r) => r.key === key).map((r) => `${r.where}: ${r.why}`);
   expect(why("EggHatchSpeedMultiplier")).toEqual(["command line: is a Game.ini setting, which the command line cannot give"]);
   expect(why("PreventDinoTameClassNames")).toEqual(["DynamicConfig.ini:4: is read at start only"]);
   expect(rules.list("PreventDinoTameClassNames")).toEqual(["core:raptor"]);
   expect(report.unknown.map((u) => u.key)).toEqual(["?Nonsense", "-Bogus"]);
   expect(why("ServerPassword")).toEqual(["DynamicConfig.ini:3: is read at start only"]);
-  // Without the flag the live file is not read at all.
+  // Without -UseDynamicConfig the live file is not read.
   expect(loadConfig({ gus, game, live }, []).rules.num("TamingSpeedMultiplier")).toBe(3);
-  // The console is stronger than all of them, and a later read of the live file does not take it back.
+  // A later read of the live file does not override the console.
   expect(rules.assign("TamingSpeedMultiplier", "20", "console")).toBe("");
   applyLive(rules, "TamingSpeedMultiplier=8\n", emptyReport());
   expect([rules.num("TamingSpeedMultiplier"), rules.sourceOf(rowOf("TamingSpeedMultiplier")!)]).toEqual([20, "console"]);
@@ -164,7 +160,6 @@ test("a folder is read from disk, any of its files missing; a server started on 
   h.run(500);
   h.say(ada, "enablecheats");
   expect([h.host.rules.num("TamingSpeedMultiplier"), h.host.rules.num("EggHatchSpeedMultiplier"), h.host.loadedUnder]).toEqual([7, 40, null]);
-  // The console: every setting not at its default and where it came from; one setting, what it is and does; and a new value for one that may change.
   expect(h.say(ada, "settings")).toEqual(["TamingSpeedMultiplier=7  (command line)", "StructureResistanceMultiplier=2  (file)", "EggHatchSpeedMultiplier=40  (file)", "BabyMatureSpeedMultiplier=200  (file)"]);
   expect(h.say(ada, "setting eggHatchSpeedMultiplier")).toEqual(["EggHatchSpeedMultiplier=40  (file; may be changed while the server runs)", "How fast an egg hatches, or young are carried. Higher is faster."]);
   expect(h.say(ada, "setting EggHatchSpeedMultiplier 80")).toEqual(["EggHatchSpeedMultiplier=80  (until the server is started again)"]);
@@ -172,16 +167,13 @@ test("a folder is read from disk, any of its files missing; a server started on 
   expect(h.say(ada, "setting DinoCountMultiplier 2")).toEqual(["DinoCountMultiplier does not take effect yet"]);
   expect(h.say(ada, "setting DinoCountMultiplier")[0]).toBe("DinoCountMultiplier=1  (default; waits for: wild creatures that spawn and respawn by region)");
   expect(h.say(ada, "setting Gravity 2")).toEqual(["there is no setting called Gravity"]);
-  // A password is read when the server starts and cannot be set here; trying says so, and what was typed is not kept.
   expect(h.say(ada, "setting ServerAdminPassword hunter2")[0]).toMatch(/ServerAdminPassword does not take effect yet|read when the server starts/);
   expect(h.host.rules.num("EggHatchSpeedMultiplier")).toBe(80);
-  // Only an admin may: Bob, who is not one, is refused.
   const bob = h.join("bob");
   h.run(500);
   expect(h.say(bob, "setting EggHatchSpeedMultiplier 1")[0]).toMatch(/cheats|admin/i);
   h.run(500);
   h.host.shutdown();
-  // What admins did is in the journal, as they typed it, but for the password.
   const store = new WorldStore(dbPath, h.reg);
   const typed = store.journal().filter((j) => j.op === OP_ADMIN).map((j) => new TextDecoder().decode(j.data));
   store.close();
@@ -189,14 +181,14 @@ test("a folder is read from disk, any of its files missing; a server started on 
   expect(typed).toContain("ada\tsetting ServerAdminPassword ****");
   expect(typed.join("\n")).not.toContain("hunter2");
 
-  // Started again on the folder alone: the folder's values, not the command line's and not the console's.
+  // Started on the folder alone, neither the command line's 7 nor the console's 80 remains.
   const again = loadConfigFolder(folder);
   h = new Harness({}, 1, 60, { dev: true, dbPath, config: again.rules });
   expect([h.host.rules.num("TamingSpeedMultiplier"), h.host.rules.num("EggHatchSpeedMultiplier")]).toEqual([6, 40]);
-  // What the world remembers is what its timers were last worked out under, so that they can be re-timed: here, the console's 80.
+  // The save keeps the rules its timers were last computed under, so they can be retimed. Here that is the console's 80.
   expect(h.host.loadedUnder).toMatchObject({ EggHatchSpeedMultiplier: 80, BabyMatureSpeedMultiplier: 200, MatingIntervalMultiplier: 1 });
   h.host.shutdown();
-  // A save from before this was kept said the same of three of them under their old names.
+  // An older save stores three of them under their old names.
   expect(timersOf(null, '{"hatchSpeed":50,"matureSpeed":300,"matingInterval":0.002,"playerDamage":1}')).toEqual({ EggHatchSpeedMultiplier: 50, BabyMatureSpeedMultiplier: 300, MatingIntervalMultiplier: 0.002 });
   expect([timersOf(null, null), timersOf("not json", null), timersOf('{"timers":{"EggHatchSpeedMultiplier":4,"Bad":"x"}}', '{"hatchSpeed":50}')]).toEqual([null, null, { EggHatchSpeedMultiplier: 4 }]);
 });
@@ -205,22 +197,21 @@ test("ARK's single-player settings are its own fixed factors on top of what the 
   const made = loadConfig({ gus: "[ServerSettings]\nTamingSpeedMultiplier=2\n", game: "[/script/shootergame.shootergamemode]\nbUseSingleplayerSettings=True\nMatingIntervalMultiplier=0.5\nPerLevelStatsMultiplier_DinoTamed[1]=3\n" }, ["?TamingSpeedMultiplier=4"]);
   const r = made.rules;
   const near = (v: number): number => Math.round(v * 1e4) / 1e4;
-  // Taming x2.5 on what the command line gave; hatching x9 and growing up x35 on ARK's own 1; the wait to mate x0.15 on the file's.
+  // Taming is 2.5 times the command line's 4. Hatching is 9 and growing up 35 times ARK's 1. The mating wait is 0.15 times the file's 0.5.
   expect([r.num("TamingSpeedMultiplier"), r.num("EggHatchSpeedMultiplier"), r.num("BabyMatureSpeedMultiplier"), near(r.num("MatingIntervalMultiplier"))]).toEqual([10, 9, 35, 0.075]);
-  // A tame's health per level x2.125 and its melee x2.3529, on ARK's own 0.2 and 0.17; a stat the file set is as the file set it.
+  // A tame's health per level is 2.125 times ARK's 0.2 and its melee 2.3529 times ARK's 0.17. The stat the file set stays as set.
   expect(r.indexed("PerLevelStatsMultiplier_DinoTamed").map(near)).toEqual([0.425, 3, 1, 1, 1, 1, 1, 1, 0.4, 1, 1, 1]);
-  // What the dead leave lies six times as long. Those of its factors that wait for a feature are held for when it comes.
+  // Corpses last six times as long. Factors that wait for a feature are held too.
   expect([r.num("UseCorpseLifeSpanMultiplier"), r.num("BabyCuddleIntervalMultiplier"), r.num("CropGrowthSpeedMultiplier"), near(r.indexed("PerLevelStatsMultiplier_DinoTamed_Add")[0]!)]).toEqual([6, 0.17, 4, 0.5]);
-  // Said, as the server starts; and where each value came from is still where it came from.
+  // The factors do not change where a value is reported to come from.
   const lines = formatReport(made.report, r);
   expect(lines.filter((l) => l.startsWith("  note      bUseSingleplayerSettings: ARK's single-player factors are on top of what was read")).length).toBe(1);
   expect([r.sourceOf(rowOf("TamingSpeedMultiplier")!), r.sourceOf(rowOf("EggHatchSpeedMultiplier")!)]).toEqual(["command line", "default"]);
-  // A server on it has content to match: a parasaur gains 2.125 times the health from a level its owner gives it.
+  // The server's content is tuned to match. A parasaur gains 2.125 times the health from a level its owner gives it.
   const h = new Harness({}, 1, 60, { dev: true, config: r });
   const curve = (reg: typeof h.reg) => (reg.defs[reg.index.get("core:parasaur")!] as SpeciesDef).stats!.health!;
   expect(near(curve(h.world.reg)[2] / curve(h.reg)[2])).toBe(2.125);
-  // Set at the console afterwards, a value is that value: the factor is not put on it again.
+  // A value set at the console afterwards does not get the factor again.
   expect([h.host.setSetting("TamingSpeedMultiplier", "3"), h.host.rules.num("TamingSpeedMultiplier")]).toEqual(["", 3]);
-  // Without the switch, the files are what they say.
   expect(loadConfig({ gus: "[ServerSettings]\nTamingSpeedMultiplier=2\n" }).rules.num("TamingSpeedMultiplier")).toBe(2);
 });

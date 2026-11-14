@@ -45,12 +45,11 @@ test("the client's inventory is the server's, whatever is done to it, and the bo
   s.onResult = (_seq, code) => results.push(code);
   const rng = new Rng(21);
   for (let round = 0; round < 60; round++) {
-    // The server changes things on its own account...
     const inv = items.inv(rec);
     const k = rng.int(4);
     if (k === 0) items.mint(rec, kinds[rng.int(kinds.length)]!, 1 + rng.int(180));
     else if (k === 1) items.burn(rec, rng.int(inv.cap), 1 + rng.int(20));
-    // ...while the client asks for moves and bites, some of them from a stale picture.
+    // The client acts on its own copy of the inventory, so some of its requests are stale.
     const mine = s.inventory;
     for (let n = rng.int(4); n > 0 && mine; n--) {
       const from = rng.int(mine.cap);
@@ -92,11 +91,10 @@ test("hostile slot commands cannot mint, cannot reach another box, and cannot br
   h.run(500);
   expect(codes.length).toBeGreaterThan(1000);
   expect(codes.includes(RESULT_DENIED)).toBe(true); // BOX_OPEN with nothing open
-  expect(items.total(stone)).toBe(before); // moved about, never more, never fewer (stone is not food)
+  expect(items.total(stone)).toBe(before); // stone is not food, so no use consumes it
   expect(items.audit()).toEqual([]);
   expect(same(s.inventory!, items.inv(rec))).toBe(true);
   expect(s.state).toBe("active");
-  // Nothing open: the other box does not exist for this session.
   codes.length = 0;
   move(s, 0, 0, 0, stone, BOX_SELF, BOX_OPEN);
   h.run(200);
@@ -111,8 +109,7 @@ test("vitals reach the HUD as rates: bars move with no messages, and eating is o
   expect(s.hasVitals).toBe(true);
   expect(s.inventory!.total(berry)).toBe(10);
 
-  // Twenty seconds of standing: food and water run down on both sides, identically,
-  // and no vitals message is sent in all that time.
+  // An unchanged version means no vitals message arrived in twenty seconds.
   const versions = s.vitals.version;
   h.run(20000);
   expect(s.vitals.version).toBe(versions);
@@ -122,7 +119,7 @@ test("vitals reach the HUD as rates: bars move with no messages, and eating is o
   expect(sv.value(rec, V_FOOD)).toBeLessThan(100);
   expect(sv.value(rec, V_FOOD)).toBeGreaterThan(99);
 
-  // Eating a berry: one fewer berry, four more food (capped), and the ledger records the berry as gone.
+  // Food is lowered first, so the berry's four points fit under the cap.
   sv.add(rec, V_FOOD, -50);
   const food = sv.value(rec, V_FOOD);
   const water = sv.value(rec, V_WATER);
@@ -138,7 +135,6 @@ test("vitals reach the HUD as rates: bars move with no messages, and eating is o
   expect(sv.value(rec, V_FOOD)).toBeGreaterThan(food + 3.9);
   expect(sv.value(rec, V_WATER)).toBeGreaterThan(water);
   expect(s.vitals.at(V_FOOD, h.world.tick)).toBe(rec.vitals!.at(V_FOOD, h.world.tick));
-  // A bite of the wrong thing, or of what is not food, changes nothing.
   codes.length = 0;
   use(s, slot, id("core:stone"));
   h.say(s, "give stone 1");
@@ -162,15 +158,13 @@ test("a head under water runs out of air, then of health; surfacing brings the a
   const hurt = sv.value(rec, V_HEALTH);
   expect(hurt).toBeLessThan(60);
   expect(hurt).toBeGreaterThan(10);
-  // The client shows the same numbers without having been sent each one.
   expect(s.vitals.at(V_HEALTH, h.world.tick)).toBe(rec.vitals!.at(V_HEALTH, h.world.tick));
 
-  // Up for air.
   pilot.buttons = 1;
   h.run(4000);
   pilot.buttons = 0;
   expect(sv.isSubmerged(rec)).toBe(false);
-  // The swim up cost more health; from the surface on, it comes back.
+  // The swim up cost more health. At the surface it comes back.
   const surfaced = sv.value(rec, V_HEALTH);
   expect(surfaced).toBeLessThan(hurt);
   expect(surfaced).toBeGreaterThan(0);
@@ -178,7 +172,7 @@ test("a head under water runs out of air, then of health; surfacing brings the a
   expect(sv.value(rec, V_OXYGEN)).toBe(100);
   expect(sv.value(rec, V_HEALTH)).toBeGreaterThan(surfaced);
 
-  // A fall from twelve metres onto the plaza: seven health for each metre per second over twelve.
+  // A twelve metre fall costs seven health for each metre per second over twelve.
   sv.add(rec, V_HEALTH, 100);
   const before = sv.value(rec, V_HEALTH);
   h.say(s, "tp 256 12 240");
@@ -189,7 +183,6 @@ test("a head under water runs out of air, then of health; surfacing brings the a
   const expected = (Math.sqrt(2 * g * 12) - 12) * 7;
   expect(expected).toBeGreaterThan(20);
   expect(Math.abs(lost - expected)).toBeLessThan((g / 30) * 7 + 1.5);
-  // A hop does nothing.
   const now = sv.value(rec, V_HEALTH);
   pilot.buttons = 1;
   h.run(200);
@@ -238,7 +231,6 @@ test("a heavy load slows the body and a load at the limit roots it, on both side
   h.run(1500);
   expect(ents.z[e]).toBe(stuck);
   expect(s.own.z).toBe(stuck);
-  // Stronger, and it walks again.
   h.say(s, "setstat weight 100"); // 100 kg * (1 + 100 * 0.1)
   h.run(1500);
   expect(ents.mflags[e]! & (MF_ROOTED | MF_NO_SPRINT)).toBe(0);
@@ -253,7 +245,7 @@ test("berries spoil one by one on the world clock, seen or not, and the ledger c
   const interval = h.reg.spoilTicks[berry]!;
   const start = h.world.tick;
   while (h.world.tick < start + interval * 3 + 400) h.server.tick();
-  h.run(500); // the client hears about it when the server next looks
+  h.run(500); // the client learns of it when the server next looks
   expect(items.inv(rec).total(berry)).toBe(47);
   expect(s.inventory!.total(berry)).toBe(47);
   expect(items.burned[berry]).toBe(3);
@@ -281,7 +273,6 @@ test("creatures arrive with their level and colours, players with their names, a
   expect(seen.name[g]).toBe("");
   expect(seen.name[p]).toBe("ada");
   expect(seen.level[p]).toBe(1);
-  // Ada gains three levels: bo is told her new level, with no other change to prompt it.
   expect(h.say(s, "addxp 40")[0]).toContain("level 4");
   h.run(300);
   bo.sampleRemote(seen);
@@ -292,10 +283,9 @@ test("creatures arrive with their level and colours, players with their names, a
 
 test("setstat refreshes everything the points feed, with the load still counted", () => {
   const { h, s, rec, ents, e } = setup();
-  h.say(s, "give stone 200"); // 100 kg: at the limit, rooted
+  h.say(s, "give stone 200"); // 100 kg, the limit
   h.run(300);
   expect(ents.mflags[e]! & MF_ROOTED).toBe(MF_ROOTED);
-  // Points in food must not lift the load, and must raise the food the body can hold.
   expect(h.say(s, "setstat food 10")).toEqual(["food: 10 points, value 200"]);
   h.run(300);
   expect(ents.mflags[e]! & MF_ROOTED).toBe(MF_ROOTED);
@@ -305,7 +295,7 @@ test("setstat refreshes everything the points feed, with the load still counted"
   h.run(300);
   expect(s.vitals.max[V_HEALTH]).toBe(300_000_000);
   expect(ents.level[e]).toBe(1); // a survivor's level is its experience, not points an admin set
-  // Points in weight do lift it: 100 kg of a 200 kg limit.
+  // 100 kg of a 200 kg limit.
   h.say(s, "setstat weight 10");
   h.run(300);
   expect(ents.mflags[e]! & (MF_ROOTED | MF_NO_SPRINT)).toBe(0);
@@ -320,17 +310,15 @@ test("handing food to someone else does not make it fresher", () => {
   items.mint(rec, berry, 30);
   const clock = items.inv(rec).spoilAt[0]!;
   expect(clock).toBe(made + h.reg.spoilTicks[berry]!);
-  // Just before the first berry would spoil, most of the stack changes hands.
   while (h.world.tick < clock - 10) h.server.tick();
   expect(items.give(rec, other, berry, 20)).toBe(true);
   const theirs = items.inv(other);
   expect(theirs.total(berry)).toBe(20);
   expect(theirs.spoilAt[theirs.item.indexOf(berry)]).toBe(clock);
-  // Ten ticks later both stacks lose a berry, as they would have had they never moved.
   while (h.world.tick < clock + 5) h.server.tick();
   expect(items.inv(other).total(berry)).toBe(19);
   expect(items.inv(rec).total(berry)).toBe(9);
-  // Joining an older stack onto a fresher one makes the whole stack as old as the older part.
+  // A merged stack keeps the older part's spoil clock.
   items.mint(other, berry, 5);
   expect(items.inv(other).spoilAt[theirs.item.indexOf(berry)]).toBe(clock + h.reg.spoilTicks[berry]!);
   expect(items.audit()).toEqual([]);

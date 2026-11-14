@@ -29,8 +29,7 @@ import { hourOfDay } from "../../shared/sim/clock.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
 
-/** A new world's day offset: nine in the morning. */
-/** Nine in the morning, as a new world begins: nine of the clock's hours, 126 seconds each. */
+/** A new world's day offset: nine game hours of 126 seconds each, in ticks. */
 const MORNING = 9 * 3780;
 const dir = mkdtempSync(join(tmpdir(), "snark-sessions-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -43,7 +42,6 @@ test("a spectator sees what a player there would see, and nobody sees it", () =>
   const ents = h.world.ents;
   expect(ents.count).toBe(2);
 
-  // Without cheats, spectating is refused and nothing changes.
   expect(h.say(bo, "spectate")[0]).toContain("denied");
   expect(bo.sessionState).toBe(SESSION_ALIVE);
   expect(h.say(bo, "enablecheats")).toEqual(["cheats enabled"]);
@@ -61,8 +59,7 @@ test("a spectator sees what a player there would see, and nobody sees it", () =>
   expect(seen.count).toBe(1);
   expect(seen.id[0]).toBe(handleIndex(ada.ownHandle));
 
-  // It flies up and away faster than anything walks, yet never faster than one step allows:
-  // the camera is a body stepped by the server from inputs, not a position the client sends.
+  // The camera is a body the server steps from inputs, not a position the client sends, so it never moves more than one step a tick.
   const settled = bo.stats.corrections;
   const c = h.client(bo)!;
   const p = h.pilots[1]!;
@@ -85,14 +82,12 @@ test("a spectator sees what a player there would see, and nobody sees it", () =>
   expect(maxStep).toBeGreaterThan(1.5);
   expect(maxStep).toBeLessThan(2.001); // 60 m/s at 30 steps a second
   expect(c.body.y).toBeGreaterThan(left.y + 40);
-  // Predicted exactly, like any body.
   expect(bo.own.equals(c.body)).toBe(true);
   expect(bo.stats.corrections).toBe(settled);
   ada.sampleRemote(seen);
   expect(seen.count).toBe(0);
   expect(h.server.playerCount).toBe(2);
 
-  // Returning puts the body back where it was left.
   expect(h.say(bo, "stopspectating")).toEqual(["back in your body"]);
   expect(bo.sessionState).toBe(SESSION_ALIVE);
   const back = h.ent(bo);
@@ -157,7 +152,6 @@ test("the console obeys admins, refuses everyone else, and never moves the world
   expect(h.say(ada, "who").sort()).toEqual(["ada  alive  admin", "bo  alive"]);
   expect(h.say(bo, "pos")[0]).toMatch(/^x 2\d\d\.\d\d  y -?\d+\.\d\d  z 2\d\d\.\d\d  alive$/);
 
-  // Three wrong passwords end the session.
   h.say(bo, "enablecheats a");
   h.say(bo, "enablecheats b");
   expect(bo.state).toBe("active");
@@ -171,13 +165,13 @@ test("the console obeys admins, refuses everyone else, and never moves the world
   expect(cy.state).toBe("closed");
   expect(cy.closeReason).toBe(REJECT_KICKED);
 
-  // The operator needs no password.
+  // The operator's console needs no password.
   expect(h.host.exec("settime 12")).toBe("time is 12:00");
   expect(h.say(ada, "save")[0]).toContain("saved at tick");
   const offset = h.world.dayOffset;
   h.host.shutdown();
 
-  // Admin commands are journalled; the password never is. The time of day is saved.
+  // Admin commands are journalled. The password never is.
   const store = new WorldStore(db, h.reg);
   const lines = store
     .journal()
@@ -228,17 +222,14 @@ test("a hostile command stream changes nothing and cannot crash the server", () 
       w.reset();
       const kind = rng.int(6);
       if (kind <= 1) {
-        // Well-formed: the next sequence number and a console line.
         seq = (seq + 1) & 0xffff;
         writeCommand(w, seq, CMD_TEXT);
         w.string(lines[rng.int(lines.length)]!);
       } else if (kind === 2) {
-        // The right sequence, any op, random arguments.
         seq = (seq + 1) & 0xffff;
         writeCommand(w, seq, rng.int(256));
         for (let n = rng.int(30); n > 0; n--) w.u8(rng.int(256));
       } else if (kind === 3) {
-        // A replayed or skipped sequence number.
         writeCommand(w, rng.int(65536), CMD_TEXT);
         w.string("settime 3");
       } else if (kind === 4) {
@@ -275,7 +266,6 @@ test("a body lingers after a disconnect, and only the same device can take it ov
   h.run(1000);
   expect(h.server.playerCount).toBe(0);
   expect(ents.resolve(handle)).toBe(e);
-  // Nobody is steering it: it stopped where its connection ended.
   const z = ents.z[e]!;
   h.run(500);
   expect(ents.z[e]).toBe(z);
@@ -293,14 +283,13 @@ test("a body lingers after a disconnect, and only the same device can take it ov
   expect(h.server.playerCount).toBe(1);
   expect(ents.count).toBe(1);
   expect(h.host.records.byPid.size).toBe(1);
-  // And it can be walked again.
   h.pilots[2]!.moveZ = 1;
   h.run(1000);
   expect(ents.z[e]!).toBeGreaterThan(z + 2);
   h.pilots[2]!.moveZ = 0;
   h.run(500);
 
-  // Left alone, the body goes after five seconds, and the record keeps its place.
+  // The body lingers five seconds.
   const rest = ents.z[e]!;
   again.close();
   h.run(4000);
@@ -332,7 +321,7 @@ test("a name stays with its device key across a restart", () => {
 test("a command typed before the session is active is not sent and does not break the ones after it", () => {
   const h = new Harness();
   const s = h.join("early");
-  // Still connecting: nothing goes out, and no sequence number is used up.
+  // Still connecting, so nothing is sent and no sequence number is used.
   expect(s.text("pos")).toBe(0);
   expect(s.text("who")).toBe(0);
   h.run(500);
@@ -354,12 +343,12 @@ test("a full server still lets a survivor back into its lingering body, and sile
   expect(cy.state).toBe("closed");
   expect(cy.closeReason).toBe(REJECT_FULL);
 
-  // Connections that never say hello do not take slots, and are dropped after five seconds.
+  // A connection that never says hello is dropped after five seconds.
   const silent = [h.net.connect(), h.net.connect(), h.net.connect()];
   h.run(1000);
   expect(silent.every((e) => e.open)).toBe(true);
 
-  // Ada's connection drops. Her body lingers and still fills her slot, yet she, and only she, can come back.
+  // Ada's lingering body still fills her slot, so dee is refused and only ada can come back.
   const handle = ada.ownHandle;
   ada.close();
   h.run(1000);
@@ -377,7 +366,7 @@ test("a full server still lets a survivor back into its lingering body, and sile
 });
 
 test("a full house arriving in the same instant all get in", () => {
-  // The limit on connections that have not said hello yet must not be lower than the server's capacity.
+  // The limit on connections that have not said hello must not be lower than maxClients.
   const h = new Harness({ maxClients: 100 });
   const all = [];
   for (let i = 0; i < 100; i++) all.push(h.join(`p${i}`));

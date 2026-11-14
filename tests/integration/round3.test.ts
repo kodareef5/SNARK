@@ -37,7 +37,6 @@ const SHIN = 0.45;
 test("round 3: two survivors made in the creator, one in flak and one bare, fight with bow and rifle at 150 ms; a creature is put to sleep; wood burns; stone is blown; the books balance", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const link = { latencyMs: 75 };
-  // Each arrives with no body, sees the creator, and makes one.
   const ada = h.join("ada", link, { look: null });
   const bob = h.join("bob", link, { look: null });
   h.run(700);
@@ -58,7 +57,6 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   const [pa, pb] = [h.pilots[0]!, h.pilots[1]!];
   const { combat, survival, items, projectiles } = h.host;
 
-  // A range: Ada at the south end, Bob ten metres north, facing each other. Ada wears flak; Bob nothing.
   h.say(ada, "enablecheats");
   h.say(bob, "enablecheats");
   const g = flatGround(h, 24, 40);
@@ -81,7 +79,7 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
 
   const health = (rec: typeof arec): number => survival.value(rec, V_HEALTH);
   const drop = (far: number): number => 0.5 * 9.81 * (far / launchSpeed(70, 1)) ** 2;
-  /** Aim `pilot` at a point `height` above the feet of someone `far` metres straight ahead, held over by `over`. */
+  /** Aims `height` above the feet of a target `far` metres ahead, plus `over`. */
   const aim = (pilot: Pilot, height: number, far = APART, over = 0): void => void (pilot.pitch = Math.atan2(height + over - EYE, far));
   const bow = (pilot: Pilot): void => {
     pilot.buttons |= BTN_PRIMARY;
@@ -97,7 +95,7 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   };
   const told = (s: ClientSession, kind: number) => s.events.filter((ev) => ev.kind === kind);
 
-  // 1. Bob's bow on Ada's flak. A piece of 100 counts five times against an aimed hit: a sixth gets through.
+  // Bob's bow on Ada's flak. A piece rated 100 counts five times against an aimed hit, so a sixth gets through.
   takeInHand(h, bob, id("bow"));
   h.run(1500);
   const before = health(arec);
@@ -109,23 +107,22 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   bow(pb);
   expect(combat.last.zone).toBe(ZONE_TORSO);
   expect(combat.last.damage).toBeCloseTo(55 / 6, 4);
-  // A shin: aimed a hand's width off the middle, where a leg is. Between the legs there is nothing to hit.
+  // Aimed 0.11 m off the middle, where a leg is. Between the legs there is nothing to hit.
   pb.yaw = Math.atan2(0.11, -APART);
   aim(pb, SHIN, APART, drop(APART));
   bow(pb);
   pb.yaw = Math.PI;
   expect([ZONE_LEG_L, ZONE_LEG_R]).toContain(combat.last.zone);
   expect(combat.last.damage).toBeCloseTo(55 / 6, 4);
-  // The three numbers on Bob's screen: the head's is three times a limb's.
   expect(told(bob, EVENT_HIT).map((ev) => [ev.damage, ev.blocked])).toEqual([[28, true], [9, true], [9, true]]);
-  // Ada was told of each: how much, which part, and that it came from the north.
+  // Bearing 0 is north, where Bob stands.
   expect(told(ada, EVENT_HURT).map((ev) => [ev.damage, ev.bearing])).toEqual([[28, 0], [9, 0], [9, 0]]);
-  // Her armor is worn where it was hit, by what it stopped: one use for each sixteen points.
+  // Armor loses one durability for each sixteen points it stopped, on the piece that was hit.
   const durable = (k: number): number => ainv.dur[ainv.armor + k]!;
   expect([durable(0), durable(1), durable(3)]).toEqual([120 - Math.ceil((165 - 27.5) / 16), 120 - Math.ceil((55 - 55 / 6) / 16), 120 - Math.ceil((55 - 55 / 6) / 16)]);
   expect([durable(2), durable(4)]).toEqual([120, 120]);
 
-  // 2. Bob's rifle on her chest: 280, of which a sixth.
+  // Bob's rifle on her chest does a sixth of 280.
   takeInHand(h, bob, id("rifle"), 1);
   h.run(5200);
   aim(pb, CHEST);
@@ -133,7 +130,7 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   trigger(pb);
   expect(combat.last.zone).toBe(ZONE_TORSO);
   expect(combat.last.damage).toBeCloseTo(280 / 6, 4);
-  // She has taken 92 of her 100, a little mended since, and lives: injured, and slowed for it.
+  // She has taken 92 of her 100 and mended a little since. She is injured, which slows her.
   expect(health(arec)).toBeGreaterThan(0);
   expect(before - health(arec)).toBeLessThan(27.5 + 55 / 6 + 55 / 6 + 280 / 6 + 0.01);
   expect(before - health(arec)).toBeGreaterThan(27.5 + 55 / 6 + 55 / 6 + 280 / 6 - 5);
@@ -141,13 +138,12 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   expect(ents.speedQ[ea]).toBe(800);
   expect(ada.sessionState).toBe(SESSION_ALIVE);
 
-  // 3. Ada's bow on Bob, who wears nothing: all fifty-five.
   takeInHand(h, ada, id("bow"));
   h.run(1500);
   aim(pa, CHEST, APART, drop(APART));
   bow(pa);
   expect([combat.last.zone, combat.last.victim, combat.last.damage, combat.last.blocked]).toEqual([ZONE_TORSO, brec.pid, 55, 0]);
-  // 4. Her rifle on his leg: 280 into what he has left. He dies; she is told, and has the experience.
+  // Her rifle on his leg kills him, so the damage is what he had left.
   takeInHand(h, ada, id("rifle"), 1);
   h.run(5200);
   pa.yaw = Math.atan2(0.11, APART);
@@ -166,12 +162,11 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   expect(told(ada, EVENT_KILL).map((ev) => ev.name)).toEqual(["bob"]);
   expect(arec.xp).toBe(xp + 10);
   expect(told(ada, EVENT_HIT).map((ev) => ev.kill)).toEqual([false, true]);
-  // At 150 ms every one of those shots was judged some ticks back, within the cap.
+  // At 150 ms the server judges each shot some ticks back, within the cap of 12.
   const back = h.world.tick - combat.viewTick(h.client(ada)!);
   expect(back).toBeGreaterThan(5);
   expect(back).toBeLessThanOrEqual(12);
 
-  // 5. A creature, tranquilizer arrows, and it is down.
   const ge = h.host.spawnCreature("core:grazer", at.x - 6, at.z + 8, 1);
   const grec = h.host.records.byPid.get(ents.pid[ge]!)!;
   const slot = takeInHand(h, ada, id("bow"));
@@ -192,7 +187,7 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   expect(survival.value(grec, V_TORPOR)).toBeGreaterThan(100);
   expect(health(grec)).toBeGreaterThan(100);
 
-  // 6. A wooden wall and flame arrows: fire counts three times on wood.
+  // Fire counts three times on wood.
   const structs = h.world.structs;
   const wood = structs.add(id("wall_wood"), at.x + 6, at.y + 1.5, at.z + 9, 0, 0, 1000);
   const hp = (ref: number): number => structs.chunks[Math.floor(ref / 65536)]!.hp[ref & 0xffff]!;
@@ -204,7 +199,7 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   expect(hp(wood)).toBe(1000 - 165);
   bow(pa);
   expect(hp(wood)).toBe(1000 - 330);
-  // 7. A stone wall and a grenade thrown to it: the wall takes what its distance from the blast leaves of 788.
+  // The stone wall takes at most 788, less with distance from the blast.
   const stone = structs.add(id("wall"), at.x, at.y + 1.5, at.z + 22, 0, 0, 1500);
   takeInHand(h, ada, id("grenade"), 2);
   h.run(700);
@@ -219,11 +214,11 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
   expect(1500 - hp(stone)).toBeLessThanOrEqual(788);
   expect(hp(wood)).toBe(1000 - 330);
 
-  // The books: every arrow, round and grenade made is carried, loaded, standing where it landed, or written off as spent.
   expect(items.audit()).toEqual([]);
   expect(h.say(ada, "audit")).toEqual(["the ledger balances"]);
   expect(projectiles.fired).toBeGreaterThanOrEqual(11);
-  // What was fired wore what fired it, a use a shot: Bob's bow three and his rifle one (they lie in his cache now); Ada's rifle one, her bow one for each arrow.
+  // Each shot costs its weapon one durability. Bob's bow fired three and his rifle one (both lie in his cache now).
+  // Ada's rifle fired one, and her bow every arrow of hers.
   expect([binv.dur[binv.hotbar], binv.dur[binv.hotbar + 1]]).toEqual([50 - 3, 70 - 1]);
   expect(ainv.dur[ainv.hotbar + 1]).toBe(70 - 1);
   expect(ainv.dur[ainv.hotbar]).toBe(50 - (projectiles.fired - 3 - 1 - 1 - 1));
@@ -258,22 +253,18 @@ test("server rules are factors in the damage function, last until the server is 
   };
   expect(h.say(ada, "settings")).toEqual(["every setting is at its default"]);
   expect(punch(HEAD)).toBe(24);
-  // Head shots off: a head is a part like any other.
   expect(h.say(ada, "setting HeadMultipliers False")).toEqual(["HeadMultipliers=False  (until the server is started again)"]);
   expect(punch(HEAD)).toBe(8);
-  // Survivors take half from each other.
   h.say(ada, "setting PlayerResistanceMultiplier 0.5");
   expect(punch(CHEST)).toBe(4);
-  // Or nothing: the blow lands, and takes nothing.
+  // The blow still lands, or punch would return -1.
   h.say(ada, "setting PlayerResistanceMultiplier 0");
   expect(punch(CHEST)).toBe(0);
-  // A creature is another matter: its own rule.
   h.say(ada, "setting DinoResistanceMultiplier 2");
   const e = h.host.spawnCreature("core:dummy", at.x + 1.5, at.z, 1);
   expect(e).toBeGreaterThanOrEqual(0);
   pa!.yaw = Math.PI / 2;
   expect(punch(CHEST)).toBe(16);
-  // What is built has its own too.
   h.say(ada, "setting StructureResistanceMultiplier 3");
   h.host.death.die(h.host.records.byPid.get(h.world.ents.pid[e]!)!, 0);
   const wall = h.world.structs.add(id("wall_thatch"), at.x + 1.6, g.y + 1.5, at.z, 16384, 0, 250);
@@ -283,16 +274,15 @@ test("server rules are factors in the damage function, last until the server is 
   pa!.buttons &= ~BTN_PRIMARY;
   h.run(TICK_MS * 22);
   expect(h.world.structs.chunks[Math.floor(wall / 65536)]!.hp[wall & 0xffff]).toBe(250 - 24);
-  // Nonsense is refused, and says what would be accepted.
   expect(h.say(ada, "setting Gravity 2")).toEqual(["there is no setting called Gravity"]);
   expect(h.say(ada, "setting PlayerResistanceMultiplier -1")[0]).toMatch(/wants a number from 0 to/);
   expect(h.say(ada, "setting PlayerResistanceMultiplier 1e9")[0]).toMatch(/wants a number from 0 to/);
   expect(h.say(bob, "settings")).toHaveLength(4);
-  // Clients are told the one they act on: the damage of a hit is not shown as a number unless the server says so.
+  // Clients are sent the one setting they act on.
   expect(ada.damageNumbers).toBe(false);
   h.say(ada, "setting ShowFloatingDamageText True");
   expect([ada.damageNumbers, bob.damageNumbers]).toEqual([true, true]);
-  // A change from the console lasts until the server is started again. A host started on the same rules has them still;
+  // A host started on the same rules object keeps the console's changes.
   const set = h.host.rules;
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath, config: set });
@@ -302,7 +292,7 @@ test("server rules are factors in the damage function, last until the server is 
   h.run(500);
   expect(ada.damageNumbers).toBe(true);
   h.host.shutdown();
-  // one started with none has the defaults, whatever the world it loads was last run under: the files are the truth.
+  // A host started with no config has the defaults, even when the world it loads last ran under other rules.
   h = new Harness({}, 1, 60, { dev: true, dbPath });
   expect(held(h.host.rules)).toEqual([1, 1, 1, true, false]);
   h.host.shutdown();
@@ -313,7 +303,7 @@ test("the console's combat tools: armor on and off the books, what each part of 
   const h = new Harness({}, 1, 60, { dev: true });
   const s = h.join("ada");
   h.run(500);
-  // Without cheats only what tells is allowed.
+  // Without cheats, only commands that report are allowed.
   expect(h.say(s, "armor flak")).toEqual(["denied: cheats are not enabled for you"]);
   expect(h.say(s, "hitzones")[0]).toBe("head        x3  armor 0  takes 300%");
   h.say(s, "enablecheats");
@@ -321,11 +311,11 @@ test("the console's combat tools: armor on and off the books, what each part of 
   const inv = h.host.items.inv(rec);
   expect(h.say(s, "armor hide")).toEqual(["wearing hide"]);
   expect([...inv.item.subarray(inv.armor, inv.armor + 5)]).toEqual(["hat", "shirt", "gloves", "pants", "boots"].map((p) => id(`hide_${p}`)));
-  // A hide piece rates 20, a hundred against an aimed hit: half gets through, and a head still counts three times.
+  // A hide piece rates 20, which is 100 against an aimed hit. Half gets through, and a head still counts three times.
   const zones = h.say(s, "hitzones");
   expect(zones.slice(0, 2)).toEqual(["head        x3  armor 100  takes 150%", "torso       x1  armor 100  takes 50%"]);
   expect(zones).toHaveLength(10);
-  // Changing sets destroys the old one on the books and makes the new.
+  // Changing sets burns the old one and mints the new, so the ledger still balances.
   expect(h.say(s, "armor flak")).toEqual(["wearing flak"]);
   expect(inv.total(id("hide_hat"))).toBe(0);
   expect(inv.item[inv.armor]).toBe(id("flak_hat"));
@@ -333,7 +323,6 @@ test("the console's combat tools: armor on and off the books, what each part of 
   expect(inv.used()).toBe(0);
   expect(h.say(s, "armor plate")[0]).toMatch(/^no armor "plate"/);
   expect(h.say(s, "audit")).toEqual(["the ledger balances"]);
-  // An audit that finds something says what.
   inv.set(0, id("berry"), 5, 0, 0, 0);
   expect(h.say(s, "audit")[0]).toContain("core:berry");
 });
@@ -355,7 +344,7 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
     expect(panel.x + panel.w).toBeLessThanOrEqual(f.width);
   }
   expect(f.find(KEY_SETTINGS_ROW + 1)!.text).toBe("on");
-  // The first row's buttons toggle; the others step, and stop at their ends.
+  // Rows are four keys apart. In a row, +1 is the value text, +2 steps down and +3 steps up or toggles.
   expect(settingsClick(KEY_SETTINGS_ROW + 3, s)).toBe(true);
   expect(s.damageNumbers).toBe(false);
   expect(settingsClick(KEY_SETTINGS_ROW + 1, s)).toBe(false);
@@ -366,7 +355,6 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   f.begin(16 / 9);
   buildSettings(f, s);
   expect([f.find(KEY_SETTINGS_ROW + 1)!.text, f.find(KEY_SETTINGS_ROW + 5)!.text, f.find(KEY_SETTINGS_ROW + 9)!.text]).toEqual(["off", "20%", "100 degrees"]);
-  // Voice: how loud others are, from silence to twice as loud; and whether the talk key is held or switches.
   expect([f.find(KEY_SETTINGS_ROW + 13)!.text, f.find(KEY_SETTINGS_ROW + 17)!.text]).toEqual(["100%", "hold"]);
   for (let n = 0; n < 40; n++) settingsClick(KEY_SETTINGS_ROW + 12 + 3, s);
   expect(s.voiceVolume).toBe(VOLUME_MAX);
@@ -374,7 +362,7 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   expect(s.voiceVolume).toBe(0);
   settingsClick(KEY_SETTINGS_ROW + 16 + 3, s);
   expect(s.toggleTalk).toBe(true);
-  // The microphone's meter: empty in silence, about half for quiet speech, full at the loudest.
+  // A level of 0.03 is quiet speech.
   const meter = (level: number): number => {
     f.begin(16 / 9);
     buildSettings(f, s, level);
@@ -385,7 +373,6 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   expect(meter(0.0001)).toBe(0);
   expect([f.find(KEY_SETTINGS_ROW + 13)!.text, f.find(KEY_SETTINGS_ROW + 17)!.text]).toEqual(["0%", "on and off"]);
 
-  // In the client: O opens the screen and frees the mouse; the view, the mouse and the numbers follow what is set.
   const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
   app.frame(0, 1280, 720);
@@ -408,7 +395,7 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   run(50);
   expect(app.ui.frame.find(KEY_SETTINGS_PANEL)).toBeNull();
   expect(app.ui.wantsPointerLock).toBe(true);
-  // A punch on a dummy shows its mark and, on a server that shows the damage of hits, its number; with the player's own numbers off, the mark alone.
+  // The number needs both the server's ShowFloatingDamageText and the player's own setting. The mark needs neither.
   app.session.text("setting ShowFloatingDamageText True");
   run(300);
   app.session.text("dummy");

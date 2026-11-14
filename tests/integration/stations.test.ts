@@ -1,5 +1,4 @@
-// A campfire that burns and cooks whether or not anyone is looking, and a bed
-// its tribe returns to life at.
+// A campfire that burns and cooks unobserved, and a bed its tribe respawns at.
 
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -22,7 +21,7 @@ const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const U = STRUCT_UNITS;
 type Made = ReturnType<typeof builder>;
 
-/** Give a survivor one of a thing to set down, take it in hand, and set it down at (x, z): on the ground, or on top of `target`. Returns its ref. */
+/** Places a free-standing item at (x, z), on the ground or on top of `target`. Returns its ref. */
 function setDown(made: Made, s: ClientSession, item: string, x: number, z: number, target = NO_TARGET): number {
   const { h } = made;
   h.say(s, `give ${item} 1`);
@@ -64,59 +63,58 @@ test("a campfire burns the fuel on it and cooks what lies over it, at the refere
   let { h } = made;
   const { at } = made;
   const [ada, bob] = made.sessions as [ClientSession, ClientSession];
-  // (On this server a piece may be taken back at any time, not only in the half minute after it is set down.)
+  // Without this setting a piece can be picked up only in the half minute after it is placed.
   h.say(ada, "setting AlwaysAllowStructurePickup True");
   const fire = setDown(made, ada, "piece_campfire", at.x, at.z + 2);
   expect([kindAt(h, fire), h.host.fixtures.count]).toEqual([id("campfire"), 0]);
-  // Nothing on it: it will not light. Nor is it another tribe's to light.
+  // With no fuel it will not light.
   expect([act(h, ada, fire, STRUCT_LIGHT), act(h, bob, fire, STRUCT_LIGHT)]).toEqual([RESULT_SHORT, RESULT_NOT_YOURS]);
-  // Two pieces of wood (half a minute each) and three of raw meat (twenty seconds each), put on by the server's hand.
+  // Wood burns half a minute a piece. Raw meat cooks in twenty seconds a piece.
   let state = h.host.fixtures.ensure(fire);
   expect(h.host.items.inv(state).cap).toBe(3);
   h.host.items.mint(state, id("wood"), 2);
   h.host.items.mint(state, id("meat"), 3);
   expect(act(h, ada, fire, STRUCT_LIGHT)).toBe(RESULT_OK);
   const lit = state.fire!.at;
-  // Lit, it is another kind of thing in the same place, for everyone; and the first piece of wood is burning.
+  // A lit fire is a different structure kind in the same slot. The first piece of wood is already burning.
   expect([kindAt(h, fire), bob.world!.structs.chunks[Math.floor(fire / 65536)]!.kind[fire & 0xffff], state.inv!.total(id("wood"))]).toEqual([id("campfire_lit"), id("campfire_lit"), 1]);
   expect(state.fire).toMatchObject({ fuel: 900, cook: 0 });
-  // Nobody looks at it. Twenty-five seconds on, asked, it has cooked one; nothing ran in between.
+  // The fire is lazy. After 25 s nothing has run, and reading its inventory through items.inv() cooks the one piece due.
   const due = state.fire!.due;
   expect(due - lit).toBe(1800);
   h.run(25000);
   expect([state.inv!.total(id("meat_cooked")), state.fire!.due]).toEqual([0, due]);
   expect([h.host.items.inv(state).total(id("meat_cooked")), state.inv!.total(id("meat")), h.host.stations.cooked]).toEqual([1, 2, 1]);
 
-  // The world stops and starts again with the fire burning.
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
   const again = h.join("ada");
   h.run(600);
   state = h.host.fixtures.find(fire)!;
   expect([kindAt(h, fire), state.fire !== null, state.inv!.total(id("meat")), h.world.tick > lit]).toEqual([id("campfire_lit"), true, 2, true]);
-  // A minute after it was lit the wood is gone and it is out, by itself, at the tick the last piece ended; all three are cooked.
+  // A minute after lighting (1800 ticks) the wood is gone and the fire is out.
   h.run(Math.max(0, ((lit + 1800 - h.world.tick) / TICK_RATE) * 1000) + 500);
   expect([kindAt(h, fire), again.world!.structs.chunks[Math.floor(fire / 65536)]!.kind[fire & 0xffff], state.fire, h.host.stations.wentOut]).toEqual([id("campfire"), id("campfire"), null, 1]);
   expect([state.inv!.total(id("meat_cooked")), state.inv!.total(id("meat")), state.inv!.total(id("wood"))]).toEqual([3, 0, 0]);
-  // What was cooked keeps from when it was cooked, not from when someone looked: the first is forty seconds older than the last.
+  // Cooked meat spoils from the tick it was cooked, not from when someone looked. The first was cooked at lit + 600.
   const slot = state.inv!.item.indexOf(id("meat_cooked"));
   expect(state.inv!.spoilAt[slot]! - reg.spoilTicks[id("meat_cooked")]!).toBe(lit + 600);
 
-  // Lit again and put out by hand: what was burning is lost, and it is as it was.
+  // Putting it out by hand loses the piece that was burning.
   h.say(again, "enablecheats");
   h.host.items.mint(state, id("thatch"), 4);
   expect(act(h, again, fire, STRUCT_LIGHT)).toBe(RESULT_OK);
   expect([kindAt(h, fire), state.inv!.total(id("thatch"))]).toEqual([id("campfire_lit"), 3]);
   expect(act(h, again, fire, STRUCT_LIGHT)).toBe(RESULT_OK);
   expect([kindAt(h, fire), state.fire, state.inv!.total(id("thatch"))]).toEqual([id("campfire"), null, 3]);
-  // Three of thatch burn seven and a half seconds each: out after twenty-two and a half, with nobody near.
+  // Three thatch at 7.5 s each burn out after 22.5 s.
   act(h, again, fire, STRUCT_LIGHT);
   const relit = h.world.tick;
   h.run(22000);
   expect(kindAt(h, fire)).toBe(id("campfire_lit"));
   h.run(1000);
   expect([kindAt(h, fire), h.host.stations.wentOut, h.world.tick - relit > 675]).toEqual([id("campfire"), 2, true]);
-  // Burning or not, taken back it is a campfire in the hands; not while there is something on it.
+  // It cannot be picked up while it holds anything.
   expect(act(h, again, fire, STRUCT_PICKUP)).not.toBe(RESULT_OK);
   h.host.items.burnAll(state);
   expect([act(h, again, fire, STRUCT_PICKUP), again.inventory!.total(id("piece_campfire")), h.host.fixtures.count]).toEqual([RESULT_OK, 1, 0]);
@@ -129,7 +127,6 @@ test("a bed is where its tribe returns to life: listed for them and nobody else,
   const made = builder(["ada", "bob"]);
   const { h, at, join } = made;
   const [ada, bob] = made.sessions as [ClientSession, ClientSession];
-  // A bed on the ground, and another on an upper floor.
   const low = setDown(made, ada, "piece_bed", at.x - 3, at.z + 3);
   ada.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
   h.run(100);
@@ -151,7 +148,7 @@ test("a bed is where its tribe returns to life: listed for them and nobody else,
     h.run(300);
     return code;
   };
-  // She dies. Besides the world's own places she is offered her two beds; he, dying, is offered neither.
+  // Beds are listed after the world's spawn points, for their tribe only.
   h.say(ada, "suicide");
   h.say(bob, "suicide");
   h.run(300);
@@ -161,14 +158,12 @@ test("a bed is where its tribe returns to life: listed for them and nobody else,
   expect(ada.respawnPoints.slice(spawns).map((p) => [p.name.startsWith("bed at "), p.wait])).toEqual([[true, 0], [true, 0]]);
   const upstairs = ada.respawnPoints.findIndex((p, i) => i >= spawns && Math.abs(p.x - t.x[floor & 0xffff]!) < 0.01);
   const ground = ada.respawnPoints.findIndex((p, i) => i >= spawns && i !== upstairs);
-  // A place that was not offered is no place; he takes one of the world's.
   expect([respawn(bob, spawns), respawn(bob, 0), bob.sessionState]).toEqual([RESULT_INVALID, RESULT_OK, SESSION_ALIVE]);
-  // The bed upstairs: she stands on it, three metres up, not on the ground under it.
   expect(respawn(ada, upstairs)).toBe(RESULT_OK);
   h.run(500);
   expect([ada.sessionState, Math.abs(ada.own.x - t.x[floor & 0xffff]!) < 0.5]).toEqual([SESSION_ALIVE, true]);
   expect(Math.abs(ada.own.y - top)).toBeLessThan(0.1);
-  // It must now be waited for: dying again at once, she is told how long, and it will not have her; the other bed will.
+  // A used bed has a five minute wait. The other bed has none.
   h.say(ada, "suicide");
   h.run(300);
   const wait = ada.respawnPoints[upstairs]!.wait;
@@ -176,7 +171,7 @@ test("a bed is where its tribe returns to life: listed for them and nobody else,
   expect([respawn(ada, upstairs), ada.sessionState]).toEqual([RESULT_WAIT, SESSION_DEAD]);
   expect([respawn(ada, ground), ada.sessionState]).toEqual([RESULT_OK, SESSION_ALIVE]);
   expect(Math.hypot(ada.own.x - (at.x - 3), ada.own.z - (at.z + 3))).toBeLessThan(0.5);
-  // Five minutes after it was used, the first is ready again.
+  // readyAt is moved up so the test need not run five minutes.
   h.say(ada, "suicide");
   h.run(300);
   expect(respawn(ada, ground)).toBe(RESULT_WAIT);
@@ -185,7 +180,6 @@ test("a bed is where its tribe returns to life: listed for them and nobody else,
   expect(BED_WAIT_TICKS).toBe(300 * TICK_RATE);
   h.run(1200);
   expect([respawn(ada, upstairs), ada.sessionState]).toEqual([RESULT_OK, SESSION_ALIVE]);
-  // A bed that has gone while she lay dead is no place to return to.
   h.say(ada, "suicide");
   h.run(300);
   h.world.structs.damage(low, 1e9, h.world.tick);

@@ -43,7 +43,7 @@ test("a world survives restart: tick, structures, records and where a survivor s
   const h2 = new Harness({}, 1, 60, { dbPath: db });
   expect(h2.host.loaded).toEqual({ fresh: false, tick, structures: before.count, records: 1 });
   expect(h2.world.tick).toBe(tick);
-  // Structure tables are identical slot for slot, so refs held elsewhere stay valid.
+  // The tables must match slot for slot, so refs held elsewhere stay valid.
   before.chunks.forEach((t, chunk) => {
     const u = h2.world.structs.chunks[chunk];
     if (!t) return expect(u ?? null).toBeNull();
@@ -59,13 +59,11 @@ test("a world survives restart: tick, structures, records and where a survivor s
   expect(h2.host.records.byPid.get(pid)!.inv!.total(stone)).toBe(40);
   expect(h2.host.items.audit()).toEqual([]);
 
-  // The same name returns to the same body, where it logged out.
   const again = h2.join("ada");
   h2.run(300);
   expect(h2.world.ents.pid[h2.ent(again)]).toBe(pid);
   expect(Math.abs(h2.world.ents.x[h2.ent(again)]! - where.x)).toBeLessThan(0.01);
   expect(Math.abs(h2.world.ents.z[h2.ent(again)]! - where.z)).toBeLessThan(0.01);
-  // A second login under that name does not create a second body.
   const twin = h2.join("ada");
   h2.run(200);
   expect(twin.state).toBe("closed");
@@ -81,7 +79,7 @@ test("a save that uses removed content refuses to load unless told to drop it", 
   expect(() => createHost(without, { dbPath: db })).toThrow(/core:wall/);
   const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true } });
   expect(forced.world.structs.count).toBeLessThan(createHost(full).world.structs.count);
-  forced.persistence!.store.close(); // closed without committing: the save keeps its walls
+  forced.persistence!.store.close(); // closed without committing, so the save keeps its walls
   const back = createHost(full, { dbPath: db });
   expect(back.world.structs.count).toBe(createHost(full).world.structs.count);
   back.shutdown();
@@ -90,7 +88,7 @@ test("a save that uses removed content refuses to load unless told to drop it", 
 test("an item whose content is gone stops the load, and a ledger that does not balance stops it too", () => {
   const db = join(dir, "items.db");
   const full = coreRegistry();
-  // An item that nothing else needs once what makes it is gone too.
+  // With its recipe and engram gone too, nothing else refers to the waterskin.
   const meat = full.index.get("core:waterskin")!;
   const gone = new Set(["core:waterskin", "core:make-waterskin", "core:engram-waterskin"]);
   const stone = full.index.get("core:stone")!;
@@ -100,17 +98,16 @@ test("an item whose content is gone stops the load, and a ledger that does not b
   expect(host.items.mint(rec, stone, 250)).toBe(250);
   host.shutdown();
 
-  // Round 1 dropped such items without a word.
   const without = compileContent(CORE_CONTENT.filter((d) => !gone.has(d.id))).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/content this build does not have/);
   const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true } });
   expect(forced.records.byPid.get(rec.pid)!.inv!.total(without.index.get("core:stone")!)).toBe(250);
   expect(forced.items.audit()).toEqual([]);
-  forced.persistence!.store.close(); // not committed: the save keeps what it had
+  forced.persistence!.store.close(); // not committed, so the save keeps what it had
 
   const back = createHost(full, { dbPath: db });
   expect(back.records.byPid.get(rec.pid)!.inv!.total(meat)).toBe(30);
-  // Tamper with the books: one stack grows without a mint.
+  // Setting a slot directly bypasses the ledger.
   const inv = back.records.byPid.get(rec.pid)!.inv!;
   inv.set(39, stone, 99, 0, 0, 0);
   back.records.dirty.add(rec.pid);
@@ -128,8 +125,8 @@ test("a round 1 inventory is converted whole: nothing is dropped for want of slo
   const pid = host.records.create(reg.index.get("core:grazer")!, "mule").pid;
   host.shutdown();
 
-  // Rewrite the record as round 1 saved it: a list of items and counts, here 5,000 stone,
-  // which is fifty stacks and more than the forty slots a fresh inventory has.
+  // Rewrites the record in the round 1 layout, a list of items and counts. 5,000 stone is fifty stacks,
+  // more than a fresh inventory's forty slots.
   const legacy = (count: number): void => {
     const store = new WorldStore(db, reg);
     const c = new BitWriter(64);
@@ -140,7 +137,7 @@ test("a round 1 inventory is converted whole: nothing is dropped for want of slo
     w.u8(1);
     w.string("mule");
     w.varint(1);
-    w.varint(1); // component 1: round 1's inventory
+    w.varint(1); // component 1 is round 1's inventory
     w.blob(c.bytes());
     store.db.query("UPDATE entities SET data = ? WHERE pid = ?").run(w.bytes().slice(), pid);
     store.db.query("DELETE FROM meta WHERE key = 'ledger'").run();
@@ -151,13 +148,13 @@ test("a round 1 inventory is converted whole: nothing is dropped for want of slo
   const inv = back.records.byPid.get(pid)!.inv!;
   expect(inv.total(stone)).toBe(5000);
   expect(inv.cap).toBe(50);
-  expect(back.items.audit()).toEqual([]); // the books open at what the save holds
+  expect(back.items.audit()).toEqual([]); // the ledger opens at what the save holds
   back.shutdown();
-  // Saved again in the new form, it loads the same.
+  // The shutdown saved it in the new form.
   const again = createHost(reg, { dbPath: db });
   expect(again.records.byPid.get(pid)!.inv!.total(stone)).toBe(5000);
   again.shutdown();
-  // More than can be represented is refused outright, never trimmed.
+  // More than an inventory can hold is refused, never trimmed.
   legacy(30000);
   expect(() => createHost(reg, { dbPath: db })).toThrow(/needs 300 slots/);
 });
@@ -192,7 +189,7 @@ async function runUntilKilled(db: string, seed: number, minAcks: number, mode = 
     }
   }
   await proc.exited;
-  // Everything the child printed before it died was printed after a commit returned.
+  // The child prints each ack only after its commit returned.
   const acks = [...text.matchAll(/acked (\d+)\n/g)];
   return Number(acks.at(-1)![1]);
 }
@@ -210,13 +207,12 @@ test("killing the process at any moment loses no acknowledged trade and conserve
     const ledgerText = String(store.meta("ledger"));
     store.close();
 
-    // Nothing acknowledged is missing, and each run added to the same history.
     expect(journal.length).toBeGreaterThanOrEqual(lastAck);
     expect(journal.length).toBeGreaterThan(journalled);
     journalled = journal.length;
     expect(journal.map((j) => j.seq)).toEqual(journal.map((_, i) => i + 1));
 
-    // Atomicity: the saved inventories are exactly the journal applied to the start.
+    // The saved inventories must equal the journal applied to the starting balances.
     expect(records.length).toBe(HOLDERS);
     const balance = new Map(records.map((r) => [r.pid, START]));
     let minted = HOLDERS * START;
@@ -241,8 +237,6 @@ test("killing the process at any moment loses no acknowledged trade and conserve
         balance.set(to, balance.get(to)! + count);
       }
     }
-    // Conservation: what exists is what was created minus what was destroyed, and
-    // the ledger saved with it says the same.
     expect(records.reduce((n, rec) => n + (rec.inv?.total(stone) ?? 0), 0)).toBe(minted - burned);
     const ledger = JSON.parse(ledgerText) as Record<string, [number, number]>;
     expect(ledger["core:stone"]).toEqual([minted, burned]);
@@ -257,14 +251,14 @@ test("killing the process while survivors die, are looted and return never leave
   let deaths = 0;
   for (const [seed, minAcks] of [[5, 30], [6, 45], [7, 25]] as const) {
     await runUntilKilled(db, seed, minAcks, "death");
-    // Loading audits the ledger: an item in two places, or in none, stops it here.
+    // Loading audits the ledger, so an item in two places or in none stops it here.
     const host = createHost(reg, { dbPath: db });
     expect(host.items.audit()).toEqual([]);
     const survivors = [...host.persistence!.survivors.values()].map((pid) => host.records.byPid.get(pid)!);
     expect(survivors.length).toBe(HOLDERS);
     const caches = [...host.records.byPid.values()].filter((r) => r.expiresAt > 0);
     for (const s of survivors) {
-      // Dead means its things went to a cache in the same commit: it holds nothing, and it has a marker.
+      // A death moves the survivor's items to a cache in the same commit.
       if (s.dead) {
         expect(s.inv === null || s.inv.used() === 0).toBe(true);
         expect(s.markers.length).toBeGreaterThan(0);
@@ -272,7 +266,6 @@ test("killing the process while survivors die, are looted and return never leave
       expect(s.markers.length).toBeLessThanOrEqual(5);
     }
     for (const c of caches) {
-      // A cache always holds something, has a body to find, and a time to go.
       expect(c.inv!.used()).toBeGreaterThan(0);
       expect(host.records.entOf.has(c.pid)).toBe(true);
       expect(c.expiresAt).toBeGreaterThan(0);

@@ -23,9 +23,7 @@ const contents = (inv: Inventory): string[] => {
   return out;
 };
 
-// The exit condition of round 2, as one life. Cheats are enabled for one thing
-// only: `tp`, to skip the walking. Every gain and every loss comes from the
-// same inputs and commands a player has.
+// Cheats are enabled only for `tp`, to skip the walking. Every gain and loss comes from the inputs and commands a player has.
 test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, finds its cache by the marker, and returns after a restart with nothing lost or duplicated", () => {
   const db = join(dir, "life.db");
   const h = new Harness({}, 1, 30, { dbPath: db, dev: true });
@@ -41,7 +39,6 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
     h.run(ms);
   };
 
-  // Gather by hand: thatch and a little wood from trees, stone from a rock.
   const trees = nodesOf(h, "core:tree", 256, 256);
   for (let t = 0; t < 8 && (have("core:thatch") < 22 || have("core:wood") < 2); t++) {
     if (standFacing(h, s, pilot, trees[t]!)) swing(h, pilot, 12, SWING_TICKS);
@@ -53,13 +50,13 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   expect(have("core:stone")).toBeGreaterThanOrEqual(3);
   expect(have("core:flint")).toBe(0);
 
-  // Every hit was experience: it has levelled up, with points to show for it.
+  // Each harvest hit gives one experience point, and each level one stat point.
   expect(s.progress.level).toBeGreaterThanOrEqual(2);
   expect(s.progress.xp).toBe(h.host.harvest!.hits);
   expect(s.progress.statPoints).toBe(s.progress.level - 1);
   expect(h.world.ents.level[h.ent(s)]).toBe(s.progress.level);
 
-  // Learn the pick, make one, and with it get flint from the same rock.
+  // Only a pick gets flint from a rock.
   say((c) => c.command(CMD_LEARN, (w) => w.u16(id("core:engram-pick"))));
   say((c) => c.command(CMD_CRAFT, (w) => (w.u16(id("core:make-pick")), w.u8(1))), 2600);
   expect(have("core:pick")).toBe(1);
@@ -67,13 +64,12 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   expect(standFacing(h, s, pilot, rock, 1.9)).toBe(true);
   swing(h, pilot, 2, SWING_TICKS);
   expect(have("core:flint")).toBeGreaterThanOrEqual(2);
-  // Learn the hatchet (three engram points) and make it.
+  // The hatchet costs three engram points.
   say((c) => c.command(CMD_LEARN, (w) => w.u16(id("core:engram-hatchet"))));
   say((c) => c.command(CMD_CRAFT, (w) => (w.u16(id("core:make-hatchet")), w.u8(1))), 2600);
   expect(have("core:hatchet")).toBe(1);
   expect(s.progress.engrams.length).toBe(2);
 
-  // Pick berries and eat one.
   const bush = nodesOf(h, "core:bush", 256, 256).find((b) => standFacing(h, s, pilot, b, 1.4))!;
   expect(bush).toBeDefined();
   for (let i = 0; i < 2; i++) {
@@ -84,18 +80,17 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   }
   const berries = have("core:berry");
   expect(berries).toBeGreaterThanOrEqual(6);
-  h.run(20000); // some time passes; it is a little hungry
+  h.run(20000); // long enough to be a little hungry
   const hungry = h.host.survival.value(rec(), V_FOOD);
   expect(hungry).toBeLessThan(100);
   say((c) => c.command(CMD_USE, (w) => (w.varint(c.inventory!.item.indexOf(id("core:berry"))), w.u16(id("core:berry")))));
   expect(have("core:berry")).toBe(berries - 1);
   expect(h.host.survival.value(rec(), V_FOOD)).toBeGreaterThan(hungry);
 
-  // A stat point into speed.
+  // One point in speed is 1.5%.
   say((c) => c.command(CMD_SPEND, (w) => w.u8(STAT_NAMES.indexOf("speed"))));
   expect(s.own.speedQ).toBe(1015);
 
-  // Walk into the pool, swim out over the deep, dive, and stay down.
   h.say(s, `tp ${PROVING_POOL.x + 31} ${PROVING_POOL.z}`);
   pilot.yaw = -Math.PI / 2; // toward the middle of the pool
   pilot.pitch = 0;
@@ -114,7 +109,6 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   expect(s.sessionState).toBe(SESSION_DEAD);
   expect(s.log.at(-1)!.text).toBe("You drowned.");
 
-  // Dead: its things are in a cache where it sank, and a marker says where.
   const cache = [...h.host.records.byPid.values()].find((r) => r.expiresAt > 0)!;
   expect(contents(cache.inv!)).toEqual(carried);
   expect(h.host.items.inv(rec()).used()).toBe(0);
@@ -122,7 +116,7 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   const m = s.markers[0]!;
   expect(Math.hypot(m.x - cache.x, m.z - cache.z)).toBe(0);
 
-  // Back to life by the pool, then to the marker: look at the cache, open it, take everything, and get out of the water.
+  // Respawn point 2 is by the pool.
   say((c) => c.command(CMD_RESPAWN, (w) => w.u8(2)), 500);
   expect(s.sessionState).toBe(SESSION_ALIVE);
   expect(h.host.survival.value(rec(), V_HEALTH)).toBe(100);
@@ -161,7 +155,6 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   expect(s.sessionState).toBe(SESSION_ALIVE);
   expect(h.host.items.audit()).toEqual([]);
 
-  // The server stops and starts again. Everything is as it was.
   const before = {
     carried: contents(h.host.items.inv(rec())),
     xp: rec().xp,
