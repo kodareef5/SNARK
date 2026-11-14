@@ -13,7 +13,8 @@ from here.
 | `dev.ts` | `bun run dev` | Server plus client rebuild on change |
 | `build-client.ts` | `bun run build` | Bundle the shell, copy the page, write the core pack |
 | `pack/` | `bun tools/pack/build.ts` | glTF import, pack writer, graybox meshes |
-| `simhash.ts` | `bun tools/simhash.ts`, `node tools/simhash.ts` | Four hashes of fixed scenarios (movement, human pose, snapping, creature pose), for comparing engines |
+| `simhash.ts` | `bun tools/simhash.ts`, `node tools/simhash.ts` | Hashes of the fixed scenarios in `shared/sim/scenarios.ts` (movement, human pose, snapping, creature pose, tuned content), for comparing engines |
+| `device.ts` | `bun run device`, with `--tunnel`, `--self` | A throwaway server whose short link a phone opens: the page measures the device by itself (features, hashes, loading, each tier in three scenes, the link) and reports to `.cache/device/`. `--tunnel` puts it on a temporary Cloudflare address; `--self` has headless Chrome run it and must finish |
 | `art.ts`, `art/`, `blender/` | `bun run art -- core:raptor`, with `--all`, `--check`, `--sheet`, `--repack` | Builds an asset folder under `assets/source` into its pack, measures it and draws its review sheet ([layout](../assets/source/README.md)). Building needs Blender; the check, the sheet and the game do not |
 | `fit-zones.ts` | `bun tools/fit-zones.ts` | Fits the hit capsules to the modelled bodies and measures the match |
 | `map.ts`, `map/` | `bun tools/map.ts build <folder> <out.snmap>`, and `unpack`, `proving`, `info` | Builds a map file from a folder of plain layers, turns one back into its folder, writes the proving ground as a file, and says what a file holds. The folder's layout is in the tool's header and in [maps as files](../planning/reference/maps.md) |
