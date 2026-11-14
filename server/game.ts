@@ -65,8 +65,12 @@ import { NO_BUS, event, type Bus } from "./events/bus.ts";
 export interface GameOptions {
   /** In ticks. */
   snapshotEvery: number;
-  /** Byte budget for the deferrable part of one snapshot. */
+  /** Byte budget for the deferrable part of one snapshot, for a client that has not asked for another. */
   snapshotBytes: number;
+  /** The most a client may ask for. */
+  snapshotBytesMax: number;
+  /** The most entities any client is shown, up to MAX_VIEW. A client that has not asked is shown VIEW_DEFAULT of them. */
+  viewCap: number;
   /** Interest radii, in chunks. */
   entityRadius: number;
   structRadius: number;
@@ -83,6 +87,8 @@ export interface GameOptions {
 const DEFAULTS: GameOptions = {
   snapshotEvery: 1,
   snapshotBytes: 1100,
+  snapshotBytesMax: 1100,
+  viewCap: 1024,
   entityRadius: 3,
   structRadius: 3,
   chunkSlotsPerTick: 256,
@@ -195,6 +201,9 @@ export class Client {
   /** Removed rows of the chunk being synced go as grouped removals, not row by row. */
   syncByRemoval = false;
   rotate = 0;
+  /** The most entities it is shown and its snapshot byte budget, where it has asked. 0 for the server's own. */
+  viewCap = 0;
+  snapshotBytes = 0;
   strikes = 0;
   packets = 0;
   reliable = 0;
@@ -254,6 +263,7 @@ export class Client {
     this.subscribed.length = 0;
     this.syncChunk = -1;
     this.rotate = 0;
+    this.viewCap = this.snapshotBytes = 0;
     this.strikes = 0;
     this.cmdSeq = 0;
     this.queue.length = 0;
@@ -291,7 +301,8 @@ export class GameServer {
   private readonly newNames = new Map<string, { n: number; since: number }>();
   /** Wrong passwords, for joining and for cheats, by the address they came from. */
   readonly guesses = new Guesses();
-  readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0 };
+  /** `overflows` counts snapshots that outgrew the writer and were not sent. */
+  readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0, overflows: 0 };
   /** May this device key use this name? Called before anything is created. */
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
   /** A session became active (it has a body or a spectator's focus). */
@@ -321,13 +332,17 @@ export class GameServer {
   /** Connections that have not said hello hold no slot, so a returning survivor can reclaim its lingering session on a full server. */
   private readonly pending = new Set<Client>();
   private readonly survivor: number;
-  private readonly w = new BitWriter(16384);
+  private readonly w: BitWriter;
   /** Sized for the tuning string a welcome carries. */
   private readonly welcomeW: BitWriter;
   private readonly r = new BitReader();
   /** The entities around each chunk that is some client's centre this tick, gathered once and shared by every client centred there. */
   private readonly around: SentView[] = [];
+  /** For each of those lists, each entry's place in the order it was chosen in. A client is sent the entries below its cap. */
+  private readonly ranks: Uint16Array[] = [];
   private gathered = 0;
+  /** `opts.viewCap`, held to what a view can hold. */
+  private readonly cap: number;
   /** Per chunk: the tick `around[aroundAt]` was gathered for it. */
   private readonly aroundTick: Uint32Array;
   private readonly aroundAt: Uint16Array;
@@ -342,6 +357,9 @@ export class GameServer {
     this.world = world;
     this.opts = { ...DEFAULTS, ...opts };
     this.clients = new Array(this.opts.maxClients).fill(null);
+    this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
+    // Removes are sent whatever they cost, 6.7 KB for 2,048 of them, and an update can take two bytes more than it was budgeted at.
+    this.w = new BitWriter(Math.max(16384, 8192 + 2 * Math.max(this.opts.snapshotBytes, this.opts.snapshotBytesMax)));
     this.welcomeW = new BitWriter(1024 + world.reg.tuning.length * 4);
     this.aroundTick = new Uint32Array(chunkCount(world.dims));
     this.aroundAt = new Uint16Array(chunkCount(world.dims));
@@ -920,12 +938,13 @@ export class GameServer {
   }
 
   /**
-   * The entities a client centred on `chunk` may see at tick `T`, sorted by index. Every client centred there shares the list,
-   * so it includes each one's own body, and the delta writer leaves that out. With more entities than a view holds, players
-   * go in first, then anything moving or acting, then idle entities and props, so a crowd of idle creatures never hides a player.
+   * Where in `around` and `ranks` the entities are that a client centred on `chunk` may see at tick `T`, sorted by index. Every
+   * client centred there shares the list, so it includes each one's own body, and the delta writer leaves that out. Players are
+   * chosen first, then anything moving or acting, then idle entities and props, so with more entities than the server's cap or
+   * a client's own, a crowd of idle creatures never hides a player.
    */
-  private viewAround(chunk: number, T: number): SentView {
-    if (this.aroundTick[chunk] === T) return this.around[this.aroundAt[chunk]!]!;
+  private viewAround(chunk: number, T: number): number {
+    if (this.aroundTick[chunk] === T) return this.aroundAt[chunk]!;
     const world = this.world;
     const ents = world.ents;
     const dims = world.dims;
@@ -935,7 +954,7 @@ export class GameServer {
     const movers = this.movers;
     const idle = this.idle;
     const offsets = this.entityOffsets;
-    const cap = VIEW_DEFAULT;
+    const cap = this.cap;
     let n = 0;
     let nm = 0;
     let ni = 0;
@@ -954,25 +973,31 @@ export class GameServer {
     }
     for (let k = 0; k < nm && n < cap; k++) ids[n++] = movers[k]!;
     for (let k = 0; k < ni && n < cap; k++) ids[n++] = idle[k]!;
+    // Each is sorted with the rank it was chosen at. An index is under 2^20 (shared/ids.ts), so the two fit one number.
+    for (let k = 0; k < n; k++) ids[k] = ids[k]! * MAX_VIEW + k;
     sortU32(ids, n);
     const at = this.gathered++;
     const cur = (this.around[at] ??= new SentView());
+    const rank = (this.ranks[at] ??= new Uint16Array(MAX_VIEW));
     cur.count = 0;
     for (let k = 0; k < n; k++) {
-      const i = ids[k]!;
+      const i = Math.floor(ids[k]! / MAX_VIEW);
+      rank[k] = ids[k]! % MAX_VIEW;
       cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!);
       cur.urgent[k] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
     }
     this.aroundTick[chunk] = T;
     this.aroundAt[chunk] = at;
-    return cur;
+    return at;
   }
 
   private snapshot(c: Client, T: number): void {
     const ents = this.world.ents;
     // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
     const self = c.drive >= 0 ? -1 : c.ent;
-    const cur = this.viewAround(c.chunk, T);
+    const at = this.viewAround(c.chunk, T);
+    const cur = this.around[at]!;
+    const limit = c.viewCap !== 0 ? c.viewCap : Math.min(VIEW_DEFAULT, this.cap);
 
     const age = T - c.ackTick;
     const base = c.ackTick > 0 && age < VIEW_RING ? c.views.find(c.ackTick) : null;
@@ -994,7 +1019,14 @@ export class GameServer {
     // 0 for its own body, else the index of the entity it drives plus one.
     w.varint(c.drive + 1);
     writeBody(w, c.body);
-    c.rotate = writeViewDelta(w, base, cur, next, this.opts.snapshotBytes * 8 - w.pos, c.rotate, ents, self);
+    const bytes = c.snapshotBytes !== 0 ? c.snapshotBytes : this.opts.snapshotBytes;
+    c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? this.ranks[at]! : null, limit);
+    if (w.overflow) {
+      // Part of a snapshot is of no use. Nothing is sent, and the view the client would have held is forgotten.
+      this.stats.overflows++;
+      next.tick = 0;
+      return;
+    }
     c.lastSnapshot = T;
     c.conn.send(CH_UNRELIABLE, w.bytes());
   }
