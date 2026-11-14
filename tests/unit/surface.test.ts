@@ -1,15 +1,16 @@
-// A mesh drawn with materials, from its source through the pack writer and the split.
+// A mesh drawn with materials, from its source through the pack writer, the split and the importer.
 import { expect, test } from "bun:test";
 import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, parsePack, type Pack, type PackLod, type PackMaterial } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Rng } from "../../shared/rng.ts";
+import { importGlb } from "../../tools/pack/glb.ts";
 import { manifestOf, partHash } from "../../tools/pack/manifest.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { stressMeshes } from "../../tools/pack/stress.ts";
 import { decodeSkin, decodeSurface, encodeSkin, encodeSurface, fourHeaviest, spanOf, tangentsOf } from "../../tools/pack/surface.ts";
 import { boxMesh, buildPack, unpackMeshes, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
-import { TUBE, TUBE_PIXELS, TUBE_REGIONS, TUBE_RIG, tubeClips, tubeMesh, tubePack, tubePictures } from "../fixtures/textured.ts";
+import { TUBE, TUBE_PIXELS, TUBE_REGIONS, TUBE_RIG, tubeClips, tubeGlb, tubeMesh, tubePack, tubePictures, writeGlb } from "../fixtures/textured.ts";
 
 /** The largest difference between two lists of numbers. */
 function apart(a: ArrayLike<number>, b: ArrayLike<number>): number {
@@ -273,4 +274,90 @@ test("a split keeps the boot file flat: a surface and a skin are parts of their 
   const wall = splitPack(buildPack([{ ...tubeMesh(), lods: [tubeMesh().lods[1]!], flat: 1 }], defaultPalette(), [], [TUBE_RIG]), "wall");
   expect(parseManifest(JSON.stringify(wall.manifest)).meshes[0]!.levels.map((l) => [l.file, l.parts.length, l.surface?.file])).toEqual([[0, 3, 1]]);
   expect(parsePack(wall.files[0]!.bytes).header.meshes[0]!.lods[0]!.surfaceOffset).toBeUndefined();
+});
+
+test("a glTF export with texture coordinates, normals and a skin becomes a mesh drawn with materials", () => {
+  const palette = defaultPalette();
+  const tube = tubeMesh();
+  const report = importGlb(tubeGlb(), TUBE, palette, { skeleton: TUBE, rig: TUBE, bones: TUBE_RIG.names });
+  const [fine, want] = [report.mesh.lods[0]!, tube.lods[0]!];
+  expect(report.warnings).toEqual([]);
+  expect([report.mesh.skeleton, report.mesh.rig, report.mesh.flat, report.mesh.textures]).toEqual([TUBE, TUBE, 1, undefined]);
+  // Each primitive is a section with its material. The pictures are for whoever has them to name.
+  expect(report.mesh.materials).toEqual(tube.materials!.map((m) => ({ ...m, base: -1, normal: -1, mro: -1, mask: -1, mask2: -1, grey: 1 })));
+  expect([fine.indices, fine.sections, fine.bones, fine.joints, fine.tangents]).toEqual([want.indices, want.sections!, want.bones!, want.joints!, undefined]);
+  expect(Math.max(apart(fine.positions, want.positions), apart(fine.uvs!, want.uvs!), apart(fine.normals!, want.normals!), apart(fine.weights!, want.weights!))).toBeLessThan(1e-6);
+  // The export had one level, so the coarser ones are made here, flat.
+  expect(report.mesh.lods.length).toBeGreaterThan(2);
+  const pack = parsePack(buildPack([report.mesh], palette, [], [TUBE_RIG]));
+  expect(pack.header.meshes[0]!.lods.map((l) => [l.surfaceOffset !== undefined, l.skinOffset !== undefined])).toEqual(report.mesh.lods.map((_, level) => [level === 0, level === 0]));
+
+  // Without a skeleton to follow, the skin is left out and said to be.
+  const rigid = importGlb(tubeGlb(), TUBE, palette);
+  expect([rigid.warnings, rigid.mesh.skeleton, rigid.mesh.lods[0]!.bones, rigid.mesh.lods[0]!.joints, rigid.mesh.flat]).toEqual([["it has a skin, which is not read without a skeleton to follow"], undefined, undefined, undefined, 1]);
+});
+
+test("the importer says what it dropped and what it put right", () => {
+  const corners = Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  const up = Float32Array.from([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+  // Six joints, the last hanging on the fifth and not a bone of the rig. The first vertex is weighted to five bones,
+  // the second to none, and the third twice to joints that are one bone. One coordinate pair is off the picture.
+  const skinned = writeGlb(
+    {
+      scenes: [{ nodes: [0, 1, 2, 3, 4, 5] }],
+      nodes: [{ name: "body", mesh: 0, skin: 0 }, ...["a", "b", "c", "d"].map((name) => ({ name })), { name: "e", children: [6] }, { name: "tip" }],
+      skins: [{ joints: [1, 2, 3, 4, 5, 6] }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1, TEXCOORD_0: 2, JOINTS_0: 3, WEIGHTS_0: 4, JOINTS_1: 5, WEIGHTS_1: 6 }, material: 0 }] }],
+      materials: [{ name: "glass", alphaMode: "BLEND" }],
+    },
+    [
+      [corners, "VEC3"], [up, "VEC3"], [Float32Array.from([0, 0, 1.5, -0.25, 0, 1]), "VEC2"],
+      [Uint8Array.from([0, 1, 2, 3, 0, 0, 0, 0, 4, 5, 0, 0]), "VEC4"], [Float32Array.from([0.3, 0.25, 0.2, 0.15, 0, 0, 0, 0, 0.5, 0.5, 0, 0]), "VEC4"],
+      [Uint8Array.from([4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), "VEC4"], [Float32Array.from([0.1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), "VEC4"],
+    ],
+  );
+  const report = importGlb(skinned, "t:tri", defaultPalette(), { skeleton: "t", bones: ["a", "b", "c", "d", "e"] });
+  expect(report.warnings).toEqual([
+    'material "glass" blends, which is not drawn: read as solid',
+    "2 texture coordinates lay outside the picture: held at its edge",
+    "1 vertices were weighted to more than four bones: the lightest were dropped",
+    "1 vertices had no weights: they follow the first bone",
+  ]);
+  const lod = report.mesh.lods[0]!;
+  expect([[...lod.uvs!], [...lod.bones!], [...lod.joints!]]).toEqual([[0, 0, 1, 0, 0, 1], [0, 0, 4], [0, 1, 2, 3, 0, 0, 0, 0, 4, 0, 0, 0]]);
+  expect(apart(lod.weights!, [1 / 3, 0.25 / 0.9, 0.2 / 0.9, 0.15 / 0.9, 1, 0, 0, 0, 1, 0, 0, 0])).toBeLessThan(1e-6);
+
+  // A skinned vertex rests where its joints put it. Here they sit away from the origin, their inverse bind matrices
+  // double the mesh and lift it by one, and the mesh's own node, which glTF says to pass over, is far off.
+  const joints = [[3, 0, 0], [0, 5, 1]];
+  const bound = writeGlb(
+    {
+      scenes: [{ nodes: [0, 1, 2] }],
+      nodes: [{ name: "body", mesh: 0, skin: 0, translation: [100, 100, 100] }, { name: "a", translation: joints[0] }, { name: "b", translation: joints[1] }],
+      skins: [{ joints: [1, 2], inverseBindMatrices: 5 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1, TEXCOORD_0: 2, JOINTS_0: 3, WEIGHTS_0: 4 } }] }],
+    },
+    [
+      [corners, "VEC3"], [up, "VEC3"], [Float32Array.from([0, 0, 1, 0, 0, 1]), "VEC2"],
+      [Uint8Array.from([0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0]), "VEC4"], [Float32Array.from([0.5, 0.5, 0, 0, 0.25, 0.75, 0, 0, 1, 0, 0, 0]), "VEC4"],
+      [Float32Array.from(joints.flatMap(([x, y, z]) => [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, -x!, 1 - y!, -z!, 1])), "MAT4"],
+    ],
+  );
+  const rested = importGlb(bound, "t:tri", defaultPalette(), { skeleton: "t" }).mesh.lods[0]!;
+  expect([[...rested.positions], [...rested.bones!], [...rested.joints!], [...rested.weights!]]).toEqual([[0, 1, 0, 2, 1, 0, 0, 3, 0], [0, 1, 1], [0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], [0.5, 0.5, 0, 0, 0.75, 0.25, 0, 0, 1, 0, 0, 0]]);
+
+  // A mirrored node keeps its normal pointing out, turns its winding back, and has its bitangent on the other side.
+  // Beside a primitive with no tangents it loses its own, and beside one with no normals its level is drawn flat.
+  const parts = (second: object): Uint8Array =>
+    writeGlb(
+      { scenes: [{ nodes: [0] }], nodes: [{ name: "wall", mesh: 0, scale: [-2, 1, 1] }], meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1, TEXCOORD_0: 2, TANGENT: 3 } }, ...[second].filter((p) => "attributes" in p)] }] },
+      [[corners, "VEC3"], [up, "VEC3"], [Float32Array.from([0, 1, 1, 1, 0, 0]), "VEC2"], [Float32Array.from([1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1]), "VEC4"]],
+    );
+  const mirrored = importGlb(parts({}), "t:wall", defaultPalette()).mesh.lods[0]!;
+  expect([[...mirrored.positions], [...mirrored.indices], [...mirrored.tangents!]]).toEqual([[0, 0, 0, -2, 0, 0, 0, 1, 0], [0, 2, 1], [-1, 0, 0, -1, -1, 0, 0, -1, -1, 0, 0, -1]]);
+  expect(apart(mirrored.normals!, up)).toBe(0);
+  const mixed = importGlb(parts({ attributes: { POSITION: 0, NORMAL: 1, TEXCOORD_0: 2 } }), "t:wall", defaultPalette());
+  expect([mixed.warnings, mixed.mesh.flat, mixed.mesh.lods[0]!.tangents]).toEqual([["level 0: only some of it has tangents, so all of them are worked out"], 1, undefined]);
+  const bare = importGlb(parts({ attributes: { POSITION: 0, TEXCOORD_0: 2 } }), "t:wall", defaultPalette());
+  expect([bare.warnings, bare.mesh.flat, bare.mesh.materials, bare.mesh.lods[0]!.uvs]).toEqual([["level 0: only some of it has texture coordinates and normals, so it is drawn flat"], undefined, undefined, undefined]);
 });
