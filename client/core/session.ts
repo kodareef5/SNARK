@@ -173,8 +173,13 @@ const HISTORY = 128;
 export const REMOTE_DELAY = 2;
 /** Ticks the client starts ahead of the server before any feedback. */
 const INITIAL_LEAD = 4;
-/** Inputs the server should have in hand when it needs one. */
-const TARGET_MARGIN = 2;
+/**
+ * The clock steers on the margins of the last MARGIN_WINDOW ticks of snapshots: the server should have had at least
+ * TARGET_MARGIN inputs in hand each time, and never more than MARGIN_CAP, because it judges shots on a few (REWIND_SLACK).
+ */
+const TARGET_MARGIN = 1;
+const MARGIN_CAP = 5;
+const MARGIN_WINDOW = 90;
 const MAX_STEPS_PER_UPDATE = 8;
 /** Time constant of the fade that hides a correction, and the largest correction hidden, in metres. */
 const SMOOTH_MS = 90;
@@ -364,6 +369,9 @@ export class ClientSession {
   private lastNow = -1;
   private dilation = 1;
   private guardTick = 0;
+  /** The margins reported, by their snapshot's tick. */
+  private readonly margins = new Int8Array(128);
+  private readonly marginAt = new Uint32Array(128);
   private needFull = true;
   private commandSeq = 0;
   /** What `view` last asked the server for. */
@@ -959,15 +967,37 @@ export class ClientSession {
     if (lag > 6 || lag < -6) this.renderClock = tick;
     else this.renderClock += lag * 0.1;
 
-    // The input clock keeps the server's margin near the target, once the server has one to report.
+    // The input clock keeps the server's margin near the target, once the server has one to report. A stall that held
+    // inputs back lowers the least margin for a few seconds and speeds the clock gently; it is not a reason to jump.
     if (margin !== MARGIN_UNKNOWN) {
       this.stats.margin = margin;
       // At either end of its range the margin is a bound, not a measurement.
       if (margin > -127 && margin < 127) this.stats.rttTicks = this.simTick - tick - margin;
       if (this.simTick >= this.guardTick) {
-        const error = TARGET_MARGIN - margin;
-        if (error >= 3 || error <= -6) {
-          this.tickClock += error;
+        this.margins[tick & 127] = margin;
+        this.marginAt[tick & 127] = tick;
+        // The least and most of the window, and of its last quarter second.
+        let lo = 127;
+        let hi = -127;
+        let nowLo = 127;
+        let nowHi = -127;
+        let n = 0;
+        for (let i = 0; i < 128; i++) {
+          if (this.marginAt[i] === 0 || this.marginAt[i]! + MARGIN_WINDOW <= tick) continue;
+          const m = this.margins[i]!;
+          if (m < lo) lo = m;
+          if (m > hi) hi = m;
+          if (this.marginAt[i]! + 8 > tick) {
+            if (m < nowLo) nowLo = m;
+            if (m > nowHi) nowHi = m;
+            n++;
+          }
+        }
+        // Far off is every input late for a quarter second, or every one early. That moves the best of them, or the worst, to the target.
+        const behind = n >= 4 && nowHi < 0;
+        if (behind || (n >= 4 && nowLo >= TARGET_MARGIN + 7)) {
+          this.marginAt.fill(0);
+          this.tickClock += TARGET_MARGIN - (behind ? nowHi : nowLo);
           this.dilation = 1;
           this.stats.clockJumps++;
           // Simulated far past the new time. Waiting for the clock would freeze the player, so start again here.
@@ -983,7 +1013,8 @@ export class ClientSession {
           const wait = Math.ceil(this.stats.rttTicks);
           this.guardTick = Math.floor(this.tickClock) + (wait < 0 ? 0 : wait > TICK_RATE ? TICK_RATE : wait) + 2;
         } else {
-          this.dilation = 1 + (error > 2 ? 2 : error < -2 ? -2 : error) * 0.01;
+          const e = Math.min(TARGET_MARGIN - lo, MARGIN_CAP - hi);
+          this.dilation = 1 + (e > 2 ? 2 : e < -1 ? -1 : e) * 0.01;
         }
       }
     }
