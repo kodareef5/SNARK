@@ -388,6 +388,8 @@ const GRIDS: readonly (readonly [number, number])[] = [[4, 4], [4, 3], [3, 4], [
 /** For each grid and each pixel: the four stored weights it blends, and sixteenths of each. */
 const GRID_AT: Uint8Array[] = [];
 const GRID_BY: Uint8Array[] = [];
+/** For each grid and each stored weight, the pixels it reaches. */
+const GRID_REACH: Uint8Array[][] = [];
 /** For each grid, the matrix that turns 16 wanted pixel weights into the stored weights that come closest to them. */
 const GRID_INVERSE: Float64Array[] = [];
 
@@ -416,6 +418,7 @@ for (const [N, M] of GRIDS) {
   }
   GRID_AT.push(at);
   GRID_BY.push(by);
+  GRID_REACH.push(Array.from({ length: count }, (_, j) => Uint8Array.from([...Array(16).keys()].filter((i) => [0, 1, 2, 3].some((k) => by[i * 4 + k] > 0 && at[i * 4 + k] === j)))));
   // Least squares: solve (A' A) X = A', where row i of A holds pixel i's sixteenths.
   const A = new Float64Array(16 * count);
   for (let i = 0; i < 16; i++) for (let k = 0; k < 4; k++) A[i * count + at[i * 4 + k]] += by[i * 4 + k] / 16;
@@ -591,7 +594,12 @@ function invalid(out: Uint16Array): boolean {
 }
 
 /** Decodes the block at `blocks[at]` to 16 pixels of red, green, blue and alpha as the 16-bit results of C.2.19, rows
- *  top to bottom. Returns false, with the error colour in `out`, for a block the format does not allow.
+ *  top to bottom. Returns false, with the error colour in `out`, for a block the format does not allow. It also
+ *  returns false for a block with a high dynamic range mode in some partition: those pixels are the error colour and
+ *  the others are decoded, as C.2.24 asks of this profile.
+ *
+ *  This reads everything a 4 by 4 low dynamic range block can be: every weight grid and range, one or two planes,
+ *  one to four partitions with one mode or a mode each, all ten endpoint modes, and void-extent blocks.
  *
  *  `srgb` chooses how an end colour's 8 bits become 16 before they are blended: with 0x80 under them, as the sRGB
  *  format does, or repeated. The specification keeps alpha out of the first; the GPU this was checked on does not,
@@ -1055,6 +1063,7 @@ function offer(cost: number, f: Fit, g: number, wRange: number, cRange: number, 
 function consider(f: Fit, g: number, keep: number): void {
   const pairs = CONFIGS[((f.parts - 1) * 4 + channels - 1) * 2 + (f.second >= 0 ? 1 : 0)]![g]!;
   if (pairs.length === 0) return;
+  // Ends under 30 levels apart can be stored as base and offset, which is a bit finer.
   let longest = 0;
   for (let p = 0; p < f.parts; p++) longest = Math.max(longest, f.len2[p], f.len2[4 + p]);
   const ends = 16 * cwSum * COLOUR_SHARE * (longest < 900 ? SHORT_SHARE : 1);
@@ -1404,31 +1413,32 @@ function wantWeights(f: Fit): void {
   }
 }
 
-/** The squared error of the trial as it stands, against the pixels a GPU would show. */
-function trialError(f: Fit): number {
-  const { part, second } = f;
+/** The squared error of pixel `i` as the trial stands, against what a GPU would show. */
+function pixelError(f: Fit, i: number): number {
+  const e = f.part[i] * 8;
+  const o = i * 4;
   let error = 0;
-  for (let i = 0; i < 16; i++) {
-    const e = part[i] * 8;
-    const o = i * 4;
-    for (let c = 0; c < channels; c++) {
-      const ch = chan[c];
-      const w = tWeight[c === second ? 16 + i : i];
-      const d = shown[tEnds[e + ch] * (64 - w) + tEnds[e + 4 + ch] * w] - px[o + ch];
-      error += cw[c] * d * d;
-    }
+  for (let c = 0; c < channels; c++) {
+    const ch = chan[c];
+    const w = tWeight[c === f.second ? 16 + i : i];
+    const d = shown[tEnds[e + ch] * (64 - w) + tEnds[e + 4 + ch] * w] - px[o + ch];
+    error += cw[c] * d * d;
   }
   return error;
 }
 
-/** The weight each pixel gets from the weights stored for a smaller grid, for the plane that starts at `o`. */
-function infill(g: number, o: number): void {
+function trialError(f: Fit): number {
+  let error = 0;
+  for (let i = 0; i < 16; i++) error += pixelError(f, i);
+  return error;
+}
+
+/** Works out the weight of pixel `i` from the weights stored for a smaller grid, for the plane that starts at `o`. */
+function infill(g: number, o: number, i: number): void {
   const at = GRID_AT[g];
   const by = GRID_BY[g];
-  for (let i = 0; i < 16; i++) {
-    const k = i * 4;
-    tWeight[o + i] = (tStored[o + at[k]] * by[k] + tStored[o + at[k + 1]] * by[k + 1] + tStored[o + at[k + 2]] * by[k + 2] + tStored[o + at[k + 3]] * by[k + 3] + 8) >> 4;
-  }
+  const k = i * 4;
+  tWeight[o + i] = (tStored[o + at[k]] * by[k] + tStored[o + at[k + 1]] * by[k + 1] + tStored[o + at[k + 2]] * by[k + 2] + tStored[o + at[k + 3]] * by[k + 3] + 8) >> 4;
 }
 
 /** Keeps the trial as it stands if it is the best block so far. */
@@ -1485,28 +1495,36 @@ function trial(f: Fit, g: number, wRange: number, cRange: number): void {
   tValues.set(rValues);
   tStored.set(rStored);
   endColours(tCem, tValues, 0, tEnds, 0);
-  for (let plane = 0; plane < planes; plane++) infill(g, plane * 16);
-  const count = GRIDS[g]![0] * GRIDS[g]![1];
+  for (let i = 0; i < planes * 16; i++) infill(g, i & 16, i & 15);
+  const reaches = GRID_REACH[g]!;
   const below = WEIGHT_BELOW[wRange];
   const above = WEIGHT_ABOVE[wRange];
   for (let plane = 0; plane < planes; plane++) {
     const o = plane * 16;
-    for (let j = 0; j < count; j++) {
+    for (let j = 0; j < reaches.length; j++) {
+      const reach = reaches[j]!;
       const was = tStored[o + j];
+      let before = 0;
+      for (let n = 0; n < reach.length; n++) before += pixelError(f, reach[n]);
       let best = was;
+      let after = before;
       for (let side = 0; side < 2; side++) {
         const v = side ? above[was] : below[was];
         if (v === was) continue;
         tStored[o + j] = v;
-        infill(g, o);
-        const error = trialError(f);
-        if (error < least) {
-          least = error;
+        let error = 0;
+        for (let n = 0; n < reach.length; n++) {
+          infill(g, o, reach[n]);
+          error += pixelError(f, reach[n]);
+        }
+        if (error < after) {
+          after = error;
           best = v;
         }
       }
       tStored[o + j] = best;
-      infill(g, o);
+      for (let n = 0; n < reach.length; n++) infill(g, o, reach[n]);
+      least += after - before;
     }
   }
   keep(f, g, wRange, cRange, least);
@@ -1699,8 +1717,9 @@ function writeBest(out: Uint8Array, at: number): void {
 const LINE_TRIALS = 6;
 /** A block is not searched further once its mean squared error per channel is below this, */
 const GOOD_ENOUGH = 0.25;
-/** and has every partition pattern fitted if it is still above this. */
+/** and has every partition pattern fitted if it is still above this and has no more colours than these. */
 const BAD = 48;
+const FEW_COLOURS = 4;
 
 /** Encodes the block in `px`. */
 function encodeBlock(kind: AstcKind, out: Uint8Array, at: number): void {
@@ -1749,11 +1768,20 @@ function encodeBlock(kind: AstcKind, out: Uint8Array, at: number): void {
   }
   for (let k = 0; k < lines; k++) for (let g = 1; g < GRIDS.length; g++) consider(fits[k]!, g, LINE_TRIALS);
   runCandidates();
-  // More partitions, while the block is not yet good. A block that stays bad has every pattern fitted.
+  // More partitions, while the block is not yet good. A block of a few flat colours that stays bad has every pattern
+  // fitted: a mask is like that, and somewhere there may be a pattern that puts no more than two colours in a
+  // partition, which is exact.
   const good = 16 * cwSum * GOOD_ENOUGH;
   const bad = 16 * cwSum * BAD;
-  if (bestError > good) tryPartitions(2, line, bestError > bad ? 1024 : 8, 2, 4);
-  if (bestError > good && channels < 4) tryPartitions(3, line, bestError > bad ? 1024 : 6, 2, 3);
+  let colours = 0;
+  for (let i = 0; i < 64 && bestError > bad; i += 4) {
+    let j = 0;
+    while (j < i && (px[j] !== px[i] || px[j + 1] !== px[i + 1] || px[j + 2] !== px[i + 2] || px[j + 3] !== px[i + 3])) j += 4;
+    if (j === i) colours++;
+  }
+  const every = bestError > bad && colours <= FEW_COLOURS;
+  if (bestError > good) tryPartitions(2, line, every ? 1024 : 8, 2, 4);
+  if (bestError > good && channels < 4) tryPartitions(3, line, every && bestError > bad ? 1024 : 6, 2, 3);
   writeBest(out, at);
 }
 
