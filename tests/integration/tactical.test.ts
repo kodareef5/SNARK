@@ -9,6 +9,7 @@ import { defaultLook } from "../../shared/anim/look.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { CMD_MAP_ZOOM } from "../../shared/net/protocol.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { MARK_MATE, MARK_OTHER, MARK_TAME, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW } from "../../shared/world/tactical.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -167,4 +168,75 @@ test("cells come at the size that suits the zoom a client shows, nearest first, 
   h.run(3000);
   expect(stats.cells).toBe(sent);
   expect(a.tactical.chunks.get(far)!.level).toBe(0);
+});
+
+test("a mate two kilometres off and its tame are marked, a stranger is not unless the rule says so, and a still tribe costs almost nothing", () => {
+  const { h, world, join, put } = wide();
+  const [a, b, c] = [join("ada"), join("bo"), join("cy")];
+  h.run(500);
+  const records = h.host.records;
+  const rec = (s: ClientSession) => records.byPid.get(h.client(s)!.pid)!;
+  expect(h.host.tribes.create(rec(a), "Night Shift")).toBe("");
+  expect(h.host.tribes.invite(rec(a), rec(b), true)).toBe("");
+  expect(h.host.tribes.accept(rec(b))).toBe("");
+  put(b, 2150, 100);
+  put(c, 130, 130);
+  h.run(2000);
+  const marks = a.tactical.marks;
+  const seen = (m = marks) => Array.from({ length: m.count }, (_, i) => ({ kind: m.kind[i]!, x: Math.round(m.x[i]!), z: Math.round(m.z[i]!), self: i === m.self }));
+  expect(seen()).toEqual([{ kind: MARK_MATE, x: Math.round(a.own.x), z: Math.round(a.own.z), self: true }, { kind: MARK_MATE, x: 2150, z: 100, self: false }]);
+  expect(marks.players).toBe(PLAYERS_OFF);
+  // The stranger is sent itself and nobody else.
+  expect(seen(c.tactical.marks)).toEqual([{ kind: MARK_MATE, x: 130, z: 130, self: true }]);
+
+  // A creature the far mate tames is on both their maps at the next listing, ten seconds apart at most.
+  const e = h.host.spawnCreature("core:dummy", 2140, 110, 1);
+  expect(h.host.taming.give(records.byPid.get(world.ents.pid[e]!)!, rec(b), 0, "forced")).toBe(true);
+  h.run(11000);
+  expect(seen()[2]).toEqual({ kind: MARK_TAME, x: 2140, z: 110, self: false });
+  expect(seen().length).toBe(3);
+  expect(seen(c.tactical.marks).length).toBe(1);
+
+  // Nobody moves: each list is sent again only every five seconds, 17 bytes for three marks.
+  const stats = h.host.tactical.stats;
+  const [sent, bytes] = [stats.marks, stats.markBytes];
+  h.run(10000);
+  expect(stats.marks - sent).toBeLessThanOrEqual(6);
+  expect(stats.markBytes - bytes).toBeLessThanOrEqual(2 * (17 + 17 + 8));
+
+  // With the rule at "all" strangers are marked wherever they are, and the client is told which rule holds.
+  h.host.tactical.opts.players = "all";
+  h.run(1500);
+  expect(marks.players).toBe(PLAYERS_ALL);
+  expect(seen().filter((m) => m.kind === MARK_OTHER)).toEqual([{ kind: MARK_OTHER, x: 130, z: 130, self: false }]);
+  expect(seen(c.tactical.marks).filter((m) => m.kind === MARK_OTHER).length).toBe(2);
+  h.host.tactical.opts.players = "view";
+  h.run(1500);
+  expect(marks.players).toBe(PLAYERS_VIEW);
+  expect(seen().some((m) => m.kind === MARK_OTHER)).toBe(false);
+});
+
+test("a tribe with more marks than a message holds sends each member the 255 nearest to it", () => {
+  const { h, world, join, teamOf, put } = wide();
+  const [a, b] = [join("ada"), join("bo")];
+  h.run(500);
+  const rec = (s: ClientSession) => h.host.records.byPid.get(h.client(s)!.pid)!;
+  h.host.tribes.create(rec(a), "Herders");
+  h.host.tribes.invite(rec(a), rec(b), true);
+  h.host.tribes.accept(rec(b));
+  put(b, 2150, 100);
+  // 200 creatures stand around each of them.
+  for (const s of [a, b]) {
+    const at = world.ents.x[h.ent(s)]!;
+    for (let i = 0; i < 200; i++) world.ents.setTeam(h.host.spawnCreature("core:dummy", at - 40 + (i % 20) * 4, 140 + Math.floor(i / 20) * 4, 1), teamOf(a));
+  }
+  h.run(1500);
+  for (const s of [a, b]) {
+    const m = s.tactical.marks;
+    expect(m.count).toBe(255);
+    expect(m.self).toBe(255);
+    let near = 0;
+    for (let i = 0; i < m.count; i++) if (Math.abs(m.x[i]! - s.own.x) < 100) near++;
+    expect(near).toBe(200);
+  }
 });

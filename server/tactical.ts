@@ -1,11 +1,15 @@
 // The server's part of the map. Each chunk's structures are baked to cells (shared/world/tactical.ts) and sent to the clients
-// that may see them, so a base shows far beyond the view without a piece of it being sent. What each client holds is kept
-// here by client id.
+// that may see them, so a base shows far beyond the view without a piece of it being sent. Once a second each tribe's members
+// and creatures are sent to it as marks, wherever they are. What each client holds is kept here by client id.
 
 import { CHUNK_SIZE, TICK_RATE, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
-import { CMD_MAP_ZOOM, RESULT_INVALID, RESULT_OK, S_TACTICAL } from "../shared/net/protocol.ts";
-import type { Connection } from "../shared/net/transport.ts";
-import { Summary, TACTICAL_LEVELS, bakeChunk, onlyTeam, writeCells, type PieceShapes } from "../shared/world/tactical.ts";
+import { hashBytes } from "../shared/hash.ts";
+import { BitWriter } from "../shared/net/codec.ts";
+import { CMD_MAP_ZOOM, RESULT_INVALID, RESULT_OK, S_MARKS, S_TACTICAL } from "../shared/net/protocol.ts";
+import { CH_UNRELIABLE, type Connection } from "../shared/net/transport.ts";
+import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
+import type { MapExtent } from "../shared/world/coords.ts";
+import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, TACTICAL_LEVELS, bakeChunk, onlyTeam, writeCells, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -16,9 +20,12 @@ export interface TacticalOptions {
    * leaves. Its own tribe's show anywhere. 0 shows only its own tribe's.
    */
   tacticalRadius: number;
+  /** Whether survivors of other tribes are marked on a map: never, those in view, or all of them wherever they are. */
+  players: "off" | "view" | "all";
 }
 
-const DEFAULTS: TacticalOptions = { tacticalRadius: 512 };
+const DEFAULTS: TacticalOptions = { tacticalRadius: 512, players: "off" };
+const PLAYERS = { off: PLAYERS_OFF, view: PLAYERS_VIEW, all: PLAYERS_ALL };
 
 /** Ticks between two bakes of one chunk, the most chunks baked in a tick, and the most waiting chunks looked at in one. */
 const BAKE_EVERY = 5 * TICK_RATE;
@@ -26,6 +33,10 @@ const BAKES_PER_TICK = 4;
 const LOOKS_PER_TICK = 16;
 /** Bytes of cells sent to one client in a second. */
 const CELL_BYTES = 1024;
+/** Ticks between listing each tribe's creatures afresh, and the longest an unchanged list of marks goes unsent. */
+const TAMES_EVERY = 10 * TICK_RATE;
+const MARKS_REPEAT = 5 * TICK_RATE;
+const MARK_BITS = 36;
 
 /** Held.how: the level it was sent in the low two bits, whether it was sent every team's cells, and whether it has been within the radius. */
 const HOW_LEVEL = 3;
@@ -42,6 +53,10 @@ class Held {
   zoom = 0;
   /** Where among its tribe's chunks the next second starts. */
   cursor = 0;
+  /** The marks it was last sent, as their hash and their head, and when. */
+  marksKey = 0;
+  marksHead = -1;
+  marksAt = 0;
 
   constructor(chunks: number) {
     this.sent = new Uint32Array(chunks);
@@ -49,10 +64,41 @@ class Held {
   }
 }
 
+/** One tribe's marks for a second: its members with bodies in the order of their sessions, then its creatures, then anyone else the rule shows. */
+class TeamMarks {
+  n = 0;
+  kind = new Uint8Array(64);
+  x = new Float32Array(64);
+  z = new Float32Array(64);
+  yaw = new Uint16Array(64);
+  /** Every mark, written once for the whole tribe when they fit one message. `key` is their hash. */
+  readonly w = new BitWriter(Math.ceil((MAX_MARKS * MARK_BITS) / 8));
+  key = 0;
+
+  add(kind: number, x: number, z: number, yaw: number): void {
+    const n = this.n++;
+    if (n === this.kind.length) {
+      const grow = <T extends Uint8Array | Float32Array | Uint16Array>(a: T): T => {
+        const b = new (a.constructor as new (n: number) => T)(n * 2);
+        b.set(a);
+        return b;
+      };
+      this.kind = grow(this.kind);
+      this.x = grow(this.x);
+      this.z = grow(this.z);
+      this.yaw = grow(this.yaw);
+    }
+    this.kind[n] = kind;
+    this.x[n] = x;
+    this.z[n] = z;
+    this.yaw[n] = yaw;
+  }
+}
+
 export class Tactical {
   readonly opts: TacticalOptions;
-  /** Chunks baked, and S_TACTICAL messages and bytes sent. */
-  readonly stats = { bakes: 0, cells: 0, cellBytes: 0 };
+  /** Chunks baked, S_TACTICAL messages and bytes sent, and S_MARKS messages and bytes sent. */
+  readonly stats = { bakes: 0, cells: 0, cellBytes: 0, marks: 0, markBytes: 0 };
   /** Per chunk, or null for one that has never held a structure. */
   readonly summaries: (Summary | null)[];
 
@@ -74,6 +120,17 @@ export class Tactical {
   /** Chunk offsets within `ringFor` metres and a chunk more, nearest first. */
   private ring: Int16Array = new Int16Array(0);
   private ringFor = -1;
+  /** Entity indices of each tribe's creatures, as of `tamesAt`. */
+  private readonly tames = new Map<number, number[]>();
+  private tamesAt = -TAMES_EVERY;
+  private readonly marksOf = new Map<number, TeamMarks>();
+  private readonly spare: TeamMarks[] = [];
+  /** Per client: its team this second, and its own place among that team's marks, or -1. */
+  private readonly teamOf: Uint32Array;
+  private readonly selfAt: Int32Array;
+  /** Scratch for a tribe with more marks than a message holds: each mark's distance from the reader, and those sorted. */
+  private far = new Float64Array(0);
+  private sorted = new Float64Array(0);
 
   constructor(world: ServerWorld, game: GameServer, records: Records, opts: Partial<TacticalOptions> = {}) {
     this.world = world;
@@ -85,6 +142,8 @@ export class Tactical {
     const chunks = chunkCount(world.dims);
     this.summaries = new Array<Summary | null>(chunks).fill(null);
     this.held = new Array<Held | null>(game.clients.length).fill(null);
+    this.teamOf = new Uint32Array(game.clients.length);
+    this.selfAt = new Int32Array(game.clients.length);
     this.seen = new Uint32Array(chunks);
     this.bakedAt = new Uint32Array(chunks);
     this.queued = new Uint8Array(chunks);
@@ -103,8 +162,9 @@ export class Tactical {
   sync(c: Client): void {
     const T = this.world.tick;
     if (T !== this.steppedAt) this.step(T);
-    // Each session's second starts on a tick of its own.
+    // Each session's second for cells starts on a tick of its own. Marks are made for everyone on the same tick.
     if ((T + c.id * 7) % TICK_RATE === 0) this.sendCells(c, this.of(c));
+    if (T % TICK_RATE === 0) this.sendMarks(c, this.of(c), T);
   }
 
   private of(c: Client): Held {
@@ -117,14 +177,19 @@ export class Tactical {
       h.how.fill(0);
       h.zoom = 0;
       h.cursor = 0;
+      h.marksHead = -1;
     }
     return h;
   }
 
-  /** Once a tick: notice changed chunks every second, and bake a few of those waiting. */
+  /** Once a tick: every second notice changed chunks and make the marks, and bake a few of the chunks waiting. */
   private step(T: number): void {
     this.steppedAt = T;
-    if (T % TICK_RATE === 0) this.sweep();
+    if (T % TICK_RATE === 0) {
+      this.sweep();
+      if (T - this.tamesAt >= TAMES_EVERY) this.listTames(T);
+      this.mark();
+    }
     let baked = 0;
     for (let n = Math.min(this.queue.length, LOOKS_PER_TICK); n > 0 && baked < BAKES_PER_TICK; n--) {
       const chunk = this.queue.shift()!;
@@ -240,6 +305,110 @@ export class Tactical {
     this.stats.cells++;
     this.stats.cellBytes += w.byteLength;
     return budget - w.byteLength;
+  }
+
+  /** A tribe's creatures are found by a pass over every entity, so the list is made seldom. One tamed since shows at the next. */
+  private listTames(T: number): void {
+    this.tamesAt = T;
+    this.tames.clear();
+    const { team, flags } = this.world.ents;
+    for (let e = 0; e < team.length; e++) {
+      const t = team[e]!;
+      if (t === 0 || (flags[e]! & (F_ALIVE | F_PLAYER | F_PROP)) !== F_ALIVE) continue;
+      const list = this.tames.get(t);
+      if (list) list.push(e);
+      else this.tames.set(t, [e]);
+    }
+  }
+
+  /** Makes this second's marks for every tribe with a session. */
+  private mark(): void {
+    const ents = this.world.ents;
+    const clients = this.game.clients;
+    for (const m of this.marksOf.values()) this.spare.push(m);
+    this.marksOf.clear();
+    for (const c of clients) {
+      if (!c?.active) continue;
+      const team = this.records.byPid.get(c.pid)?.team ?? 0;
+      this.teamOf[c.id] = team;
+      this.selfAt[c.id] = -1;
+      if (team === 0) continue;
+      let m = this.marksOf.get(team);
+      if (!m) {
+        m = this.spare.pop() ?? new TeamMarks();
+        m.n = 0;
+        this.marksOf.set(team, m);
+      }
+      if (c.ent < 0) continue;
+      this.selfAt[c.id] = m.n;
+      m.add(MARK_MATE, ents.x[c.ent]!, ents.z[c.ent]!, ents.yaw[c.ent]!);
+    }
+    const everyone = this.opts.players === "all";
+    for (const [team, m] of this.marksOf) {
+      for (const e of this.tames.get(team) ?? []) {
+        // It may have died or changed hands since the list was made.
+        if (ents.team[e] === team && (ents.flags[e]! & (F_ALIVE | F_PLAYER | F_PROP)) === F_ALIVE) m.add(MARK_TAME, ents.x[e]!, ents.z[e]!, ents.yaw[e]!);
+      }
+      if (everyone) for (const c of clients) if (c?.active && c.ent >= 0 && this.teamOf[c.id] !== team) m.add(MARK_OTHER, ents.x[c.ent]!, ents.z[c.ent]!, ents.yaw[c.ent]!);
+      if (m.n > MAX_MARKS) continue;
+      const w = m.w;
+      w.reset();
+      for (let i = 0; i < m.n; i++) writeMark(w, m.kind[i]!, m.x[i]!, m.z[i]!, m.yaw[i]!, this.world.hf);
+      m.key = hashBytes(w.bytes());
+    }
+  }
+
+  /** Sends a session its tribe's marks if they changed, or if it has not been sent any for a while. They may be lost on the way. */
+  private sendMarks(c: Client, h: Held, T: number): void {
+    const m = this.marksOf.get(this.teamOf[c.id]!);
+    let self = this.selfAt[c.id]!;
+    let count = m ? m.n : 0;
+    if (m && count > MAX_MARKS) {
+      // More than a message holds, so this reader gets the nearest to it, written for it alone.
+      this.nearest(m, self, c.body, this.world.hf);
+      count = MAX_MARKS;
+      self = -1;
+    }
+    const players = PLAYERS[this.opts.players];
+    const head = (self < 0 ? 255 : self) | (h.zoom << 8) | (players << 10) | (count << 12);
+    const key = m ? m.key : 0;
+    if (key === h.marksKey && head === h.marksHead && T - h.marksAt < MARKS_REPEAT) return;
+    const w = this.game.begin(S_MARKS);
+    writeMarksHead(w, head & 255, h.zoom, players, count);
+    // The head ends on a byte, so the tribe's marks follow as they were written.
+    if (m) for (const b of m.w.bytes()) w.u8(b);
+    c.conn.send(CH_UNRELIABLE, w.bytes());
+    h.marksKey = key;
+    h.marksHead = head;
+    h.marksAt = T;
+    this.stats.marks++;
+    this.stats.markBytes += w.byteLength;
+  }
+
+  /** Writes the MAX_MARKS of `m` nearest to `at`, leaving out the reader's own, in place of the whole tribe's. */
+  private nearest(m: TeamMarks, self: number, at: { x: number; z: number }, map: MapExtent): void {
+    if (this.far.length < m.n) {
+      this.far = new Float64Array(m.kind.length);
+      this.sorted = new Float64Array(m.kind.length);
+    }
+    const far = this.far;
+    for (let i = 0; i < m.n; i++) {
+      const dx = m.x[i]! - at.x;
+      const dz = m.z[i]! - at.z;
+      far[i] = i === self ? Infinity : dx * dx + dz * dz;
+    }
+    const sorted = this.sorted.subarray(0, m.n);
+    sorted.set(far.subarray(0, m.n));
+    sorted.sort();
+    const reach = sorted[MAX_MARKS - 1]!;
+    const w = m.w;
+    w.reset();
+    for (let i = 0, n = 0; i < m.n && n < MAX_MARKS; i++) {
+      if (far[i]! > reach) continue;
+      writeMark(w, m.kind[i]!, m.x[i]!, m.z[i]!, m.yaw[i]!, map);
+      n++;
+    }
+    m.key = hashBytes(w.bytes());
   }
 }
 
