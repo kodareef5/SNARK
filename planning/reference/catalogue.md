@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 39 classes: 24 built, 4 partly built, and 11 stubs that
-wait for a feature. The core pack holds 244 definitions, and 77 renames of ids
+wait for a feature. The core pack holds 246 definitions, and 77 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -117,7 +117,7 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 | --- | --- | --- | --- | --- | --- |
 | `species` | a character | a group |  |  |  |
 | `species/survivor` | the player's character | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats`, `equips` | `crouch`, `prone`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `fists`, `drops`, `takes`, `zones`, `killXp`, `torporDrain` | 1 |
-| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `keeps`, `fists`, `bite`, `drops`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `regions`, `mutations`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 3 |
+| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `keeps`, `fists`, `bite`, `drops`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `regions`, `mutations`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 4 |
 | `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `still` | `stats`, `equips`, `slots`, `zones`, `takes`, `torporDrain`, `crouch`, `prone`, `stamina`, `fists`, `food`, `drops`, `killXp` | 1 |
 
 - **`species`** on shelf `species`. A kind of body that lives.
@@ -215,7 +215,7 @@ Packs may add to: `yields`.
 | `prop` | an actor that is not alive | a group |  |  |  |
 | `prop/container` | a death cache, a dropped bag | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 2 |
 | `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 2 |
-| `prop/egg` | a dropped fertilised egg | built | `mesh`, `color`, `radius`, `height` |  | 2 |
+| `prop/egg` | a dropped fertilised egg | built | `mesh`, `color`, `radius`, `height` |  | 3 |
 | `prop/crate` | SupplyCrate_ | stub: loot | `mesh`, `color`, `radius`, `height` | `slots` | 0 |
 
 - **`prop`** on shelf `props`. Stands in the world and neither moves nor lives.
@@ -359,7 +359,7 @@ built.
 
 **`species/survivor`** (1): survivor.
 
-**`species/creature`** (3): grazer, parasaur, raptor.
+**`species/creature`** (4): dodo, grazer, parasaur, raptor.
 
 **`species/target`** (1): dummy.
 
@@ -383,7 +383,7 @@ built.
 
 **`prop/projectile`** (2): grenade_live, arrow_stuck.
 
-**`prop/egg`** (2): egg_parasaur, egg_raptor.
+**`prop/egg`** (3): egg_dodo, egg_parasaur, egg_raptor.
 
 **`buff`** (7): burning, tranquilized, drugged, stunned, injured, fed, god.
 

@@ -1,0 +1,124 @@
+{
+  "paintings": 14,
+  "archived_generations": 21,
+  "technical_sheets": 1,
+  "all_pngs_valid": true,
+  "selected_paintings_byte_identical_to_native_sources": true,
+  "all_prompts_and_reference_paths_present": true,
+  "design_copy_identical": true,
+  "dimension_copy_identical": true,
+  "finals": [
+    {
+      "file": "homestead_front.png",
+      "native_size": [
+        1536,
+        1024
+      ],
+      "sha256": "0b421cbf2f9dadf385debbfed913acb4c28c9375771211c3cc0dce3e6de4d5a6"
+    },
+    {
+      "file": "piece_foundation.png",
+      "native_size": [
+        1536,
+        1024
+      ],
+      "sha256": "f7b86a663b9cfe803943dc2feb514e64341d9cfc3d77d9196f74badfeb26e299"
+    },
+    {
+      "file": "piece_windowframe.png",
+      "native_size": [
+        1254,
+        1254
+      ],
+      "sha256": "4a6825d06d1e30968b7b4fdc5f7996e8036f9be47a281ea543e0655f93d2cd2e"
+    },
+    {
+      "file": "piece_ceiling_above.png",
+      "native_size": [
+        1536,
+        1024
+      ],
+      "sha256": "1afcfaa665064aeabc8fe86a4ca5eb05303bc3a1e55214735aff07e28ea2fd63"
+    },
+    {
+      "file": "piece_pillar.png",
+      "native_size": [
+        724,
+        2172
+      ],
+      "sha256": "ed1bc5ea69a4b9472a6b24915f760db299053a1c215e0c2a88fb3cbd317d74c2"
+    },
+    {
+      "file": "piece_door_shut.png",
+      "native_size": [
+        977,
+        1610
+      ],
+      "sha256": "d7fba14f79c522eaa155a90501f09baa22901be10bb9ee271b8d931bcc01316b"
+    },
+    {
+      "file": "piece_ceiling_below.png",
+      "native_size": [
+        1536,
+        1024
+      ],
+      "sha256": "9f30c48decc0fe7750f6c29ea753486cbe546574f70fdc0a7c33906836278f84"
+    },
+    {
+      "file": "piece_door_open.png",
+      "native_size": [
+        977,
+        1609
+      ],
+      "sha256": "48a833200d5a0d8728372dbb974de1ba4ed6fef7fbe4fe480e54b913f39b1e84"
+    },
+    {
+      "file": "homestead_above.png",
+      "native_size": [
+        1536,
+        1024
+      ],
+      "sha256": "9213714e0ddc90c204ff8e20900cd17fff7313de793d48a56989d72f82a1bdbf"
+    },
+    {
+      "file": "homestead_field.png",
+      "native_size": [
+        1536,
+        1024
+      ],
+      "sha256": "4781c52664c6bd3fc13581b55caa07b2642925d0de417c1dbb218fad39169cb9"
+    },
+    {
+      "file": "piece_wall.png",
+      "native_size": [
+        1312,
+        1199
+      ],
+      "sha256": "e4c709b25f809a4807d67a23a4a87e0765e5b9c709576f791409ed078689f38f"
+    },
+    {
+      "file": "piece_stairs.png",
+      "native_size": [
+        1536,
+        1024
+      ],
+      "sha256": "3d47e5ef9b4f1adf7b832553f5a6e285296637ff64fee3dae586b1d4c6313edd"
+    },
+    {
+      "file": "details.png",
+      "native_size": [
+        1448,
+        1086
+      ],
+      "sha256": "8e804f7202f7c7cb3f1af5de7c68717ae052c3d351523f70b7fd0a93de95596c"
+    },
+    {
+      "file": "piece_doorframe.png",
+      "native_size": [
+        1254,
+        1254
+      ],
+      "sha256": "07a5e0bc863df0906b00bb258ff776f43f713ce1743740a7fb9cd86d8f40d5f9"
+    }
+  ]
+}

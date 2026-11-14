@@ -1,13 +1,41 @@
 # Miami production state
 
-**Complete and accepted.** Run: 2026-11-14, 17:28–19:38 UTC, approximately 2 h 10 min.
+**Round three complete — 2026-11-14, 21:48 UTC.** All 85 final tiles and the
+20 replacement originals are in place. No production process remains running.
+No git command that writes was run.
 
-- Accepted: all 85 finished 1,024² RGB tiles under tiles/z0 through tiles/z3; 85 independently generated original paintings and their used prompts/context crops; original style sheet; full-resolution final masters.
-- Accepted: exact 8,128 m square and corners in map.json; source manifests and attribution; height, validity, water, roads, buildings, land cover, succession, flooding, bridge gaps, wrecks and canopy layers. Canonical 8,192² water/road/building/canopy masks preserve detail too fine for 2 m samples.
-- Verified: final visible water, road and building masks have IoU 1.000 and zero boundary error against native vector references at all zooms. Fine canonical masks match exactly. All tiles reconstruct their masters with zero changed pixels. Adjacent-zoom broad-colour mean errors are 0.978, 0.849 and 0.829 / 255.
-- Verified: 85 tile/original/prompt sets, required PNG dimensions and bit depths; SHA-256 inventory in checks/delivery_audit.json; canopy-source provenance; Python syntax. Offline viewer JavaScript syntax checked; automated browser launch was unavailable.
-- Visually reviewed: whole map at all scales, complete close-scale contact sheet, native downtown/island/port/beach/mangrove cases and joined-corner crops. No visible joins, lettering, borders or compass in final tiles.
-- Limits: the 2 m companions quantize very thin geometry. Use the fine masks or vectors for future world feature placement. Height gaps use explicit −1 m convention, not bathymetry. Source uncertainty and artistic compromises are detailed in REPORT.md. FEMA delivery attribution must accompany redistribution.
-- Next handoff: consume the accepted layers and tiles in the game's later world-building/map-screen work. No painting or finishing work remains in this task. Reproduction commands are in tools/mapart/README.md.
+- Water at z0–2 now has independently painted native detail and broad structure
+  from NOAA's 2015 Miami coastal elevation model. Its lossless subset, licence,
+  checksum, datum and georeference correction are retained. Existing world
+  layers and the engine coordinate conversion are unchanged.
+- Five far landmark stories are distinct: banyan arcade, unequal drowned
+  towers, reed bowl, stepped Deco gallery and mangrove tanks. The port sheds,
+  cranes, drowned ground, broken spans and accepted land passages remain.
+- Far mainland quays have a narrow varying ink line in place of the old dashed
+  double trace. Z2 land and z3 rooms/waves are retained; broad pigment is shared
+  across scales. All 64 z3 originals are byte-identical to round two.
+- Format/base audit passes: 85 RGB 1,024² tiles, 85 originals and prompts,
+  zero reconstruction error, all 21 existing base data artifacts unchanged.
+  All 140 joins checked: worst immediate ratio **1.2146**. Adjacent-zoom broad
+  RGB errors at sigma 8 are **0.909, 1.695, 0.580 /255**. Water-pigment IoU is
+  **0.981, 0.983, 0.993, 0.995**. Diagnostic limits are stated in REPORT.md.
+- Far registration rebuilt without caches exactly; three z2 registrations
+  match exactly in parameters and non-overlap interiors. A repeated complete
+  balance/export reproduces all 85 tile SHA-256 hashes.
+- Viewed both overviews side by side, all zooms and all tile contact sheets,
+  native water/rooms, landmarks, mainland quays, worst joins, pigment outliers
+  and representative marker overlays. Review evidence lives under
+  `reports/round3/`. The prior report is `reports/round2-report.md`.
 
-Historical checks/partial_z*.png and SIFT experiments are development diagnostics, not delivery tiles. All repository changes stay under assets/source/maps/miami and tools/mapart. Raw downloads and the tool virtual environment are ignored. No git write commands. Engine and build untouched.
+Use the **round-three** sequence in `tools/mapart/README.md`. Kept
+`paintings/z*/retained-paint.png` files are intentional inputs verified against
+the preceding 85 tiles. Frozen generation-time parents are also kept. Do not
+run historical round-one/two finishing entry points over the new originals.
+Ignored references, registration images and finishing masters can be rebuilt
+offline from the retained files; no new image call or git access is needed.
+
+The requested repaint is finished and ready for review. Remaining weaknesses
+are stated plainly in REPORT.md: peripheral small marks still repeat, far
+pictures change convention at close scale, small span breaks are subtle,
+historical depths do not establish modern dredging/coral/former shorelines,
+and the marker study is illustrative rather than an engine UI test.

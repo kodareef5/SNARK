@@ -1,0 +1,18 @@
+#!/bin/sh
+# A pre-push hook, not installed: it runs `bun run ci` on the commit each pushed branch or tag points at, and stops the
+# push if one fails. To use it in every worktree of a clone, from the top of the clone:
+#   ln -s "$PWD/tools/pre-push" "$(git rev-parse --git-path hooks)/pre-push"
+# `git push --no-verify` skips it once. Removing the link turns it off.
+
+seen=
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # A deleted branch or tag sends no commit.
+  case $local_sha in *[!0]*) ;; *) continue ;; esac
+  case " $seen " in *" $local_sha "*) continue ;; esac
+  seen="$seen $local_sha"
+  # ci must not read the lines meant for this loop.
+  if ! bun run ci -- "$local_sha" </dev/null; then
+    echo "pre-push: $local_ref fails bun run ci; nothing was pushed" >&2
+    exit 1
+  fi
+done

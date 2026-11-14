@@ -1,16 +1,49 @@
 // How the asset library asks for bytes and hears of them. Core decides what is wanted and in what order. A browser zone
-// fetches, checks and caches. Tests and the benchmark use a network made of numbers (tests/fixtures/assetnet.ts).
+// fetches, inflates, checks and caches. Tests and the benchmark use a network made of numbers (tests/fixtures/assetnet.ts).
+
+import { storedBytes, storedStep, type ManifestLevel, type ManifestTexture } from "../../../shared/pack/manifest.ts";
+import { stepBytes, type TextureFormat } from "../../../shared/pack/texture.ts";
 
 /** Why a part did not come: the network, bytes that do not have the hash listed, or a range the file does not have. */
 export const FAIL_NET = 1;
 export const FAIL_HASH = 2;
 export const FAIL_RANGE = 3;
 
-/** A run of bytes in a pack file, and the hash it must have. */
+/**
+ * A run of bytes in an asset file, and the hash its bytes must have. A part stored deflated (shared/pack/stored.ts)
+ * says how many bytes it inflates to, and the hash is of those.
+ */
 export interface AssetPart {
   offset: number;
   length: number;
   hash: string;
+  inflated?: number;
+}
+
+/** Parts `from` up to `to` of a level, where its file has them. */
+export function levelParts(level: ManifestLevel, from: number, to: number): AssetPart[] {
+  const out: AssetPart[] = [];
+  let at = level.at;
+  for (let k = 0; k < to; k++) {
+    const p = level.parts[k]!;
+    if (k === 1 && level.surface) at = level.surface.at;
+    if (k >= from) out.push(p.stored === undefined ? { offset: at, length: p.bytes, hash: p.hash } : { offset: at, length: p.stored, hash: p.hash, inflated: p.bytes });
+    at += storedBytes(p);
+  }
+  return out;
+}
+
+/** Steps 0 to `last` of a texture in a variant it has, where its file has them. */
+export function textureParts(tex: ManifestTexture, format: TextureFormat, last: number): AssetPart[] {
+  const v = tex.in[format]!;
+  const out: AssetPart[] = [];
+  for (let k = 0, at = v.at; k <= last; k++) {
+    const length = storedStep(v, format, tex.role, k);
+    const bytes = stepBytes(format, tex.role, k);
+    out.push(length < bytes ? { offset: at, length, hash: v.hash[k]!, inflated: bytes } : { offset: at, length, hash: v.hash[k]! });
+    at += length;
+  }
+  return out;
 }
 
 export interface AssetRequest {
@@ -30,7 +63,7 @@ export interface AssetArrival {
   /** Every part of the request, one after another in the order asked. Null when any failed, and `fail` says how: a FAIL_ code. */
   data: Uint8Array | null;
   fail: number;
-  /** Bytes that came over the network, and bytes that came from the disk cache. */
+  /** Bytes that came over the network, and bytes that came from the disk cache, as they are stored. */
   fetched: number;
   cached: number;
 }

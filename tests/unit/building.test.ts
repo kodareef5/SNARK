@@ -5,11 +5,13 @@ import { PIECE_ROLES, shapeHalf, type Def, type ShapeDef, type StructureDef } fr
 import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_JUMP, BTN_SPRINT, Body, stanceHeight, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { SKIN, capsuleFree } from "../../shared/world/collide.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { grayboxMeshes } from "../../tools/pack/build.ts";
+import { buildPack } from "../../tools/pack/write.ts";
 import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 const FWD = 127;
@@ -80,7 +82,8 @@ test("the building set: every piece in every material it is made in, with the re
 });
 
 test("each piece is drawn as its boxes", () => {
-  const pack = parsePack(buildCorePack());
+  // The content's grey boxes alone: a tier's art takes their place in the core pack, which tests/unit/art.test.ts proves.
+  const pack = parsePack(buildPack(grayboxMeshes(CORE_CONTENT), defaultPalette()));
   const tris = (id: string): number => pack.header.meshes[pack.meshIndex.get(id)!]!.lods[0]!.indexCount / 3;
   expect([tris("core:wall_wood"), tris("core:doorframe_wood"), tris("core:windowframe_stone"), tris("core:stairs_metal")]).toEqual([12, 36, 48, 120]);
   const m = pack.header.meshes[pack.meshIndex.get("core:stairs_wood")!]!;

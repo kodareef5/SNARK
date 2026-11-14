@@ -1,0 +1,5 @@
+Updated all 17 PNGs, this round’s checks, and [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-aee9404fb3f34729b/assets/source/core/creatures/dodo/ref/concept/REPORT.md).
+
+All 65 checks pass: guide overlap is 93.67–95.41%, with a maximum non-feather outline distance of 9 px. Protected beak/eye pixels and artwork outside the head/seam areas are unchanged. Archives, guides and existing scripts are preserved.
+
+[Review the heads](/home/user/dev/SNARK/.claude/worktrees/agent-aee9404fb3f34729b/assets/source/core/creatures/dodo/ref/concept/checks/head_comparison.png) · [Built-in imagegen prompts](/home/user/dev/SNARK/.claude/worktrees/agent-aee9404fb3f34729b/assets/source/core/creatures/dodo/ref/concept/sources/round3/generation_manifest.json)

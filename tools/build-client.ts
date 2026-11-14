@@ -1,6 +1,7 @@
 // Builds client/dist: the bundled shell, the workers and worklets, the page, and the core assets as a boot file, a mesh
 // file, a texture file for each variant and a manifest. An asset file is named after its own hash, so a browser keeps
-// it for good. What is fetched whole has a Brotli copy beside it.
+// it for good. What is fetched whole has a Brotli copy beside it. What is fetched by range is stored a part at a time,
+// deflated where that is smaller, and the levels drawn with materials are ordered for the vertex cache first.
 
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -9,7 +10,9 @@ import { gameTextures } from "./art/materials.ts";
 import { buildCorePack, importedMeshes } from "./pack/build.ts";
 import { buildTextures, type TextureSource } from "./pack/encode.ts";
 import { partHash } from "./pack/manifest.ts";
+import { orderPack } from "./pack/order.ts";
 import { splitPack } from "./pack/split.ts";
+import { storeParts } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
 
 /** The stress cards as textures to build: every picture of each, from one pixel across up to its top. */
@@ -39,24 +42,28 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean } = 
   const result = await Bun.build({ entrypoints, outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked" });
   if (!result.success) throw new Error(result.logs.map(String).join("\n"));
   copyFileSync(join(root, "client/index.html"), join(dist, "index.html"));
-  const { files, manifest } = splitPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]), "core");
-  if (opts.stress) spoilStress(files, manifest);
+  const split = splitPack(orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])])), "core");
+  const manifest = split.manifest;
   // The game's own textures, from its asset folders, and the cards.
   const sources: TextureSource[] = [...(await gameTextures()), ...(opts.stress ? stressCards() : [])];
-  const t0 = performance.now();
+  let t0 = performance.now();
   const textures = await buildTextures(manifest, sources, "core");
   if (textures.files.length > 0) {
     const { pictures, encoded, megapixels } = textures.report;
     console.log(`textures     ${manifest.textures!.length} in ${textures.files.length} variants, ${textures.files.reduce((sum, f) => sum + f.bytes.length, 0)} bytes: ${encoded} of ${pictures} pictures encoded (${megapixels.toFixed(1)} megapixels), ${(performance.now() - t0).toFixed(0)} ms`);
   }
-  [...files, ...textures.files].forEach((f, i) => {
+  t0 = performance.now();
+  const { files, report } = await storeParts([...split.files, ...textures.files], manifest);
+  console.log(`parts        ${report.parts} in ${files.length - 1} files, ${report.raw} bytes stored in ${report.stored}: ${report.deflated} deflated, ${report.made} of them anew, ${(performance.now() - t0).toFixed(0)} ms`);
+  if (opts.stress) spoilStress(files, manifest);
+  files.forEach((f, i) => {
     manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);
     writeFileSync(join(dist, "assets", manifest.files[i]!.name), f.bytes);
   });
   writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(manifest));
   const whole = ["index.html", "assets/manifest.json", `assets/${manifest.files[manifest.boot]!.name}`, ...result.outputs.filter((o) => o.path.endsWith(".js")).map((o) => o.path.slice(dist.length + 1))];
   for (const name of whole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
-  return { jsBytes: result.outputs.find((o) => o.path.endsWith("main.js"))!.size, packBytes: files.reduce((sum, f) => sum + f.bytes.length, 0) };
+  return { jsBytes: result.outputs.find((o) => o.path.endsWith("main.js"))!.size, packBytes: files.reduce((sum, f) => sum + (f.role === "tex" ? 0 : f.bytes.length), 0) };
 }
 
 if (import.meta.main) {

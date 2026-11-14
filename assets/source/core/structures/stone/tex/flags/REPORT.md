@@ -1,0 +1,39 @@
+Round three — rebuilt for the separate flag geometry, 14 November 2026.
+
+The four 2048 × 2048 layers now follow the new footprints and face rings. Packed lime mortar and grit occupy the black areas of `layout/cells.png`; limestone occupies each footprint, with worn and chipped material across the bevel band and a separate face inside its ring. The supplied shapes, large broken corners, face rises and slight tilts are preserved. All previous material files, sources, prompts, scripts, reports and checks are archived in `round2/`.
+
+The colour reference was `../../ref/concept/inside.png` and `pieces_slabs.png`: broad worn limestone, warm grey with buff bedding. I generated four new limestone atlases and gave each flag a different sample. None of the old stone sources or the repeated three-lobed stain remains in this build. Added 122 small arris cuts at 26–49 cm spacing, including five wider 41–50 mm shallow spalls, five short internal hairlines, tiny pits, uneven smoother foot wear, and dirt near edges and in shallow lows. The large corner breaks belong to the supplied geometry. After inspecting the first complete build, I increased shallow bedding erosion and buff variation because the finish was still too even. Initial round-three previews remain in `checks/iteration01/`.
+
+The delivered base averages **sRGB (132.000000, 128.000000, 120.000000)**, exactly the new target. The base contains material colour and dirt reflectance. It contains no bevel lighting, cast shadow, specular highlight or AO multiplication.
+
+| File | Construction and result |
+| --- | --- |
+| `flags_base.png` | RGB 8-bit, embedded sRGB profile. Fifteen separate source samples, fitted illumination planes removed, restrained tone and buff variation, shared wear/pore/crack fields and final-size grit. Constant channel correction and one-level interior rounding corrections set the mean. Independent segmentation of the delivered base recovers the footprint mask with **zero mismatched pixels**. |
+| `flags_height.png` | Grayscale 16-bit. **Black to white is 16 mm**, white high. Footprint-to-face geometry is triangulated from the supplied rings and corner rises, then shallow material detail is added. Mortar median **0.450 mm**; face median **9.701 mm**. Face detail, measured after removing geometric rise and tilt, spans **2.34–2.95 mm** per flag. Thresholding the delivered height at 6 mm finds exactly **15 connected flags**. |
+| `flags_normal.png` | RGB 8-bit linear, OpenGL, +X right, +Y up the image. Derived from the saved, quantized height at **1.46484375 mm/pixel**, with the supplied geometry removed as explained below. Independent derivative comparison: **0.173° mean / 0.361° maximum** error, consistent with 8-bit encoding. |
+| `flags_orm.png` | RGB 8-bit linear. R: AO, median **1.0** on faces, lowered in pores, cuts, cracks and mortar. G: roughness, face range **0.561–0.749**, median **0.655**; dull bevels around 0.85–0.90, mortar around 0.94–0.97. B: **zero everywhere**. Polished regions are lighter and smoother; cavities and dirt use matching positions in all layers. |
+
+The normal convention needs an explicit distinction. A derivative of the entire height would reproduce the modelled bevel and tilt. To follow the request to leave those to the geometry, the delivered normal is calculated from **D = H − G**, where H is the decoded delivered 16 mm height and G is the geometric rise reconstructed from `layout/layout.json`. The normal is `normalize(-dD/dx, +dD/dy, 1)` with wrapped central differences at the true pixel scale. The full H is still delivered so it reads as flags on a flat surface. `geometry.py` reconstructs G, and `build/fields.npz` retains it as `geometry_mm`. No arbitrary normal-strength multiplier is applied. This is a detail normal for the supplied model; import it with that model's tangent basis. Use the full height as a diagnostic/flat-surface height, rather than adding its geometric rise a second time to the model.
+
+All four original image-tool outputs are unchanged in `source/limestone_atlas_01.png` through `04.png`, each **1254 × 1254**. Every exact prompt is in `prompts.md`. Each atlas has four independent samples; each cropped 591 × 591 sample is used for at most one flag, with the sixteenth unused. The largest sample enlargement is **1.267×** along its longest axis. Native 2048-resolution pores, grit, chips, bedding erosion, wear and cracks supply fine detail beyond that enlargement. This is an authored material, not a measured scan. The source hashes, individual crop assignments, random seeds and build settings are in `build/manifest.json`.
+
+Checks were run on the saved PNGs, not just the working arrays. Dimensions, bit depths, colour profile, metalness, height scale, face roughness, footprint/face ownership, separate slabs, source uniqueness and normal agreement pass. Base, height and ORM border samples match exactly in both directions with neighbours rotated 0°, 90°, 180° and 270°. Normal border differences after tangent rotation are at most **0.636°**, the quantization bias of an 8-bit neutral normal.
+
+`checks/registration.jpg` overlays footprint and face rings. Footprint and face ownership each have zero pixel mismatches, and the independently recovered base footprint also has zero mismatches. Across **4,238** gradient profiles the 99th-percentile apparent edge error is **0.183 mm** against the supplied raster, or **1.831 mm** against the floating-point polygon. The raw maximum is **4.028 mm**: a gradient maximum can select nearby grain or a corner instead of the material boundary. This does not represent a shifted footprint; the direct delivered-image segmentation is exact. Both measurements are retained in `checks/metrics.json`.
+
+I looked at `checks/tiled3x3.jpg` in ordinary and alternating quarter-turn arrangements, `offset.jpg`, `layers.jpg`, `registration.jpg`, the four lighting directions in `relit.jpg`, `model_relit.jpg`, and `underfoot.jpg`. The delivered-normal relighting isolates the material detail. The latter two views restore geometric height; the underfoot view intersects the physical height field at a 1.65 m eye height and includes short geometric shadows. They are diagnostic renders, not game-engine captures. `detail.jpg`, `roughness_ao.jpg` and `slab_audit.jpg` provide closer views.
+
+The mark audit compares 60 prominent interior regions across 1,680 cross-flag pairs and eight rotations/reflections. Its largest correlation is **0.863**. I inspected those pairs in `checks/mark_audit.jpg`: similar broad mineral folds, different fossil details and contours. No distinctive duplicated stain was found. Every flag has a unique source quadrant. This audit cannot prove that no small natural-looking motif is similar.
+
+To rebuild from the saved sources:
+
+```sh
+python3 build_material.py
+python3 check_material.py
+```
+
+Only the base should import as sRGB. Height, normal and ORM are linear data; repeat both axes, and rotate the tangent basis with the floor piece. The default normal build is `--normal-mode detail`. A `--normal-mode full` build is available for a flat substitute requiring the complete height gradient; it includes the geometric bevel and is not the delivered setting.
+
+Remaining limitations: the fixed courses and their broad geological bands remain recognizable on a large unrotated field. The finish is more restrained than the deeply broken, dramatically lit concept painting. Larger irregularity belongs in geometry, and I have kept the supplied outlines. Roughness and AO are authored estimates. The final game shader, compression, mipmaps and actual mesh have not been tested here.
+
+Round-three work took approximately **17 minutes**, from **19:48:24 UTC to 20:05:38 UTC** on 14 November 2026, including four source generations, the rebuild, inspection and revisions. The final texture build took **9.39 seconds**. Work and retained deliverables are in this folder.

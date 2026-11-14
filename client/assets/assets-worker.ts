@@ -1,8 +1,9 @@
-// The asset worker: fetches parts of asset files by range, checks each against its hash, and keeps them, in memory and
-// on disk, off the page's thread. What to fetch and when is decided in client/core/assets. This file joins those
-// decisions to the browser.
+// The asset worker: fetches parts of asset files by range, inflates those stored deflated, checks each against its
+// hash, and keeps them as stored, in memory and on disk, off the page's thread. What to fetch and when is decided in
+// client/core/assets. This file joins those decisions to the browser.
 
-import { FAIL_HASH, FAIL_NET, FAIL_RANGE } from "../core/assets/port.ts";
+import { FAIL_HASH, FAIL_NET, FAIL_RANGE, type AssetPart } from "../core/assets/port.ts";
+import { unfilterPart } from "../../shared/pack/stored.ts";
 
 interface Scope {
   onmessage: ((e: MessageEvent) => void) | null;
@@ -10,24 +11,23 @@ interface Scope {
 }
 const scope = self as unknown as Scope;
 
+/** One request: parts of one file, which follow one another in it, to be answered as one run of bytes. */
 export interface Ask {
   slot: number;
   url: string;
-  offset: number;
-  length: number;
-  hash: string;
+  parts: AssetPart[];
   fresh: boolean;
 }
 
 /** A fetch that has not answered in this long is given up. */
 const TIMEOUT_MS = 20000;
-/** Parts kept in memory, newest last, so that what the card let go and wants back is not fetched again. */
+/** Parts kept in memory as stored, newest last, so that what the card let go and wants back is not fetched again. */
 const KEEP_BYTES = 64 * 1024 * 1024;
 const kept = new Map<string, Uint8Array>();
 let keptBytes = 0;
 const under = new Map<number, AbortController>();
 
-// The disk cache is a folder in the browser's private file system for this site: one file for each part, named by its hash.
+// The disk cache is a folder in the browser's private file system for this site: one file for each part, as stored, named by its hash.
 interface PartHandle {
   getSize(): number;
   read(into: Uint8Array, at: { at: number }): number;
@@ -48,7 +48,7 @@ let diskLimit = 0;
 /** Done when the disk has been looked at. A part that arrives sooner waits for it, and is not lost to the cache. */
 let opened: Promise<void> = Promise.resolve();
 /** Parts asked for only to be kept, and how many of them are being fetched. */
-const toFill: Ask[] = [];
+const toFill: { url: string; part: AssetPart }[] = [];
 let filling = 0;
 
 const report = (): void => scope.postMessage({ cache: { used: diskBytes, limit: diskLimit, mode: disk ? "disk" : "memory", filling: toFill.length + filling } });
@@ -81,27 +81,29 @@ async function forget(downTo: number): Promise<void> {
   }
 }
 
-async function fromDisk(a: Ask): Promise<Uint8Array | null> {
+async function dropFromDisk(hash: string): Promise<void> {
+  if (!disk || !onDisk.has(hash)) return;
+  await disk.removeEntry(hash).catch(() => {});
+  diskBytes -= onDisk.get(hash) ?? 0;
+  onDisk.delete(hash);
+}
+
+/** A part as stored, from the disk, or null. Whether it is good is found when it is opened. */
+async function fromDisk(hash: string): Promise<Uint8Array | null> {
   await opened;
-  if (!disk || !onDisk.has(a.hash)) return null;
+  if (!disk || !onDisk.has(hash)) return null;
   try {
-    const h = await (await disk.getFileHandle(a.hash)).createSyncAccessHandle();
+    const h = await (await disk.getFileHandle(hash)).createSyncAccessHandle();
     const data = new Uint8Array(h.getSize());
     h.read(data, { at: 0 });
     h.close();
-    if (data.length === a.length && (await hashOf(data)) === a.hash) {
-      onDisk.delete(a.hash);
-      onDisk.set(a.hash, data.length);
-      return data;
-    }
-    // A file cut short or gone bad is no use and is fetched afresh.
-    await disk.removeEntry(a.hash).catch(() => {});
-    diskBytes -= onDisk.get(a.hash) ?? 0;
-    onDisk.delete(a.hash);
+    onDisk.delete(hash);
+    onDisk.set(hash, data.length);
+    return data;
   } catch {
     // Another request has the file open. This one goes to the network.
+    return null;
   }
-  return null;
 }
 
 async function toDisk(hash: string, data: Uint8Array, again = true): Promise<void> {
@@ -132,9 +134,10 @@ async function fill(): Promise<void> {
   const a = toFill.shift();
   if (!a) return;
   filling++;
-  if (disk && !onDisk.has(a.hash)) {
-    const out = await fetchPart(a, new AbortController().signal).catch(() => null);
-    if (out?.data) await toDisk(a.hash, out.data);
+  if (disk && !onDisk.has(a.part.hash)) {
+    const got = await fetchRun(a.url, [a.part], new AbortController().signal).catch(() => null);
+    const stored = got?.data?.[0];
+    if (stored && (await open(stored, a.part))) await toDisk(a.part.hash, stored);
   }
   filling--;
   report();
@@ -144,65 +147,131 @@ async function fill(): Promise<void> {
 let net: number[] = [];
 
 function keep(hash: string, data: Uint8Array): void {
+  if (kept.has(hash)) return;
   kept.set(hash, data);
   keptBytes += data.length;
-  for (const [old, bytes] of kept) {
+  for (const old of kept.keys()) {
     if (keptBytes <= KEEP_BYTES) break;
-    kept.delete(old);
-    keptBytes -= bytes.length;
+    unkeep(old);
   }
+}
+
+function unkeep(hash: string): void {
+  keptBytes -= kept.get(hash)?.length ?? 0;
+  kept.delete(hash);
 }
 
 const hex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 const hashOf = async (data: Uint8Array<ArrayBuffer>): Promise<string> => hex(new Uint8Array(await crypto.subtle.digest("SHA-256", data)).subarray(0, 8));
 const wait = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
 
-async function fetchPart(a: Ask, signal: AbortSignal): Promise<{ data: Uint8Array | null; fail: number; fetched: number }> {
+/**
+ * A part's bytes from what is stored, inflated and its filter undone where it is stored deflated, and checked against
+ * its hash. Null where they do not come back to it. Bytes as long as the part once inflated are taken as they are: an
+ * older build stored every part so.
+ */
+async function open(stored: Uint8Array, part: AssetPart): Promise<Uint8Array<ArrayBuffer> | null> {
+  let data: Uint8Array<ArrayBuffer> | null = stored.slice();
+  if (part.inflated !== undefined && stored.length !== part.inflated) {
+    try {
+      const stream = new Blob([stored.slice()]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      data = unfilterPart(new Uint8Array(await new Response(stream).arrayBuffer()), part.inflated) as Uint8Array<ArrayBuffer> | null;
+    } catch {
+      data = null;
+    }
+  }
+  if (!data || data.length !== (part.inflated ?? part.length)) return null;
+  return part.hash !== "" && (await hashOf(data)) !== part.hash ? null : data;
+}
+
+/** Fetches parts that follow one another in a file with one range, past the browser's cache if `fresh`. Each comes back as stored. */
+async function fetchRun(url: string, parts: readonly AssetPart[], signal: AbortSignal, fresh = false): Promise<{ data: Uint8Array[] | null; fail: number; fetched: number }> {
   const [delay = 0, rate = 0, loss = 0] = net;
   if (delay > 0) await wait(delay);
   if (Math.random() * 100 < loss) return { data: null, fail: FAIL_NET, fetched: 0 };
-  const res = await fetch(a.url, { headers: { range: `bytes=${a.offset}-${a.offset + a.length - 1}` }, signal, cache: a.fresh ? "reload" : "default" });
+  const from = parts[0]!.offset;
+  const length = parts.reduce((sum, p) => sum + p.length, 0);
+  const res = await fetch(url, { headers: { range: `bytes=${from}-${from + length - 1}` }, signal, cache: fresh ? "reload" : "default" });
   if (res.status === 416) return { data: null, fail: FAIL_RANGE, fetched: 0 };
   if (!res.ok) return { data: null, fail: FAIL_NET, fetched: 0 };
   let data = new Uint8Array(await res.arrayBuffer());
   // A server that does not do ranges sends the whole file.
-  if (res.status === 200) data = data.slice(a.offset, a.offset + a.length);
+  if (res.status === 200) data = data.slice(from, from + length);
   if (rate > 0) await wait(data.length / rate);
-  if (data.length !== a.length) return { data: null, fail: FAIL_NET, fetched: data.length };
-  return a.hash !== "" && (await hashOf(data)) !== a.hash ? { data: null, fail: FAIL_HASH, fetched: data.length } : { data, fail: 0, fetched: data.length };
+  if (data.length !== length) return { data: null, fail: FAIL_NET, fetched: data.length };
+  return { data: parts.map((p) => data.slice(p.offset - from, p.offset - from + p.length)), fail: 0, fetched: data.length };
 }
 
+/**
+ * Answers a request: each part from memory, else from the disk, else from the network, the parts still wanted that
+ * follow one another fetched with one range. Every part is opened and checked before any is handed over.
+ */
 async function answer(a: Ask): Promise<void> {
   const stop = new AbortController();
   under.set(a.slot, stop);
-  const had = a.fresh ? null : (kept.get(a.hash)?.slice() ?? (await fromDisk(a)));
-  if (had) {
-    if (under.get(a.slot) !== stop) return;
-    under.delete(a.slot);
-    if (!kept.has(a.hash)) keep(a.hash, had.slice());
-    scope.postMessage({ slot: a.slot, data: had, fail: 0, fetched: 0, cached: had.length }, [had.buffer]);
-    return;
+  const out: (Uint8Array | null)[] = a.parts.map(() => null);
+  let cached = 0;
+  let fetched = 0;
+  let fail = 0;
+  if (!a.fresh) {
+    for (let k = 0; k < a.parts.length; k++) {
+      const p = a.parts[k]!;
+      const memory = kept.get(p.hash);
+      const stored = memory ?? (await fromDisk(p.hash));
+      if (!stored) continue;
+      out[k] = await open(stored, p);
+      if (out[k]) {
+        cached += stored.length;
+        if (!memory) keep(p.hash, stored);
+      } else {
+        // Bytes kept that do not come back are no use, and are fetched afresh.
+        unkeep(p.hash);
+        await dropFromDisk(p.hash);
+      }
+    }
   }
   const timer = setTimeout(() => stop.abort(), TIMEOUT_MS);
-  let out: { data: Uint8Array | null; fail: number; fetched: number };
   try {
-    out = await fetchPart(a, stop.signal);
+    for (let k = 0; k < a.parts.length && fail === 0; ) {
+      if (out[k]) {
+        k++;
+        continue;
+      }
+      let end = k + 1;
+      while (end < a.parts.length && !out[end] && a.parts[end]!.offset === a.parts[end - 1]!.offset + a.parts[end - 1]!.length) end++;
+      const run = a.parts.slice(k, end);
+      const got = await fetchRun(a.url, run, stop.signal, a.fresh).catch(() => ({ data: null, fail: FAIL_NET, fetched: 0 }));
+      fetched += got.fetched;
+      fail = got.fail;
+      for (let j = 0; got.data && j < run.length; j++) {
+        const stored = got.data[j]!;
+        out[k + j] = await open(stored, run[j]!);
+        if (!out[k + j]) fail = FAIL_HASH;
+        else {
+          keep(run[j]!.hash, stored);
+          void toDisk(run[j]!.hash, stored);
+        }
+      }
+      k = end;
+    }
   } catch {
-    out = { data: null, fail: FAIL_NET, fetched: 0 };
+    fail = FAIL_NET;
   }
   clearTimeout(timer);
   // Cancelled: the page no longer wants it and must not be told of it.
   if (under.get(a.slot) !== stop) return;
   under.delete(a.slot);
-  if (out.data) {
-    keep(a.hash, out.data.slice());
-    void toDisk(a.hash, out.data.slice());
+  if (fail !== 0) {
+    scope.postMessage({ slot: a.slot, data: null, fail, fetched, cached });
+    return;
   }
-  scope.postMessage({ slot: a.slot, data: out.data, fail: out.fail, fetched: out.fetched, cached: 0 }, out.data ? [out.data.buffer] : []);
+  const data = new Uint8Array(out.reduce((sum, d) => sum + d!.length, 0));
+  for (let k = 0, at = 0; k < out.length; at += out[k]!.length, k++) data.set(out[k]!, at);
+  scope.postMessage({ slot: a.slot, data, fail: 0, fetched, cached }, [data.buffer]);
 }
 
 scope.onmessage = (e) => {
-  const m = e.data as { ask?: Ask; cancel?: number; net?: number[]; open?: number; fill?: Ask[] };
+  const m = e.data as { ask?: Ask; cancel?: number; net?: number[]; open?: number; fill?: { url: string; part: AssetPart }[] };
   if (m.net) net = m.net;
   if (m.open !== undefined) opened = openDisk(m.open);
   if (m.fill) {

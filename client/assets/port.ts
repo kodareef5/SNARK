@@ -1,8 +1,9 @@
 // The page's end of the asset worker: what client/core asks of an AssetPort goes to the worker, and what the worker
-// has fetched waits here for the next frame to take.
+// has fetched, inflated and checked waits here for the next frame to take.
 
 import type { AssetArrival, AssetPart, AssetPort, AssetRequest } from "../core/assets/port.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
+import type { Ask } from "./assets-worker.ts";
 
 export class WorkerPort implements AssetPort {
   cache: AssetPort["cache"] = { used: 0, limit: 0, mode: "memory", filling: 0 };
@@ -26,18 +27,19 @@ export class WorkerPort implements AssetPort {
     this.worker.postMessage({ open: keep, ...(net ? { net: net.split(",").map(Number) } : {}) });
   }
 
-  private ask(slot: number, file: number, part: AssetPart, fresh: boolean) {
-    return { slot, url: `${this.folder}/${this.manifest.files[file]!.name}`, offset: part.offset, length: part.length, hash: part.hash, fresh };
+  private url(file: number): string {
+    return `${this.folder}/${this.manifest.files[file]!.name}`;
   }
 
   request(r: AssetRequest): void {
-    this.worker.postMessage({ ask: this.ask(r.slot, r.file, r.parts[0]!, r.fresh) });
+    const ask: Ask = { slot: r.slot, url: this.url(r.file), parts: [...r.parts], fresh: r.fresh };
+    this.worker.postMessage({ ask });
   }
 
   fill(parts: readonly { file: number; part: AssetPart }[]): void {
     // What the player asked to keep should not be the first thing the browser clears when it is short of room.
     void navigator.storage?.persist?.();
-    this.worker.postMessage({ fill: parts.map((p) => this.ask(-1, p.file, p.part, false)) });
+    this.worker.postMessage({ fill: parts.map((p) => ({ url: this.url(p.file), part: p.part })) });
   }
 
   cancel(slot: number): void {

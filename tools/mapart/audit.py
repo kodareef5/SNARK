@@ -40,7 +40,8 @@ def main():
     for folder in ['base','tiles','style','paintings','references']:
         for p in sorted((ROOT/folder).rglob('*')):
             if p.is_file():result['files'][str(p.relative_to(ROOT))]={'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
-    dest=ROOT/'checks/delivery_audit.json';dest.write_text(json.dumps(result,indent=2))
+    dest=ROOT/'reports/round2-delivery-audit.json';dest.parent.mkdir(parents=True,exist_ok=True)
+    dest.write_text(json.dumps(result,indent=2))
     print('PASS: 85 RGB tiles, 85 originals, base grid and bit depth,',len(result['files']),'hashed artifacts')
 
 if __name__=='__main__':main()

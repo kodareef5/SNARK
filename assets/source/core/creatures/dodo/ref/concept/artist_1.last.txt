@@ -1,0 +1,5 @@
+Saved all 17 requested images, checks, prompts, and rebuild scripts in the current folder.
+
+[View the artwork sheet](/home/user/dev/SNARK/.claude/worktrees/agent-aee9404fb3f34729b/assets/source/core/creatures/dodo/ref/concept/checks/all_paintings_contact.png) · [Read the report](/home/user/dev/SNARK/.claude/worktrees/agent-aee9404fb3f34729b/assets/source/core/creatures/dodo/ref/concept/REPORT.md)
+
+File checks pass. Exact feather/bar correspondence remains approximate, and one beak-width comparison narrowly misses tolerance. The report documents these remaining production limitations.
