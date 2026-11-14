@@ -133,6 +133,20 @@ take their colours triangle by triangle from its pictures: a thatch wall's
 first flat level then has two tones of straw where it had one. The script's own
 coarse levels are not used then.
 
+A level is drawn once the tier lets its error pass: how far its surface lies
+from the finest's, against a fraction of a pixel. That is measured on its
+points, which judges a wall well and a tree badly: a coarser crown is other
+leaves in the same outline, and its points lie far from the finest's however
+alike the two look. A piece whose levels a measure of points cannot judge may
+state their errors in metres, for its levels after the finest in turn:
+`pieces: [{ id, object, errors: [0.012, 0.04] }]`. A level it leaves out is
+measured. State an error as the size of the difference a player would see, at
+the size the piece is modelled: a node drawn larger has its errors scaled with
+it. `--check` and the sheet print each stated error beside the one measured on
+its points, and where each level is first drawn on each tier and how tall the
+piece then stands on a 1,080-row screen, so a reader can judge the claim by
+looking.
+
 ## Materials
 
 A material is its pictures, named in `asset.ts` under the name the model gives

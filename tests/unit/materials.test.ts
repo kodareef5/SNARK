@@ -137,6 +137,25 @@ test("pieces take their materials by name: one of the asset's own, one that seve
     const old = buildPack(out.meshes.map((m) => ({ ...m, lods: m.lods.map((lod) => ({ ...lod, colors: lod.colors.map(turn) })) })), other);
     expect([repack(old, false, asset), repack(old, false)]).toEqual([today, today]);
 
+    // A piece may state the errors of its first levels after the finest. They arrive in the pack as stated, the levels
+    // it leaves out are measured as before, and the check sets what it measures beside each stated one. Written again
+    // from itself with its asset, the pack keeps them; a piece that states none is written as it always was.
+    const stating = { ...asset, spec: { ...spec, pieces: [{ ...spec.pieces[0]!, errors: [0.0125, 0.05] }] } };
+    const told = built();
+    convertPieces(stating, { post: join(root, "post.glb") }, told);
+    const errorsOf = (file: Uint8Array): number[] => parsePack(file).header.meshes[0]!.lods.map((l) => l.error);
+    const [was, now] = [errorsOf(packOf(out)), errorsOf(packOf(told))];
+    expect([told.faults, now.slice(0, 3), now.slice(3)]).toEqual([[], [0, 0.0125, 0.05], was.slice(3)]);
+    expect(was[1]).not.toBe(0.0125);
+    const facts = checkAsset(stating, parsePack(packOf(told))).meshes[0]!.levels;
+    expect(facts.map((l) => (l.measured === undefined ? undefined : Math.round(l.measured * 1e5) / 1e5))).toEqual([undefined, was[1], was[2], ...was.slice(3).map(() => undefined)]);
+    expect(errorsOf(repack(packOf(told), false, stating))).toEqual(now);
+    expect(errorsOf(repack(packOf(told), false, asset))).toEqual(was);
+    expect(repack(packOf(out), false, asset)).toEqual(repack(packOf(out), false));
+    const over = built();
+    convertPieces({ ...asset, spec: { ...spec, pieces: [{ ...spec.pieces[0]!, errors: [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07] }] } }, { post: join(root, "post.glb") }, over);
+    expect(over.faults).toEqual([`t:post: it states errors for 7 levels after the finest, and has ${mesh.lods.length - 1}`]);
+
     // Asked for, its levels are made from its finest, and the first flat one is the asset's.
     const made = built();
     convertPieces({ ...asset, spec: { ...spec, flat: 2 } }, { post: join(root, "post.glb") }, made);
