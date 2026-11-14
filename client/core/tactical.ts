@@ -243,7 +243,9 @@ export class MapPicture {
   private rgba: Uint32Array = new Uint32Array(0);
   private cols: Int32Array = new Int32Array(0);
   /** What it was last drawn from: the cells' version, the tiles' and the reader's team. */
-  private from = [-1, -1, -1];
+  private cellsAt = -1;
+  private tilesAt = -1;
+  private team = -1;
 
   /** Looks at (u, v) at `zoom`, and draws the picture again if what it shows has changed. */
   draw(hf: Heightfield, palette: Uint8Array, tiles: TileSource, store: MapStore | null, team: number, zoom: number, u: number, v: number, px: number): void {
@@ -252,7 +254,7 @@ export class MapPicture {
     const [wasZoom, wasU, wasV] = [view.zoom, view.u0, view.v0];
     view.place(hf, zoom, u, v, px);
     const cells = store ? store.version : 0;
-    if (image.width === px && view.zoom === wasZoom && view.u0 === wasU && view.v0 === wasV && this.from[0] === cells && this.from[1] === tiles.version && this.from[2] === team) return;
+    if (image.width === px && view.zoom === wasZoom && view.u0 === wasU && view.v0 === wasV && this.cellsAt === cells && this.tilesAt === tiles.version && this.team === team) return;
     if (image.width !== px) {
       image.width = image.height = px;
       image.data = new Uint8ClampedArray(px * px * 4);
@@ -261,7 +263,9 @@ export class MapPicture {
     }
     this.terrain(hf, tiles);
     // A tile asked for just now comes at a later step, and then the picture is drawn again.
-    this.from = [cells, tiles.version, team];
+    this.cellsAt = cells;
+    this.tilesAt = tiles.version;
+    this.team = team;
     if (store) this.cells(hf, palette, store, team);
     this.grid();
     image.version++;

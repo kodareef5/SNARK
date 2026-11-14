@@ -346,7 +346,9 @@ export class Tactical {
     }
     const everyone = this.opts.players === "all";
     for (const [team, m] of this.marksOf) {
-      for (const e of this.tames.get(team) ?? []) {
+      const tames = this.tames.get(team);
+      for (let i = 0; tames && i < tames.length; i++) {
+        const e = tames[i]!;
         // It may have died or changed hands since the list was made.
         if (ents.team[e] === team && (ents.flags[e]! & (F_ALIVE | F_PLAYER | F_PROP)) === F_ALIVE) m.add(MARK_TAME, ents.x[e]!, ents.z[e]!, ents.yaw[e]!);
       }

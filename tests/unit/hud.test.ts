@@ -2,7 +2,9 @@ import { expect, test } from "bun:test";
 import { HudModel, headingOf, minimapImage, updateHud } from "../../client/core/hud.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { probePasses, provingProbes } from "../../client/core/selfcheck.ts";
+import { MARKER_DEATH, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
+import { latOf, lonOf } from "../../shared/world/coords.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import { provingView } from "../../tools/snap.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -58,6 +60,13 @@ test("HUD coordinates, compass and minimap markers follow the map convention", (
   expect(a.tactical.marks.count).toBe(3);
   expect(kinds()).toEqual(["self", "mate", "tame", "creature"]);
   expect(ents.team[wild]).toBe(0);
+  // While it chooses where to return to life, the places it may choose are marked, after its deaths.
+  a.sessionState = SESSION_DEAD;
+  a.markers.push({ kind: MARKER_DEATH, x: 200, y: 0, z: 200, tick: 1 });
+  a.respawnPoints.push({ name: "Plaza", x: 256, z: 240, wait: 0 });
+  updateHud(hud, a, remote, 60);
+  expect(hud.markers.map((m) => m.kind)).toEqual(["self", "mate", "tame", "death", "spawn", "creature"]);
+  expect([hud.markers[4]!.u, hud.markers[4]!.v]).toEqual([lonOf(h.world.hf, 256) / 100, latOf(h.world.hf, 240) / 100]);
 
   // Facing +X is west (270) and facing -X is east (90).
   expect(headingOf(Math.PI / 2)).toBeCloseTo(270, 6);

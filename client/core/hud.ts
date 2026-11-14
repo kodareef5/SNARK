@@ -251,36 +251,38 @@ export function headingOf(yaw: number): number {
   return ((deg % 360) + 360) % 360;
 }
 
+/** Marks the bodies in view that are survivors or not, and the reader's tribe's or not. */
+function markView(model: HudModel, hf: Heightfield, remote: RemoteSample, team: number, player: boolean, mine: boolean, kind: MarkerKind): void {
+  for (let i = 0; i < remote.count; i++) {
+    const f = remote.flags[i]!;
+    if ((f & VIEW_FLAG_PROP) === 0 && ((f & VIEW_FLAG_PLAYER) !== 0) === player && (team !== 0 && remote.team[i] === team) === mine) model.mark(kind, hf, remote.x[i]!, remote.z[i]!);
+  }
+}
+
+/** Marks the server's marks of one kind, but for the reader's own and those that are bodies in view. */
+function markFar(model: HudModel, hf: Heightfield, marks: Marks, remote: RemoteSample, team: number, from: number, kind: MarkerKind): void {
+  for (let i = 0; i < marks.count; i++) if (marks.kind[i] === from && i !== marks.self && !model.seenInView(marks, i, remote, team)) model.mark(kind, hf, marks.x[i]!, marks.z[i]!);
+}
+
 /** Fills the model's markers, the most important first. Friends in view come from the view, and those beyond it from the server's marks. */
 function fillMarkers(model: HudModel, session: ClientSession, remote: RemoteSample): void {
   const hf = session.world!.hf;
-  const b = session.own;
   const team = session.tribe.team;
   const marks = session.tactical.marks;
   model.markers.length = 0;
   // A server rule can hide the reader's own position.
-  if (session.mapLocation) model.mark("self", hf, b.x, b.z);
-  for (const mate of [true, false]) {
-    for (let i = 0; i < remote.count; i++) {
-      const f = remote.flags[i]!;
-      if (team !== 0 && remote.team[i] === team && (f & VIEW_FLAG_PROP) === 0 && ((f & VIEW_FLAG_PLAYER) !== 0) === mate) model.mark(mate ? "mate" : "tame", hf, remote.x[i]!, remote.z[i]!);
-    }
-    for (let i = 0; i < marks.count; i++) {
-      if (marks.kind[i] === (mate ? MARK_MATE : MARK_TAME) && i !== marks.self && !model.seenInView(marks, i, remote, team)) model.mark(mate ? "mate" : "tame", hf, marks.x[i]!, marks.z[i]!);
-    }
-  }
+  if (session.mapLocation) model.mark("self", hf, session.own.x, session.own.z);
+  markView(model, hf, remote, team, true, true, "mate");
+  markFar(model, hf, marks, remote, team, MARK_MATE, "mate");
+  markView(model, hf, remote, team, false, true, "tame");
+  markFar(model, hf, marks, remote, team, MARK_TAME, "tame");
   for (const m of session.markers) model.mark("death", hf, m.x, m.z);
   // Beds and spawn points, while one is being chosen.
   if (session.sessionState === SESSION_DEAD) for (const p of session.respawnPoints) model.mark("spawn", hf, p.x, p.z);
   // Survivors of other tribes: those the server marks, and those in view if its rule lets them show.
-  for (let i = 0; i < marks.count; i++) if (marks.kind[i] === MARK_OTHER && !model.seenInView(marks, i, remote, team)) model.mark("player", hf, marks.x[i]!, marks.z[i]!);
-  for (const player of [true, false]) {
-    if (player && marks.players === PLAYERS_OFF) continue;
-    for (let i = 0; i < remote.count; i++) {
-      const f = remote.flags[i]!;
-      if ((f & VIEW_FLAG_PROP) === 0 && ((f & VIEW_FLAG_PLAYER) !== 0) === player && (team === 0 || remote.team[i] !== team)) model.mark(player ? "player" : "creature", hf, remote.x[i]!, remote.z[i]!);
-    }
-  }
+  markFar(model, hf, marks, remote, team, MARK_OTHER, "player");
+  if (marks.players !== PLAYERS_OFF) markView(model, hf, remote, team, true, false, "player");
+  markView(model, hf, remote, team, false, false, "creature");
 }
 
 /** `scale` is screen pixels to a unit of the interface. */
