@@ -1,46 +1,14 @@
 import { expect, test } from "bun:test";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
-import { Rng } from "../../shared/rng.ts";
-import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapData, type NodeList, type NodeScatter } from "../../shared/world/mapfile.ts";
+import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapData, type NodeScatter } from "../../shared/world/mapfile.ts";
 import { scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
-import { flatMap } from "../fixtures/map.ts";
+import { busyMap, flatMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
 const spot = (): NodeSpot => ({ kind: 0, x: 0, y: 0, z: 0, yaw: 0 });
-
-/** Sloping ground of 2 by 3 chunks with one of everything a file can hold. */
-function busyMap(): MapData {
-  const rng = new Rng(41);
-  const flat = flatMap(1);
-  const dims = { chunksX: 2, chunksZ: 3 };
-  const samples = 65 * 97;
-  const heights = Uint16Array.from({ length: samples }, (_, k) => 9000 + 40 * (k % 65) + rng.int(60));
-  // Trees may stand on the west half only.
-  const allow = new Uint8Array((32 * 48) / 8);
-  for (let z = 0; z < 48; z++) for (let x = 16; x < 32; x++) allow[(z * 32 + x) >> 3]! |= 1 << ((z * 32 + x) & 7);
-  const scatter: NodeScatter = { seed: 77, perChunk: 40, kinds: [["core:tree", 4], ["core:rock", 1]], allowCell: 4, allow };
-  const list: NodeList = { kinds: ["core:bush", "core:rock"], first: Uint32Array.from([0, 2, 2, 3, 3, 3, 3]), kind: Uint8Array.from([0, 1, 0]), x: Uint16Array.from([1024, 40000, 7]), z: Uint16Array.from([2048, 3, 65535]), yaw: Uint16Array.from([0, 16384, 65535]) };
-  return {
-    ...flat,
-    id: "test:busy",
-    dims,
-    minY: -40.5,
-    stepY: 1 / 128,
-    seaLevel: 31.25,
-    heights,
-    tint: Uint8Array.from({ length: samples }, () => rng.int(256)),
-    statics: [
-      { kind: "core:wall", x: 12.5, y: 40.25, z: 100, yaw: 16384 },
-      { kind: "core:crate", x: 127 + 511 / 512, y: -3 / 512, z: 0, yaw: 65535 },
-      { kind: "core:wall", x: 64, y: 44, z: 191.5, yaw: 0 },
-    ],
-    nodes: [scatter, list],
-    spawns: [{ name: "Shore", x: 20, z: 30.5, yaw: 49152 }, { name: "Çà et là", x: 100, z: 150, yaw: 1 }],
-  };
-}
 
 test("a map written to a file is read back whole, and the same map is the same bytes", () => {
   const map = busyMap();
