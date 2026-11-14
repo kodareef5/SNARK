@@ -1,6 +1,4 @@
-// Browser entry point. Loads assets, connects, and each frame asks the app
-// (client/core/app.ts) what to draw, hands the world to WebGL and the interface
-// to the DOM binder.
+// Browser entry point. Each frame it asks the app what to draw, and hands the world to WebGL and the interface to the DOM binder.
 
 import { CORE_CONTENT } from "../../content/core.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -20,12 +18,12 @@ import { UiView } from "./ui.ts";
 
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
-/** A measurement run: the camera flies itself and the page reports how long frames took. */
+/** A measurement run. The camera flies itself and the page reports frame times. */
 const bench = params.has("bench");
 const BENCH_FRAMES = 900;
 const root = document.querySelector<HTMLElement>("#ui")!;
 
-/** This browser's device key: made once, kept in local storage. It is what owns a survivor's name. */
+/** Made once and kept in local storage. The key owns a survivor's name. */
 function deviceKey(): Uint8Array {
   const key = new Uint8Array(KEY_BYTES);
   try {
@@ -53,11 +51,10 @@ async function boot(): Promise<void> {
     name: params.get("name") ?? `survivor${Math.floor(performance.now() * 1000) % 100000}`,
     key: deviceKey(),
     spectate: params.has("spectate"),
-    // A server that asks a password is given the one in the address: ?password=...
     password: params.get("password") ?? "",
     registry: reg,
     clipHash: pack.clips.hash,
-    // The self-check and the bench go straight into the world; so does ?quick. Anyone else new meets the creator.
+    // The self-check, the bench and ?quick skip the creator.
     ...(selfcheck || bench || params.has("quick") ? { look: defaultLook() } : {}),
     resolveMap: (id, hash) => (id === PROVING_ID && hash === mapHash ? hf : null),
     nodes: provingNodes,
@@ -68,14 +65,14 @@ async function boot(): Promise<void> {
   let previous = 0;
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   bindInput(canvas, app);
-  // Voice: heard once the session has its token and the viewer has touched the page; B is held to talk.
+  // Voice plays once the session has its token and the viewer has touched the page.
   const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`);
   app.voice = voice;
   addEventListener("pointerdown", () => voice.unlock());
   addEventListener("keydown", () => voice.unlock());
-  /** The self-check also talks to itself: its own voice, sent to the server and back, must be played. */
+  /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */
   const voiceCheck = selfcheck && params.get("voice") === "1";
-  /** Or it only listens, for another page that is talking: what it reports is whose voice it played. */
+  /** With ?voice=listen it only listens to another page, and reports whose voice it played. */
   const voiceListen = selfcheck && params.get("voice") === "listen";
   voice.loop = voiceCheck;
   let frames = 0;
@@ -126,8 +123,8 @@ async function boot(): Promise<void> {
     }
     previous = now;
 
-    // Self-check: once the world has arrived, read pixels back and report.
-    // With voice it waits for a second of it to have been played, or for ten seconds to say that none was.
+    // The self-check reads pixels back and reports on the 90th drawn frame. With voice it first waits for a
+    // second of played voice, or for ten seconds to report that none was.
     const voiced = voiceCheck || voiceListen;
     if (selfcheck && frames >= 0 && ++frames >= 90 && (!voiced || voice.report.played >= 50 || frames >= 690)) {
       frames = -1;
@@ -139,7 +136,7 @@ async function boot(): Promise<void> {
       times.sort((x, y) => x - y);
       const misplaced = view.misplaced(app.ui.frame);
       const report = {
-        // A page that only listens stands beside the other, which is in its view: its picture is not the fixed one.
+        // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
         ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard,
         ...(voiced ? { voice: voice.report } : {}),
         userAgent: navigator.userAgent,

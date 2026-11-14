@@ -1,9 +1,5 @@
-// Boot self-check: what the page verifies about itself in a real browser.
-//
-// The decisions are made here so they can be tested against the software
-// rasterizer. The shell only reads pixels back from WebGL and passes them in.
-// A probe that fails in the browser but passes here points at the shell: a
-// shader, a buffer layout, a missing upload.
+// Boot self-check decisions, testable against the software rasterizer. The shell only reads pixels back from WebGL.
+// A probe that fails in the browser but passes here points at the shell: a shader, a buffer layout, a missing upload.
 
 import { B_CHEST, HUMAN } from "../../shared/anim/human.ts";
 import { LOOK_SKIN, defaultLook } from "../../shared/anim/look.ts";
@@ -20,16 +16,13 @@ export interface Probe {
   sy: number;
   /** Expected colour before lighting, 0..255. */
   rgb: [number, number, number];
-  /** "exact": matches within a few levels. "hue": same colour direction at any brightness. */
+  /** "exact" matches within a few levels. "hue" matches the colour direction at any brightness. */
   mode: "exact" | "hue";
 }
 
 /**
- * Probes for the proving ground seen from its spawn point looking north: sky
- * at the top, plaza at the bottom, the face of a known block, and a point on
- * the 50 degree slope, which is only where expected if terrain heights reach
- * the GPU correctly. With `withCreature`, also the creature and the body with
- * bones that the probe server places.
+ * Probes for the proving ground seen from its spawn point looking north. The slope probe lands where expected only
+ * if terrain heights reach the GPU correctly. `withCreature` adds the creature and the body the probe server places.
  */
 export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, skyIndex: number, hf: Heightfield, withCreature: boolean): Probe[] {
   const color = (index: number): [number, number, number] => [palette[index * 4]!, palette[index * 4 + 1]!, palette[index * 4 + 2]!];
@@ -46,15 +39,13 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   if (cam.project(232, hf.heightAt(232, 296), 296, at)) {
     probes.push({ name: "slope", sx: at[0]!, sy: at[1]!, rgb: color(hf.tint[Math.round(296 / hf.cell) * hf.nx + Math.round(232 / hf.cell)]!), mode: "hue" });
   }
-  // The probe server stands one grazer at a known spot, in a colour that is not its species' own:
-  // checks the per-frame entity path and that a body's colour regions arrive with it.
+  // The probe server stands a grazer at a known spot in a colour not its species' own, which checks the entity path and the colour regions.
   const grazer = reg.defs[reg.index.get("core:grazer") ?? 0];
   if (withCreature && grazer && grazer.type === "species" && cam.project(PROBE_CREATURE.x, hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z) + grazer.height / 2, PROBE_CREATURE.z, at)) {
     probes.push({ name: "creature", sx: at[0]!, sy: at[1]!, rgb: color(PROBE_CREATURE.color), mode: "hue" });
   }
-  // A survivor's body stands at another: its chest is where expected only if its bones reach the
-  // GPU and every vertex finds its own, and it is skin-coloured only if its look's colour regions
-  // do too. The chest is on the body's axis, so its facing does not matter.
+  // The chest of the survivor body is where expected only if bones reach the GPU, and skin-coloured only if its look's
+  // colour regions do. The chest is on the body's axis, so its facing does not matter.
   const survivor = reg.defs[reg.index.get("core:survivor") ?? 0];
   const chest = HUMAN.rest[B_CHEST * 3 + 1]! + HUMAN.capA[B_CHEST * 3 + 1]!;
   if (withCreature && survivor && survivor.type === "species" && cam.project(PROBE_BODY.x, hf.heightAt(PROBE_BODY.x, PROBE_BODY.z) + chest, PROBE_BODY.z, at)) {
@@ -67,8 +58,8 @@ export function probePasses(p: Probe, r: number, g: number, b: number): boolean 
   if (p.mode === "exact") return Math.abs(r - p.rgb[0]) <= 4 && Math.abs(g - p.rgb[1]) <= 4 && Math.abs(b - p.rgb[2]) <= 4;
   const got = Math.hypot(r, g, b);
   const want = Math.hypot(p.rgb[0], p.rgb[1], p.rgb[2]);
-  if (got < 40) return false; // black: nothing was drawn or lighting is broken
-  // Lighting and the checker scale brightness; the direction of the colour must hold.
+  if (got < 40) return false; // Black means nothing was drawn or lighting is broken.
+  // Lighting and the checker scale brightness, so only the direction of the colour must hold.
   const dot = (r * p.rgb[0] + g * p.rgb[1] + b * p.rgb[2]) / (got * want);
   return dot > 0.995;
 }

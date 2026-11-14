@@ -1,6 +1,5 @@
-// WebSocket as a Connection. Each frame is one channel byte followed by the
-// message. WebSocket delivers both channels reliably and in order; the protocol
-// does not depend on that.
+// WebSocket as a Connection. Each frame is one channel byte followed by the message.
+// WebSocket delivers both channels reliably and in order, but the protocol does not depend on that.
 
 import type { Connection } from "../../shared/net/transport.ts";
 

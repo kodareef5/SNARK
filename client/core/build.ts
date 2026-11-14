@@ -1,16 +1,5 @@
-// Building, as the one doing it sees it: where the piece in hand would go.
-//
-// While a survivor holds a building piece, this works out every frame what
-// its look chooses (shared/world/snap.ts: the piece looked at, or the nearest
-// with a place for it, or open ground), where that puts the piece, and
-// whether anything is against it, so that the piece can be shown there before
-// it is built and the reason said if it cannot be. The server works all of it
-// out again when asked; what is shown here is a promise of nothing.
-//
-// E turns the piece in its place. Q takes the next nearest place; held, it
-// lets go of other pieces altogether and sets the piece on open ground. R
-// changes its form (a wall, a doorframe, a windowframe). The arrow keys raise
-// and lower a foundation set on open ground.
+// Works out each frame where the building piece in hand would go (shared/world/snap.ts) and whether it may,
+// so a ghost can show it. The server checks all of it again when asked.
 
 import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
@@ -23,13 +12,13 @@ import { Support } from "../../shared/world/support.ts";
 import type { ClientSession } from "./session.ts";
 
 const NO_TARGET = 0xffffffff;
-/** How long Q is held before it means "no snapping", in milliseconds. */
+/** Holding Q this long toggles free placement. */
 const HOLD_MS = 350;
-/** The piece is shown in one of these palette colours: where it may go, and where it may not. */
+/** Palette indices for the ghost. */
 export const GHOST_OK = 16;
 export const GHOST_BAD = 8;
 
-/** What to say when a piece cannot be set down, by the code the check or the server gives. */
+/** Keyed by the RESULT_ code from the local check or the server. */
 export const BUILD_REASONS: Readonly<Record<number, string>> = {
   [RESULT_OBSTRUCTED]: "Something is in the way",
   [RESULT_TOO_HIGH]: "Too far above the ground",
@@ -43,13 +32,13 @@ export const BUILD_REASONS: Readonly<Record<number, string>> = {
 export class Builder {
   /** A building piece is in hand. */
   active = false;
-  /** The structure the piece would become, where, and whether it may: 0 if so, else why not (a RESULT_ code). */
+  /** The structure kind the piece would become, and its pose. problem is 0 if it may go there, else a RESULT_ code. */
   kind = 0;
   readonly pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   problem = 0;
-  /** What is said under the crosshair: the last refusal for a moment, or what is against the piece now. */
+  /** The server's last refusal for a moment, else the current problem. */
   notice = "";
-  /** Which form of the piece, how it is turned, which of the nearest places, whether it joins nothing, and how far it is raised. */
+  /** cycle picks among the nearest places. free means the piece joins nothing. */
   variant = 0;
   turn = 0;
   cycle = 0;
@@ -57,7 +46,7 @@ export class Builder {
   lift = 0;
   private target = -1;
   private socket = 0;
-  /** The piece is a thing set on top of the target, at the free point, rather than in one of its places. */
+  /** The piece sits on top of the target at the free point, not in one of its places. */
   private onTop = false;
   private freeX = 0;
   private freeZ = 0;
@@ -71,11 +60,7 @@ export class Builder {
   private refusalUntil = 0;
   private asked = 0;
 
-  /**
-   * Work out where the piece in hand would go, for an eye at (ox, oy, oz)
-   * looking along the unit direction (dx, dy, dz) with the body facing `yaw`
-   * (radians).
-   */
+  /** The eye is at (ox, oy, oz), looking along the unit direction (dx, dy, dz). `yaw` is the body's facing in radians. */
   update(session: ClientSession, world: CollisionWorld, reg: Registry, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, yaw: number, nowMs: number): void {
     const inv = session.inventory;
     const slot = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.hotbar + session.held : -1;
@@ -88,12 +73,10 @@ export class Builder {
       return;
     }
     if (item !== this.item) {
-      // Another piece in hand: it starts as itself, unturned.
       this.item = item;
       this.variant = this.turn = this.cycle = this.lift = 0;
       this.free = false;
     }
-    // Q held long enough lets go of other pieces.
     if (this.qDownAt >= 0 && nowMs - this.qDownAt >= HOLD_MS) {
       this.free = !this.free;
       this.qDownAt = -2;
@@ -108,12 +91,12 @@ export class Builder {
     let problem = 0;
     this.target = -1;
     this.onTop = false;
-    // Where the look ends, facing the way the builder does and turned by quarters: for open ground, and for a thing set on a floor.
+    // The free point is where the look ends, facing as the builder does, turned by quarters. Open ground and a thing on a floor use it.
     this.freeX = Math.round(aim.px * STRUCT_UNITS);
     this.freeZ = Math.round(aim.pz * STRUCT_UNITS);
     this.freeYaw = (Math.round((yaw / (2 * Math.PI)) * YAW_UNITS) + this.turn * (YAW_UNITS / 4)) & (YAW_UNITS - 1);
     if (reg.role[kind] === ROLE_THING && looked >= 0) {
-      // A thing, with the look on something built: on top of that, where the look is, if it is a floor of the builder's tribe.
+      // A thing aimed at a structure rests on top of it where the look is, if it is a floor of the builder's tribe.
       this.target = looked;
       this.onTop = true;
       const t = structs.chunks[Math.floor(looked / 65536)]!;
@@ -126,7 +109,6 @@ export class Builder {
       if (!poseAt(structs, reg, aim.target, kind, this.socket, this.turn, this.pose)) problem = RESULT_NO_SNAP;
       else if (t.owner[aim.target & 0xffff] !== session.tribe.team || session.tribe.team === 0) problem = RESULT_NOT_YOURS;
     } else {
-      // Open ground, where the look meets it.
       if (!aim.ground || !freePose((x, z) => world.hf.heightAt(x, z), reg, kind, aim.px, aim.pz, this.freeYaw, this.lift, this.pose)) problem = RESULT_NO_SNAP;
     }
     const p = this.pose;
@@ -148,12 +130,12 @@ export class Builder {
     this.notice = nowMs < this.refusalUntil ? this.refusal : (BUILD_REASONS[problem] ?? "");
   }
 
-  /** A key while a piece is in hand. Returns true if it was one of building's. */
+  /** Returns true if building took the key. */
   key(code: string, down: boolean, repeat: boolean, nowMs: number, reg: Registry): boolean {
     if (!this.active) return false;
     if (code === "KeyQ") {
       if (down && !repeat) this.qDownAt = nowMs;
-      // Let go before it counted as held: the next nearest place.
+      // Released before it counted as held, so it picks the next nearest place.
       else if (!down && this.qDownAt >= 0) this.cycle++;
       if (!down) this.qDownAt = -1;
       return true;
@@ -161,7 +143,7 @@ export class Builder {
     if (code !== "KeyE" && code !== "KeyR" && code !== "ArrowUp" && code !== "ArrowDown") return false;
     if (!down) return true;
     if (code === "KeyE" && !repeat) {
-      // In a place, as many ways as the piece has; on open ground, a quarter at a time.
+      // In a place the piece turns as many ways as its role allows. On open ground it turns by quarters.
       const ways = this.target >= 0 && !this.onTop ? turnsOf(reg.role[this.kind]!) : 4;
       this.turn = (this.turn + 1) % ways;
     } else if (code === "KeyR" && !repeat) {
@@ -172,7 +154,7 @@ export class Builder {
     return true;
   }
 
-  /** The primary button: ask the server to set the piece down where it is shown. Returns the command's number, or 0 if nothing was asked. */
+  /** Returns the command's sequence number, or 0 if nothing was sent. */
   place(session: ClientSession, reg: Registry): number {
     if (!this.active || this.problem === RESULT_NO_SNAP) return 0;
     const forms = reg.places[this.item]!;
@@ -200,12 +182,12 @@ export class Builder {
     return this.asked;
   }
 
-  /** The server answered a command. If it was a refusal of the piece last asked for, the reason is shown for a while. */
+  /** A refusal of the piece last asked for shows its reason for a while. */
   result(seq: number, code: number, nowMs: number): void {
     if (seq !== this.asked || seq === 0) return;
     this.asked = 0;
     if (code === RESULT_OK) {
-      // Set down: the next piece starts from the nearest place again.
+      // The next piece starts from the nearest place again.
       this.cycle = 0;
       return;
     }

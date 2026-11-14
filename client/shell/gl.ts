@@ -1,6 +1,5 @@
-// WebGL2 executor for frame packets. It decides nothing: which tiles, which
-// batches, which level of detail and which colours all arrive in the packet.
-// Keep it that way; logic added here cannot be tested.
+// WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail and colours all arrive
+// in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../core/render/shading.ts";
@@ -129,7 +128,7 @@ export class GlRenderer {
     this.init();
   }
 
-  /** Create every GPU resource. Called again after a lost context is restored. */
+  /** Called again after a lost context is restored. */
   init(): void {
     const gl = this.gl;
     const info = gl.getExtension("WEBGL_debug_renderer_info");
@@ -149,10 +148,10 @@ export class GlRenderer {
     texture(0, gl.RGBA8, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.pack.palette);
     texture(1, gl.R16UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_SHORT, hf.heights);
     texture(2, gl.R8UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_BYTE, hf.tint);
-    // Bones: three texels of four floats each, read by exact texel. Left bound on unit 3.
+    // Each bone is three texels of four floats, read by exact texel. The texture stays bound on unit 3, which draw() relies on.
     texture(3, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
 
-    // Meshes: one vertex array per level of detail; instance attributes are pointed per draw.
+    // One vertex array per level of detail. Instance attributes are pointed per draw.
     this.meshLods = this.pack.header.meshes.map((m) =>
       m.lods.map((lod) => {
         const vao = gl.createVertexArray()!;
@@ -176,7 +175,7 @@ export class GlRenderer {
     );
     this.transient = gl.createBuffer()!;
 
-    // Terrain: one 32 x 32 grid with a skirt, drawn once per tile.
+    // The terrain is one 32 x 32 grid with a skirt, drawn once per tile.
     const row = TILE_QUADS + 1;
     const verts: number[] = [];
     const index: number[] = [];
@@ -188,7 +187,7 @@ export class GlRenderer {
         index.push(a + row + 1, a + 1, a, a + row, a + row + 1, a);
       }
     }
-    // Skirt: border vertices repeated and dropped, hiding gaps between tiles of different detail.
+    // The skirt repeats the border vertices and drops them, which hides gaps between tiles of different detail.
     const edge = (x: number, z: number): number => (verts.push(x, z, 1, 0), verts.length / 4 - 1);
     for (let i = 0; i < TILE_QUADS; i++) {
       for (const [x0, z0, x1, z1] of [[i, 0, i + 1, 0], [i, TILE_QUADS, i + 1, TILE_QUADS], [0, i, 0, i + 1], [TILE_QUADS, i, TILE_QUADS, i + 1]] as const) {
@@ -302,7 +301,7 @@ export class GlRenderer {
     for (let d = 0; d < p.drawCount; d++) {
       const m = p.drawMesh[d]!;
       const flags = p.drawFlags[d]!;
-      // See-through draws come after the opaque ones: blended, both faces, leaving depth alone.
+      // See-through draws come after the opaque ones. They blend, show both faces and leave depth alone.
       if (!blending && (flags & DRAW_BLEND) !== 0) {
         blending = true;
         gl.enable(gl.BLEND);
@@ -311,7 +310,7 @@ export class GlRenderer {
         gl.disable(gl.CULL_FACE);
         gl.uniform1f(this.mesh.uniform("uAlpha"), WATER_ALPHA);
       }
-      // The viewer's own body comes last of all: over everything, with its own near plane.
+      // The viewer's own body comes last, over everything, with its own near plane.
       if (!near && (flags & DRAW_NEAR) !== 0) {
         near = true;
         opaque();
@@ -343,7 +342,7 @@ export class GlRenderer {
     gl.bindVertexArray(null);
   }
 
-  /** Colour of the pixel at a 0..1 screen position (origin top-left), read back from the GPU. */
+  /** `sx` and `sy` are 0..1, origin top-left. */
   readPixel(sx: number, sy: number): [number, number, number] {
     const gl = this.gl;
     const out = new Uint8Array(4);

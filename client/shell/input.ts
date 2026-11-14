@@ -1,6 +1,4 @@
-// Forwards raw keyboard and mouse events to the app and keeps pointer lock in
-// step with what the interface wants. What a key means is decided in
-// client/core. Touch controls are not implemented yet.
+// Forwards raw keyboard and mouse events to the app and keeps pointer lock in step with what the interface wants.
 
 import type { App } from "../core/app.ts";
 

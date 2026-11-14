@@ -1,11 +1,5 @@
-// Voice in a browser, as the page sees it: the audio context, the microphone,
-// the two worklets and the worker, joined up. Hearing starts when the session
-// has been given its token and the viewer has touched the page (a browser
-// plays nothing before that); the microphone is asked for the first time the
-// talk key is pressed.
-//
-// Nothing here is tested, and nothing here decides anything: see
-// client/core/voice and shared/voice for what does.
+// Voice in a browser: the audio context, the microphone, the two worklets and the worker, joined up. Nothing here is tested.
+// Hearing starts once the session has its token and the viewer has touched the page, because a browser plays nothing before that.
 
 import { HEAR_FIELDS, type VoicePort, type VoiceSpeaker } from "../core/voice/port.ts";
 import { MODE_TALK, REACH_LOCAL } from "../../shared/voice/packet.ts";
@@ -22,22 +16,22 @@ export interface VoiceReport {
   late: number;
   odd: number;
   errors: number;
-  /** Milliseconds for a packet to come back from the server, when the loop is on; -1 before one has. */
+  /** Round trip of a packet through the server while the loop is on, or -1 before one has come back. */
   rttMs: number;
-  /** Milliseconds the audio device adds on the way out, and the longest wait any buffer is holding. */
+  /** outputMs is the latency the audio device adds. targetMs is the longest jitter target of any speaker playing. */
   outputMs: number;
   targetMs: number;
-  /** How loud the microphone is, 0 to 1, and whether what it hears is being sent. */
+  /** Microphone level, 0 to 1. */
   level: number;
   sending: boolean;
-  /** The names of those whose voices have been played. */
+  /** Names of the speakers whose voices have been played. */
   heard: string[];
   sampleRate: number;
 }
 
 export class VoiceIo implements VoicePort {
   notice = "";
-  /** Have the server send this client's own voice back to it: for testing a microphone, and the probe. */
+  /** Asks the server to send this client's own voice back, for testing a microphone and for the probe. */
   loop = false;
   readonly report: VoiceReport = { status: "off", socket: false, captured: 0, sent: 0, received: 0, decoded: 0, played: 0, missing: 0, late: 0, odd: 0, errors: 0, rttMs: -1, outputMs: 0, targetMs: 0, level: 0, sending: false, heard: [], sampleRate: 0 };
   readonly speakers = new Map<number, VoiceSpeaker>();
@@ -56,16 +50,11 @@ export class VoiceIo implements VoicePort {
     this.url = url;
   }
 
-  /** Whether this browser can do it at all: encode and decode Opus, and run audio worklets. */
   static get supported(): boolean {
     return typeof AudioEncoder !== "undefined" && typeof AudioDecoder !== "undefined" && typeof AudioWorkletNode !== "undefined" && typeof Worker !== "undefined";
   }
 
-  /**
-   * Called every frame with what the session was told. Opens the way to the
-   * ear the first time there is a token, and the socket again whenever the
-   * token changes.
-   */
+  /** Call every frame with session.voice. Opens audio output on the first token, and the socket again whenever the token changes. */
   sync(voice: { slot: number; token: Uint8Array; version: number }): void {
     if (voice.version === this.version || voice.version === 0) return;
     this.version = voice.version;
@@ -116,7 +105,7 @@ export class VoiceIo implements VoicePort {
     this.unlock();
   }
 
-  /** The viewer touched the page: sound may start now. */
+  /** Call when the viewer touches the page. A browser plays nothing before that, so the context is resumed here. */
   unlock(): void {
     const ctx = this.ctx;
     if (!ctx) return;
@@ -150,7 +139,7 @@ export class VoiceIo implements VoicePort {
     this.worker?.postMessage({ t: "talk", on: on && this.mic === "open", open, mode, reach: REACH_LOCAL, loop: this.loop });
   }
 
-  /** Ask for the microphone and join it to the worker. */
+  /** Runs the first time the talk key is pressed, and joins the microphone to the worker. */
   private async microphone(): Promise<void> {
     const ctx = this.ctx;
     const worker = this.worker;
@@ -158,12 +147,12 @@ export class VoiceIo implements VoicePort {
     this.mic = "asking";
     this.notice = "voice: asking for the microphone";
     try {
-      // The device's own rate: the capture worklet brings it to the encoder's.
+      // The stream runs at the device's own rate. The capture worklet resamples it to the encoder's.
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
       await ctx.audioWorklet.addModule("voice-capture.js");
       const capture = new AudioWorkletNode(ctx, "snark-capture", { numberOfInputs: 1, numberOfOutputs: 1 });
       ctx.createMediaStreamSource(stream).connect(capture);
-      // Joined to the output through silence, so that every browser keeps it running.
+      // The capture node reaches the output through a silent gain, so that every browser keeps it running.
       const silence = ctx.createGain();
       silence.gain.value = 0;
       capture.connect(silence).connect(ctx.destination);

@@ -1,8 +1,5 @@
-// Audio worklet: the microphone, cut into the frames the encoder takes.
-//
-// The browser hands over 128 samples at a time at the device's rate. They are
-// brought to 48,000 a second and gathered into 20 ms frames, each sent to the
-// voice worker as it fills. Nothing is decided here.
+// Audio worklet for the microphone. The browser hands over 128 samples at a time at the device's rate.
+// They are resampled to 48,000 a second and sent to the voice worker in 20 ms frames.
 
 import { Resampler } from "../core/voice/resample.ts";
 import { FRAME_SAMPLES, SAMPLE_RATE } from "../../shared/voice/packet.ts";
@@ -28,7 +25,7 @@ class Capture extends AudioWorkletProcessor {
     for (let i = 0; i < n; i++) {
       this.frame[this.fill++] = this.scratch[i]!;
       if (this.fill < FRAME_SAMPLES) continue;
-      // The frame goes to the worker whole; a new one takes its place.
+      // The frame's buffer is transferred to the worker, so a new one takes its place.
       this.out.postMessage(this.frame, [this.frame.buffer]);
       this.frame = new Float32Array(FRAME_SAMPLES);
       this.fill = 0;

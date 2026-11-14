@@ -1,4 +1,4 @@
-// What an audio worklet's own scope gives a processor, which the DOM library does not describe.
+// Globals of the audio worklet scope, which the DOM library does not declare.
 
 declare class AudioWorkletProcessor {
   readonly port: MessagePort;

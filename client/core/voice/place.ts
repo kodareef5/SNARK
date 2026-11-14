@@ -1,22 +1,16 @@
-// How loud a voice is to the one hearing it.
-//
-// A voice is at its fullest near the speaker and falls away as sound does,
-// in proportion to the distance, until at the edge of its range it is faint;
-// past the edge, where the server goes on sending it for a little while, it
-// fades to nothing. How far that range is depends on how loud it was meant.
+// Voice gain by distance. A voice is full near the speaker, falls in proportion to distance out to its range,
+// and fades to nothing past the edge, where the server still sends it for a while. The range depends on the mode.
 
 import { KEEP_RANGE, MODE_TALK, VOICE_RANGE } from "../../../shared/voice/packet.ts";
 
-/** The share of its range within which a voice is at its fullest. */
+/** A voice is at full gain within this share of its range. */
 const NEAR = 0.15;
-/** How loud a speaker is played whose body this client has not been shown. */
+/** Gain for a speaker whose body this client cannot see. */
 const UNSEEN = 0.5;
 
 /**
- * Which side a voice is on: -1 fully to the left, 1 fully to the right, 0
- * ahead or behind. `dx` and `dz` are where the speaker is from the listener;
- * `yaw` is the way the listener looks, in radians (0 looks along +Z, and its
- * right is then -X). A voice within arm's reach is in the middle.
+ * Returns -1 for fully left, 1 for fully right, 0 for ahead or behind. (dx, dz) is the speaker relative to the listener.
+ * `yaw` is the listener's facing in radians: 0 looks along +Z, with -X on its right. Within a metre the pan shrinks to the middle.
  */
 export function voicePan(dx: number, dz: number, yaw: number): number {
   const far = Math.hypot(dx, dz);
@@ -25,7 +19,7 @@ export function voicePan(dx: number, dz: number, yaw: number): number {
   return far < 1 ? side * far : side;
 }
 
-/** How much of a voice at `pan` goes to the left ear and how much to the right, the two together as loud wherever it is. */
+/** Equal-power gains for the left and right ears. */
 export function panLeft(pan: number): number {
   return Math.cos(((pan + 1) * Math.PI) / 4);
 }
@@ -34,7 +28,7 @@ export function panRight(pan: number): number {
   return Math.sin(((pan + 1) * Math.PI) / 4);
 }
 
-/** The gain for a voice `distance` metres off, meant as loud as `mode`. A distance below zero means it is not known. */
+/** `distance` is in metres. Below zero means it is not known. */
 export function voiceGain(distance: number, mode: number): number {
   if (distance < 0) return UNSEEN;
   const range = VOICE_RANGE[mode] ?? VOICE_RANGE[MODE_TALK]!;

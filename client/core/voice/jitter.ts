@@ -1,92 +1,81 @@
-// One speaker's audio between the network and the ear.
-//
-// Frames arrive when the network delivers them: early, late, in bursts, or
-// not at all. They are played on the listener's own clock. This buffer holds
-// decoded frames by the time their speaker gave them and plays them `target`
-// samples behind the newest, which is the room it has to absorb an uneven
-// arrival. It runs inside the playback worklet, so it allocates nothing after
-// it is made and reads no clock: whoever calls `read` is the clock.
-//
-// The technique is the usual one (NetEQ, Mumble, moq's audio ring): place by
-// timestamp, play behind, drop what comes too late to play, and start again
-// from the arrival of the next frame when playing has run dry. How far behind
-// is learnt from how unevenly frames have been arriving, and a frame that is
-// due and has not come is covered for a moment by the one before it.
+// One speaker's jitter buffer. It places decoded frames by the speaker's timestamp and plays `target` samples behind the newest.
+// It runs inside the playback worklet, so it allocates nothing after construction and reads no clock. The caller of read() is the clock.
 
 import { FRAME_SAMPLES, SAMPLE_RATE } from "../../../shared/voice/packet.ts";
 
-/** Frames held: 1.28 s, far more than any target. */
+/** Frames held, 1.28 s of audio. That is far more than any target. */
 const SLOTS = 64;
 const F = FRAME_SAMPLES;
 const MS = SAMPLE_RATE / 1000;
-/** How far behind the newest frame playing starts before anything is known of the link, and the least and most it may become. */
+/** The target before anything is known of the link, and its bounds. In samples. */
 export const START_TARGET = 60 * MS;
 export const MIN_TARGET = 40 * MS;
 export const MAX_TARGET = 300 * MS;
-/**
- * More than this beyond the target in hand means a burst arrived after a
- * stall. What is older is skipped: a listener is better served by the present
- * than by a growing delay.
- */
+/** More than this in hand beyond the target means a burst arrived after a stall. The older samples are skipped rather than played late. */
 const BURST = 120 * MS;
-/** With nothing left to play and no end said, a speaker is given this long to go on before it is taken to have stopped. */
+/** With nothing left to play and no end flag, the speaker counts as stopped after this long. */
 const GIVE_UP = 500 * MS;
 /** After running dry, playing starts again this far behind the frame that restarts it. */
 const CUSHION = 40 * MS;
-/** Lateness is counted in steps of a frame, up to this many; the count fades by this much with each frame that arrives. */
+/** Lateness is counted in steps of a frame, up to BUCKETS. Each count is multiplied by FADE with each frame that arrives. */
 const BUCKETS = 16;
 const FADE = 0.983;
-/** How late a frame may be for the target to cover it: all but one in twenty. */
+/** The target covers the lateness of this share of frames. */
 const COVER = 0.95;
-/** The fastest arrival is looked for over twice this long. */
+/** The least delay is looked for over this window and the one before it. */
 const WINDOW = SAMPLE_RATE;
-/** A gap is covered for this long, the cover halving each frame; then it dies away at once. */
+/** A gap is covered for this long, the cover halving each frame. After that it dies away fast. */
 const COVER_SAMPLES = 60 * MS;
 const HALVE = 0.5 ** (1 / F);
 const DIE = 0.96;
 const QUIET = 1e-4;
-/** Real sound comes back in over this long from a cover, and over this long from silence. */
+/** Real sound fades back in over SEAM from a cover, and over FADE_IN from silence. */
 const SEAM = 2.5 * MS;
 const FADE_IN = 5 * MS;
 
 export class JitterBuffer {
-  /** Samples behind the newest frame that playing runs; and what the link has lately asked for, taken up at the next start. */
+  /** target is how many samples behind the newest frame playing runs. wanted is what the link lately asks for, taken up at the next start. */
   target = START_TARGET;
   wanted = START_TARGET;
-  /** Whether there is, or may soon be, something of this speaker to hear. */
+  /** There is, or may soon be, something of this speaker to hear. */
   playing = false;
-  /** Frames played, frames that were due and had not come, frames that came too late, new starts after running dry, skips after a burst, and frames of a shape that cannot be placed. */
+  /**
+   * missing counts frames that were due and had not come, late those that came too late to play, restarts new
+   * starts after running dry, jumps skips after a burst, and odd frames whose size or time cannot be placed.
+   */
   readonly stats = { played: 0, missing: 0, late: 0, restarts: 0, jumps: 0, odd: 0 };
   /** The speaker's time of the next sample to play. */
   private cursor = 0;
   private readonly pcm = new Float32Array(SLOTS * F);
-  /** For each slot, the number of the frame it holds, plus one; 0 for none. */
+  /** For each slot, the number of the frame it holds plus one, or 0 for none. */
   private readonly held = new Uint32Array(SLOTS);
-  /** The frame this start began with, the newest taken in, and the last of the utterance once its end has been said; -1 for none. */
+  /** The frame this start began with, the newest taken in, and the last of the utterance once its end is known. -1 for none. */
   private first = 0;
   private newest = -1;
   private last = -1;
-  /** How late frames have been, counted by frames of lateness; and the least delay seen in this second and the one before. */
+  /** A histogram of lateness in frames, and the least delay seen in this window and the one before. */
   private readonly lateness = new Float32Array(BUCKETS);
   private least = Infinity;
   private leastBefore = Infinity;
   private windowEnd = 0;
-  /** The last frame played to its end (its slot, or -1), which a gap is covered from. */
+  /** Slot of the last frame played to its end, or -1. A gap is covered from it. */
   private from = -1;
-  /** Whether what is due is not here; samples of cover given for it; where the cover is in that frame, which way it is going, and how loud it still is. */
+  /**
+   * gapping means the due frame is missing. gap counts the samples of cover given for it. at and dir are the
+   * cover's position and direction in the last frame played, and cover is its gain.
+   */
   private gapping = false;
   private gap = 0;
   private at = 0;
   private dir = -1;
   private cover = 0;
-  /** Samples left of bringing real sound back in, and out of how many. */
+  /** Samples left of the fade back to real sound, and out of how many. */
   private seam = 0;
   private seamOf = 1;
 
   /**
-   * Take in one decoded frame: `time` is the speaker's, in samples, and a
-   * multiple of the frame; `end` says nothing follows it; `arrival` is the
-   * listener's clock in samples when it came, if the caller keeps one.
+   * `time` is the speaker's, in samples, and a multiple of the frame. `end` says nothing follows.
+   * `arrival` is the listener's clock in samples, or -1 if the caller keeps none.
    */
   push(time: number, pcm: Float32Array, end = false, arrival = -1): void {
     if (pcm.length !== F || time % F !== 0 || time < 0) {
@@ -97,25 +86,25 @@ export class JitterBuffer {
     const f = time / F;
     const dry = this.cursor >= (this.newest + 1) * F;
     if (!this.playing || f > this.newest + SLOTS || f + SLOTS < this.newest) {
-      // The first frame, or one from another time altogether (the speaker began again): start from here.
+      // The first frame, or one from another time altogether (the speaker began again). Start from here.
       this.target = this.wanted;
       this.start(time, this.target);
     } else if (time + F <= this.cursor) {
-      // Too late to play. If playing has run dry, everything will be: start again from this one.
+      // Too late to play. If playing has run dry, every frame will be, so start again from this one.
       if (!dry) {
         this.stats.late++;
         return;
       }
-      // The target was not enough: a frame more, and a short wait so that sound is back soon.
+      // The target was not enough. Add a frame to it, and restart with a short cushion so sound is back soon.
       this.stats.restarts++;
       this.wanted = this.target = Math.min(MAX_TARGET, Math.max(this.wanted, this.target + F));
       this.start(time, CUSHION);
     } else if (time - this.cursor > this.target + BURST) {
-      // A stall, then everything at once: what is in hand is older than anyone should hear. Skip to the target.
+      // A burst after a stall. Skip to the target.
       this.cursor = time - this.target;
       this.first = Math.ceil(this.cursor / F);
       this.stats.jumps++;
-      // What was playing is carried over the cut by its own echo, as a gap is.
+      // The cut is covered as a gap is, from the last frame played.
       this.gapping = true;
       this.gap = 0;
       this.cover = this.from >= 0 ? 1 : 0;
@@ -129,12 +118,12 @@ export class JitterBuffer {
     if (end) this.last = f;
   }
 
-  /** Nothing follows the newest frame in hand: said by an end that came with no sound of its own. */
+  /** Marks the newest frame as the last, for an end that arrives with no audio of its own. */
   end(): void {
     if (this.playing && this.newest >= 0) this.last = this.newest;
   }
 
-  /** Note how late a frame came, against the fastest of late, and what target would have covered all but a few. */
+  /** Records a frame's lateness against the least delay of the last two windows, and sets `wanted` to cover COVER of frames. */
   private observe(time: number, arrival: number): void {
     const delay = arrival - time;
     if (arrival >= this.windowEnd) {
@@ -152,7 +141,7 @@ export class JitterBuffer {
     total += 1;
     let b = 0;
     for (let sum = h[0]!; sum < total * COVER && b < BUCKETS - 1; ) sum += h[++b]!;
-    // The far edge of that step of lateness, and a frame to spare.
+    // The far edge of that bucket, plus a frame to spare.
     const wanted = (b + 2) * F;
     this.wanted = wanted < MIN_TARGET ? MIN_TARGET : wanted > MAX_TARGET ? MAX_TARGET : wanted;
   }
@@ -164,13 +153,13 @@ export class JitterBuffer {
     this.newest = -1;
     this.last = -1;
     this.playing = true;
-    // Whatever comes first comes in from silence.
+    // The first frame fades in from silence.
     this.from = -1;
     this.gapping = true;
     this.cover = 0;
   }
 
-  /** The next sample of the cover: the last frame played, back and forth, dying away. */
+  /** The next cover sample. The cover reads the last frame played back and forth, dying away. */
   private covering(): number {
     this.cover *= this.gap < COVER_SAMPLES ? HALVE : DIE;
     this.gap++;
@@ -187,11 +176,7 @@ export class JitterBuffer {
     return s;
   }
 
-  /**
-   * The next `n` samples of this speaker, added to `out` at `gain`. Returns
-   * false, touching nothing, if the speaker is silent. A frame that is due and
-   * has not come is covered for a moment by the one before it, then is silence.
-   */
+  /** Adds the next `n` samples to `out` at `gain`. Returns false, touching nothing, if the speaker is silent. */
   read(out: Float32Array, n: number, gain = 1): boolean {
     if (!this.playing) return false;
     let p = this.cursor;
@@ -203,7 +188,7 @@ export class JitterBuffer {
       if (f >= this.first && f <= this.newest && this.held[slot] === f + 1) {
         const at = slot * F + off;
         if (this.gapping) {
-          // Real sound again: brought in over a moment, from the cover if it is still sounding, else from silence.
+          // Real sound again. It fades in from the cover if that still sounds, else from silence.
           this.seam = this.seamOf = this.cover >= QUIET ? SEAM : FADE_IN;
           this.gapping = false;
         }
@@ -218,7 +203,7 @@ export class JitterBuffer {
           this.from = slot;
         }
       } else if (f >= this.first && this.from >= 0 && (this.last < 0 || f <= this.last)) {
-        // Due and not here: lost on the way, or not yet come.
+        // The frame is due and missing: lost, or not yet arrived.
         if (!this.gapping) {
           this.gapping = true;
           this.gap = 0;
@@ -233,12 +218,12 @@ export class JitterBuffer {
       p += run;
     }
     this.cursor = p;
-    // Past the end it said, or long past anything it sent: it has stopped.
+    // Past its end flag, or GIVE_UP past the last frame it sent, the speaker has stopped.
     if ((this.last >= 0 && p >= (this.last + 1) * F) || p > (this.newest + 1) * F + GIVE_UP) this.playing = false;
     return true;
   }
 
-  /** Samples in hand ahead of what is playing: 0 when it has run dry. */
+  /** Samples in hand ahead of the cursor, or 0 when it has run dry. */
   get depth(): number {
     const ahead = (this.newest + 1) * F - this.cursor;
     return this.playing && ahead > 0 ? ahead : 0;

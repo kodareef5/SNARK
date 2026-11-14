@@ -1,53 +1,35 @@
-// Structures as they are seen to go.
-//
-// The server says only that pieces went, why, where it began and when; the
-// session erases their rows and keeps what they were (`ClientSession.rubble`).
-// What is seen of it is this client's own picture, and decides nothing: each
-// piece stays where it stood for a moment, then drops under gravity, drifting
-// outward from where the collapse began and turning a little, and is gone
-// when the ground has all of it. It collides with nothing.
-//
-// The server works a great collapse out over many ticks, nearest to where it
-// began first, so the order in time is mostly the server's own. What is added
-// here is the order inside one removal (the further from its beginning the
-// later, by a little) and between removals that arrived together (by the
-// ticks they happened on), so that what reaches the eye is a front moving
-// outward and never a block vanishing at once.
-//
-// Only so many are shown at a time, the nearest to the eye. The rest are
-// simply gone, as they already are on the server. A thousand pieces falling
-// costs a client what a few hundred moving boxes do.
+// A client-only picture of structures collapsing. It decides nothing and collides with nothing. Pieces let go in a
+// front moving outward from where the collapse began, then drop. Only the MAX_FALLING nearest the eye are shown.
 
 import { TICK_DT, YAW_UNITS } from "../../shared/coords.ts";
 import { GONE_FELL } from "../../shared/world/structures.ts";
 import { MAX_FALLING } from "./render/packet.ts";
 import type { Rubble } from "./session.ts";
 
-/** How fast a falling piece gathers speed, metres per second per second. */
+/** Metres per second squared. */
 export const FALL_GRAVITY = 9.81;
-/** A piece waits this long for each metre it is from the nearest piece of the same removal, milliseconds: a front at 40 m/s. */
+/** A piece waits this long per metre it is farther from the origin than the nearest piece of its removal. The front moves at 40 m/s. */
 export const FRONT_MS_PER_METRE = 25;
-/** No piece waits longer than this, however far off and however late its removal: milliseconds. */
 export const MAX_WAIT_MS = 600;
-/** How fast a fallen piece drifts away from where the collapse began, metres per second; and the most it turns, yaw units per second. */
+/** Drift away from the collapse origin in metres per second, and the most a piece turns in yaw units per second. */
 const DRIFT = 0.9;
 const SPIN = YAW_UNITS / 12;
-/** A piece still in the air after this long is gone anyway: milliseconds. */
+/** A piece still in the air after this long is dropped. */
 const MAX_LIFE_MS = 4000;
 
 export class Falling {
-  /** Pieces being shown, and where each is this frame: what it is, metres, and its facing in yaw units. */
+  /** Pieces shown this frame. Positions are in metres, yaw in yaw units. */
   count = 0;
   readonly kind = new Uint16Array(MAX_FALLING);
   readonly x = new Float32Array(MAX_FALLING);
   readonly y = new Float32Array(MAX_FALLING);
   readonly z = new Float32Array(MAX_FALLING);
   readonly yaw = new Uint16Array(MAX_FALLING);
-  /** Pieces taken in since the start, and how many gave way to nearer ones because there was no room. */
+  /** Pieces taken in since the start, and how many were dropped for lack of room. */
   taken = 0;
   dropped = 0;
 
-  // Where each stood, when it lets go, how it drifts and turns, and the height of its middle at which the ground has all of it.
+  // start is when a piece lets go. under is the height of its middle at which the ground covers all of it.
   private readonly x0 = new Float32Array(MAX_FALLING);
   private readonly y0 = new Float32Array(MAX_FALLING);
   private readonly z0 = new Float32Array(MAX_FALLING);
@@ -67,13 +49,10 @@ export class Falling {
     this.heightAt = heightAt;
   }
 
-  /**
-   * Take in what has just gone, emptying `list`. The eye is at (ex, ey, ez):
-   * if there is not room for all, the nearest to it are the ones shown.
-   */
+  /** Empties `list`. If there is not room for all, the pieces nearest the eye (ex, ey, ez) are shown. */
   absorb(list: Rubble[], nowMs: number, ex: number, ey: number, ez: number): void {
     if (list.length === 0) return;
-    // The earliest tick among them, and for each removal (they share a tick) how far its nearest piece is from where it began.
+    // Pieces of one removal share a tick. `nearest` maps that tick to the distance of its nearest piece from the origin.
     const nearest = this.nearest;
     nearest.clear();
     let first = Infinity;
@@ -90,7 +69,7 @@ export class Falling {
       const d2 = (r.x - ex) * (r.x - ex) + (r.y - ey) * (r.y - ey) + (r.z - ez) * (r.z - ez);
       let i = this.count;
       if (i === MAX_FALLING) {
-        // No room: it takes the place of the farthest shown, if it is nearer than that.
+        // No room. It replaces the farthest piece shown if it is nearer.
         if (farAt < 0) {
           for (let k = 0; k < MAX_FALLING; k++) {
             const q = (this.x0[k]! - ex) * (this.x0[k]! - ex) + (this.y0[k]! - ey) * (this.y0[k]! - ey) + (this.z0[k]! - ez) * (this.z0[k]! - ez);
@@ -111,7 +90,7 @@ export class Falling {
       const d = Math.hypot(flat, r.y - r.oy);
       const fell = r.cause === GONE_FELL;
       const wait = fell ? (r.tick - first) * TICK_DT * 1000 + (d - nearest.get(r.tick)!) * FRONT_MS_PER_METRE : 0;
-      // The same piece turns the same way on every client: from where it stood.
+      // The spin is hashed from the position, so a piece turns the same way on every client.
       const h = (Math.imul(Math.round(r.x * 8), 73856093) ^ Math.imul(Math.round(r.y * 8), 19349663) ^ Math.imul(Math.round(r.z * 8), 83492791)) >>> 0;
       this.kind[i] = r.kind;
       this.x0[i] = r.x;
@@ -127,7 +106,6 @@ export class Falling {
     list.length = 0;
   }
 
-  /** Work out where every piece is at `nowMs`, and let go of those the ground has. */
   step(nowMs: number): void {
     let kept = 0;
     for (let i = 0; i < this.count; i++) {

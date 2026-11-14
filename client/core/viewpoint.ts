@@ -1,25 +1,21 @@
-// Where the camera is, given where the body is and where it looks.
-//
-// First person puts the camera at the body's eye. Third person hangs it over
-// the right shoulder and pulls it in when something solid is in the way. Either
-// way the body aims from its own eye: the server never learns which view a
-// client uses, and the view cannot move a shot.
+// Places the camera at the eye, or over the right shoulder in third person, pulled in when something solid is in the way.
+// The body always aims from its own eye, so the view cannot move a shot and the server never learns which view is used.
 
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NONE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import type { Camera } from "./render/camera.ts";
 
-/** How far behind, beside and above the eye the third-person camera sits. */
+/** Metres behind, beside and above the eye. */
 const BACK = 3.4;
 const SIDE = 0.55;
 const RISE = 0.25;
-/** Kept between the camera and whatever stopped it, so the near plane does not cut into a wall. */
+/** Gap kept between the camera and the obstacle, so the near plane does not cut into a wall. */
 const CLEAR = 0.3;
 
 export class Viewpoint {
   thirdPerson = false;
 
-  /** Place `cam` for a body whose eye is at (ex, ey, ez), looking along `yaw` and `pitch` (radians). */
+  /** The eye is at (ex, ey, ez). `yaw` and `pitch` are radians. */
   place(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number): void {
     cam.yaw = yaw;
     cam.pitch = pitch;
@@ -31,7 +27,7 @@ export class Viewpoint {
     const cy = Math.cos(yaw);
     const sp = Math.sin(pitch);
     const cp = Math.cos(pitch);
-    // From the eye to where the camera wants to be: back along the view, to the right, and up.
+    // The offset from the eye: back along the view, to the right, and up.
     const dx = -sy * cp * BACK - cy * SIDE;
     const dy = -sp * BACK + RISE;
     const dz = -cy * cp * BACK + sy * SIDE;

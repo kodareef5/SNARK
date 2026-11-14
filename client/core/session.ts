@@ -1,14 +1,5 @@
-// One client's connection to a world: handshake, input, prediction of the local
-// body, reconciliation with the server, and interpolation of everything else.
-//
-// No DOM, no clock, no socket. The shell (or a test) supplies a Connection and
-// calls `update(nowMs, ...)`; everything observable is a field on this object.
-//
-// Timing. The server consumes exactly one input per tick, numbered by tick. The
-// client therefore runs ahead: it simulates tick T before the server does, so
-// that input T arrives in time. Each snapshot reports the margin by which
-// inputs are arriving; the client steers its tick clock to keep that margin
-// small and positive.
+// One client's connection, with no DOM, clock or socket. The shell or a test supplies a Connection and calls update().
+// It runs ahead of the server so input T arrives before tick T, and steers its tick clock to keep the reported margin small and positive.
 
 import type { Registry } from "../../shared/content/registry.ts";
 import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
@@ -93,28 +84,24 @@ import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 
 export interface SessionOptions {
   name: string;
-  /** The device key that owns the name: 16 random bytes kept by this client. */
+  /** The device key that owns the name, 16 random bytes kept by this client. */
   key: Uint8Array;
   /** Join without a body, if the server allows it. */
   spectate?: boolean;
-  /** Content as it was written. What a server's settings make of it is `ClientSession.registry`, once it has said. */
+  /** Content as written. ClientSession.registry holds the server-tuned version after the welcome. */
   registry: Registry;
-  /** The server's password, if it asks one. */
   password?: string;
-  /** Hash of the animation clips this client draws with (`Pack.clips.hash`); the server must pose with the same. */
+  /** Pack.clips.hash. The server must pose with the same clips. */
   clipHash?: number;
-  /**
-   * A look to make a new survivor with at once (shared/anim/look.ts). Without
-   * one, a new name arrives in the creator and waits for `create`.
-   */
+  /** A look for a new survivor (shared/anim/look.ts). Without one, a new name waits in the creator for `create`. */
   look?: Uint8Array;
-  /** Return the terrain for a map, or null if this client does not have it. */
+  /** Returns null if this client does not have the map. */
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
-  /** The map's resource nodes, if it has any: the same pure function the server uses. */
+  /** The map's resource nodes, from the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
 }
 
-/** Content as a server's tuning has it, or null if the tuning is no tuning or what it makes does not compile. */
+/** Null if the tuning does not parse or the derived content does not compile. */
 function derive(reg: Registry, tuning: string): Registry | null {
   const t = parseTuning(tuning);
   if (!t) return null;
@@ -125,8 +112,7 @@ function derive(reg: Registry, tuning: string): Registry | null {
   }
 }
 
-/** Remote entities at the current render time, filled by `sampleRemote`. */
-/** A structure that has just gone, for showing it go. */
+/** A structure that was just destroyed or fell. */
 export interface Rubble {
   kind: number;
   x: number;
@@ -135,14 +121,14 @@ export interface Rubble {
   yaw: number;
   /** GONE_DESTROYED or GONE_FELL. */
   cause: number;
-  /** Where it began: for a fall, where support was lost. */
+  /** Where the removal began. For a fall, where support was lost. */
   ox: number;
   oy: number;
   oz: number;
   tick: number;
 }
 
-/** Fallen structures kept for showing, at most: beyond this the oldest are simply gone. */
+/** Beyond this the oldest queued rubble is dropped. */
 const MAX_RUBBLE_QUEUED = 2048;
 
 export class RemoteSample {
@@ -156,19 +142,19 @@ export class RemoteSample {
   readonly yaw = new Float32Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
   readonly level = new Uint16Array(MAX_VIEW);
-  /** Six colour regions per entity; zero means the species' own colour. */
+  /** Six colour regions per entity. Zero means the species' own colour. */
   readonly colors = new Uint8Array(MAX_VIEW * 6);
   readonly name: string[] = new Array<string>(MAX_VIEW).fill("");
-  /** The moment sampled, in ticks; it may fall between ticks. */
+  /** The moment sampled, in ticks. It may be fractional. */
   tick = 0;
-  /** What each body's pose is made from, packed as the server sent it: see `AnimState.pack`. */
+  /** The pose, packed as the server sent it. See `AnimState.pack`. */
   readonly anim = new Uint32Array(MAX_VIEW);
-  /** A survivor's look, LOOK_BYTES each, where `hasLook` is 1. */
+  /** LOOK_BYTES each, valid where `hasLook` is 1. */
   readonly look = new Uint8Array(MAX_VIEW * LOOK_BYTES);
   readonly hasLook = new Uint8Array(MAX_VIEW);
-  /** What each holds and wears: GEAR_COUNT content indices each, zeros for nothing. */
+  /** GEAR_COUNT content indices each, 0 for nothing. */
   readonly gear = new Uint16Array(MAX_VIEW * GEAR_COUNT);
-  /** Each 0 for none: the team that owns it; the entity it sits on, plus one; the ticks its growing takes and the tick it will be grown. */
+  /** Each 0 for none: the owning team, the entity it sits on plus one, the ticks its growing takes, and the tick it will be grown. */
   readonly team = new Uint32Array(MAX_VIEW);
   readonly seat = new Uint32Array(MAX_VIEW);
   readonly span = new Uint32Array(MAX_VIEW);
@@ -176,55 +162,53 @@ export class RemoteSample {
 }
 
 const HISTORY = 128;
-/** Ticks behind the render clock at which everyone else is drawn, so that there are two snapshots to blend between. */
+/** Remote entities are drawn this many ticks behind the render clock, so there are two snapshots to blend between. */
 export const REMOTE_DELAY = 2;
 /** Ticks the client starts ahead of the server before any feedback. */
 const INITIAL_LEAD = 4;
 /** Inputs the server should have in hand when it needs one. */
 const TARGET_MARGIN = 2;
 const MAX_STEPS_PER_UPDATE = 8;
-/** Time constant of the fade that hides a correction, and the largest correction worth hiding. */
+/** Time constant of the fade that hides a correction, and the largest correction hidden, in metres. */
 const SMOOTH_MS = 90;
 const SMOOTH_LIMIT = 3;
-/** Chunks around the body whose nodes are kept filled: for collision one would do, for drawing more is better. */
+/** Chunks around the body whose nodes stay filled. Collision needs one, drawing wants more. */
 const NODE_RADIUS = 3;
 const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
-/** What this client makes of its content with the server's tuning is not what the server has: it cannot play there. */
+/** The content this client derives from the server's tuning does not hash to the server's. */
 export const CLOSED_BAD_CONTENT = -3;
-/** Lines of server text kept for the console. */
 const LOG_LINES = 200;
 
-/** Events kept until whoever shows them takes them. */
+/** Beyond this the oldest untaken event is dropped. */
 const MAX_EVENTS = 64;
 
-/** One S_EVENT as received; the fields its kind does not carry are zero. See EVENT_* in shared/net/protocol.ts. */
+/** One S_EVENT as received. Fields its kind does not carry are zero. See EVENT_* in shared/net/protocol.ts. */
 export interface CombatEvent {
   kind: number;
   /** Where a hit landed. */
   x: number;
   y: number;
   z: number;
-  /** The part hit, a ZONE_ of shared/anim/human.ts. */
+  /** A ZONE_ of shared/anim/human.ts. */
   zone: number;
   damage: number;
   kill: boolean;
   /** Armor stopped some of it. */
   blocked: boolean;
-  /** The side harm came from, 256ths of a turn, as a facing. */
+  /** The side harm came from, as a facing in 256ths of a turn. */
   bearing: number;
   /** Who killed this body, or what this body killed. */
   name: string;
-  /** What it was killed with (content index; 0 for bare hands), and from how many metres. For a blast: how far it reached. */
+  /** The killing item's content index (0 for bare hands), and the range in metres. For a blast, `far` is its reach. */
   item: number;
   far: number;
-  /** What was killed: its level, and the experience that gave. */
+  /** The killed body's level, and the experience the kill gave. */
   level: number;
   xp: number;
   /**
-   * A shot fired near by: (x, y, z) is where from and `item` the ammunition.
-   * If it `flies`, (vx, vy, vz) is its velocity and `back` how many ticks ago
-   * it left; if not, (vx, vy, vz) is where it ended.
+   * For a shot, (x, y, z) is the origin and `item` the ammunition. If it `flies`, (vx, vy, vz) is its
+   * velocity and `back` the ticks since it left. If not, (vx, vy, vz) is where it ended.
    */
   flies: boolean;
   vx: number;
@@ -233,7 +217,7 @@ export interface CombatEvent {
   back: number;
 }
 
-/** A shot of this client's own, as predicted: from its eye, along its look (in an input's units), drawn `draw`, a round of `ammo`. */
+/** A predicted shot of this client's own, from its eye. yaw and pitch are in input units. */
 export interface LocalShot {
   x: number;
   y: number;
@@ -258,99 +242,76 @@ export class ClientSession {
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
-  /** The entity this session's inputs drive in place of its own body (its index), or -1. */
+  /** Index of the entity its inputs drive in place of its own body, or -1. */
   driving = -1;
 
-  /** The species of the body being predicted: the survivor's own, or that of a creature it drives. */
+  /** Species of the predicted body: the survivor's own, or its mount's. */
   get bodyKind(): number {
     return this.own.kind !== 0 ? this.own.kind : this.ownKind;
   }
-  /** SESSION_ALIVE, SESSION_DEAD or SESSION_SPECTATING, as the server last said. */
+  /** A SESSION_* state, as the server last sent it. */
   sessionState = SESSION_ALIVE;
-  /** The name this session joined under. */
   readonly name: string;
-  /** Cheats are enabled for this session. */
+  /** Cheats enabled. */
   admin = false;
-  /** This survivor's look, once the server has said what it is. */
   ownLook: Uint8Array | null = null;
-  /** The hotbar slot in this survivor's hands, 0 to 9, or -1. */
+  /** Hotbar slot in hand, 0 to 9, or -1. */
   held = -1;
   /** Added to the tick to get the time of day. */
   dayOffset = 0;
   /** Text from the server, oldest first. `logVersion` counts every line ever added. */
   readonly log: TextLine[] = [];
   logVersion = 0;
-  /**
-   * The survivor's vitals as the server last described them: values at a tick
-   * and their rates. Evaluate with `vitals.at(i, serverTick)`; no further
-   * messages are needed while the rates hold. `hasVitals` is false until told.
-   */
+  /** Values at a tick and their rates, as the server last sent them. Evaluate with `vitals.at(i, serverTick)`. */
   readonly vitals = new Vitals();
   hasVitals = false;
-  /**
-   * Structures that have just been destroyed or have fallen, oldest first:
-   * what each was and where, why it went, and where and when (a server tick)
-   * that began. Whoever shows them going empties this.
-   */
+  /** Oldest first. Falling.absorb empties it. */
   readonly rubble: Rubble[] = [];
-  /** Rules of the server's: the damage of hits may be shown as numbers; there is a text channel that reaches everyone. */
+  /** Server rules the client acts on. */
   damageNumbers = true;
   globalChat = true;
-  /** More of the server's rules that a client acts on: whether a ranged hit is marked, the body may be seen from behind, a crosshair is shown, the map shows where its reader is, and a beam marks where the survivor died. */
   hitMarkers = true;
   thirdPerson = true;
   crosshair = true;
   mapLocation = true;
   corpseLocator = true;
-  /** Seconds the server's message of the day is shown. */
   motdSeconds = 20;
-  /** How fast the server's clock runs: the whole cycle, and the day and the night within it. */
+  /** The server's clock scales: the whole cycle, and the day and the night within it. */
   readonly clock = { cycle: 1, day: 1, night: 1 };
-  /**
-   * Content as the server has it: what its tuning makes of the definitions
-   * this client was given (shared/content/tuning.ts). Until the server has
-   * welcomed it, the definitions as they were written.
-   */
+  /** Content as written until the welcome, then what the server's tuning makes of it (shared/content/tuning.ts). */
   registry: Registry;
   /**
-   * Who this survivor is with, as the server last said: its team, its tribe's
-   * name ("" alone), its rank, the members, and an invitation it has yet to
-   * answer (the tribe's name, "" for none, and who asked).
+   * voice is what opens the voice socket: speaker number, token and rights. In tribe, name is "" alone
+   * and invite is "" for none. Each `version` counts updates.
    */
-  /** What lets this session open the voice socket: its speaker number, the token to show, and what it may do. `version` counts every time it is told. */
   readonly voice = { slot: 0, token: new Uint8Array(TOKEN_BYTES), rights: 0, version: 0 };
   readonly tribe = { team: 0, name: "", rank: 0, members: [] as { name: string; online: boolean; owner: boolean }[], invite: "", inviteBy: "", version: 0 };
-  /** What is acting on this client's body for a time: each a buff (content index) and the tick it ends (0 for no end). */
+  /** Each is a buff's content index and the tick it ends, or 0 for no end. */
   readonly buffs: { buff: number; until: number }[] = [];
-  /** Shots this client's own body fired, as its prediction has them, oldest first. Whoever draws them empties this. */
+  /** Predicted shots of its own body, oldest first. Shots.absorb empties it. */
   readonly fired: LocalShot[] = [];
   private firedTick = 0;
-  /** Hits landed and harm taken, as the server reported them, oldest first. Whoever shows them empties this. */
+  /** Oldest first. Shots.absorb takes the shots and blasts, then Feedback.absorb empties it. */
   readonly events: CombatEvent[] = [];
-  /** Creatures this survivor has just tamed and not yet been asked about: which, what it is, its level, and how well (percent). */
+  /** Creatures just tamed, waiting for the naming prompt. te is in percent. */
   readonly tamed: { handle: number; kind: number; level: number; te: number }[] = [];
-  /** The creature whose inventory is open, as the server last said it is; null when what is open is no creature. Shares are 0 to 1. */
+  /** The creature whose inventory is open, or null when the open container is not a creature. Shares are 0 to 1. */
   subject: { taming: boolean; owned: boolean; level: number; progress: number; te: number; torpor: number; food: number; id: number; points: number; stance: number; following: boolean; saddled: boolean; breeds: boolean; mating: boolean; female: boolean; stage: number; maturity: number; mate: number; wait: number } | null = null;
-  /** A mirror of the survivor's own inventory; null until the server sends it. */
   inventory: Inventory | null = null;
-  /** The container the server says this survivor has open, and a mirror of what is in it. */
   open: { name: string; inventory: Inventory } | null = null;
-  /** Places to find again (where it died), oldest first. */
+  /** Oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
-  /** Where a dead survivor may return. */
-  /** Where a dead survivor may return to life: the world's places, then its tribe's beds, each with the seconds it must still wait for (0 for most). */
+  /** The world's respawn points, then the tribe's beds. wait is in seconds. */
   readonly respawnPoints: { name: string; x: number; z: number; wait: number }[] = [];
-  /** Experience and what it has earned, as the server last said. */
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { recipe: number; left: number; doneAt: number }[], version: 0 };
-  /** Resource nodes around this client: filled from the map, less those the server says are used up. */
+  /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
   private nodeChunk = -1;
   private readonly nodeGone = new Map<number, number[]>();
-  /** Called with the sequence number and code when the server answers a command. */
   onResult: ((seq: number, code: number) => void) | null = null;
   /** Predicted local body after the latest simulated tick. */
   readonly own = new Body();
-  /** Predicted local body one tick earlier, for render interpolation. */
+  /** One tick earlier, for render interpolation. */
   readonly ownPrev = new Body();
   ownYaw = 0;
   ownPitch = 0;
@@ -361,21 +322,13 @@ export class ClientSession {
   tickClock = 0;
   /** Smoothed estimate of the newest server tick received. */
   renderClock = 0;
-  /** The moment everyone else was last drawn at (`sampleRemote`): what was on the screen when the next input is sampled. 0 before anything is drawn. */
+  /** The tick sampleRemote last drew remote entities at, which is what was on screen when the next input is sampled. 0 before the first. */
   shown = 0;
   latestSnapshot = 0;
 
-  /**
-   * `corrections` counts snapshots that moved the predicted body.
-   * `stateCorrections` counts those that only changed other predicted state
-   * (a modifier, the mode), which is how a server-side change normally arrives.
-   */
+  /** `corrections` counts snapshots that moved the predicted body. `stateCorrections` counts those that changed only other predicted state. */
   readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0 };
-  /**
-   * What is left to hide of the last correction: add it to the body's position
-   * when drawing. It fades to zero in about a third of a second, so a corrected
-   * body glides to where it belongs instead of jumping.
-   */
+  /** What is left to hide of the last correction. Add it to the body's position when drawing. */
   smoothX = 0;
   smoothY = 0;
   smoothZ = 0;
@@ -414,15 +367,9 @@ export class ClientSession {
     conn.send(CH_RELIABLE, w.bytes());
   }
 
-  /**
-   * Send a command; `args` appends the op's arguments. Returns its sequence
-   * number, or 0 if the session is not active and nothing was sent. Commands
-   * are not predicted and not resent: what happened shows up in the state the
-   * server sends.
-   */
+  /** `args` appends the op's arguments. Returns the sequence number, or 0 if nothing was sent. Commands are not predicted or resent. */
   command(op: number, args?: (w: BitWriter) => void): number {
-    // Not connected: nothing is sent, so no sequence number is used. The server
-    // expects them without gaps.
+    // The server expects sequence numbers without gaps, so an unsent command uses none.
     if (this.state !== "active") return 0;
     const seq = (this.commandSeq = (this.commandSeq + 1) & 0xffff);
     const w = this.w;
@@ -433,7 +380,6 @@ export class ClientSession {
     return seq;
   }
 
-  /** Leave the creator: ask for this session's survivor to be made with `look`. */
   create(look: Uint8Array): number {
     return this.command(CMD_CREATE, (w) => {
       for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
@@ -442,12 +388,12 @@ export class ClientSession {
 
   /** Send a console line. */
   text(line: string): number {
-    // Cut by characters: three bytes each at most keeps the line under the server's limit.
+    // Cut by characters. At most three bytes each keeps the line under the server's limit.
     const cut = line.length > MAX_TEXT_BYTES / 3 ? line.slice(0, Math.floor(MAX_TEXT_BYTES / 3)) : line;
     return this.command(CMD_TEXT, (w) => w.string(cut));
   }
 
-  /** Say something on a channel: TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE. The server decides who reads it. */
+  /** `channel` is TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE. The server decides who reads it. */
   chat(channel: number, words: string): number {
     const cut = words.length > MAX_CHAT_CHARS ? words.slice(0, MAX_CHAT_CHARS) : words;
     return this.command(CMD_CHAT, (w) => (w.bits(channel, 3), w.string(cut)));
@@ -459,10 +405,7 @@ export class ClientSession {
     return a < 0 ? 0 : a > 1 ? 1 : a;
   }
 
-  /**
-   * Advance to `nowMs`, sampling the given input for every tick that elapses.
-   * `moveX`/`moveZ` are -1..1 (right, forward); `yaw`/`pitch` are radians.
-   */
+  /** Samples the given input for every tick that elapses. moveX and moveZ are -1..1 (right, forward). yaw and pitch are radians. */
   update(nowMs: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
     if (this.state !== "active") return;
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
@@ -495,7 +438,7 @@ export class ClientSession {
       this.ownPrev.copy(this.own);
       this.step(t);
     }
-    // Too far behind to catch up by simulating: skip. The server held the last input meanwhile.
+    // Too far behind to catch up by simulating, so skip. The server held the last input meanwhile.
     if (this.simTick < target) this.simTick = target;
     if (steps > 0) {
       this.sendInputs();
@@ -551,7 +494,7 @@ export class ClientSession {
         if (turn > 512) turn -= 1024;
         else if (turn < -512) turn += 1024;
         out.yaw[n] = ((a!.yaw[i]! + turn * k) * TAU) / 1024;
-        // How it moves is not something to blend: it is what the nearer snapshot says.
+        // The pose is not blended. It comes from the nearer snapshot.
         out.anim[n] = k < 0.5 ? a!.anim[i]! : b.anim[j]!;
       } else {
         out.anim[n] = b.anim[j]!;
@@ -572,10 +515,10 @@ export class ClientSession {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
     const buttons = inp.buttons[i]!;
-    // The body is stepped as what the server last said it is: its own species, or a creature it drives.
+    // The body steps with the move parameters of the kind the server last sent: its own species or its mount's.
     stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.move[this.own.kind] ?? this.move!, TICK_DT);
     if (this.driving >= 0) {
-      // What it drives has jaws: its bite is stepped here as the server steps it, so the two agree on what the body is doing.
+      // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
       const jaws = this.registry.weapon[this.own.kind];
       if (jaws) {
         const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
@@ -585,10 +528,10 @@ export class ClientSession {
       this.bodyTick[t & (HISTORY - 1)] = t;
       return;
     }
-    // What it does with what it holds, as the server will step it: the same buttons, and those that went down since the tick before.
+    // The action step takes the same buttons as the server's, and those that went down since the tick before.
     const before = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
     stepAction(this.own, buttons, buttons & ~before, this.registry.weapon[this.own.held] ?? FISTS);
-    // A shot left, on a tick stepped for the first time (a replay after a correction steps old ticks again): noted, to be drawn at once.
+    // A replay after a correction steps old ticks again, so a shot is noted only on a tick's first step.
     if (actionOut.fire && t > this.firedTick) {
       this.firedTick = t;
       const inv = this.inventory;
@@ -605,7 +548,7 @@ export class ClientSession {
     while (count < INPUT_REDUNDANCY && this.inputs.has(this.simTick - count)) count++;
     const w = this.w;
     w.reset();
-    // With the inputs goes what the body was looking at when the newest was sampled: how far behind the newest snapshot everyone else is drawn.
+    // The last argument is how far behind the newest snapshot remote entities were drawn when the newest input was sampled.
     writeInputs(w, this.inputs, this.needFull ? 0 : this.latestSnapshot, this.simTick, count, this.latestSnapshot - (this.shown > 0 ? this.shown : this.renderClock - REMOTE_DELAY));
     this.conn.send(CH_UNRELIABLE, w.bytes());
   }
@@ -641,7 +584,7 @@ export class ClientSession {
     }
   }
 
-  /** Which nodes of a chunk are used up. Applied at once if the chunk is filled, and remembered for when it is. */
+  /** The used-up nodes of a chunk. Applied now if the chunk is filled, and remembered for when it is. */
   private nodes(r: BitReader): void {
     const chunk = r.u16();
     r.u32();
@@ -656,7 +599,6 @@ export class ClientSession {
     for (const i of gone) if (!before.includes(i)) field.set(chunk, i, false);
   }
 
-  /** Keep the nodes around the body filled in as it moves from chunk to chunk. */
   private recenterNodes(): void {
     const field = this.nodeField;
     const world = this.world;
@@ -669,7 +611,7 @@ export class ClientSession {
     this.nodeChunk = chunk;
   }
 
-  /** Owner-private state: one component per message. */
+  /** One component per message. */
   private ownState(r: BitReader): void {
     const component = r.u8();
     if (component === OWN_SESSION) {
@@ -833,12 +775,11 @@ export class ClientSession {
     }
   }
 
-  /** The server tick as best this client knows it, for evaluating vitals and spoil clocks. */
+  /** The client's estimate of the server tick, for evaluating vitals and spoil clocks. */
   get serverTick(): number {
     return Math.floor(this.renderClock);
   }
 
-  /** Something the server tells this client once: a hit it landed, harm it took, a death. */
   private event(r: BitReader): void {
     const kind = r.u8();
     const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0 };
@@ -880,7 +821,7 @@ export class ClientSession {
       ev.level = r.u16();
       ev.xp = r.u16() / 10;
     } else if (kind === EVENT_TAMED) {
-      // Not a blow: a creature is this survivor's. Kept for whoever asks what to call it.
+      // Not a combat event. It is queued for the naming prompt.
       const won = { handle: r.u32(), kind: r.u16(), level: r.u16(), te: r.u8() };
       if (!r.overflow && this.tamed.length < 8) this.tamed.push(won);
       return;
@@ -915,8 +856,7 @@ export class ClientSession {
       this.conn.close();
     };
     if (r.overflow || version !== PROTOCOL_VERSION) return refuse(CLOSED_BAD_MAP);
-    // Content as this server has it: made here, of the same definitions, by the same function. If what comes of it is not
-    // what the server has, this client would predict and show other numbers than the server's, and does not stay.
+    // Derive the server's content here with the same function. If the hash differs, this client would predict other numbers, so it leaves.
     const reg = derive(this.registry, tuning);
     if (!reg || reg.hash !== contentHash) return refuse(CLOSED_BAD_CONTENT);
     const hf = this.opts.resolveMap(mapId, mapHash, dims);
@@ -975,7 +915,7 @@ export class ClientSession {
     if (lag > 6 || lag < -6) this.renderClock = tick;
     else this.renderClock += lag * 0.1;
 
-    // Input clock: keep the server's margin near the target, once it has one to report.
+    // The input clock keeps the server's margin near the target, once the server has one to report.
     if (margin !== MARGIN_UNKNOWN) {
       this.stats.margin = margin;
       // At either end of its range the margin is a bound, not a measurement.
@@ -986,16 +926,16 @@ export class ClientSession {
           this.tickClock += error;
           this.dilation = 1;
           this.stats.clockJumps++;
-          // Simulated far past the new time: waiting for the clock to catch up would
-          // freeze the player. Start again from here; the next snapshot supplies the body.
+          // Simulated far past the new time. Waiting for the clock would freeze the player, so start again here.
+          // The next snapshot supplies the body.
           const at = Math.floor(this.tickClock);
           if (this.simTick - at > TICK_RATE) {
             this.simTick = at;
             this.bodyTick.fill(0);
             this.inputs.tick.fill(0);
           }
-          // Ignore feedback until snapshots can reflect this jump: a round trip,
-          // but never more than a second, since the estimate is unreliable just after a jump.
+          // Ignore feedback until snapshots can reflect this jump. That is a round trip, capped at a second
+          // because the estimate is unreliable just after a jump.
           const wait = Math.ceil(this.stats.rttTicks);
           this.guardTick = Math.floor(this.tickClock) + (wait < 0 ? 0 : wait > TICK_RATE ? TICK_RATE : wait) + 2;
         } else {
@@ -1007,10 +947,10 @@ export class ClientSession {
     this.reconcile(tick, sb);
   }
 
-  /** Compare the server's body at `tick` with what was predicted; on a mismatch, rewind and replay. */
+  /** On a mismatch with the body predicted for `tick`, rewinds and replays. */
   private reconcile(tick: number, sb: Body): void {
     if (tick >= this.simTick) {
-      // The server is at or past our prediction (join, stall): adopt its state.
+      // The server is at or past the prediction (join, stall), so adopt its state.
       this.own.copy(sb);
       this.ownPrev.copy(sb);
       return;
@@ -1046,8 +986,7 @@ export class ClientSession {
       if (t === this.simTick) this.ownPrev.copy(this.own);
       this.step(t);
     }
-    // Keep drawing from where the body appeared to be, and let that fade. A
-    // large jump (a teleport) is shown at once.
+    // Keep drawing from where the body appeared to be, and let that fade. A large jump (a teleport) is shown at once.
     const dx = wasX - this.own.x + this.smoothX;
     const dy = wasY - this.own.y + this.smoothY;
     const dz = wasZ - this.own.z + this.smoothZ;
@@ -1085,7 +1024,7 @@ export class ClientSession {
       if (r.overflow || kind >= kinds) return;
       world.structs.put(chunk, slot, kind, x, y, z, yaw, owner, hp, version);
     }
-    // What went, as the removals it went in. A row newer than a removal (the slot was used again) is left alone.
+    // Removals follow, each as runs of slots. A row newer than its removal (the slot was reused) is left alone.
     const t = world.structs.chunks[chunk];
     for (let b = r.u8(); b > 0 && !r.overflow; b--) {
       const at = version - r.varint();
@@ -1103,7 +1042,6 @@ export class ClientSession {
         if (r.overflow || !t || first < 0) break;
         for (let slot = first; slot <= first + more && slot < t.high; slot++) {
           if (t.kind[slot] === 0 || t.mod[slot]! >= at) continue;
-          // What was destroyed or fell is kept a moment, for whoever shows it going.
           if (told) {
             if (this.rubble.length >= MAX_RUBBLE_QUEUED) this.rubble.shift();
             this.rubble.push({ kind: t.kind[slot]!, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, yaw: t.yaw[slot]!, cause, ox, oy, oz, tick });
@@ -1120,7 +1058,7 @@ function clamp1(v: number): number {
   return v < -1 ? -1 : v > 1 ? 1 : v;
 }
 
-/** Slot index of the local body among replicated entities, for callers that need to exclude it. */
+/** Index of the local body among replicated entities, for callers that exclude it. */
 export function ownIndex(session: ClientSession): number {
   return handleIndex(session.ownHandle);
 }

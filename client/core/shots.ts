@@ -1,15 +1,5 @@
-// Shots as they are seen: arrows and darts in the air, and the line a round
-// leaves.
-//
-// None of this decides anything. The server flies every shot and says what it
-// hit (server/projectiles.ts); a client is told only that a shot was fired, from
-// where, and how it flies, and draws its own picture of it with the same
-// arithmetic (shared/sim/projectiles.ts) against the world it has. Its own
-// shots it does not wait to be told of: the prediction says when one left.
-//
-// A picture ends where it meets the ground, a wall, water, or a body the
-// client is drawing. An arrow that stood where it landed is a thing in the
-// world, which the server sends like any other; the picture is gone by then.
+// Pictures of shots: arrows and darts in the air, and tracer lines. They decide nothing. The server flies every shot
+// (server/projectiles.ts), and the client draws its own with the same arithmetic (shared/sim/projectiles.ts).
 
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
@@ -23,16 +13,14 @@ import type { Characters } from "./render/characters.ts";
 import type { FramePacket } from "./render/packet.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 
-/** How long the line of a round is shown, milliseconds. */
 export const TRACER_MS = 90;
-/** How long the flash of a blast is shown. */
 export const BLAST_MS = 220;
 const MAX_FLYING = 256;
 const MAX_TRACERS = 32;
-/** A picture of one's own shot starts ahead of the eye and a little below it, so that it is seen to leave. */
+/** Its own shot is drawn from ahead of the eye and a little below, so it is seen to leave. Metres. */
 const AHEAD = 0.7;
 const BELOW = 0.1;
-/** A line is not drawn longer than this: past it nothing of it could be seen anyway. */
+/** Longest tracer drawn, in metres. */
 const TRACER_REACH = 300;
 
 interface Flying extends Flight {
@@ -56,13 +44,12 @@ interface Tracer {
 export class Shots {
   readonly flying: Flying[] = [];
   readonly tracers: Tracer[] = [];
-  /** Things that have just gone off: where, how far the blast reached, and when. */
   readonly blasts: { x: number; y: number; z: number; radius: number; born: number }[] = [];
   private readonly blastMesh: number;
   private now = 0;
   private readonly meshOfAmmo: Int32Array;
   private readonly tracerMesh: number;
-  /** Content as the server has it; whoever owns this says when that changes. */
+  /** The owner replaces this when the server's tuning arrives. */
   reg: Registry;
   private readonly dir = [0, 0, 0];
   /** The whole tick the flights have been flown through. */
@@ -75,7 +62,6 @@ export class Shots {
     this.blastMesh = pack.meshIndex.get("core:blast") ?? -1;
   }
 
-  /** Take in the shots this client fired itself since the last frame, and those it was told of. */
   absorb(session: ClientSession, world: CollisionWorld, nowMs: number): void {
     const reg = this.reg;
     const d = this.dir;
@@ -91,7 +77,7 @@ export class Shots {
       }
     }
     session.fired.length = 0;
-    // Others' shots: the events of that kind are taken here, and the rest left for whoever shows them.
+    // Shot and blast events are taken here. The rest stay for Feedback.absorb.
     const events = session.events;
     let kept = 0;
     for (const ev of events) {
@@ -127,13 +113,13 @@ export class Shots {
     this.tracers.push({ x, y, z, dx: dx / length, dy: dy / length, dz: dz / length, length: length > TRACER_REACH ? TRACER_REACH : length, until: nowMs + TRACER_MS });
   }
 
-  /** Fly every picture up to the whole tick `tick`, against the world and the bodies being drawn. */
+  /** Flies each shot up to the whole tick of `tick`. A flight ends at the ground, a wall, water, or a drawn body. */
   step(world: CollisionWorld, remote: RemoteSample | null, tick: number, nowMs: number): void {
     while (this.tracers.length > 0 && nowMs >= this.tracers[0]!.until) this.tracers.shift();
     while (this.blasts.length > 0 && nowMs >= this.blasts[0]!.born + BLAST_MS) this.blasts.shift();
     this.now = nowMs;
     const whole = Math.floor(tick);
-    // A clock that jumped is not caught up on tick by tick.
+    // After a clock jump, do not catch up tick by tick.
     if (this.tick < 0 || whole - this.tick > 8 || whole < this.tick) this.tick = whole - 1;
     const reg = this.reg;
     const sea = world.hf.seaLevel;
@@ -146,7 +132,7 @@ export class Shots {
         let ends = --f.left <= 0 || !(length > 0);
         if (y > sea && y + dy * length <= sea) ends = true;
         if (!ends && castWorld(world, x, y, z, dx, dy, dz, length) !== HIT_NONE) ends = true;
-        // Not for its first two pieces: it starts inside the box of whoever fired it.
+        // The body test skips a flight's first two pieces, because a shot starts inside its shooter's box.
         for (let i = 0; remote && !ends && f.left < FLIGHT_TICKS - 2 && i < remote.count; i++) {
           const kind = remote.kind[i]!;
           const r = reg.bodyRadius[kind]!;
@@ -161,7 +147,7 @@ export class Shots {
     }
   }
 
-  /** Queue what is in the air this frame. `tick` may fall between ticks: a flight is drawn that far along its next piece. */
+  /** `tick` may be fractional. A flight is drawn that far along its next piece. */
   draw(ch: Characters, p: FramePacket, cam: Camera, tick: number): void {
     const ahead = (tick - Math.floor(tick)) * TICK_DT;
     for (const f of this.flying) {
@@ -172,7 +158,7 @@ export class Shots {
       if (!(speed > 0) || !cam.boxVisible(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1)) continue;
       if (!ch.loose(p, f.mesh, x, y, z, f.vx / speed, f.vy / speed, f.vz / speed, 1)) return;
     }
-    // A blast: a flash that swells from a quarter of its reach to most of it, and is gone.
+    // A blast is a flash that swells from a quarter of its reach to most of it.
     for (const b of this.blasts) {
       const size = b.radius * (0.25 + 0.75 * Math.min(1, (this.now - b.born) / BLAST_MS)) * 0.9;
       if (this.blastMesh >= 0 && !ch.loose(p, this.blastMesh, b.x - cam.x, b.y - cam.y, b.z - cam.z, 0, 0, 1, size, size)) return;

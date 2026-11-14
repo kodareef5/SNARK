@@ -1,13 +1,5 @@
-// HUD view model: what the interface shows, as plain data.
-//
-// The shell binds these fields to DOM nodes and draws nothing it was not told
-// to. Coordinates, compass, minimap projection and marker placement are decided
-// here, where they can be tested.
-//
-// Map coordinates follow the survival-game convention: latitude and longitude
-// run 0..100, (50, 50) is the map centre, latitude grows southward and
-// longitude grows eastward. North is +Z; east is -X (the world is right-handed
-// with +Y up, so facing north puts +X on your left).
+// HUD view model as plain data. Latitude and longitude run 0..100 with (50, 50) at the map centre.
+// Latitude grows southward and longitude eastward. North is +Z and east is -X.
 
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
@@ -38,7 +30,7 @@ export interface Vital {
   fraction: number;
 }
 
-/** One hotbar slot as the HUD shows it: a few letters of the item's name, its colour, and a number (a count, or rounds loaded). */
+/** label is the first letters of the item's name. number is a count, or the rounds loaded. */
 export interface HotbarCell {
   label: string;
   /** 0xRRGGBB, or -1 for an empty slot. */
@@ -46,7 +38,6 @@ export interface HotbarCell {
   number: string;
 }
 
-/** Fill the HUD's hotbar from what the survivor carries. */
 export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg: Registry, palette: Uint8Array): void {
   const first = inv ? inv.hotbar : -1;
   m.held = held;
@@ -72,7 +63,6 @@ export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg
   }
 }
 
-/** Fill what the HUD shows of what is acting on the body, from what the server last said. */
 export function fillBuffs(m: HudModel, session: ClientSession | null, reg: Registry, palette: Uint8Array): void {
   m.buffs.length = 0;
   if (!session) return;
@@ -84,12 +74,11 @@ export function fillBuffs(m: HudModel, session: ClientSession | null, reg: Regis
   }
 }
 
-/** What `HudModel.actionKind` says the bar under the crosshair is showing. */
+/** Values of HudModel.actionKind. */
 export const ACTION_NONE = 0;
 export const ACTION_DRAW = 1;
 export const ACTION_RELOAD = 2;
 
-/** Fill what the HUD shows of the weapon in hand: how far a bow is drawn or a reload has got, and the rounds in it and in the bag. */
 export function fillAction(m: HudModel, session: ClientSession | null, reg: Registry): void {
   m.actionKind = ACTION_NONE;
   m.actionFraction = 0;
@@ -113,11 +102,10 @@ export function fillAction(m: HudModel, session: ClientSession | null, reg: Regi
 }
 
 export class HudModel {
-  /** A few words about voice: that the microphone is live, or why it is not. "" for nothing to say. */
+  /** The microphone's state, or why it is off. "" for nothing. */
   voice = "";
-  /** The names of those being heard now. */
   readonly talkers: string[] = [];
-  /** How loud the microphone is, 0 to 1, for the settings screen. */
+  /** 0 to 1, for the settings screen. */
   micLevel = 0;
   lat = 50;
   lon = 50;
@@ -132,7 +120,7 @@ export class HudModel {
   fps = 0;
   corrections = 0;
   nearby = 0;
-  /** Stamina comes from the predicted body; the others from vitals evaluated at the server's tick. */
+  /** Stamina comes from the predicted body, the others from vitals evaluated at the server's tick. */
   readonly vitals: Vital[] = [
     { id: "health", label: "Health", fraction: 1 },
     { id: "stamina", label: "Stamina", fraction: 1 },
@@ -141,42 +129,39 @@ export class HudModel {
     { id: "oxygen", label: "Oxygen", fraction: 1 },
     { id: "torpor", label: "Torpor", fraction: 0 },
   ];
-  /** What is acting on the body: a name, its colour (0xRRGGBB), and the seconds it has left (-1 for no end). */
+  /** tint is 0xRRGGBB. seconds is -1 for no end. */
   readonly buffs: { label: string; tint: number; seconds: number }[] = [];
-  /** The body is unconscious: the screen is dark and nothing can be done. */
+  /** The body is unconscious. */
   out = false;
   readonly markers: Marker[] = [];
-  /** Lines of text at the top left. Rewritten a few times a second, not every frame. */
+  /** Lines at the top left, rewritten a few times a second. */
   readonly readout: string[] = ["", "", ""];
   /** Time of day, "06:30". */
   clock = "";
-  /** A line at the bottom left: connection state, or nothing. */
+  /** Connection state, or "". */
   status = "";
-  /** A word across the top while the session has no body: "SPECTATING", "DEAD". */
+  /** A word across the top such as "SPECTATING" or "DEAD", or "". */
   banner = "";
   crosshair = true;
-  /** What the use button would do to the thing looked at, or nothing. */
   prompt = "";
-  /** The ten hotbar slots, or none for a body that has no hotbar. `held` is the one in hand, or -1. */
+  /** Empty for a body that has no hotbar. `held` is the slot in hand, or -1. */
   readonly hotbar: HotbarCell[] = [];
   held = -1;
-  /** The bar under the crosshair: ACTION_DRAW or ACTION_RELOAD and how far along, 0 to 1; or ACTION_NONE. */
+  /** The bar under the crosshair: an ACTION_ kind, and how far along it is, 0 to 1. */
   actionKind = ACTION_NONE;
   actionFraction = 0;
-  /** The weapon in hand: what it is loaded with, the rounds in it, and those carried. Empty for anything that takes none. */
+  /** The loaded ammunition, the rounds in the weapon, and those carried. "" for a weapon that takes none. */
   ammo = "";
-  /** Hits landed and harm taken, as they are shown this frame. */
   readonly combat = new CombatModel();
   private readoutAge = 0;
 
-  /** Rewrite the readout from the numbers above. */
   formatReadout(): void {
     this.readout[0] = `${this.lat.toFixed(1)} lat  ${this.lon.toFixed(1)} lon  ${this.compass} ${this.heading.toFixed(0)}`;
     this.readout[1] = `x ${this.x.toFixed(1)}  y ${this.y.toFixed(1)}  z ${this.z.toFixed(1)}  ${this.speed.toFixed(1)} m/s`;
     this.readout[2] = `${this.fps.toFixed(0)} fps  ${this.pingMs.toFixed(0)} ms  ${this.corrections} corrections  ${this.nearby} nearby`;
   }
 
-  /** True once every `every` calls: the readout need not change faster than it can be read. */
+  /** True once every `every` calls. */
   readoutDue(every: number): boolean {
     if (this.readoutAge++ % every !== 0) return false;
     return true;
@@ -184,7 +169,7 @@ export class HudModel {
 }
 
 const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-/** Bit in replicated entity flags marking a player-controlled body. */
+/** A bit of the replicated entity flags. */
 const VIEW_FLAG_PLAYER = 4;
 
 export function mapU(hf: Heightfield, x: number): number {
@@ -221,7 +206,7 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
     model.markers.push({ kind: (remote.flags[i]! & VIEW_FLAG_PLAYER) !== 0 ? "player" : "creature", u: mapU(world.hf, remote.x[i]!), v: mapV(world.hf, remote.z[i]!) });
   }
   for (const m of session.markers) model.markers.push({ kind: "death", u: mapU(world.hf, m.x), v: mapV(world.hf, m.z) });
-  // Where its reader is, unless the server's map does not say.
+  // A server rule can hide the reader's own position.
   if (session.mapLocation) model.markers.push({ kind: "self", u: mapU(world.hf, b.x), v: mapV(world.hf, b.z) });
   model.vitals[1]!.fraction = b.staminaMax > 0 ? b.stamina / (b.staminaMax * STAMINA_UNITS) : 0;
   if (session.hasVitals) {
@@ -241,7 +226,7 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   if (model.readoutDue(6)) model.formatReadout();
 }
 
-/** A top-down picture of the terrain, north up, for the minimap: palette tint with simple relief shading. */
+/** A top-down RGBA picture of the terrain, north up, with relief shading. */
 export function minimapImage(hf: Heightfield, palette: Uint8Array, size: number): Uint8ClampedArray {
   const out = new Uint8ClampedArray(size * size * 4);
   for (let py = 0; py < size; py++) {
@@ -251,7 +236,7 @@ export function minimapImage(hf: Heightfield, palette: Uint8Array, size: number)
       const i = Math.min(hf.nx - 2, Math.floor(x / hf.cell));
       const j = Math.min(hf.nz - 2, Math.floor(z / hf.cell));
       const tint = hf.tint[j * hf.nx + i]!;
-      // Light from the north-west: slopes facing it are brighter.
+      // Light from the north-west.
       const relief = (hf.sample(i + 1, j) - hf.sample(i, j) + hf.sample(i, j + 1) - hf.sample(i, j)) / hf.cell;
       const shade = Math.max(0.55, Math.min(1.3, 0.9 + relief * 0.35));
       const o = (py * size + px) * 4;

@@ -1,17 +1,14 @@
-// What comes down the voice socket, made ready for the decoders.
-//
-// A decoder must be given a speaker's frames in the order they were made, each
-// once. Over the socket they come that way; over a transport that drops and
-// reorders they would not, so the order is checked here and never assumed.
+// Readies voice packets for the decoders. A decoder needs each speaker's frames in order and once each,
+// so the order is checked here and never assumed.
 
 import { BitReader } from "../../../shared/net/codec.ts";
 import { MAX_INTRO_NAME, SAMPLE_RATE, VOICE_BATCH, VOICE_INTRO, readBatch, readIntro, seqNewer } from "../../../shared/voice/packet.ts";
 
-/** A frame older than the last by less than this is a straggler; by more, its speaker has begun again. */
+/** A frame older than the last by less than this is a straggler. By more, its speaker has begun again. In samples. */
 const RESTART = SAMPLE_RATE * 2;
 
 export interface Speaker {
-  /** The entity its voice is placed at, as a handle; 0 if it has not been said. */
+  /** Handle of the entity the voice is placed at, or 0 until an intro gives it. */
   handle: number;
   name: string;
   lastSeq: number;
@@ -19,7 +16,7 @@ export interface Speaker {
 }
 
 export class Downlink {
-  /** Frames handed on, frames that came out of order or twice, and packets that could not be read. */
+  /** stale counts frames that came out of order or twice. */
   readonly stats = { frames: 0, stale: 0, malformed: 0 };
   readonly speakers = new Map<number, Speaker>();
   private readonly reader = new BitReader();
@@ -37,10 +34,7 @@ export class Downlink {
     this.frame!(speaker, flags, time, opus);
   };
 
-  /**
-   * A packet arrived. `frame` is called for each frame to decode, in order for
-   * each speaker, with a view of its Opus that is good only during the call.
-   */
+  /** Calls `frame` for each frame to decode, in order for each speaker. The Opus view is good only during the call. */
   receive(data: Uint8Array, frame: (speaker: number, flags: number, time: number, opus: Uint8Array) => void): void {
     if (data[0] === VOICE_BATCH) {
       this.frame = frame;
@@ -53,7 +47,7 @@ export class Downlink {
         return;
       }
       const s = this.speakers.get(intro.speaker);
-      // A length and then UTF-8: a string as every other message has them.
+      // The name is a length and then UTF-8, like a string in any other message.
       this.reader.reset(data.subarray(7));
       const name = this.reader.string(MAX_INTRO_NAME);
       if (s) {

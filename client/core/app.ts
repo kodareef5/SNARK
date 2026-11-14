@@ -1,7 +1,5 @@
-// One client, start to finish, without a browser: input, session, camera,
-// scene and interface. The shell creates the renderer, the socket and the DOM
-// binder, forwards events here, and each frame draws what `frame` returns.
-// Tests drive this class directly.
+// One whole client without a browser. The shell owns the renderer, socket and DOM, forwards events
+// here, and draws what frame() returns. Tests drive this class directly.
 
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
@@ -38,21 +36,21 @@ import { voicePan } from "./voice/place.ts";
 import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
 
-/** What the screen says while the microphone is live, by how loud it is meant. */
+/** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "./ui/hud.ts";
 import { Ui } from "./ui/ui.ts";
 
-/** How far a body can reach to use something; the server's REACH. */
+/** Metres. Matches the server's REACH. */
 const REACH = 3.5;
-/** How long the use key is held on something built before it means "what can I do to this", in milliseconds. */
+/** Holding the use key on a structure this long opens its menu. */
 const STRUCT_HOLD_MS = 350;
-/** How far off a survivor's name can be read by looking at it, in metres. */
+/** Metres. */
 const NAME_RANGE = 30;
-/** Bit in replicated entity flags marking a prop: a thing that can be opened. */
+/** A bit of the replicated entity flags. */
 const VIEW_FLAG_PROP = 8;
 
-/** The camera's field of view, top to bottom, radians, until the settings say; and what aiming a bow or a gun, and looking through a scope, leave of it. */
+/** Initial vertical field of view, in radians. AIM_FOV and SCOPE_FOV multiply the player's setting while aiming. */
 const BASE_FOV = 1.2217;
 const AIM_FOV = 0.79;
 const SCOPE_FOV = 0.25;
@@ -65,33 +63,32 @@ export class App {
   readonly hud = new HudModel();
   readonly feedback = new Feedback();
   readonly shots: Shots;
-  /** Structures seen falling, once there is a world for them to fall in. */
+  /** Null until the world arrives. */
   falling: Falling | null = null;
-  /** The camera's field of view, eased toward what the weapon in hand and the aim button ask for. */
+  /** Eased toward what the held weapon and the aim button ask for. */
   private fov = BASE_FOV;
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
   scene: Scene | null = null;
-  /** Smoothed frames per second. */
+  /** Smoothed. */
   fps = 60;
-  /** When false the body is not steered (the self-check holds still). */
+  /** False while the self-check holds the body still. */
   steer = true;
 
-  /** The content this app's parts were last handed: the session's, which a server's settings may have tuned since. */
+  /** The registry last handed to the UI and shots. frame() swaps it when the session's changes. */
   private shown: Registry;
   private readonly pack: Pack;
   private last = -1;
-  /** Height of the camera's eye above the body's feet, or -1 before the first frame. */
+  /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
   private readonly aim = [0, 0, 0];
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
 
-  /** Content as the server has it: the session's. Until the server has welcomed it, content as it was written. */
+  /** The session's registry. It is content as written until the welcome, then as the server tuned it. */
   private get reg(): Registry {
     return this.session.registry;
   }
 
-  /** `reg` is the content the session was given. What is read from then on is the session's own (see `reg`). */
   constructor(session: ClientSession, reg: Registry, pack: Pack) {
     this.session = session;
     this.shown = reg;
@@ -106,30 +103,27 @@ export class App {
     };
   }
 
-  /** Where the building piece in hand would go, if one is. */
   readonly builder = new Builder();
-  /** The time of the last frame, for keys that are timed. */
+  /** Time of the last frame. */
   private nowMs = 0;
-  /** The creature of this survivor's tribe that the look is on, as its entity index, or -1. */
+  /** Entity index of the tribe's creature under the crosshair, or -1. */
   lookedAt = -1;
-  /** When the use key went down, or -1; and the thing built that the look is on, or -1. */
+  /** useDownAt is when the use key went down, or -1. aimed is the ref of the player-built structure under the crosshair, or -1. */
   private useDownAt = -1;
   aimed = -1;
-  /** The use key went down with the look on something built: the press is kept from the body until it is known to be a tap. */
+  /** The use key went down on a structure. The body does not get the press until it proves to be a tap. */
   private useKept = false;
-  /** Frames left of a use button pressed on the key's behalf, once it was let go as a tap. */
+  /** Frames left of the synthetic use press that follows a tap. */
   private usePulse = 0;
 
-  /** Whatever carries voice here, if anything does; whether the microphone is wanted; and how loud it is meant. */
   voice: VoicePort | null = null;
   talking = false;
   private talkMode = MODE_TALK;
   private volumeSet = -1;
-  /** Alt and Shift, as they are held: with the talk key, a whisper and a yell. */
+  /** With the talk key, Alt whispers and Shift yells. */
   private alt = false;
   private shift = false;
 
-  /** The microphone is wanted, or no longer: the talk key, or something that took the keyboard away. */
   private talk(on: boolean): void {
     if (on === this.talking) return;
     this.talking = on;
@@ -137,16 +131,12 @@ export class App {
     this.voice?.talk(on, this.talkMode, this.ui.settings.toggleTalk);
   }
 
-  /**
-   * Tell whatever plays voices how far off each speaker is, from where this
-   * client sees their bodies, and the screen who is talking.
-   */
+  /** Sends the voice port each speaker's distance and pan, and lists the talkers on the HUD. */
   private listen(hud: HudModel): void {
     hud.talkers.length = 0;
     hud.voice = "";
     const v = this.voice;
     if (!v) return;
-    // What the microphone is doing, or why it is not doing it.
     if (v.notice !== "") hud.voice = v.notice;
     else if (this.talking) hud.voice = this.ui.settings.toggleTalk && !v.sending ? "MIC OPEN" : TALK_LABEL[this.talkMode]!;
     hud.micLevel = v.level;
@@ -175,13 +165,13 @@ export class App {
     }
     v.hear(at, n);
   }
-  /** Scratch: for each speaker its number, how far off it is, and which side it is on. */
+  /** Scratch for hear(). */
   private readonly heardAt = new Float32Array(HEAR_FIELDS * 128);
 
-  /** A key went down, repeated, or went up. Returns true if the page should not also act on it. */
+  /** Returns true if the page should not also act on the key. */
   key(code: string, down: boolean, repeat = false): boolean {
     if (this.ui.key(code, down, repeat, this.session)) {
-      // A screen that takes the keyboard also takes it from the body, and from a microphone that is held open by a key.
+      // A screen that captures the keyboard releases the body's keys and a push-to-talk microphone.
       if (this.ui.captureKeyboard) {
         this.controls.release();
         if (!this.ui.settings.toggleTalk) this.talk(false);
@@ -189,16 +179,14 @@ export class App {
       return true;
     }
     if (this.ui.captureKeyboard) return false;
-    // With a building piece in hand, some keys are building's.
     if (this.builder.key(code, down, repeat, this.nowMs, this.reg)) return true;
     if (code === "AltLeft" || code === "AltRight") {
-      // Kept from the browser, which would open its menu.
+      // Returning true keeps the browser from opening its menu.
       this.alt = down;
       return true;
     }
     if (code === "ShiftLeft" || code === "ShiftRight") this.shift = down;
-    // The use key is the body's. On something built it may be a question instead (held, it asks what can be done to
-    // that), so there the body is not told of it until it is let go, and then as a short press.
+    // Holding the use key on a structure opens its menu, so there the body gets the press only on release, as a short pulse.
     if (code === "KeyE") {
       if (down && !repeat) {
         this.useDownAt = this.nowMs;
@@ -212,13 +200,13 @@ export class App {
         return true;
       }
     }
-    // F looks into a creature of the tribe's: the one ridden, or the one looked at.
+    // F opens the tribe creature that is ridden or looked at.
     if (code === "KeyF") {
       const which = this.session.driving >= 0 ? this.session.driving : this.lookedAt;
       if (down && !repeat && which >= 0) this.session.command(CMD_OPEN, (w) => w.u32(which >>> 0));
       return true;
     }
-    // Whistles. T and Y to the creature looked at: follow me, stay. J and U to every one of the tribe's that hears.
+    // Whistles. T and Y tell the creature looked at to follow or stay. J and U tell every tribe creature that hears.
     if (code === "KeyT" || code === "KeyY" || code === "KeyJ" || code === "KeyU") {
       if (down && !repeat) {
         const one = code === "KeyT" || code === "KeyY";
@@ -228,8 +216,6 @@ export class App {
       return true;
     }
     if (code === "KeyB") {
-      // Held to talk; or, if the player has set it so, pressed to switch the microphone on and pressed again to switch it off.
-      // With Alt it is a whisper, with Shift a yell.
       if (repeat) return true;
       if (!this.ui.settings.toggleTalk) this.talk(down);
       else if (down) this.talk(!this.talking);
@@ -237,13 +223,12 @@ export class App {
     }
     const digit = /^Digit(\d)$/.exec(code);
     if (digit) {
-      // 1 to 9 and then 0 take a hotbar slot in hand; the key of what is in hand puts it away.
+      // Keys 1 to 9 then 0 are slots 0 to 9. The key of the held slot puts it away (255).
       const slot = (Number(digit[1]) + 9) % 10;
       if (down && !repeat) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
       return true;
     }
     if (code === "KeyV") {
-      // Out of the body's eyes, or over its shoulder.
       if (down && !repeat && this.session.thirdPerson) this.view.thirdPerson = !this.view.thirdPerson;
       return true;
     }
@@ -252,7 +237,6 @@ export class App {
 
   mouseButton(button: number, down: boolean): void {
     if (!this.ui.wantsPointerLock) return;
-    // With a building piece in hand the primary button sets it down; it is not a blow.
     if (button === 0 && this.builder.active) {
       if (down) this.builder.place(this.session, this.reg);
       return;
@@ -260,23 +244,17 @@ export class App {
     this.controls.mouseButton(button, down);
   }
 
-  /** Mouse movement while the pointer is locked. */
   look(dx: number, dy: number): void {
     if (this.ui.wantsPointerLock) this.controls.look(dx, dy);
   }
 
-  /** The window lost focus. */
   blur(): void {
     this.controls.release();
     this.alt = this.shift = false;
     if (!this.ui.settings.toggleTalk) this.talk(false);
   }
 
-  /**
-   * Fly the camera by itself for a measurement run: turn steadily, nod, and
-   * walk forward, so every direction and distance is drawn in turn. Call each
-   * frame instead of forwarding input.
-   */
+  /** Steers for a measurement run. Call it each frame instead of forwarding input. */
   autopilot(nowMs: number): void {
     this.controls.key("KeyW", true);
     this.controls.yaw = nowMs / 1600;
@@ -287,21 +265,18 @@ export class App {
     this.ui.input(key, value);
   }
 
-  /** Pointer went down (0), up (1) or moved (2) over an interactive node; position in canvas units. */
+  /** `kind` is 0 for down, 1 for up, 2 for move. The position is in canvas units. */
   pointer(kind: number, key: number, x: number, y: number, button: number): void {
     this.ui.pointer(kind, key, x, y, button, this.session);
   }
 
-  /** How big body `i` of those in view is, as a share of its kind's size: less than 1 for one that is young. */
+  /** Scale of remote body `i` relative to its kind. Below 1 for a young one. */
   private sizeOf(i: number): number {
     const r = this.remote;
     return r.grown[i] !== 0 && (r.flags[i]! & VIEW_FLAG_PROP) === 0 ? youngScale(this.reg.birthScale[r.kind[i]!]!, r.span[i]!, r.grown[i]!, r.tick) : 1;
   }
 
-  /**
-   * Who the crosshair is on, out to where a name can be read: a survivor's
-   * name and level, and whether it is of this survivor's tribe.
-   */
+  /** Names the entity under the crosshair within NAME_RANGE, and sets lookedAt. */
   private who(world: CollisionWorld, eye: number): string {
     const s = this.session;
     const r = this.remote;
@@ -322,16 +297,12 @@ export class App {
       }
     }
     const mine = hit >= 0 && s.tribe.team !== 0 && r.team[hit] === s.tribe.team;
-    // A creature of the tribe's, looked at: the one a whistle is for.
     this.lookedAt = hit >= 0 && mine && (r.flags[hit]! & VIEW_FLAG_PROP) === 0 && !this.scene!.characters.human(r.kind[hit]!) ? r.id[hit]! : -1;
     if (hit < 0 || r.name[hit] === "" || (r.flags[hit]! & VIEW_FLAG_PROP) !== 0) return "";
     return `${r.name[hit]}${mine ? " (tribe)" : ""}  level ${r.level[hit]}`;
   }
 
-  /**
-   * The thing built that the look is on, within reach of acting on it, or -1;
-   * and what to say of it: its name and how whole it is.
-   */
+  /** Sets `aimed` to the player-built structure within ACT_REACH, and returns its name and health. */
   private builtAt(world: CollisionWorld, eye: number): string {
     const s = this.session;
     const d = this.aim;
@@ -341,20 +312,15 @@ export class App {
     const ref = rayHit.ref;
     const t = world.structs.chunks[Math.floor(ref / 65536)]!;
     const kind = t.kind[ref & 0xffff]!;
-    // Only what somebody built: the world's own walls are not anyone's to take down.
+    // Skip structures nobody built.
     if (this.reg.pieceItem[kind] === 0 || t.owner[ref & 0xffff] === 0) return "";
     this.aimed = ref;
     const mine = s.tribe.team !== 0 && t.owner[ref & 0xffff] === s.tribe.team;
-    // What can be used says so, when it is near enough for the use button; what is one's own, that there is more to be done with it.
     const usable = (this.reg.opens[kind] !== 0 || this.reg.structSlots[kind] !== 0) && rayHit.t <= REACH;
     return `${usable ? "E use  " : mine ? "hold E  " : ""}${structName(this.reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${this.reg.maxHp[kind]}`;
   }
 
-  /**
-   * What the use button would act on: the same ray the server will cast from
-   * the same eye, here only to say so on screen. The server's answer is the
-   * one that counts.
-   */
+  /** Labels what the use button would act on, with the same ray the server casts. The server's answer is the one that counts. */
   private prompt(world: CollisionWorld, eye: number): string {
     const s = this.session;
     const r = this.remote;
@@ -378,11 +344,10 @@ export class App {
     }
     if (hit >= 0) {
       if ((r.flags[hit]! & VIEW_FLAG_PROP) !== 0) {
-        // An egg says when it will hatch; anything else lying there is something to look into.
+        // On a prop, a nonzero grown tick marks an egg.
         if (r.grown[hit] !== 0) return `${r.name[hit]}  hatches in ${waitWords(Math.max(0, Math.ceil((r.grown[hit]! - s.serverTick) / TICK_RATE)))}`;
         return `E  ${s.open ? "close" : "open"} ${r.name[hit]}`;
       }
-      // A young one that is nobody's is anybody's to take.
       if (r.team[hit] === 0 && r.grown[hit] !== 0) {
         const id = this.reg.ids[r.kind[hit]!] ?? "";
         return `E  take the young ${id.slice(id.indexOf(":") + 1)}`;
@@ -390,7 +355,7 @@ export class App {
       return "";
     }
     if (node < 0 || !world.nodes) return "";
-    // A tree or rock is struck with the primary button; a bush is picked with the use key.
+    // A node without a material is a bush, picked with the use key. Trees and rocks are struck.
     const kind = world.nodes.chunks[Math.floor(node / 65536)]?.kind[node & 0xffff] ?? 0;
     const def = this.reg.defs[kind];
     if (def?.type !== "node") return "";
@@ -398,11 +363,7 @@ export class App {
     return def.material === undefined ? `E  pick ${what}` : `hold click  gather from ${what}`;
   }
 
-  /**
-   * The creator's view: the survivor being made stands at the spawn point in
-   * daylight, as the creator has it, and the camera faces it from the front,
-   * off to one side so the body is clear of the panel.
-   */
+  /** The creator's view. The camera faces the new survivor from the front, off to one side so the panel does not cover it. */
   private preview(nowMs: number, aspect: number): void {
     const session = this.session;
     const cam = this.cam;
@@ -422,7 +383,7 @@ export class App {
     body.state.seed = 0;
     this.scene!.own = body;
     this.scene!.hour = 12;
-    // The panel takes the right of a wide window: stand the body in the middle of what is left.
+    // The panel takes the right of a wide window, so the body stands in the middle of the rest.
     const back = 3.3;
     const side = aspect > 1 ? back * Math.tan(cam.fovY / 2) * aspect * Math.min(0.42, 190 / (360 * aspect)) : 0;
     cam.x = body.x + side;
@@ -432,11 +393,7 @@ export class App {
     cam.pitch = -0.06;
   }
 
-  /**
-   * Advance to `nowMs` and lay out a frame for a `width` by `height` window.
-   * Returns what to draw in the world, or null until the world has arrived; the
-   * interface (`ui.frame`) is always ready.
-   */
+  /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
   frame(nowMs: number, width: number, height: number): FramePacket | null {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
     this.last = nowMs;
@@ -448,12 +405,11 @@ export class App {
     this.nowMs = nowMs;
 
     if (session.state === "closed") {
-      // The two a player can do something about are said in words.
+      // Only the two reasons a player can act on are spelled out.
       hud.status = session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
       return null;
     }
-    // A tap of the use key on something built, passed on now that it is known to be one.
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
     if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, c.buttons);
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
@@ -463,7 +419,6 @@ export class App {
       this.ui.build(aspect, hud, session);
       return null;
     }
-    // The server has said what its content is: every part reads that from now on.
     if (this.shown !== session.registry) {
       this.shown = session.registry;
       this.ui.registry = this.shown;
@@ -477,32 +432,30 @@ export class App {
     }
     hud.status = "";
 
-    // Eye position: between the last two predicted ticks, so motion is smooth at any frame rate.
+    // The eye interpolates between the last two predicted ticks, so motion is smooth at any frame rate.
     const cam = this.cam;
     const a = session.alpha;
     const alive = session.sessionState === SESSION_ALIVE;
     const move = this.reg.move[session.bodyKind];
-    // The eye follows the stance, eased so that crouching is a movement and not a cut.
+    // The eye eases toward the stance height, so crouching is a movement and not a cut.
     const eyeNow = alive && move ? stanceEye(move, session.own.stance) : 0;
-    // A body that has just appeared looks from its eye at once; only a change of stance is eased.
+    // A body that has just appeared starts at its eye height.
     if (!alive) this.eye = -1;
     else this.eye = this.eye < 0 ? eyeNow : this.eye + (eyeNow - this.eye) * Math.min(1, dt / 90);
     const eye = alive ? this.eye : 0;
     const bx = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX;
     const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
     const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
-    // By the server's rule the body may not be looked at from behind; a rider still sees its mount so.
+    // A server rule can forbid third person. A rider still sees its mount from behind.
     if (!session.thirdPerson) this.view.thirdPerson = false;
-    // A spectator has no body to look past: always from the eye.
+    // A session without a living body looks from the eye.
     const third = this.view.thirdPerson;
     if (!alive) this.view.thirdPerson = false;
-    // A rider looks at its mount from behind.
     else if (session.driving >= 0) this.view.thirdPerson = true;
     this.view.place(cam, world, bx, by + eye, bz, c.yaw, c.pitch);
     this.view.thirdPerson = third;
     cam.aspect = aspect;
-    // Aiming narrows the view: a little with a bow or a gun, a great deal through a scope. The mouse slows to match.
-    // The player's own field of view is the widest it goes; aiming narrows it in proportion.
+    // Aiming narrows the view in proportion to the player's setting, more through a scope. The mouse slows to match.
     const settings = this.ui.settings;
     const base = (settings.fov * Math.PI) / 180;
     let want = base;
@@ -515,7 +468,6 @@ export class App {
     this.fov += (want - this.fov) * Math.min(1, dt / 70);
     cam.fovY = this.fov;
     c.zoom = (this.fov / base) * settings.sensitivity;
-    // The body itself, posed from what the prediction says it is doing.
     const body = this.body;
     body.kind = session.ownKind;
     body.x = bx;
@@ -526,7 +478,6 @@ export class App {
     body.firstPerson = !third;
     body.id = handleIndex(session.ownHandle);
     body.look = session.ownLook;
-    // What it holds and wears, read off its own slots.
     const inv = session.inventory;
     body.gear.fill(0);
     if (inv && inv.hotbar >= 0) {
@@ -537,11 +488,11 @@ export class App {
     body.state.grounded = session.own.grounded;
     body.state.stance = session.own.stance;
     body.state.setMotion(session.own.vx, session.own.vz, c.yaw, c.pitch);
-    // What it is doing with what it holds, as its own prediction has it: a swing is seen the moment it is asked for.
+    // The action comes from the prediction, so a swing shows the moment it is asked for.
     body.state.setAction(session.own.act, (this.reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
     body.state.seed = bodySeed(body.id);
-    // Driving something else (riding), its own body is one more body in view, where the server has it: on the seat.
-    // What it drives is the body it predicts: drawn from that, not from what the server last said, and always seen from outside.
+    // While riding, the mount is the body it predicts, drawn from the prediction and always from outside.
+    // Its own body is then one more remote body, where the server has it on the seat.
     const riding = alive && session.driving >= 0;
     if (riding) {
       body.kind = session.bodyKind;
@@ -554,7 +505,7 @@ export class App {
       body.state.setMotion(session.own.vx, session.own.vz, body.yaw, 0);
       body.state.setAction(session.own.act, 0, session.simTick - session.own.actTicks);
       body.state.seed = bodySeed(body.id);
-      // Its colours are what the server shows of it.
+      // The mount's colours come from its remote copy.
       body.colors.fill(0);
       const r = this.remote;
       for (let i = 0; i < r.count; i++) if (r.id[i] === session.driving) body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
@@ -563,14 +514,11 @@ export class App {
     this.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
     session.sampleRemote(this.remote);
-    // Shots in the air: this client's own as its prediction has them, others' as the server told of them.
     this.shots.absorb(session, world, nowMs);
     this.shots.step(world, this.remote, session.tickClock, nowMs);
     this.scene.shotTick = session.tickClock;
-    // What has just been destroyed or has fallen: seen to go, the nearest to the eye first.
     this.falling!.absorb(session.rubble, nowMs, cam.x, cam.y, cam.z);
     this.falling!.step(nowMs);
-    // A beam over each place it died, so the place can be seen from far off.
     const beams = this.scene.beams;
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
@@ -583,7 +531,6 @@ export class App {
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
     this.listen(hud);
-    // A building piece in hand: shown where it would go, in green if it may and red if not, with the reason.
     const ghost = this.scene.ghost;
     ghost.kind = 0;
     const b = this.builder;
@@ -599,7 +546,6 @@ export class App {
       ghost.yaw = b.pose.yaw;
       ghost.color = b.problem === 0 ? GHOST_OK : GHOST_BAD;
     }
-    // Something built, looked at: named, and with the use key held on it, asked about.
     const menu = this.ui.structure;
     menu.tick(nowMs);
     const built = alive && !b.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = -1), "");

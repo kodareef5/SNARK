@@ -1,19 +1,14 @@
-// Changes the rate of a stream of samples, a block at a time.
-//
-// The voice pipeline runs at 48,000 samples a second whatever the device does:
-// the microphone's blocks are brought to that before they are encoded, and
-// what is played is taken from it to the device's rate. Between two samples
-// the value is on the straight line that joins them, which is enough for
-// speech. With the two rates equal it copies.
+// Linear resampler for a stream of blocks. The voice pipeline runs at 48,000 samples a second, whatever the device does.
+// Linear interpolation is enough for speech. With equal rates it copies.
 
 export class Resampler {
-  /** Input samples that go by for each output sample. */
+  /** Input samples per output sample. */
   private readonly step: number;
   /** Where the next output falls between `a` and `b`: 0 at `a`, 1 at `b`. */
   private at = 0;
   private a = 0;
   private b = 0;
-  /** How many of the first two samples have been taken: the line needs both ends. */
+  /** How many of the first two samples have been taken. The line needs both ends. */
   private primed = 0;
 
   constructor(from: number, to: number) {
@@ -25,11 +20,7 @@ export class Resampler {
     return Math.ceil(n / this.step) + 1;
   }
 
-  /**
-   * Take `n` samples from `input` and write what they give to `out` from
-   * `start`. Returns how many were written. The stream carries on from call to
-   * call: nothing is lost or repeated at the joins.
-   */
+  /** Writes to `out` from `start` and returns how many samples it wrote. The stream carries on between calls with no loss or repeat. */
   run(input: Float32Array, n: number, out: Float32Array, start = 0): number {
     if (this.step === 1) {
       out.set(n === input.length ? input : input.subarray(0, n), start);

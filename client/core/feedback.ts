@@ -1,14 +1,5 @@
-// What combat looks like to the one in it.
-//
-// The server says, once, what happened: a hit this client landed, harm it
-// took, a death (S_EVENT; the session keeps them as they arrive). This file
-// turns each into something that is seen for a moment and fades: a mark at the
-// crosshair, a number over the place the hit landed, a mark on the side the
-// harm came from, red at the edges of the screen, a line saying who killed
-// what. Nothing here is predicted. A hit is shown when the server says it
-// landed, and only then.
-//
-// The result is plain data (`CombatModel`); client/core/ui/combat.ts lays it out.
+// Turns the session's combat events into marks, numbers and notices that fade. Nothing is predicted.
+// A hit shows only when the server reports it. client/core/ui/combat.ts lays out the CombatModel.
 
 import { ZONE_HEAD, ZONE_NAMES } from "../../shared/anim/human.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
@@ -18,7 +9,6 @@ import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL } from "../../shared/net
 import type { Camera } from "./render/camera.ts";
 import type { ClientSession } from "./session.ts";
 
-/** How long each thing is shown, milliseconds. */
 export const MARK_MS = 260;
 export const NUMBER_MS = 1100;
 export const HURT_MS = 1400;
@@ -28,28 +18,28 @@ export const NOTICE_MS = 5000;
 const NUMBER_RISE = 0.7;
 const MAX_NUMBERS = 24;
 const MAX_HURTS = 8;
-/** Harm that reddens the screen all the way. */
+/** Damage that reddens the screen fully. */
 const BLOOD_FULL = 50;
 
 export const NUMBER_BODY = 0;
 export const NUMBER_HEAD = 1;
 export const NUMBER_KILL = 2;
 
-/** What the interface shows of combat this frame. Positions are fractions of the screen, origin top left. */
+/** Positions are fractions of the screen, origin top left. */
 export class CombatModel {
-  /** The mark at the crosshair that says a hit landed: how solid (0 for none), and whether that hit killed, or was to a head. */
+  /** Opacity of the hit mark at the crosshair, 0 for none. */
   mark = 0;
   markKill = false;
   markHead = false;
-  /** Numbers over where hits landed. Only the first `numberCount` are current. */
+  /** Only the first `numberCount` are current. */
   readonly numbers: { u: number; v: number; text: string; kind: number; alpha: number }[] = [];
   numberCount = 0;
-  /** The sides harm came from: an angle to the left of straight ahead, radians. Only the first `hurtCount` are current. */
+  /** `angle` is to the left of straight ahead, in radians. Only the first `hurtCount` are current. */
   readonly hurts: { angle: number; alpha: number }[] = [];
   hurtCount = 0;
   /** Red at the edges, 0 to 1. */
   blood = 0;
-  /** A line under the crosshair, and how solid. */
+  /** A line under the crosshair. */
   notice = "";
   noticeAlpha = 0;
 }
@@ -73,11 +63,11 @@ export class Feedback {
   private bloodAt = -Infinity;
   private notice = "";
   private noticeAt = -Infinity;
-  /** The notice says how this body died: it stays until the body is alive again. */
+  /** The notice is a death recap, which stays until the body is alive again. */
   private recap = false;
   private readonly screen = [0, 0, 0];
 
-  /** Take in what the server has reported since the last frame. */
+  /** Empties session.events. */
   absorb(session: ClientSession, reg: Registry, nowMs: number): void {
     const events = session.events;
     for (const ev of events) {
@@ -90,7 +80,6 @@ export class Feedback {
       } else if (ev.kind === EVENT_HURT || ev.kind === EVENT_DEATH) {
         if (this.hurts.length >= MAX_HURTS) this.hurts.shift();
         this.hurts.push({ bearing: (ev.bearing / 256) * TAU, born: nowMs });
-        // What is left of the last reddening, and this on top of it.
         const left = this.blood * Math.max(0, 1 - (nowMs - this.bloodAt) / BLOOD_MS);
         this.blood = Math.min(1, left + ev.damage / BLOOD_FULL);
         this.bloodAt = nowMs;
@@ -110,13 +99,7 @@ export class Feedback {
     events.length = 0;
   }
 
-  /**
-   * What to show at `nowMs`, seen by `cam`, whose facing is `yaw` radians.
-   * `alive` is whether this client has a living body; `numbers` whether the
-   * damage of hits is shown as numbers (the server allows it and the player
-   * wants it); `marks` whether the mark that a hit landed is shown at all
-   * (the server's rule).
-   */
+  /** `yaw` is the camera's facing in radians. `numbers` and `marks` say whether damage numbers and hit marks may show. */
   fill(m: CombatModel, cam: Camera, yaw: number, alive: boolean, nowMs: number, numbers = true, marks = true): void {
     const markAge = nowMs - this.markAt;
     m.mark = marks && markAge < MARK_MS ? 1 - markAge / MARK_MS : 0;
@@ -136,7 +119,6 @@ export class Feedback {
       out.v = s[1]!;
       out.text = f.text;
       out.kind = f.kind;
-      // Solid for the first half of its life, then gone by the end.
       out.alpha = age < 0.5 ? 1 : 2 - age * 2;
     }
     m.numberCount = n;
@@ -153,7 +135,6 @@ export class Feedback {
     const bloodAge = nowMs - this.bloodAt;
     m.blood = bloodAge < BLOOD_MS ? this.blood * (1 - bloodAge / BLOOD_MS) : 0;
 
-    // How it died stays up until it lives again; anything else fades.
     if (this.recap && alive && nowMs - this.noticeAt > 500) this.recap = false;
     const noticeAge = nowMs - this.noticeAt;
     m.notice = this.notice;

@@ -1,14 +1,12 @@
-// Draws the interface: one element per node, placed where client/core says.
-// There is no layout, no state and no decision here. Text is always set as
-// text, never as markup, so nothing a player types or is named can become HTML.
+// Draws the interface: one element per node, placed where client/core says, with no layout or state here.
+// Text is always set as text, never as markup, so nothing a player types or is named can become HTML.
 
 import { K_BAR, K_IMAGE, K_INPUT, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
 import { STYLES } from "../core/ui/style.ts";
 
 export interface UiEvents {
-  /** A text field's content changed. */
   text(key: number, value: string): void;
-  /** Pointer went down (0), up (1) or moved (2) over an interactive node; position in canvas units. */
+  /** `kind` is 0 for down, 1 for up, 2 for move. The position is in canvas units. */
   pointer(kind: number, key: number, x: number, y: number, button: number): void;
 }
 
@@ -56,7 +54,7 @@ export class UiView {
     root.addEventListener("contextmenu", (e) => e.preventDefault());
   }
 
-  /** Make the page match `f`, scaled so the canvas is `heightPx` tall. Writes only what changed. */
+  /** Scales so the canvas is `heightPx` tall. Writes only what changed. */
   apply(f: UiFrame, heightPx: number): void {
     const scale = heightPx / f.height;
     const rescaled = scale !== this.scale;
@@ -135,7 +133,7 @@ export class UiView {
     }
   }
 
-  /** For the self-check: how many elements are not where core placed them, to the pixel. */
+  /** For the self-check. Counts elements that are not where core placed them, to the pixel. */
   misplaced(f: UiFrame): number {
     let bad = this.bound.size === f.count ? 0 : 1;
     for (let i = 0; i < f.count; i++) {

@@ -1,10 +1,5 @@
-// Audio worklet: everyone this client can hear, mixed and played.
-//
-// The voice worker sends each speaker's decoded frames with the time their
-// speaker gave them. Each speaker has a buffer (client/core/voice/jitter.ts)
-// that plays them a little behind, on this worklet's clock. The page says
-// where each speaker is; each is played as loud as its distance makes it and
-// on the side it is on, and the lot is brought to the device's rate.
+// Audio worklet that mixes and plays everyone this client can hear. Each speaker has a jitter buffer
+// (client/core/voice/jitter.ts) on this worklet's clock. The page says where each speaker is.
 
 import { JitterBuffer } from "../core/voice/jitter.ts";
 import { panLeft, panRight, voiceGain } from "../core/voice/place.ts";
@@ -13,11 +8,14 @@ import { Resampler } from "../core/voice/resample.ts";
 import { SAMPLE_RATE } from "../../shared/voice/packet.ts";
 
 const BLOCK = 128;
-/** Blocks between reports to the page: about a fifth of a second, so that who is talking is shown as they talk. */
+/** Blocks between reports to the page, about a fifth of a second. */
 const REPORT_BLOCKS = 72;
 
 interface Frame {
-  /** Speaker, its time in samples, how loud it is meant, whether it is for everyone wherever they are, whether it is the last of an utterance, and the samples (null for an end with no sound). */
+  /**
+   * s is the speaker, t its time in samples, m the mode, g whether it is global, e whether it ends an utterance,
+   * and p the samples (null for an end with no sound).
+   */
   s: number;
   t: number;
   m: number;
@@ -28,19 +26,19 @@ interface Frame {
 
 interface Heard {
   jb: JitterBuffer;
-  /** How loud its voice is meant, whether it is said to everyone, how far off it is (metres; 0 until the page says) and on which side. */
+  /** distance is in metres, 0 until the page says. */
   mode: number;
   everywhere: boolean;
   distance: number;
   pan: number;
-  /** How loud it is being played in each ear: these glide toward where they should be. */
+  /** Current gain in each ear. Both glide toward their targets. */
   left: number;
   right: number;
 }
 
 class Playback extends AudioWorkletProcessor {
   private readonly speakers = new Map<number, Heard>();
-  /** Samples played, at 48,000 a second: the clock frames are timed against as they arrive. */
+  /** Samples played at 48,000 a second. Arriving frames are timed against it. */
   private clock = 0;
   private volume = 1;
   private readonly one = new Float32Array(BLOCK);
@@ -57,7 +55,6 @@ class Playback extends AudioWorkletProcessor {
     this.port.onmessage = (e) => {
       const from = e.data.port as MessagePort | undefined;
       if (from) from.onmessage = (m) => this.take(m.data as Frame);
-      // The page says where each speaker is, and how loud everything is to be.
       const d = e.data.d as Float32Array | undefined;
       if (d) {
         for (let i = 0; i + HEAR_FIELDS <= d.length; i += HEAR_FIELDS) {
@@ -84,17 +81,17 @@ class Playback extends AudioWorkletProcessor {
     else if (f.e) h.jb.end();
   }
 
-  /** The next block of everyone, at 48,000 samples a second, into the two ears' mixes. */
+  /** Mixes the next block of every speaker at 48,000 samples a second. */
   private next(): void {
     const [left, right] = this.mix as [Float32Array, Float32Array];
     left.fill(0);
     right.fill(0);
     const one = this.one;
     for (const h of this.speakers.values()) {
-      // A voice said to everyone has no place: as loud as it is, in the middle.
+      // A global voice has no place. It plays at full gain in the middle.
       const gain = (h.everywhere ? 1 : voiceGain(h.distance, h.mode)) * this.volume;
       const pan = h.everywhere ? 0 : h.pan;
-      // Toward where it should be a part of the way each block, so that a change is a glide and not a step.
+      // Each block moves the gains a fifth of the way to their targets, so a change is a glide and not a step.
       h.left += (gain * panLeft(pan) - h.left) * 0.2;
       h.right += (gain * panRight(pan) - h.right) * 0.2;
       if (!h.jb.read(one.fill(0), BLOCK)) continue;
@@ -127,7 +124,7 @@ class Playback extends AudioWorkletProcessor {
     return true;
   }
 
-  /** Tell the page how playing is going, summed over speakers, and who is speaking. */
+  /** Posts the jitter stats summed over speakers, and who is speaking. */
   private report(): void {
     const sum = { played: 0, missing: 0, late: 0, restarts: 0, jumps: 0, odd: 0, targetMs: 0, speaking: [] as number[] };
     for (const [speaker, h] of this.speakers) {
