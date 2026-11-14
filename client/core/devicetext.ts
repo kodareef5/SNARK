@@ -1,0 +1,174 @@
+// What the device probe says: which device it takes itself to be on, what a renderer may count on there, the pages the
+// owner taps, and the report as lines of plain text, which the page shows and tools/device.ts prints.
+
+import type { Axis, DeviceReport, GpuInfo, Mode, PhaseReport } from "./device.ts";
+import { AXES, MODES, RUNGS, formatsOf } from "./device.ts";
+
+const yes = (b: unknown): string => (b ? "yes" : "no");
+const mb = (bytes: number): string => (bytes / 1048576).toFixed(1);
+const secs = (ms: number): string => (ms / 1000).toFixed(1);
+const tenth = (x: number): number => Math.round(x * 10) / 10;
+const count = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${Math.round(n / 1000)}k` : String(Math.round(n)));
+
+/** Text made safe to put in HTML. */
+export function escape(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+/** The device, browser and system a user agent names, in words. Every browser on iOS draws with WebKit, which it says. */
+export function identify(ua: string, touch: number): string {
+  const ios = /\b(iPhone|iPad|iPod)\b.*?OS (\d+)[_.](\d+)/.exec(ua);
+  const android = /Android ([\d.]+)/.exec(ua);
+  const mac = /Macintosh/.test(ua);
+  const device = ios ? `an ${ios[1]}` : android ? "an Android device" : mac ? (touch > 1 ? "an iPad asking for desktop pages" : "a Mac") : /Windows/.test(ua) ? "a Windows computer" : /CrOS/.test(ua) ? "a Chromebook" : /Linux/.test(ua) ? "a Linux computer" : "a device it does not know";
+  const system = ios ? `iOS ${ios[2]}.${ios[3]}` : android ? `Android ${android[1]}` : mac ? "macOS" : "";
+  const named: [RegExp, string][] = [[/HeadlessChrome\/(\d+)/, "headless Chrome"], [/CriOS\/(\d+)/, "Chrome for iOS"], [/FxiOS\/(\d+)/, "Firefox for iOS"], [/EdgiOS\/(\d+)/, "Edge for iOS"], [/Edg\/(\d+)/, "Edge"], [/SamsungBrowser\/(\d+)/, "Samsung Internet"], [/Firefox\/(\d+)/, "Firefox"], [/Chrome\/(\d+)/, "Chrome"], [/Version\/(\d+[.\d]*).*Safari/, "Safari"]];
+  const found = named.map(([re, name]) => [re.exec(ua), name] as const).find(([m]) => m);
+  const app = /FBAN|FBAV|Instagram|Line\/|GSA\/|Snapchat/.test(ua) || (ios !== null && !/Safari\//.test(ua));
+  const browser = app ? "an app's own browser" : found ? `${found[1]} ${found[0]![1]}` : "a browser it does not know";
+  return [device, browser + (ios ? " (WebKit, as every iOS browser)" : ""), system].filter((s) => s !== "").join(", ");
+}
+
+/** What a renderer may count on, in a line a designer can read: the targets lighting can draw to and filter, and the limits. */
+export function limitsLine(g: GpuInfo): string {
+  const has = (e: string): boolean => g.extensions.includes(e);
+  const float32 = `32-bit float targets ${yes(has("EXT_color_buffer_float"))}, filtered ${yes(has("OES_texture_float_linear"))}, blended ${yes(has("EXT_float_blend"))}`;
+  const float16 = `16-bit float targets ${yes(has("EXT_color_buffer_half_float") || has("EXT_color_buffer_float"))}, filtered yes`;
+  return `${float16}; ${float32}; antialiasing up to ${g.maxSamples}x; ${g.drawBuffers} targets at once; ${g.textureUnits} textures a draw, ${g.vertexTextures} in vertex shaders; textures to ${g.maxTexture} px; anisotropy ${g.anisotropy || "none"}; reversed depth ${yes(has("EXT_clip_control"))}; GPU timers ${yes(has("EXT_disjoint_timer_query_webgl2"))}; multi-draw ${yes(has("WEBGL_multi_draw"))}; compressed ${formatsOf(g.extensions).join(" ") || "none"}`;
+}
+
+/** The device as its page sees it: what it is, and its screen. */
+function onThis(g: Record<string, unknown>): string {
+  const nav = (g.navigator ?? {}) as { userAgent?: string; maxTouchPoints?: number };
+  const screen = (g.screen ?? {}) as { width?: number; height?: number };
+  return `${identify(nav.userAgent ?? "", nav.maxTouchPoints ?? 0)}, ${screen.width ?? "?"} by ${screen.height ?? "?"} at ${g.devicePixelRatio ?? "?"}x`;
+}
+
+const TESTS: Readonly<Record<Mode, string>> = { quick: "Quick look, about 2 minutes", ladder: "Load ladder, about 5 minutes", soak: "Soak, 10 minutes" };
+const buttons = (): string => MODES.map((m) => `<button data-mode="${m}" style="display:block;width:100%;max-width:26em;margin:10px 0;padding:14px;font:inherit;font-size:17px;border-radius:10px;border:0;background:#2a6;color:#fff">${TESTS[m]}</button>`).join("");
+
+/** What a page shows before a test: the device it takes itself to be on, and the tests to tap. */
+export function startPage(_r: DeviceReport, g: Record<string, unknown>): string {
+  return `<div style="max-width:34em"><p><b>SNARK device probe</b></p><p>This looks like <b>${escape(onThis(g))}</b>. If that is not the device you meant to test, close this page: nothing has started.</p><p><b>Tap a test to start it.</b> The tap also keeps the screen on. Then leave the device be, screen on, until it says Done.</p>${buttons()}</div>`;
+}
+
+/** What a page shows when a test is done, or stopped: the report, and the tests to tap next. */
+export function donePage(r: DeviceReport, g: Record<string, unknown>, status: string): string {
+  const early = r.errors.length > 0 || r.reloadedDuring !== null;
+  return `<div style="max-width:34em"><p><b>${early ? "Stopped early" : "Done"}.</b> ${escape(status)}</p><p>This was ${escape(onThis(g))}. Tap another test, or close the page.</p>${buttons()}</div><pre style="font:11px ui-monospace,Menlo,monospace;white-space:pre;overflow:auto;margin-top:16px">${escape(deviceTable(r).join("\n"))}</pre>`;
+}
+
+/** The line over the game while a test goes on. */
+export function progressText(mode: Mode, stage: string, detail: string): string {
+  return escape(`${TESTS[mode].replace(/,.*/, "")}: ${stage}${detail ? `, ${detail}` : ""}\nKeep this page open and the screen on until it says Done.`);
+}
+
+const WIDTHS = [8, 7, 10, 6, 7, 7, 7, 7, 6, 6, 6, 7, 5, 5, 5, 5, 6, 5, 5];
+const row = (cells: string[], widths = WIDTHS): string => cells.map((c, i) => (i < 2 || (widths === WIDTHS && i === 2) ? c.padEnd(widths[i]!) : c.padStart(widths[i]!))).join(" ").trimEnd();
+
+function phaseRow(p: PhaseReport, tier = p.tier): string {
+  const line = row([tier, p.scene, p.canvas.join("x"), `${secs(p.settleMs)}${p.settled ? "" : "!"}`, String(p.frameMs.median), String(p.frameMs.p95), String(p.frameMs.p99), String(p.frameMs.worst), String(p.buildMs.median), String(p.drawMs.median), count(p.drawCalls), count(p.triangles), count(p.textured), String(p.dropped), String(p.skipped), String(p.lost), mb(p.fetched), String(p.failed), String(p.missed)]);
+  return p.fellTo ? `${line}  fell to ${p.fellTo}` : line;
+}
+
+/** The ladder for each tier: per axis the most that held the display's rate, and the first that did not, with why. */
+function ladderLines(r: DeviceReport): string[] {
+  const l = r.ladder ?? { display: r.idleFrameMs ?? 0, rungs: [], memory: null };
+  const out = [`ladder    a rung holds when its median frame is within 12% of the display's ${l.display} ms and its 95th within 50%`];
+  const tiers = [...new Set(l.rungs.map((g) => g.tier))];
+  const cell = (tier: string, axis: Axis): string => {
+    const mine = l.rungs.filter((g) => g.tier === tier && g.axis === axis);
+    const held = mine.filter((g) => g.held).at(-1);
+    const broke = mine.find((g) => !g.held);
+    if (mine.length === 0) return "not run";
+    if (!broke) return `all ${held!.n}, ours ${tenth(held!.buildMs + held!.drawMs)} ms`;
+    return `${held ? held.n : "none"}; ${broke.n} ${broke.limit}`;
+  };
+  const line = (cells: string[]): string => cells.map((c, i) => c.padEnd(i === 0 ? 8 : 24)).join(" ").trimEnd();
+  out.push(line(["tier", ...AXES]));
+  for (const tier of tiers) out.push(line([tier, ...AXES.map((a) => cell(tier, a))]));
+  out.push("each: the most that held, and then the first that did not and what took its frame (our code, the GPU, or a lost context);");
+  out.push("where all held: our code's ms a frame at the last rung, which is the engine's most for bodies, draws and pieces");
+  for (const g of l.rungs.filter((x) => !x.held)) out.push(`broke     ${g.tier} ${g.axis} ${g.n}: frames ${g.frameMs.median} ms, 95th ${g.frameMs.p95}; our code ${g.buildMs} + ${g.drawMs} ms; ${count(g.calls)} draws, ${count(g.tris)} triangles, ${count(g.bones)} bones, ${g.mat} with materials, canvas ${g.canvas.join("x")}`);
+  const top = (axis: Axis): string => count(Math.max(0, ...l.rungs.filter((g) => g.axis === axis && g.held).map((g) => (axis === "triangles" ? g.tris : axis === "draws" ? g.calls : g.n))));
+  out.push(`most held ${top("bodies")} bodies, ${top("pieces")} pieces, ${top("triangles")} triangles, ${top("draws")} draws, on any tier; the rungs: ${AXES.map((a) => `${a} ${RUNGS[a].join(" ")}`).join("; ")}`);
+  const m = l.memory;
+  const crashed = r.reloadedDuring?.startsWith("memory") ? r.reloadedDuring.replace("memory ", "") : null;
+  const held = m ? `${m.heldMB} MB of ${m.variant} textures held besides the game's ${m.gameMB} MB, frames ${m.rungs.map((x) => `${x.mb} MB ${x.frameMs} ms`).join(", ") || "none"}` : "none held";
+  if (m || crashed) out.push(`memory    ${held}; ${crashed ? `the page was reloaded while it took ${crashed} of textures: the browser dropped the tab` : m!.failedMB !== null ? `at ${m!.failedMB} MB: ${m!.how}` : m!.how}`);
+  return out;
+}
+
+function soakLines(r: DeviceReport): string[] {
+  const s = r.soak!;
+  const l = s.load;
+  const out = [`soak      ${s.tier}: ${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near, ${l.far} far${l.stress ? ", the stress meshes" : ""}, turning once a minute (${s.from}); ${s.minutes.length} of ${s.minutesWanted} minutes`];
+  out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "miss"], [6, 7, 7, 7, 7, 7, 6, 6, 5]));
+  for (const m of s.minutes) out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.missed)], [6, 7, 7, 7, 7, 7, 6, 6, 5]));
+  const [first, final] = [s.minutes[0], s.minutes.at(-1)];
+  if (first && final && final !== first) out.push(`warming   minute ${final.minute} against minute 1: frames ${final.frameMs.median} against ${first.frameMs.median} ms, 95th ${final.frameMs.p95} against ${first.frameMs.p95}, our code ${final.buildMs} against ${first.buildMs} ms`);
+  out.push(`screen    ${s.hidden === 0 ? "never hidden" : `hidden ${s.hidden} times, ${secs(s.hiddenMs)} s in all; the soak's clock stopped while it was and went on after`}; wake lock ${r.wakeLock}`);
+  return out;
+}
+
+/** The link: round trips, what was missed and where, and what the server says it held back, in words to act on. */
+function linkLines(r: DeviceReport): string[] {
+  const l = r.link;
+  const measured = Math.max(0, l.missed - l.missedLoading - l.missedHidden);
+  const held = l.server ? (l.server.skipped + l.server.overflows === 0 ? "the server held none back" : `the server held back ${l.server.skipped} for a full link and ${l.server.overflows} too large to send, for every page it serves`) : "the server did not say what it held back";
+  const out = [`link      a request ${l.httpMs ? `${l.httpMs.median} ms there and back, worst ${l.httpMs.worst}` : "?"}; the game's own measure ${l.gameMs ? `${l.gameMs.median} ms, worst ${l.gameMs.worst}` : "?"}; longest wait for a snapshot ${l.longestGapMs} ms`];
+  out.push(`snapshots ${l.snapshots} since the first; missed ${l.missed}: ${l.missedLoading} while the game loaded, ${l.missedHidden} while the page was hidden, ${measured} while tests ran; ${held}`);
+  if (l.clockJumps > 0) out.push(`          ${l.clockJumps} clock jumps: the game moved its input clock to keep inputs on time; it follows the round trip, which here swung to ${l.gameMs?.worst ?? "?"} ms`);
+  return out;
+}
+
+/** The report as lines of plain text: on the page when it is done, and in the terminal of tools/device.ts. */
+export function deviceTable(r: DeviceReport): string[] {
+  const out: string[] = [`SNARK device report ${r.run}, ${r.mode}: ${r.done ? "done" : `stopped at ${r.stage}`}`];
+  if (r.reloadedDuring) out.push(`reloaded  the browser reloaded the page during ${r.reloadedDuring}, as it does after the page crashes`);
+  const d = r.device;
+  if (d) {
+    const f = d.features;
+    out.push(`device    ${identify(d.userAgent, d.touch)}`);
+    out.push(`agent     ${d.userAgent}`);
+    out.push(`screen    ${d.screen.join("x")} CSS pixels, the page ${d.window.join("x")}, ${d.pixelRatio} device pixels to one; ${d.cores} cores${d.memoryGB ? `, ${d.memoryGB} GB` : ""}; ${d.touch} touch points`);
+    out.push(`features  workers ${yes(f.workers)}, file storage ${yes(f.opfs)}, decompression ${f.decompress || "none"}, audio worklet ${yes(f.audioWorklet)}, storage quota ${f.quotaMB ?? "?"} MB`);
+    out.push(`          opus encode ${yes(f.opusEncode)}, opus decode ${yes(f.opusDecode)}, webtransport ${yes(f.webTransport)}, webgpu ${yes(f.webgpu)}`);
+  }
+  const g = r.gpu;
+  if (g) {
+    out.push(`gpu       ${g.renderer} (${g.vendor}), ${g.version}; drawn from the ${g.variant} variant`);
+    out.push(`renderer  ${limitsLine(g)}`);
+  }
+  out.push(`display   ${r.idleFrameMs ?? "?"} ms between frames with nothing drawn; wake lock ${r.wakeLock}`);
+  out.push(...linkLines(r));
+  const load = r.load;
+  if (load) out.push(`load      first frame ${secs(load.firstFrameMs)} s, full detail ${secs(load.fullDetailMs)} s${load.settled ? "" : " (not reached)"}; page ${mb(load.pageBytes)} MB, assets ${mb(load.assetBytes)} MB, ${mb(load.diskBytes)} MB from disk, ${load.failed} fetches failed; asset cache in ${load.cache}`);
+  if (r.probes) {
+    const wrong = r.probes.filter((p) => !p.ok);
+    out.push(`picture   ${r.probes.length - wrong.length} of ${r.probes.length} probes right (${r.probes.map((p) => p.name).join(" ")})${wrong.map((p) => `; ${p.name} is ${p.got.join(",")}, not ${p.expected.join(",")}`).join("")}`);
+  }
+  if (r.hashes) {
+    const differ = r.hashes.filter((h) => h.got !== h.want);
+    out.push(`hashes    ${r.hashes.length - differ.length} of ${r.hashes.length} as the server's${differ.map((h) => `; ${h.name} ${h.got}, server ${h.want ?? "?"}`).join("")}; ${r.hashes.map((h) => `${h.name} ${h.ms} ms`).join(", ")}`);
+  }
+  const shown = [...r.phases, ...(r.ladder?.rungs ?? [])].map((p) => ("textured" in p ? { tier: p.tier, mat: p.textured } : { tier: p.tier, mat: p.mat }));
+  const asked = [...new Set(shown.filter((p) => p.mat > 0).map((p) => p.tier))];
+  out.push(`materials ${asked.length === 0 ? "none asked for" : r.texturesMade > 0 ? `drawn on ${asked.join(", ")}: the renderer made ${r.texturesMade} textures` : `asked for on ${asked.join(", ")}, but the renderer made no textures, so drawn flat`}`);
+  if (r.phases.length > 0) {
+    out.push(`tiers run ${[...new Set(r.phases.map((p) => p.tier))].join(", ")}`);
+    out.push("");
+    out.push(row(["tier", "scene", "canvas", "settle", "median", "p95", "p99", "worst", "build", "draw", "calls", "tris", "mat", "drop", "skip", "lost", "MB", "fail", "miss"]));
+    for (const p of r.phases) out.push(phaseRow(p));
+    if (r.again) out.push(phaseRow(r.again, "again"));
+    out.push("median to worst: ms between frames. settle: s until nothing was on its way, ! if never. build, draw: ms in our code.");
+    out.push("calls: WebGL draws. mat: draws with materials. drop, skip: what the frame left out.");
+    out.push("MB, fail, miss: fetched, fetches failed and snapshots missed while the phase settled and ran.");
+  }
+  if (r.ladder || r.reloadedDuring?.startsWith("memory")) out.push("", ...ladderLines(r));
+  if (r.soak) out.push("", ...soakLines(r));
+  for (const line of r.skipped) out.push(`not run   ${line}`);
+  if (r.hidden.length > 0) out.push(`hidden    the page was hidden during: ${r.hidden.join(", ")}`);
+  for (const e of r.errors) out.push(`error     ${e}`);
+  return out;
+}
