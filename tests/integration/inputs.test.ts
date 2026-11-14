@@ -1,6 +1,7 @@
 // What the server does with the inputs a client sends, and with the ones it does not.
 
 import { expect, test } from "bun:test";
+import { RESULT_BUSY, RESULT_OK } from "../../shared/net/protocol.ts";
 import { BTN_PRIMARY, BTN_PRONE, BTN_SPRINT, BTN_USE, STANCE_PRONE } from "../../shared/sim/character.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -52,4 +53,18 @@ test("a press shorter than a tick reaches the server once, whatever the frame ra
     }
     expect([fps, presses]).toEqual([fps, 60]);
   }
+});
+
+test("commands that come faster than the server takes them are answered busy, however many, and the session goes on", () => {
+  const h = new Harness();
+  const ada = h.join("ada");
+  h.run(500);
+  const results: number[] = [];
+  ada.onResult = (_seq, code) => results.push(code);
+  // A connection that stalled delivers everything sent during the stall in one tick.
+  for (let i = 0; i < 80; i++) ada.text("pos");
+  h.run(1000);
+  expect([results.length, results.every((c) => c === RESULT_OK || c === RESULT_BUSY)]).toEqual([80, true]);
+  expect([ada.state, h.client(ada)!.strikes, h.server.stats.malformed]).toEqual(["active", 0, 0]);
+  expect(h.say(ada, "pos").length).toBe(1);
 });

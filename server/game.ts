@@ -112,7 +112,7 @@ function sameText(a: string, b: string): boolean {
 
 /** Unreliable messages from one client per tick. The rest are dropped. */
 const MAX_PACKETS_PER_TICK = 8;
-/** Reliable messages are never dropped, so more than this per tick is a strike. */
+/** Reliable messages from one client per tick. A command past this is answered busy, and anything else is a strike. */
 const MAX_RELIABLE_PER_TICK = 32;
 /** Malformed messages tolerated before disconnecting. */
 const MAX_STRIKES = 8;
@@ -737,20 +737,22 @@ export class GameServer {
 
   private receive(c: Client, channel: number, data: Uint8Array): void {
     if (c.closed) return;
-    let ok = true;
+    let over = false;
     if (channel !== CH_RELIABLE) {
       if (++c.packets > MAX_PACKETS_PER_TICK) {
         this.stats.throttled++;
         return;
       }
-    } else if (++c.reliable > MAX_RELIABLE_PER_TICK) ok = false;
-    if (ok) ok = data.length <= MAX_CLIENT_MESSAGE;
+    } else over = ++c.reliable > MAX_RELIABLE_PER_TICK;
+    let ok = data.length <= MAX_CLIENT_MESSAGE;
     if (ok) {
       const r = this.r;
       r.reset(data);
       const type = r.bits(4);
-      if (type === C_INPUT && c.active) ok = this.input(c, r);
-      else if (type === C_COMMAND && c.active && channel === CH_RELIABLE) ok = this.command(c, r, data);
+      // A stalled connection delivers a burst of commands in one tick. Each is still read for its place in the sequence.
+      if (over && !(type === C_COMMAND && c.active)) ok = false;
+      else if (type === C_INPUT && c.active) ok = this.input(c, r);
+      else if (type === C_COMMAND && c.active && channel === CH_RELIABLE) ok = this.command(c, r, data, over);
       else if (type === C_HELLO && !c.active && channel === CH_RELIABLE) ok = this.hello(c, r);
       else ok = false;
     }
@@ -774,14 +776,14 @@ export class GameServer {
     return true;
   }
 
-  /** A gap in the sequence means a broken client. */
-  private command(c: Client, r: BitReader, data: Uint8Array): boolean {
+  /** A gap in the sequence means a broken client. A command `over` the tick's limit, or the queue's, is answered busy and not run. */
+  private command(c: Client, r: BitReader, data: Uint8Array, over: boolean): boolean {
     const seq = r.u16();
     r.u8();
     if (r.overflow || seq !== ((c.cmdSeq + 1) & 0xffff)) return false;
     c.cmdSeq = seq;
     c.activeAt = this.world.tick;
-    if (c.queue.length >= COMMAND_QUEUE) this.result(c, seq, RESULT_BUSY);
+    if (over || c.queue.length >= COMMAND_QUEUE) this.result(c, seq, RESULT_BUSY);
     else c.queue.push(data);
     return true;
   }
