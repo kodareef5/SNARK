@@ -1,5 +1,10 @@
 // How the asset library asks for bytes and hears of them. Core decides what is wanted and in what order. A browser zone
-// fetches, checks and caches. A stub: nothing implements it until assets stream.
+// fetches, checks and caches. Tests and the benchmark use a network made of numbers (tests/fixtures/assetnet.ts).
+
+/** Why a part did not come: the network, bytes that do not have the hash listed, or a range the file does not have. */
+export const FAIL_NET = 1;
+export const FAIL_HASH = 2;
+export const FAIL_RANGE = 3;
 
 /** A run of bytes in a pack file, and the hash it must have. */
 export interface AssetPart {
@@ -14,13 +19,15 @@ export interface AssetRequest {
   /** Index of the pack file in the manifest. */
   file: number;
   parts: readonly AssetPart[];
-  /** Higher is sooner. Asking again with another priority moves a request in the queue. */
+  /** Higher is sooner. */
   priority: number;
+  /** Fetch it from the network whatever a cache holds: what the cache gave had the wrong hash. */
+  fresh: boolean;
 }
 
 export interface AssetArrival {
   slot: number;
-  /** Null when it failed, and `fail` says how. */
+  /** Null when it failed, and `fail` says how: a FAIL_ code. */
   data: Uint8Array | null;
   fail: number;
   /** Bytes that came over the network, and bytes that came from the disk cache. */

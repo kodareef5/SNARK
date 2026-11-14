@@ -76,6 +76,12 @@ sending inputs every tick; two of the hundred are full clients.
 | The same: triangles submitted on the medium tier, with the bases behind them. The bodies alone are 568,784 of these. They were 665,204 before creatures had levels, and are 321,796 on low poly, 659,396 on high and 681,596 on ultra | 1,069,070 | 1,500,000 |
 | Client: take in the 1,512 falling pieces and move the 256 shown, worst frame | 0.33 ms | 1 ms |
 | Client frame build while they fall, median / 99th percentile | 0.05 ms / 0.07 ms | 1.5 ms / 3 ms |
+| Assets that stream (the stress meshes, 28 MB, over 20 Mbit/s with 50 ms delay): the boot file | 0.30 MB | 1 MB |
+| The same: time until nothing that wants finer is drawn from the boot file alone / until everything is at the level wanted | 1.1 s / 3.9 s | 1.5 s / 6 s |
+| The same: requests and evictions in ten seconds standing still | 0 | 0 |
+| The same, flying across at 25 m/s: bytes fetched over bytes drawn / requests given up / draws left out | 1.00 / 0% / 0 | 1.3 / 15% / 0 |
+| The same on a card with a 4 MB budget: the most it held over its budget / draws left out | 1.00 / 0 | 1.25 / 0 |
+| 2,000 things choosing a level, wanting it and being drawn, with a card that checks each draw, median / 99th percentile | 0.08 ms / 0.14 ms | 0.15 ms / 0.5 ms |
 
 The benchmark holds 73 budgets, and all are met. The 99th percentile tick uses
 13% of the 33.3 ms step.

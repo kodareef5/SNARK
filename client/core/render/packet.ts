@@ -3,6 +3,7 @@
 
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
+import type { AssetUpload } from "../assets/residency.ts";
 
 export const MAX_DRAWS = 4096;
 export const MAX_TILES = 1024;
@@ -62,11 +63,16 @@ export class FramePacket {
 
   readonly uploads: BufferUpload[] = [];
   readonly drops: number[] = [];
+  /** Levels of meshes to put on the graphics card, and slots to take off it, before this frame's draws. */
+  readonly assetUploads: AssetUpload[] = [];
+  readonly assetDrops: number[] = [];
+  /** Draws left out because no level of their mesh was to be had. */
+  skipped = 0;
 
   drawCount = 0;
   /** Pack mesh index. */
   readonly drawMesh = new Uint16Array(MAX_DRAWS);
-  /** Requested level of detail. Renderers clamp it to what the mesh has. */
+  /** The level of detail to draw. It is one the mesh has and the graphics card holds. */
   readonly drawLod = new Uint8Array(MAX_DRAWS);
   readonly drawBuffer = new Uint32Array(MAX_DRAWS);
   readonly drawFirst = new Uint32Array(MAX_DRAWS);
@@ -96,6 +102,9 @@ export class FramePacket {
   beginFrame(): void {
     this.uploads.length = 0;
     this.drops.length = 0;
+    this.assetUploads.length = 0;
+    this.assetDrops.length = 0;
+    this.skipped = 0;
     this.drawCount = 0;
     this.tileCount = 0;
     this.transientCount = 0;

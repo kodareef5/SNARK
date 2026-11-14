@@ -35,6 +35,8 @@ import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { AUDIO_HEADER, AUTH_BYTES, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, VOICE_BATCH, flagsOf, readBatch, writeAudio, writeAuth } from "../shared/voice/packet.ts";
 import type { VoicePeer } from "../server/voice.ts";
 import { buildCorePack } from "./pack/build.ts";
+import { stressSet } from "./pack/stress.ts";
+import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -1085,6 +1087,65 @@ section("Client frame build (headless): that house coming down 60 m off");
   record("frame build while they fall, 99th percentile", percentile(fallFrames, 0.99), "ms", 3);
   record("pieces still in the air four seconds on", falling.count, "", 0);
   scene.falling = null;
+}
+
+// ---------------------------------------------------------------- assets that stream
+section("Asset library (headless): 64 rocks of five levels and a 263,169-vertex plate, over 20 Mbit/s with 50 ms delay");
+{
+  const set = stressSet();
+  const meshOf = (id: string): number => set.manifest.meshes.findIndex((m) => m.id === id);
+  const spot = new Rng(21);
+  const field: Thing[] = Array.from({ length: 64 }, (_, i) => ({ mesh: meshOf(`stress:rock_${String(i).padStart(2, "0")}`), x: spot.range(-150, 150), z: spot.range(-150, 150) }));
+  field.push({ mesh: meshOf("stress:plate"), x: 0, z: 0 });
+  const link = { latencyMs: 50, bytesPerSecond: 2.5e6 };
+  record("the two files, boot and stream", mb(set.files[0]!.bytes.length + set.files[1]!.bytes.length), "MB");
+  record("the boot file", mb(set.files[0]!.bytes.length), "MB", 1);
+
+  // Standing in the middle of the field from nothing.
+  const stand = assetWorld(set, field, link);
+  let usableAt = -1;
+  let wantedAt = -1;
+  for (let f = 0; f < 20 * 60 && wantedAt < 0; f++) {
+    stand.frame(0);
+    if (usableAt < 0 && stand.usable()) usableAt = stand.now();
+    if (stand.settled()) wantedAt = stand.now();
+  }
+  record("time to first usable detail", (usableAt < 0 ? Infinity : usableAt) / 1000, "s", 1.5);
+  record("time to the detail wanted", (wantedAt < 0 ? Infinity : wantedAt) / 1000, "s", 6);
+  record("bytes fetched for it", mb(stand.r.stats.fetched), "MB");
+  const before = stand.r.stats.requests + stand.r.stats.evicted;
+  stand.run(10, 0);
+  record("requests and evictions in ten seconds standing there", stand.r.stats.requests + stand.r.stats.evicted - before, "", 0);
+
+  // Flying across the field at 25 m/s.
+  const fly = assetWorld(set, field, link);
+  fly.run(16, -200, 25);
+  record("fly-through: bytes fetched over bytes drawn", fly.r.stats.fetched / Math.max(1, fly.r.stats.used), "", 1.3);
+  record("fly-through: requests given up, of those made", (100 * fly.r.stats.cancelled) / Math.max(1, fly.r.stats.requests), "%", 15);
+  record("fly-through: draws left out", fly.r.stats.skipped, "", 0);
+  record("fly-through: most requests under way at once", fly.port.mostAtOnce, "", 6);
+
+  // The same flight with room on the card for a fifth of what it draws.
+  const budget = 4 * 1048576;
+  const small = assetWorld(set, field, link, { gpuBytes: budget });
+  small.run(16, -200, 25);
+  record("small card: the most it held, over its budget", small.card.most / budget, "", 1.25);
+  record("small card: draws left out", small.r.stats.skipped, "", 0);
+  record("small card: how much coarser everything was asked for at the end", small.r.relax, "x");
+
+  // 2,000 things in view, each choosing a level, wanting it and being drawn.
+  const many: Thing[] = Array.from({ length: 2000 }, (_, i) => ({ mesh: field[i % 64]!.mesh, x: spot.range(-900, 900), z: spot.range(-900, 900) }));
+  const crowd = assetWorld(set, many, { bytesPerSecond: 200e6 });
+  crowd.run(3, 0);
+  const frames: number[] = [];
+  for (let f = 0; f < 600; f++) {
+    const t = performance.now();
+    crowd.frame(f * 0.2);
+    frames.push(performance.now() - t);
+  }
+  frames.sort((a, b) => a - b);
+  record("2,000 things: choose, want and draw each, with the strict card, median", percentile(frames, 0.5), "ms", 0.15);
+  record("2,000 things: the same, 99th percentile", percentile(frames, 0.99), "ms", 0.5);
 }
 
 rmSync(dir, { recursive: true, force: true });

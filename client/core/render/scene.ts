@@ -4,6 +4,8 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { Assets } from "../assets/assets.ts";
+import type { AssetPort } from "../assets/port.ts";
+import type { Manifest } from "../../../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
@@ -90,6 +92,8 @@ export class Scene {
   hour = 12;
   /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
   viewHeight = 720;
+  /** The time of this frame, in milliseconds, for what the asset library waits on. */
+  now = 0;
 
   /** Pack mesh index per content index. */
   readonly meshOfKind: Uint16Array;
@@ -132,10 +136,11 @@ export class Scene {
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
 
-  constructor(world: RenderWorld, reg: Registry, pack: Pack) {
+  /** With `stream`, `pack` is the boot pack and other levels are asked of the port as they are wanted. */
+  constructor(world: RenderWorld, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort }) {
     this.world = world;
     this.terrain = new TerrainLod(world.hf);
-    this.assets = new Assets(reg, pack);
+    this.assets = new Assets(reg, pack, stream?.manifest, stream?.port);
     const { table, bind } = this.assets;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
@@ -174,7 +179,7 @@ export class Scene {
     const p = this.packet;
     p.beginFrame();
     cam.update();
-    this.assets.view(this.viewHeight, cam.fovY);
+    this.assets.begin(this.now, this.viewHeight, cam.fovY);
     p.viewProj.set(cam.viewProj);
     p.nearViewProj.set(cam.nearViewProj);
     p.camX = cam.x;
@@ -215,6 +220,7 @@ export class Scene {
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody);
+    this.assets.end(p, this.now);
     return p;
   }
 
@@ -402,6 +408,7 @@ export class Scene {
       for (let r = 0; r < batch.ranges.length; r += 3) {
         const mesh = batch.ranges[r]!;
         const lod = (batch.level[r / 3] = this.assets.choose(this.assets.table.error[mesh]!, dist, batch.level[r / 3]!));
+        this.assets.want(mesh, lod, dist);
         this.draw(mesh, lod, id, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z);
       }
     }
@@ -493,6 +500,10 @@ export class Scene {
     const n = p.drawCount;
     if (n === MAX_DRAWS) return;
     const lod = this.assets.level(mesh, wanted);
+    if (lod < 0) {
+      p.skipped++;
+      return;
+    }
     p.drawMesh[n] = mesh;
     p.drawLod[n] = lod;
     p.drawBuffer[n] = buffer;
@@ -504,7 +515,7 @@ export class Scene {
     p.drawFlags[n] = flags;
     p.drawCount = n + 1;
     const tris = this.trisOfMesh[mesh]!;
-    p.triangles += tris[lod < tris.length ? lod : tris.length - 1]! * count;
+    p.triangles += tris[lod]! * count;
   }
 }
 

@@ -64,15 +64,15 @@ test("a level is chosen by its error on screen: a body goes coarser near 14 and 
   for (const sex of ["m", "f"]) {
     const errors = bodyErrors(sex);
     assets.tier = tierOf("medium");
-    assets.view(720, 1.2217);
+    assets.begin(0, 720, 1.2217);
     const [near, far] = [from(errors, 1), from(errors, 2)];
     expect([sex, near > 14 * 0.8 && near < 14 * 1.2, far > 45 * 0.8 && far < 45 * 1.2]).toEqual([sex, true, true]);
     // Twice the pixels, or a scope's narrow view, and the finer level is held further out.
-    assets.view(1440, 1.2217);
+    assets.begin(0, 1440, 1.2217);
     expect(from(errors, 1)).toBeCloseTo(near * 2, 0);
-    assets.view(720, 1.2217 * 0.25);
+    assets.begin(0, 720, 1.2217 * 0.25);
     expect(from(errors, 1)).toBeGreaterThan(near * 4);
-    assets.view(720, 1.2217);
+    assets.begin(0, 720, 1.2217);
     // Each tier holds detail further than the one below it, and the lowest never draws the finest level.
     const nears = TIERS.map((t) => ((assets.tier = t), from(errors, 2)));
     expect(nears.every((d, i) => i === 0 || d > nears[i - 1]!)).toBe(true);

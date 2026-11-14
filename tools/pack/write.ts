@@ -26,20 +26,51 @@ export interface SourceMesh {
   rig?: string;
 }
 
-export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = []): Uint8Array {
-  const parts: Uint8Array[] = [];
-  let size = 0;
-  const append = (bytes: Uint8Array): number => {
-    const at = size;
-    parts.push(bytes);
-    size += bytes.length;
-    const pad = (4 - (size & 3)) & 3;
+/** The blob of a pack as it is put together: runs of bytes, each padded to a multiple of 4. */
+export class PackBlob {
+  readonly parts: Uint8Array[] = [];
+  size = 0;
+
+  /** Returns where the bytes start in the blob. */
+  append(bytes: Uint8Array): number {
+    const at = this.size;
+    this.parts.push(bytes);
+    this.size += bytes.length;
+    const pad = (4 - (this.size & 3)) & 3;
     if (pad > 0) {
-      parts.push(new Uint8Array(pad));
-      size += pad;
+      this.parts.push(new Uint8Array(pad));
+      this.size += pad;
     }
     return at;
-  };
+  }
+
+  /** The pack file: the header as JSON, then the blob. */
+  file(header: PackHeader): Uint8Array {
+    let json = new TextEncoder().encode(JSON.stringify(header));
+    const pad = (4 - (json.length & 3)) & 3;
+    if (pad > 0) {
+      const padded = new Uint8Array(json.length + pad).fill(0x20);
+      padded.set(json);
+      json = padded;
+    }
+    const file = new Uint8Array(12 + json.length + this.size);
+    const view = new DataView(file.buffer);
+    view.setUint32(0, PACK_MAGIC, true);
+    view.setUint16(4, PACK_VERSION, true);
+    view.setUint32(8, json.length, true);
+    file.set(json, 12);
+    let at = 12 + json.length;
+    for (const p of this.parts) {
+      file.set(p, at);
+      at += p.length;
+    }
+    return file;
+  }
+}
+
+export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = []): Uint8Array {
+  const blob = new PackBlob();
+  const append = (bytes: Uint8Array): number => blob.append(bytes);
 
   const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: [...rigs].sort((a, b) => (a.id < b.id ? -1 : 1)), clips: [] };
   for (const mesh of [...meshes].sort((a, b) => (a.id < b.id ? -1 : 1))) {
@@ -102,25 +133,7 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
     header.clips.push({ id: clip.id, bones: clip.bones, frames: clip.frames, loop: clip.loop, rotOffset: append(rot), rootOffset: append(root) });
   }
 
-  let json = new TextEncoder().encode(JSON.stringify(header));
-  const pad = (4 - (json.length & 3)) & 3;
-  if (pad > 0) {
-    const padded = new Uint8Array(json.length + pad).fill(0x20);
-    padded.set(json);
-    json = padded;
-  }
-  const file = new Uint8Array(12 + json.length + size);
-  const view = new DataView(file.buffer);
-  view.setUint32(0, PACK_MAGIC, true);
-  view.setUint16(4, PACK_VERSION, true);
-  view.setUint32(8, json.length, true);
-  file.set(json, 12);
-  let at = 12 + json.length;
-  for (const p of parts) {
-    file.set(p, at);
-    at += p.length;
-  }
-  return file;
+  return blob.file(header);
 }
 
 /** The meshes of a pack back in authoring form, to put them into another pack. */

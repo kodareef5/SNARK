@@ -204,7 +204,10 @@ export class Characters {
     this.posed++;
     const n = this.count++;
     // A young one is the same mesh drawn smaller, and so are its errors.
-    this.key[n] = c.mesh * LODS + this.levelOf(id, c.error, Math.sqrt(x * x + y * y + z * z) / size);
+    const far = Math.sqrt(x * x + y * y + z * z) / size;
+    const lod = this.levelOf(id, c.error, far);
+    this.assets.want(c.mesh, lod, far);
+    this.key[n] = c.mesh * LODS + lod;
     this.firstBone[n] = first;
     this.region0[n] = c.color;
     for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
@@ -256,9 +259,11 @@ export class Characters {
     p.boneCount = first + HUMAN_BONES;
     this.posed++;
     // The viewer's own body is as fine as the tier draws anything.
-    const lod = own ? this.assets.choose(set.error, 0, -1) : this.levelOf(id, set.error, Math.sqrt(x * x + y * y + z * z));
+    const far = own ? 0 : Math.sqrt(x * x + y * y + z * z);
+    const lod = own ? this.assets.choose(set.error, 0, -1) : this.levelOf(id, set.error, far);
     const queue = (m: number, tint: Uint8Array | null, tintAt: number, bone: number): void => {
       const n = this.count++;
+      this.assets.want(m, lod, far);
       this.key[n] = m * LODS + lod;
       this.firstBone[n] = first;
       this.region0[n] = k.color;

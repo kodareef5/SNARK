@@ -5,6 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { App } from "../client/core/app.ts";
 import { Camera } from "../client/core/render/camera.ts";
+import { FakeNet, type NetOptions } from "../tests/fixtures/assetnet.ts";
 import { Harness } from "../tests/fixtures/net.ts";
 import type { FramePacket } from "../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
@@ -28,6 +29,7 @@ import { NodeField } from "../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_SPAWN, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { buildCorePack } from "./pack/build.ts";
+import { splitPack } from "./pack/split.ts";
 import { HudModel, mapU, mapV } from "../client/core/hud.ts";
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "../client/core/ui/hud.ts";
 import { Ui } from "../client/core/ui/ui.ts";
@@ -107,20 +109,27 @@ export interface ProvingView {
   cam: Camera;
   remote: RemoteSample;
   raster: Rasterizer;
+  /** The network the scene's levels come over, when they stream. */
+  port: FakeNet | null;
   render(): FramePacket;
 }
 
-/** The proving ground with a camera at the spawn point and two bodies standing in view. */
-export function provingView(width = 640, height = 360): ProvingView {
+/**
+ * The proving ground with a camera at the spawn point and two bodies standing in view. With `net`, the scene has only
+ * the boot pack at start and fetches other levels over that network, and the rasterizer draws only what was uploaded.
+ */
+export function provingView(width = 640, height = 360, net?: NetOptions): ProvingView {
   const reg = compileContent(CORE_CONTENT).registry!;
   const hf = buildProvingHeightfield();
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   populateProving(structs, hf, reg);
-  const pack = parsePack(buildCorePack());
+  const split = net ? splitPack(buildCorePack(), "core") : null;
+  const port = split ? new FakeNet(split.files.map((f) => f.bytes), net) : null;
+  const pack = parsePack(split ? split.files[0]!.bytes : buildCorePack());
   // Fills every chunk's nodes, as a client near each would have them.
   const nodes = new NodeField(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, provingNodes(hf, reg));
   nodes.retain(0, 64, 1, () => false);
-  const scene = new Scene({ dims: PROVING_DIMS, hf, structs, nodes: nodes.store }, reg, pack);
+  const scene = new Scene({ dims: PROVING_DIMS, hf, structs, nodes: nodes.store }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();
   cam.x = PROVING_SPAWN.x;
   cam.z = PROVING_SPAWN.z;
@@ -140,9 +149,9 @@ export function provingView(width = 640, height = 360): ProvingView {
   };
   place(101, "core:survivor", 254, 250, 2.6);
   place(102, "core:grazer", 259, 254, 0.7);
-  const raster = new Rasterizer(width, height, pack, hf);
+  const raster = new Rasterizer(width, height, pack, hf, split?.manifest);
   return {
-    reg, hf, structs, nodes, pack, scene, cam, remote, raster,
+    reg, hf, structs, nodes, pack, scene, cam, remote, raster, port,
     render() {
       const packet = scene.build(cam, remote);
       raster.render(packet);
