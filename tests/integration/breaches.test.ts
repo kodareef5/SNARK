@@ -1,4 +1,4 @@
-// Ways through a wall, into a box or onto a mount that the review of 2026-11-14 found open. Each case was once possible.
+// What the review of 2026-11-14 found: ways through a wall, into a box or onto a mount, each of which was once possible, and what a dead tame leaves.
 
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
@@ -338,4 +338,58 @@ test("wrong PINs are counted against the survivor who gives them, and each one p
   expect(h.client(cy)!.open).toBe(state.pid);
   expect(guess(cy, 4071)).toBe(RESULT_OK);
   expect([1, 2].map((pin) => guess(cy, pin))).toEqual([RESULT_DENIED, RESULT_DENIED]);
+});
+
+test("a tame that dies leaves what it carried and its saddle where it fell, for anyone to take, as its body does in the reference", () => {
+  const { h, sessions, recs, at } = arena(["ada", "bob"]);
+  const bob = sessions[1]!;
+  const { records, items } = h.host;
+  const ents = h.world.ents;
+  const [ingot, meat, saddle] = [id("ingot"), id("meat"), id("saddle_parasaur")];
+  // Ada's parasaur, saddled and named, carrying metal and meat.
+  const e = h.host.spawnCreature("core:parasaur", at.x + 6, at.z - 8, 1);
+  expect(e).toBeGreaterThanOrEqual(0);
+  const tame = records.byPid.get(ents.pid[e]!)!;
+  tame.team = recs[0]!.team;
+  tame.name = "Dolly";
+  tame.saddle = saddle;
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  h.host.creatures.claimed(e);
+  expect([items.mint(tame, ingot, 30), items.mint(tame, meat, 5)]).toEqual([30, 5]);
+  h.run(100);
+  const [x, z] = [ents.x[e]!, ents.z[e]!];
+  // Meat keeps four times as long inside a creature.
+  const fresh = h.reg.spoilTicks[meat]!;
+  const carried = items.inv(tame);
+  expect(carried.spoilAt[carried.item.indexOf(meat)]! - h.world.tick).toBeGreaterThan(fresh * 3.9);
+
+  h.host.survival.add(tame, V_HEALTH, -1e9);
+  h.run(200);
+  expect(records.byPid.has(tame.pid)).toBe(false);
+  // A cache lies where it fell, with everything in it. Out of the creature, the meat has a quarter of the time it had left.
+  const left = [...records.byPid.values()].filter((r) => r.kind === id("cache"));
+  expect(left.map((r) => r.name)).toEqual(["Dolly's cache"]);
+  const cache = left[0]!;
+  const inv = items.inv(cache);
+  expect([inv.total(ingot), inv.total(meat), inv.total(saddle)]).toEqual([30, 5, 1]);
+  expect(Math.hypot(cache.x - x, cache.z - z)).toBeLessThan(0.5);
+  const keeps = inv.spoilAt[inv.item.indexOf(meat)]! - h.world.tick;
+  expect([keeps > fresh * 0.9, keeps <= fresh]).toEqual([true, true]);
+  // It lies as long as what a dead survivor leaves.
+  const lies = cache.expiresAt - h.world.tick;
+  expect([lies > h.host.death.lifetime(id("cache")) - 10, lies <= h.host.death.lifetime(id("cache"))]).toEqual([true, true]);
+  expect(items.audit()).toEqual([]);
+
+  // Bob, who is not of her tribe, walks up, opens it and takes the saddle.
+  h.say(bob, `tp ${(cache.x - 1.5).toFixed(3)} ${cache.z.toFixed(3)}`);
+  const pilot = h.pilots[1]!;
+  pilot.yaw = Math.PI / 2;
+  pilot.pitch = Math.atan2(0.25 - 1.62, 1.5);
+  h.run(200);
+  press(h, bob, BTN_USE);
+  expect(bob.open?.name).toBe("Dolly's cache");
+  const from = bob.open!.inventory.item.indexOf(saddle);
+  bob.command(CMD_MOVE, (w: BitWriter) => (w.bits(BOX_OPEN, 1), w.varint(from), w.bits(BOX_SELF, 1), w.varint(0), w.u16(0), w.u16(saddle)));
+  h.run(200);
+  expect([bob.inventory!.total(saddle), items.inv(cache).total(saddle)]).toEqual([1, 0]);
 });
