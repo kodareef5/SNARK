@@ -40,12 +40,12 @@ export default {
   // ref/DESIGN.md. `sample` is the default dye, the palette colour nearest the concept's; `material` is the block-out's
   // own material for the region, read only if `materials` is taken away to build the block-out alone.
   regions: [
-    { name: "Body", material: "body", sample: 99 },
-    { name: "Face", material: "face", sample: 186 },
-    { name: "Beak", material: "beak", sample: 171 },
-    { name: "Forehead, Neck and Feet", material: "forehead_neck_feet", sample: 225 },
-    { name: "Head", material: "head", sample: 107 },
-    { name: "Wings and Patterning", material: "wings_patterning", sample: 128 },
+    { name: "Body", material: "body", sample: 87 },
+    { name: "Face", material: "face", sample: 113 },
+    { name: "Beak", material: "beak", sample: 131 },
+    { name: "Forehead, Neck and Feet", material: "forehead_neck_feet", sample: 212 },
+    { name: "Head", material: "head", sample: 94 },
+    { name: "Wings and Patterning", material: "wings_patterning", sample: 105 },
   ],
   // The model's two materials (rig.py: MATERIALS says which parts are on which). The pictures are D4's, in tex/.
   materials: {

@@ -85,7 +85,7 @@ REGION_MATERIALS = ["body", "face", "beak", "forehead_neck_feet", "head", "wings
 REGION_DISPLAY = ["6B737A", "DDA58E", "8F8A5E", "C4983C", "3B302A", "E6DCC4"]
 # The default colours a region is dyed in, as palette indices (shared/pack/palette.ts), nearest the concept's tones.
 # ref/DESIGN.md gives the rest of the colour set and how far each lands.
-REGION_DEFAULT = [99, 186, 171, 225, 107, 128]
+REGION_DEFAULT = [87, 113, 131, 212, 94, 105]
 
 # The skeleton. Bird-frame joint positions at rest; a bone runs from its head to its tail. A bone whose head is its
 # parent's tail is connected. Right-side bones are mirrored from the left ones.
