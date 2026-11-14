@@ -1,6 +1,7 @@
 // Builds client/dist: the bundled shell, the workers and worklets, the page, and the core assets as a boot file, a mesh
 // file, a texture file for each variant and a manifest. An asset file is named after its own hash, so a browser keeps
-// it for good. What is fetched whole has a Brotli copy beside it.
+// it for good. What is fetched whole has a Brotli copy beside it. The levels drawn with materials are ordered for the
+// vertex cache first.
 
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -9,6 +10,7 @@ import { gameTextures } from "./art/materials.ts";
 import { buildCorePack, importedMeshes } from "./pack/build.ts";
 import { buildTextures, type TextureSource } from "./pack/encode.ts";
 import { partHash } from "./pack/manifest.ts";
+import { orderPack } from "./pack/order.ts";
 import { splitPack } from "./pack/split.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
 
@@ -39,7 +41,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean } = 
   const result = await Bun.build({ entrypoints, outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked" });
   if (!result.success) throw new Error(result.logs.map(String).join("\n"));
   copyFileSync(join(root, "client/index.html"), join(dist, "index.html"));
-  const { files, manifest } = splitPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]), "core");
+  const { files, manifest } = splitPack(orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])])), "core");
   if (opts.stress) spoilStress(files, manifest);
   // The game's own textures, from its asset folders, and the cards.
   const sources: TextureSource[] = [...(await gameTextures()), ...(opts.stress ? stressCards() : [])];
