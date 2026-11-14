@@ -67,9 +67,10 @@ test("a world survives restart: tick, structures, records and where a survivor s
   expect(h2.world.ents.pid[h2.ent(again)]).toBe(pid);
   expect(Math.abs(h2.world.ents.x[h2.ent(again)]! - where.x)).toBeLessThan(0.01);
   expect(Math.abs(h2.world.ents.z[h2.ent(again)]! - where.z)).toBeLessThan(0.01);
+  // One body per survivor: the same device on a second connection takes it over from the first.
   const twin = h2.join("ada");
   h2.run(200);
-  expect(twin.state).toBe("closed");
+  expect([twin.state, again.state]).toEqual(["active", "closed"]);
   expect(h2.server.playerCount).toBe(1);
   h2.host.shutdown();
 });

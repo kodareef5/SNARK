@@ -222,7 +222,7 @@ test("version and content mismatches are refused with a reason", () => {
   const reasons: number[] = [];
   for (const [version, hash] of [[PROTOCOL_VERSION + 1, h.reg.hash], [PROTOCOL_VERSION, h.reg.hash ^ 1]] as const) {
     const end = h.net.connect();
-    end.onMessage = (_ch, data) => reasons.push(data[0]! >> 4 | (data[1]! << 4) & 0xff);
+    end.onMessage = (_ch, data) => reasons.push(data[1]!);
     const w = new BitWriter(64);
     writeHello(w, version, hash, h.world.anim.set.hash, "x", 0, testKey("x"));
     end.send(CH_RELIABLE, w.bytes());

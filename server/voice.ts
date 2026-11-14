@@ -11,8 +11,14 @@ const RATE = 60;
 const BURST = 15;
 /** Malformed packets tolerated before the socket is closed. */
 const MAX_STRIKES = 8;
-/** Ticks a socket has to authenticate. */
+/** Ticks a socket has to authenticate while there is room. */
 const AUTH_TICKS = 5 * TICK_RATE;
+/**
+ * Sockets that may be waiting to authenticate, or one for every seat if that is more. With no room, one that has waited
+ * AUTH_GRACE_TICKS is put out for a newcomer.
+ */
+const MAX_STRANGERS = 64;
+const AUTH_GRACE_TICKS = 15;
 /** Routes are recomputed every ROUTE_TICKS, for peers that spoke within SPEAKING_TICKS. */
 const ROUTE_TICKS = 3;
 const SPEAKING_TICKS = 10;
@@ -67,6 +73,8 @@ export class Voice {
   /** `relayed` counts frames batched, `dropped` batches a slow listener could not take, `routed` full route passes. */
   readonly stats = { packets: 0, relayed: 0, malformed: 0, limited: 0, stale: 0, dropped: 0, routed: 0 };
   readonly peers = new Set<VoicePeer>();
+  /** Those that have not authenticated, oldest first. */
+  private readonly strangers = new Set<VoicePeer>();
   private readonly bySlot: (VoicePeer | null)[] = [];
   private readonly tokens = new Map<Client, Uint8Array>();
   private readonly waiting: VoicePeer[] = [];
@@ -108,6 +116,18 @@ export class Voice {
   connect(sock: VoiceSocket): VoicePeer {
     const peer = new VoicePeer(sock);
     peer.since = this.ctx.game.world.tick;
+    // A client authenticates at once, so with no room the one that has waited longest was only holding a place. If even
+    // that one came this moment, the newcomer is the one turned away.
+    if (this.strangers.size >= Math.max(MAX_STRANGERS, this.ctx.game.clients.length)) {
+      const [oldest] = this.strangers;
+      if (peer.since - oldest!.since < AUTH_GRACE_TICKS) {
+        peer.closed = true;
+        sock.close();
+        return peer;
+      }
+      this.close(oldest!);
+    }
+    this.strangers.add(peer);
     this.peers.add(peer);
     return peer;
   }
@@ -115,6 +135,7 @@ export class Voice {
   disconnect(peer: VoicePeer): void {
     if (peer.closed) return;
     peer.closed = true;
+    this.strangers.delete(peer);
     this.peers.delete(peer);
     if (peer.client && this.bySlot[peer.client.id] === peer) this.bySlot[peer.client.id] = null;
   }
@@ -280,6 +301,7 @@ export class Voice {
     if (old && old !== peer) this.close(old);
     this.bySlot[slot] = peer;
     peer.client = c;
+    this.strangers.delete(peer);
     return true;
   }
 

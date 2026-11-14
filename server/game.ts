@@ -11,6 +11,8 @@ import {
   C_INPUT,
   HELLO_LOOK,
   HELLO_SPECTATE,
+  INPUT_HOLD_TICKS,
+  INPUT_KEPT,
   INPUT_WINDOW,
   InputBuffer,
   KEY_BYTES,
@@ -84,6 +86,8 @@ export interface GameOptions {
   /** "" for none. */
   password: string;
   motdSeconds: number;
+  /** The most connections from one address that may be waiting to say hello. 0 for no limit. */
+  pendingPerAddress: number;
 }
 
 const DEFAULTS: GameOptions = {
@@ -99,6 +103,7 @@ const DEFAULTS: GameOptions = {
   spectators: "admin",
   password: "",
   motdSeconds: 20,
+  pendingPerAddress: 8,
 };
 
 /** Constant-time, so timing does not leak how much of a password matched. */
@@ -110,17 +115,21 @@ function sameText(a: string, b: string): boolean {
 
 /** Unreliable messages from one client per tick. The rest are dropped. */
 const MAX_PACKETS_PER_TICK = 8;
-/** Reliable messages are never dropped, so more than this per tick is a strike. */
+/** Reliable messages from one client per tick. A command past this is answered busy, and anything else is a strike. */
 const MAX_RELIABLE_PER_TICK = 32;
 /** Malformed messages tolerated before disconnecting. */
 const MAX_STRIKES = 8;
-/** Connections waiting to say hello, and the ticks each may take. */
+/** Connections waiting to say hello, and the ticks each may take while there is room. */
 const MAX_PENDING = 64;
 const HELLO_TICKS = 150;
+/** With no room, one that has waited this long is put out for a newcomer. A client says hello at once, so this is a slow link's round trip. */
+const HELLO_GRACE_TICKS = 15;
 const COMMAND_QUEUE = 16;
 const COMMANDS_PER_TICK = 4;
 /** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
 const SNAPSHOT_BYTES_MIN = 600;
+/** The most bits one row of a chunk message takes. */
+const ROW_BITS = 190;
 const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** Metres. */
 const SPECTATOR_LIFT = 1.6;
@@ -138,11 +147,16 @@ export const DID_RELOAD = 4;
 /** Read every argument and check r.overflow before acting. Returns a RESULT code. */
 export type CommandHandler = (c: Client, r: BitReader) => number;
 
-/** One survivor's session. It outlives its connection by lingerTicks, and a reconnect with the same name and key takes it over. */
+/** A connection that has not said hello, and the tick it came on. It holds no slot and none of a session's memory. */
+interface Pending {
+  readonly conn: Connection;
+  readonly since: number;
+}
+
+/** One survivor's session, made when its hello is accepted. It outlives its connection by lingerTicks, and a reconnect with the same name and key takes it over. */
 export class Client {
-  /** Slot in `GameServer.clients`, or -1 until its hello is accepted. */
+  /** Slot in `GameServer.clients`. */
   id: number;
-  helloBy = 0;
   conn: Connection;
   active = false;
   /** The connection is gone; the body stays until `lingerUntil`. */
@@ -181,6 +195,8 @@ export class Client {
   heldYaw = 0;
   heldPitch = 0;
   heldButtons = 0;
+  /** The tick its last input was for. Past INPUT_HOLD_TICKS without another, the body stops. */
+  inputAt = 0;
   /** Buttons that went down this tick. */
   pressed = 0;
   /** DID_ bits for this tick, and how far a shot was drawn. */
@@ -307,9 +323,11 @@ export class GameServer {
   readonly clients: (Client | null)[];
   /** New survivor names made from each address in the last hour. */
   private readonly newNames = new Map<string, { n: number; since: number }>();
-  /** Wrong passwords, for joining and for cheats, by the address they came from. */
+  /** Wrong join passwords, by the address they came from. */
   readonly guesses = new Guesses();
-  /** `overflows` counts snapshots that outgrew the writer and were not sent. */
+  /** Wrong cheat passwords, counted apart: joining with the right password must not forgive them. */
+  readonly cheatGuesses = new Guesses();
+  /** `overflows` counts snapshots and chunk messages that outgrew the writer and were not sent. */
   readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0, overflows: 0 };
   /** May this device key use this name? Called before anything is created. */
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
@@ -337,8 +355,8 @@ export class GameServer {
   savedPosition: ((name: string) => { x: number; y: number; z: number; yaw: number; dead?: boolean } | null) | null = null;
 
   private readonly handlers: (CommandHandler | null)[] = new Array(256).fill(null);
-  /** Connections that have not said hello hold no slot, so a returning survivor can reclaim its lingering session on a full server. */
-  private readonly pending = new Set<Client>();
+  /** Connections that have not said hello, oldest first. They hold no slot, so a returning survivor can reclaim its lingering session on a full server. */
+  private readonly pending = new Set<Pending>();
   private readonly survivor: number;
   private readonly w: BitWriter;
   /** Sized for the tuning string a welcome carries. */
@@ -413,7 +431,15 @@ export class GameServer {
         c.heldYaw = inputs.yaw[i]!;
         c.heldPitch = inputs.pitch[i]!;
         c.heldButtons = inputs.buttons[i]!;
-      } else this.stats.heldInputs++;
+        c.inputAt = T;
+      } else {
+        this.stats.heldInputs++;
+        // A client gone quiet, a hidden tab for one, stops where it is and keeps only its stance.
+        if (T - c.inputAt > INPUT_HOLD_TICKS) {
+          c.heldX = c.heldZ = 0;
+          c.heldButtons &= INPUT_KEPT;
+        }
+      }
       c.edges();
       c.did = 0;
       const b = c.body;
@@ -450,7 +476,7 @@ export class GameServer {
 
     for (const c of this.clients) if (c?.active && c.queue.length > 0) this.runCommands(c);
     for (const c of this.clients) if (c?.closed && T >= c.lingerUntil) this.finalize(c);
-    for (const c of this.pending) if (T >= c.helloBy) this.reject(c, REJECT_MALFORMED);
+    for (const p of this.pending) if (T - p.since >= HELLO_TICKS) this.turnAway(p, REJECT_MALFORMED);
 
     this.onStep?.(T);
     // History records the world as this tick's snapshots show it.
@@ -482,12 +508,22 @@ export class GameServer {
 
   reject(c: Client, reason: number): void {
     c.left = reason === REJECT_KICKED ? "kicked" : "refused";
+    this.close(c.conn, reason);
+  }
+
+  /** Tells a connection why, and closes it. */
+  private close(conn: Connection, reason: number): void {
     const w = this.w;
     w.reset();
-    w.bits(S_REJECT, 4);
+    w.u8(S_REJECT);
     w.u8(reason);
-    c.conn.send(CH_RELIABLE, w.bytes());
-    c.conn.close();
+    conn.send(CH_RELIABLE, w.bytes());
+    conn.close();
+  }
+
+  private turnAway(p: Pending, reason: number): void {
+    this.pending.delete(p);
+    this.close(p.conn, reason);
   }
 
   /** One message per line. */
@@ -496,7 +532,7 @@ export class GameServer {
     const w = this.w;
     for (const line of text.split("\n")) {
       w.reset();
-      w.bits(S_TEXT, 4);
+      w.u8(S_TEXT);
       w.u8(channel);
       // 330 characters is under the client's byte limit even at three bytes each.
       w.string(line.length > 330 ? line.slice(0, 330) : line);
@@ -508,7 +544,7 @@ export class GameServer {
   beginOwn(component: number): BitWriter {
     const w = this.w;
     w.reset();
-    w.bits(S_OWN, 4);
+    w.u8(S_OWN);
     w.u8(component);
     return w;
   }
@@ -521,7 +557,7 @@ export class GameServer {
   begin(type: number): BitWriter {
     const w = this.w;
     w.reset();
-    w.bits(type, 4);
+    w.u8(type);
     return w;
   }
 
@@ -573,9 +609,9 @@ export class GameServer {
     return true;
   }
 
-  /** `y` defaults to the ground. A bed on an upper floor passes its own. */
-  revive(c: Client, x: number, z: number, yaw: number, y = this.world.hf.heightAt(x, z)): boolean {
-    if (c.state !== SESSION_DEAD || !this.spawnBody(c, { x, y, z, yaw })) return false;
+  /** Without `y` the place is on the ground, and a free spot around it will do. With `y` it is a bed, which is stood on or nothing. */
+  revive(c: Client, x: number, z: number, yaw: number, y?: number): boolean {
+    if (c.state !== SESSION_DEAD || !this.spawnBody(c, { x, y: y ?? this.world.hf.heightAt(x, z), z, yaw }, y !== undefined)) return false;
     c.ownDirty = true;
     return true;
   }
@@ -597,8 +633,12 @@ export class GameServer {
     c.state = SESSION_SPECTATING;
   }
 
-  /** Spawns at `at`, else where the survivor was last seen, else the spawn point. If that spot is taken, the first free one around it. */
-  private spawnBody(c: Client, at?: { x: number; y: number; z: number; yaw: number }): boolean {
+  /**
+   * Spawns at `at`, else where the survivor was last seen, else the spawn point. If that spot is taken, the first free one on the
+   * ground around it, or one beside another body if every one is taken. An `exact` place, a bed, is stood on whoever else is
+   * there, as in ARK, and nowhere else. False if there is no room: a body is never put inside anything.
+   */
+  private spawnBody(c: Client, at?: { x: number; y: number; z: number; yaw: number }, exact = false): boolean {
     const world = this.world;
     const kind = this.survivor;
     const p = world.reg.move[kind]!;
@@ -609,21 +649,38 @@ export class GameServer {
     let z = cz;
     let y = 0;
     let yaw = at ? at.yaw : world.spawn.yaw;
-    if (want && capsuleFree(world, want.x, want.y, want.z, p.radius, p.height) && !(at && this.occupied(want.x, want.z))) {
+    if (want && capsuleFree(world, want.x, want.y, want.z, p.radius, p.height) && (exact || !(at && this.occupied(want.x, want.y, want.z)))) {
       x = want.x;
       y = want.y;
       z = want.z;
       yaw = want.yaw;
     } else {
-      // First free spot on rings around the place.
-      for (let k = 0; k < 96; k++) {
+      if (exact) return false;
+      // First free spot on rings around the place, else the first that only another body is in.
+      let free = false;
+      let beside = false;
+      let bx = 0;
+      let bz = 0;
+      for (let k = 0; k < 96 && !free; k++) {
         const ring = Math.ceil(k / 8);
         const a = (k * TAU) / 8 + ring * 0.4;
         x = cx + detSin(a) * ring * 1.5;
         z = cz + detCos(a) * ring * 1.5;
-        if (capsuleFree(world, x, world.hf.heightAt(x, z), z, p.radius, p.height) && !this.occupied(x, z)) break;
+        y = world.hf.heightAt(x, z);
+        if (!capsuleFree(world, x, y, z, p.radius, p.height)) continue;
+        free = !this.occupied(x, y, z);
+        if (!free && !beside) {
+          beside = true;
+          bx = x;
+          bz = z;
+        }
       }
-      y = world.hf.heightAt(x, z);
+      if (!free) {
+        if (!beside) return false;
+        x = bx;
+        z = bz;
+        y = world.hf.heightAt(x, z);
+      }
     }
     const ents = world.ents;
     const e = ents.create(kind, x, y, z, F_PLAYER | F_AWAKE);
@@ -653,20 +710,39 @@ export class GameServer {
   }
 
   private accept(conn: Connection): void {
-    // A full server reconnecting at once is not an attack.
-    if (this.pending.size >= Math.max(MAX_PENDING, this.opts.maxClients)) {
-      const w = this.w;
-      w.reset();
-      w.bits(S_REJECT, 4);
-      w.u8(REJECT_FULL);
-      conn.send(CH_RELIABLE, w.bytes());
-      conn.close();
-      return;
+    const T = this.world.tick;
+    const share = conn.address === undefined ? 0 : this.opts.pendingPerAddress;
+    let first: Pending | null = null;
+    let own: Pending | null = null;
+    let mine = 0;
+    for (const p of this.pending) {
+      first ??= p;
+      if (share === 0 || p.conn.address !== conn.address) continue;
+      own ??= p;
+      mine++;
     }
-    const c = new Client(-1, conn, chunkCount(this.world.dims));
-    c.helloBy = this.world.tick + HELLO_TICKS;
-    this.pending.add(c);
-    this.bind(c, conn);
+    // With no room, among its own address's share or among them all, the one that has waited longest makes way. A client says
+    // hello at once, so one that has had the time and said nothing was holding the place, and holding places keeps nobody out.
+    // If none has had the time, as when a full server reconnects at once, the newcomer is the one turned away.
+    const out = share > 0 && mine >= share ? own : this.pending.size >= Math.max(MAX_PENDING, this.opts.maxClients) ? first : null;
+    if (out) {
+      if (T - out.since < HELLO_GRACE_TICKS) return this.close(conn, REJECT_FULL);
+      this.turnAway(out, REJECT_FULL);
+    }
+    const p: Pending = { conn, since: T };
+    this.pending.add(p);
+    conn.onMessage = (channel, data) => this.greet(p, channel, data);
+    conn.onClose = () => void this.pending.delete(p);
+  }
+
+  /** The first message of a connection must be its hello. Anything else ends it. */
+  private greet(p: Pending, channel: number, data: Uint8Array): void {
+    if (!this.pending.delete(p)) return;
+    const r = this.r;
+    r.reset(data);
+    if (channel === CH_RELIABLE && data.length <= MAX_CLIENT_MESSAGE && r.bits(4) === C_HELLO && this.hello(p.conn, r)) return;
+    this.stats.malformed++;
+    this.close(p.conn, REJECT_MALFORMED);
   }
 
   private bind(c: Client, conn: Connection): void {
@@ -676,7 +752,6 @@ export class GameServer {
 
   /** The connection closed. A living body lingers, anything else leaves now. */
   private remove(c: Client, conn: Connection): void {
-    if (this.pending.delete(c)) return;
     if (this.clients[c.id] !== c || c.conn !== conn || c.closed) return;
     if (c.active && c.ent >= 0 && this.opts.lingerTicks > 0) {
       this.release(c);
@@ -702,21 +777,22 @@ export class GameServer {
 
   private receive(c: Client, channel: number, data: Uint8Array): void {
     if (c.closed) return;
-    let ok = true;
+    let over = false;
     if (channel !== CH_RELIABLE) {
       if (++c.packets > MAX_PACKETS_PER_TICK) {
         this.stats.throttled++;
         return;
       }
-    } else if (++c.reliable > MAX_RELIABLE_PER_TICK) ok = false;
-    if (ok) ok = data.length <= MAX_CLIENT_MESSAGE;
+    } else over = ++c.reliable > MAX_RELIABLE_PER_TICK;
+    let ok = data.length <= MAX_CLIENT_MESSAGE;
     if (ok) {
       const r = this.r;
       r.reset(data);
       const type = r.bits(4);
-      if (type === C_INPUT && c.active) ok = this.input(c, r);
-      else if (type === C_COMMAND && c.active && channel === CH_RELIABLE) ok = this.command(c, r, data);
-      else if (type === C_HELLO && !c.active && channel === CH_RELIABLE) ok = this.hello(c, r);
+      // A stalled connection delivers a burst of commands in one tick. Each is still read for its place in the sequence.
+      if (over && !(type === C_COMMAND && c.active)) ok = false;
+      else if (type === C_INPUT && c.active) ok = this.input(c, r);
+      else if (type === C_COMMAND && c.active && channel === CH_RELIABLE) ok = this.command(c, r, data, over);
       else ok = false;
     }
     if (!ok) {
@@ -733,20 +809,24 @@ export class GameServer {
     if (newest <= this.world.tick) this.stats.lateInputs++;
     // Track the newest tick even when it is too far ahead to buffer, because the margin sent back tells a
     // client its clock has run away. It moves backward only by a whole window, which is a restarted clock.
-    if (newest > c.newestInput || newest < c.newestInput - INPUT_WINDOW) c.newestInput = newest;
-    // An ack can only name a snapshot that was sent, and only move forward.
-    if (ack > c.ackTick && ack <= c.lastSnapshot) c.ackTick = ack;
+    const fresh = newest > c.newestInput || newest < c.newestInput - INPUT_WINDOW;
+    if (fresh) c.newestInput = newest;
+    // An ack can only name a snapshot that was sent, and only move forward. An ack of 0 says the client cannot read against
+    // the view it acknowledged, so the next snapshot is whole. An input that arrives out of order may not say that.
+    if (ack === 0) {
+      if (fresh) c.ackTick = 0;
+    } else if (ack > c.ackTick && ack <= c.lastSnapshot) c.ackTick = ack;
     return true;
   }
 
-  /** A gap in the sequence means a broken client. */
-  private command(c: Client, r: BitReader, data: Uint8Array): boolean {
+  /** A gap in the sequence means a broken client. A command `over` the tick's limit, or the queue's, is answered busy and not run. */
+  private command(c: Client, r: BitReader, data: Uint8Array, over: boolean): boolean {
     const seq = r.u16();
     r.u8();
     if (r.overflow || seq !== ((c.cmdSeq + 1) & 0xffff)) return false;
     c.cmdSeq = seq;
     c.activeAt = this.world.tick;
-    if (c.queue.length >= COMMAND_QUEUE) this.result(c, seq, RESULT_BUSY);
+    if (over || c.queue.length >= COMMAND_QUEUE) this.result(c, seq, RESULT_BUSY);
     else c.queue.push(data);
     return true;
   }
@@ -786,16 +866,17 @@ export class GameServer {
   private result(c: Client, seq: number, code: number): void {
     const w = this.w;
     w.reset();
-    w.bits(S_RESULT, 4);
+    w.u8(S_RESULT);
     w.u16(seq);
     w.u8(code);
     c.conn.send(CH_RELIABLE, w.bytes());
   }
 
-  private hello(c: Client, r: BitReader): boolean {
+  /** False if the hello is malformed. One that is refused is told why. Only one that is accepted is given a session. */
+  private hello(conn: Connection, r: BitReader): boolean {
     const version = r.u16();
     // Another version lays the rest out differently, so nothing more is read.
-    if (!r.overflow && version !== PROTOCOL_VERSION) return this.refuse(c, REJECT_VERSION);
+    if (!r.overflow && version !== PROTOCOL_VERSION) return this.refuse(conn, REJECT_VERSION);
     const contentHash = r.u32();
     const clipHash = r.u32();
     const name = r.string(MAX_NAME_BYTES);
@@ -809,61 +890,71 @@ export class GameServer {
     }
     const password = r.string(MAX_PASSWORD_BYTES);
     if (r.overflow) return false;
-    if (look && !validLook(look)) return this.refuse(c, REJECT_MALFORMED);
+    if (look && !validLook(look)) return this.refuse(conn, REJECT_MALFORMED);
     const world = this.world;
     // The client hashes content as written. The welcome tells it this server's tuning, and it derives the rest.
-    if (contentHash !== world.reg.baseHash || clipHash !== world.anim.set.hash) return this.refuse(c, REJECT_CONTENT);
+    if (contentHash !== world.reg.baseHash || clipHash !== world.anim.set.hash) return this.refuse(conn, REJECT_CONTENT);
     // A reconnect to a lingering body is asked too.
     if (this.opts.password !== "") {
-      const who = c.conn.address ?? name;
-      if (this.guesses.wait(who, world.tick) > 0) return this.refuse(c, REJECT_PASSWORD);
+      const who = conn.address ?? name;
+      if (this.guesses.wait(who, world.tick) > 0) return this.refuse(conn, REJECT_PASSWORD);
       if (!sameText(password, this.opts.password)) {
         this.guesses.wrong(who, world.tick);
-        return this.refuse(c, REJECT_PASSWORD);
+        return this.refuse(conn, REJECT_PASSWORD);
       }
       this.guesses.right(who);
     }
-    if (!NAME.test(name)) return this.refuse(c, REJECT_NAME);
+    if (!NAME.test(name)) return this.refuse(conn, REJECT_NAME);
     // A module may turn a login away, or a name nobody has had before. A survivor's name is who it is, so it is not reworded.
     const isNew = this.savedPosition?.(name) == null;
-    if (isNew && this.bus.before(NAME_SET, { what: "survivor", text: name }) !== "") return this.refuse(c, REJECT_NAME);
-    if (this.bus.before(SESSION_LOGIN, { name, address: c.conn.address ?? "", isNew }) !== "") return this.refuse(c, REJECT_DENIED);
-    if (this.authorize && !this.authorize(name, key)) return this.refuse(c, REJECT_DENIED);
-    // One body per survivor. A second login is refused unless the first connection is gone, and then it takes over the body.
+    if (isNew && this.bus.before(NAME_SET, { what: "survivor", text: name }) !== "") return this.refuse(conn, REJECT_NAME);
+    if (this.bus.before(SESSION_LOGIN, { name, address: conn.address ?? "", isNew }) !== "") return this.refuse(conn, REJECT_DENIED);
+    if (this.authorize && !this.authorize(name, key)) return this.refuse(conn, REJECT_DENIED);
+    // One body per survivor. A second login with the session's own key is its device back, and takes over the body. Nothing
+    // may have closed the connection that device lost, so one still open is dropped here as if it had closed.
     for (const other of this.clients) {
       if (!other?.active || other.name !== name) continue;
-      if (!other.closed) return this.refuse(c, REJECT_NAME);
-      this.pending.delete(c);
-      other.relink(c.conn);
-      this.bind(other, c.conn);
+      if (!other.closed) {
+        if (!key.every((b, i) => b === other.key[i])) return this.refuse(conn, REJECT_NAME);
+        const old = other.conn;
+        old.onMessage = null;
+        this.close(old, REJECT_NAME);
+        this.remove(other, old);
+        // It had no body to linger in, so the session ended and this is a login like any other.
+        if (!other.active) break;
+      }
+      other.relink(conn);
+      this.bind(other, conn);
       this.welcome(other);
       this.onPresence?.(other);
       return true;
     }
 
+    // A dead survivor joins dead, whatever it asks. As a spectator it could ask for its body back and get one that cannot die.
+    const spectate = (flags & HELLO_SPECTATE) !== 0 && !this.savedPosition?.(name)?.dead;
+    if (spectate && this.opts.spectators !== "anyone") return this.refuse(conn, REJECT_DENIED);
     // Every new name leaves a survivor record for good, so one address may make only so many an hour.
-    if (c.conn.address !== undefined && this.savedPosition && this.savedPosition(name) === null) {
-      const made = this.newNames.get(c.conn.address);
+    if (conn.address !== undefined && this.savedPosition && this.savedPosition(name) === null) {
+      const made = this.newNames.get(conn.address);
       if (made && world.tick - made.since < NEW_NAME_TICKS) {
-        if (made.n >= NEW_NAMES) return this.refuse(c, REJECT_DENIED);
+        if (made.n >= NEW_NAMES) return this.refuse(conn, REJECT_DENIED);
         made.n++;
       } else {
         if (this.newNames.size > 4096) this.newNames.clear();
-        this.newNames.set(c.conn.address, { n: 1, since: world.tick });
+        this.newNames.set(conn.address, { n: 1, since: world.tick });
       }
     }
     const slot = this.clients.indexOf(null);
-    if (slot < 0) return this.refuse(c, REJECT_FULL);
-    this.pending.delete(c);
+    if (slot < 0) return this.refuse(conn, REJECT_FULL);
+    // Nothing was kept for the connection until here. A session's memory is given only to a hello that is let in.
+    const c = new Client(slot, conn, chunkCount(world.dims));
     this.clients[slot] = c;
-    c.id = slot;
+    this.bind(c, conn);
     c.name = name;
     c.key = key;
     c.look = look;
     c.kind = this.survivor;
-    // A dead survivor joins dead, whatever it asks. As a spectator it could ask for its body back and get one that cannot die.
-    if ((flags & HELLO_SPECTATE) !== 0 && !this.savedPosition?.(name)?.dead) {
-      if (this.opts.spectators !== "anyone") return this.refuse(c, REJECT_DENIED);
+    if (spectate) {
       const b = c.body;
       b.x = world.spawn.x;
       b.z = world.spawn.z;
@@ -888,7 +979,10 @@ export class GameServer {
         this.makeDead(c);
         c.state = SESSION_CREATING;
         c.chunk = chunkAt(world.dims, b.x, b.z);
-      } else if (!this.spawnBody(c)) return this.refuse(c, REJECT_FULL);
+      } else if (!this.spawnBody(c)) {
+        this.clients[slot] = null;
+        return this.refuse(conn, REJECT_FULL);
+      }
     }
     c.active = true;
     c.activeAt = this.world.tick;
@@ -902,7 +996,7 @@ export class GameServer {
     const ents = world.ents;
     const w = this.welcomeW;
     w.reset();
-    w.bits(S_WELCOME, 4);
+    w.u8(S_WELCOME);
     w.u16(PROTOCOL_VERSION);
     w.u32(world.tick);
     w.u32(c.ent >= 0 ? ents.handleOf(c.ent) : 0);
@@ -930,7 +1024,7 @@ export class GameServer {
   private sendOwn(c: Client): void {
     const w = this.w;
     w.reset();
-    w.bits(S_OWN, 4);
+    w.u8(S_OWN);
     w.u8(OWN_SESSION);
     w.bits(c.state, 2);
     w.bool(c.admin);
@@ -940,18 +1034,21 @@ export class GameServer {
     c.ownDirty = false;
   }
 
-  private refuse(c: Client, reason: number): boolean {
-    this.reject(c, reason);
+  private refuse(conn: Connection, reason: number): boolean {
+    this.close(conn, reason);
     return true;
   }
 
-  private occupied(x: number, z: number): boolean {
+  /** Whether a survivor's body is within a metre of the spot, on its level and not a floor above or below. */
+  private occupied(x: number, y: number, z: number): boolean {
     const ents = this.world.ents;
+    const tall = this.world.reg.move[this.survivor]!.height;
     for (const c of this.clients) {
       if (!c?.active || c.ent < 0) continue;
       const dx = ents.x[c.ent]! - x;
+      const dy = ents.y[c.ent]! - y;
       const dz = ents.z[c.ent]! - z;
-      if (dx * dx + dz * dz < 1) return true;
+      if (dx * dx + dz * dz < 1 && dy < tall && dy > -tall) return true;
     }
     return false;
   }
@@ -1030,7 +1127,7 @@ export class GameServer {
 
     const w = this.w;
     w.reset();
-    w.bits(S_SNAPSHOT, 4);
+    w.u8(S_SNAPSHOT);
     w.u32(T);
     w.u8(base ? age : 0);
     // Before the first input there is no margin. Sending 0 - T would tell a client joining a
@@ -1087,7 +1184,7 @@ export class GameServer {
         c.known[chunk] = 0;
         if (c.syncChunk === chunk) c.syncChunk = -1;
         w.reset();
-        w.bits(S_CHUNK_DROP, 4);
+        w.u8(S_CHUNK_DROP);
         w.u16(chunk);
         c.conn.send(CH_RELIABLE, w.bytes());
       }
@@ -1149,7 +1246,7 @@ export class GameServer {
     const z0 = chunkCz(dims, chunk) * CHUNK_SIZE;
     const w = this.w;
     w.reset();
-    w.bits(S_CHUNK, 4);
+    w.u8(S_CHUNK);
     w.u16(chunk);
     w.u32(target);
     const header = w.pos;
@@ -1162,7 +1259,9 @@ export class GameServer {
     if (logged >= 0) {
       for (; count < logged; count++) this.row(w, t, this.changed[count]!, x0, z0);
     } else {
-      for (; s < t.high && count < budget; s++) {
+      // Rows stop where another might not fit, with a byte left for the count of removals.
+      const room = w.buf.length * 8 - ROW_BITS - 8;
+      for (; s < t.high && count < budget && w.pos <= room; s++) {
         if (t.mod[s]! <= from || (byRemoval && t.kind[s] === 0)) continue;
         this.row(w, t, s, x0, z0);
         count++;
@@ -1199,6 +1298,17 @@ export class GameServer {
         removals++;
         count += g.runs.length / 2;
       }
+    }
+    if (w.overflow) {
+      // The removals do not fit one message, and part of them is of no use. Nothing is sent, and from the next
+      // tick the chunk goes row by row, where a row that is gone says only that.
+      this.stats.overflows++;
+      c.syncChunk = chunk;
+      c.syncCursor = 0;
+      c.syncFrom = from;
+      c.syncTarget = target;
+      c.syncByRemoval = false;
+      return 0;
     }
     const end = w.pos;
     w.pos = at;
