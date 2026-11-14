@@ -84,16 +84,16 @@ ev("level.up", "after", "pid from to", "the level-up call", "server/progression.
 ev("stat.spend", "before", "pid stat", "the level-up request", "server/progression.ts", "wired", "A point is about to be put into a stat.");
 ev("engram.learn", "before", "pid engram", "the engram-points request", "server/progression.ts", "wired", "An engram is about to be learned.");
 
-ev("creature.spawn", "before", "kind why level! colours!", "the creature's begin play", "server/creatures.ts", "stub", "A creature is about to enter the world.");
-ev("tame.allow", "before", "pid kind level byPid team how", "the allow-taming question, and tame limits", "server/taming.ts", "stub", "A creature is about to become somebody's.");
-ev("tame.done", "after", "pid kind level byPid team how te", "the tame call", "server/taming.ts", "stub", "A creature became somebody's.");
-ev("creature.order", "before", "pid byPid order", "", "server/taming.ts", "stub", "A tame is about to be told to follow, stay or change stance.");
-ev("ride.mount", "before", "pid mount", "the can-ride question", "server/riding.ts", "stub", "A survivor is about to mount.");
-ev("ride.dismount", "after", "pid mount", "", "server/riding.ts", "stub", "A survivor got off.");
-ev("breed.mate", "before", "mother father", "the allowed-to-mate question", "server/breeding.ts", "stub", "Two tames are about to mate.");
-ev("breed.egg", "after", "mother father pid", "", "server/breeding.ts", "stub", "An egg was laid, or a pregnancy began.");
-ev("breed.hatch", "after", "pid kind", "the baby's creation", "server/breeding.ts", "stub", "A young one was born.");
-ev("breed.grown", "after", "pid", "", "server/breeding.ts", "stub", "A young one is grown.");
+ev("creature.spawn", "before", "kind why level! colours!", "the creature's begin play", "server/creatures.ts", "wired", "A creature is about to enter the world.");
+ev("tame.allow", "before", "pid kind level byPid team how", "the allow-taming question, and tame limits", "server/taming.ts", "wired", "A creature is about to become somebody's.");
+ev("tame.done", "after", "pid kind level byPid team how te", "the tame call", "server/taming.ts", "wired", "A creature became somebody's.");
+ev("creature.order", "before", "pid byPid order", "", "server/taming.ts", "wired", "A tame is about to be told to follow, stay or change stance.");
+ev("ride.mount", "before", "pid mount", "the can-ride question", "server/riding.ts", "wired", "A survivor is about to mount.");
+ev("ride.dismount", "after", "pid mount", "", "server/riding.ts", "wired", "A survivor got off.");
+ev("breed.mate", "before", "mother father", "the allowed-to-mate question", "server/breeding.ts", "wired", "Two tames are about to mate.");
+ev("breed.egg", "after", "mother father pid", "", "server/breeding.ts", "wired", "An egg was laid, or a pregnancy began.");
+ev("breed.hatch", "after", "pid kind", "the baby's creation", "server/breeding.ts", "wired", "A young one was born.");
+ev("breed.grown", "after", "pid", "", "server/breeding.ts", "wired", "A young one is grown.");
 ev("imprint", "after", "pid byPid quality", "the imprint call", "server/breeding.ts", "imprinting", "A young one was cared for.");
 ev("creature.unclaim", "after", "pid team", "claim and unclaim", "server/taming.ts", "decay", "A tame stopped being anybody's.");
 ev("carry.allow", "before", "pid byPid", "the can-carry question", "server/riding.ts", "flyers", "A creature is about to pick a body up.");

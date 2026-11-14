@@ -17,6 +17,7 @@ import type { EntityRecord, Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { ServerWorld } from "./world.ts";
+import { event } from "./events/bus.ts";
 
 export const DEADLINE_BREED = 8;
 /** In ticks. Pairs are sought and rechecked this often. */
@@ -25,6 +26,11 @@ export const PAIR_TICKS = TICK_RATE;
 export const MUTATION_COLORS: readonly number[] = [8, 10, 11, 13, 14, 17, 19, 21];
 /** In EVENT_TAMED, marks a creature claimed as young, not tamed. */
 export const CLAIMED = 255;
+
+const BREED_MATE = event("breed.mate");
+const BREED_EGG = event("breed.egg");
+const BREED_HATCH = event("breed.hatch");
+const BREED_GROWN = event("breed.grown");
 
 export interface BreedingContext {
   readonly world: ServerWorld;
@@ -152,6 +158,7 @@ export class Breeding {
         this.parted++;
       }
       if (best < 0) continue;
+      if (this.ctx.game.bus.before(BREED_MATE, { mother: pid, father: ents.pid[best]! }) !== "") continue;
       const span = Math.max(1, Math.ceil(MATE_TICKS / speed(this.ctx.rules.num("MatingSpeedMultiplier"))));
       const due = tick + span;
       this.pairs.set(pid, { male: ents.pid[best]!, span, due });
@@ -217,6 +224,7 @@ export class Breeding {
       const egg = records.create(eggKind !== 0 ? eggKind : mother.kind, `${what} egg`);
       egg.genome = breed(mother.genome!, father.genome!, mother.pid, father.pid, this.rng, MUTATION_COLORS);
       egg.egg = { species: mother.kind, span, hatchAt, carrier: eggKind !== 0 ? 0 : mother.pid };
+      this.ctx.game.bus.after(BREED_EGG, { mother: mother.pid, father: father.pid, pid: egg.pid });
       // The egg lies just behind her, and several fan out. If there is no room there, it lies under her.
       const a = facing + Math.PI + (k - (n - 1) / 2) * 0.7;
       const off = reg.bodyRadius[mother.kind]! + 0.45;
@@ -294,6 +302,7 @@ export class Breeding {
     persistence?.attach(rec, e);
     this.discard(egg);
     this.hatched++;
+    this.ctx.game.bus.after(BREED_HATCH, { pid: rec.pid, kind: reg.ids[info.species]! });
     this.next(rec);
   }
 
@@ -314,6 +323,7 @@ export class Breeding {
       const e = records.entOf.get(rec.pid);
       if (e !== undefined) world.ents.setYoung(e, 0, 0);
       this.grownUp++;
+      this.ctx.game.bus.after(BREED_GROWN, { pid: rec.pid });
     }
     records.dirty.add(rec.pid);
     this.ctx.refresh(rec);

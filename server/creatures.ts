@@ -13,11 +13,15 @@ import { capsuleFree } from "../shared/world/collide.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
+import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
 /** Palette indices a wild creature may roll. */
 const WILD_COLORS = [3, 5, 6, 7, 9, 12, 15];
 
+const CREATURE_SPAWN = event("creature.spawn");
+
 export class Creatures {
+  bus: Bus = NO_BUS;
   /** In chunks. */
   readonly wakeRadius: number;
   awakeCount = 0;
@@ -66,19 +70,31 @@ export class Creatures {
     this.mind.provoke(e, x, z, by);
   }
 
-  /** Returns the entity index, or -1 if there is no room. */
-  spawn(kind: number, x: number, z: number, level: number): number {
+  /**
+   * Returns the entity index, or -1 if there is no room or a module refused it. `why` is "wild" for the world's own
+   * and "admin" for one an admin asked for. A module may change its level, and its colours: up to six palette indices
+   * by region, with commas between.
+   */
+  spawn(kind: number, x: number, z: number, level: number, why = "wild"): number {
     const world = this.world;
     const p = world.reg.move[kind];
     if (!p) return -1;
     const y = world.hf.heightAt(x, z);
     if (!capsuleFree(world, x, y, z, p.radius, p.height)) return -1;
+    let colours = "";
+    if (this.bus.n[CREATURE_SPAWN] !== 0) {
+      const asked = { kind: world.reg.ids[kind]!, why, level, colours };
+      if (this.bus.before(CREATURE_SPAWN, asked) !== "") return -1;
+      if (Number(asked.level) >= 1) level = Math.floor(Number(asked.level));
+      colours = String(asked.colours);
+    }
     const rec = this.records.create(kind);
     rec.x = x;
     rec.y = y;
     rec.z = z;
     rec.yaw = this.rng.int(65536);
     rec.genome = rollWild(this.rng, level, WILD_COLORS);
+    if (colours !== "") colours.split(",").forEach((c, i) => void (i < rec.genome!.colors.length && Number(c) >= 0 && Number(c) <= 255 && c.trim() !== "" && (rec.genome!.colors[i] = Number(c))));
     return this.adopt(rec);
   }
 

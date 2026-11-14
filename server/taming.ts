@@ -20,8 +20,14 @@ import type { Lists } from "./settings/lists.ts";
 import type { Survival } from "./survival.ts";
 import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
+import { event } from "./events/bus.ts";
 
 export const DEADLINE_TAME = 7;
+
+const TAME_ALLOW = event("tame.allow");
+const TAME_DONE = event("tame.done");
+const CREATURE_ORDER = event("creature.order");
+const NAME_SET = event("name.set");
 
 export interface TamingContext {
   readonly world: ServerWorld;
@@ -333,10 +339,22 @@ export class Taming {
     return "";
   }
 
-  /** `rec` joins `owner`'s team with effectiveness `te` (0 to 1), and wakes. Its levels are left alone, so the caller adds any it earned. */
-  give(rec: EntityRecord, owner: EntityRecord, te: number): void {
+  /**
+   * `rec` joins `owner`'s team with effectiveness `te` (0 to 1), and wakes. Its levels are left alone, so the caller adds
+   * any it earned. `how` is "fed" for a tame that was earned and "forced" for an admin's. False if a module refused it:
+   * the taming is then lost, and the owner is told why.
+   */
+  give(rec: EntityRecord, owner: EntityRecord, te: number, how = "fed"): boolean {
     const { world, records, survival, game } = this.ctx;
     const g = rec.genome;
+    const told = { pid: rec.pid, kind: world.reg.ids[rec.kind]!, level: g ? g.level : 1, byPid: owner.pid, team: owner.team, how };
+    const refused = game.bus.before(TAME_ALLOW, { ...told });
+    if (refused !== "") {
+      rec.tame = null;
+      records.dirty.add(rec.pid);
+      this.ctx.onNotice?.(owner.pid, refused);
+      return false;
+    }
     rec.tame = null;
     rec.te = te;
     rec.team = owner.team;
@@ -361,6 +379,8 @@ export class Taming {
       w.u8(Math.round(te * 100));
       game.endOwn(to);
     }
+    game.bus.after(TAME_DONE, { ...told, te });
+    return true;
   }
 
   /**
@@ -437,6 +457,12 @@ export class Taming {
     const mate = what === ORDER_MATE || what === ORDER_UNMATE;
     if (what !== ORDER_STAY && what !== ORDER_FOLLOW && what !== ORDER_UNSADDLE && !mate && !(stance >= 0 && stance < 3) && what < ORDER_LEVEL) return RESULT_INVALID;
     const obey = (e: number, rec: EntityRecord): number => {
+      const order = what === ORDER_STAY ? "stay" : what === ORDER_FOLLOW ? "follow" : what === ORDER_UNSADDLE ? "unsaddle" : what === ORDER_MATE ? "mate" : what === ORDER_UNMATE ? "unmate" : what >= ORDER_LEVEL ? "level" : "stance";
+      const refused = this.ctx.game.bus.before(CREATURE_ORDER, { pid: rec.pid, byPid: me.pid, order });
+      if (refused !== "") {
+        this.ctx.onNotice?.(me.pid, refused);
+        return RESULT_DENIED;
+      }
       if (what === ORDER_UNSADDLE) {
         // The saddle comes off into its inventory.
         if (rec.saddle === 0) return RESULT_INVALID;
@@ -495,7 +521,10 @@ export class Taming {
     if (!rec || world.reg.defs[rec.kind]?.type !== "species" || rec.keyHash !== null) return RESULT_INVALID;
     if (rec.team === 0 || !tribes.may(records.byPid.get(c.pid), rec.team)) return RESULT_NOT_YOURS;
     // Letters, digits, spaces and a few marks.
-    const clean = name.replace(/[^\p{L}\p{N} '._-]/gu, "").trim().slice(0, MAX_NAME_BYTES);
+    // A module may refuse the name or reword it.
+    const asked = { what: "creature", text: name.replace(/[^\p{L}\p{N} '._-]/gu, "").trim().slice(0, MAX_NAME_BYTES) };
+    if (this.ctx.game.bus.before(NAME_SET, asked) !== "") return RESULT_DENIED;
+    const clean = String(asked.text).replace(/[^\p{L}\p{N} '._-]/gu, "").trim().slice(0, MAX_NAME_BYTES);
     rec.name = clean;
     records.dirty.add(rec.pid);
     this.ctx.refresh(rec);

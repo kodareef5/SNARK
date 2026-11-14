@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../../server/settings/config.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
-import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_DROP, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, REJECT_DENIED, REJECT_NAME, RESULT_DENIED, RESULT_OK, SESSION_ALIVE, SESSION_DEAD, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_DROP, CMD_LEARN, CMD_MOVE, CMD_NAME, CMD_ORDER, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, ORDER_MATE, ORDER_STAY, REJECT_DENIED, REJECT_NAME, RESULT_DENIED, RESULT_OK, SESSION_ALIVE, SESSION_DEAD, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
 import { BTN_PRIMARY, BTN_USE } from "../../shared/sim/character.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
@@ -644,4 +644,113 @@ test("a module hears what is built, opened, made, moved and gathered, and may re
   expect(h.host.items.audit()).toEqual([]);
   expect(names(all.heard.lines)).toEqual([...wired].sort());
   void bobPid;
+});
+
+test("a module hears a creature spawned, tamed, ordered, ridden and bred, and may refuse each", () => {
+  const wired = wiredOf("creature", "tame", "ride", "breed");
+  expect(wired.length).toBe(10);
+  const all = listener("all", [...wired, "name.set"]);
+  const { h, ada, rec } = duel([all.def]);
+  let rule: (e: Parameters<NonNullable<typeof all.heard.each>>[0]) => void = () => {};
+  all.heard.each = (e) => rule(e);
+  const said = (name: string): Record<string, unknown>[] => all.heard.lines.filter((l) => l.startsWith(`${name}: `)).map((l) => JSON.parse(l.slice(name.length + 2)));
+  const me = rec(ada);
+  const ents = h.world.ents;
+  const [x, z] = [ents.x[h.ent(ada)]!, ents.z[h.ent(ada)]!];
+  const codes: number[] = [];
+  ada.onResult = (seq, code) => void (seq !== 0 && codes.push(code));
+  const result = (): number => {
+    h.run(200);
+    return codes.pop() ?? -1;
+  };
+
+  // A module keeps grazers out, and makes every other creature level 7 with two regions of one colour.
+  rule = (e) => {
+    if (e.name !== "creature.spawn") return;
+    if (e.data.kind === "core:grazer") e.refuse("no grazers on this map");
+    e.data.level = 7;
+    e.data.colours = "9,9";
+  };
+  expect(h.say(ada, "spawn grazer 3")).toEqual(["no room for it there"]);
+  expect(h.host.spawnCreature("core:grazer", x + 8, z + 8, 3)).toBe(-1);
+  const made = (female: boolean, dx: number) => {
+    const e = h.host.spawnCreature("core:parasaur", x + dx, z + 4, 3, "admin");
+    const r = h.host.records.byPid.get(ents.pid[e]!)!;
+    r.genome!.female = female;
+    return { e, rec: r };
+  };
+  const [f, m] = [made(true, -2), made(false, 2)];
+  expect(said("creature.spawn").pop()).toEqual({ kind: "core:parasaur", why: "admin", level: 3, colours: "" });
+  expect([f.rec.genome!.level, [...f.rec.genome!.colors.slice(0, 2)]]).toEqual([7, [9, 9]]);
+
+  // A tame may be refused, and the one who earned it is told why.
+  rule = (e) => {
+    if (e.name === "tame.allow") e.refuse("this tribe has all the tames it may");
+  };
+  expect([h.host.taming.give(f.rec, me, 1), f.rec.team]).toEqual([false, 0]);
+  h.run(100);
+  expect(ada.log[ada.log.length - 1]!.text).toBe("this tribe has all the tames it may");
+  rule = () => {};
+  expect([h.host.taming.give(f.rec, me, 1), h.host.taming.give(m.rec, me, 0.5, "forced"), f.rec.team]).toEqual([true, true, me.team]);
+  h.run(100);
+  expect(said("tame.allow")[1]).toEqual({ pid: f.rec.pid, kind: "core:parasaur", level: 7, byPid: me.pid, team: me.team, how: "fed" });
+  expect(said("tame.done")).toEqual([
+    { pid: f.rec.pid, kind: "core:parasaur", level: 7, byPid: me.pid, team: me.team, how: "fed", te: 1 },
+    { pid: m.rec.pid, kind: "core:parasaur", level: 7, byPid: me.pid, team: me.team, how: "forced", te: 0.5 },
+  ]);
+
+  // An order and a name may each be refused, and a name reworded.
+  rule = (e) => {
+    if (e.name === "creature.order") e.refuse("tames are frozen during the event");
+  };
+  ada.command(CMD_ORDER, (w) => (w.u32(f.e >>> 0), w.u8(ORDER_STAY)));
+  expect(result()).toBe(RESULT_DENIED);
+  expect(said("creature.order").pop()).toEqual({ pid: f.rec.pid, byPid: me.pid, order: "stay" });
+  rule = (e) => {
+    if (e.name === "name.set") e.data.text = String(e.data.text).replace("Darn", "Dear");
+  };
+  ada.command(CMD_NAME, (w) => (w.u32(ents.handleOf(f.e)), w.string("Darn Daisy")));
+  expect([result(), f.rec.name]).toEqual([RESULT_OK, "Dear Daisy"]);
+
+  // Mounting may be refused. Getting off is told.
+  f.rec.saddle = h.reg.index.get("core:saddle_parasaur")!;
+  h.say(ada, `tp ${(x - 2).toFixed(2)} ${(z + 1.5).toFixed(2)}`);
+  const c = h.client(ada)!;
+  rule = (e) => {
+    if (e.name === "ride.mount") e.refuse("no riding in the plaza");
+  };
+  expect(h.host.riding.mount(c, f.e)).toBe(RESULT_DENIED);
+  rule = () => {};
+  expect(h.host.riding.mount(c, f.e)).toBe(RESULT_OK);
+  h.run(200);
+  h.host.riding.dismount(c);
+  h.run(200);
+  expect([said("ride.mount").pop(), said("ride.dismount")]).toEqual([{ pid: me.pid, mount: f.rec.pid }, [{ pid: me.pid, mount: f.rec.pid }]]);
+
+  // The pair may be kept apart. Let be, they have an egg, it hatches, and the young one grows up.
+  rule = (e) => {
+    if (e.name === "breed.mate") e.refuse("not in this season");
+  };
+  for (const one of [f, m]) {
+    ada.command(CMD_ORDER, (w) => (w.u32(one.e >>> 0), w.u8(ORDER_MATE)));
+    expect(result()).toBe(RESULT_OK);
+  }
+  h.run(4000);
+  expect([h.host.breeding.pairCount, said("breed.mate").length > 0]).toEqual([0, true]);
+  expect(said("breed.mate")[0]).toEqual({ mother: f.rec.pid, father: m.rec.pid });
+  rule = () => {};
+  h.run(34000);
+  const laid = said("breed.egg");
+  expect(laid.length).toBeGreaterThan(0);
+  expect(laid[0]).toMatchObject({ mother: f.rec.pid, father: m.rec.pid });
+  expect(h.host.exec("hatch all")).toContain("hatched");
+  h.run(200);
+  const born = said("breed.hatch");
+  expect(born.length).toBe(laid.length);
+  expect(born[0]).toMatchObject({ kind: "core:parasaur" });
+  const young = h.host.records.byPid.get(born[0]!.pid as number)!;
+  expect(h.host.breeding.growNow(young)).toBe(true);
+  h.run(500);
+  expect(said("breed.grown")).toEqual([{ pid: young.pid }]);
+  expect(names(all.heard.lines).filter((n) => n !== "name.set")).toEqual([...wired].sort());
 });

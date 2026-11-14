@@ -129,7 +129,7 @@ export function addAdminCommands(con: Console): void {
         const level = args[1] === undefined ? 1 : parseNumber(args[1]);
         if (!Number.isInteger(level) || level < 1 || level > 1000) return "level must be a whole number from 1 to 1000";
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
-        const e = ctx.host.spawnCreature(id, c.body.x + Math.sin(a) * 4, c.body.z + Math.cos(a) * 4, level);
+        const e = ctx.host.spawnCreature(id, c.body.x + Math.sin(a) * 4, c.body.z + Math.cos(a) * 4, level, "admin");
         return e < 0 ? "no room for it there" : `spawned ${id} level ${world.ents.level[e]}`;
       },
     },

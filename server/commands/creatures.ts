@@ -18,7 +18,7 @@ export function addCreatureCommands(con: Console): void {
         const rec = hit >= 0 ? host.records.byPid.get(host.world.ents.pid[hit]!) : undefined;
         if (!rec || rec.keyHash !== null || rec.egg !== null || !rec.vitals || host.world.reg.defs[rec.kind]?.type !== "species") return "no creature there";
         if (rec.team === me.team) return "it is yours already";
-        host.taming.give(rec, me, 0);
+        if (!host.taming.give(rec, me, 0, "forced")) return "a module refused it";
         return `tamed ${host.world.reg.ids[rec.kind]} level ${rec.genome ? rec.genome.level : 1}`;
       },
     },

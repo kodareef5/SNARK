@@ -10,7 +10,7 @@ marked "may change". An **after** event says what has happened, in values, and
 is delivered once a tick, before the commit. The module contract is in
 `server/api/module.ts`.
 
-There are 82 events: 53 raised today, 10 with a place in the code and not
+There are 82 events: 63 raised today, 0 with a place in the code and not
 raised yet, and 19 that wait for a feature.
 
 The ARK column says what a plugin for ARK's unofficial server API hooks for the
@@ -136,16 +136,16 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `creature.spawn` | before | `kind`, `why`, `level`, `colours` | `level`, `colours` | the creature's begin play | `server/creatures.ts` | stub |
-| `tame.allow` | before | `pid`, `kind`, `level`, `byPid`, `team`, `how` |  | the allow-taming question, and tame limits | `server/taming.ts` | stub |
-| `tame.done` | after | `pid`, `kind`, `level`, `byPid`, `team`, `how`, `te` |  | the tame call | `server/taming.ts` | stub |
-| `creature.order` | before | `pid`, `byPid`, `order` |  |  | `server/taming.ts` | stub |
-| `ride.mount` | before | `pid`, `mount` |  | the can-ride question | `server/riding.ts` | stub |
-| `ride.dismount` | after | `pid`, `mount` |  |  | `server/riding.ts` | stub |
-| `breed.mate` | before | `mother`, `father` |  | the allowed-to-mate question | `server/breeding.ts` | stub |
-| `breed.egg` | after | `mother`, `father`, `pid` |  |  | `server/breeding.ts` | stub |
-| `breed.hatch` | after | `pid`, `kind` |  | the baby's creation | `server/breeding.ts` | stub |
-| `breed.grown` | after | `pid` |  |  | `server/breeding.ts` | stub |
+| `creature.spawn` | before | `kind`, `why`, `level`, `colours` | `level`, `colours` | the creature's begin play | `server/creatures.ts` | wired |
+| `tame.allow` | before | `pid`, `kind`, `level`, `byPid`, `team`, `how` |  | the allow-taming question, and tame limits | `server/taming.ts` | wired |
+| `tame.done` | after | `pid`, `kind`, `level`, `byPid`, `team`, `how`, `te` |  | the tame call | `server/taming.ts` | wired |
+| `creature.order` | before | `pid`, `byPid`, `order` |  |  | `server/taming.ts` | wired |
+| `ride.mount` | before | `pid`, `mount` |  | the can-ride question | `server/riding.ts` | wired |
+| `ride.dismount` | after | `pid`, `mount` |  |  | `server/riding.ts` | wired |
+| `breed.mate` | before | `mother`, `father` |  | the allowed-to-mate question | `server/breeding.ts` | wired |
+| `breed.egg` | after | `mother`, `father`, `pid` |  |  | `server/breeding.ts` | wired |
+| `breed.hatch` | after | `pid`, `kind` |  | the baby's creation | `server/breeding.ts` | wired |
+| `breed.grown` | after | `pid` |  |  | `server/breeding.ts` | wired |
 | `imprint` | after | `pid`, `byPid`, `quality` |  | the imprint call | `server/breeding.ts` | planned: imprinting |
 | `creature.unclaim` | after | `pid`, `team` |  | claim and unclaim | `server/taming.ts` | planned: decay |
 | `carry.allow` | before | `pid`, `byPid` |  | the can-carry question | `server/riding.ts` | planned: flyers |

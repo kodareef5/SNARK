@@ -5,7 +5,7 @@ import { creaturePose } from "../shared/anim/creature.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
 import { boneToModel, solve } from "../shared/anim/skeleton.ts";
 import { TAU } from "../shared/math/scalar.ts";
-import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { TEXT_NOTICE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { Body, STANCE_CROUCH, STANCE_STAND } from "../shared/sim/character.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
@@ -13,11 +13,15 @@ import type { Client, GameServer } from "./game.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
+import { event } from "./events/bus.ts";
 
 /** Metres from the creature's centre, on top of its body radius. */
 const MOUNT_REACH = 3.5;
 /** A rider's feet hang this many metres below the seat. */
 const SEAT_DROP = 0.55;
+
+const RIDE_MOUNT = event("ride.mount");
+const RIDE_DISMOUNT = event("ride.dismount");
 
 export interface RidingContext {
   readonly world: ServerWorld;
@@ -65,6 +69,11 @@ export class Riding {
     if (this.riders.has(e)) return RESULT_BUSY;
     const far = Math.hypot(ents.x[e]! - ents.x[c.ent]!, ents.z[e]! - ents.z[c.ent]!);
     if (far > MOUNT_REACH + world.reg.bodyRadius[rec.kind]!) return RESULT_FAR;
+    const refused = game.bus.before(RIDE_MOUNT, { pid: me.pid, mount: rec.pid });
+    if (refused !== "") {
+      game.sendText(c, TEXT_NOTICE, refused);
+      return RESULT_DENIED;
+    }
     if (!game.take(c, e)) return RESULT_DENIED;
     this.riders.set(e, c);
     ents.setSeat(c.ent, e);
@@ -86,6 +95,7 @@ export class Riding {
     const ents = world.ents;
     this.riders.delete(e);
     game.release(c);
+    game.bus.after(RIDE_DISMOUNT, { pid: c.pid, mount: ents.pid[e]! });
     if (c.ent >= 0) {
       ents.setSeat(c.ent, -1);
       ents.stance[c.ent] = STANCE_STAND;

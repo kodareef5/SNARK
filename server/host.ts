@@ -170,7 +170,7 @@ export interface Host {
   readonly adminPassword: string | null;
   readonly dev: boolean;
   /** `id` is a content id. Returns the entity index, or -1. */
-  spawnCreature(id: string, x: number, z: number, level: number): number;
+  spawnCreature(id: string, x: number, z: number, level: number, why?: string): number;
   /** Recomputes a body's vitals' maxima, movement modifiers, level and gear. Call it after changing its stat points or what it carries. */
   refreshBody(rec: EntityRecord): void;
   /** Run a console line as the operator, or as `client`. Returns what it printed. */
@@ -294,6 +294,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     persistence.open = (path) => new WorldStore(path, reg, storeOptions);
   }
   const creatures = new Creatures(world, game, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
+  creatures.bus = bus;
   creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");
   /** The chunk each session's focus keeps awake. */
   const focus = new Map<number, number>();
@@ -302,9 +303,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     return pid === undefined ? undefined : records.byPid.get(pid);
   };
 
-  const spawnCreature = (id: string, x: number, z: number, level: number): number => {
+  const spawnCreature = (id: string, x: number, z: number, level: number, why = "wild"): number => {
     const kind = reg.index.get(id);
-    const e = kind === undefined ? -1 : creatures.spawn(kind, x, z, level);
+    const e = kind === undefined ? -1 : creatures.spawn(kind, x, z, level, why);
     if (e >= 0 && persistence) persistence.attach(records.byPid.get(world.ents.pid[e]!)!, e);
     return e;
   };
