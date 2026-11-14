@@ -328,10 +328,11 @@ function measureGait(poser: Poser, clip: Clip, name: string, feet: readonly stri
       t.z[f] = poser.rig.solved.pos[t.b * 3 + 2]!;
     }
   }
+  // A foot is planted while it is low and not on its way forward: it has come back since the frame before, or goes back to the next.
   const planted = tracks.map((t) => {
     const low = Math.min(...t.y);
     const rise = Math.max(...t.y) - low;
-    return Array.from(t.y, (y) => y - low <= rise * PLANTED);
+    return Array.from(t.y, (y, f) => y - low <= rise * PLANTED && (t.z[f]! <= t.z[(f + n - 1) % n]! + STILL || t.z[(f + 1) % n]! <= t.z[f]! + STILL));
   });
   // The body moves forward by the stride each turn, so a planted foot moves back by stride / frames each frame.
   let back = 0;
