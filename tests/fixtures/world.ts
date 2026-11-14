@@ -1,5 +1,3 @@
-// Small deterministic worlds for tests.
-
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import type { MapDims } from "../../shared/coords.ts";
@@ -40,10 +38,7 @@ export function provingWorld(): TestWorld {
   return w;
 }
 
-/**
- * A sealed 6 m room centred on (cx, cz): four 0.2 m walls and a ceiling. Returns
- * the interior bounds a capsule centre can legally occupy.
- */
+/** A sealed 6 m room centred on (cx, cz), with four 0.2 m walls and a ceiling. Returns the bounds a capsule centre can occupy. */
 export function sealedRoom(w: TestWorld, cx: number, cz: number): { minX: number; maxX: number; minZ: number; maxZ: number; maxY: number } {
   const wall = w.kind("core:wall");
   const ceiling = w.kind("core:ceiling");

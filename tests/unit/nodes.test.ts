@@ -50,7 +50,7 @@ test("the node store holds only chunks someone is near, minus what is used up", 
   expect(one).toBeGreaterThan(50);
   expect(f.isLoaded(27)).toBe(true);
   expect(f.isLoaded(0)).toBe(false);
-  f.retain(28, 1, 1, gone); // overlapping: the shared chunks are not filled twice
+  f.retain(28, 1, 1, gone); // The shared chunks are not filled twice.
   const two = f.store.count;
   expect(two).toBeGreaterThan(one);
   expect(two).toBeLessThan(one * 2);
@@ -59,7 +59,7 @@ test("the node store holds only chunks someone is near, minus what is used up", 
   f.retain(28, 1, -1, gone);
   expect(f.store.count).toBe(0);
 
-  // A used-up node is left out when its chunk is filled, and comes and goes while it is.
+  // A used-up node is left out when its chunk is filled. While the chunk is filled, set() puts it back and takes it out.
   const t = f.store;
   f.retain(9, 0, 1, gone);
   const slot = [...Array(PROVING_NODES_PER_CHUNK).keys()].find((i) => t.chunks[9]!.kind[i] !== 0)!;
@@ -73,7 +73,7 @@ test("the node store holds only chunks someone is near, minus what is used up", 
   expect(t.chunks[9]!.hp[slot]).toBe(reg.nodeHits[was]!);
   f.set(9, slot, false);
   expect(t.chunks[9]!.kind[slot]).toBe(0);
-  f.set(3, 0, true); // a chunk that is not filled: nothing happens
+  f.set(3, 0, true); // The chunk is not filled, so nothing happens.
   expect(f.isLoaded(3)).toBe(false);
   expect(f.kindAt(9, slot)).toBe(was); // what the map says is there, used up or not
 });
@@ -89,12 +89,11 @@ test("trees and rocks stop a body, bushes do not, and a ray finds all three", ()
     for (let i = 0; i < PROVING_NODES_PER_CHUNK; i++) {
       f.source.at(chunk, i, spot);
       if (spot.kind === 0 || seen.has(spot.kind)) continue;
-      // Level ground to the south of it, so a body can walk straight at it.
+      // Pick one with level ground to its south, so a body can walk straight at it.
       const ground = hf.heightAt(spot.x, spot.z);
       if (Math.abs(hf.heightAt(spot.x, spot.z - 3) - ground) > 0.3 || !capsuleFree(world, spot.x, hf.heightAt(spot.x, spot.z - 3), spot.z - 3, p.radius, p.height)) continue;
       seen.add(spot.kind);
       const soft = reg.soft[spot.kind] === 1;
-      // Standing on the very spot is free only for a bush.
       expect(capsuleFree(world, spot.x, ground, spot.z, p.radius, p.height)).toBe(soft);
       const b = new Body();
       b.x = spot.x;
@@ -105,10 +104,9 @@ test("trees and rocks stop a body, bushes do not, and a ray finds all three", ()
         stepBody(world, b, 0, 127, 0, 0, 0, p, TICK_DT);
         if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) throw new Error("in solid");
       }
-      // Three seconds of walking north: through a bush, or stopped (or turned aside) by anything else.
+      // Anything but a bush stops the body or turns it aside.
       if (soft) expect(b.z).toBeGreaterThan(spot.z + 5);
       else expect(Math.hypot(b.x - spot.x, b.z - spot.z)).toBeGreaterThan(reg.halfX[spot.kind]! + p.radius - 0.05);
-      // Looking at its middle from two metres south: the ray reports this node.
       expect(castWorld(world, spot.x, spot.y, spot.z - 2.5, 0, 0, 1, 5)).toBe(HIT_NODE);
       expect(rayHit.ref).toBe(chunk * 65536 + i);
     }

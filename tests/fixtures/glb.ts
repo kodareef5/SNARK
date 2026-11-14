@@ -1,6 +1,5 @@
-// Writes a small .glb in code, standing in for a Blender export: a pyramid with
-// a painted body and a colour-region base, a lower level of detail, and a
-// collision box, using node transforms, three index types and two materials.
+// A small .glb written in code to stand in for a Blender export: a pyramid with a painted body and a colour-region base,
+// a lower level of detail and a collision box. It uses node transforms, three index types and two materials.
 
 function linear(byte: number): number {
   const c = byte / 255;
@@ -23,7 +22,7 @@ export function sampleGlb(palette: Uint8Array, paintIndex: number): Uint8Array {
     return accessors.length - 1;
   };
 
-  // Pyramid sides: apex + four base corners, wound outward.
+  // The pyramid sides are the apex and four base corners, wound outward.
   const sides = add(Float32Array.from([0, 1, 0, -0.5, 0, -0.5, 0.5, 0, -0.5, 0.5, 0, 0.5, -0.5, 0, 0.5]), "VEC3", 5126);
   const sideIndex = add(Uint16Array.from([0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 1, 4]), "SCALAR", 5123);
   const base = add(Float32Array.from([-0.5, 0, -0.5, 0.5, 0, -0.5, 0.5, 0, 0.5, -0.5, 0, 0.5]), "VEC3", 5126);

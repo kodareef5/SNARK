@@ -49,7 +49,7 @@ test("the frame from the spawn point shows the right thing under known pixels", 
   expect(raster.pickKind[W * 2 + W / 2]).toBe(PICK_SKY);
   expect(raster.pickKind[W * (H - 2) + W / 2]).toBe(PICK_TERRAIN);
 
-  // The two bodies, by entity id; the grazer in its species' colour through region 0.
+  // The grazer shows its species' colour through region 0.
   const survivor = pixelOf(view, 254, 0.9, 250);
   expect(raster.pickKind[survivor]).toBe(PICK_ENTITY);
   expect(raster.pickId[survivor]).toBe(101);
@@ -57,14 +57,13 @@ test("the frame from the spawn point shows the right thing under known pixels", 
   expect(raster.pickId[grazer]).toBe(102);
   expect(raster.color[grazer * 4 + 2]!).toBeGreaterThan(raster.color[grazer * 4]! * 1.8); // teal
 
-  // A specific wall segment and a specific pillar, by structure ref.
   const wall = pixelOf(view, 277.5, 1.5, 261.89);
   expect(raster.pickKind[wall]).toBe(PICK_STRUCTURE);
   expect(raster.pickId[wall]).toBe(refAt(view, 277.5, 262));
   const marker = pixelOf(view, 256, view.hf.heightAt(256, 350) + 5, 349.7);
   expect(raster.pickId[marker]).toBe(refAt(view, 256, 350)); // the 110 m distance marker is drawn and visible
 
-  // Every structure draw references a buffer uploaded in this or an earlier packet; one draw per mesh per chunk.
+  // Structures take one draw per mesh per chunk.
   expect(packet.uploads.length).toBeGreaterThan(0);
   expect(packet.drawCount).toBeLessThan(120); // structures, plus up to three kinds of node per chunk in view
   expect(packet.tileCount).toBeGreaterThan(10);
@@ -97,7 +96,7 @@ test("nothing behind the camera or beyond the view distance is submitted", () =>
   const view = provingView(W, H);
   view.cam.yaw = Math.PI; // facing south, away from every structure
   const south = view.render();
-  // No structure is drawn: what is left is trees, rocks and bushes to the south, and the water surface last.
+  // No structure is drawn. What is left is the nodes to the south, with the water surface last.
   expect(south.drawCount).toBeGreaterThan(1);
   for (let d = 0; d < south.drawCount - 1; d++) expect(south.drawBuffer[d]!).toBeGreaterThanOrEqual(NODE_BUFFERS);
   expect(south.drawFlags[south.drawCount - 1]).toBe(DRAW_BLEND);
@@ -129,7 +128,7 @@ test("terrain cost follows the view, not the map: a 2 km map selects a bounded s
   lod.select(cam, packet, 4000);
   expect(packet.tileCount).toBeGreaterThan(20);
   expect(packet.tileCount).toBeLessThan(160);
-  // Tiles near the camera are full resolution; distant ones are coarser.
+  // Tiles near the camera are full resolution and distant ones are coarser.
   let nearestStride = Infinity;
   let coarsest = 0;
   for (let t = 0; t < packet.tileCount; t++) {
@@ -149,13 +148,13 @@ test("water lies over the pool, tints what is under it, and changes the view fro
   const at = (x: number, y: number): number => Math.floor(y * H) * W + Math.floor(x * W);
   const rgb = (i: number): number[] => [...view.raster.color.subarray(i * 4, i * 4 + 3)];
 
-  // Standing on the dry plaza looking at the plaza: the surface is below the floor and hides nothing.
+  // On the dry plaza the water surface is below the floor and hides nothing.
   view.cam.pitch = -0.5;
   view.render();
   const dry = rgb(at(0.5, 0.8));
   expect(Math.abs(dry[0]! - dry[2]!)).toBeLessThan(12); // grey, not blue
 
-  // Above the pool looking down: the bottom shows through, tinted blue. Picking still finds the ground.
+  // From above the pool, picking still finds the ground under the water.
   view.cam.x = PROVING_POOL.x;
   view.cam.z = PROVING_POOL.z;
   view.cam.y = 4;
@@ -168,7 +167,6 @@ test("water lies over the pool, tints what is under it, and changes the view fro
   for (let d = 0; d < above.drawCount - 1; d++) expect(above.drawFlags[d]).toBe(0);
   expect(above.fogEnd).toBe(4000);
 
-  // Below the surface: a short, dim view, and the surface is still drawn overhead.
   view.cam.y = PROVING_SEA_LEVEL - 3;
   view.cam.pitch = 1.3;
   const below = view.render();
@@ -193,22 +191,20 @@ test("the hour moves the sun and dims the world at night; noon is what every oth
   const midnight = at(0);
   expect(noon.light).toBe(1);
   expect(noon.sunY).toBeGreaterThan(0.9);
-  // The sun is on one side in the morning and on the other in the evening, at the same height.
   expect(morning.sunX).toBeGreaterThan(0.2);
   expect(evening.sunX).toBeLessThan(-0.2);
   expect(morning.sunY).toBeCloseTo(evening.sunY, 5);
-  // Night: a third of the light, a darker sky, darker ground, and still lit from above.
+  // Night has 0.3 of the light and is still lit from above.
   expect(midnight.light).toBeCloseTo(0.3, 5);
   expect(midnight.sky).toBeCloseTo(noon.sky * 0.3, 5);
   expect(midnight.ground).toBeLessThan(noon.ground * 0.45);
   expect(midnight.sunY).toBeGreaterThan(0.5);
-  // Dusk is between the two.
   const dusk = at(18.2);
   expect(dusk.light).toBeGreaterThan(0.3);
   expect(dusk.light).toBeLessThan(1);
 });
 
-/** World position of the middle of a bone's hit capsule (raised by `lift` in the bone's space), for remote body `i` of the view as the scene will pose it. */
+/** World position of the middle of a bone's hit capsule, raised by `lift` in the bone's space, for remote body `i` as the scene poses it. */
 function boneCentre(view: ReturnType<typeof provingView>, i: number, bone: number, lift = 0): number[] {
   const r = view.remote;
   const st = new AnimState();
@@ -229,7 +225,7 @@ function boneCentre(view: ReturnType<typeof provingView>, i: number, bone: numbe
 test("a body with bones is drawn where its skeleton is, standing and running", () => {
   const view = provingView(W * 2, H * 2);
   const { raster, remote } = view;
-  // Close to the survivor, a little to one side so that neither arm hides behind the body.
+  // The camera is close to the survivor and a little to one side, so neither arm hides behind the body.
   view.cam.x = 255.5;
   view.cam.z = 246.4;
   view.cam.yaw = -0.4;
@@ -246,12 +242,11 @@ test("a body with bones is drawn where its skeleton is, standing and running", (
       expect(raster.pickKind[at]).toBe(PICK_ENTITY);
       expect(raster.pickId[at]).toBe(101);
     }
-    // Skin on the chest, in the tone of the plain look, through the same palette and regions as anything else:
-    // warm, red over green over blue.
+    // The chest shows skin in the plain look's tone, which is warm, so red is over green and green over blue.
     const chest = px(boneCentre(view, 0, B_UPPER_CHEST)) * 4;
     expect(raster.color[chest]!).toBeGreaterThan(raster.color[chest + 1]! * 1.15);
     expect(raster.color[chest + 1]!).toBeGreaterThan(raster.color[chest + 2]! * 1.15);
-    // Its meshes (five slots and its hair) are drawn with bones and without the checker; the grazer beside it is still one rigid box.
+    // Its six meshes (five slots and its hair) are drawn with bones and without the checker. The grazer beside it is still one rigid box.
     const skinned = [...packet.drawFlags.subarray(0, packet.drawCount)].filter((f) => (f & DRAW_SKINNED) !== 0);
     expect(skinned.length).toBe(6);
     for (const f of skinned) expect(f).toBe(DRAW_SKINNED | DRAW_PLAIN);
@@ -260,7 +255,6 @@ test("a body with bones is drawn where its skeleton is, standing and running", (
   };
   seen();
   const idleHand = boneCentre(view, 0, B_HAND_L);
-  // Running, eleven ticks on: every part has moved and is still drawn where the skeleton has it.
   const running = new AnimState();
   running.speed = 7;
   remote.anim[0] = running.pack();
@@ -269,7 +263,7 @@ test("a body with bones is drawn where its skeleton is, standing and running", (
   const runHand = boneCentre(view, 0, B_HAND_L);
   expect(Math.hypot(runHand[0]! - idleHand[0]!, runHand[1]! - idleHand[1]!, runHand[2]! - idleHand[2]!)).toBeGreaterThan(0.15);
 
-  // Looking away: the body costs nothing. No pose, no bones, no draws.
+  // Out of view, the body costs nothing.
   view.cam.yaw = Math.PI;
   const away = view.render();
   expect(view.scene.characters.posed).toBe(0);
@@ -290,24 +284,20 @@ test("the viewer's own body is drawn last and in front: headless from its own ey
   const packet = view.render();
   const flags = [...packet.drawFlags.subarray(0, packet.drawCount)];
   const near = flags.filter((f) => (f & DRAW_NEAR) !== 0);
-  // Torso, hands, legs, feet: not the head it is looking out of.
+  // The four are torso, hands, legs and feet. The head it looks out of is not drawn, and neither is its hair.
   expect(near.length).toBe(4);
   expect(flags.slice(-4)).toEqual(near);
-  // Nor the hair on it.
   const hidden = ["core:human_m/head", "core:human_m/hair/buzzed"].map((id) => view.pack.meshIndex.get(id)!);
   for (let d = packet.drawCount - 4; d < packet.drawCount; d++) expect(hidden).not.toContain(packet.drawMesh[d]!);
-  // Looking down, its own body fills the middle of the view, in its own colour.
   const mid = Math.floor(0.6 * H) * W + W / 2;
   expect(raster.pickKind[mid]).toBe(PICK_ENTITY);
   expect(raster.pickId[mid]).toBe(7);
-  // Looking level, none of it is in the way.
   view.cam.pitch = 0;
   view.render();
   let own_pixels = 0;
   for (let i = 0; i < W * H; i++) if (raster.pickKind[i] === PICK_ENTITY && raster.pickId[i] === 7) own_pixels++;
   expect(own_pixels).toBe(0);
 
-  // Over the shoulder: an ordinary body, head and all, in the ordinary pass.
   const vp = new Viewpoint();
   vp.thirdPerson = true;
   vp.place(view.cam, null, own.x, own.y + 1.62, own.z, 0, -0.1);
@@ -334,13 +324,13 @@ test("the third-person camera is pulled in by whatever is behind the body, and f
   vp.place(cam, w, 64, 1.62, 64, 0, 0);
   const open = Math.hypot(cam.x - 64, cam.y - 1.62, cam.z - 64);
   expect(open).toBeGreaterThan(3.3);
-  // A wall a metre behind.
+  // A wall stands a metre behind.
   w.structs.add(w.kind("core:wall"), 64, 1.5, 62.9, 0, 0, 1);
   vp.place(cam, w, 64, 1.62, 64, 0, 0);
   const blocked = Math.hypot(cam.x - 64, cam.y - 1.62, cam.z - 64);
   expect(blocked).toBeLessThan(0.9);
   expect(cam.z).toBeGreaterThan(63);
-  // Looking down from above, the ground does not stop it; looking up from below, it does.
+  // Looking down from above, the ground does not stop the camera. Looking up from below, it does.
   vp.place(cam, w, 64, 1.62, 70, 0, -0.6);
   expect(cam.y).toBeGreaterThan(3);
   vp.place(cam, w, 64, 1.62, 70, 0, 1.2);
@@ -360,7 +350,7 @@ test("aiming at what is drawn of a body hits it, in the zone drawn: in every pos
   const bx = remote.x[0]!;
   const by = remote.y[0]!;
   const bz = remote.z[0]!;
-  // drawn[z] counts pixels showing zone z; agreed[z] those where a ray through the pixel finds zone z too.
+  // drawn[z] counts pixels showing zone z, and agreed[z] those where a ray through the pixel finds zone z too.
   const drawn = new Uint32Array(ZONE_COUNT);
   const agreed = new Uint32Array(ZONE_COUNT);
   let phantom = 0;
@@ -383,7 +373,7 @@ test("aiming at what is drawn of a body hits it, in the zone drawn: in every pos
     remote.anim[0] = st.pack();
     remote.flags[0] = grounded ? 1 : 0;
     st.seed = bodySeed(id);
-    // From the front, a side, behind and above; a different moment and facing each time.
+    // From the front, a side, behind and above, at a different tick and facing each time.
     for (const [around, up] of [[0, 0.1], [1.4, 0.2], [3.3, 0.05], [4.6, 0.9], [0.7, -0.25]] as const) {
       const tick = shot * 7.3;
       const yawUnits = (shot * 9973) & 0xffc0; // a facing the 10-bit wire yaw can carry exactly
@@ -406,7 +396,7 @@ test("aiming at what is drawn of a body hits it, in the zone drawn: in every pos
           cam.ray((px + 0.5) / SIZE, (py + 0.5) / SIZE, dir);
           const hit = rayBody(anim, st, tick, bx, by, bz, yawUnits, cam.x, cam.y, cam.z, dir[0]!, dir[1]!, dir[2]!, 50);
           if (!isBody) {
-            // Nothing of the body is drawn here. A hit would be a shot landing on thin air, unless something else is in front.
+            // No part of the body is drawn here, so a hit lands on thin air unless a structure is in front.
             if (hit !== 0 && raster.pickKind[at] !== PICK_STRUCTURE) phantom++;
             else empty++;
             continue;
@@ -424,17 +414,17 @@ test("aiming at what is drawn of a body hits it, in the zone drawn: in every pos
   for (let z = 1; z < ZONE_COUNT; z++) {
     all += drawn[z]!;
     allAgreed += agreed[z]!;
-    // Every zone was seen, and a ray through its pixels mostly finds it. One generous capsule a bone:
-    // where two meet (a wrist, an ankle, an armpit) the nearer one wins, which is where these go.
+    // Every zone is seen, and a ray through its pixels mostly finds it. Each bone has one generous capsule, and where two
+    // meet (a wrist, an ankle, an armpit) the nearer one wins, which accounts for the rest.
     expect(drawn[z]!).toBeGreaterThan(150);
     if (agreed[z]! / drawn[z]! < 0.78) throw new Error(`${ZONE_NAMES[z]}: only ${agreed[z]} of ${drawn[z]} drawn pixels are hit`);
   }
-  // The head is the zone that matters most: a ray through a drawn head is a headshot.
+  // The head matters most. A ray through a drawn head must be a headshot.
   expect(agreed[ZONE_HEAD]! / drawn[ZONE_HEAD]!).toBeGreaterThan(0.965);
   expect(allAgreed / all).toBeGreaterThan(0.88);
-  // Almost nothing drawn is out of reach of every capsule: aiming at the body hits the body.
+  // Almost no drawn pixel misses every capsule, so aiming at the body hits the body.
   expect(missed / all).toBeLessThan(0.02);
-  // The capsules are generous: some hits land a little outside the picture, but not much more than a body's rim.
+  // The capsules are generous, so some hits land a little outside the drawn body, but not much more than its rim.
   expect(phantom / all).toBeLessThan(0.3);
   expect(empty).toBeGreaterThan(all);
 });

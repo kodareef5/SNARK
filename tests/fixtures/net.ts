@@ -36,16 +36,15 @@ export function testKey(label: string): Uint8Array {
 }
 
 export interface JoinOptions {
-  /** Device key; defaults to one derived from the name. */
+  /** Defaults to testKey(name). */
   key?: Uint8Array;
   spectate?: boolean;
-  /** The test advances this session itself (through an App); the harness does not call `update`. */
+  /** The test advances this session itself, through an App. The harness does not call `update`. */
   manual?: boolean;
-  /** The look a new survivor is made with. Defaults to the plain one; null arrives in the creator instead. */
+  /** Defaults to defaultLook(). With null the survivor arrives in the creator instead. */
   look?: Uint8Array | null;
-  /** The server's password, if it asks one. */
   password?: string;
-  /** Content as this client has it, if not the harness's own. */
+  /** Defaults to the harness's registry. */
   registry?: Registry;
 }
 
@@ -63,12 +62,12 @@ export class Harness {
   now = 0;
   private serverClock = 0;
   private readonly clientFrameMs: number;
-  // Clients share one generated heightfield; it is immutable.
+  // Clients share one generated heightfield, which is immutable.
   private readonly hf = buildProvingHeightfield();
 
   constructor(opts: Partial<GameOptions> = {}, seed = 1, clientFps = 60, host: HostOptions = {}, reg: Registry = coreRegistry()) {
     this.reg = reg;
-    // Posed with the clips of the real pack, as a server started from the built client is.
+    // The host uses the real pack's clips and rigs, as a server started from the built client does.
     this.host = createHost(reg, { clips: corePack().clips, rigs: corePack().header.rigs, ...host, game: opts });
     this.world = this.host.world;
     this.server = this.host.game;
@@ -97,7 +96,7 @@ export class Harness {
     return session;
   }
 
-  /** Run for `ms` of virtual time: clients at their frame rate, the server at the tick rate. */
+  /** `ms` is virtual time. Clients run at their frame rate and the server at the tick rate. */
   run(ms: number, eachFrame?: (now: number) => void): void {
     const end = this.now + ms;
     const tickMs = 1000 / TICK_RATE;
@@ -121,7 +120,7 @@ export class Harness {
     return this.world.ents.resolve(session.ownHandle);
   }
 
-  /** The server's side of a session. */
+  /** The server's Client for a session, or null. */
   client(session: ClientSession) {
     const i = this.sessions.indexOf(session);
     return this.server.clients.find((c) => c !== null && c.conn === this.ends[i]!.peer) ?? null;

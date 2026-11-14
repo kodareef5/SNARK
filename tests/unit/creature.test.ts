@@ -1,6 +1,3 @@
-// Creatures whose bodies came as models: a skeleton that is data, the clips
-// that move it, and the few large capsules it is hit in.
-
 import { expect, test } from "bun:test";
 import { creaturePose, rayCreature } from "../../shared/anim/creature.ts";
 import { ZONE_ARM_L, ZONE_ARM_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_NONE, ZONE_TORSO } from "../../shared/anim/human.ts";
@@ -20,34 +17,31 @@ test("the pack carries each creature as a rig that is a whole skeleton, one mesh
   expect([...rigs.keys()]).toEqual(["core:parasaur", "core:raptor"]);
   for (const [id, rig] of rigs) {
     const raw = pack.header.rigs.find((r) => r.id === id)!;
-    // The same bones for both: a root first, every parent before its children, nothing that only ended a chain.
     expect([raw.skeleton, rig.bones, rig.names[0], rig.parent[0]]).toEqual(["dino", 28, "Body", -1]);
     for (let b = 1; b < rig.bones; b++) {
       expect(rig.parent[b]!).toBeGreaterThanOrEqual(0);
       expect(rig.parent[b]!).toBeLessThan(b);
     }
     expect(rig.names.some((n) => /_end$|^root$/.test(n))).toBe(false);
-    // A hind foot hangs on its leg, where the leg ends: in the model it hung on a root that never moved.
+    // A hind foot is parented to its lower leg. In the source model it hung on a root that never moved.
     for (const side of ["L", "R"]) {
       const foot = rig.names.indexOf(`BackFoot.${side}`);
       expect(rig.names[rig.parent[foot]!]).toBe(`BackLowLeg.${side}`);
     }
-    // Its left is at +X and it faces +Z: head ahead of tail, and both feet on the ground it stands on.
+    // Its left is at +X and it faces +Z.
     const at = (name: string): number[] => Array.from(rig.rest.subarray(rig.names.indexOf(name) * 3, rig.names.indexOf(name) * 3 + 3));
     expect(at("Head")[2]!).toBeGreaterThan(at("Tail5")[2]! + 1);
     expect(at("BackFoot.L")[0]!).toBeGreaterThan(0);
     expect(at("BackFoot.R")[0]!).toBeLessThan(0);
     expect(Math.abs(at("BackFoot.L")[1]!)).toBeLessThan(0.1);
-    // Nine capsules: a head, a neck, a body, two of tail, and four legs. Few and large.
+    // Nine capsules: a head, a neck, a body, two of tail and four legs.
     const zones = Array.from(rig.zone).filter((z) => z !== 0).sort((a, b) => a - b);
     expect(zones).toEqual([ZONE_HEAD, ZONE_TORSO, ZONE_TORSO, ZONE_TORSO, ZONE_TORSO, ZONE_ARM_L, ZONE_ARM_R, ZONE_LEG_L, ZONE_LEG_R].sort((a, b) => a - b));
     for (let b = 0; b < rig.bones; b++) if (rig.zone[b] !== 0) expect(rig.capR[b]!).toBeGreaterThan(0.03);
     expect([...rig.sockets.keys()].sort()).toEqual(["mouth", "seat"]);
-    // Every clip it should have, on its own bones.
     for (const name of RIG_CLIPS) expect([name, rig[name]?.bones, rig[name]!.frames > 10]).toEqual([name, 28, true]);
     expect([rig.idle!.loop, rig.walk!.loop, rig.run!.loop, rig.attack!.loop, rig.death!.loop]).toEqual([true, true, true, false, false]);
 
-    // Its mesh: on that skeleton, made on that rig, each vertex following a bone the rig has.
     const mesh = pack.header.meshes[pack.meshIndex.get(id)!]!;
     expect([mesh.skeleton, pack.header.rigs[mesh.rig!]!.id]).toEqual(["dino", id]);
     const verts = lodVertices(pack, mesh.lods[0]!);
@@ -56,7 +50,6 @@ test("the pack carries each creature as a rig that is a whole skeleton, one mesh
     expect(triangles).toBeGreaterThan(1000);
     expect(triangles).toBeLessThan(2000);
   }
-  // A parasaur is some eight metres long and a raptor not four: what content says each is, the model is.
   const long = (id: string): number => {
     const m = pack.header.meshes[pack.meshIndex.get(id)!]!;
     return m.half[2] * 2;
@@ -65,7 +58,6 @@ test("the pack carries each creature as a rig that is a whole skeleton, one mesh
   expect(long("core:parasaur")).toBeLessThan(8.5);
   expect(long("core:raptor")).toBeGreaterThan(3.3);
   expect(long("core:raptor")).toBeLessThan(4.2);
-  // And content names each: a species on that skeleton, drawn as that mesh.
   for (const id of rigs.keys()) expect(reg.defs[reg.index.get(id)!]).toMatchObject({ type: "species", mesh: id, skeleton: "dino" });
 });
 
@@ -92,18 +84,15 @@ test("a creature stands, walks, runs and strikes on its clips: its feet stay by 
         if (lower < low) low = lower;
         if (lower > high) high = lower;
         apart = Math.max(apart, Math.abs(pos[footL * 3 + 2]! - pos[footR * 3 + 2]!));
-        // The head is forward of the hips, well off the ground, and the tail behind.
         expect(pos[head * 3 + 2]!).toBeGreaterThan(pos[2]!);
         expect(pos[head * 3 + 1]!).toBeGreaterThan(scale * 0.5);
       }
-      // Whichever foot is lower is by the ground all the way round: the legs were made to reach it, and still do.
       const where = `${rig.id} speed ${speed} strike ${strike}`;
       expect(low, where).toBeGreaterThan(-0.25 * scale);
       expect(high, where).toBeLessThan(0.45 * scale);
-      // Moving, its feet pass each other; standing, they stay where they are.
       if (speed > 0) expect(apart, where).toBeGreaterThan(0.3 * scale);
     }
-    // Slow, it eases from standing into its walk: half way between at half the speed that takes.
+    // Below walking speed the pose is a blend of standing and walking.
     st.setAction(ACT_NONE, HOLD_HANDS, 0);
     st.speed = 1;
     creaturePose(rig, st, 50, 4, rig.a);
@@ -128,7 +117,7 @@ test("a creature is hit where it is: its head from in front, its body from the s
     const out = [0, 0, 0];
     const head = rig.names.indexOf("Head");
     const body = rig.names.indexOf("Body");
-    // Where the middles of its head's and its body's capsules are, standing.
+    // The middle of a bone's capsule, in model space.
     const middle = (b: number): number[] => {
       boneToModel(rig.solved, b, (rig.capA[b * 3]! + rig.capB[b * 3]!) / 2, (rig.capA[b * 3 + 1]! + rig.capB[b * 3 + 1]!) / 2, (rig.capA[b * 3 + 2]! + rig.capB[b * 3 + 2]!) / 2, out);
       return [...out];
@@ -136,21 +125,17 @@ test("a creature is hit where it is: its head from in front, its body from the s
     const h = middle(head);
     const m = middle(body);
     const ray = (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, yaw = 0, bx = 0, bz = 0): number => rayCreature(rig, st, 0, 4, bx, 0, bz, yaw, ox, oy, oz, dx, dy, dz, 80);
-    // From in front, along its length at the height of its head: the head, before anything else.
     expect(ray(h[0]!, h[1]!, 40, 0, 0, -1)).toBe(ZONE_HEAD);
     expect(zoneHit.t).toBeLessThan(40 - h[2]!);
-    // From its side at the middle of its body: the body. From above, down onto its back: the body.
     expect(ray(-30, m[1]!, m[2]!, 1, 0, 0)).toBe(ZONE_TORSO);
     expect(ray(0, 40, m[2]!, 0, -1, 0)).toBe(ZONE_TORSO);
-    // From its left, low, where its hind leg stands: that leg; from its right, the other.
     const foot = rig.names.indexOf("BackUpLeg.L");
     const leg = middle(foot);
     expect(ray(30, leg[1]!, leg[2]!, -1, 0, 0)).toBe(ZONE_LEG_L);
     expect(ray(-30, leg[1]!, leg[2]!, 1, 0, 0)).toBe(ZONE_LEG_R);
-    // Over its back, past its nose, and under its belly between the legs: nothing.
     expect(ray(-30, rig.mid * 4, 0, 1, 0, 0)).toBe(ZONE_NONE);
     expect(ray(-30, h[1]!, h[2]! + rig.mid * 2, 1, 0, 0)).toBe(ZONE_NONE);
-    // Turned a quarter and stood somewhere else, it is hit there: the same ray that found its head, turned and moved with it.
+    // Turned a quarter and moved, it is hit by the same ray turned and moved with it, and not by the old ray.
     expect(ray(100 + 40, h[1]!, 50 - h[0]!, -1, 0, 0, 16384, 100, 50)).toBe(ZONE_HEAD);
     expect(ray(h[0]!, h[1]!, 40, 0, 0, -1, 16384, 100, 50)).toBe(ZONE_NONE);
   }

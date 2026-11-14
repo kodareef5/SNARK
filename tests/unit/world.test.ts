@@ -15,7 +15,7 @@ test("terrain height is continuous across cell and triangle edges", () => {
     const x = rng.range(1, hf.sizeX - 1);
     const z = rng.range(1, hf.sizeZ - 1);
     const h = hf.heightAt(x, z);
-    // No slope on this map exceeds 60 degrees by much; a 1 mm move changes height by millimetres.
+    // No slope on this map is much over 60 degrees, so a 1 mm move changes the height by millimetres.
     expect(Math.abs(hf.heightAt(x + 0.001, z) - h)).toBeLessThan(0.02);
     expect(Math.abs(hf.heightAt(x, z + 0.001) - h)).toBeLessThan(0.02);
   }
@@ -52,8 +52,7 @@ test("the collision grid matches a brute-force search", () => {
   const refs: number[] = [];
   for (let i = 0; i < 600; i++) refs.push(w.structs.add(kinds[rng.int(4)]!, rng.range(2, 254), rng.range(0, 3), rng.range(2, 254), rng.int(65536), 0, 1));
   for (let i = 0; i < 200; i++) w.structs.remove(refs.splice(rng.int(refs.length), 1)[0]!);
-  // Every capsule position the grid calls free must also be free against every structure.
-  // More than the 64 it starts with, so the list grows.
+  // The 400 results are more than the 64 a Found starts with, so its list grows.
   const found = new Found();
   const count = w.structs.query(0, 0, 256, 256, found);
   const all = found.refs;

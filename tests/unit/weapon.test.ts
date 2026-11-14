@@ -13,7 +13,7 @@ import { coreRegistry } from "../fixtures/world.ts";
 const reg = coreRegistry();
 const params = (name: string): WeaponParams => reg.weapon[reg.index.get(`core:${name}`)!]!;
 
-/** Step a body for `ticks` with the same buttons held, noting the ticks (from 1) on which each thing happened. */
+/** Steps a body for `ticks` with the same buttons held and records the ticks, counted from 1, on which each event happened. */
 function hold(b: Body, w: WeaponParams, buttons: number, ticks: number, first = 0): { strikes: number[]; fires: number[]; reloads: number[]; draws: number[] } {
   const out = { strikes: [] as number[], fires: [] as number[], reloads: [] as number[], draws: [] as number[] };
   let before = first;
@@ -40,9 +40,8 @@ test("content compiles into weapon timings: a swing, a draw, a reload and a clip
   expect(params("pistol")).toMatchObject({ kind: W_GUN, hold: HOLD_PISTOL, clip: 6, swingTicks: 11 });
   expect(params("grenade")).toMatchObject({ kind: W_THROWN, hold: HOLD_THROW });
   expect(FISTS.hold).toBe(HOLD_HANDS);
-  // What is not a weapon has no timings; bare hands stand in.
+  // An item that is not a weapon has no timings, and bare hands stand in.
   expect(reg.weapon[reg.index.get("core:berry")!]).toBeNull();
-  // Damage, reach and armor sit in columns beside them.
   const k = (name: string): number => reg.index.get(`core:${name}`)!;
   expect([reg.damage[k("hatchet")], reg.damageType[k("hatchet")], reg.damage[k("spear")], reg.damageType[k("spear")]]).toEqual([20, DMG_MELEE, 30, DMG_PIERCE]);
   expect([reg.damage[k("round_rifle")], reg.damageType[k("round_rifle")], reg.damage[k("survivor")]]).toEqual([280, DMG_BULLET, 8]);
@@ -50,7 +49,6 @@ test("content compiles into weapon timings: a swing, a draw, a reload and a clip
   expect(reg.reach[k("hatchet")]).toBeCloseTo(2.6, 5);
   expect(reg.reach[k("survivor")]).toBeCloseTo(2.2, 5);
   expect([reg.armor[k("flak_shirt")], reg.armor[k("cloth_hat")], reg.armor[k("hatchet")]]).toEqual([100, 10, 0]);
-  // A survivor's head counts three times, the rest once; a creature takes less from a bullet.
   const zones = reg.zoneMul[k("survivor")]!;
   expect([zones[ZONE_HEAD], zones[ZONE_TORSO], zones[ZONE_LEG_R], zones[ZONE_FOOT_L]]).toEqual([3, 1, 1, 1]);
   expect(reg.takes[k("grazer")]![DMG_BULLET]).toBeCloseTo(0.7, 5);
@@ -60,16 +58,16 @@ test("content compiles into weapon timings: a swing, a draw, a reload and a clip
 test("a held button swings again and again, each swing landing once, a third of the way through", () => {
   const b = new Body();
   const out = hold(b, FISTS, BTN_PRIMARY, SWING_TICKS * 3);
-  // The swing begins on the first tick and lands five ticks into it; the next begins the tick the last one ends.
+  // A swing begins on the first tick and lands five ticks into it. The next begins on the tick the last one ends.
   expect(out.strikes).toEqual([6, 6 + SWING_TICKS, 6 + SWING_TICKS * 2]);
   expect(out.fires).toEqual([]);
-  // Let go mid swing: it finishes, and no more follow.
+  // Released mid swing, it finishes and no more follow.
   const b2 = new Body();
   hold(b2, FISTS, BTN_PRIMARY, 3);
   const rest = hold(b2, FISTS, 0, 40, BTN_PRIMARY);
   expect(rest.strikes).toEqual([3]);
   expect(b2.act).toBe(ACT_NONE);
-  // The melee button swings whatever is held.
+  // The melee button swings any held item.
   const b3 = new Body();
   expect(hold(b3, params("hatchet"), BTN_MELEE, SWING_TICKS).strikes).toEqual([6]);
 });
@@ -79,18 +77,17 @@ test("a bow is drawn while the button is held and looses when it is let go, hard
   const b = new Body();
   b.rounds = 1;
   b.reloadTo = 1;
-  // Let go too soon: the string is let down and the arrow stays.
+  // Released too soon, the string is let down and the arrow stays.
   hold(b, bow, BTN_PRIMARY, 5);
   expect(b.act).toBe(ACT_DRAW);
   let out = hold(b, bow, 0, 2, BTN_PRIMARY);
   expect([out.fires.length, b.rounds, b.act]).toEqual([0, 1, ACT_NONE]);
-  // Half drawn: half the way.
   hold(b, bow, BTN_PRIMARY, 19);
   out = hold(b, bow, 0, 1, BTN_PRIMARY);
   expect(out.fires).toEqual([1]);
   expect(out.draws[0]).toBeCloseTo(0.5, 5);
   expect([b.rounds, b.act]).toEqual([0, ACT_COOL]);
-  // After the pause it nocks the next by itself, if there is one to nock.
+  // After the pause it nocks the next arrow unasked, if there is one.
   b.reloadTo = 1;
   out = hold(b, bow, 0, bow.swingTicks + bow.reloadTicks);
   expect(out.reloads).toEqual([bow.swingTicks + bow.reloadTicks]);
@@ -106,7 +103,6 @@ test("a bow is drawn while the button is held and looses when it is let go, hard
   hold(b, bow, BTN_PRIMARY, 20);
   out = hold(b, bow, BTN_PRIMARY | BTN_MELEE, 1, BTN_PRIMARY);
   expect([out.fires.length, b.rounds, b.act]).toEqual([0, 1, ACT_NONE]);
-  // With no arrows left nothing can be drawn.
   b.rounds = 0;
   b.reloadTo = 0;
   hold(b, bow, BTN_PRIMARY, 30);
@@ -118,11 +114,10 @@ test("a gun fires once a press, pauses between shots, and reloads when asked or 
   const b = new Body();
   b.rounds = 6;
   b.reloadTo = 6;
-  // Holding the trigger fires once.
   let out = hold(b, pistol, BTN_PRIMARY, 40);
   expect(out.fires).toEqual([1]);
   expect(b.rounds).toBe(5);
-  // Pressing again during the pause does nothing; after it, it fires.
+  // A press during the pause after a shot does nothing.
   b.act = ACT_NONE;
   stepAction(b, BTN_PRIMARY, BTN_PRIMARY, pistol);
   expect(actionOut.fire).toBe(true);
@@ -131,16 +126,15 @@ test("a gun fires once a press, pauses between shots, and reloads when asked or 
   expect([actionOut.fire, b.rounds, b.act]).toEqual([false, 4, ACT_COOL]);
   hold(b, pistol, 0, pistol.swingTicks);
   expect(b.act).toBe(ACT_NONE);
-  // The reload key, with rounds missing and rounds to put in.
+  // The reload key works when rounds are missing and there are rounds to put in.
   stepAction(b, BTN_RELOAD, BTN_RELOAD, pistol);
   expect(b.act).toBe(ACT_RELOAD);
   out = hold(b, pistol, 0, pistol.reloadTicks);
   expect(out.reloads).toEqual([pistol.reloadTicks]);
   expect(b.rounds).toBe(6);
-  // Full, the key does nothing.
   stepAction(b, BTN_RELOAD, BTN_RELOAD, pistol);
   expect(b.act).toBe(ACT_NONE);
-  // The last round fired, it reloads by itself; with nothing to reload with it waits empty.
+  // After the last round it reloads unasked. With nothing to reload with it waits empty.
   const rifle = params("rifle");
   b.rounds = 1;
   b.reloadTo = 1;
@@ -158,12 +152,11 @@ test("a thrown thing leaves the hand partway through the swing; taking something
   const out = hold(b, params("grenade"), BTN_PRIMARY, SWING_TICKS);
   expect(out.fires).toEqual([params("grenade").strikeTick + 1]);
   expect(out.strikes).toEqual([]);
-  // Equipping: nothing happens until it is in hand, then a held button swings.
+  // While equipping nothing happens. Once the item is in hand a held button swings.
   const e = new Body();
   e.act = ACT_EQUIP;
   const eq = hold(e, FISTS, BTN_PRIMARY, EQUIP_TICKS + 6);
   expect(eq.strikes).toEqual([EQUIP_TICKS + 5]);
-  // Under water a bow does not draw and a drawn one is let down; a crossbow fires; fists swing.
   const w = new Body();
   w.mode = MODE_SWIM;
   w.rounds = 1;
@@ -215,7 +208,7 @@ test("damage is one multiplication in a fixed order, and armor is worn by what i
   hit.zone = 3;
   resolveDamage();
   expect(harm.health).toBe(24);
-  // A rifle round to a flak shirt: the piece counts five times, so a sixth gets through.
+  // A rifle round to a flak shirt. One piece counts five times, so a sixth gets through.
   resetHit();
   hit.base = 280;
   hit.type = DMG_BULLET;
@@ -224,7 +217,7 @@ test("damage is one multiplication in a fixed order, and armor is worn by what i
   expect(harm.health).toBeCloseTo(280 / 6, 6);
   expect(harm.blocked).toBeCloseTo(280 - 280 / 6, 6);
   expect(harm.wear).toBe(Math.ceil((280 - 280 / 6) / WEAR_PER_USE));
-  // The same round to the head of a creature that takes seven tenths of a bullet, from a better rifle.
+  // The same round from a better rifle, to the head of a creature that takes seven tenths of a bullet.
   resetHit();
   hit.base = 280;
   hit.quality = 1.2;
@@ -240,7 +233,7 @@ test("damage is one multiplication in a fixed order, and armor is worn by what i
     resolveDamage();
     expect(harm.health).toBeCloseTo(55 * share, 6);
   }
-  // Torpor follows the damage that got through: at once, and to come.
+  // Torpor follows the damage that got through, both the instant part and the part over time.
   resetHit();
   hit.base = 20;
   hit.armor = 100;
@@ -256,7 +249,7 @@ test("damage is one multiplication in a fixed order, and armor is worn by what i
   hit.rule = 2;
   resolveDamage();
   expect(harm.health).toBe(15);
-  // Nothing in, nothing out; armor below nothing is nothing.
+  // No damage in gives none out, and negative armor counts as none.
   resetHit();
   hit.armor = -50;
   resolveDamage();

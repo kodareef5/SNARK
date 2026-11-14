@@ -21,7 +21,7 @@ test("deadlines run in tick order, ties in scheduling order, and may schedule mo
   expect(got).toEqual(expected);
   expect(heap.size).toBe(0);
 
-  // A handler that schedules follow-ups due now sees them run in the same call; the limit bounds a storm.
+  // Follow-ups a handler schedules for the same tick run in the same call. The limit argument bounds a storm.
   let chain = 0;
   heap.push(5, 2, 0, 0);
   const ran = heap.run(5, () => {
@@ -97,13 +97,13 @@ test("breeding favours the higher stat, mutates rarely, and tracks mutation coun
   }
   expect(higher / N).toBeGreaterThan(HIGHER_STAT_CHANCE - 0.015);
   expect(higher / N).toBeLessThan(HIGHER_STAT_CHANCE + 0.015);
-  // Three rolls at 2.5%: 7.3% of offspring carry at least one new mutation, split between the lines.
+  // Three rolls at 2.5% give 7.3% of offspring at least one new mutation, split between the two lines.
   expect(mutants / N).toBeGreaterThan(0.06);
   expect(mutants / N).toBeLessThan(0.086);
   expect(viaMother / mutants).toBeGreaterThan(0.42);
   expect(viaMother / mutants).toBeLessThan(0.58);
 
-  // A parent at the mutation limit passes on what it has but is never the source of a new one.
+  // A parent at the mutation limit passes on its count but is never the source of a new mutation.
   mother.mutMat = MUTATION_LIMIT;
   father.mutPat = MUTATION_LIMIT;
   for (let i = 0; i < 3000; i++) {
@@ -123,7 +123,7 @@ test("a mutation comes from the parent stronger in that stat a little more than 
   const rng = new Rng(7);
   const mother = rollWild(rng, 1, [5]);
   const father = rollWild(rng, 1, [6]);
-  // The mother is the stronger in every stat a mutation can land on.
+  // The mother is stronger in every stat a mutation can land on.
   for (const s of WILD_STATS) {
     mother.wild[s] = 40;
     father.wild[s] = 20;
@@ -145,12 +145,10 @@ test("a mutation comes from the parent stronger in that stat a little more than 
   expect((m + f) / N).toBeLessThan(0.08);
   expect(m / (m + f)).toBeGreaterThan(HIGHER_STAT_CHANCE - 0.03);
   expect(m / (m + f)).toBeLessThan(HIGHER_STAT_CHANCE + 0.03);
-  // The other way about, it is the father.
   for (const s of WILD_STATS) father.wild[s] = 60;
   [m, f] = count();
   expect(f / (m + f)).toBeGreaterThan(HIGHER_STAT_CHANCE - 0.03);
   expect(f / (m + f)).toBeLessThan(HIGHER_STAT_CHANCE + 0.03);
-  // Level in everything: either, evenly.
   for (const s of WILD_STATS) father.wild[s] = 40;
   [m, f] = count();
   expect(m / (m + f)).toBeGreaterThan(0.47);

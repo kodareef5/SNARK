@@ -16,7 +16,7 @@ test("HUD coordinates, compass and minimap markers follow the map convention", (
   const remote = new RemoteSample();
   a.sampleRemote(remote);
   updateHud(hud, a, remote, 60);
-  // Spawn is at x 256, z 240 on a 512 m map: centre longitude, a little south of centre.
+  // Spawn is at x 256, z 240 on a 512 m map, so longitude is 50 and latitude a little south of centre.
   expect(hud.lon).toBeCloseTo(50, 0);
   expect(hud.lat).toBeCloseTo((1 - 240 / 512) * 100, 0);
   expect(hud.compass).toBe("N");
@@ -24,7 +24,7 @@ test("HUD coordinates, compass and minimap markers follow the map convention", (
   expect(hud.markers.map((m) => m.kind)).toEqual(["player", "self"]);
   expect(hud.vitals.map((v) => v.id)).toEqual(["health", "stamina", "food", "water", "oxygen", "torpor"]);
 
-  // Walking north lowers latitude; north is up on the minimap.
+  // Walking north lowers latitude, and north is up on the minimap.
   const v0 = hud.markers[1]!.v;
   h.pilots[0]!.moveZ = 1;
   h.run(2000);
@@ -33,7 +33,7 @@ test("HUD coordinates, compass and minimap markers follow the map convention", (
   expect(hud.markers[1]!.v).toBeLessThan(v0);
   expect(hud.speed).toBeGreaterThan(4);
 
-  // Facing +X is west (270), facing -X is east (90).
+  // Facing +X is west (270) and facing -X is east (90).
   expect(headingOf(Math.PI / 2)).toBeCloseTo(270, 6);
   expect(headingOf(-Math.PI / 2)).toBeCloseTo(90, 6);
   expect(headingOf(Math.PI)).toBeCloseTo(180, 6);
@@ -61,7 +61,7 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
   const H = 180;
   const view = provingView(W, H);
   view.cam.pitch = 0;
-  // The grazer and the survivor's body at the probe's spots, as the probe server sets the scene up.
+  // Put the grazer and the survivor's body at the probe's spots, as the probe server does.
   const r = view.remote;
   r.x[1] = PROBE_CREATURE.x;
   r.z[1] = PROBE_CREATURE.z;
@@ -79,9 +79,9 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
     expect(probePasses(p, 0, 0, 0)).toBe(false);
     expect(probePasses(p, 255, 0, 255)).toBe(false);
   }
-  // Drawn in its species' own colour instead, the creature probe fails: the check does see colour regions.
+  // With the creature in its species' own colour the creature probe fails, so the check sees colour regions.
   r.colors[6] = 0;
-  // And with the body lying where its bones were never applied (anywhere but here), the body probe fails.
+  // Moving the body stands in for bones that were never applied, and the body probe fails.
   r.x[0] = PROBE_BODY.x + 2;
   view.render();
   for (const c of [probes[4]!, probes[5]!]) {

@@ -1,9 +1,5 @@
-// Child process for the crash test. Trades items between holders forever, and
-// now and then creates or destroys some, committing after every batch and
-// printing "acked <seq>" only once the commit has returned. The parent kills
-// it without warning.
-//
-//   bun tests/fixtures/crash-child.ts <db path> <seed>
+// Child process for the crash test. It prints "acked <seq>" only once the commit has returned, and the parent kills it without warning.
+// Usage: bun tests/fixtures/crash-child.ts <db path> <seed>
 
 import { writeSync } from "node:fs";
 import { createHost } from "../../server/host.ts";
@@ -17,10 +13,7 @@ export const OP_TRANSFER = 1;
 export const OP_MINT = 11;
 export const OP_BURN = 12;
 
-/**
- * A second mode: survivors die, are looted, and return, over and over. Each
- * step is committed and acknowledged like the trades.
- */
+/** The "death" mode. Survivors die, are looted and return, with each step committed and acknowledged like the trades. */
 function deathLoop(dbPath: string, seed: number): never {
   const reg = coreRegistry();
   const host = createHost(reg, { dbPath });
@@ -47,11 +40,10 @@ function deathLoop(dbPath: string, seed: number): never {
       const k = rng.int(4);
       if (k === 0 && !rec.dead) host.death.die(rec, 1 + rng.int(5));
       else if (k === 1 && rec.dead) {
-        // Back to life (no session here, so by hand what respawning does to the record).
+        // There is no session here, so this does by hand what a respawn does to the record.
         rec.dead = false;
         host.records.dirty.add(rec.pid);
       } else if (k === 2 && caches.length > 0 && !rec.dead) {
-        // Loot part of a cache, or all of it and take the cache away.
         const cache = caches[rng.int(caches.length)]!;
         const inv = host.items.inv(cache);
         for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0 && rng.int(2) === 0) host.items.give(cache, rec, inv.item[s]!, inv.count[s]!);

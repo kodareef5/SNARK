@@ -8,7 +8,7 @@ import { flatWorld, provingWorld, sealedRoom, type TestWorld } from "../fixtures
 
 const FWD = 127;
 const NORTH = 0;
-const EAST = 49152; // yaw units: facing -X
+const EAST = 49152; // Faces -X, in yaw units.
 const WEST = 16384; // facing +X
 const DOWN = -12000;
 const UP = 12000;
@@ -28,7 +28,6 @@ test("a body wades in, floats, dives where it looks, surfaces, and walks out", (
   const w = provingWorld();
   const p = survivor(w);
   const floatY = PROVING_SEA_LEVEL - p.height * 0.75;
-  // Start on the plaza east of the pool and walk toward its centre.
   const b = bodyAt(w, PROVING_POOL.x + 34, PROVING_POOL.z);
   let switches = 0;
   const step = (moveZ: number, yaw: number, pitch: number, buttons = 0): void => {
@@ -36,8 +35,8 @@ test("a body wades in, floats, dives where it looks, surfaces, and walks out", (
     stepBody(w, b, 0, moveZ, yaw, pitch, buttons, p, TICK_DT);
     if (b.mode !== mode) switches++;
     if (!capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`in solid at ${b.x}, ${b.y}, ${b.z}`);
-    // A swimmer never rises above where it floats, unless the bottom itself is higher
-    // (a body that has just walked in may still be a ground probe above the slope).
+    // A swimmer never rises above its float line unless the bottom is higher.
+    // A body that has just walked in may still be a ground probe above the slope.
     if (b.mode === MODE_SWIM) expect(b.y).toBeLessThanOrEqual(Math.max(floatY, w.hf.heightAt(b.x, b.z) + 0.03) + 1e-4);
   };
 
@@ -49,14 +48,13 @@ test("a body wades in, floats, dives where it looks, surfaces, and walks out", (
   expect(PROVING_SEA_LEVEL - b.y).toBeLessThan(p.height * 0.7 + 0.15);
   expect(b.grounded).toBe(false);
 
-  // Level swimming over deep water: at the float line, at swim speed.
   for (let i = 0; i < 150; i++) step(FWD, EAST, 0);
   expect(w.hf.heightAt(b.x, b.z)).toBeLessThan(-4);
   expect(b.y).toBeCloseTo(floatY, 3);
   expect(Math.hypot(b.vx, b.vz)).toBeCloseTo(p.swimSpeed, 3);
   expect(b.vy).toBe(0);
 
-  // Looking down and swimming forward dives to the bottom; letting go stays there (no sinking, no bobbing up).
+  // Looking down and swimming forward dives to the bottom. Letting go stays there, with no sinking and no bobbing up.
   for (let i = 0; i < 240; i++) step(FWD, EAST, DOWN);
   expect(b.y).toBeLessThan(-5);
   expect(b.y - w.hf.heightAt(b.x, b.z)).toBeLessThan(0.5);
@@ -66,14 +64,13 @@ test("a body wades in, floats, dives where it looks, surfaces, and walks out", (
   expect(b.y).toBe(depth);
   expect([b.vx, b.vy, b.vz]).toEqual([0, 0, 0]);
 
-  // Jump rises; the surface stops it.
+  // Jump rises and the surface stops it.
   for (let i = 0; i < 300; i++) step(0, EAST, 0, BTN_JUMP);
   expect(b.y).toBeCloseTo(floatY, 3);
   // Looking up cannot lift a swimmer out of the water.
   for (let i = 0; i < 60; i++) step(FWD, WEST, UP);
   expect(b.y).toBeLessThanOrEqual(floatY + 1e-4);
 
-  // Swim back to the shallows: it stands up and walks at walking speed.
   ticks = 0;
   while (b.mode === MODE_SWIM && ticks++ < 900) step(FWD, WEST, 0);
   expect(b.mode).toBe(MODE_WALK);
@@ -81,7 +78,7 @@ test("a body wades in, floats, dives where it looks, surfaces, and walks out", (
   for (let i = 0; i < 90; i++) step(FWD, WEST, 0);
   expect(Math.hypot(b.vx, b.vz)).toBeGreaterThan(4.2);
   expect(b.y).toBeGreaterThan(PROVING_SEA_LEVEL);
-  // In, and out: two changes of mode, with no flapping at the waterline.
+  // Two changes of mode, in and out, with no flapping at the waterline.
   expect(switches).toBe(2);
 });
 
@@ -102,10 +99,10 @@ test("sprinting drains stamina, exhaustion ends the sprint until a quarter is ba
     if (windedAt < 0 && (b.mflags & MF_WINDED) !== 0) windedAt = i;
     if (windedAt >= 0 && recoveredAt < 0 && (b.mflags & MF_WINDED) === 0) recoveredAt = i;
   }
-  // 100 points at 5 a second: twenty seconds of sprint.
+  // 100 points at 5 a second is twenty seconds of sprint.
   expect(windedAt).toBe(Math.ceil(cap / p.staminaSprint) - 1);
   expect(speeds[windedAt - 1]).toBeCloseTo(p.walkSpeed * p.sprintMul, 3);
-  // Winded: sprint is held but the body only walks, and recovers a quarter before it can sprint again.
+  // Winded, the body only walks with sprint held, and recovers a quarter before it can sprint again.
   expect(speeds[windedAt + 30]).toBeCloseTo(p.walkSpeed, 3);
   expect(recoveredAt - windedAt).toBe(Math.ceil(cap / 4 / p.staminaRegen));
   expect(speeds[recoveredAt + 30]).toBeCloseTo(p.walkSpeed * p.sprintMul, 3);
@@ -181,7 +178,7 @@ test("landing reports how fast the body was falling; landing in water reports no
     deepest = Math.min(deepest, diver.y);
   }
   expect(diver.mode).toBe(MODE_SWIM);
-  // The water took the speed off: it went under, but came to rest above the bottom.
+  // The water took the speed off. It went under, but came to rest above the bottom.
   expect(deepest).toBeLessThan(PROVING_SEA_LEVEL - 2.5);
   expect([diver.vx, diver.vy, diver.vz]).toEqual([0, 0, 0]);
   expect(diver.y - w.hf.heightAt(diver.x, diver.z)).toBeGreaterThan(0.5);
@@ -189,7 +186,7 @@ test("landing reports how fast the body was falling; landing in water reports no
 
 test("fuzz: no input swims a body out of a flooded sealed room, into solid space, or above the water", () => {
   const w = flatWorld(4);
-  w.hf.seaLevel = 2.6; // the whole world is under 2.6 m of water; the room's ceiling is at 3
+  w.hf.seaLevel = 2.6; // The whole world is under 2.6 m of water, and the room's ceiling is at 3.
   const p = survivor(w);
   const room = sealedRoom(w, 100, 100);
   const floatY = w.hf.seaLevel - p.height * 0.75;

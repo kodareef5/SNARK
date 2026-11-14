@@ -1,6 +1,3 @@
-// Helpers for tests that gather: finding a node on the map and standing a
-// survivor in front of it, looking at it.
-
 import type { ClientSession } from "../../client/core/session.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../../shared/net/protocol.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
@@ -12,7 +9,7 @@ export interface Found extends NodeSpot {
   index: number;
 }
 
-/** Every node of a kind on the map, nearest to (x, z) first. */
+/** Sorted nearest to (x, z) first. */
 export function nodesOf(h: Harness, id: string, x: number, z: number): Found[] {
   const field = h.world.nodeField!;
   const kind = h.reg.index.get(id)!;
@@ -27,11 +24,7 @@ export function nodesOf(h: Harness, id: string, x: number, z: number): Found[] {
   return out.sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
 }
 
-/**
- * Teleport `s` (who must have cheats) to stand `distance` metres from a spot,
- * on dry open ground, and turn its view to the spot's centre. Returns false if
- * there is nowhere to stand.
- */
+/** `s` must have cheats. Teleports it to dry open ground `distance` metres from the spot, facing it. Returns false if there is nowhere to stand. */
 export function standFacing(h: Harness, s: ClientSession, pilot: Pilot, at: { x: number; y: number; z: number }, distance = 1.5): boolean {
   const p = h.reg.move[h.reg.index.get("core:survivor")!]!;
   for (let k = 0; k < 16; k++) {
@@ -49,7 +42,7 @@ export function standFacing(h: Harness, s: ClientSession, pilot: Pilot, at: { x:
   return false;
 }
 
-/** Hold the primary button for exactly `n` swings (the first lands at once, the rest `swingTicks` apart), then let go. */
+/** Holds the primary button for exactly `n` swings. The first lands at once and the rest are `swingTicks` apart. */
 export function swing(h: Harness, pilot: Pilot, n: number, swingTicks: number): void {
   pilot.buttons |= 4;
   h.run(((swingTicks * n - 5) * 1000) / 30);
@@ -57,11 +50,7 @@ export function swing(h: Harness, pilot: Pilot, n: number, swingTicks: number): 
   h.run(700);
 }
 
-/**
- * Take an item the survivor carries in hand, as a player does: move it from
- * wherever it is to a hotbar slot, then select that slot. Returns the slot it
- * ends up in (an index into the whole inventory).
- */
+/** Moves an item the survivor carries to a hotbar slot and selects it, as a player does. Returns the slot as an index into the whole inventory. */
 export function takeInHand(h: Harness, s: ClientSession, item: number, hotbar = 0): number {
   const inv = s.inventory!;
   const to = inv.hotbar + hotbar;

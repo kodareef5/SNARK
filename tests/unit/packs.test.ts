@@ -8,12 +8,12 @@ const island: ContentPack = {
   name: "island",
   requires: ["core"],
   defs: [
-    // A template nothing can spawn, built on a core species.
+    // An abstract template built on a core species. Nothing can spawn it.
     { id: "island:herbivore", extends: "core:grazer", abstract: true, color: 7, food: { max: 900 } },
     { id: "island:strider", extends: "island:herbivore", walkSpeed: 6, stats: { speed: [1.4, 0, 0.02] } },
     { id: "island:titan", extends: "island:herbivore", radius: 3, height: 9, eyeHeight: 8, mesh: "island:titan" },
     { id: "island:gate", extends: "core:wall", half: [4, 4, 0.3], hp: 9000 },
-    // A balance change to someone else's definition, stated as only what changes.
+    // An override of another pack's definition states only what changes.
     { id: "core:wall", override: true, hp: 2500 },
   ],
 };
@@ -39,14 +39,13 @@ test("packs stack: definitions extend, templates stay out of the world, override
   expect(def("core:wall").hp).toBe(2500);
   expect(def("core:wall").half).toEqual([1.5, 1.5, 0.1]);
 
-  // Compiled tables are flat: movement and collider data are there with no chain to follow.
+  // Compiled tables are flat, with no extends chain to follow.
   expect(reg.move[reg.index.get("island:strider")!]!.walkSpeed).toBe(6);
   expect(reg.halfX[reg.index.get("island:gate")!]).toBe(4);
   const g = new Genome();
   g.wild[0] = 10;
   expect(statValue(strider.stats.health, g, 0)).toBeCloseTo(220 * 3, 9);
 
-  // Stacking a pack changes the content hash; the core pack alone matches the plain list.
   expect(reg.hash).not.toBe(compilePacks([CORE_PACK]).registry!.hash);
   expect(compilePacks([CORE_PACK]).registry!.hash).toBe(compileContent(CORE_CONTENT).registry!.hash);
 });

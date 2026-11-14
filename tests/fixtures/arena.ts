@@ -1,13 +1,8 @@
-// Somewhere to fight: open, level, dry ground of a given size.
-
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { HIT_NONE, castWorld } from "../../shared/world/ray.ts";
 import type { Harness } from "./net.ts";
 
-/**
- * The south-west corner of a level rectangle `wide` metres along X and `deep`
- * along Z with nothing standing in it, nearest the first spawn point.
- */
+/** The south-west corner of a level, dry, empty rectangle `wide` metres along X and `deep` along Z, nearest the first spawn point. */
 export function flatGround(h: Harness, wide: number, deep: number): { x: number; z: number; y: number } {
   const w = h.world;
   const p = w.reg.move[w.reg.index.get("core:survivor")!]!;
@@ -21,7 +16,7 @@ export function flatGround(h: Harness, wide: number, deep: number): { x: number;
       if (y < w.hf.seaLevel + 0.5) continue;
       let ok = true;
       for (let dz = 0; dz <= deep && ok; dz += 1) for (let dx = 0; dx <= wide && ok; dx += 1) ok = Math.abs(w.hf.heightAt(x + dx, z + dz) - y) < 0.02;
-      // Nothing standing in it: rays along it at two heights, every two metres across, and room to stand at its corners and middle.
+      // Rays at two heights, every two metres, and a capsule at the middle and one corner check that nothing stands in it.
       for (let dx = 0; dx <= wide && ok; dx += 2) for (const up of [0.3, 1.5]) ok = ok && castWorld(w, x + dx, y + up, z, 0, 0, 1, deep) === HIT_NONE;
       for (let dz = 0; dz <= deep && ok; dz += 2) for (const up of [0.3, 1.5]) ok = ok && castWorld(w, x, y + up, z + dz, 1, 0, 0, wide) === HIT_NONE;
       ok = ok && capsuleFree(w, x + wide / 2, y, z + deep / 2, p.radius, p.height) && capsuleFree(w, x + 1, y, z + 1, p.radius, p.height);

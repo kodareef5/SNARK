@@ -11,7 +11,6 @@ export function corePack(): Pack {
   return (pack ??= parsePack(buildCorePack()));
 }
 
-/** The humanoid clips of the core pack. */
 export function coreAnim(): HumanAnim {
   return (anim ??= new HumanAnim(corePack().clips));
 }

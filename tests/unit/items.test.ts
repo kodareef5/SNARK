@@ -38,7 +38,7 @@ test("adding tops up matching stacks, then fills empty slots, and reports what d
 test("a stack larger than its limit has become leaves the room the empty slots give, not less", () => {
   const inv = new Inventory(2);
   inv.add(stone, 100, 0, 0, 0, reg);
-  // The same table, but a stack of stone is fifty now.
+  // The same registry, but a stack of stone is 50.
   const small = { ...reg, stack: reg.stack.map((n) => (n > 1 ? 50 : n)) };
   expect(inv.room(stone, 0, small)).toBe(50);
   expect(inv.room(stone, 0, reg)).toBe(100);
@@ -52,10 +52,10 @@ test("a move goes to an empty slot, joins a matching stack, swaps whole stacks, 
   expect(moveSlot(a, 1, b, 4, 0, reg)).toBe(60); // whole stack to an empty slot
   expect(moveSlot(a, 0, b, 4, 70, reg)).toBe(40); // joins, up to the stack size
   expect(slots(b)).toEqual(["4:core:stonex100"]);
-  expect(moveSlot(a, 0, b, 4, 0, reg)).toBe(0); // full: refused
+  expect(moveSlot(a, 0, b, 4, 0, reg)).toBe(0); // The target stack is full, so the move is refused.
   expect(moveSlot(a, 0, a, 5, 20, reg)).toBe(20); // split within one inventory
   expect(slots(a)).toEqual(["0:core:stonex40", "2:core:waterskinx1", "5:core:stonex20"]);
-  expect(moveSlot(a, 2, a, 0, 0, reg)).toBe(1); // different things: swap
+  expect(moveSlot(a, 2, a, 0, 0, reg)).toBe(1); // Different items swap.
   expect(slots(a)).toEqual(["0:core:waterskinx1", "2:core:stonex40", "5:core:stonex20"]);
   expect([a.quality[0], a.dur[0]]).toEqual([3, 500]); // instance data travels with it
   expect(moveSlot(a, 2, a, 0, 10, reg)).toBe(0); // part of a stack cannot swap
@@ -115,12 +115,11 @@ test("spoilage: one item per interval, the same whether looked at once or every 
   expect(once.spoilAt[0]).toBe(often.spoilAt[0]);
   expect(once.spoilAt[0]).toBe(1000 + SPOIL * 8);
   expect(once.total(stone)).toBe(10);
-  // Long enough, and the whole stack is gone and the slot is empty.
   once.settle(end + SPOIL * 100, reg, () => {});
   expect(once.total(berry)).toBe(0);
   expect(once.used()).toBe(1);
 
-  // Joining a fresher stack onto an older one keeps the older clock; the reverse makes the target older.
+  // Joining a fresher stack onto an older one keeps the older clock. The reverse makes the target older.
   const a = new Inventory(2);
   a.set(0, berry, 10, 0, 0, 5000);
   a.set(1, berry, 10, 0, 0, 9000);
@@ -147,7 +146,6 @@ test("a vital read once equals the same vital stepped every tick, and says when 
   expect(v.at(V_FOOD, out)).toBe(0);
   expect(v.at(V_FOOD, out - 1)).toBeGreaterThan(0);
   expect(v.zeroTick(V_HEALTH)).toBe(Infinity);
-  // Moving the base changes no value.
   const before = [v.at(V_FOOD, 7000), v.at(V_HEALTH, 7000)];
   v.rebase(7000);
   expect([v.at(V_FOOD, 7000), v.at(V_HEALTH, 7000)]).toEqual(before);

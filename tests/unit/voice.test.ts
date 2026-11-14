@@ -1,5 +1,3 @@
-// Voice: the packets, the buffer between the network and the ear, the rate changer, and the talk gate.
-
 import { expect, test } from "bun:test";
 import { JitterBuffer, MAX_TARGET, MIN_TARGET, START_TARGET } from "../../client/core/voice/jitter.ts";
 import { panLeft, panRight, voiceGain, voicePan } from "../../client/core/voice/place.ts";
@@ -51,7 +49,7 @@ function opus(rng: Rng, n: number): Uint8Array {
   return out;
 }
 
-/** A frame whose every sample says which frame it is and where in it, so that what is played can be traced. */
+/** Every sample encodes its frame number and its position in the frame, so played audio can be traced. */
 function frame(f: number): Float32Array {
   const pcm = new Float32Array(F);
   for (let i = 0; i < F; i++) pcm[i] = f + i / F;
@@ -75,7 +73,7 @@ test("an audio packet survives the wire, and only what a client may send is take
   const ok = buf.slice(0, writeAudio(buf, flagsOf(MODE_TALK, REACH_LOCAL, false, false), 1, F, opus(rng, 40)));
   const bad = (change: (p: Uint8Array) => Uint8Array): boolean => parseAudio(change(ok.slice()));
   expect(parseAudio(ok)).toBe(true);
-  // Another kind of packet; too short; too long; a reserved flag; a loudness or a reach that does not exist.
+  // Refused: another kind of packet, too short, too long, a reserved flag, and a mode or a reach that does not exist.
   expect(bad((p) => ((p[0] = VOICE_AUTH), p))).toBe(false);
   expect(bad((p) => p.subarray(0, AUDIO_HEADER - 1))).toBe(false);
   expect(parseAudio(new Uint8Array(AUDIO_HEADER + MAX_OPUS + 1).fill(VOICE_AUDIO, 0, 1))).toBe(false);
@@ -85,7 +83,7 @@ test("an audio packet survives the wire, and only what a client may send is take
   expect(bad((p) => ((p[1] = 3 << 3), p))).toBe(false);
   // Opus that is not one mono 20 ms frame: stereo, two frames, 10 ms, 60 ms.
   for (const toc of [TOC | 4, TOC | 1, TOC | 3, 8 << 3, 11 << 3]) expect(bad((p) => ((p[AUDIO_HEADER] = toc), p))).toBe(false);
-  // Nothing but a header is a packet: the end of an utterance needs no sound.
+  // A bare header is a valid packet, because the end of an utterance needs no sound.
   expect(parseAudio(ok.subarray(0, AUDIO_HEADER))).toBe(true);
   expect(audio.opus.length).toBe(0);
 });
@@ -109,7 +107,7 @@ test("flags say how loud, who for, the end, and whether to send it back; Opus's 
     expect(opusFrameValid((config << 3) | 4)).toBe(false);
     for (const code of [1, 2, 3]) expect(opusFrameValid((config << 3) | code)).toBe(false);
   }
-  // Sequence numbers wrap: newer is the short way round.
+  // Sequence numbers wrap, so newer means the short way round.
   expect([seqNewer(1, 0), seqNewer(0, 1), seqNewer(5, 5), seqNewer(0, 65535), seqNewer(65535, 0), seqNewer(40000, 0), seqNewer(0, 40000)]).toEqual([true, false, false, true, false, false, true]);
 });
 
@@ -132,19 +130,17 @@ test("a batch carries many speakers' frames in one packet, holds no more than a 
   const sent = batch.packet().slice();
   expect(readBatch(sent, (speaker, flags, seq, time, body) => got.push({ speaker, flags, seq, time, body: [...body] }))).toBe(true);
   expect(got).toEqual(put);
-  // Cut short anywhere, or with a length that runs off its end, it is not a batch.
   for (const cut of [1, 2, 5, sent.length - 1]) expect(readBatch(sent.subarray(0, cut), () => {})).toBe(false);
   const lying = sent.slice();
   lying[2 + 9] = 0xff;
   lying[2 + 10] = 0xff;
   expect(readBatch(lying, () => {})).toBe(false);
   expect(readBatch(new Uint8Array([VOICE_AUDIO, 0]), () => {})).toBe(false);
-  // Emptied, it is ready for the next turn; an empty batch reads as one.
+  // After reset it is empty, and an empty batch still reads as a batch.
   batch.reset();
   expect([batch.count, batch.length]).toEqual([0, 2]);
   expect(readBatch(batch.packet(), () => expect(true).toBe(false))).toBe(true);
 
-  // The other two packets.
   const token = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
   const buf = new Uint8Array(128);
   expect(writeAuth(buf, 513, token)).toBe(AUTH_BYTES);
@@ -174,8 +170,7 @@ test("the buffer plays what arrives on time in order, a set way behind the newes
     if (jb.read(out, 128)) for (let i = 0; i < 128; i++) heard.push(out[i]!);
     clock += 128;
   }
-  // Silence for the target, then every sample of every frame, in order, once; then nothing.
-  // The first five milliseconds come up from nothing, so that a voice does not begin with a click.
+  // After the target's silence, the first five milliseconds fade in, so a voice does not begin with a click.
   const first = heard.findIndex((v) => v !== 0) - 1;
   expect(first).toBe(START_TARGET);
   const voiced = heard.slice(first, first + total * F);
@@ -184,18 +179,18 @@ test("the buffer plays what arrives on time in order, a set way behind the newes
   expect(heard.slice(first + total * F).every((v) => v === 0)).toBe(true);
   expect(jb.playing).toBe(false);
   expect(jb.stats).toEqual({ played: total, missing: 0, late: 0, restarts: 0, jumps: 0, odd: 0 });
-  // Speaking again later starts again from the first frame of the new utterance.
+  // A later utterance starts again from its first frame.
   jb.push(500 * F, frame(500));
   expect(jb.playing).toBe(true);
   expect(jb.depth).toBe(START_TARGET + F);
 });
 
 test("the buffer: a frame that never comes is a gap, one that comes too late is dropped, and frames out of order are put right", () => {
-  // Frames 1 to 3 arrive; 4 is lost; 6 comes before 5.
+  // Frames 1 to 3 arrive, 4 is lost, and 6 comes before 5.
   const jb = new JitterBuffer();
   for (const f of [1, 2, 3, 6, 5]) jb.push(f * F, frame(f));
   expect(jb.depth).toBe(START_TARGET + 6 * F);
-  // Step the wait off first so that frames line up with reads. The gap where 4 was is covered by 3, played backwards and fading.
+  // Read the wait off first so that frames line up with reads. The gap where 4 was is covered by frame 3, played backwards and fading.
   jb.read(new Float32Array(START_TARGET), START_TARGET);
   const o = new Float32Array(F);
   const heard: number[] = [];
@@ -210,10 +205,10 @@ test("the buffer: a frame that never comes is a gap, one that comes too late is 
   }
   expect(heard).toEqual([1, 2, 3, 1, 5, 6]);
   expect(jb.stats).toEqual({ played: 5, missing: 1, late: 0, restarts: 0, jumps: 0, odd: 0 });
-  // With nothing left in hand, whatever comes next is a new start, even the lost frame turning up at last.
+  // With the buffer empty, the next frame is a new start, even the lost frame turning up at last.
   jb.push(4 * F, frame(4));
   expect([jb.stats.late, jb.stats.restarts]).toEqual([0, 1]);
-  // With more in hand, a straggler whose time has gone is simply late, and changes nothing.
+  // With frames still buffered, a straggler whose time has passed counts as late and changes nothing.
   const busy = new JitterBuffer();
   for (const f of [10, 11, 12, 13, 14, 15]) busy.push(f * F, frame(f));
   busy.read(new Float32Array(START_TARGET + 3 * F), START_TARGET + 3 * F);
@@ -228,22 +223,21 @@ test("the buffer: a frame that never comes is a gap, one that comes too late is 
 });
 
 test("the buffer: after a stall the burst is skipped to the target, running dry starts again, and silence without an end is given up on", () => {
-  // A stall: frames 0 to 2 play, then nothing for a second, then 3 to 52 all at once.
+  // Frames 0 to 2 play out, then frames 3 to 52, a second of talk, arrive all at once.
   const jb = new JitterBuffer();
   const out = new Float32Array(F);
   for (const f of [0, 1, 2]) jb.push(f * F, frame(f));
   for (let k = 0; k < 6; k++) jb.read(out.fill(0), F);
   expect(jb.depth).toBe(0);
   for (let f = 3; f < 53; f++) jb.push(f * F, frame(f));
-  // Not a second of old talk: what is in hand is the target and a little more, and the rest was skipped.
   expect(jb.depth).toBeLessThanOrEqual(START_TARGET + 0.12 * 48000 + F);
   expect(jb.depth).toBeGreaterThanOrEqual(START_TARGET);
   expect(jb.stats.jumps).toBeGreaterThan(0);
-  // What plays next is from the last quarter second of it, not the first.
+  // What plays next is from the last quarter second of the burst.
   out.fill(0);
   jb.read(out, F);
   expect(out[F - 1]).toBeGreaterThan(53 - 14);
-  // Over a steady link with jitter under the target, nothing is lost: every frame is played.
+  // On a steady link with jitter under the target, every frame is played.
   const rng = new Rng(9);
   const steady = new JitterBuffer();
   const arrivals: [number, number][] = [];
@@ -260,14 +254,14 @@ test("the buffer: after a stall the burst is skipped to the target, running dry 
   expect(steady.stats).toEqual({ played: 500, missing: 0, late: 0, restarts: 0, jumps: 0, odd: 0 });
   expect(steady.playing).toBe(false);
 
-  // A speaker that just stops, with no end said: after half a second of nothing it is taken to have stopped.
+  // A speaker that stops without an end flag is taken to have stopped after half a second of nothing.
   const gone = new JitterBuffer();
   gone.push(0, frame(0));
   let blocks = 0;
   while (gone.read(new Float32Array(128), 128)) blocks++;
   expect(blocks * 128).toBeGreaterThan(START_TARGET + F + 24000 - 128);
   expect(blocks * 128).toBeLessThan(START_TARGET + F + 24000 + 256);
-  // Its time starting over (a long session's count wrapping) is a new start, not an age of lateness.
+  // A time that starts over, as when a long session's count wraps, is a new start and not a late frame.
   const wrap = new JitterBuffer();
   wrap.push(4_000_000 * F, frame(1));
   wrap.read(new Float32Array(128), 128);
@@ -296,9 +290,8 @@ test("changing rate keeps the pitch and the length of a tone, across blocks of a
       n += wrote;
       i += size;
     }
-    // As many samples as the time is worth at the new rate, give or take what falls after the last sample it was given.
+    // The tolerance covers output samples that fall after the last input sample.
     expect(Math.abs(n - to * seconds)).toBeLessThanOrEqual(Math.ceil(to / from) + 1);
-    // The same tone: each sample is where a sine of that pitch would be.
     let worst = 0;
     for (let k = 100; k < n - 100; k++) worst = Math.max(worst, Math.abs(out[k]! - Math.sin((2 * Math.PI * tone * k) / to)));
     expect(worst).toBeLessThan(from === 16000 ? 0.02 : 0.005);
@@ -317,7 +310,7 @@ test("push to talk: every frame while the key is held and a short tail after, th
   const tail = steps(TAIL_FRAMES + 2);
   expect(tail).toEqual([...Array(TAIL_FRAMES - 1).fill(GATE_SEND), GATE_END, GATE_SKIP, GATE_SKIP]);
   expect(gate.sending).toBe(false);
-  // Pressed again inside the tail, it simply goes on: no end is said.
+  // Pressed again inside the tail, it goes on with no end sent.
   gate.pressed = true;
   gate.step();
   gate.pressed = false;
@@ -325,7 +318,7 @@ test("push to talk: every frame while the key is held and a short tail after, th
   gate.pressed = true;
   expect(steps(2)).toEqual([GATE_SEND, GATE_SEND]);
 
-  // The uplink: a frame's time is its place in everything the microphone gave, sent or not.
+  // In the uplink, a frame's time is its place among all the frames the microphone gave, sent or not.
   const up = new Uplink();
   const rng = new Rng(1);
   up.loop = true;
@@ -341,11 +334,11 @@ test("push to talk: every frame while the key is held and a short tail after, th
   const fields = packets.map((p) => (parseAudio(p), [audio.seq, audio.time / F, (audio.flags & FLAG_END) !== 0, modeOf(audio.flags), reachOf(audio.flags), (audio.flags & FLAG_LOOP) !== 0]));
   expect(fields).toEqual([[0, 2, false, MODE_YELL, REACH_TRIBE, true], [1, 3, false, MODE_YELL, REACH_TRIBE, true], [2, 4, true, MODE_YELL, REACH_TRIBE, true]]);
   expect(up.sent).toBe(3);
-  // Nothing waiting, or Opus too large to carry: no packet.
+  // With nothing waiting, or Opus too large to carry, there is no packet.
   expect(up.encoded(opus(rng, 10))).toBeNull();
   up.capture(GATE_SEND);
   expect(up.encoded(opus(rng, MAX_OPUS + 1))).toBeNull();
-  // A reset encoder gives nothing back: what was waiting is forgotten, and numbering carries on.
+  // A reset encoder gives nothing back, so drop() forgets what was waiting. Numbering carries on.
   up.capture(GATE_SEND);
   up.drop();
   expect(up.encoded(opus(rng, 10))).toBeNull();
@@ -355,13 +348,12 @@ test("push to talk: every frame while the key is held and a short tail after, th
 });
 
 test("a lost frame is covered by the one before it and then by silence, with no step in the sound at either edge", () => {
-  // A steady tone, 20 ms to a frame; which frames arrive is the test's to say.
   const tone = (f: number): Float32Array => {
     const pcm = new Float32Array(F);
     for (let i = 0; i < F; i++) pcm[i] = 0.5 * Math.sin((2 * Math.PI * 200 * (f * F + i)) / 48000);
     return pcm;
   };
-  /** Each frame arrives as it is made, but for those lost; what is heard, lined up so that frame f begins at f times the frame. */
+  /** Every frame but those in `lost` arrives as it is made. Returns what is heard, aligned so that frame f begins at f * F. */
   const play = (lost: number[], frames: number): Float32Array => {
     const jb = new JitterBuffer();
     const all = new Float32Array(START_TARGET + frames * F);
@@ -387,7 +379,6 @@ test("a lost frame is covered by the one before it and then by silence, with no 
   const natural = step(whole, 2 * F, 18 * F);
   expect(full).toBeCloseTo(0.5 / Math.SQRT2, 2);
 
-  // One frame lost: its place is filled, quieter, and the sound has no jump going in or coming out.
   const one = play([8], 20);
   const covered = energy(one, 8 * F, 9 * F);
   expect(covered).toBeGreaterThan(full * 0.45);
@@ -395,7 +386,7 @@ test("a lost frame is covered by the one before it and then by silence, with no 
   expect(step(one, 8 * F - 4, 9 * F + 200)).toBeLessThan(natural * 2.2);
   expect(energy(one, 9 * F + 200, 10 * F)).toBeCloseTo(full, 2);
 
-  // Five lost: covered for three frames, each quieter than the last, then nothing; and the voice comes back in from silence.
+  // With five lost, three frames are covered, each quieter than the last, then there is nothing, and the voice comes back in from silence.
   const five = play([8, 9, 10, 11, 12], 20);
   const levels = [8, 9, 10, 11, 12].map((f) => energy(five, f * F, (f + 1) * F));
   expect(levels[0]!).toBeGreaterThan(levels[1]! * 1.6);
@@ -405,7 +396,7 @@ test("a lost frame is covered by the one before it and then by silence, with no 
   expect(Math.abs(five[13 * F]!)).toBeLessThan(0.001);
   expect(step(five, 8 * F - 4, 14 * F)).toBeLessThan(natural * 2.2);
   expect(energy(five, 13 * F + 480, 14 * F)).toBeCloseTo(full, 1);
-  // A speaker that simply stops is not echoed for long, and one that said it had finished is not echoed at all.
+  // A speaker that stops without saying so is not echoed for long, and one that sent an end is not echoed at all.
   const said = play([], 6);
   expect(energy(said, 5 * F, 6 * F)).toBeCloseTo(full, 1);
   const jb = new JitterBuffer();
@@ -421,7 +412,7 @@ test("a lost frame is covered by the one before it and then by silence, with no 
 });
 
 test("the wait before playing follows the link: short on a steady one, longer on an uneven one, and a frame longer each time it runs dry", () => {
-  /** Frames sent every 20 ms, each arriving after a delay the link chooses, in talk of a few seconds with pauses between. */
+  /** Utterances of 150 frames with pauses between. A frame is sent every 20 ms and arrives after the delay the link chooses. */
   const talk = (delayMs: (i: number, rng: Rng) => number, utterances = 6): JitterBuffer => {
     const jb = new JitterBuffer();
     const rng = new Rng(11);
@@ -445,22 +436,20 @@ test("the wait before playing follows the link: short on a steady one, longer on
     }
     return jb;
   };
-  // A steady link: the wait settles at its least, and nothing is lost on the way there.
   const steady = talk(() => 30);
   expect(steady.target).toBe(MIN_TARGET);
   expect(steady.stats.missing + steady.stats.late + steady.stats.restarts).toBe(0);
-  // Delay that wanders up to 90 ms: the wait grows to cover nearly all of it, and little is lost once it has.
+  // With delay that wanders by up to 90 ms the wait grows to cover nearly all of it, and little is lost once it has.
   const uneven = talk((_i, rng) => 30 + rng.range(0, 90));
   expect(uneven.target).toBeGreaterThanOrEqual(100 * 48);
   expect(uneven.target).toBeLessThanOrEqual(140 * 48);
   const settled = talk((_i, rng) => 30 + rng.range(0, 90), 12);
   expect(settled.stats.late - uneven.stats.late).toBeLessThan(40);
-  // Wild delay cannot push it past its most; and a link that settles lets it come back down.
+  // Wild delay cannot push the wait past its most, and a link that settles lets it come back down.
   expect(talk((_i, rng) => rng.range(0, 900), 4).wanted).toBe(MAX_TARGET);
   const calmer = talk((i, rng) => (i < 400 ? 30 + rng.range(0, 90) : 30), 10);
   expect(calmer.target).toBe(MIN_TARGET);
 
-  // Running dry in the middle of talk: the next frame starts it again after a short wait, and the wait is a frame longer from then on.
   const jb = new JitterBuffer();
   let clock = 0;
   const feed = (from: number, to: number): void => {
@@ -472,7 +461,7 @@ test("the wait before playing follows the link: short on a steady one, longer on
   };
   feed(0, 50);
   const before = jb.target;
-  // Half a second of nothing arriving while the clock runs on.
+  // A quarter second with nothing arriving while the clock runs on.
   for (let k = 0; k < 12000; k += 120) jb.read(new Float32Array(120), 120);
   clock += 12000;
   feed(50, 60);
@@ -489,7 +478,7 @@ test("a voice is loudest near its speaker, falls away with distance, is faint at
     expect(voiceGain(range * 0.3, mode)).toBeCloseTo(0.5, 6);
     expect(voiceGain(range * 0.6, mode)).toBeCloseTo(0.25, 6);
     expect(voiceGain(range, mode)).toBeCloseTo(0.15, 6);
-    // Past the edge, where the server still sends it for a step or two: down to nothing, with no jump.
+    // Past the edge, where the server still sends it for a step or two, it falls to nothing with no jump.
     expect(voiceGain(range * 1.05, mode)).toBeCloseTo(0.075, 6);
     expect(voiceGain(range * 1.1, mode)).toBe(0);
     expect(voiceGain(range * 3, mode)).toBe(0);
@@ -501,11 +490,10 @@ test("a voice is loudest near its speaker, falls away with distance, is faint at
       before = g;
     }
   }
-  // A yell is heard where talk is not, and louder where both are.
   expect(voiceGain(40, MODE_YELL)).toBeGreaterThan(0);
   expect(voiceGain(40, MODE_TALK)).toBe(0);
   expect(voiceGain(20, MODE_YELL)).toBeGreaterThan(voiceGain(20, MODE_TALK));
-  // A speaker whose body this client has not been shown is played at a middling level, not at full.
+  // A distance of -1 means this client has not been shown the speaker's body. It plays at half level.
   expect(voiceGain(-1, MODE_TALK)).toBe(0.5);
 });
 
@@ -517,14 +505,13 @@ test("a microphone left open sends only what it hears: from a little before a so
   // Switched off, nothing is sent however loud it is.
   expect([gate.step(loud), gate.step(loud)]).toEqual([GATE_SKIP, GATE_SKIP]);
   gate.pressed = true;
-  // Switched on in a quiet room: still nothing.
   expect([gate.step(quiet), gate.step(quiet), gate.step(0)]).toEqual([GATE_SKIP, GATE_SKIP, GATE_SKIP]);
   expect(gate.sending).toBe(false);
-  // The first frame loud enough opens it; while there is sound it stays open; a pause shorter than the hang does not close it.
+  // The first frame loud enough opens it. A pause shorter than the hang does not close it.
   expect(gate.step(loud)).toBe(GATE_OPEN);
   expect([gate.step(loud), gate.step(quiet), gate.step(quiet), gate.step(loud)]).toEqual([GATE_SEND, GATE_SEND, GATE_SEND, GATE_SEND]);
   expect(gate.sending).toBe(true);
-  // After the last sound it goes on for the hang, the last frame of it marked as the end; then nothing until the next sound.
+  // After the last sound it goes on for the hang, with the last frame marked as the end, then nothing until the next sound.
   const after = Array.from({ length: HANG_FRAMES + 2 }, () => gate.step(quiet));
   expect(after).toEqual([...Array(HANG_FRAMES - 1).fill(GATE_SEND), GATE_END, GATE_SKIP, GATE_SKIP]);
   expect(gate.sending).toBe(false);
@@ -535,13 +522,13 @@ test("a microphone left open sends only what it hears: from a little before a so
   expect(off.filter((g) => g === GATE_END).length).toBe(1);
   expect(off.at(-1)).toBe(GATE_SKIP);
 
-  // How loud a frame is: nothing for silence, 1 for a square wave at full, about 0.7 for a sine at full.
+  // frameLevel is 0 for silence, 1 for a full square wave and about 0.7 for a full sine.
   expect(frameLevel(new Float32Array(F))).toBe(0);
   expect(frameLevel(new Float32Array(F).fill(-1))).toBe(1);
   expect(frameLevel(Float32Array.from({ length: F }, (_, i) => Math.sin(i / 5)))).toBeCloseTo(Math.SQRT1_2, 2);
   expect(OPEN_LEVEL).toBeCloseTo(0.0056, 4);
 
-  // The frames just before the sound are sent first, with the times they were given at.
+  // The frames just before the sound are sent first, with their original times.
   const up = new Uplink();
   const rng = new Rng(2);
   for (let i = 0; i < 10; i++) up.capture(GATE_SKIP);
@@ -563,11 +550,10 @@ test("a voice is heard on the side it is on, as loud in all wherever that is", (
   // Turned a quarter to the left (yaw grows that way), what was ahead is on the right.
   expect(voicePan(0, 5, Math.PI / 2)).toBeCloseTo(1, 6);
   expect(voicePan(-5, 0, Math.PI / 2)).toBeCloseTo(0, 6);
-  // Distance does not matter, until the speaker is within arm's reach, where it comes to the middle.
+  // Distance does not matter until the speaker is within arm's reach, where the pan moves to the middle.
   expect(voicePan(-50, 0, 0)).toBeCloseTo(1, 6);
   expect(voicePan(-0.5, 0, 0)).toBeCloseTo(0.5, 6);
   expect(voicePan(0, 0, 1)).toBe(0);
-  // The two ears together are as loud wherever it is; fully to one side, the other hears nothing.
   for (let pan = -1; pan <= 1; pan += 0.125) expect(panLeft(pan) ** 2 + panRight(pan) ** 2).toBeCloseTo(1, 9);
   expect([panLeft(-1), panRight(-1), panLeft(1), panRight(1)].map((v) => Math.round(v * 1000) / 1000)).toEqual([1, 0, 0, 1]);
   expect(panLeft(0)).toBeCloseTo(Math.SQRT1_2, 9);

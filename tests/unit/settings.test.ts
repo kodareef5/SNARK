@@ -1,5 +1,3 @@
-// The catalogue of server settings: sound in itself, and standing where the plan says.
-
 import { expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -16,7 +14,7 @@ test("every row of the catalogue is whole: one of each name, a meaning, a defaul
   const n = catalogCounts();
   expect(n.all).toBeGreaterThan(450);
   expect(n.live + n.todo + n.planned + n.none).toBe(n.all);
-  // Every feature that is waited for is waited for by something.
+  // Every feature in FEATURES has a planned row that waits for it.
   const waited = new Set(CATALOG.filter((r) => r.status === "planned").map((r) => r.waits));
   expect(Object.keys(FEATURES).filter((f) => !waited.has(f))).toEqual([]);
 });
@@ -26,7 +24,7 @@ test("keys are found whatever their case, and a command-line flag is not the fil
   expect(rowOf("TAMINGSPEEDMULTIPLIER")!.at).toBe("server");
   expect([rowOf("Port")!.at, rowOf("port", true)!.at]).toEqual(["session", "cli"]);
   expect(rowOf("NoSuchSetting")).toBeUndefined();
-  // The reference's defaults and directions, at a few places where they are easy to get wrong.
+  // ARK's defaults and retime directions, at a few places where they are easy to get wrong.
   expect(rowOf("PerLevelStatsMultiplier_DinoTamed")!.def).toEqual([0.2, 1, 1, 1, 1, 1, 1, 1, 0.17, 1, 1, 1]);
   expect(rowOf("PlayerBaseStatMultipliers")!.def).toEqual([1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0]);
   expect([rowOf("StructurePickupTimeAfterPlacement")!.def, rowOf("StructureDamageRepairCooldown")!.def, rowOf("FastDecayInterval")!.def, rowOf("DinoHarvestingDamageMultiplier")!.def]).toEqual([30, 180, 43200, 3.2]);
@@ -34,9 +32,8 @@ test("keys are found whatever their case, and a command-line flag is not the fil
 });
 
 test("the reference page is what the catalogue would write; and every setting said to take effect is read somewhere", () => {
-  // Stale: run `bun run settings`.
+  // If this fails the page is stale. Run `bun run settings`.
   expect(readFileSync(SETTINGS_PAGE, "utf8")).toBe(settingsPage());
-  // Every source file of the game but the catalogue's own rows.
   const files: string[] = [];
   const walk = (dir: string): void => {
     for (const name of readdirSync(dir)) {
@@ -83,22 +80,22 @@ test("an ini file is read as ARK writes one: sections, repeated and indexed keys
     ["/script/shootergame.shootergamemode", "OverridePlayerLevelEngramPoints", -1, 9],
   ]);
   expect([e[0]!.value, e[1]!.value, e[2]!.value, e[3]!.value, e[6]!.value]).toEqual(["4.5", "True", "two words", "0.4", '"core:raptor"']);
-  // A struct: named fields, in order, whatever their case; and structs within it.
+  // Field lookup ignores case.
   const engram = e[7]!.value as IniList;
   expect([isList(engram), unquote(field(engram, "engramclassname") as string), field(engram, "EngramHidden"), toNumber(field(engram, "EngramPointsCost") as string), field(engram, "Missing")]).toEqual([true, "core:engram-hatchet", "False", 3, undefined]);
   const quantity = field(e[8]!.value as IniList, "Quantity") as IniList;
   expect([field(quantity, "MaxItemQuantity"), toSwitch(field(quantity, "bIgnoreMultiplier") as string)]).toEqual(["543", true]);
-  // A list of structs: bare items. A comma inside quotes ends nothing.
+  // A list of structs has unnamed items. A comma inside quotes ends nothing.
   const needs = field(e[9]!.value as IniList, "BaseCraftingResourceRequirements") as IniList;
   expect(needs.items.map((it) => [it.key, unquote(field(it.value as IniList, "ResourceItemTypeString") as string)])).toEqual([["", "core:thatch"], ["", "core:flint, sharp"]]);
-  // Fields that carry an index keep it in their name; bare words in a list are items with no name.
+  // An indexed field keeps the index in its name. Bare words in a list are items with no name.
   expect((e[10]!.value as IniList).items.map((it) => [it.key, it.value])).toEqual([["ExperiencePointsForLevel[0]", "5"], ["ExperiencePointsForLevel[1]", "20"]]);
   expect((e[11]!.value as IniList).items.map((it) => [it.key, it.value])).toEqual([["", '"a"'], ["", '"b"']]);
   // Written out again it is the line it was read from.
   for (const k of [7, 8, 9, 10, 11]) expect(`${e[k]!.key}=${writeNode(e[k]!.value)}`).toBe(file.entries[k]!.key + "=" + writeNode(parseIni(`${e[k]!.key}=${writeNode(e[k]!.value)}`).entries[0]!.value));
   expect(writeNode(e[8]!.value)).toBe('(ItemClassString="core:arrow_stone",Quantity=(MaxItemQuantity=543,bIgnoreMultiplier=True))');
 
-  // What cannot be read is said, with its line, and the rest is read on.
+  // An unreadable line is reported with its line number, and reading goes on.
   const bad = parseIni(["[Open", "no equals here", "Key[x]=1", "9lives=1", "A=(B=1", 'C=(D="unclosed)', "E=(F=1)G", "Good=1", "=5"].join("\n"));
   expect(bad.faults.map((f) => f.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 9]);
   expect(bad.faults[4]!.why).toMatch(/bracket is not closed/);
@@ -134,12 +131,12 @@ test("rules begin as the catalogue's defaults, and are read and set by ARK's nam
   const before = new Rules();
   expect(before.version).toBe(0);
 
-  // Set by ARK's name, from words, whatever its case; the reason is given when it will not do.
+  // assign takes ARK's name in any case and the value as text. It returns "" or the reason for refusing.
   expect([rules.assign("tamingspeedmultiplier", "2.5", "console"), rules.num("TamingSpeedMultiplier"), rules.sourceOf(rowOf("TamingSpeedMultiplier")!)]).toEqual(["", 2.5, "console"]);
   expect(rules.assign("TamingSpeedMultiplier", "lots", "console")).toMatch(/TamingSpeedMultiplier wants a number/);
   expect(rules.assign("Gravity", "2", "console")).toMatch(/no setting called Gravity/);
   expect(rules.assign("PreventDinoTameClassNames", "core:raptor", "console")).toMatch(/is a list/);
   expect([rules.version > 0, before.num("TamingSpeedMultiplier")]).toEqual([true, 1]);
-  // A weaker source does not replace what a stronger one gave.
+  // A weaker source does not replace a value a stronger one set.
   expect([rules.yields(rowOf("TamingSpeedMultiplier")!, "file"), rules.yields(rowOf("TamingSpeedMultiplier")!, "console"), rules.yields(rowOf("XPMultiplier")!, "file")]).toEqual([false, true, true]);
 });

@@ -92,13 +92,13 @@ test("climbs walkable slopes and is stopped by steep ones", () => {
     return b;
   };
   for (const strip of [0, 1, 2, 3]) {
-    // 10 to 40 degrees: still on the strip, well up it, feet on the surface.
+    // Strips 0 to 3 are 10 to 40 degrees.
     const b = climb(strip);
     expect(b.z).toBeGreaterThan(SLOPE_Z0 + 20);
     expect(b.y).toBeGreaterThan(3);
     expect(Math.abs(b.y - w.hf.heightAt(b.x, b.z))).toBeLessThan(0.03);
   }
-  const steep = climb(5); // 60 degrees: held at the foot
+  const steep = climb(5); // Strip 5 is 60 degrees.
   expect(steep.z).toBeLessThan(SLOPE_Z0 + 1);
   expect(steep.y).toBeLessThan(1.5);
 });
@@ -124,11 +124,11 @@ test("fuzz: no input sequence leaves a sealed room or enters solid space", () =>
   let buttons = 0;
   for (let i = 0; i < 30000; i++) {
     if (rng.int(12) === 0) {
-      // Out-of-range values on purpose: a hostile client is not limited to the UI.
+      // Out of range on purpose. A hostile client is not limited to the UI.
       moveX = rng.int(513) - 256;
       moveZ = rng.int(513) - 256;
       yaw = rng.int(65536);
-      // Every button, the stance ones included: getting up and down must not open a way out.
+      // Every button, the stance ones included. Getting up and down must not open a way out.
       buttons = rng.int(1024);
     }
     stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
@@ -144,7 +144,7 @@ test("fuzz: bodies roaming the proving ground are always in free space", () => {
   const w = provingWorld();
   const p = survivor(w);
   const spawns: [number, number][] = [[256, 240], [239, 268], [285, 280], [263, 274], [252, 305], [248, 260], [220, 286], [300, 258]];
-  // Several seeds: one found a body a micrometre past the tolerance on a 40 degree slope.
+  // Several seeds, because one found a body a micrometre past the tolerance on a 40 degree slope.
   for (const seed of [77, 78, 79, 80]) {
   const rng = new Rng(seed);
   for (const [sx, sz] of spawns) {
@@ -165,7 +165,7 @@ test("fuzz: bodies roaming the proving ground are always in free space", () => {
       const pz = b.z;
       stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
       if (!capsuleFree(w, b.x, b.y, b.z, p.radius, stanceHeight(p, b.stance))) throw new Error(`in solid at tick ${i}: ${b.x}, ${b.y}, ${b.z}`);
-      // Sprint speed is 7.2 m/s: 0.24 m per tick. Nothing may move a body faster sideways.
+      // Sprint speed is 7.2 m/s, 0.24 m per tick. Nothing may move a body faster horizontally.
       expect(Math.hypot(b.x - px, b.z - pz)).toBeLessThan(0.3);
     }
   }
@@ -181,7 +181,7 @@ test("the 0.2 m wall cannot be crossed from any angle", () => {
     const yaw = (rng.int(12000) - 6000) & 0xffff; // roughly northward
     for (let i = 0; i < 120; i++) {
       stepBody(w, b, rng.int(255) - 127, FWD, yaw, 0, BTN_SPRINT | (rng.int(3) === 0 ? BTN_JUMP : 0), p, TICK_DT);
-      // The wall spans x 276..300. Rounding either end is legal; being level with it between them is not.
+      // The wall spans x 276 to 300. Going round either end is legal. Being level with it between them is not.
       if (b.x > 276 && b.x < 300) expect(b.z).toBeLessThan(261.5 + SKIN);
     }
   }
@@ -195,7 +195,7 @@ test("crouching and lying prone shorten the body and slow it; it rises only wher
   expect(stanceEye(p, STANCE_CROUCH)).toBeCloseTo(1.08, 5);
   expect(stanceEye(p, STANCE_PRONE)).toBeCloseTo(0.36, 5);
 
-  // A ceiling whose underside is 1.4 m up: too low to stand under, high enough to crouch.
+  // The ceiling's underside is 1.4 m up, too low to stand under and high enough to crouch.
   const ceiling = w.kind("core:ceiling");
   w.structs.add(ceiling, 64, 1.5, 30, 0, 0, 1);
   const b = bodyAt(w, 64, 24);
@@ -204,10 +204,10 @@ test("crouching and lying prone shorten the body and slow it; it rises only wher
   const z0 = b.z;
   run(w, b, 30, 0, FWD, NORTH, BTN_CROUCH);
   expect(b.stance).toBe(STANCE_CROUCH);
-  // Half the walking speed: 2.25 m in a second, give or take the last step it was held short by.
+  // Half the walking speed, 2.25 m in a second, give or take the step it was held short by.
   expect(b.z - z0).toBeGreaterThan(2.0);
   expect(b.z - z0).toBeLessThan(2.4);
-  // Under the ceiling, letting go of the key leaves it crouched; jumping and sprinting do nothing more.
+  // Under the ceiling it stays crouched with the key released, and jumping and sprinting do nothing more.
   run(w, b, 10, 0, 0, NORTH, BTN_CROUCH);
   expect(b.z).toBeGreaterThan(28.6);
   expect(b.z).toBeLessThan(31.4);
@@ -218,12 +218,11 @@ test("crouching and lying prone shorten the body and slow it; it rises only wher
   const z1 = b.z;
   run(w, b, 10, 0, FWD, NORTH, BTN_CROUCH | BTN_SPRINT);
   expect(b.z - z1).toBeLessThan(0.76);
-  // Out from under it, it stands by itself.
   run(w, b, 200, 0, FWD, NORTH);
   expect(b.z).toBeGreaterThan(32);
   expect(b.stance).toBe(STANCE_STAND);
 
-  // A ceiling 1.0 m up: only lying down fits, and from there it rises as far as there is room.
+  // The first ceiling is 1.0 m up, so only prone fits. The second is 1.4 m up.
   w.structs.add(ceiling, 80, 1.1, 30, 0, 0, 1);
   w.structs.add(ceiling, 80, 1.5, 33, 0, 0, 1);
   const c = bodyAt(w, 80, 27.5);
@@ -232,12 +231,11 @@ test("crouching and lying prone shorten the body and slow it; it rises only wher
   const z2 = c.z;
   run(w, c, 60, 0, FWD, NORTH, BTN_PRONE);
   expect(c.stance).toBe(STANCE_PRONE);
-  // A fifth of the walking speed: 0.9 m/s, so 1.8 m in two seconds.
+  // A fifth of the walking speed is 0.9 m/s, so 1.8 m in two seconds.
   expect(c.z - z2).toBeGreaterThan(1.6);
   expect(c.z - z2).toBeLessThan(1.95);
   run(w, c, 30, 0, 0, NORTH);
   expect(c.stance).toBe(STANCE_PRONE);
-  // Crawl on under the higher ceiling and let go: it gets to a crouch there, and to its feet beyond.
   run(w, c, 110, 0, FWD, NORTH, BTN_PRONE);
   expect(c.z).toBeGreaterThan(32.2);
   expect(c.z).toBeLessThan(33.8);
@@ -246,7 +244,7 @@ test("crouching and lying prone shorten the body and slow it; it rises only wher
   run(w, c, 200, 0, FWD, NORTH);
   expect(c.stance).toBe(STANCE_STAND);
 
-  // Going down is immediate, even in the air, and a swimmer has no stance.
+  // Going down is immediate, even in the air. A swimmer has no stance.
   const d = bodyAt(w, 100, 100);
   stepBody(w, d, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
   stepBody(w, d, 0, 0, NORTH, 0, BTN_PRONE, p, TICK_DT);
@@ -265,34 +263,31 @@ test("crouching and lying prone shorten the body and slow it; it rises only wher
 
 test("a body with a turn rate comes round to where it is asked to look at that rate, by the short way, and goes where it faces", () => {
   const w = flatWorld();
-  // 90 degrees a second, in whole units a tick as the registry makes it; and no stepping sideways.
+  // 90 degrees a second, rounded to whole yaw units per tick as the registry does.
   const rate = Math.round(65536 / 4 / 30);
   const p: MoveParams = { ...survivor(w), turnRate: rate, strafe: false };
   const b = bodyAt(w, 64, 64);
   const step = (ticks: number, moveX: number, moveZ: number, yaw: number): void => {
     for (let i = 0; i < ticks; i++) stepBody(w, b, moveX, moveZ, yaw, 0, 0, p, TICK_DT);
   };
-  // Asked to face a quarter turn away: a second to get there, one step of the rate each tick.
   step(1, 0, 0, 16384);
   expect(b.yaw).toBe(rate);
   step(14, 0, 0, 16384);
   expect(b.yaw).toBe(rate * 15);
   step(30, 0, 0, 16384);
   expect(b.yaw).toBe(16384);
-  // Across zero it takes the short way round.
   step(3, 0, 0, 65536 - 10000);
   expect(b.yaw).toBe(16384 - rate * 3);
   b.yaw = 100;
   step(1, 0, 0, 65436);
   expect(b.yaw).toBe(65436);
-  // It walks the way it faces, not the way it is asked to look, and sideways not at all.
   b.yaw = 0;
   step(30, 127, 0, 0);
   expect([b.x, b.z]).toEqual([64, 64]);
   step(1, 0, FWD, 30000);
   expect(b.vz).toBeGreaterThan(0);
   expect(b.yaw).toBe(rate);
-  // A survivor faces where it looks at once; so does anything while it is a ghost.
+  // A survivor has no turn rate and faces where it looks at once. So does any body in ghost mode.
   const s = bodyAt(w, 64, 64);
   stepBody(w, s, 0, 0, 40000, 0, 0, survivor(w), TICK_DT);
   expect(s.yaw).toBe(40000);

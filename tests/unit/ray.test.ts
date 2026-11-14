@@ -28,7 +28,6 @@ test("a ray meets a box where sampling along it first finds a point inside", () 
     const o = [rng.range(-6, 6), rng.range(-6, 6), rng.range(-6, 6)];
     const lo = [rng.range(-3, 0), rng.range(-3, 0), rng.range(-3, 0)];
     const hi = [lo[0]! + rng.range(0.2, 4), lo[1]! + rng.range(0.2, 4), lo[2]! + rng.range(0.2, 4)];
-    // Half the rays are aimed at the box, half anywhere.
     const aimed = rng.int(2) === 0;
     const v = [0, 1, 2].map((a) => (aimed ? rng.range(lo[a]!, hi[a]!) - o[a]! : rng.range(-1, 1)));
     const len = Math.hypot(v[0]!, v[1]!, v[2]!);
@@ -44,7 +43,7 @@ test("a ray meets a box where sampling along it first finds a point inside", () 
       }
     }
     if (brute === Infinity) {
-      // Sampling can miss a corner the exact test clips; the exact test must not invent a hit far from the box.
+      // Sampling can miss a corner the exact test clips. The exact test must still not invent a hit far from the box.
       if (t !== Infinity) expect(t).toBeLessThan(20.01);
       continue;
     }
@@ -58,23 +57,22 @@ test("world rays stop at the ground and at structures, whichever is nearer, and 
   const w = flatWorld(4);
   const wall = w.kind("core:wall"); // 3 m wide, 3 m tall, 0.2 m thick
   w.structs.add(wall, 100, 1.5, 110, 0, 0, 1);
-  const turned = w.structs.add(wall, 120, 1.5, 100, 16384, 0, 1); // turned a quarter: now thin along X
-  // Level, toward the wall: hits its near face.
+  const turned = w.structs.add(wall, 120, 1.5, 100, 16384, 0, 1); // A quarter turn makes it thin along X.
+  // A level ray toward the wall hits its near face.
   expect(castWorld(w, 100, 1.6, 100, 0, 0, 1, 50)).toBe(HIT_STRUCTURE);
   expect(rayHit.t).toBeCloseTo(9.9, 5);
-  // Past its edge: nothing within range.
+  // Past its edge there is nothing within range.
   expect(castWorld(w, 102, 1.6, 100, 0, 0, 1, 50)).toBe(HIT_NONE);
   expect(rayHit.t).toBe(50);
-  // Over it.
+  // The ray passes over it.
   expect(castWorld(w, 100, 3.2, 100, 0, 0, 1, 50)).toBe(HIT_NONE);
-  // Too short to reach.
+  // The range is too short to reach it.
   expect(castWorld(w, 100, 1.6, 100, 0, 0, 1, 9)).toBe(HIT_NONE);
-  // The turned wall, along X, and which structure it was.
   expect(castWorld(w, 100, 1.6, 100, 1, 0, 0, 50)).toBe(HIT_STRUCTURE);
   expect(rayHit.t).toBeCloseTo(19.9, 5);
   expect(rayHit.ref).toBe(turned);
   expect(castWorld(w, 100, 1.6, 102, 1, 0, 0, 50)).toBe(HIT_NONE); // its long side now runs along Z, 3 m wide
-  // Down at the ground in front of the wall: the ground comes first.
+  // Aimed down in front of the wall, the ray hits the ground first.
   const d = [0, 0, 0];
   lookDirection(0, -8192, d); // 45 degrees down
   expect(castWorld(w, 100, 1.6, 100, d[0]!, d[1]!, d[2]!, 50)).toBe(HIT_TERRAIN);
@@ -99,7 +97,7 @@ test("terrain rays on the proving ground agree with walking along the ray in sma
         break;
       }
     }
-    // A structure may stop the ray first; never later than the ground would.
+    // A structure may stop the ray first, but never later than the ground would.
     expect(rayHit.t).toBeLessThanOrEqual(brute + 0.02);
     if (kind === HIT_TERRAIN) {
       hits++;

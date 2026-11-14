@@ -1,5 +1,3 @@
-// Survivors set up to build: level ground, cheats, and pieces in hand.
-
 import { expect } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
@@ -15,10 +13,10 @@ const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const U = STRUCT_UNITS;
 export const PIECES = ["foundation", "wall", "ceiling", "pillar", "door", "stairs"];
 
-/** How many of each piece a builder starts with: as many as one who has put everything into carrying can walk with. */
+/** Each builder starts with this many of each piece, as many as a survivor with all its points in weight can walk with. */
 export const STOCK = 60;
 
-/** Survivors with cheats on level ground, strong enough to carry sixty pieces of every kind in wood, one kind to each of the first six hotbar slots. */
+/** Survivors with cheats on level ground, each with STOCK wood pieces of every kind, one kind in each of the first six hotbar slots. */
 export function builder(names = ["ada"], wide = 40, deep = wide, host: HostOptions = {}) {
   const h = new Harness({}, 1, 60, { dev: true, ...host });
   const sessions = names.map((n) => h.join(n));
@@ -40,12 +38,11 @@ export function builder(names = ["ada"], wide = 40, deep = wide, host: HostOptio
   });
   h.run(200);
   const structs = h.world.structs;
-  /** Take the piece of this name in hand. */
   const hold = (s: ClientSession, piece: string): void => {
     s.command(CMD_SELECT, (w: BitWriter) => w.u8(PIECES.indexOf(piece)));
     h.run(100);
   };
-  /** Ask outright for a piece to be set in place `socket` of `target`, and say what the server answered and the ref it built, if it did. */
+  /** Sends CMD_PLACE directly. ref is -1 if nothing was built. */
   const join = (s: ClientSession, piece: string, target: number, socket: number, turn = 0, variant = 0): { code: number; ref: number } => {
     hold(s, piece);
     let code = -1;
@@ -61,7 +58,7 @@ export function builder(names = ["ada"], wide = 40, deep = wide, host: HostOptio
     const k = ref & 0xffff;
     return [t.kind[k]!, Math.round(t.x[k]! * U), Math.round(t.y[k]! * U), Math.round(t.z[k]! * U), t.yaw[k]!, t.owner[k]!];
   };
-  /** Ask for something to be done to a thing built (a STRUCT_ action), and say what the server answered. */
+  /** `action` is a STRUCT_ constant. Returns the result code. */
   const act = (s: ClientSession, ref: number, action: number): number => {
     let code = -1;
     s.onResult = (_seq, c) => void (code = c);
@@ -69,7 +66,6 @@ export function builder(names = ["ada"], wide = 40, deep = wide, host: HostOptio
     h.run(150);
     return code;
   };
-  /** How many of an item a survivor holds, by its name. */
   const has = (s: ClientSession, name: string): number => s.inventory!.total(id(name));
   return { h, sessions, at, hold, join, count, rowOf, structs, act, has };
 }

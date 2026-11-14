@@ -1,10 +1,8 @@
-// A fire worked out from the last time anyone looked: watched or not, the same.
-
 import { expect, test } from "bun:test";
 import { Rng } from "../../shared/rng.ts";
 import { burn, type Fire, type Hearth } from "../../shared/sim/station.ts";
 
-/** A hearth of plain numbers: pieces of fuel in the order they will burn, raw things that each spoil at a tick, and room for so many done. */
+/** A hearth of plain numbers. fuel is ticks per piece in burn order, raw the tick each raw item spoils, and room the cooked items it holds. */
 function hearth(fuel: number[], raw: number[], cookTicks: number, room: number) {
   const events: string[] = [];
   const state = { fuel: [...fuel], raw: [...raw].sort((a, b) => a - b), cooked: 0, room };
@@ -26,7 +24,8 @@ function hearth(fuel: number[], raw: number[], cookTicks: number, room: number) 
 }
 
 test("a fire burns its fuel a piece at a time, cooks what is over it one after another, and goes out at the tick the last piece ends", () => {
-  // Two pieces of 900 ticks and three things that take 600 each and never spoil: done at 600, 1200 and 1800, and out at 1800.
+  // Two pieces of 900 ticks and three items of 600 ticks each that never spoil, lit at tick 100.
+  // The items are cooked at 700, 1300 and 1900, and the fire is out at 1900.
   const a = hearth([900, 900], [1e9, 1e9, 1e9], 600, 99);
   const fire: Fire = { at: 100, fuel: 0, cook: 0 };
   expect(burn(fire, a.h, 100)).toBe(-1);
@@ -36,21 +35,21 @@ test("a fire burns its fuel a piece at a time, cooks what is over it one after a
   expect(burn(fire, a.h, 5000)).toBe(1900);
   expect(a.events).toEqual(["cooked@700", "cooked@1300", "cooked@1900"]);
   expect([fire.at, fire.fuel, a.state.raw.length, a.state.cooked]).toEqual([1900, 0, 0, 3]);
-  // Nothing to burn: it is out at once.
+  // With nothing to burn it is out at once.
   expect(burn({ at: 7, fuel: 0, cook: 0 }, hearth([], [1e9], 600, 9).h, 50)).toBe(7);
-  // What is over a fire that goes out early is not done; with nothing over it, fuel just burns.
+  // An item over a fire that goes out early is not cooked. With nothing over it, the fuel still burns.
   const b = hearth([225, 225], [1e9], 600, 9);
   const short: Fire = { at: 0, fuel: 0, cook: 0 };
   expect([burn(short, b.h, 9999), b.events.length, short.cook]).toEqual([450, 0, 450]);
   expect(burn({ at: 0, fuel: 0, cook: 0 }, hearth([900], [], 600, 9).h, 9999)).toBe(900);
-  // No room for what is done: it waits over the fire, done, while the fuel burns on; given room, it comes off at once.
+  // With no room, a cooked item waits over the fire while the fuel burns on. Given room, it comes off at once.
   const c = hearth([900, 900], [1e9, 1e9], 600, 0);
   const full: Fire = { at: 0, fuel: 0, cook: 0 };
   expect([burn(full, c.h, 1000), c.events.length, full.cook]).toEqual([-1, 0, 600]);
   c.state.room = 5;
   expect(burn(full, c.h, 1001)).toBe(-1);
   expect(c.events).toEqual(["cooked@1000"]);
-  // What spoils before its turn is not cooked, and what was half done when it spoiled is no head start for the next.
+  // An item that spoils before its turn is not cooked, and one half cooked when it spoiled gives the next no head start.
   const d = hearth([900, 900, 900], [1500, 1e9], 600, 9);
   const fresh: Fire = { at: 0, fuel: 0, cook: 0 };
   burn(fresh, d.h, 2700);
@@ -71,7 +70,7 @@ test("looked at every tick or once at the end, a fire comes to the same: the sam
     const once = hearth(fuel, raw, cook, room);
     const f1: Fire = { at: start, fuel: 0, cook: 0 };
     const out1 = burn(f1, once.h, start + end);
-    // Watched: every tick for a while, then in steps of any size, to the same moment.
+    // Watched every tick for a while, then in steps of any size, to the same end tick.
     const often = hearth(fuel, raw, cook, room);
     const f2: Fire = { at: start, fuel: 0, cook: 0 };
     let out2 = -1;

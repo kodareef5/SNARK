@@ -16,7 +16,7 @@ test("a glTF export becomes a pack mesh with levels of detail, colour regions an
   const mesh = pack.header.meshes[pack.meshIndex.get("test:pyramid")!]!;
   expect(mesh.lods.map((l) => [l.vertexCount, l.indexCount])).toEqual([[9, 18], [3, 3]]);
   expect(mesh.collider).toEqual([1, 2, 1]);
-  // Node transforms are baked: scale 2, lifted 1. Both levels share bounds x,z in [-1,1], y in [0,3].
+  // Node transforms are baked (scale 2, lifted 1). Both levels share the bounds x and z in [-1, 1], y in [0, 3].
   expect(mesh.center.map((v) => +v.toFixed(4))).toEqual([0, 1.5, 0]);
   expect(mesh.half.map((v) => +v.toFixed(4))).toEqual([1, 1.5, 1]);
 
@@ -60,7 +60,7 @@ test("the core pack has a mesh for every graybox definition and rejects damaged 
 
 test("the pack carries bodies cut into slots, each vertex on one bone, and the clips that move them", () => {
   const pack = parsePack(buildCorePack());
-  // The mannequin: the skeleton's own capsules. The two modelled bodies: each on its own rig, at three levels of detail.
+  // The mannequin is the skeleton's own capsules. Each modelled body is on its own rig, at three levels of detail.
   for (const [base, rig, levels] of [["core:mannequin", undefined, 1], ["core:human_m", "human_m", 3], ["core:human_f", "human_f", 3]] as const) {
     let triangles = 0;
     for (const slot of SLOT_NAMES) {
@@ -70,7 +70,7 @@ test("the pack carries bodies cut into slots, each vertex on one bone, and the c
       expect(mesh.lods.length).toBe(levels);
       triangles += mesh.lods[0]!.indexCount / 3;
       for (let l = 1; l < levels; l++) expect(mesh.lods[l]!.indexCount).toBeLessThan(mesh.lods[l - 1]!.indexCount * 0.6);
-      // Every vertex follows a bone that belongs to this slot.
+      // On the mannequin every vertex follows a bone of this slot.
       const verts = lodVertices(pack, mesh.lods[0]!);
       for (let v = 0; v < mesh.lods[0]!.vertexCount; v++) {
         const bone = verts[v * VERTEX_BYTES + 7]!;
@@ -83,9 +83,9 @@ test("the pack carries bodies cut into slots, each vertex on one bone, and the c
       expect(triangles).toBeLessThan(5000);
     }
   }
-  // A rig is the skeleton's bones resting where that body has them: close to the skeleton's own, not the same.
+  // A rig is the skeleton's bones at that body's rest positions, close to the skeleton's own.
   for (const rig of pack.header.rigs) {
-    // (A creature's rig is a whole skeleton of its own: tests/unit/creature.test.ts.)
+    // A creature's rig is a whole skeleton of its own. See tests/unit/creature.test.ts.
     if (rig.names) continue;
     expect(rig.skeleton).toBe("human");
     expect(rig.rest.length).toBe(HUMAN.bones * 3);
@@ -94,10 +94,8 @@ test("the pack carries bodies cut into slots, each vertex on one bone, and the c
     expect(far).toBeLessThan(0.1);
   }
   expect(pack.header.rigs.map((r) => r.id)).toEqual(["core:parasaur", "core:raptor", "human_f", "human_m"]);
-  // Hair and a beard for each body.
   for (const id of ["core:human_m/hair/buzzed", "core:human_f/hair/long", "core:human_m/beard/full"]) expect(pack.meshIndex.has(id)).toBe(true);
 
-  // The clips survive the trip through the file: unit rotations, the frames the conversion counted.
   const clips = pack.clips;
   expect(clips.clips.length).toBeGreaterThanOrEqual(30);
   const jog = clips.clips[clips.index.get("human/jog")!]!;
