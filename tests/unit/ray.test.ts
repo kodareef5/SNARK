@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Rng } from "../../shared/rng.ts";
 import { HIT_NONE, HIT_STRUCTURE, HIT_TERRAIN, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
+import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { flatWorld, provingWorld } from "../fixtures/world.ts";
 
 test("look direction is a unit vector that follows yaw and pitch", () => {
@@ -103,6 +104,86 @@ test("terrain rays on the proving ground agree with walking along the ray in sma
       hits++;
       expect(Math.abs(rayHit.t - brute)).toBeLessThan(0.02);
     } else if (kind === HIT_NONE) expect(brute).toBe(60);
+  }
+  expect(hits).toBeGreaterThan(150);
+});
+
+/** Where the ray first meets one of the two triangles of any cell under its path, by testing every one of them. Infinity for none. */
+function firstTriangle(hf: Heightfield, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+  const c = hf.cell;
+  const span = (o: number, d: number, cells: number): [number, number] => {
+    const a = Math.floor(Math.min(o, o + d * maxT) / c);
+    const b = Math.floor(Math.max(o, o + d * maxT) / c);
+    return [Math.max(0, a), Math.min(cells - 1, b)];
+  };
+  const [i0, i1] = span(ox, dx, hf.nx - 1);
+  const [j0, j1] = span(oz, dz, hf.nz - 1);
+  let best = Infinity;
+  const tri = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, cx: number, cy: number, cz: number): void => {
+    // Moller and Trumbore, with the edges counted in.
+    const e1 = [bx - ax, by - ay, bz - az];
+    const e2 = [cx - ax, cy - ay, cz - az];
+    const p = [dy * e2[2]! - dz * e2[1]!, dz * e2[0]! - dx * e2[2]!, dx * e2[1]! - dy * e2[0]!];
+    const det = e1[0]! * p[0]! + e1[1]! * p[1]! + e1[2]! * p[2]!;
+    if (Math.abs(det) < 1e-15) return;
+    const s = [ox - ax, oy - ay, oz - az];
+    const u = (s[0]! * p[0]! + s[1]! * p[1]! + s[2]! * p[2]!) / det;
+    const q = [s[1]! * e1[2]! - s[2]! * e1[1]!, s[2]! * e1[0]! - s[0]! * e1[2]!, s[0]! * e1[1]! - s[1]! * e1[0]!];
+    const v = (dx * q[0]! + dy * q[1]! + dz * q[2]!) / det;
+    const t = (e2[0]! * q[0]! + e2[1]! * q[1]! + e2[2]! * q[2]!) / det;
+    if (u < -1e-12 || v < -1e-12 || u + v > 1 + 1e-12 || t < 0 || t > maxT) return;
+    if (t < best) best = t;
+  };
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
+      const x0 = i * c;
+      const z0 = j * c;
+      const h00 = hf.sample(i, j);
+      const h10 = hf.sample(i + 1, j);
+      const h01 = hf.sample(i, j + 1);
+      const h11 = hf.sample(i + 1, j + 1);
+      tri(x0, h00, z0, x0 + c, h10, z0, x0 + c, h11, z0 + c);
+      tri(x0, h00, z0, x0 + c, h11, z0 + c, x0, h01, z0 + c);
+    }
+  }
+  return best;
+}
+
+test("a ray meets the ground where it first crosses a drawn triangle, however thin the crossing", () => {
+  // A ridge along x: one row of samples a metre up, so two slopes of 1 in 2 meet at a sharp crest at z = 64.
+  const w = flatWorld(2);
+  for (let i = 0; i < w.hf.nx; i++) w.hf.setSample(i, 32, 1);
+  // Level rays a millimetre under the crest, across it at many angles. Each is under the ground for a few millimetres only.
+  const misses: number[] = [];
+  for (let k = 0; k < 64; k++) {
+    const a = (k - 32) / 40;
+    const dx = Math.sin(a);
+    const dz = Math.cos(a);
+    const t = castWorld(w, 60, 0.999, 50, dx, 0, dz, 40) === HIT_TERRAIN ? rayHit.t : Infinity;
+    // The rising slope reaches 0.999 at z = 63.998.
+    if (!(Math.abs(t - 13.998 / dz) < 1e-9)) misses.push(k);
+  }
+  expect(misses).toEqual([]);
+
+  // Over the proving ground, every ray ends where the first triangle it crosses is, to rounding.
+  const p = provingWorld();
+  const ground = { hf: p.hf, structs: flatWorld(8).structs };
+  const rng = new Rng(31);
+  const d = [0, 0, 0];
+  let hits = 0;
+  for (let i = 0; i < 400; i++) {
+    const ox = rng.range(60, 450);
+    const oz = rng.range(60, 450);
+    const oy = p.hf.heightAt(ox, oz) + rng.range(0.5, 12);
+    lookDirection(rng.int(65536), rng.int(16384) - 12000, d);
+    const want = firstTriangle(p.hf, ox, oy, oz, d[0]!, d[1]!, d[2]!, 60);
+    const kind = castWorld(ground, ox, oy, oz, d[0]!, d[1]!, d[2]!, 60);
+    if (want === Infinity) expect(kind).toBe(HIT_NONE);
+    else {
+      hits++;
+      expect(kind).toBe(HIT_TERRAIN);
+      expect(Math.abs(rayHit.t - want)).toBeLessThan(1e-9);
+    }
   }
   expect(hits).toBeGreaterThan(150);
 });

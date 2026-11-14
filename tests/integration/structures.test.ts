@@ -247,7 +247,8 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   h.run(1400);
   expect(shots.bursts).toBe(1);
   expect([shots.thrownCount, live()]).toEqual([0, 0]);
-  expect(s.events.filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.far, Math.round(ev.z - lie.z)])).toEqual([[5, 0]]);
+  // Where it lay, to the float an event carries a place in.
+  expect(s.events.filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.far, Math.abs(ev.z - lie.z) < 0.001])).toEqual([[5, true]]);
   expect(h.host.combat.hits + h.host.combat.structureHits).toBe(0);
 
   const stone = structs.add(id("wall"), lie.x, at.y + 1.5, lie.z + 2.5, 0, 0, 1500);

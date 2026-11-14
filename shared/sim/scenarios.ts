@@ -9,13 +9,15 @@ import { ACT_COOL, ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW
 import { Solved, rayZones, solve, zoneHit } from "../anim/skeleton.ts";
 import { creaturePose, rayCreature } from "../anim/creature.ts";
 import type { Rig } from "../anim/rigs.ts";
-import type { Registry } from "../content/registry.ts";
+import { shapeHalf, type Def, type ShapeDef } from "../content/defs.ts";
+import { compileContent, type Registry } from "../content/registry.ts";
 import { deriveRegistry, type Tuning } from "../content/tuning.ts";
 import { TICK_DT } from "../coords.ts";
 import { Rng } from "../rng.ts";
 import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, stepBody } from "./character.ts";
 import type { Heightfield } from "../world/heightfield.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../world/proving.ts";
+import { castWorld, lookDirection, rayHit } from "../world/ray.ts";
 import { StructureStore } from "../world/structures.ts";
 import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../world/snap.ts";
 
@@ -171,6 +173,103 @@ export function poseHash(anim: HumanAnim): string {
             mix(fb);
           }
         }
+      }
+    }
+  }
+  return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+/** The triangle piece's half thickness, a foundation's. The roof slab rises this much over its run of 3 m, and is this thick, upright. */
+export const TRIANGLE_HALF = 0.1875;
+export const ROOF_RISE = 1.5;
+export const ROOF_THICK = 0.2;
+
+const H = 1.5;
+const pieceShapes: readonly ShapeDef[] = [
+  // Rises a storey over a side, toward +Z: 45 degrees.
+  { type: "shape", id: "test:shape_ramp", role: "stairs", boxes: [], hulls: [{ corners: [[-H, -H, -H], [H, -H, -H], [-H, -H, H], [H, -H, H], [-H, H, H], [H, H, H]] }] },
+  // Its origin is a corner, and its sides run 3 m along the first axis and 3 m along the second, 60 degrees on.
+  {
+    type: "shape",
+    id: "test:shape_triangle",
+    role: "foundation",
+    boxes: [],
+    hulls: [{ sixty: true, corners: [0, 3].flatMap((a) => [-TRIANGLE_HALF, TRIANGLE_HALF].map((y) => [a, y, 0] as [number, number, number])).concat([-TRIANGLE_HALF, TRIANGLE_HALF].map((y) => [0, y, 3] as [number, number, number])) }],
+  },
+  {
+    type: "shape",
+    id: "test:shape_roof",
+    role: "ceiling",
+    boxes: [],
+    hulls: [{ corners: [-H, H].flatMap((x) => [[x, -ROOF_RISE / 2 - ROOF_THICK / 2, -H], [x, -ROOF_RISE / 2 + ROOF_THICK / 2, -H], [x, ROOF_RISE / 2 - ROOF_THICK / 2, H], [x, ROOF_RISE / 2 + ROOF_THICK / 2, H]] as [number, number, number][]) }],
+  },
+];
+
+/**
+ * Sloped and three-sided pieces made of convex parts, for this scenario and the tests only: a ramp wedge, a triangle on 60
+ * degree axes and a sloped roof slab. The game's content has none yet.
+ */
+export const HULL_PIECES: readonly Def[] = [
+  ...pieceShapes,
+  ...pieceShapes.map((s): Def => ({ type: "structure", class: "piece", id: s.id.replace("shape_", ""), mesh: "shape", shape: s.id, half: shapeHalf(s.boxes, s.hulls), color: 5, hp: 10000, material: "core:mat_stone" })),
+];
+
+/**
+ * With the definitions of `base` and HULL_PIECES: ramps, triangles and roof slabs at random turns on the proving ground, and
+ * bodies of three sizes walking among them and over its slopes, each casting a ray from its eye every tick. Hashes where the
+ * bodies are and what the rays meet.
+ */
+export function hullHash(base: Registry): string {
+  const { registry: reg, errors } = compileContent([...base.defs.filter((d): d is Def => d !== null), ...HULL_PIECES]);
+  if (!reg) throw new Error(errors.join("\n"));
+  const hf = buildProvingHeightfield();
+  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  const world = { hf, structs };
+  const rng = new Rng(9091);
+  for (let n = 0; n < 60; n++) {
+    const kind = ["test:ramp", "test:triangle", "test:roof"][n % 3]!;
+    structs.add(reg.index.get(kind)!, 225 + rng.range(0, 60), [1.5, 0.1875, 1.4][n % 3]!, 225 + rng.range(0, 60), rng.int(65536), 1, 1);
+  }
+  const moves = ["core:survivor", "core:raptor", "core:parasaur"].map((id) => reg.move[reg.index.get(id)!]!);
+  // Among the pieces, and on the slope strips.
+  const bodies = Array.from({ length: 24 }, (_, i) => {
+    const b = new Body();
+    b.x = i < 18 ? 225 + rng.range(0, 60) : 200 + (i - 18) * 8;
+    b.z = i < 18 ? 225 + rng.range(0, 60) : 292;
+    b.y = hf.heightAt(b.x, b.z) + 4;
+    return b;
+  });
+  const input = bodies.map(() => [0, 127, 0, 0]);
+  const f = new Float64Array(10);
+  const bytes = new Uint8Array(f.buffer);
+  const d = [0, 0, 0];
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9747b28c;
+  for (let t = 0; t < 600; t++) {
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i]!;
+      const inp = input[i]!;
+      if (rng.int(20) === 0) {
+        inp[0] = rng.int(255) - 127;
+        inp[1] = rng.int(255) - 127;
+        inp[2] = rng.int(65536);
+        inp[3] = rng.int(4);
+      }
+      stepBody(world, b, inp[0]!, inp[1]!, inp[2]!, 0, inp[3]!, moves[i % moves.length]!, TICK_DT);
+      lookDirection(inp[2]!, (i * 911 + t * 37) % 12000 - 6000, d);
+      f[0] = castWorld(world, b.x, b.y + 1.5, b.z, d[0]!, d[1]!, d[2]!, 60);
+      f[1] = rayHit.t;
+      f[2] = rayHit.ref;
+      f[3] = rayHit.nx;
+      f[4] = rayHit.ny;
+      f[5] = rayHit.nz;
+      f[6] = b.x;
+      f[7] = b.y;
+      f[8] = b.z;
+      f[9] = b.grounded ? 1 : 0;
+      for (let k = 0; k < bytes.length; k++) {
+        h1 = Math.imul(h1 ^ bytes[k]!, 0x01000193);
+        h2 = Math.imul(h2 + bytes[k]!, 0x85ebca6b) ^ (h2 >>> 13);
       }
     }
   }

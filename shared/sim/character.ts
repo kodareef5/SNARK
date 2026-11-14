@@ -4,7 +4,7 @@
 import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
-import { SKIN, capsuleBox, capsuleFree, push, restsOnStructure, type CollisionWorld } from "../world/collide.ts";
+import { PAD, SKIN, capsuleBox, capsuleFree, ground, groundUnder, push, restsOnStructure, type CollisionWorld } from "../world/collide.ts";
 import { Found } from "../world/structures.ts";
 
 export const BTN_JUMP = 1;
@@ -343,23 +343,23 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     if (nz < r) nz = r;
     else if (nz > maxZ) nz = maxZ;
 
-    // Terrain: rise onto walkable ground, slide along or stop at anything else.
-    let h = hf.heightAt(nx, nz);
+    // Terrain: rise onto walkable ground, slide along or stop at anything else. What is walkable is where the body touches it.
+    let h = groundUnder(hf, nx, nz, r);
     if (ny < h) {
-      if (!(h - ny <= p.stepUp && (hf.slopeCosAt(nx, nz) >= p.slopeCos || h - ny <= SKIN))) {
-        const hx = hf.heightAt(nx, z);
-        if (ny >= hx || (hx - ny <= p.stepUp && hf.slopeCosAt(nx, z) >= p.slopeCos)) {
+      if (!(h - ny <= p.stepUp && (ground.ny >= p.slopeCos || h - ny <= SKIN))) {
+        const hx = groundUnder(hf, nx, z, r);
+        if (ny >= hx || (hx - ny <= p.stepUp && ground.ny >= p.slopeCos)) {
           nz = z;
           h = hx;
         } else {
-          const hz = hf.heightAt(x, nz);
-          if (ny >= hz || (hz - ny <= p.stepUp && hf.slopeCosAt(x, nz) >= p.slopeCos)) {
+          const hz = groundUnder(hf, x, nz, r);
+          if (ny >= hz || (hz - ny <= p.stepUp && ground.ny >= p.slopeCos)) {
             nx = x;
             h = hz;
           } else {
             nx = x;
             nz = z;
-            h = hf.heightAt(x, z);
+            h = groundUnder(hf, x, z, r);
           }
         }
       }
@@ -389,9 +389,14 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
         sortU32(found.refs, count);
         for (let k = 0; k < count; k++) {
           if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, height, 0)) continue;
-          nx += push.x;
-          ny += push.y;
-          nz += push.z;
+          if (push.hull && push.y > 0.7 * push.depth) {
+            // A sloped part it stands on lifts it straight up, as the ground does, so a ramp is climbed at a full stride.
+            ny += (push.depth * push.depth) / push.y;
+          } else {
+            nx += push.x;
+            ny += push.y;
+            nz += push.z;
+          }
           if (push.y > 0.7 * push.depth) {
             if (vy < 0) {
               if (-vy > fall) fall = -vy;
@@ -409,7 +414,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
         break;
       }
     }
-    h = hf.heightAt(nx, nz);
+    h = groundUnder(hf, nx, nz, r);
     if (ny < h && h - ny <= p.stepUp) {
       ny = h;
       clear = false;
@@ -458,9 +463,18 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   // Grounded means resting on terrain or a structure, or close enough above support to follow it down (slopes, stairs, kerbs).
   let grounded = false;
   if (vy <= 0) {
-    if (y - hf.heightAt(x, z) <= GROUND_PROBE || restsOnStructure(w, x, y, z, r, height, GROUND_PROBE)) grounded = true;
-    else if (walking && !capsuleFree(w, x, y - p.stepDown, z, r, height)) {
-      let lo = y - p.stepDown;
+    const under = groundUnder(hf, x, z, r);
+    const low = y - p.stepDown;
+    if (y - under <= GROUND_PROBE) grounded = true;
+    else if (walking && nothingBuilt(w, x, z, r, low, y + tall)) {
+      // Only the ground is near, and where the body rests on it is known.
+      if (under >= low) {
+        y = under;
+        grounded = true;
+      }
+    } else if (restsOnStructure(w, x, y, z, r, height, GROUND_PROBE)) grounded = true;
+    else if (walking && !capsuleFree(w, x, low, z, r, height)) {
+      let lo = low;
       let hi = y;
       for (let k = 0; k < SETTLE_ITERATIONS; k++) {
         const mid = (lo + hi) * 0.5;
@@ -496,6 +510,12 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   b.grounded = grounded;
   b.stance = stance;
   b.stamina = stamina;
+}
+
+/** True when no structure or node reaches the capsule's footprint between the heights `low` and `high`. */
+function nothingBuilt(w: CollisionWorld, x: number, z: number, r: number, low: number, high: number): boolean {
+  if (w.structs.query(x - r, z - r, x + r, z + r, found, low - PAD, high + PAD) > 0) return false;
+  return !w.nodes || w.nodes.query(x - r, z - r, x + r, z + r, found, low - PAD, high + PAD) === 0;
 }
 
 function canSprint(b: Body, buttons: number): boolean {
@@ -612,22 +632,22 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
     }
 
     // At the bottom, slide up when the rise is small, else along one axis, else stay.
-    let h = hf.heightAt(nx, nz);
+    let h = groundUnder(hf, nx, nz, r);
     if (ny < h) {
       if (h - ny > maxRise) {
-        const hx = hf.heightAt(nx, z);
+        const hx = groundUnder(hf, nx, z, r);
         if (ny >= hx || hx - ny <= maxRise) {
           nz = z;
           h = hx;
         } else {
-          const hz = hf.heightAt(x, nz);
+          const hz = groundUnder(hf, x, nz, r);
           if (ny >= hz || hz - ny <= maxRise) {
             nx = x;
             h = hz;
           } else {
             nx = x;
             nz = z;
-            h = hf.heightAt(x, z);
+            h = groundUnder(hf, x, z, r);
           }
         }
       }
@@ -658,7 +678,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
       }
       if (!moved) break;
     }
-    h = hf.heightAt(nx, nz);
+    h = groundUnder(hf, nx, nz, r);
     if (ny < h && h - ny <= maxRise) ny = h;
 
     const ddx = nx - x;
@@ -679,7 +699,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   let grounded = false;
   if (hf.seaLevel - y < p.height * SWIM_EXIT) {
     b.mode = MODE_WALK;
-    if (y - hf.heightAt(x, z) <= GROUND_PROBE || restsOnStructure(w, x, y, z, r, p.height, GROUND_PROBE)) {
+    if (y - groundUnder(hf, x, z, r) <= GROUND_PROBE || restsOnStructure(w, x, y, z, r, p.height, GROUND_PROBE)) {
       grounded = true;
       vy = 0;
     }

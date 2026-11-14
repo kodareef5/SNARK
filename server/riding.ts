@@ -8,7 +8,7 @@ import { TAU } from "../shared/math/scalar.ts";
 import { TEXT_NOTICE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { Body, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../shared/sim/character.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
-import { capsuleFree } from "../shared/world/collide.ts";
+import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Tribes } from "./tribes.ts";
@@ -147,14 +147,14 @@ export class Riding {
     for (const [fx, fz] of [[Math.cos(a), -Math.sin(a)], [-Math.cos(a), Math.sin(a)], [-Math.sin(a), -Math.cos(a)]] as const) {
       const x = ride.x + fx * off;
       const z = ride.z + fz * off;
-      const y = Math.max(world.hf.heightAt(x, z), ride.y);
+      const y = Math.max(groundUnder(world.hf, x, z, p.radius), ride.y);
       if (!capsuleFree(world, x, y, z, p.radius, p.height)) continue;
       // The body must fit all the way from the mount to the spot, or a mount beside a wall would set its rider down inside the base.
       let clear = true;
       for (let k = 1, steps = Math.ceil(off / (p.radius * 0.5)); k < steps && clear; k++) {
         const sx = ride.x + (fx * off * k) / steps;
         const sz = ride.z + (fz * off * k) / steps;
-        clear = capsuleFree(world, sx, Math.max(world.hf.heightAt(sx, sz), ride.y), sz, p.radius, p.height);
+        clear = capsuleFree(world, sx, Math.max(groundUnder(world.hf, sx, sz, p.radius), ride.y), sz, p.radius, p.height);
       }
       if (!clear) continue;
       b.x = x;

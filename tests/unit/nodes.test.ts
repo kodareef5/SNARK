@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
-import { capsuleFree } from "../../shared/world/collide.ts";
+import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
 import { NodeField, type NodeSpot } from "../../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_NODES_PER_CHUNK, PROVING_SEA_LEVEL, buildProvingHeightfield, provingNodes } from "../../shared/world/proving.ts";
 import { HIT_NODE, castWorld, rayHit } from "../../shared/world/ray.ts";
@@ -89,16 +89,17 @@ test("trees and rocks stop a body, bushes do not, and a ray finds all three", ()
     for (let i = 0; i < PROVING_NODES_PER_CHUNK; i++) {
       f.source.at(chunk, i, spot);
       if (spot.kind === 0 || seen.has(spot.kind)) continue;
-      // Pick one with level ground to its south, so a body can walk straight at it.
-      const ground = hf.heightAt(spot.x, spot.z);
-      if (Math.abs(hf.heightAt(spot.x, spot.z - 3) - ground) > 0.3 || !capsuleFree(world, spot.x, hf.heightAt(spot.x, spot.z - 3), spot.z - 3, p.radius, p.height)) continue;
+      // Pick one with level ground to its south, so a body can walk straight at it. A body stands where its lower sphere rests.
+      const ground = groundUnder(hf, spot.x, spot.z, p.radius);
+      const south = groundUnder(hf, spot.x, spot.z - 3, p.radius);
+      if (Math.abs(south - ground) > 0.3 || !capsuleFree(world, spot.x, south, spot.z - 3, p.radius, p.height)) continue;
       seen.add(spot.kind);
       const soft = reg.soft[spot.kind] === 1;
       expect(capsuleFree(world, spot.x, ground, spot.z, p.radius, p.height)).toBe(soft);
       const b = new Body();
       b.x = spot.x;
       b.z = spot.z - 3;
-      b.y = hf.heightAt(b.x, b.z);
+      b.y = south;
       b.grounded = true;
       for (let t = 0; t < 90; t++) {
         stepBody(world, b, 0, 127, 0, 0, 0, p, TICK_DT);

@@ -9,7 +9,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
-import { creatureHash, poseHash, simHash, snapHash, tunedHash } from "../../shared/sim/scenarios.ts";
+import { creatureHash, hullHash, poseHash, simHash, snapHash, tunedHash } from "../../shared/sim/scenarios.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { App } from "./app.ts";
@@ -255,7 +255,7 @@ export function formatsOf(extensions: readonly string[]): string[] {
 export function deviceScenarios(reg: Registry, pack: Pack): [string, () => string][] {
   const anim = new HumanAnim(pack.clips);
   const rigs = buildRigs(pack.header.rigs, pack.clips);
-  return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(rigs.values())], ["tuned", () => tunedHash(reg)]];
+  return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(rigs.values())], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)]];
 }
 
 /**

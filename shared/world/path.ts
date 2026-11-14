@@ -3,7 +3,7 @@
 // a roof or an obstacle. Costs are integers and ties are broken by cell, so the same world gives the same way on every engine.
 
 import { CHUNK_SIZE } from "../coords.ts";
-import { capsuleFree, type CollisionWorld } from "./collide.ts";
+import { capsuleFree, ground, groundUnder, type CollisionWorld } from "./collide.ts";
 import { frame, frameOf } from "./frame.ts";
 import { Found, type StructureStore } from "./structures.ts";
 
@@ -30,15 +30,16 @@ export const GROUND_SOLID = 4;
 const SWIM_SHARE = 0.7;
 
 /**
- * GROUND_FREE if a body of radius `r` can stand at (x, z), else the first thing that stops it. The capsule is tried a step
- * above the ground, so what movement climbs onto does not count.
+ * GROUND_FREE if a body of radius `r` can stand at (x, z), else the first thing that stops it. As in movement, the body stands
+ * where its lower sphere rests on the ground, and the slope is the ground's where it touches. The capsule is tried a step above
+ * that, so what movement climbs onto does not count.
  */
 export function groundAt(w: CollisionWorld, p: Walker, x: number, z: number, r = p.radius): number {
   const hf = w.hf;
   if (x < r || z < r || x > hf.sizeX - r || z > hf.sizeZ - r) return GROUND_OFF;
-  const y = hf.heightAt(x, z);
+  const y = groundUnder(hf, x, z, r);
   if (hf.seaLevel - y > p.height * SWIM_SHARE) return GROUND_WATER;
-  if (hf.slopeCosAt(x, z) < p.slopeCos) return GROUND_STEEP;
+  if (ground.ny < p.slopeCos) return GROUND_STEEP;
   return capsuleFree(w, x, y + p.stepUp, z, r, p.height) ? GROUND_FREE : GROUND_SOLID;
 }
 

@@ -229,3 +229,25 @@ test("on the proving ground a body walks every way found, round water, steep gro
   }
   expect(found).toBeGreaterThan(30);
 });
+
+test("the ground the way finder may walk ends where a body walking up to a slope too steep to climb stops, not where the slope starts", () => {
+  const w = { ...provingWorld(), structs: flatWorld(8).structs };
+  const p = survivor(w);
+  // Strip 5 is 60 degrees. Walking north at its foot, the body stops where its lower sphere meets the slope.
+  const x = SLOPE_X0 + SLOPE_WIDTH * 5 + SLOPE_WIDTH / 2;
+  const b = new Body();
+  b.x = x;
+  b.z = SLOPE_Z0 - 4;
+  b.y = w.hf.heightAt(b.x, b.z);
+  b.grounded = true;
+  for (let tick = 0; tick < 60; tick++) stepBody(w, b, 0, 127, 0, 0, 0, p, TICK_DT);
+  const stop = b.z;
+  expect(stop).toBeLessThan(SLOPE_Z0 - 0.1);
+  const wrong: string[] = [];
+  for (let z = SLOPE_Z0 - 1; z < SLOPE_Z0 + 1; z += 0.01) {
+    const free = groundAt(w, p, x, z) === GROUND_FREE;
+    if (z < stop - 0.02 && !free) wrong.push(`${z.toFixed(2)} is not free short of where the body stops, ${stop.toFixed(3)}`);
+    if (z > stop + 0.02 && free) wrong.push(`${z.toFixed(2)} is free past where the body stops, ${stop.toFixed(3)}`);
+  }
+  expect(wrong).toEqual([]);
+});

@@ -2,7 +2,8 @@
 // Each slot records the table version that last changed it, so a client is brought up to date by a scan, without an op log.
 
 import { CHUNK_SIZE, STRUCT_UNITS, chunkAt, chunkCount, type MapDims } from "../coords.ts";
-import { STRETCH_MOST, frame, frameOf } from "./frame.ts";
+import { hullPoint, type HullTable } from "./convex.ts";
+import { HALF_SIDE, STRETCH_MOST, frame, frameOf } from "./frame.ts";
 
 export const GRID_CELL = 4;
 /**
@@ -12,6 +13,8 @@ export const GRID_CELL = 4;
 export interface PartTable {
   readonly start: Uint32Array;
   readonly box: Float32Array;
+  /** Convex parts, for kinds with sloped or three-sided forms. */
+  readonly hulls?: HullTable;
 }
 
 /** Every kind gets one box of its half extents. */
@@ -193,6 +196,8 @@ export class StructureStore {
   private readonly low: Float32Array;
   private readonly high: Float32Array;
   readonly spread: Float32Array;
+  /** Per kind, metres its footprint is widened by, for convex parts on a 60 degree vector, whose corners round a little out. */
+  private readonly pad: Float32Array;
 
   constructor(dims: MapDims, halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array, soft: Uint8Array | null = null, parts: PartTable | null = null) {
     this.dims = dims;
@@ -213,6 +218,7 @@ export class StructureStore {
     this.low = new Float32Array(kinds);
     this.high = new Float32Array(kinds);
     this.spread = new Float32Array(kinds);
+    this.pad = new Float32Array(kinds);
     const box = this.parts.box;
     for (let k = 0; k < kinds; k++) {
       // The box of half sizes too, which the support rules measure by.
@@ -225,6 +231,19 @@ export class StructureStore {
         const fx = Math.abs(box[p]!) + box[p + 3]!;
         const fz = Math.abs(box[p + 2]!) + box[p + 5]!;
         spread = Math.max(spread, Math.sqrt(fx * fx + fz * fz));
+      }
+      const hulls = this.parts.hulls;
+      for (let h = hulls ? hulls.start[k]! : 0, end = hulls ? hulls.start[k + 1]! : 0; h < end; h++) {
+        const sixty = hulls!.sixty[h] === 1;
+        for (let c = hulls!.corner[h]!; c < hulls!.corner[h + 1]!; c++) {
+          const at = hulls!.at;
+          const [px, py, pz] = hullPoint([at[c * 3]!, at[c * 3 + 1]!, at[c * 3 + 2]!], sixty);
+          low = Math.min(low, py);
+          high = Math.max(high, py);
+          // A corner along a 60 degree vector is off its true place by up to that vector's rounding, under a unit in a half side.
+          spread = Math.max(spread, Math.sqrt(px * px + pz * pz) * (sixty ? 1 + 2 / HALF_SIDE : 1));
+          if (sixty) this.pad[k] = Math.max(this.pad[k]!, Math.abs(at[c * 3 + 2]!) / HALF_SIDE);
+        }
       }
       this.low[k] = low;
       this.high[k] = high;
@@ -580,8 +599,8 @@ export class StructureStore {
     const c = Math.abs(frame.cos);
     const hx = this.halfX[kind]! * frame.stretch;
     const hz = this.halfZ[kind]! * frame.stretch;
-    const ex = c * hx + s * hz;
-    const ez = s * hx + c * hz;
+    const ex = c * hx + s * hz + this.pad[kind]!;
+    const ez = s * hx + c * hz + this.pad[kind]!;
     let x0 = Math.floor((x - ex) / GRID_CELL);
     let x1 = Math.floor((x + ex) / GRID_CELL);
     let z0 = Math.floor((z - ez) / GRID_CELL);
