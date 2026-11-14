@@ -10,7 +10,10 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import {
   CMD_TEXT,
   CMD_VIEW,
+  BUTTON_MASK,
   HELLO_SPECTATE,
+  INPUT_HOLD_TICKS,
+  INPUT_KEPT,
   INPUT_REDUNDANCY,
   InputBuffer,
   MARGIN_UNKNOWN,
@@ -348,6 +351,8 @@ export class ClientSession {
   private readonly opts: SessionOptions;
   private move: MoveParams | null = null;
   private readonly inputs = new InputBuffer(HISTORY);
+  /** Buttons seen down on any frame since the last tick was sampled. */
+  private tapped = 0;
   private readonly bodies: Body[] = [];
   private readonly bodyTick = new Uint32Array(HISTORY);
   private readonly views = new ViewRing(() => new EntityView());
@@ -432,7 +437,10 @@ export class ClientSession {
     return a < 0 ? 0 : a > 1 ? 1 : a;
   }
 
-  /** Samples the given input for every tick that elapses. moveX and moveZ are -1..1 (right, forward). yaw and pitch are radians. */
+  /**
+   * Samples the given input for every tick that elapses. moveX and moveZ are -1..1 (right, forward). yaw and pitch are radians.
+   * A button down on any frame since the last tick is down for the next one, so a press shorter than a tick is not lost between two.
+   */
   update(nowMs: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
     if (this.state !== "active") return;
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
@@ -456,12 +464,14 @@ export class ClientSession {
     this.ownYaw = yaw;
     this.ownPitch = pitch;
 
+    this.tapped |= buttons;
     const target = Math.floor(this.tickClock);
     let steps = 0;
     while (this.simTick < target && steps < MAX_STEPS_PER_UPDATE) {
       const t = ++this.simTick;
       steps++;
-      this.inputs.set(t, qx, qz, qyaw, qpitch, buttons);
+      this.inputs.set(t, qx, qz, qyaw, qpitch, this.tapped | buttons);
+      this.tapped = 0;
       this.ownPrev.copy(this.own);
       this.step(t);
     }
@@ -585,7 +595,7 @@ export class ClientSession {
     this.stats.bytesIn += data.length;
     const r = this.r;
     r.reset(data);
-    const type = r.bits(4);
+    const type = r.u8();
     if (type === S_SNAPSHOT) {
       if (this.state === "active") this.snapshot(r);
     } else if (type === S_CHUNK) this.chunk(r);
@@ -1005,13 +1015,17 @@ export class ClientSession {
     this.own.copy(sb);
     this.bodies[slot]!.copy(sb);
     this.bodyTick[slot] = tick;
-    // Replay. Ticks with no stored input repeat the previous one, as the server did.
+    // Replay. Ticks with no stored input repeat the previous one for as long as the server did, then stop as it did.
     let last = this.inputs.has(tick) ? tick : 0;
+    let gap = 0;
     for (let t = tick + 1; t <= this.simTick; t++) {
-      if (this.inputs.has(t)) last = t;
-      else if (last !== 0) {
+      if (this.inputs.has(t)) {
+        last = t;
+        gap = 0;
+      } else if (last !== 0) {
         const i = last & this.inputs.mask;
-        this.inputs.set(t, this.inputs.moveX[i]!, this.inputs.moveZ[i]!, this.inputs.yaw[i]!, this.inputs.pitch[i]!, this.inputs.buttons[i]!);
+        const held = ++gap <= INPUT_HOLD_TICKS;
+        this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, this.inputs.buttons[i]! & (held ? BUTTON_MASK : INPUT_KEPT));
         last = t;
       } else this.inputs.set(t, 0, 0, Math.round((this.ownYaw / TAU) * YAW_UNITS) & 0xffff, 0, 0);
       if (t === this.simTick) this.ownPrev.copy(this.own);

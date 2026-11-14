@@ -97,8 +97,8 @@ test("a client that makes other content of the server's tuning than the server d
     const deliver = end.onMessage!;
     let seen = false;
     end.onMessage = (channel, data) => {
-      // The first reliable message is the welcome (type 1 in its low four bits).
-      if (channel === CH_RELIABLE && !seen && (data[0]! & 15) === 1) {
+      // The first reliable message is the welcome (type 1).
+      if (channel === CH_RELIABLE && !seen && data[0] === 1) {
         seen = true;
         data = data.slice();
         data[data.length - back] ^= 0xff;

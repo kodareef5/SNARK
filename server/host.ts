@@ -276,6 +276,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     motdSeconds: rules.num("Duration"),
     viewCap: rules.num("ViewCap"),
     snapshotBytesMax: rules.num("SnapshotBytesMax"),
+    pendingPerAddress: rules.num("PendingPerAddress"),
     ...opts.game,
     maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")),
   });

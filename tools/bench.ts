@@ -119,9 +119,9 @@ class Bot {
     this.rng = new Rng(seed);
     this.end = net.connect();
     this.end.onMessage = (_ch, data) => {
-      if ((data[0]! & 15) !== S_SNAPSHOT) return;
+      if (data[0] !== S_SNAPSHOT) return;
       this.r.reset(data);
-      this.r.bits(4);
+      this.r.u8();
       const tick = this.r.u32();
       if (tick > this.serverTick) this.serverTick = tick;
     };
