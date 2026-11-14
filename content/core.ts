@@ -65,7 +65,7 @@ type Needs = readonly (readonly [item: string, count: number])[];
 function making(name: string, label: string, level: number, cost: number, count: number, seconds: number, needs: Needs): Def[] {
   return [
     crafting(id(name), { needs: needs.map(([item, n]) => ({ item: id(item), count: n })), seconds, xp: Math.max(1, Math.round(level / 3)), count }),
-    { type: "engram", id: id(`engram-${name}`), label, level, cost, unlocks: [id(`${name}`)] },
+    { type: "engram", id: id(`engram-${name}`), label, level, cost, item: id(name) },
   ];
 }
 
@@ -99,12 +99,16 @@ const MAKING: Def[] = [
   ...making("laser", "Laser attachment", 50, 24, 1, 6, [["ingot", 50], ["stone", 40]]),
   ...making("dart_tranq", "Tranquilizer dart", 62, 30, 1, 4, [["narcotic", 3], ["ingot", 2]]),
   ...making("dart_shock", "Shock dart", 96, 60, 1, 4, [["narcotic", 6], ["ingot", 4], ["gunpowder", 4]]),
-  // One engram unlocks all five pieces of an armor tier.
+  // Each piece of an armor tier has its own engram, at the tier's level and cost. They were one engram for all five once,
+  // and a save that knew the set knows every piece.
   ...ARMOR_TIERS.flatMap((t): Def[] => {
     const m = ARMOR_MAKING[t.tier]!;
     return [
-      ...ARMOR_PIECES.map((p): Def => (crafting(id(`${t.tier}_${p.name}`), { needs: m.needs[p.name]!.map(([item, n]) => ({ item: id(item), count: n })), seconds: 5, xp: Math.round(m.level / 3) }))),
-      { type: "engram", id: id(`engram-${t.tier}`), label: `${t.tier[0]!.toUpperCase()}${t.tier.slice(1)} armor`, level: m.level, cost: m.cost, unlocks: ARMOR_PIECES.map((p) => id(`${t.tier}_${p.name}`)) },
+      ...ARMOR_PIECES.flatMap((p): Def[] => [
+        crafting(id(`${t.tier}_${p.name}`), { needs: m.needs[p.name]!.map(([item, n]) => ({ item: id(item), count: n })), seconds: 5, xp: Math.round(m.level / 3) }),
+        { type: "engram", id: id(`engram-${t.tier}_${p.name}`), label: `${t.tier[0]!.toUpperCase()}${t.tier.slice(1)} ${p.label}`, level: m.level, cost: m.cost, item: id(`${t.tier}_${p.name}`) },
+      ]),
+      { type: "rename", id: id(`engram-${t.tier}`), to: ARMOR_PIECES.map((p) => id(`engram-${t.tier}_${p.name}`)) },
     ];
   }),
 ];
@@ -291,8 +295,8 @@ const ALL: readonly Def[] = [
   { type: "item", class: "saddle", id: "core:saddle_raptor", stack: 1, weight: 10, label: "raptor saddle", color: 3, saddle: { fits: "core:raptor", armor: 25 } },
   crafting("core:saddle_parasaur", { needs: [{ item: "core:hide", count: 80 }, { item: "core:fiber", count: 50 }, { item: "core:wood", count: 15 }], seconds: 10, xp: 6 }),
   crafting("core:saddle_raptor", { needs: [{ item: "core:hide", count: 110 }, { item: "core:fiber", count: 65 }, { item: "core:wood", count: 20 }], seconds: 10, xp: 8 }),
-  { type: "engram", id: "core:engram-saddle_parasaur", label: "Parasaur saddle", level: 9, cost: 9, unlocks: ["core:saddle_parasaur"] },
-  { type: "engram", id: "core:engram-saddle_raptor", label: "Raptor saddle", level: 18, cost: 9, unlocks: ["core:saddle_raptor"] },
+  { type: "engram", id: "core:engram-saddle_parasaur", label: "Parasaur saddle", level: 9, cost: 9, item: "core:saddle_parasaur" },
+  { type: "engram", id: "core:engram-saddle_raptor", label: "Raptor saddle", level: 18, cost: 9, item: "core:saddle_raptor" },
   { type: "item", class: "consumable", id: "core:meat_cooked", stack: 20, weight: 0.1, spoilHours: 2, eat: { food: 35, health: 8 }, color: 3, label: "cooked meat" },
   { type: "item", class: "consumable", id: "core:waterskin", stack: 1, weight: 1, eat: { water: 60 }, label: "water skin", color: 14 },
   { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
@@ -343,9 +347,9 @@ const ALL: readonly Def[] = [
   crafting("core:pick", { needs: [{ item: "core:stone", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
   crafting("core:hatchet", { needs: [{ item: "core:flint", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
   crafting("core:waterskin", { needs: [{ item: "core:fiber", count: 20 }, { item: "core:thatch", count: 5 }], seconds: 4, xp: 3 }),
-  { type: "engram", id: "core:engram-pick", label: "Stone pick", level: 1, cost: 0, unlocks: ["core:pick"] },
-  { type: "engram", id: "core:engram-hatchet", label: "Stone hatchet", level: 2, cost: 3, unlocks: ["core:hatchet"] },
-  { type: "engram", id: "core:engram-waterskin", label: "Water skin", level: 3, cost: 6, unlocks: ["core:waterskin"] },
+  { type: "engram", id: "core:engram-pick", label: "Stone pick", level: 1, cost: 0, item: "core:pick" },
+  { type: "engram", id: "core:engram-hatchet", label: "Stone hatchet", level: 2, cost: 3, item: "core:hatchet" },
+  { type: "engram", id: "core:engram-waterskin", label: "Water skin", level: 3, cost: 6, item: "core:waterskin" },
   ...MAKING,
   LEVELS,
 ];

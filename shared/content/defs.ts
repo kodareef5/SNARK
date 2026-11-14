@@ -317,8 +317,8 @@ export interface EngramDef {
   /** Level needed to learn it, and what it costs in engram points. */
   readonly level: number;
   readonly cost: number;
-  /** The items it unlocks the making of. */
-  readonly unlocks: readonly string[];
+  /** The item it unlocks the making of. One engram, one item, as in ARK. */
+  readonly item: string;
   /** It is not offered, so nobody can learn it. A survivor that already knows it keeps it. */
   readonly hidden?: boolean;
   /** A survivor that reaches this level learns it automatically and for free. */

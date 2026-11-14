@@ -99,7 +99,7 @@ function store(s: (typeof STORES)[number]): Def[] {
     ...(s.fire ? [{ type: "structure", class: "station", id: `core:${s.name}_lit`, mesh: "shape", shape: shapeId, half: s.half, color: 8, hp: s.hp, material: `core:mat_${s.material}`, decayDays: 16, slots: s.slots!, lights: `core:${s.name}`, lit: true } as StructureDef] : []),
     { type: "item", class: "structure", id: item, stack: s.stack, weight: s.weight, label: s.label.toLowerCase(), color: s.color, places: [`core:${s.name}`] },
     crafting(item, { needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(s.level / 3)) }),
-    { type: "engram", id: `core:engram-piece_${s.name}`, label: s.label, level: s.level, cost: s.cost, unlocks: [`core:piece_${s.name}`] },
+    { type: "engram", id: `core:engram-piece_${s.name}`, label: s.label, level: s.level, cost: s.cost, item: `core:piece_${s.name}` },
   ];
 }
 
@@ -176,7 +176,7 @@ function kit(tier: Tier, name: string): Def[] {
   return [
     { type: "item", class: "structure", id: item, stack: 100, weight: m.weight, label: label.toLowerCase(), color: tier.color, places: forms.map((f) => `core:${f}_${tier.name}`) },
     crafting(item, { needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(level / 3)) }),
-    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: m.cost, unlocks: [`core:piece_${name}_${tier.name}`] },
+    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: m.cost, item: `core:piece_${name}_${tier.name}` },
   ];
 }
 
@@ -191,5 +191,5 @@ export const BUILDING_CONTENT: readonly Def[] = [
   ...STORES.flatMap(store),
   { type: "item", class: "resource", id: "core:paste", stack: 100, weight: 0.01, label: "cementing paste", color: 15 },
   crafting("core:paste", { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 }),
-  { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 15, cost: 3, unlocks: ["core:paste"] },
+  { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 15, cost: 3, item: "core:paste" },
 ];

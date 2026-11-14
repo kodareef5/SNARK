@@ -92,6 +92,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
+  for (const m of host.lists.renamed) console.log(`settings: ${m.setting} names ${m.name}, which is now ${m.to.join(", ")}`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (opts.probeScene) {
     const ents = host.world.ents;

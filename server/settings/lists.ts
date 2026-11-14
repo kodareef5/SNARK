@@ -12,6 +12,8 @@ const MULTIPLIERS = ["HarvestResourceItemAmountClassMultipliers", "DinoClassDama
 export class Lists {
   /** Entries that named something this build does not have. */
   readonly missing: { setting: string; name: string }[] = [];
+  /** Entries that named something by an id it no longer has, and what they were read as. */
+  readonly renamed: { setting: string; name: string; to: string[] }[] = [];
   private readonly rules: Rules;
   private readonly reg: Registry;
   private readonly sets = new Map<string, { at: number; of: Set<number> }>();
@@ -33,6 +35,21 @@ export class Lists {
       this.missing.push({ setting, name });
     }
     return 0;
+  }
+
+  /**
+   * The ids `name` means now: itself, or everything it was renamed to, as a set of armor's engram became one for each
+   * piece. Empty, and recorded in `missing`, if this build has nothing of that name and `type`.
+   */
+  ids(setting: string, name: string, type: string): string[] {
+    if (this.reg.index.has(name)) return this.index(setting, name, type) === 0 ? [] : [name];
+    const now = (this.reg.redirects.get(name) ?? []).filter((i) => this.reg.defs[i]!.type === type).map((i) => this.reg.ids[i]!);
+    if (now.length === 0) this.index(setting, name, type);
+    else if (!this.told.has(`${setting} ${name}`)) {
+      this.told.add(`${setting} ${name}`);
+      this.renamed.push({ setting, name, to: now });
+    }
+    return now;
   }
 
   /** Builds every table now, so missing names are known when the server starts and not when a table is first used. */

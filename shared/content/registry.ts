@@ -304,7 +304,15 @@ export function compileContent(all: readonly Def[]): CompileResult {
   // What a definition names must exist and be of the class its field asks for (shared/content/classes.ts).
   errors.push(...refFaults(input));
   const shapes = new Map(input.flatMap((d) => (d.type === "shape" ? [[d.id, d] as const] : [])));
+  const crafted = new Set(input.flatMap((d) => (d.type === "item" && d.craft ? [d.id] : [])));
+  const taught = new Map<string, string>();
   for (const d of input) {
+    if (d.type === "engram" && typeof d.item === "string") {
+      if (!crafted.has(d.item)) errors.push(`${d.id}: "${d.item}" cannot be made, so there is nothing to learn`);
+      const other = taught.get(d.item);
+      if (other !== undefined) errors.push(`${d.id}: ${other} already unlocks "${d.item}"`);
+      taught.set(d.item, d.id);
+    }
     if (d.type === "species" && d.breeds && !(d.breeds.incubate > 0 && d.breeds.mature > 0)) errors.push(`${d.id}: breeds needs incubate and mature above 0`);
     if (d.type === "structure" && d.shape !== undefined) {
       const shape = shapes.get(d.shape);

@@ -424,7 +424,7 @@ test("pieces are made as anything is: an engram at the reference's level, at its
   const stores: [string, number][] = [];
   for (const item of items) {
     expect(item.craft !== undefined).toBe(true);
-    const engram = BUILDING_CONTENT.find((d): d is EngramDef => d.type === "engram" && d.unlocks.includes(item.id))!;
+    const engram = BUILDING_CONTENT.find((d): d is EngramDef => d.type === "engram" && d.item === item.id)!;
     expect(engram.label.toLowerCase()).toBe(item.label!);
     if (/_(thatch|wood|stone|metal)$/.test(item.id)) (levels[item.id.split("_").at(-1)!] ??= []).push(engram.level);
     else stores.push([item.id.slice(11), engram.level]);

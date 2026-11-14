@@ -47,7 +47,7 @@ export class Progression {
     this.engramOf = new Uint16Array(reg.defs.length);
     reg.defs.forEach((d, k) => {
       if (d?.type !== "engram") return;
-      for (const r of d.unlocks) this.engramOf[reg.index.get(r)!] = k;
+      this.engramOf[reg.index.get(d.item)!] = k;
       if (d.auto !== undefined) this.autos.push(k);
     });
     this.survivor = reg.index.get("core:survivor") ?? 0;

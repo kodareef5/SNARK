@@ -87,18 +87,18 @@ export function tuningOf(rules: Rules, lists: Lists, reg: Registry): { tuning: T
   for (const entry of rules.list("OverrideNamedEngramEntries")) {
     if (!isList(entry)) continue;
     const name = words(field(entry, "EngramClassName"));
-    if (lists.index("OverrideNamedEngramEntries", name, "engram") === 0) continue;
     const level = number(field(entry, "EngramLevelRequirement"));
     const cost = number(field(entry, "EngramPointsCost"));
-    engrams[name] = { ...(level >= 0 ? { level } : {}), ...(cost >= 0 ? { cost } : {}), ...(flag(field(entry, "EngramHidden")) ? { hidden: true } : {}) };
+    for (const id of lists.ids("OverrideNamedEngramEntries", name, "engram")) engrams[id] = { ...(level >= 0 ? { level } : {}), ...(cost >= 0 ? { cost } : {}), ...(flag(field(entry, "EngramHidden")) ? { hidden: true } : {}) };
   }
   for (const entry of rules.list("EngramEntryAutoUnlocks")) {
     if (!isList(entry)) continue;
     const name = words(field(entry, "EngramClassName"));
     const level = number(field(entry, "LevelToAutoUnlock"));
-    if (lists.index("EngramEntryAutoUnlocks", name, "engram") === 0) continue;
+    const ids = lists.ids("EngramEntryAutoUnlocks", name, "engram");
+    if (ids.length === 0) continue;
     if (!(level >= 0)) passed.push(`EngramEntryAutoUnlocks: ${name} wants a LevelToAutoUnlock`);
-    else engrams[name] = { ...engrams[name], auto: level };
+    else for (const id of ids) engrams[id] = { ...engrams[id], auto: level };
   }
 
   // The first line is survivors', the second tames'.

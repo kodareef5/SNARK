@@ -104,7 +104,7 @@ export class CharacterScreen {
         rows.push({ key: KEY_CHAR_ENGRAM + n * 2, text: known ? `${def.label}: known` : `${def.label}: level ${def.level}, ${def.cost} points`, button: can ? "learn" : "" });
       });
     } else {
-      const known = new Set(p.engrams.flatMap((e) => (reg.defs[e] as EngramDef).unlocks));
+      const known = new Set(p.engrams.map((e) => (reg.defs[e] as EngramDef).item));
       craftable(reg).forEach((k, n) => {
         const def = reg.defs[k] as ItemDef;
         if (!known.has(def.id)) return;

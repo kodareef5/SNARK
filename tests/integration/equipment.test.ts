@@ -96,7 +96,7 @@ test("the content hangs together: every engram can be reached, every thing that 
   const items = reg.defs.filter((d): d is ItemDef => d?.type === "item");
   const made = items.filter((d) => d.craft !== undefined);
   const engrams = reg.defs.filter((d): d is EngramDef => d?.type === "engram");
-  for (const r of made) expect(engrams.filter((e) => e.unlocks.includes(r.id)).length, r.id).toBe(1);
+  for (const r of made) expect(engrams.filter((e) => e.item === r.id).length, r.id).toBe(1);
   for (const e of engrams) expect(e.level, e.id).toBeLessThanOrEqual(100);
   const points = levels.type === "levels" ? levels.engramPoints.reduce((a, b) => a + b, 0) : 0;
   expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));

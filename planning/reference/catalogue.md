@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 39 classes: 24 built, 3 partly built, and 12 stubs that
-wait for a feature. The core pack holds 228 definitions, and 73 renames of ids
+wait for a feature. The core pack holds 244 definitions, and 77 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -83,17 +83,17 @@ Packs may add to: `weapon`, `places`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `unlocks` | `hidden`, `auto`, `requires`, `group`, `from` | 57 |
+| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 73 |
 
-- **`engram`** on shelf `engrams`. Learned with points at a level, for good. What it unlocks can then be made.
+- **`engram`** on shelf `engrams`. Learned with points at a level, for good. Its one item can then be made.
 
 Asset slots:
 
 - `engram`: `#icon` icon, may, from `{id}/icon`, else `#icon`.
 
-ARK's names: `level` is RequiredCharacterLevel; `cost` is RequiredEngramPoints; `unlocks` is BluePrintEntry; `hidden` is EngramHidden; `auto` is EngramEntryAutoUnlocks; `requires` is EngramRequirementSets; `group` is EngramGroup; `from` is a boss's unlock.
+ARK's names: `level` is RequiredCharacterLevel; `cost` is RequiredEngramPoints; `item` is BluePrintEntry; `hidden` is EngramHidden; `auto` is EngramEntryAutoUnlocks; `requires` is EngramRequirementSets; `group` is EngramGroup; `from` is a boss's unlock.
 
-What names what: `unlocks[]` names a `item`; `requires[]` names a `engram`; `from` names a `species/creature`.
+What names what: `item` names a `item`; `requires[]` names a `engram`; `from` names a `species/creature`.
 
 ## Levels
 
@@ -307,7 +307,7 @@ Packs may add to: `buffs`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `rename` | a redirect for a class that was renamed | built | `to` |  | 73 |
+| `rename` | a redirect for a class that was renamed | built | `to` |  | 77 |
 
 - **`rename`** on shelf `renames`. An id that is no longer defined, and what it is called now. Saves and settings that use it still read.
 
@@ -347,7 +347,7 @@ built.
 
 **`item/structure`** (27): piece_foundation_thatch, piece_wall_thatch, piece_ceiling_thatch, piece_door_thatch, piece_foundation_wood, piece_wall_wood, piece_ceiling_wood, piece_door_wood, piece_pillar_wood, piece_stairs_wood, piece_foundation_stone, piece_wall_stone, piece_ceiling_stone, piece_door_stone, piece_pillar_stone, piece_stairs_stone, piece_foundation_metal, piece_wall_metal, piece_ceiling_metal, piece_door_metal, piece_pillar_metal, piece_stairs_metal, piece_storage_box, piece_storage_large, piece_vault, piece_campfire, piece_bed.
 
-**`engram`** (57): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_raptor, engram-pick, engram-hatchet, engram-waterskin, engram-spear, engram-narcotic, engram-bow, engram-arrow_stone, engram-ingot, engram-arrow_tranq, engram-gunpowder, engram-crossbow, engram-flashlight, engram-scope, engram-arrow_flame, engram-pistol, engram-round_pistol, engram-rifle, engram-round_rifle, engram-silencer, engram-grenade, engram-laser, engram-dart_tranq, engram-dart_shock, engram-cloth, engram-hide, engram-chitin, engram-flak.
+**`engram`** (73): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_raptor, engram-pick, engram-hatchet, engram-waterskin, engram-spear, engram-narcotic, engram-bow, engram-arrow_stone, engram-ingot, engram-arrow_tranq, engram-gunpowder, engram-crossbow, engram-flashlight, engram-scope, engram-arrow_flame, engram-pistol, engram-round_pistol, engram-rifle, engram-round_rifle, engram-silencer, engram-grenade, engram-laser, engram-dart_tranq, engram-dart_shock, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
 
 **`levels`** (1): levels.
 
@@ -381,4 +381,4 @@ built.
 
 **`buff`** (7): burning, tranquilized, drugged, stunned, injured, fed, god.
 
-**`rename`** (73): each `make-<item>`, the recipe id an item had before recipes were folded into items.
+**`rename`** (77): each `make-<item>`, the recipe id an item had before recipes were folded into items.

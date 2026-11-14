@@ -21,7 +21,7 @@ test("the class table is sound: parents exist, stubs name what they wait for, sl
   expect(Object.keys(FIELDS).filter((type) => !CLASSES.some((r) => r.type === type))).toEqual([]);
 });
 
-test("the core pack's 228 definitions fall into the classes, each passing its row, and 73 recipe ids are renamed to their items", () => {
+test("the core pack's 244 definitions fall into the classes, each passing its row, and 77 old ids are renamed", () => {
   const counts: Record<string, number> = {};
   for (const c of classes) counts[c] = (counts[c] ?? 0) + 1;
   expect(counts).toEqual({
@@ -33,7 +33,7 @@ test("the core pack's 228 definitions fall into the classes, each passing its ro
     "item/armor": 20,
     "item/saddle": 2,
     "item/structure": 27,
-    engram: 57,
+    engram: 73,
     levels: 1,
     "species/survivor": 1,
     "species/creature": 3,
@@ -50,9 +50,9 @@ test("the core pack's 228 definitions fall into the classes, each passing its ro
     "prop/projectile": 2,
     "prop/egg": 2,
     buff: 7,
-    rename: 73,
+    rename: 77,
   });
-  expect(CORE_CONTENT.length).toBe(301);
+  expect(CORE_CONTENT.length).toBe(321);
   expect(CORE_CONTENT.flatMap(defFaults)).toEqual([]);
   expect(compileContent(CORE_CONTENT).errors).toEqual([]);
 });
@@ -99,7 +99,7 @@ const STUBS: ContentPack = {
   requires: ["core"],
   defs: [
     { id: "stub:egg", type: "item", class: "egg", stack: 100, eat: { food: 10 }, spoilHours: 48, spoilsInto: "core:stone" },
-    { id: "stub:shield", type: "item", class: "shield", stack: 1, description: "Blocks.", folder: "Armor/Shields", blueprint: true },
+    { id: "stub:shield", type: "item", class: "shield", stack: 1, description: "Blocks.", folder: "Armor/Shields", blueprint: true, craft: { needs: [{ item: "core:wood", count: 20 }], seconds: 8, xp: 4, at: "core:campfire", level: 80 } },
     { id: "stub:hat", type: "item", class: "costume", stack: 1 },
     { id: "stub:skin", type: "item", class: "skin", stack: 1 },
     { id: "stub:dye", type: "item", class: "dye", stack: 100, color: 3 },
@@ -112,7 +112,7 @@ const STUBS: ContentPack = {
     { id: "stub:alpha", extends: "core:raptor", tag: "raptor", variant: "alpha", boss: true, loot: "stub:drop", buffs: ["core:fed"], saddle: "core:saddle_raptor", attacks: [{ name: "bite", damage: 60, type: "melee", reach: 2, ticks: 27, lands: 11 }] },
     { id: "stub:rules", type: "game", survivor: "core:survivor", cache: "core:cache", bag: "core:bag", levels: "core:levels", buffs: ["core:fed"] },
     { id: "stub:island", type: "map", label: "The island", chunks: [16, 16], seaLevel: 0, game: "stub:rules", zones: [{ kind: "spawn", at: [100, 100], radius: 80, spawns: "stub:beach" }, { kind: "crate", at: [300, 200], radius: 40, crate: "stub:crate" }] },
-    { id: "stub:engram-relic", type: "engram", label: "Relic", level: 80, cost: 0, unlocks: [], requires: ["core:engram-spear"], group: "island", from: "stub:alpha" },
+    { id: "stub:engram-shield", type: "engram", label: "Shield", level: 80, cost: 0, item: "stub:shield", requires: ["core:engram-spear"], group: "island", from: "stub:alpha" },
   ],
 };
 
@@ -131,7 +131,11 @@ test("one of every stub class and stub field compiles beside the core pack, and 
   expect(bad("stub:island", { zones: [{ kind: "crate", at: [0, 0], radius: 1, crate: "core:cache" }] })).toEqual(['stub:island: "core:cache" is not a prop/crate']);
   expect(bad("stub:rules", { survivor: "core:raptor" })).toEqual(['stub:rules: "core:raptor" is not a species/survivor']);
   expect(bad("stub:drop", { from: [{ min: 1, max: 1, entries: [{ items: ["core:raptor"], min: 1, max: 1 }] }] })).toEqual(['stub:drop: "core:raptor" is not an item']);
-  expect(bad("stub:engram-relic", { from: "core:stone" })).toEqual(['stub:engram-relic: "core:stone" is not a species/creature']);
+  expect(bad("stub:engram-shield", { from: "core:stone" })).toEqual(['stub:engram-shield: "core:stone" is not a species/creature']);
+  // An engram teaches one thing, that can be made, and that no other engram teaches.
+  expect(bad("stub:engram-shield", { item: "stub:relic" })).toEqual(['stub:engram-shield: "stub:relic" cannot be made, so there is nothing to learn']);
+  expect(bad("stub:engram-shield", { item: "core:spear" })).toEqual(['stub:engram-shield: core:engram-spear already unlocks "core:spear"']);
+  expect(bad("stub:shield", { craft: { needs: [{ item: "core:wood", count: 1 }], seconds: 1, xp: 1, at: "core:wall_wood" } })).toEqual(['stub:shield: "core:wall_wood" is not a structure/station']);
   expect(bad("stub:alpha", { saddle: "core:hide_hat" })).toEqual(['stub:alpha: "core:hide_hat" is not an item/saddle']);
   expect(bad("stub:alpha", { loot: "nowhere:x" })).toEqual(['stub:alpha: "nowhere:x" is not a loot']);
   expect(bad("stub:poison", { trueShare: "all" })).toEqual(['stub:poison: "trueShare" must be a number']);

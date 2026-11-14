@@ -8,6 +8,7 @@ import { Lists } from "../../server/settings/lists.ts";
 import { Rules } from "../../server/settings/rules.ts";
 import { compilePacks, type DefPatch } from "../../shared/content/packs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
+import { RESULT_DENIED, RESULT_OK } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-renames-"));
@@ -19,14 +20,17 @@ const made = (defs: DefPatch[]): Registry => {
   return out.registry;
 };
 const item = (id: string): DefPatch => ({ id, type: "item", class: "resource", stack: 100, craft: { needs: [{ item: "core:stone", count: 1 }], seconds: 5, xp: 1 } });
-const engram = (id: string, unlocks: string[]): DefPatch => ({ id, type: "engram", label: id, level: 1, cost: 1, unlocks });
+const engram = (id: string, item: string): DefPatch => ({ id, type: "engram", label: id, level: 1, cost: 1, item });
 
-const BEFORE = made([item("t:old"), item("t:other"), engram("t:engram-old", ["t:old"]), engram("t:engram-kit", [])]);
+const BEFORE = made([item("t:old"), item("t:other"), item("t:kit"), engram("t:engram-old", "t:old"), engram("t:engram-kit", "t:kit")]);
 const AFTER = made([
   item("t:new"),
-  engram("t:engram-new", ["t:new"]),
-  engram("t:engram-kit-a", []),
-  engram("t:engram-kit-b", []),
+  item("t:kit-a"),
+  item("t:kit-b"),
+  engram("t:engram-new", "t:new"),
+  engram("t:engram-kit-a", "t:kit-a"),
+  engram("t:engram-kit-b", "t:kit-b"),
+  { id: "t:kit", type: "rename", to: ["t:kit-a"] },
   { id: "t:old", type: "rename", to: ["t:new"] },
   // Two things that became one.
   { id: "t:other", type: "rename", to: ["t:new"] },
@@ -75,7 +79,7 @@ test("a settings file that names what was renamed still means it, and a rename i
   expect(lists.index("PreventDinoTameClassNames", "t:never")).toBe(0);
   expect([AFTER.index.has("t:old"), AFTER.ids.includes("t:old"), AFTER.redirects.get("t:engram-kit")!.length]).toEqual([false, false, 2]);
   // The hash is of the content. A rename alone does not change it.
-  const without = made([item("t:new"), engram("t:engram-new", ["t:new"]), engram("t:engram-kit-a", []), engram("t:engram-kit-b", [])]);
+  const without = made([item("t:new"), item("t:kit-a"), item("t:kit-b"), engram("t:engram-new", "t:new"), engram("t:engram-kit-a", "t:kit-a"), engram("t:engram-kit-b", "t:kit-b")]);
   expect(without.hash).toBe(AFTER.hash);
 });
 
@@ -108,8 +112,16 @@ test("a save from before recipes became part of their items goes on making what 
   expect(h.host.persistence!.store.missingContent).toEqual([]);
   expect(rec.jobs.map((j) => [h.reg.ids[j.item], j.left])).toEqual([["core:spear", 3], ["core:hide_hat", 1]]);
   expect(h.host.items.audit()).toEqual([]);
-  expect(rec.engrams.map((e) => h.reg.ids[e]).filter((e) => e === "core:engram-spear" || e === "core:engram-piece_wall_wood")).toEqual(["core:engram-spear", "core:engram-piece_wall_wood"]);
+  // It knew hide armor and cloth armor as a set each. Each is now five engrams, and it knows all ten.
+  const known = rec.engrams.map((e) => h.reg.ids[e]!);
+  expect(known.filter((e) => e === "core:engram-spear" || e === "core:engram-piece_wall_wood")).toEqual(["core:engram-spear", "core:engram-piece_wall_wood"]);
+  for (const tier of ["hide", "cloth"]) for (const piece of ["hat", "shirt", "gloves", "pants", "boots"]) expect([`${tier}_${piece}`, known.includes(`core:engram-${tier}_${piece}`)]).toEqual([`${tier}_${piece}`, true]);
+  expect(known.length).toBe(13);
   h.run(60000);
+  expect(h.host.progression.craft(rec, id("hide_shirt"), 1)).toBe(RESULT_OK);
+  expect(h.host.progression.craft(rec, id("flak_shirt"), 1)).toBe(RESULT_DENIED);
+  h.run(10000);
+  expect(rec.inv!.total(id("hide_shirt"))).toBe(1);
   expect([rec.inv!.total(id("spear")), rec.inv!.total(id("hide_hat")), rec.jobs.length]).toEqual([3, 1, 0]);
   expect(h.host.items.audit()).toEqual([]);
   h.host.shutdown();
