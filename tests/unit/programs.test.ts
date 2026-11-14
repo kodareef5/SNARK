@@ -1,6 +1,32 @@
-// What a renderer is handed besides draws: the frame block every lit program shares.
+// What a renderer is handed besides draws: the programs it compiles, the units their samplers read, and the frame
+// block every lit program shares.
 import { expect, test } from "bun:test";
+import { TIERS } from "../../client/core/assets/tiers.ts";
+import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES } from "../../client/core/render/packet.ts";
+import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
+import { TEXTURE_FORMATS } from "../../shared/pack/texture.ts";
+
+test("low poly's programs are the pinned flat texts, and every sampler a program declares reads a unit of its own", () => {
+  const low = TIERS[0]!;
+  expect(["flat", "terrain"].map((name) => PROGRAMS[name]!(low, "rgba")).map((p) => [p.vertex, p.fragment, p.defines])).toEqual([
+    [FLAT_MESH_VERTEX, FLAT_FRAGMENT, ""],
+    [FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, ""],
+  ]);
+  for (const tier of TIERS) {
+    for (const format of TEXTURE_FORMATS) {
+      for (const make of Object.values(PROGRAMS)) {
+        const p = make(tier, format);
+        const declared = [...(p.vertex + p.fragment).matchAll(/uniform\s+(?:\w+\s+)?\w*sampler\w+\s+([^;]+);/g)].flatMap((m) => m[1]!.split(",").map((s) => s.trim()));
+        expect(Object.keys(p.samplers).sort()).toEqual([...new Set(declared)].sort());
+        expect(new Set(Object.values(p.samplers)).size).toBe(Object.keys(p.samplers).length);
+      }
+    }
+  }
+  // The material's five maps and the rest each have a unit, and 13 to 15 are left free.
+  const units = [UNIT.palette, UNIT.heights, UNIT.tint, UNIT.bones, ...[0, 1, 2, 3, 4].map((r) => UNIT.maps + r), UNIT.shadow, UNIT.sky, UNIT.windowHeights, UNIT.windowTint];
+  expect([new Set(units).size, Math.max(...units)]).toEqual([13, 12]);
+});
 
 test("the frame block: each value inside its slot, a GLSL slot for every four floats, and the packet's views of it", () => {
   // Three numbers start a slot, two fit in its first three lanes, and one is anywhere in it.

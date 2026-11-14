@@ -1,11 +1,12 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../core/render/glsl.ts";
 import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER, type TextureUpload } from "../core/render/packet.ts";
+import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
-import { NEUTRAL, SURFACE_VERTEX, skinMode, skyLight, surfaceFragment } from "../core/render/surface.ts";
+import { NEUTRAL, skinMode, skyLight } from "../core/render/surface.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
+import { DEFAULT_TIER, tierOf, type Tier } from "../core/assets/tiers.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
@@ -41,15 +42,6 @@ const FORMATS: Readonly<Record<TextureFormat, readonly number[]>> = {
   astc: [0x93d0, 0x93b0, 0x93b0],
   rgba: [0x8c43, 0x822b, 0x8058],
 };
-/** Units 0 to 3 hold the palette, the ground and the bones, and a material's maps go on 4 to 8, where textures are also filled. 9 to 15 are free. */
-const MAPS = 4;
-const SAMPLERS = ["uBase", "uNormal", "uMro", "uMask", "uMask2"];
-/** The programs by name, each its vertex and fragment text as client/core/render gives it. The surface program is made the first time a frame draws with materials, which low poly never does. */
-const PROGRAMS: Readonly<Record<string, (format: TextureFormat) => readonly [string, string]>> = {
-  flat: () => [FLAT_MESH_VERTEX, FLAT_FRAGMENT],
-  terrain: () => [FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT],
-  surface: (format) => [SURFACE_VERTEX, surfaceFragment(format)],
-};
 
 export class GlRenderer {
   readonly gl: WebGL2RenderingContext;
@@ -61,7 +53,8 @@ export class GlRenderer {
   drawCalls = 0;
   /** Errors other than a want of memory after a frame's uploads. There should be none. */
   errors = 0;
-  private readonly programs = new Map<string, Program>();
+  /** Each tier's programs by name, as client/core/render/programs.ts lists them, made as a frame of that tier first asks. */
+  private readonly programs = new Map<Tier, Map<string, Program>>();
   /** A pixel for each map a material lacks or has not been sent, made the first time a frame draws with materials. */
   private neutral: WebGLTexture[] = [];
   private current: Program | null = null;
@@ -119,8 +112,8 @@ export class GlRenderer {
     this.neutral = [];
     this.current = null;
     // The flat programs are made at once, so a device that cannot compile them says so at boot.
-    this.program("flat");
-    this.program("terrain");
+    this.program("flat", tierOf(DEFAULT_TIER));
+    this.program("terrain", tierOf(DEFAULT_TIER));
     this.buffers.clear();
     this.textures.clear();
     this.making.clear();
@@ -138,11 +131,11 @@ export class GlRenderer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     };
     const hf = this.hf;
-    texture(0, gl.RGBA8, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.pack.palette);
-    texture(1, gl.R16UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_SHORT, hf.heights);
-    texture(2, gl.R8UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_BYTE, hf.tint);
-    // Each bone is three texels of four floats, read by exact texel. The texture stays bound on unit 3.
-    texture(3, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
+    texture(UNIT.palette, gl.RGBA8, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.pack.palette);
+    texture(UNIT.heights, gl.R16UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_SHORT, hf.heights);
+    texture(UNIT.tint, gl.R8UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_BYTE, hf.tint);
+    // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit.
+    texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
 
     // A lost context took every level with it. Core sends them again.
     this.levels.clear();
@@ -268,7 +261,7 @@ export class GlRenderer {
     const gl = this.gl;
     const internal = FORMATS[u.format][u.role === "base" ? 0 : u.role === "normal" ? 1 : 2]!;
     let copy = this.making.get(u.slot);
-    gl.activeTexture(gl.TEXTURE0 + MAPS);
+    gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
     if (u.size === 1 && u.row === 0) {
       gl.deleteTexture(copy ?? null);
       this.making.set(u.slot, (copy = gl.createTexture()!));
@@ -295,10 +288,11 @@ export class GlRenderer {
     this.making.delete(t);
   }
 
-  /** The program of this name, made the first time it is asked for. */
-  private program(name: string): Program {
-    let prog = this.programs.get(name);
-    if (!prog) this.programs.set(name, (prog = this.link(...PROGRAMS[name]!(this.format))));
+  /** The tier's program of this name, made the first time it is asked for. */
+  private program(name: string, tier: Tier): Program {
+    const made = this.programs.get(tier) ?? this.programs.set(tier, new Map()).get(tier)!;
+    let prog = made.get(name);
+    if (!prog) made.set(name, (prog = this.link(PROGRAMS[name]!(tier, this.format))));
     return prog;
   }
 
@@ -325,7 +319,7 @@ export class GlRenderer {
   /** Makes a program current, and the first time a pass of the frame uses it sets what all its draws share: the frame's uniforms are set here and nowhere else. */
   private use(name: string, p: FramePacket, near: boolean): Program {
     const gl = this.gl;
-    const prog = this.program(name);
+    const prog = this.program(name, p.tier);
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
     if (prog.pass === this.pass) return prog;
     prog.pass = this.pass;
@@ -339,13 +333,10 @@ export class GlRenderer {
     gl.uniform3f(prog.uniform("uCamMod"), p.camX % 16, p.camY % 16, p.camZ % 16);
     gl.uniform1f(prog.uniform("uAlpha"), 1);
     gl.uniform1f(prog.uniform("uLight"), p.light);
-    gl.uniform1i(prog.uniform("uPalette"), 0);
-    gl.uniform1i(prog.uniform("uBones"), 3);
-    SAMPLERS.forEach((name, r) => gl.uniform1i(prog.uniform(name), MAPS + r));
     return prog;
   }
 
-  /** A textured draw's material: its tint, grey and cutoff, what its mesh's texture coordinates span, and its maps on units 4 to 8. */
+  /** A textured draw's material: its tint, grey and cutoff, what its mesh's texture coordinates span, and its maps on their five units. */
   private material(prog: Program, p: FramePacket, d: number): void {
     const gl = this.gl;
     const mat = this.materials[p.drawMaterial[d]!]!;
@@ -354,7 +345,7 @@ export class GlRenderer {
     gl.uniform1f(prog.uniform("uCutoff"), (p.drawFlags[d]! & DRAW_CUTOUT) !== 0 ? mat.cutoff : 0);
     gl.uniform4fv(prog.uniform("uUv"), this.uv, p.drawMesh[d]! * 4, 4);
     if (this.neutral.length === 0) {
-      gl.activeTexture(gl.TEXTURE0 + MAPS);
+      gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
       this.bound.length = 0;
       this.neutral = TEXTURE_ROLES.map((role) => {
         const t = gl.createTexture()!;
@@ -368,7 +359,7 @@ export class GlRenderer {
       const t = mat[TEXTURE_ROLES[r]!];
       const texture = (t >= 0 && this.textures.get(t)) || this.neutral[r]!;
       if (this.bound[r] === texture) continue;
-      gl.activeTexture(gl.TEXTURE0 + MAPS + r);
+      gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r);
       gl.bindTexture(gl.TEXTURE_2D, (this.bound[r] = texture));
     }
   }
@@ -408,8 +399,6 @@ export class GlRenderer {
     if (p.tileCount > 0) {
       const prog = this.use("terrain", p, false);
       gl.uniform1f(prog.uniform("uSolid"), 0);
-      gl.uniform1i(prog.uniform("uHeight"), 1);
-      gl.uniform1i(prog.uniform("uTint"), 2);
       gl.uniform4f(prog.uniform("uField"), hf.minY, hf.stepY, hf.cell, p.camY);
       gl.uniform2f(prog.uniform("uLast"), hf.nx - 1, hf.nz - 1);
       const data = this.tileData;
@@ -444,7 +433,7 @@ export class GlRenderer {
 
     if (p.boneCount > 0) {
       const rows = Math.ceil(p.boneCount / BONES_PER_ROW);
-      gl.activeTexture(gl.TEXTURE3);
+      gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, rows, gl.RGBA, gl.FLOAT, p.bones);
     }
 
@@ -508,19 +497,21 @@ export class GlRenderer {
     return [out[0]!, out[1]!, out[2]!];
   }
 
-  /** Compiles the text as given, with `defines` after its first line, the #version line, for a variant of it. */
-  private link(vertex: string, fragment: string, defines = ""): Program {
+  /** Compiles the texts as given, with the defines after their first line, the #version line, and points each sampler at its unit. */
+  private link(text: ProgramText): Program {
     const gl = this.gl;
     const program = gl.createProgram()!;
-    for (const [type, source] of [[gl.VERTEX_SHADER, vertex], [gl.FRAGMENT_SHADER, fragment]] as const) {
+    for (const [type, source] of [[gl.VERTEX_SHADER, text.vertex], [gl.FRAGMENT_SHADER, text.fragment]] as const) {
       const shader = gl.createShader(type)!;
-      gl.shaderSource(shader, source.replace("\n", "\n" + defines));
+      gl.shaderSource(shader, source.replace("\n", "\n" + text.defines));
       gl.compileShader(shader);
       if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error("shader: " + gl.getShaderInfoLog(shader));
       gl.attachShader(program, shader);
     }
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error("program: " + gl.getProgramInfoLog(program));
+    gl.useProgram(program);
+    for (const name in text.samplers) gl.uniform1i(gl.getUniformLocation(program, name), text.samplers[name]!);
     const cache = new Map<string, WebGLUniformLocation | null>();
     return {
       program,
