@@ -5,7 +5,7 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import { buildCorePack } from "../../tools/pack/build.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
 import { FEWEST, simplify, withLevels } from "../../tools/pack/simplify.ts";
-import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
+import { boxMesh, buildPack, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
 
 /** A square of `n` by `n` cells, two metres across, lying flat. Its left half is colour 1 and its right half colour 2. */
 function plate(n: number): SourceLod {
@@ -120,5 +120,13 @@ test("a mesh with one level gets more only if it has the triangles for them, and
     }
     // Half the triangles within a hand's width of the whole creature.
     expect(lods[1]!.error).toBeLessThan(0.04);
+  }
+  // The levels in the pack were made before the simplifier learned to keep a surface. It still makes those very levels
+  // of a mesh that has none, vertex for vertex.
+  for (const mesh of unpackMeshes(core).filter((m) => m.id === "core:parasaur" || m.id === "core:raptor")) {
+    const again = simplify(mesh.lods[0]!, mesh.lods.slice(1).map(tris));
+    for (const [i, made] of again.entries()) {
+      for (const part of ["positions", "colors", "bones", "indices"] as const) expect([mesh.id, i, part, made.lod[part]]).toEqual([mesh.id, i, part, mesh.lods[i + 1]![part]]);
+    }
   }
 });
