@@ -262,6 +262,9 @@ const COLOUR_UP: Uint8Array[] = [];
 const WEIGHT_VALUE: Uint8Array[] = [];
 const WEIGHT_CODE: Uint8Array[] = [];
 const WEIGHT_NEAR: Uint8Array[] = [];
+/** By range: the next level below and above each value of 0 to 64, or the value itself at the ends. */
+const WEIGHT_BELOW: Uint8Array[] = [];
+const WEIGHT_ABOVE: Uint8Array[] = [];
 
 for (let range = 0; range <= LAST_RANGE; range++) {
   const levels = LEVELS[range];
@@ -296,6 +299,15 @@ for (let range = 0; range <= LAST_RANGE; range++) {
     for (let k = 1; k < levels; k++) if (Math.abs(wValue[k] * 4 - q) < Math.abs(wValue[best] * 4 - q)) best = k;
     near[q] = wValue[best];
   }
+  const below = new Uint8Array(65);
+  const above = new Uint8Array(65);
+  const sorted = Array.from(wValue).sort((a, b) => a - b);
+  for (let v = 0; v <= 64; v++) {
+    below[v] = sorted.findLast((s) => s < v) ?? v;
+    above[v] = sorted.find((s) => s > v) ?? v;
+  }
+  WEIGHT_BELOW.push(below);
+  WEIGHT_ABOVE.push(above);
   WEIGHT_VALUE.push(wValue);
   WEIGHT_CODE.push(wCode);
   WEIGHT_NEAR.push(near);
@@ -821,8 +833,11 @@ for (let parts = 1; parts <= 3; parts++) {
  *  colours in levels. */
 const WEIGHT_STEP = LEVELS.map((n) => 1 / ((n - 1) * (n - 1) * 12));
 const COLOUR_STEP = LEVELS.map((n) => (255 * 255) / ((n - 1) * (n - 1) * 12));
-/** How much of that error is left once the endpoints have been fitted again, measured on textures. */
-const COLOUR_SHARE = 0.5;
+/** How much of that error is left once a trial has fitted the ends to the weights, set by what encoded our test
+ *  textures best: for colours, again for colours on lines short enough to store as base and offset, and for the
+ *  weights of a smaller grid. */
+const COLOUR_SHARE = 0.15;
+const SHORT_SHARE = 0.5;
 const GRID_SHARE = 0.5;
 
 const POP = new Uint8Array(65536);
@@ -854,7 +869,7 @@ interface Fit {
 }
 
 const fits: Fit[] = [];
-for (let i = 0; i < 24; i++) fits.push({ parts: 1, pattern: 0, part: PARTITION[1]![0]!, second: -1, u: new Float64Array(32), len2: new Float64Array(8), base: 0 });
+for (let i = 0; i < 12; i++) fits.push({ parts: 1, pattern: 0, part: PARTITION[1]![0]!, second: -1, u: new Float64Array(32), len2: new Float64Array(8), base: 0 });
 
 // The block being encoded. Its pixels, and the channels that vary: `channels` of them, each read from `chan[c]` of
 // a pixel and weighing `cw[c]` in the error. `fx` holds them scaled by the square root of that weight.
@@ -1009,7 +1024,7 @@ function gridCost(f: Fit, g: number): number {
 }
 
 // The candidates: the ways of spending the bits with the lowest estimated error, best first.
-const MOST = 12;
+const MOST = 8;
 const candCost = new Float64Array(MOST);
 const candFit: Fit[] = new Array<Fit>(MOST).fill(fits[0]!);
 const candGrid = new Int32Array(MOST);
@@ -1040,7 +1055,9 @@ function offer(cost: number, f: Fit, g: number, wRange: number, cRange: number, 
 function consider(f: Fit, g: number, keep: number): void {
   const pairs = CONFIGS[((f.parts - 1) * 4 + channels - 1) * 2 + (f.second >= 0 ? 1 : 0)]![g]!;
   if (pairs.length === 0) return;
-  const ends = 16 * cwSum * COLOUR_SHARE;
+  let longest = 0;
+  for (let p = 0; p < f.parts; p++) longest = Math.max(longest, f.len2[p], f.len2[4 + p]);
+  const ends = 16 * cwSum * COLOUR_SHARE * (longest < 900 ? SHORT_SHARE : 1);
   if (g === 0) {
     for (let k = 0; k < pairs.length; k += 2) offer(f.base + weightCost(f, pairs[k]) + ends * COLOUR_STEP[pairs[k + 1]]!, f, g, pairs[k], pairs[k + 1], keep);
     return;
@@ -1060,13 +1077,23 @@ const tWeight = new Int32Array(32);
 const tStored = new Int32Array(32);
 const tValues = new Int32Array(24);
 const tEnds = new Int32Array(24);
+let tCem = 0;
+let tSecond = -1;
 const sAA = new Float64Array(6);
 const sAB = new Float64Array(6);
 const sBB = new Float64Array(6);
 const sA = new Float64Array(12);
 const sB = new Float64Array(12);
-const qA = new Int32Array(12);
-const qB = new Int32Array(12);
+/** The two ends each channel of a partition wants, before rounding. */
+const wantA = new Float64Array(4);
+const wantB = new Float64Array(4);
+const qA = new Int32Array(4);
+const qB = new Int32Array(4);
+/** Each partition's values stored directly, and stored as base and offset: eight to a partition. */
+const vDirect = new Int32Array(24);
+const vOffset = new Int32Array(24);
+const vTry = new Int32Array(8);
+const eTry = new Int32Array(8);
 
 // The best block found so far.
 let bestError = Infinity;
@@ -1076,6 +1103,7 @@ let bestSecond = -1;
 let bestGrid = 0;
 let bestW = 0;
 let bestC = 0;
+let bestCem = 0;
 const bestValues = new Int32Array(24);
 const bestStored = new Int32Array(32);
 
@@ -1104,11 +1132,170 @@ function placeWeights(g: number, wRange: number, planes: number): void {
   }
 }
 
+/** The squared error, less a constant, of giving channel `c` of partition `p` the ends `e0` and `e1` while the
+ *  weights stay as they are. */
+function miss(p: number, c: number, e0: number, e1: number): number {
+  const s = (c === tSecond ? 3 : 0) + p;
+  return sAA[s] * e0 * e0 + 2 * sAB[s] * e0 * e1 + sBB[s] * e1 * e1 - 2 * sA[p * 4 + c] * e0 - 2 * sB[p * 4 + c] * e1;
+}
+
+/** The same for all of a partition's channels, from decoded ends. The ends may be the other way round: the weights
+ *  are chosen again once the ends are known. */
+function missOf(p: number, e: Int32Array): number {
+  let one = 0;
+  let other = 0;
+  for (let c = 0; c < channels; c++) {
+    one += miss(p, c, e[chan[c]], e[4 + chan[c]]);
+    other += miss(p, c, e[4 + chan[c]], e[chan[c]]);
+  }
+  return one < other ? one : other;
+}
+
+// What a search for one channel's pair of values found: the two values to store and, for a base and offset, the
+// base and the base plus offset they decode to.
+let pairLow = 0;
+let pairHigh = 0;
+let pairBase = 0;
+let pairOther = 0;
+
+/** Rounds the two ends of a channel to values a range can store: each down or up, whichever of the four ways misses
+ *  least. With `contract` the values are ones the decoder will halve towards the blues given. */
+function directPair(p: number, c: number, cRange: number, a: number, b: number, blueA: number, blueB: number, contract: boolean): number {
+  const down = COLOUR_DOWN[cRange];
+  const up = COLOUR_UP[cRange];
+  const a0 = down[a | 0];
+  const a1 = up[Math.ceil(a)];
+  const b0 = down[b | 0];
+  const b1 = up[Math.ceil(b)];
+  let least = Infinity;
+  for (let k = 0; k < 4; k++) {
+    const qa = k & 1 ? a1 : a0;
+    const qb = k & 2 ? b1 : b0;
+    const e = contract ? miss(p, c, (qa + blueA) >> 1, (qb + blueB) >> 1) : miss(p, c, qa, qb);
+    if (e < least) {
+      least = e;
+      pairLow = qa;
+      pairHigh = qb;
+    }
+  }
+  return least;
+}
+
+/** The same for a channel stored as a base and an offset, C.2.14: the second value carries the base's top bit above
+ *  an offset of -32 to 31, and the first carries the rest of the base. `base` and `other` are what the base and the
+ *  base plus offset should come to; `baseIsA` says which end of the line the base is. */
+function offsetPair(p: number, c: number, cRange: number, base: number, other: number, blueBase: number, blueOther: number, contract: boolean, baseIsA: boolean): number {
+  const down = COLOUR_DOWN[cRange];
+  const up = COLOUR_UP[cRange];
+  const whole = (base + 0.5) | 0;
+  const top = whole & 0x80;
+  const x = (whole & 0x7f) << 1;
+  let least = Infinity;
+  for (let k = 0; k < 2; k++) {
+    const v0 = k ? up[x] : down[x | 1];
+    const got = (v0 >> 1) | top;
+    let off = Math.floor(other + 0.5) - got;
+    off = off < -32 ? -32 : off > 31 ? 31 : off;
+    const y = top | ((off & 0x3f) << 1);
+    for (let j = 0; j < 2; j++) {
+      const v1 = j ? up[y] : down[y | 1];
+      if ((v1 & 0x80) !== top) continue;
+      const sum = got + ((v1 >> 1) & 0x3f) - (v1 & 0x40);
+      let e0 = contract ? (got + blueBase) >> 1 : got;
+      let e1 = contract ? (sum + blueOther) >> 1 : sum;
+      e0 = e0 < 0 ? 0 : e0 > 255 ? 255 : e0;
+      e1 = e1 < 0 ? 0 : e1 > 255 ? 255 : e1;
+      const e = baseIsA ? miss(p, c, e0, e1) : miss(p, c, e1, e0);
+      if (e < least) {
+        least = e;
+        pairLow = v0;
+        pairHigh = v1;
+        pairBase = got;
+        pairOther = sum;
+      }
+    }
+  }
+  return least;
+}
+
+/** Direct colours with blue_contract: red and green are stored as twice themselves less blue, which is finer when a
+ *  colour is near grey. The decoder contracts when the second colour stored sums to less than the first. Leaves the
+ *  values in vTry and returns their miss, or Infinity when the colours cannot be stored this way. */
+function contractedEnds(p: number, cRange: number): number {
+  for (let c = 0; c < 2; c++) {
+    const a = 2 * wantA[c] - qA[2];
+    const b = 2 * wantB[c] - qB[2];
+    if (a < 0 || a > 255 || b < 0 || b > 255) return Infinity;
+    directPair(p, c, cRange, a, b, qA[2], qB[2], true);
+    vTry[c * 2] = pairLow;
+    vTry[c * 2 + 1] = pairHigh;
+  }
+  for (let c = 2; c < channels; c++) {
+    vTry[c * 2] = qA[c];
+    vTry[c * 2 + 1] = qB[c];
+  }
+  const first = vTry[0] + vTry[2] + vTry[4];
+  const second = vTry[1] + vTry[3] + vTry[5];
+  if (first === second) return Infinity;
+  if (first < second) {
+    for (let c = 0; c < channels; c++) {
+      const swap = vTry[c * 2];
+      vTry[c * 2] = vTry[c * 2 + 1];
+      vTry[c * 2 + 1] = swap;
+    }
+  }
+  endColours(cem, vTry, 0, eTry, 0);
+  return missOf(p, eTry);
+}
+
+/** Base and offset: a bit finer than direct colours when the two ends are within 32 levels of each other. With
+ *  `contract`, blue_contract as well, which the decoder applies when the offsets of red, green and blue sum below
+ *  zero. Leaves the values in vTry and returns their miss. */
+function offsetEnds(p: number, cRange: number, contract: boolean): number {
+  let baseIsA = true;
+  if (channels >= 3) {
+    // Without contraction the base must be the end with the lower sum, so that the offsets do not sum below zero.
+    // With it, the base must be the end whose stored values, twice red and green less blue, sum higher.
+    const a = contract ? 2 * wantA[0] + 2 * wantA[1] - wantA[2] : wantA[0] + wantA[1] + wantA[2];
+    const b = contract ? 2 * wantB[0] + 2 * wantB[1] - wantB[2] : wantB[0] + wantB[1] + wantB[2];
+    if (contract && a === b) return Infinity;
+    baseIsA = contract ? a > b : a <= b;
+  }
+  // Ends too far apart for an offset are not worth the search.
+  for (let c = 0; c < channels; c++) {
+    const apart = contract && c < 2 ? 2 * (wantB[c] - wantA[c]) - (wantB[2] - wantA[2]) : wantB[c] - wantA[c];
+    if (apart > 34 || apart < -34) return Infinity;
+  }
+  let blueBase = 0;
+  let blueOther = 0;
+  // Blue goes first: when contracting, red and green are stored relative to the blues that were stored.
+  for (let c = channels - 1; c >= 0; c--) {
+    let base = baseIsA ? wantA[c] : wantB[c];
+    let other = baseIsA ? wantB[c] : wantA[c];
+    const halved = contract && c < 2;
+    if (halved) {
+      base = 2 * base - blueBase;
+      other = 2 * other - blueOther;
+      if (base < 0 || base > 255) return Infinity;
+    }
+    offsetPair(p, c, cRange, base, other, blueBase, blueOther, halved, baseIsA);
+    vTry[c * 2] = pairLow;
+    vTry[c * 2 + 1] = pairHigh;
+    if (c === 2) {
+      blueBase = pairBase;
+      blueOther = pairOther;
+    }
+  }
+  endColours(cem + 1, vTry, 0, eTry, 0);
+  return missOf(p, eTry);
+}
+
 /** With the pixels' weights fixed, finds the end colours with the least squared error, then the values a range can
- *  store that are closest to them. Each channel's two ends are rounded together, down or up, whichever of the four
- *  ways leaves the least error. */
+ *  store that come closest to them. Below 256 levels the ends can be stored in ways that are finer for some colours,
+ *  and the way that misses least is taken. Base and offset is a mode of its own, so every partition has it or none. */
 function placeEnds(f: Fit, cRange: number): void {
   const { parts, part, second } = f;
+  tSecond = second;
   sAA.fill(0);
   sAB.fill(0);
   sBB.fill(0);
@@ -1139,10 +1326,11 @@ function placeEnds(f: Fit, cRange: number): void {
       sB[p * 4 + second] += w1 * x;
     }
   }
-  const down = COLOUR_DOWN[cRange];
-  const up = COLOUR_UP[cRange];
-  const per = channels * 2;
+  const finer = cRange < LAST_RANGE && channels > 1;
+  let direct = 0;
+  let offset = 0;
   for (let p = 0; p < parts; p++) {
+    let score = 0;
     for (let c = 0; c < channels; c++) {
       const s = (c === second ? 3 : 0) + p;
       const aa = sAA[s];
@@ -1152,34 +1340,43 @@ function placeEnds(f: Fit, cRange: number): void {
       const rb = sB[p * 4 + c];
       const det = aa * bb - ab * ab;
       // When every pixel has the same weight the two ends cannot be told apart: both take the mean.
-      let a = det > 1e-7 ? (ra * bb - rb * ab) / det : (ra + rb) / (aa + 2 * ab + bb);
-      let b = det > 1e-7 ? (rb * aa - ra * ab) / det : a;
-      a = a < 0 ? 0 : a > 255 ? 255 : a;
-      b = b < 0 ? 0 : b > 255 ? 255 : b;
-      const a0 = down[a | 0];
-      const a1 = up[Math.ceil(a)];
-      const b0 = down[b | 0];
-      const b1 = up[Math.ceil(b)];
-      let least = Infinity;
-      for (let k = 0; k < 4; k++) {
-        const qa = k & 1 ? a1 : a0;
-        const qb = k & 2 ? b1 : b0;
-        const e = aa * qa * qa + 2 * ab * qa * qb + bb * qb * qb - 2 * ra * qa - 2 * rb * qb;
-        if (e < least) {
-          least = e;
-          qA[p * 4 + c] = qa;
-          qB[p * 4 + c] = qb;
-        }
-      }
+      const a = det > 1e-7 ? (ra * bb - rb * ab) / det : (ra + rb) / (aa + 2 * ab + bb);
+      const b = det > 1e-7 ? (rb * aa - ra * ab) / det : a;
+      wantA[c] = a < 0 ? 0 : a > 255 ? 255 : a;
+      wantB[c] = b < 0 ? 0 : b > 255 ? 255 : b;
+      score += directPair(p, c, cRange, wantA[c], wantB[c], 0, 0, false);
+      qA[c] = pairLow;
+      qB[c] = pairHigh;
     }
-    // Direct colours whose second end is the darker one would be read as blue-contracted, so they swap.
-    const q = p * 4;
-    const swap = channels >= 3 && qB[q] + qB[q + 1] + qB[q + 2] < qA[q] + qA[q + 1] + qA[q + 2];
+    // Direct colours whose second end sums lower would be read as blue-contracted, so they swap.
+    const swap = channels >= 3 && qB[0] + qB[1] + qB[2] < qA[0] + qA[1] + qA[2];
     for (let c = 0; c < channels; c++) {
-      tValues[p * per + c * 2] = swap ? qB[q + c] : qA[q + c];
-      tValues[p * per + c * 2 + 1] = swap ? qA[q + c] : qB[q + c];
+      vDirect[p * 8 + c * 2] = swap ? qB[c] : qA[c];
+      vDirect[p * 8 + c * 2 + 1] = swap ? qA[c] : qB[c];
     }
-    endColours(cem, tValues, p * per, tEnds, p * 8);
+    if (finer) {
+      const contracted = channels >= 3 ? contractedEnds(p, cRange) : Infinity;
+      if (contracted < score) {
+        score = contracted;
+        vDirect.set(vTry, p * 8);
+      }
+      let other = offsetEnds(p, cRange, false);
+      vOffset.set(vTry, p * 8);
+      const both = channels >= 3 ? offsetEnds(p, cRange, true) : Infinity;
+      if (both < other) {
+        other = both;
+        vOffset.set(vTry, p * 8);
+      }
+      offset += other;
+    }
+    direct += score;
+  }
+  tCem = finer && offset < direct ? cem + 1 : cem;
+  const from = tCem === cem ? vDirect : vOffset;
+  const per = channels * 2;
+  for (let p = 0; p < parts; p++) {
+    for (let k = 0; k < per; k++) tValues[p * per + k] = from[p * 8 + k];
+    endColours(tCem, tValues, p * per, tEnds, p * 8);
   }
 }
 
@@ -1224,9 +1421,42 @@ function trialError(f: Fit): number {
   return error;
 }
 
+/** The weight each pixel gets from the weights stored for a smaller grid, for the plane that starts at `o`. */
+function infill(g: number, o: number): void {
+  const at = GRID_AT[g];
+  const by = GRID_BY[g];
+  for (let i = 0; i < 16; i++) {
+    const k = i * 4;
+    tWeight[o + i] = (tStored[o + at[k]] * by[k] + tStored[o + at[k + 1]] * by[k + 1] + tStored[o + at[k + 2]] * by[k + 2] + tStored[o + at[k + 3]] * by[k + 3] + 8) >> 4;
+  }
+}
+
+/** Keeps the trial as it stands if it is the best block so far. */
+function keep(f: Fit, g: number, wRange: number, cRange: number, error: number): void {
+  if (error >= bestError) return;
+  bestError = error;
+  bestParts = f.parts;
+  bestPattern = f.pattern;
+  bestSecond = f.second;
+  bestGrid = g;
+  bestW = wRange;
+  bestC = cRange;
+  bestCem = tCem;
+  bestValues.set(tValues);
+  bestStored.set(tStored);
+}
+
+// The best a trial reached, to come back to.
+let rCem = 0;
+const rValues = new Int32Array(24);
+const rStored = new Int32Array(32);
+
 /** How many times a trial fits its ends and weights to each other. It stops sooner when a round does not help. */
 const ROUNDS = 3;
+/** A trial on a smaller grid has its stored weights polished if it came this close to the best block so far. */
+const POLISH_WITHIN = 1.25;
 
+/** Carries one way of spending the bits through to its error, and keeps it if it is the best. */
 function trial(f: Fit, g: number, wRange: number, cRange: number): void {
   const planes = f.second >= 0 ? 2 : 1;
   tWant.set(f.u);
@@ -1239,19 +1469,49 @@ function trial(f: Fit, g: number, wRange: number, cRange: number): void {
     const error = trialError(f);
     if (error >= least) break;
     least = error;
-    if (error < bestError) {
-      bestError = error;
-      bestParts = f.parts;
-      bestPattern = f.pattern;
-      bestSecond = f.second;
-      bestGrid = g;
-      bestW = wRange;
-      bestC = cRange;
-      bestValues.set(tValues);
-      bestStored.set(tStored);
+    if (g > 0) {
+      rCem = tCem;
+      rValues.set(tValues);
+      rStored.set(tStored);
     }
+    keep(f, g, wRange, cRange, error);
     if (error === 0) break;
   }
+  if (g === 0 || least === 0 || least > bestError * POLISH_WITHIN) return;
+  // On a smaller grid a stored weight reaches several pixels, and rounding each to its nearest level is not the best
+  // for its neighbours. Each is tried one level down and one up against the pixels, and the ends are fitted once more
+  // to the weights that come of it.
+  tCem = rCem;
+  tValues.set(rValues);
+  tStored.set(rStored);
+  endColours(tCem, tValues, 0, tEnds, 0);
+  for (let plane = 0; plane < planes; plane++) infill(g, plane * 16);
+  const count = GRIDS[g]![0] * GRIDS[g]![1];
+  const below = WEIGHT_BELOW[wRange];
+  const above = WEIGHT_ABOVE[wRange];
+  for (let plane = 0; plane < planes; plane++) {
+    const o = plane * 16;
+    for (let j = 0; j < count; j++) {
+      const was = tStored[o + j];
+      let best = was;
+      for (let side = 0; side < 2; side++) {
+        const v = side ? above[was] : below[was];
+        if (v === was) continue;
+        tStored[o + j] = v;
+        infill(g, o);
+        const error = trialError(f);
+        if (error < least) {
+          least = error;
+          best = v;
+        }
+      }
+      tStored[o + j] = best;
+      infill(g, o);
+    }
+  }
+  keep(f, g, wRange, cRange, least);
+  placeEnds(f, cRange);
+  keep(f, g, wRange, cRange, trialError(f));
 }
 
 function runCandidates(): void {
@@ -1264,8 +1524,8 @@ const centreSum = new Float64Array(12);
 const centreCount = new Int32Array(3);
 const cluster = new Uint8Array(16);
 const clusterMask = new Int32Array(3);
-const nearCost = new Int32Array(MOST);
-const nearAt = new Int32Array(MOST);
+const nearCost = new Int32Array(1024);
+const nearAt = new Int32Array(1024);
 
 /** Sorts the pixels into `parts` groups of like colour, starting from the two ends of the block's line. */
 function groupPixels(parts: number, line: Fit): void {
@@ -1322,53 +1582,74 @@ function groupPixels(parts: number, line: Fit): void {
   for (let i = 0; i < 16; i++) clusterMask[cluster[i]] |= 1 << i;
 }
 
-/** Tries blocks of two or three partitions: the patterns nearest to the pixels' own grouping are fitted, and the
- *  `fitted` with the straightest lines go on to trials. */
+/** Patterns are fitted only if the pixels' own grouping is estimated to come within this factor of the block in hand.
+ *  The estimate is rough, so it is given room. */
+const HOPE = 1.5;
+
+/** Tries blocks of two or three partitions. The `nearest` patterns to the pixels' own grouping are fitted, or every
+ *  pattern when `nearest` is that many, and the `fitted` with the straightest lines go on to trials. */
 function tryPartitions(parts: number, line: Fit, nearest: number, fitted: number, trials: number): void {
-  groupPixels(parts, line);
   const { index, masks } = DISTINCT[parts]!;
   let found = 0;
-  for (let j = 0; j < index.length; j++) {
-    let miss: number;
-    if (parts === 2) {
-      miss = POP[clusterMask[1] ^ masks[j * 2 + 1]!];
-      if (miss > 8) miss = 16 - miss;
-    } else {
-      const m0 = masks[j * 3]!;
-      const m1 = masks[j * 3 + 1]!;
-      const m2 = masks[j * 3 + 2]!;
-      const a = clusterMask[0];
-      const b = clusterMask[1];
-      const c = clusterMask[2];
-      const same = Math.max(POP[a & m0] + POP[b & m1] + POP[c & m2], POP[a & m0] + POP[b & m2] + POP[c & m1], POP[a & m1] + POP[b & m0] + POP[c & m2], POP[a & m1] + POP[b & m2] + POP[c & m0], POP[a & m2] + POP[b & m0] + POP[c & m1], POP[a & m2] + POP[b & m1] + POP[c & m0]);
-      miss = 16 - same;
+  if (nearest >= index.length) {
+    for (found = 0; found < index.length; found++) nearAt[found] = index[found]!;
+  } else {
+    groupPixels(parts, line);
+    // The pixels' own grouping is about the best any pattern could do. If even that is not expected to come near
+    // the block in hand, no pattern is fitted. A group that came out empty means there are fewer kinds of pixel.
+    for (let k = 0; k < parts; k++) if (centreCount[k] === 0) return;
+    const own = fits[7]!;
+    own.parts = parts;
+    own.part = cluster;
+    own.second = -1;
+    fit(own);
+    consider(own, 0, 1);
+    const hope = candCost[0];
+    cands = 0;
+    if (hope >= bestError * HOPE) return;
+    for (let j = 0; j < index.length; j++) {
+      let off: number;
+      if (parts === 2) {
+        off = POP[clusterMask[1] ^ masks[j * 2 + 1]!];
+        if (off > 8) off = 16 - off;
+      } else {
+        const m0 = masks[j * 3]!;
+        const m1 = masks[j * 3 + 1]!;
+        const m2 = masks[j * 3 + 2]!;
+        const a = clusterMask[0];
+        const b = clusterMask[1];
+        const c = clusterMask[2];
+        off = 16 - Math.max(POP[a & m0] + POP[b & m1] + POP[c & m2], POP[a & m0] + POP[b & m2] + POP[c & m1], POP[a & m1] + POP[b & m0] + POP[c & m2], POP[a & m1] + POP[b & m2] + POP[c & m0], POP[a & m2] + POP[b & m0] + POP[c & m1], POP[a & m2] + POP[b & m1] + POP[c & m0]);
+      }
+      let at = found;
+      while (at > 0 && nearCost[at - 1] > off) at--;
+      if (at >= nearest) continue;
+      if (found < nearest) found++;
+      for (let k = found - 1; k > at; k--) {
+        nearCost[k] = nearCost[k - 1];
+        nearAt[k] = nearAt[k - 1];
+      }
+      nearCost[at] = off;
+      nearAt[at] = index[j]!;
     }
-    let at = found;
-    while (at > 0 && nearCost[at - 1] > miss) at--;
-    if (at >= nearest) continue;
-    if (found < nearest) found++;
-    for (let k = found - 1; k > at; k--) {
-      nearCost[k] = nearCost[k - 1];
-      nearAt[k] = nearAt[k - 1];
-    }
-    nearCost[at] = miss;
-    nearAt[at] = index[j]!;
   }
-  // Fit each, and keep the order of the straightest in nearCost and nearAt.
+  // Fit each. fits[8] onwards holds the straightest so far in order, and after them the one being fitted.
+  let kept = 0;
   for (let k = 0; k < found; k++) {
-    const f = fits[8 + k]!;
+    const f = fits[8 + kept]!;
     f.parts = parts;
     f.pattern = nearAt[k];
     f.part = PARTITION[parts]![f.pattern]!;
     f.second = -1;
     fit(f);
+    let at = kept;
+    while (at > 0 && fits[8 + at - 1]!.base > f.base) at--;
+    if (at === fitted) continue;
+    for (let j = 8 + kept; j > 8 + at; j--) fits[j] = fits[j - 1]!;
+    fits[8 + at] = f;
+    if (kept < fitted) kept++;
   }
-  for (let n = 0; n < fitted && n < found; n++) {
-    let pick = -1;
-    for (let k = 0; k < found; k++) if (nearCost[k] >= 0 && (pick < 0 || fits[8 + k]!.base < fits[8 + pick]!.base)) pick = k;
-    nearCost[pick] = -1;
-    consider(fits[8 + pick]!, 0, trials);
-  }
+  for (let n = 0; n < kept; n++) consider(fits[8 + n]!, 0, trials);
   runCandidates();
 }
 
@@ -1391,11 +1672,11 @@ function writeBest(out: Uint8Array, at: number): void {
   setBits(0, 11, ((planes - 1) << 10) | (bestW >= 6 ? 0x200 : 0) | shape | ((r & 1) << 4));
   setBits(11, 2, bestParts - 1);
   let colourAt = 17;
-  if (bestParts === 1) setBits(13, 4, cem);
+  if (bestParts === 1) setBits(13, 4, bestCem);
   else {
     // Every partition has the same mode: the selector in bits 23 and 24 stays 0.
     setBits(13, 10, bestPattern);
-    setBits(25, 4, cem);
+    setBits(25, 4, bestCem);
     colourAt = 29;
   }
   const values = bestParts * channels * 2;
@@ -1414,8 +1695,12 @@ function writeBest(out: Uint8Array, at: number): void {
   }
 }
 
-/** A block is not searched further once its mean squared error per channel is below this. */
+/** How many one-partition candidates are run. More was tried and gained under 0.1 dB. */
+const LINE_TRIALS = 6;
+/** A block is not searched further once its mean squared error per channel is below this, */
 const GOOD_ENOUGH = 0.25;
+/** and has every partition pattern fitted if it is still above this. */
+const BAD = 48;
 
 /** Encodes the block in `px`. */
 function encodeBlock(kind: AstcKind, out: Uint8Array, at: number): void {
@@ -1454,19 +1739,21 @@ function encodeBlock(kind: AstcKind, out: Uint8Array, at: number): void {
   const line = fits[0]!;
   line.second = -1;
   fit(line);
-  consider(line, 0, 4);
+  consider(line, 0, LINE_TRIALS);
   let lines = 1;
   for (let c = grey ? 1 : 0; c < channels && channels > 1; c++) {
     const f = fits[lines++]!;
     f.second = c;
     fit(f);
-    consider(f, 0, 4);
+    consider(f, 0, LINE_TRIALS);
   }
-  for (let k = 0; k < lines; k++) for (let g = 1; g < GRIDS.length; g++) consider(fits[k]!, g, 4);
+  for (let k = 0; k < lines; k++) for (let g = 1; g < GRIDS.length; g++) consider(fits[k]!, g, LINE_TRIALS);
   runCandidates();
+  // More partitions, while the block is not yet good. A block that stays bad has every pattern fitted.
   const good = 16 * cwSum * GOOD_ENOUGH;
-  if (bestError > good) tryPartitions(2, line, 8, 2, 4);
-  if (bestError > good && channels < 4) tryPartitions(3, line, 6, 2, 3);
+  const bad = 16 * cwSum * BAD;
+  if (bestError > good) tryPartitions(2, line, bestError > bad ? 1024 : 8, 2, 4);
+  if (bestError > good && channels < 4) tryPartitions(3, line, bestError > bad ? 1024 : 6, 2, 3);
   writeBest(out, at);
 }
 
