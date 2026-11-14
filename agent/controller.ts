@@ -9,7 +9,7 @@ import { BTN_JUMP, BTN_PRIMARY, BTN_USE, MF_OUT, MF_ROOTED, MODE_SWIM, stanceEye
 import { V_HEALTH, V_OXYGEN } from "../shared/sim/vitals.ts";
 import { W_MELEE } from "../shared/sim/weapon.ts";
 import { GROUND_FREE, GROUND_SOLID, PATH_LEG, PATH_NONE, PATH_SHORT, PathFinder, groundAt } from "../shared/world/path.ts";
-import { HIT_NODE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
+import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { NO_PIN, STRUCT_USE } from "../shared/world/upkeep.ts";
 import { resultWords, type Commands } from "./commands.ts";
 import type { Answer } from "./mcp.ts";
@@ -44,8 +44,11 @@ interface Task {
   kind: "walk_to" | "harvest" | "open";
   target: Target;
   phase: Phase;
-  /** Walking ends this near the target's middle. */
+  /** Where it walks to, and how near that it stops. The target's middle, unless a place to stand by it was chosen. */
+  gx: number;
+  gz: number;
   stop: number;
+  stood: boolean;
   /** Harvest: the item to count and how many more of it to gather (0 for until the node is gone), and the tool to take in hand. */
   item: number;
   count: number;
@@ -188,7 +191,7 @@ export class Controller {
       const entity = Number(body[1]);
       const r = this.remote;
       for (let i = 0; i < r.count; i++) {
-        if (r.id[i] !== entity || entity === ownIndex(s)) continue;
+        if (r.id[i] !== entity || entity === ownIndex(s) || entity === s.driving) continue;
         return { ...blank, x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, half: reg.bodyRadius[r.kind[i]!]!, up: reg.bodyHeight[r.kind[i]!]!, down: 0, kind: r.kind[i]!, entity, flags: r.flags[i]! };
       }
       return `${id} is not in sight`;
@@ -216,8 +219,41 @@ export class Controller {
   open(now: number, target: Target, pin: number): void {
     const reg = this.session.registry;
     // The server measures from the eye to the middle of a thing built, and along the look to a body.
-    const stop = target.ref >= 0 ? Math.hypot(reg.halfX[target.kind]!, reg.halfZ[target.kind]!) + 2 : target.half + 1.8;
-    this.begin(now, { kind: "open", target, stop, pin });
+    const reach = target.ref >= 0 ? Math.hypot(reg.halfX[target.kind]!, reg.halfZ[target.kind]!) + 2 : target.half + 1.8;
+    // Nothing opens through a wall, so the walk is to somewhere the thing can be seen from, if there is such a place.
+    const stand = this.standBy(target, reach);
+    if (stand) this.begin(now, { kind: "open", target, pin, gx: stand[0], gz: stand[1], stop: 0.4, stood: true });
+    else this.begin(now, { kind: "open", target, pin, stop: reach });
+  }
+
+  /** The place nearest the body, within `reach` of a thing, where a body can stand with nothing between its eye and the thing's middle. */
+  private standBy(g: Target, reach: number): [number, number] | null {
+    const s = this.session;
+    const world = s.world!;
+    const move = this.move();
+    const b = s.own;
+    const ay = g.entity >= 0 ? g.y + g.up / 2 : g.y;
+    const seen = (x: number, z: number): boolean => {
+      if (groundAt(world, move, x, z) !== GROUND_FREE) return false;
+      const ey = world.hf.heightAt(x, z) + move.eyeHeight;
+      const far = Math.hypot(g.x - x, ay - ey, g.z - z);
+      const hit = castWorld(world, x, ey, z, (g.x - x) / far, (ay - ey) / far, (g.z - z) / far, far);
+      return hit === HIT_NONE || (hit === HIT_STRUCTURE && rayHit.ref === g.ref);
+    };
+    if (Math.hypot(g.x - b.x, g.z - b.z) <= reach && seen(b.x, b.z)) return [b.x, b.z];
+    let best: [number, number] | null = null;
+    let least = Infinity;
+    for (const share of [0.5, 0.85]) {
+      for (let k = 0; k < 16; k++) {
+        const x = g.x + Math.sin((k * TAU) / 16) * reach * share;
+        const z = g.z + Math.cos((k * TAU) / 16) * reach * share;
+        const far = Math.hypot(x - b.x, z - b.z);
+        if (far >= least || !seen(x, z)) continue;
+        least = far;
+        best = [x, z];
+      }
+    }
+    return best;
   }
 
   /** Stops the running task. Returns its name, or null if there was none. */
@@ -232,7 +268,7 @@ export class Controller {
     const t = this.task;
     if (!t) return {};
     const b = this.session.own;
-    return { task: t.kind, doing: t.phase, left_m: Math.round(Math.max(0, Math.hypot(t.target.x - b.x, t.target.z - b.z) - t.stop) * 10) / 10, ...(t.kind === "harvest" ? { gathered: this.gathered() } : {}) };
+    return { task: t.kind, doing: t.phase, left_m: Math.round(Math.max(0, Math.hypot(t.gx - b.x, t.gz - b.z) - t.stop) * 10) / 10, ...(t.kind === "harvest" ? { gathered: this.gathered() } : {}) };
   }
 
   /** What threatens the survivor now, in words. */
@@ -265,6 +301,10 @@ export class Controller {
     const b = s.own;
     if ((b.mflags & MF_OUT) !== 0) return this.end({ state: "danger", reason: "you are knocked out" });
     if (t.target.entity >= 0 && !this.follow(t.target)) return this.end({ state: "blocked", reason: `${t.target.id} is no longer in sight` });
+    if (!t.stood) {
+      t.gx = t.target.x;
+      t.gz = t.target.z;
+    }
     if (t.phase === "waiting") this.ready(now, t);
     else if (t.phase === "walking") this.walk(now, dt, t);
     else if (t.phase === "approaching") this.approach(now, dt, t);
@@ -275,7 +315,7 @@ export class Controller {
   }
 
   private begin(now: number, task: Partial<Task> & Pick<Task, "kind" | "target">): void {
-    this.task = { phase: "walking", stop: 0, item: 0, count: 0, tool: 0, pin: NO_PIN, step: 0, tries: 0, seq: 0, hold: 0, since: now, ...task };
+    this.task = { phase: "walking", gx: task.target.x, gz: task.target.z, stop: 0, stood: false, item: 0, count: 0, tool: 0, pin: NO_PIN, step: 0, tries: 0, seq: 0, hold: 0, since: now, ...task };
     this.ended = null;
     this.planned = false;
     this.plans = this.replans = this.stuck = 0;
@@ -418,12 +458,12 @@ export class Controller {
     const b = s.own;
     this.finder ??= new PathFinder(s.world!, this.move());
     this.finder.body = this.move();
-    this.status = this.finder.find(b.x, b.z, t.target.x, t.target.z);
+    this.status = this.finder.find(b.x, b.z, t.gx, t.gz);
     this.plans++;
     this.planned = true;
     this.next = 1;
-    this.planX = t.target.x;
-    this.planZ = t.target.z;
+    this.planX = t.gx;
+    this.planZ = t.gz;
     this.check(now);
     return this.status !== PATH_NONE;
   }
@@ -439,13 +479,12 @@ export class Controller {
 
   private walk(now: number, dt: number, t: Task): void {
     const b = this.session.own;
-    const g = t.target;
-    const far = Math.hypot(g.x - b.x, g.z - b.z);
+    const far = Math.hypot(t.gx - b.x, t.gz - b.z);
     if (far <= t.stop) return this.reached(now, t);
     if ((b.mflags & MF_ROOTED) !== 0) return this.end({ state: "blocked", reason: "you carry too much to move" });
     if (b.mode === MODE_SWIM) {
       // Out of its depth it swims for the goal at the surface, and finds its way again when it stands.
-      this.steer(dt, g.x, g.z);
+      this.steer(dt, t.gx, t.gz);
       this.buttons |= BTN_JUMP;
       this.planned = false;
       return;
@@ -459,7 +498,7 @@ export class Controller {
         this.stuck = 0;
         this.jumped = false;
       }
-      let again = this.status === PATH_LEG || Math.hypot(g.x - this.planX, g.z - this.planZ) > 1;
+      let again = this.status === PATH_LEG || Math.hypot(t.gx - this.planX, t.gz - this.planZ) > 1;
       if (stuck && !this.jumped) {
         // First it tries to hop over whatever it is.
         this.jumped = true;
@@ -498,13 +537,12 @@ export class Controller {
   private approach(now: number, dt: number, t: Task): void {
     const s = this.session;
     const b = s.own;
-    const g = t.target;
-    const far = Math.hypot(g.x - b.x, g.z - b.z);
+    const far = Math.hypot(t.gx - b.x, t.gz - b.z);
     if (far <= t.stop) return this.reached(now, t);
     // It does not walk off into water or onto a slope for the sake of the last metre.
-    const ahead = groundAt(s.world!, this.move(), b.x + ((g.x - b.x) / far) * 0.6, b.z + ((g.z - b.z) / far) * 0.6);
+    const ahead = groundAt(s.world!, this.move(), b.x + ((t.gx - b.x) / far) * 0.6, b.z + ((t.gz - b.z) / far) * 0.6);
     if (ahead !== GROUND_FREE && ahead !== GROUND_SOLID) return this.short(now, t, "the ground between cannot be walked");
-    this.steer(dt, g.x, g.z);
+    this.steer(dt, t.gx, t.gz);
     if (now < this.checkAt) return;
     this.checkAt = now + CHECK_MS;
     if (this.nearest - far < STUCK_M) return this.short(now, t, "something is in the way");
@@ -515,7 +553,7 @@ export class Controller {
   private short(now: number, t: Task, reason: string): void {
     const b = this.session.own;
     if (t.kind !== "walk_to") return this.phase(now, t, "facing");
-    this.end({ state: "blocked", reason, short_m: Math.round((Math.hypot(t.target.x - b.x, t.target.z - b.z) - t.stop) * 10) / 10 });
+    this.end({ state: "blocked", reason, short_m: Math.round((Math.hypot(t.gx - b.x, t.gz - b.z) - t.stop) * 10) / 10 });
   }
 
   private reached(now: number, t: Task): void {

@@ -157,6 +157,12 @@ test("open walks to a box and opens it, move_item fills it, and a door, a bag an
   expect(p.h.host.items.inv(p.rec).total(p.id("wood"))).toBe(3);
   const wall = p.s.world!.structs.chunks.flatMap((t, chunk) => (t ? Array.from({ length: t.high }, (_, slot) => (t.kind[slot] === p.id("wall") ? chunk * 65536 + slot : -1)) : [])).find((ref) => ref >= 0);
   expect(await p.call("open", { id: `s${wall}` })).toEqual({ state: "refused", reason: "only a box, a bag or a door can be opened" });
+
+  // A box inside the house, against its south wall. From the south it is a metre off and out of sight, so it is opened from indoors.
+  const indoors = structs.add(p.id("storage_box"), 240.5, 0.6125, 270.5, 0, p.rec.team, 500);
+  expect(await p.call("walk_to", { x: 240.5, z: 268 })).toMatchObject({ state: "done" });
+  expect(await p.call("open", { id: `s${indoors}` })).toMatchObject({ state: "done", box: { name: "storage box" } });
+  expect(p.s.own.z).toBeGreaterThan(270.5);
   expect(p.h.host.items.audit()).toEqual([]);
 });
 
