@@ -13,7 +13,7 @@ import type { Pack } from "../../../shared/pack/pack.ts";
 import { LAST_STEP, STEP0_SIZE, pictureBytes, stepBytes, stepOf, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import { Rng } from "../../../shared/rng.ts";
 import type { TextureUpload } from "../render/packet.ts";
-import { FAIL_HASH, FAIL_RANGE, type AssetArrival, type AssetPart, type AssetPort } from "./port.ts";
+import { FAIL_HASH, FAIL_RANGE, levelParts, textureParts, type AssetArrival, type AssetPart, type AssetPort } from "./port.ts";
 
 /**
  * A level to put on the graphics card: its indices and then its vertices, as the pack holds them. With `of` it is a
@@ -545,18 +545,15 @@ export class Residency {
   download(): number {
     const parts: { file: number; part: AssetPart }[] = [];
     let bytes = 0;
-    const add = (file: number, offset: number, length: number, hash: string): void => {
-      parts.push({ file, part: { offset, length, hash } });
-      bytes += length;
+    const add = (file: number, part: AssetPart): void => {
+      parts.push({ file, part });
+      bytes += part.length;
     };
     for (let slot = 0; slot < this.levels; slot++) {
       const level = this.levelAt(slot);
-      if (this.inBoot[slot] === 0) add(level.file, level.at, level.parts[0]!.bytes, level.parts[0]!.hash);
+      if (this.inBoot[slot] === 0) for (const p of levelParts(level, 0, 1)) add(level.file, p);
       if (this.cap < 0 || this.inBoot[this.levels + slot] === 1) continue;
-      for (let k = 1, at = this.startOf(this.levels + slot); k < level.parts.length; k++) {
-        add((level.surface ?? level).file, at, level.parts[k]!.bytes, level.parts[k]!.hash);
-        at += level.parts[k]!.bytes;
-      }
+      for (const p of levelParts(level, 1, level.parts.length)) add((level.surface ?? level).file, p);
     }
     if (this.cap >= 0) {
       // A texture is taken as far as the material that shows it widest would.
@@ -567,10 +564,7 @@ export class Residency {
       }
       (this.manifest.textures ?? []).forEach((tex, t) => {
         const v = tex.in[this.made];
-        for (let k = 0, at = v?.at ?? 0; v && k <= most[t]!; k++) {
-          add(v.file, at, stepBytes(this.made, tex.role, k), v.hash[k]!);
-          at += stepBytes(this.made, tex.role, k);
-        }
+        if (v && most[t]! >= 0) for (const p of textureParts(tex, this.made, most[t]!)) add(v.file, p);
       });
     }
     this.port?.fill(parts);
@@ -707,23 +701,15 @@ export class Residency {
     if (slot >= this.texBase) {
       const t = slot - this.texBase;
       const tex = this.manifest.textures![t]!;
-      const v = tex.in[this.made]!;
-      file = v.file;
-      for (let k = 0, at = v.at; k <= goal; k++) {
-        parts.push({ offset: at, length: stepBytes(this.made, tex.role, k), hash: v.hash[k]! });
-        at += stepBytes(this.made, tex.role, k);
-      }
+      file = tex.in[this.made]!.file;
+      parts.push(...textureParts(tex, this.made, goal));
       this.goal[t] = goal;
       this.size[slot] = this.through[t * STEPS + goal]!;
       this.texComing += this.size[slot]!;
     } else {
       const level = this.levelAt(slot);
       file = slot < this.levels ? level.file : (level.surface ?? level).file;
-      if (slot < this.levels) parts.push({ offset: level.at, length: level.parts[0]!.bytes, hash: level.parts[0]!.hash });
-      for (let k = 1, at = this.startOf(rider < 0 ? slot : rider); k < level.parts.length && (slot >= this.levels || rider >= 0); k++) {
-        parts.push({ offset: at, length: level.parts[k]!.bytes, hash: level.parts[k]!.hash });
-        at += level.parts[k]!.bytes;
-      }
+      parts.push(...levelParts(level, slot < this.levels ? 0 : 1, slot >= this.levels || rider >= 0 ? level.parts.length : 1));
       if (rider >= 0) this.state[rider] = RIDING;
     }
     this.port!.request({ slot, file, parts, priority: this.urgency[slot]!, fresh: this.rehashed[slot] === 1 });

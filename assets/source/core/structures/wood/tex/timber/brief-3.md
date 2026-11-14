@@ -1,0 +1,7 @@
+This is the third pass on the `timber` material (the heavy frame: posts, plates, braces, jambs, lintels, sill beams, joists, stair stringers, pillars). Work only in this folder; no git commands that write. Read your `REPORT.md` and scripts first. Only the base colour changes: the layout, height, normal and packed map stay exactly as they are.
+
+The tier now has concept art, in `/home/user/dev/SNARK/.claude/worktrees/agent-ae515c340350f410b/assets/source/core/structures/wood/ref/concept/` (look at `piece_wall.png`, `piece_doorframe.png`, `piece_windowframe.png`, `piece_pillar.png`, `piece_ceiling_below.png`, `homestead_front.png`). The pieces are being modelled to it, and the materials must now take its palette: warm, saturated, inviting wood, with the heavy frame clearly darker and redder than the boards it holds. Measured means of the painted concept, which include its warm light: frame posts about sRGB (97, 54, 31), top plate (115, 74, 49), pillar (124, 75, 43), boards (170, 102, 54).
+
+Move the base colour to the concept's frame: a dark, rich red-brown, mean about sRGB (100, 58, 36), clearly darker and redder than the boards (which will be a warm orange honey around (162, 100, 56)). Keep the band-to-band variety relative to the new mean, the weathered bands still a little greyer but warm, and the hewing marks, kerfs and checks still readable in the colour.
+
+Do it inside your build so it rebuilds the same. Rerun your checks, add a before/after of the base colour to the contact sheet, and note the change in `REPORT.md`.

@@ -229,7 +229,8 @@ void main() {
  * The fragment text for a variant of the textures: `astc` keeps a normal's x in the colour channels and its y in
  * alpha, the others keep them in red and green. The base colour is an sRGB texture, so it is sampled as light, and
  * every texture repeats, since a material may run along a mesh more than once. `uCutoff` is the material's for a
- * cut-out draw and 0 for any other.
+ * cut-out draw and 0 for any other. A cut-out draw writes as alpha how much of the pixel lies on the solid side, for
+ * alpha to coverage to take as samples. The rasterizer tests each pixel's middle, so the two differ only along a cut.
  */
 export function surfaceFragment(format: TextureFormat): string {
   return `#version 300 es
@@ -288,7 +289,8 @@ void main() {
   vec3 mask2 = texture(uMask2, vUv).rgb;
   vec3 mro = texture(uMro, vUv).rgb;
   vec2 bump = texture(uNormal, vUv).${format === "astc" ? "ra" : "rg"};
-  if (base.a < uCutoff) discard;
-  o = vec4(shown(lit(dyed(base.rgb, mask, mask2), mro, bumped(bump), -normalize(vRel)), length(vRel)), 1.0);
+  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;
+  if (cover == 0.0) discard;
+  o = vec4(shown(lit(dyed(base.rgb, mask, mask2), mro, bumped(bump), -normalize(vRel)), length(vRel)), cover);
 }`;
 }

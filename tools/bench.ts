@@ -41,11 +41,14 @@ import { buildCorePack } from "./pack/build.ts";
 import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
 import { benchAgent } from "./bench/agent.ts";
+import { benchHunt } from "./bench/hunt.ts";
 import { benchLatency } from "./bench/latency.ts";
 import { benchPoses } from "./bench/poses.ts";
 import { benchRagdoll } from "./bench/ragdoll.ts";
 import { benchTextured } from "./bench/textured.ts";
 import { benchTextures } from "./bench/textures.ts";
+import { benchParts } from "./bench/parts.ts";
+import { benchTransport } from "./bench/transport.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -1176,11 +1179,14 @@ section("Asset library (headless): 64 rocks of five levels and a 263,169-vertex 
 }
 
 benchAgent(section, record);
+benchHunt(section, record);
 benchLatency(section, record);
 benchPoses(section, record);
 benchRagdoll(section, record);
 benchTextured(section, record);
 await benchTextures(section, record);
+await benchParts(section, record);
+benchTransport(section, record);
 
 rmSync(dir, { recursive: true, force: true });
 const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);

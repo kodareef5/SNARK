@@ -7,3 +7,7 @@ checks/
 paintings/**/registered.png
 paintings/**/*.registered.png
 paintings/**/final-master.png
+paintings/**/unbalanced-master.png
+# Review evidence must survive the source-assets-wide round[0-9]*/ ignore rule.
+!reports/round3/
+!reports/round3/**

@@ -1,4 +1,4 @@
-// Blocks and pictures for the block-compression tests and for tools/pack/bc-gpu.ts, which shows the same ones to a GPU.
+// Blocks and pictures for the block-compression tests and for `bun run probe -- --textured`, which shows the same ones to a GPU.
 
 import { Rng } from "../../shared/rng.ts";
 

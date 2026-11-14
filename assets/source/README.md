@@ -122,9 +122,12 @@ one named `region0` to `region5` is a colour region and any other takes the
 palette colour nearest its own.
 
 A piece keeps the levels its script makes (`..._LOD1` and so on). The ones
-with texture coordinates are drawn with materials, and the rest flat. With
-`flat` in `asset.ts` its levels are made from its finest instead, as a
-creature's are.
+with texture coordinates are drawn with materials, and the rest flat, each
+material in one colour. With `flat` in `asset.ts` its levels are made from its
+finest instead, as a creature's are, to `budgets.triangles`, and the flat ones
+take their colours triangle by triangle from its pictures: a thatch wall's
+first flat level then has two tones of straw where it had one. The script's own
+coarse levels are not used then.
 
 ## Materials
 
@@ -202,13 +205,49 @@ palette colour it is drawn flat in. A test runs the check over every asset
 here, so a pack with a fault does not pass `bun run check`. That test reads
 only the sizes of the pictures. `--check` reads and measures them.
 
-## The sheet
+## Looking at an asset
 
-`--sheet` draws the asset with the software rasterizer into
-`artifacts/art/<pack>/<name>/`: `sheet.png`, the same sheet as pages
-(`sheet.views.png`, `sheet.levels.png`, `sheet.rig.png`, `sheet.clips-1.png`),
-each small enough to read at full size, and `sheet.json` with the check's
-facts and where each picture lies. Nothing in `artifacts/` is committed.
+Two commands draw an asset as the game draws it, with the software rasterizer
+that the tests hold to the game's shader: no Blender and no browser. The
+game's light is plainer than a Blender render's: one sun, the sky, no shadows
+and no light bounced. Anything else that differs is worth a look.
+
+`--sheet` draws its review sheet into `artifacts/art/<pack>/<name>/`:
+`sheet.png`, the same sheet as pages, a file each (`sheet.views.png`,
+`sheet.levels.png`, `sheet.materials.png`, `sheet.rig.png`,
+`sheet.clips-1.png`, a piece's named after it), each small enough to read at
+full size, and `sheet.json` with the check's facts and where each picture
+lies. Nothing in `artifacts/` is committed. A mesh with materials is drawn:
+
+- on `views`, from eight sides at level 0 with its materials, lit from over
+  the camera's shoulder and by the game's sky, then the same in flat colours;
+- on `levels`, every level from eight sides, with its materials where it has
+  them. Then a table of how each graphics tier draws it on a 1080-pixel screen
+  from where each of its levels begins, at that size and enlarged, and, for
+  each tier with textures, its last level with materials beside its first flat
+  one at the size where the one takes over from the other;
+- on `materials`, each material's pictures as the game holds them; every base
+  colour replaced by a checker lettered A to H across and 1 to 8 down, whose
+  letters read upright and unmirrored where a picture is laid the right way;
+  and its colour regions dyed in the asset's colours and in loud ones.
+
+`bun run snap -- --house <tier> --graphics medium` draws the proving ground's
+house of a building tier as a client on that graphics tier draws it, once its
+card holds all it wants, the asset files read from these folders where a
+client would fetch them. `lowpoly`, `high` and `ultra` are the other tiers, and
+`all` draws the four side by side. `--view` stands the camera elsewhere: `close`
+a step from the sunlit north wall, `far` 40 m off where coarser levels and
+flat colours take over, `wall` along ten walls in a row, and `floor` across
+sixty foundations with that wall beyond. Levels and textures are chosen for the
+picture's height, so `--size 1920x1080` is a 1080-pixel screen. `--source DIR`
+reads the folders of another tree, a branch not merged yet. Without
+`--graphics` the picture is the flat one it always was.
+
+Both draw textures in the rgba variant, the one the rasterizer reads, which
+stops at 1024 pixels: a device that takes the block variants shows a 2048
+texture larger on high and ultra. Making textures from their pictures takes a
+few seconds the first time. Each is kept under `.cache/snap/` by the bytes it
+is made from, and made again when they or the code that makes it change.
 
 ## Loose exports
 

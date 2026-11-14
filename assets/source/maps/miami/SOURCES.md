@@ -16,8 +16,35 @@ The federal catalogue identifies USA Structures as a U.S. government work. The E
 
 ## Sources not used
 
-The NOAA classified point cloud and USGS 3DEP are candidate sources from the brief, but are not used in this version: the finer NOAA bare-earth DEM already supplies height, FEMA supplies footprint geometry, and NLCD supplies land-cover classes. Do not imply that tree crowns, wall heights, bridge decks or ocean depths have been surveyed in these layers.
+The NOAA classified point cloud and USGS 3DEP are candidate sources from the brief, but are not used in this version: the finer NOAA bare-earth DEM already supplies height, FEMA supplies footprint geometry, and NLCD supplies land-cover classes. Tree crowns, wall heights and bridge decks are not surveyed by these layers. Ocean elevations are supplied separately by the round-three coastal model described below, without changing the original world-height layer.
 
 ## Artwork
 
 Original style sheet and map paint are generated using the built-in image tool from written descriptions and our own geographic reference renders. No other game's map artwork or commercial basemap imagery is an input. Original output files and generation prompts are retained. Authored future-world masks are explicitly separate from public source observations.
+
+## Round three: observed underwater structure
+
+**NOAA NCEI, Miami 1/3 arc-second NAVD 88 Coastal Digital Elevation Model**, first
+edition, published 2015-01-21; survey compilation through 2014. [Dataset and
+licence](https://www.ncei.noaa.gov/access/metadata/landing-page/bin/iso?id=gov.noaa.ngdc.mgg.dem:5166),
+[NOAA technical report](https://www.ngdc.noaa.gov/mgg/dat/dems/regional_tr/miami_13_navd88_2015.pdf).
+NOAA identifies this as a U.S. government work not subject to U.S. copyright;
+there are no additional dataset use constraints. Credit NOAA NCEI with the
+redistributed subset.
+
+Downloaded 2026-11-14 through NOAA THREDDS: a 995 × 909 subset at the original
+1/3 arc-second spacing, covering the map plus a small margin. [Exact request,
+timestamp, bytes and SHA-256](reports/round3/bathymetry-source.json). The raw
+NetCDF is ignored; a lossless Float32 GeoTIFF is retained in
+[base/bathymetry/](base/bathymetry/README.md). Actual longitude/latitude arrays
+set its georeference: the response's `actual_range` attributes retain regional
+bounds and would place this subset incorrectly. WGS84 is used as documented by
+NOAA; the response's spherical grid-mapping attribute is also inconsistent.
+
+Values are elevations in metres NAVD88, not current chart soundings or future
+water depths. The compilation combines surveys and interpolation; grid spacing
+does not imply a sounding at every cell. Port passages, turning areas, western
+waterway, broad flats and eastern submerged bands inform the paint. Fine wash
+edges, ripple strokes, wreck interiors and the future city are illustration.
+No coral-habitat source was acquired: offshore bands are not asserted to be
+surveyed coral reefs. Existing world layers retain their previous values.

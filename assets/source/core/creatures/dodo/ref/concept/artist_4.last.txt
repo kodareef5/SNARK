@@ -1,0 +1,5 @@
+Completed all 17 assets with the plush feather cap, ragged face edge, forehead point, and loose nape vanes.
+
+All 116 checks pass; the rebuild is byte-exact. Archives, guides, and existing scripts remain unchanged.
+
+[Review the hood across views](/home/user/dev/SNARK/.claude/worktrees/agent-aee9404fb3f34729b/assets/source/core/creatures/dodo/ref/concept/checks/head_comparison.png) · [Report and measurements](/home/user/dev/SNARK/.claude/worktrees/agent-aee9404fb3f34729b/assets/source/core/creatures/dodo/ref/concept/REPORT.md)

@@ -1,14 +1,15 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --looks, --gear, --creator TAB, --house TIER, --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --ui (--console TEXT, --inventory, --chat).
+// Scene flags: --poses N, --creatures, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --ui (--console TEXT, --inventory, --chat).
+// --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { App } from "../client/core/app.ts";
 import { Camera } from "../client/core/render/camera.ts";
 import { FakeNet, type NetOptions } from "../tests/fixtures/assetnet.ts";
 import { Harness } from "../tests/fixtures/net.ts";
 import { writeBones } from "../client/core/render/characters.ts";
-import { DRAW_PLAIN, DRAW_SKINNED, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../client/core/render/packet.ts";
+import { DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, TRANSIENT_BUFFER, type TextureUpload } from "../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import { Falling } from "../client/core/rubble.ts";
 import { RemoteSample, type ClientSession, type Rubble } from "../client/core/session.ts";
@@ -25,7 +26,9 @@ import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HAN
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
-import { parsePack, type Pack } from "../shared/pack/pack.ts";
+import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type Pack } from "../shared/pack/pack.ts";
+import { SKY_COLOR } from "../shared/pack/palette.ts";
+import type { TextureRole } from "../shared/pack/texture.ts";
 import { Heightfield } from "../shared/world/heightfield.ts";
 import { NodeField } from "../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_SPAWN, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
@@ -38,12 +41,16 @@ import { IMAGE_MINIMAP, MINIMAP_SIZE } from "../client/core/ui/hud.ts";
 import { Ui } from "../client/core/ui/ui.ts";
 import { TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
 import { minimapImage, headingOf } from "../client/core/hud.ts";
+import { TIERS, tierOf } from "../client/core/assets/tiers.ts";
+import { SOURCE } from "./art/source.ts";
+import { gameFiles, type GameFiles } from "./snap/files.ts";
+import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./snap/font.ts";
 import { encodePng } from "./snap/png.ts";
-import { Rasterizer } from "./snap/raster.ts";
+import { PICK_SKY, Rasterizer } from "./snap/raster.ts";
 import { drawUi } from "./snap/ui.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
-function houseScene(view: ProvingView, tier: string): void {
+export function houseScene(view: ProvingView, tier: string): void {
   const { reg, structs, hf } = view;
   const made = (piece: string): number => reg.index.get(`core:${piece}_${tier}`) ?? reg.index.get(`core:${piece}_wood`)!;
   const [cx, cz] = [PROVING_SPAWN.x - 24, PROVING_SPAWN.z - 2];
@@ -79,6 +86,39 @@ function houseScene(view: ProvingView, tier: string): void {
   view.cam.y = ground + 4.6;
   view.cam.yaw = (27 * Math.PI) / 180;
   view.cam.pitch = (-17 * Math.PI) / 180;
+}
+
+/** Where an artist looks at a building tier from: houseScene's corner, and those of houseView. */
+export const HOUSE_VIEWS = ["corner", "close", "far", "wall", "floor"] as const;
+export type HouseView = (typeof HOUSE_VIEWS)[number];
+
+/**
+ * houseScene's house seen another way. "close" stands two metres from its north wall, which the noon sun lights.
+ * "far" stands 40 m off, where coarser levels are drawn. "wall" and "floor" build a yard beside it, ten foundations by
+ * six with ten walls along its north edge facing in, and look along the wall and across the floor.
+ */
+export function houseView(view: ProvingView, tier: string, look: HouseView): void {
+  const { reg, structs, hf, cam } = view;
+  const made = (piece: string): number => reg.index.get(`core:${piece}_${tier}`) ?? reg.index.get(`core:${piece}_wood`)!;
+  const [cx, cz] = [PROVING_SPAWN.x - 24, PROVING_SPAWN.z - 2];
+  const floor = hf.heightAt(cx, cz) + FOUNDATION_THICK;
+  const at = (x: number, y: number, z: number, yaw: number, pitch: number): void => {
+    [cam.x, cam.y, cam.z] = [x, y, z];
+    cam.yaw = (yaw * Math.PI) / 180;
+    cam.pitch = (pitch * Math.PI) / 180;
+  };
+  if (look === "close") at(cx - 2.6, floor + 1.62, cz + 5.2, 152, -6);
+  else if (look === "far") at(cx - 16, hf.heightAt(cx - 16, cz - 36) + 1.62, cz - 36, 24, -2);
+  if (look !== "wall" && look !== "floor") return;
+  const [x0, z0] = [cx - 33, cz - 38];
+  const ground = hf.heightAt(x0 + 15, z0 + 9);
+  for (let i = 0; i < 10; i++) {
+    for (let j = 0; j < 6; j++) structs.add(made("foundation"), x0 + 1.5 + 3 * i, ground + FOUNDATION_THICK / 2, z0 + 1.5 + 3 * j, 0, 0, 1);
+    // A wall's outside is its +Z face, so turned about it faces the floor.
+    structs.add(made("wall"), x0 + 1.5 + 3 * i, ground + FOUNDATION_THICK + WALL_HEIGHT / 2, z0 + 18, 32768, 0, 1);
+  }
+  if (look === "wall") at(x0 + 0.8, ground + FOUNDATION_THICK + 1.62, z0 + 15.2, 72, -4);
+  else at(x0 - 3, ground + 4.5, z0 - 3, 42, -16);
 }
 
 /** Removes houseScene's house and shows it falling as a client would, `ms` after the removal, from the south-west foundation. */
@@ -169,13 +209,14 @@ export interface ProvingView {
 /**
  * The proving ground with a camera at the spawn point and two bodies standing in view. With `net`, the scene has only
  * the boot pack at start and fetches other levels over that network, and the rasterizer draws only what was uploaded.
+ * With `files` as well (tools/snap/files.ts) those are fetched instead, textures among them.
  */
-export function provingView(width = 640, height = 360, net?: NetOptions): ProvingView {
+export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles): ProvingView {
   const reg = compileContent(CORE_CONTENT).registry!;
   const hf = buildProvingHeightfield();
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   populateProving(structs, hf, reg);
-  const split = net ? splitPack(buildCorePack(), "core") : null;
+  const split = !net ? null : files ? { files: files.files.map((bytes) => ({ bytes })), manifest: files.manifest } : splitPack(buildCorePack(), "core");
   const port = split ? new FakeNet(split.files.map((f) => f.bytes), net) : null;
   const pack = parsePack(split ? split.files[0]!.bytes : buildCorePack());
   // Fills every chunk's nodes, as a client near each would have them.
@@ -210,6 +251,39 @@ export function provingView(width = 640, height = 360, net?: NetOptions): Provin
       return packet;
     },
   };
+}
+
+/**
+ * Runs the frames a streaming view takes, a sixtieth of a second apart, until a frame has nothing to put on the card
+ * and nothing is on its way: what a client standing there long enough would draw on its tier. Only that frame is
+ * drawn. The ones before carry their uploads to the card and draw nothing, which leaves the card the same. Returns how
+ * many frames it took.
+ */
+export function settle(view: ProvingView, most = 5000): number {
+  const { scene, cam, remote, raster, port } = view;
+  const r = scene.assets.residency;
+  for (let frame = 1; frame <= most; frame++) {
+    scene.now += 1000 / 60;
+    port?.advance(scene.now);
+    const p = scene.build(cam, remote);
+    const moved = p.uploads.length + p.drops.length + p.assetUploads.length + p.assetDrops.length + p.texUploads.length + p.texDrops.length;
+    const done = moved === 0 && r.flying === 0 && r.waiting === 0;
+    if (!done) p.drawCount = p.tileCount = 0;
+    raster.render(p);
+    if (done) return frame;
+  }
+  throw new Error(`the card was still being filled after ${most} frames`);
+}
+
+/** Writes `text` into a picture `width` pixels wide at (x, y), each pixel of the font `scale` pixels square, on a dark band. */
+function label(pixels: Uint8ClampedArray, width: number, text: string, x: number, y: number, scale = 2): void {
+  const put = (px: number, py: number, rgb: readonly number[]): void => {
+    for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) pixels.set(rgb, ((py + dy) * width + px + dx) * 4);
+  };
+  for (let py = y - scale; py < y + (GLYPH_HEIGHT + 1) * scale; py += scale) for (let px = x - scale; px < x + text.length * (GLYPH_WIDTH + 1) * scale; px += scale) put(px, py, [20, 22, 26]);
+  [...text].forEach((ch, i) => {
+    for (let col = 0; col < GLYPH_WIDTH; col++) for (let row = 0; row < GLYPH_HEIGHT; row++) if (glyphPixel(ch.charCodeAt(0), col, row)) put(x + (i * (GLYPH_WIDTH + 1) + col) * scale, y + row * scale, [240, 240, 240]);
+  });
 }
 
 /** The smallest id whose body clock runs `seed` ticks ahead. */
@@ -524,26 +598,41 @@ export interface ModelShot {
   rig: Rig | null;
   /** Palette index of each colour region. */
   colors: readonly number[];
+  /** Draws the level with its materials, a draw for each of its sections, where it has them. Their textures must be on the card. */
+  textured?: boolean;
 }
 
 /**
  * One mesh of a pack on its own: no world and no content, so an asset can be looked at before anything uses it
- * (tools/art/sheet.ts). The light stays over the camera's left shoulder, so every side is lit alike.
+ * (tools/art/sheet.ts). The light stays over the camera's left shoulder, so every side is lit alike. A picture with
+ * materials is lit by the game's sky, as a mirror shows it, and the background is painted over the sky after.
  */
 export class ModelView {
   readonly raster: Rasterizer;
   readonly cam = new Camera();
   private readonly packet = new FramePacket();
   private readonly writer = new InstanceWriter(this.packet.transient);
+  private readonly pack: Pack;
+  private readonly background: readonly [number, number, number];
+  /** What the next picture puts on the card first. */
+  private readonly sending: TextureUpload[] = [];
 
   constructor(pack: Pack, width: number, height: number, background: readonly [number, number, number]) {
     this.raster = new Rasterizer(width, height, pack, new Heightfield({ chunksX: 1, chunksZ: 1 }, 64, 0, 1));
+    this.pack = pack;
+    this.background = background;
     this.cam.aspect = width / height;
     // Narrow, so that near and far parts are drawn nearly the same size.
     this.cam.fovY = 0.2;
     this.packet.sky.set(background);
     this.packet.fogStart = 1e8;
     this.packet.fogEnd = 2e8;
+  }
+
+  /** Puts a texture in `slot`, its place in the pack's list, before the next picture: its pictures in the rgba variant, smallest first. */
+  texture(slot: number, role: TextureRole, pictures: readonly Uint8Array[]): void {
+    const top = 1 << (pictures.length - 1);
+    pictures.forEach((data, k) => this.sending.push({ slot, role, format: "rgba", top, size: 1 << k, row: 0, rows: 1 << k, data, last: k === pictures.length - 1 }));
   }
 
   draw(shot: ModelShot): void {
@@ -578,15 +667,39 @@ export class ModelView {
     this.writer.regions(0, Uint8Array.from({ length: 6 }, (_, q) => shot.colors[q] ?? 0), 0);
     p.transientCount = 1;
     p.transientIds[0] = 1;
-    p.drawCount = 1;
-    p.drawMesh[0] = shot.mesh;
-    p.drawLod[0] = shot.level;
-    p.drawBuffer[0] = TRANSIENT_BUFFER;
-    p.drawFirst[0] = 0;
-    p.drawInstances[0] = 1;
-    p.drawOffset.fill(0, 0, 3);
-    p.drawFlags[0] = DRAW_PLAIN | (shot.rig ? DRAW_SKINNED : 0);
+    const sections = shot.textured ? this.pack.header.meshes[shot.mesh]!.lods[shot.level]!.sections : undefined;
+    const runs = sections ?? [-1, 0, 0];
+    p.drawCount = runs.length / 3;
+    for (let d = 0; d < p.drawCount; d++) {
+      p.drawMesh[d] = shot.mesh;
+      p.drawLod[d] = shot.level;
+      p.drawBuffer[d] = TRANSIENT_BUFFER;
+      p.drawFirst[d] = 0;
+      p.drawInstances[d] = 1;
+      p.drawOffset.fill(0, d * 3, d * 3 + 3);
+      p.drawFlags[d] = DRAW_PLAIN | (shot.rig ? DRAW_SKINNED : 0);
+      const material = this.pack.header.materials?.[runs[d * 3]!];
+      if (!material) continue;
+      p.drawFlags[d]! |= DRAW_TEXTURED | ((material.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((material.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0);
+      p.drawMaterial[d] = runs[d * 3]!;
+      p.drawFirstIndex[d] = runs[d * 3 + 1]!;
+      p.drawIndexCount[d] = runs[d * 3 + 2]!;
+    }
+    p.texUploads.push(...this.sending);
+    this.sending.length = 0;
+    // The sky a material reflects is the game's. Where nothing is drawn, the background is put back.
+    const sky = sections ? [0, 1, 2].map((k) => this.pack.palette[SKY_COLOR * 4 + k]! / 255) : this.background;
+    p.sky.set(sky);
     this.raster.render(p);
+    if (!sections) return;
+    const { color, pickKind } = this.raster;
+    const [red, green, blue] = this.background.map((c) => c * 255) as [number, number, number];
+    for (let at = 0; at < pickKind.length; at++) {
+      if (pickKind[at] !== PICK_SKY) continue;
+      color[at * 4] = red;
+      color[at * 4 + 1] = green;
+      color[at * 4 + 2] = blue;
+    }
   }
 
   /** Where a point of the model is in the last picture: x and y in pixels and the depth the rasterizer keeps. False behind the camera. */
@@ -727,22 +840,65 @@ if (import.meta.main) {
     console.log(out);
     process.exit(0);
   }
-  const view = provingView(w, h);
-  const pos = arg("pos")?.split(",").map(Number);
-  if (pos) [view.cam.x, view.cam.y, view.cam.z] = pos as [number, number, number];
-  view.cam.yaw = (Number(arg("yaw") ?? 0) * Math.PI) / 180;
-  view.cam.pitch = (Number(arg("pitch") ?? -4) * Math.PI) / 180;
-  if (args.includes("--house")) houseScene(view, arg("house") ?? "wood");
-  if (args.includes("--falling")) fallingScene(view, Number(arg("falling") ?? 450));
-  if (args.includes("--ragdoll")) ragdollScene(view, Number(arg("ragdoll") ?? 4));
-  if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
-  if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
-  if (args.includes("--creatures")) {
-    // Each creature in the colours its asset is reviewed in.
-    const samples = new Map((await findAssets()).flatMap((a) => (a.spec.kind === "creature" ? [[a.id, a.spec.regions.map((region) => region.sample)] as const] : [])));
-    creaturesScene(view, Number(arg("tick") ?? 40), (Number(arg("face") ?? 90) * Math.PI) / 180, samples);
+  const source = resolve(arg("source") ?? SOURCE);
+  const look = (arg("view") ?? "corner") as HouseView;
+  if (!HOUSE_VIEWS.includes(look)) throw new Error(`--view takes ${HOUSE_VIEWS.join(", ")}, not "${look}"`);
+  /** Puts what the flags ask for in front of the view's camera. */
+  const setup = async (view: ProvingView): Promise<void> => {
+    const pos = arg("pos")?.split(",").map(Number);
+    if (pos) [view.cam.x, view.cam.y, view.cam.z] = pos as [number, number, number];
+    view.cam.yaw = (Number(arg("yaw") ?? 0) * Math.PI) / 180;
+    view.cam.pitch = (Number(arg("pitch") ?? -4) * Math.PI) / 180;
+    if (args.includes("--house")) {
+      houseScene(view, arg("house") ?? "wood");
+      houseView(view, arg("house") ?? "wood", look);
+    }
+    if (args.includes("--falling")) fallingScene(view, Number(arg("falling") ?? 450));
+    if (args.includes("--ragdoll")) ragdollScene(view, Number(arg("ragdoll") ?? 4));
+    if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
+    if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
+    if (args.includes("--creatures")) {
+      // Each creature in the colours its asset is reviewed in.
+      const samples = new Map((await findAssets(source)).flatMap((a) => (a.spec.kind === "creature" ? [[a.id, a.spec.regions.map((region) => region.sample)] as const] : [])));
+      creaturesScene(view, Number(arg("tick") ?? 40), (Number(arg("face") ?? 90) * Math.PI) / 180, samples);
+    }
+    if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
+  };
+  const graphics = arg("graphics");
+  if (graphics !== undefined) {
+    // As a client on a graphics tier draws it, its assets read from disk where a client fetches them, once the card
+    // holds all it wants. With "all", the four tiers side by side.
+    const names = graphics === "all" ? TIERS.map((t) => t.name) : [graphics];
+    for (const name of names) if (!TIERS.some((t) => t.name === name)) throw new Error(`--graphics takes ${TIERS.map((t) => t.name).join(", ")} or all, not "${name}"`);
+    const t0 = performance.now();
+    const files = await gameFiles(source);
+    console.log(`asset files from ${relative(process.cwd(), source) || "."}: ${files.manifest.textures?.length ?? 0} textures, ${(files.files.reduce((n, f) => n + f.length, 0) / 1048576).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms`);
+    const across = names.length > 1 ? 2 : 1;
+    const [W, H] = [w! * across, h! * Math.ceil(names.length / across)];
+    const pixels = new Uint8ClampedArray(W * H * 4);
+    for (const [i, name] of names.entries()) {
+      const t1 = performance.now();
+      const view = provingView(w, h, {}, files);
+      view.scene.assets.tier = tierOf(name);
+      view.scene.viewHeight = h!;
+      await setup(view);
+      const frames = settle(view);
+      const [ox, oy] = [(i % across) * w!, Math.floor(i / across) * h!];
+      for (let y = 0; y < h!; y++) pixels.set(view.raster.color.subarray(y * w! * 4, (y + 1) * w! * 4), ((oy + y) * W + ox) * 4);
+      if (names.length > 1) label(pixels, W, name, ox + 10, oy + 10);
+      const p = view.scene.packet;
+      const r = view.scene.assets.residency;
+      const textured = [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & DRAW_TEXTURED) !== 0).length;
+      console.log(`${name.padEnd(8)} ${frames} frames to fill the card with ${(r.ledger / 1048576).toFixed(1)} MB, ${(r.texLedger / 1048576).toFixed(1)} MB of it textures; draws ${p.drawCount}, ${textured} with materials; triangles ${p.triangles}; ${(performance.now() - t1).toFixed(0)} ms`);
+    }
+    const out = resolve(arg("out") ?? "artifacts/snap.png");
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(W, H, pixels));
+    console.log(`${out}\n${W}x${H}  ${(performance.now() - t0).toFixed(0)} ms`);
+    process.exit(0);
   }
-  if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
+  const view = provingView(w, h);
+  await setup(view);
   const t0 = performance.now();
   const packet = view.render();
   const ms = performance.now() - t0;

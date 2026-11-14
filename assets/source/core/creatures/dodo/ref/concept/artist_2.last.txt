@@ -1,0 +1,5 @@
+Round 2 is delivered: all 17 images replaced, with rebuild scripts and measurements saved. `round1/` and `guides/` are unchanged.
+
+Guide overlap is **93.6–95.1%**; maximum non-feather outline error is **9.49 px**. All 49 checks pass, and all deliverables rebuild identically. Exact small-feather correspondence remains a documented limitation.
+
+[View the paintings](/home/user/dev/SNARK/.claude/worktrees/agent-aee9404fb3f34729b/assets/source/core/creatures/dodo/ref/concept/checks/all_paintings_contact.png) · [Read the report](/home/user/dev/SNARK/.claude/worktrees/agent-aee9404fb3f34729b/assets/source/core/creatures/dodo/ref/concept/REPORT.md)

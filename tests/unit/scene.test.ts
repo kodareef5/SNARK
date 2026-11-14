@@ -316,8 +316,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   expect(w.port.log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([7643, 767, 20, 0]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
-  // It moved once when a loose thing's up turned from down to up: negating that column of its bone gives the old hash.
-  expect(hash).toBe(3486152837);
+  // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, and 289722570
+  // until a loose thing's up turned from down to up: negating that column of its bone gives that hash again.
+  expect(hash).toBe(2254481354);
 });
 
 test("a body is drawn at every level its mesh has, eight of them as well as five", () => {

@@ -1,0 +1,58 @@
+{
+  "round": 4,
+  "base": "round3",
+  "specs": {
+    "side": {
+      "box": [
+        90,
+        145,
+        575,
+        480
+      ],
+      "scale": 3,
+      "pad": 40
+    },
+    "front": {
+      "box": [
+        515,
+        145,
+        740,
+        475
+      ],
+      "scale": 4,
+      "pad": 40
+    },
+    "back": {
+      "box": [
+        515,
+        145,
+        740,
+        485
+      ],
+      "scale": 4,
+      "pad": 0
+    },
+    "top": {
+      "box": [
+        515,
+        330,
+        740,
+        645
+      ],
+      "scale": 4,
+      "pad": 0
+    },
+    "three_quarter": {
+      "box": [
+        250,
+        125,
+        685,
+        510
+      ],
+      "scale": 3,
+      "pad": 0
+    }
+  },
+  "transforms": "Original full-canvas identity; uniform crop scaling; symmetry about existing centre; generated pixels composited only within hood and narrow feather-edge seam.",
+  "painting": "Retained image_gen PNGs only; no procedural textures."
+}

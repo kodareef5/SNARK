@@ -9,11 +9,10 @@ from here.
 | `bench.ts` | `bun run bench` | Measurements at the sizing target against budgets |
 | `snap.ts`, `snap/` | `bun run snap` | Software rasterizer: a frame packet to a PNG |
 | `probe.ts` | `bun run probe` | The single browser launch: Chrome headless, self-check report |
+| `probe-textured.ts` | `bun run probe -- --textured` | For each texture variant the GPU takes: test cards of every BC7 mode, BC5 and ASTC block kind through the shell's own upload path, read back against our decoders, and a thatch house drawn by the shell against the software rasterizer, with its pictures saved to `planning/reference/round7-pictures/` |
 | `dev.ts` | `bun run dev` | Server plus client rebuild on change |
 | `build-client.ts` | `bun run build` | Bundle the shell, copy the page, write the core pack |
 | `pack/` | `bun tools/pack/build.ts` | glTF import, pack writer, graybox meshes |
-| `pack/bc-gpu.ts` | `bun tools/pack/bc-gpu.ts [--alpha] [--software] [png ...]` | Holds our BC5 and BC7 decoders against the GPU: Chrome headless draws random blocks of every BC7 mode and the encoders' output, and BC7 must match bit for bit |
-| `pack/astc-gpu.ts` | `bun tools/pack/astc-gpu.ts` | Proves our ASTC decoder against the GPU: Chrome headless draws tens of thousands of blocks and every pixel must match |
 | `simhash.ts` | `bun tools/simhash.ts`, `node tools/simhash.ts` | Four hashes of fixed scenarios (movement, human pose, snapping, creature pose), for comparing engines |
 | `art.ts`, `art/`, `blender/` | `bun run art -- core:raptor`, with `--all`, `--check`, `--sheet`, `--repack` | Builds an asset folder under `assets/source` into its pack, measures it and draws its review sheet ([layout](../assets/source/README.md)). Building needs Blender; the check, the sheet and the game do not |
 | `fit-zones.ts` | `bun tools/fit-zones.ts` | Fits the hit capsules to the modelled bodies and measures the match |
@@ -29,6 +28,10 @@ Yaw 0 faces +Z (north) and positive yaw turns toward +X.
 Scenes: `--ui`, `--poses N`, `--looks`, `--gear`, `--fight bow`, `--creator`,
 `--house`, `--build`, `--falling`, and `--creatures` (with `--near` for a rider
 up close, `--young` for each species at four ages beside its egg).
+`--graphics lowpoly|medium|high|ultra|all` draws as a client on that tier does,
+textures and all, once its card is full; `--view close|far|wall|floor` with
+`--house`, and `--source DIR` for another tree's asset folders. See
+[looking at an asset](../assets/source/README.md#looking-at-an-asset).
 With `--ui`: `--console "text"` types a console line, `--inventory` opens the
 inventory, `--chat` opens the chat box. `--face degrees` turns a line-up.
 `--house` takes a tier (`thatch`, `wood`, `stone`, `metal`), and with
