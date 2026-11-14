@@ -1,7 +1,7 @@
 // A body that dies goes limp (shared/anim/ragdoll.ts, client/core/ragdoll.ts): from its death clip with no jump, to rest
 // on a slope within three seconds with no joint past its limit and nothing under the ground or inside a structure,
-// falling again when the floor it lies on is taken away, the same every time. A client finds a death as a creature
-// leaving its view while near, and a creature leaving from far off, or a whole view emptying, is no death.
+// falling again when the floor it lies on is taken away, the same every time. A client draws one only where the server
+// said the body died.
 import { expect, test } from "bun:test";
 import { Pose, sampleClip } from "../../shared/anim/clip.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
@@ -128,10 +128,10 @@ test("the same fall gives the same rest, to the bit", () => {
   expect(Array.from(a.q)).toEqual(Array.from(b.q));
 });
 
-test("a client sees a creature that dies near it fall and lie, and nothing of one that leaves from far off or of a view that empties", () => {
+test("a client draws a body the server says died falling and lying, near or far in its view, and nothing of one that only left it", () => {
   const view = provingView(64, 36);
   const { scene, remote, hf } = view;
-  const ch = scene.characters as unknown as { dead: { list: { solved: Solved; ragdoll: Ragdoll | null }[] } };
+  const ch = scene.characters as unknown as { dead: { list: { id: number; solved: Solved; ragdoll: Ragdoll | null }[] } };
   const kind = reg.index.get("core:raptor")!;
   const cam = new Camera();
   [cam.x, cam.z] = [240, 236];
@@ -139,43 +139,39 @@ test("a client sees a creature that dies near it fall and lie, and nothing of on
   const put = (n: number, id: number, x: number, z: number): void => {
     [remote.id[n], remote.kind[n], remote.x[n], remote.z[n], remote.yaw[n], remote.flags[n]] = [id, kind, x, z, 0.5, 1];
     remote.y[n] = hf.heightAt(x, z);
-    const st = new AnimState();
-    remote.anim[n] = st.pack();
+    remote.anim[n] = new AnimState().pack();
   };
+  const died = new Map<number, number>();
+  remote.died = died;
   let tick = 500;
   const frame = (): void => {
     remote.tick = tick;
     scene.build(cam, remote);
     tick += 0.5;
   };
-  // Two near and one 200 m off, sorted by id as a view is.
-  put(0, 10, 245, 250);
-  put(1, 11, 250, 250);
-  put(2, 12, 440, 250);
-  remote.count = 3;
-  frame();
-  frame();
-  // The far one leaves: no corpse.
+  // Sorted by id, as a view is: one near that will leave the view, and one 200 m off that will die.
+  put(0, 11, 250, 250);
+  put(1, 12, 440, 250);
   remote.count = 2;
   frame();
-  expect(ch.dead.list.length).toBe(0);
-  // One near one dies: it plays its death clip and goes limp at the frame its asset gives.
+  frame();
+  // The far one dies, as the snapshot drawn now says.
+  died.set(12, tick);
   remote.count = 1;
   frame();
+  expect(ch.dead.list.map((c) => c.id)).toEqual([12]);
+  // The near one only leaves: no corpse.
+  remote.count = 0;
+  frame();
   expect(ch.dead.list.length).toBe(1);
+  // It plays its death clip and goes limp at the frame its asset gives: drawn on that frame, it is the clip's pose.
   const rig = rigs.get("core:raptor")!;
   const corpse = ch.dead.list[0]!;
   while (!corpse.ragdoll) frame();
-  // Drawn on the frame it goes limp, it is the death clip's pose at that frame.
   const clip = dying(rig, rig.ragdoll!.limp);
   let off = 0;
   for (let k = 0; k < clip.pos.length; k++) off = Math.max(off, Math.abs(clip.pos[k]! - corpse.solved.pos[k]!));
   expect(off).toBeLessThan(1e-5);
   for (let f = 0; f < 3 * 60 && corpse.ragdoll.awake; f++) frame();
   expect(corpse.ragdoll.awake).toBe(false);
-  // A viewer moved 40 m in a frame, as on a respawn, its view emptying, makes no corpse of the creature it left.
-  cam.x += 40;
-  remote.count = 0;
-  frame();
-  expect(ch.dead.list.length).toBe(1);
 });

@@ -1,7 +1,7 @@
-// Bodies that die. The server takes a dead creature out of the world at once and says nothing else of it to anyone but
-// its killer, so a client learns of a death by a creature leaving its view while it was well within it. The body then
-// plays its death clip where it was last drawn, goes limp as a ragdoll (shared/anim/ragdoll.ts) at the frame its asset
-// gives, and lies where it settles. Nothing of it is sent anywhere: two clients may see it lie differently.
+// Bodies that die. The server takes a dead creature out of the world at once, and a client's view says it died rather than
+// left (shared/net/view.ts). The body then plays its death clip where it was last drawn, goes limp as a ragdoll
+// (shared/anim/ragdoll.ts) at the frame its asset gives, and lies where it settles. The server has no corpse: this is a
+// drawing, nothing of it is sent anywhere, and two clients may see it lie differently.
 
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
 import { creaturePose } from "../../shared/anim/creature.ts";
@@ -15,11 +15,6 @@ import { youngScale } from "../../shared/sim/breeding.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { RemoteSample } from "./session.ts";
 
-/**
- * Metres from the viewer within which a creature that leaves the view has died. A server shows bodies three chunks
- * (192 m) and more around the viewer's chunk, so nearer than this a body leaves only by dying.
- */
-const NEAR = 128;
 /** Ticks over which the last pose alive blends into the death clip. */
 const BLEND = 4;
 /** A corpse lies as long as the cache a dead creature leaves (D201): fifteen minutes. */
@@ -28,8 +23,8 @@ const LIES = 15 * 60 * TICK_RATE;
 const MOST = 128;
 /** A corpse farther than this from the viewer is forgotten. */
 const FORGET = 320;
-/** A viewer that moves farther than this in a frame was moved, as on a respawn, and its view changed with it. */
-const MOVED = 30;
+/** Ticks between the snapshot that said a body died and the moment drawn when it leaves, either way. */
+const TOLD = 8;
 
 /** What a kind of creature needs to die: its rig, and where its run starts. Null for a kind that is simply gone. */
 export interface Mortal {
@@ -101,8 +96,6 @@ export class Corpses {
   private was = new Seen();
   private now = new Seen();
   private tick = Number.NaN;
-  private cx = Number.NaN;
-  private cz = Number.NaN;
   private readonly st = new AnimState();
   private readonly a: Pose[] = [];
   private readonly before = new Map<number, Solved>();
@@ -127,11 +120,7 @@ export class Corpses {
       const kind = remote.kind[i]!;
       now.push(remote, i, remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, tick) : 1);
     }
-    // A viewer that jumped took its view with it.
-    const jumped = !(Math.abs(cx - this.cx) < MOVED && Math.abs(cz - this.cz) < MOVED);
-    this.cx = cx;
-    this.cz = cz;
-    if (step > 0 && !jumped) this.deaths(now, cx, cz, gaits);
+    if (step > 0) this.deaths(now, remote.died, gaits);
     // The view this frame is the one the next frame is held against.
     this.now = this.was;
     this.was = now;
@@ -153,23 +142,15 @@ export class Corpses {
     }
   }
 
-  /** The creatures in `was` and not in `now`, near enough to have died and not all leaving at once. */
-  private deaths(now: Seen, cx: number, cz: number, gaits: ReadonlyMap<number, Gait>): void {
+  /** The creatures in `was` and not in `now` that the server said died. Any other left the view, or was simply gone. */
+  private deaths(now: Seen, died: ReadonlyMap<number, number>, gaits: ReadonlyMap<number, Gait>): void {
+    if (died.size === 0) return;
     const was = this.was;
-    let gone = 0;
     for (let i = 0, j = 0; i < was.count; i++) {
       while (j < now.count && now.id[j]! < was.id[i]!) j++;
       if (j < now.count && now.id[j] === was.id[i] && now.kind[j] === was.kind[i]) continue;
-      gone++;
-    }
-    // A view that loses half its creatures at once was moved or lost, as on a respawn or a reconnection.
-    if (gone === 0 || (gone > 4 && gone * 2 > was.count)) return;
-    for (let i = 0, j = 0; i < was.count; i++) {
-      while (j < now.count && now.id[j]! < was.id[i]!) j++;
-      if (j < now.count && now.id[j] === was.id[i] && now.kind[j] === was.kind[i]) continue;
-      const dx = was.at[i * 4]! - cx;
-      const dz = was.at[i * 4 + 2]! - cz;
-      if (dx * dx + dz * dz < NEAR * NEAR) this.die(was, i, gaits);
+      const told = died.get(was.id[i]!);
+      if (told !== undefined && told - this.tick <= TOLD && this.tick - told <= TOLD) this.die(was, i, gaits);
     }
   }
 

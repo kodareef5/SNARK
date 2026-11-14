@@ -4,7 +4,7 @@
 // Wire form after the snapshot header:
 //   count varint, then per op in ascending id order:
 //     id gap varint: this id minus the previous id (first: id + 1), so always >= 1
-//     op 2 bits: 0 update, 1 create, 2 remove
+//     op 2 bits: 0 update, 1 create, 2 remove, 3 remove because it died
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, then its appearance:
 //             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
@@ -40,6 +40,7 @@ export const POS_UNITS = 256;
 const OP_UPDATE = 0;
 const OP_CREATE = 1;
 const OP_REMOVE = 2;
+const OP_DIED = 3;
 
 const ANIM_BITS = ANIM_MOTION_BITS + ANIM_LOOK_BITS + ANIM_ACTION_BITS;
 const LOOK_MASK = (1 << ANIM_LOOK_BITS) - 1;
@@ -59,6 +60,8 @@ export interface Looks {
   readonly seat: Uint32Array;
   readonly span: Uint32Array;
   readonly grown: Uint32Array;
+  /** The generation of the last body at each index that died (EntityStore.died), so its remove says so. */
+  readonly died?: Uint16Array;
 }
 
 /** An upper bound on the bits a create for entity `id` takes. */
@@ -252,8 +255,9 @@ export class Told {
   ix = new Uint16Array(VIEW_START);
   /** A bit for each of the 32 ticks up to `at`, the lowest for `at`: set where a client that has that tick's snapshot is sure to show the body like this. */
   sure = new Uint32Array(VIEW_START);
-  /** 1 for a body the client was told to take away. */
+  /** 1 for a body the client was told to take away, and `died` 1 where it was told that body died. */
   gone = new Uint8Array(VIEW_START);
+  died = new Uint8Array(VIEW_START);
 
   /** A slot for a body not listed, or -1 when the list is full: twice a view. */
   take(): number {
@@ -269,6 +273,7 @@ export class Told {
       this.ix = wider(this.ix, cap);
       this.sure = wider(this.sure, cap);
       this.gone = wider(this.gone, cap);
+      this.died = wider(this.died, cap);
     }
     return this.used++;
   }
@@ -332,8 +337,11 @@ export class Told {
     this.list(s);
   }
 
-  /** The client is told to take body `id` away. `s` is its slot, or -1. It is told again each snapshot until it acknowledges one that said so. */
-  remove(s: number, id: number, tick: number): void {
+  /**
+   * The client is told to take body `id` away, and whether it `died`. `s` is its slot, or -1. It is told again each
+   * snapshot until it acknowledges one that said so.
+   */
+  remove(s: number, id: number, tick: number, died: boolean): void {
     if (s < 0) {
       s = this.take();
       if (s < 0) return;
@@ -342,6 +350,7 @@ export class Told {
     if (this.gone[s] === 0) this.at[s] = tick;
     this.id[s] = id;
     this.gone[s] = 1;
+    this.died[s] = died ? 1 : 0;
     this.list(s);
   }
 
@@ -415,6 +424,8 @@ const opCur = new Int16Array(MAX_OPS);
 /** Where the entity is in what the client was told, or -1. Not set for K_KEEP. */
 const opTold = new Int16Array(MAX_OPS);
 const opId = new Uint32Array(MAX_OPS);
+/** 1 for a remove of a body that died. */
+const opDied = new Uint8Array(MAX_OPS);
 /** Positions in the op list of the ops that may be deferred: those of urgent entities, and the rest. */
 const urgIndex = new Int16Array(MAX_VIEW * 2);
 const optIndex = new Int16Array(MAX_VIEW * 2);
@@ -556,6 +567,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
           if (written < MAX_VIEW / 2) {
             opKind[n] = K_REMOVE;
             opId[n] = id;
+            opDied[n] = told!.died[th]!;
             written++;
             last = id + 1;
           } else opKind[n] = K_SKIP;
@@ -569,6 +581,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
     let bits = 0;
     if (bid < cid) {
       opKind[n] = K_REMOVE;
+      // It died if the body that died last at its index is the one the client has.
+      opDied[n] = looks.died !== undefined && looks.died[bid] === base!.gen[i] ? 1 : 0;
       opBase[n] = i++;
       opId[n] = bid;
       written++;
@@ -694,8 +708,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
     w.varint(id + 1 - prev);
     prev = id + 1;
     if (kind === K_REMOVE) {
-      w.bits(OP_REMOVE, 2);
-      if (told) told.remove(th, id, tick);
+      w.bits(opDied[k] === 1 ? OP_DIED : OP_REMOVE, 2);
+      if (told) told.remove(th, id, tick, opDied[k] === 1);
       continue;
     }
     // Both ops below add it to `next`, at the end. Last told of in the baseline, it is now told something else.
@@ -809,8 +823,9 @@ function untold(drawn: EntityView, before: EntityView | null, l: number, next: E
  * Returns false if the data is inconsistent. `next` becomes the view the server holds the client to have, which later deltas
  * are read against. `drawn`, if given, becomes what the client shows: `before`, which is what it showed after the snapshot
  * before this one, with this snapshot's ops applied. A body the snapshot says nothing of stays as it was last told of.
+ * The ids of bodies taken away because they died are pushed to `died`.
  */
-export function readViewDelta(r: BitReader, base: EntityView | null, next: EntityView, before: EntityView | null = null, drawn: EntityView | null = null): boolean {
+export function readViewDelta(r: BitReader, base: EntityView | null, next: EntityView, before: EntityView | null = null, drawn: EntityView | null = null, died: number[] | null = null): boolean {
   const nb = base ? base.count : 0;
   // With no baseline and no snapshot for a second, the server has started again from nothing.
   if (!base && before && next.tick - before.tick >= VIEW_RING) before = null;
@@ -834,8 +849,9 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       l = carry(drawn, before, l, id);
       if (before && l < before.count && before.id[l] === id) l++;
     }
-    if (op === OP_REMOVE) {
+    if (op === OP_REMOVE || op === OP_DIED) {
       if (present) i++;
+      if (op === OP_DIED && died) died.push(id);
     } else if (op === OP_CREATE) {
       const kind = r.varint();
       const gen = r.bits(12);

@@ -140,6 +140,8 @@ const MAX_RUBBLE_QUEUED = 2048;
 
 export class RemoteSample {
   count = 0;
+  /** The bodies the server said died, by id, with the tick of the snapshot that said so. Kept for a few seconds. */
+  died: ReadonlyMap<number, number> = new Map();
   readonly id = new Uint32Array(MAX_VIEW);
   readonly kind = new Uint16Array(MAX_VIEW);
   readonly x = new Float32Array(MAX_VIEW);
@@ -200,6 +202,8 @@ export const CLOSED_BAD_CONTENT = -3;
 /** The server speaks another version of the protocol. REJECT_VERSION is the same news from the server's side. */
 export const CLOSED_BAD_VERSION = -4;
 const LOG_LINES = 200;
+/** Ticks a death the server told of is kept for the bodies drawn behind it. */
+const DIED_KEPT = 2 * TICK_RATE;
 
 /** Beyond this the oldest untaken event is dropped. */
 const MAX_EVENTS = 64;
@@ -331,6 +335,9 @@ export class ClientSession {
   nodeField: NodeField | null = null;
   private nodeChunk = -1;
   private readonly nodeGone = new Map<number, number[]>();
+  /** Bodies the server said died, by id, and the ids one snapshot said so of. */
+  private readonly died = new Map<number, number>();
+  private readonly dying: number[] = [];
   onResult: ((seq: number, code: number) => void) | null = null;
   /** Predicted local body after the latest simulated tick. */
   readonly own = new Body();
@@ -512,6 +519,7 @@ export class ClientSession {
   /** Fill `out` with remote entities interpolated to the current render time. */
   sampleRemote(out: RemoteSample, delayTicks = this.remoteDelay): void {
     out.count = 0;
+    out.died = this.died;
     const at = this.renderClock - delayTicks;
     out.tick = at;
     this.shown = at;
@@ -1002,12 +1010,17 @@ export class ClientSession {
     }
     const next = this.views.alloc(tick);
     const drawn = this.drawn.alloc(tick);
-    if (!readViewDelta(r, base, next, this.drawn.find(this.latestSnapshot), drawn) || r.overflow) {
+    const dying = this.dying;
+    dying.length = 0;
+    if (!readViewDelta(r, base, next, this.drawn.find(this.latestSnapshot), drawn, dying) || r.overflow) {
       next.tick = drawn.tick = 0;
       this.stats.undecodable++;
       this.needFull = true;
       return;
     }
+    // A death is told again until a snapshot that told it is acknowledged, so the first telling is the one kept.
+    for (const id of dying) if (!this.died.has(id)) this.died.set(id, tick);
+    for (const [id, at] of this.died) if (tick - at > DIED_KEPT) this.died.delete(id);
     if (this.latestSnapshot > 0) this.noteGap(tick);
     this.latestSnapshot = tick;
     this.needFull = false;

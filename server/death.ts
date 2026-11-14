@@ -183,6 +183,8 @@ export class Death {
     if (rec.dead) return;
     const ents = world.ents;
     const e = records.entOf.get(rec.pid);
+    // Each client's view then says the body died, not that it left (shared/net/view.ts).
+    if (e !== undefined) ents.died[e] = ents.gen[e]!;
     if (rec.kind !== this.survivor) {
       if (e !== undefined) {
         rec.x = ents.x[e]!;
