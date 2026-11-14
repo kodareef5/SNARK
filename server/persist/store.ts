@@ -95,6 +95,11 @@ export function sqliteCode(err: unknown): string {
   return typeof code === "string" && code.startsWith("SQLITE_") ? code : "";
 }
 
+/** Bun reports SQLite's extended codes, so a `base` of SQLITE_READONLY is also SQLITE_READONLY_DBMOVED. */
+export function sqliteIs(code: string, base: string): boolean {
+  return code === base || code.startsWith(`${base}_`);
+}
+
 export class WorldStore {
   readonly db: Database;
   readonly path: string;
@@ -211,7 +216,7 @@ export class WorldStore {
       }
       this.lock.release();
       const code = sqliteCode(err);
-      if (code === "SQLITE_CORRUPT" || code === "SQLITE_NOTADB") {
+      if (sqliteIs(code, "SQLITE_CORRUPT") || sqliteIs(code, "SQLITE_NOTADB")) {
         const newest = listBackups(path)[0];
         throw new Error(`${path} is damaged (${err instanceof Error ? err.message : code}): ${newest ? `start with --restore ${newest}` : "there is no backup of it"}`);
       }
