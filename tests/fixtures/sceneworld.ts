@@ -1,6 +1,6 @@
 // A small world for the scene to draw with materials: the core content and a few things of its own, a creature (the
-// tube), the tube again as a thing on no bones, a building piece and a held item, in a pack split as a build splits
-// it, with their textures in the rgba variant. Levels, surfaces and textures come over a network made of numbers to a
+// tube), the tube again as a thing on no bones, a building piece, that again as a thing that lies tilted, and a held
+// item, in a pack split as a build splits it, with their textures in the rgba variant. Levels, surfaces and textures come over a network made of numbers to a
 // card that holds only what packets upload, and the software rasterizer draws each frame from the same packets.
 
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -36,6 +36,7 @@ import { TUBE, TUBE_RIG, tubeClips, tubeMesh, tubePictures } from "./textured.ts
 export const PANEL = "test:panel";
 export const CLUB = "test:club";
 export const POST = "test:post";
+export const SHARD = "test:shard";
 export const W = 160;
 export const H = 90;
 const HORN = 146;
@@ -51,6 +52,8 @@ const DEFS: readonly Def[] = [
   { type: "prop", class: "egg", id: POST, mesh: TUBE, color: 6, radius: 0.25, height: 2 },
   { type: "structure", class: "static", id: PANEL, mesh: PANEL, color: 5, half: [1, 1, 0.1], hp: 100 },
   { type: "item", class: "weapon", id: CLUB, stack: 1, weight: 1, color: 5, weapon: { kind: "melee", damage: 10, type: "melee", uses: 10, mesh: CLUB, hold: "tool" } },
+  // The panel again as a thing that lies as it landed, tilted, as an arrow does. It is drawn hanging from its origin.
+  { type: "prop", class: "projectile", id: SHARD, mesh: PANEL, color: 5, radius: 0.1, height: 0.1, pitched: true },
 ];
 
 /**
@@ -144,6 +147,8 @@ export function sceneSet(pixels = 64): SceneSet {
 }
 
 export interface Body {
+  /** Its height above the ground. */
+  y?: number;
   yaw?: number;
   /** The palette colour of each colour region. */
   colors?: readonly number[];
@@ -178,10 +183,10 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
   return {
     reg, manifest, hf, structs, nodes, port, pack, scene, cam, remote, raster, card, kind, mesh,
     now: () => now,
-    /** A body or a thing among the remote entities, standing on the ground. Returns its index there. */
+    /** A body or a thing among the remote entities. Returns its index there. */
     place(id: string, x: number, z: number, more: Body = {}): number {
       const n = remote.count++;
-      [remote.id[n], remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.flags[n]] = [100 + n, kind(id), x, 0, z, more.yaw ?? Math.PI, 1];
+      [remote.id[n], remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.flags[n]] = [100 + n, kind(id), x, more.y ?? 0, z, more.yaw ?? Math.PI, 1];
       remote.colors.set(more.colors ?? [], n * 6);
       if (more.held) remote.gear[n * GEAR_COUNT + GEAR_HELD] = kind(more.held);
       return n;

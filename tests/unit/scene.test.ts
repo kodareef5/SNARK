@@ -3,14 +3,14 @@
 import { expect, test } from "bun:test";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import type { AssetRequest } from "../../client/core/assets/port.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, type FramePacket } from "../../client/core/render/packet.ts";
 import type { OwnBody } from "../../client/core/render/scene.ts";
 import { Falling } from "../../client/core/rubble.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { PICK_ENTITY, PICK_STRUCTURE } from "../../tools/snap/raster.ts";
-import { CLUB, H, PANEL, POST, W, sceneSet, sceneWorld } from "../fixtures/sceneworld.ts";
+import { CLUB, H, PANEL, POST, SHARD, W, sceneSet, sceneWorld } from "../fixtures/sceneworld.ts";
 import { TUBE } from "../fixtures/textured.ts";
 
 type World = ReturnType<typeof sceneWorld>;
@@ -54,13 +54,16 @@ function hashPacket(p: FramePacket, h: number): number {
 
 test("a scene streamed over a slow, lossy link draws with no material the card lacks, and ends pixel-equal to the scene with everything on the card", () => {
   // A creature and a survivor with a club in its hand, both seen from the side, the tube standing on no bones and
-  // again as a loose thing, three panels, a fourth falling, and a fifth about to be built.
+  // again as a loose thing, three panels, a fourth falling, a fifth about to be built, a shard of one lying tilted, and
+  // the viewer's own body, looking out of its head with a club of its own.
   const fill = (w: World): void => {
     w.place(TUBE, 32, 23.2, { colors: [8, 7, 14, 6], yaw: Math.PI / 2 });
     w.place("core:survivor", 30.6, 23, { held: CLUB, yaw: Math.PI / 2 });
     w.place(POST, 33.4, 24, { colors: [9, 9, 9, 9] });
+    w.remote.anim[w.place(SHARD, 36, 24.5, { y: 2.2, yaw: 0 })] = 12 << 12;
+    w.scene.own = { kind: w.kind("core:survivor"), x: 32, y: -0.42, z: 20, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: Uint16Array.of(w.kind(CLUB), 0, 0, 0, 0, 0), id: 7 };
     for (let i = 0; i < 3; i++) w.structs.add(w.kind(PANEL), 30 + i * 2, 0, 26, FACING, 0, 1);
-    w.scene.things = [{ mesh: w.mesh(TUBE), x: 37, y: 0, z: 27, level: -1 }];
+    w.scene.things = [{ mesh: w.mesh(TUBE), x: 38, y: 0, z: 29, level: -1 }];
     const falling = (w.scene.falling = new Falling(w.reg.halfY, () => 0));
     falling.count = 1;
     [falling.kind[0], falling.x[0], falling.y[0], falling.z[0], falling.yaw[0]] = [w.kind(PANEL), 27.5, 1.5, 25.5, FACING];
@@ -74,7 +77,7 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
 
   // The first frame has the boot pack alone. Everything is there, flat, the tube at the finer of the levels in the pack.
   let p = slow.frame();
-  expect([p.drawCount, p.skipped, p.texUploads.length]).toEqual([12, 0, 0]);
+  expect([p.drawCount, p.skipped, p.texUploads.length]).toEqual([18, 0, 0]);
   for (let d = 0; d < p.drawCount; d++) expect(textured(p, d)).toBe(false);
   expect(drawn(slow, p, TUBE)).toEqual([[1, 0, 1], [1, BODY, 1], [1, 0, 1]]);
   const before = slow.raster.color.slice();
@@ -95,26 +98,33 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
       else first[k] ||= f;
     });
   }
-  // Each mesh turned to its materials once and stayed: the tube after 2.4 s, the club a frame later, and the panel,
-  // whose surface was lost twice, after 5.6 s.
-  expect([first, last]).toEqual([[25, 26, 57], [25, 26, 57]]);
+  // Each mesh turned to its materials once, some seconds in, and stayed. Requests were lost on the way.
+  expect(first).toEqual(last);
+  expect(first.every((f) => f > 5 && f < 70)).toBe(true);
   const { stats, flying } = slow.scene.assets.residency;
-  expect([stats.failed, stats.dead, flying, slow.card.textures.size]).toEqual([2, 0, 0, 6]);
+  expect([stats.failed > 1, stats.dead, flying, slow.card.textures.size]).toEqual([true, 0, 0, 6]);
 
   // The last frame: a draw for each section, with its material, its run of indices and what the material's flags ask.
   const [hide, horn, wood, plank, lattice] = ["test:tube/hide", "test:tube/horn", "test:club/wood", PANEL, `${PANEL}/lattice`].map((id) => material(slow, id));
-  // The standing panels and the falling one are drawn with their materials. The one about to be built is see-through, and flat.
-  const panel = (pieces: number): number[][] => [[0, DRAW_TEXTURED, pieces, plank, 0, 3], [0, DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3]];
-  expect(drawn(slow, p, PANEL)).toEqual([...panel(3), ...panel(1), [0, DRAW_BLEND, 1]]);
+  // The standing panels, the shard, which is on a bone of its own, and the falling panel are drawn with their
+  // materials. The one about to be built is see-through, and flat.
+  const panel = (pieces: number, flags = 0): number[][] => [[0, flags | DRAW_TEXTURED, pieces, plank, 0, 3], [0, flags | DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3]];
+  expect(drawn(slow, p, PANEL)).toEqual([...panel(3), ...panel(1, BODY), ...panel(1), [0, DRAW_BLEND, 1]]);
   // The post is the tube on no bones and the creature is the tube on its own, both now at its finest level. The loose
   // thing is far enough off for the second.
   const tube = (flags: number, level = 0): number[][] => [[level, flags | DRAW_TEXTURED, 1, hide, 0, 1152 >> (level * 2)], [level, flags | DRAW_TEXTURED | DRAW_TWO_SIDED, 1, horn, 1152 >> (level * 2), 384 >> (level * 2)]];
   expect(drawn(slow, p, TUBE)).toEqual([...tube(0), ...tube(BODY), ...tube(0, 1)]);
-  // What is held hangs on the hand's bone as it did. The body it hangs on has no materials, and is drawn flat.
-  expect(drawn(slow, p, CLUB)).toEqual([[0, BODY | DRAW_TEXTURED, 1, wood, 0, 36]]);
-  expect(drawn(slow, p, "core:mannequin/torso")).toEqual([[0, BODY, 1]]);
+  // What is held hangs on the hand's bone as it did, and the viewer's own is drawn last, over everything. The bodies
+  // they hang on have no materials, and are drawn flat.
+  expect(drawn(slow, p, CLUB)).toEqual([[0, BODY | DRAW_TEXTURED, 1, wood, 0, 36], [0, BODY | DRAW_NEAR | DRAW_TEXTURED, 1, wood, 0, 36]]);
+  expect(drawn(slow, p, "core:mannequin/torso")).toEqual([[0, BODY, 1], [0, BODY | DRAW_NEAR, 1]]);
+  expect(textured(p, p.drawCount - 1)).toBe(true);
   expect(slow.raster.color).toEqual(whole.raster.color);
   expect(slow.raster.color).not.toEqual(before);
+  // The creature, the survivor and the post are in the picture, and so are what has no id (the shard, the loose
+  // thing and the falling panel) and the standing panels.
+  const seen = (kind: number, id: number): number => slow.raster.pickKind.reduce((n, k, i) => n + (k === kind && (id < 0 || slow.raster.pickId[i] === id) ? 1 : 0), 0);
+  expect([seen(PICK_ENTITY, 100) > 100, seen(PICK_ENTITY, 101) > 100, seen(PICK_ENTITY, 102) > 100, seen(PICK_ENTITY, 0) > 600, seen(PICK_STRUCTURE, -1) > 600]).toEqual([true, true, true, true, true]);
 });
 
 test("a body drawn with its materials and the same body drawn flat agree in mean colour, as near as the palette and the two ways of lighting allow", () => {

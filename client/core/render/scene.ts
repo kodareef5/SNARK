@@ -66,7 +66,7 @@ const BEAM_MESH = "core:beam";
 /** Palette colour of the beam over a place of death. */
 const BEAM_COLOR = 8;
 /** The one run of a level drawn flat: no material, and all its indices. */
-const WHOLE: readonly number[] = [-1, 0, 0];
+const FLAT: readonly number[] = [-1, 0, 0];
 
 /** A mesh stood somewhere by itself, with no entity or structure behind it. `level` is the level it was last drawn at, or -1. */
 export interface Thing {
@@ -622,13 +622,13 @@ export class Scene {
     const sections = this.assets.table.sections[mesh]!;
     // What is see-through is drawn flat.
     const solid = (flags & DRAW_BLEND) === 0;
-    let whole = solid && this.assets.textured(mesh, lod);
+    let ready = solid && this.assets.textured(mesh, lod);
     // While the level wanted cannot be drawn with its materials, a finer one that can is drawn in its place, so that a
     // thing does not turn flat on its way from one level to the next.
-    if (solid && !whole && sections[wanted < sections.length ? wanted : sections.length - 1]!.length > 0) {
-      for (let l = lod - 1; l >= 0 && !whole; l--) if ((whole = this.assets.textured(mesh, l))) lod = l;
+    if (solid && !ready && sections[wanted < sections.length ? wanted : sections.length - 1]!.length > 0) {
+      for (let l = lod - 1; l >= 0 && !ready; l--) if ((ready = this.assets.textured(mesh, l))) lod = l;
     }
-    const runs = whole ? sections[lod]! : WHOLE;
+    const runs = ready ? sections[lod]! : FLAT;
     const draws = runs.length / 3;
     // A mesh the frame has no room for all of is left out whole.
     if (n + draws > MAX_DRAWS) {
