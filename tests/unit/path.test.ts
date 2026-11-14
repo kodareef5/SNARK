@@ -118,6 +118,46 @@ test("a search stops at its budget, and a goal nothing leads to gets the way to 
   expect(f.expanded).toBeLessThan(40);
 });
 
+test("a search spread over many calls finds the way one call does", () => {
+  const w = provingWorld();
+  const f = finder(w);
+  expect(f.find(288, 258, 288, 266)).toBe(PATH_FOUND);
+  const whole = [points(f), f.cost, f.expanded];
+  expect(f.begin(288, 258, 288, 266)).toBe(true);
+  let calls = 1;
+  while (!f.run(7)) calls++;
+  expect(f.finish()).toBe(PATH_FOUND);
+  expect([points(f), f.cost, f.expanded]).toEqual(whole);
+  expect(calls).toBeGreaterThan(30);
+});
+
+test("a doorway off the metre grid is found when the finder knows doorways, by a body only a little narrower", () => {
+  const w = flatWorld();
+  const raptor = w.reg.move[w.kind("core:raptor")]!;
+  // A wall across the ground with a doorframe in it, whose middle lies a quarter of a metre off every cell's middle.
+  const wall = w.kind("core:wall_wood");
+  for (let i = -4; i <= 4; i++) w.structs.add(i === 0 ? w.kind("core:doorframe_wood") : wall, 64.25 + 3 * i, 1.5, 64, 0, 0, 1);
+  const f = new PathFinder(w, raptor);
+  expect(f.find(64.25, 58, 64.25, 70)).toBe(PATH_FOUND);
+  // Round the end of the wall, 13.5 m off.
+  expect(lengthOf(f)).toBeGreaterThan(27);
+  f.doorways = w.reg.doorway;
+  expect(f.find(64.25, 58, 64.25, 70)).toBe(PATH_FOUND);
+  expect(lengthOf(f)).toBeLessThan(12.5);
+  const b = new Body();
+  b.x = f.x[0]!;
+  b.z = f.z[0]!;
+  b.grounded = true;
+  let next = 1;
+  for (let tick = 0; tick < 300 && next < f.count; tick++) {
+    const dx = f.x[next]! - b.x;
+    const dz = f.z[next]! - b.z;
+    if (Math.hypot(dx, dz) < 0.25) next++;
+    else stepBody(w, b, 0, 127, Math.round((Math.atan2(dx, dz) / (2 * Math.PI)) * YAW_UNITS) & 0xffff, 0, 0, raptor, TICK_DT);
+  }
+  expect(Math.hypot(b.x - 64.25, b.z - 70)).toBeLessThan(0.3);
+});
+
 test("a goal beyond the grid is walked toward in legs", () => {
   const w = flatWorld(8);
   const f = finder(w);

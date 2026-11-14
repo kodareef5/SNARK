@@ -27,6 +27,7 @@
 | `upkeep.test.ts` | Pieces taken back, mended, taken down; decay |
 | `fixtures.test.ts`, `stations.test.ts` | Doors, locks, PINs, boxes and a vault; a campfire that cooks unwatched and a bed to return to life at |
 | `creatures.test.ts` | Dormancy and deadlines while dormant; creatures as models; what wild ones do |
+| `hunting.test.ts` | Ways round: a hunter round a wall, a base it cannot get into, a yard to flee, a doorway to follow through, a wall put across a way, five hundred at once |
 | `taming.test.ts` | Taming at the reference's numbers; orders, stances, eating, levels |
 | `riding.test.ts` | Saddles, getting on and off, riding with no corrections, a rider hit on the seat |
 | `breaches.test.ts` | What the review of 2026-11-14 found open: a wall with a hair between its pieces, a box or a mount kept after leave to use it ended, getting off with no room, a vault coming down on a body, PIN guessing, and what a dead tame leaves |
