@@ -2,7 +2,7 @@
 // and never a longer one. A piece found standing is judged again when a piece near it is removed. Authority only, because it removes structures.
 
 import type { PieceTables } from "./snap.ts";
-import { GONE_FELL, GONE_TAKEN, type StructureStore } from "./structures.ts";
+import { Found, GONE_FELL, GONE_TAKEN, type StructureStore } from "./structures.ts";
 import { COST_NODE, Support, type SupportNode } from "./support.ts";
 
 /** Packs lattice x and z into one key. z is less than this. */
@@ -50,7 +50,7 @@ export class Collapse {
   private readonly taking = new Uint32Array(WAVE_MAX);
   private fell = 0;
   private removing = false;
-  private readonly scratch = new Uint32Array(1024);
+  private readonly scratch = new Found(1024);
   private readonly fresh: number[] = [];
   private readonly rank = new Map<number, number>();
 
@@ -179,7 +179,7 @@ export class Collapse {
     const ox = this.ox;
     const oz = this.oz;
     for (let i = 0; i < n; i++) {
-      const ref = this.scratch[i]!;
+      const ref = this.scratch.refs[i]!;
       if (this.inDoubt.has(ref)) continue;
       this.inDoubt.add(ref);
       const t = this.structs.chunks[Math.floor(ref / 65536)]!;

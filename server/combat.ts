@@ -18,6 +18,7 @@ import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, QUALITY_MUL } from "../shared/sim/items.ts";
 import { W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
+import { Found } from "../shared/world/structures.ts";
 import type { Buffs } from "./buffs.ts";
 import type { Creatures } from "./creatures.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
@@ -132,7 +133,7 @@ export class Combat {
   /** Called for a structure that was harmed and still stands. */
   onStructureHurt: ((ref: number) => void) | null = null;
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
-  private readonly refs = new Uint32Array(4096);
+  private readonly inBlast = new Found(256);
   private readonly found: number[] = [];
   private readonly share: number[] = [];
   /** Set by `killed`, which the hurt in progress may call. */
@@ -727,10 +728,11 @@ export class Combat {
     src.base = base;
     // Structures take the blast by the distance to their nearest point.
     const structs = world.structs;
-    const n = structs.query(x - radius, z - radius, x + radius, z + radius, this.refs);
+    const n = structs.query(x - radius, z - radius, x + radius, z + radius, this.inBlast);
+    const refs = this.inBlast.refs;
     found.length = share.length = 0;
     for (let k = 0; k < n; k++) {
-      const ref = this.refs[k]!;
+      const ref = refs[k]!;
       const t = structs.chunks[Math.floor(ref / 65536)]!;
       const slot = ref & 0xffff;
       const kind = t.kind[slot]!;

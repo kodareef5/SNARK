@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { Found } from "../../shared/world/structures.ts";
 import { Rng } from "../../shared/rng.ts";
 import { SKIN, capsuleBox, capsuleFree } from "../../shared/world/collide.ts";
 import { flatWorld, provingWorld, type TestWorld } from "../fixtures/world.ts";
@@ -24,14 +25,14 @@ test("terrain height is continuous across cell and triangle edges", () => {
 test("structures can be added, found, removed and their slots reused", () => {
   const w = flatWorld(2);
   const wall = w.kind("core:wall");
-  const out = new Uint32Array(64);
+  const out = new Found();
   const a = w.structs.add(wall, 63.2, 1.5, 20, 0, 7, 100); // footprint crosses a chunk edge
   const b = w.structs.add(wall, 30, 1.5, 20, 16384, 7, 100);
   expect(w.structs.count).toBe(2);
   expect(w.structs.query(64.1, 19.9, 64.2, 20.1, out)).toBe(1); // found from the neighbouring chunk
-  expect(out[0]).toBe(a);
+  expect(out.refs[0]).toBe(a);
   expect(w.structs.query(29.9, 18.6, 30.1, 18.7, out)).toBe(1); // rotated footprint
-  expect(out[0]).toBe(b);
+  expect(out.refs[0]).toBe(b);
 
   const t = w.structs.chunks[0]!;
   const v = t.version;
@@ -52,8 +53,10 @@ test("the collision grid matches a brute-force search", () => {
   for (let i = 0; i < 600; i++) refs.push(w.structs.add(kinds[rng.int(4)]!, rng.range(2, 254), rng.range(0, 3), rng.range(2, 254), rng.int(65536), 0, 1));
   for (let i = 0; i < 200; i++) w.structs.remove(refs.splice(rng.int(refs.length), 1)[0]!);
   // Every capsule position the grid calls free must also be free against every structure.
-  const all = new Uint32Array(1024);
-  const count = w.structs.query(0, 0, 256, 256, all);
+  // More than the 64 it starts with, so the list grows.
+  const found = new Found();
+  const count = w.structs.query(0, 0, 256, 256, found);
+  const all = found.refs;
   expect(count).toBe(400);
   for (let n = 0; n < 3000; n++) {
     const x = rng.range(1, 255);

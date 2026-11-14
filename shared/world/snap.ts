@@ -3,7 +3,7 @@
 
 import { STRUCT_UNITS, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
-import type { PartTable, StructureStore } from "./structures.ts";
+import { Found, type PartTable, type StructureStore } from "./structures.ts";
 
 /** Indices into PIECE_ROLES of shared/content/defs.ts. */
 export const ROLE_FOUNDATION = 0;
@@ -159,7 +159,7 @@ const SHRINK_Y = 0.05;
 const THIN = 0.02;
 const SHRINK_OTHER = 0.05;
 const YAW_TO_RAD = TAU / YAW_UNITS;
-const near = new Uint32Array(256);
+const near = new Found();
 
 /** Whether a piece of `kind` at this pose (metres) overlaps a built structure. Pieces that only touch, as neighbours do, do not count. */
 export function obstructed(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, yaw: number): boolean {
@@ -170,6 +170,7 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
   // Query every structure whose footprint is near. The piece is no wider than a side and a half.
   const reach = 3;
   const n = structs.query(x - reach, z - reach, x + reach, z + reach, near);
+  const refs = near.refs;
   for (let p = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; p < end; p += 6) {
     // This box of the new piece, shrunk, in world space.
     const hx = Math.max(THIN, box[p + 3]! - SHRINK);
@@ -179,7 +180,7 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
     const cy = y + box[p + 1]!;
     const cz = z - s * box[p]! + c * box[p + 2]!;
     for (let k = 0; k < n; k++) {
-      const ref = near[k]!;
+      const ref = refs[k]!;
       const t = structs.chunks[Math.floor(ref / 65536)]!;
       const slot = ref & 0xffff;
       const other = t.kind[slot]!;
@@ -258,7 +259,7 @@ export interface PieceTables {
 
 const scratch = makeSockets();
 const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-const found = new Uint32Array(256);
+const found = new Found();
 const dist = new Float64Array(MAX_SOCKETS);
 
 /** Fills `out` with the sockets `target` offers a piece of `kind`. Returns how many. */
@@ -328,7 +329,7 @@ export function pickSnap(structs: StructureStore, tables: PieceTables, kind: num
   if (out.target >= 0) return;
   // Refs are tried in ascending order, so ties resolve the same way on server and client.
   const n = structs.query(out.px - SNAP_SEARCH - 3, out.pz - SNAP_SEARCH - 3, out.px + SNAP_SEARCH + 3, out.pz + SNAP_SEARCH + 3, found);
-  const refs = found.subarray(0, n).sort();
+  const refs = found.refs.subarray(0, n).sort();
   for (let i = 0; i < n; i++) consider(refs[i]!, true);
 }
 

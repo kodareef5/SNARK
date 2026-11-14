@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { Found } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket } from "../../client/core/render/packet.ts";
 import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
@@ -22,8 +23,9 @@ const H = 180;
 
 /** Ref of the structure centred exactly at (x, z). */
 function refAt(view: ReturnType<typeof provingView>, x: number, z: number): number {
-  const refs = new Uint32Array(16);
-  const n = view.structs.query(x - 0.1, z - 0.1, x + 0.1, z + 0.1, refs);
+  const found = new Found();
+  const n = view.structs.query(x - 0.1, z - 0.1, x + 0.1, z + 0.1, found);
+  const refs = found.refs;
   for (let i = 0; i < n; i++) {
     const t = view.structs.chunks[Math.floor(refs[i]! / 65536)]!;
     if (t.x[refs[i]! & 0xffff] === x && t.z[refs[i]! & 0xffff] === z) return refs[i]!;

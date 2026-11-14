@@ -4,6 +4,7 @@
 import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { SKIN, capsuleBox, capsuleFree, push, restsOnStructure, type CollisionWorld } from "../world/collide.ts";
+import { Found } from "../world/structures.ts";
 
 export const BTN_JUMP = 1;
 export const BTN_SPRINT = 2;
@@ -212,7 +213,7 @@ const SETTLE_MARGIN = SKIN * 0.75;
 /** Metres per second. Sprint multiplies it by GHOST_SPRINT. */
 const GHOST_SPEED = 12;
 const GHOST_SPRINT = 5;
-const refs = new Uint32Array(256);
+const found = new Found();
 
 /**
  * `moveX` (strafe right) and `moveZ` (forward) are -127 to 127. `yaw` and `pitch` are in 1/65536 turns, and pitch 16384 is
@@ -377,9 +378,9 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       for (let pass = 0; pass < 2; pass++) {
         const store = pass === 0 ? structs : w.nodes;
         if (!store) continue;
-        const count = store.query(nx - r, nz - r, nx + r, nz + r, refs);
+        const count = store.query(nx - r, nz - r, nx + r, nz + r, found);
         for (let k = 0; k < count; k++) {
-          if (!capsuleBox(store, refs[k]!, nx, ny, nz, r, height, 0)) continue;
+          if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, height, 0)) continue;
           nx += push.x;
           ny += push.y;
           nz += push.z;
@@ -621,9 +622,9 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
       for (let pass = 0; pass < 2; pass++) {
         const store = pass === 0 ? structs : w.nodes;
         if (!store) continue;
-        const count = store.query(nx - r, nz - r, nx + r, nz + r, refs);
+        const count = store.query(nx - r, nz - r, nx + r, nz + r, found);
         for (let k = 0; k < count; k++) {
-          if (!capsuleBox(store, refs[k]!, nx, ny, nz, r, p.height, 0)) continue;
+          if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, p.height, 0)) continue;
           nx += push.x;
           ny += push.y;
           nz += push.z;

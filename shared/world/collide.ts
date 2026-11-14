@@ -4,7 +4,7 @@
 import { YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import type { Heightfield } from "./heightfield.ts";
-import type { PartTable, StructureStore } from "./structures.ts";
+import { Found, type PartTable, type StructureStore } from "./structures.ts";
 
 /** Penetration below this depth counts as touching, not overlapping. */
 export const SKIN = 0.002;
@@ -20,7 +20,7 @@ export interface CollisionWorld {
 /** The shortest push out, in world space, from the last capsuleBox call that returned true. */
 export const push = { x: 0, y: 0, z: 0, depth: 0 };
 
-const refs = new Uint32Array(256);
+const found = new Found();
 
 /**
  * The capsule stands with its feet at (x, y, z), radius r and total height h. On an overlap deeper than `slack`, fills `push`
@@ -144,15 +144,15 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
   const hf = w.hf;
   if (x < 0 || z < 0 || x > hf.sizeX || z > hf.sizeZ) return false;
   if (y < hf.heightAt(x, z) - SKIN) return false;
-  const n = w.structs.query(x - r, z - r, x + r, z + r, refs);
+  const n = w.structs.query(x - r, z - r, x + r, z + r, found);
   for (let i = 0; i < n; i++) {
-    if (capsuleBox(w.structs, refs[i]!, x, y, z, r, h, SKIN)) return false;
+    if (capsuleBox(w.structs, found.refs[i]!, x, y, z, r, h, SKIN)) return false;
   }
   const nodes = w.nodes;
   if (nodes) {
-    const m = nodes.query(x - r, z - r, x + r, z + r, refs);
+    const m = nodes.query(x - r, z - r, x + r, z + r, found);
     for (let i = 0; i < m; i++) {
-      if (capsuleBox(nodes, refs[i]!, x, y, z, r, h, SKIN)) return false;
+      if (capsuleBox(nodes, found.refs[i]!, x, y, z, r, h, SKIN)) return false;
     }
   }
   return true;
@@ -160,15 +160,15 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
 
 /** True when lowering the capsule by `probe` meets an upward push from a structure or node. */
 export function restsOnStructure(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number, probe: number): boolean {
-  const n = w.structs.query(x - r, z - r, x + r, z + r, refs);
+  const n = w.structs.query(x - r, z - r, x + r, z + r, found);
   for (let i = 0; i < n; i++) {
-    if (capsuleBox(w.structs, refs[i]!, x, y - probe, z, r, h, 0) && push.y > 0.7 * push.depth) return true;
+    if (capsuleBox(w.structs, found.refs[i]!, x, y - probe, z, r, h, 0) && push.y > 0.7 * push.depth) return true;
   }
   const nodes = w.nodes;
   if (nodes) {
-    const m = nodes.query(x - r, z - r, x + r, z + r, refs);
+    const m = nodes.query(x - r, z - r, x + r, z + r, found);
     for (let i = 0; i < m; i++) {
-      if (capsuleBox(nodes, refs[i]!, x, y - probe, z, r, h, 0) && push.y > 0.7 * push.depth) return true;
+      if (capsuleBox(nodes, found.refs[i]!, x, y - probe, z, r, h, 0) && push.y > 0.7 * push.depth) return true;
     }
   }
   return false;

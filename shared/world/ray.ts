@@ -4,6 +4,7 @@
 import { YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import type { CollisionWorld } from "./collide.ts";
+import { Found } from "./structures.ts";
 
 export const HIT_NONE = 0;
 export const HIT_TERRAIN = 1;
@@ -21,8 +22,7 @@ const TERRAIN_STEP = 0.25;
 const SEGMENT = 8;
 /** Half the distance over which the ground's slope is measured for a normal. */
 const NORMAL_STEP = 0.25;
-/** Refs for one SEGMENT of a ray. 1024 is more than the densest base puts within eight metres. */
-const refs = new Uint32Array(1024);
+const found = new Found(256);
 
 /** `yaw` and `pitch` are in wire units (pitch 16384 is straight up). Writes a unit vector to `out`. */
 export function lookDirection(yaw: number, pitch: number, out: Float64Array | number[]): void {
@@ -111,9 +111,9 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
       const az = oz + dz * from;
       const bx = ox + dx * to;
       const bz = oz + dz * to;
-      const n = structs.query(ax < bx ? ax : bx, az < bz ? az : bz, ax > bx ? ax : bx, az > bz ? az : bz, refs);
+      const n = structs.query(ax < bx ? ax : bx, az < bz ? az : bz, ax > bx ? ax : bx, az > bz ? az : bz, found);
       for (let i = 0; i < n; i++) {
-        const r = refs[i]!;
+        const r = found.refs[i]!;
         const t = structs.chunks[Math.floor(r / 65536)]!;
         const slot = r & 0xffff;
         const k = t.kind[slot]!;

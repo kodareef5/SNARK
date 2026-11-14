@@ -3,7 +3,7 @@
 
 import { STRUCT_UNITS } from "../coords.ts";
 import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, ROLE_WALL, frameAxes, makeSockets, overPiece, socketsFor, units, type PieceTables } from "./snap.ts";
-import type { StructureStore } from "./structures.ts";
+import { Found, type StructureStore } from "./structures.ts";
 
 /** Horizontal metres a ceiling may be from a piece that stands straight up. LOAD_REACH is the same for any other piece held sideways. */
 export const CEILING_REACH = 6.5;
@@ -62,7 +62,7 @@ export class Support {
   private readonly tables: PieceTables;
   private readonly heightAt: (x: number, z: number) => number;
   private readonly nodes = new Map<number, SupportNode>();
-  private readonly near = new Uint32Array(256);
+  private readonly near = new Found();
   private readonly queue: SupportNode[] = [];
   private round = 1;
   private search = 0;
@@ -122,8 +122,8 @@ export class Support {
     const root = role === ROLE_FOUNDATION || (role === ROLE_PILLAR && y - half <= ground + FOOT) || (role === ROLE_THING && y - half <= ground);
     const mx = x / STRUCT_UNITS;
     const mz = z / STRUCT_UNITS;
-    const near = this.near;
-    const n = structs.query(mx - NEAR, mz - NEAR, mx + NEAR, mz + NEAR, near);
+    const n = structs.query(mx - NEAR, mz - NEAR, mx + NEAR, mz + NEAR, this.near);
+    const near = this.near.refs;
     this.work += COST_NODE + n;
     for (let i = 0; i < n; i++) {
       const ref = near[i]!;
@@ -256,12 +256,13 @@ export class Support {
    * Every building piece that a piece at (x, z) lattice units could have been helping to hold up: all within a ceiling's reach
    * horizontally, at any height. Writes their refs to `out` and returns how many.
    */
-  dependents(x: number, z: number, self: number, out: Uint32Array): number {
+  dependents(x: number, z: number, self: number, found: Found): number {
     const { structs, tables } = this;
     const mx = x / STRUCT_UNITS;
     const mz = z / STRUCT_UNITS;
     const far = CEILING_REACH + 0.1;
-    const n = structs.query(mx - far, mz - far, mx + far, mz + far, out);
+    const n = structs.query(mx - far, mz - far, mx + far, mz + far, found);
+    const out = found.refs;
     this.work += COST_NODE + n;
     let count = 0;
     for (let i = 0; i < n; i++) {

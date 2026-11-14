@@ -10,7 +10,7 @@ import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { capsuleKind } from "../shared/world/collide.ts";
 import { BUILD_REACH, ON_TOP, ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, freePose, obstructed, overPiece, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
-import { GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
+import { Found, GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
 import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
 import type { Fixtures } from "./fixtures.ts";
@@ -88,7 +88,7 @@ export class Build {
   private readonly landing: { rec: EntityRecord | null; kind: number; x: number; y: number; z: number; yaw: number; owner: number; hp: number }[] = [];
   /** Wrong PINs by client id: how many in a row, and the tick until which it must wait. */
   private readonly strikes = new Map<number, { n: number; until: number }>();
-  private readonly near = new Uint32Array(64);
+  private readonly near = new Found();
 
   constructor(ctx: BuildContext) {
     this.ctx = ctx;
@@ -157,9 +157,10 @@ export class Build {
     const structs = world.structs;
     let top = Math.ceil(world.hf.heightAt(x, z) * STRUCT_UNITS) / STRUCT_UNITS;
     const n = structs.query(x - 2.2, z - 2.2, x + 2.2, z + 2.2, this.near);
+    const near = this.near.refs;
     for (let i = 0; i < n; i++) {
-      const t = structs.chunks[Math.floor(this.near[i]! / 65536)]!;
-      const s = this.near[i]! & 0xffff;
+      const t = structs.chunks[Math.floor(near[i]! / 65536)]!;
+      const s = near[i]! & 0xffff;
       const role = reg.role[t.kind[s]!]!;
       if (role !== ROLE_FOUNDATION && role !== ROLE_CEILING) continue;
       const at = t.y[s]! + reg.halfY[t.kind[s]!]!;

@@ -121,6 +121,15 @@ export class ChunkTable {
   }
 }
 
+/** A query's results. `refs` is replaced when it grows, so read it after the query returns. */
+export class Found {
+  refs: Uint32Array;
+
+  constructor(cap = 64) {
+    this.refs = new Uint32Array(cap);
+  }
+}
+
 export class StructureStore {
   readonly dims: MapDims;
   readonly chunks: (ChunkTable | null)[];
@@ -354,7 +363,7 @@ export class StructureStore {
   }
 
   /** Writes the refs of structures whose grid cells overlap the rectangle to `out` and returns the count. Conservative, so callers test exactly. */
-  query(minX: number, minZ: number, maxX: number, maxZ: number, out: Uint32Array): number {
+  query(minX: number, minZ: number, maxX: number, maxZ: number, out: Found): number {
     let cx0 = Math.floor(minX / GRID_CELL);
     let cx1 = Math.floor(maxX / GRID_CELL);
     let cz0 = Math.floor(minZ / GRID_CELL);
@@ -365,6 +374,7 @@ export class StructureStore {
     if (cz1 >= this.gridZ) cz1 = this.gridZ - 1;
     const single = cx0 === cx1 && cz0 === cz1;
     let n = 0;
+    let refs = out.refs;
     const chunksX = this.dims.chunksX;
     // A structure in several cells is counted once, by the query id stamped on its slot.
     if (++this.queryId === 0xffffffff) {
@@ -386,8 +396,13 @@ export class StructureStore {
             if (t.stamp[slot] === id) continue;
             t.stamp[slot] = id;
           }
-          if (n === out.length) return n;
-          out[n++] = ref;
+          if (n === refs.length) {
+            // Never drop a result. A dropped wall is one a body walks through.
+            refs = new Uint32Array(n * 2);
+            refs.set(out.refs);
+            out.refs = refs;
+          }
+          refs[n++] = ref;
         }
       }
     }
