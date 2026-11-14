@@ -1,13 +1,5 @@
-// Gathering from resource nodes.
-//
-// The server keeps only what has been touched: for each such node, how many
-// hits it has left and, once it is used up, the tick it grows back. That is
-// what is saved (per chunk) and what clients are told (which slots are used
-// up). Everything else about nodes comes from the map on both sides.
-//
-// What a swing hits is decided by server/combat.ts, which tells this file when
-// it was a node; what the use key picks is decided here, by a ray from the
-// body's own eye.
+// The server keeps only the nodes that were touched: the hits each has left and, once it is used up, the tick it grows back.
+// That is saved per chunk, and clients are sent the used-up slots. Everything else about nodes comes from the map on both sides.
 
 import type { ItemDef, NodeDef } from "../shared/content/defs.ts";
 import { stanceEye } from "../shared/sim/character.ts";
@@ -30,9 +22,9 @@ import type { ServerWorld } from "./world.ts";
 
 export const DEADLINE_NODE = 3;
 export const TAG_NODES = 1;
-/** How far a body reaches to pick a bush with the use key. A swing reaches as far as what swings. */
+/** Metres from the eye, for picking with the use key. */
 const REACH = 3.5;
-/** A node does not grow back while a body is this close; it tries again later. */
+/** Metres. A node does not grow back while a survivor is this close. It tries again after RETRY_TICKS. */
 const CROWDED = 12;
 const RETRY_TICKS = 30 * TICK_RATE;
 
@@ -44,12 +36,11 @@ interface Touched {
 
 export class Harvest {
   readonly field: NodeField;
-  /** Per chunk: changes whenever a node there is used up or grows back. */
+  /** Per chunk. Changes whenever a node there is used up or grows back. */
   readonly version: Uint32Array;
-  /** Chunks whose saved state is out of date. */
+  /** Chunks to save. */
   readonly dirty = new Set<number>();
   readonly tag = TAG_NODES;
-  /** Hits landed, for tests and measurement. */
   hits = 0;
 
   private readonly world: ServerWorld;
@@ -59,7 +50,6 @@ export class Harvest {
   private readonly progression: Progression;
   private readonly deadlines: DeadlineHeap;
   private readonly touched = new Map<number, Touched>();
-  /** The server's rules and its lists, given by whoever assembles the world: yields, the force of a blow, and how near keeps a node from growing back. */
   rules: Rules | null = null;
   lists: Lists | null = null;
   private readonly rng: Rng;
@@ -95,14 +85,13 @@ export class Harvest {
     );
   }
 
-  /** How many nodes are used up right now. */
   get goneCount(): number {
     let n = 0;
     for (const t of this.touched.values()) if (t.respawnAt > 0) n++;
     return n;
   }
 
-  /** The node a body is looking at within reach, as chunk * 256 + slot, or -1. */
+  /** The node the body looks at within REACH, as chunk * 256 + slot, or -1. */
   target(c: Client): number {
     const ents = this.world.ents;
     const e = c.ent;
@@ -113,18 +102,18 @@ export class Harvest {
     return Math.floor(rayHit.ref / 65536) * 256 + (rayHit.ref & 0xffff);
   }
 
-  /** A swing landed on the node in `chunk` at `index` (server/combat.ts found it). Returns true if that did anything. */
+  /** A swing landed on this node (server/combat.ts found it). Returns true if that did anything. */
   struck(c: Client, chunk: number, index: number): boolean {
     return this.hit(c, chunk, index, false);
   }
 
-  /** The use key on a node that is picked by hand (a bush). Returns true if one was picked. */
+  /** The use key picks the bush the body looks at. Returns true if one was picked. */
   pick(c: Client): boolean {
     const at = this.target(c);
     return at >= 0 && this.hit(c, at >> 8, at & 255, true);
   }
 
-  /** Strike or pick a given node as `c`, whichever that node takes. For load tests; play goes through a swing and `pick`. */
+  /** For load tests. Strikes or picks the node, whichever it takes. Play goes through a swing and `pick`. */
   strike(c: Client, chunk: number, index: number): boolean {
     const kind = this.field.store.chunks[chunk]?.kind[index] ?? 0;
     return kind !== 0 && this.hit(c, chunk, index, (this.world.reg.defs[kind] as NodeDef).material === undefined);
@@ -137,10 +126,9 @@ export class Harvest {
     const rec = this.records.byPid.get(c.pid);
     if (!table || table.kind[index] === 0 || !rec) return false;
     const def = reg.defs[table.kind[index]!] as NodeDef;
-    // Bushes are picked with the use key; trees and rocks are struck.
+    // A node with no material is a bush, picked by hand. Trees and rocks are struck.
     if (byHand !== (def.material === undefined)) return false;
 
-    // The tool in its hands, if that is one for this material and not worn out. Each hit wears it.
     let power = 1;
     let toolSlot = -1;
     const inv = this.items.inv(rec);
@@ -152,17 +140,14 @@ export class Harvest {
         toolSlot = held;
       }
     }
-    // How much of the node one blow takes, by the server's rule for a survivor's blow: 2 fells it in half the blows, each
-    // worth two; a half lands as one blow in two. Never more than the node has left.
+    // A fractional multiplier lands its extra blow by chance, so 0.5 is one blow in two swings.
     const rules = this.rules;
     const force = byHand || !rules ? 1 : rules.num("PlayerHarvestingDamageMultiplier");
     const part = force - Math.floor(force);
     let blows = Math.floor(force) + (part > 0 && this.rng.float() < part ? 1 : 0);
     if (blows > table.hp[index]!) blows = table.hp[index]!;
-    // At no uses left the tool is broken: still there, no use until it is repaired.
     if (toolSlot >= 0) this.items.wear(rec, toolSlot, 1);
     if (blows === 0) return true;
-    // What it yields: each thing by the server's rule for all harvesting and by its rule for that thing.
     const amount = rules ? rules.num("HarvestAmountMultiplier") : 1;
     const each = this.lists?.multipliers("HarvestResourceItemAmountClassMultipliers");
     for (const y of def.yields) {
@@ -184,7 +169,6 @@ export class Harvest {
       this.touched.set(k, { hits: left, respawnAt: 0 });
       return true;
     }
-    // Grown back after its own time, by the server's rule for that: lower is sooner.
     const respawnAt = world.tick + Math.max(1, Math.round(def.respawnHours * GAME_HOUR_TICKS * (rules ? rules.num("ResourcesRespawnPeriodMultiplier") : 1)));
     this.touched.set(k, { hits: 0, respawnAt });
     this.field.set(chunk, index, false);
@@ -193,7 +177,7 @@ export class Harvest {
     return true;
   }
 
-  /** A DEADLINE_NODE entry came due: the node grows back, unless a body is standing where it would. */
+  /** A DEADLINE_NODE entry came due. */
   due(key: number, stamp: number): void {
     const t = this.touched.get(key);
     if (!t || t.respawnAt !== stamp) return;
@@ -201,7 +185,6 @@ export class Harvest {
     const index = key & 255;
     this.field.source.at(chunk, index, this.spot);
     const ents = this.world.ents;
-    // How near a survivor keeps it from growing back, by the server's rule.
     const crowded = CROWDED * (this.rules ? this.rules.num("ResourceNoReplenishRadiusPlayers") : 1);
     for (const c of this.game.clients) {
       if (!c?.active || c.ent < 0) continue;
@@ -220,7 +203,7 @@ export class Harvest {
     this.dirty.add(chunk);
   }
 
-  /** A chunk's touched nodes for saving, or null if it has none. */
+  /** A chunk's touched nodes for saving, or null if it has none. Layout: a count, then slot, hits and respawnAt for each. */
   encode(chunk: number): Uint8Array | null {
     const slots: number[] = [];
     for (let i = 0; i < this.per; i++) if (this.touched.has(this.key(chunk, i))) slots.push(i);
@@ -236,16 +219,12 @@ export class Harvest {
     return w.bytes().slice();
   }
 
-  /** The tick a used-up node grows back; 0 for one that is not used up. */
+  /** 0 for a node that is not used up. */
   regrowsAt(chunk: number, index: number): number {
     return this.touched.get(this.key(chunk, index))?.respawnAt ?? 0;
   }
 
-  /**
-   * The server's rule for how long a node takes to grow back was `was` when
-   * these were used up, and is now what the server holds: each has left what
-   * it had left, as much longer or shorter as the rule is.
-   */
+  /** The respawn multiplier was `was` when these nodes were used up. Rescales the time each has left to the current rule. */
   retime(was: number): void {
     const is = this.rules ? this.rules.num("ResourcesRespawnPeriodMultiplier") : 1;
     const tick = this.world.tick;
@@ -258,7 +237,6 @@ export class Harvest {
     }
   }
 
-  /** Take in a chunk's saved state and put back the deadlines of what was growing. */
   decode(chunk: number, data: Uint8Array): void {
     const r = new BitReader(data);
     for (let n = r.varint(); n > 0 && !r.overflow; n--) {
@@ -274,7 +252,7 @@ export class Harvest {
     }
   }
 
-  /** Tell a client which nodes around it are used up, for the chunks where its picture is out of date. */
+  /** Sends the used-up slots of each chunk within `radius` whose version the client does not have. */
   sync(c: Client, radius: number): void {
     const dims = this.world.dims;
     const cx = chunkCx(dims, c.chunk);

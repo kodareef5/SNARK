@@ -1,15 +1,5 @@
-// Death, the cache it leaves, and coming back.
-//
-// A death is one synchronous function. Everything it changes (the survivor's
-// record, the new cache record, the ledger, the journal) is marked in the same
-// tick and so lands in the same commit: after a crash the survivor is either
-// alive with its things or dead with a cache that holds them, never both and
-// never neither. The inventory is not copied to the cache; the cache takes the
-// same object and the survivor is left with none.
-//
-// Also here: looking at a cache and opening it. The server finds what a body
-// is looking at by casting a ray from its own eye. A client never names what
-// it wants to open.
+// A death marks everything it changes in one tick, so it lands in one commit. After a crash the survivor is alive with its
+// things or dead with a cache that holds them. A client never names what it opens. The server casts a ray from the body's eye.
 
 import { BitWriter } from "../shared/net/codec.ts";
 import { MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
@@ -32,12 +22,10 @@ import { leftAtPeriod } from "../shared/sim/breeding.ts";
 export const DEADLINE_DESPAWN = 2;
 /** Journal op: survivor pid, cause, cache pid (0 if it carried nothing). */
 export const OP_DEATH = 3;
-/** How long a cache waits to be collected: fifteen minutes. */
 export const CACHE_TICKS = 15 * 60 * TICK_RATE;
-/** A bag of dropped things lasts two minutes. */
 export const BAG_TICKS = 2 * 60 * TICK_RATE;
 export const MAX_MARKERS = 5;
-/** How far a body can reach to use something, metres from its eye. */
+/** Metres from the eye. */
 export const REACH = 3.5;
 
 export interface DeathContext {
@@ -49,35 +37,23 @@ export interface DeathContext {
   readonly creatures: Creatures;
   readonly persistence: Persistence | null;
   readonly deadlines: DeadlineHeap;
-  /** The server's rules: how long a bag, and what a death leaves, lie. */
   readonly rules: Rules;
 }
 
 export class Death {
-  /** Deaths so far, for tests and measurement. */
   count = 0;
-  /** The use key was pressed with no container in front: something else may want it (a bush to pick). */
+  /** The use button found nothing here to act on. Another system may want it (a bush to pick). */
   onUse: ((c: Client) => void) | null = null;
-  /**
-   * Called when the use button is pressed with the look on something built
-   * (its ref) and nothing nearer. Returns a result code if that was a thing
-   * to use, or -1 if it was not.
-   */
+  /** The use button was pressed looking at a structure (`ref`) with nothing nearer. Returns a result code, or -1 if it has no use. */
   onUseBuilt: ((c: Client, ref: number) => number) | null = null;
-  /** Whether a session may look into a creature that is awake: one of its tribe's. Given by whoever knows whose things are whose. */
+  /** Whether a session may open a creature that is awake (one of its tribe's). */
   canOpen: ((c: Client, rec: EntityRecord) => boolean) | null = null;
-  /**
-   * Riding, given by whoever knows of it. `riding`: whether a session is on a
-   * mount; `offMount`: put it off. `onRide`: the use button was pressed on a
-   * creature (its entity): a result code if that was a mount to get on (or
-   * one that refused), -1 if it is not something to ride.
-   */
+  /** Riding hooks. onRide gets the entity the use button was pressed on and returns a result code, or -1 if it does not take the press. */
   riding: ((c: Client) => boolean) | null = null;
   offMount: ((c: Client) => void) | null = null;
   onRide: ((c: Client, e: number) => number) | null = null;
-  /** Called when a session shuts what it had open, with that record. */
   onShut: ((rec: EntityRecord) => void) | null = null;
-  /** The structure the last look met, or -1: set by `target`. */
+  /** Ref of the structure the last target() call hit, or -1. */
   private struck = -1;
   private readonly ctx: DeathContext;
   private readonly survivor: number;
@@ -94,12 +70,7 @@ export class Death {
     this.bag = reg.index.get("core:bag") ?? this.cache;
   }
 
-  /**
-   * Put `n` of what is in `slot` (0 for all of it) on the ground just ahead
-   * of the body, in a bag anyone can open, which is gone with what is left in
-   * it after two minutes. False, changing nothing, if the body is not in the
-   * world or nothing moved.
-   */
+  /** Drops `n` of the stack in `slot` (0 for all) in a bag ahead of the body. False, changing nothing, if nothing moved or it has no body. */
   drop(rec: EntityRecord, slot: number, n: number): boolean {
     const { world, records, items } = this.ctx;
     const e = records.entOf.get(rec.pid);
@@ -126,14 +97,13 @@ export class Death {
     return null;
   }
 
-  /** A body's health reached zero. */
   die(rec: EntityRecord, cause: number): void {
     const { world, records, items, survival, persistence } = this.ctx;
     if (rec.dead) return;
     const ents = world.ents;
     const e = records.entOf.get(rec.pid);
     if (rec.kind !== this.survivor) {
-      // A creature: it is simply gone. What it carried goes with it, on the books.
+      // A creature leaves no cache. Its items are burned through the ledger.
       if (rec.inv) items.burnAll(rec);
       if (e !== undefined) {
         persistence?.detach(rec.pid);
@@ -150,7 +120,7 @@ export class Death {
       rec.z = ents.z[e]!;
     }
 
-    // 1. Everything it carried becomes a cache where it fell. The same inventory object, handed over.
+    // The cache takes the survivor's inventory object. Nothing is copied.
     let cachePid = 0;
     const inv = items.inv(rec);
     if (inv.used() > 0) {
@@ -164,16 +134,13 @@ export class Death {
       this.place(cache);
       cachePid = cache.pid;
     }
-    // 2. A marker, so the place can be found again.
     rec.markers.push({ kind: MARKER_DEATH, x: rec.x, y: rec.y, z: rec.z, tick: world.tick });
     if (rec.markers.length > MAX_MARKERS) rec.markers.shift();
     rec.markersVersion++;
-    // 3. The survivor is dead until it chooses where to return, with nothing in its hands.
     rec.dead = true;
     rec.held = -1;
     records.dirty.add(rec.pid);
     this.count++;
-    // 4. The record of it, in the same commit.
     if (persistence) {
       const w = this.w;
       w.reset();
@@ -182,7 +149,6 @@ export class Death {
       w.uint53(cachePid);
       persistence.journal(OP_DEATH, w.bytes());
     }
-    // 5. The body leaves the world.
     const c = this.clientOf(rec.pid);
     if (c) {
       this.close(c);
@@ -193,7 +159,6 @@ export class Death {
     }
   }
 
-  /** Return a dead survivor to life at one of the map's spawn points. */
   respawn(c: Client, x: number, z: number, yaw: number, y?: number): number {
     const { records, survival, game } = this.ctx;
     const rec = records.byPid.get(c.pid);
@@ -208,11 +173,7 @@ export class Death {
     return RESULT_OK;
   }
 
-  /**
-   * An empty cache set down at a place, for things that have nowhere else to
-   * go: what came back from something taken down and did not fit in the
-   * hands. It waits as long as any cache. Whoever asks for it fills it.
-   */
+  /** Places an empty cache for items with nowhere else to go, such as a demolition refund that did not fit. The caller fills it. */
   spill(x: number, y: number, z: number, name: string): EntityRecord {
     const { world, records } = this.ctx;
     const cache = records.create(this.cache, name);
@@ -226,23 +187,14 @@ export class Death {
     return cache;
   }
 
-  /**
-   * How long a thing of this kind lies before it is gone, in ticks, by the
-   * server's rules: a bag set down by hand by its rule for things dropped; a
-   * cache (what a death leaves, or a container that was destroyed) by its two
-   * for what the dead leave, multiplied.
-   */
+  /** In ticks. A dropped bag scales by the item decomposition rule, a cache by the product of the two corpse rules. */
   lifetime(kind: number): number {
     const rules = this.ctx.rules;
     const by = kind === this.bag && kind !== this.cache ? rules.num("GlobalItemDecompositionTimeMultiplier") : rules.num("GlobalCorpseDecompositionTimeMultiplier") * rules.num("UseCorpseLifeSpanMultiplier");
     return Math.max(1, Math.round((kind === this.bag && kind !== this.cache ? BAG_TICKS : CACHE_TICKS) * by));
   }
 
-  /**
-   * Those rules have changed: what was `bagWas` times a bag's own time and
-   * `cacheWas` times a cache's is now what the server holds. Everything lying
-   * has left what it had left, as much longer or shorter as its rule is.
-   */
+  /** The lifetime multipliers were `bagWas` and `cacheWas`. Rescales the time each bag and cache has left to the current rules. */
   retime(bagWas: number, cacheWas: number): void {
     const { world, records, deadlines, rules } = this.ctx;
     const tick = world.tick;
@@ -260,25 +212,25 @@ export class Death {
     }
   }
 
-  /** Put a cache's body in the world (when it is made, and when a save is loaded) and set its clock. */
+  /** Called when the record is made and again when a save is loaded. */
   place(cache: EntityRecord): void {
     const { world, records, deadlines } = this.ctx;
     const ents = world.ents;
     const e = ents.create(cache.kind, cache.x, cache.y, cache.z, F_PROP);
-    if (e < 0) return; // no room for a body: it still exists, still expires, and can be found again after a restart
+    if (e < 0) return; // The entity store is full. The record stays, and the next load places it again.
     ents.pid[e] = cache.pid;
     ents.setLook(e, 0, null, cache.name);
     records.entOf.set(cache.pid, e);
     if (cache.expiresAt > 0) deadlines.push(cache.expiresAt, DEADLINE_DESPAWN, cache.pid, cache.expiresAt);
   }
 
-  /** A DEADLINE_DESPAWN entry came due. */
+  /** A deadline whose stamp no longer matches expiresAt is stale and is ignored. */
   despawn(pid: number, stamp: number): void {
     const rec = this.ctx.records.byPid.get(pid);
     if (rec && rec.expiresAt === stamp) this.remove(rec);
   }
 
-  /** Take a cache out of the world. Anything still in it is destroyed, on the books. */
+  /** Anything still in the cache is burned through the ledger. */
   remove(cache: EntityRecord): void {
     const { world, records, items, game } = this.ctx;
     for (const c of game.clients) if (c?.open === cache.pid) this.close(c);
@@ -288,7 +240,6 @@ export class Death {
     records.delete(cache.pid);
   }
 
-  /** The record of the container a session has open, or null. */
   openOf(c: Client): EntityRecord | null {
     return c.open === 0 ? null : (this.ctx.records.byPid.get(c.open) ?? null);
   }
@@ -299,10 +250,7 @@ export class Death {
     if (was) this.onShut?.(was);
   }
 
-  /**
-   * Once per tick, for every body: act on a press of the use button, and keep
-   * open containers honest (still there, still in reach, not yet empty).
-   */
+  /** Once per tick. Handles the use button, closes a container that is gone or out of reach, and removes an emptied cache or bag. */
   step(): void {
     const { world, records, items, game } = this.ctx;
     const ents = world.ents;
@@ -312,14 +260,14 @@ export class Death {
         const box = records.byPid.get(c.open);
         const e = box ? records.entOf.get(box.pid) : undefined;
         if (box && box.at >= 0 && c.ent >= 0) {
-          // Something built: it has no body. It stays open while it stands and its user stays by it, empty or not.
+          // A built container has no entity. It stays open, empty or not, while it stands and its user is near.
           const dx = box.x - ents.x[c.ent]!;
           const dy = box.y - ents.y[c.ent]!;
           const dz = box.z - ents.z[c.ent]!;
           if (dx * dx + dy * dy + dz * dz > (REACH + 2.5) * (REACH + 2.5)) this.close(c);
         } else if (!box || e === undefined || c.ent < 0) this.close(c);
         else if ((ents.flags[e]! & F_PROP) !== 0 && items.inv(box).used() === 0) this.remove(box);
-        // A creature that has come round is not to be rummaged in.
+        // A creature that woke up closes unless canOpen allows it.
         else if ((ents.flags[e]! & F_PROP) === 0 && !box.out && !(this.canOpen?.(c, box) ?? false)) this.close(c);
         else {
           const dx = ents.x[e]! - ents.x[c.ent]!;
@@ -332,7 +280,7 @@ export class Death {
     }
   }
 
-  /** What a body is looking at within reach: an entity index, or -1. The world in the way hides it. */
+  /** Index of the entity the body looks at within `reach`, or -1. World geometry nearer than the entity hides it. */
   target(c: Client, reach: number): number {
     const world = this.ctx.world;
     const ents = world.ents;
@@ -356,7 +304,7 @@ export class Death {
         if (cx < 0 || cz < 0 || cx >= dims.chunksX || cz >= dims.chunksZ) continue;
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
           if (i === e) continue;
-          // A young one is as small as it is drawn: what the client says is looked at is what is.
+          // A young creature's box is scaled as the client draws it.
           const size = ents.grown[i] !== 0 && (ents.flags[i]! & F_PROP) === 0 ? youngScale(reg.birthScale[ents.kind[i]!]!, ents.span[i]!, ents.grown[i]!, world.tick) : 1;
           const r = reg.bodyRadius[ents.kind[i]!]! * size;
           const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[ents.kind[i]!]! * size, ents.z[i]! + r);
@@ -370,31 +318,27 @@ export class Death {
     return hit;
   }
 
-  /** The use button: open the container looked at, or close the one that is open. */
   private use(c: Client): void {
     const ents = this.ctx.world.ents;
-    // On a mount, the use button gets off it.
     if (this.riding?.(c)) {
       this.offMount?.(c);
       return;
     }
     const hit = this.target(c, REACH);
-    // A creature to ride: saddled, awake, and its tribe's.
     if (hit >= 0 && (ents.flags[hit]! & F_PROP) === 0 && this.onRide) {
       const code = this.onRide(c, hit);
       if (code > 0) this.ctx.game.notify(c, code);
       if (code >= 0) return;
     }
-    // A cache or a bag; or a creature lying unconscious, which can be looked into where it lies.
+    // A prop (a cache or a bag), an unconscious creature, or one that canOpen allows. Never an egg or a survivor.
     const there = hit >= 0 ? this.ctx.records.byPid.get(ents.pid[hit]!) : undefined;
-    // An egg is not something to look into.
     const pid = hit >= 0 && there?.egg == null && ((ents.flags[hit]! & F_PROP) !== 0 || (there !== undefined && there.keyHash === null && (there.out || (this.canOpen?.(c, there) ?? false)))) ? ents.pid[hit]! : 0;
     const box = pid !== 0 ? there : undefined;
     if (box && c.open !== pid) {
       c.open = pid;
       return;
     }
-    // Something built, and nothing in front of it: a door, a box. What it says of the attempt, if it refused, the session is told.
+    // A structure with nothing in front of it, such as a door or a box. A refusal code is sent to the session.
     if (hit < 0 && this.struck >= 0 && this.onUseBuilt) {
       const code = this.onUseBuilt(c, this.struck);
       if (code > 0) this.ctx.game.notify(c, code);

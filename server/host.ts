@@ -1,5 +1,4 @@
-// Assembles a running world: map, records, persistence and the game loop.
-// Used by server/main.ts and by tests; neither needs to know the wiring.
+// Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
 import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
@@ -68,7 +67,7 @@ export interface HostOptions {
   commitEvery?: number;
   game?: Partial<GameOptions>;
   store?: StoreOptions;
-  /** Wild creatures placed around the plaza of a new world; the species they are (grazers unless said); and how many hunters besides, further off. */
+  /** For a new world: wild creatures scattered near the spawn point, their species (core:grazer by default), and hunters further off. */
   startingCreatures?: number;
   startingSpecies?: string;
   startingHunters?: number;
@@ -79,25 +78,19 @@ export interface HostOptions {
   seed?: number;
   /** Password for `enablecheats`. Without one, cheats are off unless `dev` is set. */
   adminPassword?: string;
-  /** Development server: cheats need no password. Never set in a public deployment. */
+  /** Development server. Cheats need no password. Never set it in a public deployment. */
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
   allowLedgerMismatch?: boolean;
   /** The animation clips of the asset pack the clients are served. They decide where hit zones are. */
   clips?: ClipSet;
-  /** The rigs of that pack: those that are skeletons in themselves are what creatures are posed and hit on. */
+  /** The rigs of that pack. Creatures are posed and hit on the rigs that have their own bones. */
   rigs?: readonly PackRig[];
-  /**
-   * The server's rules, ready made: read from its config files and command
-   * line (server/settings/config.ts), or carried over from a host that is
-   * being started again. Without them, ARK's defaults.
-   */
+  /** The server's rules (server/settings/config.ts). Without them, ARK's defaults. */
   config?: Rules;
   /**
-   * The live file as it is now: its text, or null if there is none. Asked
-   * again every `AutoSavePeriodMinutes` and at `ForceUpdateDynamicConfig`, if
-   * the server was started with `-UseDynamicConfig`. Whoever starts the
-   * server gives it (it reads `DynamicConfig.ini` beside the other two files).
+   * Returns the live file's text, or null if there is none. With -UseDynamicConfig the host reads it every
+   * AutoSavePeriodMinutes and on the forceupdatedynamicconfig command.
    */
   live?: () => string | null;
 }
@@ -138,22 +131,17 @@ export interface Host {
   readonly taming: Taming;
   readonly riding: Riding;
   readonly breeding: Breeding;
-  /** The server's settings that are lists naming classes, as tables; and what they named that this build lacks. */
+  /** The list settings that name classes, as tables, and the names this build lacks. */
   readonly lists: Lists;
-  /** What of the settings that change content was passed over as the server started, in words. */
+  /** The content-changing settings the server skipped at startup, one line each. */
   readonly passed: readonly string[];
-  /** Whether the survivor with this persistent id has a session here now. */
+  /** A lingering body does not count. */
   online(pid: number): boolean;
-  /** Change a server rule, save it, and tell every client. False if there is no such rule or the value is out of range. */
-  /**
-   * Set a setting by ARK's name from words, as the console does: only one
-   * that may change while the server runs. Returns "" if it was set, or why
-   * it was not. It lasts until the server is started again.
-   */
+  /** Sets a live setting by ARK's name. Returns "" if it was set, or the reason it was not. It lasts until the server restarts. */
   setSetting(name: string, words: string): string;
-  /** Read the live file again now: what came of it, in words. */
+  /** Reads the live file again now. Returns the report lines. */
   readLive(): string[];
-  /** What a loaded save's timers were worked out under, by setting; null for a new world. */
+  /** The setting values a loaded save's timers were computed under. Null for a new world. */
   readonly loadedUnder: Record<string, number> | null;
   readonly projectiles: Projectiles;
   readonly progression: Progression;
@@ -165,13 +153,9 @@ export interface Host {
   readonly console: Console;
   readonly adminPassword: string | null;
   readonly dev: boolean;
-  /** Spawn a wild creature by content id. Returns its entity index, or -1. */
+  /** `id` is a content id. Returns the entity index, or -1. */
   spawnCreature(id: string, x: number, z: number, level: number): number;
-  /**
-   * Recompute everything derived from a record's stat points and what it
-   * carries: vitals' maxima, movement modifiers, and the level others see.
-   * Call after changing either.
-   */
+  /** Recomputes a body's vitals' maxima, movement modifiers, level and gear. Call it after changing its stat points or what it carries. */
   refreshBody(rec: EntityRecord): void;
   /** Run a console line as the operator, or as `client`. Returns what it printed. */
   exec(line: string, client?: Client): string;
@@ -179,46 +163,38 @@ export interface Host {
   shutdown(): void;
 }
 
-/** After someone returns to life at a bed, nobody may again for this long: five minutes, in ticks. */
+/** In ticks. After a respawn at a bed, nobody may respawn there for this long. */
 export const BED_WAIT_TICKS = 5 * 60 * TICK_RATE;
-/** How often the clocks of decay are saved: once a minute, in ticks. */
+/** One minute, in ticks. */
 const DECAY_SAVE_TICKS = 1800;
 
-/**
- * Content as a server on these rules has it: what its settings make of the
- * definitions `content` came from. For whoever builds a world before the host
- * that will run it: the world must be made of this.
- */
+/** The registry a server with these rules runs on. A world built before its host must be built from this. */
 export function contentFor(content: Registry, rules: Rules): Registry {
   return deriveRegistry(content, tuningOf(rules, new Lists(rules, content), content).tuning);
 }
 
 export function createHost(content: Registry, opts: HostOptions = {}): Host {
-  // The files are the truth at every start (D88): nothing of the rules is read from the save.
+  // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
   const lists = new Lists(rules, content);
-  // Some settings change what content says. They are applied to the definitions, once, before anything reads them (D90):
-  // from here on `reg` is content as this server has it, and there is no other.
+  // Settings that change content are applied to the definitions once, before anything reads them (D90). From here on `reg` is the only registry.
   const tuned = tuningOf(rules, lists, content);
   lists.warm();
   const derived = deriveRegistry(content, tuned.tuning);
-  // A world made before its host was made of some content already: it must be this content, and then its registry is the one.
   if (opts.world && opts.world.reg.hash !== derived.hash) throw new Error("a world made before its host must be made of the content the host's settings give: contentFor(content, rules)");
   const reg = opts.world ? opts.world.reg : derived;
   const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, opts.store) : null;
-  // A save supplies its own structures; only a new world gets the proving ground's.
+  // A save supplies its own structures. Only a new world gets the proving ground's.
   const world = opts.world ?? createProvingWorld(reg, { populate: !store || store.fresh });
-  // How fast its clock runs: the server's three rules for it. Clients are told as they are welcomed.
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
-  // A new world begins at nine in the morning, by that clock.
+  // A new world starts at nine in the morning.
   world.dayOffset = offsetForHour(world.tick, 9, world.clock);
   if (opts.clips) world.anim = new HumanAnim(opts.clips);
   if (opts.clips && opts.rigs) world.rigs = buildRigs(opts.rigs, opts.clips);
   let settingsAt: { dirty: boolean; version: number } | null = null;
   const records = new Records(opts.worldId ?? 1);
-  // The most survivors at once: what whoever assembles the world says, else ARK's command-line flag, else its file's setting.
   const seats = rules.flag("WinLiveMaxPlayers");
   const game = new GameServer(world, {
     password: rules.text("ServerPassword"),
@@ -232,12 +208,11 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   const survivor = reg.index.get("core:survivor")!;
   const survivorMove = reg.move[survivor]!;
   const names = new Map<string, number>();
-  // One heap for everything that happens at a tick; entries are dispatched by kind in onStep.
+  // One heap for every deadline. onStep dispatches the entries by kind.
   const deadlines = new DeadlineHeap();
   const survival = new Survival(world, records, deadlines);
   survival.rules = rules;
   const items = new Items(world, records);
-  // A save's ledger must match what the save holds, or the save is not trusted.
   if (persistence) {
     items.restore(loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null));
     const wrong = items.audit();
@@ -246,7 +221,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   }
   const creatures = new Creatures(world, game, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
   creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");
-  /** Chunk each session's focus is keeping awake. */
+  /** The chunk each session's focus keeps awake. */
   const focus = new Map<number, number>();
   const recordOf = (name: string) => {
     const pid = persistence ? persistence.survivors.get(name) : names.get(name);
@@ -268,7 +243,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     harvest.lists = lists;
   }
   const buffs = new Buffs(world, records, survival, deadlines);
-  // What is kept with the world is what its timers were worked out under, so that they can be re-timed under other rules.
+  // The save keeps the setting values its timers were computed under, so they can be re-timed under other rules.
   const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at"), persistence.store.meta("rules")) : null;
   if (persistence) {
     const at = { dirty: true, version: rules.version, serialize: () => JSON.stringify({ timers: rules.timers() }) };
@@ -276,36 +251,32 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     settingsAt = at;
   }
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest }, (opts.seed ?? 1) + 53);
-  // A creature's bite is a blow like any other.
   creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
   tribes.rules = rules;
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
-  // Taming: what a creature lying unconscious is given, and whose it becomes.
   const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
-    // Somebody's now: until it is told otherwise it stands where it woke.
+    // A new tame stays where it woke until ordered otherwise.
     if (e !== undefined) {
       creatures.mind.stay(e, 0xffffffff);
       creatures.claimed(e);
     }
   } }, (opts.seed ?? 1) + 71);
-  // A creature that is somebody's can be looked into by its tribe while it is awake; shut, it may have more to eat than it had.
+  // Its tribe may open a tamed creature while it is awake. Closing it reschedules its meal, because its food may have changed.
   death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
   death.onShut = (rec) => taming.meal(rec);
-  // Riding: the use button on a saddled creature of one's tribe gets on it, and on a mount gets off.
   const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec) });
   death.riding = (c) => riding.riding(c);
   death.offMount = (c) => riding.dismount(c);
-  // Breeding: pairs among the creatures that are somebody's, what they lay, and what hatches and grows up.
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
   taming.bred = (rec) => breeding.subject(rec);
   death.onRide = (c, e) => {
     const rec = records.byPid.get(world.ents.pid[e]!);
-    // A young one that is nobody's: whoever uses it takes it.
+    // The use button claims an unclaimed young creature.
     if (rec && breeding.unclaimed(rec)) return breeding.claim(c, rec);
-    // Only what is saddled, grown, awake, and theirs is something to ride, and nothing is if the server says so; anything else is whatever it was.
+    // Only a saddled, grown, awake creature of the session's tribe can be ridden. -1 passes the press on.
     if (rules.on("bDisableDinoRiding")) return -1;
     if (!rec || rec.keyHash !== null || rec.saddle === 0 || rec.out || rec.grown !== 0 || !tribes.may(records.byPid.get(c.pid), rec.team)) return -1;
     return riding.mount(c, e);
@@ -316,7 +287,6 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   };
   combat.onHarm = (victim, points) => taming.harmed(victim, points);
   const chat = new Chat({ game, records, rules, tribes });
-  // What has state among the things built: found again among the records that were loaded.
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
   fixtures.index();
@@ -326,9 +296,8 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   combat.onStructureHurt = (ref) => build.hurt(ref);
   const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.on("globalVoiceChat") }, (out) => void crypto.getRandomValues(out));
-  /** The session a survivor has here now, lingering bodies not counted. */
+  /** Lingering bodies are not counted. */
   const sessionOf = (pid: number) => game.clients.find((c) => c?.active && !c.closed && c.pid === pid) ?? null;
-  /** Tell a survivor something, if they are here. */
   function notice(pid: number, text: string): void {
     const to = sessionOf(pid);
     if (to) game.sendText(to, TEXT_NOTICE, text);
@@ -339,17 +308,16 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 71);
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   combat.onThrow = (c, rec, item, quality) => projectiles.lob(c, rec, item, quality);
-  // Whoever killed it has what a kill gives, while it is still there to be asked about; then it dies.
+  // The killer is credited before death.die, which may delete the record.
   survival.onDeath = (rec, cause, by) => {
-    // Taking the body out of the world looks at its vitals again: it dies once.
+    // Removing the body touches its vitals again. It must die only once.
     if (rec.dead) return;
     combat.killed(rec, by);
-    // Whatever was acting on it ends with it.
     rec.buffs.length = 0;
     rec.buffsVersion++;
     death.die(rec, cause);
   };
-  // Going under, coming round, an injury, and anything else that begins or ends acting on a body change how it moves.
+  // Unconsciousness, an injury and any buff change how a body moves.
   const injured = reg.index.get("core:injured") ?? 0;
   survival.onOut = (rec, out) => {
     refreshBody(rec);
@@ -365,7 +333,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     }
   }
   const wakeRadius = opts.wakeRadius ?? 3;
-  /** A session's focus entered `to` and left `from` (-1 for none): creatures wake and nodes are filled around it. */
+  /** A session's focus left `from` and entered `to`. Either may be -1 for none. */
   const moved = (from: number, to: number): void => {
     creatures.playerMoved(from, to);
     if (harvest && wakeRadius >= 0) {
@@ -374,21 +342,16 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     }
   };
   /**
-   * The values the world's timers and rates are worked out under: a save's
-   * own until it has been brought to this server's, then this server's. A
-   * setting the save says nothing of was at its default.
+   * The setting values the world's timers and rates were computed under. A save's own until retime brings it to this server's.
+   * A setting the save omits was at its default.
    */
   let under: Record<string, number> = loadedUnder ?? rules.timers();
   const wasAt = (name: string): number => under[name] ?? (rowOf(name)!.def as number);
   const RATES = CATALOG.filter((row) => row.retime === "rate").map((row) => row.name);
   /**
-   * Bring everything under way from the values it was worked out under to
-   * the server's now (D91): at a load, once, for a save made under other
-   * settings; and while the server runs, whenever a rule that may change
-   * does. One function for each kind of thing, the same for both. What is
-   * worked out only when someone looks (a stack's spoiling, a fire) cannot
-   * change while the server runs, and is settled as it was before it is
-   * re-timed.
+   * Re-times everything in progress from the values it was computed under to the server's current ones (D91). It runs once at a
+   * load, for a save made under other settings, and whenever a live rule changes. Spoilage and fires are computed only when read.
+   * Their rules cannot change while the server runs, so they are re-timed only at a load, after being settled at the old values.
    */
   const retime = (atLoad: boolean): void => {
     const now = rules.timers();
@@ -405,7 +368,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       const spoilWas = wasAt("GlobalSpoilingTimeMultiplier");
       const fuelWas = wasAt("FuelConsumptionIntervalMultiplier");
       if (spoilWas !== now.GlobalSpoilingTimeMultiplier || fuelWas !== now.FuelConsumptionIntervalMultiplier) {
-        // Content as it was when the save was made, in the two things that time what lies in a box or on a fire.
+        // The registry as the save had it, for the spoil and fuel timings.
         const old = deriveRegistry(content, { ...tuned.tuning, spoil: spoilWas, fuel: fuelWas });
         items.table = old;
         stations.refuel(old.fuelTicks, fuelWas, now.FuelConsumptionIntervalMultiplier!);
@@ -413,7 +376,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
         items.table = reg;
       }
     } else if (RATES.some((name) => wasAt(name) !== now[name])) {
-      // A rate that may change while the server runs is the young's hunger: each is rated again, and eats when that says.
+      // The young's hunger is a rate that can change while the server runs. Each young creature is rated again and its meal rescheduled.
       for (const rec of records.byPid.values()) {
         if (rec.grown === 0 || rec.egg !== null || !rec.vitals) continue;
         survival.touch(rec);
@@ -424,7 +387,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     if (settingsAt) settingsAt.dirty = true;
   };
   let retimedAt = rules.version;
-  /** Ticks between looks at the live file: ARK reads its own at every save of the world. */
+  /** In ticks. ARK reads its live file at every world save. */
   const liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
   const readLive = (): string[] => {
     if (!opts.live || rules.flag("UseDynamicConfig") !== true) return ["the live file is not in use: the server was not started with -UseDynamicConfig"];
@@ -436,17 +399,16 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     return [`${LIVE_FILE} read again: ${first!.slice("settings: ".length)}`, ...rest];
   };
   if (loaded && !loaded.fresh) {
-    // Bodies saved under other rates than this server's are rated again as they are taken in.
+    // Bodies saved under other rates are rated again as they load.
     survival.rerate = RATES.some((name) => wasAt(name) !== rules.num(name));
-    // Every saved record that is not a survivor goes back where it stood: creatures to live, caches to wait.
     const survivors = new Set(persistence!.survivors.values());
     for (const rec of records.byPid.values()) {
       if (survivors.has(rec.pid)) {
-        // Not in the world until its owner returns: its vitals wait.
+        // A survivor stays out of the world until its owner returns, with its vitals stopped.
         survival.restore(rec, false);
         continue;
       }
-      // The state of something built has no body of its own: the structure is its body. Nor have young that are carried.
+      // A structure's record has no entity, and neither has carried young.
       if (rec.at >= 0 || reg.defs[rec.kind]?.type === "structure" || (rec.egg !== null && rec.egg.carrier !== 0)) continue;
       if (reg.defs[rec.kind]?.type === "prop") death.place(rec);
       else {
@@ -455,8 +417,8 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       }
     }
     survival.rerate = false;
-    // The hour is what it was when the world was stopped, whatever pace the clock keeps now: the offset is worked out
-    // again for the new pace. A save from before the clock had a pace of its own counted 140 seconds to the hour.
+    // The hour of day survives a change of clock pace, so the offset is recomputed for the new pace. A save from before
+    // the clock had a pace counted 140 seconds to the hour.
     const paced = loadedUnder !== null && loadedUnder.DayCycleSpeedScale !== undefined;
     const pace = { cycle: wasAt("DayCycleSpeedScale"), day: wasAt("DayTimeSpeedScale"), night: wasAt("NightTimeSpeedScale") };
     if (!paced || pace.cycle !== world.clock.cycle || pace.day !== world.clock.day || pace.night !== world.clock.night) {
@@ -464,26 +426,23 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       world.dayOffset = offsetForHour(world.tick, hour, world.clock);
       if (settingsAt) settingsAt.dirty = true;
     }
-    // A save made under other settings is brought to this server's, once: its timers from the values kept with it.
     retime(true);
-    // With every body back and its limits known, whatever was under way goes on: what was being made, fires,
-    // creatures lying there being tamed and the meals of those that are somebody's, eggs, and the young.
+    // These resume once every body is back and its limits are known.
     for (const rec of records.byPid.values()) progression.resume(rec);
     stations.resume();
     taming.resume();
     breeding.resume();
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
-    // What is found wild is found at one of thirty levels the size of the server's difficulty.
+    // A wild creature's level is one of thirty steps, each the size of the server's difficulty.
     const difficulty = difficultyOf(rules);
-    // Scatter the herd north of the spawn point; positions inside structures are skipped and retried.
-    // None at all if the server was started so (ARK's -NoDinos).
+    // The herd is scattered north of the spawn point. A position inside a structure is retried. ARK's -NoDinos places none.
     const none = rules.flag("NoDinos") === true;
     let wanted = none ? 0 : (opts.startingCreatures ?? 0);
     for (let tries = wanted * 20; wanted > 0 && tries > 0; tries--) {
       if (spawnCreature(opts.startingSpecies ?? "core:grazer", rng.range(226, 286), rng.range(244, 300), wildLevel(1 + rng.int(30), difficulty)) >= 0) wanted--;
     }
-    // Hunters at the far edge of that ground: near enough to be found, too far to see who has just arrived.
+    // Hunters start at the far edge of that ground, too far to see a new arrival.
     let hunters = none ? 0 : (opts.startingHunters ?? 0);
     for (let tries = hunters * 20; hunters > 0 && tries > 0; tries--) {
       if (spawnCreature("core:raptor", rng.range(226, 286), rng.range(288, 300), wildLevel(1 + rng.int(30), difficulty)) >= 0) hunters--;
@@ -508,18 +467,18 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       rec.keyHash = hashKey(c.key);
       records.dirty.add(rec.pid);
     }
-    // Its look is what it brought or chose; one that predates looks gets the plain one.
+    // A survivor from before looks existed gets the default look.
     if (!rec.look) {
       rec.look = c.look ?? defaultLook();
       records.dirty.add(rec.pid);
     }
     world.ents.setBodyLook(c.ent, rec.look);
-    // Every survivor is on a team, if only its own.
+    // Every survivor is on a team, even a team of one.
     if (rec.team === 0) {
       rec.team = records.newTeam();
       records.dirty.add(rec.pid);
     }
-    // A survivor has stat points like any body, all of them its own to place.
+    // A survivor's stat points live in a genome, like any body's.
     rec.genome ??= new Genome();
     c.pid = rec.pid;
     if (persistence) persistence.attach(rec, c.ent);
@@ -548,20 +507,20 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     }
   };
   game.onEnter = (c) => {
-    // A survivor that joins dead has no body yet, but it is still that survivor.
+    // A survivor that joins dead gets no onBody call, so its pid is set here.
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
     focus.set(c.id, c.chunk);
     moved(-1, c.chunk);
-    // Its tribe sees it arrive.
+    // Tribe member lists show who is online.
     tribes.version++;
-    // The server's name and its message of the day, if it has them: each line of the message its own.
+    // The Message setting separates its lines with a literal backslash and n.
     const name = rules.text("SessionName");
     if (name !== "") game.sendText(c, TEXT_MOTD, name);
     for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
   };
   game.onPresence = (c) => {
     tribes.version++;
-    // A connection that ended, or a new one in its place: the voice socket that went with the old one is no good.
+    // The voice socket belonged to the old connection.
     voice.revoke(c);
   };
   game.onExit = (c) => {
@@ -578,7 +537,6 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       focus.set(c.id, c.chunk);
       moved(was, c.chunk);
     }
-    // A head under water starts the air running out; coming up stops it.
     for (const c of game.clients) {
       if (!c?.active || c.ent < 0) continue;
       const rec = records.byPid.get(c.pid);
@@ -595,9 +553,9 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       else if (kind === DEADLINE_BREED) breeding.due(pid, stamp);
     });
     death.step();
-    // Riders go where their mounts went this tick, before anything is aimed at either.
+    // Riders move with their mounts before combat aims at either.
     riding.step();
-    // Swings that landed and shots that left on this tick, now that every body has moved.
+    // Combat resolves this tick's swings and shots now that every body has moved.
     combat.step();
     projectiles.step();
     creatures.step(tick);
@@ -605,28 +563,26 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     taming.step();
     breeding.step(tick);
     voice.step(tick);
-    // Whoever has done nothing for as long as the server's rule allows is put off it, if it was started to (ARK's -EnableIdlePlayerKick).
+    // The idle kick runs only with ARK's -EnableIdlePlayerKick.
     if (tick % TICK_RATE === 0 && rules.flag("EnableIdlePlayerKick") === true) {
       const most = Math.round(rules.num("KickIdlePlayersPeriod") * TICK_RATE);
       for (const c of game.clients) if (c?.active && !c.closed && tick - c.activeAt > most) game.reject(c, REJECT_KICKED);
     }
-    // The live file, looked at again as often as the server's rule says. What it changes is said; what it leaves alone is not.
+    // The report is logged only when the live file changed a rule.
     if (opts.live && tick % liveEvery === 0 && rules.flag("UseDynamicConfig") === true) {
       const before = rules.version;
       const said = readLive();
       if (rules.version !== before) for (const line of said) console.log(line);
     }
-    // A rule has changed: whatever it times is timed again from this tick,
     if (retimedAt !== rules.version) {
       retimedAt = rules.version;
       retime(false);
     }
-    // and what the world's timers are worked out under goes into the next commit with them.
+    // The next commit saves the values the timers now run under.
     if (settingsAt && settingsAt.version !== rules.version) {
       settingsAt.version = rules.version;
       settingsAt.dirty = true;
     }
-    // Who was last near what: saved now and then, not with every step somebody takes.
     if (persistence && build.decay.dirty && tick % DECAY_SAVE_TICKS === 0) persistence.store.setMeta("decay", build.decay.serialize());
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };
@@ -643,7 +599,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       const p = c.respawnAt[index];
       if (!p) return RESULT_INVALID;
       if (p.bed < 0) return death.respawn(c, p.x, p.z, p.yaw);
-      // A bed: still there, still its tribe's, and not just used.
+      // The bed must still stand and still belong to its tribe.
       const bed = fixtures.find(p.bed);
       const t = world.structs.chunks[Math.floor(p.bed / 65536)];
       const slot = p.bed & 0xffff;
@@ -664,7 +620,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
         const slot = ref & 0xffff;
         const kind = t.kind[slot]!;
         if (world.reg.isBed[kind] !== 1 || !tribes.may(rec, t.owner[slot]!)) return;
-        // To stand on it, facing the way it does.
+        // The respawn point is on top of the bed, facing the way it does.
         out.push({ ref, name: `bed at ${Math.round(t.x[slot]!)}, ${Math.round(t.z[slot]!)}`, x: t.x[slot]!, y: t.y[slot]! + world.reg.halfY[kind]!, z: t.z[slot]!, yaw: (t.yaw[slot]! / 65536) * 2 * Math.PI, wait: Math.max(0, Math.ceil((bed.readyAt - world.tick) / TICK_RATE)) });
       });
       return out;
@@ -683,17 +639,15 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     survival.init(rec);
     const e = records.entOf.get(rec.pid);
     if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
-    // What it carries; and, for a mount, what its rider carries too.
+    // A mount's load includes what its rider carries.
     const rider = riding.riderOf(e);
     const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0);
-    // A young one can carry a share of what a grown one can: the same load is that much more of it.
+    // A young creature carries a share of a grown one's capacity, so its load is scaled up.
     const strength = youngShare(growthStep(rec.span, rec.grown, world.tick));
     refreshMods(reg, world.ents, e, rec.genome, load / strength, buffs.speedOf(rec), buffs.rooted(rec), rec.out, creatures.swimGain);
-    // A survivor's level is what its experience has earned; a creature's is its points.
     const level = rec.kind === survivor ? progression.levelOf(rec.xp) : rec.genome ? rec.genome.level : 1;
     world.ents.setLook(e, level, rec.genome ? rec.genome.colors : null, rec.name);
     world.ents.setTeam(e, rec.team);
-    // What it holds and wears is seen by others.
     const inv = rec.inv;
     if (inv && inv.hotbar >= 0) {
       const ents = world.ents;
@@ -703,8 +657,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       gear[GEAR_HELD] = item;
       for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
       ents.setGear(e, gear);
-      // What its action step runs on: how the thing is held, what it has loaded, and what a reload would bring that to.
-      // A weapon that is worn out holds nothing and takes nothing.
+      // A worn-out weapon counts as holding no rounds and takes none.
       const params = reg.weapon[item] ?? FISTS;
       const works = slot >= 0 && params.clip > 0 && inv.dur[slot]! > 0;
       const loaded = works ? inv.loaded[slot]! : 0;
@@ -712,7 +665,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       ents.hold[e] = params.hold;
       ents.rounds[e] = loaded;
       ents.reloadTo[e] = works ? Math.min(params.clip, (ammo === inv.ammo[slot] ? loaded : 0) + (ammo !== 0 ? inv.total(ammo) : 0)) : 0;
-      // Something else in its hands: whatever it was doing stops, and the new thing takes a moment to be ready.
+      // A change of held item stops its action and starts the equip delay.
       if (item !== was || slot !== (inHand.get(rec.pid) ?? -1)) {
         ents.act[e] = item !== 0 ? ACT_EQUIP : ACT_NONE;
         ents.actTicks[e] = 0;
@@ -721,7 +674,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     }
   }
   const gear = new Uint16Array(GEAR_COUNT);
-  /** The slot of what each record had in its hands when its body was last refreshed. */
+  /** The held slot of each record at its last refresh. */
   const inHand = new Map<number, number>();
 
   const con = new Console();

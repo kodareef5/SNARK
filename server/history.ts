@@ -1,31 +1,21 @@
-// Where every moving entity was over the last half second.
-//
-// A client aims at what it sees, and what it sees is a few ticks old: the
-// snapshot had to travel, and the client draws a little behind the newest one so
-// it always has two to blend between. To judge a shot fairly the server looks up
-// where the target was at the moment the shooter saw it. This is that memory.
-//
-// Only entities that can move are remembered: players and awake creatures,
-// each in a row of its own. A sleeping creature has no row, because where it
-// was is where it is. So the cost per tick follows what is awake, not what
-// exists: a few thousand rows of six numbers, whatever the world holds.
+// Where every moving entity was over the last half second. A shot is judged against where its target was when the shooter saw it.
+// Only players and awake creatures have rows. A sleeping creature has none, because it has not moved.
 
 import { F_ALIVE, type EntityStore } from "../shared/sim/entities.ts";
 
 /** Ticks kept. A power of two. Covers the 12-tick rewind cap with room for the tick being stepped. */
 export const HISTORY_TICKS = 16;
 const MASK = HISTORY_TICKS - 1;
-/** Bytes one entity's row takes for one tick. */
+/** Per entity per tick. */
 const ROW_BYTES = 20;
 
-/** One entity at one moment, as `History.at` fills it. */
 export class Past {
   x = 0;
   y = 0;
   z = 0;
   /** 1/65536 turns. */
   yaw = 0;
-  /** Packed pose state: see `AnimState.pack`. */
+  /** Packed pose state. See `AnimState.pack`. */
   anim = 0;
 }
 
@@ -33,12 +23,12 @@ export class History {
   private readonly ents: EntityStore;
   /** Row of each entity slot, or -1. */
   private readonly rowOf: Int32Array;
-  /** Entity slot of each row in use; rows 0 .. rows-1 are in use. */
+  /** Entity slot of each row. Rows 0 to rows-1 are in use. */
   private entOf: Int32Array;
   rows = 0;
   private capacity: number;
   private readonly tickOf = new Uint32Array(HISTORY_TICKS);
-  // Per column: HISTORY_TICKS values per row, row-major, so one entity's past is contiguous.
+  // Each column holds HISTORY_TICKS values per row, row-major, so one entity's past is contiguous.
   private x: Float32Array;
   private y: Float32Array;
   private z: Float32Array;
@@ -59,16 +49,11 @@ export class History {
     this.gen = new Uint16Array(capacity * HISTORY_TICKS);
   }
 
-  /** Bytes held, for the memory budget. */
   get bytes(): number {
     return this.capacity * HISTORY_TICKS * ROW_BYTES + this.rowOf.byteLength;
   }
 
-  /**
-   * Start remembering an entity: call when it begins to be stepped (a player's
-   * body is made, a creature wakes). Until now it stood still, so its whole
-   * remembered past is where it stands.
-   */
+  /** Call when an entity begins to be stepped (a body is made, a creature wakes). Its whole past is filled with where it stands now. */
   track(e: number): void {
     if (this.rowOf[e]! >= 0) return;
     if (this.rows === this.capacity) this.grow();
@@ -78,7 +63,7 @@ export class History {
     for (let t = 0; t < HISTORY_TICKS; t++) this.write(r * HISTORY_TICKS + t, e);
   }
 
-  /** Stop remembering it: it went to sleep or is gone. */
+  /** Call when it goes to sleep. record() drops destroyed entities itself. */
   untrack(e: number): void {
     const r = this.rowOf[e]!;
     if (r < 0) return;
@@ -99,42 +84,37 @@ export class History {
     this.gen.copyWithin(to, from, from + HISTORY_TICKS);
   }
 
-  /** Remember the present as `tick`. Call once per tick, after everything has moved. */
+  /** Call once per tick, after everything has moved. */
   record(tick: number): void {
     const flags = this.ents.flags;
     const slot = tick & MASK;
     this.tickOf[slot] = tick;
     for (let r = this.rows - 1; r >= 0; r--) {
       const e = this.entOf[r]!;
-      // Destroyed without a word: let the row go. (Going backward keeps the row moved into the gap unvisited.)
+      // Destroyed without an untrack call. Iterating backward means the row moved into the gap was already written.
       if ((flags[e]! & F_ALIVE) === 0) this.untrack(e);
       else this.write(r * HISTORY_TICKS + slot, e);
     }
   }
 
-  /** Whether `tick` is still remembered. */
   has(tick: number): boolean {
     return tick > 0 && this.tickOf[tick & MASK] === tick;
   }
 
-  /** `tick` held within what is remembered: no later than `now`, no earlier than the oldest tick kept. 0 if that is not held either. */
+  /** Clamps `tick` to the remembered window ending at `now`. Returns 0 if the clamped tick is not held either. */
   clamp(tick: number, now: number): number {
     let t = tick > now ? now : tick;
     if (t <= now - HISTORY_TICKS) t = now - HISTORY_TICKS + 1;
     return this.has(t) ? t : 0;
   }
 
-  /**
-   * Where entity slot `e` was at `tick`. False if the tick is no longer
-   * remembered, or if the slot held a different entity then (or holds none):
-   * a body that did not exist cannot have been hit.
-   */
+  /** False if the tick is no longer remembered, or if slot `e` held a different entity then or holds none now. */
   at(tick: number, e: number, out: Past): boolean {
     if (!this.has(tick)) return false;
     const ents = this.ents;
     const r = this.rowOf[e]!;
     if (r < 0) {
-      // Not tracked: it has not moved, so then is now.
+      // An untracked entity has not moved, so its present state is its past.
       if ((ents.flags[e]! & F_ALIVE) === 0) return false;
       out.x = ents.x[e]!;
       out.y = ents.y[e]!;
@@ -153,11 +133,7 @@ export class History {
     return true;
   }
 
-  /**
-   * Where it was at a moment between two ticks: the place and facing are
-   * blended as a client blends them, and how it moves is the nearer tick's, as
-   * a client takes it. False unless both ticks are remembered for this entity.
-   */
+  /** A fractional `tick` blends position and yaw and takes anim from the nearer tick, as a client does. False unless both ticks are held. */
   sample(tick: number, e: number, out: Past): boolean {
     const t0 = Math.floor(tick);
     const k = tick - t0;

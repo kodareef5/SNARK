@@ -1,14 +1,5 @@
-// Experience, levels, stat points, engrams and crafting.
-//
-// The rules are content: the level table, what each engram costs and unlocks,
-// what each recipe needs. Nothing here names an item. A level is a function of
-// experience; points to spend are a function of level and of what has been
-// spent, so neither is stored and neither can drift.
-//
-// Crafting is a job on the record: ingredients are destroyed when a unit is
-// started, the product is created when it is done, and the moment it is done
-// is a deadline. A job that cannot go on (no room, no ingredients) simply
-// stops; nothing is refunded, because nothing was taken that was not used.
+// Levels and unspent points are functions of experience and of what was spent, so neither is stored and neither can drift.
+// A craft job burns its ingredients when a unit starts and mints the product when its deadline comes due.
 
 import type { EngramDef, ItemDef, LevelsDef, RecipeDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
@@ -23,16 +14,15 @@ import type { ServerWorld } from "./world.ts";
 export const DEADLINE_CRAFT = 4;
 const MAX_JOBS = 8;
 
-/** How experience was come by: given outright (a cheat), or earned by a kill, by harvesting, by making something. */
+/** Sources of experience. XP_GIVEN (a cheat) is not multiplied by any rule. */
 export const XP_GIVEN = 0;
 export const XP_KILL = 1;
 export const XP_HARVEST = 2;
 export const XP_CRAFT = 3;
-/** The server's rule for each way of earning it. */
+/** Indexed by source. */
 const XP_RULES = ["", "KillXPMultiplier", "HarvestXPMultiplier", "CraftXPMultiplier"];
 
 export class Progression {
-  /** The server's rules, given by whoever assembles the world: experience earned is multiplied by them. */
   rules: Rules | null = null;
   /** Called after anything that changes a record's stat points or level. */
   onChange: ((rec: EntityRecord) => void) | null = null;
@@ -41,9 +31,9 @@ export class Progression {
   private readonly items: Items;
   private readonly deadlines: DeadlineHeap;
   private readonly levels: LevelsDef | null;
-  /** Per recipe content index: the engram that unlocks it, or 0. */
+  /** Per recipe content index, the engram that unlocks it, or 0. */
   private readonly engramOf: Uint16Array;
-  /** The engrams that are learned without asking, by content index. */
+  /** Content indices of the engrams learned automatically. */
   private readonly autos: number[] = [];
   private readonly survivor: number;
 
@@ -63,7 +53,7 @@ export class Progression {
     this.survivor = reg.index.get("core:survivor") ?? 0;
   }
 
-  /** The level a given experience has reached: a survivor's, or by the table tames have if they have their own. */
+  /** `tame` uses the tames' level table if content has one. */
   levelOf(xp: number, tame = false): number {
     const table = (tame ? this.levels?.tame?.xp : undefined) ?? this.levels?.xp;
     if (!table) return 1;
@@ -72,12 +62,12 @@ export class Progression {
     return level;
   }
 
-  /** The level the experience of `rec` has reached: levels gained since it was made or tamed, plus one. */
+  /** Levels gained since it was made or tamed, plus one. */
   level(rec: EntityRecord): number {
     return this.levelOf(rec.xp, rec.kind !== this.survivor);
   }
 
-  /** The most experience `rec` may have: what content or the server says, or what its last level takes. */
+  /** The experience cap. Content's `most` if set, else what the last level takes. */
   most(rec: EntityRecord): number {
     const l = this.levels;
     if (!l) return Infinity;
@@ -86,14 +76,14 @@ export class Progression {
     return (tame ? l.tame?.most : l.most) ?? table[table.length - 1]!;
   }
 
-  /** Stat points not yet placed: one per level gained, less those spent. */
+  /** One per level gained, less those spent. */
   statPoints(rec: EntityRecord): number {
     let spent = 0;
     if (rec.genome) for (let i = 0; i < STAT_COUNT; i++) spent += rec.genome.tamed[i]!;
     return Math.max(0, this.level(rec) - 1 - spent);
   }
 
-  /** Engram points not yet spent. What is learned without asking costs nothing. */
+  /** Unspent engram points. Automatically learned engrams cost nothing. */
   engramPoints(rec: EntityRecord): number {
     const table = this.levels?.engramPoints ?? [];
     let have = 0;
@@ -105,14 +95,14 @@ export class Progression {
     return Math.max(0, have);
   }
 
-  /** Whether `rec` knows an engram: it learned it, or it is one learned without asking and `rec` has reached its level. */
+  /** An automatic engram is known from its level on. */
   knows(rec: EntityRecord, engram: number): boolean {
     if (rec.engrams.includes(engram)) return true;
     const def = this.world.reg.defs[engram];
     return def?.type === "engram" && def.auto !== undefined && this.level(rec) >= def.auto;
   }
 
-  /** Every engram `rec` knows: those it learned, then those learned without asking. Not stored, so it cannot drift: the same list for the same level under the same content. */
+  /** The engrams it learned, then the automatic ones it has reached. The automatic ones are not stored, so they cannot drift. */
   known(rec: EntityRecord): readonly number[] {
     if (this.autos.length === 0) return rec.engrams;
     const out = [...rec.engrams];
@@ -120,16 +110,10 @@ export class Progression {
     return out;
   }
 
-  /**
-   * Give experience. What is earned (`source` a kill, a harvest, a thing
-   * made) is multiplied by the server's rule for all experience and by its
-   * rule for that way of earning it; what is given outright is given as it
-   * is. Nothing has more than it may. Returns what was added.
-   */
+  /** Earned experience is multiplied by XPMultiplier and the rule for its `source`. Capped by `most`. Returns the amount added. */
   addXp(rec: EntityRecord, amount: number, source = XP_GIVEN): number {
     if (!(amount > 0)) return 0;
     if (source !== XP_GIVEN && this.rules) amount *= this.rules.num("XPMultiplier") * this.rules.num(XP_RULES[source]!);
-    // No more than it may have.
     const room = this.most(rec) - rec.xp;
     if (amount > room) amount = room;
     if (!(amount > 0)) return 0;
@@ -141,10 +125,9 @@ export class Progression {
     return amount;
   }
 
-  /** Put one unspent point into a stat. */
   spend(rec: EntityRecord, stat: number): number {
     if (!rec.genome || stat >= STAT_COUNT) return RESULT_INVALID;
-    // A stat that a point would not raise (torpidity, which is the body's own) takes none.
+    // A stat that a point would not raise, such as torpidity, takes none.
     const def = this.world.reg.defs[rec.kind];
     const curve = def?.type === "species" ? def.stats?.[STAT_NAMES[stat]!] : undefined;
     if (!curve || !(curve[2] > 0)) return RESULT_INVALID;
@@ -159,7 +142,7 @@ export class Progression {
   learn(rec: EntityRecord, engram: number): number {
     const def = this.world.reg.defs[engram];
     if (def?.type !== "engram" || this.knows(rec, engram)) return RESULT_INVALID;
-    // One the server does not offer is nobody's to learn.
+    // A hidden engram is one the server does not offer.
     if (def.hidden) return RESULT_DENIED;
     if (this.level(rec) < def.level || this.engramPoints(rec) < def.cost) return RESULT_SHORT;
     rec.engrams.push(engram);
@@ -168,7 +151,7 @@ export class Progression {
     return RESULT_OK;
   }
 
-  /** Queue `count` of a recipe. The first unit starts at once if nothing else is being made. */
+  /** The first unit starts at once if nothing else is being made. */
   craft(rec: EntityRecord, recipe: number, count: number): number {
     const def = this.world.reg.defs[recipe];
     if (def?.type !== "recipe" || !(count >= 1 && count <= 100)) return RESULT_INVALID;
@@ -182,7 +165,7 @@ export class Progression {
     return RESULT_OK;
   }
 
-  /** A DEADLINE_CRAFT entry came due: the unit being made is finished. */
+  /** A DEADLINE_CRAFT entry came due. */
   due(pid: number, stamp: number): void {
     const rec = this.records.byPid.get(pid);
     const job = rec?.jobs[0];
@@ -191,7 +174,7 @@ export class Progression {
     const reg = this.world.reg;
     const product = reg.index.get(def.makes)!;
     const tool = (reg.defs[product] as ItemDef).tool;
-    // Made in full or, with no room for all of it, not yet: try again in a second.
+    // With no room for the whole product, retry in a second.
     if (this.items.inv(rec).room(product, 0, this.items.table) < def.count) {
       job.doneAt = this.world.tick + TICK_RATE;
       this.deadlines.push(job.doneAt, DEADLINE_CRAFT, pid, job.doneAt);
@@ -207,7 +190,7 @@ export class Progression {
     this.start(rec);
   }
 
-  /** Put back the deadline of whatever a loaded record was making. */
+  /** Restores the craft deadline of a loaded record. */
   resume(rec: EntityRecord): void {
     const job = rec.jobs[0];
     if (!job) return;
@@ -220,7 +203,7 @@ export class Progression {
     return def.needs.every((n) => inv.total(this.world.reg.index.get(n.item)!) >= n.count);
   }
 
-  /** Begin the next unit of the first job: destroy its ingredients and set the deadline. Drops jobs that cannot go on. */
+  /** Starts the next unit of the first job. Drops jobs that cannot start. */
   private start(rec: EntityRecord): void {
     while (rec.jobs.length > 0) {
       const job = rec.jobs[0]!;

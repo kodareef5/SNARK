@@ -1,7 +1,5 @@
-// Owner-private state: what only the survivor's own client is told. Sent on
-// the reliable channel when it changes, at most once per tick per component.
-// Also the handlers for the slot commands, which are the only way a client
-// can ask for its inventory to change.
+// Owner-private state, sent only to the survivor's own client on the reliable channel when it changes, at most once per tick
+// per component. Also the slot command handlers, the only way a client can ask for its inventory to change.
 
 import type { ItemDef, RecipeDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
@@ -21,10 +19,10 @@ import type { Subject } from "./taming.ts";
 import type { Voice } from "./voice.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** Places to return to life a client is told of, at most: the world's, and as many beds as there is room left for. */
+/** The world's spawn points come first, then as many beds as fit. */
 export const MAX_RESPAWN_POINTS = 16;
 
-/** A bed a survivor may return to life at: which, what to call it, where to stand them, and the seconds until it may be used. */
+/** A bed a survivor may respawn at. `wait` is in seconds. */
 export interface BedPoint {
   ref: number;
   name: string;
@@ -35,7 +33,7 @@ export interface BedPoint {
   wait: number;
 }
 
-/** Members of a tribe listed to a client; a larger tribe is told of its first this many. */
+/** A larger tribe sends only its first members. */
 const MAX_MEMBERS_SENT = 100;
 
 export interface OwnContext {
@@ -44,30 +42,27 @@ export interface OwnContext {
   readonly records: Records;
   readonly items: Items;
   readonly survival: Survival;
-  /** The record of the container a session has open, or null. */
   openOf(c: Client): EntityRecord | null;
   closeOpen(c: Client): void;
   respawn(c: Client, index: number): number;
-  /** What a session looking into a record is shown of it, if it is a creature. */
+  /** Null if `rec` is not a creature. */
   subject(rec: EntityRecord): Subject | null;
-  /** The beds a survivor's tribe has, for returning to life at. */
   beds(rec: EntityRecord): BedPoint[];
   readonly progression: Progression;
   readonly rules: Rules;
   readonly tribes: Tribes;
   readonly voice: Voice;
-  /** Whether the survivor with this persistent id has a session here now. */
   online(pid: number): boolean;
-  /** Recompute what follows from a record's stats, load and equipment. */
+  /** See `Host.refreshBody`. */
   refresh(rec: EntityRecord): void;
-  /** Put `n` of what is in a slot on the ground by the body. False if that could not be done. */
+  /** See `Death.drop`. */
   drop(rec: EntityRecord, slot: number, n: number): boolean;
 }
 
-/** Write the slots of `inv` that changed after version `since` (all the occupied ones if `full`). */
+/** Sends the slots of `inv` changed after version `since`, or every occupied slot if `full`. */
 function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, since: number, full: boolean): void {
   const w = ctx.game.beginOwn(OWN_SLOTS);
-  // Sizes and slot numbers are varints: a vault holds more than a byte counts.
+  // Sizes and slot numbers are varints, because a vault has more than 255 slots.
   w.bits(box, 1);
   w.varint(inv.cap);
   w.varint(inv.bag);
@@ -84,7 +79,6 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
       w.u8(inv.quality[s]!);
       w.u16(inv.dur[s]!);
       w.u32(inv.spoilAt[s]!);
-      // What a weapon holds.
       const holds = inv.ammo[s] !== 0 || inv.attach[s] !== 0;
       w.bool(holds);
       if (holds) {
@@ -97,12 +91,11 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
   }
   const end = w.pos;
   w.pos = at;
-  w.u16(n); // written over the zero placeholder
+  w.u16(n);
   w.pos = end;
   ctx.game.endOwn(c);
 }
 
-/** Bring one client up to date with its survivor's vitals and inventory. */
 export function syncOwn(ctx: OwnContext, c: Client): void {
   const rec = ctx.records.byPid.get(c.pid);
   if (!rec) return;
@@ -129,7 +122,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
   if (inv.version !== c.sentInv) {
     sendSlots(ctx, c, BOX_SELF, inv, c.sentInv, c.sentInv < 0);
     c.sentInv = inv.version;
-    // What is carried changes how the body moves, and what it holds and wears is seen by others.
+    // The load changes how the body moves, and others see its gear.
     if (c.ent >= 0) ctx.refresh(rec);
   }
   if (ctx.rules.version !== c.sentRules) {
@@ -147,7 +140,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     game.endOwn(c);
     c.sentRules = ctx.rules.version;
   }
-  // What lets it open the voice socket: sent once to each connection.
+  // The voice token is sent once to each connection.
   const token = ctx.voice.token(c);
   if (c.sentVoice !== token) {
     const w = game.beginOwn(OWN_VOICE);
@@ -157,7 +150,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     game.endOwn(c);
     c.sentVoice = token;
   }
-  // Who it is with: sent whenever any tribe changes, someone comes or goes, or an invitation it was shown runs out.
+  // Sent whenever any tribe changes, a session comes or goes, or the invitation it was shown expires.
   const tribes = ctx.tribes;
   if (tribes.version !== c.sentTribe || (c.inviteUntil !== 0 && ctx.world.tick >= c.inviteUntil)) {
     const invite = tribes.inviteOf(rec);
@@ -199,7 +192,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     c.sentHeld = rec.held;
   }
 
-  // The container it has open: announced when it changes, then kept up to date like its own.
+  // The open container is announced when it changes, then synced like the survivor's own inventory.
   const open = ctx.openOf(c);
   const openPid = open ? open.pid : 0;
   if (openPid !== c.sentOpen) {
@@ -213,7 +206,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     c.sentOpen = openPid;
     c.sentOpenVersion = -1;
   }
-  // A creature looked into: how it is, a few times a second while that changes.
+  // An open creature's state is sent at most every 6 ticks, and only when it changed.
   const subject = open ? ctx.subject(open) : null;
   if (!subject) {
     if (c.sentSubject !== -1) {
@@ -293,7 +286,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     c.sentProgress = rec.progVersion;
   }
 
-  // Dead: told once where it may return. The world's own places, then its tribe's beds, each with how long it must wait for it.
+  // A dead session is sent its respawn choices once: the world's spawn points, then its tribe's beds, each with its wait.
   if (c.state === SESSION_DEAD && !c.sentRespawn) {
     const w = game.beginOwn(OWN_RESPAWN);
     const spawns = ctx.world.spawns;
@@ -383,7 +376,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     const d = reg.defs[kind];
     return d?.type === "item" ? d : null;
   };
-  /** The session's own inventory, for a command that names a slot of it; null without a body. */
+  /** Null without a body. */
   const bagOf = (c: Client): { rec: EntityRecord; inv: Inventory } | null => {
     const rec = mine(c);
     return rec ? { rec, inv: ctx.items.inv(rec) } : null;
@@ -394,7 +387,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     const own = bagOf(c);
     if (r.overflow || (slot !== 255 && slot >= HOTBAR_SLOTS)) return RESULT_INVALID;
     if (!own || own.inv.hotbar < 0) return RESULT_DENIED;
-    // An empty slot is nothing to hold.
+    // 255 or an empty slot means nothing held.
     own.rec.held = slot !== 255 && own.inv.item[own.inv.hotbar + slot] !== 0 ? slot : -1;
     ctx.records.dirty.add(own.rec.pid);
     ctx.refresh(own.rec);
@@ -411,7 +404,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     const weapon = slot < inv.cap ? itemDef(inv.item[slot]!)?.weapon : undefined;
     if (!weapon?.ammo || !weapon.ammo.includes(reg.ids[ammo] ?? "")) return RESULT_INVALID;
     if (inv.ammo[slot] === ammo) return RESULT_OK;
-    // Rounds of the other kind come out first; the new kind goes in when the weapon is reloaded.
+    // Rounds of the other kind come out first. The new kind goes in at the next reload.
     if (!ctx.items.unload(rec, slot)) return RESULT_FULL;
     inv.setGear(slot, ammo, 0, inv.attach[slot]!);
     ctx.records.dirty.add(rec.pid);
@@ -460,7 +453,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     const max = ctx.items.maxDur(item, inv.quality[slot]!);
     const recipe = reg.defs.find((d): d is RecipeDef => d?.type === "recipe" && d.makes === reg.ids[item]);
     if (max === 0 || !recipe || inv.dur[slot]! >= max) return RESULT_INVALID;
-    // Half of what it is made of, in proportion to how worn it is, and never nothing.
+    // Half the recipe's ingredients, scaled by wear, and at least one of each.
     const worn = 1 - inv.dur[slot]! / max;
     const cost = recipe.needs.map((n) => ({ item: reg.index.get(n.item)!, count: Math.max(1, Math.ceil(n.count * 0.5 * worn)) }));
     for (const n of cost) if (inv.total(n.item) < n.count) return RESULT_SHORT;
@@ -491,7 +484,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (slot >= inv.cap) return RESULT_INVALID;
     const item = inv.item[slot]!;
     if (item !== expect || item === 0) return RESULT_STALE;
-    // Something worn: using it puts it on, or takes it off again.
+    // Using a wearable item puts it on, or takes it off.
     const worn = reg.wearSlot[item]!;
     if (worn >= 0 && inv.armor >= 0) {
       const to = slot >= inv.armor ? inv.free() : inv.armor + worn;

@@ -1,13 +1,5 @@
-// Things built that have state.
-//
-// A plain piece is a row and nothing more. A door that has been locked, a box
-// with things in it, a vault: each has a record besides, which says which row
-// it is the state of (`at`, a ref) and holds the lock, the PIN and the
-// inventory. The record is made the first time there is something to
-// remember and not before, so a wall costs what it always did.
-//
-// The rows know nothing of this. Whoever removes a structure asks here for
-// its record and decides what becomes of it (server/build.ts).
+// A structure with state (a lock, a PIN, an inventory) has a record whose `at` is its ref, made the first time there is
+// something to remember. Whoever removes a structure asks here for its record and decides what becomes of it.
 
 import type { Rules } from "./settings/rules.ts";
 import type { ItemDef } from "../shared/content/defs.ts";
@@ -20,7 +12,6 @@ export class Fixtures {
   private readonly records: Records;
   private readonly items: Items;
   private readonly byRef = new Map<number, number>();
-  /** The server's rules, given by whoever assembles the world. */
   rules: Rules | null = null;
 
   constructor(world: ServerWorld, records: Records, items: Items) {
@@ -29,7 +20,6 @@ export class Fixtures {
     this.items = items;
   }
 
-  /** Every structure that has state, as its ref and its record. */
   each(visit: (ref: number, rec: EntityRecord) => void): void {
     for (const [ref, pid] of this.byRef) {
       const rec = this.records.byPid.get(pid);
@@ -37,16 +27,11 @@ export class Fixtures {
     }
   }
 
-  /** How many things built have state. */
   get count(): number {
     return this.byRef.size;
   }
 
-  /**
-   * After a load: find every record that is the state of something built. One
-   * whose structure is not there any more is deleted, with whatever it held,
-   * on the books.
-   */
+  /** Call after a load. Deletes a record whose structure is gone or already has one, and burns what it held through the ledger. */
   index(): void {
     this.byRef.clear();
     for (const rec of [...this.records.byPid.values()]) {
@@ -64,13 +49,11 @@ export class Fixtures {
     return t && slot < t.high ? t.kind[slot]! : 0;
   }
 
-  /** The record of the structure at `ref`, or null if it has none. */
   find(ref: number): EntityRecord | null {
     const pid = this.byRef.get(ref);
     return pid === undefined ? null : (this.records.byPid.get(pid) ?? null);
   }
 
-  /** The record of the structure at `ref`, made now if it had none. */
   ensure(ref: number): EntityRecord {
     const known = this.find(ref);
     if (known) return known;
@@ -88,7 +71,7 @@ export class Fixtures {
     return rec;
   }
 
-  /** The structure at `ref` is going: its record, if it has one, is no longer anything's. The caller decides what becomes of it. */
+  /** Unbinds the record of a structure that is going and returns it. The caller decides what becomes of it. */
   release(ref: number): EntityRecord | null {
     const rec = this.find(ref);
     this.byRef.delete(ref);
@@ -96,7 +79,7 @@ export class Fixtures {
     return rec;
   }
 
-  /** A record that was released is the state of the structure now at `ref` (the same thing, somewhere else). */
+  /** Binds a released record to the structure now at `ref`, the same piece set down somewhere else. */
   bind(rec: EntityRecord, ref: number): void {
     const t = this.world.structs.chunks[Math.floor(ref / 65536)]!;
     rec.x = t.x[ref & 0xffff]!;
@@ -107,10 +90,9 @@ export class Fixtures {
     this.records.dirty.add(rec.pid);
   }
 
-  /** Whether the structure at `ref` is locked: as its record says, or if that says nothing, as its kind starts out. */
+  /** With no lock set on its record, the kind's default applies. */
   locked(ref: number): boolean {
     const lock = this.find(ref)?.lock ?? 0;
-    // By the server's rule, everything that can be locked starts out so.
     return lock === 1 || (lock === 0 && (this.world.reg.lockedAtFirst[this.kindAt(ref)] === 1 || (this.rules?.on("ForceAllStructureLocking") ?? false)));
   }
 }

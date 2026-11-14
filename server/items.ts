@@ -1,15 +1,5 @@
-// The only code that edits inventories, and the ledger that proves nothing was
-// duplicated or lost.
-//
-// Items come into the world only through `mint` and leave it only through
-// `burn` (and spoilage, which is a burn). Everything else moves them between
-// slots. So for every item:  sum of all stacks = minted - burned.  The two
-// totals are saved in the same commit as the records they describe, and the
-// equation is checked when a world loads and in tests.
-//
-// Every edit here happens inside one tick and marks each record it touched, so
-// both sides of a move land in the same commit. That, and never re-reading a
-// record from disk while it is live, is why a crash cannot duplicate an item.
+// The only code that edits inventories. Items enter only through `mint` and leave only through `burn` (spoilage is a burn), so
+// stacks sum to minted minus burned for every item. An edit marks each record it touches in one tick, so a move lands in one commit.
 
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
@@ -18,15 +8,14 @@ import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** Slots given to a record whose species declares none (a cache, a test fixture). */
+/** For a record whose kind declares no slots (a cache, a test fixture). */
 const DEFAULT_SLOTS = 40;
 
 export class Items {
-  /** What the item model needs to know of each item: content's. Another only for the moment a save made under other content is brought up to date. */
+  /** The registry, except while a save made under other tuning is brought up to date. */
   table: ItemTable;
   readonly minted: Float64Array;
   readonly burned: Float64Array;
-  /** The ledger changed since it was last saved. */
   dirty = false;
   private readonly reg: Registry;
   private readonly records: Records;
@@ -45,23 +34,22 @@ export class Items {
     this.burned = new Float64Array(world.reg.defs.length);
   }
 
-  /** The record's inventory, brought up to date with spoilage. Created on first use. */
+  /** The record's inventory, settled for spoilage up to this tick. Created on first use. */
   inv(rec: EntityRecord): Inventory {
     let inv = rec.inv;
     const def = this.reg.defs[rec.kind];
     const species = def?.type === "species" ? (def as SpeciesDef) : null;
     if (!inv) {
-      // What its kind says it holds: a body, or a thing in the world with slots of its own (a bag, a cache).
       const bag = (def?.type === "species" || def?.type === "prop" || def?.type === "structure" ? def.slots : undefined) ?? DEFAULT_SLOTS;
       inv = rec.inv = new Inventory(bag + (species?.equips ? GEAR_SLOTS : 0), bag);
     } else if (species?.equips && inv.hotbar < 0) {
-      // A save from before equipment: the same bag, with the tail it lacked.
+      // A save from before equipment gets the gear slots it lacked.
       const grown = new Inventory(inv.cap + GEAR_SLOTS, inv.cap);
       for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0) grown.set(s, inv.item[s]!, inv.count[s]!, inv.quality[s]!, inv.dur[s]!, inv.spoilAt[s]!);
       inv = rec.inv = grown;
       this.records.dirty.add(rec.pid);
     }
-    // A fire is worked out first, event by event: what it cooked was cooked before what was left spoiled.
+    // A burning fire is worked out first, so cooking happens before the leftovers spoil.
     if (rec.fire && this.onFire) this.onFire(rec);
     const before = inv.version;
     inv.settle(this.world.tick, this.table, this.spoiled);
@@ -69,7 +57,7 @@ export class Items {
     return inv;
   }
 
-  /** Uses a new one of `item` at `quality` has before it breaks; 0 for things that do not wear. */
+  /** Uses a new item of this quality has. 0 for items that do not wear. */
   maxDur(item: number, quality: number): number {
     return Math.round(this.reg.uses[item]! * (QUALITY_MUL[quality] ?? 1));
   }
@@ -78,20 +66,12 @@ export class Items {
     return this.table.stack[kind]! > 0;
   }
 
-  /**
-   * Called with a record whose fire is burning, before its inventory is
-   * brought up to now: whoever tends fires works it out first, in the order
-   * things happened (server/stations.ts).
-   */
+  /** Called with a record whose fire is burning, before its inventory is settled (server/stations.ts). */
   onFire: ((rec: EntityRecord) => void) | null = null;
 
   /**
-   * A save is being taken in that was made when things kept `was` times
-   * their own time, and they now keep `is` times it. First everything is
-   * brought up to this tick as it would have spoiled then, by the table of
-   * then (`old`); then the piece on top of each stack, which is part way to
-   * spoiling, has left what it had left, as much longer or shorter as the
-   * rule is. The pieces under it have not begun, and keep by the table of now.
+   * A save made at spoil multiplier `was` is loaded at `is`. Settles every inventory to this tick with the `old` table, then
+   * rescales the time left on the top piece of each stack. The pieces under it have not started and use the current table.
    */
   respoil(old: ItemTable, was: number, is: number): void {
     const tick = this.world.tick;
@@ -111,7 +91,7 @@ export class Items {
     }
   }
 
-  /** For whoever is working through a time nobody watched: spoil a record's things up to tick `at` and no further. */
+  /** Settles spoilage up to tick `at` and no further, for a caller replaying an earlier moment. */
   spoilTo(rec: EntityRecord, at: number): void {
     const inv = rec.inv;
     if (!inv) return;
@@ -120,15 +100,10 @@ export class Items {
     if (inv.version !== before) this.records.dirty.add(rec.pid);
   }
 
-  /**
-   * Create `n` of an item in a record's inventory. Returns how many fit, which
-   * is how many were created. `at` is the tick it happens at, now unless the
-   * caller is working through an earlier moment: then the inventory is taken
-   * as it is and not brought up to now first.
-   */
+  /** Returns how many fit, which is how many it created. `at` is the tick it happens at. When given, the inventory is not settled first. */
   mint(rec: EntityRecord, item: number, n: number, quality = 0, dur = 0, at = -1): number {
     if (!this.isItem(item) || !(n > 0) || !Number.isInteger(n)) return 0;
-    // Anything that wears is made with all its uses.
+    // 0 means new, with all its uses.
     if (dur === 0) dur = this.maxDur(item, quality);
     const made = n - (at < 0 ? this.inv(rec) : rec.inv!).add(item, n, quality, dur, at < 0 ? this.world.tick : at, this.table);
     if (made > 0) {
@@ -139,12 +114,12 @@ export class Items {
     return made;
   }
 
-  /** Destroy `n` items from one slot. Returns false, changing nothing, if there are not that many. `raw`: the inventory is taken as it is, not brought up to now first. */
+  /** Returns false, changing nothing, if the slot holds fewer than `n`. `raw` skips settling the inventory first. */
   burn(rec: EntityRecord, slot: number, n: number, raw = false): boolean {
     const inv = raw ? rec.inv! : this.inv(rec);
     if (slot >= inv.cap || !(n > 0) || inv.count[slot]! < n) return false;
     const item = inv.item[slot]!;
-    // What a weapon holds goes with it.
+    // Loaded rounds and an attachment are burned with the weapon.
     if (inv.loaded[slot]! > 0) this.burned[inv.ammo[slot]!] = this.burned[inv.ammo[slot]!]! + inv.loaded[slot]!;
     if (inv.attach[slot] !== 0) this.burned[inv.attach[slot]!] = this.burned[inv.attach[slot]!]! + 1;
     inv.remove(slot, n);
@@ -155,9 +130,8 @@ export class Items {
   }
 
   /**
-   * Put rounds of `ammo` from the bag into the weapon in `slot`, up to `clip`.
-   * Rounds of another kind already in it go back to the bag first. Returns how
-   * many it holds afterwards, or -1, changing nothing, if that cannot be done.
+   * Loads `ammo` from the bag into the weapon in `slot`, up to `clip`. Rounds of another kind go back to the bag first.
+   * Returns the rounds it then holds, or -1 if that cannot be done.
    */
   load(rec: EntityRecord, slot: number, ammo: number, clip: number): number {
     const inv = this.inv(rec);
@@ -167,13 +141,13 @@ export class Items {
     const n = Math.min(want, inv.total(ammo));
     const have = inv.ammo[slot] === ammo ? inv.loaded[slot]! : 0;
     if (n > 0 && !inv.take(ammo, n)) return -1;
-    // Rounds moved from stacks into the weapon: nothing made, nothing destroyed.
+    // A move within the inventory, so the ledger does not change.
     inv.setGear(slot, ammo, have + (n > 0 ? n : 0), inv.attach[slot]!);
     this.records.dirty.add(rec.pid);
     return inv.loaded[slot]!;
   }
 
-  /** Take the rounds out of the weapon in `slot` and put them in the bag. False, changing nothing, if they do not fit. */
+  /** Moves the weapon's rounds to the bag. False, changing nothing, if they do not fit. */
   unload(rec: EntityRecord, slot: number): boolean {
     const inv = this.inv(rec);
     const n = inv.loaded[slot]!;
@@ -186,7 +160,7 @@ export class Items {
     return true;
   }
 
-  /** One round leaves the weapon in `slot` for good: it was fired. False if it holds none. */
+  /** Burns one loaded round (it was fired). False if the weapon holds none. */
   spend(rec: EntityRecord, slot: number): boolean {
     const inv = this.inv(rec);
     if (inv.loaded[slot]! === 0) return false;
@@ -197,11 +171,7 @@ export class Items {
     return true;
   }
 
-  /**
-   * Fit the attachment lying in slot `from` to the weapon in `slot`. One it
-   * already has comes off into the slot the new one came from. False if
-   * `from` does not hold exactly one attachment.
-   */
+  /** Fits the item in `from` to the weapon in `slot`. An attachment already fitted comes off into `from`. False unless `from` holds exactly one. */
   attach(rec: EntityRecord, slot: number, from: number): boolean {
     const inv = this.inv(rec);
     if (slot >= inv.cap || from >= inv.cap || slot === from || inv.item[slot] === 0 || inv.count[from] !== 1) return false;
@@ -213,7 +183,7 @@ export class Items {
     return true;
   }
 
-  /** Take the attachment off the weapon in `slot` and put it in the bag. False if there is none or no room. */
+  /** Moves the weapon's attachment to the bag. False if there is none or no room. */
   detach(rec: EntityRecord, slot: number): boolean {
     const inv = this.inv(rec);
     const old = inv.attach[slot]!;
@@ -224,10 +194,7 @@ export class Items {
     return true;
   }
 
-  /**
-   * Wear the thing in `slot` by `n` uses. At none left it is broken: it stays
-   * where it is, does nothing, and can be repaired. Returns the uses left.
-   */
+  /** Returns the uses left. At 0 the item is broken. It stays in its slot and can be repaired. */
   wear(rec: EntityRecord, slot: number, n: number): number {
     const inv = this.inv(rec);
     const left = inv.dur[slot]! - n;
@@ -236,14 +203,14 @@ export class Items {
     return inv.dur[slot]!;
   }
 
-  /** Restore the thing in `slot` to all its uses. The caller has taken what that costs. */
+  /** Restores all uses. The caller takes the cost. */
   mend(rec: EntityRecord, slot: number): void {
     const inv = this.inv(rec);
     inv.setDur(slot, this.maxDur(inv.item[slot]!, inv.quality[slot]!));
     this.records.dirty.add(rec.pid);
   }
 
-  /** Destroy `n` of an item wherever it is in the inventory. All or nothing. */
+  /** Burns `n` of an item from any slots. All or nothing. */
   burnItem(rec: EntityRecord, item: number, n: number): boolean {
     if (!(n > 0) || !this.inv(rec).take(item, n)) return false;
     this.burned[item] = this.burned[item]! + n;
@@ -252,13 +219,12 @@ export class Items {
     return true;
   }
 
-  /** Destroy everything a record holds (a cache that timed out). */
   burnAll(rec: EntityRecord): void {
     const inv = this.inv(rec);
     for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0) this.burn(rec, s, inv.count[s]!);
   }
 
-  /** Move between slots, within one record or across two. Returns how many moved. */
+  /** Within one record or across two. Returns how many moved. */
   move(a: EntityRecord, sa: number, b: EntityRecord, sb: number, n: number): number {
     const moved = moveSlot(this.inv(a), sa, this.inv(b), sb, n, this.table);
     if (moved > 0) {
@@ -268,13 +234,13 @@ export class Items {
     return moved;
   }
 
-  /** Move `n` of an item from one record to another, wherever it fits. All or nothing. */
+  /** Moves `n` of an item to another record, wherever it fits. All or nothing. */
   give(from: EntityRecord, to: EntityRecord, item: number, n: number): boolean {
     if (from === to || !(n > 0) || !Number.isInteger(n)) return false;
     const src = this.inv(from);
     const dst = this.inv(to);
     if (src.total(item) < n || dst.room(item, 0, this.table) < n) return false;
-    // Slot by slot, each stack bringing its own spoil clock with it, and one thing bringing what it holds.
+    // Each stack keeps its spoil time, and an unstackable item keeps its rounds and attachment.
     for (let s = src.cap - 1; s >= 0 && n > 0; s--) {
       if (src.item[s] !== item) continue;
       const k = Math.min(n, src.count[s]!);
@@ -292,7 +258,7 @@ export class Items {
     return true;
   }
 
-  /** How many of an item exist in the whole world: in stacks, loaded in weapons, and fitted to them. */
+  /** Counts the whole world: stacks, rounds loaded in weapons, and attachments fitted to them. */
   total(item: number): number {
     let n = 0;
     for (const rec of this.records.byPid.values()) {
@@ -308,7 +274,7 @@ export class Items {
     return n;
   }
 
-  /** Every item for which stacks and ledger disagree, as text. Empty means the books balance. */
+  /** One line per item whose stacks and ledger disagree. Empty means the ledger balances. */
   audit(): string[] {
     const sums = new Float64Array(this.minted.length);
     for (const rec of this.records.byPid.values()) {
@@ -317,7 +283,6 @@ export class Items {
       for (let s = 0; s < inv.cap; s++) {
         if (inv.item[s] === 0) continue;
         sums[inv.item[s]!] = sums[inv.item[s]!]! + inv.count[s]!;
-        // Rounds in a weapon and an attachment on it are items too.
         if (inv.loaded[s]! > 0) sums[inv.ammo[s]!] = sums[inv.ammo[s]!]! + inv.loaded[s]!;
         if (inv.attach[s] !== 0) sums[inv.attach[s]!] = sums[inv.attach[s]!]! + 1;
       }
@@ -330,17 +295,14 @@ export class Items {
     return out;
   }
 
-  /** The ledger as text, keyed by content id so it survives a change of content indices. */
+  /** Keyed by content id, so it survives a change of content indices. Each value is [minted, burned]. */
   serialize(): string {
     const out: Record<string, [number, number]> = {};
     for (let k = 1; k < this.minted.length; k++) if (this.minted[k] !== 0 || this.burned[k] !== 0) out[this.reg.ids[k]!] = [this.minted[k]!, this.burned[k]!];
     return JSON.stringify(out);
   }
 
-  /**
-   * Load a saved ledger, or, for a save that has none, open the books at what
-   * the world holds now.
-   */
+  /** A null `saved` is a save with no ledger. The ledger then starts at what the world holds now. */
   restore(saved: string | null): void {
     this.minted.fill(0);
     this.burned.fill(0);
@@ -360,7 +322,7 @@ export class Items {
     }
     for (const [id, pair] of Object.entries(JSON.parse(saved) as Record<string, [number, number]>)) {
       const k = this.reg.index.get(id);
-      // Content that is gone took its stacks with it when the records were loaded.
+      // Stacks of removed content were dropped when the records loaded.
       if (k === undefined) continue;
       this.minted[k] = pair[0];
       this.burned[k] = pair[1];

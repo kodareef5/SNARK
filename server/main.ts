@@ -1,18 +1,5 @@
-// Process entry point: serves the built client, accepts WebSocket connections,
-// and ticks the world on the wall clock.
-//
-//   bun server/main.ts [--dev] [--config dir] [--port 8787] [--db var/world.db] [--cert cert.pem --key key.pem]
-//                      [?Key=Value?Key2=Value2] [-Flag] [-Flag=value]
-//
-// `--config` names a folder holding GameUserSettings.ini and Game.ini, as an
-// ARK server has them. Settings of the first may also be given ARK's way on
-// the command line, and are then stronger than the files.
-//
-// With a certificate and its key the page is served over TLS, which a browser
-// asks for before it will open a microphone anywhere but on localhost.
-//
-// SNARK_ADMIN_PASSWORD sets the password for `enablecheats`. When started from
-// a terminal, lines typed there run as console commands with full rights.
+// bun server/main.ts [--dev] [--config dir] [--port 8787] [--db var/world.db] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
@@ -38,17 +25,13 @@ export interface ServerOptions {
   dbPath?: string;
   /** Directory holding the built client. */
   clientDir?: string;
-  /**
-   * A fixed scene for the boot probe: no wandering herd, nothing woken, and one
-   * creature standing at the spot the self-check looks at.
-   */
+  /** A fixed scene for the boot probe: no wandering herd, nothing woken, and one creature standing at the spot the self-check looks at. */
   probeScene?: boolean;
-  /** Paths of a certificate and its private key (PEM). With both, the server speaks TLS. */
+  /** Paths of a certificate and its private key (PEM). With both, the server speaks TLS, which a browser requires for a microphone off localhost. */
   cert?: string;
   key?: string;
-  /** The server's rules, as read from its config files and command line. Without them, ARK's defaults. */
+  /** See `HostOptions.config` and `HostOptions.live`. */
   config?: Rules;
-  /** The live file as it is now, or null if there is none: see `HostOptions.live`. */
   live?: () => string | null;
 }
 
@@ -57,19 +40,19 @@ export interface RunningServer {
   readonly host: Host;
   /** Resolves with the first self-check report the page posts (dev only). */
   readonly selfcheck: Promise<unknown>;
-  /** Resolves with the next self-check report after those already taken (dev only): for a probe of more than one page. */
+  /** Resolves with the next report not yet taken (dev only), for a probe of more than one page. */
   nextSelfcheck(): Promise<unknown>;
   /** Resolves with the first frame-time report a page opened with ?bench=1 posts (dev only). */
   readonly bench: Promise<unknown>;
   stop(): void;
 }
 
-/** Bytes a slow client may leave unsent before unreliable traffic is skipped, then before it is dropped. */
+/** Unsent bytes at which a slow client's unreliable traffic is skipped, and at which the client is dropped. */
 const SOFT_BACKLOG = 64 * 1024;
 const HARD_BACKLOG = 4 * 1024 * 1024;
 const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json" };
 
-/** Bytes a listener may leave unsent before voice meant for it is dropped: a quarter of a second of everyone it can hear. */
+/** Unsent bytes at which a listener's voice packets are dropped. About a quarter second of everyone it can hear. */
 const VOICE_BACKLOG = 16 * 1024;
 
 interface Socket {
@@ -79,28 +62,28 @@ interface Socket {
   isVoice: boolean;
 }
 
-/** A reader of the live file in a config folder, for a server to ask again while it runs; undefined if there is no folder. */
+/** Returns a reader of the live file in a config folder, or undefined for no folder. */
 export function liveFileOf(folder: string): (() => string | null) | undefined {
   if (folder === "") return undefined;
   const path = join(folder, LIVE_FILE);
   return () => (existsSync(path) ? readFileSync(path, "utf8") : null);
 }
 
-/** The folder a development server reads its settings from when it is given no other: taming, hatching and growing up turned up, so that raising a creature takes minutes. */
+/** The default settings folder of a development server. It speeds up taming, hatching and growth so raising a creature takes minutes. */
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
 export function startServer(opts: ServerOptions = {}): RunningServer {
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error("content errors:\n" + errors.join("\n"));
   const clientDir = resolve(opts.clientDir ?? join(import.meta.dir, "../client/dist"));
-  // Bodies are posed, and so hit, with the clips of the very pack the clients are served.
+  // The server poses and hit-tests bodies with the clips of the pack the clients are served.
   const packFile = join(clientDir, "assets/core.snpk");
   if (!existsSync(packFile)) throw new Error(`${packFile} is missing: build the client first (bun run build)`);
   const pack = parsePack(new Uint8Array(readFileSync(packFile)));
   const clips = pack.clips;
   const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
-  // What of the settings named nothing this build has, or made no sense, is said as the server starts; it stops nothing.
+  // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (opts.probeScene) {
@@ -110,7 +93,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     genome.colors.fill(0);
     genome.colors[0] = PROBE_CREATURE.color;
     ents.setLook(e, genome.level, genome.colors, "");
-    // And one body with bones, in its species' own colour.
+    // One body with bones, in its species' own colour.
     const body = host.spawnCreature("core:survivor", PROBE_BODY.x, PROBE_BODY.z, 1);
     const look = host.records.byPid.get(ents.pid[body]!)!.genome!;
     look.colors.fill(0);
@@ -128,7 +111,6 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
 
   let first: (value: unknown) => void = () => {};
   const selfcheck = new Promise<unknown>((r) => (first = r));
-  // Reports as they come, and whoever is waiting for one.
   const reports: unknown[] = [];
   const waiting: ((value: unknown) => void)[] = [];
   const report = (value: unknown): void => {
@@ -140,7 +122,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   let measured: (value: unknown) => void = () => {};
   const bench = new Promise<unknown>((r) => (measured = r));
 
-  // What voice is waiting to go out is sent once at the end of the turn it arrived in.
+  // Pending voice is flushed once, at the end of the event-loop turn it arrived in.
   let flushing = false;
   const flushVoice = (): void => {
     flushing = false;
@@ -194,7 +176,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           send(channel, data) {
             if (!conn.open) return;
             const backlog = ws.getBufferedAmount();
-            // A datagram that cannot be sent now is dropped, as an unreliable channel would.
+            // A datagram that cannot be sent now is dropped, as an unreliable channel would drop it.
             if (channel !== CH_RELIABLE && backlog > SOFT_BACKLOG) return;
             if (backlog > HARD_BACKLOG) return void ws.close(1008, "too slow");
             const frame = new Uint8Array(data.length + 1);
@@ -277,13 +259,12 @@ if (import.meta.main) {
     const i = args.indexOf(name);
     return i >= 0 ? args[i + 1] : undefined;
   };
-  // Settings: ARK's two files from the folder named (a development server's own, if none is), then what the command line gives.
   const dev = args.includes("--dev");
   const folder = value("--config") ?? (dev ? DEV_CONFIG : "");
   const { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
   const live = liveFileOf(folder);
-  // The port: ours, then ARK's flag, then the file's.
+  // Precedence: --port, then ARK's -port flag, then the Port setting.
   const flagPort = rules.flag("port");
   const running = startServer({
     port: Number(value("--port") ?? (typeof flagPort === "string" && flagPort !== "" ? flagPort : rules.num("Port"))),

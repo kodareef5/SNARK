@@ -1,19 +1,5 @@
-// Decay: what nobody of its tribe has come near for long enough may be taken
-// down by anyone.
-//
-// Nothing is kept per piece. There is one clock for each team in each chunk
-// where it has built: the last tick one of the team was near, which is within
-// a chunk of it. A piece has decayed when that clock is older than what the
-// piece is made of allows (shared content: thatch four days, wood eight,
-// stone twelve, metal sixteen; a foundation or a ground pillar with nothing
-// joined to it, half a day, if the server says so). The server's
-// `PvEStructureDecayPeriodMultiplier` stretches or shrinks all of those, and
-// `DisableStructureDecayPvE` stops decay.
-//
-// What has decayed still stands. Anyone may then demolish it
-// (server/build.ts); a server started with `-AutoDestroyStructures` takes it
-// down itself after `AutoDestroyOldStructuresMultiplier` decay periods, a few
-// chunks at a time.
+// Decay keeps no per-piece state. Each team has one clock per chunk it has built in, the last tick a member was within a chunk of it.
+// A decayed piece still stands, and anyone may then demolish it (server/build.ts).
 
 import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE, chunkCx, chunkCz } from "../shared/coords.ts";
@@ -22,24 +8,22 @@ import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 
 const DAY_TICKS = 86400 * TICK_RATE;
-/** Who is near what is looked at this often: five seconds. */
 export const DECAY_EVERY = 5 * TICK_RATE;
-/** The most pieces the server takes down in one look, when it takes down what has decayed. */
+/** Most pieces auto-destroy removes in one sweep. */
 const SWEEP_MAX = 256;
 
 export class Decay {
-  /** A clock changed since this was last saved. */
   dirty = false;
-  /** Pieces the server took down itself. */
+  /** Pieces auto-destroy has removed. */
   destroyed = 0;
-  /** Whether a root piece has nothing joined to it. Given by whoever knows what is joined to what. */
+  /** Whether a root piece has nothing joined to it. */
   lone: ((ref: number) => boolean) | null = null;
   private readonly world: ServerWorld;
   private readonly reg: Registry;
   private readonly rules: Rules;
-  /** Team, then chunk: the tick one of the team was last near. */
+  /** Team, then chunk, to the tick a member was last near. */
   private readonly clocks = new Map<number, Map<number, number>>();
-  /** Per chunk: the teams with anything built in it, as of a version of the chunk. */
+  /** Per chunk, the teams with anything built in it, cached at chunk version teamsAt. */
   private readonly teams: (number[] | undefined)[] = [];
   private readonly teamsAt: number[] = [];
 
@@ -49,7 +33,6 @@ export class Decay {
     this.rules = rules;
   }
 
-  /** The teams with anything built in a chunk. */
   private teamsIn(chunk: number): readonly number[] {
     const t = this.world.structs.chunks[chunk];
     if (!t || t.live === 0) return NONE;
@@ -65,7 +48,7 @@ export class Decay {
     return list;
   }
 
-  /** One of `team` is in `chunk`: whatever the team has built there and in the chunks around has been visited. */
+  /** A member of `team` is in `chunk`. Sets the team's clocks there and in the eight chunks around it. */
   visit(team: number, chunk: number, tick: number): void {
     if (team === 0) return;
     const dims = this.world.dims;
@@ -87,27 +70,21 @@ export class Decay {
     this.dirty = true;
   }
 
-  /** How many ticks a structure of `kind` lasts unvisited; `lone` for a root with nothing joined to it. 0: for ever. */
+  /** Ticks a structure of `kind` lasts unvisited, or 0 for no decay. `lone` is a root with nothing joined to it. */
   period(kind: number, lone: boolean): number {
     const days = this.reg.decayDays[kind]!;
     if (!(days > 0)) return 0;
     const whole = Math.round(days * DAY_TICKS * this.rules.num("PvEStructureDecayPeriodMultiplier"));
-    // By the server's rule a foundation or pillar joined to nothing decays in a time of its own, if that is sooner.
     if (!lone || !this.rules.on("FastDecayUnsnappedCoreStructures")) return whole;
     const fast = Math.round(this.rules.num("FastDecayInterval") * TICK_RATE);
     return fast < whole ? fast : whole;
   }
 
-  /**
-   * Whether anything decays at all, by the server's rules: on a PvE server
-   * unless it is switched off, and on any other only if it is switched on.
-   */
   active(): boolean {
     const r = this.rules;
     return !r.on("DisableStructureDecayPvE") && (r.on("serverPVE") || r.on("PvPStructureDecay"));
   }
 
-  /** Whether the structure at `ref` has been left long enough that anyone may take it down. */
   expired(ref: number, tick: number): boolean {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
@@ -118,7 +95,7 @@ export class Decay {
     if (team === 0 || !(this.reg.decayDays[kind]! > 0) || !this.active()) return false;
     const last = this.clocks.get(team)?.get(chunk);
     if (last === undefined) {
-      // Never looked at before (built by another hand, or its tribe has changed): its time starts now.
+      // No clock yet (another team built it, or its tribe changed), so its time starts now.
       this.set(team, chunk, tick);
       return false;
     }
@@ -127,16 +104,11 @@ export class Decay {
     return left >= this.period(kind, true) && this.lone !== null && this.lone(ref);
   }
 
-  /**
-   * Once a tick. Every five seconds: each team with someone alive in the
-   * world has visited what is near them; and, if the rule says so, what has
-   * decayed is taken down.
-   */
+  /** Call once a tick. `near` calls visit for the team and chunk of each living, connected survivor. */
   step(tick: number, near: (visit: (team: number, chunk: number) => void) => void): void {
     if (tick % DECAY_EVERY !== 0) return;
     near((team, chunk) => this.visit(team, chunk, tick));
-    // The server takes down what has decayed only if it was started to (ARK's -AutoDestroyStructures), and then after
-    // so many decay periods as its rule says: 1 is as soon as anyone might have.
+    // ARK's -AutoDestroyStructures. A multiplier of 1 removes a piece as soon as anyone could demolish it.
     const after = this.rules.num("AutoDestroyOldStructuresMultiplier");
     if (this.rules.flag("AutoDestroyStructures") !== true || !(after > 0) || !this.active()) return;
     const structs = this.world.structs;
@@ -148,7 +120,7 @@ export class Decay {
           if (t.kind[s] === 0 || t.owner[s] !== team) continue;
           const ref = chunk * 65536 + s;
           if (!this.expired(ref, tick)) continue;
-          // Expired by which of its two periods; and that many times over.
+          // The period it expired by, whole or lone, must have passed `after` times over.
           const whole = this.period(t.kind[s]!, false);
           const mine = tick - last >= whole ? whole : this.period(t.kind[s]!, true);
           if (tick - last < mine * after) continue;
@@ -160,7 +132,7 @@ export class Decay {
     this.destroyed += taken;
   }
 
-  /** The clocks as text, without those of teams that have nothing left where the clock is. */
+  /** A flat JSON array of team, chunk, tick triples. Drops clocks for chunks where the team has nothing left. */
   serialize(): string {
     const out: number[] = [];
     for (const [team, of] of this.clocks) {
@@ -174,7 +146,7 @@ export class Decay {
     return JSON.stringify(out);
   }
 
-  /** Take in saved clocks. Anything that is not three numbers at a time is left out. */
+  /** Skips any triple that is not three valid numbers. */
   restore(saved: string | number | null): void {
     if (typeof saved !== "string") return;
     let list: unknown;
