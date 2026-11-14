@@ -309,10 +309,10 @@ test("controls: keys and mouse become one input sample", () => {
   expect(c.buttons).toBe(BTN_JUMP | BTN_SPRINT | BTN_USE | BTN_PRIMARY);
   c.mouseButton(2, true); // the right button is the secondary action, held with the left
   c.key("KeyR", true);
-  c.key("KeyF", true);
+  c.key("KeyG", true);
   c.key("KeyN", true);
   expect(c.buttons).toBe(BTN_JUMP | BTN_SPRINT | BTN_USE | BTN_PRIMARY | BTN_SECONDARY | BTN_RELOAD | BTN_MELEE | BTN_MOD);
-  for (const code of ["KeyR", "KeyF", "KeyN"]) c.key(code, false);
+  for (const code of ["KeyR", "KeyG", "KeyN"]) c.key(code, false);
   c.key("Space", false);
   c.mouseButton(0, false);
   expect(c.buttons).toBe(BTN_SPRINT | BTN_USE | BTN_SECONDARY);

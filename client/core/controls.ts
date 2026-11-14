@@ -6,7 +6,7 @@ import { BTN_CROUCH, BTN_JUMP, BTN_MELEE, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_R
 export const LOOK_SPEED = 0.0025;
 const PITCH_LIMIT = 1.5;
 
-const BINDINGS: Record<string, number> = { Space: BTN_JUMP, ShiftLeft: BTN_SPRINT, KeyE: BTN_USE, KeyR: BTN_RELOAD, KeyF: BTN_MELEE, KeyN: BTN_MOD };
+const BINDINGS: Record<string, number> = { Space: BTN_JUMP, ShiftLeft: BTN_SPRINT, KeyE: BTN_USE, KeyR: BTN_RELOAD, KeyG: BTN_MELEE, KeyN: BTN_MOD };
 const MOVE_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 /** A press toggles the stance. */
 const STANCE_KEYS: Record<string, number> = { KeyC: BTN_CROUCH, KeyX: BTN_PRONE };

@@ -40,6 +40,7 @@ raptors that will come for you.
 | C, X | Crouch, lie prone; press again to stand |
 | 1 to 0 | Take that hotbar slot in hand, or put it away |
 | R | Reload |
+| G | Let a drawn bow down without loosing. With a melee weapon in hand, swing it |
 | V | Look from behind the body, or from its eyes |
 | E | Pick a bush, open a cache or a box, open a door, get on a saddled creature of your tribe and off it, take a young creature that is nobody's, look into one that is unconscious or yours. Held on something built: what can be done to it |
 | F | Look into the creature you ride or look at: follow or stay, its stance, its saddle, whether it may mate, its levels |

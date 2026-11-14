@@ -5,6 +5,7 @@ import { KEY_CHAT_INPUT, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui
 import { KEY_BANNER, KEY_CROSS, KEY_PROMPT, KEY_READOUT, KEY_STATUS, KEY_TALKER, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { KEY_SETTINGS_MIC } from "../../client/core/ui/settings.ts";
+import { BTN_MELEE } from "../../shared/sim/character.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { buildCorePack } from "../../tools/pack/build.ts";
@@ -415,4 +416,15 @@ test("the talk key with Alt is a whisper and with Shift a yell; set to switch, o
   app.key("KeyO", true);
   run(50);
   expect(app.ui.frame.find(KEY_SETTINGS_MIC + 1)!.value).toBeCloseTo(1 + (20 * Math.log10(0.25)) / 60, 5);
+});
+
+test("the melee key reaches the controls through the whole client, and F does not", () => {
+  const h = new Harness();
+  const app = client(h, "ada");
+  h.run(500, (now) => app.frame(now, 1280, 720));
+  app.key("KeyG", true);
+  expect(app.controls.buttons & BTN_MELEE).toBe(BTN_MELEE);
+  app.key("KeyG", false);
+  app.key("KeyF", true);
+  expect(app.controls.buttons & BTN_MELEE).toBe(0);
 });
