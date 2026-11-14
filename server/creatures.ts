@@ -215,6 +215,9 @@ export class Creatures {
     if (slot < 0) return;
     this.mind.owned.delete(e);
     const ents = this.world.ents;
+    // Asleep it is no longer saved a slice at a time, so where it stopped is saved now.
+    const rec = this.records.byPid.get(ents.pid[e]!);
+    if (rec && (rec.x !== ents.x[e] || rec.y !== ents.y[e] || rec.z !== ents.z[e])) this.records.dirty.add(rec.pid);
     const last = this.awake[--this.awakeCount]!;
     this.awake[slot] = last;
     this.awakeSlot[last] = slot;

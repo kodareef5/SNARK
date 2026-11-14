@@ -305,7 +305,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   tribes.onSave = () => persistence?.store.setMeta("tribes", tribes.serialize());
   tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
-  const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 71);
+  const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 97);
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   combat.onThrow = (c, rec, item, quality) => projectiles.lob(c, rec, item, quality);
   // The killer is credited before death.die, which may delete the record.
@@ -730,8 +730,11 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     exec: (line, client) => con.exec({ host, client: client ?? null }, line),
     shutdown() {
       if (!persistence) return;
-      // Every body still in the world is saved where it stands.
-      for (const c of game.clients) if (c?.active && c.ent >= 0) records.dirty.add(c.pid);
+      // Every body that can have moved is saved where it stands.
+      for (let r = 0; r < world.history.rows; r++) {
+        const pid = world.ents.pid[world.history.tracked(r)]!;
+        if (pid !== 0) records.dirty.add(pid);
+      }
       if (build.decay.dirty) persistence.store.setMeta("decay", build.decay.serialize());
       persistence.commit();
       persistence.store.close();

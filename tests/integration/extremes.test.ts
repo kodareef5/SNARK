@@ -1,4 +1,8 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { WorldStore } from "../../server/persist/store.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -48,4 +52,39 @@ test("a survivor killed by a fire another survivor lit is told it was killed", (
   h.run(2500);
   expect(victim.dead).toBe(true);
   expect(bob.log.at(-1)!.text).toBe("You were killed.");
+});
+
+test("a body that moved is saved within a second, however many creatures sleep elsewhere, and again as it falls asleep", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-extremes-"));
+  const dbPath = join(dir, "world.db");
+  const h = new Harness({}, 1, 60, { dev: true, dbPath });
+  const ada = h.join("ada");
+  h.run(600);
+  h.say(ada, "enablecheats");
+  const ents = h.world.ents;
+  const me = h.ent(ada);
+  // Four chunks from anyone, so asleep. Before the fix each took a turn of the 256 positions saved per commit.
+  let asleep = 0;
+  for (let n = 0; n < 20000 && asleep < 3000; n++) if (h.host.spawnCreature("core:dummy", 8 + (n % 50), 8 + Math.floor(n / 50) % 50, 1) >= 0) asleep++;
+  expect(asleep).toBe(3000);
+  const e = h.host.spawnCreature("core:dummy", ents.x[me]! + 4, ents.z[me]!, 1);
+  const pid = ents.pid[e]!;
+  h.run(400);
+  /** Where the save has it, read as a server starting after a crash would. */
+  const saved = (): number => {
+    const store = new WorldStore(dbPath, h.reg);
+    const rec = store.loadEntities().find((r) => r.pid === pid)!;
+    store.close();
+    return rec.x;
+  };
+  ents.setPosition(e, ents.x[e]! + 2, ents.y[e]!, ents.z[e]!);
+  h.run(1000);
+  expect(saved()).toBe(ents.x[e]!);
+  // Moved again, and its chunk put to sleep at once by the only survivor leaving.
+  ents.setPosition(e, ents.x[e]! + 2, ents.y[e]!, ents.z[e]!);
+  h.say(ada, "tp 20 20");
+  expect(h.host.creatures.isChunkAwake(ents.chunk[e]!)).toBe(false);
+  expect(saved()).toBe(ents.x[e]!);
+  h.host.shutdown();
+  rmSync(dir, { recursive: true, force: true });
 });

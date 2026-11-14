@@ -53,6 +53,11 @@ export class History {
     return this.capacity * HISTORY_TICKS * ROW_BYTES + this.rowOf.byteLength;
   }
 
+  /** The entity in row `r`, for `r` below `rows`: an awake creature or a player's body. */
+  tracked(r: number): number {
+    return this.entOf[r]!;
+  }
+
   /** Call when an entity begins to be stepped (a body is made, a creature wakes). Its whole past is filled with where it stands now. */
   track(e: number): void {
     if (this.rowOf[e]! >= 0) return;

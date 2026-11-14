@@ -1,14 +1,18 @@
 // Valuable changes (inventories, ownership, structures, births, deaths) go into the next commit together, with their journal entries.
 // Positions are lazy, because a stale one is harmless after a crash. Each commit refreshes a slice of the live entities in rotation.
 
-import { F_ALIVE, F_AWAKE, F_PLAYER } from "../../shared/sim/entities.ts";
+import { TICK_RATE } from "../../shared/coords.ts";
+import { F_ALIVE } from "../../shared/sim/entities.ts";
 import type { EntityRecord, Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
 import type { WorldStore } from "./store.ts";
 
 export interface PersistenceOptions {
-  /** Live entity positions refreshed per commit. */
-  lazyRowsPerCommit: number;
+  /**
+   * Ticks in which every body that can move has its position saved once. Each save rewrites a database page, and that
+   * volume is what sets how often SQLite stops the tick to checkpoint, so this is a minute and not a second.
+   */
+  positionTicks: number;
   /** Journal entries kept. Older ones are deleted. */
   journalKeep: number;
 }
@@ -51,15 +55,14 @@ export class Persistence {
   private readonly pending: PendingJournal[] = [];
   private readonly newSurvivors: [string, number][] = [];
   private callbacks: (() => void)[] = [];
-  private readonly live: number[] = [];
-  private readonly liveSet = new Set<number>();
   private cursor = 0;
+  private savedAt = 0;
 
   constructor(world: ServerWorld, records: Records, store: WorldStore, opts: Partial<PersistenceOptions> = {}) {
     this.world = world;
     this.records = records;
     this.store = store;
-    this.opts = { lazyRowsPerCommit: 256, journalKeep: 100_000, ...opts };
+    this.opts = { positionTicks: 1800, journalKeep: 100_000, ...opts };
     world.structs.onChunkChanged = (chunk) => this.dirtyChunks.add(chunk);
   }
 
@@ -104,10 +107,6 @@ export class Persistence {
   attach(rec: EntityRecord, ent: number): void {
     this.records.entOf.set(rec.pid, ent);
     this.world.ents.pid[ent] = rec.pid;
-    if (!this.liveSet.has(rec.pid)) {
-      this.liveSet.add(rec.pid);
-      this.live.push(rec.pid);
-    }
   }
 
   /** The record keeps the entity's last position. */
@@ -119,11 +118,6 @@ export class Persistence {
       this.records.dirty.add(pid);
     }
     this.records.entOf.delete(pid);
-    if (this.liveSet.delete(pid)) {
-      const i = this.live.indexOf(pid);
-      this.live[i] = this.live[this.live.length - 1]!;
-      this.live.pop();
-    }
   }
 
   commit(): void {
@@ -147,15 +141,19 @@ export class Persistence {
           store.saveEntity(rec);
         }
         for (const pid of records.deleted) store.deleteEntity(pid);
-        const n = Math.min(this.opts.lazyRowsPerCommit, this.live.length);
+        // Positions go a slice at a time, over the bodies that can have moved: history tracks awake creatures and players'
+        // bodies. A creature that falls asleep is saved then (Creatures.sleep), so sleeping ones cost nothing here.
+        const history = world.history;
+        // At most a second's share at once, so a clock that jumps (a test, a benchmark) does not save every body in one commit.
+        const n = Math.ceil((history.rows * Math.min(TICK_RATE, world.tick - this.savedAt)) / this.opts.positionTicks);
+        this.savedAt = world.tick;
         for (let i = 0; i < n; i++) {
-          if (this.cursor >= this.live.length) this.cursor = 0;
-          const pid = this.live[this.cursor++]!;
-          if (records.dirty.has(pid)) continue;
-          const ent = records.entOf.get(pid);
-          // Sleeping creatures have not moved since they were last written.
-          if (ent === undefined || (world.ents.flags[ent]! & (F_AWAKE | F_PLAYER)) === 0) continue;
-          const rec = records.byPid.get(pid)!;
+          if (this.cursor >= history.rows) this.cursor = 0;
+          const ent = history.tracked(this.cursor++);
+          const pid = world.ents.pid[ent]!;
+          if (pid === 0 || records.dirty.has(pid)) continue;
+          const rec = records.byPid.get(pid);
+          if (!rec) continue;
           this.capture(rec, ent);
           store.saveEntity(rec);
         }
