@@ -68,6 +68,13 @@ export interface RunningServer {
 const SOFT_BACKLOG = 64 * 1024;
 const HARD_BACKLOG = 4 * 1024 * 1024;
 
+/** What a socket does with a message on `channel` when `buffered` bytes wait unsent: 0 sends it, 1 skips it, 2 drops the client. */
+export function backlog(channel: number, buffered: number): number {
+  // A datagram that cannot be sent now is dropped, as an unreliable channel would drop it.
+  if (channel !== CH_RELIABLE && buffered > SOFT_BACKLOG) return 1;
+  return buffered > HARD_BACKLOG ? 2 : 0;
+}
+
 /** Unsent bytes at which a listener's voice packets are dropped. About a quarter second of everyone it can hear. */
 const VOICE_BACKLOG = 16 * 1024;
 
@@ -244,10 +251,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           onClose: null,
           send(channel, data) {
             if (!conn.open) return;
-            const backlog = ws.getBufferedAmount();
-            // A datagram that cannot be sent now is dropped, as an unreliable channel would drop it.
-            if (channel !== CH_RELIABLE && backlog > SOFT_BACKLOG) return;
-            if (backlog > HARD_BACKLOG) return void ws.close(1008, "too slow");
+            const rule = backlog(channel, ws.getBufferedAmount());
+            if (rule === 1) return;
+            if (rule === 2) return void ws.close(1008, "too slow");
             // Bun copies what it is given before send returns, so every message goes out through one buffer.
             const frame = data.length < outgoing.length ? outgoing.subarray(0, data.length + 1) : new Uint8Array(data.length + 1);
             frame[0] = channel;

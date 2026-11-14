@@ -3,6 +3,7 @@
 import { ClientSession } from "../../client/core/session.ts";
 import type { GameOptions, GameServer } from "../../server/game.ts";
 import { createHost, type Host, type HostOptions } from "../../server/host.ts";
+import { backlog } from "../../server/main.ts";
 import type { ServerWorld } from "../../server/world.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -35,6 +36,26 @@ export function testKey(label: string): Uint8Array {
   }
   return key;
 }
+
+/**
+ * SNARK_NET="tcp loss=0.02 burst=60 latency=50 jitter=10" runs every join over such a link. Its fields replace a test's
+ * own, but latency only ever adds.
+ */
+export function forcedLink(spec: string): LinkOptions {
+  const link: LinkOptions = {};
+  for (const word of spec.split(/\s+/)) {
+    const [key, value] = word.split("=");
+    const n = Number(value);
+    if (key === "tcp") link.tcp = true;
+    else if (key === "loss") link.loss = n;
+    else if (key === "burst") link.burstMs = n;
+    else if (key === "latency") link.latencyMs = n;
+    else if (key === "jitter") link.jitterMs = n;
+  }
+  return link;
+}
+
+const FORCED = forcedLink(process.env.SNARK_NET ?? "");
 
 export interface JoinOptions {
   /** Defaults to testKey(name). */
@@ -81,7 +102,14 @@ export class Harness {
   }
 
   join(name: string, link: LinkOptions = {}, opts: JoinOptions = {}): ClientSession {
-    const end = this.net.connect(link);
+    const end = this.net.connect({ ...link, ...FORCED, latencyMs: Math.max(link.latencyMs ?? 0, FORCED.latencyMs ?? 0) });
+    // The server's socket skips what it cannot send, as the real one does.
+    const server = end.peer;
+    server.gate = (channel, buffered) => {
+      const rule = backlog(channel, buffered);
+      if (rule === 2) server.close();
+      return rule === 0;
+    };
     const session = new ClientSession(end, {
       name,
       key: opts.key ?? testKey(name),
