@@ -81,6 +81,8 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
+import { S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { MapStore } from "./tactical.ts";
 
 export interface SessionOptions {
   name: string;
@@ -303,6 +305,8 @@ export class ClientSession {
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
   /** The world's respawn points, then the tribe's beds. wait is in seconds. */
   readonly respawnPoints: { name: string; x: number; z: number; wait: number }[] = [];
+  /** The map beyond the view: structure cells and marks, as the server sends them. */
+  readonly tactical = new MapStore();
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { item: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
@@ -565,6 +569,8 @@ export class ClientSession {
     else if (type === S_CHUNK_DROP) this.world?.structs.dropChunk(r.u16());
     else if (type === S_NODES) this.nodes(r);
     else if (type === S_EVENT) this.event(r);
+    else if (type === S_TACTICAL && this.world) this.tactical.readCells(r, this.world.hf);
+    else if (type === S_MARKS && this.world) this.tactical.readMarks(r, this.world.hf);
     else if (type === S_WELCOME) this.welcome(r);
     else if (type === S_RESULT) {
       const seq = r.u16();
