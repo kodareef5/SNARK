@@ -848,6 +848,7 @@ const COLOUR_SHARE = 0.15;
 const SHORT_SHARE = 0.5;
 const GRID_SHARE = 0.5;
 
+/** How many bits are set in each 16-bit number. */
 const POP = new Uint8Array(65536);
 for (let i = 1; i < 65536; i++) POP[i] = POP[i >> 1] + (i & 1);
 
@@ -876,6 +877,8 @@ interface Fit {
   base: number;
 }
 
+/** Fits to reuse. 0 is one line through the block and 1 to 4 have a channel on a plane of its own. 7 is the pixels'
+ *  own grouping, and from 8 on are partition patterns. */
 const fits: Fit[] = [];
 for (let i = 0; i < 12; i++) fits.push({ parts: 1, pattern: 0, part: PARTITION[1]![0]!, second: -1, u: new Float64Array(32), len2: new Float64Array(8), base: 0 });
 
