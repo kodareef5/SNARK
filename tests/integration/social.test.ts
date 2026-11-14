@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
-import { LOCAL_RANGE } from "../../server/chat.ts";
+import { LOCAL_RANGE, cleanChat } from "../../server/chat.ts";
 import type { Source } from "../../server/combat.ts";
 import { INVITE_TICKS, RANK_MEMBER, RANK_OWNER, REL_NONE, REL_OTHER, REL_SAME } from "../../server/tribes.ts";
 import { CMD_CHAT, MAX_CHAT_CHARS, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
@@ -358,6 +358,26 @@ test("chat: everyone, those near, and the tribe each hear what is theirs to hear
   expect(codes).toEqual([RESULT_DENIED, RESULT_OK]);
   expect(since(from, TEXT_LOCAL).flat()).toEqual([]);
   expect(since(from, TEXT_GLOBAL)[0]).toEqual(["cy: watching"]);
+});
+
+test("a chat line keeps no mark that is not seen or that turns the text round, so none passes one name off as another", () => {
+  // A zero-width space in a name, and a right-to-left override that shows the words backwards.
+  expect(cleanChat("ad\u200Bmin: \u202Enoitnetta\u202C")).toBe("admin: noitnetta");
+  // The isolates and the directional marks, the joiners, the word joiner, the soft hyphen, the byte order mark, and a control of the upper set.
+  expect(cleanChat("\u2066a\u2069\u200E\u200F\u061Cb\u200C\u200Dc\u2060\u00ADd\uFEFFe\u0085f")).toBe("abcde f");
+  expect(cleanChat("\u200B\u202E \u2060\uFEFF")).toBe("");
+  // Letters of any script, their accents, and pictures are kept.
+  expect(cleanChat("  h\u00E9llo  \u05E9\u05DC\u05D5\u05DD \u0645\u0631\u062D\u0628\u0627 \u4F60\u597D e\u0301 \u{1F996} ")).toBe("h\u00E9llo \u05E9\u05DC\u05D5\u05DD \u0645\u0631\u062D\u0628\u0627 \u4F60\u597D e\u0301 \u{1F996}");
+  // As the server says it: a line of nothing but such marks is no line.
+  const { h, sessions } = gather(["ada", "bob"]);
+  const [ada, bob] = sessions as [ClientSession, ClientSession];
+  const codes: number[] = [];
+  ada.onResult = (_seq, code) => codes.push(code);
+  const from = bob.logVersion;
+  ada.command(CMD_CHAT, (w) => (w.bits(TEXT_GLOBAL, 3), w.string("\u202Ebob: I yield\u202C")));
+  ada.command(CMD_CHAT, (w) => (w.bits(TEXT_GLOBAL, 3), w.string("\u200B\u200D\u2060")));
+  h.run(400);
+  expect([codes, heard(bob, TEXT_GLOBAL, from)]).toEqual([[RESULT_OK, RESULT_INVALID], ["ada: bob: I yield"]]);
 });
 
 test("chat is bounded: a few lines at once and then one every two seconds, lines cleaned and cut, and nothing a client sends does more", () => {
