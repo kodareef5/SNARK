@@ -12,6 +12,7 @@ from here.
 | `dev.ts` | `bun run dev` | Server plus client rebuild on change |
 | `build-client.ts` | `bun run build` | Bundle the shell, copy the page, write the core pack |
 | `pack/` | `bun tools/pack/build.ts` | glTF import, pack writer, graybox meshes |
+| `pack/astc-gpu.ts` | `bun tools/pack/astc-gpu.ts` | Proves our ASTC decoder against the GPU: Chrome headless draws tens of thousands of blocks and every pixel must match |
 | `simhash.ts` | `bun tools/simhash.ts`, `node tools/simhash.ts` | Four hashes of fixed scenarios (movement, human pose, snapping, creature pose), for comparing engines |
 | `art.ts`, `art/`, `blender/` | `bun run art -- core:raptor`, with `--all`, `--check`, `--sheet`, `--repack` | Builds an asset folder under `assets/source` into its pack, measures it and draws its review sheet ([layout](../assets/source/README.md)). Building needs Blender; the check, the sheet and the game do not |
 | `fit-zones.ts` | `bun tools/fit-zones.ts` | Fits the hit capsules to the modelled bodies and measures the match |
