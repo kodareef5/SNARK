@@ -5,10 +5,10 @@ import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
 import { TEXT_NOTICE, RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
-import { stanceEye } from "../shared/sim/character.ts";
+import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
-import { capsuleKind } from "../shared/world/collide.ts";
+import { SKIN, capsuleFree, capsuleKind } from "../shared/world/collide.ts";
 import { BUILD_REACH, ON_TOP, ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, freePose, obstructed, overPiece, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
@@ -104,6 +104,7 @@ export class Build {
   private readonly entered = new Map<number, { box: number; pin: number }>();
   private readonly near = new Found();
   private readonly look = [0, 0, 0];
+  private readonly inWay: number[] = [];
 
   constructor(ctx: BuildContext) {
     this.ctx = ctx;
@@ -204,12 +205,79 @@ export class Build {
     return top;
   }
 
+  /**
+   * Moves every living body out of the place a piece of `kind` is about to be set down in. A body goes aside by the shortest
+   * way that is clear all along, so never through a wall, or else up onto the piece. One with no such place stays where it is.
+   */
+  private makeWay(kind: number, x: number, y: number, z: number, yaw: number): void {
+    const world = this.ctx.world;
+    const ents = world.ents;
+    const reg = world.reg;
+    const dims = world.dims;
+    // Found first and moved after, because a move may take a body from one chunk's list to another's.
+    const found = this.inWay;
+    found.length = 0;
+    const cx = Math.floor(x / 64);
+    const cz = Math.floor(z / 64);
+    for (let oz = -1; oz <= 1; oz++) {
+      for (let ox = -1; ox <= 1; ox++) {
+        if (cx + ox < 0 || cz + oz < 0 || cx + ox >= dims.chunksX || cz + oz >= dims.chunksZ) continue;
+        for (let i = ents.chunkHead[(cz + oz) * dims.chunksX + cx + ox]!; i >= 0; i = ents.next[i]!) {
+          // A rider goes where its mount goes.
+          if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE || ents.seat[i] !== 0) continue;
+          const k = ents.kind[i]!;
+          if (capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, SKIN)) found.push(i);
+        }
+      }
+    }
+    const top = y + reg.halfY[kind]!;
+    for (const i of found) {
+      const k = ents.kind[i]!;
+      const move = reg.move[k];
+      const r = reg.bodyRadius[k]!;
+      const h = move ? stanceHeight(move, ents.stance[i]!) : reg.bodyHeight[k]!;
+      const bx = ents.x[i]!;
+      const by = ents.y[i]!;
+      const bz = ents.z[i]!;
+      let ux = bx - x;
+      let uz = bz - z;
+      const off = Math.hypot(ux, uz);
+      ux = off > 1e-3 ? ux / off : 1;
+      uz = off > 1e-3 ? uz / off : 0;
+      const step = r * 0.5;
+      const most = Math.ceil((2 * (world.structs.spread[kind]! + r)) / step);
+      let moved = false;
+      // Away from the piece's middle first, then to either side, then back across it.
+      for (let turn = 0; turn < 4 && !moved; turn++) {
+        const dx = turn === 0 ? ux : turn === 1 ? -uz : turn === 2 ? uz : -ux;
+        const dz = turn === 0 ? uz : turn === 1 ? ux : turn === 2 ? -ux : -uz;
+        for (let n = 1; n <= most && !moved; n++) {
+          const px = bx + dx * step * n;
+          const pz = bz + dz * step * n;
+          const py = Math.max(world.hf.heightAt(px, pz), by);
+          // The piece is not built yet, so this asks only about what stands there already.
+          if (!capsuleFree(world, px, py, pz, r, h)) break;
+          if (capsuleKind(reg.parts, kind, x, y, z, yaw, px, py, pz, r, h, SKIN)) continue;
+          ents.setPosition(i, px, py, pz);
+          moved = true;
+        }
+      }
+      if (!moved && capsuleFree(world, bx, top, bz, r, h)) {
+        ents.setPosition(i, bx, top, bz);
+        moved = true;
+      }
+      if (moved) ents.vx[i] = ents.vy[i] = ents.vz[i] = 0;
+    }
+  }
+
   /** Sets down what fell whole where it lands. Its fixture record, if any, is bound to the new ref. */
   private land(): void {
     const { world, fixtures } = this.ctx;
     for (const l of this.landing) {
       const half = world.reg.halfY[l.kind]!;
-      const ref = world.structs.add(l.kind, l.x, this.floorUnder(l.x, l.z, l.y - half) + half, l.z, l.yaw, l.owner, l.hp);
+      const y = this.floorUnder(l.x, l.z, l.y - half) + half;
+      this.makeWay(l.kind, l.x, y, l.z, l.yaw);
+      const ref = world.structs.add(l.kind, l.x, y, l.z, l.yaw, l.owner, l.hp);
       if (ref >= 0) {
         if (l.rec) fixtures.bind(l.rec, ref);
         this.landed++;

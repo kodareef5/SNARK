@@ -2,7 +2,7 @@
 
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
-import { FLOOR_THICK, FOUNDATION_THICK } from "../../content/building.ts";
+import { FLOOR_THICK, FOUNDATION_THICK, WALL_THICK } from "../../content/building.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_STRUCT, RESULT_FAR, RESULT_LOCKED, RESULT_OK } from "../../shared/net/protocol.ts";
@@ -246,4 +246,60 @@ test("a rider with no room to get off beside her mount is set down where it stoo
   h.host.survival.add(mount, V_HEALTH, -1e9);
   h.run(300);
   expect([c.drive, ents.seat[body], legal()]).toEqual([-1, 0, [true, true]]);
+});
+
+test("a vault that comes down whole does not come down on whoever stands under it: they are moved aside, on their own side of any wall", () => {
+  const { h, sessions, recs, at } = arena(["ada", "bob"]);
+  const [ada, bob] = sessions as [ClientSession, ClientSession];
+  const world = h.world;
+  const structs = world.structs;
+  const ents = world.ents;
+  const team = recs[0]!.team;
+  const p = reg.move[id("survivor")]!;
+  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const join = (target: number, piece: string, k: number): number => {
+    expect(poseAt(structs, reg, target, id(piece), k, 0, pose)).toBe(true);
+    return structs.add(id(piece), pose.x / U, pose.y / U, pose.z / U, pose.yaw, team, 10000);
+  };
+  const row = (ref: number) => {
+    const t = structs.chunks[Math.floor(ref / 65536)]!;
+    return { kind: t.kind[ref & 0xffff]!, x: t.x[ref & 0xffff]!, y: t.y[ref & 0xffff]!, z: t.z[ref & 0xffff]! };
+  };
+  // Two foundations side by side. On the far one a wall, and from its top a floor back over the near one, three metres up.
+  const near = structs.add(id("foundation_stone"), at.x, at.y + FOUNDATION_THICK / 2, at.z, 0, team, 15000);
+  const far = join(near, "foundation_stone", 0);
+  const wall = join(far, "wall_stone", 2);
+  const floor = join(wall, "ceiling_stone", 0);
+  expect([row(floor).x, row(floor).z]).toEqual([row(near).x, row(near).z]);
+  // The house next door stands a hand's breadth off, and has a wall on the edge that faces this one.
+  const next = structs.add(id("foundation_stone"), at.x + 3.2, at.y + FOUNDATION_THICK / 2, at.z, 0, team, 15000);
+  const screen = join(next, "wall_stone", 3);
+  // The vault stands on the upper floor with its side a hand from over that wall. It holds something.
+  const half = reg.halfY[id("vault")]!;
+  const vault = structs.add(id("vault"), row(near).x + 0.8, row(floor).y + FLOOR_THICK / 2 + half, at.z, 0, team, 50000);
+  const vx = row(vault).x;
+  const state = h.host.fixtures.ensure(vault);
+  expect(h.host.items.mint(state, id("ingot"), 100)).toBe(100);
+  expect(h.host.build.support.standsRef(vault)).toBe(true);
+  // Ada stands on the lower floor right under it, and Bob under its corner, by the wall.
+  const top = row(near).y + FOUNDATION_THICK / 2;
+  h.say(ada, `tp ${vx.toFixed(3)} ${top.toFixed(3)} ${at.z.toFixed(3)}`);
+  h.say(bob, `tp ${(vx + 0.35).toFixed(3)} ${top.toFixed(3)} ${(at.z + 0.6).toFixed(3)}`);
+  const bodies = [h.ent(ada), h.ent(bob)];
+  const was = bodies.map((e) => [ents.x[e]!, ents.z[e]!] as const);
+  for (const e of bodies) expect(capsuleFree(world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height)).toBe(true);
+
+  // The wall that holds the floor goes. The floor falls, and the vault comes down onto the foundation.
+  structs.damage(wall, 1e9, world.tick);
+  h.run(600);
+  expect([row(floor).kind, h.host.build.landed, state.at >= 0]).toEqual([0, 1, true]);
+  const landed = row(state.at);
+  expect([landed.kind, landed.x, landed.z, landed.y, row(screen).kind]).toEqual([id("vault"), vx, row(near).z, top + half, id("wall_stone")]);
+  expect(h.host.items.inv(state).total(id("ingot"))).toBe(100);
+  // Neither is inside it. Each stands within two metres of where it stood, and still on the vault's side of the wall.
+  bodies.forEach((e, i) => {
+    expect(capsuleFree(world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height)).toBe(true);
+    expect(Math.hypot(ents.x[e]! - was[i]![0], ents.z[e]! - was[i]![1])).toBeLessThan(2);
+    expect(ents.x[e]!).toBeLessThan(row(screen).x - WALL_THICK / 2);
+  });
 });
