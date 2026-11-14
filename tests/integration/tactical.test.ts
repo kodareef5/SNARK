@@ -1,7 +1,15 @@
-// The map's two feeds, between a real server and real clients on a map 2.3 km wide.
+// The map's two feeds, between a real server and real clients on a map 8 km wide.
 
 import { expect, test } from "bun:test";
-import { ClientSession } from "../../client/core/session.ts";
+import { App } from "../../client/core/app.ts";
+import { HudModel, updateHud } from "../../client/core/hud.ts";
+import { ClientSession, RemoteSample } from "../../client/core/session.ts";
+import { Chart, type MapPicture } from "../../client/core/tactical.ts";
+import { IMAGE_MAP, IMAGE_MINIMAP, KEY_MARKER, KEY_MINIMAP, buildHud } from "../../client/core/ui/hud.ts";
+import { UiFrame } from "../../client/core/ui/nodes.ts";
+import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_MAP_TITLE, KEY_MAP_ZOOM, buildMap, mapPointer } from "../../client/core/ui/screens.ts";
+import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
+import { corePack } from "../fixtures/pack.ts";
 import { contentFor } from "../../server/host.ts";
 import { Rules } from "../../server/settings/rules.ts";
 import { createWorld } from "../../server/world.ts";
@@ -13,9 +21,9 @@ import { MARK_MATE, MARK_OTHER, MARK_TAME, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIE
 import { Harness, testKey } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
-const DIMS = { chunksX: 36, chunksZ: 8 };
+const DIMS = { chunksX: 128, chunksZ: 8 };
 
-/** A flat map 2,304 m by 512 m with nothing on it, and a way to join it. */
+/** A flat map 8,192 m by 512 m with nothing on it, and a way to join it. */
 function wide(tactical: { tacticalRadius?: number } = {}) {
   const reg = contentFor(coreRegistry(), new Rules());
   const hf = new Heightfield(DIMS, TERRAIN_CELL, -32, 1 / 256);
@@ -40,7 +48,7 @@ function wide(tactical: { tacticalRadius?: number } = {}) {
   };
   const teamOf = (s: ClientSession): number => h.host.records.byPid.get(h.client(s)!.pid)!.team;
   const put = (s: ClientSession, x: number, z: number): void => void world.ents.setPosition(h.ent(s), x, 0, z);
-  return { h, world, join, hut, k, teamOf, put };
+  return { h, world, hf, join, hut, k, teamOf, put };
 }
 
 test("a tribe's base 600 m off is on its map within ten seconds with no chunk sent, and is never sent again unchanged", () => {
@@ -239,4 +247,135 @@ test("a tribe with more marks than a message holds sends each member the 255 nea
     for (let i = 0; i < m.count; i++) if (Math.abs(m.x[i]! - s.own.x) < 100) near++;
     expect(near).toBe(200);
   }
+});
+
+test("the minimap is a window on one zoom around its reader, and the map screen moves and zooms over all four with the same coordinates as the readout", () => {
+  const { h, hf, join, hut, teamOf, put } = wide();
+  const [a, b] = [join("ada"), join("bo")];
+  h.run(500);
+  const rec = (s: ClientSession) => h.host.records.byPid.get(h.client(s)!.pid)!;
+  h.host.tribes.create(rec(a), "Night Shift");
+  h.host.tribes.invite(rec(a), rec(b), true);
+  h.host.tribes.accept(rec(b));
+  put(b, 2150, 100);
+  hut(120, 110, teamOf(a));
+  const hud = new HudModel();
+  const chart = (hud.chart = new Chart(hf, corePack().palette));
+  const remote = new RemoteSample();
+  const f = new UiFrame();
+  let map = false;
+  const frames = (ms: number): void =>
+    h.run(ms, () => {
+      a.sampleRemote(remote);
+      updateHud(hud, a, remote, 60, 1.5);
+      f.begin(16 / 9);
+      buildHud(f, hud);
+      if (map) buildMap(f, a, hud);
+    });
+  const markers = (): number => f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_MARKER && n.key < KEY_MARKER + 256).length;
+  /** Whether a picture shows the tribe's green where the place (x, z) is, to within a pixel. */
+  const green = (p: MapPicture, x: number, z: number): boolean => {
+    const N = p.image.width;
+    const px = Math.floor(((lonOf(hf, x) / 100 - p.view.u0) / p.view.du) * N);
+    const py = Math.floor(((latOf(hf, z) / 100 - p.view.v0) / p.view.dv) * N);
+    for (let y = py - 1; y <= py + 1; y++) {
+      for (let x = px - 1; x <= px + 1; x++) {
+        const c = p.image.data.subarray((y * N + x) * 4, (y * N + x) * 4 + 3);
+        if (c[1]! > c[0]! && c[1]! > c[2]!) return true;
+      }
+    }
+    return false;
+  };
+  frames(3000);
+  // On a map 8 km wide it starts at the nearest zoom, a kilometre across, and the server is told so and sends 4 m cells.
+  const mini = chart.mini;
+  expect([chart.miniZoom, mini.view.zoom, a.tactical.marks.zoom]).toEqual([3, 3, 3]);
+  expect(mini.view.du).toBe(1 / 8);
+  expect(mini.image.width).toBe(240);
+  expect(a.tactical.chunks.get(chunkAt(DIMS, 122, 112))!.level).toBe(0);
+  // Its own hut is on the picture in its tribe's green. The mate two kilometres off is outside the window.
+  expect(green(mini, 124, 112)).toBe(true);
+  expect(green(mini, 150, 112)).toBe(false);
+  expect(markers()).toBe(1);
+  // Three steps out is the whole map, with the mate on it where its longitude and latitude put it.
+  for (let i = 0; i < 4; i++) expect(chart.key("Minus", true, false)).toBe(true);
+  frames(3000);
+  expect([mini.view.zoom, mini.view.u0, mini.view.du, a.tactical.marks.zoom]).toEqual([0, 0, 1, 0]);
+  expect(markers()).toBe(2);
+  const box = f.find(KEY_MINIMAP)!;
+  const mate = f.find(KEY_MARKER)!;
+  expect(mate.x + 2).toBeCloseTo(box.x + (lonOf(hf, 2150) / 100) * box.w, 1);
+  expect(mate.y + 2).toBeCloseTo(box.y + (latOf(hf, 100) / 100 / mini.view.dv) * box.h, 1);
+
+  // The map screen opens on its reader at the far zoom, and says the same latitude and longitude as the readout.
+  map = true;
+  frames(200);
+  const here = latLonText(hud.lat, hud.lon);
+  expect(hud.readout[0]!.startsWith(here)).toBe(true);
+  expect(f.find(KEY_MAP_TITLE)!.text).toBe(`Map  ${here}`);
+  const self = f.find(KEY_MAP_PIN + 16)!;
+  expect(mapPointer(hud, 2, KEY_MAP_IMAGE, self.x + 4, self.y + 4)).toBe(true);
+  frames(50);
+  expect(f.find(KEY_MAP_LINE + 16)!.text).toBe(`zoom 1 of 4   ${here}`);
+  // Its button zooms in, the server sends finer cells, and at every zoom the hut and the pin are where their coordinates put them.
+  const full = chart.full;
+  const image = f.find(KEY_MAP_IMAGE)!;
+  expect(full.image.width).toBe(Math.round(image.w * 1.5));
+  for (let zoom = 1; zoom < 4; zoom++) {
+    expect(mapPointer(hud, 0, KEY_MAP_ZOOM + 1, 0, 0)).toBe(true);
+    frames(2500);
+    expect([full.view.zoom, full.view.du, a.tactical.marks.zoom]).toEqual([zoom, 1 / (1 << zoom), zoom]);
+    expect(green(full, 124, 112)).toBe(true);
+    expect(green(full, 124, 200)).toBe(false);
+    const pin = f.find(KEY_MAP_PIN + 16)!;
+    expect(full.view.u0 + ((pin.x + 4 - image.x) / image.w) * full.view.du).toBeCloseTo(hud.lon / 100, 9);
+  }
+  // An arrow moves it a quarter of its window, and a click puts the place clicked at its middle.
+  const u0 = full.view.u0;
+  expect(chart.key("ArrowLeft", true, true)).toBe(true);
+  frames(50);
+  expect(full.view.u0).toBeCloseTo(u0 - full.view.du / 4, 3);
+  mapPointer(hud, 0, KEY_MAP_IMAGE, image.x + image.w / 4, image.y + image.h / 4);
+  frames(50);
+  expect(full.view.u0).toBeCloseTo(u0 - full.view.du / 2, 3);
+  expect(chart.key("ArrowLeft", true, false)).toBe(false);
+  // With the screen shut the server is told the minimap's zoom again.
+  map = false;
+  frames(3000);
+  expect(a.tactical.marks.zoom).toBe(0);
+});
+
+test("a whole client draws its minimap at the size of its window, and the map's keys and buttons reach it", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
+  const run = (ms: number, height = 720): void => h.run(ms, (now) => void app.frame(now, (height * 16) / 9, height));
+  run(1000);
+  const chart = app.hud.chart!;
+  const images = app.ui.frame.images;
+  // The proving ground is 512 m, so its minimap starts on the whole map.
+  expect([chart.miniZoom, images[IMAGE_MINIMAP]!.width]).toEqual([0, 160]);
+  run(100, 1080);
+  expect(images[IMAGE_MINIMAP]!.width).toBe(240);
+  expect(app.key("Equal", true)).toBe(true);
+  run(200);
+  expect(chart.mini.view.zoom).toBe(1);
+  // One tile of the next zoom is made a frame, and all four the window touches are there soon after.
+  const made = chart.tiles.version;
+  run(1000 / 60);
+  expect(chart.tiles.version - made).toBeLessThanOrEqual(1);
+  // With the map open the same keys are the map's.
+  app.key("KeyM", true);
+  run(100);
+  expect(app.ui.frame.find(KEY_MAP_IMAGE)!.interactive).toBe(true);
+  expect(images[IMAGE_MAP]!.width).toBe(Math.round(app.ui.frame.find(KEY_MAP_IMAGE)!.w));
+  app.key("Equal", true);
+  run(100);
+  expect([chart.fullZoom, chart.miniZoom]).toEqual([1, 1]);
+  app.pointer(0, KEY_MAP_ZOOM, 0, 0, 0);
+  run(100);
+  expect(chart.full.view.zoom).toBe(0);
+  // Walking is not the map's business: the arrows are not taken once it is shut.
+  app.key("Escape", true);
+  run(100);
+  expect(app.key("ArrowLeft", true)).toBe(false);
 });

@@ -34,6 +34,17 @@ export function levelSide(level: number): number {
   return SIDE >> level;
 }
 
+/**
+ * The level whose cells suit a map window `metres` across: the size nearest a 256th of it, which is a pixel of a minimap
+ * and four of a map screen. On an 8 km map its four zooms take the four levels, and a map under 1.5 km uses only the finest.
+ */
+export function levelFor(metres: number): number {
+  let level = 0;
+  // Between one size and the next, the nearer is decided at 1.41 times the smaller.
+  while (level < TACTICAL_LEVELS - 1 && (TACTICAL_CELL << level) * 1.41 < metres / 256) level++;
+  return level;
+}
+
 export class Summary {
   /** Counts the bakes that changed it. 0 is never baked. */
   version = 0;

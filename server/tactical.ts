@@ -9,7 +9,7 @@ import { CMD_MAP_ZOOM, RESULT_INVALID, RESULT_OK, S_MARKS, S_TACTICAL } from "..
 import { CH_UNRELIABLE, type Connection } from "../shared/net/transport.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import type { MapExtent } from "../shared/world/coords.ts";
-import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, TACTICAL_LEVELS, bakeChunk, onlyTeam, writeCells, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
+import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, writeCells, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -247,7 +247,8 @@ export class Tactical {
   private sendCells(c: Client, h: Held): void {
     const dims = this.world.dims;
     const team = this.records.byPid.get(c.pid)?.team ?? 0;
-    const level = TACTICAL_LEVELS - 1 - h.zoom;
+    // Cells of the size that suits the window of the zoom it shows.
+    const level = levelFor(Math.max(this.world.hf.sizeX, this.world.hf.sizeZ) / (1 << h.zoom));
     let budget = CELL_BYTES;
     const R = this.opts.tacticalRadius;
     if (R > 0) {
