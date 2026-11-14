@@ -20,7 +20,7 @@ function worst(want: Uint8Array, got: Uint8Array, channels: number): number {
 }
 
 test("each BC7 mode decodes random blocks to the pixels a GPU shows", () => {
-  // `bun tools/pack/bc-gpu.ts` shows these same blocks to a GPU and prints the hash of what it drew. These are those hashes.
+  // `bun run probe -- --textured` shows these same blocks to a GPU, which must draw what our decoder gives. These are its hashes.
   const seen = [0, 1, 2, 3, 4, 5, 6, 7].map((mode) => hashBytes(decodeBc7(randomBc7(mode, 256, 100 + mode), 64, 64)));
   expect(seen).toEqual([1166824849, 3658869983, 427021789, 3561433207, 2867115338, 3283837805, 1908848117, 1744070471]);
   // A first byte of zero is no mode at all, and decodes to nothing.

@@ -9,11 +9,10 @@ from here.
 | `bench.ts` | `bun run bench` | Measurements at the sizing target against budgets |
 | `snap.ts`, `snap/` | `bun run snap` | Software rasterizer: a frame packet to a PNG |
 | `probe.ts` | `bun run probe` | The single browser launch: Chrome headless, self-check report |
+| `probe-textured.ts` | `bun run probe -- --textured` | For each texture variant the GPU takes: test cards of every BC7 mode, BC5 and ASTC block kind through the shell's own upload path, read back against our decoders, and a thatch house drawn by the shell against the software rasterizer, with its pictures saved to `planning/reference/round7-pictures/` |
 | `dev.ts` | `bun run dev` | Server plus client rebuild on change |
 | `build-client.ts` | `bun run build` | Bundle the shell, copy the page, write the core pack |
 | `pack/` | `bun tools/pack/build.ts` | glTF import, pack writer, graybox meshes |
-| `pack/bc-gpu.ts` | `bun tools/pack/bc-gpu.ts [--alpha] [--software] [png ...]` | Holds our BC5 and BC7 decoders against the GPU: Chrome headless draws random blocks of every BC7 mode and the encoders' output, and BC7 must match bit for bit |
-| `pack/astc-gpu.ts` | `bun tools/pack/astc-gpu.ts` | Proves our ASTC decoder against the GPU: Chrome headless draws tens of thousands of blocks and every pixel must match |
 | `simhash.ts` | `bun tools/simhash.ts`, `node tools/simhash.ts` | Four hashes of fixed scenarios (movement, human pose, snapping, creature pose), for comparing engines |
 | `art.ts`, `art/`, `blender/` | `bun run art -- core:raptor`, with `--all`, `--check`, `--sheet`, `--repack` | Builds an asset folder under `assets/source` into its pack, measures it and draws its review sheet ([layout](../assets/source/README.md)). Building needs Blender; the check, the sheet and the game do not |
 | `fit-zones.ts` | `bun tools/fit-zones.ts` | Fits the hit capsules to the modelled bodies and measures the match |
