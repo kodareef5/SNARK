@@ -185,6 +185,27 @@ same scenes run by hand against the round 5 commit.
 Downstream went up because the byte budget of a snapshot is now spent. See
 below.
 
+### Round 6, stage 0: the save
+
+Recorded 2026-11-14 on the commit that closes stage 0, on the same machine,
+three runs. The stage changed how the save is opened, closed, checkpointed,
+backed up and written under fire. 91 budgets are held, 2 of them new.
+
+| Measurement | Before | After | Budget |
+| --- | --- | --- | --- |
+| Commit, 99th percentile | 0.9 to 2.1 ms | 0.7 to 1.0 ms | 10 ms |
+| Siege: times the 20,000-piece chunk is written in ten seconds | 50 | 10 | 11 |
+| Siege: commit, median | not recorded | 0.10 to 0.11 ms | 4 ms |
+| Siege: commit that writes the chunk | 5.2 ms | 4.9 to 5.1 ms | 10 ms |
+| Open the sizing-target save and load its structures | 103 to 108 ms | 260 to 283 ms | 3,000 ms |
+| A checkpoint (inline here; on a server it is the keeper thread's) | 4 to 5 ms | 4.5 to 4.8 ms | 10 ms |
+| Worst tick while a 1,500-piece house fell | 1.6 to 1.8 ms | 1.6 to 4.3 ms | 3 ms |
+
+Opening costs 0.16 s more because the file is checked before it is trusted.
+The collapse row missed its budget in one run of three, at 4.3 ms, and was 1.6
+to 1.7 ms in the other two. Nothing in the stage touches collapse, so I take it
+for a collector pause, but it had not happened in nine earlier runs.
+
 ## What the results say
 
 **Settings cost nothing per tick.** A rule is read where it is used, as one
@@ -283,7 +304,7 @@ the third column are extrapolated from the measurements, not measured.
 | --- | --- | --- | --- |
 | One thread runs the tick | 2 ms of 33 at the sizing target, 3.6 ms in combat | About five times the target's awake creatures, or about 400 players in one fight | Snapshot encoding in workers. The entity store is typed arrays, which workers can share without copying |
 | Snapshot compare and write | 0.6 ms for 100 clients with 500 entities each | Grows with clients times entities in view | The same, or a per-entity "changed since" stamp so unchanged entities are skipped |
-| A damaged chunk is saved whole | 570 KB a commit for a 20,000-piece chunk under fire, 6 to 8 ms at the 99th percentile | Several such chunks under fire at once | Save health apart from shape, or at most once a second |
+| A damaged chunk is saved whole | 570 KB once a second for a 20,000-piece chunk under fire, 5 ms in the commit that writes it | Many such chunks under fire at once | Save health apart from shape, in rows of its own |
 | Garbage collection pauses | A worst tick of 7 to 20 ms once in some hundreds, in a 370 MB process | A heap several times larger, or a tick budget shorter than 33 ms | Less garbage per tick (the sim allocates none; message buffers and SQLite rows do), or the simulation in a worker apart from the sockets |
 | Draw calls on the client | 40 to 80 a frame | One per mesh per visible chunk, so it grows with the variety of pieces and creatures: about 1,500 with 50 kinds in 30 chunks | Merged stand-ins for far chunks, then a WebGPU backend. The renderer backend is `client/shell/gl.ts`, under 400 lines, fed by a packet the core builds |
 | Textures and download size | None: every mesh is flat-coloured from a 256-colour palette | The first textured art | Compressed textures (KTX2), arrays or atlases so a chunk stays one draw per mesh, and streaming by distance |

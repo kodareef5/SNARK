@@ -159,8 +159,8 @@ export class StructureStore {
   readonly dims: MapDims;
   readonly chunks: (ChunkTable | null)[];
   count = 0;
-  /** Called after any change to a chunk's table. */
-  onChunkChanged: ((chunk: number) => void) | null = null;
+  /** Called after any change to a chunk's table. `healthOnly` is true when nothing but a piece's health changed. */
+  onChunkChanged: ((chunk: number, healthOnly: boolean) => void) | null = null;
 
   /** Per content index, the half extents of the box that bounds the whole structure. */
   private readonly halfX: Float32Array;
@@ -256,7 +256,7 @@ export class StructureStore {
     t.version++;
     this.write(chunk, t, slot, kind, x, y, z, yaw & 0xffff, owner, hp, t.version);
     t.touch(slot);
-    this.onChunkChanged?.(chunk);
+    this.onChunkChanged?.(chunk, false);
     return chunk * 65536 + slot;
   }
 
@@ -285,7 +285,7 @@ export class StructureStore {
     this.erase(chunk, t, slot, t.version);
     t.touch(slot);
     t.free.push(slot);
-    this.onChunkChanged?.(chunk);
+    this.onChunkChanged?.(chunk, false);
     return true;
   }
 
@@ -319,7 +319,7 @@ export class StructureStore {
         }
         if (count > 0) {
           t.log({ version: t.version, cause, x, y, z, stamp, runs, count });
-          this.onChunkChanged?.(chunk);
+          this.onChunkChanged?.(chunk, false);
           removed += count;
         }
       }
@@ -339,7 +339,7 @@ export class StructureStore {
     this.erase(chunk, t, slot, t.version);
     this.write(chunk, t, slot, kind, x, y, z, yaw, owner, hp, t.version);
     t.touch(slot);
-    this.onChunkChanged?.(chunk);
+    this.onChunkChanged?.(chunk, false);
     return true;
   }
 
@@ -353,7 +353,7 @@ export class StructureStore {
     t.hp[slot] = hp;
     t.mod[slot] = t.version;
     t.touch(slot);
-    this.onChunkChanged?.(chunk);
+    this.onChunkChanged?.(chunk, true);
     return true;
   }
 
@@ -374,7 +374,7 @@ export class StructureStore {
     t.hp[slot] = left;
     t.mod[slot] = t.version;
     t.touch(slot);
-    this.onChunkChanged?.(chunk);
+    this.onChunkChanged?.(chunk, true);
     return left;
   }
 
@@ -395,7 +395,7 @@ export class StructureStore {
         t.touch(slot);
         n++;
       }
-      if (any) this.onChunkChanged?.(chunk);
+      if (any) this.onChunkChanged?.(chunk, false);
     }
     return n;
   }
@@ -427,7 +427,7 @@ export class StructureStore {
     t.recentCount = 0;
     t.recentFloor = version;
     t.freeStale = true;
-    this.onChunkChanged?.(chunk);
+    this.onChunkChanged?.(chunk, false);
   }
 
   /** Forgets the chunk without logging removals. Used when a chunk leaves a client's interest, and by NodeField. */
@@ -436,7 +436,7 @@ export class StructureStore {
     if (!t) return;
     for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0) this.erase(chunk, t, s, 0);
     this.chunks[chunk] = null;
-    this.onChunkChanged?.(chunk);
+    this.onChunkChanged?.(chunk, false);
   }
 
   /**

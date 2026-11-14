@@ -24,6 +24,11 @@ export interface PersistenceOptions {
   journalKeep: number;
 }
 
+/**
+ * One second. A chunk in which only health changed is written this far apart at most, because a chunk is saved whole and a
+ * base under fire changes health every tick. A crash can give back a second of damage. It never gives back a piece.
+ */
+const HEALTH_TICKS = TICK_RATE;
 /** Commits between journal prunings. */
 const PRUNE_EVERY = 512;
 /** The longest wait between two tries of a failing commit, in ticks. */
@@ -89,6 +94,10 @@ export class Persistence {
   private readonly records: Records;
   private readonly opts: PersistenceOptions;
   private readonly dirtyChunks = new Set<number>();
+  /** Chunks in which only health has changed since they were last written, and the tick each chunk was last written. */
+  private readonly hurtChunks = new Set<number>();
+  private readonly chunkAt = new Map<number, number>();
+  private readonly hurtWritten: number[] = [];
   private readonly sidecars: { key: string; of: Sidecar; every: number; at: number }[] = [];
   private readonly written: number[] = [];
   private readonly pending: PendingJournal[] = [];
@@ -106,7 +115,7 @@ export class Persistence {
     this.opts = { positionTicks: 1800, journalKeep: 100_000, ...opts };
     this.keeper = this.keep(store);
     this.keeper.onBackup = (r) => this.onBackup?.(r);
-    world.structs.onChunkChanged = (chunk) => this.dirtyChunks.add(chunk);
+    world.structs.onChunkChanged = (chunk, healthOnly) => (healthOnly ? this.hurtChunks : this.dirtyChunks).add(chunk);
   }
 
   /** Call once, before the first tick. */
@@ -259,6 +268,7 @@ export class Persistence {
     const world = this.world;
     this.store = next;
     world.structs.chunks.forEach((t, chunk) => t && this.dirtyChunks.add(chunk));
+    this.chunkAt.clear();
     for (const pid of this.records.byPid.keys()) this.records.dirty.add(pid);
     for (const b of this.blobs) b.all();
     for (const s of this.sidecars) s.of.dirty = true;
@@ -296,6 +306,14 @@ export class Persistence {
         for (const chunk of this.dirtyChunks) {
           const t = world.structs.chunks[chunk];
           if (t) store.saveChunk(chunk, t);
+        }
+        this.hurtWritten.length = 0;
+        for (const chunk of this.hurtChunks) {
+          if (this.dirtyChunks.has(chunk)) continue;
+          if (!last && world.tick - (this.chunkAt.get(chunk) ?? -HEALTH_TICKS) < HEALTH_TICKS) continue;
+          const t = world.structs.chunks[chunk];
+          if (t) store.saveChunk(chunk, t);
+          this.hurtWritten.push(chunk);
         }
         for (const pid of records.dirty) {
           const rec = records.byPid.get(pid);
@@ -344,6 +362,14 @@ export class Persistence {
     }
 
     // The dirty sets are cleared and the callbacks run only after the transaction succeeds.
+    for (const chunk of this.dirtyChunks) {
+      this.hurtChunks.delete(chunk);
+      this.chunkAt.set(chunk, world.tick);
+    }
+    for (const chunk of this.hurtWritten) {
+      this.hurtChunks.delete(chunk);
+      this.chunkAt.set(chunk, world.tick);
+    }
     this.dirtyChunks.clear();
     records.dirty.clear();
     records.deleted.length = 0;

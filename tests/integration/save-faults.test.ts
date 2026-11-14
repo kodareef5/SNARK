@@ -195,3 +195,50 @@ test("nothing writes to the save outside a commit", () => {
   walk(root);
   expect(outside).toEqual([]);
 });
+
+test("a base under fire is written once a second, and a piece that falls is in the very next commit", () => {
+  const { db, h, p, wall } = world("siege");
+  const structs = h.world.structs;
+  const a = structs.add(wall, 250.25, 1.5, 230, 4096, 9, 1e6);
+  const b = structs.add(wall, 252.25, 1.5, 230, 4096, 9, 500);
+  const chunk = Math.floor(a / 65536);
+  h.run(500);
+  const store = p.store;
+  const real = store.saveChunk.bind(store);
+  let writes = 0;
+  store.saveChunk = (c, t) => {
+    if (c === chunk) writes++;
+    real(c, t);
+  };
+  // Thirty ticks of damage: five commits, of which the first writes the chunk and at most one more does.
+  for (let n = 0; n < 30; n++) {
+    structs.damage(a, 1, h.world.tick);
+    h.run(1000 / 30);
+  }
+  expect(writes).toBeGreaterThanOrEqual(1);
+  expect(writes).toBeLessThanOrEqual(2);
+  // A piece destroyed is a change of shape, written by the next commit however lately the chunk was.
+  const before = writes;
+  structs.damage(b, 1e9, h.world.tick);
+  h.run(250);
+  expect(writes).toBe(before + 1);
+  // A server that dies now has lost at most a second of the damage, and no piece comes back.
+  structs.damage(a, 7, h.world.tick);
+  h.run(100);
+  const hp = structs.chunks[chunk]!.hp[a & 0xffff]!;
+  p.store.close();
+  const h2 = new Harness({}, 1, 60, { dbPath: db });
+  const t = h2.world.structs.chunks[chunk]!;
+  expect(t.kind[b & 0xffff]).toBe(0);
+  expect(t.hp[a & 0xffff]).toBeGreaterThanOrEqual(hp);
+  expect(t.hp[a & 0xffff]).toBeLessThanOrEqual(hp + 7 + 30);
+  // A server that stops writes what a commit had put off.
+  h2.world.structs.damage(a, 3, h2.world.tick);
+  h2.run(250);
+  h2.world.structs.damage(a, 3, h2.world.tick);
+  const last = h2.world.structs.chunks[chunk]!.hp[a & 0xffff]!;
+  h2.host.shutdown();
+  const h3 = new Harness({}, 1, 60, { dbPath: db });
+  expect(h3.world.structs.chunks[chunk]!.hp[a & 0xffff]).toBe(last);
+  h3.host.shutdown();
+});

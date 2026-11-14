@@ -717,6 +717,14 @@ let siegeChunk = -1;
   commitTimes.length = 0;
   const bytes = host.game.stats.chunkBytes;
   const fire: number[] = [];
+  // Counts the times the besieged chunk is written, and the bytes.
+  const store = host.persistence!.store;
+  const saveChunk = store.saveChunk.bind(store);
+  let chunkWrites = 0;
+  store.saveChunk = (chunk, t) => {
+    if (chunk === siegeChunk) chunkWrites++;
+    saveChunk(chunk, t);
+  };
   for (let i = 0; i < 300; i++) {
     for (let k = 0; k < 50; k++) world.structs.damage(refs[pieces.int(refs.length)]!, 1);
     run(1, fire);
@@ -728,7 +736,11 @@ let siegeChunk = -1;
   record("tick time under it, 99th percentile", percentile(fire, 0.99), "ms", 16);
   // About 17 bytes a damaged piece. 1,500 pieces a second is far more than a raid does, and it is still under a snapshot's share.
   record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 30);
-  record("commit time under it, 99th percentile (the chunk is saved whole each commit)", percentile(commitTimes, 0.99), "ms", 10);
+  store.saveChunk = saveChunk;
+  // The chunk is saved whole, 570 KB of it, but a chunk in which only health changes is written a second apart at most.
+  record("times its chunk was written in those ten seconds", chunkWrites, "", 11);
+  record("commit time under it, median", percentile(commitTimes, 0.5), "ms", 4);
+  record("commit time under it, 99th percentile (a commit that writes the chunk)", percentile(commitTimes, 0.99), "ms", 10);
 }
 
 // ---------------------------------------------------------------- breeding
