@@ -1,5 +1,0 @@
-Created all four 2048 maps, sources, rebuild scripts, and checks in this folder. All validations pass, including pixel-identical rebuilding.
-
-1.5 m tile · 40×40 twill · 8 mm height range.
-
-[Relit preview](checks/relighting.jpg) · [Report](REPORT.md)

@@ -1,5 +1,5 @@
-Created all four 2048×2048 maps, retained sources, rebuild scripts, and requested checks.
+Delivered all four 2048² maps, full-size sources, rebuild/check scripts, and report.
 
-Mean colour is **(190, 166, 112)**; height encoding is **32 mm**. All 15 checks pass, and rebuilds produce identical PNGs.
+Checks pass: zero alpha outside the guides, 16 mm height scale, OpenGL normals, and byte-identical rebuilds.
 
-[Layer preview](/home/user/dev/SNARK/.claude/worktrees/agent-a5227c12dec939d96/assets/source/core/structures/thatch/tex/thatch/checks/layers.jpg) · [Report and limitations](/home/user/dev/SNARK/.claude/worktrees/agent-a5227c12dec939d96/assets/source/core/structures/thatch/tex/thatch/REPORT.md)
+[Report](REPORT.md) · [Layer sheet](checks/layers.jpg) · [Relit preview](checks/relit_relief.jpg) · [Three walls](checks/three_walls.jpg)

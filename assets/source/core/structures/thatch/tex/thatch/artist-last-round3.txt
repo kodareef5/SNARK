@@ -1,0 +1,5 @@
+Rebuilt all four maps on the new guides, with moved ties, vertical bundle axes, and ragged skirts. Earlier rounds’ sources are preserved.
+
+All checks pass, including all 26 bundle boundaries and byte-identical rebuilding.
+
+[Updated report](REPORT.md) · [Bundle alignment](checks/bundle_alignment.png) · [Relit preview](checks/relit_relief.jpg)

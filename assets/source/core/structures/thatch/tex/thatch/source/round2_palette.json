@@ -1,0 +1,17 @@
+{
+  "revision": 2,
+  "body_rgb": [190, 141, 73],
+  "tip_rgb": [231, 215, 175],
+  "body_bleach_start": 0.58,
+  "body_bleach_span": 0.34,
+  "bundle_tone_gain": 1.95,
+  "stem_rgb": [193, 145, 77],
+  "stem_tip_rgb": [232, 216, 176],
+  "stem_pigment_blend": 0.66,
+  "dark_reed_probability": 0.10,
+  "waxy_reed_probability": 0.18,
+  "tie_browning_rgb": [17, 15, 10],
+  "tie_compression_mm": 0.85,
+  "cord_impression_mm": 0.60,
+  "note": "Appearance-only revision. Original RNG stream, paths, guide coordinates and alpha operations are retained. Independent appearance seed = geometry seed + 24000 + tier * 1000."
+}

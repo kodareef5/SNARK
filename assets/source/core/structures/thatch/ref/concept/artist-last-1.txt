@@ -1,0 +1,9 @@
+Completed **20 studies**, keeping six images at native **1536 × 1024**.
+
+- Exteriors: [A](direction_a.png), [B](direction_b.png), [C](direction_c.png), [D](direction_d.png)
+- Interiors: [A](direction_a_inside.png), [B](direction_b_inside.png)
+- [Construction notes and recommendation](DIRECTIONS.md)
+- [Exact prompts](prompts-1.md)
+- [Fourteen archived studies and critiques](round1/SELECTION.md)
+
+**A, Long Skirts, is my recommendation:** its simple construction and strong grass silhouette read clearly at gameplay distance. B is the alternate. All imagery was created with the built-in image tool from your brief alone.

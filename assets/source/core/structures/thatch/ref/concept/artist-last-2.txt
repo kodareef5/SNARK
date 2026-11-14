@@ -1,0 +1,7 @@
+Completed all 15 requested PNGs using built-in imagegen, preserving native resolution.
+
+- [DESIGN.md](DESIGN.md): construction dimensions, assembly details, sRGB palette and picture index.
+- [prompts-2.md](prompts-2.md): all 22 exact prompts and references.
+- [round2/](round2/): seven rejected passes with selection notes.
+
+Verified every deliverable and reference link. No external imagery used.

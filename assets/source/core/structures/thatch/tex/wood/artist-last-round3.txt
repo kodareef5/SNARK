@@ -1,0 +1,5 @@
+Rebuilt with darker warm bark, honey peeled wood, and honey cut ends with dark rims. Bark bands now average **(113.9, 80.0, 52.7)** and **(124.6, 88.3, 56.6)**.
+
+All **99 checks pass**, including both wraps and an exact rebuild. Cord, layout, height, normal, and ORM remain unchanged.
+
+Updated [cylinder comparison](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/wood/checks/cylinders_before_after.jpg) and [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/wood/REPORT.md). No external reference imagery was used.

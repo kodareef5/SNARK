@@ -1,0 +1,15 @@
+Built-in image_gen; no CLI fallback. Source A prompt:
+Use case: photorealistic-natural
+Asset type: raw source material for a physically based game texture, square flat albedo of compressed long dry reed roof mattress.
+Primary request: an absolutely orthographic overhead close view of densely packed long straw reeds, every reed running vertically from top to bottom, combed flat in one direction. Covers approximately 1.5 metres square of hand packed flat roof surface. Hundreds of narrow stems roughly 2–6 pixels wide, various flattened widths, fine longitudinal fibres, occasional papery sheath and tiny natural nodes. Subtle irregular waviness and some small gaps among reeds, but closely compressed and calm overall.
+Composition: fill entire square to every edge with continuous reeds, long stems extending outside top and bottom, no frame and no objects. Flat plane without perspective.
+Lighting: completely flat diffuse cross-polarized albedo-like illumination, no directional highlights, no shadows, no light gradient, no ambient vignette.
+Palette: pale weathered golden straw, muted wheat beige, sun bleached cream fibres, scattered grey taupe weathered stems. No green and no orange; subtle realistic dry natural pigment variation.
+Constraints: NO horizontal bindings or ropes, NO horizontal courses or rows, no cut fringe, no wood poles, no leaves, no debris, no holes, no big marks, no diagonal stalks. This is flat compressed roofing, not shaggy wall thatch, not woven wicker, not bamboo planks. Photographic microdetail with fine linear reed surfaces, no painting or illustration. Material sample only. No text. Generate maximum detail square source.
+
+Source B prompt:
+Use case: photorealistic-natural
+Asset type: raw photographic albedo material source for a flat compressed reed thatch roof.
+Create a square orthographic overhead material swatch of densely packed dry long reeds, combed vertically up/down the image. Approximately 1.5 metres wide. Hundreds of narrow individual slightly flattened stalks with small natural variations of width, sparse nodes, fine longitudinal fibres and paper-thin split edges. Straw is pressed into a level mattress. The stems are mostly straight but wander subtly. Few small dark interstices. Continuous reeds extend out of top and bottom. Uniform surface filling the full image, no border.
+Colour: sun-bleached muted wheat beige, pale golden straw, light tan and occasional silver-grey weathering, understated realistic pigment variation. NO orange, NO green. Neutral very flat diffuse albedo lighting, cross-polarized look without specular highlights, directional shadows or gradients.
+NO horizontal cords or bindings, no course lines, no cut edges or fringe, no poles or timber, no weaving, no loose debris, no knots or distinctive motif. No perspective. No environment. No text. Extremely fine photographic material detail. This will be quilted with another sample so maintain even colour and structure across the entire frame.

@@ -1,0 +1,5 @@
+Updated all four maps: band 4 is two-ply grass cord, and bands 1 and 3 have warmer bark with preserved grey flecks. Other accepted regions remain pixel-identical.
+
+Both scripts and the report are updated. Original sources are preserved; the new built-in imagegen source and prompt sit alongside them. **All 77 checks pass**, including exact rebuild verification.
+
+[Report](REPORT.md) · [6 cm lashing on a 14 cm pole](checks/cord_cylinders.jpg)

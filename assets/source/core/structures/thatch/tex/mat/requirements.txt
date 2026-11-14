@@ -1,4 +1,0 @@
-# Versions used for the supplied deterministic material build.
-numpy==2.0.2
-scipy==1.13.1
-Pillow==11.3.0

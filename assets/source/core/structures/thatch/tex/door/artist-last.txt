@@ -1,0 +1,5 @@
+Completed all four 2048² textures, full-size sources, build/check scripts, previews, and report.
+
+All checks pass, including guide containment and exact height-derived OpenGL normals. Height encoding: **0–12 mm**, with **4.57 mm visible relief**.
+
+[Report](REPORT.md) · [Layer preview](checks/layers.jpg) · [Relighting](checks/relighting.jpg)

@@ -1,0 +1,6 @@
+Delivered both complete 2048×2048 material sets, including sources, scripts, inspection images, measurements, and reports.
+
+- [Floor report](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/floor/REPORT.md): **8 mm** height range.
+- [Earth report](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/earth/REPORT.md): **10 mm** height range.
+
+All checks pass; all eight maps rebuild byte-identically. Built-in imagegen sources and exact prompts are preserved in each `source/` folder.

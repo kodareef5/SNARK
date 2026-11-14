@@ -1,0 +1,17 @@
+{
+  "preserved_inputs": {
+    "source/generation.json": "b6953e370c9a9fcedf9c42773ecf70f9c17c18e208ddf0a1861c0f0747d1f8e6",
+    "source/reeds_inner_generated.png": "a998d91fc204225c3fff83beba03bf011a590fcabb63bd6df5f83da202cff8b2",
+    "source/reeds_outer_generated.png": "660c4008cb20b68e39aa7ad127c9a6fc443053d52c2d14b7aa0c33ff70a6db02",
+    "source/session.json": "f857356867e383856c9081769ee0a81005ebe35bfc09eed037fdaa1d80de2051",
+    "guide/LAYOUT.json": "4f5dcd260c8c2d8394c90ed119a0e2e8cf9a9876648141ab842a6b675ab1fde2",
+    "guide/layout.png": "39e90ef8bf1a1f9a54684b9ad8aac04707c2e1ff43c847345084ed9eb56b3c27"
+  },
+  "builder_sha256": "68c73ecb6bd92a89ab7b67c61eb76164df2ed29c88d5257dd39ed82f268e434e",
+  "maps_sha256": {
+    "door_base.png": "597f9776781f9c5cbc10efbfe279ae253d370cc72412528253deb01372d093b0",
+    "door_height.png": "1a23da27047e03fa72c33557147a564da7b093e79a4ae0e31549f11011ae7cfe",
+    "door_normal.png": "ad87322c3a481bfec66c0926962836f8360d27fe2724eecadfd3593c5be838a4",
+    "door_orm.png": "25b0303d59743add6db70cd47ad1a9e1d0c677e53b11570a7a1c706251597bda"
+  }
+}

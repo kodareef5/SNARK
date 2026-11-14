@@ -1,0 +1,26 @@
+{
+ "covers": "3 m by 3 m, row 0 at the top",
+ "outside_face": "u = (x + 0.75) / 3, v = (y + 0.3) / 3: x across the door from -0.7 (hinge side) to 0.7, y up from its foot, so the outside face is drawn on the left half as seen from outside",
+ "inside_face": "u = (0.7 - x + 1.55) / 3, v as above: the inside face is drawn on the right half as seen from inside",
+ "frame_on_outside": "stiles at x = +-0.655, rails at y = 0.11, 1.18 and 2.203, brace from (-0.61, 0.16) to (0.60, 2.14), all 0.056 m thick poles lying on the reeds",
+ "reeds": {
+  "bundles": 14,
+  "edges_x": [
+   -0.599,
+   -0.4777,
+   -0.3861,
+   -0.2754,
+   -0.1652,
+   -0.0399,
+   0.0572,
+   0.1497,
+   0.2338,
+   0.3275,
+   0.4491,
+   0.5173,
+   0.6016,
+   0.7181
+  ],
+  "top": 2.2825
+ }
+}

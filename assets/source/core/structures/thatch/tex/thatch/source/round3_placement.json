@@ -1,0 +1,9 @@
+{
+  "revision": 3,
+  "tone_overrides": {
+    "lower": {
+      "3": 7.0
+    }
+  },
+  "note": "Keep round 2 source/palette sampling. Use a fresher gold for lower bundle 4 so its edge remains legible between older neighbouring sheaves. Tone +7 is the existing palette range endpoint. Bundle axes have zero lean; guides provide edges/ties/envelopes."
+}

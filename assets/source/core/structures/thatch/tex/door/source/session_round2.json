@@ -1,0 +1,13 @@
+{
+  "started_at_utc": "2026-11-14T21:07:16.933716+00:00",
+  "started_unix": 1794690436.933909,
+  "approach": "Revise deterministic native material builder; reuse both untouched round 1 generated sources; no new images or external references.",
+  "finished_at_utc": "2026-11-14T21:17:25.245848+00:00",
+  "elapsed_seconds_since_snapshot": 608.31,
+  "timing_scope": "Round 1 archive through final report; initial brief and reference inspection preceded this timer.",
+  "final_build_seconds": 11.272344167,
+  "two_repeat_builds_seconds": 21.613543167,
+  "check_status": "PASS",
+  "all_four_maps_byte_identical_on_repeat": true,
+  "round1_recovery_check": "PASS"
+}

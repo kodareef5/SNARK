@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "asset": "source/generated_cord.png",
+  "prompt": "Use case: photorealistic-natural. Asset type: full-frame material source for a game trim sheet, flat albedo photograph of dry hand-twisted grass twine. Orthographic macro view straight down at a dense close-packed array of parallel lengths of cord running VERTICALLY from top to bottom, side by side touching, filling entire square. Each cord has exactly TWO twisted plies, with clear diagonal ridges and a seam between plies, fibrous fine longitudinal grass strands. About 28 individual cords across the image, slight natural differences in thickness, twist pitch, and straw tan to light honey colour; a few frayed fine fibres and very few short loose ends. Soft completely even diffuse lighting, no directional highlights or cast shadows, little darker natural pigment in the ply grooves. No wooden background showing, no perspective, no poles or objects, no coils or horizontal crossings, no knots, no braiding, no text or border. Material appearance only; final turn spacing and mathematical seamlessness will be controlled separately by script."
+}

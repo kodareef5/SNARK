@@ -1,15 +1,15 @@
-# Thatch, round two: the same material, made to read from across a yard
+# Thatch wall, round 2: the colour and the life of it
 
-You made this folder's thatch material from `BRIEF.md`; read it and your `REPORT.md` again first. It is good: the bundles, ties, stagger and stems are right at arm's length, the layers agree and it tiles. Now it has been put on the game's wall pieces and rendered, and the renders are in `review/` (attached): `round1_house.png` is a small house from about 10 m, `round1_door.png` a doorway from about 3 m.
+Your first round in this folder is accepted in its layout, its skirts and its build, and the skirts' tips are good: on the model they hang as real, ragged reed. Keep all of that exactly: the guides, the bundle edges, the envelope, the alpha, the scripts as the way the set is made.
 
-What the renders show:
+What is wrong is the colour, and with it the life. Put a crop of `thatch_base.png` beside `../../ref/concept/house_hero.png` or `piece_wall.png`. The concept's thatch is warm, sunlit golden reed, glowing where the light catches it, with deep olive-brown between bundles and pale cream tips. Yours is a grey, greenish khaki, the mean about (187, 169, 127), and in a render under a low warm sun the walls read as pale grey-green, almost white, not as straw. Change it:
 
-1. **From 10 m the wall reads as stacked yellow boards, not thatch.** Every bundle is the same tone, so at that distance the courses become flat bands and the bundles vanish. The vertical rhythm of bundles must survive at 5 to 15 m: more tonal variation from bundle to bundle (some paler cream, some deeper gold, a few greyer and older), and darker valleys between bundles, a little in the base colour and more in the occlusion and the height, so each bundle's rounded crown catches light.
-2. **Every course is the same tone,** so eight courses on a wall look stamped. Make the four courses of the tile differ in overall tone, subtly (about plus or minus 8% in lightness, a little warmer or greyer), as if cut from different batches of reed.
-3. **The foot of each course looks like a straight cut.** The geometry gives each course a hard edge, and the painted tips barely soften it. Make the fringe longer and more ragged: tips hanging 5 to 8 cm (70 to 110 pixels) below the course line onto the course below, uneven in length, with gaps between tip clumps through which the darker tied top of the course below shows, and the odd longer stem. The fringe still starts at the same rows; only how far it hangs over the next course grows.
+- **Golden.** The bodies of the bundles a warm straw gold, the mean of the bodies somewhere about (190, 145, 80); the tips bleached toward cream and pale grey-gold, about (225, 205, 160); the reeds deep in a bundle and near the ties darker and browner. Saturated enough to read as straw in sunlight, not orange, not green.
+- **More life.** Bundle to bundle, a clear but natural difference of tone: some fresher and more golden, some older and duller. Reed to reed, the light and dark of round stems, some glossy. The odd darker reed, the odd stray. At the moment each bundle is one even tone of fine lines.
+- **The tie lines.** Where the rods press (the two brown bars in `guide/layout.png`), the reeds are gathered tight: a little darker, compressed, with the cord's twist pressed into them.
 
-Keep everything else exactly: 2048 pixels for 1.5 m, four 512-pixel courses with their tops at rows 0, 512, 1024 and 1536, stems down the picture, whole bundles per course, the stagger, the mean colour near sRGB (190, 166, 112), no slope or step in the height, OpenGL normals from the delivered height, ORM packing, file names, and the scripts and checks that rebuild and test it all. Keep the round-one result as `round1/` (the four maps) so the two can be compared, and add to `checks/` a side-by-side of round one and round two shrunk to the size a 3 m wall has at 10 m (about 200 pixels for 1.5 m) as well as at full size.
+Two things no longer matter, so do not spend time on them: what lies under alpha 0 in the upper tip zone (the lower tier no longer wears those pixels), and the cut top of the wall (it no longer wraps to the bottom of the picture).
 
-Then add a section to `REPORT.md` saying what changed in round two and how you checked it.
+Deliver the same four maps, the checks updated (add a side-by-side of a crop of your base colour, lit by your relief preview, with a crop of `house_hero.png`), and `REPORT.md` updated. Keep round 1's sources beside any new ones.
 
-Do not use or imitate pictures from any existing game, and do not search for or download reference images.
+Do not use or imitate pictures from any existing game, and do not search for or download reference images. The concept pictures in this repository are ours.

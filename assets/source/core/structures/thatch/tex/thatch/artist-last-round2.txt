@@ -1,7 +1,5 @@
-Updated all four maps with stronger bundle contrast, varied course tones and longer, broken fringe. Round one is preserved in `round1/`.
+Updated all four maps: golden bodies **(191, 146, 82)**, cream tips **(225, 204, 160)**, stronger reed variation, and compressed cord impressions at both ties.
 
-All 26 checks pass; rebuilds are byte-for-byte identical. Layout, colour mean and physical scale are preserved.
+Guides and alpha are unchanged. Round 1 is archived. All checks pass, including byte-identical rebuilds.
 
-[10 m comparison](checks/round_comparison_3m_wall_10m.png) · [Full-size comparison](checks/round_comparison_fullsize.png) · [Updated report](REPORT.md)
-
-Comparisons are offline material previews, not new in-engine renders.
+[Concept comparison](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/thatch/checks/concept_comparison.png) · [Updated report](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/thatch/REPORT.md)

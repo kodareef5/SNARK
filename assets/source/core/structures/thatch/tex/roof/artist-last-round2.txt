@@ -1,0 +1,7 @@
+Rebuilt all four maps with richer golden reeds, exposed cut ends, twisted bindings and **24.7 mm relief**. Layout and wraps preserved; **36/36 checks pass**.
+
+- [Concept comparison](checks/concept_comparison.jpg)
+- [1:1 wood comparison](checks/wood_comparison_1to1.png)
+- [Updated report](REPORT.md)
+
+Round 1 sources remain intact. Two new sources used built-in imagegen; [exact prompts](generation_prompts_round2.txt) are saved.

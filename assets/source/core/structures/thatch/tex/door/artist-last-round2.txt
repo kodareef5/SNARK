@@ -1,0 +1,5 @@
+Rebuilt all four maps with **(195, 155, 92)** mean colour, scattered bleached reeds, gentle bottom wear, and **9.30 mm relief**.
+
+Layout, alpha, cord placement, and round 1 sources are preserved. All checks and reproducibility tests pass.
+
+[Concept comparison](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/door/checks/concept_comparison.png) · [Updated REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/door/REPORT.md)

@@ -1,0 +1,24 @@
+# Kept out of the repository; the history has what was committed before.
+
+# What each material's build_material.py or guides.py writes again.
+tex/*/source/*master*.png
+tex/*/source/assembled_*.png
+tex/*/source/build_manifest.json
+tex/roof/material.json
+tex/wood/source/*_mask_round*.png
+tex/wood/source/cord_albedo_round2.png
+tex/thatch/guide/depth.png
+tex/thatch/guide/along.png
+
+# Generated sources of rounds that were sent back, which the final layers are not built from.
+tex/wood/source/generated_hewn.png
+tex/roof/source/generated_reeds_a.png
+tex/roof/source/generated_reeds_b.png
+
+# artist's full transcripts. Its briefs and last messages are kept.
+artist-transcript*.txt
+**/artist-transcript*.txt
+
+# The full paintings of the design directions not chosen; small copies are kept beside DIRECTIONS.md.
+ref/concept/direction_[bcd].png
+ref/concept/direction_b_inside.png

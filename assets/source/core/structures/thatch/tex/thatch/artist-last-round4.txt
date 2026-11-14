@@ -1,0 +1,7 @@
+Round 4 is rebuilt: warmer tips, a longer varied fade, and richer body contrast.
+
+- Bodies average **(191.2, 145.7, 81.8)**; tips **(214.5, 184.2, 131.8)**.
+- Alpha, height, normal and occlusion remain byte-identical.
+- All checks pass; all four PNGs reproduce exactly.
+
+Updated [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/thatch/REPORT.md), including the [skirt/concept comparison](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/thatch/checks/skirt_vs_house_hero.png).

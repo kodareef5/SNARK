@@ -1,0 +1,5 @@
+Rebuilt all four maps with 515 distinct reeds, twisted cord, ragged seams, and varied wear. Layout is preserved; mean colour is approximately **(175, 135, 80)**, with **11.40 mm actual relief** in the 12 mm encoding.
+
+All checks pass. Every seam ratio is below 2; the highest is **0.884**. Rebuilds are byte-identical. Round 1 sources are preserved, and earth is unchanged.
+
+[Interior comparison](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/floor/checks/house_inside_comparison.jpg) · [Updated report](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/floor/REPORT.md)

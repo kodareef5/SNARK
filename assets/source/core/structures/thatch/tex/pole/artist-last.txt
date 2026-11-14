@@ -1,9 +1,0 @@
-Created all four 2048×2048 maps, full-size sources, build/check scripts, diagnostics, and report in this folder.
-
-- Mean RGB: **(132, 112, 88)**
-- Bark coverage: **14.93%**
-- Height range: **12 mm**
-- All 12 checks pass; rebuilding reproduces every pixel.
-- Optional export closes selected pole-girth bands.
-
-[Preview layers](/home/user/dev/SNARK/.claude/worktrees/agent-a5227c12dec939d96/assets/source/core/structures/thatch/tex/pole/checks/layers.jpg) · [Report and rebuild instructions](/home/user/dev/SNARK/.claude/worktrees/agent-a5227c12dec939d96/assets/source/core/structures/thatch/tex/pole/REPORT.md)

@@ -1,0 +1,7 @@
+Created all four 2048×2048 maps, full-size sources, build/check scripts and inspection images in this folder.
+
+**27 checks pass.** Height range: **16 mm**. Normal/height agreement: **0.17° mean error**.
+
+[Roof previews](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/roof/checks/roof_preview.jpg) · [Full report](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/roof/REPORT.md)
+
+The report documents exact course/binding rows, measurements, reproduction steps and remaining in-engine validation.

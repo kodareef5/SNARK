@@ -1,0 +1,5 @@
+Delivered all four 2048² maps, full-size sources, build/check scripts and previews. All 57 checks pass; rebuilding reproduces every pixel exactly.
+
+[Report and exact UV layout](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/wood/REPORT.md) · [Cylinder preview](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/wood/checks/cylinders_close.jpg)
+
+Some repetition remains recognisable in deliberate 3×3 inspection, documented in the report.

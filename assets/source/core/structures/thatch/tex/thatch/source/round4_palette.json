@@ -1,0 +1,21 @@
+{
+  "revision": 4,
+  "body_rgb": [194, 144.5, 76.5],
+  "tip_rgb": [225, 201.5, 154],
+  "body_bleach_start": 0.50,
+  "bleach_end_range": [0.96, 1.08],
+  "bundle_tone_gain": 2.65,
+  "stem_rgb": [197, 148.5, 80.5],
+  "stem_tip_rgb": [225, 201.5, 154],
+  "stem_pigment_blend": 0.66,
+  "dark_reed_probability": 0.10,
+  "waxy_reed_probability": 0.18,
+  "dark_reed_rgb": [75, 60, 32],
+  "dark_fibre_rgb": [26, 23, 17],
+  "golden_tip_probability": 0.17,
+  "paler_tip_probability": 0.08,
+  "tie_browning_rgb": [17, 15, 10],
+  "tie_compression_mm": 0.85,
+  "cord_impression_mm": 0.60,
+  "note": "Colour and following roughness only. Geometry and legacy appearance RNG calls are unchanged. A separate round 4 colour RNG controls fade endpoints and golden/paler stems. No lighting or guide-depth darkening is added to base colour."
+}

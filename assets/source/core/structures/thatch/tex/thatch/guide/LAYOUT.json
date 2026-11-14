@@ -1,0 +1,62 @@
+{
+ "covers": {
+  "x": [
+   -1.5,
+   1.5
+  ],
+  "y": [
+   -0.15,
+   2.85
+  ],
+  "metres_per_pixel": 0.00146484375
+ },
+ "rows": "row 0 is the top of the picture; y is height above the foot of the wall",
+ "zones": {
+  "1": "lower tier body",
+  "2": "lower tier tips (cut out)",
+  "3": "below the lower tips: nothing",
+  "4": "upper tier body",
+  "5": "upper tier skirt tips (cut out)",
+  "6": "cut top of the wall"
+ },
+ "upper_tier": {
+  "tied_at": 2.62,
+  "tips_start": 1.66,
+  "bundles": 14,
+  "bundle_edges_x": [
+   -1.2911,
+   -1.0004,
+   -0.8354,
+   -0.6841,
+   -0.5327,
+   -0.239,
+   -0.0001,
+   0.2882,
+   0.4299,
+   0.5876,
+   0.7662,
+   1.0363,
+   1.2487,
+   1.4196
+  ]
+ },
+ "lower_tier": {
+  "tied_at": 1.2,
+  "tips_start": 0.24,
+  "bundles": 12,
+  "bundle_edges_x": [
+   -1.3362,
+   -1.1121,
+   -0.8981,
+   -0.6925,
+   -0.5147,
+   -0.1992,
+   0.0977,
+   0.3668,
+   0.6928,
+   0.9021,
+   1.1181,
+   1.3571
+  ]
+ }
+}

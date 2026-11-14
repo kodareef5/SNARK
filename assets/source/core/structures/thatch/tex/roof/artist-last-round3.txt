@@ -1,0 +1,12 @@
+Fixed the edge binding to straddle the top/bottom boundary and rebuilt all four layers.
+
+| Layer | seam_x | seam_y |
+|---|---:|---:|
+| Base | 0.752 | 0.880 |
+| Normal | 0.972 | 1.753 |
+| Height | 0.755 | 0.499 |
+| Packed | 1.116 | 0.193 |
+
+All **47 checks pass**, including the exact requested metric. Interior pixels and course/panel-joint fields remain unchanged.
+
+Updated [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-ae11cc829866fa740/assets/source/core/structures/thatch/tex/roof/REPORT.md) with measurements and visual comparisons.
