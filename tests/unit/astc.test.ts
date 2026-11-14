@@ -1,7 +1,7 @@
 // The ASTC encoder and its decoder. The decoder is held to what a GPU showed for the same blocks; the encoder is
 // held to the decoder: every kind of block it makes must come back close to the pixels it was given.
 import { expect, test } from "bun:test";
-import { PINNED, builtBlocks, decodedSum } from "../../tools/pack/astc-gpu.ts";
+import { PINNED, builtBlocks, decodedSum } from "../fixtures/astc.ts";
 import { type AstcKind, astcBlockCount, decodeAstc, decodeAstcBlock, describeAstcBlock, encodeAstc, encodeAstcBlocks, iseBits, iseDecode, iseEncode } from "../../tools/pack/astc.ts";
 
 const LEVELS = [2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96, 128, 160, 192, 256];
@@ -70,8 +70,8 @@ test("the integer sequence encoding gives back every value of every range", () =
 
 test("the decoder reads blocks the way a GPU was seen to", () => {
   // These blocks cover every grid, weight range, number of planes and partitions and endpoint mode of a 4 by 4
-  // block. tools/pack/astc-gpu.ts showed each of them to a GPU, which agreed with our decoder on every pixel, and
-  // printed this sum. After any change to the decoder, run it again.
+  // block. `bun run probe -- --textured` shows each of them to a GPU, which agreed with our decoder on every pixel
+  // when this sum was pinned. After any change to the decoder, run it again.
   expect(decodedSum(builtBlocks(PINNED.seed, PINNED.each))).toBe("7ad59271");
 });
 
