@@ -20,17 +20,26 @@ import { BONE_FLOATS, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNE
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
 /** Distances at which a body drops to its second and third level of detail, metres. */
-export const BODY_LOD_NEAR = 14;
-export const BODY_LOD_FAR = 45;
 const LODS = 3;
 /** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, and a held item. */
 const PARTS = SLOT_COUNT + 4;
 const PLAIN = defaultLook();
 
 /** The meshes on one rig: one sex of a species, or the whole of a species modelled without sexes. */
+interface Creature {
+  rig: Rig;
+  mesh: number;
+  color: number;
+  runAt: number;
+  /** How far each level of its mesh lies from the finest, in metres. */
+  error: readonly number[];
+}
+
 interface BodySet {
   /** Pack mesh per body slot, -1 where there is none. */
   slots: Int32Array;
+  /** How far each level of the body lies from the finest, in metres. */
+  error: readonly number[];
   /** Pack mesh per hair style and per beard style, -1 for none. */
   hair: Int32Array;
   beard: Int32Array;
@@ -65,7 +74,7 @@ export class Characters {
   posed = 0;
   private readonly kinds: (BodyKind | null)[];
   /** Per content index. Set for a species with a non-human skeleton whose rig and mesh are in the pack. */
-  private readonly creatures: ({ rig: Rig; mesh: number; color: number; runAt: number } | null)[];
+  private readonly creatures: (Creature | null)[];
   /** Per content index. */
   private readonly worn: (Worn | null)[];
   private readonly held: (Held | null)[];
@@ -88,9 +97,13 @@ export class Characters {
   private readonly offset = new Float32Array(MAX_SKINNED * 3);
   private readonly counts: Uint32Array;
   private readonly cursor: Uint32Array;
+  private readonly assets: Assets;
+  /** The level each body was last drawn at, by its id. */
+  private readonly last = new Map<number, number>();
 
   constructor(reg: Registry, pack: Pack, assets: Assets) {
     const { table, bind } = assets;
+    this.assets = assets;
     this.anim = new HumanAnim(pack.clips);
     this.counts = new Uint32Array(table.count * LODS);
     this.cursor = new Uint32Array(table.count * LODS);
@@ -113,10 +126,14 @@ export class Characters {
       const first = slots.find((m) => m >= 0);
       if (first === undefined) return null;
       const rig = table.rig[first]!;
+      // A body is drawn at one level, so that its parts meet. Its error at a level is the average of its parts'.
+      const parts = [...slots].filter((m) => m >= 0).map((m) => table.error[m]!);
+      const error = Array.from({ length: Math.min(LODS, ...parts.map((e) => e.length)) }, (_, level) => parts.reduce((sum, e) => sum + e[level]!, 0) / parts.length);
       // Armor is cut for a body, and keyed by the body's name without its pack.
       const body = `${d.mesh}_${sex}`.replace(/^[^:]*:/, "");
       return {
         slots,
+        error,
         hair: Int32Array.from(HAIR_STYLES, (s) => human(bind.own(d.id, "hair", `${sex}/${s.id}`))),
         beard: Int32Array.from(BEARD_STYLES, (s) => human(bind.own(d.id, "beard", `${sex}/${s.id}`))),
         rest: rig < 0 ? HUMAN.rest : Float32Array.from(pack.header.rigs[rig]!.rest),
@@ -129,7 +146,7 @@ export class Characters {
       if (d?.type !== "species" || d.skeleton === undefined || d.skeleton === HUMAN.id) return null;
       const rig = rigs.get(bind.id(d.id, "rig"));
       const mesh = bind.own(d.id, "body");
-      return rig && mesh >= 0 ? { rig, mesh, color: d.color, runAt: reg.runAt[i]! } : null;
+      return rig && mesh >= 0 ? { rig, mesh, color: d.color, runAt: reg.runAt[i]!, error: table.error[mesh]!.slice(0, LODS) } : null;
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -175,7 +192,7 @@ export class Characters {
     return true;
   }
 
-  private addCreature(p: FramePacket, c: { rig: Rig; mesh: number; color: number; runAt: number }, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number): boolean {
+  private addCreature(p: FramePacket, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number): boolean {
     const rig = c.rig;
     if (p.boneCount + rig.bones > MAX_BONES || this.count + 1 > MAX_SKINNED) return false;
     creaturePose(rig, st, tick, c.runAt, rig.a);
@@ -185,7 +202,8 @@ export class Characters {
     p.boneCount = first + rig.bones;
     this.posed++;
     const n = this.count++;
-    this.key[n] = c.mesh * LODS;
+    // A young one is the same mesh drawn smaller, and so are its errors.
+    this.key[n] = c.mesh * LODS + this.levelOf(id, c.error, Math.sqrt(x * x + y * y + z * z) / size);
     this.firstBone[n] = first;
     this.region0[n] = c.color;
     for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
@@ -198,6 +216,14 @@ export class Characters {
   begin(): void {
     this.count = 0;
     this.posed = 0;
+    // Ids of bodies long gone would otherwise be kept for good.
+    if (this.last.size > 4096) this.last.clear();
+  }
+
+  private levelOf(id: number, errors: readonly number[], distance: number): number {
+    const level = this.assets.choose(errors, distance, this.last.get(id) ?? -1);
+    this.last.set(id, level);
+    return level;
   }
 
   /**
@@ -228,8 +254,8 @@ export class Characters {
     writeBones(p.bones, first * BONE_FLOATS, this.solved, set.rest, scales, x, y, z, yaw);
     p.boneCount = first + HUMAN_BONES;
     this.posed++;
-    const far2 = x * x + y * y + z * z;
-    const lod = own || far2 < BODY_LOD_NEAR * BODY_LOD_NEAR ? 0 : far2 < BODY_LOD_FAR * BODY_LOD_FAR ? 1 : 2;
+    // The viewer's own body is as fine as the tier draws anything.
+    const lod = own ? this.assets.choose(set.error, 0, -1) : this.levelOf(id, set.error, Math.sqrt(x * x + y * y + z * z));
     const queue = (m: number, tint: Uint8Array | null, tintAt: number, bone: number): void => {
       const n = this.count++;
       this.key[n] = m * LODS + lod;

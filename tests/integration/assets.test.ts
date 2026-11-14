@@ -72,5 +72,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   const missing = ["core:human_m/head", "core:human_m/armor/hide/torso", "core:rifle", "core:mannequin/torso", "core:raptor", "core:parasaur", "core:grazer", "core:wall_wood", "core:storage_box", "core:campfire", "core:tree"].filter((id) => !drawn.has(id));
   expect(missing).toEqual([]);
   expect(most).toBeGreaterThan(30);
-  expect(hash.toString(16)).toBe("367ac8c0");
+  // It was 367ac8c0 while a draw recorded the level asked for. It records the level drawn, which for a far mesh with one
+  // level is 0 and not 1 or 2. Nothing else of these frames changed.
+  expect(hash.toString(16)).toBe("e47bd0b0");
 });

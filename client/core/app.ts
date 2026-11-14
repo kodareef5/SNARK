@@ -1,6 +1,7 @@
 // One whole client without a browser. The shell owns the renderer, socket and DOM, forwards events
 // here, and draws what frame() returns. Tests drive this class directly.
 
+import { tierOf } from "./assets/tiers.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
@@ -523,6 +524,8 @@ export class App {
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
     this.scene.hour = hourOfDay(session.serverTick, session.dayOffset, session.clock);
+    this.scene.viewHeight = height;
+    this.scene.assets.tier = tierOf(this.ui.settings.tier);
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps);
     this.feedback.absorb(session, this.reg, nowMs);

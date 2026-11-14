@@ -69,6 +69,8 @@ interface ChunkBatch {
   slots: Uint16Array;
   /** Triples: mesh, first instance, instance count. */
   ranges: number[];
+  /** The level each range was last drawn at, or -1. */
+  level: Int8Array;
   minX: number;
   minY: number;
   minZ: number;
@@ -86,9 +88,8 @@ export class Scene {
   structureDistance = Infinity;
   /** Hour of the day, 0..24. It sets the sun's position and the brightness. */
   hour = 12;
-  /** Distances at which structure batches switch to lower levels of detail. */
-  lodNear = 96;
-  lodFar = 256;
+  /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
+  viewHeight = 720;
 
   /** Pack mesh index per content index. */
   readonly meshOfKind: Uint16Array;
@@ -173,6 +174,7 @@ export class Scene {
     const p = this.packet;
     p.beginFrame();
     cam.update();
+    this.assets.view(this.viewHeight, cam.fovY);
     p.viewProj.set(cam.viewProj);
     p.nearViewProj.set(cam.nearViewProj);
     p.camX = cam.x;
@@ -397,9 +399,10 @@ export class Scene {
         p.uploads.push({ buffer: id, data: batch.data, slots: batch.slots });
         batch.uploaded = true;
       }
-      const lod = dist < this.lodNear ? 0 : dist < this.lodFar ? 1 : 2;
       for (let r = 0; r < batch.ranges.length; r += 3) {
-        this.draw(batch.ranges[r]!, lod, id, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z);
+        const mesh = batch.ranges[r]!;
+        const lod = (batch.level[r / 3] = this.assets.choose(this.assets.table.error[mesh]!, dist, batch.level[r / 3]!));
+        this.draw(mesh, lod, id, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z);
       }
     }
   }
@@ -421,7 +424,7 @@ export class Scene {
     const data = old && old.data.length === total * INSTANCE_BYTES ? old.data : new Uint8Array(total * INSTANCE_BYTES);
     const slots = old && old.slots.length === total ? old.slots : new Uint16Array(total);
     const w = new InstanceWriter(data);
-    const b: ChunkBatch = { shape: t.shape, data, slots, ranges, minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity, uploaded: false };
+    const b: ChunkBatch = { shape: t.shape, data, slots, ranges, level: new Int8Array(ranges.length / 3).fill(-1), minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity, uploaded: false };
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
       if (kind === 0) continue;

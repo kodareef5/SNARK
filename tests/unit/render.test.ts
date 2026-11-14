@@ -1,3 +1,4 @@
+import { tierOf } from "../../client/core/assets/tiers.ts";
 import { expect, test } from "bun:test";
 import { Found } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
@@ -427,4 +428,34 @@ test("aiming at what is drawn of a body hits it, in the zone drawn: in every pos
   // The capsules are generous, so some hits land a little outside the drawn body, but not much more than its rim.
   expect(phantom / all).toBeLessThan(0.3);
   expect(empty).toBeGreaterThan(all);
+});
+
+test("a body is drawn coarser as it goes off, all its parts at one level, and does not flicker at the edge", () => {
+  const view = provingView();
+  const { remote, cam, scene, pack } = view;
+  remote.count = 1;
+  cam.yaw = 0;
+  cam.x = remote.x[0]!;
+  cam.y = remote.y[0]! + 1.6;
+  /** The levels the body's meshes are drawn at from `d` metres off: one number, if its parts agree. */
+  const levels = (d: number): number[] => {
+    cam.z = remote.z[0]! - d;
+    const p = scene.build(cam, remote);
+    const out = new Set<number>();
+    let parts = 0;
+    for (let i = 0; i < p.drawCount; i++) {
+      if (!pack.header.meshes[p.drawMesh[i]!]!.id.startsWith("core:human_")) continue;
+      out.add(p.drawLod[i]!);
+      parts++;
+    }
+    expect(parts).toBeGreaterThanOrEqual(5);
+    return [...out];
+  };
+  expect([levels(8), levels(25), levels(100)]).toEqual([[0], [1], [2]]);
+  // Seen afresh at 15 m it would be the middle level. Walking out to there from near, it is still the finest.
+  expect([levels(8), levels(15), levels(17), levels(12.5), levels(11)]).toEqual([[0], [0], [1], [1], [0]]);
+  scene.assets.tier = tierOf("lowpoly");
+  expect(levels(3)).toEqual([1]);
+  scene.assets.tier = tierOf("ultra");
+  expect([levels(30), levels(60), levels(200)]).toEqual([[0], [1], [2]]);
 });
