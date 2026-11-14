@@ -15,6 +15,7 @@
 | `packs.test.ts`, `pack.test.ts` | Content pack stacking and its error reports; glTF import and the asset pack format |
 | `render.test.ts` | Frame packets through the software rasterizer, asserted per pixel |
 | `hud.test.ts`, `ui.test.ts` | The HUD model, the minimap, the self-check logic; every screen laid out at four window shapes |
+| `tactical.test.ts`, `map.test.ts` | Latitude and longitude; a chunk's structures baked to cells against brute force, and on the wire; marks; the map's tiles and its four zooms lining up |
 
 Assert observable outcomes. Prefer a property over many seeded inputs to a few
 hand-picked cases when the rule is an invariant.
