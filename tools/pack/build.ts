@@ -1,19 +1,19 @@
-// Builds the core asset pack: grayboxes made from the content, the art in assets/source, and every .glb under
-// assets/source as "<folder>:<file name>". `bun run build` splits it into the files a client fetches.
+// Builds the core asset pack: grayboxes made from the content, every pack found under assets/source, and every .glb
+// under assets/source as "<folder>:<file name>". `bun run build` splits it into the files a client fetches.
 
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { basename, dirname } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { WATER_TILE } from "../../client/core/render/shading.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { REGION_BASE, WATER_COLOR, defaultPalette } from "../../shared/pack/palette.ts";
+import { SOURCE, filesUnder, readPacks, type SourceArt } from "../art/source.ts";
 import { importGlb } from "./glb.ts";
 import { mannequinMeshes } from "./mannequin.ts";
 import { weaponMeshes } from "./weapons.ts";
-import { boxMesh, buildPack, unpackMeshes, type SourceMesh } from "./write.ts";
+import { boxMesh, buildPack, type SourceMesh } from "./write.ts";
 
 export const MISSING_MESH = "core:missing";
 export const WATER_MESH = "core:water";
@@ -105,60 +105,34 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
   return meshes;
 }
 
-const SOURCE = resolve(import.meta.dir, "../../assets/source");
-let sourceClips: readonly Clip[] | null = null;
+let art: SourceArt | null = null;
+let clips: readonly Clip[] | null = null;
 
-/** Clips from `bun run art`, clips written as code, and the creatures' clips. Read once. */
+/** Every pack under assets/source, as `bun run art` wrote them. Read once. */
+function coreArt(): SourceArt {
+  return (art ??= readPacks());
+}
+
+/** The clips of those packs and the clips written as code. */
 export function coreClips(): readonly Clip[] {
-  if (sourceClips) return sourceClips;
-  const file = join(SOURCE, "core/human-clips.snpk");
-  sourceClips = [...(existsSync(file) ? parsePack(new Uint8Array(readFileSync(file))).clips.clips : []), ...authoredClips(), ...coreCreatures().clips];
-  return sourceClips;
+  return (clips ??= [...coreArt().clips, ...authoredClips()]);
 }
 
-let sourceBodies: { meshes: SourceMesh[]; rigs: PackRig[] } | null = null;
-
-/** Written by `bun run art`. Read once. */
-export function coreBodies(): { meshes: SourceMesh[]; rigs: PackRig[] } {
-  if (sourceBodies) return sourceBodies;
-  const file = join(SOURCE, "core/human-bodies.snpk");
-  if (!existsSync(file)) return (sourceBodies = { meshes: [], rigs: [] });
-  const pack = parsePack(new Uint8Array(readFileSync(file)));
-  return (sourceBodies = { meshes: unpackMeshes(pack), rigs: pack.header.rigs });
-}
-
-let sourceCreatures: { meshes: SourceMesh[]; rigs: PackRig[]; clips: readonly Clip[] } | null = null;
-
-/** Written by `bun run art -- --creatures`. Read once. */
-export function coreCreatures(): { meshes: SourceMesh[]; rigs: PackRig[]; clips: readonly Clip[] } {
-  if (sourceCreatures) return sourceCreatures;
-  const file = join(SOURCE, "core/creatures.snpk");
-  if (!existsSync(file)) return (sourceCreatures = { meshes: [], rigs: [], clips: [] });
-  const pack = parsePack(new Uint8Array(readFileSync(file)));
-  return (sourceCreatures = { meshes: unpackMeshes(pack), rigs: pack.header.rigs, clips: pack.clips.clips });
+/** `made` and the meshes of `art`. A modelled mesh takes the place of the grey box content would get under the same id. */
+export function withArt(made: readonly SourceMesh[], art: readonly SourceMesh[]): SourceMesh[] {
+  const modelled = new Set(art.map((m) => m.id));
+  return [...made.filter((m) => !modelled.has(m.id)), ...art];
 }
 
 export function buildCorePack(extra: SourceMesh[] = []): Uint8Array {
-  const bodies = coreBodies();
-  const creatures = coreCreatures();
-  return buildPack([...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes(), ...bodies.meshes, ...creatures.meshes, ...extra], defaultPalette(), coreClips(), [...bodies.rigs, ...creatures.rigs]);
-}
-
-function findGlbs(dir: string, out: string[] = []): string[] {
-  if (!existsSync(dir)) return out;
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) findGlbs(p, out);
-    else if (name.endsWith(".glb")) out.push(p);
-  }
-  return out;
+  const made = [...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes()];
+  return buildPack([...withArt(made, coreArt().meshes), ...extra], defaultPalette(), coreClips(), coreArt().rigs);
 }
 
 /** Every .glb under assets/source, imported. What the import had to say of each is printed. */
 export function importedMeshes(): SourceMesh[] {
-  const root = resolve(import.meta.dir, "../..");
   const palette = defaultPalette();
-  return findGlbs(join(root, "assets/source")).map((file) => {
+  return filesUnder(SOURCE, ".glb").map((file) => {
     const id = `${basename(dirname(file))}:${basename(file, ".glb")}`;
     const report = importGlb(readFileSync(file), id, palette);
     for (const w of report.warnings) console.warn(`${id}: ${w}`);

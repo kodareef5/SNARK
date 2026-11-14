@@ -2,6 +2,7 @@
 // the simulation is bit-identical across the two engines, which client prediction relies on.
 
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { CORE_CONTENT } from "../content/core.ts";
 import { Pose } from "../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../shared/anim/human.ts";
@@ -13,6 +14,7 @@ import { creaturePose, rayCreature } from "../shared/anim/creature.ts";
 import { buildRigs, type Rig } from "../shared/anim/rigs.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { defaultPalette } from "../shared/pack/palette.ts";
+import { SOURCE, readPacks } from "./art/source.ts";
 import { buildPack } from "./pack/write.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { deriveRegistry, type Tuning } from "../shared/content/tuning.ts";
@@ -130,7 +132,7 @@ export function simHash(ticks = 3000, content: Registry | null = null): string {
 
 /** Converted and authored clips, passed through the pack's own encoding. Built only from files and modules both engines can read. */
 export function sourceClips(): HumanAnim {
-  const converted = parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/human-clips.snpk", import.meta.url)))).clips.clips;
+  const converted = parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/humans/human-clips/human-clips.snpk", import.meta.url)))).clips.clips;
   return new HumanAnim(parsePack(buildPack([], defaultPalette(), [...converted, ...authoredClips()])).clips);
 }
 
@@ -233,9 +235,10 @@ export function snapHash(): string {
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-/** The creature rigs and their clips, as `bun run art -- --creatures` wrote them. */
+/** The creature rigs and their clips, as `bun run art` wrote them, one pack a creature. */
 export function sourceRigs(): Map<string, Rig> {
-  const pack = parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/creatures.snpk", import.meta.url))));
+  const art = readPacks(join(SOURCE, "core/creatures"));
+  const pack = parsePack(buildPack([], defaultPalette(), art.clips, art.rigs));
   return buildRigs(pack.header.rigs, pack.clips);
 }
 
