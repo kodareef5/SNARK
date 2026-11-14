@@ -2,11 +2,13 @@
 
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
-import { FOUNDATION_THICK } from "../../content/building.ts";
+import { FLOOR_THICK, FOUNDATION_THICK } from "../../content/building.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_STRUCT, RESULT_FAR, RESULT_LOCKED, RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
+import { BTN_USE, STANCE_CROUCH, stanceEye, stanceHeight } from "../../shared/sim/character.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { capsuleFree } from "../../shared/world/collide.ts";
 import { HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
 import { frameAxes, poseAt, type Pose } from "../../shared/world/snap.ts";
 import { NO_PIN, STRUCT_LOCK, STRUCT_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
@@ -197,4 +199,51 @@ test("a member put out of a tribe can no longer empty its vault or ride its moun
   expect(c.drive).toBe(e);
   h.say(ada, "tribe kick bob");
   expect([c.drive, h.world.ents.seat[c.ent]]).toEqual([-1, 0]);
+});
+
+test("a rider with no room to get off beside her mount is set down where it stood, not left at the seat with her head through the ceiling", () => {
+  const { h, sessions, recs, at } = arena(["ada"]);
+  const ada = sessions[0]!;
+  const world = h.world;
+  const ents = world.ents;
+  const p = reg.move[id("survivor")]!;
+  // Her raptor, saddled, with her on it. A raptor is lower than a survivor stands.
+  const e = h.host.spawnCreature("core:raptor", at.x, at.z, 1);
+  expect(e).toBeGreaterThanOrEqual(0);
+  const mount = h.host.records.byPid.get(ents.pid[e]!)!;
+  mount.team = recs[0]!.team;
+  mount.saddle = id("saddle_raptor");
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  h.host.creatures.claimed(e);
+  h.say(ada, `tp ${(at.x - 2).toFixed(3)} ${at.z.toFixed(3)}`);
+  const c = h.client(ada)!;
+  expect(h.host.riding.mount(c, e)).toBe(RESULT_OK);
+  h.run(200);
+  const body = c.ent;
+  // A stall around the raptor: a wall a metre off on every side, and a floor above that it fits under and she does not.
+  const [mx, my, mz] = [ents.x[e]!, ents.y[e]!, ents.z[e]!];
+  const under = my + 1.6;
+  for (const [dx, dz, yaw] of [[1, 0, 16384], [-1, 0, 16384], [0, 1, 0], [0, -1, 0]] as const) expect(world.structs.add(id("wall_stone"), mx + dx, my + 1.5, mz + dz, yaw, 99, 10000)).toBeGreaterThanOrEqual(0);
+  expect(world.structs.add(id("ceiling_stone"), mx, under + FLOOR_THICK / 2, mz, 0, 99, 10000)).toBeGreaterThanOrEqual(0);
+  h.run(200);
+  expect(c.drive).toBe(e);
+  // Seated, her head is above that floor.
+  expect(ents.y[body]! + p.crouchHeight).toBeGreaterThan(under);
+  /** Whether her body is in space a body may be in, and under the floor. */
+  const legal = (): boolean[] => {
+    const tall = stanceHeight(p, ents.stance[body]!);
+    return [capsuleFree(world, ents.x[body]!, ents.y[body]!, ents.z[body]!, p.radius, tall), ents.y[body]! + tall < under];
+  };
+
+  // She gets off. There is no room on either side or behind, so she is down in the stall with the raptor, crouched.
+  press(h, ada, BTN_USE);
+  expect([c.drive, ents.seat[body], ents.stance[body], legal()]).toEqual([-1, 0, STANCE_CROUCH, [true, true]]);
+
+  // She gets on again, and the raptor is killed under her: the same.
+  expect(h.host.riding.mount(c, e)).toBe(RESULT_OK);
+  h.run(200);
+  expect(ents.y[body]! + p.crouchHeight).toBeGreaterThan(under);
+  h.host.survival.add(mount, V_HEALTH, -1e9);
+  h.run(300);
+  expect([c.drive, ents.seat[body], legal()]).toEqual([-1, 0, [true, true]]);
 });
