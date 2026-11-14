@@ -20,6 +20,7 @@
 | `packs.test.ts`, `pack.test.ts` | Content pack stacking and its error reports; glTF import and the asset pack format |
 | `build.test.ts` | The client build's Brotli copies, best and quick |
 | `render.test.ts` | Frame packets through the software rasterizer, asserted per pixel |
+| `views.test.ts` | What artists look at: a snapshot on a graphics tier with textures, the textures kept between runs, and a sheet with materials |
 | `hud.test.ts`, `ui.test.ts` | The HUD model, the minimap, the self-check logic; every screen laid out at four window shapes |
 | `tactical.test.ts`, `map.test.ts` | Latitude and longitude; a chunk's structures baked to cells against brute force, and on the wire; marks; the map's tiles and its four zooms lining up |
 

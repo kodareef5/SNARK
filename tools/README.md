@@ -28,6 +28,10 @@ Yaw 0 faces +Z (north) and positive yaw turns toward +X.
 Scenes: `--ui`, `--poses N`, `--looks`, `--gear`, `--fight bow`, `--creator`,
 `--house`, `--build`, `--falling`, and `--creatures` (with `--near` for a rider
 up close, `--young` for each species at four ages beside its egg).
+`--graphics lowpoly|medium|high|ultra|all` draws as a client on that tier does,
+textures and all, once its card is full; `--view close|far|wall|floor` with
+`--house`, and `--source DIR` for another tree's asset folders. See
+[looking at an asset](../assets/source/README.md#looking-at-an-asset).
 With `--ui`: `--console "text"` types a console line, `--inventory` opens the
 inventory, `--chat` opens the chat box. `--face degrees` turns a line-up.
 `--house` takes a tier (`thatch`, `wood`, `stone`, `metal`), and with
