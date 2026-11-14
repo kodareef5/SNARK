@@ -60,7 +60,7 @@ import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
-import { capsuleFree } from "../shared/world/collide.ts";
+import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
 import { Guesses } from "./guesses.ts";
 import type { ServerWorld } from "./world.ts";
@@ -649,9 +649,12 @@ export class GameServer {
     let z = cz;
     let y = 0;
     let yaw = at ? at.yaw : world.spawn.yaw;
-    if (want && capsuleFree(world, want.x, want.y, want.z, p.radius, p.height) && (exact || !(at && this.occupied(want.x, want.y, want.z)))) {
+    // A place on the ground, or one saved before bodies stood on their lower sphere, is lifted to where the body rests there.
+    // A bed is stood on as it is.
+    const wantY = want ? (exact ? want.y : Math.max(want.y, groundUnder(world.hf, want.x, want.z, p.radius))) : 0;
+    if (want && capsuleFree(world, want.x, wantY, want.z, p.radius, p.height) && (exact || !(at && this.occupied(want.x, wantY, want.z)))) {
       x = want.x;
-      y = want.y;
+      y = wantY;
       z = want.z;
       yaw = want.yaw;
     } else {
@@ -666,7 +669,7 @@ export class GameServer {
         const a = (k * TAU) / 8 + ring * 0.4;
         x = cx + detSin(a) * ring * 1.5;
         z = cz + detCos(a) * ring * 1.5;
-        y = world.hf.heightAt(x, z);
+        y = groundUnder(world.hf, x, z, p.radius);
         if (!capsuleFree(world, x, y, z, p.radius, p.height)) continue;
         free = !this.occupied(x, y, z);
         if (!free && !beside) {
@@ -679,7 +682,7 @@ export class GameServer {
         if (!beside) return false;
         x = bx;
         z = bz;
-        y = world.hf.heightAt(x, z);
+        y = groundUnder(world.hf, x, z, p.radius);
       }
     }
     const ents = world.ents;
