@@ -8,7 +8,7 @@ import { TEXT_NOTICE, RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_F
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
-import { SKIN, capsuleFree, capsuleKind } from "../shared/world/collide.ts";
+import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../shared/world/collide.ts";
 import { BUILD_REACH, ON_TOP, ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, freePose, obstructed, overPiece, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
@@ -258,7 +258,7 @@ export class Build {
         for (let n = 1; n <= most && !moved; n++) {
           const px = bx + dx * step * n;
           const pz = bz + dz * step * n;
-          const py = Math.max(world.hf.heightAt(px, pz), by);
+          const py = Math.max(groundUnder(world.hf, px, pz, r), by);
           // The piece is not built yet, so this asks only about what stands there already.
           if (!capsuleFree(world, px, py, pz, r, h)) break;
           if (capsuleKind(reg.parts, kind, x, y, z, yaw, px, py, pz, r, h, SKIN)) continue;
