@@ -4,6 +4,7 @@
 // each class must and may declare.
 
 import type { StatCurve, StatName } from "../sim/genome.ts";
+import { hullPoint, type HullDef } from "../world/convex.ts";
 
 /** Other names a definition answers to at the console and in a settings file. No two definitions share one, and none is inherited. */
 interface Named {
@@ -124,12 +125,17 @@ export type PieceRole = "foundation" | "wall" | "ceiling" | "pillar" | "door" | 
 /** A "thing" joins nothing. It is set down on the ground or a floor and stands on what is under it. */
 export const PIECE_ROLES: readonly PieceRole[] = ["foundation", "wall", "ceiling", "pillar", "door", "stairs", "thing"];
 
-/** The form of a built piece, shared by every material. Bodies walk on the boxes and rays stop at them. There are no slopes, so stairs are steps. */
+/** The form of a built piece, shared by every material. Bodies walk on its boxes and convex parts, and rays stop at them. */
 export interface ShapeDef extends Named {
   readonly type: "shape";
   readonly id: string;
   readonly role: PieceRole;
   readonly boxes: readonly ShapeBox[];
+  /**
+   * Convex parts besides the boxes, for a ramp, a sloped roof or a triangle: each the hull of its corners, in metres from the
+   * piece's origin along its first axis, up and along its second. A shape with parts may have no boxes.
+   */
+  readonly hulls?: readonly HullDef[];
   /** A door may be set in it. */
   readonly doorway?: boolean;
 }
@@ -502,9 +508,15 @@ export interface RenameDef {
 
 export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef | RenameDef;
 
-/** Half extents of the box, centred on a shape's origin, that holds all of its boxes. */
-export function shapeHalf(boxes: readonly ShapeBox[]): [number, number, number] {
+/** Half extents of the box, centred on a shape's origin, that holds all of its boxes and convex parts. */
+export function shapeHalf(boxes: readonly ShapeBox[], hulls: readonly HullDef[] = []): [number, number, number] {
   const out: [number, number, number] = [0, 0, 0];
   for (const b of boxes) for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(b.at[a]!) + b.half[a]!);
+  for (const h of hulls) {
+    for (const c of h.corners) {
+      const p = hullPoint(c, h.sixty === true);
+      for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(p[a]!));
+    }
+  }
   return out;
 }

@@ -174,7 +174,7 @@ What names what: `shape` names a `shape`; `material` names a `material`; `opens`
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `shape` | snap points and collision | built | `role`, `boxes` | `doorway` | 14 |
+| `shape` | snap points and collision | built | `role`, `boxes` | `doorway`, `hulls` | 14 |
 
 - **`shape`** on shelf `shapes`. The form of a piece, shared by every material: what bodies walk on and what joins what.
 

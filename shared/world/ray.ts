@@ -4,6 +4,7 @@
 import { YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { PAD, type CollisionWorld } from "./collide.ts";
+import { hullFace, rayHull } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
 import type { Heightfield } from "./heightfield.ts";
 import { Found } from "./structures.ts";
@@ -196,11 +197,15 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
   let best = maxT;
   let kind = HIT_NONE;
   let ref = 0;
-  // The face of the box hit, in the box's frame, and the sine and cosine of that frame's yaw.
+  // The face of the box hit, in the box's frame, and the sine and cosine of that frame's yaw. Axis 3 is a convex part's face,
+  // whose normal is kept as it is in the world.
   let faceAxis = -1;
   let faceSign = 0;
   let faceS = 0;
   let faceC = 1;
+  let partNx = 0;
+  let partNy = 0;
+  let partNz = 0;
 
   const ground = rayGround(hf, ox, oy, oz, dx, dy, dz, maxT);
   if (ground <= maxT) {
@@ -256,6 +261,19 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
           faceS = s;
           faceC = c;
         }
+        // Convex parts are placed in the world's own axes, by the frame's whole-number vectors.
+        const hulls = structs.parts.hulls;
+        for (let p = hulls ? hulls.start[k]! : 0, end = hulls ? hulls.start[k + 1]! : 0; p < end; p++) {
+          const hit = rayHull(hulls!, p, t.yaw[slot]!, px, ly, pz, dx, dy, dz, SEAL);
+          if (hit >= best) continue;
+          best = hit;
+          kind = pass === 0 ? HIT_STRUCTURE : HIT_NODE;
+          ref = r;
+          faceAxis = hullFace.ny === 0 && hullFace.nx === 0 && hullFace.nz === 0 ? -1 : 3;
+          partNx = hullFace.nx;
+          partNy = hullFace.ny;
+          partNz = hullFace.nz;
+        }
       }
     }
   }
@@ -274,6 +292,10 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
     rayHit.nx = -sx / l;
     rayHit.ny = 1 / l;
     rayHit.nz = -sz / l;
+  } else if (kind !== HIT_NONE && faceAxis === 3) {
+    rayHit.nx = partNx;
+    rayHit.ny = partNy;
+    rayHit.nz = partNz;
   } else if (kind !== HIT_NONE && faceAxis >= 0) {
     // The face normal, turned back out of the box's frame. Going in, x' = c x - s z and z' = s x + c z.
     const lx = faceAxis === 0 ? faceSign : 0;

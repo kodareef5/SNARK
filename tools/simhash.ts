@@ -23,7 +23,9 @@ import { Rng } from "../shared/rng.ts";
 import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, stepBody } from "../shared/sim/character.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../shared/world/proving.ts";
+import { castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { StructureStore } from "../shared/world/structures.ts";
+import { hullRegistry } from "../tests/fixtures/hulls.ts";
 import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../shared/world/snap.ts";
 
 /** A tuning with an entry of every kind and numbers that do not come out even, as a server's settings might produce. */
@@ -286,4 +288,64 @@ export function creatureHash(): string {
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash());
+/**
+ * Ramps, triangles and roof slabs of convex parts at random turns on the proving ground, with bodies of every size walking among
+ * them and over its slopes, each casting a ray from its eye every tick. Hashes where the bodies are and what the rays meet.
+ */
+export function hullHash(): string {
+  const reg = hullRegistry();
+  const hf = buildProvingHeightfield();
+  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  const world = { hf, structs };
+  const rng = new Rng(9091);
+  for (let n = 0; n < 60; n++) {
+    const kind = ["test:ramp", "test:triangle", "test:roof"][n % 3]!;
+    structs.add(reg.index.get(kind)!, 225 + rng.range(0, 60), [1.5, 0.1875, 1.4][n % 3]!, 225 + rng.range(0, 60), rng.int(65536), 1, 1);
+  }
+  const moves = ["core:survivor", "core:raptor", "core:parasaur"].map((id) => reg.move[reg.index.get(id)!]!);
+  // Among the pieces, and on the slope strips.
+  const bodies = Array.from({ length: 24 }, (_, i) => {
+    const b = new Body();
+    b.x = i < 18 ? 225 + rng.range(0, 60) : 200 + (i - 18) * 8;
+    b.z = i < 18 ? 225 + rng.range(0, 60) : 292;
+    b.y = hf.heightAt(b.x, b.z) + 4;
+    return b;
+  });
+  const input = bodies.map(() => [0, 127, 0, 0]);
+  const f = new Float64Array(10);
+  const bytes = new Uint8Array(f.buffer);
+  const d = [0, 0, 0];
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9747b28c;
+  for (let t = 0; t < 600; t++) {
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i]!;
+      const inp = input[i]!;
+      if (rng.int(20) === 0) {
+        inp[0] = rng.int(255) - 127;
+        inp[1] = rng.int(255) - 127;
+        inp[2] = rng.int(65536);
+        inp[3] = rng.int(4);
+      }
+      stepBody(world, b, inp[0]!, inp[1]!, inp[2]!, 0, inp[3]!, moves[i % moves.length]!, TICK_DT);
+      lookDirection(inp[2]!, (i * 911 + t * 37) % 12000 - 6000, d);
+      f[0] = castWorld(world, b.x, b.y + 1.5, b.z, d[0]!, d[1]!, d[2]!, 60);
+      f[1] = rayHit.t;
+      f[2] = rayHit.ref;
+      f[3] = rayHit.nx;
+      f[4] = rayHit.ny;
+      f[5] = rayHit.nz;
+      f[6] = b.x;
+      f[7] = b.y;
+      f[8] = b.z;
+      f[9] = b.grounded ? 1 : 0;
+      for (let k = 0; k < bytes.length; k++) {
+        h1 = Math.imul(h1 ^ bytes[k]!, 0x01000193);
+        h2 = Math.imul(h2 + bytes[k]!, 0x85ebca6b) ^ (h2 >>> 13);
+      }
+    }
+  }
+  return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash());

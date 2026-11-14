@@ -389,9 +389,14 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
         sortU32(found.refs, count);
         for (let k = 0; k < count; k++) {
           if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, height, 0)) continue;
-          nx += push.x;
-          ny += push.y;
-          nz += push.z;
+          if (push.hull && push.y > 0.7 * push.depth) {
+            // A sloped part it stands on lifts it straight up, as the ground does, so a ramp is climbed at a full stride.
+            ny += (push.depth * push.depth) / push.y;
+          } else {
+            nx += push.x;
+            ny += push.y;
+            nz += push.z;
+          }
           if (push.y > 0.7 * push.depth) {
             if (vy < 0) {
               if (-vy > fall) fall = -vy;

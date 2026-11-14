@@ -11,6 +11,7 @@ import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
 import { ZONE_COUNT } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
+import { hullOf, hullTable, type HullDef } from "../world/convex.ts";
 import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
 import { PIECE_ROLES, shapeHalf, type Def, type RenameDef, type SpeciesDef, type WeaponFacet } from "./defs.ts";
@@ -288,12 +289,18 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if ((d.mesh === "shape") !== (d.shape !== undefined)) errors.push(`${d.id}: a mesh of "shape" and a shape go together`);
     } else if (d.type === "shape") {
       if (!PIECE_ROLES.includes(d.role)) errors.push(`${d.id}: role must be one of ${PIECE_ROLES.join(", ")}`);
-      if (d.boxes.length < 1 || d.boxes.length > MAX_SHAPE_BOXES) errors.push(`${d.id}: a shape has 1 to ${MAX_SHAPE_BOXES} boxes`);
+      const parts = d.boxes.length + (d.hulls?.length ?? 0);
+      if (parts < 1 || parts > MAX_SHAPE_BOXES) errors.push(`${d.id}: a shape has 1 to ${MAX_SHAPE_BOXES} boxes and convex parts`);
       for (const b of d.boxes) {
         for (let a = 0; a < 3; a++) {
           positive(d, `a box's half[${a}]`, b.half[a]!, MAX_STRUCTURE_HALF);
           if (!(Math.abs(b.at[a]!) + b.half[a]! <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: a box reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
         }
+      }
+      for (const h of d.hulls ?? []) {
+        const made = hullOf(h);
+        if (typeof made === "string") errors.push(`${d.id}: ${made}`);
+        if (shapeHalf([], [h]).some((v) => !(v <= MAX_STRUCTURE_HALF))) errors.push(`${d.id}: a convex part reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
       }
     } else if (d.type === "item") {
       if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
@@ -348,7 +355,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "species" && d.breeds && !(d.breeds.incubate > 0 && d.breeds.mature > 0)) errors.push(`${d.id}: breeds needs incubate and mature above 0`);
     if (d.type === "structure" && d.shape !== undefined) {
       const shape = shapes.get(d.shape);
-      const holds = shape ? shapeHalf(shape.boxes) : null;
+      const holds = shape ? shapeHalf(shape.boxes, shape.hulls) : null;
       if (holds && holds.some((v, a) => Math.abs(v - d.half[a]!) > 1e-6)) errors.push(`${d.id}: half must be [${holds.join(", ")}], the box that holds ${d.shape}`);
     }
     if (d.type === "item" && d.places && d.places.length === 0) errors.push(`${d.id}: places must name at least one structure`);
@@ -511,7 +518,13 @@ export function compileContent(all: readonly Def[]): CompileResult {
     }
   }
   partStart[n] = partBox.length / 6;
-  const parts: PartTable = { start: partStart, box: Float32Array.from(partBox) };
+  // Convex parts, only if some shape has them, so content without them is compiled as it always was.
+  const hullsOf = (k: number): readonly HullDef[] => {
+    const d = defs[k];
+    return d?.type === "structure" && d.shape !== undefined ? (shapes.get(d.shape)!.hulls ?? []) : [];
+  };
+  const anyHull = defs.some((_, k) => hullsOf(k).length > 0);
+  const parts: PartTable = { start: partStart, box: Float32Array.from(partBox), ...(anyHull ? { hulls: hullTable(n, hullsOf) } : {}) };
   // A second pass resolves references, now that every definition has its index.
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;

@@ -219,6 +219,7 @@ const MATERIAL = {
 const SHAPE = {
   role: f("text", "the snap type"),
   boxes: f("list"),
+  hulls: f("list"),
   doorway: f("switch"),
 } satisfies Fields<ShapeDef>;
 
@@ -377,7 +378,7 @@ row("structure/station", "structure", STRUCTURE, { parent: "structure/container"
 row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it." });
 row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material"], slots: { mesh: mesh("must", "{mesh}", "box") }, doc: "Part of a map: set there with the world and joined to nothing." });
 row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." });
-row("shape", "shape", SHAPE, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." });
+row("shape", "shape", SHAPE, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway", "hulls"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." });
 row("material", "material", MATERIAL, { ark: "StructureSettings and its tier", shelf: "materials", must: ["takes"], may: ["decayDays"], doc: "What each type of damage does to what is built of it, and how long it lasts unvisited." });
 
 row("node", "node", NODE, { ark: "a foliage type and its harvest component", shelf: "nodes", must: ["mesh", "color", "half", "hits", "respawnHours", "yields", "xp"], may: ["top", "soft", "material"], slots: { mesh: mesh("must", "{mesh}", "box"), depleted: mesh("may", "{id}/depleted", "hidden") }, doc: "A tree, a rock, a bush: harvested, used up, and grown back." });

@@ -43,6 +43,22 @@ let lastWithin = -1;
 let lastCos = 0;
 let lastSin = 0;
 
+const HALF_ROOT3 = 0.8660254037844386;
+
+/**
+ * The whole-number vector (x, z) turned 60 degrees toward the frame's +Z, as a frame's +X turns toward its +Z, to `out[at]` and
+ * `out[at + 1]`. Rounding is the same either side of zero, so turning commutes with quarter turns and with turning half round.
+ * A piece whose second axis is its first turned so gives triangles of two whole-number sides, and six of them close a ring.
+ */
+export function sixtyOf(x: number, z: number, out: Int32Array, at: number): void {
+  out[at] = roundOut(0.5 * x - HALF_ROOT3 * z);
+  out[at + 1] = roundOut(HALF_ROOT3 * x + 0.5 * z);
+}
+
+function roundOut(v: number): number {
+  return v < 0 ? -Math.round(-v) : Math.round(v);
+}
+
 /**
  * Filled by frameOf. The frame's +X is (cos, -sin) in the world and its +Z is (sin, cos), unit vectors along its whole-number
  * axes. A box in the frame is `stretch` times as wide and as deep as written, and as far from the piece's middle.

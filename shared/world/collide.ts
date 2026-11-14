@@ -1,6 +1,8 @@
-// Bodies are upright capsules and structure boxes turn about Y only, so the closest-point test in a box's frame is exact.
+// Bodies are upright capsules and structure boxes turn about Y only, so the closest-point test in a box's frame is exact. Convex
+// parts are met in shared/world/convex.ts, and the ground as its triangles are drawn.
 // capsuleFree is the authority on legal space. Movement, spawning, mounting and teleporting must all end in a position it accepts.
 
+import { capsuleHull, hullPush } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
 import type { Heightfield } from "./heightfield.ts";
 import { Found, type PartTable, type StructureStore } from "./structures.ts";
@@ -15,8 +17,8 @@ export interface CollisionWorld {
   readonly nodes?: StructureStore;
 }
 
-/** The shortest push out, in world space, from the last capsuleBox call that returned true. */
-export const push = { x: 0, y: 0, z: 0, depth: 0 };
+/** The shortest push out, in world space, from the last capsuleBox call that returned true, and whether it is out of a convex part. */
+export const push = { x: 0, y: 0, z: 0, depth: 0, hull: false };
 
 const found = new Found();
 /** Metres added to a cheap reject, so that rounding never rejects a touch. */
@@ -137,11 +139,24 @@ export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: numb
     by = oy;
     bz = oz;
   }
+  let hull = false;
+  const hulls = parts.hulls;
+  for (let p = hulls ? hulls.start[kind]! : 0, end = hulls ? hulls.start[kind + 1]! : 0; p < end; p++) {
+    if (!capsuleHull(hulls!, p, syaw, dx, dz, fy0, fy1, r, reach) || (found && hullPush.depth <= deepest)) continue;
+    found = true;
+    hull = true;
+    deepest = hullPush.depth;
+    bx = hullPush.x;
+    by = hullPush.y;
+    bz = hullPush.z;
+  }
   if (!found) return false;
-  push.x = c * bx + s * bz;
+  // A box's way out is in its frame, a convex part's in the world's.
+  push.x = hull ? bx : c * bx + s * bz;
   push.y = by;
-  push.z = -s * bx + c * bz;
+  push.z = hull ? bz : -s * bx + c * bz;
   push.depth = deepest;
+  push.hull = hull;
   return true;
 }
 
