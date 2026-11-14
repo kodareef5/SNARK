@@ -33,8 +33,9 @@ export class EntityRecord {
   yaw = 0;
   /** Edited only through server/items.ts. Null until something is put in. */
   inv: Inventory | null = null;
-  /** Owned by server/survival.ts. Null for bodies that have none. */
+  /** Owned by server/survival.ts. Null for bodies that have none. `vitalsDue` is the tick of their deadline, or 0. It is derived, not saved. */
   vitals: Vitals | null = null;
+  vitalsDue = 0;
   genome: Genome | null = null;
   /** Hash of the device key that owns this survivor. Null until one claims it. */
   keyHash: Uint8Array | null = null;
