@@ -20,7 +20,7 @@ export interface LinkOptions {
   burstMs?: number;
   /** One TCP stream carries both channels. */
   tcp?: boolean;
-  /** A stream's bytes a second each way, headers included, and how long a queue the narrowest hop keeps before it drops. 0 for no limit. */
+  /** A stream's bytes a second each way, headers included, and how long a queue the narrowest hop keeps before it drops (four packets at least). 0 for no limit. */
   bytesPerSecond?: number;
   queueMs?: number;
   /** What a stream's sending kernel holds: all its bytes until they are acknowledged, and at most `notSent` of them not yet sent. The rest waits in `buffered`. */
@@ -353,7 +353,7 @@ class Stream {
     let full = false;
     if (link.bytesPerSecond > 0) {
       const start = now > this.wireFree ? now : this.wireFree;
-      full = start - now > link.queueMs;
+      full = (start - now) * link.bytesPerSecond > Math.max(link.queueMs * link.bytesPerSecond, 4000 * (MSS + HEADERS));
       if (!full) depart = this.wireFree = start + (bytes * 1000) / link.bytesPerSecond;
     }
     s.lost = full || now < this.from.downUntil || this.from.chain.lost(now);

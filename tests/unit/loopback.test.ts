@@ -87,10 +87,10 @@ test("what a slow line cannot carry fills the sender's kernel and then waits uns
   expect(slow.slice(0, 2)).toEqual([0, 0]);
   expect(slow[2]).toBeGreaterThan(2000);
   expect(slow[4]).toBeGreaterThan(slow[2]! + 15000);
-  // Unsent bytes in the kernel held to 4 KB (tcp_notsent_lowat): the rest waits where the server can see it.
+  // Unsent bytes in the kernel held to 4 KB (tcp_notsent_lowat): more of it waits where the server can see it, sooner.
   const held = fill({ bytesPerSecond: 20000, notSent: 4096 });
-  expect(held[1]).toBeGreaterThan(2000);
-  expect(held[4]).toBeGreaterThan(slow[4]! + 20000);
+  expect(held[2]).toBeGreaterThan(slow[2]! + 5000);
+  expect(held[3]).toBeGreaterThan(slow[3]! + 5000);
 });
 
 test("losses in spells come at the rate asked and last as long as asked; connections on one path lose together", () => {

@@ -106,7 +106,7 @@ export class Harness {
     // The server's socket skips what it cannot send, as the real one does.
     const server = end.peer;
     server.gate = (channel, buffered) => {
-      const rule = backlog(channel, buffered);
+      const rule = backlog(channel, buffered, this.server.opts.snapshotBytesMax);
       if (rule === 2) server.close();
       return rule === 0;
     };

@@ -19,3 +19,8 @@ test("on a WebSocket that loses packets 100 ms away, others are drawn far enough
   expect(r.drawn).toBeGreaterThan(3);
   expect(r.clipped).toBeLessThan(5);
 });
+
+test("on a line slower than its snapshots, what waits unsent is a couple of snapshots, not seconds of them", () => {
+  const r = lossy({ rtt: 100, loss: 0, clients: 2, herd: 60, settle: 3, seconds: 8, link: { bytesPerSecond: 12000 } });
+  expect(r.age).toBeLessThan(3500);
+});

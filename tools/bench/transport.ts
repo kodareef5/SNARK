@@ -4,6 +4,7 @@
 
 import type { ClientSession } from "../../client/core/session.ts";
 import type { GameOptions } from "../../server/game.ts";
+import { chunkCx, chunkCz } from "../../shared/coords.ts";
 import type { LinkOptions, LoopbackEnd } from "../../shared/net/loopback.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -28,6 +29,8 @@ export interface Lossy {
   link?: LinkOptions;
   /** Every client's line goes down for `ms`, `at` seconds into the watch. */
   outage?: { at: number; ms: number };
+  /** A base of `pieces` is built beside the clients `at` seconds into the watch, all at once. */
+  build?: { at: number; pieces: number };
   game?: Partial<GameOptions>;
   seed?: number;
 }
@@ -53,6 +56,8 @@ export interface Lossless {
   jumps: number;
   /** Ticks between the 5th and 95th percentile of how far a client's clock is ahead of the server's. */
   spread: number;
+  /** After a build, milliseconds until a client holds every piece of it, on average. */
+  synced: number;
   /** After an outage, milliseconds until a client reads a snapshot no older than its trip there and 100 ms, on average. */
   recovered: number;
   /** Milliseconds between the server sending a snapshot and the client reading it: median and 99th percentile. */
@@ -112,6 +117,9 @@ export function lossy(o: Lossy): Lossless {
   let prevNow = h.now;
   let watchFrom = 0;
   let back = -1;
+  let built = -1;
+  const expected = new Int32Array(n);
+  const synced = new Float64Array(n).fill(-1);
   const recovered = new Float64Array(n).fill(-1);
   const sentAt = new Float64Array(1 << 16);
   const tick = h.server.tick.bind(h.server);
@@ -153,6 +161,7 @@ export function lossy(o: Lossy): Lossless {
       for (let T = lastSim[c]! + 1; T <= s.simTick; T++) sampled[c * 128 + (T & 127)] = prevNow;
       lastSim[c] = s.simTick;
       if (!watching) continue;
+      if (built >= 0 && synced[c]! < 0 && s.world!.structs.count >= expected[c]!) synced[c] = now - built;
       if (s.latestSnapshot !== lastSnap[c]) {
         const age = now - sentAt[s.latestSnapshot & 0xffff]!;
         ages.push(age);
@@ -173,6 +182,25 @@ export function lossy(o: Lossy): Lossless {
         frozenSince[c] = -1;
       }
       leads[c]!.push(s.simTick - h.world.tick);
+    }
+    if (o.build && watching && built < 0 && now >= watchFrom + o.build.at * 1000) {
+      built = now;
+      const kinds = ["core:foundation", "core:wall", "core:ceiling", "core:pillar"].map((id) => h.reg.index.get(id)!);
+      const y0 = hf.heightAt(cx, cz);
+      for (let k = 0; k < o.build.pieces; k++) {
+        const kind = kinds[rng.int(kinds.length)]!;
+        const [x, z] = [cx + (rng.int(41) - 20) * 3, cz + (rng.int(41) - 20) * 3];
+        h.world.structs.add(kind, x, y0 + rng.int(4) * 3.3 + h.world.structs.halfYOf(kind), z, rng.int(4) * 16384, 1, 1000);
+      }
+      // What each client should hold: every piece in the chunks about it.
+      for (let c = 0; c < n; c++) {
+        const e = h.ent(sessions[c]!);
+        const [ccx, ccz] = [chunkCx(h.world.dims, ents.chunk[e]!), chunkCz(h.world.dims, ents.chunk[e]!)];
+        expected[c] = 0;
+        h.world.structs.chunks.forEach((t, chunk) => {
+          if (t && Math.abs(chunkCx(h.world.dims, chunk) - ccx) <= 3 && Math.abs(chunkCz(h.world.dims, chunk) - ccz) <= 3) expected[c] = expected[c]! + t.live;
+        });
+      }
     }
     if (o.outage && watching && back < 0 && now >= watchFrom + o.outage.at * 1000) {
       for (const e of h.ends) h.net.outage(e, o.outage.ms);
@@ -206,6 +234,7 @@ export function lossy(o: Lossy): Lossless {
     held: held / n / minutes,
     clipped: (100 * clipped) / Math.max(1, judged),
     recovered: recovered.reduce((sum, r) => sum + (r < 0 ? o.seconds * 1000 : r), 0) / n,
+    synced: synced.reduce((sum, r) => sum + (r < 0 ? o.seconds * 1000 : r), 0) / n,
     lateRuns: lateRuns / n / minutes,
     delay: delays / Math.max(1, delayed),
     corrections: sessions.reduce((sum, s, i) => sum + s.stats.corrections - before[i]!.corrections, 0) / n / minutes,
