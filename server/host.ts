@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -20,7 +20,6 @@ import { buildRigs } from "../shared/anim/rigs.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
 import type { BedPoint } from "./own.ts";
-import { RESULT_WAIT } from "../shared/net/protocol.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
@@ -42,10 +41,9 @@ import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
-import { Rules } from "./settings/rules.ts";
+import { Rules, timersOf } from "./settings/rules.ts";
 import { CATALOG, rowOf } from "./settings/catalog.ts";
 import { Lists } from "./settings/lists.ts";
-import { timersOf } from "./settings/rules.ts";
 import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/config.ts";
 import { difficultyOf, tuningOf, wildLevel } from "./settings/tune.ts";
 import { deriveRegistry } from "../shared/content/tuning.ts";

@@ -4,7 +4,7 @@
 import { BitWriter } from "../shared/net/codec.ts";
 import { MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../shared/sim/character.ts";
-import { youngScale } from "../shared/sim/breeding.ts";
+import { leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
 import { F_PROP } from "../shared/sim/entities.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { TICK_RATE, chunkCx, chunkCz } from "../shared/coords.ts";
@@ -17,7 +17,6 @@ import type { EntityRecord, Records } from "./records.ts";
 import { CAUSE_NAMES, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 import type { Rules } from "./settings/rules.ts";
-import { leftAtPeriod } from "../shared/sim/breeding.ts";
 
 export const DEADLINE_DESPAWN = 2;
 /** Journal op: survivor pid, cause, cache pid (0 if it carried nothing). */

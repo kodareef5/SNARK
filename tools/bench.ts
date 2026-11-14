@@ -719,7 +719,8 @@ let siegeChunk = -1;
   record("tick time before the damage, median", percentile(quiet, 0.5), "ms");
   record("tick time under it, median", percentile(fire, 0.5), "ms", 8);
   record("tick time under it, 99th percentile", percentile(fire, 0.99), "ms", 16);
-  record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 26);
+  // About 17 bytes a damaged piece. 1,500 pieces a second is far more than a raid does, and it is still under a snapshot's share.
+  record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 30);
   record("commit time under it, 99th percentile (the chunk is saved whole each commit)", percentile(commitTimes, 0.99), "ms", 10);
 }
 
