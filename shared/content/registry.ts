@@ -12,7 +12,7 @@ import { ZONE_COUNT } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
 import type { PartTable } from "../world/structures.ts";
-import { defFaults } from "./classes.ts";
+import { defFaults, refFaults } from "./classes.ts";
 import { PIECE_ROLES, shapeHalf, type Def, type SpeciesDef, type WeaponFacet } from "./defs.ts";
 
 export const MISSING = 0;
@@ -250,7 +250,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
           if (!(Math.abs(b.at[a]!) + b.half[a]! <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: a box reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
         }
       }
-    } else {
+    } else if (d.type === "item") {
       if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
@@ -283,43 +283,17 @@ export function compileContent(input: readonly Def[]): CompileResult {
       if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
     }
   }
-  // References between definitions must name something of the right type.
-  const typeOf = new Map(input.map((d) => [d.id, d.type]));
-  const items = new Map(input.flatMap((d) => (d.type === "item" ? [[d.id, d] as const] : [])));
+  // What a definition names must exist and be of the class its field asks for (shared/content/classes.ts).
+  errors.push(...refFaults(input));
   const shapes = new Map(input.flatMap((d) => (d.type === "shape" ? [[d.id, d] as const] : [])));
-  const want = (d: Def, id: string, type: string) => {
-    if (typeOf.get(id) !== type) errors.push(`${d.id}: "${id}" is not ${type === "item" ? "an item" : `a ${type}`}`);
-  };
   for (const d of input) {
-    if (d.type === "node") for (const y of d.yields) want(d, y.item, "item");
-    else if (d.type === "recipe") {
-      want(d, d.makes, "item");
-      for (const n of d.needs) want(d, n.item, "item");
-    } else if (d.type === "engram") for (const r of d.unlocks) want(d, r, "recipe");
-    else if (d.type === "species") {
-      for (const drop of d.drops ?? []) want(d, drop.item, "item");
-      for (const f of d.eats ?? []) want(d, f.item, "item");
-      if (d.breeds?.egg !== undefined) want(d, d.breeds.egg, "prop");
-      if (d.breeds && !(d.breeds.incubate > 0 && d.breeds.mature > 0)) errors.push(`${d.id}: breeds needs incubate and mature above 0`);
-    } else if (d.type === "structure") {
-      if (d.material !== undefined) want(d, d.material, "material");
-      if (d.opens !== undefined) want(d, d.opens, "structure");
-      if (d.lights !== undefined) want(d, d.lights, "structure");
-      if (d.shape !== undefined) {
-        want(d, d.shape, "shape");
-        const shape = shapes.get(d.shape);
-        const holds = shape ? shapeHalf(shape.boxes) : null;
-        if (holds && holds.some((v, a) => Math.abs(v - d.half[a]!) > 1e-6)) errors.push(`${d.id}: half must be [${holds.join(", ")}], the box that holds ${d.shape}`);
-      }
+    if (d.type === "species" && d.breeds && !(d.breeds.incubate > 0 && d.breeds.mature > 0)) errors.push(`${d.id}: breeds needs incubate and mature above 0`);
+    if (d.type === "structure" && d.shape !== undefined) {
+      const shape = shapes.get(d.shape);
+      const holds = shape ? shapeHalf(shape.boxes) : null;
+      if (holds && holds.some((v, a) => Math.abs(v - d.half[a]!) > 1e-6)) errors.push(`${d.id}: half must be [${holds.join(", ")}], the box that holds ${d.shape}`);
     }
-    else if (d.type === "item") {
-      if (d.saddle) want(d, d.saddle.fits, "species");
-      for (const a of d.weapon?.ammo ?? []) if (!items.get(a)?.ammo) errors.push(`${d.id}: "${a}" is not ammunition`);
-      for (const a of d.weapon?.fits ?? []) if (!items.get(a)?.attachment) errors.push(`${d.id}: "${a}" is not an attachment`);
-      if (d.ammo?.buff !== undefined) want(d, d.ammo.buff, "buff");
-      for (const s of d.places ?? []) want(d, s, "structure");
-      if (d.places && d.places.length === 0) errors.push(`${d.id}: places must name at least one structure`);
-    }
+    if (d.type === "item" && d.places && d.places.length === 0) errors.push(`${d.id}: places must name at least one structure`);
   }
   if (input.length >= 65535) errors.push("too many definitions for a 16-bit index");
   if (errors.length > 0) return { registry: null, errors };

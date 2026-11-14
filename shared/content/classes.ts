@@ -3,7 +3,7 @@
 // nor may declare is refused. The reference page, the shape checks and the asset slots are all derived from these rows.
 
 import { FEATURES, type Feature } from "../features.ts";
-import type { BuffDef, Def, EngramDef, ItemDef, LevelsDef, MaterialDef, NodeDef, PropDef, RecipeDef, ShapeDef, SpeciesDef, StructureDef } from "./defs.ts";
+import type { BuffDef, DamageDef, Def, EngramDef, GameDef, ItemDef, LevelsDef, LootDef, MapDef, MaterialDef, NodeDef, PropDef, RecipeDef, ShapeDef, SpawnsDef, SpeciesDef, StructureDef } from "./defs.ts";
 
 /** "built": systems read it. "partial": part of it lives in code. "stub": the row exists and nothing reads it yet. */
 export type Status = "built" | "partial" | "stub";
@@ -16,6 +16,8 @@ export interface Field {
   refs?: Record<string, string>;
   /** Packs may add entries to it, and a remap rewrites what it names. */
   open?: boolean;
+  /** A stub field is declared and checked, and nothing reads it until the feature it waits for is built. */
+  waits?: Feature;
 }
 
 export interface Slot {
@@ -32,7 +34,7 @@ export interface Slot {
 export interface ClassRow {
   /** "item/weapon". A family with one class is its own leaf: "node". */
   id: string;
-  type: Def["type"] | StubType;
+  type: Def["type"];
   parent: string | null;
   /** An abstract class groups others and no definition is of it. */
   abstract: boolean;
@@ -49,10 +51,8 @@ export interface ClassRow {
   doc: string;
 }
 
-/** Families that have a row and no definition type yet. */
-export type StubType = "damage" | "loot" | "spawns" | "map" | "game";
-
 const f = (kind: Field["kind"], ark = "", more: Partial<Field> = {}): Field => ({ kind, ark, ...more });
+const stub = (waits: Feature, kind: Field["kind"], ark = "", more: Partial<Field> = {}): Field => ({ kind, ark, waits, ...more });
 
 type Fields<D> = { [K in Exclude<keyof D, "type" | "class" | "id">]-?: Field };
 
@@ -73,6 +73,10 @@ const ITEM = {
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
+  description: stub("polish", "text", "ItemDescription"),
+  folder: stub("polish", "text", "DefaultFolderPaths"),
+  spoilsInto: stub("polish", "text", "SpoilingItem", { refs: { "": "item" } }),
+  blueprint: stub("loot", "switch", "it may drop as a blueprint"),
 } satisfies Fields<ItemDef>;
 
 const SPECIES = {
@@ -110,6 +114,13 @@ const SPECIES = {
   eats: f("list", "DinoSettings food effectiveness", { refs: { "[].item": "item" }, open: true }),
   torporDrain: f("number"),
   breeds: f("facet", "EggItemsToSpawn, BabyAgeSpeed", { refs: { egg: "prop/egg" } }),
+  tag: stub("spawner", "text", "DinoNameTag"),
+  variant: stub("spawner", "text", "a child blueprint's kind"),
+  attacks: stub("polish", "list", "AttackInfos"),
+  loot: stub("loot", "text", "DeathInventoryTemplates", { refs: { "": "loot" } }),
+  saddle: stub("polish", "text", "SaddleItemClass", { refs: { "": "item/saddle" } }),
+  buffs: stub("polish", "list", "DefaultBuffs", { refs: { "[]": "buff" }, open: true }),
+  boss: stub("bosses", "switch", "bIsBossDino"),
 } satisfies Fields<SpeciesDef>;
 
 const STRUCTURE = {
@@ -166,6 +177,9 @@ const ENGRAM = {
   unlocks: f("list", "BluePrintEntry", { refs: { "[]": "recipe" } }),
   hidden: f("switch", "EngramHidden"),
   auto: f("number", "EngramEntryAutoUnlocks"),
+  requires: stub("polish", "list", "EngramRequirementSets", { refs: { "[]": "engram" } }),
+  group: stub("maps", "text", "EngramGroup"),
+  from: stub("bosses", "text", "a boss's unlock", { refs: { "": "species/creature" } }),
 } satisfies Fields<EngramDef>;
 
 const LEVELS = {
@@ -187,7 +201,7 @@ const BUFF = {
   taken: f("number", "CharacterMultiplier"),
   root: f("switch"),
   immune: f("switch"),
-  good: f("switch"),
+  good: stub("polish", "switch"),
 } satisfies Fields<BuffDef>;
 
 const MATERIAL = {
@@ -200,6 +214,39 @@ const SHAPE = {
   boxes: f("list"),
   doorway: f("switch"),
 } satisfies Fields<ShapeDef>;
+
+const DAMAGE = {
+  label: stub("polish", "text"),
+  torpor: stub("polish", "number", "DamageTorpidityIncreaseMultiplier"),
+  trueShare: stub("polish", "number", "PercentTrueDamage"),
+  melee: stub("polish", "switch", "bIsMeleeDamage"),
+} satisfies Fields<DamageDef>;
+
+const LOOT = {
+  sets: f("facet", "MinItemSets, MaxItemSets"),
+  from: f("list", "ItemSets", { refs: { "[].entries[].items[]": "item" }, open: true }),
+} satisfies Fields<LootDef>;
+
+const SPAWNS = {
+  entries: f("list", "NPCSpawnEntries", { refs: { "[].species": "species/creature" }, open: true }),
+  limits: f("list", "NPCSpawnLimits", { refs: { "[].species": "species/creature" } }),
+} satisfies Fields<SpawnsDef>;
+
+const MAP = {
+  label: f("text"),
+  chunks: f("list"),
+  seaLevel: f("number"),
+  game: f("text", "the game data a level names", { refs: { "": "game" } }),
+  zones: f("list", "zone managers and crate volumes", { refs: { "[].spawns": "spawns", "[].crate": "prop/crate" } }),
+} satisfies Fields<MapDef>;
+
+const GAME = {
+  survivor: f("text", "", { refs: { "": "species/survivor" } }),
+  cache: f("text", "", { refs: { "": "prop/container" } }),
+  bag: f("text", "", { refs: { "": "prop/container" } }),
+  levels: f("text", "", { refs: { "": "levels" } }),
+  buffs: f("list", "AdditionalDefaultBuffs", { refs: { "[]": "buff" }, open: true }),
+} satisfies Fields<GameDef>;
 
 /** Every field of every family that has a definition type. */
 export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>>>> = {
@@ -214,6 +261,11 @@ export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>
   buff: BUFF,
   material: MATERIAL,
   shape: SHAPE,
+  damage: DAMAGE,
+  loot: LOOT,
+  spawns: SPAWNS,
+  map: MAP,
+  game: GAME,
 };
 
 const mesh = (need: Slot["need"], from: string, fallback: string): Slot => ({ asset: "mesh", need, from, fallback });
@@ -256,12 +308,11 @@ function row<T extends Record<string, Field>>(id: string, type: ClassRow["type"]
   });
 }
 
-const NONE = {};
-const ANY_ITEM = ["weight", "label", "color"] as const;
+const ANY_ITEM = ["weight", "label", "color", "description", "folder", "blueprint"] as const;
 
 row("item", "item", ITEM, { abstract: true, ark: "PrimalItem", shelf: "items", doc: "Anything that is carried." });
-row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours"], slots: ITEM_SLOTS, doc: "A material: gathered, stacked, and spent in crafting." });
-row("item/consumable", "item", ITEM, { parent: "item", ark: "PrimalItemConsumable_", shelf: "items/consumables", must: ["stack"], may: [...ANY_ITEM, "eat", "dose", "spoilHours", "cooks", "fuel"], any: ["eat", "dose"], slots: ITEM_SLOTS, doc: "Something eaten, drunk or fed for what it does to a body." });
+row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours", "spoilsInto"], slots: ITEM_SLOTS, doc: "A material: gathered, stacked, and spent in crafting." });
+row("item/consumable", "item", ITEM, { parent: "item", ark: "PrimalItemConsumable_", shelf: "items/consumables", must: ["stack"], may: [...ANY_ITEM, "eat", "dose", "spoilHours", "spoilsInto", "cooks", "fuel"], any: ["eat", "dose"], slots: ITEM_SLOTS, doc: "Something eaten, drunk or fed for what it does to a body." });
 row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool"], slots: { held: mesh("must", "{weapon.mesh}", "none"), ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool." });
 row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: "items/ammo", must: ["stack", "ammo"], may: ANY_ITEM, slots: { shot: mesh("may", "{ammo.mesh}", "core:tracer"), ...ITEM_SLOTS }, doc: "What a bow or gun fires." });
 row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it." });
@@ -269,7 +320,7 @@ row("item/equipment", "item", ITEM, { parent: "item", abstract: true, ark: "item
 row("item/armor", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, hat to boots", shelf: "items/armor", must: ["stack", "wear"], may: ANY_ITEM, slots: { worn: mesh("must", "{body}/armor/{wear.set}/{wear.slot}", "the body's own part in the piece's colours"), ...ITEM_SLOTS }, doc: "A piece worn on the head, torso, hands, legs or feet." });
 row("item/saddle", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, DinoSaddle", shelf: "items/saddles", must: ["stack", "saddle"], may: ANY_ITEM, slots: { worn: mesh("may", "{id}/worn", "none"), ...ITEM_SLOTS }, doc: "Worn by a tamed creature so that it can be ridden." });
 row("item/structure", "item", ITEM, { parent: "item", ark: "PrimalItemStructure_", shelf: "items/structures", must: ["stack", "places"], may: ANY_ITEM, slots: { preview: mesh("may", "{id}/preview", "#mesh of its structure"), ...ITEM_SLOTS }, doc: "Set down as a structure." });
-row("item/egg", "item", ITEM, { parent: "item/consumable", ark: "PrimalItemConsumable_Egg_", status: "stub", waits: "eggs", shelf: "items/eggs", must: ["stack"], may: [...ANY_ITEM, "eat", "spoilHours"], slots: ITEM_SLOTS, doc: "An egg in the hand. Today an egg is a prop that lies where it was laid." });
+row("item/egg", "item", ITEM, { parent: "item/consumable", ark: "PrimalItemConsumable_Egg_", status: "stub", waits: "eggs", shelf: "items/eggs", must: ["stack"], may: [...ANY_ITEM, "eat", "spoilHours", "spoilsInto"], slots: ITEM_SLOTS, doc: "An egg in the hand. Today an egg is a prop that lies where it was laid." });
 row("item/shield", "item", ITEM, { parent: "item/equipment", ark: "equipment type Shield", status: "stub", waits: "cosmetics", shelf: "items/shields", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Held in the other hand to block." });
 row("item/costume", "item", ITEM, { parent: "item/equipment", ark: "equipment types Costume and Trophy", status: "stub", waits: "cosmetics", shelf: "items/costumes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Worn for its look alone." });
 row("item/skin", "item", ITEM, { parent: "item", ark: "PrimalItemSkin_", status: "stub", waits: "cosmetics", shelf: "items/skins", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Changes the look of the item it is put on." });
@@ -277,7 +328,7 @@ row("item/dye", "item", ITEM, { parent: "item", ark: "PrimalItemDye_", status: "
 row("item/artifact", "item", ITEM, { parent: "item", ark: "PrimalItemArtifact_", status: "stub", waits: "bosses", shelf: "items/artifacts", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Found once in its place and spent to call a boss." });
 
 row("recipe", "recipe", RECIPE, { ark: "the crafting cost on the item", shelf: "recipes", must: ["makes", "count", "needs", "seconds", "xp"], doc: "What an item is made of. ARK keeps this on the item, and so will we." });
-row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "unlocks"], may: ["hidden", "auto"], slots: { icon: { ...icon, fallback: "#icon of its item" } }, doc: "Learned with points at a level, for good, to craft what it unlocks." });
+row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "unlocks"], may: ["hidden", "auto", "requires", "group", "from"], slots: { icon: { ...icon, fallback: "#icon of its item" } }, doc: "Learned with points at a level, for good, to craft what it unlocks." });
 row("levels", "levels", LEVELS, { ark: "the level ramp of the game data", shelf: "rules", must: ["xp", "engramPoints"], may: ["most", "tame"], doc: "The experience each level takes and the engram points it gives." });
 
 const BODY = ["mesh", "color", "radius", "height", "eyeHeight", "walkSpeed", "sprintMul", "jumpSpeed"] as const;
@@ -294,7 +345,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "tag", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "may", from: "{mesh}", fallback: "drawn rigid and hit as a box" },
@@ -333,11 +384,11 @@ row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", status: "
 
 row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "speed", "dealt", "taken", "root", "immune", "good"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: "none" } }, doc: "Acts on a body for a time." });
 
-row("damage", "damage", NONE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
-row("loot", "loot", NONE, { ark: "a crate's item sets, a death inventory template", status: "stub", waits: "loot", shelf: "loot", doc: "Sets of items with weights, counts and qualities, drawn from when something is opened or dies." });
-row("spawns", "spawns", NONE, { ark: "NPCSpawnEntriesContainer", status: "stub", waits: "spawner", shelf: "spawns", doc: "Which creatures live in a place, in what share and at what levels." });
-row("map", "map", NONE, { ark: "a level and the game data it names", status: "stub", waits: "maps", shelf: "maps", doc: "A world: its ground, its zones, and what spawns, grows and drops in each. Today the one map is code." });
-row("game", "game", NONE, { ark: "PrimalGameData", status: "stub", waits: "polish", shelf: "game", doc: "What a game names once: the survivor's species, the death cache, the dropped bag, the standing buffs." });
+row("damage", "damage", DAMAGE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", may: ["label", "torpor", "trueShare", "melee"], doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
+row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "stub", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts and qualities, drawn from when something is opened or dies." });
+row("spawns", "spawns", SPAWNS, { ark: "NPCSpawnEntriesContainer", status: "stub", waits: "spawner", shelf: "spawns", must: ["entries"], may: ["limits"], doc: "Which creatures live in a place, in what share and at what levels." });
+row("map", "map", MAP, { ark: "a level and the game data it names", status: "stub", waits: "maps", shelf: "maps", must: ["chunks"], may: ["label", "seaLevel", "game", "zones"], doc: "A world: its ground, its zones, and what spawns, grows and drops in each. Today the one map is code." });
+row("game", "game", GAME, { ark: "PrimalGameData", status: "stub", waits: "polish", shelf: "game", must: ["survivor", "cache", "bag"], may: ["levels", "buffs"], doc: "What a game names once: the survivor's species, the death cache, the dropped bag, the standing buffs." });
 
 export const CLASSES: readonly ClassRow[] = rows;
 const BY_ID = new Map(CLASSES.map((r) => [r.id, r]));
@@ -354,7 +405,7 @@ export function classFaults(): string[] {
   if (BY_ID.size !== CLASSES.length) out.push("a class id is used twice");
   const shelves = new Map<string, string>();
   for (const r of CLASSES) {
-    const fields = (FIELDS as Record<string, Record<string, Field>>)[r.type] ?? {};
+    const fields: Record<string, Field> = FIELDS[r.type];
     if (r.parent !== null && !BY_ID.has(r.parent)) out.push(`${r.id}: its parent "${r.parent}" is no class`);
     if (r.id !== r.type && !r.id.startsWith(r.type + "/")) out.push(`${r.id}: a class is named after its family, "${r.type}/…"`);
     if (r.status === "stub" && !(r.waits in FEATURES)) out.push(`${r.id}: a stub names the feature it waits for`);
@@ -376,6 +427,7 @@ export function classFaults(): string[] {
   for (const [type, fields] of Object.entries(FIELDS)) {
     for (const [name, field] of Object.entries(fields)) {
       for (const target of Object.values(field.refs ?? {})) if (!names(target)) out.push(`${type}.${name}: names "${target}", which is no class`);
+      if (field.waits !== undefined && !(field.waits in FEATURES)) out.push(`${type}.${name}: a stub field names the feature it waits for`);
       // Every field belongs to some class of its family, or nothing could declare it.
       if (!CLASSES.some((r) => r.type === type && (r.must.includes(name) || r.may.includes(name)))) out.push(`${type}.${name}: no class may declare it`);
     }
@@ -406,7 +458,7 @@ const KIND: Record<Field["kind"], [is: (v: unknown) => boolean, said: string]> =
  */
 export function defFaults(d: Def): string[] {
   const has = d as unknown as Record<string, unknown>;
-  const leaves = CLASSES.filter((r) => r.type === has.type && !r.abstract && r.type in FIELDS);
+  const leaves = CLASSES.filter((r) => r.type === has.type && !r.abstract);
   if (leaves.length === 0) return [`${d.id}: unknown type "${String(has.type)}"`];
   const r = BY_ID.get(typeof has.class === "string" ? `${d.type}/${has.class}` : d.type);
   if (!r || r.abstract || r.type !== d.type) {
@@ -422,6 +474,46 @@ export function defFaults(d: Def): string[] {
     if (k === "type" || k === "class" || k === "id" || has[k] === undefined) continue;
     if (!r.must.includes(k) && !r.may.includes(k)) out.push(`${d.id}: class ${r.id} may not declare "${k}"`);
     else if (!KIND[fields[k]!.kind][0](has[k])) out.push(`${d.id}: "${k}" must be ${KIND[fields[k]!.kind][1]}`);
+  }
+  return out;
+}
+
+/** Whether class `id` is `target` or below it: "item/saddle" is an "item/equipment" and an "item". */
+function isA(id: string, target: string): boolean {
+  for (let at: string | null = id; at !== null; at = BY_ID.get(at)?.parent ?? null) if (at === target) return true;
+  return id.startsWith(target + "/");
+}
+
+/** The values at `path` in `v`: "" is `v`, "[]" each entry, "a.b" a field of a field, "a[]" each entry of a field. */
+function pick(v: unknown, path: string): unknown[] {
+  let at: unknown[] = [v];
+  for (const part of path === "" ? [] : path.split(".")) {
+    const each = part.endsWith("[]");
+    const key = each ? part.slice(0, -2) : part;
+    at = at.flatMap((x) => {
+      const y = key === "" ? x : (x as Record<string, unknown> | null)?.[key];
+      return y === undefined || y === null ? [] : each ? (Array.isArray(y) ? y : []) : [y];
+    });
+  }
+  return at;
+}
+
+/** What definitions name that does not exist or is of the wrong class. */
+export function refFaults(defs: readonly Def[]): string[] {
+  const classById = new Map(defs.map((d) => [d.id, classOf(d)]));
+  const out: string[] = [];
+  for (const d of defs) {
+    const fields: Record<string, Field> = FIELDS[d.type];
+    for (const [name, field] of Object.entries(fields)) {
+      const value = (d as unknown as Record<string, unknown>)[name];
+      if (!field.refs || value === undefined) continue;
+      for (const [path, target] of Object.entries(field.refs)) {
+        for (const id of pick(value, path)) {
+          const is = typeof id === "string" ? classById.get(id) : undefined;
+          if (is === undefined || !isA(is, target)) out.push(`${d.id}: "${String(id)}" is not ${article(target)}`);
+        }
+      }
+    }
   }
   return out;
 }

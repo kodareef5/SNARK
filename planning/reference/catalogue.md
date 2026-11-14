@@ -22,21 +22,21 @@ and are never named by content.
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
 | `item` | PrimalItem | a group |  |  |  |
-| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `fuel`, `spoilHours` | 11 |
-| `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose` | `weight`, `label`, `color`, `eat`, `dose`, `spoilHours`, `cooks`, `fuel` | 5 |
-| `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `tool` | 8 |
-| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color` | 7 |
-| `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color` | 4 |
+| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint`, `fuel`, `spoilHours`, `spoilsInto` | 11 |
+| `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose` | `weight`, `label`, `color`, `description`, `folder`, `blueprint`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel` | 5 |
+| `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `description`, `folder`, `blueprint`, `tool` | 8 |
+| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 7 |
+| `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 4 |
 | `item/equipment` | item type Equipment | a group |  |  |  |
-| `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color` | 20 |
-| `item/saddle` | PrimalItemArmor_, DinoSaddle | built | `stack`, `saddle` | `weight`, `label`, `color` | 2 |
-| `item/structure` | PrimalItemStructure_ | built | `stack`, `places` | `weight`, `label`, `color` | 27 |
-| `item/egg` | PrimalItemConsumable_Egg_ | stub: eggs | `stack` | `weight`, `label`, `color`, `eat`, `spoilHours` | 0 |
-| `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color` | 0 |
-| `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color` | 0 |
-| `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color` | 0 |
-| `item/dye` | PrimalItemDye_ | stub: cosmetics | `stack` | `weight`, `label`, `color` | 0 |
-| `item/artifact` | PrimalItemArtifact_ | stub: bosses | `stack` | `weight`, `label`, `color` | 0 |
+| `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 20 |
+| `item/saddle` | PrimalItemArmor_, DinoSaddle | built | `stack`, `saddle` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 2 |
+| `item/structure` | PrimalItemStructure_ | built | `stack`, `places` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 27 |
+| `item/egg` | PrimalItemConsumable_Egg_ | stub: eggs | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint`, `eat`, `spoilHours`, `spoilsInto` | 0 |
+| `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 0 |
+| `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 0 |
+| `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 0 |
+| `item/dye` | PrimalItemDye_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 0 |
+| `item/artifact` | PrimalItemArtifact_ | stub: bosses | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 0 |
 
 - **`item`** on shelf `items`. Anything that is carried.
 - **`item/resource`** on shelf `items/resources`. A material: gathered, stacked, and spent in crafting.
@@ -72,9 +72,9 @@ Asset slots:
 - `item/dye`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
 - `item/artifact`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
 
-ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `eat` is UseItemAddCharacterStatusValues; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild.
+ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `eat` is UseItemAddCharacterStatusValues; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is it may drop as a blueprint.
 
-What names what: `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item/ammo`; `weapon.fits[]` names a `item/attachment`; `ammo.buff` names a `buff`; `places[]` names a `structure`.
+What names what: `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item/ammo`; `weapon.fits[]` names a `item/attachment`; `ammo.buff` names a `buff`; `places[]` names a `structure`; `spoilsInto` names a `item`.
 
 Packs may add to: `weapon`, `places`.
 
@@ -94,7 +94,7 @@ What names what: `makes` names a `item`; `needs[].item` names a `item`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `unlocks` | `hidden`, `auto` | 57 |
+| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `unlocks` | `hidden`, `auto`, `requires`, `group`, `from` | 57 |
 
 - **`engram`** on shelf `engrams`. Learned with points at a level, for good, to craft what it unlocks.
 
@@ -102,9 +102,9 @@ Asset slots:
 
 - `engram`: `#icon` icon, may, else #icon of its item.
 
-ARK's names: `level` is RequiredCharacterLevel; `cost` is RequiredEngramPoints; `unlocks` is BluePrintEntry; `hidden` is EngramHidden; `auto` is EngramEntryAutoUnlocks.
+ARK's names: `level` is RequiredCharacterLevel; `cost` is RequiredEngramPoints; `unlocks` is BluePrintEntry; `hidden` is EngramHidden; `auto` is EngramEntryAutoUnlocks; `requires` is EngramRequirementSets; `group` is EngramGroup; `from` is a boss's unlock.
 
-What names what: `unlocks[]` names a `recipe`.
+What names what: `unlocks[]` names a `recipe`; `requires[]` names a `engram`; `from` names a `species/creature`.
 
 ## Levels
 
@@ -122,8 +122,8 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 | --- | --- | --- | --- | --- | --- |
 | `species` | a character | a group |  |  |  |
 | `species/survivor` | the player's character | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats`, `equips` | `crouch`, `prone`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `fists`, `drops`, `takes`, `zones`, `killXp`, `torporDrain` | 1 |
-| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `fists`, `bite`, `drops`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds` | 3 |
-| `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `still` | `skeleton`, `crouch`, `prone`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `equips`, `fists`, `drops`, `stats`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `bite`, `taming`, `eats`, `torporDrain`, `breeds` | 1 |
+| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `fists`, `bite`, `drops`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `tag`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 3 |
+| `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `still` | `skeleton`, `crouch`, `prone`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `equips`, `fists`, `drops`, `stats`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `bite`, `taming`, `eats`, `torporDrain`, `breeds`, `tag`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 1 |
 
 - **`species`** on shelf `species`. A kind of body that lives.
 - **`species/survivor`** on shelf `survivors`. The body a player has.
@@ -136,11 +136,11 @@ Asset slots:
 - `species/creature`: `#body` mesh, must, else box; `#rig` rig, may, else drawn rigid and hit as a box; `#clip/{idle, walk, run, attack, death}` clip, must, else run to walk to idle to the rest pose; attack and death to idle; `#move/{jump, swim, eat, sleep}` clip, may, else swim to walk; the rest to idle; `#icon` icon, may, else swatch; `#sound/<any>` sound, may, else none.
 - `species/target`: `#body/{head, torso, hands, legs, feet}` mesh, must, else {mesh}/{key}, then core:mannequin/{key}; `#hair/<any>` mesh, may, else none; `#beard/<any>` mesh, may, else none; `#icon` icon, may, else swatch.
 
-ARK's names: `drops` is DeathHarvestingComponent; `stats` is MaxStatusValues and the per-level gains; `takes` is DamageTypeAdjusters; `bite` is AttackInfos; `taming` is RequiredTameAffinity; `eats` is DinoSettings food effectiveness; `breeds` is EggItemsToSpawn, BabyAgeSpeed.
+ARK's names: `drops` is DeathHarvestingComponent; `stats` is MaxStatusValues and the per-level gains; `takes` is DamageTypeAdjusters; `bite` is AttackInfos; `taming` is RequiredTameAffinity; `eats` is DinoSettings food effectiveness; `breeds` is EggItemsToSpawn, BabyAgeSpeed; `tag` is DinoNameTag; `variant` is a child blueprint's kind; `attacks` is AttackInfos; `loot` is DeathInventoryTemplates; `saddle` is SaddleItemClass; `buffs` is DefaultBuffs; `boss` is bIsBossDino.
 
-What names what: `drops[].item` names a `item`; `eats[].item` names a `item`; `breeds.egg` names a `prop/egg`.
+What names what: `drops[].item` names a `item`; `eats[].item` names a `item`; `breeds.egg` names a `prop/egg`; `loot` names a `loot`; `saddle` names a `item/saddle`; `buffs[]` names a `buff`.
 
-Packs may add to: `drops`, `eats`.
+Packs may add to: `drops`, `eats`, `buffs`.
 
 ## Structures
 
@@ -254,55 +254,80 @@ ARK's names: `seconds` is DeactivateAfterTime; `health` is ValuesToAddPerSecond;
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `damage` | DmgType_ | partial: polish |  |  | 0 |
+| `damage` | DmgType_ | partial: polish |  | `label`, `torpor`, `trueShare`, `melee` | 0 |
 
 - **`damage`** on shelf `damage`. A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive.
+
+ARK's names: `torpor` is DamageTorpidityIncreaseMultiplier; `trueShare` is PercentTrueDamage; `melee` is bIsMeleeDamage.
 
 ## Loot
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `loot` | a crate's item sets, a death inventory template | stub: loot |  |  | 0 |
+| `loot` | a crate's item sets, a death inventory template | stub: loot | `from` | `sets` | 0 |
 
 - **`loot`** on shelf `loot`. Sets of items with weights, counts and qualities, drawn from when something is opened or dies.
+
+ARK's names: `sets` is MinItemSets, MaxItemSets; `from` is ItemSets.
+
+What names what: `from[].entries[].items[]` names a `item`.
+
+Packs may add to: `from`.
 
 ## Spawns
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `spawns` | NPCSpawnEntriesContainer | stub: spawner |  |  | 0 |
+| `spawns` | NPCSpawnEntriesContainer | stub: spawner | `entries` | `limits` | 0 |
 
 - **`spawns`** on shelf `spawns`. Which creatures live in a place, in what share and at what levels.
+
+ARK's names: `entries` is NPCSpawnEntries; `limits` is NPCSpawnLimits.
+
+What names what: `entries[].species` names a `species/creature`; `limits[].species` names a `species/creature`.
+
+Packs may add to: `entries`.
 
 ## Maps
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `map` | a level and the game data it names | stub: maps |  |  | 0 |
+| `map` | a level and the game data it names | stub: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 0 |
 
 - **`map`** on shelf `maps`. A world: its ground, its zones, and what spawns, grows and drops in each. Today the one map is code.
+
+ARK's names: `game` is the game data a level names; `zones` is zone managers and crate volumes.
+
+What names what: `game` names a `game`; `zones[].spawns` names a `spawns`; `zones[].crate` names a `prop/crate`.
 
 ## The game
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `game` | PrimalGameData | stub: polish |  |  | 0 |
+| `game` | PrimalGameData | stub: polish | `survivor`, `cache`, `bag` | `levels`, `buffs` | 0 |
 
 - **`game`** on shelf `game`. What a game names once: the survivor's species, the death cache, the dropped bag, the standing buffs.
 
+ARK's names: `buffs` is AdditionalDefaultBuffs.
+
+What names what: `survivor` names a `species/survivor`; `cache` names a `prop/container`; `bag` names a `prop/container`; `levels` names a `levels`; `buffs[]` names a `buff`.
+
+Packs may add to: `buffs`.
+
 ## What waits for a feature
 
-Each class below has a row and no content. It is filled in when the feature
-under it is built.
+Each class below has a row and no content, and each field is declared and
+checked and read by nothing. They are filled in when the feature under them is
+built.
 
-- **Wild creatures that spawn and respawn by region.** `spawns`.
+- **Wild creatures that spawn and respawn by region.** `spawns`, `species.tag`, `species.variant`.
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
-- **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot`.
-- **Small behaviours of things already built.** `damage` (partly built), `game`.
-- **Maps as content: a map, its zones and what lives in them.** `map`.
+- **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot`, `item.blueprint`, `species.loot`.
+- **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `item.spoilsInto`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
+- **Maps as content: a map, its zones and what lives in them.** `map`, `engram.group`.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built).
 - **Skins, dyes, costumes and shields.** `item/shield`, `item/costume`, `item/skin`, `item/dye`.
-- **Bosses, artifacts and what a boss unlocks.** `item/artifact`.
+- **Bosses, artifacts and what a boss unlocks.** `item/artifact`, `species.boss`, `engram.from`.
 - **Eggs as items that are carried, kept and eaten.** `item/egg`.
 
 ## The core pack by class

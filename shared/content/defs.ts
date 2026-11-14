@@ -82,6 +82,20 @@ export interface SpeciesDef {
    * birth and is drawn at `scale` of full size at birth (a quarter where not given).
    */
   readonly breeds?: { readonly egg?: string; readonly incubate: number; readonly mature: number; readonly scale?: number };
+  // The rest are stubs: declared, checked and read by nothing yet. The catalogue says what each waits for.
+  /** A name shared by every variant of a creature, for settings that speak of all of them at once. */
+  readonly tag?: string;
+  /** What kind of variant of its base it is: "alpha", "event". */
+  readonly variant?: string;
+  /** Its attacks, to replace `bite` and `fists`. */
+  readonly attacks?: readonly { readonly name: string; readonly damage: number; readonly type: DamageType; readonly reach: number; readonly ticks: number; readonly lands: number }[];
+  /** The loot definition its body leaves, beside `drops`. */
+  readonly loot?: string;
+  /** The saddle item it wears. Today the saddle names the species. */
+  readonly saddle?: string;
+  /** Buffs it always has. */
+  readonly buffs?: readonly string[];
+  readonly boss?: boolean;
 }
 
 /** `at` is the centre, measured from the piece's origin. `half` is the half extents. Both are in metres. */
@@ -179,6 +193,14 @@ export interface ItemDef {
   readonly attachment?: "scope" | "silencer" | "light" | "laser";
   /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
   readonly places?: readonly string[];
+  // Stubs, read by nothing yet.
+  readonly description?: string;
+  /** Where it sits in the inventory and crafting lists: "Structures/Wood". */
+  readonly folder?: string;
+  /** The item a spoiled one becomes. */
+  readonly spoilsInto?: string;
+  /** It may be found as a blueprint: a copy that crafts it a limited number of times. */
+  readonly blueprint?: boolean;
 }
 
 /** Species and structure materials each give a multiplier per type. */
@@ -294,6 +316,13 @@ export interface EngramDef {
   readonly hidden?: boolean;
   /** A survivor that reaches this level learns it automatically and for free. */
   readonly auto?: number;
+  // Stubs, read by nothing yet.
+  /** Engrams that must be known first. */
+  readonly requires?: readonly string[];
+  /** The set of maps that offer it. */
+  readonly group?: string;
+  /** The boss whose defeat gives it, in place of points. */
+  readonly from?: string;
 }
 
 /** Experience needed to reach each level (index 0 is level 1), and the engram points gained on reaching it. */
@@ -353,7 +382,85 @@ export interface BuffDef {
   readonly good?: boolean;
 }
 
-export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef;
+/** A type of harm. A stub: the five the engine knows are named in code (`DamageType`). */
+export interface DamageDef {
+  readonly type: "damage";
+  readonly id: string;
+  readonly label?: string;
+  /** Torpor given, as a multiple of the damage done. */
+  readonly torpor?: number;
+  /** The share of the damage, 0 to 1, that armor does not reduce. */
+  readonly trueShare?: number;
+  readonly melee?: boolean;
+}
+
+export interface LootEntry {
+  /** One of these is drawn, by `weights` if given. */
+  readonly items: readonly string[];
+  readonly weights?: readonly number[];
+  readonly weight?: number;
+  readonly min: number;
+  readonly max: number;
+  /** Lowest and highest quality, as multiples of primitive. */
+  readonly quality?: readonly [number, number];
+  /** Chance, 0 to 1, that it comes as a blueprint. */
+  readonly blueprint?: number;
+}
+
+/** Sets of items to draw from: what a crate holds, what a body leaves. A stub until loot is built. */
+export interface LootDef {
+  readonly type: "loot";
+  readonly id: string;
+  /** How many of the sets are drawn. One, where not given. */
+  readonly sets?: { readonly min: number; readonly max: number };
+  readonly from: readonly { readonly weight?: number; readonly min: number; readonly max: number; readonly entries: readonly LootEntry[] }[];
+}
+
+/** Which creatures live in a place, in what share and at what levels. A stub until creatures spawn by region. */
+export interface SpawnsDef {
+  readonly type: "spawns";
+  readonly id: string;
+  readonly entries: readonly { readonly species: string; readonly weight: number; readonly levels?: readonly [number, number]; readonly pack?: readonly [number, number] }[];
+  /** The most of a place's creatures that may be of one species, as a share from 0 to 1. */
+  readonly limits?: readonly { readonly species: string; readonly share: number }[];
+}
+
+/** A place on a map where something spawns or drops. */
+export interface MapZone {
+  readonly kind: "spawn" | "crate" | "biome";
+  /** Centre x and z, and radius, in metres. */
+  readonly at: readonly [number, number];
+  readonly radius: number;
+  readonly spawns?: string;
+  readonly crate?: string;
+}
+
+/** A world. A stub: the one map is code (shared/world/proving.ts). */
+export interface MapDef {
+  readonly type: "map";
+  readonly id: string;
+  readonly label?: string;
+  /** Its size in chunks, east to west and north to south. */
+  readonly chunks: readonly [number, number];
+  readonly seaLevel?: number;
+  readonly game?: string;
+  readonly zones?: readonly MapZone[];
+}
+
+/** What a game names once. A stub: these are found by id in code today. */
+export interface GameDef {
+  readonly type: "game";
+  readonly id: string;
+  readonly survivor: string;
+  /** What the dead leave, and what a dropped stack lies in. */
+  readonly cache: string;
+  readonly bag: string;
+  readonly levels?: string;
+  /** Buffs every survivor always has. */
+  readonly buffs?: readonly string[];
+}
+
+export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef;
 
 /** Half extents of the box, centred on a shape's origin, that holds all of its boxes. */
 export function shapeHalf(boxes: readonly ShapeBox[]): [number, number, number] {

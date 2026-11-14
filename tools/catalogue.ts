@@ -4,7 +4,7 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { CORE_CONTENT } from "../content/core.ts";
-import { CLASSES, FIELDS, classOf, type ClassRow, type Slot } from "../shared/content/classes.ts";
+import { CLASSES, FIELDS, classOf, type ClassRow, type Field, type Slot } from "../shared/content/classes.ts";
 import { FEATURES, type Feature } from "../shared/features.ts";
 
 export const CATALOGUE_PAGE = resolve(import.meta.dir, "../planning/reference/catalogue.md");
@@ -91,7 +91,7 @@ export function cataloguePage(): string {
       for (const r of slotted) out.push(`- \`${r.id}\`: ${Object.entries(r.slots).map(([name, s]) => slotLine(name, s)).join("; ")}.`);
       out.push("");
     }
-    const fields = (FIELDS as Record<string, Record<string, { ark: string; open?: boolean; refs?: Record<string, string> }>>)[type];
+    const fields: Record<string, Field> | undefined = (FIELDS as Record<string, Record<string, Field>>)[type];
     if (fields) {
       const arks = Object.entries(fields).filter(([, f]) => f.ark !== "");
       if (arks.length > 0) out.push(`ARK's names: ${arks.map(([name, f]) => `\`${name}\` is ${cell(f.ark)}`).join("; ")}.`, "");
@@ -103,12 +103,14 @@ export function cataloguePage(): string {
   }
 
   out.push("## What waits for a feature", "");
-  out.push("Each class below has a row and no content. It is filled in when the feature");
-  out.push("under it is built.", "");
+  out.push("Each class below has a row and no content, and each field is declared and");
+  out.push("checked and read by nothing. They are filled in when the feature under them is");
+  out.push("built.", "");
   for (const feature of Object.keys(FEATURES) as Feature[]) {
-    const waiting = leaves.filter((r) => r.waits === feature);
+    const waiting = leaves.filter((r) => r.waits === feature).map((r) => `\`${r.id}\`${r.status === "partial" ? " (partly built)" : ""}`);
+    for (const [type, fields] of Object.entries(FIELDS)) for (const [name, f] of Object.entries(fields)) if ((f as { waits?: string }).waits === feature) waiting.push(`\`${type}.${name}\``);
     if (waiting.length === 0) continue;
-    out.push(`- **${FEATURES[feature]}.** ${waiting.map((r) => `\`${r.id}\`${r.status === "partial" ? " (partly built)" : ""}`).join(", ")}.`);
+    out.push(`- **${FEATURES[feature]}.** ${waiting.join(", ")}.`);
   }
   out.push("");
 
