@@ -3,7 +3,6 @@
 
 import type { MapDims } from "../coords.ts";
 import type { Registry } from "../content/registry.ts";
-import { hashBytes } from "../hash.ts";
 import { Rng } from "../rng.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
 import { scatterNodes, type NodeSource } from "./nodes.ts";
@@ -108,11 +107,6 @@ export function buildProvingHeightfield(): Heightfield {
     }
   }
   return hf;
-}
-
-export function provingMapHash(hf: Heightfield): number {
-  const heights = hashBytes(new Uint8Array(hf.heights.buffer, hf.heights.byteOffset, hf.heights.byteLength));
-  return hashBytes(new Uint8Array(new Float64Array([hf.seaLevel]).buffer), heights);
 }
 
 /** Server side. Clients receive the structures by replication. */

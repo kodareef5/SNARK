@@ -1,44 +1,34 @@
-// The map's two feeds, between a real server and real clients on a map 8 km wide.
+// The map's two feeds and what a client makes of them, between a real server and real clients on a map 8 km wide.
 
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { HudModel, updateHud } from "../../client/core/hud.ts";
-import { ClientSession, RemoteSample } from "../../client/core/session.ts";
+import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { Chart, type MapPicture } from "../../client/core/tactical.ts";
 import { IMAGE_MAP, IMAGE_MINIMAP, KEY_MARKER, KEY_MINIMAP, buildHud } from "../../client/core/ui/hud.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_MAP_TITLE, KEY_MAP_ZOOM, buildMap, mapPointer } from "../../client/core/ui/screens.ts";
-import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
-import { corePack } from "../fixtures/pack.ts";
-import { contentFor } from "../../server/host.ts";
-import { Rules } from "../../server/settings/rules.ts";
-import { createWorld } from "../../server/world.ts";
-import { defaultLook } from "../../shared/anim/look.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { CMD_MAP_ZOOM } from "../../shared/net/protocol.ts";
-import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
+import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { writeMap } from "../../shared/world/mapfile.ts";
 import { MARK_MATE, MARK_OTHER, MARK_TAME, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW } from "../../shared/world/tactical.ts";
-import { Harness, testKey } from "../fixtures/net.ts";
-import { coreRegistry } from "../fixtures/world.ts";
+import { Harness } from "../fixtures/net.ts";
+import { corePack } from "../fixtures/pack.ts";
 
-const DIMS = { chunksX: 128, chunksZ: 8 };
+const DIMS = { chunksX: 128, chunksZ: 4 };
+const SAMPLES = ((DIMS.chunksX * 64) / TERRAIN_CELL + 1) * ((DIMS.chunksZ * 64) / TERRAIN_CELL + 1);
+/** A flat map 8,192 m by 256 m with nothing on it. */
+const WIDE = writeMap({ id: "test:wide", dims: DIMS, minY: -32, stepY: 1 / 256, seaLevel: -Infinity, heights: new Uint16Array(SAMPLES).fill(32 * 256), tint: new Uint8Array(SAMPLES).fill(1), statics: [], nodes: [], spawns: [{ name: "West", x: 100, z: 100, yaw: 0 }] });
 
-/** A flat map 8,192 m by 512 m with nothing on it, and a way to join it. */
+/** A server on that map, and what the tests do to it. */
 function wide(tactical: { tacticalRadius?: number } = {}) {
-  const reg = contentFor(coreRegistry(), new Rules());
-  const hf = new Heightfield(DIMS, TERRAIN_CELL, -32, 1 / 256);
-  hf.heights.fill(32 * 256);
-  const world = createWorld(reg, DIMS, hf, "test:wide", 7, { x: 100, z: 100, yaw: 0 }, 1024);
-  const h = new Harness({}, 1, 60, { world, tactical }, reg);
-  const join = (name: string): ClientSession => {
-    const end = h.net.connect();
-    const s = new ClientSession(end, { name, key: testKey(name), registry: reg, clipHash: world.anim.set.hash, look: defaultLook(), resolveMap: () => hf });
-    h.sessions.push(s);
-    h.ends.push(end);
-    h.pilots.push({ moveX: 0, moveZ: 0, yaw: 0, pitch: 0, buttons: 0 });
-    return s;
-  };
-  const k = (id: string): number => reg.index.get(`core:${id}`)!;
+  const h = new Harness({}, 1, 60, { map: WIDE, tactical });
+  const world = h.world;
+  const hf = world.hf;
+  const join = (name: string): ClientSession => h.join(name);
+  const k = (id: string): number => h.reg.index.get(`core:${id}`)!;
   /** A hut two foundations square with a wall, its corner at (x, z). */
   const hut = (x: number, z: number, team: number): number[] => {
     const refs: number[] = [];
@@ -141,12 +131,12 @@ test("cells come at the size that suits the zoom a client shows, nearest first, 
   // Sixty chunks of its own in two rows, from beside it to the far end of the map, each with three huts.
   for (let i = 0; i < 60; i++) {
     const x = (1 + (i % 30)) * 64;
-    const z = Math.floor(i / 30) * 320;
+    const z = Math.floor(i / 30) * 192;
     for (const [dx, dz] of [[10, 10], [20, 24], [50, 42]] as const) hut(x + dx, z + dz, team);
   }
   const stats = h.host.tactical.stats;
   h.run(4000);
-  const far = chunkAt(DIMS, 30 * 64 + 10, 330);
+  const far = chunkAt(DIMS, 30 * 64 + 10, 202);
   const near = chunkAt(DIMS, 74, 10);
   expect(a.tactical.chunks.get(far)!.level).toBe(3);
   // The whole map's bases at the far zoom: a few hundred bytes.

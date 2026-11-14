@@ -334,7 +334,7 @@ fast laptop is not a player's device. `?bench=1` on a real device against
 | Area | Why it matters |
 | --- | --- |
 | Frame time on a named mid-range desktop, and on a phone | The 60 and 30 FPS goals; `?bench=1` is the tool |
-| The 8 km sizing scene in a browser | The client cannot yet be given a map other than the proving ground |
+| The 8 km sizing scene in a browser | A client can be given a map file now, and nobody has made one of that size and opened it |
 | A client frame with 3,000 awake creatures in view | Per-frame instance upload cost |
 | Mobile devices | The 30 FPS goal, memory, thermal behavior |
 | Real network conditions | The loopback injects latency, jitter, and loss, but not congestion |

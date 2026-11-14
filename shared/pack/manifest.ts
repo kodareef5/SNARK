@@ -131,7 +131,8 @@ export function parseManifest(text: string): Manifest {
     }
   }
   for (const mat of materials) {
-    for (const t of [mat.base, mat.normal, mat.mro, mat.mask]) if (!(t >= -1 && t < textures.length)) throw new Error(`manifest: material ${mat.id} names a texture that is not there`);
+    mat.mask2 ??= -1;
+    for (const t of [mat.base, mat.normal, mat.mro, mat.mask, mat.mask2]) if (!(t >= -1 && t < textures.length)) throw new Error(`manifest: material ${mat.id} names a texture that is not there`);
   }
   const seen = new Set<string>();
   for (const mesh of m.meshes) {

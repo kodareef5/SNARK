@@ -19,6 +19,7 @@ import { deriveRegistry, type Tuning } from "../shared/content/tuning.ts";
 import { TICK_DT } from "../shared/coords.ts";
 import { Rng } from "../shared/rng.ts";
 import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, stepBody } from "../shared/sim/character.ts";
+import type { Heightfield } from "../shared/world/heightfield.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../shared/world/proving.ts";
 import { StructureStore } from "../shared/world/structures.ts";
 import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../shared/world/snap.ts";
@@ -70,11 +71,12 @@ export function tunedHash(): string {
   return (h >>> 0).toString(16).padStart(8, "0") + simHash(600, reg);
 }
 
-export function simHash(ticks = 3000, content: Registry | null = null): string {
+/** `ground` is the proving ground from elsewhere, such as its map file. Without it the proving ground is built here. */
+export function simHash(ticks = 3000, content: Registry | null = null, ground: { hf: Heightfield; structs: StructureStore } | null = null): string {
   const reg = content ?? compileContent(CORE_CONTENT).registry!;
-  const hf = buildProvingHeightfield();
-  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
-  populateProving(structs, hf, reg);
+  const hf = ground ? ground.hf : buildProvingHeightfield();
+  const structs = ground ? ground.structs : new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  if (!ground) populateProving(structs, hf, reg);
   const world = { hf, structs };
   const p = reg.move[reg.index.get("core:survivor")!]!;
   const rng = new Rng(20261112);

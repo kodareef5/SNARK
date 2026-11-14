@@ -9,7 +9,8 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { LoopbackNet, type LinkOptions, type LoopbackEnd } from "../../shared/net/loopback.ts";
 import { hashString } from "../../shared/hash.ts";
 import { KEY_BYTES } from "../../shared/net/protocol.ts";
-import { buildProvingHeightfield, provingNodes } from "../../shared/world/proving.ts";
+import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { mapHeightfield, mapNodes, parseMap, type MapFile } from "../../shared/world/mapfile.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { corePack } from "./pack.ts";
 import { coreRegistry } from "./world.ts";
@@ -62,14 +63,17 @@ export class Harness {
   now = 0;
   private serverClock = 0;
   private readonly clientFrameMs: number;
-  // Clients share one generated heightfield, which is immutable.
-  private readonly hf = buildProvingHeightfield();
+  // Clients read the map file the host serves, as a browser does, and share its ground, which is immutable.
+  private readonly map: MapFile;
+  private readonly hf: Heightfield;
 
   constructor(opts: Partial<GameOptions> = {}, seed = 1, clientFps = 60, host: HostOptions = {}, reg: Registry = coreRegistry()) {
     this.reg = reg;
     // The host uses the real pack's clips and rigs, as a server started from the built client does.
     this.host = createHost(reg, { clips: corePack().clips, rigs: corePack().header.rigs, ...host, game: opts });
     this.world = this.host.world;
+    this.map = parseMap(this.host.mapFile!);
+    this.hf = mapHeightfield(this.map);
     this.server = this.host.game;
     this.net = new LoopbackNet(seed);
     this.server.listen(this.net);
@@ -86,8 +90,8 @@ export class Harness {
       ...(opts.password !== undefined ? { password: opts.password } : {}),
       clipHash: this.world.anim.set.hash,
       ...(opts.look === null ? {} : { look: opts.look ?? defaultLook() }),
-      resolveMap: (_id, hash) => (hash === this.world.mapHash ? this.hf : null),
-      nodes: (hf, reg) => (this.world.nodeField ? provingNodes(hf, reg) : null),
+      resolveMap: (id, hash) => (id === this.map.id && hash === this.map.hash ? this.hf : null),
+      nodes: (hf, reg) => mapNodes(this.map, hf, reg),
     });
     this.sessions.push(session);
     if (opts.manual) this.manual.add(session);
