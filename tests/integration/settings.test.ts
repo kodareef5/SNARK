@@ -146,6 +146,25 @@ test("each source is stronger than the one before it: default, files, command li
   expect([rules.num("TamingSpeedMultiplier"), rules.sourceOf(rowOf("TamingSpeedMultiplier")!)]).toEqual([20, "console"]);
 });
 
+test("a live file read again with nothing changed is not a change, lists and all; a value or an entry that differs is one", () => {
+  const live = (taming: number, wood: number): string => `TamingSpeedMultiplier=${taming}\nShowFloatingDamageText=True\nHarvestResourceItemAmountClassMultipliers=(ClassName="core:wood",Multiplier=${wood})\nHarvestResourceItemAmountClassMultipliers=(ClassName="core:stone",Multiplier=3)\n`;
+  const { rules, report } = loadConfig({ gus: "[ServerSettings]\nXPMultiplier=2\n", live: live(8, 2) }, ["-UseDynamicConfig"]);
+  expect([report.refused, report.unknown]).toEqual([[], []]);
+  let at = rules.version;
+  const read = (text: string): boolean => {
+    applyLive(rules, text, emptyReport());
+    const changed = rules.version !== at;
+    at = rules.version;
+    return changed;
+  };
+  expect([read(live(8, 2)), read(live(8, 2))]).toEqual([false, false]);
+  expect([read(live(9, 2)), rules.num("TamingSpeedMultiplier")]).toEqual([true, 9]);
+  expect([read(live(9, 4)), rules.list("HarvestResourceItemAmountClassMultipliers").length, read(live(9, 4))]).toEqual([true, 2, false]);
+  // The value a setting already has, given by a stronger source, is no change, and the setting is that source's from then on.
+  expect([rules.assign("XPMultiplier", "2", "console"), rules.version === at, rules.sourceOf(rowOf("XPMultiplier")!)]).toEqual(["", true, "console"]);
+  expect([rules.assign("XPMultiplier", "3", "console"), rules.version === at]).toEqual(["", false]);
+});
+
 test("a folder is read from disk, any of its files missing; a server started on it has its rules, the console changes only what may change while it runs, and nothing of them is kept with the world but what its timers were worked out under", () => {
   const folder = join(dir, "config");
   const dbPath = join(dir, "world.db");
