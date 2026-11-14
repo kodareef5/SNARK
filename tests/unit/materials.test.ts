@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial } from "../../shared/pack/pack.ts";
-import { REGION_BASE, defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
+import { RAMP_BASE, REGION_BASE, SKIN_BASE, defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 import { findAssets, type Asset } from "../../tools/art/assets.ts";
 import { convertModel, convertPieces, packOf, repack, type Built } from "../../tools/art/build.ts";
 import { bothWays, checkAsset } from "../../tools/art/check.ts";
@@ -127,6 +127,15 @@ test("pieces take their materials by name: one of the asset's own, one that seve
     expect([mesh.flat, mesh.lods.length > 2, mean.flat, palette[mean.flat * 4]! > 150]).toEqual([1, true, mean.flat, true]);
     for (const lod of mesh.lods) expect([...new Set(lod.colors)].sort((a, b) => a - b)).toEqual([mean.flat, nearestColour(palette, 200, 40, 40)].sort((a, b) => a - b));
     expect(parsePack(packOf(out)).header.materials!.map((m) => m.id)).toEqual(["t:hide", "t:posts/horn"]);
+
+    // Made with another palette, here the block made by rule in reverse, and written again, it has today's colours:
+    // a material's read off its pictures again, and any other the nearest of its old colour.
+    const today = repack(packOf(out), false);
+    const other = palette.slice();
+    const turn = (c: number): number => (c >= RAMP_BASE && c < SKIN_BASE ? RAMP_BASE + SKIN_BASE - 1 - c : c);
+    for (let i = RAMP_BASE; i < SKIN_BASE; i++) other.set(palette.subarray(i * 4, i * 4 + 4), turn(i) * 4);
+    const old = buildPack(out.meshes.map((m) => ({ ...m, lods: m.lods.map((lod) => ({ ...lod, colors: lod.colors.map(turn) })) })), other);
+    expect([repack(old, false, asset), repack(old, false)]).toEqual([today, today]);
 
     // Asked for, its levels are made from its finest, and the first flat one is the asset's.
     const made = built();

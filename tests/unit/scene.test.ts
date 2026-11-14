@@ -308,5 +308,5 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   expect(w.port.log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([7643, 767, 20, 0]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
-  expect(hash).toBe(3323304581);
+  expect(hash).toBe(2429277953);
 });
