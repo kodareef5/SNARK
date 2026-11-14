@@ -1,6 +1,4 @@
-// The interface's state and its decisions: which screen is up, what a key
-// does, whether the mouse steers the camera. Screens write their nodes into
-// `frame` every frame; the shell draws that list and sends events back here.
+// Screens write their nodes into `frame` every frame. The shell draws that list and sends events back here.
 
 import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
@@ -20,7 +18,7 @@ import { StructMenu } from "./structure.ts";
 import { KEY_NAME_INPUT, NamePrompt } from "./tame.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 
-/** The keys that open the chat box, and the channel each opens it on. */
+/** The channel each key opens the chat box on. */
 const CHAT_KEYS: Record<string, number> = { Enter: TEXT_GLOBAL, NumpadEnter: TEXT_GLOBAL, Insert: TEXT_LOCAL, Slash: TEXT_TRIBE };
 
 export class Ui {
@@ -30,47 +28,39 @@ export class Ui {
   readonly inventory = new InventoryScreen();
   readonly creator = new CreatorScreen();
   readonly sheet = new CharacterScreen();
-  /** What can be done to the thing built that is being looked at. */
   readonly structure = new StructMenu();
-  /** What to call a creature that has just been tamed. */
   readonly naming = new NamePrompt();
-  /** The session has no survivor yet and is making one: the creator is the whole interface. */
+  /** The session is in the creator, which is then the whole interface. */
   creating = false;
-  /** The full map is up. */
+  /** Which screen is up. `options` is the settings screen. */
   map = false;
-  /** The character screen (stats, engrams, crafting) is up. */
   character = false;
-  /** The settings screen is up; and what it sets. */
   options = false;
   readonly settings = new Settings();
-  /** The session is dead and choosing where to return: the mouse is free for that. */
+  /** The session is dead and choosing where to respawn, so the mouse is free. */
   private dead = false;
-  /** Content and palette, for naming and colouring items. Set by the app once it has them. */
+  /** The app sets both once it has them. */
   registry: Registry | null = null;
   palette: Uint8Array | null = null;
 
-  /** A text field has the keyboard: keys must not also drive the body. */
+  /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
     return this.console.open || this.chat.open || this.naming.open;
   }
 
-  /** The mouse should steer the camera (the shell holds pointer lock) rather than move a cursor. */
+  /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
     return !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.dead && !this.creating && !this.structure.open;
   }
 
-  /**
-   * A key went down (or repeated while held), or went up. Returns true if the
-   * interface used it, in which case the shell must suppress the browser's own
-   * handling.
-   */
+  /** Returns true if the interface used the key. The shell must then suppress the browser's own handling. */
   key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
     const con = this.console;
     const chat = this.chat;
-    // Naming a creature has the keyboard until it is answered: Enter and Escape are its own, and every other key is typing.
+    // The name prompt has the keyboard until it is answered.
     if (this.naming.open && !con.open) return this.naming.key(code, down, repeat, session);
     if (chat.open && !con.open) {
-      // The box has the keyboard: these three are its own, and every other key is typing.
+      // The chat box has the keyboard. It handles Enter, Escape and Tab, and every other key is typing.
       if (code !== "Enter" && code !== "NumpadEnter" && code !== "Escape" && code !== "Tab") return false;
       if (!down || repeat) return true;
       if (code === "Tab") chat.cycle(session);
@@ -84,18 +74,18 @@ export class Ui {
       return true;
     }
     if (!con.open) {
-      // The list of what can be done to a piece takes its three digits and Escape, and goes away for any other screen.
+      // The structure menu takes its digits and Escape. Opening any other screen closes it.
       if (this.structure.key(code, down, repeat, session)) return true;
-      // Chat: Enter to everyone, Insert to those near, the slash key to the tribe. Not while a survivor is still being made.
+      // Chat does not open while the session is in the creator.
       if (CHAT_KEYS[code] !== undefined && !this.creating) {
         if (down && !repeat) chat.begin(CHAT_KEYS[code]!, session);
         return true;
       }
-      // Screens leave the keyboard to the body: you can keep walking with them open.
+      // Screens leave the keyboard to the body, so the survivor can keep walking with one open.
       if (code === "KeyI" || code === "KeyM" || code === "KeyP" || code === "KeyO" || (code === "Escape" && (this.inventory.open || this.map || this.character || this.options))) {
         if (down && !repeat) {
           this.structure.close();
-          // One screen at a time: opening one puts the others away.
+          // Opening one screen closes the others.
           const map = code === "KeyM" && !this.map;
           const character = code === "KeyP" && !this.character;
           const options = code === "KeyO" && !this.options;
@@ -139,7 +129,7 @@ export class Ui {
     return false;
   }
 
-  /** Pointer went down (0), up (1) or moved (2) over an interactive node. */
+  /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. */
   pointer(kind: number, key: number, _x: number, _y: number, button: number, session: ClientSession | null): void {
     if (!session || this.console.open) return;
     if (kind === 0 && key === KEY_CHAT_TAG) {
@@ -157,31 +147,28 @@ export class Ui {
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
 
-  /** A text field's content changed. */
   input(key: number, value: string): void {
     if (key === KEY_NAME_INPUT) this.naming.edit(value);
     else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
   }
 
-  /** Lay out every visible screen for a window of this aspect. */
   build(aspect: number, hud: HudModel, session: ClientSession | null): void {
     const f = this.frame;
     f.begin(aspect);
     this.creating = session?.sessionState === SESSION_CREATING;
-    // A survivor that does not exist yet has no vitals, no place and nothing to aim at.
+    // A survivor still in the creator has no vitals, no position and nothing to aim at.
     if (!this.creating) {
       buildHud(f, hud);
       buildCombat(f, hud.combat);
-      // What is being said, over the world and under every screen.
+      // Chat is built over the HUD and under every screen.
       if (session) {
         this.chat.absorb(session);
         const band = chatBand(f, hud);
         this.chat.build(f, band.top, band.bottom, session.serverTick);
       }
     } else this.chat.close();
-    // The console covers whatever screen is up, and the chat box takes the keyboard from it; that screen
-    // waits underneath, undrawn, so nothing clickable hides behind either.
+    // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
     this.dead = session?.sessionState === SESSION_DEAD;
     if (this.dead || this.creating) this.structure.close();
     if (!this.console.open && !this.chat.open) {
@@ -195,7 +182,7 @@ export class Ui {
         if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
       }
     }
-    // A creature just tamed is asked about over whatever else is up, but under the console.
+    // The name prompt goes over every other screen, but under the console.
     if (session && this.registry && !this.creating) {
       this.naming.absorb(session);
       if (!this.console.open) this.naming.build(f, session, this.registry);

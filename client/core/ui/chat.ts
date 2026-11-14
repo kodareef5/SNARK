@@ -1,7 +1,4 @@
-// The chat box: what has been said lately, bottom left, and a line to say
-// something on. Enter opens it to everyone, Insert to those near, the slash key
-// to the tribe; Tab changes channel while it is open, Enter says the line and
-// shuts it, Escape shuts it. Who reads a line is the server's decision.
+// The server decides who reads a line.
 
 import { MAX_CHAT_CHARS, TEXT_GLOBAL, TEXT_LOCAL, TEXT_MOTD, TEXT_NOTICE, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
@@ -15,20 +12,20 @@ export const KEY_CHAT_TAG = 15;
 export const KEY_CHAT_ROW = 16;
 
 const MAX_ROWS = 8;
-/** Rows shown while the box is shut: only what was said lately. */
+/** Rows shown while the box is shut. */
 const SHUT_ROWS = 6;
 const LINES = 100;
 const WIDTH = 380;
 const MARGIN = 12;
 const TAG_WIDTH = 62;
-/** Ticks a line stays up with the box shut, and how many of the last of them it fades over. */
+/** Ticks a line stays up with the box shut, and the ticks at the end of that over which it fades. */
 const SHOW_TICKS = 12 * 30;
 const FADE_TICKS = 2 * 30;
 
 const CHANNELS: readonly number[] = [TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE];
 const TAG: Record<number, string> = { [TEXT_GLOBAL]: "Global", [TEXT_LOCAL]: "Local", [TEXT_TRIBE]: "Tribe" };
 const ROW_STYLE: Record<number, number> = { [TEXT_NOTICE]: S_CHAT_NOTICE, [TEXT_MOTD]: S_CHAT_NOTICE, [TEXT_GLOBAL]: S_CHAT, [TEXT_LOCAL]: S_CHAT_LOCAL, [TEXT_TRIBE]: S_CHAT_TRIBE };
-/** What a line begins with, so that its channel is told by more than its colour. */
+/** A line's prefix, so that colour is not the only sign of its channel. */
 const PREFIX: Record<number, string> = { [TEXT_NOTICE]: "", [TEXT_MOTD]: "", [TEXT_GLOBAL]: "", [TEXT_LOCAL]: "[Local] ", [TEXT_TRIBE]: "[Tribe] " };
 
 interface Row {
@@ -41,10 +38,9 @@ interface Row {
 
 export class ChatState {
   open = false;
-  /** The channel the line being typed will go out on. */
   channel = TEXT_GLOBAL;
   input = "";
-  /** What has been said and what the server has told this client, oldest first: the channel, the text, the tick it arrived, and the ticks it stays up with the box shut. */
+  /** Oldest first. `at` is the tick a line arrived. */
   readonly lines: { channel: number; text: string; at: number; hold: number }[] = [];
   private readonly live: number[] = [];
   private seen = 0;
@@ -52,20 +48,19 @@ export class ChatState {
   private rowsFor = "";
   private version = 0;
 
-  /** Whether `channel` can be spoken on by this session now. */
   private usable(channel: number, session: ClientSession | null): boolean {
     if (!session) return true;
     return channel === TEXT_GLOBAL ? session.globalChat : channel === TEXT_TRIBE ? session.tribe.name !== "" : true;
   }
 
-  /** Open the box on a channel; on a server with no global channel, that key speaks to those near. */
+  /** On a server with no global chat, the global key opens the local channel. */
   begin(channel: number, session: ClientSession | null): void {
     this.open = true;
     this.input = "";
     this.channel = channel === TEXT_GLOBAL && !this.usable(channel, session) ? TEXT_LOCAL : channel;
   }
 
-  /** The next channel this session can speak on. */
+  /** Moves to the next channel this session can speak on. */
   cycle(session: ClientSession | null): void {
     let at = CHANNELS.indexOf(this.channel);
     for (let n = 0; n < CHANNELS.length; n++) {
@@ -75,12 +70,10 @@ export class ChatState {
     this.channel = CHANNELS[at]!;
   }
 
-  /** The text field changed. */
   edit(value: string): void {
     this.input = value.length > MAX_CHAT_CHARS ? value.slice(0, MAX_CHAT_CHARS) : value;
   }
 
-  /** Say the line, if there is one, and shut the box. */
   submit(session: ClientSession | null): void {
     const line = this.input.trim();
     this.input = "";
@@ -100,7 +93,7 @@ export class ChatState {
     this.version++;
   }
 
-  /** Take in what has been said, and what the server has told this client, since the last call. Console output is not chat. */
+  /** Takes in the session log since the last call. Console output is not chat and is left out. */
   absorb(session: ClientSession): void {
     const fresh = session.logVersion - this.seen;
     if (fresh <= 0) return;
@@ -108,17 +101,13 @@ export class ChatState {
     const log = session.log;
     for (let i = Math.max(0, log.length - fresh); i < log.length; i++) {
       const l = log[i]!;
-      // The server's message of the day stays up as long as the server says.
+      // The message of the day stays up for the server's motdSeconds.
       if (l.channel === TEXT_MOTD) this.print(l.channel, l.text, session.serverTick, session.motdSeconds * 30);
       else if (l.channel >= TEXT_NOTICE && l.channel <= TEXT_TRIBE) this.print(l.channel, l.text, session.serverTick);
     }
   }
 
-  /**
-   * Lay the box out between `top` and `bottom` at the left of the canvas, the
-   * newest line lowest. Shut, it is only the lines said lately, fading; open,
-   * it has a backdrop, more lines, and the field with its channel beside it.
-   */
+  /** Lays the box out between `top` and `bottom`, newest line lowest. Shut, it shows only recent lines, which fade. */
   build(f: UiFrame, top: number, bottom: number, now: number): void {
     const w = Math.min(WIDTH, f.width - MARGIN * 2);
     const lh = lineHeight(S_CHAT);
@@ -138,7 +127,7 @@ export class ChatState {
     const room = Math.max(1, Math.floor((bottom - top - inputH - 4) / lh));
     const most = Math.min(this.open ? MAX_ROWS : SHUT_ROWS, room);
     const rowsBottom = bottom - inputH - 4;
-    // Shut, a line is shown for a while after it arrives, each for its own while; open, whatever fits. The newest that are to be shown, in the order they came.
+    // Shut, a row shows until its hold runs out. Open, every row may show. The newest `most` are taken, in arrival order.
     const live = this.live;
     live.length = 0;
     for (let i = this.rows.length - 1; i >= 0 && live.length < most; i--) if (this.open || now - this.rows[i]!.at < this.rows[i]!.hold) live.push(i);
@@ -159,7 +148,7 @@ export class ChatState {
       y += lh;
     }
     if (!this.open) return;
-    // The channel, which a click changes as Tab does; and the field.
+    // A click on the channel tag changes channel, as Tab does.
     const tag = f.add(KEY_CHAT_TAG, K_BUTTON, MARGIN, bottom - inputH, TAG_WIDTH, inputH, S_CHAT_TAG);
     tag.text = TAG[this.channel] ?? "";
     tag.interactive = true;

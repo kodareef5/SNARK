@@ -1,9 +1,5 @@
-// What to call a creature that has just been tamed, or taken as young.
-//
-// The server says a creature is this survivor's; this asks for its name: a
-// small panel with a field. Enter sends what was typed (nothing typed leaves
-// it without a name), Escape leaves it as it is. If several are won at once
-// they are asked about one after another.
+// Asks for the name of a creature the server says is now this survivor's. Enter sends the name, or nothing if none was typed.
+// Escape leaves the creature as it is. Several creatures are asked about one after another.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CMD_NAME, MAX_NAME_BYTES } from "../../../shared/net/protocol.ts";
@@ -15,15 +11,14 @@ export const KEY_NAME_PANEL = 2460;
 export const KEY_NAME_TITLE = 2461;
 export const KEY_NAME_HINT = 2462;
 export const KEY_NAME_INPUT = 2463;
-/** In what the server says of a creature that is now this survivor's, the mark of one that was taken as young and not tamed. */
+/** The `te` the server sends for a creature claimed as young and not tamed. Matches CLAIMED in server/breeding.ts. */
 const CLAIMED = 255;
 
 export class NamePrompt {
-  /** The panel is up, asking about the first of those waiting. */
+  /** While open, the panel asks about session.tamed[0]. */
   open = false;
   text = "";
 
-  /** Take up whatever has been tamed since the last frame. */
   absorb(session: ClientSession): void {
     if (!this.open && session.tamed.length > 0) {
       this.open = true;
@@ -35,7 +30,7 @@ export class NamePrompt {
     this.text = value.slice(0, MAX_NAME_BYTES);
   }
 
-  /** A key while the panel is up. Returns true if it was the panel's: Enter and Escape are; everything else is typing. */
+  /** Returns true for Enter and Escape while the panel is up. Every other key is typing. */
   key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
     if (!this.open) return false;
     if (code !== "Enter" && code !== "NumpadEnter" && code !== "Escape") return false;
@@ -65,7 +60,7 @@ export class NamePrompt {
     const x = Math.round((f.width - w) / 2);
     const y = Math.round(f.height * 0.3);
     f.add(KEY_NAME_PANEL, K_PANEL, x, y, w, h, S_PANEL);
-    // One taken as young was not tamed: there is no "how well" to it.
+    // A creature claimed as young was not tamed, so there is no "% well" to show.
     const young = which.te === CLAIMED;
     f.text(KEY_NAME_TITLE, x + pad, y + pad, w - pad * 2, S_TITLE, young ? `Yours: a young ${what}, level ${which.level}` : `Tamed: a ${what}, level ${which.level}`);
     f.text(KEY_NAME_HINT, x + pad, y + pad + titleH, w - pad * 2, S_LABEL, young ? "It is hungry. Name it and press Enter." : `${which.te}% well. Name it and press Enter.`);

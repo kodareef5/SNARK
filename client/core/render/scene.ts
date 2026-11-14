@@ -1,9 +1,5 @@
-// Builds the frame packet: terrain tiles, structure batches and entities.
-//
-// Structures are drawn per chunk and per mesh as instanced batches. A chunk's
-// instance buffer is rebuilt only when its table version changes, and uploaded
-// once; a still base costs the client nothing per frame beyond one draw per
-// mesh kind per visible chunk.
+// Structures are drawn per chunk and per mesh as instanced batches. A chunk's instance buffer is rebuilt only when its
+// table version changes, and uploaded once.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
@@ -28,7 +24,7 @@ export interface RenderWorld {
   readonly dims: MapDims;
   readonly hf: Heightfield;
   readonly structs: StructureStore;
-  /** Resource nodes, drawn exactly as structures are. */
+  /** Resource nodes, drawn as structures are. */
   readonly nodes?: StructureStore;
 }
 
@@ -44,13 +40,12 @@ export interface OwnBody {
   readonly state: AnimState;
   /** The moment to pose it at, in ticks. */
   tick: number;
-  /** Seen from its own eyes: drawn over everything, without its head. */
+  /** Drawn over everything, without its head. */
   firstPerson: boolean;
-  /** Six colour regions; zero leaves the species' own. Used when it has no look. */
+  /** Six colour regions. Zero leaves the species' own. Used when it has no look. */
   readonly colors: Uint8Array;
-  /** Its 28-byte look, or null. */
   look: Uint8Array | null;
-  /** What it holds and wears, as `EntityStore.gear` has it. */
+  /** Laid out as EntityStore.gear. */
   readonly gear: Uint16Array;
   id: number;
 }
@@ -58,7 +53,7 @@ export interface OwnBody {
 /** Instance buffers of the node store are numbered from here, clear of chunk indices. */
 export const NODE_BUFFERS = 1 << 20;
 
-/** How far a rider's feet hang below where it sits: as the server has it (server/riding.ts). */
+/** Metres a rider's feet hang below its seat. Matches server/riding.ts. */
 const SEAT_DROP = 0.55;
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
@@ -67,7 +62,7 @@ const BEAM_MESH = "core:beam";
 const BEAM_COLOR = 8;
 
 interface ChunkBatch {
-  /** Table version the instances were built from; -1 forces a rebuild. */
+  /** Table version the instances were built from. -1 forces a rebuild. */
   version: number;
   data: Uint8Array;
   slots: Uint16Array;
@@ -87,9 +82,8 @@ export class Scene {
   readonly terrain: TerrainLod;
   /** Metres. Terrain beyond this is not drawn and fog reaches full strength here. */
   viewDistance = 4000;
-  /** Structures farther than this are not drawn. Distant bases need merged stand-ins, not instances. */
   structureDistance = Infinity;
-  /** Hour of the day, 0..24. Decides where the sun is and how bright the world is. Noon unless told. */
+  /** Hour of the day, 0..24. It sets the sun's position and the brightness. */
   hour = 12;
   /** Distances at which structure batches switch to lower levels of detail. */
   lodNear = 96;
@@ -99,14 +93,14 @@ export class Scene {
   readonly meshOfKind: Uint16Array;
   /** Region 0 colour per content index. */
   readonly colorOfKind: Uint8Array;
-  /** 1 for kinds drawn tilted to their pitch as well as turned to their facing. */
+  /** 1 for kinds drawn with their pitch as well as their yaw. */
   private readonly pitched: Uint8Array;
-  /** Per species: how big a newborn of it is drawn, as a share of a grown one. */
+  /** Per species. The size a newborn is drawn at, as a share of a grown one. */
   private readonly birthScale: Float32Array;
-  /** Shots in the air, drawn with the bodies; and the moment to draw them at, in ticks. Set by the app. */
+  /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. */
   shots: Shots | null = null;
   shotTick = 0;
-  /** Structures that have just gone, drawn where they have fallen to. Set by the app. */
+  /** Structures falling after a removal. The app sets it. */
   falling: Falling | null = null;
   private readonly trisOfMesh: number[][];
   private readonly radiusOfMesh: Float32Array;
@@ -117,15 +111,14 @@ export class Scene {
   private readonly transient: InstanceWriter;
   private readonly waterMesh: number;
   private readonly beamMesh: number;
-  /** Places to mark with a beam: x, y, z each. Set by the app before `build`. */
+  /** Places to mark with a beam, x, y, z each. The app sets them before build(). */
   readonly beams: number[] = [];
-  /** A piece shown where it would be built: its kind (0 for none), where (metres), its facing (wire units) and a palette colour. */
+  /** The piece shown where it would be built. kind is 0 for none, x, y, z are metres, yaw is in wire units, color is a palette index. */
   readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
-  /** Bodies with bones. */
   readonly characters: Characters;
-  /** The viewer's own body, or null to draw none. Set by the app before `build`. */
+  /** Null draws no body for the viewer. The app sets it before build(). */
   own: OwnBody | null = null;
-  /** An entity not to draw from what the server says of it, because `own` is that body as the viewer predicts it (a mount): its index, or -1. */
+  /** Index of an entity to leave out of the remote bodies, because `own` is that body as the viewer predicts it (a mount). -1 for none. */
   skip = -1;
   private readonly seatAt = [0, 0, 0];
   private readonly mountState = new AnimState();
@@ -165,7 +158,7 @@ export class Scene {
     }
   }
 
-  /** Forget what the renderer holds (after a lost graphics context): every buffer is sent again. */
+  /** Call after a lost graphics context. Every buffer is uploaded again. */
   resetUploads(): void {
     for (const b of this.batches.values()) b.uploaded = false;
   }
@@ -179,8 +172,7 @@ export class Scene {
     p.camX = cam.x;
     p.camY = cam.y;
     p.camZ = cam.z;
-    // The sun rises at six, stands highest at noon, sets at eighteen. At night
-    // the light comes from a fixed moon and everything is dimmer.
+    // The sun rises at six, peaks at noon and sets at eighteen. At night the light comes from a fixed moon and is dimmer.
     const up = Math.sin(((this.hour - 6) / 12) * Math.PI);
     const around = Math.cos(((this.hour - 6) / 12) * Math.PI);
     const dusk = Math.max(0, Math.min(1, (up + 0.1) / 0.4));
@@ -192,7 +184,7 @@ export class Scene {
     p.sun[1] = sy / sl;
     p.sun[2] = 0.43 / sl;
 
-    // Under water the world is a short, dim view of the water's own colour.
+    // Under water the view is short and the fog is the water's colour, dimmed.
     const sea = this.world.hf.seaLevel;
     if (cam.y < sea) {
       for (let k = 0; k < 3; k++) p.sky[k] = this.deepColor[k]! * p.light;
@@ -218,7 +210,6 @@ export class Scene {
     return p;
   }
 
-  /** Bodies with bones: every remote one in view, and the viewer's own. */
   private bodies(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const ch = this.characters;
@@ -232,7 +223,7 @@ export class Scene {
         let y = remote.y[i]! - cam.y;
         let z = remote.z[i]! - cam.z;
         let yaw = remote.yaw[i]!;
-        // A rider is drawn on its mount's seat, where the mount is drawn: the viewer's own as it predicts it, another's as it is shown.
+        // A rider is drawn on its mount's seat. The viewer's own mount is placed as predicted, any other as the server sent it.
         const on = remote.seat[i]! - 1;
         if (on >= 0) {
           const own = this.own;
@@ -262,12 +253,11 @@ export class Scene {
         st.unpack(remote.anim[i]!);
         st.seed = bodySeed(remote.id[i]!);
         const look = remote.hasLook[i] !== 0 ? remote.look : null;
-        // A young one is drawn small, and larger as it grows.
         const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
         if (!ch.add(p, kind, x, y, z, yaw, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size)) break;
       }
     }
-    // Things that lie tilted as well as turned (an arrow where it landed), and whatever is in the air.
+    // Pitched props, such as an arrow where it landed, then the shots in the air.
     if (remote) {
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
@@ -288,7 +278,6 @@ export class Scene {
     ch.flush(p, this.transient, false, this.drawBody);
   }
 
-  /** Structures on their way down: each as its own mesh, where its fall has taken it. */
   private showFalling(cam: Camera, f: Falling): void {
     const p = this.packet;
     const counts = this.counts.fill(0);
@@ -308,7 +297,6 @@ export class Scene {
     p.transientCount = total;
   }
 
-  /** The piece a builder is about to set down, where it would go: see-through, in the colour given. */
   private showGhost(cam: Camera): void {
     const p = this.packet;
     const g = this.ghost;
@@ -321,7 +309,6 @@ export class Scene {
     p.transientCount = first + 1;
   }
 
-  /** A tall thin beam over each marked place, visible from far off. */
   private markBeams(cam: Camera): void {
     const p = this.packet;
     const first = p.transientCount;
@@ -335,7 +322,7 @@ export class Scene {
     p.transientCount = first + n;
   }
 
-  /** The water surface: tiles of one flat mesh over the map, drawn last because they are see-through. */
+  /** Tiles of one flat mesh over the map, drawn last because they are see-through. */
   private water(cam: Camera, sea: number): void {
     const p = this.packet;
     const hf = this.world.hf;
@@ -360,7 +347,7 @@ export class Scene {
     p.transientCount = first + n;
   }
 
-  /** Draw one box store. Its chunk `c` uses instance buffer `base + c`. */
+  /** Chunk `c` of the store uses instance buffer `base + c`. */
   private structures(cam: Camera, store: StructureStore, base: number): void {
     const p = this.packet;
     const world = this.world;
@@ -463,7 +450,7 @@ export class Scene {
       const x = remote.x[i]! - cam.x;
       const y = remote.y[i]! - cam.y;
       const z = remote.z[i]! - cam.z;
-      // Mark culled entries by leaving them out of the counts; the second pass repeats the test.
+      // Culled entries are left out of the counts. The second pass repeats the test.
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       counts[mesh]!++;
       visible++;

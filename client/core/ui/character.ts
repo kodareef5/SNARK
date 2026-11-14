@@ -1,7 +1,4 @@
-// The character screen: level and experience, and under three tabs the stat
-// points to place, the engrams to learn, and what can be made. A list longer
-// than the panel is paged. Every button is a command; the numbers are the
-// server's.
+// Every button sends a command, and every number shown is the server's. A list longer than the panel is paged.
 
 import type { EngramDef, ItemDef, RecipeDef, SpeciesDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
@@ -16,15 +13,15 @@ export const KEY_CHAR_PANEL = 1100;
 export const KEY_CHAR_TITLE = 1101;
 export const KEY_CHAR_POINTS = 1102;
 export const KEY_CHAR_JOBS = 1103;
-/** The three tabs: stats, engrams, making. */
+/** Three keys, one per tab. */
 export const KEY_CHAR_TAB = 1104;
 /** Previous page, next page, and "page 2 of 5". */
 export const KEY_CHAR_PAGE = 1107;
 /** Per stat: its line, then its "+" button. */
 export const KEY_CHAR_STAT = 1110;
-/** Per engram (by its place among engrams, lowest level first): its line, then its button. */
+/** Per engram, in engramOrder: its line, then its button. */
 export const KEY_CHAR_ENGRAM = 1200;
-/** Per recipe (by its place among recipes in content order), likewise. */
+/** Per recipe, in content order: its line, then its button. */
 export const KEY_CHAR_RECIPE = 1400;
 export const TAB_STATS = 0;
 export const TAB_ENGRAMS = 1;
@@ -35,14 +32,14 @@ const PAD = 12;
 const BUTTON = 58;
 const CHOSEN = 0x3f6ea8;
 
-/** Content indices of every definition of a type, in content order. */
+/** Content indices, in content order. */
 function ofType(reg: Registry, type: string): number[] {
   const out: number[] = [];
   reg.defs.forEach((d, k) => d?.type === type && out.push(k));
   return out;
 }
 
-/** Every engram the server offers, the lowest level first; ties in content order. One it does not offer is listed only for whoever knows it already (`known`). */
+/** Lowest level first, ties in content order. A hidden engram is listed only when `known` has it. */
 export function engramOrder(reg: Registry, known: readonly number[] = []): number[] {
   return ofType(reg, "engram")
     .filter((e) => (reg.defs[e] as EngramDef).hidden !== true || known.includes(e))
@@ -51,9 +48,8 @@ export function engramOrder(reg: Registry, known: readonly number[] = []): numbe
 
 export class CharacterScreen {
   tab = TAB_STATS;
-  /** Page of the list on the tab shown, from 0. */
   page = 0;
-  /** Pages the list on the tab shown has, as of the last build. */
+  /** As of the last build. */
   pages = 1;
 
   build(f: UiFrame, session: ClientSession, reg: Registry): void {
@@ -85,11 +81,11 @@ export class CharacterScreen {
     });
     y += ROW + 10;
 
-    // The rows of the tab shown: a key, a line, and what its button says ("" for none).
+    // `button` is "" for a row without one.
     const rows: { key: number; text: string; button: string }[] = [];
     if (this.tab === TAB_STATS) {
       STAT_NAMES.forEach((name, i) => {
-        // Only what a point can raise: torpidity is the body's own.
+        // Only stats a point can raise are listed. Torpidity is not one.
         const curve = species?.stats?.[name];
         if (curve && curve[2] > 0) rows.push({ key: KEY_CHAR_STAT + i * 2, text: name, button: p.statPoints > 0 ? "+" : "" });
       });
@@ -134,7 +130,7 @@ export class CharacterScreen {
     }
   }
 
-  /** A press on one of the screen's buttons. Returns true if it was one. */
+  /** Returns true if the key was one of this screen's buttons. */
   click(key: number, session: ClientSession, reg: Registry): boolean {
     if (key >= KEY_CHAR_TAB && key < KEY_CHAR_TAB + TABS.length) {
       this.tab = key - KEY_CHAR_TAB;

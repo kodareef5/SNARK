@@ -1,16 +1,5 @@
-// The inventory screen: a grid of slots for what the survivor carries and,
-// when a container is open, a second grid for what is in it. Click a stack to
-// pick it up, click another slot (in either grid) to put it down: onto an
-// empty slot, a matching stack, or swapping with a different one. Middle click
-// picks up half. Right click eats, uses, or puts on. Every action is a command;
-// what the grids show is what the server last said, so nothing here can get out
-// of step with it.
-//
-// A survivor's own inventory has two more rows under its bag: the ten hotbar
-// slots and the five armor slots. They are slots like the others. Putting
-// ammunition down on a weapon that takes it sets the weapon to that kind;
-// putting an attachment down on a weapon that fits it fits it. Four buttons act
-// on the stack that is picked up: drop, repair, unload, detach.
+// Every action is a command, and the grids show what the server last said, so nothing here can get out of step with it.
+// A click picks a stack up or puts it down, a middle click picks up half, and a right click eats, uses or puts on.
 
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
@@ -27,33 +16,22 @@ export const KEY_OPEN_PANEL = 293;
 export const KEY_OPEN_TITLE = 294;
 /** Slot `s` of the survivor's own inventory is node KEY_INV_SLOT + 3 * s (then its swatch and its count). */
 export const KEY_INV_SLOT = 300;
-/**
- * The open container's slots, the same way, but numbered by their place on
- * the page shown: a vault has more slots than a screen has room for, and is
- * turned through a page at a time.
- */
+/** The open container's slots, the same way, but numbered by place on the page shown. A vault has more slots than one page holds. */
 export const KEY_OPEN_SLOT = 600;
-/** The buttons that turn the page back and on, and the line between them that says which page it is. */
+/** Three keys: page back, the "1 / 3" line, page on. */
 export const KEY_OPEN_PAGE = 296;
-/** The line that says how the creature looked into is. */
+/** The status line of the creature whose inventory is open. */
 export const KEY_OPEN_SUBJECT = 299;
-/**
- * For a creature of one's own: a button that tells it to follow or to stay,
- * one that changes its stance, and one for each stat a level can be put in
- * (when it has levels to spend).
- */
+/** For an owned creature: follow or stay, then its stance. KEY_OPEN_LEVEL is one button per stat a level can go into. */
 export const KEY_OPEN_ORDER = 270;
 export const KEY_OPEN_LEVEL = 272;
-/** And, on one that wears a saddle, a button that takes it off. */
 export const KEY_OPEN_UNSADDLE = 279;
-/** And, on one that is grown and of a kind that breeds, a button that says whether it may mate. */
 export const KEY_OPEN_MATE = 295;
-/** The stats a creature's levels go in, and what each button is marked with. */
 const LEVEL_STATS: readonly [stat: number, mark: string][] = [[0, "health"], [1, "stam"], [2, "oxy"], [3, "food"], [5, "weight"], [6, "melee"], [7, "speed"]];
 const STANCE_WORDS: readonly string[] = ["passive", "neutral", "aggressive"];
 const STAGE_WORDS: readonly string[] = ["baby", "juvenile", "adolescent"];
 
-/** A wait in seconds as a few characters: "45s", "12m", "5h 12m". */
+/** Formats seconds as "45s", "12m" or "5h 12m". */
 export function waitWords(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   const m = Math.floor(seconds / 60);
@@ -77,46 +55,46 @@ export function itemLabel(reg: Registry, item: number): string {
 
 export class InventoryScreen {
   open = false;
-  /** Box and slot of the stack that has been picked up; slot -1 for none. */
+  /** Box and slot of the picked-up stack. `held` is -1 for none. */
   heldBox = BOX_SELF;
   held = -1;
-  /** Pick up only half of it. */
+  /** Move only half of the picked-up stack. */
   private half = false;
-  /** Box and slot the pointer is over; slot -1 for none. */
+  /** Box and slot under the pointer. `hover` is -1 for none. */
   hoverBox = BOX_SELF;
   hover = -1;
   private hadOpen = false;
-  /** Which page of the open container is shown, how many slots a page is, and how many pages there are. */
+  /** Paging of the open container. */
   page = 0;
   private pageSize = 60;
   private pages = 1;
-  /** Content, as of the last build: what a slot's item is decides what putting something down on it means. */
+  /** As of the last build. pointer() uses it to tell a load or an attach from a move. */
   private registry: Registry | null = null;
 
   private box(session: ClientSession, which: number): Inventory | null {
     return which === BOX_OPEN ? (session.open?.inventory ?? null) : session.inventory;
   }
 
-  /** Which box and slot a node key names, as box * 1000 + slot, or -1. */
+  /** The box and slot a node key names, as box * 1000 + slot, or -1. */
   private where(key: number, session: ClientSession): number {
     const own = session.inventory;
     const s = (key - KEY_INV_SLOT) / 3;
     if (own && key < KEY_OPEN_SLOT && Number.isInteger(s) && s >= 0 && s < own.cap) return BOX_SELF * 1000 + s;
-    // The open container: the node says which place on the page, and the page says which slot that is.
+    // An open container's key gives the place on the page, and the page gives the slot.
     const other = session.open?.inventory;
     const i = (key - KEY_OPEN_SLOT) / 3;
     if (other && Number.isInteger(i) && i >= 0 && i < this.pageSize && this.page * this.pageSize + i < other.cap) return BOX_OPEN * 1000 + this.page * this.pageSize + i;
     return -1;
   }
 
-  /** Close the screen, and with it whatever container was open. */
+  /** Also closes the open container. */
   close(session: ClientSession | null): void {
     this.open = false;
     this.held = -1;
     if (session?.open) session.command(CMD_CLOSE);
   }
 
-  /** Pointer went down (0), up (1) or moved (2) over node `key`. */
+  /** `kind` is 0 for down, 1 for up, 2 for move. */
   pointer(kind: number, key: number, button: number, session: ClientSession): void {
     const at = this.where(key, session);
     const box = at < 0 ? BOX_SELF : Math.floor(at / 1000);
@@ -128,7 +106,7 @@ export class InventoryScreen {
     }
     const subject = session.subject;
     if (kind === 0 && subject?.owned && subject.id >= 0 && key >= KEY_OPEN_ORDER && key <= KEY_OPEN_UNSADDLE) {
-      // What a creature of one's own is told: follow or stay, the next stance round, its saddle off, or a level into a stat.
+      // Orders to an owned creature: follow or stay, the next stance, saddle off, or a level into a stat.
       const what = key === KEY_OPEN_UNSADDLE ? ORDER_UNSADDLE : key === KEY_OPEN_ORDER ? (subject.following ? ORDER_STAY : ORDER_FOLLOW) : key === KEY_OPEN_ORDER + 1 ? ORDER_STANCE + ((subject.stance + 1) % STANCE_WORDS.length) : ORDER_LEVEL + LEVEL_STATS[key - KEY_OPEN_LEVEL]![0];
       session.command(CMD_ORDER, (w) => (w.u32(subject.id), w.u8(what)));
       return;
@@ -142,7 +120,7 @@ export class InventoryScreen {
       return;
     }
     if (kind === 0 && key >= KEY_INV_ACTION && key < KEY_INV_ACTION + ACTIONS.length) {
-      // One of the four buttons: it acts on the stack picked up from the survivor's own slots.
+      // The four buttons act on a stack picked up from the survivor's own slots.
       const own = session.inventory;
       const from = this.held;
       this.held = -1;
@@ -157,7 +135,7 @@ export class InventoryScreen {
     const inv = this.box(session, box);
     if (kind !== 0 || slot < 0 || !inv) return;
     if (button === 2) {
-      // Use what is here. Only what you carry can be used; but a dose lying in an unconscious creature can be fed to it.
+      // Only a carried item can be used, but a torpor dose in an open creature's inventory can be fed to it.
       if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
       else if (box === BOX_OPEN && session.subject && inv.item[slot] !== 0 && (this.registry?.doseTorpor[inv.item[slot]!] ?? 0) > 0) session.command(CMD_FEED, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
       this.held = -1;
@@ -176,7 +154,7 @@ export class InventoryScreen {
     this.held = -1;
     if (!src || (fromBox === box && from === slot) || src.item[from] === 0) return;
     const count = this.half ? Math.max(1, src.count[from]! >> 1) : 0;
-    // Put down on a weapon of your own: ammunition it takes sets what it is loaded with, an attachment that fits is fitted.
+    // Ammunition put down on a carried weapon that takes it sets the weapon's ammunition kind. An attachment that fits is attached.
     const target = fromBox === BOX_SELF && box === BOX_SELF && this.registry ? (this.registry.defs[inv.item[slot]!] as ItemDef | null)?.weapon : undefined;
     const what = this.registry?.ids[src.item[from]!] ?? "";
     if (target?.ammo?.includes(what)) {
@@ -217,19 +195,18 @@ export class InventoryScreen {
     const titleH = lineHeight(S_TITLE);
     const infoH = lineHeight(S_LABEL);
     const rows = (n: number): number => Math.ceil(n / cols) * (CELL + GAP);
-    // A survivor's own slots: the bag, then (if it has them) the hotbar and the armor, each under a label.
+    // Own slots are the bag, then the hotbar and the armor if the inventory has them, each under a label.
     const tail = own.hotbar >= 0;
     const tailH = tail ? infoH * 2 + rows(HOTBAR_SLOTS) + rows(ARMOR_SLOTS) + 4 : 0;
     const actionH = tail ? 28 : 0;
     const ownH = titleH + rows(own.bag) + tailH + infoH + actionH + PAD * 2 + 6;
-    // The open container: as many rows as there is room to show; the rest by turning the page.
     this.pageSize = cols * OPEN_ROWS;
     this.pages = other ? Math.max(1, Math.ceil(other.bag / this.pageSize)) : 1;
     if (this.page >= this.pages) this.page = this.pages - 1;
     const onPage = other ? Math.min(this.pageSize, other.bag - this.page * this.pageSize) : 0;
-    // A creature looked into has a line of its own under its name: how its taming goes, or how it is.
+    // An open creature has a status line under its name.
     const subject = other ? session.subject : null;
-    // One's own has a row of buttons under that, and another when it has levels to spend.
+    // An owned one has a row of buttons under that, and a second row when it has levels to spend.
     const orderH = subject?.owned ? 28 + (subject.points > 0 ? 28 : 0) : 0;
     const subjectH = subject ? infoH + 2 + orderH : 0;
     const otherH = other ? titleH + subjectH + rows(this.pages > 1 ? this.pageSize : other.bag) + PAD * 2 : 0;
@@ -244,11 +221,9 @@ export class InventoryScreen {
         const x = x0 + PAD + (i % cols) * (CELL + GAP);
         const yy = top + Math.floor(i / cols) * (CELL + GAP);
         const inHand = which === BOX_SELF && inv.hotbar >= 0 && s === inv.hotbar + session.held;
-        // The open container's nodes are numbered by place on the page; a survivor's own by slot.
         const key = base + (which === BOX_OPEN ? i : s) * 3;
         const cell = f.add(key, K_BUTTON, x, yy, CELL, CELL, this.held === s && this.heldBox === which ? S_SLOT_HELD : S_SLOT);
         cell.interactive = true;
-        // What is in hand has a lighter cell.
         if (inHand && cell.style === S_SLOT) cell.tint = 0x5a6a7a;
         const item = inv.item[s]!;
         if (item === 0) continue;
@@ -257,7 +232,7 @@ export class InventoryScreen {
         const c = (def?.color ?? 15) * 4;
         if (palette) swatch.tint = (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!;
         swatch.text = itemLabel(reg, item).slice(0, 4);
-        // A stack shows how many; a weapon shows the rounds in it.
+        // A stack shows its count. A weapon shows its loaded rounds.
         const number = inv.count[s]! > 1 ? String(inv.count[s]) : def?.weapon?.ammo ? String(inv.loaded[s]) : "";
         f.text(key + 2, x + 2, yy + CELL - lineHeight(S_SLOT_TEXT), CELL - 4, S_SLOT_TEXT, number);
       }
@@ -269,7 +244,6 @@ export class InventoryScreen {
       const pagerW = this.pages > 1 ? 120 : 0;
       f.text(KEY_OPEN_TITLE, x0 + PAD, y + PAD, w - PAD * 2 - pagerW, S_TITLE, fit(session.open!.name).slice(0, Math.floor((w - PAD * 2 - pagerW) / (18 * 0.6))));
       if (this.pages > 1) {
-        // Back, which page of how many, and on.
         const px = x0 + w - PAD - pagerW;
         for (const [n, label] of [[0, "<"], [2, ">"]] as const) {
           const b = f.add(KEY_OPEN_PAGE + n, K_BUTTON, px + (n === 0 ? 0 : pagerW - 28), y + PAD - 2, 28, 22, S_BUTTON);
@@ -280,7 +254,6 @@ export class InventoryScreen {
       }
       if (subject) {
         const pct = (v: number): string => `${Math.round(v * 100)}%`;
-        // How it is: its taming, if it is being tamed; else its level, its sex if its kind breeds, how grown it is if it is young, and how its mating goes.
         const grown = subject.stage >= STAGE_WORDS.length;
         const sex = subject.breeds ? (subject.female ? "  female" : "  male") : "";
         const age = grown ? "" : `  ${STAGE_WORDS[subject.stage]} ${pct(subject.maturity)}`;
@@ -289,7 +262,6 @@ export class InventoryScreen {
         f.text(KEY_OPEN_SUBJECT, x0 + PAD, y + PAD + titleH, w - PAD * 2, S_LABEL, line.slice(0, Math.floor((w - PAD * 2) / 7.2)));
         if (subject.owned) {
           const top = y + PAD + titleH + infoH + 2;
-          // Two buttons; one more on one that wears a saddle, and one more on one that can be told to mate.
           const mates = subject.breeds && grown;
           const across = 2 + (subject.saddled ? 1 : 0) + (mates ? 1 : 0);
           const half = (w - PAD * 2 - GAP * (across - 1)) / across;
@@ -309,7 +281,6 @@ export class InventoryScreen {
             b.interactive = true;
           }
           if (subject.points > 0) {
-            // A level for each press, into the stat pressed, while it has any.
             const each = (w - PAD * 2 - GAP * (LEVEL_STATS.length - 1)) / LEVEL_STATS.length;
             LEVEL_STATS.forEach(([, mark], n) => {
               const b = f.add(KEY_OPEN_LEVEL + n, K_BUTTON, x0 + PAD + n * (each + GAP), top + 28, each, 24, S_BUTTON);
@@ -344,7 +315,7 @@ export class InventoryScreen {
       });
     }
 
-    // One line about the stack under the pointer, or the one picked up.
+    // One line about the picked-up stack, or else the stack under the pointer.
     const shownBox = this.held >= 0 ? this.heldBox : this.hoverBox;
     const shown = this.held >= 0 ? this.held : this.hover;
     const inv = this.box(session, shownBox);
@@ -354,7 +325,7 @@ export class InventoryScreen {
       const spoil = inv.spoilAt[shown]!;
       info = `${itemLabel(reg, item)} x${inv.count[shown]}  ${(reg.weight[item]! * inv.count[shown]!).toFixed(1)} kg`;
       if (spoil > 0) info += `  spoils in ${Math.max(0, Math.ceil((spoil - tick) / 30))} s`;
-      // Something that wears: its quality and what is left of it. A weapon: what is in it and on it.
+      // An item with durability shows its quality and what is left. A weapon also shows its ammunition and attachment.
       const uses = reg.uses[item]!;
       if (uses > 0 && reg.stack[item] === 1) {
         info = `${QUALITY_NAMES[inv.quality[shown]!] ?? ""} ${itemLabel(reg, item)}  ${inv.dur[shown]}/${Math.round(uses * (QUALITY_MUL[inv.quality[shown]!] ?? 1))}`;

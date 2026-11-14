@@ -1,7 +1,5 @@
-// Camera maths. Rendering is camera-relative: the view matrix carries rotation
-// only and every position handed to the GPU has the camera position subtracted
-// in double precision first, so float32 never has to resolve millimetres at
-// eight kilometres from the origin.
+// Rendering is camera-relative. The view matrix carries rotation only. The camera position is subtracted from every position in
+// double precision before it reaches the GPU, so float32 never has to resolve millimetres eight kilometres from the origin.
 
 /** Near and far planes of the pass that draws the viewer's own body. */
 export const NEAR_BODY = 0.03;
@@ -11,7 +9,7 @@ export class Camera {
   x = 0;
   y = 0;
   z = 0;
-  /** Radians. Yaw 0 faces +Z; positive pitch looks up. */
+  /** Radians. Yaw 0 faces +Z, and positive pitch looks up. */
   yaw = 0;
   pitch = 0;
   fovY = 1.2217; // 70 degrees
@@ -21,7 +19,7 @@ export class Camera {
 
   /** Column-major view-projection for camera-relative positions. */
   readonly viewProj = new Float32Array(16);
-  /** The same with a near plane of NEAR_BODY, for drawing the viewer's own body. */
+  /** The same with the NEAR_BODY planes, for the viewer's own body. */
   readonly nearViewProj = new Float32Array(16);
   /** Six frustum planes (a, b, c, d), inside when a*x + b*y + c*z + d >= 0, camera-relative. */
   readonly planes = new Float32Array(24);
@@ -64,7 +62,7 @@ export class Camera {
     }
   }
 
-  /** Whether a camera-relative box touches the frustum. Conservative. */
+  /** Takes a camera-relative box. Conservative. */
   boxVisible(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): boolean {
     const p = this.planes;
     for (let i = 0; i < 24; i += 4) {
@@ -74,11 +72,7 @@ export class Camera {
     return true;
   }
 
-  /**
-   * The direction, from the camera, of the point at screen position (sx, sy)
-   * in 0..1 with y down: a unit vector into out[0..2]. Uses yaw, pitch, fovY
-   * and aspect as they stand; it does not need `update`.
-   */
+  /** (sx, sy) is a screen position in 0..1 with y down. Writes a unit vector to out[0..2]. Does not need update(). */
   ray(sx: number, sy: number, out: Float32Array | Float64Array | number[]): void {
     const syaw = Math.sin(this.yaw);
     const cyaw = Math.cos(this.yaw);
@@ -97,10 +91,7 @@ export class Camera {
     out[2] = z / l;
   }
 
-  /**
-   * Project a world position to the screen. Fills out[0..1] with x, y in 0..1
-   * (y down) and out[2] with distance along the view; false if behind the camera.
-   */
+  /** Fills out[0..1] with x, y in 0..1 (y down) and out[2] with the distance along the view. False if behind the camera. */
   project(wx: number, wy: number, wz: number, out: Float32Array | number[]): boolean {
     const x = wx - this.x, y = wy - this.y, z = wz - this.z;
     const m = this.viewProj;

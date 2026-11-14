@@ -1,6 +1,3 @@
-// The settings screen: one row for each thing a player may set, with a button
-// to step it down and one to step it up.
-
 import { SETTING_ROWS, type Settings } from "../settings.ts";
 import { K_BAR, K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_STAMINA, S_TITLE } from "./style.ts";
@@ -13,7 +10,7 @@ const ROW = 30;
 const PAD = 14;
 const BUTTON = 30;
 
-/** The microphone's row: its label and a bar of how loud it is now. */
+/** The microphone row: its label, then a bar of its level now. */
 export const KEY_SETTINGS_MIC = 2390;
 
 export function buildSettings(f: UiFrame, s: Settings, micLevel = 0): void {
@@ -37,7 +34,7 @@ export function buildSettings(f: UiFrame, s: Settings, micLevel = 0): void {
       b.interactive = true;
     }
   });
-  // The microphone, as it is heard now: quiet speech fills about half of it. Empty until the talk key has asked for it.
+  // The bar spans 60 dB. Quiet speech fills about half of it. It is empty until the talk key has asked for the microphone.
   const my = y + PAD + titleH + 8 + SETTING_ROWS.length * ROW;
   f.text(KEY_SETTINGS_MIC, x + PAD, my + 5, 120, S_LABEL, "Microphone");
   const bar = f.add(KEY_SETTINGS_MIC + 1, K_BAR, x + PAD + 130, my + 9, w - PAD * 2 - 130, 8, S_STAMINA);
@@ -45,7 +42,7 @@ export function buildSettings(f: UiFrame, s: Settings, micLevel = 0): void {
   bar.value = db <= -60 ? 0 : db >= 0 ? 1 : 1 + db / 60;
 }
 
-/** A press on one of the screen's buttons. Returns true if it was one. */
+/** Returns true if the key was one of this screen's buttons. */
 export function settingsClick(key: number, s: Settings): boolean {
   const k = key - KEY_SETTINGS_ROW;
   if (k < 0 || k >= SETTING_ROWS.length * 4 || k % 4 < 2) return false;

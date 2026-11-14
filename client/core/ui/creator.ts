@@ -1,9 +1,5 @@
-// The character creator: what a new survivor sees before it has a body.
-//
-// It edits a look (shared/anim/look.ts) and shows it on a body standing at the
-// spawn point, which the app draws from `look` and `turn`. Nothing is sent
-// until "Create": then the look goes to the server once, and the server makes
-// the survivor or says why not.
+// Edits a look (shared/anim/look.ts). The app draws it on a body at the spawn point from `look` and `turn`.
+// Nothing is sent until "Create", which sends the look to the server once.
 
 import {
   BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGIONS, REGION_COUNT, SEX_LABELS,
@@ -18,16 +14,16 @@ import { S_BUTTON, S_LABEL, S_MARK_SELF, S_PANEL, S_STAMINA, S_SWATCH, S_TITLE }
 
 export const KEY_CREATOR_PANEL = 3000;
 export const KEY_CREATOR_TITLE = 3001;
-/** The two tabs: look, body. */
+/** Two keys, one per tab. */
 export const KEY_CREATOR_TAB = 3002;
 export const KEY_CREATOR_SEX = 3010;
-/** Turn the body left, turn it right. */
+/** Two keys: turn the body left, turn it right. */
 export const KEY_CREATOR_TURN = 3012;
 export const KEY_CREATOR_RANDOM = 3014;
 export const KEY_CREATOR_RESET = 3015;
 export const KEY_CREATOR_CREATE = 3016;
 export const KEY_CREATOR_NOTE = 3017;
-/** Colour swatches: skin, hair, eyes; each preceded by a mark behind the chosen one. */
+/** One key per swatch for skin, hair colour and eyes, then one per style for hair and beard. */
 export const KEY_CREATOR_SKIN = 3100;
 export const KEY_CREATOR_HAIR_COLOR = 3120;
 export const KEY_CREATOR_EYE = 3140;
@@ -41,26 +37,24 @@ export const KEY_CREATOR_REGION = 3200;
 
 const PAD = 12;
 const ROW = 24;
-/** How far one press of a region's button moves it. */
+/** One press of a region's button moves it this far, on a scale of -1 to 1. */
 const STEP = 0.1;
-/** A quarter of a third of a turn per press. */
+/** A twelfth of a turn per press. */
 const TURN_STEP = Math.PI / 6;
-/** Tint of a chosen button. */
 const CHOSEN = 0x3f6ea8;
 
 const TAB_LOOK = 0;
 
 export class CreatorScreen {
-  /** The look being made. */
   readonly look = defaultLook();
   tab = TAB_LOOK;
-  /** Radians the body shown is turned by: it starts facing the viewer, a little to one side. */
+  /** Radians. The body starts facing the viewer, a little to one side. */
   turn = 0.35;
-  /** The server refused the last "Create"; and that command's sequence number. */
+  /** The server refused the last "Create". `sent` is that command's sequence number. */
   refused = false;
   private sent = 0;
   private rng: Rng | null = null;
-  /** The region whose bar is being dragged, or -1; and where the bars are, from the last build. */
+  /** The region whose bar is being dragged, or -1. barX and barW are from the last build. */
   private drag = -1;
   private barX = 0;
   private barW = 1;
@@ -82,7 +76,6 @@ export class CreatorScreen {
       b.interactive = true;
       if (chosen) b.tint = CHOSEN;
     };
-    /** `count` buttons across the panel with a gap between them. */
     const across = (key: number, labels: readonly string[], chosen: number): void => {
       const gap = 4;
       const bw = (inner - gap * (labels.length - 1)) / labels.length;
@@ -103,7 +96,6 @@ export class CreatorScreen {
         const sw = (inner - gap * (count - 1)) / count;
         for (let i = 0; i < count; i++) {
           const sx = x + PAD + i * (sw + gap);
-          // A white edge behind the chosen one.
           if (i === chosen) f.add(KEY_CREATOR_MARK + mark, K_PANEL, sx - 2, y - 2, sw + 4, ROW + 4, S_MARK_SELF);
           const s = f.add(key + i, K_BUTTON, sx, y, sw, ROW, S_SWATCH);
           s.interactive = true;
@@ -147,7 +139,6 @@ export class CreatorScreen {
       }
     }
 
-    // Along the bottom, whichever tab is up: turn the body, start over, and finish.
     y = y0 + h - PAD - 34 - 6 - ROW - (this.refused ? lh + 4 : 0);
     if (this.refused) {
       f.text(KEY_CREATOR_NOTE, x + PAD, y, inner, S_LABEL, "The server would not make it. Try again.");
@@ -165,12 +156,12 @@ export class CreatorScreen {
     create.tint = 0x2f7a46;
   }
 
-  /** The server answered a command: if it was the "Create" and the answer was no, say so. */
+  /** Sets `refused` from the answer to the "Create" command. Other results are ignored. */
   result(seq: number, ok: boolean): void {
     if (seq === this.sent && seq !== 0) this.refused = !ok;
   }
 
-  /** Pointer went down (0), up (1) or moved (2) over one of the screen's nodes. Returns true if it was one. */
+  /** `kind` is 0 for down, 1 for up, 2 for move. Returns true if `key` is one of this screen's nodes. */
   pointer(kind: number, key: number, x: number, session: ClientSession): boolean {
     if (key < KEY_CREATOR_PANEL || key >= KEY_CREATOR_REGION + REGION_COUNT * 4) return false;
     const look = this.look;
@@ -181,7 +172,6 @@ export class CreatorScreen {
     const region = key >= KEY_CREATOR_REGION ? Math.floor((key - KEY_CREATOR_REGION) / 4) : -1;
     const part = key >= KEY_CREATOR_REGION ? (key - KEY_CREATOR_REGION) % 4 : -1;
     if (kind === 2) {
-      // Dragging along a bar sets it; moving over anything else does nothing.
       if (this.drag >= 0 && region === this.drag && part === 2) setRegion(look, region, ((x - this.barX) / this.barW) * 2 - 1);
       return true;
     }
@@ -203,7 +193,7 @@ export class CreatorScreen {
     else if (key === KEY_CREATOR_TURN) this.turn -= TURN_STEP;
     else if (key === KEY_CREATOR_TURN + 1) this.turn += TURN_STEP;
     else if (key === KEY_CREATOR_RANDOM) {
-      // Seeded by the name, so a run can be repeated; each press is the next throw.
+      // Seeded by the name, so a run can be repeated. Each press takes the next throw.
       this.rng ??= new Rng(hashString(session.name));
       randomLook(this.rng, look);
     } else if (key === KEY_CREATOR_RESET) defaultLook(look);
@@ -211,7 +201,7 @@ export class CreatorScreen {
       this.refused = false;
       this.sent = session.create(look);
     } else if (pick(KEY_CREATOR_SEX, SEX_LABELS.length, LOOK_SEX)) {
-      // A beard does not follow to the other body unasked.
+      // Choosing a sex other than the first clears the beard.
       if (look[LOOK_SEX] !== 0) look[LOOK_BEARD] = 0;
     } else if (
       !pick(KEY_CREATOR_SKIN, SKIN_TONES, LOOK_SKIN) &&

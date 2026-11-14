@@ -1,15 +1,5 @@
-// Bodies with bones: poses them and queues their meshes for the frame.
-//
-// A body is one skeleton and several meshes, one per body slot (head, torso,
-// hands, legs, feet), so that a worn piece can replace the part under it, plus
-// hair and a beard on the head. Each body's bones are written once into the
-// packet as rows that carry a vertex of the mesh all the way to the
-// camera-relative world; every mesh of that body is then one instance that
-// names the body's first bone.
-//
-// A survivor's look picks the meshes (sex, hair, beard), the colours, and how
-// far each bone is stretched. A body without a look is drawn as its species'
-// meshes in its own six colours.
+// A body is one skeleton and several meshes, one per body slot, so a worn piece can replace the part under it.
+// Its bones go into the packet once, and each of its meshes is one instance that names the body's first bone.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { Pose } from "../../../shared/anim/clip.ts";
@@ -25,46 +15,43 @@ import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 
-/** A body is not drawn when its origin is farther than this outside the view: no pose reaches farther from where it stands. */
+/** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
 /** Distances at which a body drops to its second and third level of detail, metres. */
 export const BODY_LOD_NEAR = 14;
 export const BODY_LOD_FAR = 45;
-/** Levels of detail a body mesh may have. */
 const LODS = 3;
-/** Meshes one body can be: its slots, hair, a beard, something on its head, and something in its hand. */
+/** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, and a held item. */
 const PARTS = SLOT_COUNT + 4;
 const MANNEQUIN = "core:mannequin";
 const PLAIN = defaultLook();
 
-/** One set of meshes on one rig: a sex of a species, or the whole of a species that has none. */
+/** The meshes on one rig: one sex of a species, or the whole of a species modelled without sexes. */
 interface BodySet {
   /** Pack mesh per body slot, -1 where there is none. */
   slots: Int32Array;
   /** Pack mesh per hair style and per beard style, -1 for none. */
   hair: Int32Array;
   beard: Int32Array;
-  /** Where the joints of the body these meshes were made on rest. */
+  /** Rest positions of the joints of the body these meshes were made on. */
   rest: Float32Array;
-  /** Per armor set (by its place in `Characters.sets`): the pack mesh worn in each body slot, -1 where the set has none. */
+  /** Per armor set, indexed as Worn.set. The pack mesh worn in each body slot, -1 where the set has none. */
   armor: Int32Array[];
 }
 
-/** What a worn item draws: which body slot, which armor set, and its three colours. */
 interface Worn {
   slot: number;
   set: number;
   colors: readonly [number, number, number];
 }
 
-/** What a held item draws: its mesh and the bone it hangs on. */
 interface Held {
   mesh: number;
   bone: number;
 }
 
 interface BodyKind {
-  /** By sex when the species has modelled bodies; otherwise one set. */
+  /** Indexed by sex, or a single set. */
   sets: BodySet[];
   color: number;
 }
@@ -76,9 +63,9 @@ export class Characters {
   /** Bodies posed this frame. */
   posed = 0;
   private readonly kinds: (BodyKind | null)[];
-  /** Per content index: for a creature whose skeleton came with its model, that skeleton, its one mesh, its colour and the speed it runs from. */
+  /** Per content index. Set for a species with a non-human skeleton whose rig and mesh are in the pack. */
   private readonly creatures: ({ rig: Rig; mesh: number; color: number; runAt: number } | null)[];
-  /** Per content index: what wearing or holding that item draws, or null. */
+  /** Per content index. */
   private readonly worn: (Worn | null)[];
   private readonly held: (Held | null)[];
   private readonly wornColor = new Uint8Array(6);
@@ -96,7 +83,7 @@ export class Characters {
   private readonly colors = new Uint8Array(MAX_SKINNED * 6);
   private readonly id = new Uint32Array(MAX_SKINNED);
   private readonly near = new Uint8Array(MAX_SKINNED);
-  /** Added to each vertex before its bone: where the bone a held thing hangs on rests. Zero for the body's own meshes. */
+  /** Added to each vertex before its bone is applied. The rest position of the bone a held item hangs on, or zero for a body mesh. */
   private readonly offset = new Float32Array(MAX_SKINNED * 3);
   private readonly counts: Uint32Array;
   private readonly cursor: Uint32Array;
@@ -109,7 +96,6 @@ export class Characters {
       const m = pack.meshIndex.get(id);
       return m !== undefined && pack.header.meshes[m]!.skeleton === HUMAN.id ? m : -1;
     };
-    // Armor sets and held things, from the items that name them.
     const sets: string[] = [];
     this.worn = reg.defs.map((d) => {
       if (d?.type !== "item" || !d.wear) return null;
@@ -119,7 +105,7 @@ export class Characters {
     this.held = reg.defs.map((d) => {
       const mesh = d?.type === "item" && d.weapon?.mesh ? find(d.weapon.mesh) : -1;
       if (mesh < 0) return null;
-      // Every vertex of a held thing follows the same bone: the first vertex says which.
+      // Every vertex of a held item follows the same bone, so the first vertex names it.
       const lod = pack.header.meshes[mesh]!.lods[0]!;
       return { mesh, bone: lodVertices(pack, lod)[7]! };
     });
@@ -145,7 +131,7 @@ export class Characters {
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
-      // A modelled body for each sex; or one body; or, when its meshes are not in the pack, the mannequin.
+      // A modelled body for each sex, else one body, else the mannequin when the pack lacks the species' meshes.
       const sexes = SEX_IDS.map((sex) => setOf(`${d.mesh}_${sex}`));
       const sets = sexes.every((s) => s !== null) ? (sexes as BodySet[]) : [setOf(d.mesh) ?? setOf(MANNEQUIN)].filter((s) => s !== null);
       return sets.length > 0 ? { sets, color: d.color } : null;
@@ -157,21 +143,17 @@ export class Characters {
     return this.kinds[kind] != null || this.creatures[kind] != null;
   }
 
-  /** Whether a body of this kind is a survivor's shape: on the humanoid skeleton. */
+  /** Whether this kind is on the humanoid skeleton. */
   human(kind: number): boolean {
     return this.kinds[kind] != null;
   }
 
-  /** How far from where it stands any part of a body of this kind may be: for deciding whether it is in view. */
+  /** The farthest any part of a body of this kind gets from its origin, for culling. */
   reach(kind: number): number {
     return this.creatures[kind]?.rig.reach ?? BODY_RADIUS;
   }
 
-  /**
-   * Where the seat on a creature's back is, with the creature at (x, y, z)
-   * facing `yaw` (radians) in the state `st` at `tick`: written to `out`.
-   * False for a kind that has no seat.
-   */
+  /** Writes the seat socket's position to `out` for a creature at (x, y, z) facing `yaw` radians. False for a kind without a seat. */
   seat(kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, out: number[]): boolean {
     const c = this.creatures[kind];
     const socket = c?.rig.sockets.get("seat");
@@ -188,7 +170,6 @@ export class Characters {
     return true;
   }
 
-  /** A creature: one mesh on its own skeleton, in its own colours. */
   private addCreature(p: FramePacket, c: { rig: Rig; mesh: number; color: number; runAt: number }, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number): boolean {
     const rig = c.rig;
     if (p.boneCount + rig.bones > MAX_BONES || this.count + 1 > MAX_SKINNED) return false;
@@ -215,22 +196,17 @@ export class Characters {
   }
 
   /**
-   * Pose one body and queue its meshes. `x, y, z` is its origin relative to the
-   * camera, `yaw` its facing in radians, `tick` the moment (it may fall between
-   * ticks). `look` is its 28-byte look at `lookAt`, or null for a body that has
-   * none and is drawn in the six colour regions of `colors` at `colorAt`. `gear`
-   * holds what it has in hand and what it wears at `gearAt` (see
-   * `EntityStore.gear`), or is null. `own` draws it in the near pass; `headless`
-   * leaves out the head and what is on it, for looking out of it. `size` is
-   * how big a creature is drawn, as a share of its kind's size: less than 1
-   * for one that is young. Returns false when the frame has no room left.
+   * `x, y, z` is the origin relative to the camera, `yaw` is in radians, and `tick` may fall between ticks. `look` holds a
+   * 28-byte look at `lookAt`, or is null for a body drawn in the six colour regions of `colors` at `colorAt`. `gear` is
+   * laid out as EntityStore.gear, at `gearAt`, or is null. `own` draws it in the near pass. `headless` leaves out the head
+   * and what is on it. `size` scales a creature, below 1 for a young one. Returns false when the frame has no room left.
    */
   add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1): boolean {
     const creature = this.creatures[kind];
     if (creature) return this.addCreature(p, creature, x, y, z, yaw, st, tick, colors, colorAt, id, size);
     const k = this.kinds[kind];
     if (!k || p.boneCount + HUMAN_BONES > MAX_BONES || this.count + PARTS > MAX_SKINNED) return false;
-    // A modelled body that was given no look gets the plain one, so its regions have colours.
+    // A modelled body without a look gets the plain one, so its regions have colours.
     const view = look ? look.subarray(lookAt) : k.sets.length > 1 ? PLAIN : null;
     const set = k.sets[view && view[LOOK_SEX]! < k.sets.length ? view[LOOK_SEX]! : 0]!;
     humanPose(this.anim, st, tick, this.pose);
@@ -238,7 +214,7 @@ export class Characters {
     if (view) {
       scales = this.scales;
       lookScales(view, scales);
-      // Longer legs lift the hips, so the feet stay where the ground is.
+      // Longer legs lift the hips, so the feet stay on the ground.
       this.pose.root[1]! += lookLift(scales, set.rest);
       lookColors(view, this.lookColor);
     }
@@ -257,7 +233,7 @@ export class Characters {
       for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = tint ? tint[tintAt + q]! : 0;
       this.id[n] = id;
       this.near[n] = own ? 1 : 0;
-      // A held thing is modelled around its grip: it hangs where its bone rests on this body.
+      // A held item is modelled around its grip, so it is offset to where its bone rests on this body.
       for (let a = 0; a < 3; a++) this.offset[n * 3 + a] = bone < 0 ? 0 : set.rest[bone * 3 + a]!;
     };
     const tint = view ? this.lookColor : colors;
@@ -268,7 +244,7 @@ export class Characters {
       const piece = worn && worn.slot === slot ? (set.armor[worn.set]?.[slot] ?? -1) : -1;
       const hidden = headless && slot === SLOT_HEAD;
       if (piece >= 0 && !hidden) {
-        // The piece in its own three colours, on this body's skin.
+        // The piece uses its own three colours, and the body's colours for the other regions.
         const c = this.wornColor;
         c.set(view ? this.lookColor : colors.subarray(colorAt, colorAt + 6));
         c[REGION_MAIN - REGION_BASE] = worn!.colors[0];
@@ -277,12 +253,12 @@ export class Characters {
         queue(piece, c, 0, -1);
         if (slot === SLOT_HEAD) covered = true;
       }
-      // What is worn takes the place of the body under it, except on the head, where it goes over.
+      // A worn piece replaces the body part under it, except on the head, where it goes over.
       const body = set.slots[slot]!;
       if (body >= 0 && !hidden && (piece < 0 || slot === SLOT_HEAD)) queue(body, tint, tintAt, -1);
     }
     if (view && !headless) {
-      // Hair is under anything worn on the head; a beard is not.
+      // A piece worn on the head hides hair but not a beard.
       const hair = covered ? -1 : (set.hair[view[LOOK_HAIR]!] ?? -1);
       if (hair >= 0) queue(hair, tint, tintAt, -1);
       const beard = set.beard[view[LOOK_BEARD]!] ?? -1;
@@ -294,16 +270,14 @@ export class Characters {
   }
 
   /**
-   * Queue a rigid mesh that has a place and a direction of its own: an arrow
-   * in the air, the line of a round. Its origin goes to (x, y, z) relative to
-   * the camera and its +Z along the unit direction (dx, dy, dz), stretched
-   * `length` times along that and `wide` times across it. It is drawn through
-   * the bone path with one bone of its own, which is how a mesh gets a tilt
-   * and a size as well as a facing. False when the frame has no room left.
+   * Queues a rigid mesh that has its own position and direction, such as an arrow in the air. Its origin goes to (x, y, z)
+   * relative to the camera and its +Z along the unit direction (dx, dy, dz), stretched `length` times along it and `wide`
+   * times across. It is drawn through the bone path with one bone, which gives it a tilt and a size as well as a facing.
+   * False when the frame has no room left.
    */
   loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1): boolean {
     if (p.boneCount + 1 > MAX_BONES || this.count + 1 > MAX_SKINNED) return false;
-    // Right is level and square to the direction; up is square to both.
+    // Right is level and square to the direction. Up is square to both.
     let rx = dz;
     let rz = -dx;
     const rl = Math.sqrt(rx * rx + rz * rz);
@@ -343,7 +317,7 @@ export class Characters {
     return true;
   }
 
-  /** Turn what was queued into instances and draws: the viewer's own body when `own`, everyone else otherwise. */
+  /** Writes the viewer's own body when `own`, and every other body otherwise. */
   flush(p: FramePacket, writer: InstanceWriter, own: boolean, draw: DrawFn): void {
     const want = own ? 1 : 0;
     const counts = this.counts.fill(0);
@@ -373,10 +347,9 @@ export class Characters {
 }
 
 /**
- * Write one body's bones at `at`: for each, three rows that take a vertex of a
- * mesh made on `rest` to where the posed, stretched, turned and placed body has
- * it. `scale` is each bone's stretch along its own axes, or null for none.
- * `size` makes the whole body larger or smaller about where it stands.
+ * Writes three rows per bone at `at`. They take a vertex of a mesh made on `rest` to its place on the posed, stretched,
+ * turned and placed body. `scale` is each bone's stretch along its own axes, or null. `size` scales the whole body
+ * about its origin.
  */
 export function writeBones(out: Float32Array, at: number, solved: Solved, rest: Float32Array, scale: Float32Array | null, x: number, y: number, z: number, yaw: number, size = 1): void {
   const s = Math.sin(yaw);
@@ -387,11 +360,11 @@ export function writeBones(out: Float32Array, at: number, solved: Solved, rest: 
   for (let b = 0; b < bones; b++) {
     const qx = rot[b * 4]!, qy = rot[b * 4 + 1]!, qz = rot[b * 4 + 2]!, qw = rot[b * 4 + 3]!;
     const sx = (scale ? scale[b * 3]! : 1) * size, sy = (scale ? scale[b * 3 + 1]! : 1) * size, sz = (scale ? scale[b * 3 + 2]! : 1) * size;
-    // The bone's rotation as a matrix with its stretch applied first: columns scaled. Rows r0 r1 r2.
+    // The bone's rotation matrix with its stretch applied first, so its columns are scaled. Rows r0, r1, r2.
     const r00 = (1 - 2 * (qy * qy + qz * qz)) * sx, r01 = 2 * (qx * qy - qz * qw) * sy, r02 = 2 * (qx * qz + qy * qw) * sz;
     const r10 = 2 * (qx * qy + qz * qw) * sx, r11 = (1 - 2 * (qx * qx + qz * qz)) * sy, r12 = 2 * (qy * qz - qx * qw) * sz;
     const r20 = 2 * (qx * qz - qy * qw) * sx, r21 = 2 * (qy * qz + qx * qw) * sy, r22 = (1 - 2 * (qx * qx + qy * qy)) * sz;
-    // A vertex v goes to size * pos + R S (v - rest): translation t = size * pos - R S rest. The whole body's size is in S already.
+    // A vertex v goes to size * pos + R S (v - rest), so the translation is t = size * pos - R S rest. S already includes size.
     const bx = rest[b * 3]!, by = rest[b * 3 + 1]!, bz = rest[b * 3 + 2]!;
     const tx = pos[b * 3]! * size - (r00 * bx + r01 * by + r02 * bz);
     const ty = pos[b * 3 + 1]! * size - (r10 * bx + r11 * by + r12 * bz);

@@ -1,5 +1,3 @@
-// The respawn screen and the map screen.
-
 import { CMD_RESPAWN, MARKER_DEATH, SESSION_DEAD } from "../../../shared/net/protocol.ts";
 import type { HudModel } from "../hud.ts";
 import { mapU, mapV } from "../hud.ts";
@@ -17,7 +15,7 @@ export const KEY_MAP_TITLE = 952;
 export const KEY_MAP_PIN = 960;
 export const KEY_MAP_LINE = 980;
 
-/** While dead: a list of places to return at. A click sends the choice; the server decides. */
+/** Shown while dead. A click sends the choice, and the server decides. */
 export function buildRespawn(f: UiFrame, session: ClientSession): void {
   if (session.sessionState !== SESSION_DEAD) return;
   const points = session.respawnPoints;
@@ -30,7 +28,7 @@ export function buildRespawn(f: UiFrame, session: ClientSession): void {
   f.text(KEY_RESPAWN_TITLE, x + 16, y + 14, w - 32, S_TITLE, "Return to life at");
   for (let i = 0; i < points.length && i < 16; i++) {
     const b = f.add(KEY_RESPAWN_BUTTON + i, K_BUTTON, x + 16, y + 52 + i * (rowH + 6), w - 32, rowH, S_BUTTON);
-    // A bed someone has just risen from must be waited for.
+    // A bed that someone has just risen from has a wait.
     b.text = points[i]!.wait > 0 ? `${points[i]!.name}  (in ${points[i]!.wait} s)` : points[i]!.name;
     b.interactive = true;
   }
@@ -43,7 +41,6 @@ export function respawnClick(key: number, session: ClientSession): boolean {
   return true;
 }
 
-/** The whole map with the survivor on it and a pin where it died, and those places listed by coordinates. */
 export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel): void {
   const world = session.world;
   if (!world) return;

@@ -1,13 +1,5 @@
-// Terrain level of detail: which tiles to draw, at what resolution.
-//
-// A quadtree over the map. A node is drawn as one tile of 32 x 32 quads when it
-// is far enough away for that resolution, otherwise its four children are
-// considered. Every tile has the same triangle count, so cost follows screen
-// coverage rather than map size: a view to the horizon is on the order of a
-// hundred tiles whether the map is half a kilometre or eight.
-//
-// Level 0 tiles are single chunks at full resolution and match the collision
-// surface exactly.
+// A quadtree over the map. A node far enough away is drawn as one tile of 32 x 32 quads. Otherwise its four children are considered.
+// Every tile has the same triangle count, so cost follows screen coverage. Level 0 tiles are single chunks and match the collision surface.
 
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
@@ -78,7 +70,6 @@ export class TerrainLod {
     }
   }
 
-  /** Append the visible tiles for this camera to the packet. */
   select(cam: Camera, packet: FramePacket, viewDistance: number): void {
     const hf = this.hf;
     const top = this.levels - 1;
@@ -105,7 +96,6 @@ export class TerrainLod {
       const y0 = this.minY[level]![tz * w + tx]! - cam.y;
       const y1 = this.maxY[level]![tz * w + tx]! - cam.y;
       if (!cam.boxVisible(x0, y0, z0, x0 + size, y1, z0 + size)) continue;
-      // Distance from the camera to the node's box.
       const dx = x0 > 0 ? x0 : x0 + size < 0 ? -(x0 + size) : 0;
       const dz = z0 > 0 ? z0 : z0 + size < 0 ? -(z0 + size) : 0;
       const dy = y0 > 0 ? y0 : y1 < 0 ? -y1 : 0;

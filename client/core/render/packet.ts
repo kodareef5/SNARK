@@ -1,13 +1,5 @@
-// The frame packet: everything a renderer needs to draw one frame, as data.
-//
-// client/core decides what is visible, at which level of detail, in which
-// batches. A renderer only executes: the WebGL2 shell turns the packet into
-// draw calls, the software rasterizer in tools/snap turns it into a PNG. Any
-// logic that would need a browser to test belongs on this side of the packet.
-//
-// A packet has two parts. Resource changes (instance buffers to upload or drop)
-// persist across frames and must be applied in order. Draws and terrain tiles
-// describe this frame only.
+// Everything a renderer needs to draw one frame, as data. client/core decides what is visible, and a renderer only executes.
+// Uploads and drops persist across frames and must be applied in order. Draws and terrain tiles describe this frame only.
 
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
@@ -20,39 +12,34 @@ export const TILE_QUADS = 32;
 export const TRANSIENT_BUFFER = 0xffffffff;
 /** Instances a frame may carry besides entities: water surface tiles, sixteen marker beams, and a piece about to be built. */
 export const MAX_WATER_TILES = 64;
-/** Structures a frame may show falling: the nearest to the eye of those that have just gone. */
+/** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 256;
-/** Draw flag: see-through. Drawn after everything opaque, blended, both faces, without writing depth. */
+/** DRAW_ flags. A blended draw is see-through. It comes after everything opaque, shows both faces and writes no depth. */
 export const DRAW_BLEND = 1;
 /**
- * Draw flag: the mesh follows bones. Each vertex names a bone; each instance
- * carries, where a rigid instance has its yaw, the index of its first bone in
- * `bones`. A bone's rows hold the whole way from the mesh to the
- * camera-relative world; the instance's position is added to each vertex
- * first, which is how a thing held is hung on a bone of a rig it was not made on.
+ * The mesh follows bones. Each vertex names a bone, and the instance carries the index of its first bone in `bones`
+ * where a rigid instance has its yaw. A bone's rows take a vertex all the way to the camera-relative world. The
+ * instance's position is added to each vertex first, which lets a held item hang on a bone of a rig it was not made on.
  */
 export const DRAW_SKINNED = 2;
-/** Draw flag: no checker pattern. A checker fixed to the world would crawl over a moving body. */
+/** No checker pattern. A checker fixed to the world would crawl over a moving body. */
 export const DRAW_PLAIN = 4;
-/**
- * Draw flag: the viewer's own body. Drawn last, over everything, with
- * `nearViewProj`, whose near plane is close enough for arms and hands.
- */
+/** The viewer's own body. Drawn last, over everything, with `nearViewProj`, whose near plane is close enough for arms and hands. */
 export const DRAW_NEAR = 8;
 
 /** Floats per bone: three rows of a 3 x 4 matrix, each row x, y, z, translation. */
 export const BONE_FLOATS = 12;
-/** Bones per row of the bone texture, whose texels are four floats: three texels a bone. */
+/** Bones per row of the bone texture. A texel is four floats, so a bone is three texels. */
 export const BONES_PER_ROW = 256;
 export const BONE_ROWS = 64;
 export const MAX_BONES = BONES_PER_ROW * BONE_ROWS;
-/** Instances a frame may carry for bodies with bones: every body is several meshes. */
+/** Skinned instances a frame may carry. Every body is several meshes. */
 export const MAX_SKINNED = MAX_VIEW * 10;
 
 export interface BufferUpload {
   /** Chunk index the instances belong to. */
   buffer: number;
-  /** INSTANCE_BYTES per instance. Owned by the scene; copy or upload before the next build. */
+  /** INSTANCE_BYTES per instance. The scene owns it, so copy or upload it before the next build. */
   data: Uint8Array;
   /** Structure slot of each instance, for picking. */
   slots: Uint16Array;
@@ -60,7 +47,6 @@ export interface BufferUpload {
 
 export class FramePacket {
   readonly viewProj = new Float32Array(16);
-  /** The same view with a near plane for the viewer's own body. */
   readonly nearViewProj = new Float32Array(16);
   camX = 0;
   camY = 0;
@@ -69,7 +55,7 @@ export class FramePacket {
   readonly sky = new Float32Array(3);
   /** Unit vector toward the sun. */
   readonly sun = new Float32Array(3);
-  /** Brightness of the daylight, 0..1: every lit colour is multiplied by it. */
+  /** Daylight brightness, 0..1. Every lit colour is multiplied by it. */
   light = 1;
   fogStart = 0;
   fogEnd = 1;
@@ -80,7 +66,7 @@ export class FramePacket {
   drawCount = 0;
   /** Pack mesh index. */
   readonly drawMesh = new Uint16Array(MAX_DRAWS);
-  /** Requested level of detail; renderers clamp to what the mesh has. */
+  /** Requested level of detail. Renderers clamp it to what the mesh has. */
   readonly drawLod = new Uint8Array(MAX_DRAWS);
   readonly drawBuffer = new Uint32Array(MAX_DRAWS);
   readonly drawFirst = new Uint32Array(MAX_DRAWS);
@@ -105,7 +91,6 @@ export class FramePacket {
   boneCount = 0;
   readonly bones = new Float32Array(MAX_BONES * BONE_FLOATS);
 
-  /** Triangles submitted, for budgets and benchmarks. */
   triangles = 0;
 
   beginFrame(): void {
@@ -141,17 +126,12 @@ export class InstanceWriter {
     this.bytes.fill(0, at + 1, at + 6);
   }
 
-  /**
-   * A mesh that follows a body's bones: the body's first bone goes where a
-   * rigid instance has its yaw. `x, y, z` is added to every vertex before its
-   * bone is applied: zero for a mesh made on the body's rig, and for a thing
-   * held, where on that rig the bone it hangs on rests.
-   */
+  /** The first bone goes where a rigid instance has its yaw. `x, y, z` is the offset DRAW_SKINNED describes. */
   setSkinned(i: number, firstBone: number, region0: number, x = 0, y = 0, z = 0): void {
     this.set(i, x, y, z, firstBone, region0);
   }
 
-  /** Give instance `i` its own colour regions. A zero leaves that region as `set` wrote it. */
+  /** A zero leaves that region as `set` wrote it. */
   regions(i: number, colors: Uint8Array, from: number): void {
     const at = i * INSTANCE_BYTES + 14;
     for (let q = 0; q < 6; q++) if (colors[from + q] !== 0) this.bytes[at + q] = colors[from + q]!;

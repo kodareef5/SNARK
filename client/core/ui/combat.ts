@@ -1,6 +1,4 @@
-// Combat as a screen: the mark that a hit landed, the numbers over where,
-// the side harm came from, red at the edges, and the line that says who killed
-// what. All of it is drawn from `CombatModel`; see client/core/feedback.ts.
+// Everything here is drawn from CombatModel (client/core/feedback.ts).
 
 import { NUMBER_HEAD, NUMBER_KILL, type CombatModel } from "../feedback.ts";
 import { K_PANEL, columns, lineHeight, type UiFrame } from "./nodes.ts";
@@ -10,13 +8,13 @@ import { S_BLOOD, S_DAMAGE, S_DAMAGE_HEAD, S_DAMAGE_KILL, S_HIT, S_HIT_KILL, S_N
 export const KEY_HIT_MARK = 2000;
 /** Two bands along each edge of the screen. */
 export const KEY_BLOOD = 2010;
-/** One mark per side harm came from. */
+/** One mark per direction harm came from. */
 export const KEY_HURT = 2020;
 export const KEY_NOTICE = 2040;
 /** One number per hit. */
 export const KEY_DAMAGE = 2100;
 
-/** How far from the crosshair the marks of a hit and of harm sit, canvas units. */
+/** Distance from the crosshair of the hit marks and of the harm marks, in canvas units. */
 const MARK_REACH = 9;
 const HURT_REACH = 96;
 const HURT_SIZE = 14;
@@ -28,7 +26,7 @@ export function buildCombat(f: UiFrame, m: CombatModel): void {
   const cx = W / 2;
   const cy = H / 2;
 
-  // Red at the edges first, so everything else is over it: two bands a side, the outer over the inner, for an edge that deepens.
+  // The red edges go first, so everything else is over them. Each side has two overlapping bands, so the edge deepens outward.
   if (m.blood > 0.01) {
     let k = KEY_BLOOD;
     for (let band = 2; band >= 1; band--) {
@@ -43,14 +41,13 @@ export function buildCombat(f: UiFrame, m: CombatModel): void {
 
   for (let i = 0; i < m.hurtCount; i++) {
     const h = m.hurts[i]!;
-    // An angle to the left of straight ahead: straight ahead is up the screen.
+    // The angle is to the left of straight ahead, and straight ahead is up the screen.
     const x = cx - Math.sin(h.angle) * HURT_REACH;
     const y = cy - Math.cos(h.angle) * HURT_REACH;
     f.add(KEY_HURT + i, K_PANEL, x - HURT_SIZE / 2, y - HURT_SIZE / 2, HURT_SIZE, HURT_SIZE, S_BLOOD).alpha = h.alpha;
   }
 
   if (m.mark > 0) {
-    // A head or a kill is marked larger.
     const big = m.markKill || m.markHead;
     const reach = MARK_REACH + (big ? 3 : 0);
     const size = big ? 5 : 4;

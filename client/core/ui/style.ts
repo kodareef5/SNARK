@@ -1,12 +1,11 @@
-// How nodes look. Appearance is data, so the browser and the software
-// rasterizer draw the same thing and neither holds a stylesheet of its own.
+// Appearance is data, so the browser and the software rasterizer draw the same thing and neither holds its own stylesheet.
 
 export interface Style {
   /** Background, 0xRRGGBBAA. Alpha 0 draws none. */
   readonly fill: number;
   /** Text colour, or the filled part of a bar, 0xRRGGBB. */
   readonly ink: number;
-  /** Font size in canvas units. */
+  /** In canvas units. */
   readonly font: number;
   /** 0 left, 1 centre, 2 right. */
   readonly align: number;
@@ -45,22 +44,22 @@ export const S_SLOT_HELD = 21;
 export const S_SLOT_TEXT = 22;
 export const S_SWATCH = 23;
 export const S_PROMPT = 24;
-/** A stroke of the mark that says a hit landed; and of the one that says it killed. */
+/** A stroke of the hit mark, and of the kill mark. */
 export const S_HIT = 25;
 export const S_HIT_KILL = 26;
-/** A number over the place a hit landed: on a body, on a head, and the one that killed. */
+/** A damage number for a body hit, a head hit and a kill. */
 export const S_DAMAGE = 27;
 export const S_DAMAGE_HEAD = 28;
 export const S_DAMAGE_KILL = 29;
-/** Red at the edges of the screen, and the mark of the side harm came from. */
+/** The red screen edges, and the mark for the direction harm came from. */
 export const S_BLOOD = 30;
-/** A line under the crosshair: what was killed, who killed you. */
+/** The line under the crosshair that says what was killed or who killed you. */
 export const S_NOTICE = 31;
-/** The torpor bar; the mark of something acting on the body; and the dark over everything while unconscious. */
+/** The torpor bar, a buff's mark, and the dark panel shown while unconscious. */
 export const S_TORPOR = 32;
 export const S_BUFF = 33;
 export const S_DARK = 34;
-/** A line of chat said to everyone, to those near, to the tribe, and one from the server; the open box's backdrop; and the channel's tag. */
+/** Chat lines on the global, local and tribe channels and from the server, then the open box's backdrop and the channel tag. */
 export const S_CHAT = 35;
 export const S_CHAT_LOCAL = 36;
 export const S_CHAT_TRIBE = 37;

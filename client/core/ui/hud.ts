@@ -1,5 +1,3 @@
-// The heads-up display as a screen: readout, vitals, minimap, crosshair.
-
 import { ACTION_DRAW, ACTION_NONE, type HudModel } from "../hud.ts";
 import { K_BAR, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUFF, S_DARK, S_TORPOR, S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT, S_SLOT_TEXT, S_STAMINA, S_SWATCH, S_TEXT, S_WATER } from "./style.ts";
@@ -10,18 +8,18 @@ export const KEY_MINIMAP = 11;
 export const KEY_CLOCK = 12;
 /** Per vital: its label, then its bar. */
 export const KEY_VITAL = 80;
-/** Dark over the world while unconscious. */
+/** The dark panel over the world while unconscious. */
 export const KEY_OUT = 36;
-/** A few words about voice, under the readout; and under that, per survivor being heard, their name. */
+/** The voice status line under the readout. KEY_TALKER is one name per survivor being heard. */
 export const KEY_VOICE = 37;
 export const KEY_TALKER = 70;
-/** Per thing acting on the body: its mark. */
+/** One mark per buff. */
 export const KEY_BUFF = 180;
 export const KEY_CROSS = 30;
 export const KEY_STATUS = 31;
 export const KEY_BANNER = 32;
 export const KEY_PROMPT = 33;
-/** The bar that fills as a bow is drawn or a reload goes on, and the line that says what is loaded. */
+/** The bar that fills as a bow is drawn or a reload runs, and the line that says what is loaded. */
 export const KEY_ACTION = 34;
 export const KEY_AMMO = 35;
 /** Per hotbar slot: its box, its swatch, its number. */
@@ -39,10 +37,8 @@ const MARKER_STYLE: Record<string, number> = { self: S_MARK_SELF, player: S_MARK
 const HOTBAR_CELL = 34;
 
 /**
- * The band at the left of the canvas that the HUD leaves free, for the chat
- * box: under what is shown below the crosshair (a prompt, a bar, a notice),
- * and over the hotbar, the line that says what is loaded, and the status line,
- * wherever this window's shape puts them. It does not move as those come and go.
+ * The band the HUD leaves free for the chat box: below what shows under the crosshair, and above the hotbar, the
+ * ammo line and the status line. It does not move as those come and go.
  */
 export function chatBand(f: UiFrame, m: HudModel): { top: number; bottom: number } {
   const rowH = lineHeight(S_LABEL) + 1;
@@ -54,18 +50,16 @@ export function buildHud(f: UiFrame, m: HudModel): void {
   const W = f.width;
   const H = f.height;
   const lh = lineHeight(S_TEXT);
-  // Unconscious: the world goes dark under everything else.
+  // The dark panel goes first, under everything else.
   if (m.out) f.add(KEY_OUT, K_PANEL, 0, 0, W, H, S_DARK).alpha = 0.82;
   for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, MARGIN, 10 + i * lh, Math.min(W - MARGIN * 2, 400), S_TEXT, m.readout[i]!);
   if (m.voice !== "") {
-    // Lit while the microphone is live; plain when it is saying why it is not.
-    // Its state is in capitals; anything else is a sentence saying what is wrong.
+    // A voice state is in capitals and is lit. Anything else is a sentence saying what is wrong, drawn plain.
     const live = m.voice === m.voice.toUpperCase();
     const n = f.add(KEY_VOICE, K_PANEL, MARGIN, 10 + m.readout.length * lh + 4, Math.min(W - MARGIN * 2, live ? 96 : 330), lineHeight(S_BUFF) + 4, S_BUFF);
     n.tint = !live ? 0x4a4f58 : m.voice === "MIC OPEN" ? 0x6a7a3a : 0x3c9a4a;
     n.text = m.voice;
   }
-  // Who is being heard, one to a row.
   const talkH = lineHeight(S_BUFF) + 4;
   for (let i = 0; i < m.talkers.length && i < 8; i++) {
     const n = f.add(KEY_TALKER + i, K_PANEL, MARGIN, 10 + m.readout.length * lh + 4 + (talkH + 2) * (i + (m.voice !== "" ? 1 : 0)), 170, talkH, S_BUFF);
@@ -79,14 +73,13 @@ export function buildHud(f: UiFrame, m: HudModel): void {
   f.add(KEY_MINIMAP_FRAME, K_PANEL, mapX - 1, mapY - 1, MINIMAP_SIZE + 2, MINIMAP_SIZE + 2, S_FRAME);
   f.add(KEY_MINIMAP, K_IMAGE, mapX, mapY, MINIMAP_SIZE, MINIMAP_SIZE, S_FRAME).image = IMAGE_MINIMAP;
   const count = Math.min(m.markers.length, MAX_MARKERS);
-  // The model lists the local player last; drawing in order keeps it on top.
+  // The model lists the local player last, so drawing in order keeps it on top.
   for (let i = m.markers.length - count; i < m.markers.length; i++) {
     const k = m.markers[i]!;
     f.add(KEY_MARKER + i - (m.markers.length - count), K_PANEL, mapX + k.u * MINIMAP_SIZE - 2, mapY + k.v * MINIMAP_SIZE - 2, 4, 4, MARKER_STYLE[k.kind] ?? S_MARK_SELF);
   }
   f.text(KEY_CLOCK, mapX, mapY + MINIMAP_SIZE + 4, MINIMAP_SIZE, S_LABEL, m.clock);
 
-  // Vitals, bottom right: a label and a bar each.
   const barW = 150;
   const labelW = 62;
   const rowH = lineHeight(S_LABEL) + 1;
@@ -97,7 +90,7 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.add(KEY_VITAL + i * 2 + 1, K_BAR, W - MARGIN - barW, y + 5, barW, 8, VITAL_STYLE[v.id] ?? S_HEALTH).value = v.fraction;
     y += rowH;
   }
-  // What is acting on the body, in a column above the vitals: its name and the seconds it has left.
+  // Buffs go in a column above the vitals. A buff with negative seconds shows no time.
   const buffW = barW + labelW;
   const buffH = lineHeight(S_BUFF) + 2;
   let by = H - MARGIN - m.vitals.length * rowH - 6 - buffH;
@@ -109,7 +102,7 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     by -= buffH + 2;
   }
 
-  // The hotbar, bottom centre; on a narrow canvas above the vitals, which would be in its way.
+  // On a narrow canvas the hotbar sits above the vitals, which would be in its way.
   if (m.hotbar.length > 0) {
     const cell = HOTBAR_CELL;
     const gap = 3;
@@ -135,10 +128,9 @@ export function buildHud(f: UiFrame, m: HudModel): void {
   if (m.crosshair) {
     f.add(KEY_CROSS, K_PANEL, W / 2 - 2, H / 2 - 2, 4, 4, S_CROSS);
     if (m.prompt !== "") f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, m.prompt.slice(0, 38));
-    // Under the crosshair: how far the bow is drawn, or the reload has got.
     if (m.actionKind !== ACTION_NONE) f.add(KEY_ACTION, K_BAR, W / 2 - 40, H / 2 + 38, 80, 5, m.actionKind === ACTION_DRAW ? S_STAMINA : S_OXYGEN).value = m.actionFraction;
   }
-  // The status line sits left of the vitals, or above them where there is no room beside.
+  // The status line sits left of the vitals, or above them on a narrow canvas.
   if (m.status !== "") {
     if (W < 640) f.text(KEY_STATUS, MARGIN, H - MARGIN - m.vitals.length * rowH - lh - 4, W - MARGIN * 2, S_TEXT, m.status);
     else f.text(KEY_STATUS, MARGIN, H - MARGIN - lh, W - MARGIN * 2 - barW - labelW - 8, S_TEXT, m.status);

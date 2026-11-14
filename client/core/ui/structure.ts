@@ -1,15 +1,5 @@
-// What can be done to a thing built: a short list beside the crosshair.
-//
-// Held on a piece, the use key opens it. It names the piece, says how whole
-// it is, and offers to take it back into the hands, mend it, or take it
-// down, each with what that costs or gives as the shared arithmetic has it
-// (shared/world/upkeep.ts). A number key or a press chooses; the server
-// decides, and what it refused is said under the crosshair.
-//
-// What can be used (a door, a box) can also be locked, unlocked and given a
-// PIN. The same panel then asks for four digits: to set one, or, for someone
-// not of its tribe, to get in. A PIN that worked is remembered for that
-// thing while the client runs, and given without asking the next time.
+// The menu for a built piece. The server decides every action, and a refusal is shown under the crosshair.
+// A PIN that worked is remembered for that piece while the client runs, and sent without asking the next time.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
@@ -22,20 +12,20 @@ import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 export const KEY_STRUCT_PANEL = 2400;
 export const KEY_STRUCT_TITLE = 2401;
 export const KEY_STRUCT_HEALTH = 2402;
-/** One button for each action, in the order listed: take back, mend, take down; and under each, what it costs or gives. */
+/** One button per action, in LISTED order. KEY_STRUCT_DETAIL is the line under each that says what it costs or gives. */
 export const KEY_STRUCT_BUTTON = 2410;
 export const KEY_STRUCT_DETAIL = 2420;
-/** The PIN panel: what it asks, the digits so far, a button for each digit, and one to take a PIN away. */
+/** The PIN panel: its title, the digits so far, a button per digit, and one that removes the PIN. */
 export const KEY_PIN_PANEL = 2430;
 export const KEY_PIN_TITLE = 2431;
 export const KEY_PIN_DIGITS = 2432;
 export const KEY_PIN_BUTTON = 2440;
 export const KEY_PIN_CLEAR = 2450;
 
-/** The actions in the order they are listed, and the digit that chooses each. The last three are only for what can be used. */
+/** Actions in listed order. Digit n + 1 chooses LISTED[n]. Those after STRUCT_DEMOLISH need a piece that can be used. */
 const LISTED = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_UNLOCK, STRUCT_PIN, STRUCT_LIGHT] as const;
 
-/** What to say when the server will not do what was asked of a piece, by the code it gives. */
+/** The message for each RESULT code the server refuses a piece action with. */
 export const STRUCT_REASONS: Readonly<Record<number, string>> = {
   [RESULT_NOT_YOURS]: "That is not your tribe's",
   [RESULT_FAR]: "Too far away",
@@ -49,19 +39,19 @@ export const STRUCT_REASONS: Readonly<Record<number, string>> = {
   [RESULT_OBSTRUCTED]: "Something is in the way",
 };
 
-/** What a structure is called: its item's name, with the form it was set down in if that is not the item's own. */
+/** The item's label. For another form of the piece, the form's name replaces the label's last word. */
 export function structName(reg: Registry, kind: number): string {
   const id = reg.ids[kind] ?? "";
   const item = reg.pieceItem[kind]!;
   const label = item !== 0 ? ((reg.defs[item] as ItemDef).label ?? "") : "";
   if (label === "") return id.slice(id.indexOf(":") + 1).replace(/_/g, " ");
   if (reg.places[item]![0] === kind) return label;
-  // Another form of the same piece: a doorframe is set down from a wall.
+  // Another form of the same piece. A doorframe is set down from a wall.
   const form = id.slice(id.indexOf(":") + 1).split("_")[0]!;
   return `${label.slice(0, label.lastIndexOf(" ") + 1)}${form}`;
 }
 
-/** A cost or a return as words: "40 wood, 10 thatch". */
+/** Formats the shared `cost` buffer, as in "40 wood, 10 thatch". */
 function listed(reg: Registry): string {
   const parts: string[] = [];
   for (let k = 0; k < cost.n; k++) {
@@ -73,20 +63,20 @@ function listed(reg: Registry): string {
 
 export class StructMenu {
   open = false;
-  /** The piece it is about. */
+  /** Structure ref of the piece: chunk * 65536 + slot. */
   ref = -1;
-  /** What the server said to the last thing asked, for a while: shown under the crosshair. */
+  /** The server's last refusal, shown under the crosshair until tick() clears it. */
   notice = "";
-  /** The panel is asking for a PIN: to get in (STRUCT_USE) or to set one (STRUCT_PIN); 0 when it is not. And the digits so far. */
+  /** STRUCT_USE while asking for a PIN to get in, STRUCT_PIN while setting one, else 0. */
   pad = 0;
   digits = "";
-  /** How many actions the list last showed: three for a plain piece, six for what can be used. */
+  /** Actions the list showed at the last build. */
   private lines = 3;
   private noticeUntil = 0;
   private asked = 0;
   private askedRef = -1;
   private askedPin = NO_PIN;
-  /** PINs that got this client into things, by the thing. */
+  /** PINs that worked, by structure ref. */
   private readonly pins = new Map<number, number>();
 
   begin(ref: number): void {
@@ -95,7 +85,7 @@ export class StructMenu {
     this.ref = ref;
   }
 
-  /** Ask for the PIN of the thing at `ref`, to get in. */
+  /** Opens the PIN panel to get into the piece at `ref`. */
   ask(ref: number): void {
     this.open = true;
     this.pad = STRUCT_USE;
@@ -118,7 +108,7 @@ export class StructMenu {
     });
   }
 
-  /** Ask for one of the listed actions, by its place in the list. Setting a PIN asks for the digits first. */
+  /** `n` indexes LISTED. Setting a PIN asks for the digits first. */
   choose(n: number, session: ClientSession): void {
     const action = LISTED[n];
     if (!this.open || this.pad !== 0 || action === undefined || n >= this.lines) return;
@@ -131,7 +121,7 @@ export class StructMenu {
     this.open = false;
   }
 
-  /** A digit for the PIN; the fourth sends it. */
+  /** The fourth digit sends the PIN. */
   private digit(d: string, session: ClientSession): void {
     this.digits += d;
     if (this.digits.length < 4) return;
@@ -139,7 +129,7 @@ export class StructMenu {
     this.close();
   }
 
-  /** A key while the panel is up. Returns true if it was the panel's. */
+  /** Returns true if the panel used the key. */
   key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
     if (!this.open) return false;
     const digit = /^(?:Digit|Numpad)(\d)$/.exec(code);
@@ -164,7 +154,7 @@ export class StructMenu {
     if (!this.open) return false;
     if (this.pad !== 0) {
       if (key === KEY_PIN_CLEAR && this.pad === STRUCT_PIN) {
-        // No PIN at all: what it had is taken away.
+        // NO_PIN removes the piece's PIN.
         this.send(session, this.ref, STRUCT_PIN, NO_PIN);
         this.close();
         return true;
@@ -181,11 +171,8 @@ export class StructMenu {
   }
 
   /**
-   * The server answered. To a command this sent: if it was refused, the
-   * reason is said for a while; a PIN that got in is remembered, one that
-   * did not is forgotten. Unasked (`seq` 0), about the thing at `aimed` that
-   * the use button was pressed on: it wants a PIN, which is given if one is
-   * remembered and asked for if not; or it is locked, and says so.
+   * For a command this menu sent, a refusal shows its reason, a PIN that worked is remembered and one that failed is
+   * forgotten. `seq` 0 is an unasked result about the piece at `aimed`. RESULT_PIN then sends a remembered PIN or asks for one.
    */
   result(seq: number, code: number, nowMs: number, session: ClientSession | null = null, aimed = -1): void {
     if (seq === 0) {
@@ -210,7 +197,6 @@ export class StructMenu {
     this.noticeUntil = nowMs + 2500;
   }
 
-  /** Let go of a notice whose time is up. */
   tick(nowMs: number): void {
     if (this.notice !== "" && nowMs >= this.noticeUntil) this.notice = "";
   }
@@ -219,7 +205,7 @@ export class StructMenu {
     if (!this.open) return;
     const t = session.world?.structs.chunks[Math.floor(this.ref / 65536)];
     const slot = this.ref & 0xffff;
-    // It has gone since: there is nothing to do to it.
+    // The piece has gone since the menu opened.
     if (!t || slot >= t.high || t.kind[slot] === 0) {
       this.open = false;
       return;
@@ -234,7 +220,6 @@ export class StructMenu {
     const rowH = 28;
     const pad = 12;
     if (this.pad !== 0) {
-      // Four digits: a line that says what for, the digits so far, and a button for each.
       const cell = Math.floor((w - pad * 2 - 4 * 4) / 5);
       const h = pad * 2 + titleH + labelH + 8 + 2 * (rowH + 4) + (this.pad === STRUCT_PIN ? rowH + 4 : 0);
       const x = Math.round((f.width - w) / 2);
@@ -260,12 +245,10 @@ export class StructMenu {
       repairCostOf(reg, kind, hp) ? `costs ${listed(reg)}` : "it is whole",
       refundOf(reg, kind) && cost.n > 0 ? `gives ${listed(reg)}` : "gives nothing back",
     ];
-    // What can be used can be kept from others.
     if (usable) {
       lines.push("4  Lock it", "5  Unlock it", "6  Give it a PIN");
       details.push("for your tribe alone", "for anyone", "four digits let others in");
     }
-    // A fire is lit and put out.
     if (usable && reg.lights[kind] !== 0) {
       lines.push(reg.burning[kind] === 1 ? "7  Put it out" : "7  Light it");
       details.push(reg.burning[kind] === 1 ? "what is half cooked starts again" : "it burns what fuel lies on it");

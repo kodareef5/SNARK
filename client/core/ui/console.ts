@@ -1,5 +1,4 @@
-// The console's state: the line being typed, history, and scrollback. Sending
-// a line and receiving text are the session's job; this file only edits.
+// Sending a line and receiving text are the session's job. This file only edits the console's state.
 
 import { TEXT_NOTICE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
@@ -20,10 +19,10 @@ export class ConsoleState {
   open = false;
   input = "";
   readonly history: string[] = [];
-  /** Position in history while browsing it; -1 while typing a new line. */
+  /** Position in history while browsing it. -1 while typing a new line. */
   private at = -1;
   private draft = "";
-  /** Raw lines: echoes of what was typed and text from the server. */
+  /** Unwrapped lines: echoes of what was typed, and text from the server. */
   readonly lines: string[] = [];
   /** Rows scrolled up from the newest. */
   scroll = 0;
@@ -31,13 +30,11 @@ export class ConsoleState {
   private readonly rows: string[] = [];
   private rowsFor = "";
 
-  /** The text field changed. */
   edit(value: string): void {
     this.input = value.length > MAX_LINE ? value.slice(0, MAX_LINE) : value;
     this.at = -1;
   }
 
-  /** Enter: remember the line, show it, and hand it to `send`. */
   submit(send: (line: string) => void): void {
     const line = this.input.trim();
     this.input = "";
@@ -52,7 +49,7 @@ export class ConsoleState {
     send(line);
   }
 
-  /** Up (-1) or down (+1) through history. The line being typed is kept and comes back at the end. */
+  /** `dir` is -1 for up and +1 for down. The line being typed is kept and comes back at the end. */
   recall(dir: number): void {
     const n = this.history.length;
     if (n === 0) return;
@@ -78,17 +75,15 @@ export class ConsoleState {
     this.rowsFor = "";
   }
 
-  /** Take in any text the server has sent since the last call. */
   absorb(session: ClientSession): void {
     const fresh = session.logVersion - this.seen;
     if (fresh <= 0) return;
     this.seen = session.logVersion;
     const log = session.log;
-    // What survivors say to each other is the chat box's, not the console's.
+    // Chat lines belong to the chat box, not the console.
     for (let i = Math.max(0, log.length - fresh); i < log.length; i++) if (log[i]!.channel <= TEXT_NOTICE) this.print(log[i]!.text);
   }
 
-  /** The console covers the top of the screen: scrollback above, the input line below it. */
   build(f: UiFrame): void {
     if (!this.open) return;
     const h = Math.round(f.height * 0.45);
@@ -118,7 +113,7 @@ export class ConsoleState {
     field.focus = true;
   }
 
-  /** Rows shown per page, for paging keys. */
+  /** Rows a paging key scrolls, one fewer than are visible. */
   page(f: UiFrame): number {
     return Math.max(1, Math.floor((Math.round(f.height * 0.45) - lineHeight(S_INPUT) - 6 - PAD * 2) / lineHeight(S_CONSOLE_TEXT)) - 1);
   }
