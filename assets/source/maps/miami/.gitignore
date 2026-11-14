@@ -1,0 +1,9 @@
+# Kept: the base layers, the style sheet, every original painting with its prompt, the finished tiles, briefs and reports.
+# Left out: the downloads (SOURCES.md and downloads.json say how to fetch them again) and what tools/mapart makes again
+# from the layers and the originals.
+raw/
+references/
+checks/
+paintings/**/registered.png
+paintings/**/*.registered.png
+paintings/**/final-master.png
