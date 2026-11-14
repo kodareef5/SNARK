@@ -1,7 +1,11 @@
 // The module contract: what a module hears, what it may refuse, and what happens when it misbehaves.
-import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { afterAll, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { loadConfig } from "../../server/settings/config.ts";
+import { defaultLook } from "../../shared/anim/look.ts";
+import { CMD_RESPAWN, REJECT_DENIED, REJECT_NAME, RESULT_DENIED, SESSION_ALIVE, SESSION_DEAD, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
 import type { ModuleDef } from "../../server/api/module.ts";
 import { EVENTS, eventFaults, eventIndex } from "../../server/events/catalog.ts";
 import { EVENTS_PAGE, eventsPage } from "../../tools/events.ts";
@@ -139,4 +143,188 @@ test("a module that cannot be loaded stops the server from starting, and says wh
   expect(start({ ...ok, api: 2 as 1 })).toThrow("written for version 2");
   expect(start({ ...ok, name: "needy", needs: ["ok"] })).toThrow("needs ok, which is not loaded before it");
   expect(start(ok, { ...ok, name: "needy", needs: ["ok"] })).not.toThrow();
+});
+
+const dir = mkdtempSync(join(tmpdir(), "snark-modules-"));
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+/** The events of these groups that the table says are raised. */
+const wiredOf = (...groups: string[]): string[] => EVENTS.filter((e) => e.status === "wired" && groups.includes(e.name.split(".")[0]!)).map((e) => e.name);
+const names = (lines: readonly string[]): string[] => [...new Set(lines.map((l) => l.slice(0, l.indexOf(":"))))].sort();
+
+test("a played script raises every wired event of the server, its sessions, chat, commands and tribes, with what happened in each", () => {
+  const wired = wiredOf("server", "command", "session", "chat", "name", "tribe");
+  expect(wired.length).toBe(28);
+  const all = listener("all", wired);
+  const made = loadConfig({ gus: "[ServerSettings]\nAutoSavePeriodMinutes=0.1", game: "" });
+  expect([made.report.refused, made.report.unknown]).toEqual([[], []]);
+  const h = new Harness({}, 1, 60, { modules: [all.def], dev: true, dbPath: join(dir, "script.db"), backups: true, config: made.rules, ...quiet });
+  const said = (name: string): string[] => all.heard.lines.filter((l) => l.startsWith(`${name}: `)).map((l) => l.slice(name.length + 2));
+  const last = (name: string): Record<string, unknown> => JSON.parse(said(name).pop()!);
+
+  const ada = h.join("ada");
+  h.run(600);
+  const adaPid = h.client(ada)!.pid;
+  expect(JSON.parse(said("server.start")[0]!)).toMatchObject({ fresh: true });
+  expect(said("name.set")).toEqual(['{"what":"survivor","text":"ada"}']);
+  expect(last("session.login")).toMatchObject({ name: "ada", isNew: true });
+  expect(said("session.join")).toEqual([`{"pid":${adaPid},"name":"ada","isNew":true}`]);
+  expect(said("session.spawn")).toEqual([`{"pid":${adaPid},"first":true,"why":"made"}`]);
+  expect(said("server.tick").length).toBeGreaterThan(10);
+
+  // A password is not told to a module, and neither is what follows a secret command's name.
+  expect(h.say(ada, "enablecheats hunter2")).toEqual(["cheats enabled"]);
+  expect(last("command")).toEqual({ byPid: adaPid, name: "enablecheats", line: "enablecheats", source: "session" });
+  expect(said("session.admin")).toEqual([`{"pid":${adaPid}}`]);
+  ada.chat(TEXT_GLOBAL, "hello there");
+  h.run(200);
+  expect(last("chat.say")).toEqual({ pid: adaPid, channel: TEXT_GLOBAL, text: "hello there" });
+  expect(last("chat.said")).toEqual({ pid: adaPid, channel: TEXT_GLOBAL, text: "hello there", heard: 1 });
+
+  expect(h.say(ada, "tribe create Night Shift")[0]).toContain("You founded Night Shift");
+  const team = h.host.records.byPid.get(adaPid)!.team;
+  expect(last("tribe.created")).toEqual({ pid: adaPid, team, name: "Night Shift" });
+  const bob = h.join("bob");
+  h.run(600);
+  const bobPid = h.client(bob)!.pid;
+  h.say(bob, "enablecheats");
+  const e = h.world.ents;
+  h.say(bob, `tp ${(e.x[h.ent(ada)]! + 1).toFixed(2)} ${e.z[h.ent(ada)]!.toFixed(2)}`);
+  h.say(ada, "tribe invite bob");
+  expect(last("tribe.invite")).toEqual({ byPid: adaPid, pid: bobPid });
+  h.say(bob, "tribe accept");
+  expect([last("tribe.join"), last("tribe.joined")]).toEqual([{ pid: bobPid, team }, { pid: bobPid, team }]);
+  h.say(ada, "tribe name Day Shift");
+  expect(last("tribe.renamed")).toEqual({ team, name: "Day Shift" });
+  h.say(ada, "tribe kick bob");
+  expect(last("tribe.leave")).toEqual({ team, pid: bobPid, why: "put out", heir: 0, disbanded: false });
+  // The owner leaves a tribe of one, and it is gone.
+  h.say(ada, "tribe leave");
+  expect(last("tribe.leave")).toEqual({ team, pid: adaPid, why: "left", heir: 0, disbanded: true });
+
+  // Bob dies and comes back at the first spawn point.
+  h.say(bob, "suicide");
+  h.run(500);
+  expect(bob.sessionState).toBe(SESSION_DEAD);
+  bob.command(CMD_RESPAWN, (w) => w.u8(0));
+  h.run(800);
+  expect(bob.sessionState).toBe(SESSION_ALIVE);
+  expect(last("session.respawn")).toEqual({ pid: bobPid, bed: -1, wait: 0 });
+  expect(last("session.spawn")).toEqual({ pid: bobPid, first: false, why: "respawned" });
+
+  // His connection drops and his body lingers. Then he is put out.
+  bob.close();
+  h.run(500);
+  expect(last("session.presence")).toEqual({ pid: bobPid, connected: false });
+  expect(h.host.exec("kick ada")).toContain("ada");
+  // A body lingers five seconds after its connection closes, and the session ends when it goes.
+  h.run(6000);
+  expect(last("session.leave")).toEqual({ pid: adaPid, why: "kicked" });
+  expect(said("session.leave").length).toBe(2);
+
+  // A third arrives with no look and makes one. Until then it has no body, and no module has heard of a survivor.
+  const cy = h.join("cy", {}, { look: null });
+  h.run(500);
+  expect(said("session.join").length).toBe(2);
+  cy.create(defaultLook());
+  h.run(600);
+  expect(said("session.create")).toEqual(['{"name":"cy"}']);
+  expect(last("session.join")).toMatchObject({ name: "cy", isNew: true });
+
+  // A setting changes, the disk fills and empties, a backup is asked for, and the server stops.
+  expect(h.host.exec("setting XPMultiplier 3")).toContain("XPMultiplier");
+  h.run(200);
+  expect(said("server.settings").length).toBe(1);
+  const store = h.host.persistence!.store;
+  const real = store.transaction.bind(store);
+  h.host.persistence!.onMoved = null;
+  store.transaction = () => {
+    throw Object.assign(new Error("database or disk is full"), { code: "SQLITE_FULL" });
+  };
+  h.run(1000);
+  expect(last("server.saveFailed")).toMatchObject({ code: "SQLITE_FULL" });
+  store.transaction = real;
+  h.run(6000);
+  expect(said("server.saved").length).toBe(1);
+  expect(JSON.parse(said("server.save")[0]!).folder).toBe(`${join(dir, "script.db")}.backups`);
+  h.host.shutdown();
+  expect(said("server.stop")).toEqual(['{"why":"stopped"}']);
+
+  // Every wired event of these groups was heard, and each is one of them.
+  expect(names(all.heard.lines)).toEqual([...wired].sort());
+});
+
+test("what a module refuses does not happen, and what it changes is what happens", () => {
+  const gate = listener("gate", ["session.login", "name.set", "session.create", "session.respawn", "chat.say", "chat.said", "command", "tribe.create", "tribe.invite", "tribe.join"]);
+  const h = new Harness({}, 1, 60, { modules: [gate.def], dev: true, ...quiet });
+  let rule: (e: Parameters<NonNullable<typeof gate.heard.each>>[0]) => void = () => {};
+  gate.heard.each = (e) => rule(e);
+
+  // A login turned away has no body and no record, and a name turned away is told so.
+  rule = (e) => {
+    if (e.name === "session.login" && e.data.name === "mallory") e.refuse("not you");
+    if (e.name === "name.set" && e.data.text === "admin") e.refuse("not that name");
+  };
+  const mallory = h.join("mallory");
+  const admin = h.join("admin");
+  const ada = h.join("ada");
+  const bob = h.join("bob");
+  h.run(600);
+  expect([mallory.state, mallory.closeReason, admin.closeReason, ada.state]).toEqual(["closed", REJECT_DENIED, REJECT_NAME, "active"]);
+  expect([...h.host.records.byPid.values()].map((r) => r.name).sort()).toEqual(["ada", "bob"]);
+  h.say(ada, "enablecheats");
+  h.say(bob, "enablecheats");
+
+  // A line is reworded for everyone, or not said at all.
+  rule = (e) => {
+    if (e.name === "chat.say") e.data.text = String(e.data.text).replace("darn", "****");
+    if (e.name === "chat.say" && String(e.data.text).includes("spam")) e.refuse("No advertising here.");
+  };
+  ada.chat(TEXT_GLOBAL, "darn it");
+  h.run(200);
+  expect(bob.log[bob.log.length - 1]!.text).toBe("ada: **** it");
+  const heard = bob.log.length;
+  ada.chat(TEXT_GLOBAL, "buy spam");
+  h.run(200);
+  expect([bob.log.length, ada.log[ada.log.length - 1]!.text]).toEqual([heard, "No advertising here."]);
+  expect(gate.heard.lines.filter((l) => l.startsWith("chat.said")).length).toBe(1);
+
+  // A command refused does not run, and says why.
+  rule = (e) => {
+    if (e.name === "command" && e.data.name === "give") e.refuse("no gifts today");
+  };
+  expect(h.say(ada, "give stone 5")).toEqual(["denied: no gifts today"]);
+  expect(h.host.records.byPid.get(h.client(ada)!.pid)!.inv!.total(h.reg.index.get("core:stone")!)).toBe(0);
+
+  // A tribe gets the name a module gives it. An invitation and a joining may each be refused.
+  rule = (e) => {
+    if (e.name === "tribe.create") e.data.name = `[EU] ${String(e.data.name)}`;
+    if (e.name === "tribe.invite") e.refuse("no recruiting during a raid");
+  };
+  h.say(ada, "tribe create Owls");
+  expect([...h.host.tribes.byId.values()].map((t) => t.name)).toEqual(["[EU] Owls"]);
+  const e = h.world.ents;
+  h.say(bob, `tp ${(e.x[h.ent(ada)]! + 1).toFixed(2)} ${e.z[h.ent(ada)]!.toFixed(2)}`);
+  expect(h.say(ada, "tribe invite bob")[0]).toContain("no recruiting during a raid");
+  rule = (e) => {
+    if (e.name === "tribe.join") e.refuse("the tribe is frozen");
+  };
+  h.say(ada, "tribe invite bob");
+  expect(h.say(bob, "tribe accept")[0]).toContain("the tribe is frozen");
+  expect([...h.host.tribes.byId.values()][0]!.members.length).toBe(1);
+
+  // A respawn refused leaves the survivor dead.
+  rule = (e) => {
+    if (e.name === "session.respawn") e.refuse("the arena is closed");
+  };
+  h.say(bob, "suicide");
+  h.run(500);
+  const codes: number[] = [];
+  bob.onResult = (_seq, code) => void codes.push(code);
+  bob.command(CMD_RESPAWN, (w) => w.u8(0));
+  h.run(500);
+  expect([codes, bob.sessionState]).toEqual([[RESULT_DENIED], SESSION_DEAD]);
+  rule = () => {};
+  bob.command(CMD_RESPAWN, (w) => w.u8(0));
+  h.run(800);
+  expect(bob.sessionState).toBe(SESSION_ALIVE);
 });

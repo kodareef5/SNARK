@@ -21,6 +21,7 @@ import {
   PROTOCOL_VERSION,
   REJECT_CONTENT,
   REJECT_DENIED,
+  REJECT_KICKED,
   REJECT_FULL,
   REJECT_MALFORMED,
   REJECT_NAME,
@@ -58,6 +59,7 @@ import { capsuleFree } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
 import { Guesses } from "./guesses.ts";
 import type { ServerWorld } from "./world.ts";
+import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
 export interface GameOptions {
   /** In ticks. */
@@ -145,6 +147,12 @@ export class Client {
   /** Tick of its last input change or command, for the idle kick. */
   activeAt = 0;
   cheatAttempts = 0;
+  /** The session is in the world, with a body or without. A body it gets after that is a respawn. */
+  entered = false;
+  /** Modules have been told the session has a survivor. */
+  joined = false;
+  /** Why the session ended, for modules: "left" unless the server put it out. */
+  left = "left";
   /** Entity index of the visible body, or -1 (spectating, dead). */
   ent = -1;
   /** Species whose movement parameters step the body. */
@@ -251,6 +259,9 @@ export class Client {
     this.textReadyAt = 0;
     this.admin = false;
     this.cheatAttempts = 0;
+    this.entered = false;
+    this.joined = false;
+    this.left = "left";
     this.ownDirty = false;
     this.sentVitals = this.sentInv = this.sentMarkers = this.sentOpenVersion = -1;
     this.sentRespawn = false;
@@ -266,9 +277,13 @@ export class Client {
   }
 }
 
+const SESSION_LOGIN = event("session.login");
+const NAME_SET = event("name.set");
+
 export class GameServer {
   readonly world: ServerWorld;
   readonly opts: GameOptions;
+  bus: Bus = NO_BUS;
   readonly clients: (Client | null)[];
   /** New survivor names made from each address in the last hour. */
   private readonly newNames = new Map<string, { n: number; since: number }>();
@@ -431,6 +446,7 @@ export class GameServer {
   }
 
   reject(c: Client, reason: number): void {
+    c.left = reason === REJECT_KICKED ? "kicked" : "refused";
     const w = this.w;
     w.reset();
     w.bits(S_REJECT, 4);
@@ -762,6 +778,10 @@ export class GameServer {
       this.guesses.right(who);
     }
     if (!NAME.test(name)) return this.refuse(c, REJECT_NAME);
+    // A module may turn a login away, or a name nobody has had before. A survivor's name is who it is, so it is not reworded.
+    const isNew = this.savedPosition?.(name) == null;
+    if (isNew && this.bus.before(NAME_SET, { what: "survivor", text: name }) !== "") return this.refuse(c, REJECT_NAME);
+    if (this.bus.before(SESSION_LOGIN, { name, address: c.conn.address ?? "", isNew }) !== "") return this.refuse(c, REJECT_DENIED);
     if (this.authorize && !this.authorize(name, key)) return this.refuse(c, REJECT_DENIED);
     // One body per survivor. A second login is refused unless the first connection is gone, and then it takes over the body.
     for (const other of this.clients) {

@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_CLOSE, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_CLOSE, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -41,7 +41,7 @@ import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
 import type { ModuleDef } from "./api/module.ts";
-import { Bus } from "./events/bus.ts";
+import { Bus, event } from "./events/bus.ts";
 import { Modules } from "./events/modules.ts";
 import { workerKeeper } from "./persist/keeper.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
@@ -211,6 +211,20 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   }
 }
 
+const SERVER_START = event("server.start");
+const SERVER_TICK = event("server.tick");
+const SERVER_SECOND = event("server.second");
+const SERVER_SAVE = event("server.save");
+const SERVER_SAVE_FAILED = event("server.saveFailed");
+const SERVER_SAVED = event("server.saved");
+const SERVER_STOP = event("server.stop");
+const SERVER_SETTINGS = event("server.settings");
+const SESSION_JOIN = event("session.join");
+const SESSION_PRESENCE = event("session.presence");
+const SESSION_LEAVE = event("session.leave");
+const SESSION_SPAWN = event("session.spawn");
+const SESSION_RESPAWN = event("session.respawn");
+
 function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): Host {
   // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
@@ -234,7 +248,13 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   if (opts.clips) world.anim = new HumanAnim(opts.clips);
   if (opts.clips && opts.rigs) world.rigs = buildRigs(opts.rigs, opts.clips);
   let settingsAt: { dirty: boolean; version: number } | null = null;
+  let settingsToldAt = -1;
   const records = new Records(opts.worldId ?? 1);
+  const say = opts.log ?? ((line: string) => console.log(line));
+  // Carries events to modules. Made before the systems, so that each can raise its own.
+  const bus = new Bus();
+  bus.log = say;
+  if (opts.now) bus.now = opts.now;
   const seats = rules.flag("WinLiveMaxPlayers");
   const game = new GameServer(world, {
     password: rules.text("ServerPassword"),
@@ -242,6 +262,15 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     ...opts.game,
     maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")),
   });
+  game.bus = bus;
+  /** Survivors made since they were last told of: a module hears of each once, as new. */
+  const made = new Set<number>();
+  const joined = (c: Client): void => {
+    if (c.joined) return;
+    c.joined = true;
+    bus.after(SESSION_JOIN, { pid: c.pid, name: c.name, isNew: made.delete(c.pid) });
+  };
+  let started = false;
   const persistence = store ? new Persistence(world, records, store) : null;
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
@@ -295,6 +324,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
   tribes.rules = rules;
+  tribes.bus = bus;
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
@@ -327,7 +357,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     return e === undefined ? null : riding.riderOf(e);
   };
   combat.onHarm = (victim, points) => taming.harmed(victim, points);
-  const chat = new Chat({ game, records, rules, tribes });
+  const chat = new Chat({ game, records, rules, tribes, bus });
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
   fixtures.index();
@@ -508,10 +538,12 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   game.needsLook = (name) => !recordOf(name)?.look;
   game.onBody = (c) => {
     let rec = recordOf(c.name);
+    const first = !rec;
     if (!rec) {
       rec = records.create(survivor, c.name);
       if (persistence) persistence.bindSurvivor(c.name, rec.pid);
       else names.set(c.name, rec.pid);
+      made.add(rec.pid);
     }
     if (!rec.keyHash) {
       rec.keyHash = hashKey(c.key);
@@ -538,6 +570,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     }
     refreshBody(rec);
     survival.suspend(rec, false);
+    bus.after(SESSION_SPAWN, { pid: rec.pid, first, why: first ? "made" : c.entered ? "respawned" : "returned" });
+    // A session that was in the creator has its survivor only now.
+    if (c.entered) joined(c);
   };
   game.onBodyGone = (c) => {
     // Out of the world, a survivor neither eats nor drowns.
@@ -561,6 +596,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
     focus.set(c.id, c.chunk);
     moved(-1, c.chunk);
+    c.entered = true;
+    // One still making its survivor is told of when it has made it.
+    if (c.pid !== 0) joined(c);
     // Tribe member lists show who is online.
     tribes.version++;
     // The Message setting separates its lines with a literal backslash and n.
@@ -569,11 +607,13 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
   };
   game.onPresence = (c) => {
+    bus.after(SESSION_PRESENCE, { pid: c.pid, connected: !c.closed });
     tribes.version++;
     // The voice socket belonged to the old connection.
     voice.revoke(c);
   };
   game.onExit = (c) => {
+    bus.after(SESSION_LEAVE, { pid: c.pid, why: c.left });
     tribes.version++;
     voice.revoke(c);
     moved(focus.get(c.id) ?? -1, -1);
@@ -634,6 +674,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       settingsAt.dirty = true;
     }
     // What happened this tick is told to modules before it is committed.
+    if (!started) bus.after(SERVER_START, { tick, map: "proving", fresh: loaded ? loaded.fresh : true });
+    started = true;
+    if (bus.n[SERVER_TICK] !== 0) bus.after(SERVER_TICK, { tick });
+    if (tick % TICK_RATE === 0) bus.after(SERVER_SECOND, { tick });
+    if (settingsToldAt !== rules.version) {
+      // The first is the settings as they stood at start, which is not a change.
+      if (settingsToldAt >= 0) bus.after(SERVER_SETTINGS, { names: "", source: "" });
+      settingsToldAt = rules.version;
+    }
+    if (persistence && opts.backups && tick % liveEvery === 0) bus.after(SERVER_SAVE, { tick, folder: `${persistence.store.path}.backups` });
     modules.step(tick);
     bus.flush();
     if (persistence && opts.backups && tick % liveEvery === 0) persistence.keeper.backup();
@@ -646,6 +696,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   };
   if (persistence) {
     persistence.onFailing = (f) => {
+      if (f === null) bus.after(SERVER_SAVED, { tick: world.tick });
+      else if (f.tries === 1) bus.after(SERVER_SAVE_FAILED, { code: f.code, since: f.since });
       if (f === null) console.log("saving again");
       else if (f.tries === 1) console.log(`the world could not be saved (${f.code}: ${f.error}); trying again, and the world runs on`);
     };
@@ -668,6 +720,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     respawn: (c, index) => {
       const p = c.respawnAt[index];
       if (!p) return RESULT_INVALID;
+      // A module may refuse the place, or make the survivor wait: `wait` is seconds, and more than none refuses for now.
+      const asked = { pid: c.pid, bed: p.bed, wait: p.bed >= 0 ? Math.max(0, Math.ceil(((fixtures.find(p.bed)?.readyAt ?? 0) - world.tick) / TICK_RATE)) : 0 };
+      if (bus.before(SESSION_RESPAWN, asked) !== "") return RESULT_DENIED;
+      if (asked.wait > 0 && p.bed < 0) return RESULT_WAIT;
       if (p.bed < 0) return death.respawn(c, p.x, p.z, p.yaw);
       // The bed must still stand and still belong to its tribe.
       const bed = fixtures.find(p.bed);
@@ -760,11 +816,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   /** The held slot of each record at its last refresh. */
   const inHand = new Map<number, number>();
 
-  const say = opts.log ?? ((line: string) => console.log(line));
-  const bus = new Bus();
-  bus.log = say;
-  if (opts.now) bus.now = opts.now;
   const con = new Console();
+  con.bus = bus;
   addCoreCommands(con);
   addAdminCommands(con);
   addCombatCommands(con);
@@ -843,6 +896,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     exec: (line, client) => con.exec({ host, client: client ?? null }, line),
     idle: () => persistence?.idle(),
     shutdown() {
+      // Told at once: there is no later tick to tell it in.
+      bus.after(SERVER_STOP, { why: "stopped" });
+      bus.flush();
       if (!persistence) return;
       // Every body that can have moved is saved where it stands.
       for (let r = 0; r < world.history.rows; r++) {

@@ -5,6 +5,9 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { REJECT_DENIED, REJECT_KICKED, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
+import { event } from "../events/bus.ts";
+
+const SESSION_ADMIN = event("session.admin");
 
 const STATE_NAMES: Record<number, string> = { [SESSION_ALIVE]: "alive", [SESSION_DEAD]: "dead", [SESSION_SPECTATING]: "spectating" };
 const MAX_PASSWORD_ATTEMPTS = 3;
@@ -100,6 +103,7 @@ export function addCoreCommands(con: Console): void {
         guesses.right(who);
         c.admin = true;
         c.ownDirty = true;
+        ctx.host.bus.after(SESSION_ADMIN, { pid: c.pid });
         return "cheats enabled";
       },
     },

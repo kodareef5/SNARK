@@ -5,6 +5,7 @@ import { tokenize } from "../shared/console.ts";
 import type { Def } from "../shared/content/defs.ts";
 import { find } from "../shared/content/find.ts";
 import type { Registry } from "../shared/content/registry.ts";
+import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Client } from "./game.ts";
 import type { Host } from "./host.ts";
 
@@ -39,8 +40,12 @@ export function named(reg: Registry, name: string | undefined, type: Def["type"]
 /** Journal op for an admin command: the session's name, a tab, the line. */
 export const OP_ADMIN = 2;
 
+const COMMAND = event("command");
+const COMMAND_RAN = event("command.ran");
+
 export class Console {
   readonly commands = new Map<string, ConsoleCommand>();
+  bus: Bus = NO_BUS;
 
   /** Throws if a name is taken: one command silently replacing another is a mistake. */
   add(...commands: ConsoleCommand[]): void {
@@ -62,6 +67,10 @@ export class Console {
     const cmd = this.commands.get(name);
     if (!cmd) return `unknown command "${name}"; try help`;
     if (cmd.admin && !this.isAdmin(ctx)) return "denied: cheats are not enabled for you";
+    // A module hears the line as the journal would have it: without a password, and for a secret command without anything.
+    const told = { byPid: ctx.client?.pid ?? 0, name, line: cmd.secret ? name : cmd.redact ? cmd.redact(words.slice(1)) : line, source: ctx.client ? "session" : "operator" };
+    const refused = this.bus.before(COMMAND, { ...told });
+    if (refused !== "") return `denied: ${refused}`;
     let out: string;
     try {
       out = cmd.run(ctx, words.slice(1));
@@ -71,6 +80,7 @@ export class Console {
     if (cmd.admin && !cmd.secret) {
       ctx.host.persistence?.journal(OP_ADMIN, new TextEncoder().encode(`${ctx.client ? ctx.client.name : "(operator)"}\t${cmd.redact ? cmd.redact(words.slice(1)) : line}`));
     }
+    this.bus.after(COMMAND_RAN, told);
     return out;
   }
 }

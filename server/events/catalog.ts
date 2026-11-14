@@ -45,32 +45,32 @@ function ev(name: string, phase: EventRow["phase"], fields: string, ark: string,
   });
 }
 
-ev("server.start", "after", "tick map fresh", "the game mode's init and begin play", "server/host.ts", "stub", "The world is loaded and the first tick is about to run.");
-ev("server.tick", "after", "tick", "a per-frame tick callback", "server/host.ts", "stub", "A tick has run.", true);
-ev("server.second", "after", "tick", "a once-a-second timer callback", "server/host.ts", "stub", "A second of game time has passed.");
-ev("server.save", "after", "tick folder", "SaveWorld", "server/host.ts", "stub", "An autosave mark: a backup has been asked for.");
-ev("server.saveFailed", "after", "code since", "", "server/host.ts", "stub", "A commit failed. The world runs on and it will be tried again.");
-ev("server.saved", "after", "tick", "", "server/host.ts", "stub", "Commits succeed again after failing.");
-ev("server.stop", "after", "why", "the engine's exit, the crash report", "server/host.ts", "stub", "The server is stopping. The last commit follows.");
-ev("server.settings", "after", "names source", "", "server/host.ts", "stub", "Settings changed while running, from the console or the live file.");
+ev("server.start", "after", "tick map fresh", "the game mode's init and begin play", "server/host.ts", "wired", "The world is loaded and the first tick is about to run.");
+ev("server.tick", "after", "tick", "a per-frame tick callback", "server/host.ts", "wired", "A tick has run.", true);
+ev("server.second", "after", "tick", "a once-a-second timer callback", "server/host.ts", "wired", "A second of game time has passed.");
+ev("server.save", "after", "tick folder", "SaveWorld", "server/host.ts", "wired", "An autosave mark: a backup has been asked for.");
+ev("server.saveFailed", "after", "code since", "", "server/host.ts", "wired", "A commit failed. The world runs on and it will be tried again.");
+ev("server.saved", "after", "tick", "", "server/host.ts", "wired", "Commits succeed again after failing.");
+ev("server.stop", "after", "why", "the engine's exit, the crash report", "server/host.ts", "wired", "The server is stopping. The last commit follows.");
+ev("server.settings", "after", "names source", "", "server/host.ts", "wired", "Settings changed while running, from the console or the live file.");
 ev("server.broadcast", "after", "text", "the admin broadcast", "server/commands/core.ts", "ops", "An admin spoke to everyone.");
-ev("command", "before", "byPid name line source", "console commands and RCON packets", "server/console.ts", "stub", "A console command is about to run.");
-ev("command.ran", "after", "byPid name line source", "", "server/console.ts", "stub", "A console command ran. This is the audit trail.");
+ev("command", "before", "byPid name line source", "console commands and RCON packets", "server/console.ts", "wired", "A console command is about to run.");
+ev("command.ran", "after", "byPid name line source", "", "server/console.ts", "wired", "A console command ran. This is the audit trail.");
 
-ev("session.login", "before", "name address isNew", "the pre-login, ban and exclusive-join checks", "server/game.ts", "stub", "Someone is asking to join. No body exists yet.");
-ev("session.join", "after", "pid name isNew", "the new-player handler", "server/host.ts", "stub", "A session has a survivor.");
-ev("session.presence", "after", "pid connected", "", "server/host.ts", "stub", "A survivor's connection came or went. Its body may linger.");
-ev("session.leave", "after", "pid why", "logout and kick", "server/host.ts", "stub", "A session ended.");
-ev("session.create", "before", "name", "the create-character request", "server/own.ts", "stub", "A survivor is about to be made.");
-ev("session.spawn", "after", "pid first why", "the first spawn, and taking a body", "server/host.ts", "stub", "A survivor's body entered the world.");
-ev("session.respawn", "before", "pid bed wait!", "the respawn-at-point request", "server/host.ts", "stub", "A dead survivor is about to come back.");
-ev("session.admin", "after", "pid", "the admin-detected notice", "server/commands/core.ts", "stub", "A session enabled cheats.");
+ev("session.login", "before", "name address isNew", "the pre-login, ban and exclusive-join checks", "server/game.ts", "wired", "Someone is asking to join. No body exists yet.");
+ev("session.join", "after", "pid name isNew", "the new-player handler", "server/host.ts", "wired", "A session has a survivor.");
+ev("session.presence", "after", "pid connected", "", "server/host.ts", "wired", "A survivor's connection came or went. Its body may linger.");
+ev("session.leave", "after", "pid why", "logout and kick", "server/host.ts", "wired", "A session ended.");
+ev("session.create", "before", "name", "the create-character request", "server/own.ts", "wired", "A survivor is about to be made.");
+ev("session.spawn", "after", "pid first why", "the first spawn, and taking a body", "server/host.ts", "wired", "A survivor's body entered the world.");
+ev("session.respawn", "before", "pid bed wait!", "the respawn-at-point request", "server/host.ts", "wired", "A dead survivor is about to come back.");
+ev("session.admin", "after", "pid", "the admin-detected notice", "server/commands/core.ts", "wired", "A session enabled cheats.");
 ev("zone.enter", "after", "pid zone", "an actor overlap beginning", "server/host.ts", "limits", "A body entered a zone.");
 ev("zone.leave", "after", "pid zone", "an actor overlap ending", "server/host.ts", "limits", "A body left a zone.");
 
-ev("chat.say", "before", "pid channel text!", "the chat send, and the chat callback", "server/chat.ts", "stub", "A survivor is about to say something.");
-ev("chat.said", "after", "pid channel text heard", "the per-recipient delivery, as a count", "server/chat.ts", "stub", "Something was said, and how many heard it.");
-ev("name.set", "before", "what text!", "name filters", "server/game.ts", "stub", "A survivor, a tribe or a creature is about to be named.");
+ev("chat.say", "before", "pid channel text!", "the chat send, and the chat callback", "server/chat.ts", "wired", "A survivor is about to say something.");
+ev("chat.said", "after", "pid channel text heard", "the per-recipient delivery, as a count", "server/chat.ts", "wired", "Something was said, and how many heard it.");
+ev("name.set", "before", "what text!", "name filters", "server/game.ts", "wired", "A survivor, a tribe or a creature is about to be named.");
 
 ev("damage", "before", "target victim kind team byPid byTeam item type zone scale!", "three take-damage hooks and the tribe-war question", "server/combat.ts", "stub", "A blow is about to land on a body or a structure. A scale of 0 stops it.", true);
 ev("damaged", "after", "target victim kind team byPid byTeam item type zone taken blocked killed left", "", "server/combat.ts", "stub", "A blow landed.", true);
@@ -113,13 +113,13 @@ ev("craft.start", "before", "pid item count!", "the can-craft question and the c
 ev("craft.done", "after", "pid item n", "the finish-crafting call", "server/progression.ts", "stub", "Something was made.");
 ev("harvest", "after", "pid node item n", "the harvested call", "server/harvest.ts", "stub", "A node gave something.");
 
-ev("tribe.create", "before", "pid name!", "the new-tribe call", "server/tribes.ts", "stub", "A tribe is about to be founded.");
-ev("tribe.created", "after", "pid team name", "", "server/tribes.ts", "stub", "A tribe was founded.");
-ev("tribe.invite", "before", "byPid pid", "", "server/tribes.ts", "stub", "A survivor is about to be invited.");
-ev("tribe.join", "before", "pid team", "the add-to-tribe call", "server/tribes.ts", "stub", "A survivor is about to join a tribe.");
-ev("tribe.joined", "after", "pid team", "", "server/tribes.ts", "stub", "A survivor joined a tribe.");
-ev("tribe.leave", "after", "team pid why heir disbanded", "leaving, removal and the passing of ownership", "server/tribes.ts", "stub", "A survivor left a tribe or was put out of it.");
-ev("tribe.renamed", "after", "team name", "the rename request", "server/tribes.ts", "stub", "A tribe has a new name.");
+ev("tribe.create", "before", "pid name!", "the new-tribe call", "server/tribes.ts", "wired", "A tribe is about to be founded.");
+ev("tribe.created", "after", "pid team name", "", "server/tribes.ts", "wired", "A tribe was founded.");
+ev("tribe.invite", "before", "byPid pid", "", "server/tribes.ts", "wired", "A survivor is about to be invited.");
+ev("tribe.join", "before", "pid team", "the add-to-tribe call", "server/tribes.ts", "wired", "A survivor is about to join a tribe.");
+ev("tribe.joined", "after", "pid team", "", "server/tribes.ts", "wired", "A survivor joined a tribe.");
+ev("tribe.leave", "after", "team pid why heir disbanded", "leaving, removal and the passing of ownership", "server/tribes.ts", "wired", "A survivor left a tribe or was put out of it.");
+ev("tribe.renamed", "after", "team name", "the rename request", "server/tribes.ts", "wired", "A tribe has a new name.");
 ev("tribe.log", "after", "team text", "the tribe log", "server/host.ts", "tribes", "A line was written to a tribe's log.");
 ev("tribe.rank", "after", "team pid rank", "promote and demote", "server/tribes.ts", "tribes", "A member's rank changed.");
 ev("tribe.war", "after", "team other", "the tribe-war call", "server/tribes.ts", "tribes", "Two tribes are at war, or no longer.");

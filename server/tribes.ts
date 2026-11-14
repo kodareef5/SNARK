@@ -1,6 +1,7 @@
 // Everything ownable carries one team number. A survivor alone is a team of one, and a tribe takes its founder's
 // team as its own. Every "may this one touch that" question goes through `may` and `relation`.
 
+import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Rules } from "./settings/rules.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { MAX_TRIBE_NAME } from "../shared/net/protocol.ts";
@@ -40,8 +41,17 @@ export function cleanTribeName(name: string): string {
   return clean.length > 0 && clean.length <= MAX_TRIBE_NAME ? clean : "";
 }
 
+const TRIBE_CREATE = event("tribe.create");
+const TRIBE_CREATED = event("tribe.created");
+const TRIBE_INVITE = event("tribe.invite");
+const TRIBE_JOIN = event("tribe.join");
+const TRIBE_JOINED = event("tribe.joined");
+const TRIBE_LEAVE = event("tribe.leave");
+const TRIBE_RENAMED = event("tribe.renamed");
+
 export class Tribes {
   rules: Rules | null = null;
+  bus: Bus = NO_BUS;
   readonly byId = new Map<number, Tribe>();
   /** Counts every change to any tribe or invitation, for sending. */
   version = 0;
@@ -95,10 +105,16 @@ export class Tribes {
     const clean = cleanTribeName(name);
     if (clean === "") return `a tribe's name is 1 to ${MAX_TRIBE_NAME} characters`;
     if (rec.team === 0) return "you have no survivor yet";
-    this.byId.set(rec.team, { id: rec.team, name: clean, members: [rec.pid], owner: rec.pid });
+    // A module may refuse the tribe, or give it another name.
+    const asked = { pid: rec.pid, name: clean };
+    const refused = this.bus.before(TRIBE_CREATE, asked);
+    const named = cleanTribeName(String(asked.name));
+    if (refused !== "" || named === "") return refused === "" ? `a tribe's name is 1 to ${MAX_TRIBE_NAME} characters` : refused;
+    this.byId.set(rec.team, { id: rec.team, name: named, members: [rec.pid], owner: rec.pid });
     rec.rank = RANK_OWNER;
     this.invites.delete(rec.pid);
     this.changed(rec);
+    this.bus.after(TRIBE_CREATED, { pid: rec.pid, team: rec.team, name: named });
     return "";
   }
 
@@ -109,6 +125,8 @@ export class Tribes {
     if (tribe.owner !== by.pid) return "only the tribe's owner may invite";
     if (target.pid === by.pid || target.team === tribe.id) return `${target.name} is in the tribe already`;
     if (!near) return `${target.name} is too far away: an invitation is made face to face`;
+    const refused = this.bus.before(TRIBE_INVITE, { byPid: by.pid, pid: target.pid });
+    if (refused !== "") return refused;
     this.invites.set(target.pid, { tribe: tribe.id, by: by.pid, until: this.world.tick + INVITE_TICKS });
     this.version++;
     this.onNotice?.(target.pid, `${by.name} invites you to join ${tribe.name}. Type "tribe accept" or "tribe decline".`);
@@ -122,6 +140,8 @@ export class Tribes {
     const tribe = inv.tribe;
     const most = this.rules ? this.rules.num("MaxNumberOfPlayersInTribe") : 0;
     if (most > 0 && tribe.members.length >= most) return `${tribe.name} has as many members as a tribe may here (${most})`;
+    const refused = this.bus.before(TRIBE_JOIN, { pid: rec.pid, team: tribe.id });
+    if (refused !== "") return refused;
     this.invites.delete(rec.pid);
     const was = rec.team;
     // What it built and tamed joins the tribe, and stays if it later leaves.
@@ -137,6 +157,7 @@ export class Tribes {
     for (const pid of tribe.members) this.onNotice?.(pid, `${rec.name} joined ${tribe.name}.`);
     tribe.members.push(rec.pid);
     this.changed(rec);
+    this.bus.after(TRIBE_JOINED, { pid: rec.pid, team: tribe.id });
     return "";
   }
 
@@ -152,7 +173,7 @@ export class Tribes {
   leave(rec: EntityRecord): string {
     const tribe = this.of(rec);
     if (!tribe) return "you are not in a tribe";
-    this.remove(tribe, rec);
+    this.remove(tribe, rec, "left");
     for (const pid of tribe.members) this.onNotice?.(pid, `${rec.name} left ${tribe.name}.`);
     return "";
   }
@@ -165,7 +186,7 @@ export class Tribes {
     const target = tribe.members.map((pid) => this.records.byPid.get(pid)).find((m) => m && m.name.toLowerCase() === wanted);
     if (!target) return `nobody called ${name} is in ${tribe.name}`;
     if (target.pid === by.pid) return "leave the tribe instead";
-    this.remove(tribe, target);
+    this.remove(tribe, target, "put out");
     this.onNotice?.(target.pid, `You were put out of ${tribe.name}.`);
     for (const pid of tribe.members) if (pid !== by.pid) this.onNotice?.(pid, `${target.name} was put out of ${tribe.name}.`);
     return "";
@@ -180,13 +201,15 @@ export class Tribes {
     tribe.name = clean;
     this.version++;
     this.onSave?.();
+    this.bus.after(TRIBE_RENAMED, { team: tribe.id, name: clean });
     return "";
   }
 
-  private remove(tribe: Tribe, rec: EntityRecord): void {
+  private remove(tribe: Tribe, rec: EntityRecord, why: string): void {
     tribe.members.splice(tribe.members.indexOf(rec.pid), 1);
     rec.team = this.records.newTeam();
     rec.rank = RANK_MEMBER;
+    const wasOwner = tribe.owner === rec.pid;
     if (tribe.members.length === 0) {
       // The last member left, so the tribe is gone. What it owned keeps the team id, which no one can act for now.
       this.byId.delete(tribe.id);
@@ -201,6 +224,7 @@ export class Tribes {
       }
     }
     this.changed(rec);
+    this.bus.after(TRIBE_LEAVE, { team: tribe.id, pid: rec.pid, why, heir: wasOwner && tribe.members.length > 0 ? tribe.owner : 0, disbanded: tribe.members.length === 0 });
   }
 
   private changed(rec: EntityRecord): void {

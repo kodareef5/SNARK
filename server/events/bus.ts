@@ -35,6 +35,13 @@ export interface HandlerStats {
 
 const MODULE_FAILED = eventIndex("module.failed");
 
+/** The index of an event that exists. A system names its events with this once, as it loads. */
+export function event(name: string): number {
+  const at = eventIndex(name);
+  if (at < 0) throw new Error(`there is no event "${name}"`);
+  return at;
+}
+
 export class Bus {
   /** Listeners of each event, by its index in `EVENTS`. */
   readonly n = new Uint8Array(EVENTS.length);
@@ -145,3 +152,7 @@ export class Bus {
     return ok;
   }
 }
+
+/** A bus nobody can listen to, for a system made without a host. */
+export const NO_BUS = new Bus();
+NO_BUS.close();

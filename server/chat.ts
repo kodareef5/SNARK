@@ -3,6 +3,7 @@
 
 import { TICK_RATE } from "../shared/coords.ts";
 import { MAX_CHAT_CHARS, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SESSION_SPECTATING, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
+import { event, type Bus } from "./events/bus.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -19,7 +20,11 @@ export interface ChatContext {
   readonly records: Records;
   readonly rules: Rules;
   readonly tribes: Tribes;
+  readonly bus: Bus;
 }
+
+const CHAT_SAY = event("chat.say");
+const CHAT_SAID = event("chat.said");
 
 /** The text as it will be shown, or "" if nothing is left. */
 export function cleanChat(text: string): string {
@@ -69,8 +74,8 @@ export class Chat {
 
   /** Returns a RESULT code. A refusal also tells the speaker why. */
   say(c: Client, channel: number, text: string): number {
-    const { game, records, rules, tribes } = this.ctx;
-    const line = cleanChat(text);
+    const { game, records, rules, tribes, bus } = this.ctx;
+    let line = cleanChat(text);
     if (line === "" || (channel !== TEXT_GLOBAL && channel !== TEXT_LOCAL && channel !== TEXT_TRIBE)) return RESULT_INVALID;
     const rec = records.byPid.get(c.pid);
     const refuse = (code: number, why: string): number => {
@@ -95,6 +100,12 @@ export class Chat {
     if (a.lines === 0) return refuse(RESULT_BUSY, "You are saying too much at once; wait a moment.");
     if (a.lines === BURST) a.at = now;
     a.lines--;
+    // A module may refuse the line or reword it. It has been counted against the speaker either way.
+    const asked = { pid: c.pid, channel, text: line };
+    const refused = bus.before(CHAT_SAY, asked);
+    line = cleanChat(String(asked.text));
+    if (refused !== "" || line === "") return refuse(RESULT_DENIED, refused === "" ? "Nothing was said." : refused);
+    const heard = this.delivered;
 
     const out = `${c.name}: ${line}`;
     const x = c.body.x;
@@ -114,6 +125,7 @@ export class Chat {
       game.sendText(to, channel, out);
       this.delivered++;
     }
+    bus.after(CHAT_SAID, { pid: c.pid, channel, text: line, heard: this.delivered - heard });
     return RESULT_OK;
   }
 }

@@ -18,6 +18,9 @@ import type { Tribes } from "./tribes.ts";
 import type { Subject } from "./taming.ts";
 import type { Voice } from "./voice.ts";
 import type { ServerWorld } from "./world.ts";
+import { event } from "./events/bus.ts";
+
+const SESSION_CREATE = event("session.create");
 
 /** The world's spawn points come first, then as many beds as fit. */
 export const MAX_RESPAWN_POINTS = 16;
@@ -352,6 +355,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();
     if (r.overflow || !validLook(look)) return RESULT_INVALID;
     if (c.state !== SESSION_CREATING) return RESULT_DENIED;
+    if (ctx.game.bus.before(SESSION_CREATE, { name: c.name }) !== "") return RESULT_DENIED;
     return ctx.game.create(c, look) ? RESULT_OK : RESULT_FULL;
   });
   ctx.game.handle(CMD_CLOSE, (c: Client) => {

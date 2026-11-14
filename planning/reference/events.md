@@ -10,7 +10,7 @@ marked "may change". An **after** event says what has happened, in values, and
 is delivered once a tick, before the commit. The module contract is in
 `server/api/module.ts`.
 
-There are 82 events: 2 raised today, 61 with a place in the code and not
+There are 82 events: 30 raised today, 33 with a place in the code and not
 raised yet, and 19 that wait for a feature.
 
 The ARK column says what a plugin for ARK's unofficial server API hooks for the
@@ -20,14 +20,14 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `server.start` | after | `tick`, `map`, `fresh` |  | the game mode's init and begin play | `server/host.ts` | stub |
-| `server.tick` (hot) | after | `tick` |  | a per-frame tick callback | `server/host.ts` | stub |
-| `server.second` | after | `tick` |  | a once-a-second timer callback | `server/host.ts` | stub |
-| `server.save` | after | `tick`, `folder` |  | SaveWorld | `server/host.ts` | stub |
-| `server.saveFailed` | after | `code`, `since` |  |  | `server/host.ts` | stub |
-| `server.saved` | after | `tick` |  |  | `server/host.ts` | stub |
-| `server.stop` | after | `why` |  | the engine's exit, the crash report | `server/host.ts` | stub |
-| `server.settings` | after | `names`, `source` |  |  | `server/host.ts` | stub |
+| `server.start` | after | `tick`, `map`, `fresh` |  | the game mode's init and begin play | `server/host.ts` | wired |
+| `server.tick` (hot) | after | `tick` |  | a per-frame tick callback | `server/host.ts` | wired |
+| `server.second` | after | `tick` |  | a once-a-second timer callback | `server/host.ts` | wired |
+| `server.save` | after | `tick`, `folder` |  | SaveWorld | `server/host.ts` | wired |
+| `server.saveFailed` | after | `code`, `since` |  |  | `server/host.ts` | wired |
+| `server.saved` | after | `tick` |  |  | `server/host.ts` | wired |
+| `server.stop` | after | `why` |  | the engine's exit, the crash report | `server/host.ts` | wired |
+| `server.settings` | after | `names`, `source` |  |  | `server/host.ts` | wired |
 | `server.broadcast` | after | `text` |  | the admin broadcast | `server/commands/core.ts` | planned: ops |
 
 - **`server.start`.** The world is loaded and the first tick is about to run.
@@ -44,8 +44,8 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `command` | before | `byPid`, `name`, `line`, `source` |  | console commands and RCON packets | `server/console.ts` | stub |
-| `command.ran` | after | `byPid`, `name`, `line`, `source` |  |  | `server/console.ts` | stub |
+| `command` | before | `byPid`, `name`, `line`, `source` |  | console commands and RCON packets | `server/console.ts` | wired |
+| `command.ran` | after | `byPid`, `name`, `line`, `source` |  |  | `server/console.ts` | wired |
 
 - **`command`.** A console command is about to run.
 - **`command.ran`.** A console command ran. This is the audit trail.
@@ -54,14 +54,14 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `session.login` | before | `name`, `address`, `isNew` |  | the pre-login, ban and exclusive-join checks | `server/game.ts` | stub |
-| `session.join` | after | `pid`, `name`, `isNew` |  | the new-player handler | `server/host.ts` | stub |
-| `session.presence` | after | `pid`, `connected` |  |  | `server/host.ts` | stub |
-| `session.leave` | after | `pid`, `why` |  | logout and kick | `server/host.ts` | stub |
-| `session.create` | before | `name` |  | the create-character request | `server/own.ts` | stub |
-| `session.spawn` | after | `pid`, `first`, `why` |  | the first spawn, and taking a body | `server/host.ts` | stub |
-| `session.respawn` | before | `pid`, `bed`, `wait` | `wait` | the respawn-at-point request | `server/host.ts` | stub |
-| `session.admin` | after | `pid` |  | the admin-detected notice | `server/commands/core.ts` | stub |
+| `session.login` | before | `name`, `address`, `isNew` |  | the pre-login, ban and exclusive-join checks | `server/game.ts` | wired |
+| `session.join` | after | `pid`, `name`, `isNew` |  | the new-player handler | `server/host.ts` | wired |
+| `session.presence` | after | `pid`, `connected` |  |  | `server/host.ts` | wired |
+| `session.leave` | after | `pid`, `why` |  | logout and kick | `server/host.ts` | wired |
+| `session.create` | before | `name` |  | the create-character request | `server/own.ts` | wired |
+| `session.spawn` | after | `pid`, `first`, `why` |  | the first spawn, and taking a body | `server/host.ts` | wired |
+| `session.respawn` | before | `pid`, `bed`, `wait` | `wait` | the respawn-at-point request | `server/host.ts` | wired |
+| `session.admin` | after | `pid` |  | the admin-detected notice | `server/commands/core.ts` | wired |
 
 - **`session.login`.** Someone is asking to join. No body exists yet.
 - **`session.join`.** A session has a survivor.
@@ -86,8 +86,8 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `chat.say` | before | `pid`, `channel`, `text` | `text` | the chat send, and the chat callback | `server/chat.ts` | stub |
-| `chat.said` | after | `pid`, `channel`, `text`, `heard` |  | the per-recipient delivery, as a count | `server/chat.ts` | stub |
+| `chat.say` | before | `pid`, `channel`, `text` | `text` | the chat send, and the chat callback | `server/chat.ts` | wired |
+| `chat.said` | after | `pid`, `channel`, `text`, `heard` |  | the per-recipient delivery, as a count | `server/chat.ts` | wired |
 
 - **`chat.say`.** A survivor is about to say something.
 - **`chat.said`.** Something was said, and how many heard it.
@@ -96,7 +96,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `name.set` | before | `what`, `text` | `text` | name filters | `server/game.ts` | stub |
+| `name.set` | before | `what`, `text` | `text` | name filters | `server/game.ts` | wired |
 
 - **`name.set`.** A survivor, a tribe or a creature is about to be named.
 
@@ -206,13 +206,13 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `tribe.create` | before | `pid`, `name` | `name` | the new-tribe call | `server/tribes.ts` | stub |
-| `tribe.created` | after | `pid`, `team`, `name` |  |  | `server/tribes.ts` | stub |
-| `tribe.invite` | before | `byPid`, `pid` |  |  | `server/tribes.ts` | stub |
-| `tribe.join` | before | `pid`, `team` |  | the add-to-tribe call | `server/tribes.ts` | stub |
-| `tribe.joined` | after | `pid`, `team` |  |  | `server/tribes.ts` | stub |
-| `tribe.leave` | after | `team`, `pid`, `why`, `heir`, `disbanded` |  | leaving, removal and the passing of ownership | `server/tribes.ts` | stub |
-| `tribe.renamed` | after | `team`, `name` |  | the rename request | `server/tribes.ts` | stub |
+| `tribe.create` | before | `pid`, `name` | `name` | the new-tribe call | `server/tribes.ts` | wired |
+| `tribe.created` | after | `pid`, `team`, `name` |  |  | `server/tribes.ts` | wired |
+| `tribe.invite` | before | `byPid`, `pid` |  |  | `server/tribes.ts` | wired |
+| `tribe.join` | before | `pid`, `team` |  | the add-to-tribe call | `server/tribes.ts` | wired |
+| `tribe.joined` | after | `pid`, `team` |  |  | `server/tribes.ts` | wired |
+| `tribe.leave` | after | `team`, `pid`, `why`, `heir`, `disbanded` |  | leaving, removal and the passing of ownership | `server/tribes.ts` | wired |
+| `tribe.renamed` | after | `team`, `name` |  | the rename request | `server/tribes.ts` | wired |
 | `tribe.log` | after | `team`, `text` |  | the tribe log | `server/host.ts` | planned: tribes |
 | `tribe.rank` | after | `team`, `pid`, `rank` |  | promote and demote | `server/tribes.ts` | planned: tribes |
 | `tribe.war` | after | `team`, `other` |  | the tribe-war call | `server/tribes.ts` | planned: tribes |
