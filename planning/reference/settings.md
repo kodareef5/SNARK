@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 524 of them: 123 take effect,
-207 wait for a feature that is not built yet, and 194 have no meaning in this
+is listed here, 524 of them: 135 take effect,
+194 wait for a feature that is not built yet, and 195 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -31,6 +31,8 @@ may change a setting without a restart.
 | `NightTimeSpeedScale` | 1 | Speed of the clock by night. Higher is a shorter night. | no; clients are told |
 | `DifficultyOffset` | 1 | Difficulty is offset x (map difficulty - 0.5) + 0.5. Wild creatures are levelled in 30 steps of the difficulty. Ignored when OverrideOfficialDifficulty is set. *One host gives the default as 0.2.* | no |
 | `OverrideOfficialDifficulty` | 0 | The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150. *A patch note says the most is 5; hosts recommend up to 6. Not verified.* | no |
+| `DinoCountMultiplier` | 1 | How many wild creatures each spawn region keeps. Higher is more. *Each region holds its number times this, rounded. A region already over it is not thinned.* | no |
+| `ServerAutoForceRespawnWildDinosInterval` | 0 | At a start, every wild creature is replaced if this many seconds have passed since a start last did so. 0 is never. *Seconds of the wall clock, as official servers use it for weekly respawns. The reference does not say what it counts from; here, from the last start that replaced them, or the first start that kept the count.* | no |
 | `PlayerDamageMultiplier` | 1 | Damage survivors deal. Higher is more. | yes |
 | `PlayerResistanceMultiplier` | 1 | Damage survivors take. Higher takes more: 0.5 halves it. | yes |
 | `DinoDamageMultiplier` | 1 | Damage wild creatures deal. Higher is more. | yes |
@@ -149,6 +151,11 @@ may change a setting without a restart.
 | `PreventDinoTameClassNames` | none | Species that cannot be tamed. | no |
 | `bDisableDinoTaming` | False | Nothing can be tamed. | yes |
 | `bDisableDinoRiding` | False | Nothing can be ridden. | yes |
+| `DinoSpawnWeightMultipliers` | none | How often a species is drawn where it spawns, by its tag: `(DinoNameTag=dodo,SpawnWeightMultiplier=2,OverrideSpawnLimitPercentage=True,SpawnLimitPercentage=0.3)`. The limit is a share of each region's number. | no |
+| `NPCReplacements` | none | One species spawned in place of another: `(FromClassName="core:dodo",ToClassName="core:parasaur")`. An empty ToClassName spawns none of it. *What is already in the world stays.* | no |
+| `ConfigAddNPCSpawnEntriesContainer` | none | Groups added to a spawns table: `(NPCSpawnEntriesContainerClassString="core:spawns_beach",NPCSpawnEntries=((AnEntryName="Raptors",EntryWeight=0.1,NPCsToSpawnStrings=("core:raptor","core:raptor"))),NPCSpawnLimits=((NPCClassString="core:raptor",MaxPercentageOfDesiredNumToAllow=0.1)))`. NPCsToSpawnPercentageChance and NPCsSpawnOffsets are read too. | no |
+| `ConfigSubtractNPCSpawnEntriesContainer` | none | Species taken out of every group of a spawns table, and their limits: `(NPCSpawnEntriesContainerClassString="core:spawns_beach",NPCSpawnEntries=((NPCsToSpawnStrings=("core:parasaur"))),NPCSpawnLimits=((NPCClassString="core:parasaur")))`. | no |
+| `ConfigOverrideNPCSpawnEntriesContainer` | none | A spawns table's groups and limits, whole, in the form ConfigAddNPCSpawnEntriesContainer takes. *Applied first, then what is added, then what is taken out.* | no |
 | `PerLevelStatsMultiplier_Player[n]` | 1 each | What a survivor gains from each level put in a stat. ARK's index: 0 health, 1 stamina, 2 torpidity, 3 oxygen, 4 food, 5 water, 6 temperature, 7 weight, 8 melee, 9 speed, 10 fortitude, 11 crafting. A 0 is read as 1. | no |
 | `PerLevelStatsMultiplier_DinoWild[n]` | 1 each | What a creature gains from each level it was born or found with. | no |
 | `PerLevelStatsMultiplier_DinoTamed[n]` | 1 each; [0] 0.2, [8] 0.17 | What a tamed creature gains from each level its owner gives it. | no |
@@ -172,31 +179,18 @@ may change a setting without a restart.
 | `-EnableIdlePlayerKick` | not given | The idle are put off the server (see KickIdlePlayersPeriod). | no |
 | `-port=` | none | The port the server listens on. | no |
 | `-WinLiveMaxPlayers=` | none | The most survivors at once. | no |
-| `-NoDinos` | not given | No wild creatures are put in the world. | no |
+| `-NoDinos` | not given | No wild creatures are put in the world. Those a save holds stay. | no |
+| `-ForceRespawnDinos` | not given | At the start, every wild creature is destroyed, with what it carries, and the regions fill again. | no |
+| `-NoDinosExceptForcedSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
+| `-NoDinosExceptStreamingSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
+| `-NoDinosExceptManualSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
+| `-NoDinosExceptWaterSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
 
 ## What waits for a feature
 
 Each heading is something this engine does not do yet, and under it the
 settings that will take effect when it does. This is the list that guides
 what is built next.
-
-### Wild creatures that spawn and respawn by region
-
-| Setting | Default | What it does | Where |
-| --- | --- | --- | --- |
-| `DinoCountMultiplier` | 1 | How many wild creatures the world keeps. Higher is more. | GameUserSettings.ini |
-| `ServerAutoForceRespawnWildDinosInterval` | 0 | At a restart, every wild creature is replaced if this many seconds have passed. 0 is never. | GameUserSettings.ini |
-| `-ForceRespawnDinos` | not given | Which wild creatures spawn, and whether they are replaced at a start. | Command line |
-| `-NoWildBabies` | not given | Which wild creatures spawn, and whether they are replaced at a start. | Command line |
-| `-NoDinosExceptForcedSpawn` | not given | Which wild creatures spawn, and whether they are replaced at a start. | Command line |
-| `-NoDinosExceptStreamingSpawn` | not given | Which wild creatures spawn, and whether they are replaced at a start. | Command line |
-| `-NoDinosExceptManualSpawn` | not given | Which wild creatures spawn, and whether they are replaced at a start. | Command line |
-| `-NoDinosExceptWaterSpawn` | not given | Which wild creatures spawn, and whether they are replaced at a start. | Command line |
-| `DinoSpawnWeightMultipliers` | none | How often a species spawns: `(DinoNameTag=…,SpawnWeightMultiplier=…,OverrideSpawnLimitPercentage=…,SpawnLimitPercentage=…)`. | Game.ini |
-| `NPCReplacements` | none | One species spawned in place of another. | Game.ini |
-| `ConfigAddNPCSpawnEntriesContainer` | none | Species added to a spawn region. | Game.ini |
-| `ConfigSubtractNPCSpawnEntriesContainer` | none | Species taken out of a spawn region. | Game.ini |
-| `ConfigOverrideNPCSpawnEntriesContainer` | none | A spawn region's species, whole. | Game.ini |
 
 ### Imprinting and baby care
 
@@ -488,5 +482,7 @@ what is built next.
 **ARK's mods.** `ActiveMods`, `ActiveMapMod`, `ActiveTotalConversion`, `CosmeticWhitelistOverride`, `-mods=`, `-passivemods=`, `-automanagedmods`, `-GameModIds=`, `-MapModID=`, `-TotalConversionMod=`, `-PreventTotalConversionSaveDir`, `-DoCustomCosmeticValidation`, `-DisableCustomCosmetics`, `ModIDS`.
 
 **Things only ARK's expansions, events or named maps have.** `ExtinctionEventTimeInterval`, `WorldBossKingKaijuSpawnTime`, `CosmoWeaponAmmoReloadAmount`, `MaxCosmoWeaponAmmo`, `IgnorePVPMountedWeaponryRestrictions`, `ForceGachaUnhappyInCaves`, `ArmadoggoDeathCooldown`, `YoungIceFoxDeathCooldown`, `AllowCryoFridgeOnSaddle`, `DisableCryopodEnemyCheck`, `DisableCryopodFridgeRequirement`, `EnableCryopodNerf`, `EnableCryoSicknessPVE`, `FreezeReaperPregnancy`, `CryopodNerfDuration`, `CryopodNerfDamageMult`, `CryopodNerfIncomingDamageMultPercent`, `CryoHospitalHoursToRegenHP`, `CryoHospitalHoursToRegenFood`, `CryoHospitalHoursToDrainTorpor`, `CryoHospitalMatingCooldownReduction`, `DisableBurrowDecayTimers`, `AllowIntegratedSPlusStructures`, `MaxTrainCars`, `LimitBunkersPerTribe`, `LimitBunkersPerTribeNum`, `AllowBunkersInPreventionZones`, `AllowRidingDinosInsideBunkers`, `AllowBunkerModulesAboveGround`, `AllowDinoAIInsideBunkers`, `AllowBunkerModulesInPreventionZones`, `MinDistanceBetweenBunkers`, `EnemyAccessBunkerHPThreshold`, `BunkerUnderHPThresholdDmgMultiplier`, `BloodforgeReinforceExtraDurability`, `BloodforgeReinforceResourceCostMultiplier`, `BloodforgeReinforceSpeedMultiplier`, `MaxActiveOutposts`, `MaxActiveResourceCaches`, `MaxActiveCityOutposts`, `OutpostSigilRewardMultiplier`, `AllowTekSuitPowersInGenesis`, `UseAstraeosTraversalBuff`, `UseFjordurTraversalBuff`, `MaxHexagonsPerCharacter`, `ImplantSuicideCD`, `AllowMultipleTamedUnicorns`, `EnableVolcano`, `UnicornSpawnInterval`, `VolcanoIntensity`, `VolcanoInterval`, `-ActiveEvent=`, `-EasterColors`, `-ServerUseEventColors`, `-EventColorsChanceOverride=`, `-NewYearEvent`, `-NewYear1UTC=`, `-NewYear2UTC=`, `-MinimumTimeBetweenInventoryRetrieval=`, `-DisableRailgunPVP`, `HexagonRewardMultiplier`, `DisableWorldBuffs`, `ActiveEventColors`, `DynamicColorset`, `DynamicColorsetChanceOverride`, `OverrideEngramEntries`, `GlobalPoweredBatteryDurabilityDecreasePerSecond`, `WirelessCraftingRangeOverride`, `bDisableWirelessCrafting`, `bDisableWirelessCraftingForDinos`, `bDisableWirelessCraftingForPlayers`, `bDisableWirelessCraftingForStructures`, `DinoClassSpeedMultipliers`, `AdjustableMutagenSpawnDelayMultiplier`, `MutagenLevelBoost[n]`, `MutagenLevelBoost_Bred[n]`, `LimitGeneratorsNum`, `LimitGeneratorsRange`, `bGenesisUseStructuresPreventionVolumes`, `TribeTowerBonusMultiplier`, `BaseHexagonRewardMultiplier`, `HexagonCostMultiplier`, `bDisableHexagonStore`, `bHexStoreAllowOnlyEngramTradeOption`, `bDisableGenesisMissions`, `bDisableDefaultMapItemSets`, `bDisableWorldBuffs`, `bEnableWorldBuffScaling`, `WorldBuffScalingEfficacy`, `ValgueroMemorialEntries`.
+
+**What ARK: Survival Ascended added that was not a fix.** `-NoWildBabies`.
 
 **Deprecated in ARK itself.** `AllowDeprecatedStructures`, `bAllowFlyerCarryPVE`, `bDisableStructureDecayPvE`, `ForceFlyerExplosives`, `MaxStructuresInRange`, `NewMaxStructuresInRange`, `PvEStructureDecayDestructionPeriod`, `-bRawSockets`, `-forcenetthreading`, `-nonetthreading`, `-inlinesaveload`, `-noninlinesaveload`, `-usecache`, `-ClearOldItems`, `-NoBiomeWalls`, `-nofishloot`, `-StructureDestructionTag=`, `-vday`, `-PVPDisablePenetratingHits`, `-listen`.

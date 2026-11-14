@@ -22,9 +22,12 @@
 //         u8 1, listed: u8 count of kinds, each a content id, then for each chunk a u16 count and 7-byte rows:
 //               u8 kind, u16 x, u16 z in 1/1024 m from the chunk's corner, u16 yaw
 //   SPWN  u8 count, then each a string name, i32 x, i32 z in 1/512 m, u16 yaw. The first is where a new survivor arrives.
+//   WILD  where wild creatures live: u16 count, then each a string spawns id, u16 count it holds at 1x, u8 shape (0 a circle,
+//         1 a box), i32 x, i32 z, u32 radius or half width, u32 half depth, in 1/512 m.
 //
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
 
+import type { MapZone } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
 import { CHUNK_SIZE, MAX_CHUNKS_PER_AXIS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
 import { hashBytes } from "../hash.ts";
@@ -44,6 +47,7 @@ const NODE_UNITS = 65536 / CHUNK_SIZE;
 const MAX_SPAWNS = 16;
 /** UTF-16 units in a name or an id, which is at most 240 bytes. */
 const MAX_TEXT = 80;
+const MAX_REGIONS = 65535;
 
 /** A piece set down with the world and owned by nobody. `kind` is a content id, and `yaw` is in 1/65,536 turns. */
 export interface MapStatic {
@@ -100,6 +104,8 @@ export interface MapData {
   readonly nodes: readonly (NodeScatter | NodeList)[];
   /** At least one. The first is where a new survivor arrives. */
   readonly spawns: readonly MapSpawn[];
+  /** Spawn regions, each naming a `spawns` definition and the creatures it holds. They are added to those of the map's definition. */
+  readonly regions?: readonly MapZone[];
 }
 
 /** A map read from a file, with the hash that names those bytes. */
@@ -146,6 +152,13 @@ function check(m: MapData): void {
     if (layer.allow === null ? cell !== 0 : !whole(cell, 1, CHUNK_SIZE) || CHUNK_SIZE % cell !== 0 || layer.allow.length !== Math.ceil(((sizeX / cell) * (sizeZ / cell)) / 8)) fail("where scattered nodes may stand is not a bit per square of 1, 2, 4, 8, 16, 32 or 64 m");
   }
   if (slots > NODE_SLOTS) fail(`its nodes take ${slots} slots in a chunk, and a chunk has ${NODE_SLOTS}`);
+  const regions = m.regions ?? [];
+  if (regions.length > MAX_REGIONS) fail(`it has ${regions.length} spawn regions, and a map has ${MAX_REGIONS} at most`);
+  for (const z of regions) {
+    const [rx, rz] = z.half ?? [z.radius ?? 0, z.radius ?? 0];
+    if (z.kind !== "spawn" || z.spawns === undefined || !whole(z.count ?? -1, 0, 65535)) fail(`a spawn region at ${z.at[0]}, ${z.at[1]} names no spawns, or holds other than 0 to 65,535`);
+    if (!inside(z.at[0], z.at[1]) || !(rx > 0 && rz > 0 && rx <= sizeX && rz <= sizeZ)) fail(`the spawn region of ${z.spawns} at ${z.at[0]}, ${z.at[1]} is off the map or has no size`);
+  }
 }
 
 class Out {
@@ -291,6 +304,22 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
       o.u16(s.yaw);
     }
   });
+  const regions = m.regions ?? [];
+  if (regions.length > 0) {
+    section("WILD", () => {
+      o.u16(regions.length);
+      for (const z of regions) {
+        o.text(z.spawns!);
+        o.u16(z.count!);
+        o.u8(z.half ? 1 : 0);
+        o.i32(Math.round(z.at[0] * STRUCT_UNITS));
+        o.i32(Math.round(z.at[1] * STRUCT_UNITS));
+        const [rx, rz] = z.half ?? [z.radius!, z.radius!];
+        o.u32(Math.round(rx * STRUCT_UNITS));
+        o.u32(Math.round(rz * STRUCT_UNITS));
+      }
+    });
+  }
   const file = o.bytes.slice(0, o.at);
   new DataView(file.buffer).setUint32(8, hashBytes(file.subarray(12)), true);
   return file;
@@ -391,6 +420,7 @@ function read(r: In): MapData {
   const statics: MapStatic[] = [];
   const nodes: (NodeScatter | NodeList)[] = [];
   const spawns: MapSpawn[] = [];
+  const regions: MapZone[] = [];
   while (r.at < r.bytes.length) {
     const tag = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8());
     const s = new In(r.take(r.u32()));
@@ -414,10 +444,20 @@ function read(r: In): MapData {
     } else if (tag === "NODE") nodes.push(readNodes(s, dims));
     else if (tag === "SPWN") {
       for (let n = s.u8(); n > 0; n--) spawns.push({ name: s.text(), x: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS, yaw: s.u16() });
+    } else if (tag === "WILD") {
+      for (let n = s.u16(); n > 0; n--) {
+        const spawns = s.text();
+        const count = s.u16();
+        const box = s.u8() === 1;
+        const at = [s.i32() / STRUCT_UNITS, s.i32() / STRUCT_UNITS] as const;
+        const rx = s.u32() / STRUCT_UNITS;
+        const rz = s.u32() / STRUCT_UNITS;
+        regions.push(box ? { kind: "spawn", spawns, count, at, half: [rx, rz] } : { kind: "spawn", spawns, count, at, radius: rx });
+      }
     }
   }
   if (!heights) throw new Error("map: it has no heights");
-  return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns };
+  return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}) };
 }
 
 /** Throws with a reason if the file is not a map this build can play on. */

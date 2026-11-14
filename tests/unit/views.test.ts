@@ -16,6 +16,9 @@ import { materialsOf, mipsOf } from "../../tools/art/materials.ts";
 import { drawSheet, type SheetCell } from "../../tools/art/sheet.ts";
 import { encodePng, readPicture } from "../../tools/pack/image.ts";
 import { buildCorePack } from "../../tools/pack/build.ts";
+import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
+import type { Asset } from "../../tools/art/assets.ts";
 import { rgbaTexture } from "../../tools/pack/texture.ts";
 import { houseScene, provingView, settle } from "../../tools/snap.ts";
 import { rgbaOf, splitWithTextures, type GameFiles } from "../../tools/snap/files.ts";
@@ -129,4 +132,36 @@ test("the sheet of a creature with pictures draws it with its materials beside i
   // The checker puts saturated squares and near-white ones on it.
   const checker = of("checker").flatMap(pixels);
   expect([checker.filter((p) => Math.max(...p) - Math.min(...p) > 120).length > 300, checker.filter((p) => Math.min(...p) > 200 && Math.max(...p) - Math.min(...p) < 20).length > 100]).toEqual([true, true]);
+});
+
+test("the sheet of a node stands it on its origin and hides what it carries below the ground, and a piece stands on its underside", () => {
+  // A stone of two boxes: a red one wholly below its origin and a green one above.
+  const lift = (lod: SourceLod, y: number): SourceLod => ({ ...lod, positions: lod.positions.map((v, i) => (i % 3 === 1 ? v + y : v)) });
+  const [below, above] = [lift(boxMesh([0.6, 0.49, 0.6], 8), -0.51), lift(boxMesh([0.5, 0.5, 0.5], 7), 0.5)];
+  const lod: SourceLod = {
+    positions: Float32Array.from([...below.positions, ...above.positions]),
+    colors: Uint8Array.from([...below.colors, ...above.colors]),
+    indices: Uint32Array.from([...below.indices, ...[...above.indices].map((i) => i + below.positions.length / 3)]),
+  };
+  const pack = parsePack(buildPack([{ id: "t:stone", lods: [lod] }], defaultPalette()));
+  const reds = (dir: string): number => {
+    const asset: Asset = { id: "t:rocks", name: "rocks", dir, file: "", spec: { kind: "pieces", source: { scripts: [] }, pieces: [{ id: "t:stone", object: "stone" }], budgets: { triangles: [100] } } };
+    const sheet = drawSheet(asset, pack, checkAsset(asset, pack), null)!;
+    let red = 0;
+    let green = 0;
+    for (const c of sheet.cells.filter((c) => c.what === "shaded")) {
+      const page = sheet.pages.find((p) => p.name === c.page)!;
+      for (let y = c.y; y < c.y + c.height; y++) {
+        for (let x = c.x; x < c.x + c.width; x++) {
+          const [r, g] = page.pixels.subarray((y * page.width + x) * 4, (y * page.width + x) * 4 + 2);
+          if (r! > g! + 50) red++;
+          if (g! > r! + 40) green++;
+        }
+      }
+    }
+    expect(green).toBeGreaterThan(5000);
+    return red;
+  };
+  expect(reds("/art/t/nodes/rocks")).toBe(0);
+  expect(reds("/art/t/props/rocks")).toBeGreaterThan(2000);
 });

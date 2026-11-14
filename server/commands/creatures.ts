@@ -42,6 +42,17 @@ export function addCreatureCommands(con: Console): void {
       },
     },
     {
+      name: "destroywilddinos",
+      usage: "",
+      help: "Every wild creature is gone, with what it carried. The spawn regions fill again a group at each check.",
+      admin: true,
+      run(ctx) {
+        const spawner = ctx.host.spawner;
+        if (!spawner) return "the wild are not kept here: the map has no spawn region, or a -NoDinos flag is given";
+        return `destroyed ${spawner.wipe()} wild creatures`;
+      },
+    },
+    {
       name: "grow",
       usage: "",
       help: "The young creature you are looking at, up to 30 metres away, is grown now.",

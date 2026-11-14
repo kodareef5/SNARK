@@ -25,6 +25,8 @@ test("a map unpacked into a folder of layers and built from it again is the same
     "40 node slots a chunk, scattered where a picture of 4 m a pixel allows: core:tree x4, core:rock x1",
     "3 listed nodes",
     "spawn points: Shore (20, 30.5), Çà et là (100, 150)",
+    "spawn regions: 12 of core:spawns_beach at (30, 60.5), 0 of test:elsewhere at (100, 150)",
+    "not in the core content: test:elsewhere",
   ]);
 });
 

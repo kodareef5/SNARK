@@ -444,12 +444,22 @@ export interface LootDef extends Named {
   readonly from: readonly { readonly weight?: number; readonly min: number; readonly max: number; readonly entries: readonly LootEntry[] }[];
 }
 
-/** Which creatures live in a place, in what share and at what levels. A stub until creatures spawn by region. */
+/** Which creatures live in a place, in what share and in what groups. A spawn zone of a map names one. */
 export interface SpawnsDef extends Named {
   readonly type: "spawns";
   readonly id: string;
-  readonly entries: readonly { readonly species: string; readonly weight: number; readonly levels?: readonly [number, number]; readonly pack?: readonly [number, number] }[];
-  /** The most of a place's creatures that may be of one species, as a share from 0 to 1. */
+  /**
+   * What a region adds when it holds too few: one entry, drawn by weight, and its group of creatures. Each of the group comes
+   * with its chance, 1 where not given, and stands at its offset from the place found, in metres along x and z.
+   */
+  readonly entries: readonly {
+    readonly name?: string;
+    readonly weight: number;
+    readonly group: readonly string[];
+    readonly chances?: readonly number[];
+    readonly offsets?: readonly (readonly [number, number])[];
+  }[];
+  /** The most of a region's creatures that may be of one species, as a share from 0 to 1 of the number it holds. */
   readonly limits?: readonly { readonly species: string; readonly share: number }[];
 }
 
@@ -462,13 +472,15 @@ export interface MapZone {
   readonly radius?: number;
   /** In place of `radius`: a box of this half width and half depth. */
   readonly half?: readonly [number, number];
+  /** For a spawn zone: the `spawns` it is stocked from, and how many creatures it holds at a DinoCountMultiplier of 1. */
   readonly spawns?: string;
+  readonly count?: number;
   readonly crate?: string;
 }
 
 /**
  * A world. Its ground is the map file that carries its id (shared/world/mapfile.ts), and a server is started with that file.
- * Until creatures spawn by region, a new world's herd starts in the first spawn zone and its hunters in the last.
+ * A spawn zone that names spawns is kept stocked from them (server/spawner.ts).
  */
 export interface MapDef extends Named {
   readonly type: "map";
