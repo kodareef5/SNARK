@@ -52,6 +52,8 @@ const COMP_BREED2 = 18;
 const COMP_FIXTURE = 14;
 /** Experience, learned engrams, crafting jobs. */
 const COMP_PROGRESSION = 4;
+/** The most bytes of one part that a save holds. */
+const MAX_PART = 1 << 20;
 /** The most slots a converted COMP_INVENTORY may be laid out in. */
 const MAX_INVENTORY_SLOTS = 255;
 /** Per structure slot in a chunk blob: kind, x, y, z, yaw, owner, hp, mod. */
@@ -123,8 +125,11 @@ export class WorldStore {
   private readonly dropEntity: Statement;
   private readonly putJournal: Statement;
   private readonly putSurvivor: Statement;
-  private readonly w = new BitWriter(65536);
-  private readonly c = new BitWriter(32768);
+  /** A record, and the part of it being written. Both grow when a record needs it (saveEntity). */
+  private w = new BitWriter(65536);
+  private c = new BitWriter(32768);
+  /** A part of the record being written did not fit in `c`. */
+  private cut = false;
   private readonly r = new BitReader();
   private readonly cr = new BitReader();
 
@@ -299,8 +304,29 @@ export class WorldStore {
   }
 
   saveEntity(rec: EntityRecord): void {
+    // A record that outgrows the writers is written again in larger ones, which are kept. Nothing is ever saved cut short.
+    while (!this.encode(rec)) {
+      if (this.cut) {
+        if (this.c.buf.length >= MAX_PART) throw new Error(`record ${rec.pid} is too large to save: one part of it is over ${MAX_PART} bytes, the most a save holds`);
+        this.c = new BitWriter(this.c.buf.length * 2);
+      }
+      if (this.w.overflow) this.w = new BitWriter(this.w.buf.length * 2);
+    }
+    this.putEntity.run(rec.pid, this.toSaved[rec.kind]!, rec.x, rec.y, rec.z, rec.yaw, this.w.bytes().slice());
+  }
+
+  /** Ends the part written in `c` and puts it in the record. */
+  private part(component: number): void {
+    if (this.c.overflow) this.cut = true;
+    this.w.varint(component);
+    this.w.blob(this.c.bytes());
+  }
+
+  /** Writes the record into `w`. False if it did not fit. */
+  private encode(rec: EntityRecord): boolean {
     const w = this.w;
     const c = this.c;
+    this.cut = false;
     w.reset();
     w.u8(RECORD_FORMAT);
     w.string(rec.name);
@@ -323,8 +349,7 @@ export class WorldStore {
         c.uint53(rec.egg.hatchAt);
         c.uint53(rec.egg.carrier);
       }
-      w.varint(COMP_BREED2);
-      w.blob(c.bytes());
+      this.part(COMP_BREED2);
     }
     if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0) {
       c.reset();
@@ -340,8 +365,7 @@ export class WorldStore {
       c.uint53(rec.follow);
       // Some saves have those two and end before the saddle.
       c.varint(rec.saddle === 0 ? 0 : this.toSaved[rec.saddle]!);
-      w.varint(COMP_TAME);
-      w.blob(c.bytes());
+      this.part(COMP_TAME);
     }
     if (rec.at >= 0) {
       c.reset();
@@ -356,8 +380,7 @@ export class WorldStore {
         c.varint(rec.fire.fuel);
         c.varint(rec.fire.cook);
       }
-      w.varint(COMP_FIXTURE);
-      w.blob(c.bytes());
+      this.part(COMP_FIXTURE);
     }
     if (hasProgress) {
       c.reset();
@@ -370,8 +393,7 @@ export class WorldStore {
         c.varint(j.left);
         c.uint53(j.doneAt);
       }
-      w.varint(COMP_PROGRESSION);
-      w.blob(c.bytes());
+      this.part(COMP_PROGRESSION);
     }
     if (rec.markers.length > 0) {
       c.reset();
@@ -383,8 +405,7 @@ export class WorldStore {
         c.f32(m.z);
         c.uint53(m.tick);
       }
-      w.varint(COMP_MARKERS);
-      w.blob(c.bytes());
+      this.part(COMP_MARKERS);
     }
     if (hasState) {
       c.reset();
@@ -392,15 +413,13 @@ export class WorldStore {
       c.uint53(rec.expiresAt);
       // The hotbar slot in hand plus one, or 0 for none. Older saves end before this.
       c.u8(rec.held + 1);
-      w.varint(COMP_STATE);
-      w.blob(c.bytes());
+      this.part(COMP_STATE);
     }
     if (rec.team !== 0) {
       c.reset();
       c.varint(rec.team);
       c.u8(rec.rank);
-      w.varint(COMP_TEAM);
-      w.blob(c.bytes());
+      this.part(COMP_TEAM);
     }
     if (inv && used > 0) {
       c.reset();
@@ -423,8 +442,7 @@ export class WorldStore {
           c.varint(inv.attach[slot] === 0 ? 0 : this.toSaved[inv.attach[slot]!]!);
         }
       }
-      w.varint(COMP_SLOTS2);
-      w.blob(c.bytes());
+      this.part(COMP_SLOTS2);
     }
     const v = rec.vitals;
     if (v) {
@@ -440,8 +458,7 @@ export class WorldStore {
         c.svarint(v.rate[i]!);
       }
       c.bool(rec.out);
-      w.varint(COMP_VITALS53);
-      w.blob(c.bytes());
+      this.part(COMP_VITALS53);
     }
     const g = rec.genome;
     if (g) {
@@ -452,8 +469,7 @@ export class WorldStore {
       c.uint53(g.mother);
       c.uint53(g.father);
       c.bool(g.female);
-      w.varint(COMP_GENOME);
-      w.blob(c.bytes());
+      this.part(COMP_GENOME);
     }
     if (rec.keyHash) {
       w.varint(COMP_IDENTITY);
@@ -467,8 +483,7 @@ export class WorldStore {
       w.varint(component);
       w.blob(blob);
     }
-    if (w.overflow || c.overflow) throw new Error(`record ${rec.pid} is too large to save`);
-    this.putEntity.run(rec.pid, this.toSaved[rec.kind]!, rec.x, rec.y, rec.z, rec.yaw, w.bytes().slice());
+    return !this.cut && !w.overflow;
   }
 
   deleteEntity(pid: number): void {
@@ -493,7 +508,7 @@ export class WorldStore {
       const c = this.cr;
       for (let n = r.varint(); n > 0 && !r.overflow; n--) {
         const component = r.varint();
-        const blob = r.blob(1 << 20);
+        const blob = r.blob(MAX_PART);
         c.reset(blob);
         if (component === COMP_INVENTORY) {
           // The oldest form is a list of items and counts. The inventory is sized to hold all of them, so converting loses nothing.

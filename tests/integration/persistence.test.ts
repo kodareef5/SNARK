@@ -6,8 +6,11 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { OP_DEATH } from "../../server/death.ts";
 import { createHost } from "../../server/host.ts";
 import { WorldStore } from "../../server/persist/store.ts";
+import { EntityRecord } from "../../server/records.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { Inventory } from "../../shared/sim/items.ts";
+import { Vitals } from "../../shared/sim/vitals.ts";
 import { HOLDERS, OP_BURN, OP_MINT, OP_TRANSFER, START } from "../fixtures/crash-child.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -174,6 +177,41 @@ test("a round 1 inventory is converted whole: nothing is dropped for want of slo
   // More than an inventory can hold is refused, never trimmed.
   legacy(30000);
   expect(() => createHost(reg, { dbPath: db })).toThrow(/needs 300 slots/);
+});
+
+test("a record larger than the writer is saved whole, and one larger than a save can hold is refused, never cut short", () => {
+  const reg = coreRegistry();
+  const store = new WorldStore(join(dir, "large.db"), reg);
+  const stone = reg.index.get("core:stone")!;
+  const filled = (pid: number, slots: number): EntityRecord => {
+    const rec = new EntityRecord(pid, reg.index.get("core:grazer")!);
+    const inv = (rec.inv = new Inventory(slots));
+    // About seventeen bytes a slot.
+    for (let s = 0; s < slots; s++) inv.set(s, stone, 1000 + (s % 7), 3, 60000 - s, 4e9 - s);
+    // Written after the inventory, as every part but four is.
+    rec.vitals = new Vitals();
+    rec.vitals.max.fill(1e6);
+    rec.vitals.value.fill(1e6);
+    return rec;
+  };
+  // The part writer held 32 KB and the record's 64 KB: the first outgrows one and the second both.
+  const recs = [filled(11, 3000), filled(12, 20000)];
+  store.transaction(() => recs.forEach((rec) => store.saveEntity(rec)));
+  const back = store.loadEntities();
+  expect(back.map((rec) => rec.pid)).toEqual([11, 12]);
+  recs.forEach((rec, i) => {
+    const [was, is] = [rec.inv!, back[i]!.inv!];
+    expect(is.cap).toBe(was.cap);
+    for (const col of ["item", "count", "quality", "dur", "spoilAt"] as const) expect(is[col]).toEqual(was[col]);
+    expect(back[i]!.vitals!.value).toEqual(rec.vitals!.value);
+  });
+  // A part over a megabyte is more than the reader takes. The record keeps what it last saved whole.
+  expect(() => store.transaction(() => store.saveEntity(filled(11, 70000)))).toThrow(/record 11 is too large to save/);
+  expect(store.loadEntities()[0]!.inv!.cap).toBe(3000);
+  // A small record after a large one is still written small.
+  store.transaction(() => store.saveEntity(filled(13, 2)));
+  expect((store.db.query("SELECT length(data) AS n FROM entities WHERE pid = 13").get() as { n: number }).n).toBeLessThan(100);
+  store.close();
 });
 
 test("commit callbacks run only after the transaction is durable", () => {
