@@ -16,7 +16,7 @@ import { KEY_OPEN_LEVEL, KEY_OPEN_MATE, KEY_OPEN_ORDER, KEY_OPEN_PAGE, KEY_OPEN_
 import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
 import { CMD_FEED, CMD_NAME, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
+import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, MAX_NAME_BYTES, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -1015,6 +1015,30 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     ui.key("Escape", true, false, session);
     ui.build(aspect, fullHud(), session);
     expect([ui.naming.open, sent.length, session.tamed.length, f.find(KEY_NAME_PANEL)]).toEqual([false, 3, 0, null]);
+  }
+});
+
+test("a tame's name is cut to the 24 bytes the server takes, whatever the script, with no letter cut in two", () => {
+  const { session, sent } = fakeSession(new Inventory(40));
+  const ui = new Ui();
+  ui.registry = reg;
+  const cases = [
+    ["a name of thirty letters, no less", "a name of thirty letters"],
+    // Thirteen letters of two bytes each: twelve fit.
+    ["Абвгдежзийклм", "Абвгдежзийкл"],
+    // Twenty-three bytes, then one that takes four.
+    ["Rex the twenty-third..\u{1F996}", "Rex the twenty-third.."],
+    ["恐竜恐竜恐竜恐竜恐竜", "恐竜恐竜恐竜恐竜"],
+  ] as const;
+  for (const [typed, kept] of cases) {
+    session.tamed.push({ handle: 7, kind: reg.index.get("core:raptor")!, level: 1, te: 50 });
+    ui.build(16 / 9, fullHud(), session);
+    ui.input(KEY_NAME_INPUT, typed);
+    expect(ui.naming.text).toBe(kept);
+    ui.key("Enter", true, false, session);
+    // The server reads the name with this limit, and refuses the command if it is longer.
+    const r = new BitReader(sent[sent.length - 1]!.bytes);
+    expect([sent[sent.length - 1]!.op, r.u32(), r.string(MAX_NAME_BYTES), r.overflow]).toEqual([CMD_NAME, 7, kept, false]);
   }
 });
 
