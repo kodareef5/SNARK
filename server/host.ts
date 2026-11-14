@@ -382,6 +382,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const stations = new Stations(world, records, items, fixtures, deadlines);
   const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, light: (ref) => stations.toggle(ref), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
   death.onUseBuilt = (c, ref) => build.use(c, ref);
+  death.keepsBuilt = (c, ref) => build.keeps(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   persistence?.sidecar("decay", build.decay, DECAY_SAVE_TICKS);
   combat.onStructureHurt = (ref) => build.hurt(ref);

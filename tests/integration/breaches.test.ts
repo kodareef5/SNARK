@@ -5,11 +5,11 @@ import type { ClientSession } from "../../client/core/session.ts";
 import { FOUNDATION_THICK } from "../../content/building.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { CMD_STRUCT, RESULT_FAR } from "../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_STRUCT, RESULT_FAR, RESULT_LOCKED, RESULT_OK } from "../../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
 import { frameAxes, poseAt, type Pose } from "../../shared/world/snap.ts";
-import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
+import { NO_PIN, STRUCT_LOCK, STRUCT_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -26,8 +26,8 @@ function arena(names: string[], wide = 40, deep = 24) {
   const g = flatGround(h, wide, deep);
   const at = { x: g.x + wide / 2, y: g.y, z: g.z + deep / 2 };
   sessions.forEach((s, i) => {
-    h.say(s, "enablecheats", 100);
-    h.say(s, `tp ${(at.x + i * 2).toFixed(3)} ${(at.z - 8).toFixed(3)}`, 100);
+    h.say(s, "enablecheats");
+    h.say(s, `tp ${(at.x + i * 2).toFixed(3)} ${(at.z - 8).toFixed(3)}`);
   });
   const recs = sessions.map((s) => h.host.records.byPid.get(h.client(s)!.pid)!);
   return { h, sessions, recs, at };
@@ -107,4 +107,94 @@ test("a wall built at a turn that leaves its pieces a hair apart is still a wall
   h.run(200);
   expect([code, bob.open]).toEqual([RESULT_FAR, null]);
   expect(h.host.items.inv(state).total(id("ingot"))).toBe(150);
+});
+
+/** Sends a CMD_STRUCT for `ref` and returns its result code. */
+function act(h: Harness, s: ClientSession, ref: number, action: number, code = -1): number {
+  let got = -1;
+  s.onResult = (seq, result) => void (seq !== 0 && (got = result));
+  s.command(CMD_STRUCT, (w: BitWriter) => (w.u32(ref), w.u8(action), code >= 0 ? w.u16(code) : 0));
+  h.run(150);
+  return got;
+}
+
+/** Asks to take the first stack of the open container into the survivor's first slot. */
+function grab(s: ClientSession, item: number): void {
+  s.command(CMD_MOVE, (w: BitWriter) => (w.bits(BOX_OPEN, 1), w.varint(0), w.bits(BOX_SELF, 1), w.varint(0), w.u16(0), w.u16(item)));
+}
+
+test("a lock or a new PIN shuts a box for a stranger who has it open, at once: not one more thing leaves it", () => {
+  const { h, sessions, recs, at } = arena(["ada", "bob"]);
+  const [ada, bob] = sessions as [ClientSession, ClientSession];
+  const ingot = id("ingot");
+  // Ada's box stands in front of the two of them. It has no lock, so Bob, who is not of her tribe, may open it.
+  const box = h.world.structs.add(id("storage_box"), at.x + 1, at.y + reg.halfY[id("storage_box")]!, at.z - 6, 0, recs[0]!.team, 500);
+  const state = h.host.fixtures.ensure(box);
+  expect(h.host.items.mint(state, ingot, 100)).toBe(100);
+  const left = (): number => h.host.items.inv(state).total(ingot);
+  expect([act(h, bob, box, STRUCT_USE, NO_PIN), bob.open?.name]).toEqual([RESULT_OK, "storage box"]);
+
+  // She locks it, and in the same moment he asks for what is in it.
+  ada.command(CMD_STRUCT, (w: BitWriter) => (w.u32(box), w.u8(STRUCT_LOCK)));
+  grab(bob, ingot);
+  h.run(200);
+  expect([h.host.fixtures.locked(box), left(), bob.open?.name]).toEqual([true, 100, undefined]);
+  expect(act(h, bob, box, STRUCT_USE, NO_PIN)).toBe(RESULT_LOCKED);
+
+  // She sets a PIN and he opens it with that. She sets another: it is shut for him again, until he has the new one.
+  expect(act(h, ada, box, STRUCT_PIN, 1234)).toBe(RESULT_OK);
+  expect([act(h, bob, box, STRUCT_USE, 1234), bob.open?.name]).toEqual([RESULT_OK, "storage box"]);
+  ada.command(CMD_STRUCT, (w: BitWriter) => (w.u32(box), w.u8(STRUCT_PIN), w.u16(4321)));
+  grab(bob, ingot);
+  h.run(200);
+  expect([left(), bob.open?.name]).toEqual([100, undefined]);
+  expect([act(h, bob, box, STRUCT_USE, 4321), bob.open?.name]).toEqual([RESULT_OK, "storage box"]);
+  // With the PIN he has it as before: it stays open, and what he takes is his.
+  h.run(300);
+  grab(bob, ingot);
+  h.run(200);
+  expect([left(), bob.open?.name, bob.inventory!.total(ingot)]).toEqual([0, "storage box", 100]);
+});
+
+test("a member put out of a tribe can no longer empty its vault or ride its mount", () => {
+  const { h, sessions, recs, at } = arena(["ada", "bob"]);
+  const [ada, bob] = sessions as [ClientSession, ClientSession];
+  const ingot = id("ingot");
+  const enlist = (): void => {
+    h.say(ada, "tribe invite bob");
+    h.say(bob, "tribe accept");
+    expect(recs[1]!.team).toBe(recs[0]!.team);
+  };
+  h.say(ada, "tribe create Wolves");
+  enlist();
+  // The tribe's vault, locked, with a member's hands in it.
+  const vault = h.world.structs.add(id("vault"), at.x + 1, at.y + reg.halfY[id("vault")]!, at.z - 6, 0, recs[0]!.team, 50000);
+  const state = h.host.fixtures.ensure(vault);
+  state.lock = 1;
+  expect(h.host.items.mint(state, ingot, 100)).toBe(100);
+  expect([act(h, bob, vault, STRUCT_USE, NO_PIN), bob.open?.name]).toEqual([RESULT_OK, "vault"]);
+
+  // He is put out, and in the same moment asks for what is in it.
+  ada.text("tribe kick bob");
+  grab(bob, ingot);
+  h.run(300);
+  expect(recs[1]!.team).not.toBe(recs[0]!.team);
+  expect([h.host.items.inv(state).total(ingot), bob.open?.name]).toEqual([100, undefined]);
+  expect(act(h, bob, vault, STRUCT_USE, NO_PIN)).toBe(RESULT_LOCKED);
+
+  // Back in the tribe, he gets on its saddled mount. Put out again, he is put off it.
+  enlist();
+  const e = h.host.spawnCreature("core:parasaur", at.x + 5, at.z - 8, 1);
+  expect(e).toBeGreaterThanOrEqual(0);
+  const mount = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
+  mount.team = recs[0]!.team;
+  mount.saddle = id("saddle_parasaur");
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  h.host.creatures.claimed(e);
+  const c = h.client(bob)!;
+  expect(h.host.riding.mount(c, e)).toBe(RESULT_OK);
+  h.run(200);
+  expect(c.drive).toBe(e);
+  h.say(ada, "tribe kick bob");
+  expect([c.drive, h.world.ents.seat[c.ent]]).toEqual([-1, 0]);
 });

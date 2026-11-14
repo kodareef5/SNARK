@@ -172,15 +172,16 @@ export class Riding {
     ents.pose(c.ent, world.tick);
   }
 
-  /** Call once a tick, after every body has moved. A rider whose mount died or fell unconscious is put off. */
+  /** Call once a tick, after every body has moved. A rider whose mount died or fell unconscious, or is no longer its tribe's, is put off. */
   step(): void {
     if (this.riders.size === 0) return;
-    const { world, records } = this.ctx;
+    const { world, records, tribes } = this.ctx;
     const ents = world.ents;
     for (const [e, c] of this.riders) {
       const rec = (ents.flags[e]! & F_ALIVE) !== 0 ? records.byPid.get(ents.pid[e]!) : undefined;
-      // A rider who is knocked out falls off, as one whose mount is.
-      if (c.drive !== e || !c.active || c.closed || c.ent < 0 || c.state !== SESSION_ALIVE || !rec || rec.out || records.byPid.get(c.pid)?.out) {
+      const me = records.byPid.get(c.pid);
+      // A rider who is knocked out falls off, as one whose mount is. One put out of the tribe has no mount there.
+      if (c.drive !== e || !c.active || c.closed || c.ent < 0 || c.state !== SESSION_ALIVE || !rec || rec.out || me?.out || !tribes.may(me, rec.team)) {
         if (c.drive === e) this.dismount(c);
         else {
           // The game let go of the mount first (the connection dropped, or the mount died). The body must not stay marked as seated,

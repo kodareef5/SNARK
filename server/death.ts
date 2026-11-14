@@ -55,6 +55,8 @@ export class Death {
   onUseBuilt: ((c: Client, ref: number) => number) | null = null;
   /** Whether a session may open a creature that is awake (one of its tribe's). */
   canOpen: ((c: Client, rec: EntityRecord) => boolean) | null = null;
+  /** Whether a session that has the built container at `ref` open may go on using it. */
+  keepsBuilt: ((c: Client, ref: number) => boolean) | null = null;
   /** Riding hooks. onRide gets the entity the use button was pressed on and returns a result code, or -1 if it does not take the press. */
   riding: ((c: Client) => boolean) | null = null;
   offMount: ((c: Client) => void) | null = null;
@@ -333,8 +335,26 @@ export class Death {
     records.delete(cache.pid);
   }
 
+  /**
+   * What the session has open, or null. Whether it still may is asked here, at every use, because its tribe, the lock or the
+   * PIN may have changed since it opened it. One it may not is shut.
+   */
   openOf(c: Client): EntityRecord | null {
-    return c.open === 0 ? null : (this.ctx.records.byPid.get(c.open) ?? null);
+    const box = c.open === 0 ? undefined : this.ctx.records.byPid.get(c.open);
+    if (!box) return null;
+    if (!this.allowed(c, box)) {
+      this.close(c);
+      return null;
+    }
+    return box;
+  }
+
+  /** A built container asks keepsBuilt. A creature that is awake asks canOpen. Anything else lying open is anyone's. */
+  private allowed(c: Client, box: EntityRecord): boolean {
+    if (box.at >= 0) return this.keepsBuilt?.(c, box.at) ?? true;
+    const e = this.ctx.records.entOf.get(box.pid);
+    if (e === undefined || (this.ctx.world.ents.flags[e]! & F_PROP) !== 0 || box.out) return true;
+    return this.canOpen?.(c, box) ?? false;
   }
 
   close(c: Client): void {
@@ -353,15 +373,15 @@ export class Death {
         const box = records.byPid.get(c.open);
         const e = box ? records.entOf.get(box.pid) : undefined;
         if (box && box.at >= 0 && c.ent >= 0) {
-          // A built container has no entity. It stays open, empty or not, while it stands and its user is near.
+          // A built container has no entity. It stays open, empty or not, while it stands, its user is near and may use it.
           const dx = box.x - ents.x[c.ent]!;
           const dy = box.y - ents.y[c.ent]!;
           const dz = box.z - ents.z[c.ent]!;
-          if (dx * dx + dy * dy + dz * dz > (REACH + 2.5) * (REACH + 2.5)) this.close(c);
+          if (dx * dx + dy * dy + dz * dz > (REACH + 2.5) * (REACH + 2.5) || !this.allowed(c, box)) this.close(c);
         } else if (!box || e === undefined || c.ent < 0) this.close(c);
         else if ((ents.flags[e]! & F_PROP) !== 0 && items.inv(box).used() === 0) this.remove(box);
         // A creature that woke up closes unless canOpen allows it.
-        else if ((ents.flags[e]! & F_PROP) === 0 && !box.out && !(this.canOpen?.(c, box) ?? false)) this.close(c);
+        else if (!this.allowed(c, box)) this.close(c);
         else {
           const dx = ents.x[e]! - ents.x[c.ent]!;
           const dy = ents.y[e]! - ents.y[c.ent]!;

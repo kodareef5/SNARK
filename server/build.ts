@@ -100,6 +100,8 @@ export class Build {
   private readonly landing: { rec: EntityRecord | null; kind: number; x: number; y: number; z: number; yaw: number; owner: number; hp: number }[] = [];
   /** Wrong PINs by client id: how many in a row, and the tick until which it must wait. */
   private readonly strikes = new Map<number, { n: number; until: number }>();
+  /** By survivor pid: the box it last opened with a PIN, and the PIN it gave. */
+  private readonly entered = new Map<number, { box: number; pin: number }>();
   private readonly near = new Found();
   private readonly look = [0, 0, 0];
 
@@ -235,7 +237,8 @@ export class Build {
     if (!rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
     const state = fixtures.find(ref);
     // The owning tribe may always use it. Others may only if it is unlocked or they give its PIN.
-    if (!tribes.may(rec, t.owner[slot]!) && fixtures.locked(ref)) {
+    const byPin = !tribes.may(rec, t.owner[slot]!) && fixtures.locked(ref);
+    if (byPin) {
       const need = state && !this.ctx.rules.on("PreventOutOfTribePinCodeUse") ? state.pin : -1;
       if (need < 0) return RESULT_LOCKED;
       const tick = world.tick;
@@ -265,9 +268,26 @@ export class Build {
       const box = fixtures.ensure(ref);
       if (c.open !== box.pid && !this.ctx.game.mayOpen(c, box.pid)) return RESULT_DENIED;
       c.open = c.open === box.pid ? 0 : box.pid;
+      if (byPin && c.open !== 0) this.entered.set(rec.pid, { box: box.pid, pin });
+      else this.entered.delete(rec.pid);
     }
     this.used++;
     return RESULT_OK;
+  }
+
+  /**
+   * Whether a session that has the box at `ref` open may go on using it: it is its tribe's, or unlocked, or it opened it with
+   * the PIN the box still has. Asked at every use, so a member put out, a lock set and a PIN changed all shut it.
+   */
+  keeps(c: Client, ref: number): boolean {
+    const { world, records, tribes, fixtures, rules } = this.ctx;
+    const t = world.structs.chunks[Math.floor(ref / 65536)];
+    const slot = ref & 0xffff;
+    if (!t || slot >= t.high || t.kind[slot] === 0) return false;
+    if (tribes.may(records.byPid.get(c.pid), t.owner[slot]!) || !fixtures.locked(ref)) return true;
+    const state = fixtures.find(ref);
+    const gave = this.entered.get(c.pid);
+    return !!state && !!gave && gave.box === state.pid && state.pin >= 0 && gave.pin === state.pin && !rules.on("PreventOutOfTribePinCodeUse");
   }
 
   /** Records harm at tick `at`, which starts the repair cooldown. */
