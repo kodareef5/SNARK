@@ -958,17 +958,18 @@ export class GameServer {
 
   /** Returns the budget left, or 0 if the chunk is unfinished. */
   private sendChunk(c: Client, chunk: number, t: ChunkTable, budget: number): number {
-    if (c.syncChunk !== chunk) {
-      c.syncChunk = chunk;
-      c.syncCursor = 0;
-      c.syncFrom = c.known[chunk]!;
-      c.syncTarget = t.version;
-      // A chunk that remembers every removal since this client's version sends those whole.
-      c.syncByRemoval = c.syncFrom > 0 && c.syncFrom >= t.goneFloor;
-    } else if (c.syncByRemoval && c.syncFrom < t.goneFloor) {
-      // One of those removals has been forgotten since. Start again, row by row.
-      c.syncByRemoval = false;
-      c.syncCursor = 0;
+    // One unfinished chunk keeps its place across ticks. A chunk that finishes within the tick leaves that
+    // place alone. Otherwise a near chunk that changes every tick restarts a large one forever.
+    const resumed = c.syncChunk === chunk;
+    const from = resumed ? c.syncFrom : c.known[chunk]!;
+    const target = resumed ? c.syncTarget : t.version;
+    let cursor = resumed ? c.syncCursor : 0;
+    // A chunk that remembers every removal since this client's version sends those whole.
+    let byRemoval = resumed ? c.syncByRemoval : from > 0;
+    if (byRemoval && from < t.goneFloor) {
+      // A removal has been forgotten. Start again, row by row.
+      byRemoval = false;
+      cursor = 0;
     }
     const dims = this.world.dims;
     const x0 = chunkCx(dims, chunk) * CHUNK_SIZE;
@@ -977,15 +978,15 @@ export class GameServer {
     w.reset();
     w.bits(S_CHUNK, 4);
     w.u16(chunk);
-    w.u32(c.syncTarget);
+    w.u32(target);
     const header = w.pos;
     w.bits(0, 1 + 16);
     let count = 0;
-    let s = c.syncCursor;
+    let s = cursor;
     for (; s < t.high && count < budget; s++) {
-      if (t.mod[s]! <= c.syncFrom) continue;
+      if (t.mod[s]! <= from) continue;
       const kind = t.kind[s]!;
-      if (kind === 0 && c.syncByRemoval) continue;
+      if (kind === 0 && byRemoval) continue;
       w.u16(s);
       w.u16(kind);
       if (kind !== 0) {
@@ -1004,13 +1005,13 @@ export class GameServer {
     let removals = 0;
     const at = w.pos;
     w.u8(0);
-    if (final && c.syncByRemoval) {
+    if (final && byRemoval) {
       const T = this.world.tick;
       for (const g of t.gone) {
-        if (g.version <= c.syncFrom || g.version > c.syncTarget) continue;
+        if (g.version <= from || g.version > target) continue;
         // The cause is news only briefly. After that the rows are just gone.
         const cause = T - g.stamp <= REMOVAL_NEWS_TICKS ? g.cause : GONE_TAKEN;
-        w.varint(c.syncTarget - g.version);
+        w.varint(target - g.version);
         w.bits(cause, 2);
         if (cause !== GONE_TAKEN) {
           w.f32(g.x);
@@ -1043,11 +1044,15 @@ export class GameServer {
     c.conn.send(CH_RELIABLE, bytes);
     if (final) {
       if (c.known[chunk] === 0 && !c.subscribed.includes(chunk)) c.subscribed.push(chunk);
-      c.known[chunk] = c.syncTarget;
-      c.syncChunk = -1;
+      c.known[chunk] = target;
+      if (resumed) c.syncChunk = -1;
       return budget - count;
     }
+    c.syncChunk = chunk;
     c.syncCursor = s;
+    c.syncFrom = from;
+    c.syncTarget = target;
+    c.syncByRemoval = byRemoval;
     return 0;
   }
 }
