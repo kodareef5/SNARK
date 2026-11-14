@@ -78,7 +78,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
 
 function sheet(asset: Asset, pack: Pack, report: Report, outDir: string, say: (line: string) => void): void {
   const drawn = drawSheet(asset, pack, report);
-  if (!drawn) return;
+  if (!drawn) return say(`  no sheet is drawn of ${asset.spec.kind}`);
   const dir = join(outDir, asset.id.replace(":", "/"));
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "sheet.png"), encodePng(drawn.width, drawn.height, drawn.pixels));

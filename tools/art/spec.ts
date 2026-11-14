@@ -129,15 +129,19 @@ export interface CreatureAsset {
   readonly budgets: {
     /** The most triangles at each level, finest first. A model may have fewer levels than this lists. */
     readonly triangles: readonly number[];
-    /** The side in pixels of the largest base colour and normal map, and the most megabytes all its maps may take in one variant. Read by B1. */
+    /**
+     * The side in pixels of the largest base colour and normal map, and the most megabytes all its maps may take in one
+     * variant. Nothing reads it yet: the converter that reads textures will.
+     */
     readonly texture?: { readonly top: number; readonly megabytes: number };
   };
   /**
    * The first level drawn flat: palette colours, one bone a vertex, one draw, no textures. Set it to the level drawn when
-   * the creature stands under about 48 pixels tall on medium, which `--check` prints for every level. Read by B1.
+   * the creature stands under about 48 pixels tall on medium, which `--check` prints for every level. Nothing reads it
+   * yet: the converter that reads textures will.
    */
   readonly flat?: number;
-  /** Read by task G. */
+  /** Nothing reads it yet: the ragdoll will. */
   readonly ragdoll?: readonly RagdollBody[];
 }
 
@@ -157,7 +161,7 @@ export interface PiecesAsset {
   readonly budgets: {
     /** The most triangles any one piece may have at each level, finest first. */
     readonly triangles: readonly number[];
-    /** As a creature's. Read by B1. */
+    /** As a creature's. */
     readonly texture?: { readonly top: number; readonly megabytes: number };
   };
 }

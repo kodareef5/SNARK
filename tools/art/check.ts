@@ -54,7 +54,7 @@ export interface LevelFacts {
   insideOut: number;
   /** Edges with more than two triangles, and triangles with no area. Neither is a fault. */
   crowded: number;
-  flat: number;
+  collapsed: number;
 }
 
 export interface MeshFacts {
@@ -102,14 +102,18 @@ export interface Report {
   rig?: { skeleton: string; bones: number; capsules: number; buried: string[]; sockets: string[] };
   clips: ClipFacts[];
   gaits: GaitFacts[];
-  /** B1 measures textures here: layers of one size and aligned, a normal map that agrees with its height, a tiling texture that wraps, a mask of pure colours with only ring neighbours touching, a larger size that matches the smaller when shrunk. The measures are in planning/artist-test/tools/measure.py. */
+  /**
+   * Nothing yet. Texture measures go here when the converter reads textures: layers of one size and aligned, a normal
+   * map that agrees with its height, a tiling texture that wraps, a mask of pure colours with only ring neighbours
+   * touching, a larger size that matches the smaller when shrunk. planning/artist-test/tools/measure.py has each of them.
+   */
   textures: never[];
   notes: string[];
   faults: string[];
 }
 
 /** Counts what is wrong with the surface of one level. Points at one place are one point, whatever colour or bone they carry. */
-export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "openEdges" | "holes" | "flipped" | "insideOut" | "crowded" | "flat"> {
+export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "openEdges" | "holes" | "flipped" | "insideOut" | "crowded" | "collapsed"> {
   const p = lod.positions;
   const ids = new Map<string, number>();
   const at: number[] = [];
@@ -132,11 +136,11 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
   // Per edge between two points, the triangles that run along it each way.
   const edges = new Map<number, [number, number]>();
   const faces: number[] = [];
-  let flat = 0;
+  let collapsed = 0;
   for (let t = 0; t + 2 < lod.indices.length; t += 3) {
     const [a, b, c] = [point[lod.indices[t]!]!, point[lod.indices[t + 1]!]!, point[lod.indices[t + 2]!]!];
     if (a === b || b === c || a === c) {
-      flat++;
+      collapsed++;
       continue;
     }
     faces.push(a, b, c);
@@ -202,7 +206,7 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
     }
     if (volume < 0 && (!broken.has(g) || -volume > 0.002 * area ** 1.5)) insideOut++;
   }
-  return { parts: parts.size, openEdges, holes, flipped, insideOut, crowded, flat };
+  return { parts: parts.size, openEdges, holes, flipped, insideOut, crowded, collapsed };
 }
 
 function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], faults: string[], bones?: number): MeshFacts {
@@ -224,6 +228,7 @@ function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], f
     };
     const where = `${mesh.id} level ${l}`;
     if (facts.budget !== null && facts.triangles > facts.budget) faults.push(`${where}: ${facts.triangles} triangles, and its budget is ${facts.budget}`);
+    if (facts.budget === null && budgets.length > 0) faults.push(`${where}: the asset gives this level no triangle budget`);
     if (facts.holes > 0) faults.push(`${where}: ${facts.holes} ${facts.holes === 1 ? "hole" : "holes"} (${facts.openEdges} open edges)`);
     if (facts.flipped > 0) faults.push(`${where}: ${facts.flipped} edges between faces that look opposite ways`);
     if (facts.insideOut > 0) faults.push(`${where}: ${facts.insideOut} of its ${facts.parts} parts inside out`);
@@ -471,7 +476,7 @@ export function reportLines(r: Report): string[] {
     out.push(`  gait ${g.clip}: stride ${g.stride ?? "-"} m, holds best at ${g.measured.toFixed(2)} m`);
     for (const f of g.feet) out.push(`    ${f.bone.padEnd(14)} planted ${(f.planted * 100).toFixed(0).padStart(3)}% of the clip, slides ${cm(f.slide)} cm`);
   }
-  out.push("  textures: not measured yet (B1)");
+  out.push("  textures: not measured yet");
   for (const n of r.notes) out.push(`  note: ${n}`);
   for (const f of r.faults) out.push(`  FAULT: ${f}`);
   out.push(r.faults.length === 0 ? "  ok" : `  ${r.faults.length} ${r.faults.length === 1 ? "fault" : "faults"}`);

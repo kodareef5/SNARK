@@ -39,7 +39,7 @@ function without(lod: SourceLod, t: number, turn = false): SourceLod {
 
 test("a surface is counted: its holes, faces turned against their neighbours, and parts inside out", () => {
   const box = boxMesh([1, 0.5, 2], REGION_BASE);
-  expect(measureSurface(box)).toEqual({ parts: 1, openEdges: 0, holes: 0, flipped: 0, insideOut: 0, crowded: 0, flat: 0 });
+  expect(measureSurface(box)).toEqual({ parts: 1, openEdges: 0, holes: 0, flipped: 0, insideOut: 0, crowded: 0, collapsed: 0 });
   expect(measureSurface(without(box, 3))).toMatchObject({ parts: 1, openEdges: 3, holes: 1, flipped: 0, insideOut: 0 });
   expect(measureSurface(without(box, 3, true))).toMatchObject({ openEdges: 0, holes: 0, flipped: 3, insideOut: 0 });
   // Every triangle the other way round: the surface is whole, and looks inward.
@@ -117,6 +117,7 @@ test("the check faults what would draw wrong: a level over its budget, a hole, a
   expect(report.clips[0]!.wrap!).toBeLessThan(report.clips[0]!.step * 1.01);
 
   expect(faultsOf({ budgets: { triangles: [23] } })).toEqual(["t:hopper level 0: 24 triangles, and its budget is 23"]);
+  expect(faultsOf({ budgets: { triangles: [] } })).toEqual([]);
   expect(faultsOf({}, without(boxMesh([0.3, 0.3, 0.5], REGION_BASE), 0))).toEqual(["t:hopper level 0: 1 hole (3 open edges)"]);
   expect(faultsOf({}, without(boxMesh([0.3, 0.3, 0.5], REGION_BASE), 0, true))).toEqual(["t:hopper level 0: 3 edges between faces that look opposite ways"]);
   // At twice the stride the body outruns its planted foot by half a metre.
