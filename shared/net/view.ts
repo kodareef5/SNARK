@@ -247,7 +247,7 @@ function admit(list: Int16Array, count: number, rotate: number, budgetBits: numb
  * Encodes `cur` (the true state, sorted by id) against `base` (the view the client has, or null) and fills `next` with the
  * view the client will hold after applying it. `budgetBits` bounds the deferrable ops. A deferred op is left out, and `next`
  * records the stale state the client is left with, so later deltas stay correct. Urgent entities are deferred last.
- * `rotate` is where deferral started last time. Returns its new value. `looks` gives the appearance a create carries. The entry of `cur` with id `skip` is left out,
+ * `rotate` holds where deferral started last time. Pass back what this returns, and 0 the first time. `looks` gives the appearance a create carries. The entry of `cur` with id `skip` is left out,
  * so clients around one place can share one `cur`.
  */
 export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1): number {
@@ -328,20 +328,27 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
     n++;
   }
 
-  // Over budget. Urgent ops go first. A rotating window of the others goes through and the rest wait.
+  // Over budget. Urgent ops go first, and a rotating window of the others takes what is left. The others keep a quarter
+  // of the budget, so a fight with more players than a snapshot carries does not freeze every creature in it.
   if (urgentBits + optionalBits <= budgetBits) {
     written += urgent + optional;
     rotate = 0;
-  } else if (urgentBits <= budgetBits) {
-    written += urgent;
+  } else {
+    // Each list has its own place in `rotate`: twelve bits for the others, the rest for the urgent.
+    let urgentFrom = rotate >>> 12;
+    let othersFrom = rotate & 0xfff;
+    const kept = optional > 0 ? budgetBits >> 2 : 0;
+    let left = budgetBits - urgentBits;
+    if (left < kept) {
+      urgentFrom = admit(urgIndex, urgent, urgentFrom, budgetBits - kept);
+      written += admitted;
+      left = kept;
+    } else written += urgent;
     if (optional > 0) {
-      rotate = admit(optIndex, optional, rotate, budgetBits - urgentBits);
+      othersFrom = admit(optIndex, optional, othersFrom, left);
       written += admitted;
     }
-  } else {
-    rotate = admit(urgIndex, urgent, rotate, budgetBits);
-    written += admitted;
-    if (optional > 0) admit(optIndex, optional, 0, 0);
+    rotate = urgentFrom * 4096 + othersFrom;
   }
 
   w.varint(written);
