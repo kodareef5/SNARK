@@ -23,7 +23,11 @@ function world() {
   const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
   const ents = h.world.ents;
   const at = { x: ents.x[h.ent(ada)]!, z: ents.z[h.ent(ada)]! };
-  const creature = (species: string, dx: number, level = 1): EntityRecord => h.host.records.byPid.get(ents.pid[h.host.spawnCreature(`core:${species}`, at.x + dx, at.z + 6, level)]!)!;
+  // The body is made first and looked up after, because making one may replace the store's columns.
+  const creature = (species: string, dx: number, level = 1): EntityRecord => {
+    const e = h.host.spawnCreature(`core:${species}`, at.x + dx, at.z + 6, level);
+    return h.host.records.byPid.get(ents.pid[e]!)!;
+  };
   return { h, ada, me, at, creature };
 }
 
