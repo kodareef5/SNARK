@@ -30,3 +30,11 @@ export async function findAssets(source: string = SOURCE): Promise<Asset[]> {
   }
   return out;
 }
+
+/**
+ * A node (a tree, a rock, a bush) stands on its origin, the rest of it carried below the ground. An asset is one when its
+ * group folder is `nodes`: assets/source/<pack>/nodes/<name>/.
+ */
+export function isNode(asset: Pick<Asset, "dir">): boolean {
+  return basename(dirname(asset.dir)) === "nodes";
+}
