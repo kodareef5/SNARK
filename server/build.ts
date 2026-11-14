@@ -314,13 +314,12 @@ export class Build {
       if (!mine) return RESULT_NOT_YOURS;
       if (action === STRUCT_PIN && code !== NO_PIN && code > 9999) return RESULT_INVALID;
       const state = fixtures.ensure(ref);
-      if (action === STRUCT_UNLOCK) state.lock = 2;
-      else state.lock = 1;
       // Setting a PIN locks the thing. Removing the PIN leaves the lock unchanged.
-      if (action === STRUCT_PIN) {
-        state.pin = code === NO_PIN ? -1 : code;
-        if (code === NO_PIN) state.lock = fixtures.locked(ref) ? 1 : 2;
-      }
+      const was = fixtures.locked(ref);
+      if (action === STRUCT_UNLOCK) state.lock = 2;
+      else if (action === STRUCT_PIN && code === NO_PIN) state.lock = was ? 1 : 2;
+      else state.lock = 1;
+      if (action === STRUCT_PIN) state.pin = code === NO_PIN ? -1 : code;
       records.dirty.add(state.pid);
       return RESULT_OK;
     }

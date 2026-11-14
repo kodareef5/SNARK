@@ -331,7 +331,7 @@ export class Survival {
       rec.out = false;
       // Harm from someone takes the blame over starving or drowning, whether it was a blow or a buff they left on it.
       const by = this.pendingBy !== 0 ? this.pendingBy : ex && ex.health < 0 ? ex.by : 0;
-      this.onDeath?.(rec, by !== 0 ? this.pendingCause : airless ? CAUSE_DROWNED : starved ? CAUSE_STARVED : parched ? CAUSE_THIRST : this.pendingCause || CAUSE_KILLED, by);
+      this.onDeath?.(rec, by !== 0 ? this.pendingCause || CAUSE_KILLED : airless ? CAUSE_DROWNED : starved ? CAUSE_STARVED : parched ? CAUSE_THIRST : this.pendingCause || CAUSE_KILLED, by);
       return;
     }
     if (paused) {

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const TICK_MS = 1000 / 30;
@@ -32,4 +33,19 @@ test("a client finishes taking in a large chunk while a nearer chunk changes eve
   expect(s.world!.structs.chunks[far]?.live).toBe(h.world.structs.chunks[far]!.live);
   // Each row is sent about once: 1,200 rows of at most 21 bytes, plus the near chunk's one row a tick.
   expect(h.server.stats.chunkBytes - before).toBeLessThan(1200 * 21 + 60 * 40 + 4096);
+});
+
+test("a survivor killed by a fire another survivor lit is told it was killed", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const ada = h.join("ada");
+  const bob = h.join("bob");
+  h.run(600);
+  const rec = (s: typeof ada) => h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!;
+  const victim = rec(bob);
+  h.host.survival.add(victim, V_HEALTH, -(h.host.survival.value(victim, V_HEALTH) - 10));
+  // The fire takes eight health a second, so the last ten go at a deadline, not with a blow.
+  h.host.buffs.give(victim, h.reg.index.get("core:burning")!, rec(ada).pid);
+  h.run(2500);
+  expect(victim.dead).toBe(true);
+  expect(bob.log.at(-1)!.text).toBe("You were killed.");
 });

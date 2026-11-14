@@ -328,6 +328,9 @@ test("a door opens and shuts for its tribe; for anyone once unlocked; and for wh
   expect([send(ada, STRUCT_PIN, NO_PIN), press(bob), send(ada, STRUCT_UNLOCK), press(bob), row(h, door).kind]).toEqual([RESULT_OK, RESULT_LOCKED, RESULT_OK, -1, id("door_open_wood")]);
   expect(send(ada, STRUCT_LOCK)).toBe(RESULT_OK);
   expect(press(bob)).toBe(RESULT_LOCKED);
+  // Taking the PIN off an unlocked door leaves it unlocked.
+  expect([send(ada, STRUCT_PIN, 4071), send(ada, STRUCT_UNLOCK), send(ada, STRUCT_PIN, NO_PIN), h.host.fixtures.locked(door)]).toEqual([RESULT_OK, RESULT_OK, RESULT_OK, false]);
+  expect([send(ada, STRUCT_LOCK), h.host.fixtures.locked(door), h.host.fixtures.find(door)?.pin]).toEqual([RESULT_OK, true, -1]);
   // A wall cannot be locked or used. A door taken back while it stands open is a door in the hands, and its state goes with it.
   const wall = h.world.structs.chunks[Math.floor(frame / 65536)]!;
   expect(wall.kind[frame & 0xffff]).toBe(id("doorframe_wood"));
