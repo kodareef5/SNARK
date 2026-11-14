@@ -1,5 +1,6 @@
 // Development server. It rebuilds the client when client, shared or content sources change. Restart it for
-// server changes, or run `bun --watch tools/dev.ts`.
+// server changes, or run `bun --watch tools/dev.ts`. Its cheats need no password, so it listens on this machine only:
+// `--host 0.0.0.0` has it listen on every address, for a phone or another machine on the network.
 
 import { watch } from "node:fs";
 import { resolve } from "node:path";
@@ -18,8 +19,11 @@ const folder = named >= 0 && args[named + 1] ? args[named + 1]! : DEV_CONFIG;
 const { rules, report } = loadConfigFolder(folder, args);
 for (const line of formatReport(report, rules)) console.log(line);
 const live = liveFileOf(folder);
-const server = startServer({ dev: true, port: Number(process.env.PORT ?? 8787), config: rules, ...(live ? { live } : {}) });
+const host = args.indexOf("--host");
+const hostname = host >= 0 ? args[host + 1] : undefined;
+const server = startServer({ dev: true, port: Number(process.env.PORT ?? 8787), config: rules, ...(hostname ? { hostname } : {}), ...(live ? { live } : {}) });
 console.log(`SNARK dev: http://localhost:${server.port}   (self-check: http://localhost:${server.port}/?selfcheck=1)`);
+if (!hostname) console.log("  this machine only; --host 0.0.0.0 lets others on the network in, and they need no password to cheat");
 
 let pending: ReturnType<typeof setTimeout> | undefined;
 for (const dir of ["client/core", "client/shell", "client/voice", "client/assets", "shared", "content"]) {
