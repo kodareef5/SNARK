@@ -26,6 +26,8 @@ build/
 *.sqlite-*
 *.sqlite3
 *.sqlite3-*
+# Saves kept as test fixtures are part of the repository.
+!tests/fixtures/saves/*.db
 
 # Test output and local diagnostics
 coverage/
