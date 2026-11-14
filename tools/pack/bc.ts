@@ -1026,13 +1026,13 @@ function first(name: number): void {
 
 const guess = new Float64Array(64);
 
-/** Makes first fits in the partitions of a mode that the sums say suit the block best. */
-function trySubsets(mode: number): void {
+/** Makes first fits in the `tries` partitions of a mode that the sums say suit the block best, or until one is exact. */
+function trySubsets(mode: number, tries = TRY[mode]!): void {
   const m = MODES[mode]!;
   const count = 1 << m[1]!;
   const left = LEFT[m[8]! - 2]!;
   for (let p = 0; p < count; p++) guess[p] = acrossOf[p]! + left * alongOf[p]!;
-  for (let k = 0; k < TRY[mode]!; k++) {
+  for (let k = 0; k < tries && shortError[0]! > 0; k++) {
     let best = 0;
     for (let p = 1; p < count; p++) if (guess[p]! < guess[best]!) best = p;
     guess[best] = Infinity;
@@ -1186,11 +1186,12 @@ function encodeBlock(out: Uint8Array, o: number): void {
         trySubsets(3);
       }
       tryRotations();
-      // Mode 2 holds three pairs of pure colours exactly, which a mask of colour regions is made of.
+      // Mode 2 holds three pairs of pure colours exactly, which a mask of colour regions is made of: every partition
+      // is worth a look for an exact one.
       if (shortError[0]! > ROUGH || (pure && shortError[0]! > 0)) {
         rank(3);
         trySubsets(0);
-        trySubsets(2);
+        trySubsets(2, pure ? 64 : TRY[2]!);
       }
     } else {
       rank(2);
