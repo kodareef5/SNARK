@@ -1,87 +1,50 @@
-// A collapse, worked out as one thing.
-//
-// When a piece goes, what it was helping to hold up is in doubt. Deciding
-// that piece by piece, each question starting again from nothing, costs most
-// exactly when most is falling. So a collapse is worked out over a picture of
-// the pieces that is made once and shared (shared/world/support.ts), a ring
-// at a time:
-//
-//   1. Everything within reach of what has just gone is in doubt, nearest to
-//      where support was first lost first, and the lower of two first. So is
-//      everything within reach of whatever stood straight on it, however
-//      high: those may stay up, held some other way, but nothing can lean on
-//      them as it did.
-//   2. Each call judges as many of those as its allowance of work lets it.
-//   3. What it found with nothing to hold it falls at the end of the call, as
-//      one removal, and what was within reach of that is in doubt in turn.
-//
-// A piece found to stand is looked at again whenever something near it goes,
-// so falling early is never wrong: it only ever leaves less standing. The
-// work is counted and each call does only so much: a question that runs out
-// of allowance part way is put off and asked again, the pictures it made
-// kept. So a great collapse takes more ticks and never a longer one. Seen
-// from outside it spreads from where support was lost.
-//
-// A piece may go with a claim on it: a number the caller gives, which follows
-// the collapse outward. What comes down under a claim is not let fall: the
-// caller is told of each such piece first (`onClaim`), and it is then simply
-// taken away. That is how what stood on a piece somebody picked up comes back
-// to their hands instead of breaking.
-//
-// Authority only: this removes structures.
+// Works a collapse out over shared support nodes (support.ts), within a work budget per call, so a large collapse takes more ticks
+// and never a longer one. A piece found standing is judged again when a piece near it is removed. Authority only, because it removes structures.
 
 import type { PieceTables } from "./snap.ts";
 import { GONE_FELL, GONE_TAKEN, type StructureStore } from "./structures.ts";
 import { COST_NODE, Support, type SupportNode } from "./support.ts";
 
-/** Lattice positions are told apart by x and z together: z is less than this. */
+/** Packs lattice x and z into one key. z is less than this. */
 const KEY = 4194304;
 
-/** The most pieces one call takes down as one removal; more go in the next. */
+/** The most pieces one call removes. The rest go in the next call. */
 const WAVE_MAX = 1024;
 
 export class Collapse {
-  /** Pieces that have fallen, removals they went in, and collapses that have run their course. */
+  /** Pieces fallen, the removals they went in, and collapses finished. */
   fallen = 0;
   waves = 0;
   settled = 0;
-  /** Pieces that came down under a claim, and were taken away rather than let fall. */
+  /** Pieces that came down under a claim and were taken instead of falling. */
   claimed = 0;
-  /**
-   * Called with a piece about to come down under a claim, and the claim,
-   * while its row can still be read. True if the claim takes it; false and it
-   * falls like any other.
-   */
+  /** Called for a piece about to come down under a claim, while its row can still be read. True takes the piece, false lets it fall. */
   onClaim: ((ref: number, claim: number) => boolean) | null = null;
-  /** The work the last call did, in the units its allowance is given in. */
+  /** Work the last step() did, in budget units. */
   spent = 0;
-  /** Called with a piece about to fall, while its row can still be read. */
+  /** Called for a piece about to fall, while its row can still be read. */
   onFall: ((ref: number) => void) | null = null;
   private readonly structs: StructureStore;
   private readonly tables: PieceTables;
   private readonly graph: Support;
-  /**
-   * Pieces whose surroundings have yet to be put in doubt, as the pictures
-   * made of them: those that have gone, and those left without what they
-   * stood straight on.
-   */
+  /** Nodes of pieces that were removed or lost their footing, and each one's claim. `drawn` is the next whose surroundings go in doubt. */
   private readonly lost: SupportNode[] = [];
   private readonly lostBy: number[] = [];
   private drawn = 0;
-  /** Places whose surroundings have been put in doubt since anything was last judged; and the number those pieces are marked with. */
+  /** Column keys put in doubt since a piece was last judged, and the mark value of that batch. */
   private readonly drew = new Set<number>();
   private batch = 1;
-  /** Where this collapse began: where support was first lost. Metres. */
+  /** Where support was first lost. Metres. */
   private ox = 0;
   private oy = 0;
   private oz = 0;
   private running = false;
-  /** The pieces in doubt, in the order they will be judged, and how far through them the judging is. */
+  /** Refs in doubt in the order they are judged, each one's claim, and the index of the next to judge. */
   private doubt: number[] = [];
   private doubtBy: number[] = [];
   private at = 0;
   private readonly inDoubt = new Set<number>();
-  /** Those judged, in this call, to have nothing under them. */
+  /** Refs this call judged unsupported, and each one's claim. */
   private readonly falling = new Uint32Array(WAVE_MAX);
   private readonly fallingBy = new Uint16Array(WAVE_MAX);
   private readonly taking = new Uint32Array(WAVE_MAX);
@@ -98,12 +61,11 @@ export class Collapse {
   }
 
   /**
-   * A piece is going, for any reason but falling: call before its row is
-   * erased. What it may have been holding up will be looked at. With a
-   * `claim` (1 to 65535), whatever comes down because of it is the claim's.
+   * Call before erasing the row of a piece that is removed for any reason but falling. A `claim` (1 to 65535) follows the collapse
+   * outward, and every piece that comes down because of it goes to onClaim.
    */
   gone(ref: number, claim = 0): void {
-    // What this is itself taking away is already accounted for.
+    // Removals that fall() makes are already accounted for.
     if (this.removing) return;
     const t = this.structs.chunks[Math.floor(ref / 65536)]!;
     const slot = ref & 0xffff;
@@ -118,30 +80,27 @@ export class Collapse {
     }
     this.lost.push(node);
     this.lostBy.push(claim);
-    // What stood straight up on it does so no longer.
+    // The graph's cached straight-up answers are now stale.
     this.graph.again();
   }
 
-  /** Something was built: the picture of the pieces around it is out of date. */
+  /** Call when a structure is built. The cached nodes are then out of date. */
   built(): void {
     if (this.running) this.graph.forget();
   }
 
-  /** Whether anything is still being worked out. */
   get busy(): boolean {
     return this.running;
   }
 
-  /** Pieces in doubt and still to be judged, and places whose surroundings are still to be put in doubt. */
+  /** Refs still to judge plus lost pieces whose surroundings are still to be put in doubt. */
   get pending(): number {
     return this.doubt.length - this.at + this.lost.length - this.drawn;
   }
 
   /**
-   * Do up to `budget` units of work (a search step is one, the picture of a
-   * piece about two dozen), then let fall what was found to have nothing
-   * under it. `stamp` is the clock the removal is marked with. Returns how
-   * many pieces fell.
+   * Does up to `budget` units of work (a search step costs 1, building a node about 24), then removes the pieces found unsupported.
+   * `stamp` is the clock value the removal is marked with. Returns how many pieces it removed.
    */
   step(budget: number, stamp: number): number {
     if (!this.running) return 0;
@@ -154,7 +113,7 @@ export class Collapse {
         continue;
       }
       if (this.at === this.doubt.length) break;
-      // Judging begins again: what is drawn after this is drawn afresh.
+      // Judging resumes, so later draws start a new batch.
       if (this.drew.size > 0) {
         this.drew.clear();
         this.batch++;
@@ -163,7 +122,7 @@ export class Collapse {
       const node = graph.node(ref);
       graph.work++;
       const stands = node === null || graph.standsNode(node);
-      // Out of allowance in the middle of the question: it is asked again next time, and gets further.
+      // The budget ran out mid-question. The next call asks again and gets further.
       if (node !== null && graph.cut) break;
       this.inDoubt.delete(ref);
       if (!stands) {
@@ -172,7 +131,6 @@ export class Collapse {
       }
       this.at++;
     }
-    // Done with what has been judged: it is not kept.
     if (this.at > 4096) {
       this.doubt = this.doubt.slice(this.at);
       this.doubtBy = this.doubtBy.slice(this.at);
@@ -181,7 +139,7 @@ export class Collapse {
     this.spent = graph.work;
     if (this.fell > 0) return this.fall(stamp);
     if (this.drawn === this.lost.length && this.at === this.doubt.length) {
-      // Nothing left in doubt: it has run its course.
+      // Nothing is left in doubt. The collapse is over.
       this.lost.length = this.lostBy.length = this.drawn = 0;
       this.doubt.length = this.doubtBy.length = this.at = 0;
       this.inDoubt.clear();
@@ -194,9 +152,8 @@ export class Collapse {
   }
 
   /**
-   * Put in doubt everything within reach of the next piece that went or lost
-   * its footing, nearest the start of the collapse first; and note what stood
-   * directly on it, which has lost its footing in turn.
+   * Puts in doubt every piece within reach of the next lost piece, nearest the start of the collapse first. The pieces that stood
+   * directly on it join `lost` in turn.
    */
   private draw(): void {
     const graph = this.graph;
@@ -211,7 +168,7 @@ export class Collapse {
       this.lostBy.push(by);
     }
     if (this.drawn === this.lost.length) this.lost.length = this.lostBy.length = this.drawn = 0;
-    // A column of pieces is one place.
+    // Pieces in one column share a key, so a column is drawn once per batch.
     const key = from.x * KEY + from.z;
     if (this.drew.has(key)) return;
     this.drew.add(key);
@@ -229,7 +186,7 @@ export class Collapse {
       const slot = ref & 0xffff;
       const dx = t.x[slot]! - ox;
       const dz = t.z[slot]! - oz;
-      // By how far off it is, to the nearest half metre; of those as far, the lower first.
+      // Ranked by distance from the start to the nearest half metre, then lower first.
       rank.set(ref, Math.round(Math.sqrt(dx * dx + dz * dz) * 2) * 4096 + t.y[slot]!);
       fresh.push(ref);
     }
@@ -241,11 +198,7 @@ export class Collapse {
     rank.clear();
   }
 
-  /**
-   * Let fall, as one removal, what this call found with nothing under it;
-   * what is under a claim is taken away instead. Where each was is somewhere
-   * a piece has gone from.
-   */
+  /** Removes the pieces this call found unsupported, as one removal. Claimed pieces are taken instead. Each joins `lost`. */
   private fall(stamp: number): number {
     let falls = 0;
     let takes = 0;
@@ -271,7 +224,6 @@ export class Collapse {
     this.fallen += fell;
     this.claimed += taken;
     this.waves++;
-    // What stood straight up on what fell does so no longer.
     this.graph.again();
     this.graph.work += COST_NODE;
     return removed;

@@ -1,24 +1,5 @@
-// What a body does with what it holds: one small state machine, stepped once a
-// tick from the same button bits on the server and on the client that predicts
-// its own body. Because both run it on the same tick with the same state, a
-// client sees its own swing, draw and reload begin the moment it asks, and the
-// server lands the strike or looses the shot on the tick the client expects.
-//
-// The step decides only *when*: when a swing lands, when a shot leaves, when a
-// reload is done. What a strike hits and what a shot does are the server's
-// business (server/combat.ts); this file never sees a target.
-//
-// The step is given which buttons went down this tick rather than keeping the
-// last tick's buttons itself: each side already knows.
-//
-// Acts:
-//   none      ready
-//   equip     taking something in hand; set from outside when what is held changes
-//   swing     a melee swing or a throw; it lands on one tick partway through
-//   draw      a bow being drawn, while the button is held
-//   hold      a bow at full draw, waiting for the button to be let go
-//   reload    putting rounds in, or nocking the next arrow
-//   cool      the pause after a shot
+// The action state machine, stepped once a tick from the same button bits on the server and on the client that predicts its body.
+// It decides only when a swing lands, a shot leaves or a reload ends. What they hit is decided in server/combat.ts.
 
 import { BTN_MELEE, BTN_PRIMARY, BTN_RELOAD, MF_OUT, MODE_SWIM, MODE_WALK, type Body } from "./character.ts";
 
@@ -35,7 +16,7 @@ export const W_BOW = 1;
 export const W_GUN = 2;
 export const W_THROWN = 3;
 
-/** How a body carries what it holds, for its pose. Three bits. */
+/** How a body carries the held item, for its pose. Three bits. */
 export const HOLD_HANDS = 0;
 export const HOLD_TOOL = 1;
 export const HOLD_SPEAR = 2;
@@ -45,20 +26,20 @@ export const HOLD_PISTOL = 5;
 export const HOLD_THROW = 6;
 export const HOLD_NAMES: readonly string[] = ["hands", "tool", "spear", "bow", "rifle", "pistol", "throw"];
 
-/** Ticks to take something in hand before it can be used. */
+/** ACT_EQUIP lasts this long. Code outside the step sets it when the held item changes. */
 export const EQUIP_TICKS = 15;
 
-/** Timings of a kind of weapon, in ticks. Compiled from its definition; the same on both sides. */
+/** Timings in ticks, compiled from the weapon's definition and the same on both sides. */
 export interface WeaponParams {
   readonly kind: number;
   readonly hold: number;
-  /** Melee and thrown: the whole swing, and the tick of it on which it lands. A gun: ticks between shots. */
+  /** Melee and thrown: the whole swing, and the tick of it that lands. For a gun, swingTicks is the ticks between shots. */
   readonly swingTicks: number;
   readonly strikeTick: number;
   /** Bow: ticks to full draw, and the fewest it can be loosed after. */
   readonly drawTicks: number;
   readonly minDrawTicks: number;
-  /** Ticks to reload, or to nock the next arrow. */
+  /** Also the ticks to nock the next arrow. */
   readonly reloadTicks: number;
   /** Rounds it holds. */
   readonly clip: number;
@@ -66,28 +47,25 @@ export interface WeaponParams {
   readonly wet: boolean;
 }
 
-/** Ticks of a swing unless its weapon says otherwise. The swing a body is drawn making takes this long. */
+/** A swing's ticks unless its weapon says otherwise. The swing as drawn takes this long. */
 export const SWING_TICKS = 15;
 
 /** Bare hands, and anything held that is not a weapon. */
 export const FISTS: WeaponParams = { kind: W_MELEE, hold: HOLD_HANDS, swingTicks: SWING_TICKS, strikeTick: 5, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true };
 
-/** What the last `stepAction` call did, besides changing the body. */
+/** What the last stepAction call did. Each flag is for that tick only. */
 export const actionOut = {
-  /** A melee swing landed this tick. */
+  /** A melee swing landed. */
   strike: false,
-  /** A shot left (or a thrown thing left the hand) this tick, drawn this far: 0 to 1. */
+  /** A shot or a thrown item left. `draw` is how far it was drawn, 0 to 1. */
   fire: false,
   draw: 0,
-  /** A reload finished this tick. */
   reloaded: false,
 };
 
 /**
- * Advance what `b` is doing by one tick. `buttons` are the buttons held and
- * `pressed` those that went down this tick; `w` is the timings of what it
- * holds. A reload is started only if it would leave more rounds in the weapon
- * than it has (`b.reloadTo`, which the server keeps).
+ * `buttons` are held and `pressed` went down this tick. The caller passes `pressed` because each side already knows it.
+ * A reload starts only if it would leave more rounds in the weapon than it has (`b.reloadTo`, which the server keeps).
  */
 export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponParams): void {
   const out = actionOut;
@@ -96,13 +74,13 @@ export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponP
   out.draw = 0;
   out.reloaded = false;
   const reloadTo = b.reloadTo;
-  // Not in the world, or unconscious: it does nothing, and whatever it was doing is over.
+  // A body that is not in the world or is unconscious does nothing, and its act ends.
   if ((b.mode !== MODE_WALK && b.mode !== MODE_SWIM) || (b.mflags & MF_OUT) !== 0) {
     b.act = ACT_NONE;
     b.actTicks = 0;
     return;
   }
-  // Under water only what is made for it works.
+  // Under water only a `wet` weapon works.
   const usable = w.wet || b.mode !== MODE_SWIM;
 
   if (b.act === ACT_EQUIP) {
@@ -121,7 +99,7 @@ export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponP
     b.act = ACT_NONE;
   }
   if (b.act === ACT_DRAW || b.act === ACT_HOLD) {
-    // The melee button lets the string down without loosing; so does going under water.
+    // The melee button lets the string down without loosing, and so does going under water.
     if ((pressed & BTN_MELEE) !== 0 || !usable) {
       b.act = ACT_NONE;
       return;
@@ -130,7 +108,7 @@ export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponP
       if (b.act === ACT_DRAW && ++b.actTicks >= w.drawTicks) b.act = ACT_HOLD;
       return;
     }
-    // Let go: loosed if it was drawn far enough, let down if not.
+    // The button was let go. The arrow is loosed if it was drawn far enough, else let down.
     const drawn = b.act === ACT_HOLD ? w.drawTicks : b.actTicks;
     b.act = ACT_NONE;
     if (drawn >= w.minDrawTicks && b.rounds > 0) {
@@ -153,10 +131,9 @@ export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponP
   if (b.act === ACT_COOL) {
     if (++b.actTicks < w.swingTicks) return;
     b.act = ACT_NONE;
-    // Falls through: an empty weapon starts its reload on the tick the pause ends.
+    // Falls through, so an empty weapon starts its reload on the tick the pause ends.
   }
 
-  // Ready.
   if (w.kind === W_MELEE || w.kind === W_THROWN) {
     if ((buttons & (BTN_PRIMARY | BTN_MELEE)) !== 0 && usable) {
       b.act = ACT_SWING;
@@ -164,7 +141,7 @@ export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponP
     }
     return;
   }
-  // A bow or a gun. Empty, it reloads by itself if there is something to reload with.
+  // A bow or a gun. An empty one reloads by itself if there is anything to reload with.
   const wantsReload = b.rounds === 0 || ((pressed & BTN_RELOAD) !== 0 && b.rounds < w.clip);
   if (wantsReload && reloadTo > b.rounds) {
     b.act = ACT_RELOAD;

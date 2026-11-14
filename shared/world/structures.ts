@@ -1,34 +1,20 @@
-// Structures: walls, foundations, resource nodes. Anything placed and mostly still.
-//
-// A structure is a row in its chunk's table, not an entity. It has no per-tick
-// cost, no object, no callback. Half a million of them are a few megabytes of
-// typed arrays plus a collision grid.
-//
-//   identity     ref = chunk * 65536 + slot. Slots are stable until removed.
-//   replication  every table has a version; every slot records the version that
-//                last changed it. "What changed since version v" is a scan, so a
-//                client can always be brought up to date without an op log.
-//   collision    a 4 m grid of linked cells, updated incrementally. Cell tables
-//                exist only for chunks that something stands in, so memory
-//                follows built-up area, not map size.
-//
-// The server, the client's prediction and the save file all use this one class.
+// A structure is a row in its chunk's table, not an entity, with no per-tick cost. ref = chunk * 65536 + slot, stable until removed.
+// Each slot records the table version that last changed it, so a client is brought up to date by a scan, without an op log.
 
 import { CHUNK_SIZE, STRUCT_UNITS, YAW_UNITS, chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 
 export const GRID_CELL = 4;
 /**
- * What bodies and rays meet, for every kind: kind `k` is the boxes numbered
- * `start[k]` up to `start[k + 1]`, and each box is six numbers in `box`: its
- * centre, measured from the structure's own origin, then its half extents.
+ * The boxes bodies and rays meet. Kind `k` owns the boxes numbered `start[k]` up to `start[k + 1]`. Each box is six numbers in
+ * `box`: its centre, measured from the structure's origin, then its half extents.
  */
 export interface PartTable {
   readonly start: Uint32Array;
   readonly box: Float32Array;
 }
 
-/** A table in which every kind is the one box of its half extents. */
+/** Every kind gets one box of its half extents. */
 function oneBoxEach(halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array): PartTable {
   const n = halfX.length;
   const start = new Uint32Array(n + 1);
@@ -48,17 +34,16 @@ const CELLS = 16;
 export const MAX_SLOTS_PER_CHUNK = 65535;
 const YAW_TO_RAD = TAU / YAW_UNITS;
 
-/** Why a structure went: taken away (picked up, demolished), its health ran out, or nothing was left to hold it up. */
+/** Why a structure was removed: taken (picked up or demolished), out of health, or left with no support. */
 export const GONE_TAKEN = 0;
 export const GONE_DESTROYED = 1;
 export const GONE_FELL = 2;
-/** Removals a chunk remembers, newest last, so that whoever is watching can be told of each as one thing. */
+/** Removals a chunk remembers, so a client can be sent each as one batch. */
 export const GONE_KEPT = 8;
 
 /**
- * Structures of one chunk that went together: at which version of the chunk,
- * why, where it began (metres; for a fall, where support was lost), when (the
- * caller's clock), and which slots, as runs: a first slot and how many.
+ * Structures of one chunk removed together. `version` is the chunk's version, (x, y, z) is where it began in metres (for a fall,
+ * where support was lost), `stamp` is the caller's clock, and `runs` holds pairs of first slot and count.
  */
 export interface GoneBatch {
   version: number;
@@ -74,16 +59,16 @@ export interface GoneBatch {
 export class ChunkTable {
   /** Bumped on every change to this chunk. 0 means never touched. */
   version = 0;
-  /** The last few removals, oldest first; and the version of the newest removal no longer among them. */
+  /** The last GONE_KEPT removals, oldest first. goneFloor is the version of the newest removal dropped from the list. */
   readonly gone: GoneBatch[] = [];
   goneFloor = 0;
-  /** Scratch for queries that cover several cells: the query that last counted each slot. */
+  /** Per slot, the id of the query that last counted it. Scratch for queries that cover several cells. */
   stamp: Uint32Array;
   /** Slots [0, high) have been used at some point. */
   high = 0;
   live = 0;
   cap: number;
-  /** Content index; 0 marks an empty slot. */
+  /** Content index. 0 marks an empty slot. */
   kind: Uint16Array;
   /** Centre of the collider box, world metres. */
   x: Float32Array;
@@ -109,7 +94,6 @@ export class ChunkTable {
     this.stamp = new Uint32Array(cap);
   }
 
-  /** Remember a removal, forgetting the oldest if there are too many. */
   log(batch: GoneBatch): void {
     this.gone.push(batch);
     if (this.gone.length > GONE_KEPT) this.goneFloor = this.gone.shift()!.version;
@@ -140,21 +124,19 @@ export class ChunkTable {
 export class StructureStore {
   readonly dims: MapDims;
   readonly chunks: (ChunkTable | null)[];
-  /** Total live structures. */
   count = 0;
   /** Called after any change to a chunk's table. */
   onChunkChanged: ((chunk: number) => void) | null = null;
 
-  /** Half extents, per content index, of the box that holds all of a structure. */
+  /** Per content index, the half extents of the box that bounds the whole structure. */
   private readonly halfX: Float32Array;
   private readonly halfY: Float32Array;
   private readonly halfZ: Float32Array;
-  /** The boxes bodies and rays meet, per content index. */
   readonly parts: PartTable;
 
   private readonly gridX: number;
   private readonly gridZ: number;
-  /** Per chunk, allocated on first use: per cell, first node + 1, or 0. */
+  /** The 4 m collision grid. Per chunk, allocated on first use. Per cell, first node + 1, or 0. */
   private readonly heads: (Int32Array | null)[];
   private nodeRef: Uint32Array;
   /** Per node: next node + 1, or 0. */
@@ -169,7 +151,7 @@ export class StructureStore {
   private fz0 = 0;
   private fz1 = 0;
 
-  /** Kinds that bodies pass through: present for rays and drawing, absent for collision. */
+  /** Kinds that bodies pass through. Rays and drawing still see them. */
   private readonly soft: Uint8Array | null;
 
   constructor(dims: MapDims, halfX: Float32Array, halfY: Float32Array, halfZ: Float32Array, soft: Uint8Array | null = null, parts: PartTable | null = null) {
@@ -187,10 +169,7 @@ export class StructureStore {
     this.nodeNext = new Int32Array(1024);
   }
 
-  /**
-   * Place a structure. The position snaps to the 1/512 m lattice. Returns its
-   * ref, or -1 if the kind is unknown or the chunk is full. Authority only.
-   */
+  /** Snaps the position to the 1/512 m lattice. Returns the ref, or -1 if the kind is unknown or the chunk is full. Authority only. */
   add(kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number): number {
     if (kind <= 0 || kind >= this.halfX.length || this.halfX[kind] === 0) return -1;
     x = Math.round(x * STRUCT_UNITS) / STRUCT_UNITS;
@@ -210,18 +189,18 @@ export class StructureStore {
     return chunk * 65536 + slot;
   }
 
-  /** Called with a structure's ref and why it is going, just before it is removed, while its row can still be read. Authority only. */
+  /** Called with a structure's ref and cause before it is removed, while its row can still be read. Authority only. */
   onRemove: ((ref: number, cause: number) => void) | null = null;
 
-  /** Remove a structure, saying why and when (the caller's clock). Authority only. */
+  /** `stamp` is the caller's clock. Authority only. */
   remove(ref: number, cause = GONE_TAKEN, stamp = 0): boolean {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
     const t = this.chunks[chunk];
     if (!t || slot >= t.high || t.kind[slot] === 0) return false;
     this.onRemove?.(ref, cause);
-    // One after another for the same reason at the same moment, with nothing else changed between
-    // (a blast through a wall): they are remembered as one removal, which began at the first.
+    // Removals in a row with the same cause and stamp and no other change between (a blast through a wall)
+    // join one batch, which began at the first.
     const last = t.gone[t.gone.length - 1];
     const joins = last !== undefined && last.version === t.version && last.cause === cause && last.stamp === stamp;
     t.version++;
@@ -239,9 +218,8 @@ export class StructureStore {
   }
 
   /**
-   * Remove many structures as one thing: the first `n` of `refs`, which this
-   * sorts. Each chunk they are in changes once, and remembers them as one
-   * removal that began at (x, y, z). Returns how many went. Authority only.
+   * Removes the first `n` of `refs`, which it sorts in place. Each chunk changes version once and logs one batch that began at
+   * (x, y, z). Returns how many were removed. Authority only.
    */
   removeMany(refs: Uint32Array, n: number, cause: number, x: number, y: number, z: number, stamp: number): number {
     const sorted = refs.subarray(0, n).sort();
@@ -261,7 +239,7 @@ export class StructureStore {
           if (count === 0) t.version++;
           this.erase(chunk, t, slot, t.version);
           t.free.push(slot);
-          // Slots come in order: one next to the last lengthens its run.
+          // Slots come in ascending order, so an adjacent slot extends the last run.
           if (runs.length > 0 && runs[runs.length - 2]! + runs[runs.length - 1]! === slot) runs[runs.length - 1]!++;
           else runs.push(slot, 1);
           count++;
@@ -277,11 +255,7 @@ export class StructureStore {
     return removed;
   }
 
-  /**
-   * Make a structure another kind of thing in the same place, as it is
-   * otherwise: a door stood open. False if there is no such structure.
-   * Authority only.
-   */
+  /** Changes a structure's kind in place and keeps the rest of its row (a door opening). False if there is no such structure. Authority only. */
   swap(ref: number, kind: number): boolean {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
@@ -295,7 +269,7 @@ export class StructureStore {
     return true;
   }
 
-  /** Set a structure's health (it has been mended). False if there is no such structure. Authority only. */
+  /** False if there is no such structure. Authority only. */
   mend(ref: number, hp: number): boolean {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
@@ -308,11 +282,7 @@ export class StructureStore {
     return true;
   }
 
-  /**
-   * Take `points` from a structure's health. At none left it is removed.
-   * Returns what it has left (0 if it is gone), or -1 if there is no such
-   * structure. Authority only.
-   */
+  /** Removes the structure at 0 health. Returns the health left (0 if it is gone), or -1 if there is no such structure. Authority only. */
   damage(ref: number, points: number, stamp = 0): number {
     const chunk = Math.floor(ref / 65536);
     const slot = ref & 0xffff;
@@ -324,7 +294,7 @@ export class StructureStore {
       this.remove(ref, GONE_DESTROYED, stamp);
       return 0;
     }
-    // Its health is part of what is saved and sent: the slot has changed.
+    // Health is saved and replicated, so the slot counts as changed.
     t.version++;
     t.hp[slot] = left;
     t.mod[slot] = t.version;
@@ -332,10 +302,7 @@ export class StructureStore {
     return left;
   }
 
-  /**
-   * Hand everything `from` owns to `to`. Returns how many changed hands.
-   * Authority only.
-   */
+  /** Returns how many structures changed owner. Authority only. */
   reown(from: number, to: number): number {
     let n = 0;
     if (from === to) return 0;
@@ -356,10 +323,7 @@ export class StructureStore {
     return n;
   }
 
-  /**
-   * Set a slot to replicated or loaded contents. `kind` 0 empties it. Does not
-   * advance the table version; follow with `setVersion`.
-   */
+  /** Sets a slot to replicated or loaded contents. `kind` 0 empties it. Does not advance the table version, so follow with setVersion. */
   put(chunk: number, slot: number, kind: number, x: number, y: number, z: number, yaw: number, owner: number, hp: number, mod: number): void {
     const t = (this.chunks[chunk] ??= new ChunkTable());
     if (slot < t.high && t.kind[slot] !== 0) this.erase(chunk, t, slot, mod);
@@ -371,7 +335,7 @@ export class StructureStore {
     }
   }
 
-  /** After loading or applying a delta: record the version and rebuild the free list. */
+  /** Call after loading or applying a delta. Rebuilds the free list. */
   setVersion(chunk: number, version: number): void {
     const t = (this.chunks[chunk] ??= new ChunkTable());
     t.version = version;
@@ -380,7 +344,7 @@ export class StructureStore {
     this.onChunkChanged?.(chunk);
   }
 
-  /** Forget a chunk entirely (client side, when it leaves interest). */
+  /** Forgets the chunk without logging removals. Used when a chunk leaves a client's interest, and by NodeField. */
   dropChunk(chunk: number): void {
     const t = this.chunks[chunk];
     if (!t) return;
@@ -389,10 +353,7 @@ export class StructureStore {
     this.onChunkChanged?.(chunk);
   }
 
-  /**
-   * Collect refs of structures whose footprint cell overlaps the rectangle.
-   * Returns the count written to `out`. Conservative: callers test exactly.
-   */
+  /** Writes the refs of structures whose grid cells overlap the rectangle to `out` and returns the count. Conservative, so callers test exactly. */
   query(minX: number, minZ: number, maxX: number, maxZ: number, out: Uint32Array): number {
     let cx0 = Math.floor(minX / GRID_CELL);
     let cx1 = Math.floor(maxX / GRID_CELL);
@@ -405,7 +366,7 @@ export class StructureStore {
     const single = cx0 === cx1 && cz0 === cz1;
     let n = 0;
     const chunksX = this.dims.chunksX;
-    // A structure that lies in several cells is counted once: each slot notes the query that last counted it.
+    // A structure in several cells is counted once, by the query id stamped on its slot.
     if (++this.queryId === 0xffffffff) {
       for (const t of this.chunks) t?.stamp.fill(0);
       this.queryId = 1;
@@ -433,7 +394,6 @@ export class StructureStore {
     return n;
   }
 
-  /** Whether bodies pass through boxes of this kind. */
   isSoft(kind: number): boolean {
     return this.soft !== null && this.soft[kind] === 1;
   }
@@ -512,7 +472,7 @@ export class StructureStore {
     this.count--;
   }
 
-  /** Grid cells covered by a structure's rotated box. */
+  /** Writes the grid cells a structure's rotated box covers to fx0..fz1. */
   private footprint(kind: number, x: number, z: number, yaw: number): void {
     const a = yaw * YAW_TO_RAD;
     const s = Math.abs(detSin(a));

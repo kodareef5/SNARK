@@ -1,11 +1,5 @@
-// Deadlines: things that happen at a tick, without anything waiting on them.
-//
-// A binary heap in typed arrays. An entry is (tick, kind, a, b); `a` and `b` are
-// whatever the handler needs, usually a persistent id. Entries are never
-// cancelled: a handler checks that its deadline is still current and ignores it
-// otherwise, so changing your mind is free.
-//
-// Deadlines are derived state. They are rebuilt from records on load, not saved.
+// A heap of (tick, kind, a, b). Entries are never cancelled. A handler checks that its deadline is still current and ignores a stale one.
+// Deadlines are derived state, rebuilt from records on load and never saved.
 
 export class DeadlineHeap {
   size = 0;
@@ -24,7 +18,7 @@ export class DeadlineHeap {
     this.b = new Float64Array(capacity);
   }
 
-  /** Earliest scheduled tick, or Infinity. */
+  /** Infinity when empty. */
   get nextTick(): number {
     return this.size > 0 ? this.tick[0]! : Infinity;
   }
@@ -47,10 +41,8 @@ export class DeadlineHeap {
   }
 
   /**
-   * Call `fn` for every deadline due at or before `now`, earliest first, ties
-   * in the order they were scheduled. Deadlines `fn` schedules for `now` or
-   * earlier run in the same call. Stops after `limit` so a storm cannot stall a
-   * tick; the rest run next tick. Returns how many ran.
+   * Runs every deadline due at or before `now`, earliest first, ties in the order they were scheduled. Deadlines `fn` schedules for
+   * `now` or earlier run in the same call. Stops after `limit` so a storm cannot stall a tick. Returns how many ran.
    */
   run(now: number, fn: (kind: number, a: number, b: number, tick: number) => void, limit = 100000): number {
     let ran = 0;

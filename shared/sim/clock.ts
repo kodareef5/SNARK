@@ -1,48 +1,34 @@
-// Time of day. The world clock (`tick`) never jumps: every lazy quantity and
-// deadline is measured on it. What an admin changes with `settime` is an
-// offset added to it for display and day-night rules only.
-//
-// How long a day is, is the server's to say, by three scales as ARK has
-// them: one for the whole cycle, one for the day within it and one for the
-// night. The hour is a closed-form function of the tick: a server and its
-// clients work it out alike, and nothing is stepped. The length of a day is
-// its own thing. The 140-second hour that hunger, spoiling and regrowth are
-// written in (shared/sim/lazy.ts) is only a unit, and does not move with it
-// (D94).
+// The world tick never jumps. `settime` changes an offset that only display and day-night rules add to it.
+// The hour is a closed-form function of the tick, so server and clients agree. The 140-second hour of lazy.ts is a separate unit (D94).
 
-/**
- * Ticks to an hour of the clock at a scale of 1: 2.1 seconds to the game
- * minute, as players have measured the reference game's, which makes a day
- * 50.4 minutes (DEV76).
- */
+/** At scale 1. The game minute is 2.1 seconds, as players measured the reference game's, so a day is 50.4 minutes (DEV76). */
 export const CLOCK_HOUR_TICKS = 3780;
-/** Ticks to a whole day at a scale of 1. */
+/** At scale 1. */
 export const DAY_TICKS = 24 * CLOCK_HOUR_TICKS;
-/** The hours the sun rises and sets at: between them the day's scale runs the clock, outside them the night's. */
+/** Between these hours the day scale runs the clock, outside them the night scale. */
 export const SUNRISE = 6;
 export const SUNSET = 18;
 
-/** How fast the clock runs, as multiples of its own pace: the whole cycle, and the day and the night within it. */
+/** Speed multipliers for the whole cycle, and for the day and the night within it. */
 export interface ClockScales {
   readonly cycle: number;
   readonly day: number;
   readonly night: number;
 }
 
-/** The clock at its own pace. */
 export const UNIT_CLOCK: ClockScales = { cycle: 1, day: 1, night: 1 };
 
-/** Ticks from midnight to sunrise (and as many from sunset to midnight). */
+/** Ticks from midnight to sunrise, and as many from sunset to midnight. */
 const nightHalf = (c: ClockScales): number => (SUNRISE * CLOCK_HOUR_TICKS) / (c.cycle * c.night);
 /** Ticks from sunrise to sunset. */
 const dayPart = (c: ClockScales): number => ((SUNSET - SUNRISE) * CLOCK_HOUR_TICKS) / (c.cycle * c.day);
 
-/** Ticks to a whole day and night at these scales. Not a whole number in general. */
+/** Not a whole number in general. */
 export function cycleTicks(c: ClockScales = UNIT_CLOCK): number {
   return 2 * nightHalf(c) + dayPart(c);
 }
 
-/** Ticks since midnight, 0 up to a whole day and night. */
+/** Ticks since midnight. */
 export function dayTick(tick: number, offset: number, c: ClockScales = UNIT_CLOCK): number {
   return (tick + offset) % cycleTicks(c);
 }
@@ -57,7 +43,7 @@ export function hourOfDay(tick: number, offset: number, c: ClockScales = UNIT_CL
   return SUNSET + ((p - a - b) * c.cycle * c.night) / CLOCK_HOUR_TICKS;
 }
 
-/** The offset, a whole number of ticks, that makes `tick` fall at `hour` (0 .. 24) of the day: to within half a tick of it. */
+/** The whole-tick offset that puts `tick` at `hour`, to within half a tick. */
 export function offsetForHour(tick: number, hour: number, c: ClockScales = UNIT_CLOCK): number {
   const a = nightHalf(c);
   const b = dayPart(c);
@@ -65,11 +51,10 @@ export function offsetForHour(tick: number, hour: number, c: ClockScales = UNIT_
   const h = ((hour % 24) + 24) % 24;
   const want = h < SUNRISE ? (h * CLOCK_HOUR_TICKS) / (c.cycle * c.night) : h < SUNSET ? a + ((h - SUNRISE) * CLOCK_HOUR_TICKS) / (c.cycle * c.day) : a + b + ((h - SUNSET) * CLOCK_HOUR_TICKS) / (c.cycle * c.night);
   const offset = Math.round((((want - (tick % whole)) % whole) + whole) % whole);
-  // Rounded up to the whole cycle, it is the start of it.
+  // An offset that rounds up to the whole cycle is the start of the cycle.
   return offset >= whole ? 0 : offset;
 }
 
-/** Whether it is day at this hour: from sunrise until sunset. */
 export function isDay(hour: number): boolean {
   return hour >= SUNRISE && hour < SUNSET;
 }

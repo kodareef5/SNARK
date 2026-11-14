@@ -1,7 +1,5 @@
-// Rays against the static world: terrain and structures. Used to decide what a
-// body is looking at. The server casts from the authoritative eye; the client
-// casts the same ray only to show a prompt. Deterministic, like everything a
-// decision rests on.
+// Rays against terrain and structures, to decide what a body is looking at. The server casts from the authoritative eye, and the
+// client casts the same ray only to show a prompt. The cast is deterministic.
 
 import { YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
@@ -10,12 +8,12 @@ import type { CollisionWorld } from "./collide.ts";
 export const HIT_NONE = 0;
 export const HIT_TERRAIN = 1;
 export const HIT_STRUCTURE = 2;
-/** A resource node; `rayHit.ref` is its reference in the node store (chunk * 65536 + slot). */
+/** A resource node. `rayHit.ref` is then its ref in the node store (chunk * 65536 + slot). */
 export const HIT_NODE = 3;
 
-/** Result of the last `castWorld`: what was hit, how far along the ray, which structure, and the unit normal of the surface where it was hit. */
+/** Result of the last castWorld: the HIT_ kind, the distance along the ray, the structure or node ref, and the unit normal of the surface hit. */
 export const rayHit = { kind: HIT_NONE, t: 0, ref: 0, nx: 0, ny: 1, nz: 0 };
-/** The face of the box the last `rayBox` entered by: its axis (0 x, 1 y, 2 z; -1 if the ray began inside) and which way that face looks along it. */
+/** The face the last rayBox entered by: its axis (0 x, 1 y, 2 z, or -1 if the ray began inside) and the sign of its outward normal on that axis. */
 export const boxFace = { axis: -1, sign: 0 };
 
 const TO_RAD = TAU / YAW_UNITS;
@@ -23,10 +21,10 @@ const TERRAIN_STEP = 0.25;
 const SEGMENT = 8;
 /** Half the distance over which the ground's slope is measured for a normal. */
 const NORMAL_STEP = 0.25;
-/** Boxes one stretch of a ray may have to be tested against: more than the densest base puts within eight metres. */
+/** Refs for one SEGMENT of a ray. 1024 is more than the densest base puts within eight metres. */
 const refs = new Uint32Array(1024);
 
-/** Unit look direction for a yaw and pitch in wire units (pitch 16384 is straight up), written to `out`. */
+/** `yaw` and `pitch` are in wire units (pitch 16384 is straight up). Writes a unit vector to `out`. */
 export function lookDirection(yaw: number, pitch: number, out: Float64Array | number[]): void {
   const a = yaw * TO_RAD;
   const e = pitch * TO_RAD;
@@ -36,10 +34,7 @@ export function lookDirection(yaw: number, pitch: number, out: Float64Array | nu
   out[2] = detCos(a) * cp;
 }
 
-/**
- * Distance along a ray to an axis-aligned box, or Infinity. A ray starting
- * inside the box hits at 0.
- */
+/** Distance along the ray to an axis-aligned box, or Infinity. A ray that starts inside the box hits at 0. */
 export function rayBox(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): number {
   let t0 = 0;
   let t1 = Infinity;
@@ -63,7 +58,7 @@ export function rayBox(ox: number, oy: number, oz: number, dx: number, dy: numbe
     }
     if (a > t0) {
       t0 = a;
-      // Entered by the near face of this axis: the one that looks back along the ray.
+      // The ray enters by this axis's near face, which looks back along the ray.
       boxFace.axis = axis;
       boxFace.sign = d > 0 ? -1 : 1;
     }
@@ -73,22 +68,19 @@ export function rayBox(ox: number, oy: number, oz: number, dx: number, dy: numbe
   return t0;
 }
 
-/**
- * Cast a ray of unit direction through terrain and structures, up to `maxT`
- * metres. Fills `rayHit` and returns what was hit.
- */
+/** The direction must be a unit vector, and `maxT` is in metres. Fills `rayHit` and returns the HIT_ kind. */
 export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
   const hf = w.hf;
   let best = maxT;
   let kind = HIT_NONE;
   let ref = 0;
-  // The face of the box hit, in the box's own frame, and the turn of that frame.
+  // The face of the box hit, in the box's frame, and the sine and cosine of that frame's yaw.
   let faceAxis = -1;
   let faceSign = 0;
   let faceS = 0;
   let faceC = 1;
 
-  // Terrain: walk until a sample is under the ground, then close in on the crossing.
+  // Terrain. Walk until a sample is under the ground, then bisect to the crossing.
   if (oy < hf.heightAt(ox, oz)) {
     best = 0;
     kind = HIT_TERRAIN;
@@ -109,7 +101,7 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
     }
   }
 
-  // Structures, then nodes: boxes turned about the vertical axis, a stretch of the ray at a time.
+  // Structures, then nodes. Their boxes turn about the vertical axis, and the ray is tested one SEGMENT at a time.
   for (let pass = 0; pass < 2; pass++) {
     const structs = pass === 0 ? w.structs : w.nodes;
     if (!structs) continue;
@@ -128,7 +120,7 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
         const a = t.yaw[slot]! * TO_RAD;
         const s = detSin(a);
         const c = detCos(a);
-        // The ray in the box's own frame.
+        // The ray in the structure's frame.
         const px = ox - t.x[slot]!;
         const pz = oz - t.z[slot]!;
         const lx = c * px - s * pz;
@@ -136,7 +128,6 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
         const lz = s * px + c * pz;
         const ldx = c * dx - s * dz;
         const ldz = s * dx + c * dz;
-        // Each of the boxes it is made of.
         const box = structs.parts.box;
         for (let p = structs.parts.start[k]! * 6, end = structs.parts.start[k + 1]! * 6; p < end; p += 6) {
           const bx = box[p]!;
@@ -162,7 +153,6 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
   rayHit.t = best;
   rayHit.ref = ref;
   if (kind === HIT_TERRAIN) {
-    // The slope of the ground where it was hit.
     const x = ox + dx * best;
     const z = oz + dz * best;
     const sx = hf.heightAt(x + NORMAL_STEP, z) - hf.heightAt(x - NORMAL_STEP, z);
@@ -172,14 +162,14 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
     rayHit.ny = (2 * NORMAL_STEP) / l;
     rayHit.nz = -sz / l;
   } else if (kind !== HIT_NONE && faceAxis >= 0) {
-    // The box's face, turned back out of the box's frame (x' = c x - s z, z' = s x + c z going in).
+    // The face normal, turned back out of the box's frame. Going in, x' = c x - s z and z' = s x + c z.
     const lx = faceAxis === 0 ? faceSign : 0;
     const lz = faceAxis === 2 ? faceSign : 0;
     rayHit.nx = faceC * lx + faceS * lz;
     rayHit.ny = faceAxis === 1 ? faceSign : 0;
     rayHit.nz = faceC * lz - faceS * lx;
   } else {
-    // Begun inside something, or nothing hit: back the way it came.
+    // The ray began inside a box or hit nothing, so the normal points back along the ray.
     rayHit.nx = -dx;
     rayHit.ny = -dy;
     rayHit.nz = -dz;

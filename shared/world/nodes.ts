@@ -1,21 +1,12 @@
-// Resource nodes: trees, rocks, bushes. A fourth class of state.
-//
-// Where nodes stand is map data: a pure function of the map, the same on the
-// server and on every client, never saved and never sent. A node is named by
-// its chunk and its slot in that chunk, and that name never changes. The only
-// state is which nodes have been used up, and that is small.
-//
-// Nodes near a body are held in a StructureStore of their own, so collision
-// and drawing use the code structures already have. Chunks are filled when a
-// body comes near and emptied when the last one leaves, so memory follows the
-// players, not the map.
+// Node positions are a pure function of the map, the same on the server and every client, never saved and never sent. The only
+// state is which nodes are used up. Chunks near a body are loaded into a StructureStore, so collision and drawing reuse that code.
 
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
 import type { Heightfield } from "./heightfield.ts";
 import { StructureStore } from "./structures.ts";
 
 export interface NodeSpot {
-  /** Content index of the node, or 0 if this slot is empty on this map. */
+  /** Content index, or 0 if the slot is empty on this map. */
   kind: number;
   x: number;
   y: number;
@@ -23,7 +14,7 @@ export interface NodeSpot {
   yaw: number;
 }
 
-/** A map's nodes. `at` must be a pure function of its arguments. */
+/** `at` must be a pure function of its arguments. */
 export interface NodeSource {
   /** Slots per chunk, at most 256. */
   readonly perChunk: number;
@@ -38,11 +29,8 @@ function mix(a: number, b: number, c: number): number {
 }
 
 /**
- * Nodes scattered over a map by a hash: each slot of each chunk gets a place
- * and a kind, or nothing where `allow` says no, the ground is under water, or
- * the slope is too steep to stand a tree on. `kinds` lists content indices,
- * repeated for weight; `halfY` gives each kind's half height, so it stands on
- * the ground.
+ * Scatters nodes by a hash. A slot is empty where `allow` says no, the ground is lower than 0.3 m above sea level, or the slope is
+ * too steep. `kinds` lists content indices, repeated for weight. `halfY` is each kind's half height, so the node stands on the ground.
  */
 export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, kinds: readonly number[], halfY: Float32Array, allow: (x: number, z: number) => boolean): NodeSource {
   return {
@@ -67,7 +55,7 @@ export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perCh
   };
 }
 
-/** Node reference in the field's store: chunk * 65536 + slot, as for structures. */
+/** chunk * 65536 + slot, as for structures. */
 export function nodeRef(chunk: number, index: number): number {
   return chunk * 65536 + index;
 }
@@ -75,7 +63,7 @@ export function nodeRef(chunk: number, index: number): number {
 export class NodeField {
   readonly store: StructureStore;
   readonly source: NodeSource;
-  /** Bodies (or viewers) keeping each chunk filled. */
+  /** Per chunk, the number of bodies or viewers keeping it filled. */
   private readonly refs: Uint16Array;
   private readonly spot: NodeSpot = { kind: 0, x: 0, y: 0, z: 0, yaw: 0 };
   private readonly dims: MapDims;
@@ -95,10 +83,8 @@ export class NodeField {
   }
 
   /**
-   * Keep the square of chunks within `radius` of `center` filled (delta +1) or
-   * let go of it (delta -1). A chunk is filled when its count leaves zero:
-   * every node the map puts there, except those `gone` says are used up, with
-   * the hit count `left` gives (or the kind's full count).
+   * Retains (delta +1) or releases (delta -1) the square of chunks within `radius` of `center`. A chunk fills when its count leaves
+   * zero, with every node of the map except those `gone` reports, at the hit count `left` gives or else the kind's full count.
    */
   retain(center: number, radius: number, delta: number, gone: (chunk: number, index: number) => boolean, left?: (chunk: number, index: number) => number): void {
     const dims = this.dims;
@@ -125,7 +111,7 @@ export class NodeField {
     }
   }
 
-  /** A node is used up (false) or has grown back (true). Nothing happens if its chunk is not filled. */
+  /** `present` false marks the node used up, true grown back. Does nothing if its chunk is not filled. */
   set(chunk: number, index: number, present: boolean): void {
     if (!this.isLoaded(chunk)) return;
     const spot = this.spot;
@@ -137,7 +123,7 @@ export class NodeField {
     if (spot.kind !== 0) this.store.put(chunk, index, spot.kind, spot.x, spot.y, spot.z, spot.yaw, 0, this.hits[spot.kind]!, 1);
   }
 
-  /** Content index of the node at a slot as the map defines it, used up or not. */
+  /** The content index the map defines for the slot, used up or not. */
   kindAt(chunk: number, index: number): number {
     this.source.at(chunk, index, this.spot);
     return this.spot.kind;

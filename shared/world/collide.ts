@@ -1,11 +1,5 @@
-// Collision queries against the static world: terrain plus structure boxes.
-//
-// Bodies are upright capsules. Structure colliders are boxes rotated about Y
-// only, so in a box's own frame the capsule is still upright and the closest
-// point computation is exact and cheap.
-//
-// `capsuleFree` is the authority on what counts as legal space. Movement,
-// spawning, mounting and teleporting must all end in a position it accepts.
+// Bodies are upright capsules and structure boxes turn about Y only, so the closest-point test in a box's frame is exact.
+// capsuleFree is the authority on legal space. Movement, spawning, mounting and teleporting must all end in a position it accepts.
 
 import { YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
@@ -23,16 +17,14 @@ export interface CollisionWorld {
   readonly nodes?: StructureStore;
 }
 
-/** Result of the last `capsuleBox` call that returned true: the shortest push out, world space. */
+/** The shortest push out, in world space, from the last capsuleBox call that returned true. */
 export const push = { x: 0, y: 0, z: 0, depth: 0 };
 
 const refs = new Uint32Array(256);
 
 /**
- * Test an upright capsule (feet at x,y,z; radius r; total height h) against one
- * structure: against each of the boxes it is made of. On overlap deeper than
- * `slack`, fills `push` with the way out of the box it is deepest in and
- * returns true.
+ * The capsule stands with its feet at (x, y, z), radius r and total height h. On an overlap deeper than `slack`, fills `push`
+ * with the way out of the box it is deepest in and returns true.
  */
 export function capsuleBox(structs: StructureStore, ref: number, x: number, y: number, z: number, r: number, h: number, slack: number): boolean {
   const t = structs.chunks[Math.floor(ref / 65536)]!;
@@ -42,16 +34,12 @@ export function capsuleBox(structs: StructureStore, ref: number, x: number, y: n
   return capsuleKind(structs.parts, kind, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, x, y, z, r, h, slack);
 }
 
-/**
- * The same test against a structure of `kind` standing at (sx, sy, sz) and
- * facing `syaw`, whether or not one is there: for asking what would be in the
- * way of one about to be built.
- */
+/** The same test against a structure of `kind` at (sx, sy, sz) facing `syaw`, built or not, to check a piece before it is built. */
 export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, x: number, y: number, z: number, r: number, h: number, slack: number): boolean {
   const a = syaw * YAW_TO_RAD;
   const s = detSin(a);
   const c = detCos(a);
-  // The capsule's axis in the structure's own frame, about its origin.
+  // The capsule's axis in the structure's frame.
   const dx = x - sx;
   const dz = z - sz;
   const fx = c * dx - s * dz;
@@ -69,7 +57,7 @@ export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: numb
     const hx = box[p + 3]!;
     const hy = box[p + 4]!;
     const hz = box[p + 5]!;
-    // The axis about this box's centre.
+    // The axis relative to this box's centre.
     const lx = fx - box[p]!;
     const lz = fz - box[p + 2]!;
     const y0 = fy0 - box[p + 1]!;
@@ -98,7 +86,7 @@ export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: numb
       oy = ey * k;
       oz = ez * k;
     } else {
-      // The axis passes through the box: leave by the nearest face.
+      // The axis passes through the box, so leave by the nearest face.
       const xp = hx - lx + r;
       const xn = lx + hx + r;
       const zp = hz - lz + r;
@@ -151,7 +139,7 @@ export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: numb
   return true;
 }
 
-/** True when a capsule at this position is inside no terrain and no structure. */
+/** True when the capsule is inside the map and overlaps no terrain, structure or node. */
 export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number): boolean {
   const hf = w.hf;
   if (x < 0 || z < 0 || x > hf.sizeX || z > hf.sizeZ) return false;
@@ -170,7 +158,7 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
   return true;
 }
 
-/** True when the capsule rests on top of a structure: lowering it by `probe` meets an upward push. */
+/** True when lowering the capsule by `probe` meets an upward push from a structure or node. */
 export function restsOnStructure(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number, probe: number): boolean {
   const n = w.structs.query(x - r, z - r, x + r, z + r, refs);
   for (let i = 0; i < n; i++) {

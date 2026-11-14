@@ -1,11 +1,5 @@
-// Terrain as a quantized height grid.
-//
-// The surface is defined once, here: each grid cell is two triangles split along
-// the diagonal from (i, j) to (i+1, j+1). Collision, prediction and LOD 0
-// rendering all use this triangulation, so what is drawn is what is solid.
-//
-// Everything below the surface is solid. "Under the map" is therefore a state
-// the simulation can test for directly instead of a place a player can stand.
+// Each grid cell is two triangles split along the diagonal from (i, j) to (i+1, j+1). Collision, prediction and LOD 0 rendering
+// all use this triangulation, so what is drawn is what is solid. Everything below the surface is solid.
 
 import { CHUNK_SIZE, type MapDims } from "../coords.ts";
 
@@ -26,16 +20,10 @@ export class Heightfield {
   readonly heights: Uint16Array;
   /** Palette index per sample, used only for drawing. */
   readonly tint: Uint8Array;
-  /**
-   * Height of the water surface. Ground below it is under water. Map data, set
-   * by whoever builds the map; -Infinity for a map with no water.
-   */
+  /** Height of the water surface, set by the code that builds the map. -Infinity for a map with no water. */
   seaLevel = -Infinity;
 
-  /**
-   * `stepY` is the height of one stored unit. Use a power-of-two fraction such
-   * as 1/256 so that round heights (sea level, floors) are represented exactly.
-   */
+  /** Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. */
   constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array) {
     this.dims = dims;
     this.cell = cell;
@@ -52,7 +40,7 @@ export class Heightfield {
     }
   }
 
-  /** Height of sample (i, j) in metres. */
+  /** In metres. */
   sample(i: number, j: number): number {
     return this.minY + this.heights[j * this.nx + i]! * this.stepY;
   }
@@ -64,7 +52,7 @@ export class Heightfield {
     this.heights[j * this.nx + i] = q;
   }
 
-  /** Surface height at (x, z). Positions outside the map use the nearest edge. */
+  /** Positions outside the map use the nearest edge. */
   heightAt(x: number, z: number): number {
     const nx = this.nx;
     let fx = x / this.cell;
@@ -94,7 +82,7 @@ export class Heightfield {
     return this.minY + q * this.stepY;
   }
 
-  /** Cosine of the slope angle at (x, z): 1 is flat, 0 is vertical. */
+  /** Cosine of the slope angle. 1 is flat, 0 is vertical. */
   slopeCosAt(x: number, z: number): number {
     const nx = this.nx;
     let fx = x / this.cell;

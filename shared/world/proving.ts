@@ -1,12 +1,5 @@
-// The proving ground: a graybox test map built from code.
-//
-// A flat checkered plaza with slope strips at fixed angles, a hill, a bowl, a
-// staircase, a small house, a long thin wall, pillars, crates and distance
-// markers, surrounded by rolling ground. Each feature exists to exercise one
-// engine behaviour, so the server, the tests, the headless rasterizer and the
-// browser probe all load this same world.
-//
-// It is generated, not stored: the same code yields the same map everywhere.
+// A graybox test map generated from code, so the same code yields the same map everywhere. Each feature exercises one engine
+// behaviour, and the server, the tests, the headless rasterizer and the browser probe all load it.
 
 import type { MapDims } from "../coords.ts";
 import type { Registry } from "../content/registry.ts";
@@ -19,27 +12,25 @@ import type { StructureStore } from "./structures.ts";
 export const PROVING_ID = "proving:1";
 export const PROVING_DIMS: MapDims = { chunksX: 8, chunksZ: 8 };
 export const PROVING_SPAWN = { x: 256, z: 240, yaw: 0 };
-/** Where a dead survivor may return. */
+/** Respawn choices for a dead survivor. */
 export const PROVING_SPAWNS = [
   { name: "Plaza", ...PROVING_SPAWN },
   { name: "Slopes", x: 228, z: 282, yaw: 0 },
   { name: "Poolside", x: 208, z: 256, yaw: 49152 },
 ];
-/** Where the boot probe stands one creature: in clear view of the spawn point, hiding nothing else it checks. */
 /** Half a metre below the plaza, so the bowl is a pool and low ground beyond the plaza holds ponds. */
 export const PROVING_SEA_LEVEL = -0.5;
-/** Centre of the bowl: 8 m deep, the place to swim and to drown. */
+/** Centre of the bowl, which is 8 m deep. */
 export const PROVING_POOL = { x: 172, z: 256 };
 /**
- * Where the probe server stands its one creature, and the colour it gives the
- * creature's first region: not the species' own, so seeing it proves that a
- * body's colours reached the renderer.
+ * Where the probe server stands its one creature, in clear view of the spawn point. `color` goes on its first region and is not
+ * the species' own, so seeing it proves that a body's colours reached the renderer.
  */
 export const PROBE_CREATURE = { x: 259, z: 254, color: 6 };
-/** Where the probe server stands one body with bones, for the self-check to look at. */
+/** Where the probe server stands one body with bones, for the self-check. */
 export const PROBE_BODY = { x: 253.5, z: 247 };
 
-/** Slope strips, west to east: 10 to 60 degrees. Entries are tan(angle). */
+/** Slope strips west to east, 10 to 60 degrees. Entries are tan(angle). */
 export const SLOPE_TANS = [0.17632698, 0.36397023, 0.57735027, 0.83909963, 1.19175359, 1.73205081];
 export const SLOPE_X0 = 196;
 export const SLOPE_WIDTH = 8;
@@ -124,7 +115,7 @@ export function provingMapHash(hf: Heightfield): number {
   return hashBytes(new Uint8Array(new Float64Array([hf.seaLevel]).buffer), heights);
 }
 
-/** Place the proving ground's structures. Server side; clients receive them by replication. */
+/** Server side. Clients receive the structures by replication. */
 export function populateProving(structs: StructureStore, hf: Heightfield, reg: Registry): void {
   const k = (id: string): number => {
     const i = reg.index.get(id);
@@ -148,11 +139,11 @@ export function populateProving(structs: StructureStore, hf: Heightfield, reg: R
   const crate = k("core:crate");
   const block = k("core:block");
 
-  // Staircase: twelve 0.3 m rises onto a raised slab.
+  // A staircase of twelve 0.3 m rises onto a raised slab.
   for (let i = 0; i < 12; i++) put(step, 263, 0.15 + 0.3 * i, 276.5 + i, 0);
   put(slab, 263, 3.35, 292.5, 0);
 
-  // House: 6 m square, 3 m walls, doorway on the south-west bay.
+  // A house 6 m square with 3 m walls and a doorway in the south-west bay.
   for (const fx of [237.5, 240.5]) {
     for (const fz of [271.5, 274.5]) {
       put(foundation, fx, 0.15, fz);
@@ -167,7 +158,7 @@ export function populateProving(structs: StructureStore, hf: Heightfield, reg: R
     put(wall, 242, 1.8, wz, QUARTER);
   }
 
-  // A 24 m wall only 0.2 m thick: the thing a body must never pass through.
+  // A 24 m wall only 0.2 m thick, which a body must never pass through.
   for (let i = 0; i < 8; i++) put(wall, 277.5 + 3 * i, 1.5, 262);
 
   // Pillar slalom.
@@ -175,7 +166,7 @@ export function populateProving(structs: StructureStore, hf: Heightfield, reg: R
     for (let iz = 0; iz < 6; iz++) put(pillar, 250 + 3 * ix, 3, 300 + 4 * iz);
   }
 
-  // Jump targets: a crate can be mounted, a block cannot.
+  // Jump targets. A body can get onto a crate but not onto a block.
   put(block, 250, 1, 262);
   put(block, 250, 3, 262);
   put(block, 253, 1, 262);
@@ -191,10 +182,10 @@ export function populateProving(structs: StructureStore, hf: Heightfield, reg: R
   for (let z = 350; z <= 500; z += 50) put(pillar, 256, hf.heightAt(256, z) + 3, z);
 }
 
-/** Slots for nodes in each chunk of the proving ground. About a third end up holding one. */
+/** Node slots per chunk. About a third end up holding a node. */
 export const PROVING_NODES_PER_CHUNK = 96;
 
-/** The proving ground's trees, rocks and bushes: everywhere outside the plaza that is dry and not too steep. */
+/** Trees, rocks and bushes everywhere outside the plaza that is dry and not too steep. */
 export function provingNodes(hf: Heightfield, reg: Registry): NodeSource {
   const kinds: number[] = [];
   for (const [id, weight] of [["core:tree", 5], ["core:rock", 3], ["core:bush", 3]] as const) {
@@ -204,7 +195,7 @@ export function provingNodes(hf: Heightfield, reg: Registry): NodeSource {
   const outside = (x: number, z: number): boolean => {
     const dx = Math.abs(x - CENTER);
     const dz = Math.abs(z - CENTER);
-    // A thin band of nodes hugs the plaza's edge so there is something to gather a short walk from the spawn.
+    // Nodes start 3 m beyond the plaza's edge, so there is something to gather a short walk from the spawn.
     return (dx > dz ? dx : dz) > PLAZA + 3;
   };
   return scatterNodes(PROVING_DIMS, hf, 0x51ab, PROVING_NODES_PER_CHUNK, kinds, reg.halfY, outside);

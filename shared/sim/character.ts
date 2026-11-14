@@ -1,15 +1,5 @@
-// Character movement: one fixed step for one upright capsule.
-//
-// The server runs this for every controlled body. The client runs the same code
-// to predict its own body. Given the same state and input, both produce the same
-// bits, so a disagreement always means the world differed, never the maths.
-//
-// The no-clipping guarantee does not rest on the solver being clever:
-//   1. A position is committed only if `capsuleFree` accepts it. Otherwise the
-//      body stays where it was.
-//   2. One substep never moves a body further than its radius sideways.
-// Crossing a wall needs two free positions at least a diameter apart, so no
-// input sequence can produce one. tests/unit/character.test.ts fuzzes this.
+// One fixed step for one upright capsule. Server and client run this same code, and the same state and input give the same bits.
+// A position is committed only if capsuleFree accepts it, and a substep moves at most a radius sideways, so no input crosses a wall.
 
 import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
@@ -17,27 +7,26 @@ import { SKIN, capsuleBox, capsuleFree, push, restsOnStructure, type CollisionWo
 
 export const BTN_JUMP = 1;
 export const BTN_SPRINT = 2;
-/** Swing, harvest, attack. Acted on by the server on the tick the press is consumed. */
+/** Swing, harvest, attack. The server acts on the tick it consumes the press. */
 export const BTN_PRIMARY = 4;
-/** Use, open, pick up. */
 export const BTN_USE = 8;
-/** Aim, draw, block: whatever the held thing does besides its primary action. */
+/** Aim, draw, block. */
 export const BTN_SECONDARY = 16;
 export const BTN_RELOAD = 32;
-/** Strike with whatever is held, or with a fist. */
+/** Strike with the held item, or a fist. */
 export const BTN_MELEE = 64;
-/** Held for as long as the body should stay low. The client turns a key press into this. */
+/** Held while the body should stay low. The client turns a key press into this. */
 export const BTN_CROUCH = 128;
 export const BTN_PRONE = 256;
-/** Switch the held thing's attachment on or off. */
+/** Toggles the held item's attachment. */
 export const BTN_MOD = 512;
 
-/** How low a body holds itself. A lower stance is a shorter capsule, a lower eye and a slower walk. */
+/** A lower stance is a shorter capsule, a lower eye and a slower walk. */
 export const STANCE_STAND = 0;
 export const STANCE_CROUCH = 1;
 export const STANCE_PRONE = 2;
 
-/** No movement at all: a dead survivor waiting to respawn. */
+/** No movement, for a dead survivor waiting to respawn. */
 export const MODE_NONE = 0;
 export const MODE_WALK = 1;
 export const MODE_SWIM = 2;
@@ -47,14 +36,14 @@ export const MODE_GHOST = 3;
 /** Stamina is stored in thousandths of a point, so it steps in exact integers. */
 export const STAMINA_UNITS = 1000;
 
-/** Restrictions in `Body.mflags`. The first three are set by the server; the last is set and cleared by the step itself. */
+/** Bits of Body.mflags. The server sets all but MF_WINDED, which the step sets and clears. */
 export const MF_NO_SPRINT = 1;
 export const MF_NO_JUMP = 2;
-/** Carrying too much to move at all. */
+/** Carrying too much to move. */
 export const MF_ROOTED = 4;
-/** Out of breath: set when stamina reaches zero, cleared once a quarter of it has returned. */
+/** Set when stamina reaches zero, cleared once a quarter of it has returned. */
 export const MF_WINDED = 8;
-/** Unconscious: it lies where it is and does nothing. Set by the server. */
+/** Unconscious. */
 export const MF_OUT = 16;
 
 /** A walker starts swimming when this fraction of its height is under water. */
@@ -63,14 +52,14 @@ const SWIM_ENTER = 0.7;
 const SWIM_FLOAT = 0.75;
 /** A swimmer stands up when less than this fraction is under water. */
 const SWIM_EXIT = 0.55;
-/** How fast a swimmer above its float line settles onto it, metres per second. */
+/** A swimmer above its float line settles onto it at this speed, in metres per second. */
 const SWIM_SETTLE = 1;
-/** Each tick, water takes this share of any speed above a swimmer's own. */
+/** Each tick, a body moving faster than 1.5 times its swim speed keeps this share of its velocity. */
 const WATER_DRAG = 0.85;
 
-/** What the last `stepBody` call reports besides the body itself. */
+/** Set by the last stepBody call. */
 export const stepOut = {
-  /** Downward speed at the moment an airborne body touched down this tick; 0 otherwise. */
+  /** Downward speed at which an airborne body touched down this tick, or 0. */
   landSpeed: 0,
 };
 
@@ -78,7 +67,7 @@ export interface MoveParams {
   readonly radius: number;
   readonly height: number;
   readonly eyeHeight: number;
-  /** Capsule height, eye height and share of the walk speed when crouched and when prone. */
+  /** crouchMul and proneMul are shares of the walk speed. */
   readonly crouchHeight: number;
   readonly crouchEye: number;
   readonly crouchMul: number;
@@ -104,20 +93,15 @@ export interface MoveParams {
   readonly staminaSprint: number;
   readonly staminaRegen: number;
   readonly staminaJump: number;
-  /**
-   * How fast the body turns toward where its input looks, in 1/65536 turns per
-   * tick. 0 means it faces there at once, as a survivor does.
-   */
+  /** In 1/65536 turns per tick. 0 means it faces the look at once, as a survivor does. */
   readonly turnRate: number;
-  /** It can move sideways. A body that cannot goes only where it faces. */
+  /** False for a body that moves only the way it faces. */
   readonly strafe: boolean;
 }
 
 /**
- * The predicted state of a body: everything the next step depends on that
- * belongs to the individual. The server sends all of it for the client's own
- * body, and the client never derives any of it from stats, so both sides step
- * with the same numbers.
+ * The predicted state of a body. The server sends all of it for the client's own body, and the client derives none of it
+ * from stats, so both sides step with the same numbers.
  */
 export class Body {
   x = 0;
@@ -128,7 +112,7 @@ export class Body {
   vz = 0;
   grounded = false;
   mode = MODE_WALK;
-  /** STANCE_STAND, STANCE_CROUCH or STANCE_PRONE. Changed only by the step, from the buttons. */
+  /** STANCE_*. Changed only by the step, from the buttons. */
   stance = STANCE_STAND;
   /** Thousandths of a point, 0 .. staminaMax * STAMINA_UNITS. */
   stamina = 100 * STAMINA_UNITS;
@@ -137,22 +121,17 @@ export class Body {
   /** Speed on land and in water, in thousandths of the species value. Set by the server. */
   speedQ = 1000;
   swimQ = 1000;
-  /** Server-set restrictions (MF_ bits). */
+  /** MF_ bits. */
   mflags = 0;
   /**
-   * The species whose movement steps this body (a content index), and where it
-   * faces, in 1/65536 turns. A session's inputs drive one body at a time: its
-   * survivor's, or a creature it rides. Both travel with the body, so the
-   * client steps whatever it was last told it is driving.
+   * The species whose movement steps this body (a content index), and its facing in 1/65536 turns. Both travel with the body,
+   * so the client steps the body it was last told it drives, its survivor's or a mount's.
    */
   kind = 0;
   yaw = 0;
   /**
-   * What it does with what it holds; see shared/sim/weapon.ts. `held` is the
-   * content index of the thing in its hands (0 for nothing), `act` what it is
-   * doing with it and `actTicks` for how many ticks, `rounds` what the weapon
-   * has loaded. `reloadTo` is how many rounds a reload would leave in it, set
-   * by the server from what the body carries.
+   * Action state (shared/sim/weapon.ts). `held` is the content index of the item in hand, 0 for none. `reloadTo` is the rounds a
+   * reload would leave loaded, set by the server from what the body carries.
    */
   held = 0;
   act = 0;
@@ -184,7 +163,7 @@ export class Body {
     this.reloadTo = o.reloadTo;
   }
 
-  /** Same place and motion. */
+  /** Position, velocity and grounded. */
   samePosition(o: Body): boolean {
     return this.x === o.x && this.y === o.y && this.z === o.z && this.vx === o.vx && this.vy === o.vy && this.vz === o.vz && this.grounded === o.grounded;
   }
@@ -210,12 +189,11 @@ export class Body {
   }
 }
 
-/** Height of the capsule in a stance. */
 export function stanceHeight(p: MoveParams, stance: number): number {
   return stance === STANCE_STAND ? p.height : stance === STANCE_CROUCH ? p.crouchHeight : p.proneHeight;
 }
 
-/** Height of the eye above the feet in a stance: where a body looks and aims from. */
+/** Above the feet. A body looks and aims from here. */
 export function stanceEye(p: MoveParams, stance: number): number {
   return stance === STANCE_STAND ? p.eyeHeight : stance === STANCE_CROUCH ? p.crouchEye : p.proneEye;
 }
@@ -227,21 +205,18 @@ const GROUND_PROBE = 0.02;
 const RESOLVE_ITERATIONS = 4;
 const SETTLE_ITERATIONS = 7;
 /**
- * A search that lowers a body onto a surface accepts a height only if the body
- * would still be free this much lower. Without it the search ends exactly on
- * the edge of the collision tolerance, where rounding the result to float32
- * can put it on the wrong side.
+ * A search that lowers a body onto a surface accepts a height only if the body is still free this much lower. Without it the
+ * search ends on the edge of the collision tolerance, where rounding to float32 can put the body on the wrong side.
  */
 const SETTLE_MARGIN = SKIN * 0.75;
-/** Ghost flight, metres per second; sprint multiplies it. */
+/** Metres per second. Sprint multiplies it by GHOST_SPRINT. */
 const GHOST_SPEED = 12;
 const GHOST_SPRINT = 5;
 const refs = new Uint32Array(256);
 
 /**
- * Advance `b` by one tick. `moveX` (strafe right) and `moveZ` (forward) are
- * -127..127; `yaw` and `pitch` are in 1/65536 turns (pitch 16384 is straight
- * up): the quantized values sent on the wire.
+ * `moveX` (strafe right) and `moveZ` (forward) are -127 to 127. `yaw` and `pitch` are in 1/65536 turns, and pitch 16384 is
+ * straight up. These are the quantized values sent on the wire.
  */
 export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   if (b.mode === MODE_NONE) {
@@ -251,8 +226,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     return;
   }
   stepOut.landSpeed = 0;
-  // Its facing follows the look: at once for a body that turns freely, at its own rate for one that does not.
-  // It then moves the way it faces, and one that cannot go sideways ignores being asked to.
+  // The facing follows the look, at once or at turnRate. The body then moves the way it faces.
   if (p.turnRate <= 0 || b.mode === MODE_GHOST) b.yaw = yaw & 0xffff;
   else {
     let turn = ((yaw - b.yaw + 32768) & 0xffff) - 32768;
@@ -275,9 +249,9 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const r = p.radius;
   const flags = b.mflags;
 
-  // Stance: going lower happens at once; rising needs room for the taller capsule.
+  // Going lower happens at once. Rising needs room for the taller capsule.
   let stance = b.stance;
-  // Unconscious, it lies down whatever is pressed, and nothing pressed moves it.
+  // An unconscious body lies prone and ignores every button.
   const out = (flags & MF_OUT) !== 0;
   if (out) buttons = 0;
   const want = out || (buttons & BTN_PRONE) !== 0 ? STANCE_PRONE : (buttons & BTN_CROUCH) !== 0 ? STANCE_CROUCH : STANCE_STAND;
@@ -332,7 +306,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     vy -= p.gravity * dt;
     if (vy < -TERMINAL_SPEED) vy = -TERMINAL_SPEED;
   }
-  /** On the ground for this whole tick: may step up and follow the ground down. */
+  /** On the ground for the whole tick, so it may step up and follow the ground down. */
   const walking = wasGrounded && !jumped;
 
   // Split the move so no substep exceeds half a radius.
@@ -399,7 +373,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     let blocked = false;
     for (let iter = 0; iter < RESOLVE_ITERATIONS; iter++) {
       let moved = false;
-      // Structures, then resource nodes: both are boxes in a store of the same kind.
+      // Structures, then resource nodes. Both stores hold boxes.
       for (let pass = 0; pass < 2; pass++) {
         const store = pass === 0 ? structs : w.nodes;
         if (!store) continue;
@@ -464,8 +438,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     z = nz;
   }
 
-  // Ground state: resting on terrain or a structure, or close enough above
-  // support to follow it down (slopes, stairs, kerbs) instead of going airborne.
+  // Grounded means resting on terrain or a structure, or close enough above support to follow it down (slopes, stairs, kerbs).
   let grounded = false;
   if (vy <= 0) {
     if (y - hf.heightAt(x, z) <= GROUND_PROBE || restsOnStructure(w, x, y, z, r, height, GROUND_PROBE)) grounded = true;
@@ -487,8 +460,8 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   }
   if (grounded && !wasGrounded) stepOut.landSpeed = fall;
 
-  // Deep enough to float: from the next tick the body swims, and a swimmer has no stance.
-  // One held low by a ceiling stays as it is: a swimmer is as tall as a body standing.
+  // Deep enough to float, the body swims from the next tick, and a swimmer has no stance.
+  // A swimmer is as tall as a standing body, so one held low by a ceiling stays as it is.
   if (hf.seaLevel - y > p.height * SWIM_ENTER && (standing || capsuleFree(w, x, y, z, r, p.height))) {
     b.mode = MODE_SWIM;
     stance = STANCE_STAND;
@@ -496,7 +469,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     stepOut.landSpeed = 0;
   }
 
-  // Round to float32: the stored and transmitted precision. Both sides do this.
+  // Round to float32, the stored and transmitted precision. Both sides do this.
   b.x = Math.fround(x);
   b.y = Math.fround(y);
   b.z = Math.fround(z);
@@ -508,16 +481,11 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   b.stamina = stamina;
 }
 
-/** Sprint is held, allowed, and there is breath for it. */
 function canSprint(b: Body, buttons: number): boolean {
   return (buttons & BTN_SPRINT) !== 0 && (b.mflags & (MF_NO_SPRINT | MF_ROOTED | MF_WINDED)) === 0 && b.stamina > 0;
 }
 
-/**
- * One tick of stamina: drain while sprinting, recover otherwise. Sets and
- * clears MF_WINDED on the body and returns the new stamina, which the caller
- * stores after taking any jump cost from it.
- */
+/** Sets and clears MF_WINDED on the body. Returns the new stamina, which the caller stores after taking any jump cost from it. */
 function spendStamina(b: Body, p: MoveParams, sprint: boolean): number {
   const cap = b.staminaMax * STAMINA_UNITS;
   let stamina = b.stamina > cap ? cap : b.stamina;
@@ -535,11 +503,7 @@ function spendStamina(b: Body, p: MoveParams, sprint: boolean): number {
   return stamina;
 }
 
-/**
- * Swimming: movement in three dimensions along the look direction, with no
- * gravity and no ground to follow. The same rule as on land keeps it out of
- * solid space: a position is committed only if `capsuleFree` accepts it.
- */
+/** Moves in three dimensions along the look direction, with no gravity. As on land, a position is committed only if capsuleFree accepts it. */
 function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   const hf = w.hf;
   const structs = w.structs;
@@ -563,7 +527,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   const stamina = spendStamina(b, p, sprint);
   const speed = p.swimSpeed * (b.swimQ / 1000) * (sprint ? p.swimSprintMul : 1);
 
-  // Water takes the speed off anything arriving faster than it could swim.
+  // Water slows a body that arrives faster than 1.5 times its swim speed.
   let vx = b.vx;
   let vy = b.vy;
   let vz = b.vz;
@@ -619,15 +583,14 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
     else if (nx > maxX) nx = maxX;
     if (nz < r) nz = r;
     else if (nz > maxZ) nz = maxZ;
-    // The surface: a swimmer rises no higher than where it floats, and one
-    // that is higher (it has just walked in) settles down to that line.
+    // A swimmer rises no higher than its float line. One that walked in above the line settles down to it.
     if (ny > floatY) {
       const settle = y - (SWIM_SETTLE * scale) / n;
       ny = y > floatY ? (settle > floatY ? settle : floatY) : floatY;
       if (vy > 0) vy = 0;
     }
 
-    // The bottom: slide up along it when the rise is small, else along one axis, else stay.
+    // At the bottom, slide up when the rise is small, else along one axis, else stay.
     let h = hf.heightAt(nx, nz);
     if (ny < h) {
       if (h - ny > maxRise) {
@@ -689,7 +652,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
     z = nz;
   }
 
-  // Too shallow to float: stand up if there is something to stand on, fall if there is not.
+  // Too shallow to float, so it stands if there is support and falls if there is none.
   let grounded = false;
   if (hf.seaLevel - y < p.height * SWIM_EXIT) {
     b.mode = MODE_WALK;
@@ -710,7 +673,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   b.stamina = stamina;
 }
 
-/** Free flight along the look direction. No collision; bounded to the map's box. */
+/** No collision. Bounded to the map's box. */
 function stepGhost(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, dt: number): void {
   let mx = moveX / 127;
   let mz = moveZ / 127;
