@@ -6,8 +6,8 @@
 // A block is 4 by 4 texels in 16 bytes. A picture is its blocks, row by row from the top. One that is not a multiple
 // of four across is padded by repeating its last column and row.
 //
-// The same pixels give the same bytes on any machine: every choice is made with integers, or with floating point
-// add, subtract, multiply, divide and square root, which are exact everywhere.
+// The same pixels give the same bytes on any machine and in any engine: every choice is made with integers, or with
+// floating point add, subtract, multiply and divide, which are exact everywhere.
 
 /** Blocks in a picture. */
 export function blockCount(width: number, height: number): number {
