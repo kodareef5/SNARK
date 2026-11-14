@@ -32,8 +32,8 @@ function asked(ctx: OwnContext, c: Client, ev: number, data: Record<string, numb
   return refused === "";
 }
 
-/** The world's spawn points come first, then as many beds as fit. */
-export const MAX_RESPAWN_POINTS = 16;
+/** The world's spawn points come first, then the beds. A place is chosen by one byte, so that is how many the list holds. */
+export const MAX_RESPAWN_POINTS = 255;
 
 /** A bed a survivor may respawn at. `wait` is in seconds. */
 export interface BedPoint {
