@@ -97,6 +97,8 @@ export class Taming {
   private readonly rng: Rng;
   /** Pids of creatures being tamed. Few at any time. */
   private readonly lying = new Set<number>();
+  /** Those of them that a tame limit turned away, whose taker has been told. Each is offered again once it has been shut. */
+  private readonly held = new Set<number>();
   private readonly drugged: number;
 
   constructor(ctx: TamingContext, seed: number) {
@@ -165,6 +167,7 @@ export class Taming {
       this.ctx.records.dirty.add(rec.pid);
     }
     this.lying.delete(rec.pid);
+    this.held.delete(rec.pid);
   }
 
   step(): void {
@@ -174,10 +177,17 @@ export class Taming {
       const rec = records.byPid.get(pid);
       if (!rec || !rec.tame || !rec.out) {
         this.lying.delete(pid);
+        this.held.delete(pid);
         continue;
       }
       // The tame goes to the session that has it open, or the last one that did.
-      for (const c of game.clients) if (c?.active && c.open === pid && rec.tame.by !== c.pid) rec.tame.by = c.pid;
+      let open = false;
+      for (const c of game.clients) {
+        if (!c?.active || c.open !== pid) continue;
+        open = true;
+        if (!this.held.has(pid) && rec.tame.by !== c.pid) rec.tame.by = c.pid;
+      }
+      if (!open) this.held.delete(pid);
       // A creature that already has the affinity it needs finishes once someone opens it.
       if (rec.tame.by !== 0 && rec.tame.affinity >= tameNeeded(this.ctx.world.reg.taming[rec.kind]!, rec.genome ? rec.genome.level : 1) - 1e-6) {
         this.finish(rec);
@@ -300,6 +310,7 @@ export class Taming {
       tame.by = 0;
       tame.due = 0;
       tame.seen = -1;
+      this.held.add(rec.pid);
       this.ctx.onNotice?.(owner.pid, full);
       return;
     }
@@ -359,6 +370,7 @@ export class Taming {
     rec.te = te;
     rec.team = owner.team;
     this.lying.delete(rec.pid);
+    this.held.delete(rec.pid);
     this.tamed++;
     records.dirty.add(rec.pid);
     // It wakes. The drugged buff and all its torpor go.

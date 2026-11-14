@@ -413,6 +413,35 @@ test("what it does about others is its stance: passive, nothing; neutral, it goe
   expect(h.host.items.audit()).toEqual([]);
 });
 
+test("at its tribe's limit a creature fed full waits, and whoever is looking into it is told so once, and once more each time it is opened again", () => {
+  const { h, ada, at, rec: me } = camp();
+  tameNow(h, ada, at, "raptor", -4, 3);
+  h.say(ada, "setting MaxPersonalTamedDinos 1");
+  const { e, rec } = knockOut(h, at, "raptor", 2.6, 1);
+  press(h, ada, e);
+  expect(ada.open).not.toBeNull();
+  const notices = (): number => ada.log.filter((l) => l.text === "Your tribe has as many tamed creatures as it may (1).").length;
+  // One piece is all it needs at this server's rate. It eats it with her looking on.
+  h.host.survival.add(rec, V_FOOD, -80);
+  give(h, ada, "meat", 1, 0);
+  h.run(2000);
+  expect([rec.team, rec.tame !== null, ada.open !== null, notices()]).toEqual([0, true, true, 1]);
+  ada.command(CMD_CLOSE);
+  h.run(300);
+  press(h, ada, e);
+  h.run(1000);
+  expect([ada.open !== null, notices()]).toEqual([true, 2]);
+  // With room in the tribe, it is hers the next time she looks.
+  h.say(ada, "setting MaxPersonalTamedDinos 2");
+  h.run(500);
+  expect(rec.team).toBe(0);
+  ada.command(CMD_CLOSE);
+  h.run(300);
+  press(h, ada, e);
+  h.run(500);
+  expect([rec.team, rec.tame, notices()]).toEqual([me.team, null, 2]);
+});
+
 test("a creature that is somebody's is next due to eat at the same moment after a restart as before it", () => {
   const dir = mkdtempSync(join(tmpdir(), "snark-meal-"));
   const dbPath = join(dir, "world.db");
