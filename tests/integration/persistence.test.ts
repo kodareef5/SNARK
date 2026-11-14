@@ -214,6 +214,40 @@ test("a record larger than the writer is saved whole, and one larger than a save
   store.close();
 });
 
+test("a record carries the revision of its parts: a build from before the saddle refuses it, and this one refuses a later", () => {
+  const db = join(dir, "revision.db");
+  const reg = coreRegistry();
+  const saddle = reg.index.get("core:saddle_raptor")!;
+  const host = createHost(reg, { dbPath: db });
+  const rec = host.records.create(reg.index.get("core:raptor")!, "mount");
+  rec.saddle = saddle;
+  host.shutdown();
+  /** Reads the record's first byte, and writes `to` there if given. */
+  const revision = (to?: number): number => {
+    const store = new WorldStore(db, reg);
+    const data = (store.db.query("SELECT data FROM entities WHERE pid = ?").get(rec.pid) as { data: Uint8Array }).data;
+    const was = data[0]!;
+    if (to !== undefined) {
+      data[0] = to;
+      store.db.query("UPDATE entities SET data = ? WHERE pid = ?").run(data, rec.pid);
+    }
+    store.close();
+    return was;
+  };
+  // Every build before this one reads revision 1 alone. One from before the saddle wrote a tame's part back without it.
+  const ours = revision();
+  expect(ours).toBeGreaterThan(1);
+  revision(ours + 1);
+  expect(() => createHost(reg, { dbPath: db })).toThrow(new RegExp(`${rec.pid} was saved by a newer build[^]*start the save with that build or a newer one`));
+  // What older builds wrote still loads, and the refusal changed nothing.
+  for (const old of [1, ours]) {
+    revision(old);
+    const back = createHost(reg, { dbPath: db });
+    expect(back.records.byPid.get(rec.pid)!.saddle).toBe(saddle);
+    back.persistence!.store.close();
+  }
+});
+
 test("commit callbacks run only after the transaction is durable", () => {
   const host = createHost(coreRegistry(), { dbPath: join(dir, "ack.db") });
   const p = host.persistence!;

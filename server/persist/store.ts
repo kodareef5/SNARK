@@ -17,7 +17,13 @@ import { holdSave, type SaveLock } from "./lock.ts";
 
 export const SCHEMA_VERSION = 2;
 const CHUNK_FORMAT = 1;
-const RECORD_FORMAT = 1;
+/**
+ * The revision of a record's parts, in its first byte. Raise it whenever a part gains a field, or a part is added that a build
+ * without it must not pass over. A build reads every revision up to its own and refuses a later one: it would write a part it
+ * knows back without what was added. Revision 1 grew without being raised (a tame's stance and saddle, a bed's wait, a fire,
+ * the slot in hand), so builds from before each of those read newer saves and dropped them. 2 is all of that.
+ */
+const RECORD_FORMAT = 2;
 // A record is a list of components, each an id and a length-prefixed blob. A build that does not know a
 // component keeps its bytes and writes them back, so a save survives a server that lacks a content pack.
 const COMP_INVENTORY = 1;
@@ -503,7 +509,9 @@ export class WorldStore {
       rec.z = row.z;
       rec.yaw = row.yaw;
       r.reset(row.data);
-      if (r.u8() !== RECORD_FORMAT) throw new Error(`entity ${row.pid}: unknown record format`);
+      const format = r.u8();
+      if (format > RECORD_FORMAT) throw new Error(`entity ${row.pid} was saved by a newer build (record format ${format}, and this build reads up to ${RECORD_FORMAT}): start the save with that build or a newer one`);
+      if (format === 0) throw new Error(`entity ${row.pid}: unknown record format`);
       rec.name = r.string(256);
       const c = this.cr;
       for (let n = r.varint(); n > 0 && !r.overflow; n--) {
