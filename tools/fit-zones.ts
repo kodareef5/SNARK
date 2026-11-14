@@ -39,7 +39,7 @@ function axisOf(b: number): [number, number, number] {
 }
 
 function fit(): string[] {
-  const pack = parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/human-bodies.snpk", import.meta.url))));
+  const pack = parsePack(new Uint8Array(readFileSync(new URL("../assets/source/core/humans/human-bodies/human-bodies.snpk", import.meta.url))));
   const points: number[][] = Array.from({ length: HUMAN.zoneBones }, () => []);
   for (const m of pack.header.meshes) {
     if (m.id.includes("/hair/") || m.id.includes("/beard/")) continue;

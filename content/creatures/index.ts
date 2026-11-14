@@ -1,0 +1,14 @@
+// One file a creature: its species and what belongs to it alone (its egg, its saddle and how the saddle is made).
+// A new creature is a file here and a line below. A modelled one names a mesh and a skeleton, which its asset folder
+// makes (assets/source/README.md).
+//
+// Stats are [base, gain per wild level, gain per level an owner gives]. The last is the raw gain times the reference
+// game's default multiplier for the stat (shared/sim/genome.ts TAMED_GAIN): health 27% x 0.2 = 0.054, melee
+// 10% x 0.17 = 0.017. A server's PerLevelStatsMultiplier settings scale each from there.
+
+import type { Def } from "../../shared/content/defs.ts";
+import { GRAZER } from "./grazer.ts";
+import { PARASAUR } from "./parasaur.ts";
+import { RAPTOR } from "./raptor.ts";
+
+export const CREATURES: readonly Def[] = [...GRAZER, ...PARASAUR, ...RAPTOR];

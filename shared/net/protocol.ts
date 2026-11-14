@@ -36,7 +36,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -52,6 +52,19 @@ export const S_TEXT = 7;
 export const S_OWN = 8;
 export const S_NODES = 9;
 export const S_EVENT = 10;
+/**
+ * One chunk's structures as the map shows them (shared/world/tactical.ts). Reliable. chunk u16, level 2 bits (cells of 4, 8, 16
+ * or 32 m), team count 3 bits, a varint per team, then runs until the chunk's cells are covered, row by row: length-1 (8 bits,
+ * less 2 for each level), filled 1 bit, and if filled: palette colour u8, height band 3 bits, owner 3 bits (an index into the
+ * teams, or 7 for a team not among them).
+ */
+export const S_TACTICAL = 11;
+/**
+ * Tribe mates and tames anywhere on the map, once a second. Unreliable. The receiver's own place in the list u8 (255 for none),
+ * the map zoom the server holds for it 2 bits, the players rule 2 bits (off, view, all), count u8, then per mark: kind 3 bits
+ * (mate, tame, other), x and z as 14-bit shares of the map, heading 5 bits.
+ */
+export const S_MARKS = 12;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -149,6 +162,8 @@ export const CMD_OPEN = 23;
  * limits and lets them change once a second. A client that never asks is shown VIEW_DEFAULT entities in the server's own budget.
  */
 export const CMD_VIEW = 24;
+/** The finest map zoom the client is showing, 2 bits. Structure cells are sent at the size that suits it (S_TACTICAL). */
+export const CMD_MAP_ZOOM = 25;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;

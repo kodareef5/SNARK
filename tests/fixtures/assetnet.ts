@@ -1,8 +1,9 @@
 // A network made of numbers, for the asset library: a delay, a rate, a share of requests that fail, and a seed.
-// It serves parts of the files it is given, checks each against the hash asked for as the browser's worker will,
-// and never delivers what was cancelled. The same seed and the same requests give the same arrivals.
+// It serves parts of the files it is given, one or several to a request, checks each against the hash asked for as
+// the browser's worker will, and never delivers what was cancelled. Asked to, it keeps the parts it has delivered as
+// the worker does. The same seed and the same requests give the same arrivals.
 
-import { FAIL_HASH, FAIL_NET, FAIL_RANGE, type AssetArrival, type AssetPort, type AssetRequest } from "../../client/core/assets/port.ts";
+import { FAIL_HASH, FAIL_NET, FAIL_RANGE, type AssetArrival, type AssetPart, type AssetPort, type AssetRequest } from "../../client/core/assets/port.ts";
 import { Rng } from "../../shared/rng.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 
@@ -14,10 +15,14 @@ export interface NetOptions {
   /** The share of requests that fail part way: 0 to 1. */
   loss?: number;
   seed?: number;
+  /** Keeps every part delivered. Asked for again, a kept part comes with the next answer and costs the link nothing. */
+  keep?: boolean;
 }
 
 interface Transfer {
   request: AssetRequest;
+  /** The parts that come over the link. The others are kept ones. */
+  link: AssetPart[];
   /** When its first byte comes, and the bytes still to come. */
   startsAt: number;
   left: number;
@@ -29,8 +34,10 @@ export class FakeNet implements AssetPort {
   readonly cache = { used: 0, limit: 0, mode: "none" as const, filling: 0 };
   /** Parts asked for with `fill`. */
   readonly filled: number[] = [];
-  /** Every request and cancellation, in order, for comparing two runs. */
+  /** Every request and cancellation, in order, for comparing two runs. A request for several parts says how many. */
   readonly log: string[] = [];
+  /** How many times each part has come whole over the link, by file and offset. */
+  readonly over = new Map<string, number>();
   /** The most requests under way at once, and the slots cancelled. */
   mostAtOnce = 0;
   readonly cancelled = new Set<number>();
@@ -39,6 +46,7 @@ export class FakeNet implements AssetPort {
   private readonly latencyMs: number;
   private readonly rate: number;
   private readonly rng: Rng;
+  private readonly kept: Set<string> | null;
   private now = 0;
   private transfers: Transfer[] = [];
   private readonly done: AssetArrival[] = [];
@@ -49,13 +57,17 @@ export class FakeNet implements AssetPort {
     this.rate = opts.bytesPerSecond ?? Infinity;
     this.loss = opts.loss ?? 0;
     this.rng = new Rng(opts.seed ?? 1);
+    this.kept = opts.keep ? new Set() : null;
   }
 
   request(r: AssetRequest): void {
-    const bytes = r.parts.reduce((sum, p) => sum + p.length, 0);
-    this.log.push(`${Math.round(this.now)} ask ${r.slot} ${r.priority.toFixed(4)}${r.fresh ? " fresh" : ""}`);
+    const link = r.parts.filter((p) => r.fresh || !this.kept?.has(`${r.file}:${p.offset}`));
+    const bytes = link.reduce((sum, p) => sum + p.length, 0);
+    this.log.push(`${Math.round(this.now)} ask ${r.slot} ${r.priority.toFixed(4)}${r.parts.length > 1 ? ` x${r.parts.length}` : ""}${r.fresh ? " fresh" : ""}`);
     this.cancelled.delete(r.slot);
-    this.transfers.push({ request: r, startsAt: this.now + this.latencyMs, left: bytes, failAt: this.rng.float() < this.loss ? Math.floor(bytes * this.rng.float()) : -1 });
+    // What is all kept does not touch the link, so it neither waits nor fails.
+    const failAt = link.length > 0 && this.rng.float() < this.loss ? Math.floor(bytes * this.rng.float()) : -1;
+    this.transfers.push({ request: r, link, startsAt: this.now + (link.length > 0 ? this.latencyMs : 0), left: bytes, failAt });
     this.mostAtOnce = Math.max(this.mostAtOnce, this.transfers.length);
   }
 
@@ -77,27 +89,34 @@ export class FakeNet implements AssetPort {
     const each = running.length === 0 ? 0 : (this.rate * dt) / 1000 / running.length;
     for (const t of running) {
       const file = this.files[t.request.file]!;
-      const part = t.request.parts[0]!;
+      const parts = t.request.parts;
       // A range that starts past the end of the file is refused at once, as a server answers 416.
-      if (part.offset >= file.length) {
+      if (parts.some((p) => p.offset >= file.length)) {
         this.finish(t, null, FAIL_RANGE, 0);
         continue;
       }
       t.left -= each;
       if (t.failAt >= 0 && t.left <= t.failAt) this.finish(t, null, FAIL_NET, 0);
       else if (t.left <= 0) {
-        const data = file.slice(part.offset, part.offset + part.length);
+        const got = parts.map((p) => file.subarray(p.offset, p.offset + p.length));
+        const bytes = got.reduce((sum, part) => sum + part.length, 0);
+        const linked = t.link.reduce((sum, p) => sum + p.length, 0);
         // A range that runs off the end comes back short.
-        if (data.length < part.length) this.finish(t, null, FAIL_NET, data.length);
-        else if (part.hash !== "" && partHash(data) !== part.hash) this.finish(t, null, FAIL_HASH, data.length);
-        else this.finish(t, data, 0, data.length);
+        if (got.some((part, k) => part.length < parts[k]!.length)) this.finish(t, null, FAIL_NET, bytes);
+        else if (got.some((part, k) => parts[k]!.hash !== "" && partHash(part) !== parts[k]!.hash)) this.finish(t, null, FAIL_HASH, linked);
+        else {
+          for (const p of t.link) this.over.set(`${t.request.file}:${p.offset}`, (this.over.get(`${t.request.file}:${p.offset}`) ?? 0) + 1);
+          for (const p of parts) this.kept?.add(`${t.request.file}:${p.offset}`);
+          // Several parts come as one run of bytes, in the order asked.
+          this.finish(t, got.length === 1 ? got[0]!.slice() : Buffer.concat(got), 0, linked, bytes - linked);
+        }
       }
     }
   }
 
-  private finish(t: Transfer, data: Uint8Array | null, fail: number, fetched: number): void {
+  private finish(t: Transfer, data: Uint8Array | null, fail: number, fetched: number, cached = 0): void {
     this.transfers = this.transfers.filter((x) => x !== t);
-    this.done.push({ slot: t.request.slot, data, fail, fetched, cached: 0 });
+    this.done.push({ slot: t.request.slot, data, fail, fetched, cached });
   }
 
   take(out: AssetArrival[]): number {

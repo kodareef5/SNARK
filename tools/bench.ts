@@ -35,9 +35,12 @@ import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { AUDIO_HEADER, AUTH_BYTES, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, VOICE_BATCH, flagsOf, readBatch, writeAudio, writeAuth } from "../shared/voice/packet.ts";
 import type { VoicePeer } from "../server/voice.ts";
 import { crowdRows, fullViewRows } from "./bench/limits.ts";
+import { benchTactical } from "./bench/tactical.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
+import { benchAgent } from "./bench/agent.ts";
+import { benchPoses } from "./bench/poses.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -746,6 +749,8 @@ let siegeChunk = -1;
   record("commit time under it, 99th percentile (a commit that writes the chunk)", percentile(commitTimes, 0.99), "ms", 10);
 }
 
+benchTactical(host, siegeChunk, (ticks) => run(ticks, null), section, record);
+
 // ---------------------------------------------------------------- breeding
 section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and ten survivors among them");
 {
@@ -1154,6 +1159,9 @@ section("Asset library (headless): 64 rocks of five levels and a 263,169-vertex 
   record("2,000 things: choose, want and draw each, with the strict card, median", percentile(frames, 0.5), "ms", 0.15);
   record("2,000 things: the same, 99th percentile", percentile(frames, 0.99), "ms", 0.5);
 }
+
+benchAgent(section, record);
+benchPoses(section, record);
 
 rmSync(dir, { recursive: true, force: true });
 const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);

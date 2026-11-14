@@ -2,7 +2,9 @@ import { expect, test } from "bun:test";
 import { HudModel, headingOf, minimapImage, updateHud } from "../../client/core/hud.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { probePasses, provingProbes } from "../../client/core/selfcheck.ts";
+import { MARKER_DEATH, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
+import { latOf, lonOf } from "../../shared/world/coords.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import { provingView } from "../../tools/snap.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -10,7 +12,7 @@ import { Harness } from "../fixtures/net.ts";
 test("HUD coordinates, compass and minimap markers follow the map convention", () => {
   const h = new Harness();
   const a = h.join("ada");
-  h.join("bo");
+  const b = h.join("bo");
   h.run(600);
   const hud = new HudModel();
   const remote = new RemoteSample();
@@ -21,17 +23,50 @@ test("HUD coordinates, compass and minimap markers follow the map convention", (
   expect(hud.lat).toBeCloseTo((1 - 240 / 512) * 100, 0);
   expect(hud.compass).toBe("N");
   expect(hud.nearby).toBe(1);
-  expect(hud.markers.map((m) => m.kind)).toEqual(["player", "self"]);
+  // The survivor beside it is of another tribe, and by the server's rule is not marked.
+  expect(hud.markers.map((m) => m.kind)).toEqual(["self"]);
   expect(hud.vitals.map((v) => v.id)).toEqual(["health", "stamina", "food", "water", "oxygen", "torpor"]);
 
   // Walking north lowers latitude, and north is up on the minimap.
-  const v0 = hud.markers[1]!.v;
+  const v0 = hud.markers[0]!.v;
   h.pilots[0]!.moveZ = 1;
   h.run(2000);
   a.sampleRemote(remote);
   updateHud(hud, a, remote, 60);
-  expect(hud.markers[1]!.v).toBeLessThan(v0);
+  expect(hud.markers[0]!.v).toBeLessThan(v0);
   expect(hud.speed).toBeGreaterThan(4);
+  h.pilots[0]!.moveZ = 0;
+
+  // Markers are listed the most important first: the reader, its mates, its tames, strangers if the rule shows them, then creatures in view.
+  const kinds = (): string[] => {
+    h.run(1500);
+    a.sampleRemote(remote);
+    updateHud(hud, a, remote, 60);
+    return hud.markers.map((m) => m.kind);
+  };
+  const ents = h.world.ents;
+  const wild = h.host.spawnCreature("core:dummy", ents.x[h.ent(a)]! + 6, ents.z[h.ent(a)]! + 6, 1);
+  const mine = h.host.spawnCreature("core:dummy", ents.x[h.ent(a)]! - 6, ents.z[h.ent(a)]! + 6, 1);
+  const rec = (s: typeof a) => h.host.records.byPid.get(h.client(s)!.pid)!;
+  h.host.taming.give(h.host.records.byPid.get(ents.pid[mine]!)!, rec(a), 0, "forced");
+  expect(h.host.setSetting("MapPlayers", "view")).toBe("");
+  expect(kinds()).toEqual(["self", "tame", "player", "creature"]);
+  h.host.tribes.create(rec(a), "Night Shift");
+  h.host.tribes.invite(rec(a), rec(b), true);
+  h.host.tribes.accept(rec(b));
+  expect(kinds()).toEqual(["self", "mate", "tame", "creature"]);
+  // The mate and the tame are also in the server's marks, and are drawn once, from the view.
+  h.run(10000);
+  expect(a.tactical.marks.count).toBe(3);
+  expect(kinds()).toEqual(["self", "mate", "tame", "creature"]);
+  expect(ents.team[wild]).toBe(0);
+  // While it chooses where to return to life, the places it may choose are marked, after its deaths.
+  a.sessionState = SESSION_DEAD;
+  a.markers.push({ kind: MARKER_DEATH, x: 200, y: 0, z: 200, tick: 1 });
+  a.respawnPoints.push({ name: "Plaza", x: 256, z: 240, wait: 0 });
+  updateHud(hud, a, remote, 60);
+  expect(hud.markers.map((m) => m.kind)).toEqual(["self", "mate", "tame", "death", "spawn", "creature"]);
+  expect([hud.markers[4]!.u, hud.markers[4]!.v]).toEqual([lonOf(h.world.hf, 256) / 100, latOf(h.world.hf, 240) / 100]);
 
   // Facing +X is west (270) and facing -X is east (90).
   expect(headingOf(Math.PI / 2)).toBeCloseTo(270, 6);

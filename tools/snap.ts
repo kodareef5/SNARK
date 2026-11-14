@@ -7,12 +7,14 @@ import { App } from "../client/core/app.ts";
 import { Camera } from "../client/core/render/camera.ts";
 import { FakeNet, type NetOptions } from "../tests/fixtures/assetnet.ts";
 import { Harness } from "../tests/fixtures/net.ts";
-import type { FramePacket } from "../client/core/render/packet.ts";
+import { writeBones } from "../client/core/render/characters.ts";
+import { DRAW_PLAIN, DRAW_SKINNED, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import { Falling } from "../client/core/rubble.ts";
 import { RemoteSample, type ClientSession, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
 import { AnimState } from "../shared/anim/pose.ts";
+import type { Rig } from "../shared/anim/rigs.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
 import { Rng } from "../shared/rng.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
@@ -24,10 +26,11 @@ import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../cont
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
-import type { Heightfield } from "../shared/world/heightfield.ts";
+import { Heightfield } from "../shared/world/heightfield.ts";
 import { NodeField } from "../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_SPAWN, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
+import { findAssets } from "./art/assets.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { splitPack } from "./pack/split.ts";
 import { HudModel, mapU, mapV } from "../client/core/hud.ts";
@@ -166,13 +169,19 @@ function idWithSeed(seed: number): number {
   return 0;
 }
 
-/** One row per modelled creature: standing, walking, running and striking, with a survivor beside it for size and a rider on the second. */
-export function creaturesScene(view: ProvingView, tick: number, facing: number): void {
+/**
+ * One row per modelled creature: standing, walking, running and striking, with a survivor beside it for size and a rider on the second.
+ * `samples` gives each species the six region colours to be drawn in.
+ */
+export function creaturesScene(view: ProvingView, tick: number, facing: number, samples: ReadonlyMap<string, readonly number[]> = new Map()): void {
   const r = view.remote;
   r.count = 0;
   r.tick = tick;
   const st = new AnimState();
-  const kinds = ["core:parasaur", "core:raptor"].map((id) => view.reg.index.get(id)!);
+  // Every creature that is drawn on a skeleton of its own.
+  const species = view.reg.defs.flatMap((d) => (d?.type === "species" && d.class === "creature" && d.skeleton !== undefined ? [d] : []));
+  const kinds = species.map((d) => view.reg.index.get(d.id)!);
+  const colours = species.map((d) => samples.get(d.id) ?? [d.color]);
   // Speed in steps of 0.6 m/s, and whether it is striking.
   const rows: readonly (readonly [number, boolean])[] = [[0, false], [4, false], [12, false], [0, true]];
   const put = (kind: number, x: number, z: number, colors: readonly number[]): number => {
@@ -199,9 +208,10 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
   };
   kinds.forEach((kind, j) => {
     const z = 232 + j * 9;
-    const gap = j === 0 ? 9 : 5;
+    // Wide enough apart for the creature's length.
+    const gap = Math.round(species[j]!.radius * 8.2);
     rows.forEach(([speed, strike], i) => {
-      const n = put(kind, 256 + (1.5 - i) * gap, z, j === 0 ? [9, 16, 13, 8] : [5, 15, 11]);
+      const n = put(kind, 256 + (1.5 - i) * gap, z, colours[j]!);
       st.speed = speed;
       // Each body is a little further into its clip, and the strike is part way through.
       r.id[n] = idWithSeed(i * 5) + 1024 * (n + 1);
@@ -209,7 +219,7 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
       r.anim[n] = st.pack();
       st.setAction(ACT_NONE, HOLD_HANDS, 0);
     });
-    put(view.reg.index.get("core:survivor")!, 256 + 1.5 * gap + (j === 0 ? 5.5 : 2.6), z, []);
+    put(view.reg.index.get("core:survivor")!, 256 + 1.5 * gap + species[j]!.radius * 5, z, []);
     // A rider sits on the second creature of the row, in the low stance a rider has.
     const mount = r.count - 4;
     const rider = put(view.reg.index.get("core:survivor")!, r.x[mount]!, z, []);
@@ -232,14 +242,17 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number):
     r.tick = now;
     kinds.forEach((kind, j) => {
       const z = 232 + j * 7;
-      const gap = j === 0 ? 4.2 : 2.6;
+      const gap = species[j]!.radius * 4;
       [1, 0, 0.3, 0.75].forEach((m, i) => {
-        const n = put(kind, 250 + i * gap, z, j === 0 ? [9, 16, 13, 8] : [5, 15, 11]);
+        const n = put(kind, 250 + i * gap, z, colours[j]!);
         r.span[n] = m < 1 ? 1000 : 0;
         r.grown[n] = m < 1 ? now - m * 1000 + 1000 : 0;
       });
-      const egg = put(view.reg.index.get(j === 0 ? "core:egg_parasaur" : "core:egg_raptor")!, 250 + 4 * gap - 1, z, []);
-      r.flags[egg] = 1 | 8;
+      const laid = view.reg.index.get(species[j]!.breeds?.egg ?? "");
+      if (laid !== undefined) {
+        const egg = put(laid, 250 + 4 * gap - 1, z, []);
+        r.flags[egg] = 1 | 8;
+      }
       put(view.reg.index.get("core:survivor")!, 250 + 4 * gap + 0.2, z, []);
     });
     cam.x = 258.5;
@@ -448,6 +461,98 @@ export function clientPicture(width: number, height: number, look: Uint8Array | 
   return raster.color;
 }
 
+export interface ModelShot {
+  /** Index of the mesh in the pack, and the level of it to draw. */
+  mesh: number;
+  level: number;
+  /** Degrees the camera stands around the model from its front, toward its left, and above its middle. */
+  around: number;
+  above: number;
+  /** The point looked at, and the radius in metres of the ball about it that the picture holds. */
+  centre: readonly [number, number, number];
+  radius: number;
+  /** The rig a skinned mesh follows, as it is posed (`rig.solved`). Null for a rigid mesh. */
+  rig: Rig | null;
+  /** Palette index of each colour region. */
+  colors: readonly number[];
+}
+
+/**
+ * One mesh of a pack on its own: no world and no content, so an asset can be looked at before anything uses it
+ * (tools/art/sheet.ts). The light stays over the camera's left shoulder, so every side is lit alike.
+ */
+export class ModelView {
+  readonly raster: Rasterizer;
+  readonly cam = new Camera();
+  private readonly packet = new FramePacket();
+  private readonly writer = new InstanceWriter(this.packet.transient);
+
+  constructor(pack: Pack, width: number, height: number, background: readonly [number, number, number]) {
+    this.raster = new Rasterizer(width, height, pack, new Heightfield({ chunksX: 1, chunksZ: 1 }, 64, 0, 1));
+    this.cam.aspect = width / height;
+    // Narrow, so that near and far parts are drawn nearly the same size.
+    this.cam.fovY = 0.2;
+    this.packet.sky.set(background);
+    this.packet.fogStart = 1e8;
+    this.packet.fogEnd = 2e8;
+  }
+
+  draw(shot: ModelShot): void {
+    const { cam, packet: p } = this;
+    const a = (shot.around * Math.PI) / 180;
+    const e = (shot.above * Math.PI) / 180;
+    // Far enough off that the ball fits the narrower way.
+    const half = Math.min(cam.fovY / 2, Math.atan(Math.tan(cam.fovY / 2) * cam.aspect));
+    const far = shot.radius / Math.sin(half);
+    cam.x = shot.centre[0] + far * Math.sin(a) * Math.cos(e);
+    cam.y = shot.centre[1] + far * Math.sin(e);
+    cam.z = shot.centre[2] + far * Math.cos(a) * Math.cos(e);
+    cam.yaw = a + Math.PI;
+    cam.pitch = -e;
+    cam.near = Math.max(0.05, far - shot.radius * 1.5);
+    cam.far = far + shot.radius * 1.5;
+    cam.update();
+    p.beginFrame();
+    p.viewProj.set(cam.viewProj);
+    p.camX = cam.x;
+    p.camY = cam.y;
+    p.camZ = cam.z;
+    // Toward the camera, up, and to the camera's left.
+    const sun = [Math.sin(a) * 0.55 - Math.cos(a) * 0.4, 0.75, Math.cos(a) * 0.55 + Math.sin(a) * 0.4];
+    const length = Math.hypot(sun[0]!, sun[1]!, sun[2]!);
+    for (let k = 0; k < 3; k++) p.sun[k] = sun[k]! / length;
+    if (shot.rig) {
+      writeBones(p.bones, 0, shot.rig.solved, shot.rig.rest, null, -cam.x, -cam.y, -cam.z, 0);
+      p.boneCount = shot.rig.bones;
+      this.writer.setSkinned(0, 0, shot.colors[0] ?? 0);
+    } else this.writer.set(0, -cam.x, -cam.y, -cam.z, 0, shot.colors[0] ?? 0);
+    this.writer.regions(0, Uint8Array.from({ length: 6 }, (_, q) => shot.colors[q] ?? 0), 0);
+    p.transientCount = 1;
+    p.transientIds[0] = 1;
+    p.drawCount = 1;
+    p.drawMesh[0] = shot.mesh;
+    p.drawLod[0] = shot.level;
+    p.drawBuffer[0] = TRANSIENT_BUFFER;
+    p.drawFirst[0] = 0;
+    p.drawInstances[0] = 1;
+    p.drawOffset.fill(0, 0, 3);
+    p.drawFlags[0] = DRAW_PLAIN | (shot.rig ? DRAW_SKINNED : 0);
+    this.raster.render(p);
+  }
+
+  /** Where a point of the model is in the last picture: x and y in pixels and the depth the rasterizer keeps. False behind the camera. */
+  project(x: number, y: number, z: number, out: number[]): boolean {
+    const m = this.cam.viewProj;
+    const [rx, ry, rz] = [x - this.cam.x, y - this.cam.y, z - this.cam.z];
+    const w = m[3]! * rx + m[7]! * ry + m[11]! * rz;
+    if (w <= 0.05) return false;
+    out[0] = (((m[0]! * rx + m[4]! * ry + m[8]! * rz) / w) * 0.5 + 0.5) * this.raster.width;
+    out[1] = (0.5 - ((m[1]! * rx + m[5]! * ry + m[9]! * rz) / w) * 0.5) * this.raster.height;
+    out[2] = (m[2]! * rx + m[6]! * ry + m[10]! * rz + m[14]!) / w;
+    return true;
+  }
+}
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const arg = (name: string): string | undefined => {
@@ -582,7 +687,11 @@ if (import.meta.main) {
   if (args.includes("--falling")) fallingScene(view, Number(arg("falling") ?? 450));
   if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
-  if (args.includes("--creatures")) creaturesScene(view, Number(arg("tick") ?? 40), (Number(arg("face") ?? 90) * Math.PI) / 180);
+  if (args.includes("--creatures")) {
+    // Each creature in the colours its asset is reviewed in.
+    const samples = new Map((await findAssets()).flatMap((a) => (a.spec.kind === "creature" ? [[a.id, a.spec.regions.map((region) => region.sample)] as const] : [])));
+    creaturesScene(view, Number(arg("tick") ?? 40), (Number(arg("face") ?? 90) * Math.PI) / 180, samples);
+  }
   if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
   const t0 = performance.now();
   const packet = view.render();

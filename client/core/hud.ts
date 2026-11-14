@@ -1,27 +1,37 @@
-// HUD view model as plain data. Latitude and longitude run 0..100 with (50, 50) at the map centre.
-// Latitude grows southward and longitude eastward. North is +Z and east is -X.
+// HUD view model as plain data. Places are in ARK's latitude and longitude (shared/world/coords.ts).
 
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
-import { SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
+import { CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { MF_OUT, STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_RELOAD } from "../../shared/sim/weapon.ts";
 import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER } from "../../shared/sim/vitals.ts";
+import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_OFF, type Marks } from "../../shared/world/tactical.ts";
 import { CombatModel } from "./feedback.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
+import { paintRelief, type Chart } from "./tactical.ts";
 
-export type MarkerKind = "self" | "player" | "creature" | "spawn" | "death";
+/** One of the reader's tribe is a mate and one of its creatures a tame. A player is a survivor of another tribe, and a creature is not the tribe's. */
+export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player" | "creature";
 
 export interface Marker {
   kind: MarkerKind;
-  /** Position on the minimap, 0..1, origin top-left, north up. */
+  /** Where on the map, 0..1 from its north-west corner: longitude and latitude over 100. */
   u: number;
   v: number;
 }
+
+/** The most markers a map shows. The model lists the most important first, and what is past this is left out. */
+export const MAX_MARKERS = 256;
+/** The minimap's side, in units of the interface. */
+export const MINIMAP_SIZE = 160;
+/** Metres. A mark this near a body of its kind in view is that body, which is drawn from the view. */
+const SAME_BODY = 16;
 
 export interface Vital {
   id: string;
@@ -133,7 +143,26 @@ export class HudModel {
   readonly buffs: { label: string; tint: number; seconds: number }[] = [];
   /** The body is unconscious. */
   out = false;
+  /** The most important first: the reader, mates, tames, deaths, other survivors, then creatures in view. */
   readonly markers: Marker[] = [];
+  /** How many more the last update had than a map shows. They were the least important. */
+  unmarked = 0;
+  private readonly pool: Marker[] = [];
+  /** The map's pictures and where they look. Null until the app has the world, and then both screens show the whole map. */
+  chart: Chart | null = null;
+  /** Screen pixels to a unit of the interface, so the map's pictures are made at the size they are shown. */
+  scale = 1;
+  /** Counts updates. `mapSeen` is the update during which the map screen was last built. */
+  frames = 0;
+  mapSeen = -2;
+  /** The map screen's picture on the canvas, and the place last pointed at on it as fractions of the map, or -1. */
+  readonly mapBox = { x: 0, y: 0, size: 1 };
+  pointedU = -1;
+  pointedV = -1;
+  /** The tick at which the server was last told the zoom, the marks last compared with the view, and which of them are bodies in view. */
+  zoomAsked = -1000;
+  private marksSeen = -1;
+  private readonly inView = new Uint8Array(MAX_MARKS);
   /** Lines at the top left, rewritten a few times a second. */
   readonly readout: string[] = ["", "", ""];
   /** Time of day, "06:30". */
@@ -155,8 +184,47 @@ export class HudModel {
   readonly combat = new CombatModel();
   private readoutAge = 0;
 
+  /** Adds a marker at (x, z), unless the map has all it shows. */
+  mark(kind: MarkerKind, hf: Heightfield, x: number, z: number): void {
+    const n = this.markers.length;
+    if (n >= MAX_MARKERS) {
+      this.unmarked++;
+      return;
+    }
+    const m = (this.pool[n] ??= { kind, u: 0, v: 0 });
+    m.kind = kind;
+    m.u = lonOf(hf, x) / 100;
+    m.v = latOf(hf, z) / 100;
+    this.markers.push(m);
+  }
+
+  /**
+   * Whether mark `i` is a body the view holds, which is then drawn from the view, where it moves every frame. The marks
+   * carry no names, so a mark is taken for a body of its kind standing within SAME_BODY of it. Worked out once for each
+   * message of marks.
+   */
+  seenInView(marks: Marks, i: number, remote: RemoteSample, team: number): boolean {
+    if (marks.version !== this.marksSeen) {
+      this.marksSeen = marks.version;
+      for (let k = 0; k < marks.count; k++) {
+        const kind = marks.kind[k]!;
+        let found = 0;
+        for (let j = 0; j < remote.count && found === 0; j++) {
+          const player = (remote.flags[j]! & VIEW_FLAG_PLAYER) !== 0;
+          const mine = team !== 0 && remote.team[j] === team;
+          if ((remote.flags[j]! & VIEW_FLAG_PROP) !== 0 || (kind === MARK_MATE ? !player || !mine : kind === MARK_TAME ? player || !mine : !player || mine)) continue;
+          const dx = remote.x[j]! - marks.x[k]!;
+          const dz = remote.z[j]! - marks.z[k]!;
+          if (dx * dx + dz * dz < SAME_BODY * SAME_BODY) found = 1;
+        }
+        this.inView[k] = found;
+      }
+    }
+    return this.inView[i] === 1;
+  }
+
   formatReadout(): void {
-    this.readout[0] = `${this.lat.toFixed(1)} lat  ${this.lon.toFixed(1)} lon  ${this.compass} ${this.heading.toFixed(0)}`;
+    this.readout[0] = `${latLonText(this.lat, this.lon)}  ${this.compass} ${this.heading.toFixed(0)}`;
     this.readout[1] = `x ${this.x.toFixed(1)}  y ${this.y.toFixed(1)}  z ${this.z.toFixed(1)}  ${this.speed.toFixed(1)} m/s`;
     this.readout[2] = `${this.fps.toFixed(0)} fps  ${this.pingMs.toFixed(0)} ms  ${this.corrections} corrections  ${this.nearby} nearby`;
   }
@@ -169,15 +237,18 @@ export class HudModel {
 }
 
 const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-/** A bit of the replicated entity flags. */
+/** Bits of the replicated entity flags. */
 const VIEW_FLAG_PLAYER = 4;
+const VIEW_FLAG_PROP = 8;
 
+/** Where x is across the map, 0 at its west edge and 1 at its east. */
 export function mapU(hf: Heightfield, x: number): number {
-  return 1 - x / hf.sizeX;
+  return lonOf(hf, x) / 100;
 }
 
+/** Where z is down the map, 0 at its north edge and 1 at its south. */
 export function mapV(hf: Heightfield, z: number): number {
-  return 1 - z / hf.sizeZ;
+  return latOf(hf, z) / 100;
 }
 
 export function headingOf(yaw: number): number {
@@ -185,15 +256,53 @@ export function headingOf(yaw: number): number {
   return ((deg % 360) + 360) % 360;
 }
 
-export function updateHud(model: HudModel, session: ClientSession, remote: RemoteSample, fps: number): void {
+/** Marks the bodies in view that are survivors or not, and the reader's tribe's or not. */
+function markView(model: HudModel, hf: Heightfield, remote: RemoteSample, team: number, player: boolean, mine: boolean, kind: MarkerKind): void {
+  for (let i = 0; i < remote.count; i++) {
+    const f = remote.flags[i]!;
+    if ((f & VIEW_FLAG_PROP) === 0 && ((f & VIEW_FLAG_PLAYER) !== 0) === player && (team !== 0 && remote.team[i] === team) === mine) model.mark(kind, hf, remote.x[i]!, remote.z[i]!);
+  }
+}
+
+/** Marks the server's marks of one kind, but for the reader's own and those that are bodies in view. */
+function markFar(model: HudModel, hf: Heightfield, marks: Marks, remote: RemoteSample, team: number, from: number, kind: MarkerKind): void {
+  for (let i = 0; i < marks.count; i++) if (marks.kind[i] === from && i !== marks.self && !model.seenInView(marks, i, remote, team)) model.mark(kind, hf, marks.x[i]!, marks.z[i]!);
+}
+
+/** Fills the model's markers, the most important first. Friends in view come from the view, and those beyond it from the server's marks. */
+function fillMarkers(model: HudModel, session: ClientSession, remote: RemoteSample): void {
+  const hf = session.world!.hf;
+  const team = session.tribe.team;
+  const marks = session.tactical.marks;
+  model.markers.length = 0;
+  model.unmarked = 0;
+  // A server rule can hide the reader's own position.
+  if (session.mapLocation) model.mark("self", hf, session.own.x, session.own.z);
+  markView(model, hf, remote, team, true, true, "mate");
+  markFar(model, hf, marks, remote, team, MARK_MATE, "mate");
+  markView(model, hf, remote, team, false, true, "tame");
+  markFar(model, hf, marks, remote, team, MARK_TAME, "tame");
+  for (const m of session.markers) model.mark("death", hf, m.x, m.z);
+  // Beds and spawn points, while one is being chosen.
+  if (session.sessionState === SESSION_DEAD) for (const p of session.respawnPoints) model.mark("spawn", hf, p.x, p.z);
+  // Survivors of other tribes: those the server marks, and those in view if its rule lets them show.
+  markFar(model, hf, marks, remote, team, MARK_OTHER, "player");
+  if (marks.players !== PLAYERS_OFF) markView(model, hf, remote, team, true, false, "player");
+  markView(model, hf, remote, team, false, false, "creature");
+}
+
+/** `scale` is screen pixels to a unit of the interface. */
+export function updateHud(model: HudModel, session: ClientSession, remote: RemoteSample, fps: number, scale = 1): void {
   const world = session.world;
   if (!world) return;
   const b = session.own;
+  model.frames++;
+  model.scale = scale;
   model.x = b.x;
   model.y = b.y;
   model.z = b.z;
-  model.lon = mapU(world.hf, b.x) * 100;
-  model.lat = mapV(world.hf, b.z) * 100;
+  model.lon = lonOf(world.hf, b.x);
+  model.lat = latOf(world.hf, b.z);
   model.heading = headingOf(session.ownYaw);
   model.compass = COMPASS[Math.round(model.heading / 45) % 8]!;
   model.speed = Math.hypot(b.vx, b.vz);
@@ -201,13 +310,16 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   model.fps = fps;
   model.corrections = session.stats.corrections;
   model.nearby = remote.count;
-  model.markers.length = 0;
-  for (let i = 0; i < remote.count; i++) {
-    model.markers.push({ kind: (remote.flags[i]! & VIEW_FLAG_PLAYER) !== 0 ? "player" : "creature", u: mapU(world.hf, remote.x[i]!), v: mapV(world.hf, remote.z[i]!) });
+  fillMarkers(model, session, remote);
+  const chart = model.chart;
+  if (chart) {
+    chart.tiles.step();
+    chart.drawMini(session.tactical, session.tribe.team, model.lon / 100, model.lat / 100, Math.max(64, Math.min(512, Math.round(MINIMAP_SIZE * scale))), session.mapLocation);
+    // The server sends structure cells at the size that suits the finest zoom on show. Its marks say which zoom it holds, so a
+    // request that was lost or refused is made again.
+    const want = Math.max(chart.mini.view.zoom, model.mapSeen === model.frames - 1 ? chart.fullZoom : 0);
+    if (want !== session.tactical.marks.zoom && session.simTick - model.zoomAsked >= 45 && session.command(CMD_MAP_ZOOM, (w) => w.bits(want, 2)) !== 0) model.zoomAsked = session.simTick;
   }
-  for (const m of session.markers) model.markers.push({ kind: "death", u: mapU(world.hf, m.x), v: mapV(world.hf, m.z) });
-  // A server rule can hide the reader's own position.
-  if (session.mapLocation) model.markers.push({ kind: "self", u: mapU(world.hf, b.x), v: mapV(world.hf, b.z) });
   model.vitals[1]!.fraction = b.staminaMax > 0 ? b.stamina / (b.staminaMax * STAMINA_UNITS) : 0;
   if (session.hasVitals) {
     const v = session.vitals;
@@ -226,25 +338,9 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   if (model.readoutDue(6)) model.formatReadout();
 }
 
-/** A top-down RGBA picture of the terrain, north up, with relief shading. */
+/** A top-down RGBA picture of the whole terrain, north up, with relief shading: the one tile of the map's far zoom. */
 export function minimapImage(hf: Heightfield, palette: Uint8Array, size: number): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(size * size * 4);
-  for (let py = 0; py < size; py++) {
-    for (let px = 0; px < size; px++) {
-      const x = (1 - (px + 0.5) / size) * hf.sizeX;
-      const z = (1 - (py + 0.5) / size) * hf.sizeZ;
-      const i = Math.min(hf.nx - 2, Math.floor(x / hf.cell));
-      const j = Math.min(hf.nz - 2, Math.floor(z / hf.cell));
-      const tint = hf.tint[j * hf.nx + i]!;
-      // Light from the north-west.
-      const relief = (hf.sample(i + 1, j) - hf.sample(i, j) + hf.sample(i, j + 1) - hf.sample(i, j)) / hf.cell;
-      const shade = Math.max(0.55, Math.min(1.3, 0.9 + relief * 0.35));
-      const o = (py * size + px) * 4;
-      out[o] = palette[tint * 4]! * shade;
-      out[o + 1] = palette[tint * 4 + 1]! * shade;
-      out[o + 2] = palette[tint * 4 + 2]! * shade;
-      out[o + 3] = 255;
-    }
-  }
-  return out;
+  const out = new Uint32Array(size * size);
+  paintRelief(hf, palette, 0, 0, 0, size, out);
+  return new Uint8ClampedArray(out.buffer);
 }

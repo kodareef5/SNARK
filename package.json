@@ -10,6 +10,7 @@
     "test": "bun test",
     "bench": "bun tools/bench.ts",
     "dev": "bun --watch tools/dev.ts",
+    "agent": "bun agent/main.ts",
     "build": "bun tools/build-client.ts",
     "snap": "bun tools/snap.ts",
     "probe": "bun tools/probe.ts",
