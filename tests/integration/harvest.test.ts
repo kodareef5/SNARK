@@ -11,6 +11,10 @@ import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
 import { nodesOf, standFacing, swing as holdSwing, takeInHand } from "../fixtures/gather.ts";
 import { Harness } from "../fixtures/net.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import type { Def } from "../../shared/content/defs.ts";
+import { compileContent } from "../../shared/content/registry.ts";
+import { capsuleFree } from "../../shared/world/collide.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-harvest-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -33,7 +37,7 @@ test("a tree is gathered by hand until it is used up, is gone for everyone, and 
   const { h, s, have, pilot, harvest, rec } = setup();
   const tree = nodesOf(h, "core:tree", 256, 256).find((t) => standFacing(h, s, pilot, t));
   const table = () => harvest.field.store.chunks[tree!.chunk]!;
-  expect(table().kind[tree!.index]).toBe(h.reg.index.get("core:tree")!);
+  expect([table().kind[tree!.index], harvest.field.standing(tree!.chunk, tree!.index)]).toEqual([tree!.form, h.reg.index.get("core:tree")!]);
   expect(table().hp[tree!.index]).toBe(12);
   expect(s.world!.nodes!.chunks[tree!.chunk]!.kind[tree!.index]).toBe(table().kind[tree!.index]!); // the client has the same tree
 
@@ -82,9 +86,49 @@ test("a tree is gathered by hand until it is used up, is gone for everyone, and 
   expect(h.host.items.audit()).toEqual([]);
   h.say(s, `tp ${tree!.x.toFixed(2)} ${(tree!.z + 3).toFixed(2)}`);
   h.run(500);
-  expect(table().kind[tree!.index]).toBe(h.reg.index.get("core:tree")!);
+  expect([table().kind[tree!.index], harvest.field.standing(tree!.chunk, tree!.index)]).toEqual([tree!.form, h.reg.index.get("core:tree")!]);
   expect(table().hp[tree!.index]).toBe(12);
   expect(s.world!.nodes!.chunks[tree!.chunk]!.kind[tree!.index]).toBe(table().kind[tree!.index]!);
+});
+
+test("a tree with variants and a stump: used up, its stump stands for everyone where it stood and gives nothing, and the same tree grows back", () => {
+  // The core content with its trees grown as two variants and a stump, as the art will give them.
+  const boxes = [{ at: [0, 2, 0] as const, half: [0.3, 2, 0.3] as const }];
+  const content = CORE_CONTENT.map((d): Def => (d.id === "core:tree" && d.type === "node" ? { ...d, variants: [{ mesh: "test:tree_1", boxes }, { mesh: "test:tree_2", boxes }], depleted: { mesh: "test:tree_depleted", boxes: [{ at: [0, 0.35, 0], half: [0.35, 0.35, 0.35] }] } } : d));
+  const reg = compileContent(content).registry!;
+  const h = new Harness({}, 1, 30, { dev: true }, reg);
+  const s = h.join("ada", { latencyMs: 30 });
+  h.run(500);
+  h.say(s, "enablecheats");
+  const pilot = h.pilots[0]!;
+  const harvest = h.host.harvest!;
+  const forms = harvest.field.forms;
+  const tree = nodesOf(h, "core:tree", 256, 256).find((t) => standFacing(h, s, pilot, t))!;
+  const table = () => harvest.field.store.chunks[tree.chunk]!;
+  const seen = () => s.world!.nodes!.chunks[tree.chunk]!.kind[tree.index];
+  expect([table().kind[tree.index], seen(), forms.mesh[tree.form]]).toEqual([tree.form, tree.form, `test:tree_${forms.variant[tree.form]! + 1}`]);
+
+  holdSwing(h, pilot, 13, SWING_TICKS);
+  // Twelve blows used it up, and the thirteenth met its stump, which gives nothing.
+  const stump = forms.left[tree.form]!;
+  expect([harvest.hits, harvest.goneCount, table().kind[tree.index], seen(), forms.size[stump], forms.mesh[stump]]).toEqual([12, 1, stump, stump, forms.size[tree.form], "test:tree_depleted"]);
+  expect([harvest.field.standing(tree.chunk, tree.index), s.nodeField!.standing(tree.chunk, tree.index)]).toEqual([0, 0]);
+  // A body cannot stand in the stump, as a body could stand where a tree that left nothing had been.
+  const p = h.reg.move[h.reg.index.get("core:survivor")!]!;
+  expect(capsuleFree(h.world, tree.x, h.world.hf.heightAt(tree.x, tree.z), tree.z, p.radius, p.height)).toBe(false);
+  const bo = h.join("bo");
+  h.run(500);
+  expect(bo.world!.nodes!.chunks[tree.chunk]?.kind[tree.index]).toBe(stump);
+
+  // Grown back with nobody near, it is the same tree.
+  h.say(s, "tp 256 240");
+  h.say(bo, "enablecheats");
+  h.say(bo, "tp 256 244");
+  const due = h.world.tick + 2 * GAME_HOUR_TICKS;
+  while (h.world.tick < due + 60) h.server.tick();
+  h.say(s, `tp ${tree.x.toFixed(2)} ${(tree.z + 4).toFixed(2)}`);
+  h.run(500);
+  expect([harvest.goneCount, table().kind[tree.index], seen(), table().hp[tree.index]]).toEqual([0, tree.form, tree.form, 12]);
 });
 
 test("a pick gets three times the stone and flint besides, wears with each hit, and breaks; a bush is picked, not struck", () => {

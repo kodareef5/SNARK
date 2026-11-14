@@ -1,6 +1,6 @@
 // Colours are palette indices. See shared/pack/palette.ts.
 
-import type { Def } from "../shared/content/defs.ts";
+import type { Def, NodeDef } from "../shared/content/defs.ts";
 import { BUILDING_CONTENT } from "./building.ts";
 import { crafted, crafting } from "./craft.ts";
 import { CREATURES } from "./creatures/index.ts";
@@ -79,6 +79,31 @@ const ARMOR_MAKING: Readonly<Record<string, { level: number; cost: number; needs
   chitin: { level: 37, cost: 18, needs: { hat: [["chitin", 15], ["hide", 7], ["fiber", 3]], shirt: [["chitin", 20], ["hide", 10], ["fiber", 4]], gloves: [["chitin", 10], ["hide", 5], ["fiber", 2]], pants: [["chitin", 25], ["hide", 12], ["fiber", 5]], boots: [["chitin", 12], ["hide", 6], ["fiber", 4]] } },
   flak: { level: 56, cost: 16, needs: { hat: [["ingot", 10], ["hide", 7], ["fiber", 3]], shirt: [["ingot", 13], ["hide", 10], ["fiber", 4]], gloves: [["ingot", 6], ["hide", 5], ["fiber", 2]], pants: [["ingot", 16], ["hide", 12], ["fiber", 5]], boots: [["ingot", 8], ["hide", 6], ["fiber", 4]] } },
 };
+
+// Trees, rocks and bushes. As in the reference game, every tree gives thatch and wood, the hatchet more wood; every rock gives
+// stone and flint, the pick more flint; every bush is picked by hand for fibre and what it bears. A bigger kind gives more in
+// all by taking more blows. Each grows at sizes through its range, turned every way. Until a kind names its variants it is
+// drawn as the grey box of its `half`, with its `top` for a crown.
+const TREE_YIELDS: NodeDef["yields"] = [{ item: "core:thatch", min: 2, max: 4 }, { item: "core:wood", min: 0, max: 1 }, { item: "core:wood", min: 1, max: 2, tool: true }];
+const ROCK_YIELDS: NodeDef["yields"] = [{ item: "core:stone", min: 1, max: 2 }, { item: "core:flint", min: 1, max: 2, tool: true }];
+const tree = (name: string, hits: number, half: NodeDef["half"], top: NonNullable<NodeDef["top"]>, size: NodeDef["size"]): NodeDef => ({ type: "node", id: id(name), mesh: "box", color: 3, half, top, hits, respawnHours: 2, material: "wood", yields: TREE_YIELDS, xp: 1, size });
+const NODES: NodeDef[] = [
+  // Hardwood hammock trees.
+  tree("tree", 12, [0.3, 2, 0.3], { half: [1.4, 1.6, 1.4], color: 7 }, [0.8, 1.25]),
+  tree("palm", 10, [0.2, 3.5, 0.2], { half: [1.6, 0.5, 1.6], color: 17 }, [0.8, 1.25]),
+  // Strangler figs and banyans are the big trees, and take the most blows.
+  tree("fig", 20, [0.5, 2.5, 0.5], { half: [3.2, 2, 3.2], color: 16 }, [0.85, 1.2]),
+  tree("banyan", 30, [1, 3, 1], { half: [5, 2.5, 5], color: 7 }, [0.9, 1.2]),
+  tree("mangrove", 8, [0.25, 1.4, 0.25], { half: [1.8, 1, 1.8], color: 12 }, [0.75, 1.2]),
+  // Limestone boulders. Only these hold a little ore, as the rocks always have here.
+  { type: "node", id: id("rock"), mesh: "box", color: 15, half: [0.9, 0.6, 0.8], hits: 10, respawnHours: 2, material: "stone", yields: [...ROCK_YIELDS, { item: "core:ore", min: 0, max: 1, tool: true }], xp: 1, size: [0.6, 1.5] },
+  { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: 2, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.6, 1.4] },
+  // Berry bushes.
+  { type: "node", id: id("bush"), mesh: "box", color: 16, half: [0.5, 0.4, 0.5], soft: true, hits: 4, respawnHours: 1, yields: [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }], xp: 0.5, size: [0.75, 1.25] },
+  // Saw palmetto bears a few berries. A fern bears none.
+  { type: "node", id: id("palmetto"), mesh: "box", color: 17, half: [0.7, 0.5, 0.7], soft: true, hits: 4, respawnHours: 1, yields: [{ item: "core:fiber", min: 3, max: 6 }, { item: "core:berry", min: 1, max: 3 }], xp: 0.5, size: [0.7, 1.3] },
+  { type: "node", id: id("fern"), mesh: "box", color: 7, half: [0.45, 0.35, 0.45], soft: true, hits: 3, respawnHours: 1, yields: [{ item: "core:fiber", min: 3, max: 6 }], xp: 0.5, size: [0.7, 1.3] },
+];
 
 /** Levels are the reference game's. */
 const MAKING: Def[] = [
@@ -230,43 +255,7 @@ const ALL: readonly Def[] = [
   { type: "item", class: "weapon", id: "core:hatchet", stack: 1, weight: 1, color: 5, tool: { on: "wood", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 20, type: "melee", uses: 60, mesh: "core:hatchet", hold: "tool" } },
   ...GEAR,
 
-  {
-    type: "node",
-    id: "core:tree",
-    mesh: "box",
-    color: 3,
-    half: [0.3, 2, 0.3],
-    top: { half: [1.4, 1.6, 1.4], color: 7 },
-    hits: 12,
-    respawnHours: 2,
-    material: "wood",
-    yields: [{ item: "core:thatch", min: 2, max: 4 }, { item: "core:wood", min: 0, max: 1 }, { item: "core:wood", min: 1, max: 2, tool: true }],
-    xp: 1,
-  },
-  {
-    type: "node",
-    id: "core:rock",
-    mesh: "box",
-    color: 15,
-    half: [0.9, 0.6, 0.8],
-    hits: 10,
-    respawnHours: 2,
-    material: "stone",
-    yields: [{ item: "core:stone", min: 1, max: 2 }, { item: "core:flint", min: 1, max: 2, tool: true }, { item: "core:ore", min: 0, max: 1, tool: true }],
-    xp: 1,
-  },
-  {
-    type: "node",
-    id: "core:bush",
-    mesh: "box",
-    color: 16,
-    half: [0.5, 0.4, 0.5],
-    soft: true,
-    hits: 4,
-    respawnHours: 1,
-    yields: [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }],
-    xp: 0.5,
-  },
+  ...NODES,
 
   crafting("core:pick", { needs: [{ item: "core:stone", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
   crafting("core:hatchet", { needs: [{ item: "core:flint", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),

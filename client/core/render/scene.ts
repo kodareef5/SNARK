@@ -1,5 +1,6 @@
 // Structures are drawn per chunk and per mesh as instanced batches. A chunk's instance buffer is rebuilt only when a
-// piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn.
+// piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn. Resource nodes are drawn
+// the same way, each as the mesh of its form (shared/world/nodes.ts) at its size.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
@@ -10,6 +11,7 @@ import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
+import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
@@ -21,7 +23,7 @@ import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials } from "./characters.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
 import { NIGHT_LIGHT, UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { TerrainLod } from "./terrain.ts";
 
@@ -65,6 +67,8 @@ const WATER_MESH = "core:water";
 const BEAM_MESH = "core:beam";
 /** Palette colour of the beam over a place of death. */
 const BEAM_COLOR = 8;
+/** A node form with nothing to draw: what is left of a used-up node whose mesh no pack has. */
+const HIDDEN = 0xffff;
 /** The one run of a level drawn flat: no material, and all its indices. */
 const FLAT: readonly number[] = [-1, 0, 0];
 
@@ -114,6 +118,15 @@ export class Scene {
   readonly meshOfKind: Uint16Array;
   /** Region 0 colour per content index. */
   readonly colorOfKind: Uint8Array;
+  /** Per node form, its pack mesh or HIDDEN, its region 0 colour, and its size in SIZE_UNITS. */
+  private readonly meshOfForm: Uint16Array;
+  private readonly colorOfForm: Uint8Array;
+  private readonly sizeOfForm: Uint8Array;
+  /**
+   * Per mesh, the largest size a node draws it at, as a multiple of its modelled size, or 1. A node mesh's level and textures
+   * are chosen for its distance divided by this, as if every node of it were that size.
+   */
+  private readonly reachOfMesh: Float32Array;
   /** 1 for kinds drawn with their pitch as well as their yaw. */
   private readonly pitched: Uint8Array;
   /** Per species. The size a newborn is drawn at, as a share of a grown one. */
@@ -180,6 +193,20 @@ export class Scene {
       this.meshOfKind[k] = mesh >= 0 ? mesh : missing;
       this.colorOfKind[k] = d.color;
     }
+    const forms = nodeForms(reg);
+    this.meshOfForm = new Uint16Array(forms.count).fill(HIDDEN);
+    this.colorOfForm = new Uint8Array(forms.count);
+    this.sizeOfForm = forms.size;
+    this.reachOfMesh = new Float32Array(table.count).fill(1);
+    for (let f = 1; f < forms.count; f++) {
+      const kind = forms.kind[f]!;
+      // A variant whose mesh no pack has yet stands as its kind's own mesh. What is left of a used-up node is not drawn.
+      const own = forms.mesh[f] === "" ? -1 : table.find(forms.mesh[f]!);
+      const mesh = own >= 0 ? own : forms.depleted[f] === 1 ? HIDDEN : this.meshOfKind[kind]!;
+      this.meshOfForm[f] = mesh;
+      this.colorOfForm[f] = this.colorOfKind[kind]!;
+      if (mesh !== HIDDEN) this.reachOfMesh[mesh] = Math.max(this.reachOfMesh[mesh]!, forms.most[f]! / SIZE_UNITS);
+    }
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
     this.materialFlags = Uint8Array.from(table.materials, (m) => DRAW_TEXTURED | ((m.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((m.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0));
@@ -240,8 +267,8 @@ export class Scene {
     this.terrain.select(cam, p, this.viewDistance);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
-    this.structures(cam, this.world.structs, 0);
-    if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS);
+    this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
+    if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
     if (remote) this.entities(cam, remote);
     this.bodies(cam, remote);
     if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
@@ -451,8 +478,11 @@ export class Scene {
     p.transientCount = first + n;
   }
 
-  /** Chunk `c` of the store uses instance buffer `base + c`. */
-  private structures(cam: Camera, store: StructureStore, base: number): void {
+  /**
+   * Chunk `c` of the store uses instance buffer `base + c`. A slot's kind is drawn as `meshOf` and `colorOf` say, and at the
+   * size `sizeOf` says if it is given.
+   */
+  private structures(cam: Camera, store: StructureStore, base: number, meshOf: Uint16Array, colorOf: Uint8Array, sizeOf: Uint8Array | null): void {
     const p = this.packet;
     const world = this.world;
     const chunks = store.chunks;
@@ -476,7 +506,7 @@ export class Scene {
         continue;
       }
       let batch = this.batches.get(id);
-      if (!batch || batch.shape !== t.shape) batch = this.rebuild(store, chunk, id, batch);
+      if (!batch || batch.shape !== t.shape) batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf);
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
       const ax = batch.minX - cam.x;
@@ -497,20 +527,21 @@ export class Scene {
       }
       for (let r = 0; r < batch.ranges.length; r += 3) {
         const mesh = batch.ranges[r]!;
-        const lod = (batch.level[r / 3] = this.assets.choose(this.assets.table.error[mesh]!, dist, batch.level[r / 3]!));
-        this.assets.wantTextured(mesh, lod, dist);
-        this.draw(mesh, lod, id, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z);
+        const seen = sizeOf ? dist / this.reachOfMesh[mesh]! : dist;
+        const lod = (batch.level[r / 3] = this.assets.choose(this.assets.table.error[mesh]!, seen, batch.level[r / 3]!));
+        this.assets.wantTextured(mesh, lod, seen);
+        this.draw(mesh, lod, id, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z, sizeOf ? DRAW_SIZED : 0);
       }
     }
   }
 
-  private rebuild(store: StructureStore, chunk: number, id: number, old: ChunkBatch | undefined): ChunkBatch {
+  private rebuild(store: StructureStore, chunk: number, id: number, old: ChunkBatch | undefined, meshOf: Uint16Array, colorOf: Uint8Array, sizeOf: Uint8Array | null): ChunkBatch {
     const world = this.world;
     const t = store.chunks[chunk]!;
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
     const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
     const counts = this.counts.fill(0);
-    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0) counts[this.meshOfKind[t.kind[s]!]!]!++;
+    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && meshOf[t.kind[s]!] !== HIDDEN) counts[meshOf[t.kind[s]!]!]!++;
     const ranges: number[] = [];
     let total = 0;
     for (let m = 0; m < counts.length; m++) {
@@ -524,15 +555,16 @@ export class Scene {
     const b: ChunkBatch = { shape: t.shape, data, slots, ranges, level: new Int8Array(ranges.length / 3).fill(-1), minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity, uploaded: false };
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
-      if (kind === 0) continue;
-      const mesh = this.meshOfKind[kind]!;
+      if (kind === 0 || meshOf[kind] === HIDDEN) continue;
+      const mesh = meshOf[kind]!;
       const i = this.cursor[mesh]!++;
       const x = t.x[s]!;
       const y = t.y[s]!;
       const z = t.z[s]!;
-      w.set(i, x - x0, y, z - z0, t.yaw[s]!, this.colorOfKind[kind]!);
+      w.set(i, x - x0, y, z - z0, t.yaw[s]!, colorOf[kind]!);
+      if (sizeOf) w.size(i, sizeOf[kind]!);
       slots[i] = s;
-      const r = this.radiusOfMesh[mesh]!;
+      const r = this.radiusOfMesh[mesh]! * (sizeOf ? sizeOf[kind]! / SIZE_UNITS : 1);
       if (x - r < b.minX) b.minX = x - r;
       if (y - r < b.minY) b.minY = y - r;
       if (z - r < b.minZ) b.minZ = z - r;

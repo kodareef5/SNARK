@@ -2,7 +2,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { expect, test } from "bun:test";
 import { Found } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, FramePacket, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
 import { NODE_BUFFERS, bodySeed, type OwnBody } from "../../client/core/render/scene.ts";
 import { Viewpoint } from "../../client/core/viewpoint.ts";
@@ -66,7 +66,10 @@ test("the frame from the spawn point shows the right thing under known pixels", 
 
   // Structures take one draw per mesh per chunk.
   expect(packet.uploads.length).toBeGreaterThan(0);
-  expect(packet.drawCount).toBeLessThan(120); // structures, plus up to three kinds of node per chunk in view
+  // Structures, plus one for each kind of node in each chunk in view, and never two for one mesh in one chunk.
+  expect(packet.drawCount).toBeLessThan(200);
+  const batches = [...packet.drawBuffer.subarray(0, packet.drawCount)].map((b, d) => `${b}/${packet.drawMesh[d]}/${packet.drawFlags[d]}`).filter((key) => !key.startsWith(`${TRANSIENT_BUFFER}/`));
+  expect(new Set(batches).size).toBe(batches.length);
   expect(packet.tileCount).toBeGreaterThan(10);
   const wallMesh = view.scene.meshOfKind[reg.index.get("core:wall")!]!;
   expect([...packet.drawMesh.subarray(0, packet.drawCount)]).toContain(wallMesh);
@@ -165,7 +168,8 @@ test("water lies over the pool, tints what is under it, and changes the view fro
   expect(wet[2]! - wet[0]!).toBeGreaterThan(40);
   expect(view.raster.pickKind[at(0.5, 0.5)]).toBe(PICK_TERRAIN);
   expect(above.drawFlags[above.drawCount - 1]).toBe(DRAW_BLEND);
-  for (let d = 0; d < above.drawCount - 1; d++) expect(above.drawFlags[d]).toBe(0);
+  // Nothing else is see-through. Nodes are drawn at their sizes.
+  for (let d = 0; d < above.drawCount - 1; d++) expect(above.drawFlags[d]! & ~DRAW_SIZED).toBe(0);
   expect(above.fogEnd).toBe(4000);
 
   view.cam.y = PROVING_SEA_LEVEL - 3;

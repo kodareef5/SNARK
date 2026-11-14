@@ -57,7 +57,7 @@ export class Harvest {
   lists: Lists | null = null;
   private readonly rng: Rng;
   private readonly dir = [0, 0, 0];
-  private readonly spot: NodeSpot = { kind: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  private readonly spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
   private readonly per: number;
 
   constructor(world: ServerWorld, game: GameServer, records: Records, items: Items, progression: Progression, deadlines: DeadlineHeap, seed: number) {
@@ -118,7 +118,7 @@ export class Harvest {
 
   /** For load tests. Strikes or picks the node, whichever it takes. Play goes through a swing and `pick`. */
   strike(c: Client, chunk: number, index: number): boolean {
-    const kind = this.field.store.chunks[chunk]?.kind[index] ?? 0;
+    const kind = this.field.standing(chunk, index);
     return kind !== 0 && this.hit(c, chunk, index, (this.world.reg.defs[kind] as NodeDef).material === undefined);
   }
 
@@ -127,8 +127,10 @@ export class Harvest {
     const reg = world.reg;
     const table = this.field.store.chunks[chunk];
     const rec = this.records.byPid.get(c.pid);
-    if (!table || table.kind[index] === 0 || !rec) return false;
-    const def = reg.defs[table.kind[index]!] as NodeDef;
+    // What is left of a used-up node stands in its slot, and gives nothing.
+    const kind = this.field.standing(chunk, index);
+    if (!table || kind === 0 || !rec) return false;
+    const def = reg.defs[kind] as NodeDef;
     // A node with no material is a bush, picked by hand. Trees and rocks are struck.
     if (byHand !== (def.material === undefined)) return false;
 

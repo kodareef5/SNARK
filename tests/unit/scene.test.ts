@@ -35,13 +35,13 @@ function drawn(w: World, p: FramePacket, id: string): number[][] {
 const textured = (p: FramePacket, d: number): boolean => (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
 const material = (w: World, id: string): number => w.manifest.materials!.findIndex((m) => m.id === id);
 
-/** Everything a renderer reads of a frame but its texture work, hashed onto `h`. `byte` hashes each draw's flags as one byte. */
-function hashPacket(p: FramePacket, h: number, byte = false): number {
+/** Everything a renderer reads of a frame but its texture work, hashed onto `h`. */
+function hashPacket(p: FramePacket, h: number): number {
   const add = (a: ArrayBufferView, n = a.byteLength): void => void (h = hashBytes(new Uint8Array(a.buffer, a.byteOffset, n), h));
   const count = (...n: number[]): void => add(Float64Array.from(n));
   for (const a of [p.viewProj, p.nearViewProj, p.sky, p.sun]) add(a);
   count(p.camX, p.camY, p.camZ, p.light, p.fogStart, p.fogEnd, p.skipped, p.dropped, p.triangles, p.drawCount, p.tileCount, p.transientCount, p.boneCount);
-  for (const a of [p.drawMesh, p.drawLod, p.drawSlot, p.drawBuffer, p.drawFirst, p.drawInstances, byte ? Uint8Array.from(p.drawFlags) : p.drawFlags]) add(a, p.drawCount * a.BYTES_PER_ELEMENT);
+  for (const a of [p.drawMesh, p.drawLod, p.drawSlot, p.drawBuffer, p.drawFirst, p.drawInstances, p.drawFlags]) add(a, p.drawCount * a.BYTES_PER_ELEMENT);
   add(p.drawOffset, p.drawCount * 12);
   add(p.tiles, p.tileCount * 16);
   add(p.tileOrigin, p.tileCount * 8);
@@ -270,7 +270,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // in hands, a rigid creature, an arrow where it landed, the viewer's own body, beams, a ghost, falling pieces and loose things.
   for (let i = 0; i < 10; i++) structs.add(kind(PANEL), 22 + i * 2, 0, 34, 0, 0, 1);
   for (let i = 0; i < 6; i++) structs.add(kind(i % 2 ? "core:wall" : "core:foundation"), 58 + i * 3, 1.5, 40, 16384 * i, 0, 1);
-  for (let i = 0; i < 4; i++) nodes.add(kind(i % 2 ? "core:tree" : "core:rock"), 20 + i * 9, 2, 46, 0, 0, 1);
+  // Nodes stand on their base, each at a size of its kind and turned.
+  for (let i = 0; i < 4; i++) nodes.add(w.form(i % 2 ? "core:tree" : "core:rock", i * 5), 20 + i * 9, 0, 46, i * 9000, 0, 1);
   for (let i = 0; i < 8; i++) w.place(TUBE, 24 + i * 2.5, 23 + i * 5, { colors: [8, 7, 14, 6], yaw: i });
   [remote.span[3], remote.grown[3]] = [1000, 800];
   w.place("core:survivor", 30, 24, { held: CLUB });
@@ -290,7 +291,6 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   scene.things = [{ mesh: w.mesh(TUBE), x: 26, y: 0, z: 36, level: -1 }, { mesh: w.mesh("core:crate"), x: 38, y: 0.5, z: 33, level: -1 }];
 
   let hash = 0;
-  let bytes = 0;
   let [draws, rigid, uploads] = [0, 0, 0];
   for (let f = 0; f < 300; f++) {
     cam.yaw = Math.sin(f / 40) * 0.7;
@@ -304,7 +304,6 @@ test("low poly asks for no surface and no texture, draws nothing with a material
     if (f === 200) scene.assets.tier = { ...tierOf("lowpoly"), bones: 40 };
     const p = w.frame(1000 / 60, false);
     hash = hashPacket(p, hash);
-    bytes = hashPacket(p, bytes, true);
     draws += p.drawCount;
     uploads += p.assetUploads.length;
     for (let d = 0; d < p.drawCount; d++) {
@@ -321,9 +320,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
-  // turned from down to up: negating that column of its bone gives that hash again.
-  // It was 57387346 until draw flags took 16 bits each. Hashed a byte each, as they were, they give that hash still.
-  expect([hash, bytes]).toEqual([2089007614, 57387346]);
+  // turned from down to up: negating that column of its bone gives that hash again. It was 57387346 until draw flags took
+  // 16 bits each, and hashed a byte each it was that still; then 2089007614 until the nodes here were turned and sized,
+  // stood on their bases and were drawn sized, and seven more kinds' grey boxes numbered the meshes after the tree's on.
+  expect(hash).toBe(1755989135);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

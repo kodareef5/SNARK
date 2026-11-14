@@ -220,7 +220,7 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   const port = split ? new FakeNet(split.files.map((f) => f.bytes), net) : null;
   const pack = parsePack(split ? split.files[0]!.bytes : buildCorePack());
   // Fills every chunk's nodes, as a client near each would have them.
-  const nodes = new NodeField(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, provingNodes(hf, reg));
+  const nodes = new NodeField(PROVING_DIMS, reg, provingNodes(hf, reg));
   nodes.retain(0, 64, 1, () => false);
   const scene = new Scene({ dims: PROVING_DIMS, hf, structs, nodes: nodes.store }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();

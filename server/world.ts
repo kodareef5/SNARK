@@ -3,13 +3,13 @@ import { NO_CLIPS } from "../shared/anim/clip.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 import type { MapDef, MapZone } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
-import { CHUNK_SIZE, type MapDims } from "../shared/coords.ts";
+import type { MapDims } from "../shared/coords.ts";
 import { ENTITY_LIMIT, EntityStore } from "../shared/sim/entities.ts";
 import { offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapFile, type MapStatic } from "../shared/world/mapfile.ts";
-import { PROVING_DIMS, PROVING_ID, PROVING_NODES_PER_CHUNK, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving } from "../shared/world/proving.ts";
+import { PROVING_DIMS, PROVING_ID, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodeLayers } from "../shared/world/proving.ts";
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
 import { History } from "./history.ts";
@@ -58,7 +58,7 @@ export interface WorldOptions {
 
 /** `entityMax` is the most entities the world may hold. Its store starts at `entityStart`, or at the limit if that is less. */
 export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityMax: number, spawns?: ServerWorld["spawns"], nodeSource?: NodeSource, zones: ServerWorld["zones"] = [], entityStart = ENTITY_START): ServerWorld {
-  const nodeField = nodeSource ? new NodeField(dims, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, nodeSource) : null;
+  const nodeField = nodeSource ? new NodeField(dims, reg, nodeSource) : null;
   const ents = new EntityStore(dims, Math.min(entityStart, entityMax), entityMax);
   return {
     reg,
@@ -127,12 +127,6 @@ export function provingFile(reg: Registry): Uint8Array<ArrayBuffer> {
   // Chunk by chunk and slot by slot: set down again in this order, each piece gets the slot it had.
   const statics: MapStatic[] = [];
   for (const t of structs.chunks) for (let s = 0; t && s < t.high; s++) statics.push({ kind: reg.defs[t.kind[s]!]!.id, x: t.x[s]!, y: t.y[s]!, z: t.z[s]!, yaw: t.yaw[s]! });
-  // Nodes stand more than 99 m from the middle along either axis, as provingNodes has it. A bit is a square metre.
-  const side = PROVING_DIMS.chunksX * CHUNK_SIZE;
-  const allow = new Uint8Array((side * side) / 8);
-  for (let z = 0; z < side; z++) {
-    for (let x = 0; x < side; x++) if (Math.max(Math.abs(x + 0.5 - side / 2), Math.abs(z + 0.5 - side / 2)) > 99) allow[(z * side + x) >> 3]! |= 1 << (x & 7);
-  }
   return (proving = writeMap({
     id: PROVING_ID,
     dims: PROVING_DIMS,
@@ -142,7 +136,7 @@ export function provingFile(reg: Registry): Uint8Array<ArrayBuffer> {
     heights: hf.heights,
     tint: hf.tint,
     statics,
-    nodes: [{ seed: 0x51ab, perChunk: PROVING_NODES_PER_CHUNK, kinds: [["core:tree", 5], ["core:rock", 3], ["core:bush", 3]], allowCell: 1, allow }],
+    nodes: provingNodeLayers(hf),
     spawns: PROVING_SPAWNS,
   }));
 }

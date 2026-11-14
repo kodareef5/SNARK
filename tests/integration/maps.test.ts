@@ -124,8 +124,8 @@ test("the proving ground loaded from its file is the one its functions build: ev
   const ours = world.nodeField!.source;
   const theirs = provingNodes(hf, reg);
   expect(ours.perChunk).toBe(theirs.perChunk);
-  const a: NodeSpot = { kind: 0, x: 0, y: 0, z: 0, yaw: 0 };
-  const b: NodeSpot = { kind: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  const a: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  const b: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
   let standing = 0;
   let differ = 0;
   for (let chunk = 0; chunk < chunkCount(PROVING_DIMS); chunk++) {

@@ -202,9 +202,12 @@ hardwoods, the limestone and the berry bushes take their places there.
   trunk, its roots or a rock's base on below the origin by six tenths of how
   far it reaches out from it.
 - It is turned every way, so it must hold up from every side.
-- Its levels are chosen by distance, as any piece's are, at every size, so a
-  level must hold at the largest size the kind is drawn. Its coarsest level is
-  what the far layer will draw out to kilometres.
+- Its level is chosen by distance as any piece's is, with each level's error
+  (measured, or stated in metres at modelled size) taken at the kind's largest
+  size, for every node of the kind whatever its own size: all of a mesh's
+  nodes in a chunk are one draw at one level. Near and far, the same node at the
+  same distance gets the same level. Its textures are chosen the same way. Its
+  coarsest level is what the far layer will draw out to kilometres.
 - A soft kind (`soft`, the bushes) is walked through, and its boxes are what a
   look meets when it is picked.
 - A node mesh may use colour regions 0 to 4: region 0 is the kind's `color`.

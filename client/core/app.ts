@@ -374,10 +374,9 @@ export class App {
       }
       return "";
     }
-    if (node < 0 || !world.nodes) return "";
-    // A node without a material is a bush, picked with the use key. Trees and rocks are struck.
-    const kind = world.nodes.chunks[Math.floor(node / 65536)]?.kind[node & 0xffff] ?? 0;
-    const def = this.reg.defs[kind];
+    if (node < 0 || !s.nodeField) return "";
+    // A node without a material is a bush, picked with the use key. Trees and rocks are struck. What is left of a used-up one is neither.
+    const def = this.reg.defs[s.nodeField.standing(Math.floor(node / 65536), node & 0xffff)];
     if (def?.type !== "node") return "";
     const what = def.id.slice(def.id.indexOf(":") + 1);
     return def.material === undefined ? `E  pick ${what}` : `hold click  gather from ${what}`;

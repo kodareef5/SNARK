@@ -84,7 +84,6 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
     if ((d.type !== "species" && d.type !== "structure" && d.type !== "prop" && d.type !== "node") || d.mesh !== "box") continue;
     if (d.type === "structure") meshes.push({ id: d.id, lods: [boxMesh(d.half, REGION_BASE)] });
     else if (d.type === "node") {
-      // A node's position is the centre of its collider.
       const lod = boxMesh(d.half, REGION_BASE);
       if (d.top) {
         const top = boxMesh(d.top.half, d.top.color);
@@ -94,6 +93,8 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
         lod.colors = Uint8Array.from([...lod.colors, ...top.colors]);
         lod.indices = Uint32Array.from([...lod.indices, ...Array.from(top.indices, (v) => v + n)]);
       }
+      // A node stands on its origin, where it meets the ground.
+      for (let i = 1; i < lod.positions.length; i += 3) lod.positions[i]! += d.half[1];
       meshes.push({ id: d.id, lods: [lod] });
     } else {
       // A species or prop stands on its origin, so the box is lifted to put its base at y = 0.

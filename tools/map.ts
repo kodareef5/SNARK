@@ -23,8 +23,14 @@
 //                   scatters `perChunk` slots over every chunk, each a kind drawn by weight. A slot stays empty under
 //                   water, on a steep slope, and where `allow` is darker than half: an 8-bit greyscale picture of
 //                   1, 2, 4, 8, 16, 32 or 64 m a pixel. Without `allow`, anywhere.
+//                 { "seed": 8, "perChunk": 160, "zones": [{ "kinds": { "core:mangrove": 4, "core:palm": 3 }, "bare": 6 }],
+//                   "zone": "zones.png" }
+//                   scatters as above, each slot a kind drawn by weight from those of the zone its place is in, or bare
+//                   ground by the zone's `bare` weight: `zone` is an 8-bit greyscale picture as `allow` is, whose value is
+//                   the number of the zone counting from 1, or 0 where nothing grows. This is how a map says what grows where.
 //                 { "list": [{ "kind": "core:rock", "x": 12.5, "z": 40, "yaw": 0 }] }
 //                   stands each node on the ground where it says.
+//                 A node's variant and size, and a scattered node's turn, come from its place, by the rule of nodes.ts.
 //   spawns.json   [{ "name": "Plaza", "x": 256, "z": 240, "yaw": 0 }]
 //                 Up to 16. The first is where a new survivor arrives, and a dead one chooses among them.
 
@@ -53,11 +59,15 @@ export function describe(file: Uint8Array): string[] {
     `${map.id}, hash ${map.hash.toString(16).padStart(8, "0")}, ${file.length} bytes (${Bun.gzipSync(file as Uint8Array<ArrayBuffer>).length} compressed)`,
     `${chunksX} by ${chunksZ} chunks, ${chunksX * CHUNK_SIZE} by ${chunksZ * CHUNK_SIZE} m, ground from ${at(low)} to ${at(high)} m, ${map.seaLevel === -Infinity ? "no water" : `sea at ${map.seaLevel} m`}`,
     `${map.statics.length} static pieces`,
-    ...map.nodes.map((layer) => ("first" in layer ? `${layer.kind.length} listed nodes` : `${layer.perChunk} node slots a chunk, scattered${layer.allow ? ` where a picture of ${layer.allowCell} m a pixel allows` : ""}: ${layer.kinds.map(([id, weight]) => `${id} x${weight}`).join(", ")}`)),
+    ...map.nodes.map((layer) => {
+      if ("first" in layer) return `${layer.kind.length} listed nodes`;
+      if ("zone" in layer) return `${layer.perChunk} node slots a chunk, by zones of ${layer.zoneCell} m: ${layer.zones.map((z, i) => `${i + 1} ${[...z.kinds.map(([id, weight]) => `${id} x${weight}`), ...(z.bare > 0 ? [`bare x${z.bare}`] : [])].join(", ")}`).join("; ")}`;
+      return `${layer.perChunk} node slots a chunk, scattered${layer.allow ? ` where a picture of ${layer.allowCell} m a pixel allows` : ""}: ${layer.kinds.map(([id, weight]) => `${id} x${weight}`).join(", ")}`;
+    }),
     `spawn points: ${map.spawns.map((s) => `${s.name} (${s.x}, ${s.z})`).join(", ")}`,
   ];
   const known = registry().index;
-  const named = new Set([...map.statics.map((s) => s.kind), ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : layer.kinds.map(([id]) => id)))]);
+  const named = new Set([...map.statics.map((s) => s.kind), ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : "zone" in layer ? layer.zones.flatMap((z) => z.kinds.map(([id]) => id)) : layer.kinds.map(([id]) => id)))]);
   const lacking = [...named].filter((id) => !known.has(id));
   if (lacking.length > 0) lines.push(`not in the core content: ${lacking.join(", ")}`);
   return lines;

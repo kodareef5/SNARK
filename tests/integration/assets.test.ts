@@ -78,6 +78,8 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was 367ac8c0 while a draw recorded the level asked for. It records the level drawn, which for a far mesh with one
   // level is 0 and not 1 or 2. Nothing else of these frames changed. It was e47bd0b0 while the wall built was a wooden
   // one, which the wood tier's art redraws; the metal wall in its place still draws as its grey box. It was 6ede278
-  // before the dodo's grey box joined the pack, which numbers the meshes after it one on.
-  expect(hash.toString(16)).toBe("1e566e48");
+  // before the dodo's grey box joined the pack, which numbers the meshes after it one on. It was 1e566e48 before nodes
+  // were drawn at their sizes: their draws carry DRAW_SIZED, seven more kinds' grey boxes number the meshes after the
+  // tree's on, and nodes stand on their bases. The drawing changes alone left it 1e566e48.
+  expect(hash.toString(16)).toBe("eac4fa58");
 });
