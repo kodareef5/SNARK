@@ -351,6 +351,8 @@ export class ClientSession {
   private readonly bodies: Body[] = [];
   private readonly bodyTick = new Uint32Array(HISTORY);
   private readonly views = new ViewRing(() => new EntityView());
+  /** What is drawn after each snapshot: every body as it was last told of. `views` are what deltas are read against. */
+  private readonly drawn = new ViewRing(() => new EntityView());
   private readonly w = new BitWriter(MAX_CLIENT_MESSAGE);
   private readonly r = new BitReader();
   private readonly serverBody = new Body();
@@ -482,7 +484,7 @@ export class ClientSession {
     let a: EntityView | null = null;
     let b: EntityView | null = null;
     for (let i = 0; i < VIEW_RING; i++) {
-      const v = this.views.at(i);
+      const v = this.drawn.at(i);
       if (v.tick === 0) continue;
       if (v.tick <= at) {
         if (!a || v.tick > a.tick) a = v;
@@ -929,8 +931,9 @@ export class ClientSession {
       return;
     }
     const next = this.views.alloc(tick);
-    if (!readViewDelta(r, base, next) || r.overflow) {
-      next.tick = 0;
+    const drawn = this.drawn.alloc(tick);
+    if (!readViewDelta(r, base, next, this.drawn.find(this.latestSnapshot), drawn) || r.overflow) {
+      next.tick = drawn.tick = 0;
       this.stats.undecodable++;
       this.needFull = true;
       return;

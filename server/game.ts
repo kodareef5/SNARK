@@ -1045,7 +1045,7 @@ export class GameServer {
     w.varint(c.drive + 1);
     writeBody(w, c.body);
     const bytes = c.snapshotBytes !== 0 ? c.snapshotBytes : this.opts.snapshotBytes;
-    c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? this.ranks[at]! : null, limit);
+    c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? this.ranks[at]! : null, limit, c.views);
     if (w.overflow) {
       // Part of a snapshot is of no use. Nothing is sent, and the view the client would have held is forgotten.
       this.stats.overflows++;

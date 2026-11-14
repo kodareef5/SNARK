@@ -13,6 +13,13 @@
 //
 // Appearance is sent only on create. A change bumps the entity's revision, and the next delta then sends a create for it again.
 // Only a remove is sent whatever it costs. Every other op waits its turn when a snapshot is full.
+//
+// The baseline is a round trip old, and the client has had newer snapshots since. A body whose op had to wait is in the new
+// view as the baseline has it, which is where it stood a round trip ago, or not at all. So a client keeps a second list for
+// each snapshot, of what it shows: each body as the newest snapshot to say anything of it left it. The views stay what the
+// server holds them to be, and deltas are read against them alone. The server keeps for each client the bodies whose last
+// word it has not acknowledged (`Told`), and has more to say of one until it has: an update that changes nothing where a
+// body is back as the baseline has it, a remove where the baseline never had it.
 
 import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK } from "../anim/pose.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
@@ -216,8 +223,157 @@ export class EntityView extends SentView {
   }
 }
 
+/**
+ * Server side, for one client: the bodies it may show otherwise than its baselines say, each as it was last told of. A body
+ * is listed from the snapshot that says something of it until the client acknowledges one that settles what it shows.
+ */
+export class Told {
+  /** The tick of the snapshot the list was last brought up to, and of the last of those that was sent. */
+  tick = 0;
+  sent = 0;
+  /** A bit for each of the 32 ticks up to `tick`, the lowest for `tick`: set where a snapshot was written. */
+  wrote = 0;
+  count = 0;
+  /** The slots of the bodies listed, by ascending id. A body keeps its slot while it is listed, so most ticks change a slot in place. */
+  order = new Uint16Array(VIEW_START);
+  private making = new Uint16Array(VIEW_START);
+  private made = 0;
+  private cap = VIEW_START;
+  private used = 0;
+  private free = new Uint16Array(VIEW_START);
+  private freed = 0;
+  // By slot.
+  id = new Uint32Array(VIEW_START);
+  /**
+   * The tick the body was last told of, or left as it was by a baseline that was sure. That tick's view has it as it was
+   * told, at index `ix`, for as long as the ring keeps the view. For a body taken away, the first tick the client was told so.
+   */
+  at = new Uint32Array(VIEW_START);
+  ix = new Uint16Array(VIEW_START);
+  /** A bit for each of the 32 ticks up to `at`, the lowest for `at`: set where a client that has that tick's snapshot is sure to show the body like this. */
+  sure = new Uint32Array(VIEW_START);
+  /** 1 for a body the client was told to take away. */
+  gone = new Uint8Array(VIEW_START);
+
+  /** A slot for a body not listed, or -1 when the list is full: twice a view. */
+  take(): number {
+    if (this.freed > 0) return this.free[--this.freed]!;
+    if (this.used === this.cap) {
+      if (this.cap >= MAX_VIEW * 2) return -1;
+      const cap = (this.cap *= 2);
+      this.order = wider(this.order, cap);
+      this.making = wider(this.making, cap);
+      this.free = wider(this.free, cap);
+      this.id = wider(this.id, cap);
+      this.at = wider(this.at, cap);
+      this.ix = wider(this.ix, cap);
+      this.sure = wider(this.sure, cap);
+      this.gone = wider(this.gone, cap);
+    }
+    return this.used++;
+  }
+
+  /** Slot `s` is no longer listed. */
+  drop(s: number): void {
+    this.free[this.freed++] = s;
+  }
+
+  /** Slot `s` is on the list being made. Slots are put on it by ascending id. */
+  list(s: number): void {
+    this.making[this.made++] = s;
+  }
+
+  /** The list being made becomes the list, as of `tick`. */
+  turn(tick: number): void {
+    const order = this.making;
+    this.making = this.order;
+    this.order = order;
+    this.count = this.made;
+    this.made = 0;
+    const step = tick - this.tick;
+    this.wrote = (step < 32 ? (this.wrote << step) | 1 : 1) >>> 0;
+    this.tick = tick;
+  }
+
+  /** `sure` of slot `s` as it counts from `tick`. */
+  private sureFrom(s: number, tick: number): number {
+    const past = tick - this.at[s]!;
+    return past < 32 ? (this.sure[s]! << past) >>> 0 : 0;
+  }
+
+  /** Whether a client with the snapshot of tick `acked` is sure to show the body in slot `s` as it was last told of. */
+  sureAt(s: number, acked: number): boolean {
+    const past = this.at[s]! - acked;
+    return this.gone[s] === 0 && past >= 0 && past < 32 && ((this.sure[s]! >>> past) & 1) === 1;
+  }
+
+  /**
+   * The body in slot `s` is left as its baseline of tick `acked` has it, which was sure, and is entry `ix` of this tick's
+   * view. Sure at every snapshot from that baseline on, every baseline the client can still name has it so: it leaves the list.
+   */
+  hold(s: number, tick: number, acked: number, ix: number): void {
+    const all = 0xffffffff >>> (31 - Math.min(31, this.tick - acked));
+    if (((this.sureFrom(s, this.tick) | ~this.wrote) & all) >>> 0 === all) {
+      this.drop(s);
+      return;
+    }
+    this.sure[s] = this.sureFrom(s, tick) | 1;
+    this.at[s] = tick;
+    this.ix[s] = ix;
+    this.list(s);
+  }
+
+  /**
+   * The op of the body in slot `s` waits, and the client goes on showing what it was last told. A body it was told to take
+   * away, back in view and not yet sent again, is still to be taken away from the next tick on.
+   */
+  wait(s: number, tick: number): void {
+    if (this.gone[s] === 1) this.at[s] = tick + 1;
+    this.list(s);
+  }
+
+  /** The client is told to take body `id` away. `s` is its slot, or -1. It is told again each snapshot until it acknowledges one that said so. */
+  remove(s: number, id: number, tick: number): void {
+    if (s < 0) {
+      s = this.take();
+      if (s < 0) return;
+      this.gone[s] = 0;
+    }
+    if (this.gone[s] === 0) this.at[s] = tick;
+    this.id[s] = id;
+    this.gone[s] = 1;
+    this.list(s);
+  }
+
+  /**
+   * The client is told of body `id`, which is entry `ix` of this tick's view. `s` is its slot, or -1. Told `again` what it
+   * was last told, it is as sure as it was at the ticks before.
+   */
+  say(s: number, id: number, tick: number, ix: number, again: boolean): void {
+    if (s < 0) {
+      s = this.take();
+      if (s < 0) return;
+    }
+    if (again) this.sure[s] = this.sureFrom(s, tick) | 1;
+    else {
+      this.id[s] = id;
+      this.sure[s] = 1;
+      this.gone[s] = 0;
+    }
+    this.at[s] = tick;
+    this.ix[s] = ix;
+    this.list(s);
+  }
+
+  clear(): void {
+    this.tick = this.sent = this.wrote = this.count = this.made = this.used = this.freed = 0;
+  }
+}
+
 export class ViewRing<V extends SentView> {
   private readonly views: V[] = [];
+  /** Server side: what the client was last told. */
+  told: Told | null = null;
 
   constructor(make: () => V) {
     for (let i = 0; i < VIEW_RING; i++) this.views.push(make());
@@ -245,20 +401,25 @@ export class ViewRing<V extends SentView> {
       v.tick = 0;
       v.count = 0;
     }
+    this.told?.clear();
   }
 }
 
 const scratchColors = new Uint8Array(6);
 
-// Encoder scratch, one entry per merged entity.
-const opKind = new Uint8Array(MAX_VIEW * 2);
-const opBase = new Int16Array(MAX_VIEW * 2);
-const opCur = new Int16Array(MAX_VIEW * 2);
+// Encoder scratch, one entry per merged entity: those of the baseline, of the true state and of what the client was told.
+const MAX_OPS = MAX_VIEW * 4;
+const opKind = new Uint8Array(MAX_OPS);
+const opBase = new Int16Array(MAX_OPS);
+const opCur = new Int16Array(MAX_OPS);
+/** Where the entity is in what the client was told, or -1. Not set for K_KEEP. */
+const opTold = new Int16Array(MAX_OPS);
+const opId = new Uint32Array(MAX_OPS);
 /** Positions in the op list of the ops that may be deferred: those of urgent entities, and the rest. */
 const urgIndex = new Int16Array(MAX_VIEW * 2);
 const optIndex = new Int16Array(MAX_VIEW * 2);
 /** Bits each deferrable op takes. Exact for an update but for its id gap, an upper bound for a create, new or again. */
-const opBits = new Uint16Array(MAX_VIEW * 2);
+const opBits = new Uint16Array(MAX_OPS);
 let admitted = 0;
 const K_KEEP = 0;
 const K_UPDATE = 1;
@@ -267,6 +428,9 @@ const K_REMOVE = 3;
 const K_REPLACE = 4;
 const K_STALE = 5;
 const K_SKIP = 6;
+/** Unchanged from the baseline, and listed in what the client was told. */
+const K_HOLD = 7;
+const NONE = 0xffffffff;
 
 function varintBits(v: number): number {
   return v < 0x80 ? 8 : v < 0x4000 ? 16 : v < 0x200000 ? 24 : 32;
@@ -294,6 +458,46 @@ function admit(list: Int16Array, count: number, rotate: number, budgetBits: numb
   return (start + allowed) % count;
 }
 
+/** Whether the client was last told of the body in slot `s` as entry `j` of `v` has it. False where the view that would say is gone. */
+function same(ring: ViewRing<SentView>, told: Told, s: number, v: SentView, j: number): boolean {
+  const was = ring.find(told.at[s]!);
+  if (!was) return false;
+  const i = told.ix[s]!;
+  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j];
+}
+
+/**
+ * With no baseline nothing is settled, so the list must name every body the client shows: those on it, and the rest of the
+ * view the newest snapshot sent left the client. After a second with no snapshot sent that view is gone, and both sides
+ * start from nothing.
+ */
+function everything(ring: ViewRing<SentView>, told: Told, tick: number): void {
+  const view = told.sent !== 0 && tick - told.sent < VIEW_RING ? ring.find(told.sent) : null;
+  if (!view) {
+    told.clear();
+    return;
+  }
+  const order = told.order;
+  const nt = told.count;
+  let h = 0;
+  for (let i = 0; i < view.count; i++) {
+    const id = view.id[i]!;
+    for (; h < nt && told.id[order[h]!]! < id; h++) told.list(order[h]!);
+    if (h < nt && told.id[order[h]!] === id) continue;
+    const s = told.take();
+    if (s < 0) continue;
+    // Settled when that snapshot was sent, so a client with it or any before it shows the body so.
+    told.id[s] = id;
+    told.at[s] = told.sent;
+    told.ix[s] = i;
+    told.sure[s] = 0xffffffff;
+    told.gone[s] = 0;
+    told.list(s);
+  }
+  for (; h < nt; h++) told.list(order[h]!);
+  told.turn(told.tick);
+}
+
 /**
  * Encodes `cur` (the true state, sorted by id) against `base` (the view the client has, or null) and fills `next` with the
  * view the client will hold after applying it. `budgetBits` bounds the deferrable ops, which are all but the removes. A
@@ -303,12 +507,23 @@ function admit(list: Int16Array, count: number, rotate: number, budgetBits: numb
  *
  * Clients around one place share one `cur`, and each is sent its own part of it. The entry with id `skip` is left out, and
  * so is every entry whose `rank` is `limit` or more. `rank` is each entry's place in the order they were chosen in.
+ *
+ * `ring` is the client's ring, which `next` was allocated from. With it the client is taken to show each body as it was
+ * last told of, and is told again of any it may show otherwise until it acknowledges a snapshot that settles it. The
+ * snapshot counts as sent unless `w` has overflowed by the time this returns. One that is not sent is as one lost on the way.
  */
-export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1, rank: Uint16Array | null = null, limit = MAX_VIEW): number {
+export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1, rank: Uint16Array | null = null, limit = MAX_VIEW, ring: ViewRing<SentView> | null = null): number {
   const nb = base ? base.count : 0;
   const nc = cur.count;
+  const tick = next.tick;
+  const acked = base ? base.tick : 0;
+  const told = ring ? (ring.told ??= new Told()) : null;
+  if (told && !base) everything(ring!, told, tick);
+  const nt = told ? told.count : 0;
+  const order = told ? told.order : null;
   let i = 0;
   let j = 0;
+  let h = 0;
   let n = 0;
   let optional = 0;
   let optionalBits = 0;
@@ -317,22 +532,51 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
   let written = 0;
   /** One more than the id of the last op, for the size of the next op's id gap. A deferred op between two makes the real gap larger. */
   let last = 0;
-  while (i < nb || j < nc) {
+  let tid = nt > 0 ? told!.id[order![0]!]! : NONE;
+  while (i < nb || j < nc || h < nt) {
     if (j < nc && (cur.id[j] === skip || (rank !== null && rank[j]! >= limit))) {
       j++;
       continue;
     }
-    const bid = i < nb ? base!.id[i]! : 0xffffffff;
-    const cid = j < nc ? cur.id[j]! : 0xffffffff;
+    const bid = i < nb ? base!.id[i]! : NONE;
+    const cid = j < nc ? cur.id[j]! : NONE;
+    // The body's slot in what the client was told, or -1.
+    let th = -1;
+    if (tid <= bid && tid <= cid) {
+      th = order![h++]!;
+      const id = tid;
+      tid = h < nt ? told!.id[order![h]!]! : NONE;
+      // Told to take it away, and a snapshot that said so is acknowledged.
+      const settled = told!.gone[th] === 1 && acked >= told!.at[th]!;
+      if (settled) told!.drop(th);
+      if (id < bid && id < cid) {
+        // Out of view and not in the baseline, so no delta would mention it. The client may show it still. In a snapshot
+        // with a thousand removes already it stays listed for the next, so that a reader never meets more ops than it allows.
+        if (!settled) {
+          if (written < MAX_VIEW / 2) {
+            opKind[n] = K_REMOVE;
+            opId[n] = id;
+            written++;
+            last = id + 1;
+          } else opKind[n] = K_SKIP;
+          opTold[n] = th;
+          n++;
+        }
+        continue;
+      }
+      if (settled) th = -1;
+    }
     let bits = 0;
     if (bid < cid) {
       opKind[n] = K_REMOVE;
       opBase[n] = i++;
+      opId[n] = bid;
       written++;
       last = bid + 1;
     } else if (cid < bid) {
       opKind[n] = K_CREATE;
       opCur[n] = j;
+      opId[n] = cid;
       bits = createBits(looks, cid);
       last = cid + 1;
     } else {
@@ -350,11 +594,23 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         const moved = dx !== 0 || dy !== 0 || dz !== 0;
         const changed = cur.anim[j]! ^ base!.anim[i]!;
         if (!moved && changed === 0 && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
-          opKind[n] = K_KEEP;
-          i++;
-          j++;
-          n++;
-          continue;
+          if (th < 0) {
+            opKind[n] = K_KEEP;
+            i++;
+            j++;
+            n++;
+            continue;
+          }
+          // Sure at the baseline, and no different since. Last told of in the baseline itself, it is as the baseline has it.
+          if (told!.sureAt(th, acked) && (told!.at[th] === acked || same(ring!, told!, th, cur, j))) {
+            opKind[n] = K_HOLD;
+            opTold[n] = th;
+            i++;
+            j++;
+            n++;
+            continue;
+          }
+          // As the baseline has it, but the client may show what it was told since. An update with no parts says so.
         }
         opKind[n] = K_UPDATE;
         // The id gap, the op, and one bit for each of the six parts that may follow.
@@ -367,16 +623,23 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         if (changed >>> ANIM_ACTION_SHIFT !== 0) bits += ANIM_ACTION_BITS;
         last = cid + 1;
       }
+      opId[n] = cid;
       i++;
     }
+    opTold[n] = th;
     if (bits !== 0) {
-      opBits[n] = bits;
-      if (cur.urgent[j] === 1) {
-        urgIndex[urgent++] = n;
-        urgentBits += bits;
+      if (th >= 0 && bid === cid && told!.gone[th] === 1) {
+        // Taken away and back, and in this baseline all along. It is told now, or it would show as the baseline has it.
+        written++;
       } else {
-        optIndex[optional++] = n;
-        optionalBits += bits;
+        opBits[n] = bits;
+        if (cur.urgent[j] === 1) {
+          urgIndex[urgent++] = n;
+          urgentBits += bits;
+        } else {
+          optIndex[optional++] = n;
+          optionalBits += bits;
+        }
       }
     }
     if (cid <= bid) j++;
@@ -411,18 +674,33 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
   for (let k = 0; k < n; k++) {
     const kind = opKind[k]!;
     const bi = opBase[k]!;
-    const ci = opCur[k]!;
-    if (kind === K_KEEP || kind === K_STALE) {
+    if (kind === K_KEEP) {
       next.copyFrom(base!, bi);
       continue;
     }
-    if (kind === K_SKIP) continue;
-    const id = kind === K_REMOVE ? base!.id[bi]! : cur.id[ci]!;
+    const th = opTold[k]!;
+    if (kind === K_HOLD) {
+      next.copyFrom(base!, bi);
+      told!.hold(th, tick, acked, next.count - 1);
+      continue;
+    }
+    if (kind === K_STALE || kind === K_SKIP) {
+      if (kind === K_STALE) next.copyFrom(base!, bi);
+      if (th >= 0) told!.wait(th, tick);
+      continue;
+    }
+    const ci = opCur[k]!;
+    const id = opId[k]!;
     w.varint(id + 1 - prev);
     prev = id + 1;
     if (kind === K_REMOVE) {
       w.bits(OP_REMOVE, 2);
-    } else if (kind === K_CREATE || kind === K_REPLACE) {
+      if (told) told.remove(th, id, tick);
+      continue;
+    }
+    // Both ops below add it to `next`, at the end. Last told of in the baseline, it is now told something else.
+    if (told) told.say(th, id, tick, next.count, th >= 0 && told.gone[th] === 0 && told.at[th] !== acked && same(ring!, told, th, cur, ci));
+    if (kind !== K_UPDATE) {
       w.bits(OP_CREATE, 2);
       w.varint(cur.kind[ci]!);
       w.bits(cur.gen[ci]!, 12);
@@ -499,15 +777,42 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       next.copyFrom(cur, ci);
     }
   }
+  if (told) {
+    told.turn(tick);
+    if (!w.overflow) told.sent = tick;
+  }
   return rotate;
 }
 
-/** Returns false if the data is inconsistent. */
-export function readViewDelta(r: BitReader, base: EntityView | null, next: EntityView): boolean {
+/** Copies to `drawn` the entries of `before` below `id`: bodies the client shows that this snapshot says nothing of. Returns where it stopped. */
+function carry(drawn: EntityView, before: EntityView | null, l: number, id: number): number {
+  if (before) while (l < before.count && before.id[l]! < id) drawn.copyFrom(before, l++);
+  return l;
+}
+
+/** The entry just added to `next` had no op: it is shown as it was last told of, and as the view has it if it was not shown. */
+function untold(drawn: EntityView, before: EntityView | null, l: number, next: EntityView): number {
+  const at = next.count - 1;
+  const id = next.id[at]!;
+  l = carry(drawn, before, l, id);
+  if (before && l < before.count && before.id[l] === id) drawn.copyFrom(before, l++);
+  else drawn.copyFrom(next, at);
+  return l;
+}
+
+/**
+ * Returns false if the data is inconsistent. `next` becomes the view the server holds the client to have, which later deltas
+ * are read against. `drawn`, if given, becomes what the client shows: `before`, which is what it showed after the snapshot
+ * before this one, with this snapshot's ops applied. A body the snapshot says nothing of stays as it was last told of.
+ */
+export function readViewDelta(r: BitReader, base: EntityView | null, next: EntityView, before: EntityView | null = null, drawn: EntityView | null = null): boolean {
   const nb = base ? base.count : 0;
+  // With no baseline and no snapshot for a second, the server has started again from nothing.
+  if (!base && before && next.tick - before.tick >= VIEW_RING) before = null;
   const count = r.varint();
   if (count > MAX_VIEW * 2) return false;
   let i = 0;
+  let l = 0;
   let prev = 0;
   for (let k = 0; k < count; k++) {
     const gap = r.varint();
@@ -515,8 +820,15 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
     prev += gap;
     const id = prev - 1;
     const op = r.bits(2);
-    while (i < nb && base!.id[i]! < id) if (!next.copyFrom(base!, i++)) return false;
+    while (i < nb && base!.id[i]! < id) {
+      if (!next.copyFrom(base!, i++)) return false;
+      if (drawn) l = untold(drawn, before, l, next);
+    }
     const present = i < nb && base!.id[i] === id;
+    if (drawn) {
+      l = carry(drawn, before, l, id);
+      if (before && l < before.count && before.id[l] === id) l++;
+    }
     if (op === OP_REMOVE) {
       if (present) i++;
     } else if (op === OP_CREATE) {
@@ -552,6 +864,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim)) return false;
       next.appear(rev, level, scratchColors, 0, name, look, gear);
       next.belong(team, seat, span, grown);
+      if (drawn) drawn.copyFrom(next, next.count - 1);
     } else if (op === OP_UPDATE) {
       if (!present) return false;
       let qx = base!.qx[i]!;
@@ -579,10 +892,15 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0)) return false;
       next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!);
       next.belong(base!.team[i]!, base!.seat[i]!, base!.span[i]!, base!.grown[i]!);
+      if (drawn) drawn.copyFrom(next, next.count - 1);
       i++;
     } else return false;
     if (r.overflow) return false;
   }
-  while (i < nb) if (!next.copyFrom(base!, i++)) return false;
+  while (i < nb) {
+    if (!next.copyFrom(base!, i++)) return false;
+    if (drawn) l = untold(drawn, before, l, next);
+  }
+  if (drawn) carry(drawn, before, l, NONE);
   return true;
 }

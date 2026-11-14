@@ -3,6 +3,7 @@
 | File | Holds |
 | --- | --- |
 | `codec.test.ts`, `protocol.test.ts` | Bit codec round trips; malformed input is flagged, not thrown; every message's layout |
+| `latency.test.ts` | Views with a round trip between a snapshot and its acknowledgement: a body that had to wait stays as the client last had it, a lost baseline, and a link that loses and delays held to the true states |
 | `foundation.test.ts` | Deterministic trigonometry, identities, content hash, loopback ordering and loss |
 | `world.test.ts`, `ray.test.ts`, `nodes.test.ts` | Terrain continuity, structure tables, the collision grid and rays against brute force, resource nodes as a function |
 | `path.test.ts` | Ways across the ground: round a wall, never through a thin one, the search's budget, legs, and a body walking every way found on the proving ground |
