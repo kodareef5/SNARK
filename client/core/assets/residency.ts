@@ -7,6 +7,9 @@
 // every mesh to draw. Everything else is asked of the port, most urgent first, put on the card within a frame's
 // allowance of bytes, and let go, least lately drawn first, when the card's budget is passed. Textures have a share of
 // the budget and a ring of their own, and levels and surfaces have what textures leave of it.
+//
+// What the card holds that is not an asset (terrain pictures, shadow maps, the sky, far meshes) is reserved by name and
+// comes off the budget, and what goes onto the card that is not an asset is spent from the same frame's allowance.
 
 import type { Manifest, ManifestLevel } from "../../../shared/pack/manifest.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
@@ -74,9 +77,11 @@ function stepFor(px: number, most: number): number {
 }
 
 export class Residency {
-  /** Bytes the card may hold, and bytes that may go onto it in a frame. The tier sets both. */
+  /** Bytes levels and textures may hold on the card, which is the tier's less what is reserved, and bytes that may go onto it in a frame. */
   budget = Infinity;
   uploadBytes = Infinity;
+  /** Bytes reserved on the card for what is not an asset. */
+  reserved = 0;
   /** Bytes of the budget that textures may hold, and the last step any is taken to: -1 for no textures and no surfaces. */
   texBudget = 0;
   cap = -1;
@@ -156,6 +161,9 @@ export class Residency {
   private readonly late: number[] = [];
 
   private frame = 0;
+  private readonly reserves = new Map<string, number>();
+  /** Bytes of this frame's allowance spent on what is not an asset. */
+  private spent = 0;
   private flyingLarge = 0;
   /** Set in a frame in which something waited because the card was over-full, and in which a texture waited for room in the textures' share. */
   private full = false;
@@ -263,6 +271,26 @@ export class Residency {
     return this.first[mesh]! + level;
   }
 
+  /**
+   * Holds `bytes` of the card for something that is not an asset, such as the terrain's pictures, in place of what was
+   * held under its name before. 0 gives it back. It comes off the budget from the next frame, and outlasts a lost card.
+   */
+  reserve(name: string, bytes: number): void {
+    this.reserved += bytes - (this.reserves.get(name) ?? 0);
+    if (bytes > 0) this.reserves.set(name, bytes);
+    else this.reserves.delete(name);
+  }
+
+  /** Bytes of this frame's allowance left for what is not an asset, which spends before the assets do. */
+  get left(): number {
+    return Math.max(0, this.uploadBytes - this.spent);
+  }
+
+  /** Spends `bytes` of this frame's allowance on something that is not an asset. Assets have what is left, and one still goes. */
+  spend(bytes: number): void {
+    this.spent += bytes;
+  }
+
   private empty(): void {
     this.prev[this.root] = this.next[this.root] = this.mark;
     this.prev[this.mark] = this.next[this.mark] = this.root;
@@ -314,6 +342,7 @@ export class Residency {
   /** Starts a frame: takes in what has arrived since the last. */
   begin(nowMs: number): void {
     this.frame++;
+    this.spent = 0;
     this.wants.length = 0;
     this.unlink(this.mark);
     this.toTail(this.mark);
@@ -621,10 +650,10 @@ export class Residency {
     }
     this.under.length = kept;
 
-    // What has arrived goes on the card, most urgent first, within the frame's bytes. One always goes.
+    // What has arrived goes on the card, most urgent first, within what the frame's bytes have left. One always goes.
     const urgent = (slot: number): number => (this.seen[slot] === this.frame ? this.urgency[slot]! : -1);
     const byUrgency = (a: number, b: number): number => urgent(b) - urgent(a) || a - b;
-    let sent = 0;
+    let sent = this.spent;
     this.full = this.short = false;
     kept = 0;
     for (const slot of this.under.sort(byUrgency)) {
@@ -640,7 +669,7 @@ export class Residency {
       // A surface goes up with its level, or after it.
       const pair = slot < this.levels && this.state[this.levels + slot] === ARRIVED ? this.levels + slot : -1;
       const bytes = this.size[slot]! + (pair < 0 ? 0 : this.size[pair]!);
-      if ((slot >= this.levels && this.state[slot - this.levels] !== RESIDENT) || (sent > 0 && sent + bytes > this.uploadBytes)) {
+      if ((slot >= this.levels && this.state[slot - this.levels] !== RESIDENT) || (sent > this.spent && sent + bytes > this.uploadBytes)) {
         this.under[kept++] = slot;
         continue;
       }
@@ -743,7 +772,7 @@ export class Residency {
     let at = this.gone[t]!;
     if (at === 0) {
       // A copy is begun in a frame that has bytes left for its first row.
-      if (sent > 0 && sent + pictureBytes(this.made, tex.role, 1) > this.uploadBytes) return sent;
+      if (sent > this.spent && sent + pictureBytes(this.made, tex.role, 1) > this.uploadBytes) return sent;
       // Textures keep to their share, but for a smaller copy that will give room back. Levels make way for them.
       const share = this.texBudget * (this.down[t] === 1 ? OVERFLOW : 1);
       this.texRoom(whole, share, texDrops);
@@ -769,7 +798,7 @@ export class Residency {
       const row = (at - start) / rowBytes;
       let n = Math.floor((this.uploadBytes - sent) / rowBytes);
       if (n <= 0) {
-        if (sent > 0) break;
+        if (sent > this.spent) break;
         n = 1;
       }
       if (n > rows - row) n = rows - row;
