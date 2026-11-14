@@ -1720,9 +1720,9 @@ function writeBest(out: Uint8Array, at: number): void {
 const LINE_TRIALS = 6;
 /** A block is not searched further once its mean squared error per channel is below this, */
 const GOOD_ENOUGH = 0.25;
-/** and has every partition pattern fitted if it is still above this and has no more colours than these. */
+/** and has every partition pattern fitted if it is still above this. No block of our test textures is; random noise
+ *  is all such blocks, and takes ten times as long. */
 const BAD = 48;
-const FEW_COLOURS = 4;
 
 /** Encodes the block in `px`. */
 function encodeBlock(kind: AstcKind, out: Uint8Array, at: number): void {
@@ -1771,20 +1771,13 @@ function encodeBlock(kind: AstcKind, out: Uint8Array, at: number): void {
   }
   for (let k = 0; k < lines; k++) for (let g = 1; g < GRIDS.length; g++) consider(fits[k]!, g, LINE_TRIALS);
   runCandidates();
-  // More partitions, while the block is not yet good. A block of a few flat colours that stays bad has every pattern
-  // fitted: a mask is like that, and somewhere there may be a pattern that puts no more than two colours in a
-  // partition, which is exact.
+  // More partitions, while the block is not yet good. A block that stays bad has every pattern fitted. That is slow,
+  // about a millisecond, and it is where three regions of a mask meet that it pays most: somewhere there may be a
+  // pattern that puts no more than two colours in a partition, which is exact.
   const good = 16 * cwSum * GOOD_ENOUGH;
   const bad = 16 * cwSum * BAD;
-  let colours = 0;
-  for (let i = 0; i < 64 && bestError > bad; i += 4) {
-    let j = 0;
-    while (j < i && (px[j] !== px[i] || px[j + 1] !== px[i + 1] || px[j + 2] !== px[i + 2] || px[j + 3] !== px[i + 3])) j += 4;
-    if (j === i) colours++;
-  }
-  const every = bestError > bad && colours <= FEW_COLOURS;
-  if (bestError > good) tryPartitions(2, line, every ? 1024 : 8, 2, 4);
-  if (bestError > good && channels < 4) tryPartitions(3, line, every && bestError > bad ? 1024 : 6, 2, 3);
+  if (bestError > good) tryPartitions(2, line, bestError > bad ? 1024 : 8, 2, 4);
+  if (bestError > good && channels < 4) tryPartitions(3, line, bestError > bad ? 1024 : 6, 2, 3);
   writeBest(out, at);
 }
 

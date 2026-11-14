@@ -149,18 +149,34 @@ test("every kind of block the encoder makes comes back close to its pixels", () 
 });
 
 test("a mask of pure colours comes back within two levels", () => {
-  // Bands of the six colours and black, with slanted and curved borders. Neighbours on the colour ring touch;
-  // black lies between the others, as the mask rule asks.
-  const ring = [[255, 0, 0], [255, 255, 0], [0, 255, 0], [0, 255, 255], [0, 0, 255], [255, 0, 255]];
-  const rgba = picture(64, (x, y) => {
-    const band = Math.floor((x + 6 * Math.sin(y / 7) + y / 3) / 9);
-    const inBand = (x + 6 * Math.sin(y / 7) + y / 3) / 9 - band;
-    // Every third border is a black line two pixels wide.
-    if (band % 3 === 0 && inBand < 0.25) return [0, 0, 0, 255];
-    return [...ring[(band + Math.floor(band / 3) * 2) % 6]!, 255];
+  // A mask gives each of three colour regions a channel to itself, and black is undyed. Here regions grow from
+  // scattered points, so borders run at every angle and three regions meet in many blocks.
+  const below = dice(0x3a5c);
+  const pure = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [0, 0, 0, 255]];
+  const seeds = Array.from({ length: 40 }, () => [below(96), below(96), below(4)]);
+  const rgba = picture(96, (x, y) => {
+    let nearest = seeds[0]!;
+    for (const s of seeds) if ((s[0]! - x) ** 2 + (s[1]! - y) ** 2 < (nearest[0]! - x) ** 2 + (nearest[1]! - y) ** 2) nearest = s;
+    return pure[nearest[2]!]!;
   });
-  const got = through(rgba, 64, "linear");
-  expect(got.worst).toBeLessThanOrEqual(2);
+  const blocks = encodeAstc(rgba, 96, 96, "linear");
+  const back = decodeAstc(blocks, 96, 96, "linear");
+  let worst = 0;
+  let three = 0;
+  for (let i = 0; i < back.length; i++) worst = Math.max(worst, Math.abs(back[i]! - rgba[i]!));
+  for (let b = 0; b < 576; b++) {
+    const seen = new Set<number>();
+    for (let i = 0; i < 16; i++) seen.add(new DataView(rgba.buffer).getUint32((((b / 24) | 0) * 4 + (i >> 2)) * 384 + ((b % 24) * 4 + (i & 3)) * 4));
+    if (seen.size >= 3) three++;
+  }
+  expect(three).toBeGreaterThan(10);
+  expect(worst).toBeLessThanOrEqual(2);
+  // The same mask after a blur, as a smaller mip of it would be: every pixel a mix of regions.
+  const soft = picture(96, (x, y) => [0, 1, 2, 3].map((c) => (c === 3 ? 255 : (rgba[(y * 96 + x) * 4 + c]! + rgba[(y * 96 + Math.min(95, x + 1)) * 4 + c]! + rgba[(Math.min(95, y + 1) * 96 + x) * 4 + c]! + rgba[(Math.min(95, y + 1) * 96 + Math.min(95, x + 1)) * 4 + c]!) / 4)));
+  // Where three blurred regions meet no block is exact, and a pixel there can be far off.
+  const softened = through(soft, 96, "linear");
+  expect(softened.db).toBeGreaterThan(50);
+  expect(softened.worst).toBeLessThanOrEqual(48);
 });
 
 test("pictures down to one pixel across are padded to whole blocks", () => {
