@@ -1,15 +1,22 @@
 // Draws an asset's review sheet with the software rasterizer: the model from eight sides at every level of detail,
-// its wireframe, the bone each part follows, its hit capsules and sockets, and every clip at six frames. The sheet is
-// one picture and also the pages it is made of, each small enough to be read at full size.
+// with its materials where it has them and in flat colours, how each graphics tier draws it from where each level
+// begins, its texture coordinates and colour regions, its wireframe, the bone each part follows, its hit capsules and
+// sockets, and every clip at six frames. The sheet is one picture and also the pages it is made of, each small enough
+// to be read at full size.
 
+import { TIERS } from "../../client/core/assets/tiers.ts";
 import { ZONE_NAMES } from "../../shared/anim/human.ts";
 import { buildRig, type Rig } from "../../shared/anim/rigs.ts";
-import type { Pack } from "../../shared/pack/pack.ts";
+import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "../../shared/pack/pack.ts";
+import { REGION_COUNT } from "../../shared/pack/palette.ts";
+import { baseMips } from "../pack/image.ts";
 import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import { ModelView, type ModelShot } from "../snap.ts";
+import { SNAP_CACHE, rgbaOf, type RgbaTexture } from "../snap/files.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "../snap/font.ts";
 import type { Asset } from "./assets.ts";
 import { Poser, type Report } from "./check.ts";
+import { materialsOf } from "./materials.ts";
 
 type Rgb = readonly [number, number, number];
 
@@ -34,6 +41,12 @@ const WHITE = 10;
 const BIAS = 0.012;
 /** One colour a zone, by zone id. */
 const ZONE_COLOURS: readonly Rgb[] = [INK, [214, 40, 40], [226, 150, 20], [40, 110, 220], [20, 170, 200], [120, 80, 220], [170, 110, 230], [30, 150, 70], [120, 180, 40], [150, 100, 50], [190, 140, 90]];
+/** Dyes no asset would be given, so that each region shows for what it is: magenta, lime, cyan, orange, violet and yellow. */
+const LOUD = [56, 49, 52, 47, 55, 48];
+const LOUD_NAMES = ["magenta", "lime", "cyan", "orange", "violet", "yellow"];
+/** Levels are chosen as the check works them out: for a screen this many pixels high, with this field of view. */
+const SCREEN = 1080;
+const FOV_Y = 1.2217;
 
 class Canvas {
   readonly width: number;
@@ -48,8 +61,15 @@ class Canvas {
   }
 
   fill(x: number, y: number, w: number, h: number, rgb: Rgb): void {
+    const p = this.pixels;
     for (let py = Math.max(0, y); py < Math.min(this.height, y + h); py++) {
-      for (let px = Math.max(0, x); px < Math.min(this.width, x + w); px++) this.pixels.set([rgb[0], rgb[1], rgb[2], 255], (py * this.width + px) * 4);
+      for (let px = Math.max(0, x); px < Math.min(this.width, x + w); px++) {
+        const o = (py * this.width + px) * 4;
+        p[o] = rgb[0];
+        p[o + 1] = rgb[1];
+        p[o + 2] = rgb[2];
+        p[o + 3] = 255;
+      }
     }
   }
 
@@ -90,10 +110,15 @@ class Canvas {
   }
 }
 
-/** A picture on a page, and what it shows. */
+/**
+ * A picture on a page, and what it shows. "shaded" is in flat colours and "materials" with its materials. "as seen" is
+ * as a graphics tier draws it where a level begins, and "handover" is the last level with materials or the first flat
+ * one where the one takes over from the other. "checker" has a lettered checker for each picture, and "regions" its
+ * colour regions dyed.
+ */
 export interface SheetCell {
   page: string;
-  what: "shaded" | "as seen" | "wireframe" | "bones" | "capsules" | "clip";
+  what: "shaded" | "materials" | "as seen" | "handover" | "checker" | "regions" | "wireframe" | "bones" | "capsules" | "clip";
   mesh: string;
   x: number;
   y: number;
@@ -105,6 +130,12 @@ export interface SheetCell {
   above?: number;
   clip?: string;
   frame?: number;
+  /** The graphics tier, and how far off it is seen, in metres. */
+  tier?: string;
+  distance?: number;
+  textured?: boolean;
+  /** For "regions": the asset's own colours, or the loud ones. */
+  dye?: "asset" | "loud";
 }
 
 export interface Sheet {
@@ -282,6 +313,16 @@ function boneColours(bones: number): Rgb[] {
   });
 }
 
+/** The views an asset's meshes are drawn in, which hold its textures once a picture with materials is drawn in one. */
+interface Views {
+  pack: Pack;
+  byKey: Map<string, ModelView>;
+  /** Whether a view has the checker in place of every base colour, and whether it has been sent its textures. */
+  holds: Map<ModelView, { checker: boolean; sent: boolean }>;
+  /** The pack's textures in the rgba variant, by their place in it. */
+  textures: RgbaTexture[];
+}
+
 /** Everything the pictures of one mesh are drawn from. */
 interface Subject {
   pack: Pack;
@@ -297,18 +338,70 @@ interface Subject {
   radius: number;
   /** The height the ground is drawn at: 0 under a creature, which stands on its origin, and the underside of a piece, which is centred on its own. */
   floor: number;
-  views: Map<string, ModelView>;
+  /** Its first level drawn flat: 0 where it has no materials, or none can be drawn. */
+  flat: number;
+  views: Views;
   cells: SheetCell[];
 }
 
-function viewOf(s: Subject, width: number, height: number, smooth = SMOOTH): ModelView {
-  const key = `${width}x${height}x${smooth}`;
-  let view = s.views.get(key);
-  if (!view) s.views.set(key, (view = new ModelView(s.pack, width * smooth, height * smooth, [BACK[0] / 255, BACK[1] / 255, BACK[2] / 255])));
+function viewOf(s: Subject, width: number, height: number, smooth = SMOOTH, checker = false): ModelView {
+  const key = `${width}x${height}x${smooth}${checker ? " checker" : ""}`;
+  let view = s.views.byKey.get(key);
+  if (!view) {
+    s.views.byKey.set(key, (view = new ModelView(s.pack, width * smooth, height * smooth, [BACK[0] / 255, BACK[1] / 255, BACK[2] / 255])));
+    s.views.holds.set(view, { checker, sent: false });
+  }
   return view;
 }
 
-type Shot = Pick<ModelShot, "level" | "around" | "above"> & Partial<Pick<ModelShot, "colors" | "centre" | "radius">>;
+/** A picture of 8 by 8 squares lettered A to H across and 1 to 8 down, so that a picture stretched, turned or mirrored shows it. Its mips, smallest first. */
+function checker(size = 256): Uint8Array[] {
+  const data = new Uint8Array(size * size * 4);
+  const cell = size / 8;
+  const hue = (h: number, light: number): Rgb => {
+    const a = 0.75 * Math.min(light, 1 - light);
+    const f = (n: number): number => Math.round(255 * (light - a * Math.max(-1, Math.min(((n + h * 12) % 12) - 3, 9 - ((n + h * 12) % 12), 1))));
+    return [f(0), f(8), f(4)];
+  };
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const [i, j] = [Math.floor(x / cell), Math.floor(y / cell)];
+      data.set([...((i + j) & 1 ? hue(i / 8, 0.36 + j * 0.03) : [228, 226, 220]), 255], (y * size + x) * 4);
+    }
+  }
+  const scale = Math.max(1, Math.floor(cell / 14));
+  for (let j = 0; j < 8; j++) {
+    for (let i = 0; i < 8; i++) {
+      const ink = (i + j) & 1 ? [255, 255, 255, 255] : [20, 20, 20, 255];
+      [..."ABCDEFGH"[i]! + (j + 1)].forEach((ch, n) => {
+        for (let col = 0; col < GLYPH_WIDTH; col++) {
+          for (let row = 0; row < GLYPH_HEIGHT; row++) {
+            if (!glyphPixel(ch.charCodeAt(0), col, row)) continue;
+            for (let d = 0; d < scale * scale; d++) data.set(ink, ((j * cell + 3 + row * scale + Math.floor(d / scale)) * size + i * cell + 3 + (n * (GLYPH_WIDTH + 1) + col) * scale + (d % scale)) * 4);
+          }
+        }
+      });
+    }
+  }
+  return baseMips({ width: size, height: size, channels: 4, depth: 8, data });
+}
+
+let checkerMips: Uint8Array[] | null = null;
+
+/** Sends a view the textures its pictures with materials are drawn with, before its first such picture. */
+function stock(s: Subject, view: ModelView): void {
+  const holds = s.views.holds.get(view)!;
+  if (holds.sent) return;
+  holds.sent = true;
+  s.views.textures.forEach((t, slot) => {
+    if (!holds.checker) view.texture(slot, t.role, t.pictures);
+    else if (t.role === "base") view.texture(slot, "base", (checkerMips ??= checker()));
+    // The masks must be on the card. With none of a region the checker is left as it is.
+    else if (t.role === "mask" || t.role === "mask2") view.texture(slot, t.role, [new Uint8Array(4)]);
+  });
+}
+
+type Shot = Pick<ModelShot, "level" | "around" | "above"> & Partial<Pick<ModelShot, "colors" | "centre" | "radius" | "textured">>;
 
 /** A picture's width over its height. Every row of pictures is cut to it, near enough. */
 const SHAPE = 4 / 3;
@@ -326,18 +419,22 @@ function fit(half: readonly number[], around: number, above: number): number {
 
 /** Draws the subject into a view and returns the view, with what is to be drawn over it. */
 function shoot(s: Subject, view: ModelView, shot: Shot): Overlay {
+  if (shot.textured) stock(s, view);
   view.draw({ mesh: s.index, rig: s.rig, colors: s.colours, centre: s.centre, radius: s.radius, ...shot });
   return new Overlay(view);
 }
 
-/** A row of pictures across a page, each `height` tall, drawn by `each`. One that `each` returns false for is a legend and no picture. */
-function strip(page: Page, s: Subject, count: number, height: number, each: (i: number, view: ModelView, cell: SheetCell, canvas: Canvas, x: number, y: number) => void | false, base: Omit<SheetCell, "x" | "y" | "width" | "height" | "page">): void {
+/**
+ * A row of pictures across a page, each `height` tall, drawn by `each`. One that `each` returns false for is a legend
+ * and no picture. With `checker` the views have the checker in place of every base colour.
+ */
+function strip(page: Page, s: Subject, count: number, height: number, each: (i: number, view: ModelView, cell: SheetCell, canvas: Canvas, x: number, y: number) => void | false, base: Omit<SheetCell, "x" | "y" | "width" | "height" | "page">, checker = false): void {
   const width = Math.floor((WIDTH - PAD * 2 - GAP * (count - 1)) / count);
   page.row(height + GAP, (canvas, y) => {
     for (let i = 0; i < count; i++) {
       const x = PAD + i * (width + GAP);
       const cell: SheetCell = { ...base, page: page.name, x, y, width, height };
-      if (each(i, viewOf(s, width, height), cell, canvas, x, y) !== false) s.cells.push(cell);
+      if (each(i, viewOf(s, width, height, SMOOTH, checker), cell, canvas, x, y) !== false) s.cells.push(cell);
     }
   });
 }
@@ -347,17 +444,106 @@ const AROUND = [0, 45, 90, 135, 180, 225, 270, 315];
 const ABOVE = 12;
 const SIDES = ["front", "front left", "left", "back left", "back", "back right", "right", "front right"];
 
-/** The model from eight sides at one level. `across` is how many pictures to a row. */
-function around(page: Page, s: Subject, level: number, across: number, height: number, ground: boolean): void {
+/** The model from eight sides at one level, with its materials if `textured`. `across` is how many pictures to a row. */
+function around(page: Page, s: Subject, level: number, across: number, height: number, ground: boolean, textured = false): void {
   for (let from = 0; from < AROUND.length; from += across) {
     strip(page, s, across, height, (i, view, cell, canvas, x, y) => {
-      const over = shoot(s, view, { level, around: AROUND[from + i]!, above: ABOVE });
+      const over = shoot(s, view, { level, around: AROUND[from + i]!, above: ABOVE, textured });
       if (ground) over.ground(s.centre, s.radius, gridStep(s.radius), s.floor);
       canvas.shrink(view.raster.color, view.raster.width, view.raster.height, SMOOTH, x, y);
       if (height >= 200) canvas.text(SIDES[from + i]!, x + 6, y + 6, FAINT);
       Object.assign(cell, { level, around: AROUND[from + i]!, above: ABOVE });
-    }, { what: "shaded", mesh: s.id });
+    }, { what: textured ? "materials" : "shaded", mesh: s.id });
   }
+}
+
+/** Four sides that between them show every face: two from above, the top, and from below. */
+const FOUR: readonly (readonly [string, number, number])[] = [["front left", 45, 15], ["back right", 225, 15], ["top", 270, 89], ["from below", 135, -40]];
+
+/** The finest level with its materials from FOUR, in a view of the checker or with colours `colors`. */
+function fourSides(page: Page, s: Subject, what: "checker" | "regions", colors?: readonly number[]): void {
+  strip(page, s, 4, 284, (i, view, cell, canvas, x, y) => {
+    const [name, a, e] = FOUR[i]!;
+    const over = shoot(s, view, { level: 0, around: a, above: e, radius: fit(s.half, a, e), textured: true, ...(colors ? { colors } : {}) });
+    if (e > 0) over.ground(s.centre, fit(s.half, a, e), gridStep(s.radius), s.floor);
+    canvas.shrink(view.raster.color, view.raster.width, view.raster.height, SMOOTH, x, y);
+    canvas.text(name, x + 6, y + 6, FAINT);
+    Object.assign(cell, { level: 0, around: a, above: e, textured: true });
+  }, { what, mesh: s.id, ...(what === "regions" ? { dye: colors === LOUD ? ("loud" as const) : ("asset" as const) } : {}) }, what === "checker");
+}
+
+/** Pixels across a texture's picture of `size`, in a canvas, from the rgba variant: a normal map as its x and y in red and green. */
+function thumbnail(canvas: Canvas, t: RgbaTexture, size: number, x: number, y: number): void {
+  const k = Math.min(t.pictures.length - 1, Math.round(Math.log2(size)));
+  const side = 1 << k;
+  const p = t.pictures[k]!;
+  const step = t.role === "normal" ? 2 : 4;
+  const pixels = new Uint8ClampedArray(side * side * 4);
+  for (let i = 0; i < side * side; i++) pixels.set([p[i * step]!, p[i * step + 1]!, step === 2 ? 255 : p[i * step + 2]!, 255], i * 4);
+  if (side >= size) canvas.shrink(pixels, side, side, side / size, x, y);
+  else canvas.enlarge(pixels, side, side, size / side, x, y);
+}
+
+/** For each material on the finest level: its pictures as the game holds them, how far one repeats and how many pixels it has to a metre. */
+function materialCards(page: Page, s: Subject, report: Report): void {
+  const header = s.pack.header;
+  const lod = header.meshes[s.index]!.lods[0]!;
+  const used = [...new Set((lod.sections ?? []).filter((_, k) => k % 3 === 0))];
+  const facts = report.meshes.find((m) => m.id === s.id)?.materials ?? [];
+  const roles = ["base", "normal", "mro", "mask", "mask2"] as const;
+  const names = { base: "base colour", normal: "normal", mro: "packed", mask: "regions 0-2", mask2: "regions 3-5" };
+  const thumb = 128;
+  const most = Math.max(1, ...used.map((k) => roles.filter((role) => header.materials![k]![role] >= 0).length));
+  const across = Math.max(1, Math.floor((WIDTH - PAD * 2) / (most * (thumb + 6) + 24)));
+  const wide = Math.floor((WIDTH - PAD * 2) / across);
+  for (let from = 0; from < used.length; from += across) {
+    page.row(thumb + 64, (canvas, y) => {
+      used.slice(from, from + across).forEach((k, n) => {
+        const m = header.materials![k]!;
+        const x = PAD + n * wide;
+        const fact = facts.find((f) => f.id === m.id);
+        const flags = [(m.flags & MATERIAL_TWO_SIDED) !== 0 ? "two-sided" : "", (m.flags & MATERIAL_CUTOUT) !== 0 ? `cut out at ${m.cutoff}` : "", m.tint.some((c) => c !== 1) ? `tint ${m.tint.join(", ")}` : ""].filter((f) => f !== "");
+        canvas.text(m.id, x, y + 2, INK);
+        canvas.text(`one picture to ${m.span.toFixed(2)} m${fact ? `, ${fact.texels.toFixed(0)} px a metre` : ""}${flags.length > 0 ? `; ${flags.join(", ")}` : ""}`, x, y + 20, FAINT, 1);
+        let at = x;
+        for (const role of roles) {
+          const slot = m[role];
+          const t = slot >= 0 ? s.views.textures[slot] : undefined;
+          if (!t) continue;
+          thumbnail(canvas, t, thumb, at, y + 32);
+          canvas.text(`${names[role]} ${(header.textures![slot]!.top)}`, at, y + 36 + thumb, FAINT, 1);
+          at += thumb + 6;
+        }
+      });
+    });
+  }
+}
+
+/** The page of a mesh with materials that shows how its pictures lie on it: each material, the checker, and its colour regions dyed. */
+function surfacePage(page: Page, s: Subject, report: Report): void {
+  page.line(`${s.id}: the materials of its finest level, each picture as the game holds it in the rgba variant, the size given its largest`);
+  materialCards(page, s, report);
+  page.line("texture coordinates: every base colour replaced by a checker lettered A to H across and 1 to 8 down, one checker to each picture. Letters that read upright and unmirrored are a picture laid the right way");
+  fourSides(page, s, "checker");
+  const header = s.pack.header;
+  const lod = header.meshes[s.index]!.lods[0]!;
+  const dyed = (lod.sections ?? []).some((k, i) => i % 3 === 0 && header.materials![k]!.mask >= 0);
+  if (!dyed) {
+    page.line("colour regions: none. Its materials have no region map, so nothing on it is dyed", FAINT);
+    return;
+  }
+  page.line(`colour regions dyed in the asset's own colours, palette ${s.colours.slice(0, REGION_COUNT).join(", ") || "none"}`);
+  fourSides(page, s, "regions");
+  page.line(`and in loud dyes, so that each region shows where it lies: ${LOUD_NAMES.map((name, k) => `${k} ${name}`).join(", ")}`);
+  page.row(22, (canvas, y) => {
+    let x = PAD;
+    LOUD.forEach((c, k) => {
+      const rgb: Rgb = [s.pack.palette[c * 4]!, s.pack.palette[c * 4 + 1]!, s.pack.palette[c * 4 + 2]!];
+      canvas.fill(x, y + 2, 14, 14, rgb);
+      x = canvas.text(`region ${k}`, x + 20, y + 2, INK) + 16;
+    });
+  });
+  fourSides(page, s, "regions", LOUD);
 }
 
 function wireframe(page: Page, s: Subject, height: number): void {
@@ -475,32 +661,119 @@ function capsules(page: Page, s: Subject, height: number): void {
 const CLIP_AROUND = 290;
 const CLIP_ABOVE = 10;
 
-/** Each coarser level at the size it is first drawn, and the same enlarged. */
-function asSeen(page: Page, s: Subject, report: Report): void {
-  const facts = report.meshes.find((m) => m.id === s.id)!;
-  const coarse = facts.levels.map((l, i) => ({ l, i })).filter(({ l, i }) => i > 0 && l.tall >= 1);
-  if (coarse.length === 0) return;
-  const times = 3;
-  const box = 90;
-  const across = 4;
-  const wide = Math.floor((WIDTH - PAD * 2) / across);
-  page.line(`each coarser level at the size it is first drawn on medium, and the same ${times} times larger`);
-  for (let from = 0; from < coarse.length; from += across) {
-    page.row(box * times + GAP + 22, (canvas, y) => {
-      coarse.slice(from, from + across).forEach(({ l, i }, n) => {
+/** A picture as small as a screen shows a mesh, and the frame its middle is enlarged into. */
+const BOX = 80;
+const FRAME = 200;
+
+/** Where a tier first draws a level of a mesh, seen afresh: metres off, and pixels tall on a SCREEN pixel screen. */
+interface Start {
+  level: number;
+  distance: number;
+  tall: number;
+  textured: boolean;
+}
+
+/** The levels a tier draws a mesh at beyond its finest, each from where it begins: the coarsest level whose error the tier lets pass is drawn. */
+function startsOf(s: Subject, tier: (typeof TIERS)[number]): Start[] {
+  const header = s.pack.header.meshes[s.index]!;
+  const errors = header.lods.map((l) => l.error);
+  const scale = SCREEN / (2 * Math.tan(FOV_Y / 2));
+  const out: Start[] = [];
+  for (let level = Math.min(tier.finest, errors.length - 1) + 1; level < errors.length; level++) {
+    // A level no coarser one is better than is never drawn.
+    if (errors[level]! <= 0 || errors.slice(level + 1).some((e) => e <= errors[level]!)) continue;
+    const distance = (errors[level]! * scale) / tier.threshold;
+    out.push({ level, distance, tall: (header.half[1] * 2 * scale) / distance, textured: tier.texture > 0 && level < s.flat });
+  }
+  return out;
+}
+
+/** A level drawn `tall` pixels high in a picture BOX pixels square, as a screen shows it. */
+function seen(s: Subject, level: number, tall: number, textured: boolean): Canvas {
+  const view = viewOf(s, BOX, BOX);
+  // The ball that makes the mesh stand `tall` pixels in a picture BOX pixels high.
+  shoot(s, view, { level, around: CLIP_AROUND, above: CLIP_ABOVE, radius: ((BOX / 2) * Math.cos(view.cam.fovY / 2) * s.half[1] * 2) / tall, textured });
+  const out = new Canvas(BOX, BOX);
+  out.shrink(view.raster.color, view.raster.width, view.raster.height, SMOOTH, 0, 0);
+  return out;
+}
+
+/**
+ * The middle of a small picture of `s` standing `tall` pixels high in a FRAME pixels square, each of its pixels a
+ * square as large as fills the frame with the mesh. Returns that size.
+ */
+function magnify(canvas: Canvas, s: Subject, small: Canvas, tall: number, x: number, y: number): number {
+  const across = (tall * Math.max(...s.half)) / s.half[1];
+  const times = Math.max(2, Math.min(25, Math.floor(FRAME / Math.max(1, across * 1.25))));
+  const keep = Math.min(small.width, Math.floor(FRAME / times));
+  const from = Math.floor((small.width - keep) / 2);
+  const middle = new Uint8ClampedArray(keep * keep * 4);
+  for (let row = 0; row < keep; row++) middle.set(small.pixels.subarray(((from + row) * small.width + from) * 4, ((from + row) * small.width + from + keep) * 4), row * keep * 4);
+  canvas.fill(x, y, FRAME, FRAME, BACK);
+  const at = Math.floor((FRAME - keep * times) / 2);
+  canvas.enlarge(middle, keep, keep, times, x + at, y + at);
+  return times;
+}
+
+/**
+ * How each graphics tier draws the mesh from where each of its levels begins, on a SCREEN pixel screen: at that size,
+ * and enlarged.
+ */
+function asSeen(page: Page, s: Subject): void {
+  const columns = TIERS.map((tier) => ({ tier, starts: startsOf(s, tier) }));
+  const levels = [...new Set(columns.flatMap((c) => c.starts.map((st) => st.level)))].sort((a, b) => a - b);
+  if (levels.length === 0) return;
+  page.line(`how each graphics tier draws it on a ${SCREEN}-pixel screen from where each level begins, seen afresh: at that size, and enlarged${s.flat > 0 ? `. A tier with textures draws ${s.flat === 1 ? "level 0" : `levels 0 to ${s.flat - 1}`} with materials` : ""}`);
+  const wide = Math.floor((WIDTH - PAD * 2) / columns.length);
+  page.row(36, (canvas, y) => {
+    columns.forEach(({ tier }, n) => {
+      canvas.text(tier.name, PAD + n * wide, y + 2, INK);
+      canvas.text(`lets ${tier.threshold} px of error pass, ${tier.texture > 0 ? `textures to ${tier.texture} px` : "no textures"}${tier.finest > 0 ? `, level ${tier.finest} the finest` : ""}`, PAD + n * wide, y + 20, FAINT, 1);
+    });
+  });
+  for (const level of levels) {
+    page.row(FRAME + GAP + 20, (canvas, y) => {
+      columns.forEach(({ tier, starts }, n) => {
         const x = PAD + n * wide;
-        const view = viewOf(s, box, box);
-        // The ball that makes the mesh stand `tall` pixels in a picture `box` pixels high.
-        shoot(s, view, { level: i, around: CLIP_AROUND, above: CLIP_ABOVE, radius: ((box / 2) * Math.cos(view.cam.fovY / 2) * facts.size[1]) / l.tall });
-        const small = new Canvas(box, box);
-        small.shrink(view.raster.color, view.raster.width, view.raster.height, SMOOTH, 0, 0);
-        canvas.put(small, x, y + 22);
-        canvas.enlarge(small.pixels, box, box, times, x + box + GAP, y + 22);
-        canvas.text(`level ${i}: ${l.tall.toFixed(0)} px tall, from ${l.from.toFixed(0)} m`, x, y + 2, INK);
-        s.cells.push({ page: page.name, what: "as seen", mesh: s.id, x, y: y + 22, width: box, height: box, level: i, around: CLIP_AROUND, above: CLIP_ABOVE });
+        const st = starts.find((st) => st.level === level);
+        if (!st) {
+          canvas.text(`level ${level}: ${level <= tier.finest ? "drawn from 0 m" : "never drawn"}`, x, y + 2, FAINT);
+          return;
+        }
+        const small = seen(s, st.level, st.tall, st.textured);
+        canvas.put(small, x, y + 20);
+        const times = magnify(canvas, s, small, st.tall, x + BOX + GAP, y + 20);
+        canvas.text(`level ${st.level} from ${st.distance.toFixed(0)} m, ${st.tall.toFixed(0)} px`, x, y + 2, INK);
+        canvas.text(st.textured ? "materials" : "flat", x, y + 26 + BOX, FAINT, 1);
+        canvas.text(`x${times}`, x, y + 38 + BOX, FAINT, 1);
+        s.cells.push({ page: page.name, what: "as seen", mesh: s.id, x, y: y + 20, width: BOX, height: BOX, level: st.level, around: CLIP_AROUND, above: CLIP_ABOVE, tier: tier.name, distance: st.distance, textured: st.textured });
       });
     });
   }
+}
+
+/** Where the mesh turns flat on each tier with textures: the last level with materials beside the first flat one, both at the size the one takes over. */
+function handover(page: Page, s: Subject): void {
+  if (s.flat === 0 || s.flat >= s.pack.header.meshes[s.index]!.lods.length) return;
+  const at = TIERS.filter((t) => t.texture > 0).flatMap((tier) => startsOf(s, tier).filter((st) => st.level === s.flat).map((st) => ({ tier, st })));
+  if (at.length === 0) return;
+  page.line(`where it turns flat: level ${s.flat - 1} with its materials above and beside level ${s.flat} in flat colours, at the size each tier with textures changes the one for the other, and enlarged`);
+  const wide = Math.floor((WIDTH - PAD * 2) / 3);
+  page.row(FRAME + GAP + 20, (canvas, y) => {
+    at.forEach(({ tier, st }, n) => {
+      const x = PAD + n * wide;
+      canvas.text(`${tier.name}: from ${st.distance.toFixed(0)} m, ${st.tall.toFixed(0)} px`, x, y + 2, INK);
+      [s.flat - 1, s.flat].forEach((level, k) => {
+        const small = seen(s, level, st.tall, k === 0);
+        const top = y + 20 + k * (FRAME / 2);
+        canvas.put(small, x, top);
+        canvas.text(k === 0 ? "materials" : "flat", x, top + BOX + 4, FAINT, 1);
+        const times = magnify(canvas, s, small, st.tall, x + BOX + GAP + k * (FRAME + GAP), y + 20);
+        if (k === 1) canvas.text(`x${times}`, x + BOX - 24, top + BOX + 4, FAINT, 1);
+        s.cells.push({ page: page.name, what: "handover", mesh: s.id, x, y: top, width: BOX, height: BOX, level, around: CLIP_AROUND, above: CLIP_ABOVE, tier: tier.name, distance: st.distance, textured: k === 0 });
+      });
+    });
+  });
 }
 
 function clipRows(page: Page, s: Subject, report: Report, names: readonly string[]): void {
@@ -547,7 +820,8 @@ function clipRows(page: Page, s: Subject, report: Report, names: readonly string
   poser.set(null, 0);
 }
 
-function subjectOf(pack: Pack, meshes: SourceMesh[], id: string, colours: readonly number[], cells: SheetCell[]): Subject | null {
+function subjectOf(views: Views, meshes: SourceMesh[], id: string, colours: readonly number[], cells: SheetCell[]): Subject | null {
+  const pack = views.pack;
   const mesh = meshes.find((m) => m.id === id);
   const index = pack.meshIndex.get(id);
   if (!mesh || index === undefined) return null;
@@ -557,7 +831,18 @@ function subjectOf(pack: Pack, meshes: SourceMesh[], id: string, colours: readon
   const poser = rig ? new Poser(rig) : null;
   poser?.set(null, 0);
   const radius = Math.max(...AROUND.map((a) => fit(header.half, a, ABOVE)));
-  return { pack, id, mesh, index, rig, poser, colours, centre: [...header.center], half: [...header.half], radius, floor: rig ? 0 : header.center[1] - header.half[1], views: new Map(), cells };
+  const flat = views.textures.length > 0 ? (header.flat ?? 0) : 0;
+  return { pack, id, mesh, index, rig, poser, colours, centre: [...header.center], half: [...header.half], radius, floor: rig ? 0 : header.center[1] - header.half[1], flat, views, cells };
+}
+
+/** The textures of an asset's pack in the rgba variant, by their place in it, made from the pictures its asset.ts names. */
+function texturesOf(asset: Asset, pack: Pack, cache: string | null): RgbaTexture[] {
+  const materials = materialsOf(asset);
+  return (pack.header.textures ?? []).map((t) => {
+    const m = materials.find((m) => t.id === `${m.id}/${t.role}`);
+    if (!m) throw new Error(`its pack names the texture ${t.id}, which no material in its asset.ts has. Build it again`);
+    return rgbaOf(m, t.role, t.top, cache);
+  });
 }
 
 /** The heading of the first page: what the asset is, its numbers, and what is wrong with it. */
@@ -573,8 +858,11 @@ function heading(page: Page, asset: Asset, report: Report): void {
   page.line(report.faults.length === 0 ? "check: ok" : `check: ${report.faults.length} ${report.faults.length === 1 ? "fault" : "faults"}`, report.faults.length === 0 ? GOOD : BAD);
 }
 
-/** Null for a kind of asset that has no sheet. */
-export function drawSheet(asset: Asset, pack: Pack, report: Report): Sheet | null {
+/**
+ * Null for a kind of asset that has no sheet. Its textures are made from its pictures, or read from `cache` where
+ * they were made before (tools/snap/files.ts).
+ */
+export function drawSheet(asset: Asset, pack: Pack, report: Report, cache: string | null = SNAP_CACHE): Sheet | null {
   const spec = asset.spec;
   if (spec.kind !== "creature" && spec.kind !== "pieces") return null;
   const meshes = unpackMeshes(pack);
@@ -585,26 +873,42 @@ export function drawSheet(asset: Asset, pack: Pack, report: Report): Sheet | nul
   const first = new Page(`${tagOf(ids[0]!)}views`);
   heading(first, asset, report);
   pages.push(first);
+  const views: Views = { pack, byKey: new Map(), holds: new Map(), textures: [] };
+  try {
+    views.textures = texturesOf(asset, pack, cache);
+  } catch (e) {
+    first.line(`its materials are drawn flat here, as its pictures could not be made into textures: ${(e as Error).message}`, BAD);
+  }
   ids.forEach((id, n) => {
-    const s = subjectOf(pack, meshes, id, spec.kind === "creature" ? spec.regions.map((r) => r.sample) : [15], cells);
+    const s = subjectOf(views, meshes, id, spec.kind === "creature" ? spec.regions.map((r) => r.sample) : [15], cells);
     if (!s) return;
     const tag = tagOf(id);
-    const views = n === 0 ? first : new Page(`${tag}views`);
-    if (n > 0) pages.push(views);
-    views.line(`${id} at level 0, from eight sides. Ground lines ${gridStep(s.radius)} m apart.`);
-    around(views, s, 0, 4, 284, true);
-    // The views are flat. The same eight drawn with the level's materials belong here: ModelView would queue a draw
-    // for each section and send the textures, as tests/fixtures/stage.ts does by hand, with mips from mipsOf.
+    const page = n === 0 ? first : new Page(`${tag}views`);
+    if (n > 0) pages.push(page);
+    const step = gridStep(s.radius);
+    if (s.flat > 0) {
+      page.line(`${id} at level 0 with its materials, from eight sides, lit as the game lights them and by its sky. Ground lines ${step} m apart.`);
+      around(page, s, 0, 4, 284, true, true);
+      page.line(`the same in flat colours, as it is drawn until its textures come`);
+    } else page.line(`${id} at level 0, from eight sides. Ground lines ${step} m apart.`);
+    around(page, s, 0, 4, 284, true);
 
     if (s.mesh.lods.length > 1) {
       const levels = new Page(`${tag}levels`);
       pages.push(levels);
       const facts = report.meshes.find((m) => m.id === id)!.levels;
       for (let l = 1; l < s.mesh.lods.length; l++) {
-        levels.line(`level ${l}: ${facts[l]!.triangles} triangles, ${(facts[l]!.error * 100).toFixed(1)} cm from the finest, drawn from ${facts[l]!.from.toFixed(0)} m off`);
-        around(levels, s, l, 8, 140, false);
+        levels.line(`level ${l}: ${facts[l]!.triangles} triangles, ${(facts[l]!.error * 100).toFixed(1)} cm from the finest, drawn from ${facts[l]!.from.toFixed(0)} m off on medium${l < s.flat ? ", with its materials" : s.flat > 0 ? ", flat" : ""}`);
+        around(levels, s, l, 8, 140, false, l < s.flat);
       }
-      asSeen(levels, s, report);
+      asSeen(levels, s);
+      handover(levels, s);
+    }
+
+    if (s.flat > 0) {
+      const surface = new Page(`${tag}materials`);
+      pages.push(surface);
+      surfacePage(surface, s, report);
     }
 
     const rig = new Page(`${tag}${s.rig ? "rig" : "wireframe"}`);
