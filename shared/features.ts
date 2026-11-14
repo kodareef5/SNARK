@@ -2,7 +2,6 @@
 
 /** Features this engine does not have yet. A planned setting, a stub class and a planned event each wait for one. */
 export const FEATURES = {
-  spawner: "Wild creatures that spawn and respawn by region",
   imprinting: "Imprinting and baby care",
   tameBonus: "Taming bonuses in a tame's stats, passive taming, mate boost, unfertilised eggs",
   defences: "Defences: turrets, spikes, and explosives that are set",

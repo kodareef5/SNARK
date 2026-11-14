@@ -78,6 +78,7 @@ test("the two files are read as ARK's are: each key in its own section of its ow
     ["XPMultiplier", gusAt("xpmultiplier")],
     ["serverPVE", gusAt("serverPVE")],
     ["ServerAdminPassword", gusAt("ServerAdminPassword")],
+    ["DinoCountMultiplier", gusAt("DinoCountMultiplier")],
     ["MaxTamedDinos", gusAt("MaxTamedDinos")],
     ["SessionName", gusAt("SessionName")],
     ["Port", gusAt("Port")],
@@ -93,7 +94,7 @@ test("the two files are read as ARK's are: each key in its own section of its ow
   ]);
   // A setting that waits for a feature is still read, checked and held.
   expect([rules.num("XPMultiplier"), rules.on("serverPVE"), rules.text("ServerAdminPassword"), rules.num("DinoCountMultiplier"), rules.num("MaxTamedDinos"), rules.text("SessionName"), rules.num("Port"), rules.text("Message"), rules.num("Duration"), rules.num("MaxPlayers"), rules.num("BabyCuddleIntervalMultiplier")]).toEqual([2.5, true, "hunter2", 2, 5000, "The Proving Ground", 9000, "Welcome\\nBe kind", 30, 40, 0.1]);
-  expect(report.waiting.map((w) => w.row.name)).toEqual(["DinoCountMultiplier", "BabyCuddleIntervalMultiplier"]);
+  expect(report.waiting.map((w) => w.row.name)).toEqual(["BabyCuddleIntervalMultiplier"]);
   expect(report.nothing.map((x) => x.row.name)).toEqual(["ActiveMods"]);
   // An indexed setting changes only at its index. The 0.17 at index 8 is ARK's default.
   expect(rules.indexed("PerLevelStatsMultiplier_DinoTamed")).toEqual([0.4, 1, 1, 1, 1, 1, 1, 1, 0.17, 1, 1, 1]);
@@ -111,10 +112,10 @@ test("the two files are read as ARK's are: each key in its own section of its ow
     ["TamingSpeedMultiplier", gameAt("TamingSpeed"), "belongs in GameUserSettings.ini [ServerSettings]"],
   ]);
   const lines = formatReport(report, rules);
-  expect(lines[0]).toBe("settings: 16 applied, 2 not yet effective, 1 of no meaning here, 2 unknown, 7 refused");
+  expect(lines[0]).toBe("settings: 17 applied, 1 not yet effective, 1 of no meaning here, 2 unknown, 7 refused");
   expect(lines).toContain(`  applied   ServerAdminPassword=****  (${gusAt("ServerAdminPassword")})`);
   expect(lines).toContain(`  applied   TamingSpeedMultiplier=3  (${gusAt("TamingSpeedMultiplier=3")})`);
-  expect(lines).toContain(`  not yet   DinoCountMultiplier  (${gusAt("DinoCount")}): waits for: wild creatures that spawn and respawn by region`);
+  expect(lines).toContain(`  not yet   BabyCuddleIntervalMultiplier  (${gameAt("BabyCuddle")}): waits for: imprinting and baby care`);
   expect(lines).toContain(`  no use    ActiveMods  (${gusAt("ActiveMods")}): ARK's mods`);
   expect(lines).toContain(`  unknown   Gravity  (${gusAt("Gravity")})`);
   expect(lines).toContain(`  refused   a line  (${gameAt("this line")}): not a Key=Value line`);
@@ -183,8 +184,10 @@ test("a folder is read from disk, any of its files missing; a server started on 
   expect(h.say(ada, "setting eggHatchSpeedMultiplier")).toEqual(["EggHatchSpeedMultiplier=40  (file; may be changed while the server runs)", "How fast an egg hatches, or young are carried. Higher is faster."]);
   expect(h.say(ada, "setting EggHatchSpeedMultiplier 80")).toEqual(["EggHatchSpeedMultiplier=80  (until the server is started again)"]);
   expect(h.say(ada, "setting EggHatchSpeedMultiplier 0")[0]).toMatch(/wants a number from 0.001/);
-  expect(h.say(ada, "setting DinoCountMultiplier 2")).toEqual(["DinoCountMultiplier does not take effect yet"]);
-  expect(h.say(ada, "setting DinoCountMultiplier")[0]).toBe("DinoCountMultiplier=1  (default; waits for: wild creatures that spawn and respawn by region)");
+  expect(h.say(ada, "setting CropGrowthSpeedMultiplier 2")).toEqual(["CropGrowthSpeedMultiplier does not take effect yet"]);
+  expect(h.say(ada, "setting DinoCountMultiplier 2")).toEqual(["DinoCountMultiplier is read when the server starts: set it in its file and start again"]);
+  expect(h.say(ada, "setting DinoCountMultiplier")[0]).toBe("DinoCountMultiplier=1  (default; read when the server starts)");
+  expect(h.say(ada, "setting CropGrowthSpeedMultiplier")[0]).toBe("CropGrowthSpeedMultiplier=1  (default; waits for: farming, irrigation, and upkeep of the body)");
   expect(h.say(ada, "setting Gravity 2")).toEqual(["there is no setting called Gravity"]);
   expect(h.say(ada, "setting ServerAdminPassword hunter2")[0]).toMatch(/ServerAdminPassword does not take effect yet|read when the server starts/);
   expect(h.host.rules.num("EggHatchSpeedMultiplier")).toBe(80);

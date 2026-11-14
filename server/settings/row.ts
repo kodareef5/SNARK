@@ -45,6 +45,7 @@ export const NOT_HERE = {
   unreal: "Unreal Engine performance and client switches",
   mods: "ARK's mods",
   expansion: "Things only ARK's expansions, events or named maps have",
+  ascended: "What ARK: Survival Ascended added that was not a fix",
   deprecated: "Deprecated in ARK itself",
 } as const;
 export type NotHere = keyof typeof NOT_HERE;

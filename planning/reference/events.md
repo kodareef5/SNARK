@@ -136,7 +136,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `creature.spawn` | before | `kind`, `why`, `level`, `colours` | `level`, `colours` | the creature's begin play | `server/creatures.ts` | wired |
+| `creature.spawn` | before | `kind`, `why`, `x`, `z`, `level`, `colours` | `level`, `colours` | the creature's begin play | `server/creatures.ts` | wired |
 | `tame.allow` | before | `pid`, `kind`, `level`, `byPid`, `team`, `how` |  | the allow-taming question, and tame limits | `server/taming.ts` | wired |
 | `tame.done` | after | `pid`, `kind`, `level`, `byPid`, `team`, `how`, `te` |  | the tame call | `server/taming.ts` | wired |
 | `creature.order` | before | `pid`, `byPid`, `order` |  |  | `server/taming.ts` | wired |
@@ -150,7 +150,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 | `creature.unclaim` | after | `pid`, `team` |  | claim and unclaim | `server/taming.ts` | planned: decay |
 | `carry.allow` | before | `pid`, `byPid` |  | the can-carry question | `server/riding.ts` | planned: flyers |
 
-- **`creature.spawn`.** A creature is about to enter the world.
+- **`creature.spawn`.** A creature is about to enter the world at (x, z): `why` is wild for the world's own and admin for one an admin asked for.
 - **`tame.allow`.** A creature is about to become somebody's.
 - **`tame.done`.** A creature became somebody's.
 - **`creature.order`.** A tame is about to be told to follow, stay or change stance.
