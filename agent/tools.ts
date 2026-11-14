@@ -1,0 +1,391 @@
+// The tools an agent plays through, each a thing a player can do. An Agent drives one session: `tick` it at the frame rate,
+// and `call` a tool by name. A call resolves from inside a later tick, so the clock that ticks it is the only clock.
+
+import type { ClientSession, TextLine } from "../client/core/session.ts";
+import type { ItemDef } from "../shared/content/defs.ts";
+import { find } from "../shared/content/find.ts";
+import { TICK_RATE } from "../shared/coords.ts";
+import { TAU } from "../shared/math/scalar.ts";
+import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_USE, MAX_CHAT_CHARS, RESULT_OK, SESSION_ALIVE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
+import { STAMINA_UNITS } from "../shared/sim/character.ts";
+import type { Inventory } from "../shared/sim/items.ts";
+import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../shared/sim/vitals.ts";
+import { Commands, resultWords } from "./commands.ts";
+import type { Answer, ToolDef, ToolHost } from "./mcp.ts";
+
+export const INSTRUCTIONS =
+  "You play one survivor in SNARK, a survival game, through these tools. You can do what a player can and no more. " +
+  "Positions are x and z in metres: north is +z and east is -x. Things have ids: n12.3 is a tree, rock or bush, s65539 is something built, e7 is a creature, a player or a bag. " +
+  "Every answer has a state: done, running (still going; ask status), blocked (it stopped short, and reason says why), danger (it stopped because you are in danger) or refused (nothing was done).";
+
+/** Chat lines a survivor may say at once, and the milliseconds that earn another, as server/chat.ts counts them. */
+const CHAT_BURST = 5;
+const CHAT_EARN_MS = 2000;
+const CONSOLE_GAP_MS = 200;
+/** A command the server has not answered after this long is given up on. */
+const ANSWER_MS = 3000;
+const CHANNELS: Record<string, number> = { global: TEXT_GLOBAL, local: TEXT_LOCAL, tribe: TEXT_TRIBE };
+const CHANNEL_WORDS: Record<number, string> = { [TEXT_GLOBAL]: "global", [TEXT_LOCAL]: "local", [TEXT_TRIBE]: "tribe", [TEXT_NOTICE]: "notice" };
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+
+const wait = { type: "number", description: "Seconds to wait for it to finish before answering running, 0 to 50." };
+const DEFS: ToolDef[] = [
+  { name: "move_item", description: "Move a stack between slots of your inventory (self) and the box you have open (box). Slots are numbered as status lists them.", inputSchema: { type: "object", properties: { from: { enum: ["self", "box"] }, slot: { type: "integer" }, to: { enum: ["self", "box"] }, to_slot: { type: "integer", description: "Left out: onto a stack of the same item, else the first empty slot." }, count: { type: "integer", description: "Left out: the whole stack." } }, required: ["from", "slot", "to"] } },
+  { name: "craft", description: "Make an item you know the engram for, from what you carry.", inputSchema: { type: "object", properties: { recipe: { type: "string", description: "The item, such as hatchet." }, count: { type: "integer", description: "1 to 100. Default 1." }, learn: { type: "boolean", description: "Spend engram points to learn it first if you do not know it." }, wait_s: wait }, required: ["recipe"] } },
+  { name: "eat", description: "Eat or drink something you carry.", inputSchema: { type: "object", properties: { item: { type: "string", description: "Left out: the first thing you carry that can be eaten." } } } },
+  { name: "say", description: "Say a line of chat. Five at once, then one every two seconds.", inputSchema: { type: "object", properties: { channel: { enum: ["global", "local", "tribe"], description: "Everyone, those within 60 m, or your tribe." }, text: { type: "string", description: `At most ${MAX_CHAT_CHARS} characters.` } }, required: ["channel", "text"] } },
+  { name: "status", description: "How you are: place, vitals, what you carry, the box you have open, what you are making, and chat heard since you last asked.", inputSchema: { type: "object", properties: {} } },
+  { name: "console", description: "Type a line at the server's console, as a player does with the backquote key. Most commands need admin rights.", inputSchema: { type: "object", properties: { line: { type: "string" } }, required: ["line"] } },
+];
+
+/** The tools on offer. `console` is among them only if asked for. */
+export function toolDefs(withConsole: boolean): ToolDef[] {
+  return DEFS.filter((d) => withConsole || d.name !== "console");
+}
+
+/** Thrown by the argument readers. The call is then refused with the message. */
+class Bad extends Error {}
+
+function text(a: Record<string, unknown>, key: string): string {
+  const v = a[key];
+  if (typeof v !== "string" || v === "") throw new Bad(`${key} must be text`);
+  return v;
+}
+
+function whole(a: Record<string, unknown>, key: string, lo: number, hi: number, or?: number): number {
+  const v = a[key] ?? or;
+  if (typeof v !== "number" || !Number.isInteger(v) || v < lo || v > hi) throw new Bad(`${key} must be a whole number from ${lo} to ${hi}`);
+  return v;
+}
+
+function amount(a: Record<string, unknown>, key: string, lo: number, hi: number, or: number): number {
+  const v = a[key] ?? or;
+  if (typeof v !== "number" || !(v >= lo && v <= hi)) throw new Bad(`${key} must be a number from ${lo} to ${hi}`);
+  return v;
+}
+
+const refused = (reason: string): Answer => ({ state: "refused", reason });
+const round1 = (v: number): number => Math.round(v * 10) / 10;
+
+/** "core:hatchet" as "hatchet". */
+export function shortName(id: string | undefined): string {
+  return id === undefined ? "?" : id.slice(id.indexOf(":") + 1);
+}
+
+/** The compass point a facing in radians is nearest. Yaw 0 faces north, and turning right lowers it. */
+export function compass(yaw: number): string {
+  return COMPASS[((Math.round((-yaw / TAU) * 8) % 8) + 8) % 8]!;
+}
+
+export interface AgentOptions {
+  /** Offer the console tool. */
+  console?: boolean;
+}
+
+export class Agent implements ToolHost {
+  readonly session: ClientSession;
+  readonly commands: Commands;
+  private readonly withConsole: boolean;
+  private readonly run: Record<string, (a: Record<string, unknown>) => Answer | Promise<Answer>>;
+  /** Each returns true once it has resolved its promise. */
+  private readonly waiting: ((now: number) => boolean)[] = [];
+  private now = 0;
+  private chatLines = CHAT_BURST;
+  private chatAt = 0;
+  private consoleAt = -CONSOLE_GAP_MS;
+  /** `session.logVersion` when status last told what was heard. */
+  private heardTo = 0;
+  /** Resolves when the session closes, so no call is left waiting on a server that has gone. */
+  private readonly gone: Promise<Answer>;
+  private lost: (a: Answer) => void = () => {};
+
+  constructor(session: ClientSession, opts: AgentOptions = {}) {
+    this.session = session;
+    this.commands = new Commands(session);
+    this.withConsole = opts.console ?? false;
+    this.gone = new Promise((resolve) => (this.lost = resolve));
+    this.run = {
+      move_item: (a) => this.moveItem(a),
+      craft: (a) => this.craft(a),
+      eat: (a) => this.eat(a),
+      say: (a) => this.say(a),
+      status: () => this.status(),
+      console: (a) => this.typed(a),
+    };
+  }
+
+  /** Call at the frame rate with the time in milliseconds. It steps the session. */
+  tick(now: number): void {
+    this.now = now;
+    this.commands.step(now);
+    const s = this.session;
+    if (s.state === "closed") return this.lost(this.down());
+    s.update(now, 0, 0, s.ownYaw, 0, 0);
+    for (let i = 0; i < this.waiting.length; ) {
+      if (this.waiting[i]!(now)) this.waiting.splice(i, 1);
+      else i++;
+    }
+  }
+
+  list(): ToolDef[] {
+    return toolDefs(this.withConsole);
+  }
+
+  call(name: string, args: Record<string, unknown>): Promise<Answer> | null {
+    const run = this.list().some((d) => d.name === name) ? this.run[name] : undefined;
+    if (!run) return null;
+    if (this.session.state !== "active") return Promise.resolve(this.down());
+    const bad = (err: unknown): Answer => {
+      if (err instanceof Bad) return refused(err.message);
+      throw err;
+    };
+    try {
+      return Promise.race([Promise.resolve(run(args)).catch(bad), this.gone]);
+    } catch (err) {
+      return Promise.resolve(bad(err));
+    }
+  }
+
+  private down(): Answer {
+    return refused(this.session.state === "closed" ? `not connected (reason ${this.session.closeReason})` : "still connecting");
+  }
+
+  /** Resolves with the first value `poll` gives that is not null. It is asked once a tick. */
+  private until<T>(poll: (now: number) => T | null): Promise<T> {
+    return new Promise((resolve) => {
+      this.waiting.push((now) => {
+        const got = poll(now);
+        if (got === null) return false;
+        resolve(got);
+        return true;
+      });
+    });
+  }
+
+  /** The RESULT_ code the server gives command `seq`, or -1 if it gives none in time. */
+  private result(seq: number): Promise<number> {
+    const by = this.now + ANSWER_MS;
+    return this.until((now) => {
+      const code = this.commands.take(seq);
+      return code >= 0 ? code : now > by ? -1 : null;
+    });
+  }
+
+  private pause(ms: number): Promise<true> {
+    const by = this.now + ms;
+    return this.until((now) => (now >= by ? true : null));
+  }
+
+  /** What the server answered a command with, as an Answer. */
+  private outcome(seq: number, code: number, done: Record<string, unknown>): Answer {
+    if (seq === 0) return refused("too many commands at once: ten a second is the pace");
+    if (code === RESULT_OK) return { state: "done", ...done };
+    return { state: "blocked", reason: code < 0 ? "the server did not answer" : resultWords(code) };
+  }
+
+  /** The content index of the item `name` means. */
+  private item(name: string): number {
+    const found = find(this.session.registry, name, "item");
+    if (found.kinds.length === 1) return found.kinds[0]!;
+    throw new Bad(found.could.length > 0 ? `${name} could be ${found.could.join(" or ")}` : `there is no item called ${name}`);
+  }
+
+  private nameOf(kind: number): string {
+    return shortName(this.session.registry.ids[kind]);
+  }
+
+  /** Every filled slot as [slot, item, count], with what is left of a thing that wears out. */
+  private slots(inv: Inventory): unknown[] {
+    const reg = this.session.registry;
+    const out: unknown[] = [];
+    for (let s = 0; s < inv.cap; s++) {
+      if (inv.item[s] === 0) continue;
+      const row: unknown[] = [s, this.nameOf(inv.item[s]!), inv.count[s]!];
+      if (reg.uses[inv.item[s]!]! > 0) row.push(`${inv.dur[s]} uses left`);
+      out.push(row);
+    }
+    return out;
+  }
+
+  private self(): Record<string, unknown> {
+    const s = this.session;
+    const b = s.own;
+    const v = s.vitals;
+    const vital = (i: number): number[] => [Math.round(v.at(i, s.serverTick) / 1e6), Math.round(v.max[i]! / 1e6)];
+    const inv = s.inventory;
+    const held = inv && inv.hotbar >= 0 && s.held >= 0 ? inv.item[inv.hotbar + s.held]! : 0;
+    return {
+      x: round1(b.x),
+      z: round1(b.z),
+      y: round1(b.y),
+      facing: compass(s.ownYaw),
+      alive: s.sessionState === SESSION_ALIVE,
+      ...(s.hasVitals ? { health: vital(V_HEALTH), food: vital(V_FOOD), water: vital(V_WATER), oxygen: vital(V_OXYGEN) } : {}),
+      stamina: [Math.round(b.stamina / STAMINA_UNITS), b.staminaMax],
+      level: s.progress.level,
+      engram_points: s.progress.engramPoints,
+      held: held !== 0 ? this.nameOf(held) : null,
+    };
+  }
+
+  /** Lines of chat and notices that arrived since this was last asked, oldest first. */
+  private heard(): string[] {
+    const s = this.session;
+    const fresh = Math.min(s.log.length, s.logVersion - this.heardTo);
+    this.heardTo = s.logVersion;
+    const lines = fresh > 0 ? s.log.slice(-fresh) : [];
+    return lines.filter((l) => CHANNEL_WORDS[l.channel] !== undefined).map((l) => `[${CHANNEL_WORDS[l.channel]}] ${l.text}`);
+  }
+
+  private status(): Answer {
+    const s = this.session;
+    const inv = s.inventory;
+    const jobs = s.progress.jobs.map((j) => [this.nameOf(j.item), j.left]);
+    return {
+      state: "done",
+      self: this.self(),
+      ...(inv ? { inventory: this.slots(inv), hotbar_slots: [inv.hotbar, inv.hotbar + 9] } : {}),
+      ...(s.open ? { box: { name: s.open.name, size: s.open.inventory.cap, slots: this.slots(s.open.inventory) } } : {}),
+      ...(jobs.length > 0 ? { making: jobs } : {}),
+      heard: this.heard(),
+    };
+  }
+
+  private async say(a: Record<string, unknown>): Promise<Answer> {
+    const channel = CHANNELS[text(a, "channel")];
+    const words = text(a, "text");
+    if (channel === undefined) throw new Bad("channel must be global, local or tribe");
+    if (words.length > MAX_CHAT_CHARS) throw new Bad(`text must be at most ${MAX_CHAT_CHARS} characters`);
+    const earned = Math.floor((this.now - this.chatAt) / CHAT_EARN_MS);
+    if (earned > 0) {
+      this.chatLines = Math.min(CHAT_BURST, this.chatLines + earned);
+      this.chatAt = this.chatLines === CHAT_BURST ? this.now : this.chatAt + earned * CHAT_EARN_MS;
+    }
+    if (this.chatLines === 0) return refused("you are saying too much at once: wait two seconds");
+    if (!this.commands.allow()) return this.outcome(0, 0, {});
+    if (this.chatLines === CHAT_BURST) this.chatAt = this.now;
+    this.chatLines--;
+    const before = this.session.logVersion;
+    const seq = this.session.chat(channel, words);
+    const answer = this.outcome(seq, await this.result(seq), { said: words });
+    // The server says why it would not pass a line on.
+    const why = this.since(before).find((l) => l.channel === TEXT_NOTICE);
+    return why && answer.state === "blocked" ? { ...answer, reason: why.text } : answer;
+  }
+
+  private since(logVersion: number): TextLine[] {
+    const fresh = Math.min(this.session.log.length, this.session.logVersion - logVersion);
+    return fresh > 0 ? this.session.log.slice(-fresh) : [];
+  }
+
+  private async typed(a: Record<string, unknown>): Promise<Answer> {
+    const line = text(a, "line");
+    if (this.now - this.consoleAt < CONSOLE_GAP_MS) return refused("one console line every 200 ms");
+    if (!this.commands.allow()) return this.outcome(0, 0, {});
+    this.consoleAt = this.now;
+    const before = this.session.logVersion;
+    const seq = this.session.text(line);
+    const code = await this.result(seq);
+    // What a command prints arrives before its result.
+    return this.outcome(seq, code, { lines: this.since(before).map((l) => l.text) });
+  }
+
+  private async eat(a: Record<string, unknown>): Promise<Answer> {
+    const s = this.session;
+    const inv = s.inventory;
+    if (!inv) return refused("you carry nothing");
+    const reg = s.registry;
+    const wanted = a.item === undefined ? 0 : this.item(text(a, "item"));
+    let slot = -1;
+    for (let k = 0; k < inv.cap && slot < 0; k++) {
+      const item = inv.item[k]!;
+      if (item !== 0 && (wanted !== 0 ? item === wanted : (reg.defs[item] as ItemDef).eat !== undefined)) slot = k;
+    }
+    if (slot < 0) return refused(wanted !== 0 ? `you carry no ${this.nameOf(wanted)}` : "you carry nothing to eat");
+    const item = inv.item[slot]!;
+    const seq = this.commands.send(CMD_USE, (w) => (w.varint(slot), w.u16(item)));
+    const code = await this.result(seq);
+    // The vitals follow the result by a tick or two.
+    if (code === RESULT_OK) await this.pause(3000 / TICK_RATE);
+    return this.outcome(seq, code, { ate: this.nameOf(item), self: this.self() });
+  }
+
+  private async craft(a: Record<string, unknown>): Promise<Answer> {
+    const s = this.session;
+    const reg = s.registry;
+    const item = this.item(text(a, "recipe"));
+    const count = whole(a, "count", 1, 100, 1);
+    const waitMs = amount(a, "wait_s", 0, 50, 20) * 1000;
+    const needs = reg.recipeOf[item];
+    if (!needs) return refused(`${this.nameOf(item)} cannot be made`);
+    const recipe: Record<string, number> = {};
+    for (let k = 0; k + 1 < needs.length; k += 2) recipe[this.nameOf(needs[k]!)] = needs[k + 1]!;
+    const engram = reg.defs.findIndex((d) => d?.type === "engram" && d.item === reg.ids[item]);
+    if (engram >= 0 && !s.progress.engrams.includes(engram)) {
+      const def = reg.defs[engram] as { level: number; cost: number };
+      if (a.learn !== true) return refused(`you have not learned ${this.nameOf(item)}: it takes level ${def.level} and ${def.cost} engram points, and learn: true spends them`);
+      const seq = this.commands.send(CMD_LEARN, (w) => w.u16(engram));
+      const learned = this.outcome(seq, await this.result(seq), {});
+      if (learned.state !== "done") return { ...learned, reason: `could not learn ${this.nameOf(item)} (level ${def.level}, ${def.cost} points): ${String(learned.reason)}` };
+    }
+    const had = s.inventory?.total(item) ?? 0;
+    const seq = this.commands.send(CMD_CRAFT, (w) => (w.u16(item), w.u8(count)));
+    const queued = this.outcome(seq, await this.result(seq), {});
+    if (queued.state !== "done") return { ...queued, needs: recipe };
+    const by = this.now + waitMs;
+    const want = count * (reg.recipeMakes[item]! || 1);
+    const made = (): number => (s.inventory?.total(item) ?? 0) - had;
+    // The server drops a job it cannot go on with, so a list that fills and then empties short of the count means that.
+    let begun = false;
+    const state = await this.until((now) => {
+      begun ||= s.progress.jobs.length > 0;
+      return made() >= want ? "done" : begun && s.progress.jobs.length === 0 ? "blocked" : now >= by ? "running" : null;
+    });
+    if (state === "blocked") await this.pause(3000 / TICK_RATE);
+    const answer: Answer = { state: made() >= want ? "done" : state, item: this.nameOf(item), made: made() };
+    if (answer.state === "blocked") return { ...answer, reason: "the ingredients ran out", needs: recipe };
+    return answer.state === "running" ? { ...answer, making: s.progress.jobs.map((j) => [this.nameOf(j.item), j.left]) } : answer;
+  }
+
+  private async moveItem(a: Record<string, unknown>): Promise<Answer> {
+    const s = this.session;
+    const box = (key: string): number => {
+      const v = a[key];
+      if (v !== "self" && v !== "box") throw new Bad(`${key} must be self or box`);
+      return v === "self" ? BOX_SELF : BOX_OPEN;
+    };
+    const fromBox = box("from");
+    const toBox = box("to");
+    const invOf = (b: number): Inventory | null => (b === BOX_SELF ? s.inventory : (s.open?.inventory ?? null));
+    const src = invOf(fromBox);
+    const dst = invOf(toBox);
+    if (!src || !dst) return refused("you have no box open: open one first");
+    const slot = whole(a, "slot", 0, src.cap - 1);
+    const item = src.item[slot]!;
+    if (item === 0) return refused(`slot ${slot} is empty`);
+    const count = whole(a, "count", 0, 65535, 0);
+    if (count > src.count[slot]!) return refused(`slot ${slot} holds only ${src.count[slot]}`);
+    let to: number;
+    if (a.to_slot !== undefined) to = whole(a, "to_slot", 0, dst.cap - 1);
+    else {
+      if (src === dst) return refused("to_slot is needed to move within one inventory");
+      // Onto a stack of the same item with room, else into the first empty slot.
+      const stack = s.registry.stack[item]!;
+      to = -1;
+      for (let k = 0; k < dst.bag && to < 0; k++) if (dst.item[k] === item && dst.quality[k] === src.quality[slot] && dst.count[k]! < stack) to = k;
+      if (to < 0) to = dst.free();
+      if (to < 0) return refused("there is no room there");
+    }
+    const seq = this.commands.send(CMD_MOVE, (w) => {
+      w.bits(fromBox, 1);
+      w.varint(slot);
+      w.bits(toBox, 1);
+      w.varint(to);
+      w.u16(count);
+      w.u16(item);
+    });
+    const code = await this.result(seq);
+    if (code === RESULT_OK) await this.pause(3000 / TICK_RATE);
+    return this.outcome(seq, code, { moved: this.nameOf(item), to_slot: to, left: src.item[slot] === item ? src.count[slot]! : 0 });
+  }
+}
