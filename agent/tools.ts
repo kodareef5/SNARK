@@ -1,17 +1,17 @@
 // The tools an agent plays through, each a thing a player can do. An Agent drives one session: `tick` it at the frame rate,
 // and `call` a tool by name. A call resolves from inside a later tick, so the clock that ticks it is the only clock.
 
-import type { ClientSession, TextLine } from "../client/core/session.ts";
+import { RemoteSample, type ClientSession, type TextLine } from "../client/core/session.ts";
 import type { ItemDef } from "../shared/content/defs.ts";
 import { find } from "../shared/content/find.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { TAU } from "../shared/math/scalar.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_USE, MAX_CHAT_CHARS, RESULT_OK, SESSION_ALIVE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
 import { STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { Inventory } from "../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../shared/sim/vitals.ts";
 import { Commands, resultWords } from "./commands.ts";
 import type { Answer, ToolDef, ToolHost } from "./mcp.ts";
+import { compass, observe, shortName, type FarLayer } from "./observe.ts";
 
 export const INSTRUCTIONS =
   "You play one survivor in SNARK, a survival game, through these tools. You can do what a player can and no more. " +
@@ -26,10 +26,10 @@ const CONSOLE_GAP_MS = 200;
 const ANSWER_MS = 3000;
 const CHANNELS: Record<string, number> = { global: TEXT_GLOBAL, local: TEXT_LOCAL, tribe: TEXT_TRIBE };
 const CHANNEL_WORDS: Record<number, string> = { [TEXT_GLOBAL]: "global", [TEXT_LOCAL]: "local", [TEXT_TRIBE]: "tribe", [TEXT_NOTICE]: "notice" };
-const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 
 const wait = { type: "number", description: "Seconds to wait for it to finish before answering running, 0 to 50." };
 const DEFS: ToolDef[] = [
+  { name: "observe", description: "Look around: a map of the ground about you in letters, north up, and the nearest trees, rocks, bushes, boxes, doors, creatures and players with their ids. Use it before walking anywhere.", inputSchema: { type: "object", properties: { radius: { type: "number", description: "Metres each way, 8 to 96. Default 32." }, cell: { enum: [1, 2, 4], description: "Metres a letter covers. Default 2. A letter shows the most solid thing in its square, so a doorway may only show at 1. A letter of 1 m shows at most 32 m each way, and one of 2 m at most 64." } } } },
   { name: "move_item", description: "Move a stack between slots of your inventory (self) and the box you have open (box). Slots are numbered as status lists them.", inputSchema: { type: "object", properties: { from: { enum: ["self", "box"] }, slot: { type: "integer" }, to: { enum: ["self", "box"] }, to_slot: { type: "integer", description: "Left out: onto a stack of the same item, else the first empty slot." }, count: { type: "integer", description: "Left out: the whole stack." } }, required: ["from", "slot", "to"] } },
   { name: "craft", description: "Make an item you know the engram for, from what you carry.", inputSchema: { type: "object", properties: { recipe: { type: "string", description: "The item, such as hatchet." }, count: { type: "integer", description: "1 to 100. Default 1." }, learn: { type: "boolean", description: "Spend engram points to learn it first if you do not know it." }, wait_s: wait }, required: ["recipe"] } },
   { name: "eat", description: "Eat or drink something you carry.", inputSchema: { type: "object", properties: { item: { type: "string", description: "Left out: the first thing you carry that can be eaten." } } } },
@@ -67,25 +67,20 @@ function amount(a: Record<string, unknown>, key: string, lo: number, hi: number,
 const refused = (reason: string): Answer => ({ state: "refused", reason });
 const round1 = (v: number): number => Math.round(v * 10) / 10;
 
-/** "core:hatchet" as "hatchet". */
-export function shortName(id: string | undefined): string {
-  return id === undefined ? "?" : id.slice(id.indexOf(":") + 1);
-}
-
-/** The compass point a facing in radians is nearest. Yaw 0 faces north, and turning right lowers it. */
-export function compass(yaw: number): string {
-  return COMPASS[((Math.round((-yaw / TAU) * 8) % 8) + 8) % 8]!;
-}
-
 export interface AgentOptions {
   /** Offer the console tool. */
   console?: boolean;
+  /** What observe shows beyond the chunks the server sends. */
+  far?: FarLayer;
 }
 
 export class Agent implements ToolHost {
   readonly session: ClientSession;
   readonly commands: Commands;
+  /** Everyone else in view, as of the last tick. */
+  readonly remote = new RemoteSample();
   private readonly withConsole: boolean;
+  private readonly far: FarLayer | undefined;
   private readonly run: Record<string, (a: Record<string, unknown>) => Answer | Promise<Answer>>;
   /** Each returns true once it has resolved its promise. */
   private readonly waiting: ((now: number) => boolean)[] = [];
@@ -103,8 +98,14 @@ export class Agent implements ToolHost {
     this.session = session;
     this.commands = new Commands(session);
     this.withConsole = opts.console ?? false;
+    this.far = opts.far;
     this.gone = new Promise((resolve) => (this.lost = resolve));
     this.run = {
+      observe: (a) => {
+        const cell = a.cell ?? 2;
+        if (cell !== 1 && cell !== 2 && cell !== 4) throw new Bad("cell must be 1, 2 or 4");
+        return observe(this.session, this.remote, amount(a, "radius", 8, 96, 32), cell, this.far) as Answer;
+      },
       move_item: (a) => this.moveItem(a),
       craft: (a) => this.craft(a),
       eat: (a) => this.eat(a),
@@ -121,6 +122,7 @@ export class Agent implements ToolHost {
     const s = this.session;
     if (s.state === "closed") return this.lost(this.down());
     s.update(now, 0, 0, s.ownYaw, 0, 0);
+    if (s.state === "active") s.sampleRemote(this.remote);
     for (let i = 0; i < this.waiting.length; ) {
       if (this.waiting[i]!(now)) this.waiting.splice(i, 1);
       else i++;

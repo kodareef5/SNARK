@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadKey, manifestUrl, parseArgs } from "../../agent/main.ts";
-import { INVALID_PARAMS, INVALID_REQUEST, NO_METHOD, PARSE_ERROR } from "../../agent/mcp.ts";
+import { INVALID_PARAMS, INVALID_REQUEST, NO_METHOD, PARSE_ERROR, type Answer } from "../../agent/mcp.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { play } from "../fixtures/agent.ts";
 
@@ -112,6 +112,66 @@ test("status tells what is carried, eat feeds, craft makes what is known, and mo
   expect((await p.call("move_item", { from: "self", slot: 0, to: "box" })).state).toBe("refused");
   expect((await p.call("move_item", { from: "self", slot: 39, to: "self", to_slot: 0 })).state).toBe("refused");
   expect(p.h.host.items.audit()).toEqual([]);
+});
+
+/** The letter observe shows for the square that holds (x, z), found the way its `map` line tells a reader to. */
+function letterAt(seen: Answer, x: number, z: number): string {
+  const [, cell, x0, z0] = /square of (\d+) m\. The top left one is centred on x ([\d.]+), z ([\d.]+)\./.exec(seen.map as string)!.map(Number);
+  return (seen.grid as string[])[Math.round((z0! - (Math.floor(z / cell!) + 0.5) * cell!) / cell!)]![Math.round((x0! - (Math.floor(x / cell!) + 0.5) * cell!) / cell!)]!;
+}
+
+test("observe shows the house with its doorway, the pool and the slopes, and lists what is near by id", async () => {
+  const p = play();
+  const wide = await p.call("observe", { radius: 96, cell: 4 });
+  expect((wide.grid as string[]).length).toBe(49);
+  // Itself, the pool, the cliff at the side of the slopes' plateau, and open ground.
+  expect([letterAt(wide, 256, 240), letterAt(wide, 172, 256), letterAt(wide, 243, 310), letterAt(wide, 256, 200)]).toEqual(["@", "~", "^", "."]);
+  // The 24 m wall is 0.2 m thick and stands on the line between two squares. It shows whole.
+  for (let x = 277; x < 300; x += 4) expect(letterAt(wide, x, 262.05)).toBe("#");
+  const usual = await p.call("observe");
+  expect((usual.grid as string[]).length).toBe(33);
+  expect(JSON.stringify(usual).length).toBeLessThan(1800);
+  // A letter of 1 m shows no further than 32 m, whatever is asked.
+  expect(((await p.call("observe", { radius: 96, cell: 1 })).grid as string[]).length).toBe(65);
+  expect((await p.call("observe", { cell: 3 })).state).toBe("refused");
+
+  await p.call("console", { line: "enablecheats" });
+  p.run(200);
+  await p.call("console", { line: "tp 239 262" });
+  const grazer = p.h.host.spawnCreature("core:parasaur", 243, 264, 3);
+  const box = p.h.world.structs.add(p.id("storage_box"), 233.5, 0.3125, 262.5, 0, p.rec.team, 500);
+  const bo = p.h.join("bo");
+  p.run(600);
+  const near = await p.call("observe", { radius: 32, cell: 1 });
+  // South wall, doorway, inside, west wall, and the ground outside it.
+  expect([[240.5, 270.2], [237.5, 270.2], [239.5, 273.5], [236.2, 273.5], [235.5, 273.5]].map(([x, z]) => letterAt(near, x!, z!))).toEqual(["#", ".", ".", "#", "."]);
+  const ents = p.h.world.ents;
+  const [seen] = near.creature as [string, string, number, number, number, string, string, string][];
+  expect([seen![0], seen![1], seen![6], seen![7], (near.creature as unknown[]).length]).toEqual([`e${grazer}`, "parasaur", "level 3", "wild", 1]);
+  expect(Math.hypot(seen![2] - ents.x[grazer]!, seen![3] - ents.z[grazer]!)).toBeLessThan(1.5);
+  expect(letterAt(near, seen![2], seen![3])).toMatch(/c|@/);
+  expect(near.box).toEqual([[`s${box}`, "storage_box", 234, 263, 6, "E"]]);
+  expect(near.player).toEqual([[`e${p.h.ent(bo)}`, "bo", 256, 240, 28, "SW"]]);
+  expect([letterAt(near, 233.5, 262.5), letterAt(near, 239, 262), letterAt(near, 250, 262)]).toEqual(["B", "@", "#"]);
+  expect(near.tree).toBeUndefined();
+
+  // Among the trees every id names the node the server has in that slot.
+  p.run(200);
+  await p.call("console", { line: "tp 256 150" });
+  p.run(600);
+  const woods = await p.call("observe", { radius: 24, cell: 1 });
+  const trees = woods.tree as [string, number, number, number, string][];
+  expect(trees.length).toBeGreaterThan(4);
+  for (const [id, x, z, far] of trees) {
+    const [chunk, slot] = id.slice(1).split(".").map(Number);
+    const t = p.h.world.nodeField!.store.chunks[chunk!]!;
+    expect([t.kind[slot!], Math.round(t.x[slot!]!), Math.round(t.z[slot!]!)]).toEqual([p.id("tree"), x, z]);
+    expect(letterAt(woods, t.x[slot!]!, t.z[slot!]!)).toBe("T");
+    expect(far).toBe(Math.round(Math.hypot(t.x[slot!]! - 256, t.z[slot!]! - 150)));
+  }
+  expect(trees.map((t) => t[3])).toEqual(trees.map((t) => t[3]).sort((a, b) => a - b));
+  expect((woods.rock as unknown[]).length).toBeGreaterThan(0);
+  expect((woods.bush as unknown[]).length).toBeGreaterThan(0);
 });
 
 test("commands go out no faster than ten a second", async () => {
