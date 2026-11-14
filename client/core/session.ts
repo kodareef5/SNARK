@@ -10,7 +10,10 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import {
   CMD_TEXT,
   CMD_VIEW,
+  BUTTON_MASK,
   HELLO_SPECTATE,
+  INPUT_HOLD_TICKS,
+  INPUT_KEPT,
   INPUT_REDUNDANCY,
   InputBuffer,
   MARGIN_UNKNOWN,
@@ -1005,13 +1008,17 @@ export class ClientSession {
     this.own.copy(sb);
     this.bodies[slot]!.copy(sb);
     this.bodyTick[slot] = tick;
-    // Replay. Ticks with no stored input repeat the previous one, as the server did.
+    // Replay. Ticks with no stored input repeat the previous one for as long as the server did, then stop as it did.
     let last = this.inputs.has(tick) ? tick : 0;
+    let gap = 0;
     for (let t = tick + 1; t <= this.simTick; t++) {
-      if (this.inputs.has(t)) last = t;
-      else if (last !== 0) {
+      if (this.inputs.has(t)) {
+        last = t;
+        gap = 0;
+      } else if (last !== 0) {
         const i = last & this.inputs.mask;
-        this.inputs.set(t, this.inputs.moveX[i]!, this.inputs.moveZ[i]!, this.inputs.yaw[i]!, this.inputs.pitch[i]!, this.inputs.buttons[i]!);
+        const held = ++gap <= INPUT_HOLD_TICKS;
+        this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, this.inputs.buttons[i]! & (held ? BUTTON_MASK : INPUT_KEPT));
         last = t;
       } else this.inputs.set(t, 0, 0, Math.round((this.ownYaw / TAU) * YAW_UNITS) & 0xffff, 0, 0);
       if (t === this.simTick) this.ownPrev.copy(this.own);

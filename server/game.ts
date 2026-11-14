@@ -11,6 +11,8 @@ import {
   C_INPUT,
   HELLO_LOOK,
   HELLO_SPECTATE,
+  INPUT_HOLD_TICKS,
+  INPUT_KEPT,
   INPUT_WINDOW,
   InputBuffer,
   KEY_BYTES,
@@ -181,6 +183,8 @@ export class Client {
   heldYaw = 0;
   heldPitch = 0;
   heldButtons = 0;
+  /** The tick its last input was for. Past INPUT_HOLD_TICKS without another, the body stops. */
+  inputAt = 0;
   /** Buttons that went down this tick. */
   pressed = 0;
   /** DID_ bits for this tick, and how far a shot was drawn. */
@@ -413,7 +417,15 @@ export class GameServer {
         c.heldYaw = inputs.yaw[i]!;
         c.heldPitch = inputs.pitch[i]!;
         c.heldButtons = inputs.buttons[i]!;
-      } else this.stats.heldInputs++;
+        c.inputAt = T;
+      } else {
+        this.stats.heldInputs++;
+        // A client gone quiet, a hidden tab for one, stops where it is and keeps only its stance.
+        if (T - c.inputAt > INPUT_HOLD_TICKS) {
+          c.heldX = c.heldZ = 0;
+          c.heldButtons &= INPUT_KEPT;
+        }
+      }
       c.edges();
       c.did = 0;
       const b = c.body;

@@ -34,7 +34,7 @@
 
 import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
-import { Body } from "../sim/character.ts";
+import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
 export const PROTOCOL_VERSION = 7;
 
@@ -305,6 +305,12 @@ export const MARGIN_UNKNOWN = -128;
 export const INPUT_REDUNDANCY = 4;
 /** How many ticks ahead of the server tick an input may be and still be buffered. */
 export const INPUT_WINDOW = 32;
+/**
+ * Ticks the server goes on with a client's last input when none comes: about a quarter of a second, as in ARK. After that the
+ * body stops moving and lets go of every button but INPUT_KEPT, its stance.
+ */
+export const INPUT_HOLD_TICKS = 8;
+export const INPUT_KEPT = BTN_CROUCH | BTN_PRONE;
 /** In bytes. */
 export const MAX_CLIENT_MESSAGE = 512;
 export const MAX_NAME_BYTES = 24;
