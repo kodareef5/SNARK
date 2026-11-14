@@ -864,10 +864,24 @@ export class GameServer {
     if (isNew && this.bus.before(NAME_SET, { what: "survivor", text: name }) !== "") return this.refuse(c, REJECT_NAME);
     if (this.bus.before(SESSION_LOGIN, { name, address: c.conn.address ?? "", isNew }) !== "") return this.refuse(c, REJECT_DENIED);
     if (this.authorize && !this.authorize(name, key)) return this.refuse(c, REJECT_DENIED);
-    // One body per survivor. A second login is refused unless the first connection is gone, and then it takes over the body.
+    // One body per survivor. A second login with the session's own key is its device back, and takes over the body. Nothing
+    // may have closed the connection that device lost, so one still open is dropped here as if it had closed.
     for (const other of this.clients) {
       if (!other?.active || other.name !== name) continue;
-      if (!other.closed) return this.refuse(c, REJECT_NAME);
+      if (!other.closed) {
+        if (!key.every((b, i) => b === other.key[i])) return this.refuse(c, REJECT_NAME);
+        const old = other.conn;
+        const w = this.w;
+        w.reset();
+        w.bits(S_REJECT, 4);
+        w.u8(REJECT_NAME);
+        old.send(CH_RELIABLE, w.bytes());
+        old.onMessage = null;
+        this.remove(other, old);
+        old.close();
+        // It had no body to linger in, so the session ended and this is a login like any other.
+        if (!other.active) break;
+      }
       this.pending.delete(c);
       other.relink(c.conn);
       this.bind(other, c.conn);
