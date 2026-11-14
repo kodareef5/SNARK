@@ -37,8 +37,8 @@ function standing(r: ClassRow): string {
 }
 
 function slotLine(name: string, s: Slot): string {
-  const keys = s.keys ? `/${s.keys.length === 1 && s.keys[0] === "*" ? "<any>" : `{${s.keys.join(", ")}}`}` : "";
-  return `\`#${name}${keys}\` ${s.asset}, ${s.need}, else ${s.fallback}`;
+  const keys = s.keys === undefined ? "" : typeof s.keys === "string" ? `/<${s.keys}>` : `/{${s.keys.join(", ")}}`;
+  return `\`#${name}${keys}\` ${s.asset}, ${s.need}${s.when ? ` with \`${s.when}\`` : ""}, from \`${s.from}\`, else ${s.fallback.map((f) => `\`${f}\``).join(" then ")}`;
 }
 
 /** The core pack's ids by class, as the content stands. */

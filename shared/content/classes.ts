@@ -23,12 +23,23 @@ export interface Field {
 export interface Slot {
   asset: "mesh" | "rig" | "clip" | "icon" | "sound" | "effect";
   need: "must" | "may";
-  /** A slot with several values has one asset for each key. "*" stands for keys the content names. */
-  keys?: readonly string[];
-  /** The asset's id by today's naming: "{mesh}", "{mesh}/{key}", "{id}/icon". */
+  /**
+   * A slot with several values has one asset for each key: the keys listed, or every hair or beard style, or ("any")
+   * whatever names the content gives.
+   */
+  keys?: readonly string[] | "hair" | "beard" | "any";
+  /** The slot applies only to a definition that declares this field. */
+  when?: string;
+  /**
+   * The asset's id by today's naming. `{id}` is the definition's id, `{mesh}` its mesh (its id, for a generated one),
+   * `{a.b}` a field of it, `{key}` the slot's key, `{sex}` each sex, `{body}` each body a survivor may have.
+   */
   from: string;
-  /** What is used when the slot is empty: "box", "shape", "swatch", "none", another slot ("#mesh"), or a mesh id. */
-  fallback: string;
+  /**
+   * What stands in when the slot is empty, tried in order: an asset id written as `from` is, or a word for something
+   * that needs no asset ("box", "shape", "swatch", "none", "hidden", "rigid", "rest", or "#slot" for another slot).
+   */
+  fallback: readonly string[];
 }
 
 export interface ClassRow {
@@ -268,8 +279,8 @@ export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>
   game: GAME,
 };
 
-const mesh = (need: Slot["need"], from: string, fallback: string): Slot => ({ asset: "mesh", need, from, fallback });
-const icon: Slot = { asset: "icon", need: "may", from: "{id}/icon", fallback: "swatch" };
+const mesh = (need: Slot["need"], from: string, ...fallback: string[]): Slot => ({ asset: "mesh", need, from, fallback });
+const icon: Slot = { asset: "icon", need: "may", from: "{id}/icon", fallback: ["swatch"] };
 const ITEM_SLOTS = { icon, dropped: mesh("may", "{id}/dropped", "core:bag") };
 const BODY_PARTS = ["head", "torso", "hands", "legs", "feet"] as const;
 
@@ -317,9 +328,9 @@ row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", she
 row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: "items/ammo", must: ["stack", "ammo"], may: ANY_ITEM, slots: { shot: mesh("may", "{ammo.mesh}", "core:tracer"), ...ITEM_SLOTS }, doc: "What a bow or gun fires." });
 row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it." });
 row("item/equipment", "item", ITEM, { parent: "item", abstract: true, ark: "item type Equipment", shelf: "items/equipment", doc: "Worn by a body, in a slot." });
-row("item/armor", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, hat to boots", shelf: "items/armor", must: ["stack", "wear"], may: ANY_ITEM, slots: { worn: mesh("must", "{body}/armor/{wear.set}/{wear.slot}", "the body's own part in the piece's colours"), ...ITEM_SLOTS }, doc: "A piece worn on the head, torso, hands, legs or feet." });
+row("item/armor", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, hat to boots", shelf: "items/armor", must: ["stack", "wear"], may: ANY_ITEM, slots: { worn: mesh("must", "{body}/armor/{wear.set}/{wear.slot}", "{body}/{wear.slot}"), ...ITEM_SLOTS }, doc: "A piece worn on the head, torso, hands, legs or feet." });
 row("item/saddle", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, DinoSaddle", shelf: "items/saddles", must: ["stack", "saddle"], may: ANY_ITEM, slots: { worn: mesh("may", "{id}/worn", "none"), ...ITEM_SLOTS }, doc: "Worn by a tamed creature so that it can be ridden." });
-row("item/structure", "item", ITEM, { parent: "item", ark: "PrimalItemStructure_", shelf: "items/structures", must: ["stack", "places"], may: ANY_ITEM, slots: { preview: mesh("may", "{id}/preview", "#mesh of its structure"), ...ITEM_SLOTS }, doc: "Set down as a structure." });
+row("item/structure", "item", ITEM, { parent: "item", ark: "PrimalItemStructure_", shelf: "items/structures", must: ["stack", "places"], may: ANY_ITEM, slots: { preview: mesh("may", "{id}/preview", "#mesh"), ...ITEM_SLOTS }, doc: "Set down as a structure." });
 row("item/egg", "item", ITEM, { parent: "item/consumable", ark: "PrimalItemConsumable_Egg_", status: "stub", waits: "eggs", shelf: "items/eggs", must: ["stack"], may: [...ANY_ITEM, "eat", "spoilHours", "spoilsInto"], slots: ITEM_SLOTS, doc: "An egg in the hand. Today an egg is a prop that lies where it was laid." });
 row("item/shield", "item", ITEM, { parent: "item/equipment", ark: "equipment type Shield", status: "stub", waits: "cosmetics", shelf: "items/shields", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Held in the other hand to block." });
 row("item/costume", "item", ITEM, { parent: "item/equipment", ark: "equipment types Costume and Trophy", status: "stub", waits: "cosmetics", shelf: "items/costumes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Worn for its look alone." });
@@ -328,14 +339,14 @@ row("item/dye", "item", ITEM, { parent: "item", ark: "PrimalItemDye_", status: "
 row("item/artifact", "item", ITEM, { parent: "item", ark: "PrimalItemArtifact_", status: "stub", waits: "bosses", shelf: "items/artifacts", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Found once in its place and spent to call a boss." });
 
 row("recipe", "recipe", RECIPE, { ark: "the crafting cost on the item", shelf: "recipes", must: ["makes", "count", "needs", "seconds", "xp"], doc: "What an item is made of. ARK keeps this on the item, and so will we." });
-row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "unlocks"], may: ["hidden", "auto", "requires", "group", "from"], slots: { icon: { ...icon, fallback: "#icon of its item" } }, doc: "Learned with points at a level, for good, to craft what it unlocks." });
+row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "unlocks"], may: ["hidden", "auto", "requires", "group", "from"], slots: { icon: { ...icon, fallback: ["#icon"] } }, doc: "Learned with points at a level, for good, to craft what it unlocks." });
 row("levels", "levels", LEVELS, { ark: "the level ramp of the game data", shelf: "rules", must: ["xp", "engramPoints"], may: ["most", "tame"], doc: "The experience each level takes and the engram points it gives." });
 
 const BODY = ["mesh", "color", "radius", "height", "eyeHeight", "walkSpeed", "sprintMul", "jumpSpeed"] as const;
 const HUMAN_SLOTS = {
-  body: { asset: "mesh", need: "must", keys: BODY_PARTS, from: "{mesh}_{sex}/{key}", fallback: "{mesh}/{key}, then core:mannequin/{key}" },
-  hair: { asset: "mesh", need: "may", keys: ["*"], from: "{mesh}_{sex}/hair/{key}", fallback: "none" },
-  beard: { asset: "mesh", need: "may", keys: ["*"], from: "{mesh}_{sex}/beard/{key}", fallback: "none" },
+  body: { asset: "mesh", need: "must", keys: BODY_PARTS, when: "skeleton", from: "{mesh}_{sex}/{key}", fallback: ["{mesh}/{key}", "core:mannequin/{key}"] },
+  hair: { asset: "mesh", need: "may", keys: "hair", when: "skeleton", from: "{mesh}_{sex}/hair/{key}", fallback: ["none"] },
+  beard: { asset: "mesh", need: "may", keys: "beard", when: "skeleton", from: "{mesh}_{sex}/beard/{key}", fallback: ["none"] },
   icon,
 } satisfies Record<string, Slot>;
 row("species", "species", SPECIES, { abstract: true, ark: "a character", shelf: "species", doc: "A kind of body that lives." });
@@ -348,11 +359,11 @@ row("species/creature", "species", SPECIES, {
   may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "tag", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
-    rig: { asset: "rig", need: "may", from: "{mesh}", fallback: "drawn rigid and hit as a box" },
-    clip: { asset: "clip", need: "must", keys: ["idle", "walk", "run", "attack", "death"], from: "{mesh}/{key}", fallback: "run to walk to idle to the rest pose; attack and death to idle" },
-    move: { asset: "clip", need: "may", keys: ["jump", "swim", "eat", "sleep"], from: "{mesh}/{key}", fallback: "swim to walk; the rest to idle" },
+    rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },
+    clip: { asset: "clip", need: "must", keys: ["idle", "walk", "run", "attack", "death"], when: "skeleton", from: "{mesh}/{key}", fallback: ["{mesh}/idle", "rest"] },
+    move: { asset: "clip", need: "may", keys: ["jump", "swim", "eat", "sleep"], when: "skeleton", from: "{mesh}/{key}", fallback: ["{mesh}/walk", "{mesh}/idle", "rest"] },
     icon,
-    sound: { asset: "sound", need: "may", keys: ["*"], from: "{id}/sound/{key}", fallback: "none" },
+    sound: { asset: "sound", need: "may", keys: "any", from: "{id}/sound/{key}", fallback: ["none"] },
   },
   doc: "A wild thing that may be tamed, ridden and bred.",
 });
@@ -382,7 +393,7 @@ row("prop/projectile", "prop", PROP, { parent: "prop", ark: "a projectile actor"
 row("prop/egg", "prop", PROP, { parent: "prop", ark: "a dropped fertilised egg", shelf: "props/eggs", must: PROP_BODY, slots: PROP_SLOTS, doc: "An egg where it was laid, until it hatches." });
 row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", status: "stub", waits: "loot", shelf: "props/crates", must: PROP_BODY, may: ["slots"], slots: PROP_SLOTS, doc: "Comes down with loot and goes when it is emptied." });
 
-row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "speed", "dealt", "taken", "root", "immune", "good"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: "none" } }, doc: "Acts on a body for a time." });
+row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "speed", "dealt", "taken", "root", "immune", "good"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });
 
 row("damage", "damage", DAMAGE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", may: ["label", "torpor", "trueShare", "melee"], doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
 row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "stub", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts and qualities, drawn from when something is opened or dies." });
@@ -415,7 +426,8 @@ export function classFaults(): string[] {
     for (const k of [...r.must, ...r.may, ...r.any]) if (!(k in fields)) out.push(`${r.id}: "${k}" is no field of ${r.type}`);
     for (const k of r.any) if (!r.may.includes(k) && !r.must.includes(k)) out.push(`${r.id}: "${k}" is asked for and not allowed`);
     for (const [name, slot] of Object.entries(r.slots)) {
-      if (slot.fallback === "") out.push(`${r.id}#${name}: a slot says what stands in when it is empty`);
+      if (slot.fallback.length === 0) out.push(`${r.id}#${name}: a slot says what stands in when it is empty`);
+      if (slot.when !== undefined && !(slot.when in fields)) out.push(`${r.id}#${name}: "${slot.when}" is no field of ${r.type}`);
       if (slot.from === "") out.push(`${r.id}#${name}: a slot says where its asset is found`);
     }
     if (!r.abstract) {

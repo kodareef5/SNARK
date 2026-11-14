@@ -57,20 +57,20 @@ and are never named by content.
 
 Asset slots:
 
-- `item/resource`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/consumable`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/weapon`: `#held` mesh, must, else none; `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/ammo`: `#shot` mesh, may, else core:tracer; `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/attachment`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/armor`: `#worn` mesh, must, else the body's own part in the piece's colours; `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/saddle`: `#worn` mesh, may, else none; `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/structure`: `#preview` mesh, may, else #mesh of its structure; `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/egg`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/shield`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/costume`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/skin`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/dye`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
-- `item/artifact`: `#icon` icon, may, else swatch; `#dropped` mesh, may, else core:bag.
+- `item/resource`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/consumable`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/weapon`: `#held` mesh, must, from `{weapon.mesh}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/ammo`: `#shot` mesh, may, from `{ammo.mesh}`, else `core:tracer`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/attachment`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/armor`: `#worn` mesh, must, from `{body}/armor/{wear.set}/{wear.slot}`, else `{body}/{wear.slot}`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/saddle`: `#worn` mesh, may, from `{id}/worn`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/structure`: `#preview` mesh, may, from `{id}/preview`, else `#mesh`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/egg`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/shield`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/costume`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/skin`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/dye`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/artifact`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 
 ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `eat` is UseItemAddCharacterStatusValues; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is it may drop as a blueprint.
 
@@ -100,7 +100,7 @@ What names what: `makes` names a `item`; `needs[].item` names a `item`.
 
 Asset slots:
 
-- `engram`: `#icon` icon, may, else #icon of its item.
+- `engram`: `#icon` icon, may, from `{id}/icon`, else `#icon`.
 
 ARK's names: `level` is RequiredCharacterLevel; `cost` is RequiredEngramPoints; `unlocks` is BluePrintEntry; `hidden` is EngramHidden; `auto` is EngramEntryAutoUnlocks; `requires` is EngramRequirementSets; `group` is EngramGroup; `from` is a boss's unlock.
 
@@ -132,9 +132,9 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 
 Asset slots:
 
-- `species/survivor`: `#body/{head, torso, hands, legs, feet}` mesh, must, else {mesh}/{key}, then core:mannequin/{key}; `#hair/<any>` mesh, may, else none; `#beard/<any>` mesh, may, else none; `#icon` icon, may, else swatch.
-- `species/creature`: `#body` mesh, must, else box; `#rig` rig, may, else drawn rigid and hit as a box; `#clip/{idle, walk, run, attack, death}` clip, must, else run to walk to idle to the rest pose; attack and death to idle; `#move/{jump, swim, eat, sleep}` clip, may, else swim to walk; the rest to idle; `#icon` icon, may, else swatch; `#sound/<any>` sound, may, else none.
-- `species/target`: `#body/{head, torso, hands, legs, feet}` mesh, must, else {mesh}/{key}, then core:mannequin/{key}; `#hair/<any>` mesh, may, else none; `#beard/<any>` mesh, may, else none; `#icon` icon, may, else swatch.
+- `species/survivor`: `#body/{head, torso, hands, legs, feet}` mesh, must with `skeleton`, from `{mesh}_{sex}/{key}`, else `{mesh}/{key}` then `core:mannequin/{key}`; `#hair/<hair>` mesh, may with `skeleton`, from `{mesh}_{sex}/hair/{key}`, else `none`; `#beard/<beard>` mesh, may with `skeleton`, from `{mesh}_{sex}/beard/{key}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`.
+- `species/creature`: `#body` mesh, must, from `{mesh}`, else `box`; `#rig` rig, must with `skeleton`, from `{mesh}`, else `rigid`; `#clip/{idle, walk, run, attack, death}` clip, must with `skeleton`, from `{mesh}/{key}`, else `{mesh}/idle` then `rest`; `#move/{jump, swim, eat, sleep}` clip, may with `skeleton`, from `{mesh}/{key}`, else `{mesh}/walk` then `{mesh}/idle` then `rest`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#sound/<any>` sound, may, from `{id}/sound/{key}`, else `none`.
+- `species/target`: `#body/{head, torso, hands, legs, feet}` mesh, must with `skeleton`, from `{mesh}_{sex}/{key}`, else `{mesh}/{key}` then `core:mannequin/{key}`; `#hair/<hair>` mesh, may with `skeleton`, from `{mesh}_{sex}/hair/{key}`, else `none`; `#beard/<beard>` mesh, may with `skeleton`, from `{mesh}_{sex}/beard/{key}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`.
 
 ARK's names: `drops` is DeathHarvestingComponent; `stats` is MaxStatusValues and the per-level gains; `takes` is DamageTypeAdjusters; `bite` is AttackInfos; `taming` is RequiredTameAffinity; `eats` is DinoSettings food effectiveness; `breeds` is EggItemsToSpawn, BabyAgeSpeed; `tag` is DinoNameTag; `variant` is a child blueprint's kind; `attacks` is AttackInfos; `loot` is DeathInventoryTemplates; `saddle` is SaddleItemClass; `buffs` is DefaultBuffs; `boss` is bIsBossDino.
 
@@ -164,12 +164,12 @@ Packs may add to: `drops`, `eats`, `buffs`.
 
 Asset slots:
 
-- `structure/piece`: `#mesh` mesh, must, else shape; `#destroyed` mesh, may, else none; `#preview` mesh, may, else #mesh.
-- `structure/container`: `#mesh` mesh, must, else shape; `#destroyed` mesh, may, else none; `#preview` mesh, may, else #mesh.
-- `structure/station`: `#mesh` mesh, must, else shape; `#destroyed` mesh, may, else none; `#preview` mesh, may, else #mesh.
-- `structure/bed`: `#mesh` mesh, must, else shape; `#destroyed` mesh, may, else none; `#preview` mesh, may, else #mesh.
-- `structure/static`: `#mesh` mesh, must, else box.
-- `structure/defence`: `#mesh` mesh, must, else shape; `#destroyed` mesh, may, else none; `#preview` mesh, may, else #mesh.
+- `structure/piece`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
+- `structure/container`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
+- `structure/station`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
+- `structure/bed`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
+- `structure/static`: `#mesh` mesh, must, from `{mesh}`, else `box`.
+- `structure/defence`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
 
 ARK's names: `shape` is SnapPoints; `hp` is Health; `material` is StructureSettingsClass; `slots` is an inventory component; `decayDays` is DecayDestructionPeriod.
 
@@ -205,7 +205,7 @@ ARK's names: `takes` is the structure settings' damage by type; `decayDays` is D
 
 Asset slots:
 
-- `node`: `#mesh` mesh, must, else box; `#depleted` mesh, may, else hidden.
+- `node`: `#mesh` mesh, must, from `{mesh}`, else `box`; `#depleted` mesh, may, from `{id}/depleted`, else `hidden`.
 
 ARK's names: `hits` is MaxHarvestHealth; `respawnHours` is the replenish timing; `yields` is the harvest component's item entries.
 
@@ -231,10 +231,10 @@ Packs may add to: `yields`.
 
 Asset slots:
 
-- `prop/container`: `#mesh` mesh, must, else box.
-- `prop/projectile`: `#mesh` mesh, must, else box.
-- `prop/egg`: `#mesh` mesh, must, else box.
-- `prop/crate`: `#mesh` mesh, must, else box.
+- `prop/container`: `#mesh` mesh, must, from `{mesh}`, else `box`.
+- `prop/projectile`: `#mesh` mesh, must, from `{mesh}`, else `box`.
+- `prop/egg`: `#mesh` mesh, must, from `{mesh}`, else `box`.
+- `prop/crate`: `#mesh` mesh, must, from `{mesh}`, else `box`.
 
 ## Buffs
 
@@ -246,7 +246,7 @@ Asset slots:
 
 Asset slots:
 
-- `buff`: `#icon` icon, may, else swatch; `#effect` effect, may, else none.
+- `buff`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#effect` effect, may, from `{id}/effect`, else `none`.
 
 ARK's names: `seconds` is DeactivateAfterTime; `health` is ValuesToAddPerSecond; `torpor` is ValuesToAddPerSecond; `speed` is CharacterMultiplier; `dealt` is CharacterMultiplier; `taken` is CharacterMultiplier.
 
