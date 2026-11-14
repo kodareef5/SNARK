@@ -93,6 +93,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
   for (const m of host.lists.renamed) console.log(`settings: ${m.setting} names ${m.name}, which is now ${m.to.join(", ")}`);
+  for (const m of host.lists.unclear) console.log(`settings: ${m.setting} names ${m.name}, which could be ${m.could.join(" or ")}, so write the one meant in full`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (opts.probeScene) {
     const ents = host.world.ents;

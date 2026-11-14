@@ -154,6 +154,7 @@ const ALL: readonly Def[] = [
   {
     type: "species", class: "creature",
     id: "core:grazer",
+    tag: "grazer",
     mesh: "box",
     color: 9,
     radius: 0.7,
@@ -174,6 +175,7 @@ const ALL: readonly Def[] = [
   {
     type: "species", class: "creature",
     id: "core:parasaur",
+    tag: "parasaur",
     mesh: "core:parasaur",
     skeleton: "dino",
     color: 9,
@@ -204,6 +206,7 @@ const ALL: readonly Def[] = [
   {
     type: "species", class: "creature",
     id: "core:raptor",
+    tag: "raptor",
     mesh: "core:raptor",
     skeleton: "dino",
     color: 5,

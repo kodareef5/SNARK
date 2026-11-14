@@ -1,19 +1,29 @@
 // The settings that are lists naming classes, as tables keyed by content index. ARK writes its own class names, and here they are
 // content ids ("core:raptor"). An entry naming something this build lacks is counted and reported, never an error (D86).
 
+import type { Def } from "../../shared/content/defs.ts";
+import { find } from "../../shared/content/find.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { field, isList, toNumber, unquote } from "./ini.ts";
 import type { Rules } from "./rules.ts";
 
-/** Settings that are lists of names, then settings that are lists of a name and a multiplier. */
-const NAMES = ["PreventDinoTameClassNames", "PreventBreedingForClassNames"];
-const MULTIPLIERS = ["HarvestResourceItemAmountClassMultipliers", "DinoClassDamageMultipliers", "TamedDinoClassDamageMultipliers", "DinoClassResistanceMultipliers", "TamedDinoClassResistanceMultipliers"];
+/** Settings that are lists of names, then settings that are lists of a name and a multiplier, and the family each names. */
+const NAMES: Readonly<Record<string, Def["type"]>> = { PreventDinoTameClassNames: "species", PreventBreedingForClassNames: "species" };
+const MULTIPLIERS: Readonly<Record<string, Def["type"]>> = {
+  HarvestResourceItemAmountClassMultipliers: "item",
+  DinoClassDamageMultipliers: "species",
+  TamedDinoClassDamageMultipliers: "species",
+  DinoClassResistanceMultipliers: "species",
+  TamedDinoClassResistanceMultipliers: "species",
+};
 
 export class Lists {
   /** Entries that named something this build does not have. */
   readonly missing: { setting: string; name: string }[] = [];
   /** Entries that named something by an id it no longer has, and what they were read as. */
   readonly renamed: { setting: string; name: string; to: string[] }[] = [];
+  /** Entries whose name fits several things, and so was read as none of them. */
+  readonly unclear: { setting: string; name: string; could: readonly string[] }[] = [];
   private readonly rules: Rules;
   private readonly reg: Registry;
   private readonly sets = new Map<string, { at: number; of: Set<number> }>();
@@ -25,37 +35,32 @@ export class Lists {
     this.reg = reg;
   }
 
-  /** Returns 0, and records the name in `missing`, if this build has no content of that name or it is not of `type`. */
-  index(setting: string, name: string, type?: string): number {
-    // A file written before something was renamed still names it.
-    const i = this.reg.index.get(name) ?? this.reg.redirects.get(name)?.[0] ?? 0;
-    if (i !== 0 && (type === undefined || this.reg.defs[i]!.type === type)) return i;
-    if (!this.told.has(`${setting} ${name}`)) {
-      this.told.add(`${setting} ${name}`);
-      this.missing.push({ setting, name });
+  /**
+   * The content `name` means in `setting`, of `type` if one is given (shared/content/find.ts). More than one where an id
+   * was split, as a set of armor's engram became one for each piece. A name that means nothing here is recorded once, in
+   * `missing` or `unclear`, and one that was renamed in `renamed`.
+   */
+  of(setting: string, name: string, type?: Def["type"]): readonly number[] {
+    const found = find(this.reg, name, type);
+    const key = `${setting} ${name}`;
+    if ((found.kinds.length === 0 || found.renamed) && !this.told.has(key)) {
+      this.told.add(key);
+      if (found.kinds.length > 0) this.renamed.push({ setting, name, to: found.kinds.map((k) => this.reg.ids[k]!) });
+      else if (found.could.length > 0) this.unclear.push({ setting, name, could: found.could });
+      else this.missing.push({ setting, name });
     }
-    return 0;
+    return found.kinds;
   }
 
-  /**
-   * The ids `name` means now: itself, or everything it was renamed to, as a set of armor's engram became one for each
-   * piece. Empty, and recorded in `missing`, if this build has nothing of that name and `type`.
-   */
-  ids(setting: string, name: string, type: string): string[] {
-    if (this.reg.index.has(name)) return this.index(setting, name, type) === 0 ? [] : [name];
-    const now = (this.reg.redirects.get(name) ?? []).filter((i) => this.reg.defs[i]!.type === type).map((i) => this.reg.ids[i]!);
-    if (now.length === 0) this.index(setting, name, type);
-    else if (!this.told.has(`${setting} ${name}`)) {
-      this.told.add(`${setting} ${name}`);
-      this.renamed.push({ setting, name, to: now });
-    }
-    return now;
+  /** The same, as ids. */
+  ids(setting: string, name: string, type: Def["type"]): string[] {
+    return this.of(setting, name, type).map((k) => this.reg.ids[k]!);
   }
 
   /** Builds every table now, so missing names are known when the server starts and not when a table is first used. */
   warm(): void {
-    for (const name of NAMES) this.kinds(name);
-    for (const name of MULTIPLIERS) this.multipliers(name);
+    for (const name of Object.keys(NAMES)) this.kinds(name);
+    for (const name of Object.keys(MULTIPLIERS)) this.multipliers(name);
   }
 
   /** Content indices for a list of names, written `Key="core:raptor"` on any number of lines. */
@@ -64,8 +69,7 @@ export class Lists {
     if (have && have.at === this.rules.version) return have.of;
     const of = new Set<number>();
     for (const entry of this.rules.list(setting)) {
-      const i = typeof entry === "string" ? this.index(setting, unquote(entry)) : 0;
-      if (i !== 0) of.add(i);
+      if (typeof entry === "string") for (const k of this.of(setting, unquote(entry), NAMES[setting])) of.add(k);
     }
     this.sets.set(setting, { at: this.rules.version, of });
     return of;
@@ -82,8 +86,7 @@ export class Lists {
       const by = field(entry, "Multiplier");
       const m = typeof by === "string" ? toNumber(by) : NaN;
       if (typeof name !== "string" || !(m >= 0)) continue;
-      const i = this.index(setting, unquote(name));
-      if (i !== 0) of.set(i, m);
+      for (const k of this.of(setting, unquote(name), MULTIPLIERS[setting])) of.set(k, m);
     }
     this.maps.set(setting, { at: this.rules.version, of });
     return of;

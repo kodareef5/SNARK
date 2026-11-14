@@ -5,7 +5,12 @@
 
 import type { StatCurve, StatName } from "../sim/genome.ts";
 
-export interface SpeciesDef {
+/** Other names a definition answers to at the console and in a settings file. No two definitions share one, and none is inherited. */
+interface Named {
+  readonly aliases?: readonly string[];
+}
+
+export interface SpeciesDef extends Named {
   readonly type: "species";
   readonly class: "survivor" | "creature" | "target";
   readonly id: string;
@@ -82,9 +87,9 @@ export interface SpeciesDef {
    * birth and is drawn at `scale` of full size at birth (a quarter where not given).
    */
   readonly breeds?: { readonly egg?: string; readonly incubate: number; readonly mature: number; readonly scale?: number };
-  // The rest are stubs: declared, checked and read by nothing yet. The catalogue says what each waits for.
   /** A name shared by every variant of a creature, for settings that speak of all of them at once. */
   readonly tag?: string;
+  // The rest are stubs: declared, checked and read by nothing yet. The catalogue says what each waits for.
   /** What kind of variant of its base it is: "alpha", "event". */
   readonly variant?: string;
   /** Its attacks, to replace `bite` and `fists`. */
@@ -110,7 +115,7 @@ export type PieceRole = "foundation" | "wall" | "ceiling" | "pillar" | "door" | 
 export const PIECE_ROLES: readonly PieceRole[] = ["foundation", "wall", "ceiling", "pillar", "door", "stairs", "thing"];
 
 /** The form of a built piece, shared by every material. Bodies walk on the boxes and rays stop at them. There are no slopes, so stairs are steps. */
-export interface ShapeDef {
+export interface ShapeDef extends Named {
   readonly type: "shape";
   readonly id: string;
   readonly role: PieceRole;
@@ -119,7 +124,7 @@ export interface ShapeDef {
   readonly doorway?: boolean;
 }
 
-export interface StructureDef {
+export interface StructureDef extends Named {
   readonly type: "structure";
   readonly class: "piece" | "container" | "station" | "bed" | "static" | "defence";
   readonly id: string;
@@ -152,7 +157,7 @@ export interface StructureDef {
 }
 
 /** Multiplier on each type of damage a structure of this material takes. A type not given does no damage. */
-export interface MaterialDef {
+export interface MaterialDef extends Named {
   readonly type: "material";
   readonly id: string;
   readonly takes: { readonly [T in DamageType]?: number };
@@ -160,7 +165,7 @@ export interface MaterialDef {
   readonly decayDays?: number;
 }
 
-export interface ItemDef {
+export interface ItemDef extends Named {
   readonly type: "item";
   readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "egg" | "shield" | "costume" | "skin" | "dye" | "artifact";
   readonly id: string;
@@ -287,7 +292,7 @@ export interface WearFacet {
 }
 
 /** A resource node: a tree, a rock, a bush. Node positions come from the map and are the same on every client. Only touched nodes are saved. */
-export interface NodeDef {
+export interface NodeDef extends Named {
   readonly type: "node";
   readonly id: string;
   readonly mesh: string;
@@ -310,7 +315,7 @@ export interface NodeDef {
   readonly xp: number;
 }
 
-export interface EngramDef {
+export interface EngramDef extends Named {
   readonly type: "engram";
   readonly id: string;
   readonly label: string;
@@ -333,7 +338,7 @@ export interface EngramDef {
 }
 
 /** Experience needed to reach each level (index 0 is level 1), and the engram points gained on reaching it. */
-export interface LevelsDef {
+export interface LevelsDef extends Named {
   readonly type: "levels";
   readonly id: string;
   readonly xp: readonly number[];
@@ -345,7 +350,7 @@ export interface LevelsDef {
 }
 
 /** An entity that stands in the world but does not move or live, such as an item cache. Its record can hold an inventory. */
-export interface PropDef {
+export interface PropDef extends Named {
   readonly type: "prop";
   readonly class: "container" | "projectile" | "egg" | "crate";
   readonly id: string;
@@ -364,7 +369,7 @@ export interface PropDef {
  * A buff is never stepped. Its end tick is known when it begins, its effect on vitals is a change of rate, and its
  * multipliers are read when needed.
  */
-export interface BuffDef {
+export interface BuffDef extends Named {
   readonly type: "buff";
   readonly id: string;
   readonly label: string;
@@ -390,7 +395,7 @@ export interface BuffDef {
 }
 
 /** A type of harm. A stub: the five the engine knows are named in code (`DamageType`). */
-export interface DamageDef {
+export interface DamageDef extends Named {
   readonly type: "damage";
   readonly id: string;
   readonly label?: string;
@@ -415,7 +420,7 @@ export interface LootEntry {
 }
 
 /** Sets of items to draw from: what a crate holds, what a body leaves. A stub until loot is built. */
-export interface LootDef {
+export interface LootDef extends Named {
   readonly type: "loot";
   readonly id: string;
   /** How many of the sets are drawn. One, where not given. */
@@ -424,7 +429,7 @@ export interface LootDef {
 }
 
 /** Which creatures live in a place, in what share and at what levels. A stub until creatures spawn by region. */
-export interface SpawnsDef {
+export interface SpawnsDef extends Named {
   readonly type: "spawns";
   readonly id: string;
   readonly entries: readonly { readonly species: string; readonly weight: number; readonly levels?: readonly [number, number]; readonly pack?: readonly [number, number] }[];
@@ -443,7 +448,7 @@ export interface MapZone {
 }
 
 /** A world. A stub: the one map is code (shared/world/proving.ts). */
-export interface MapDef {
+export interface MapDef extends Named {
   readonly type: "map";
   readonly id: string;
   readonly label?: string;
@@ -455,7 +460,7 @@ export interface MapDef {
 }
 
 /** What a game names once. A stub: these are found by id in code today. */
-export interface GameDef {
+export interface GameDef extends Named {
   readonly type: "game";
   readonly id: string;
   readonly survivor: string;

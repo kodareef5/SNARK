@@ -74,7 +74,9 @@ export function resolvePacks(packs: readonly ContentPack[]): { defs: Def[]; erro
     const parent = typeof entry.patch.extends === "string" ? resolve(entry.patch.extends, id) : {};
     entry.resolving = false;
     if (!parent) return null;
-    entry.resolved = merge(parent, entry.patch as Record<string, unknown>, true);
+    // An alias is one definition's own, so a copy does not start with its parent's.
+    const { aliases: _, ...base } = parent;
+    entry.resolved = merge(base, entry.patch as Record<string, unknown>, true);
     return entry.resolved;
   };
 

@@ -58,9 +58,9 @@ export function tuningOf(rules: Rules, lists: Lists, reg: Registry): { tuning: T
     const name = words(field(entry, "ItemClassString"));
     const q = field(entry, "Quantity");
     const n = isList(q) ? number(field(q, "MaxItemQuantity")) : NaN;
-    if (lists.index("ConfigOverrideItemMaxQuantity", name, "item") === 0) continue;
-    if (!(n >= 1)) passed.push(`ConfigOverrideItemMaxQuantity: ${name} wants a MaxItemQuantity of at least 1`);
-    else stacks[name] = isList(q) && flag(field(q, "bIgnoreMultiplier")) ? { n, plain: true } : { n };
+    const ids = lists.ids("ConfigOverrideItemMaxQuantity", name, "item");
+    if (ids.length > 0 && !(n >= 1)) passed.push(`ConfigOverrideItemMaxQuantity: ${name} wants a MaxItemQuantity of at least 1`);
+    else for (const id of ids) stacks[id] = isList(q) && flag(field(q, "bIgnoreMultiplier")) ? { n, plain: true } : { n };
   }
 
   const costs: Record<string, { item: string; count: number }[]> = {};
@@ -68,19 +68,21 @@ export function tuningOf(rules: Rules, lists: Lists, reg: Registry): { tuning: T
     if (!isList(entry)) continue;
     const name = words(field(entry, "ItemClassString"));
     const of = field(entry, "BaseCraftingResourceRequirements");
-    if (lists.index("ConfigOverrideItemCraftingCosts", name, "item") === 0) continue;
+    const [id] = lists.ids("ConfigOverrideItemCraftingCosts", name, "item");
+    if (id === undefined) continue;
     const needs: { item: string; count: number }[] = [];
     for (const one of isList(of) ? of.items : []) {
       if (!isList(one.value)) continue;
       const item = words(field(one.value, "ResourceItemTypeString"));
       const count = number(field(one.value, "BaseResourceRequirement"));
-      if (lists.index("ConfigOverrideItemCraftingCosts", item, "item") === 0) continue;
+      const [made] = lists.ids("ConfigOverrideItemCraftingCosts", item, "item");
+      if (made === undefined) continue;
       if (!(count > 0)) passed.push(`ConfigOverrideItemCraftingCosts: ${name} wants more than none of ${item}`);
-      else needs.push({ item, count });
+      else needs.push({ item: made, count });
     }
-    if (reg.recipeOf[reg.index.get(name)!] === null) passed.push(`ConfigOverrideItemCraftingCosts: nothing here makes ${name}`);
+    if (reg.recipeOf[reg.index.get(id)!] === null) passed.push(`ConfigOverrideItemCraftingCosts: nothing here makes ${name}`);
     else if (needs.length === 0) passed.push(`ConfigOverrideItemCraftingCosts: ${name} must be made of something`);
-    else costs[name] = needs;
+    else costs[id] = needs;
   }
 
   const engrams: Record<string, { level?: number; cost?: number; hidden?: boolean; auto?: number }> = {};

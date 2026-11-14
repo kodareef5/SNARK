@@ -11,7 +11,6 @@ export const CATALOGUE_PAGE = resolve(import.meta.dir, "../planning/reference/ca
 
 const FAMILIES: readonly [type: string, title: string][] = [
   ["item", "Items"],
-  ["recipe", "Recipes"],
   ["engram", "Engrams"],
   ["levels", "Levels"],
   ["species", "Species"],
@@ -75,6 +74,11 @@ export function cataloguePage(): string {
   out.push("An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with");
   out.push("several values: `core:raptor#clip/walk`. Levels of detail are inside the asset");
   out.push("and are never named by content.", "");
+  out.push("A definition is named by its id. At the console and in a settings file it also");
+  out.push("answers to an id it once had, to an alias (`aliases`, which any definition may");
+  out.push("declare and no two may share), and to its id's own name where it alone answers");
+  out.push("to that: `spear` for `core:spear`. Case is ignored. A creature and its variants");
+  out.push("share a `tag`.", "");
 
   for (const [type, title] of FAMILIES) {
     const here = CLASSES.filter((r) => r.type === type);
@@ -121,8 +125,10 @@ export function cataloguePage(): string {
   for (const r of leaves) {
     const ids = core.get(r.id);
     if (!ids) continue;
-    // The renames are all of one pattern, so they are counted and not listed.
-    if (r.id === "rename") out.push(`**\`rename\`** (${ids.length}): each \`make-<item>\`, the recipe id an item had before recipes were folded into items.`, "");
+    // The recipe renames are all of one pattern, so they are counted and not listed.
+    const recipes = ids.filter((id) => id.startsWith("core:make-"));
+    const rest = ids.filter((id) => !recipes.includes(id)).map((id) => id.replace(/^core:/, ""));
+    if (r.id === "rename") out.push(`**\`rename\`** (${ids.length}): ${recipes.length} of \`make-<item>\`, the recipe id an item had before recipes were folded into items; and ${rest.join(", ")}.`, "");
     else out.push(`**\`${r.id}\`** (${ids.length}): ${ids.map((id) => id.replace(/^core:/, "")).join(", ")}.`, "");
   }
   return out.join("\n");

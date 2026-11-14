@@ -18,6 +18,12 @@ An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
 and are never named by content.
 
+A definition is named by its id. At the console and in a settings file it also
+answers to an id it once had, to an alias (`aliases`, which any definition may
+declare and no two may share), and to its id's own name where it alone answers
+to that: `spear` for `core:spear`. Case is ignored. A creature and its variants
+share a `tag`.
+
 ## Items
 
 | Class | ARK | Standing | Must | May | In core |
@@ -319,7 +325,7 @@ Each class below has a row and no content, and each field is declared and
 checked and read by nothing. They are filled in when the feature under them is
 built.
 
-- **Wild creatures that spawn and respawn by region.** `spawns`, `species.tag`, `species.variant`.
+- **Wild creatures that spawn and respawn by region.** `spawns`, `species.variant`.
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
 - **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot`, `item.blueprint`, `species.loot`.
 - **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `item.spoilsInto`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
@@ -381,4 +387,4 @@ built.
 
 **`buff`** (7): burning, tranquilized, drugged, stunned, injured, fed, god.
 
-**`rename`** (77): each `make-<item>`, the recipe id an item had before recipes were folded into items.
+**`rename`** (77): 73 of `make-<item>`, the recipe id an item had before recipes were folded into items; and engram-cloth, engram-hide, engram-chitin, engram-flak.

@@ -20,6 +20,8 @@ export const MAX_STRUCTURE_HALF = 16;
 export const MAX_SHAPE_BOXES = 16;
 
 const ID = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_\/-]*$/;
+const ALIAS = /^[A-Za-z0-9_.-]+$/;
+const TAG = /^[a-z][a-z0-9_]*$/;
 const GRAVITY = 20;
 const SLOPE_COS = 0.6427876096865394; // 50 degrees
 
@@ -34,6 +36,10 @@ export interface Registry {
   readonly redirects: ReadonlyMap<string, readonly number[]>;
   /** The renames the redirects came from, for compiling the same content again under other settings. */
   readonly renames: readonly RenameDef[];
+  /** The one definition each alias names. Aliases are kept in lower case. See shared/content/find.ts. */
+  readonly aliases: ReadonlyMap<string, number>;
+  /** The creatures that share each tag: a species and its variants. */
+  readonly tags: ReadonlyMap<string, readonly number[]>;
   /**
    * For a registry a server's settings have tuned (shared/content/tuning.ts): the hash of the untuned definitions, the
    * tuning as text, and the untuned registry. For untuned content: its own hash, "", and null.
@@ -185,11 +191,19 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (!(v > 0 && v <= max)) errors.push(`${d.id}: ${name} must be in (0, ${max}], got ${v}`);
   };
 
+  const claimed = new Map<string, string>();
   for (const d of input) {
     errors.push(...defFaults(d));
     if (!ID.test(d.id)) errors.push(`"${d.id}": id must look like "namespace:name"`);
     if (seen.has(d.id)) errors.push(`${d.id}: duplicate id`);
     seen.add(d.id);
+    for (const a of Array.isArray(d.aliases) ? d.aliases : []) {
+      if (!ALIAS.test(a)) errors.push(`${d.id}: alias "${a}" must be one word of letters, digits, "_", "-" and "."`);
+      const by = claimed.get(String(a).toLowerCase());
+      if (by !== undefined) errors.push(`${d.id}: alias "${a}" is ${by}'s`);
+      claimed.set(String(a).toLowerCase(), d.id);
+    }
+    if (d.type === "species" && d.tag !== undefined && !TAG.test(d.tag)) errors.push(`${d.id}: tag "${d.tag}" must be one word of lower-case letters, digits and "_"`);
     if (d.type === "species") {
       positive(d, "radius", d.radius, 8);
       positive(d, "height", d.height, 32);
@@ -532,7 +546,13 @@ export function compileContent(all: readonly Def[]): CompileResult {
   // A burning fire maps back to the unlit fire's item.
   for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
   const redirects = new Map(renames.map((r) => [r.id, r.to.map((to) => index.get(to)!)]));
-  return { registry: { defs, ids, index, hash, redirects, renames, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  const aliases = new Map<string, number>();
+  const tags = new Map<string, number[]>();
+  sorted.forEach((d, at) => {
+    for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
+    if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
+  });
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The ZONE_* ids (shared/anim/human.ts) each body part named in content covers. */

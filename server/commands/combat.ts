@@ -1,10 +1,10 @@
 import { parseNumber } from "../../shared/console.ts";
-import type { ItemDef } from "../../shared/content/defs.ts";
+import type { ItemDef, StructureDef } from "../../shared/content/defs.ts";
 import { V_TORPOR } from "../../shared/sim/vitals.ts";
 import { SLOT_OF_ZONE, ZONE_COUNT, ZONE_NAMES } from "../../shared/anim/human.ts";
 import { PIECE_SCALE } from "../../shared/sim/damage.ts";
 import { QUALITY_MUL } from "../../shared/sim/items.ts";
-import type { Console, ConsoleCommand } from "../console.ts";
+import { named, type Console, type ConsoleCommand } from "../console.ts";
 import type { Host } from "../host.ts";
 import type { EntityRecord } from "../records.ts";
 
@@ -146,9 +146,9 @@ export function addCombatCommands(con: Console): void {
         if (!c || c.ent < 0) return "this needs a body; you have none right now";
         const world = ctx.host.world;
         const reg = world.reg;
-        const kind = reg.index.get(args[0] ?? "") ?? reg.index.get(`core:${args[0]}`);
-        const def = kind === undefined ? null : reg.defs[kind]!;
-        if (kind === undefined || def?.type !== "structure") return `no structure "${args[0] ?? ""}"`;
+        const kind = named(reg, args[0], "structure");
+        if (typeof kind === "string") return kind;
+        const def = reg.defs[kind] as StructureDef;
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
         const x = c.body.x + Math.sin(a) * 3;
         const z = c.body.z + Math.cos(a) * 3;
@@ -168,8 +168,8 @@ export function addCombatCommands(con: Console): void {
         const reg = ctx.host.world.reg;
         const off = args[0] === "off";
         const name = (off ? args[1] : args[0]) ?? "";
-        const buff = reg.index.get(name) ?? reg.index.get(`core:${name}`);
-        if (buff === undefined || reg.defs[buff]!.type !== "buff") return `no buff "${name}"`;
+        const buff = named(reg, name, "buff");
+        if (typeof buff === "string") return buff;
         if (off) return ctx.host.buffs.take(rec, buff) ? `${reg.ids[buff]} off` : `you are not under ${reg.ids[buff]}`;
         const seconds = args[1] === undefined ? undefined : parseNumber(args[1]);
         if (seconds !== undefined && !(seconds > 0 && seconds <= 86400)) return "seconds must be above 0 and at most 86400";

@@ -65,7 +65,7 @@ export interface ClassRow {
 const f = (kind: Field["kind"], ark = "", more: Partial<Field> = {}): Field => ({ kind, ark, ...more });
 const stub = (waits: Feature, kind: Field["kind"], ark = "", more: Partial<Field> = {}): Field => ({ kind, ark, waits, ...more });
 
-type Fields<D> = { [K in Exclude<keyof D, "type" | "class" | "id">]-?: Field };
+type Fields<D> = { [K in Exclude<keyof D, "type" | "class" | "id" | "aliases">]-?: Field };
 
 const ITEM = {
   stack: f("number", "MaxItemQuantity"),
@@ -126,7 +126,7 @@ const SPECIES = {
   eats: f("list", "DinoSettings food effectiveness", { refs: { "[].item": "item" }, open: true }),
   torporDrain: f("number"),
   breeds: f("facet", "EggItemsToSpawn, BabyAgeSpeed", { refs: { egg: "prop/egg" } }),
-  tag: stub("spawner", "text", "DinoNameTag"),
+  tag: f("text", "DinoNameTag"),
   variant: stub("spawner", "text", "a child blueprint's kind"),
   attacks: stub("polish", "list", "AttackInfos"),
   loot: stub("loot", "text", "DeathInventoryTemplates", { refs: { "": "loot" } }),
@@ -480,6 +480,10 @@ export function defFaults(d: Def): string[] {
   if (r.any.length > 0 && !r.any.some((k) => has[k] !== undefined)) out.push(`${d.id}: class ${r.id} must declare one of ${r.any.map((k) => `"${k}"`).join(", ")}`);
   for (const k of Object.keys(has)) {
     if (k === "type" || k === "class" || k === "id" || has[k] === undefined) continue;
+    if (k === "aliases" && d.type !== "rename") {
+      if (!Array.isArray(has[k]) || !has[k].every((a) => typeof a === "string")) out.push(`${d.id}: "aliases" must be a list of names`);
+      continue;
+    }
     if (!r.must.includes(k) && !r.may.includes(k)) out.push(`${d.id}: class ${r.id} may not declare "${k}"`);
     else if (!KIND[fields[k]!.kind][0](has[k])) out.push(`${d.id}: "${k}" must be ${KIND[fields[k]!.kind][1]}`);
   }

@@ -2,6 +2,9 @@
 // A line is only a request. Each command decides whether to obey.
 
 import { tokenize } from "../shared/console.ts";
+import type { Def } from "../shared/content/defs.ts";
+import { find } from "../shared/content/find.ts";
+import type { Registry } from "../shared/content/registry.ts";
 import type { Client } from "./game.ts";
 import type { Host } from "./host.ts";
 
@@ -23,6 +26,14 @@ export interface ConsoleCommand {
   /** Returns the line for the journal, without arguments that must not be kept (a password). Without it the journal gets the line as typed. */
   redact?(args: string[]): string;
   run(ctx: CommandContext, args: string[]): string;
+}
+
+/** The one definition of `type` that `name` means (shared/content/find.ts), or what to tell whoever typed it. */
+export function named(reg: Registry, name: string | undefined, type: Def["type"]): number | string {
+  const found = find(reg, name ?? "", type);
+  if (found.kinds.length === 1) return found.kinds[0]!;
+  const several = found.kinds.length > 1 ? `is now ${found.kinds.map((k) => reg.ids[k]).join(", ")}` : found.could.length > 0 ? `could be ${found.could.join(" or ")}` : "";
+  return several === "" ? `no ${type} "${name ?? ""}"` : `"${name}" ${several}; say which`;
 }
 
 /** Journal op for an admin command: the session's name, a tab, the line. */

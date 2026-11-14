@@ -3,7 +3,7 @@ import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { MODE_GHOST, MODE_WALK } from "../../shared/sim/character.ts";
 import { Genome, POINT_CAP, STAT_NAMES } from "../../shared/sim/genome.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
-import type { Console, ConsoleCommand } from "../console.ts";
+import { named, type Console, type ConsoleCommand } from "../console.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { CAUSE_KILLED, statOf } from "../survival.ts";
 
@@ -98,15 +98,15 @@ export function addAdminCommands(con: Console): void {
     {
       name: "give",
       usage: "<item> [count]",
-      help: "Create items in your inventory. The item may be named without its namespace.",
+      help: "Create items in your inventory. The item may be named without its pack: spear for core:spear.",
       admin: true,
       run(ctx, args) {
         const c = ctx.client;
         const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
         if (!c || !rec) return "this needs a survivor";
         const reg = ctx.host.world.reg;
-        const item = reg.index.get(args[0] ?? "") ?? reg.index.get(`core:${args[0]}`);
-        if (item === undefined || !ctx.host.items.isItem(item)) return `no item "${args[0] ?? ""}"`;
+        const item = named(reg, args[0], "item");
+        if (typeof item === "string") return item;
         const count = args[1] === undefined ? 1 : parseNumber(args[1]);
         if (!Number.isInteger(count) || count < 1 || count > 10000) return "count must be a whole number from 1 to 10000";
         const made = ctx.host.items.mint(rec, item, count);
@@ -116,16 +116,16 @@ export function addAdminCommands(con: Console): void {
     {
       name: "spawn",
       usage: "<species> [level]",
-      help: "Put a wild creature four metres in front of you.",
+      help: "Put a wild creature four metres in front of you. It may be named without its pack: raptor for core:raptor.",
       admin: true,
       run(ctx, args) {
         const c = ctx.client;
         if (!c) return needsBody;
         const world = ctx.host.world;
         const reg = world.reg;
-        const id = reg.index.has(args[0] ?? "") ? args[0]! : `core:${args[0]}`;
-        const kind = reg.index.get(id);
-        if (kind === undefined || reg.defs[kind]!.type !== "species") return `no species "${args[0] ?? ""}"`;
+        const kind = named(reg, args[0], "species");
+        if (typeof kind === "string") return kind;
+        const id = reg.ids[kind]!;
         const level = args[1] === undefined ? 1 : parseNumber(args[1]);
         if (!Number.isInteger(level) || level < 1 || level > 1000) return "level must be a whole number from 1 to 1000";
         const a = (c.heldYaw / 65536) * 2 * Math.PI;

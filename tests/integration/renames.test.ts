@@ -75,8 +75,8 @@ test("a save made before a rename loads after it: the stack, the ledger, what wa
 
 test("a settings file that names what was renamed still means it, and a rename is not content", () => {
   const lists = new Lists(new Rules(), AFTER);
-  expect(lists.index("PreventDinoTameClassNames", "t:old")).toBe(AFTER.index.get("t:new")!);
-  expect(lists.index("PreventDinoTameClassNames", "t:never")).toBe(0);
+  expect(lists.of("PreventDinoTameClassNames", "t:old")).toEqual([AFTER.index.get("t:new")!]);
+  expect(lists.of("PreventDinoTameClassNames", "t:never")).toEqual([]);
   expect([AFTER.index.has("t:old"), AFTER.ids.includes("t:old"), AFTER.redirects.get("t:engram-kit")!.length]).toEqual([false, false, 2]);
   // The hash is of the content. A rename alone does not change it.
   const without = made([item("t:new"), item("t:kit-a"), item("t:kit-b"), engram("t:engram-new", "t:new"), engram("t:engram-kit-a", "t:kit-a"), engram("t:engram-kit-b", "t:kit-b")]);
