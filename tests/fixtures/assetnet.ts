@@ -26,7 +26,6 @@ interface Transfer {
 }
 
 export class FakeNet implements AssetPort {
-  readonly formats = 0;
   readonly cache = { used: 0, limit: 0, mode: "none" as const, filling: 0 };
   /** Parts asked for with `fill`. */
   readonly filled: number[] = [];

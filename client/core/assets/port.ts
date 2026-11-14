@@ -14,7 +14,7 @@ export interface AssetPart {
 }
 
 export interface AssetRequest {
-  /** The level of a mesh, or the step of a texture, the bytes are for. */
+  /** The level of a mesh, its surface, or the step of a texture, the bytes are for. */
   slot: number;
   /** Index of the pack file in the manifest. */
   file: number;
@@ -42,8 +42,6 @@ export interface AssetPort {
   take(out: AssetArrival[]): number;
   /** Fetches parts into the cache and hands none of them over, so that they need not be fetched while playing. */
   fill(parts: readonly { file: number; part: AssetPart }[]): void;
-  /** The texture formats the graphics card takes, as bits. */
-  readonly formats: number;
   /** Bytes kept between visits and the most that may be, where they are kept, and how many parts asked for with `fill` are still to come. */
   readonly cache: { used: number; limit: number; mode: "disk" | "memory" | "none"; filling: number };
 }

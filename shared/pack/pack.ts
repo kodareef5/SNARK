@@ -6,14 +6,21 @@
 //   12  JSON header (UTF-8)
 //   ..  binary blob. Every offset in the header is relative to its start.
 //
-// The JSON header lists each mesh with byte ranges, so a client can fetch part of a large pack. A level of detail is its
-// indices and then its vertices, each padded to a multiple of 4, so that one run of bytes holds it. The renderer shares
-// these fixed vertex and instance layouts:
+// The JSON header lists each mesh with byte ranges, so a client can fetch part of a large pack. A level of detail is one
+// run of bytes: its indices padded to a multiple of 4, its vertices, and then, in a level that is drawn with materials,
+// a surface entry and a skin entry for every vertex. A client that draws flat colours fetches only as far as the
+// vertices. The renderer shares these fixed layouts:
 //
 //   vertex    8 bytes   i16 x, y, z   position, signed-normalized within bounds
 //                       u8 colour     palette index, or a colour region
 //                       u8 bone       the one bone this vertex follows, in a
 //                                     mesh that names a skeleton; else 0
+//   surface   12 bytes  u16 u, v      texture coordinate, 0..65535 across the texture
+//                       u32 normal    x, y, z in 10 bits each, signed-normalized
+//                       u32 tangent   the same, and in the top 2 bits the sign of
+//                                     the bitangent: 1 or -1
+//   skin      8 bytes   u8 x 4        bones, the first being the vertex's own
+//                       u8 x 4        their weights, which sum to 255
 //   index     u16, or u32 in a level of more than 65,535 vertices
 //   instance  20 bytes  f32 x, y, z   relative to the batch origin
 //                       u16 yaw       1/65536 turns
@@ -23,18 +30,23 @@
 //             signed-normalized, w >= 0 implied; then per frame f32 x, y, z of
 //             the root bone's offset from rest
 //
-// No normals are stored. The renderer derives the face normal for flat shading.
+// A flat level stores no normals. The renderer derives the face normal for flat shading.
 //
-// Version 2 is still read. It had 16-bit indices only, did not say how far a level lies from the finest, and kept a
-// level's vertices before its indices.
+// Versions 2 and 3 are still read. Version 3 had no surface, skin, sections or materials. Version 2 also had 16-bit
+// indices only, did not say how far a level lies from the finest, and kept a level's vertices before its indices.
 
 import type { Clip, ClipSet } from "../anim/clip.ts";
 import { hashBytes, hashString } from "../hash.ts";
+import { stepOf, type TextureRole } from "./texture.ts";
 
 export const PACK_MAGIC = 0x4b504e53; // "SNPK" little-endian
-export const PACK_VERSION = 3;
+export const PACK_VERSION = 4;
 export const VERTEX_BYTES = 8;
+export const SURFACE_BYTES = 12;
+export const SKIN_BYTES = 8;
 export const INSTANCE_BYTES = 20;
+/** The most materials one level is drawn with. */
+export const MOST_SECTIONS = 3;
 
 export interface PackLod {
   vertexOffset: number;
@@ -48,6 +60,46 @@ export interface PackLod {
    * the other (tools/pack/error.ts). 0 for the finest. NaN from a version 2 file, which did not say.
    */
   error: number;
+  /** Where the surface entries are, one per vertex, right after the vertices. Absent in a flat level. */
+  surfaceOffset?: number;
+  /** Where the skin entries are, right after the surface. Absent in a flat level and in a mesh that follows one bone. */
+  skinOffset?: number;
+  /**
+   * The runs of indices drawn with each material, three numbers a run: index into the header's `materials`, first
+   * index, how many. The runs follow one another and cover the level. Absent in a flat level.
+   */
+  sections?: number[];
+}
+
+/** PackMaterial.flags. A cut-out material shows nothing where the base colour's alpha is under `cutoff`. */
+export const MATERIAL_TWO_SIDED = 1;
+export const MATERIAL_CUTOUT = 2;
+
+export interface PackMaterial {
+  id: string;
+  /** Indices into the header's `textures`, -1 for none. */
+  base: number;
+  normal: number;
+  mro: number;
+  mask: number;
+  /** Multiplied over the base colour, linear 0..1. */
+  tint: [number, number, number];
+  /** The mean linear brightness of the base colour where the mask marks a region. A region's colour is divided by it, so the dyed surface averages that colour. */
+  grey: number;
+  /** How much the base colour glows where its alpha is high. 0 when alpha means coverage. */
+  emissive: number;
+  flags: number;
+  cutoff: number;
+  /** Metres of surface across one whole texture, measured when the pack was made. */
+  span: number;
+}
+
+/** A texture a material names. Its pixels are in the texture files, not in the pack. */
+export interface PackTexture {
+  id: string;
+  role: TextureRole;
+  /** The side of the largest picture, in pixels. */
+  top: number;
 }
 
 export interface PackMesh {
@@ -62,6 +114,8 @@ export interface PackMesh {
   skeleton?: string;
   /** Index into `rigs` of the body this mesh was made on. Absent when it was made on the skeleton itself. */
   rig?: number;
+  /** The first level that is flat: it and every coarser one have no surface. Absent when every level is flat. */
+  flat?: number;
 }
 
 /** A body with its own proportions on a shared skeleton. `rest` is each joint's rest position, x, y, z per bone. */
@@ -94,6 +148,8 @@ export interface PackHeader {
   meshes: PackMesh[];
   rigs: PackRig[];
   clips: PackClip[];
+  materials?: PackMaterial[];
+  textures?: PackTexture[];
 }
 
 export interface Pack {
@@ -120,20 +176,43 @@ export function parsePack(file: Uint8Array): Pack {
   const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
   if (view.getUint32(0, true) !== PACK_MAGIC) throw new Error("pack: bad magic");
   const version = view.getUint16(4, true);
-  if (version !== PACK_VERSION && version !== 2) throw new Error(`pack: version ${version} is not supported`);
+  if (version < 2 || version > PACK_VERSION) throw new Error(`pack: version ${version} is not supported`);
   const jsonLength = view.getUint32(8, true);
   if (12 + jsonLength > file.length) throw new Error("pack: truncated header");
   const header = JSON.parse(decodeUtf8(file.subarray(12, 12 + jsonLength))) as PackHeader;
   const blob = file.subarray(12 + jsonLength);
   const meshIndex = new Map<string, number>();
+  const textures = header.textures ?? [];
+  const materials = header.materials ?? [];
+  for (const t of textures) if (stepOf(t.top) < 0) throw new Error(`pack: texture ${t.id} is ${t.top} pixels across`);
+  for (const m of materials) {
+    for (const t of [m.base, m.normal, m.mro, m.mask]) if (!(t >= -1 && t < textures.length)) throw new Error(`pack: material ${m.id} names a texture that is not there`);
+  }
   header.meshes.forEach((m, i) => {
     meshIndex.set(m.id, i);
+    m.lods.forEach((lod, level) => {
+      if ((lod.surfaceOffset !== undefined) !== level < (m.flat ?? 0)) throw new Error(`pack: mesh ${m.id} does not turn flat where it says`);
+    });
     for (const lod of m.lods) {
       lod.indexBytes ??= 2;
       lod.error ??= NaN;
       if (lod.vertexOffset + lod.vertexCount * VERTEX_BYTES > blob.length || lod.indexOffset + lod.indexCount * lod.indexBytes > blob.length) {
         throw new Error(`pack: mesh ${m.id} points outside the file`);
       }
+      if (lod.surfaceOffset === undefined) {
+        if (lod.skinOffset !== undefined || lod.sections !== undefined) throw new Error(`pack: a level of ${m.id} has skin or sections and no surface`);
+        continue;
+      }
+      if (lod.surfaceOffset + lod.vertexCount * SURFACE_BYTES > blob.length || (lod.skinOffset !== undefined && lod.skinOffset + lod.vertexCount * SKIN_BYTES > blob.length)) {
+        throw new Error(`pack: mesh ${m.id} points outside the file`);
+      }
+      const runs = lod.sections ?? [];
+      let next = 0;
+      for (let k = 0; k < runs.length; k += 3) {
+        if (!(runs[k]! >= 0 && runs[k]! < materials.length) || runs[k + 1] !== next || !(runs[k + 2]! > 0)) throw new Error(`pack: a level of ${m.id} has a section that does not fit`);
+        next += runs[k + 2]!;
+      }
+      if (runs.length === 0 || runs.length > MOST_SECTIONS * 3 || next !== lod.indexCount) throw new Error(`pack: the sections of a level of ${m.id} do not cover it`);
     }
   });
   if (header.paletteOffset + 1024 > blob.length) throw new Error("pack: palette outside the file");
@@ -178,6 +257,15 @@ export function lodVertices(pack: Pack, lod: PackLod): Uint8Array {
 
 export function lodIndices(pack: Pack, lod: PackLod): Uint8Array {
   return pack.blob.subarray(lod.indexOffset, lod.indexOffset + lod.indexCount * lod.indexBytes);
+}
+
+/** Views into the pack, or null for a level that has none. */
+export function lodSurface(pack: Pack, lod: PackLod): Uint8Array | null {
+  return lod.surfaceOffset === undefined ? null : pack.blob.subarray(lod.surfaceOffset, lod.surfaceOffset + lod.vertexCount * SURFACE_BYTES);
+}
+
+export function lodSkin(pack: Pack, lod: PackLod): Uint8Array | null {
+  return lod.skinOffset === undefined ? null : pack.blob.subarray(lod.skinOffset, lod.skinOffset + lod.vertexCount * SKIN_BYTES);
 }
 
 /** A level's indices as numbers, whichever width the file holds them in. */

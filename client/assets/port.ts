@@ -5,7 +5,6 @@ import type { AssetArrival, AssetPart, AssetPort, AssetRequest } from "../core/a
 import type { Manifest } from "../../shared/pack/manifest.ts";
 
 export class WorkerPort implements AssetPort {
-  readonly formats = 0;
   cache: AssetPort["cache"] = { used: 0, limit: 0, mode: "memory", filling: 0 };
   private readonly worker = new Worker("assets-worker.js", { type: "module" });
   private readonly manifest: Manifest;

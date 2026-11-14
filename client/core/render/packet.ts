@@ -3,6 +3,7 @@
 
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
+import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import type { AssetUpload } from "../assets/residency.ts";
 
 export const MAX_DRAWS = 4096;
@@ -27,6 +28,17 @@ export const DRAW_SKINNED = 2;
 export const DRAW_PLAIN = 4;
 /** The viewer's own body. Drawn last, over everything, with `nearViewProj`, whose near plane is close enough for arms and hands. */
 export const DRAW_NEAR = 8;
+/** A body the frame had no bones left to pose: every vertex follows the instance's first bone, so it is drawn rigid in its rest pose. */
+export const DRAW_ONE_BONE = 16;
+/**
+ * Drawn with a material: `drawMaterial` names it, and `drawFirstIndex` and `drawIndexCount` the run of the level's
+ * indices it covers. A draw without this bit covers its whole level in palette colours.
+ */
+export const DRAW_TEXTURED = 32;
+/** Both faces show. */
+export const DRAW_TWO_SIDED = 64;
+/** Nothing shows where the base colour's alpha is under the material's cutoff. */
+export const DRAW_CUTOUT = 128;
 
 /** Floats per bone: three rows of a 3 x 4 matrix, each row x, y, z, translation. */
 export const BONE_FLOATS = 12;
@@ -44,6 +56,27 @@ export interface BufferUpload {
   data: Uint8Array;
   /** Structure slot of each instance, for picking. */
   slots: Uint16Array;
+}
+
+/**
+ * Rows of one picture of a texture to put on the graphics card. A texture grows by being made again one step larger:
+ * its pictures arrive smallest first, a few rows a frame, and the one marked `last` completes it, after which it is
+ * what its slot draws with.
+ */
+export interface TextureUpload {
+  /** The texture's slot, as `texDrops` and the materials' draws name it. */
+  slot: number;
+  role: TextureRole;
+  format: TextureFormat;
+  /** The side of the texture being made, and of the picture these rows belong to. */
+  top: number;
+  size: number;
+  /** The first row and how many: pixels in the rgba variant, blocks of four in the others. */
+  row: number;
+  rows: number;
+  /** The scene owns it, so upload it before the next build. */
+  data: Uint8Array;
+  last: boolean;
 }
 
 export class FramePacket {
@@ -66,6 +99,9 @@ export class FramePacket {
   /** Levels of meshes to put on the graphics card, and slots to take off it, before this frame's draws. */
   readonly assetUploads: AssetUpload[] = [];
   readonly assetDrops: number[] = [];
+  /** The same for textures. */
+  readonly texUploads: TextureUpload[] = [];
+  readonly texDrops: number[] = [];
   /** Draws left out because no level of their mesh was to be had. */
   skipped = 0;
 
@@ -83,6 +119,10 @@ export class FramePacket {
   readonly drawOffset = new Float32Array(MAX_DRAWS * 3);
   /** DRAW_ bits. Draws with DRAW_BLEND come last. */
   readonly drawFlags = new Uint8Array(MAX_DRAWS);
+  /** For a DRAW_TEXTURED draw: the manifest's material, and the run of indices it covers. */
+  readonly drawMaterial = new Uint16Array(MAX_DRAWS);
+  readonly drawFirstIndex = new Uint32Array(MAX_DRAWS);
+  readonly drawIndexCount = new Uint32Array(MAX_DRAWS);
 
   tileCount = 0;
   /** Per tile: camera-relative x and z of its corner, metres per quad, sample stride. */
@@ -106,6 +146,8 @@ export class FramePacket {
     this.drops.length = 0;
     this.assetUploads.length = 0;
     this.assetDrops.length = 0;
+    this.texUploads.length = 0;
+    this.texDrops.length = 0;
     this.skipped = 0;
     this.drawCount = 0;
     this.tileCount = 0;
