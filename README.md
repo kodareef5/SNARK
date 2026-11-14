@@ -14,7 +14,7 @@ of each larger module: tribes, text chat and voice relayed through the server,
 building with snapping, support and collapse, doors, locks, boxes, a campfire
 and a bed, creatures that hunt or flee, taming, commanding, riding, and
 breeding. And a server configured as an ARK server is: its two ini files, its
-command line and its live file, with 114 of its settings taking effect and
+command line and its live file, with 115 of its settings taking effect and
 the rest read, checked and listed as waiting for what they wait for. Start with
 the [roadmap](planning/roadmap.md), the
 [gameplay data model](planning/architecture/gameplay-model.md), and, to run a

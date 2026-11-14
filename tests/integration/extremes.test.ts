@@ -1,8 +1,8 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { WorldStore } from "../../server/persist/store.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -70,12 +70,12 @@ test("a body that moved is saved within a second, however many creatures sleep e
   const e = h.host.spawnCreature("core:dummy", ents.x[me]! + 4, ents.z[me]!, 1);
   const pid = ents.pid[e]!;
   h.run(400);
-  /** Where the save has it, read as a server starting after a crash would. */
+  /** Where the save has it, read beside the running server. */
   const saved = (): number => {
-    const store = new WorldStore(dbPath, h.reg);
-    const rec = store.loadEntities().find((r) => r.pid === pid)!;
-    store.close();
-    return rec.x;
+    const db = new Database(dbPath, { readonly: true });
+    const row = db.query("SELECT x FROM entities WHERE pid = ?").get(pid) as { x: number };
+    db.close();
+    return row.x;
   };
   ents.setPosition(e, ents.x[e]! + 2, ents.y[e]!, ents.z[e]!);
   h.run(1000);

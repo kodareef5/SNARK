@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 515 of them: 114 take effect,
+is listed here, 516 of them: 115 take effect,
 207 wait for a feature that is not built yet, and 194 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -159,6 +159,7 @@ may change a setting without a restart.
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
 | `-UseDynamicConfig` | not given | The live file is read, and read again while the server runs. | no |
+| `-AllowNetworkSave` | not given | The save may be on a network disk, where it can be corrupted. *Ours. ARK has no such flag.* | no |
 | `-AutoDestroyStructures` | not given | What has decayed is taken down by the server (see AutoDestroyOldStructuresMultiplier). | no |
 | `-EnableIdlePlayerKick` | not given | The idle are put off the server (see KickIdlePlayersPeriod). | no |
 | `-port=` | none | The port the server listens on. | no |

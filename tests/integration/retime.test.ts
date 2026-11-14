@@ -379,6 +379,8 @@ test("a world saved under one set of files and loaded under another is brought t
   const fireWas = { fuel: same.now.fuel, wood: same.now.wood, node: same.now.node };
   expect([fireWas.wood, fireWas.fuel > 0, fireWas.fuel < 30 * TICK_RATE, fireWas.node > 0]).toEqual([5, true, true, true]);
 
+  // That server dies without a last commit, and so does the next.
+  same.h.host.persistence!.store.close();
   const first = load(NEW[0], NEW[1], { commitEvery: 1e9 });
   const want = {
     hatch: leftAtSpeed(was.hatch, 10, 20),
@@ -407,6 +409,7 @@ test("a world saved under one set of files and loaded under another is brought t
   expect([first.h.world.ents.span[ye], first.h.world.ents.grown[ye]]).toEqual([first.get(pids.young).span, first.get(pids.young).grown]);
 
   // The first load never committed. A second load converts the save the same way, not twice.
+  first.h.host.persistence!.store.close();
   const again = load(NEW[0], NEW[1]);
   expect(as(again.now)).toEqual(want);
   expect(again.now).toEqual(first.now);

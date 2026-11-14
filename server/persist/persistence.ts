@@ -2,11 +2,12 @@
 // Positions are lazy, because a stale one is harmless after a crash. Each commit refreshes a slice of the live entities in rotation.
 // Nothing is written to the save outside a commit. A commit that fails leaves everything it held for the next one.
 
+import { resolve } from "node:path";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
 import type { EntityRecord, Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
-import type { WorldStore } from "./store.ts";
+import { sqliteCode, type WorldStore } from "./store.ts";
 
 /** Five seconds. A checkpoint syncs the database file, so this is not every commit. */
 const CHECKPOINT_TICKS = 5 * TICK_RATE;
@@ -43,11 +44,6 @@ export interface Failing {
   retryAt: number;
 }
 
-/** SQLite's code for an error it raised ("SQLITE_FULL"), or "" for an error of our own. */
-export function sqliteCode(err: unknown): string {
-  const code = (err as { code?: unknown } | null)?.code;
-  return typeof code === "string" && code.startsWith("SQLITE_") ? code : "";
-}
 
 export interface LoadReport {
   fresh: boolean;
@@ -197,7 +193,7 @@ export class Persistence {
       now.code = code;
       now.error = err instanceof Error ? err.message : String(err);
       now.retryAt = tick + Math.min(RETRY_MOST, every * 2 ** Math.min(now.tries - 1, 8));
-      if (BROKEN.has(code) && this.open && this.store.path !== "" && this.rescue(tick)) return true;
+      if (BROKEN.has(code) && this.open && this.rescue(tick)) return true;
       this.onFailing?.(now);
       return false;
     }
@@ -226,6 +222,7 @@ export class Persistence {
    */
   saveAs(path: string): void {
     if (!this.open) throw new Error("this world cannot be saved elsewhere");
+    if (resolve(path) === resolve(this.store.path)) throw new Error(`the world is already saved in ${path}`);
     const next = this.open(path);
     if (!next.fresh) {
       next.close();

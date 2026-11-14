@@ -253,6 +253,7 @@ new Sheet(SERVER_ROWS, "snark", "Damage")
 
 const c = new Sheet(SERVER_ROWS, "cli", "Command line");
 c.flag("UseDynamicConfig", "The live file is read, and read again while the server runs.", live())
+  .flag("AllowNetworkSave", "The save may be on a network disk, where it can be corrupted.", live({ note: "Ours. ARK has no such flag." }))
   .flag("AutoDestroyStructures", "What has decayed is taken down by the server (see AutoDestroyOldStructuresMultiplier).", live())
   .flag("EnableIdlePlayerKick", "The idle are put off the server (see KickIdlePlayersPeriod).", live())
   .flag("port", "The port the server listens on.", live({ game: "A", min: 1, max: 65535 }), true)

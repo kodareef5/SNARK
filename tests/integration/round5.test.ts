@@ -240,7 +240,8 @@ test("live: a rate changed under a running world times an egg and a young one ag
   const want = [T, leftAtSpeed(was.hatch, 10, 40), 2250, was.grown * 2, was.step];
   const first = load(files(40, 5), 1e9);
   expect(first.now).toEqual(want);
-  // The first load never commits (commitEvery 1e9). The next converts the save the same way, not twice.
+  // The first load never commits (commitEvery 1e9) and dies. The next converts the save the same way, not twice.
+  first.h.host.persistence!.store.close();
   const second = load(files(40, 5));
   expect(second.now).toEqual(want);
   // This one runs long enough to commit the converted save and the rules it was converted under.
@@ -343,7 +344,7 @@ test("client: on a server that scales stamina, stacks, what things are made of a
 test("catalogue: every setting of ARK's the research found is in it as taking effect, waiting for a feature it names, or of no meaning here with the reason; each that takes effect is held by a test; and the reference page is the catalogue", () => {
   expect(catalogFaults()).toEqual([]);
   const counts = catalogCounts();
-  expect([counts.all, counts.todo, counts.live + counts.planned + counts.none]).toEqual([515, 0, 515]);
+  expect([counts.all, counts.todo, counts.live + counts.planned + counts.none]).toEqual([516, 0, 516]);
   expect(counts.live).toBeGreaterThanOrEqual(114);
   for (const row of CATALOG) {
     if (row.status === "planned") expect([row.name, row.waits in FEATURES]).toEqual([row.name, true]);

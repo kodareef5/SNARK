@@ -9,6 +9,7 @@ import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
 import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
 import type { Rules } from "./settings/rules.ts";
+import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
@@ -284,8 +285,15 @@ if (import.meta.main) {
     terminal: process.stdin.isTTY,
   });
   console.log(`SNARK listening on ${value("--cert") && value("--key") ? "https" : "http"}://localhost:${running.port}`);
-  process.on("SIGINT", () => {
-    running.stop();
-    process.exit(0);
+  stopOnSignals(() => running.stop());
+  // The tick that threw is torn, so nothing of it is saved. The last commit is whole.
+  process.on("uncaughtException", (err) => {
+    console.error(err);
+    try {
+      running.host.persistence?.store.close();
+    } catch {
+      // The process is ending either way.
+    }
+    process.exit(1);
   });
 }

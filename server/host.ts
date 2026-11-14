@@ -177,7 +177,24 @@ export function contentFor(content: Registry, rules: Rules): Registry {
   return deriveRegistry(content, tuningOf(rules, new Lists(rules, content), content).tuning);
 }
 
+/** A host that fails to start lets go of its save, so the next try can open it. */
 export function createHost(content: Registry, opts: HostOptions = {}): Host {
+  const opened: WorldStore[] = [];
+  try {
+    return makeHost(content, opts, opened);
+  } catch (err) {
+    for (const store of opened) {
+      try {
+        store.close();
+      } catch {
+        // The error that stopped the start is the one to report.
+      }
+    }
+    throw err;
+  }
+}
+
+function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): Host {
   // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
   const lists = new Lists(rules, content);
@@ -187,7 +204,9 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   const derived = deriveRegistry(content, tuned.tuning);
   if (opts.world && opts.world.reg.hash !== derived.hash) throw new Error("a world made before its host must be made of the content the host's settings give: contentFor(content, rules)");
   const reg = opts.world ? opts.world.reg : derived;
-  const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, opts.store) : null;
+  const storeOptions = { ...opts.store, allowNetworkDisk: opts.store?.allowNetworkDisk ?? rules.flag("AllowNetworkSave") === true };
+  const store = opts.dbPath ? new WorldStore(opts.dbPath, reg, storeOptions) : null;
+  if (store) opened.push(store);
   // A save supplies its own structures. Only a new world gets the proving ground's.
   const world = opts.world ?? createProvingWorld(reg, { populate: !store || store.fresh });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
@@ -222,7 +241,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     const wrong = items.audit();
     if (wrong.length > 0 && !opts.allowLedgerMismatch) throw new Error("the item ledger does not balance:\n" + wrong.join("\n"));
     persistence.sidecar("ledger", items);
-    persistence.open = (path) => new WorldStore(path, reg, opts.store);
+    persistence.open = (path) => new WorldStore(path, reg, storeOptions);
   }
   const creatures = new Creatures(world, game, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
   creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");

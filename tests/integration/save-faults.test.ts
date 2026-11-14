@@ -142,7 +142,8 @@ test("saveas writes the whole world to a new file and carries on there", () => {
   const other = join(dir, "moved.db");
   expect(h.say(ada, `saveas ${other}`)[0]).toContain("denied");
   expect(h.host.exec(`saveas ${other}`)).toBe(`the world is now saved in ${other}`);
-  expect(h.host.exec(`saveas ${other}`)).toContain("already holds a save");
+  expect(h.host.exec(`saveas ${other}`)).toContain("already saved in");
+  expect(h.host.exec(`saveas ${db}`)).toContain("already holds a save");
   expect(p.store.path).toBe(other);
   h.host.items.mint(rec, stone, 5);
   h.run(500);

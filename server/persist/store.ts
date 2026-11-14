@@ -10,6 +10,8 @@ import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { ChunkTable, StructureStore } from "../../shared/world/structures.ts";
 import { EntityRecord } from "../records.ts";
 import { validLook } from "../../shared/anim/look.ts";
+import { refuseNetworkDisk } from "./disk.ts";
+import { holdSave, type SaveLock } from "./lock.ts";
 
 export const SCHEMA_VERSION = 2;
 const CHUNK_FORMAT = 1;
@@ -81,11 +83,18 @@ export interface StoreOptions {
   synchronous?: "NORMAL" | "FULL";
   /** Load saves that reference content ids this build lacks, dropping those objects. */
   allowMissingContent?: boolean;
+  /** Accept a save on a network file system, where write-ahead logging can corrupt it. */
+  allowNetworkDisk?: boolean;
+}
+
+/** SQLite's code for an error it raised ("SQLITE_FULL"), or "" for an error of our own. */
+export function sqliteCode(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === "string" && code.startsWith("SQLITE_") ? code : "";
 }
 
 export class WorldStore {
   readonly db: Database;
-  /** "" for a database in memory. */
   readonly path: string;
   /** Maps a runtime content index to the index stored in this save. */
   readonly toSaved: Uint16Array;
@@ -97,6 +106,7 @@ export class WorldStore {
 
   private readonly reg: Registry;
   private readonly allowMissing: boolean;
+  private readonly lock: SaveLock;
   private readonly putMeta: Statement;
   private readonly putChunk: Statement;
   private readonly putEntity: Statement;
@@ -109,66 +119,88 @@ export class WorldStore {
   private readonly cr = new BitReader();
 
   constructor(path: string, reg: Registry, opts: StoreOptions = {}) {
-    const db = new Database(path, { create: true });
-    this.db = db;
-    this.path = path === ":memory:" ? "" : path;
+    if (path === "" || path === ":memory:") throw new Error("a save needs a file: write-ahead logging does not work in memory");
+    if (!opts.allowNetworkDisk) refuseNetworkDisk(path);
+    this.path = path;
     this.reg = reg;
     this.allowMissing = opts.allowMissingContent ?? false;
-    db.exec("PRAGMA journal_mode = WAL");
-    db.exec(`PRAGMA synchronous = ${opts.synchronous ?? "NORMAL"}`);
-    // Milliseconds a commit waits for another program that holds the file (a backup, an operator's query). After that it
-    // fails and is tried again later (Persistence.tryCommit), so a tick never stops for longer.
-    db.exec("PRAGMA busy_timeout = 15");
-    // SQLite checkpoints inside whichever commit passes this many WAL pages, which stops a tick for 3 to 20 ms. The server
-    // checkpoints between ticks (checkpoint()), so this is only a ceiling of 64 MB for a host that nobody calls idle() on.
-    db.exec("PRAGMA wal_autocheckpoint = 16000");
-    db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID");
+    this.lock = holdSave(path);
+    let opened: Database | null = null;
+    try {
+      const db = (opened = new Database(path, { create: true }));
+      this.db = db;
+      const mode = (db.query("PRAGMA journal_mode = WAL").get() as { journal_mode: string }).journal_mode;
+      if (mode !== "wal") throw new Error(`${path} cannot use write-ahead logging here (the file system gave "${mode}"): put the save on a local disk`);
+      // A file that held anything is checked before it is trusted. The check reads every page once.
+      if ((db.query("SELECT count(*) AS n FROM sqlite_master").get() as { n: number }).n > 0) {
+        const found = (db.query("PRAGMA quick_check").all() as { quick_check: string }[]).map((r) => r.quick_check);
+        if (found[0] !== "ok") throw Object.assign(new Error(found.slice(0, 3).join("; ")), { code: "SQLITE_CORRUPT" });
+      }
+      db.exec(`PRAGMA synchronous = ${opts.synchronous ?? "NORMAL"}`);
+      // Milliseconds a commit waits for another program that holds the file (a backup, an operator's query). After that it
+      // fails and is tried again later (Persistence.tryCommit), so a tick never stops for longer.
+      db.exec("PRAGMA busy_timeout = 15");
+      // SQLite checkpoints inside whichever commit passes this many WAL pages, which stops a tick for 3 to 20 ms. The server
+      // checkpoints between ticks (checkpoint()), so this is only a ceiling of 64 MB for a host that nobody calls idle() on.
+      db.exec("PRAGMA wal_autocheckpoint = 16000");
+      db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID");
 
-    const current = Number(this.meta("schema_version") ?? 0);
-    this.fresh = current === 0;
-    if (current > SCHEMA_VERSION) throw new Error(`save has schema ${current}; this build understands up to ${SCHEMA_VERSION}`);
-    if (current < SCHEMA_VERSION) {
+      const current = Number(this.meta("schema_version") ?? 0);
+      this.fresh = current === 0;
+      if (current > SCHEMA_VERSION) throw new Error(`save has schema ${current}; this build understands up to ${SCHEMA_VERSION}`);
+      if (current < SCHEMA_VERSION) {
+        db.transaction(() => {
+          for (let v = current; v < SCHEMA_VERSION; v++) MIGRATIONS[v]!(db);
+          db.query("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)").run(SCHEMA_VERSION);
+        })();
+      }
+
+      // Intern every content id this build knows, then map the save's indices to runtime ones.
+      const saved = new Map<string, number>();
+      for (const row of db.query("SELECT idx, id FROM content_ids").all() as { idx: number; id: string }[]) saved.set(row.id, row.idx);
+      const add = db.prepare("INSERT INTO content_ids (idx, id) VALUES (?, ?)");
+      let high = 0;
+      for (const idx of saved.values()) if (idx > high) high = idx;
       db.transaction(() => {
-        for (let v = current; v < SCHEMA_VERSION; v++) MIGRATIONS[v]!(db);
-        db.query("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)").run(SCHEMA_VERSION);
+        for (let i = 1; i < reg.ids.length; i++) {
+          if (saved.has(reg.ids[i]!)) continue;
+          saved.set(reg.ids[i]!, ++high);
+          add.run(high, reg.ids[i]!);
+        }
       })();
-    }
-
-    // Intern every content id this build knows, then map the save's indices to runtime ones.
-    const saved = new Map<string, number>();
-    for (const row of db.query("SELECT idx, id FROM content_ids").all() as { idx: number; id: string }[]) saved.set(row.id, row.idx);
-    const add = db.prepare("INSERT INTO content_ids (idx, id) VALUES (?, ?)");
-    let high = 0;
-    for (const idx of saved.values()) if (idx > high) high = idx;
-    db.transaction(() => {
-      for (let i = 1; i < reg.ids.length; i++) {
-        if (saved.has(reg.ids[i]!)) continue;
-        saved.set(reg.ids[i]!, ++high);
-        add.run(high, reg.ids[i]!);
+      if (high > 65535) throw new Error("save has interned more than 65535 content ids");
+      this.toSaved = new Uint16Array(reg.ids.length);
+      this.toRuntime = new Uint16Array(high + 1);
+      for (const [id, idx] of saved) {
+        const runtime = reg.index.get(id);
+        if (runtime === undefined) this.missingContent.push(id);
+        else {
+          this.toSaved[runtime] = idx;
+          this.toRuntime[idx] = runtime;
+        }
       }
-    })();
-    if (high > 65535) throw new Error("save has interned more than 65535 content ids");
-    this.toSaved = new Uint16Array(reg.ids.length);
-    this.toRuntime = new Uint16Array(high + 1);
-    for (const [id, idx] of saved) {
-      const runtime = reg.index.get(id);
-      if (runtime === undefined) this.missingContent.push(id);
-      else {
-        this.toSaved[runtime] = idx;
-        this.toRuntime[idx] = runtime;
+      if (this.missingContent.length > 0 && !opts.allowMissingContent && this.referencesMissing()) {
+        db.close();
+        throw new Error(`save uses content this build does not have: ${this.missingContent.join(", ")}`);
       }
-    }
-    if (this.missingContent.length > 0 && !opts.allowMissingContent && this.referencesMissing()) {
-      db.close();
-      throw new Error(`save uses content this build does not have: ${this.missingContent.join(", ")}`);
-    }
 
-    this.putMeta = db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
-    this.putChunk = db.prepare("INSERT OR REPLACE INTO chunk_structs (chunk, version, slots, data) VALUES (?, ?, ?, ?)");
-    this.putEntity = db.prepare("INSERT OR REPLACE INTO entities (pid, kind, x, y, z, yaw, data) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    this.dropEntity = db.prepare("DELETE FROM entities WHERE pid = ?");
-    this.putJournal = db.prepare("INSERT INTO journal (seq, tick, op, data) VALUES (?, ?, ?, ?)");
-    this.putSurvivor = db.prepare("INSERT OR REPLACE INTO survivors (name, pid) VALUES (?, ?)");
+      this.putMeta = db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
+      this.putChunk = db.prepare("INSERT OR REPLACE INTO chunk_structs (chunk, version, slots, data) VALUES (?, ?, ?, ?)");
+      this.putEntity = db.prepare("INSERT OR REPLACE INTO entities (pid, kind, x, y, z, yaw, data) VALUES (?, ?, ?, ?, ?, ?, ?)");
+      this.dropEntity = db.prepare("DELETE FROM entities WHERE pid = ?");
+      this.putJournal = db.prepare("INSERT INTO journal (seq, tick, op, data) VALUES (?, ?, ?, ?)");
+      this.putSurvivor = db.prepare("INSERT OR REPLACE INTO survivors (name, pid) VALUES (?, ?)");
+    } catch (err) {
+      try {
+        opened?.close();
+      } catch {
+        // It is being abandoned either way.
+      }
+      this.lock.release();
+      const code = sqliteCode(err);
+      if (code === "SQLITE_CORRUPT" || code === "SQLITE_NOTADB") throw new Error(`${path} is damaged (${err instanceof Error ? err.message : code}): restore a backup`);
+      throw err;
+    }
   }
 
   /** Copies committed pages from the write-ahead log into the database file and syncs it. Never waits for a reader. */
@@ -176,8 +208,15 @@ export class WorldStore {
     this.db.exec("PRAGMA wal_checkpoint(PASSIVE)");
   }
 
+  /** Empties the write-ahead log into the file, closes it and lets go of the save. */
   close(): void {
+    try {
+      this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    } catch {
+      // A file that cannot be written is closed as it is.
+    }
     this.db.close();
+    this.lock.release();
   }
 
   meta(key: string): string | number | null {
