@@ -1,10 +1,13 @@
 // Player settings. They change nothing on the server and last only while the page is open.
 
+import { TICK_RATE } from "../../shared/coords.ts";
 import { DEFAULT_TIER, TIERS, type Tier } from "./assets/tiers.ts";
 
 export class Settings {
   /** How much detail is drawn (client/core/assets/tiers.ts). */
   tier: Tier["name"] = DEFAULT_TIER;
+  /** The byte budget of a snapshot the server is asked for, one of SNAPSHOT_BYTES. A server may allow less. */
+  snapshotBytes = 1100;
   /** What is kept of the assets between visits, in words. The app writes it each frame. */
   kept = "";
   /** Set by the settings screen to ask for every asset to be fetched and kept. The app takes it. */
@@ -27,6 +30,8 @@ export const SENSITIVITY_MIN = 0.2;
 export const SENSITIVITY_MAX = 3;
 export const FOV_MIN = 50;
 export const FOV_MAX = 100;
+/** With a snapshot every tick they are 18, 33 and 66 KB a second. */
+export const SNAPSHOT_BYTES: readonly number[] = [600, 1100, 2200];
 
 export interface SettingRow {
   readonly label: string;
@@ -46,6 +51,7 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Talk key (B)", value: (s) => (s.toggleTalk ? "on and off" : "hold"), step: (s) => void (s.toggleTalk = !s.toggleTalk) },
   { label: "Keep all assets", value: (s) => s.kept, step: (s) => void (s.download = true) },
   { label: "Graphics", value: (s) => TIER_LABEL[s.tier], step: (s, by) => void (s.tier = TIERS[clamp(TIERS.findIndex((t) => t.name === s.tier) + by, 0, TIERS.length - 1)]!.name) },
+  { label: "Connection", value: (s) => `${Math.round((s.snapshotBytes * TICK_RATE) / 1000)} KB/s`, step: (s, by) => void (s.snapshotBytes = SNAPSHOT_BYTES[clamp(SNAPSHOT_BYTES.indexOf(s.snapshotBytes) + by, 0, SNAPSHOT_BYTES.length - 1)]!) },
 ];
 
 const megabytes = (bytes: number): string => (bytes >= 1048576 * 10 ? `${Math.round(bytes / 1048576)} MB` : `${(bytes / 1048576).toFixed(1)} MB`);
