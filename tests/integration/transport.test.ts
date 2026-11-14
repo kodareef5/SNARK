@@ -12,3 +12,8 @@ test("on a WebSocket that loses packets a round trip of 180 ms away, the input c
   expect([clean.held, clean.jumps, clean.corrections]).toEqual([0, 0, 0]);
   expect(clean.delay).toBeLessThan(80);
 });
+
+test("on a WebSocket that loses packets 100 ms away, a client's inputs come ahead of their ticks and its shots are still judged at the moment it saw", () => {
+  const r = lossy({ rtt: 100, loss: 0.02, clients: 3, herd: 0, settle: 4, seconds: 20, seed: 5 });
+  expect(r.clipped).toBeLessThan(10);
+});

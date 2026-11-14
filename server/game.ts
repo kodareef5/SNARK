@@ -190,6 +190,8 @@ export class Client {
   /** Centre of this session's interest. */
   chunk = 0;
   readonly inputs = new InputBuffer(INPUT_WINDOW);
+  /** The tick on which each buffered input arrived, by its own tick: how far ahead the client really sent it. */
+  readonly arrived = new Uint32Array(INPUT_WINDOW);
   heldX = 0;
   heldZ = 0;
   heldYaw = 0;
@@ -810,7 +812,11 @@ export class GameServer {
     // Track the newest tick even when it is too far ahead to buffer, because the margin sent back tells a
     // client its clock has run away. It moves backward only by a whole window, which is a restarted clock.
     const fresh = newest > c.newestInput || newest < c.newestInput - INPUT_WINDOW;
-    if (fresh) c.newestInput = newest;
+    if (fresh) {
+      // A stream delivers in order, so an input arrives with the first message whose newest reaches it.
+      for (let t = Math.max(newest > c.newestInput ? c.newestInput + 1 : 0, newest - INPUT_WINDOW + 1); t <= newest; t++) c.arrived[t & (INPUT_WINDOW - 1)] = this.world.tick;
+      c.newestInput = newest;
+    }
     // An ack can only name a snapshot that was sent, and only move forward. An ack of 0 says the client cannot read against
     // the view it acknowledged, so the next snapshot is whole. An input that arrives out of order may not say that.
     if (ack === 0) {

@@ -39,13 +39,13 @@ test("a shot is judged no further back than the round trip the server measured, 
   // What her own client sent ahead runs out first. Acknowledging at once and drawing two ticks behind is three ticks back.
   for (let k = 0; k < 12; k++) tick(c.lastSnapshot, 2);
   expect([combat.lag(c), back()]).toEqual([1, 3]);
-  // Saying it draws fifteen ticks behind gets the round trip and the slack, where it once got the cap.
+  // Saying it draws fifteen ticks behind gets the round trip, the tick its input came ahead, and the slack, where it once got the cap.
   tick(c.lastSnapshot, 15);
-  expect([back(), 1 + REWIND_SLACK < REWIND_TICKS]).toEqual([1 + REWIND_SLACK, true]);
+  expect([back(), 2 + REWIND_SLACK < REWIND_TICKS]).toEqual([2 + REWIND_SLACK, true]);
   // Nor does acknowledging nothing new for half a second before the shot.
   const held = c.lastSnapshot;
   for (let k = 0; k < 15; k++) tick(held, 2);
-  expect([h.world.tick - c.ackTick, back()]).toEqual([15, 1 + REWIND_SLACK]);
+  expect([h.world.tick - c.ackTick, back()]).toEqual([15, 2 + REWIND_SLACK]);
   // A line that is nine ticks long for seconds on end is a long line, and is judged as bea's is.
   for (let k = 0; k < 200; k++) tick(c.lastSnapshot - 8, 2);
   expect([combat.lag(c), back()]).toEqual([9, 11]);

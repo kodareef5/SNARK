@@ -71,10 +71,11 @@ const VIEW_BEHIND = 2;
 /** The farthest back a shot is judged. Beyond this the shooter must lead. */
 export const REWIND_TICKS = 12;
 /**
- * A shot is also judged no further back than its client's round trip as the server measured it, plus this many ticks:
- * two that a client draws others behind, two of inputs it keeps in hand, and two for rounding and an uneven line.
+ * A shot is also judged no further back than its client's round trip as the server measured it, plus the ticks by which
+ * its input came ahead of its tick, plus this many: two that a client draws others behind, and three for rounding and an
+ * uneven line.
  */
-export const REWIND_SLACK = 6;
+export const REWIND_SLACK = 5;
 /** The round trip is the least seen in this many ticks and the same number before them, so that holding acknowledgements back before a shot buys nothing. */
 const LAG_WINDOW = 64;
 /** Metres a body can have moved in REWIND_TICKS, and in the tick one segment of a flight takes. They pad the search for bodies near a ray. */
@@ -332,7 +333,9 @@ export class Combat {
     const inputs = c.inputs;
     let view = inputs.has(now) ? inputs.view[now & inputs.mask]! : c.ackTick - VIEW_BEHIND;
     if (view > c.lastSnapshot) view = c.lastSnapshot;
-    const back = Math.min(REWIND_TICKS, this.lag(c) + REWIND_SLACK);
+    // An input sent ahead was sampled that much earlier. A client can only add to this by committing to the shot sooner.
+    const ahead = inputs.has(now) ? now - c.arrived[now & inputs.mask]! : 0;
+    const back = Math.min(REWIND_TICKS, this.lag(c) + ahead + REWIND_SLACK);
     if (view < now - back) view = now - back;
     if (view >= now || !world.history.has(Math.floor(view))) return now;
     return view;

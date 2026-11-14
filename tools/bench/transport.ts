@@ -33,6 +33,8 @@ export interface Lossy {
 export interface Lossless {
   /** Percent of frames in which a client had no snapshot newer than the moment it draws others at, so they stood still. */
   frozen: number;
+  /** Ticks behind its render clock a client drew others, on average. */
+  drawn: number;
   /** Times a minute a client's others began to stand still, and the longest they did, in ms. */
   freezes: number;
   longest: number;
@@ -41,6 +43,8 @@ export interface Lossless {
   lateRuns: number;
   /** Milliseconds from a client sampling an input to the server stepping it, beyond the trip there. */
   delay: number;
+  /** Percent of ticks on which the moment a client says it saw would be judged later than it saw, for want of rewind. */
+  clipped: number;
   /** Snapshots a minute, per client, that moved its predicted body. */
   corrections: number;
   /** Clock jumps a minute, per client. */
@@ -91,12 +95,15 @@ export function lossy(o: Lossy): Lossless {
   let watching = false;
   let frames = 0;
   let frozen = 0;
+  let drawn = 0;
   let freezes = 0;
   let longest = 0;
   let delays = 0;
   let delayed = 0;
   let held = 0;
   let lateRuns = 0;
+  let clipped = 0;
+  let judged = 0;
   const wasHeld = new Uint8Array(n);
   let prevNow = h.now;
   const sentAt = new Float64Array(1 << 16);
@@ -114,6 +121,12 @@ export function lossy(o: Lossy): Lossless {
     tick();
     if (!watching) return;
     times.push(performance.now() - t);
+    for (let c = 0; c < n; c++) {
+      const client = h.client(sessions[c]!)!;
+      if (!client.inputs.has(T)) continue;
+      judged++;
+      if (h.host.combat.viewTick(client) > client.inputs.view[T & client.inputs.mask]! + 0.01) clipped++;
+    }
     // When the server steps tick T, each client's input for it is used or guessed.
     for (let c = 0; c < n; c++) {
       const at = sampled[c * 128 + (T & 127)]!;
@@ -138,6 +151,7 @@ export function lossy(o: Lossy): Lossless {
         lastSnap[c] = s.latestSnapshot;
       }
       frames++;
+      drawn += REMOTE_DELAY;
       const still = s.renderClock - REMOTE_DELAY >= s.latestSnapshot;
       if (still) {
         frozen++;
@@ -172,9 +186,11 @@ export function lossy(o: Lossy): Lossless {
   }
   return {
     frozen: (100 * frozen) / Math.max(1, frames),
+    drawn: drawn / Math.max(1, frames),
     freezes: freezes / n / minutes,
     longest,
     held: held / n / minutes,
+    clipped: (100 * clipped) / Math.max(1, judged),
     lateRuns: lateRuns / n / minutes,
     delay: delays / Math.max(1, delayed),
     corrections: sessions.reduce((sum, s, i) => sum + s.stats.corrections - before[i]!.corrections, 0) / n / minutes,
