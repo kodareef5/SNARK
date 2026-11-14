@@ -248,7 +248,8 @@ new Sheet(SERVER_ROWS, "map", "Other")
 
 new Sheet(SERVER_ROWS, "snark", "Admin and session")
   .i("ViewCap", 1024, "The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this.", live({ min: 64, max: 2048, note: "Ours. ARK has no key." }))
-  .i("SnapshotBytesMax", 1100, "The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor.", live({ min: 600, max: 2200, note: "Ours. ARK has no key." }));
+  .i("SnapshotBytesMax", 1100, "The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor.", live({ min: 600, max: 2200, note: "Ours. ARK has no key." }))
+  .i("MaxEntities", 524288, "The most bodies the world holds at once: creatures wild and tamed, survivors, eggs, bags, caches, arrows left standing and things thrown. Memory is taken as the world fills, 178 bytes a body: 0.7 MB to start with and 93 MB for all 524288. A place is kept for each of MaxPlayers.", live({ min: 4096, max: 1048576, note: "Ours. ARK has no key." }));
 
 new Sheet(SERVER_ROWS, "snark", "Damage")
   .b("HeadMultipliers", true, "Where a hit lands matters: a head counts for more. Off, every part counts once.", live({ live: true, note: "Ours. ARK has no key; this is its behaviour." }))

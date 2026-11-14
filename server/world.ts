@@ -4,7 +4,7 @@ import { HumanAnim } from "../shared/anim/pose.ts";
 import type { MapDef, MapZone } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { CHUNK_SIZE, type MapDims } from "../shared/coords.ts";
-import { EntityStore } from "../shared/sim/entities.ts";
+import { ENTITY_LIMIT, EntityStore } from "../shared/sim/entities.ts";
 import { offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
@@ -44,15 +44,22 @@ export interface ServerWorld extends CollisionWorld {
   dayOffset: number;
 }
 
+/** Slots an entity store starts with. It doubles as it fills (shared/sim/entities.ts). */
+export const ENTITY_START = 4096;
+
 export interface WorldOptions {
-  entityCap?: number;
+  /** The most entities the world may hold: the MaxEntities setting on a server. Without one, as many as a handle can name. */
+  entityMax?: number;
+  /** In place of ENTITY_START, for a test that wants the store to grow early. */
+  entityStart?: number;
   /** False when a save will supply the map's static pieces. */
   populate?: boolean;
 }
 
-export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityCap: number, spawns?: ServerWorld["spawns"], nodeSource?: NodeSource, zones: ServerWorld["zones"] = []): ServerWorld {
+/** `entityMax` is the most entities the world may hold. Its store starts at `entityStart`, or at the limit if that is less. */
+export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityMax: number, spawns?: ServerWorld["spawns"], nodeSource?: NodeSource, zones: ServerWorld["zones"] = [], entityStart = ENTITY_START): ServerWorld {
   const nodeField = nodeSource ? new NodeField(dims, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, nodeSource) : null;
-  const ents = new EntityStore(dims, entityCap);
+  const ents = new EntityStore(dims, Math.min(entityStart, entityMax), entityMax);
   return {
     reg,
     clock: { cycle: 1, day: 1, night: 1 },
@@ -101,7 +108,7 @@ function defOf(reg: Registry, map: MapFile): MapDef | null {
 export function createMapWorld(reg: Registry, map: MapFile, opts: WorldOptions = {}): ServerWorld {
   const hf = mapHeightfield(map);
   const zones = (defOf(reg, map)?.zones ?? []).filter((z) => z.kind === "spawn");
-  const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityCap ?? 4096, map.spawns, mapNodes(map, hf, reg) ?? undefined, zones);
+  const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityMax ?? ENTITY_LIMIT, map.spawns, mapNodes(map, hf, reg) ?? undefined, zones, opts.entityStart);
   if (opts.populate !== false) placeStatics(map, world.structs, reg);
   return world;
 }

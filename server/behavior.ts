@@ -5,7 +5,7 @@ import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Rng } from "../shared/rng.ts";
 import { BTN_PRIMARY, BTN_SPRINT, MF_OUT, stanceEye } from "../shared/sim/character.ts";
-import { F_ALIVE } from "../shared/sim/entities.ts";
+import { F_ALIVE, wider } from "../shared/sim/entities.ts";
 import { ACT_NONE } from "../shared/sim/weapon.ts";
 import { HIT_NONE, castWorld } from "../shared/world/ray.ts";
 import type { GameServer } from "./game.ts";
@@ -42,18 +42,19 @@ const FOLLOW_RUN = 12;
 const HELP_RANGE = 25;
 
 export class Behavior {
-  /** A MIND_ value, by entity index. */
-  readonly mind: Uint8Array;
+  // Every column is by entity index, and is replaced when the entity store grows.
+  /** A MIND_ value. */
+  mind = new Uint8Array(0);
   /** The decided input. move is forward effort, -127 to 127. look and pitch are in wire units. pressed holds the buttons that go down this tick. */
-  readonly move: Int8Array;
-  readonly look: Uint16Array;
-  readonly pitch: Int16Array;
-  readonly buttons: Uint8Array;
-  readonly pressed: Uint8Array;
+  move = new Int8Array(0);
+  look = new Uint16Array(0);
+  pitch = new Int16Array(0);
+  buttons = new Uint8Array(0);
+  pressed = new Uint8Array(0);
   /** For an owned creature: a STANCE_ value, and the entity it follows, or -1 to stay. */
-  readonly stance: Uint8Array;
-  readonly leader: Int32Array;
-  private readonly leaderGen: Uint16Array;
+  stance = new Uint8Array(0);
+  leader = new Int32Array(0);
+  private leaderGen = new Uint16Array(0);
   /** Owned creatures that are awake. */
   readonly owned = new Set<number>();
   /** Every awake creature, set by Creatures. An aggressive owned creature searches it for wild prey. */
@@ -67,34 +68,39 @@ export class Behavior {
   private readonly reg: Registry;
   private readonly rng: Rng;
   /** The hunted entity and its generation, where the hunt began, the tick the current state ends, and the tick it may next look for prey. */
-  private readonly target: Int32Array;
-  private readonly targetGen: Uint16Array;
-  private readonly homeX: Float32Array;
-  private readonly homeZ: Float32Array;
-  private readonly until: Uint32Array;
-  private readonly rested: Uint32Array;
+  private target = new Int32Array(0);
+  private targetGen = new Uint16Array(0);
+  private homeX = new Float32Array(0);
+  private homeZ = new Float32Array(0);
+  private until = new Uint32Array(0);
+  private rested = new Uint32Array(0);
 
   constructor(world: ServerWorld, game: GameServer, seed: number) {
     this.world = world;
     this.game = game;
     this.reg = world.reg;
     this.rng = new Rng(seed);
-    const cap = world.ents.cap;
-    this.mind = new Uint8Array(cap);
-    this.move = new Int8Array(cap);
-    this.look = new Uint16Array(cap);
-    this.pitch = new Int16Array(cap);
-    this.buttons = new Uint8Array(cap);
-    this.pressed = new Uint8Array(cap);
-    this.stance = new Uint8Array(cap).fill(STANCE_NEUTRAL);
-    this.leader = new Int32Array(cap).fill(-1);
-    this.leaderGen = new Uint16Array(cap);
-    this.target = new Int32Array(cap).fill(-1);
-    this.targetGen = new Uint16Array(cap);
-    this.homeX = new Float32Array(cap);
-    this.homeZ = new Float32Array(cap);
-    this.until = new Uint32Array(cap);
-    this.rested = new Uint32Array(cap);
+    this.widen(world.ents.cap);
+    world.ents.onGrow.push((cap) => this.widen(cap));
+  }
+
+  /** Gives every column room for `cap` entities. */
+  private widen(cap: number): void {
+    this.mind = wider(this.mind, cap);
+    this.move = wider(this.move, cap);
+    this.look = wider(this.look, cap);
+    this.pitch = wider(this.pitch, cap);
+    this.buttons = wider(this.buttons, cap);
+    this.pressed = wider(this.pressed, cap);
+    this.stance = wider(this.stance, cap, STANCE_NEUTRAL);
+    this.leader = wider(this.leader, cap, -1);
+    this.leaderGen = wider(this.leaderGen, cap);
+    this.target = wider(this.target, cap, -1);
+    this.targetGen = wider(this.targetGen, cap);
+    this.homeX = wider(this.homeX, cap);
+    this.homeZ = wider(this.homeZ, cap);
+    this.until = wider(this.until, cap);
+    this.rested = wider(this.rested, cap);
   }
 
   reset(e: number): void {

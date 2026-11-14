@@ -92,6 +92,9 @@ export interface HostOptions {
   map?: Uint8Array<ArrayBuffer>;
   /** Use this world instead of creating one from a map file. Its structures are kept only if the save is new. */
   world?: ServerWorld;
+  /** For a world the host creates: the most entities it holds, in place of the MaxEntities setting, and the size its store starts at. */
+  entityMax?: number;
+  entityStart?: number;
   seed?: number;
   /** Password for `enablecheats`. Without one, cheats are off unless `dev` is set. */
   adminPassword?: string;
@@ -251,7 +254,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   if (store) opened.push(store);
   // A save supplies its own structures. Only a new world gets the map's.
   const mapFile = opts.world ? null : (opts.map ?? provingFile(reg));
-  const world = opts.world ?? createMapWorld(reg, parseMap(mapFile!), { populate: !store || store.fresh });
+  const world = opts.world ?? createMapWorld(reg, parseMap(mapFile!), { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
@@ -277,6 +280,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")),
   });
   game.bus = bus;
+  // A full world still has a place for every survivor that may join.
+  world.ents.reserve = game.clients.length;
   /** Survivors made since they were last told of: a module hears of each once, as new. */
   const made = new Set<number>();
   const joined = (c: Client): void => {
@@ -285,6 +290,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     bus.after(SESSION_JOIN, { pid: c.pid, name: c.name, isNew: made.delete(c.pid) });
   };
   let started = false;
+  /** Creates the entity store had refused when the log last said so, and the tick from which it may say so again. */
+  let refusedTold = 0;
+  let refusedNext = 0;
   const persistence = store ? new Persistence(world, records, store, { allowMapMismatch: opts.allowMapMismatch ?? false }) : null;
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
@@ -506,6 +514,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     // Bodies saved under other rates are rated again as they load.
     survival.rerate = RATES.some((name) => wasAt(name) !== rules.num(name));
     const survivors = new Set(persistence!.survivors.values());
+    let bodiless = 0;
     for (const rec of records.byPid.values()) {
       if (survivors.has(rec.pid)) {
         // A survivor stays out of the world until its owner returns, with its vitals stopped.
@@ -519,7 +528,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
         const e = creatures.adopt(rec);
         if (e >= 0) persistence!.attach(rec, e);
       }
+      if (!records.entOf.has(rec.pid)) bodiless++;
     }
+    // Their records stay in the save, and get bodies at a start that allows more.
+    if (bodiless > 0) say(`no body for ${bodiless} of the creatures and things in the save, which stay in it without one: the world holds ${world.ents.count} of the ${world.ents.max} that MaxEntities allows, with ${world.ents.reserve} kept for survivors`);
+    refusedTold = world.ents.refused;
     survival.rerate = false;
     // The hour of day survives a change of clock pace, so the offset is recomputed for the new pace. A save from before
     // the clock had a pace counted 140 seconds to the hour.
@@ -684,6 +697,12 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     taming.step();
     breeding.step(tick);
     voice.step(tick);
+    // A full entity store is logged when it first refuses, and then at most once a minute.
+    if (world.ents.refused !== refusedTold && tick >= refusedNext) {
+      say(`the world has no place for more bodies (${world.ents.refused - refusedTold} refused): it holds ${world.ents.count} of the ${world.ents.max} that MaxEntities allows, with ${world.ents.reserve} kept for survivors`);
+      refusedTold = world.ents.refused;
+      refusedNext = tick + 60 * TICK_RATE;
+    }
     // The idle kick runs only with ARK's -EnableIdlePlayerKick.
     if (tick % TICK_RATE === 0 && rules.flag("EnableIdlePlayerKick") === true) {
       const most = Math.round(rules.num("KickIdlePlayersPeriod") * TICK_RATE);
