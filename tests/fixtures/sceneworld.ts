@@ -1,7 +1,7 @@
-// A small world for the scene to draw with materials: the core content and three things of its own, a creature (the
-// tube), a building piece and a held item, in a pack split as a build splits it, with their 64-pixel textures in the
-// rgba variant. Levels, surfaces and textures come over a network made of numbers to a card that holds only what
-// packets upload, and the software rasterizer draws each frame from the same packets.
+// A small world for the scene to draw with materials: the core content and a few things of its own, a creature (the
+// tube), the tube again as a thing on no bones, a building piece and a held item, in a pack split as a build splits
+// it, with their textures in the rgba variant. Levels, surfaces and textures come over a network made of numbers to a
+// card that holds only what packets upload, and the software rasterizer draws each frame from the same packets.
 
 import { CORE_CONTENT } from "../../content/core.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
@@ -16,12 +16,14 @@ import { compileContent, type Registry } from "../../shared/content/registry.ts"
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../../shared/sim/entities.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { grayboxMeshes } from "../../tools/pack/build.ts";
 import { mannequinMeshes } from "../../tools/pack/mannequin.ts";
 import { splitPack, type SplitFile } from "../../tools/pack/split.ts";
+import type { Picture } from "../../tools/pack/image.ts";
 import { materialMips, rgbaTexture, writeTextureFile } from "../../tools/pack/texture.ts";
 import { weaponMeshes } from "../../tools/pack/weapons.ts";
 import { boxMesh, buildPack, type SourceMesh } from "../../tools/pack/write.ts";
@@ -36,6 +38,7 @@ export const CLUB = "test:club";
 export const POST = "test:post";
 export const W = 160;
 export const H = 90;
+const HORN = 146;
 
 const DEFS: readonly Def[] = [
   ...CORE_CONTENT,
@@ -63,7 +66,7 @@ function panelMesh(): SourceMesh {
 
 /** A stick for the right hand, in the panel's picture. Each side of it has four vertices of its own. */
 function clubMesh(): SourceMesh {
-  const lod = boxMesh([0.04, 0.04, 0.3], 3);
+  const lod = boxMesh([0.06, 0.06, 0.3], 3);
   const n = lod.positions.length / 3;
   const p = lod.positions;
   const normals = new Float32Array(n * 3);
@@ -86,8 +89,26 @@ function clubMesh(): SourceMesh {
   };
 }
 
+/** A picture `times` as large each way, each pixel as many of the same. */
+function enlarged(p: Picture, times: number): Picture {
+  const [width, height] = [p.width * times, p.height * times];
+  const data = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const from = (Math.floor(y / times) * p.width + Math.floor(x / times)) * 4;
+      data.set(p.data.subarray(from, from + 4), (y * width + x) * 4);
+    }
+  }
+  return { ...p, width, height, data };
+}
+
+export interface SceneSet {
+  files: SplitFile[];
+  manifest: Manifest;
+}
+
 let registry: Registry | null = null;
-let set: { files: SplitFile[]; manifest: Manifest } | null = null;
+const sets = new Map<number, SceneSet>();
 
 export function sceneRegistry(): Registry {
   if (registry) return registry;
@@ -96,19 +117,30 @@ export function sceneRegistry(): Registry {
   return (registry = made.registry);
 }
 
-/** The boot file, the mesh file and the rgba texture file, with their manifest. Built once per test process. */
-export function sceneSet(): { files: SplitFile[]; manifest: Manifest } {
-  if (set) return set;
-  const meshes = [...grayboxMeshes(DEFS), ...mannequinMeshes(), ...weaponMeshes(), tubeMesh(), panelMesh(), clubMesh()];
+/**
+ * The boot file, the mesh file and the rgba texture file, with their manifest. The tube's pictures are `pixels`
+ * across, which tests leave at 64 and the benchmark raises. Built once per process for each size.
+ */
+export function sceneSet(pixels = 64): SceneSet {
+  const made = sets.get(pixels);
+  if (made) return made;
+  const tube = tubeMesh();
+  for (const t of tube.textures!) t.top = pixels;
+  // Drawn flat, the tube's horn is the palette colour the build finds nearest its pictures (D154), not the fixture's yellow.
+  for (const lod of tube.lods) lod.colors = lod.colors.map((c) => (c === 6 ? HORN : c));
+  const meshes = [...grayboxMeshes(DEFS), ...mannequinMeshes(), ...weaponMeshes(), tube, panelMesh(), clubMesh()];
   const { files, manifest } = splitPack(buildPack(meshes, defaultPalette(), [...authoredClips(), ...tubeClips()], [TUBE_RIG]), "scene");
   // Planks in two browns, with every fourth square of them clear.
   const planks = picture(64, (x, y) => (((x >> 3) + (y >> 3)) & 3) === 0 ? [150, 110, 70, 0] : (x >> 3) & 1 ? [170, 125, 80, 255] : [120, 85, 55, 255]);
-  const mips: Record<string, ReturnType<typeof materialMips>> = { [TUBE]: materialMips(tubePictures()), [PANEL]: materialMips({ base: planks }) };
+  const pictures = tubePictures();
+  for (const role of TEXTURE_ROLES) pictures[role] = enlarged(pictures[role], pixels / pictures[role].width);
+  const mips: Record<string, ReturnType<typeof materialMips>> = { [TUBE]: materialMips(pictures), [PANEL]: materialMips({ base: planks }) };
   const file = writeTextureFile("rgba", manifest.textures!.map((t) => rgbaTexture(t.role, mips[t.id.slice(0, t.id.lastIndexOf("/"))]![t.role]!)));
   manifest.textures!.forEach((t, i) => (t.in.rgba = { file: files.length, ...file.placed[i]! }));
   files.push({ name: "scene.tex.rgba.sntx", role: "tex", bytes: file.bytes });
   manifest.files.push({ name: "scene.tex.rgba.sntx", bytes: file.bytes.length, role: "tex", format: "rgba" });
-  return (set = { files, manifest });
+  sets.set(pixels, { files, manifest });
+  return { files, manifest };
 }
 
 export interface Body {
@@ -123,8 +155,8 @@ export interface Body {
  * Flat ground 128 metres square at y = 0, seen through a scene on the medium tier, or on `tier` over it, whose assets
  * come over `net`. The camera stands at (32, 1.2, 20) and looks along +z.
  */
-export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}) {
-  const { files, manifest } = sceneSet();
+export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set = sceneSet()) {
+  const { files, manifest } = set;
   const reg = sceneRegistry();
   const dims = { chunksX: 2, chunksZ: 2 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
@@ -155,8 +187,9 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}) {
       return n;
     },
     /**
-     * One frame, `ms` after the last. Throws if the card is sent anything out of order, or if a draw is of a level,
-     * a surface or a material's base colour or masks that the card does not hold.
+     * One frame, `ms` after the last. Throws if the card is sent anything out of order, if a draw is of a level, a
+     * surface or a material's base colour or masks that the card does not hold, or if a level drawn with materials is
+     * not drawn once for each of its sections, in their order.
      */
     frame(ms = 100, draw = true): FramePacket {
       now += ms;
@@ -168,9 +201,16 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}) {
         const slot = p.drawSlot[d]!;
         if (!card.held.has(slot)) throw new Error(`draw ${d} is of a level the card does not hold`);
         if ((p.drawFlags[d]! & DRAW_TEXTURED) === 0) continue;
-        const m = manifest.materials![p.drawMaterial[d]!]!;
-        if (!card.surfaces.has(slot)) throw new Error(`draw ${d} is textured, and the card does not hold its level's surface`);
-        if ([m.base, m.mask, m.mask2].some((t) => t >= 0 && !card.textures.has(t))) throw new Error(`draw ${d} is with ${m.id}, whose textures the card does not hold`);
+        const runs = manifest.meshes[p.drawMesh[d]!]!.levels[p.drawLod[d]!]!.sections ?? [];
+        if (runs.length === 0 || !card.surfaces.has(slot)) throw new Error(`draw ${d} is textured, and the card does not hold its level's surface`);
+        const first = d;
+        for (let k = 0; k < runs.length; k += 3) {
+          d = first + k / 3;
+          const m = manifest.materials![runs[k]!]!;
+          const same = [p.drawSlot, p.drawBuffer, p.drawFirst, p.drawInstances].every((of) => of[d] === of[first]) && (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
+          if (d >= p.drawCount || !same || p.drawMaterial[d] !== runs[k] || p.drawFirstIndex[d] !== runs[k + 1] || p.drawIndexCount[d] !== runs[k + 2]) throw new Error(`draw ${d} is not section ${k / 3} of its level`);
+          if ([m.base, m.mask, m.mask2].some((t) => t >= 0 && !card.textures.has(t))) throw new Error(`draw ${d} is with ${m.id}, whose textures the card does not hold`);
+        }
       }
       if (draw) raster.render(p);
       return p;
