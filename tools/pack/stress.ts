@@ -5,7 +5,7 @@
 // And textures made to load the texture path: the stress cards. Every step of a base colour card is one flat colour,
 // so a pixel on the screen names the step it was sampled from.
 
-import type { Manifest, ManifestTexture } from "../../shared/pack/manifest.ts";
+import { storedBytes, type Manifest, type ManifestTexture } from "../../shared/pack/manifest.ts";
 import { LEVEL_COLOURS, defaultPalette } from "../../shared/pack/palette.ts";
 import { stepOf, topIn, type TextureRole } from "../../shared/pack/texture.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -157,7 +157,7 @@ export function spoilStress(files: readonly SplitFile[], manifest: Manifest): vo
   finest("stress:bad_hash").parts[0]!.hash = "0000000000000000";
   manifest.files[1]!.bytes = real + 2 * finest("stress:bad_range").parts[0]!.bytes + 64;
   finest("stress:bad_range").at = real + 32;
-  finest("stress:bad_short").at = real - (finest("stress:bad_short").parts[0]!.bytes >> 1);
+  finest("stress:bad_short").at = real - (storedBytes(finest("stress:bad_short").parts[0]!) >> 1);
 }
 
 export interface StressCard {
