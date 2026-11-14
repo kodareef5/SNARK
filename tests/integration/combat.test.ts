@@ -25,13 +25,10 @@ import { coreRegistry } from "../fixtures/world.ts";
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const TICK_MS = 1000 / 30;
-/** How far the one who strikes stands from what it strikes. */
+/** Metres between the striker and its target. */
 const APART = 1.5;
 
-/**
- * A level, open, dry place: a spot to stand and a spot `APART` metres north of
- * it, with nothing between or about them.
- */
+/** A level, open, dry spot with a second spot APART metres north of it and nothing between them. */
 function levelGround(h: Harness): { x: number; z: number } {
   const w = h.world;
   const p = reg.move[id("survivor")]!;
@@ -52,7 +49,7 @@ function levelGround(h: Harness): { x: number; z: number } {
   throw new Error("no level ground near the spawn point");
 }
 
-/** A survivor with cheats standing on level ground, looking north, and a way to put things `APART` metres in front of it. */
+/** A survivor with cheats on level ground, looking north. */
 function setup(link = {}) {
   const h = new Harness({}, 1, 60, { dev: true });
   const s = h.join("ada", link);
@@ -64,7 +61,7 @@ function setup(link = {}) {
   pilot.yaw = 0;
   h.run(300);
   const rec = h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!;
-  /** A dummy in front of the survivor, facing it. */
+  /** The dummy faces the survivor. */
   const dummy = (): { e: number; rec: EntityRecord } => {
     const e = h.host.spawnCreature("core:dummy", at.x, at.z + APART, 1);
     expect(e).toBeGreaterThanOrEqual(0);
@@ -76,7 +73,7 @@ function setup(link = {}) {
   return { h, s, pilot, rec, at, dummy };
 }
 
-/** Look at a point `height` metres above the feet of what stands in front, and swing once. Returns the blow that landed, or null. */
+/** Looks at a point `height` metres above the target's feet and swings once. Returns the blow that landed, or null. */
 function swingAt(h: Harness, pilot: Pilot, height: number): Blow | null {
   pilot.pitch = Math.atan2(height - 1.62, APART);
   h.run(100);
@@ -106,13 +103,12 @@ test("a punch lands where it is aimed: a head counts three times, and the one wh
   const shin = swingAt(h, pilot, SHIN)!;
   expect([ZONE_LEG_L, ZONE_LEG_R]).toContain(shin.zone);
   expect(shin.damage).toBe(8);
-  // What it lost is what the blows took, less the little it mended meanwhile.
+  // 24 + 8 + 8, less the little it mended meanwhile.
   expect(full - health()).toBeGreaterThan(39);
   expect(full - health()).toBeLessThanOrEqual(40);
-  // Over its head there is nothing to hit.
+  // 2.6 m is over its head.
   expect(swingAt(h, pilot, 2.6)).toBeNull();
 
-  // The client was told of each: a place on the dummy, the part, the number.
   const hits = s.events.filter((ev) => ev.kind === EVENT_HIT);
   expect(hits.map((ev) => [ev.zone, ev.damage, ev.kill, ev.blocked])).toEqual([[ZONE_HEAD, 24, false, false], [ZONE_TORSO, 8, false, false], [shin.zone, 8, false, false]]);
   const ents = h.world.ents;
@@ -123,7 +119,7 @@ test("a punch lands where it is aimed: a head counts three times, and the one wh
   }
   expect(hits[0]!.y).toBeGreaterThan(hits[1]!.y);
   expect(hits[1]!.y).toBeGreaterThan(hits[2]!.y);
-  // The swings were predicted: the server never had to correct what the client supposed its body was doing.
+  // The client predicted each swing, so the server corrected nothing.
   expect(s.stats.corrections + s.stats.stateCorrections).toBe(corrections);
   expect(s.own.act).toBe(ACT_NONE);
   expect(h.host.items.audit()).toEqual([]);
@@ -132,7 +128,6 @@ test("a punch lands where it is aimed: a head counts three times, and the one wh
 test("armor stops most of a blow on the part it covers, is worn by what it stops, and does nothing for a part left bare", () => {
   const { h, s, pilot } = setup();
   expect(h.say(s, "dummy steel")[0]).toContain("no armor");
-  // The console's dummy stands three metres off; this one is put in reach, dressed the same way.
   const lines = h.say(s, "dummy flak");
   expect(lines).toEqual(["a dummy in flak"]);
   const ents = h.world.ents;
@@ -140,17 +135,16 @@ test("armor stops most of a blow on the part it covers, is worn by what it stops
   for (let e = 0; e < ents.cap; e++) if (ents.kind[e] === id("dummy") && (ents.flags[e]! & 1) !== 0) far = e;
   const drec = h.host.records.byPid.get(ents.pid[far]!)!;
   const inv = h.host.items.inv(drec);
-  // It wears five pieces, and is seen to.
   expect([...inv.item.subarray(inv.armor, inv.armor + 5)]).toEqual(["hat", "shirt", "gloves", "pants", "boots"].map((p) => id(`flak_${p}`)));
   expect([...ents.gear[far]!.subarray(1)]).toEqual([...inv.item.subarray(inv.armor, inv.armor + 5)]);
   expect(Math.hypot(ents.x[far]! - ents.x[h.ent(s)]!, ents.z[far]! - ents.z[h.ent(s)]!)).toBeCloseTo(3, 1);
-  // Step up to it.
+  // The console's dummy stands 3 m off, so the survivor steps up to it.
   h.say(s, `tp ${ents.x[far]!.toFixed(3)} ${(ents.z[far]! - APART).toFixed(3)}`);
   const durable = (slot: number): number => inv.dur[inv.armor + slot]!;
   const whole = durable(0);
   expect(whole).toBe(120);
 
-  // A flak piece rates 100, and five times that against a blow on its part: a sixth gets through.
+  // A flak piece rates 100 and counts five times against a blow on its part, so a sixth gets through.
   const head = swingAt(h, pilot, HEAD)!;
   expect(head.zone).toBe(ZONE_HEAD);
   expect(head.damage).toBeCloseTo(24 / 6, 5);
@@ -159,19 +153,19 @@ test("armor stops most of a blow on the part it covers, is worn by what it stops
   const chest = swingAt(h, pilot, CHEST)!;
   expect(chest.damage).toBeCloseTo(8 / 6, 5);
   expect([chest.wear, durable(1)]).toEqual([1, whole - 1]);
-  // The same blow to a leg, with the pants on and with them off.
+  // The same blow to a leg, with the pants (slot 3) on and then off.
   const covered = swingAt(h, pilot, SHIN)!;
   expect(covered.damage).toBeCloseTo(8 / 6, 5);
   expect(durable(3)).toBe(whole - 1);
   expect(h.host.items.burn(drec, inv.armor + 3, 1)).toBe(true);
   const bare = swingAt(h, pilot, SHIN)!;
   expect([bare.damage, bare.blocked, bare.wear]).toEqual([8, 0, 0]);
-  // A piece that is worn out stops nothing, and stays where it is.
+  // A worn-out piece stops nothing and stays in its slot.
   h.host.items.wear(drec, inv.armor + 1, 1000);
   expect(durable(1)).toBe(0);
   expect(swingAt(h, pilot, CHEST)!.damage).toBe(8);
   expect(inv.item[inv.armor + 1]).toBe(id("flak_shirt"));
-  // The client is told that armor took some of it, and sees the number that got through.
+  // The client gets the damage that got through, rounded, and whether armor blocked any.
   const hits = s.events.filter((ev) => ev.kind === EVENT_HIT);
   expect(hits.map((ev) => [ev.damage, ev.blocked])).toEqual([[4, true], [1, true], [1, true], [8, false], [8, false]]);
   expect(h.host.items.audit()).toEqual([]);
@@ -185,21 +179,19 @@ test("a weapon in hand strikes with its own damage and reach and is worn by each
   h.run(TICK_MS * 20);
   const inv = h.host.items.inv(rec);
   expect(inv.dur[slot]).toBe(60);
-  // Others see how it is held, and its body's own step knows what it holds.
   expect(h.world.ents.hold[h.ent(s)]).toBe(HOLD_TOOL);
   expect(s.own.held).toBe(id("hatchet"));
   const blow = swingAt(h, pilot, CHEST)!;
   expect([blow.zone, blow.damage]).toEqual([ZONE_TORSO, 20]);
   expect(inv.dur[slot]).toBe(59);
   expect(swingAt(h, pilot, HEAD)!.damage).toBe(60);
-  // A better one hits harder by its quality.
+  // Quality 2 multiplies the damage by 1.45.
   inv.set(slot, id("hatchet"), 1, 2, 60, 0);
   expect(swingAt(h, pilot, CHEST)!.damage).toBeCloseTo(20 * 1.45, 5);
-  // Worn out, it does what a hand does, and wears no further.
   h.host.items.wear(rec, slot, 1000);
   expect(swingAt(h, pilot, CHEST)!.damage).toBe(8);
   expect(inv.dur[slot]).toBe(0);
-  // A spear reaches where a hand does not.
+  // A spear reaches 2.7 m. A hand does not.
   h.say(s, `tp ${h.world.ents.x[d.e]!.toFixed(3)} ${(h.world.ents.z[d.e]! - 2.7).toFixed(3)}`);
   const far = (height: number): Blow | null => {
     pilot.pitch = Math.atan2(height - 1.62, 2.7);
@@ -225,7 +217,7 @@ test("taking something in hand takes a moment, and a swing asked for meanwhile w
   pilot.buttons |= BTN_PRIMARY;
   const before = h.host.combat.hits;
   const slot = takeInHand(h, s, id("hatchet"));
-  // The first blow after it is in hand is the hatchet's: no punch was thrown with it half drawn.
+  // The first blow is the hatchet's 20, not a punch thrown while it was half drawn.
   h.run(TICK_MS * 30);
   pilot.buttons &= ~BTN_PRIMARY;
   h.run(TICK_MS * 20);
@@ -252,17 +244,17 @@ test("one survivor kills another: the victim is told what hurt it and from where
   const brec = h.host.records.byPid.get(h.world.ents.pid[h.ent(bob)]!)!;
   h.host.items.mint(brec, id("berry"), 5);
   const xp = arec.xp;
-  // Four to the head leave four points; the fifth kills.
+  // Four blows of 24 to the head leave 4 health. The fifth kills.
   for (let n = 0; n < 4; n++) expect(swingAt(h, h.pilots[0]!, HEAD)!.zone).toBe(ZONE_HEAD);
   expect(h.host.survival.value(brec, V_HEALTH)).toBeLessThan(5);
   expect(bob.sessionState).toBe(SESSION_ALIVE);
   const hurts = bob.events.filter((ev) => ev.kind === EVENT_HURT);
   expect(hurts.map((ev) => [ev.damage, ev.zone])).toEqual([[24, ZONE_HEAD], [24, ZONE_HEAD], [24, ZONE_HEAD], [24, ZONE_HEAD]]);
-  // It came from the south: a facing of half a turn.
+  // The blow came from the south, a bearing of half a turn (128 of 256).
   expect(hurts[0]!.bearing).toBe(128);
   const last = swingAt(h, h.pilots[0]!, HEAD)!;
   expect(last.killed).toBe(true);
-  // What was left is what the last blow took.
+  // The last blow's damage is the health that was left.
   expect(last.damage).toBeLessThan(5);
   expect(bob.sessionState).toBe(SESSION_DEAD);
   expect(brec.dead).toBe(true);
@@ -270,14 +262,12 @@ test("one survivor kills another: the victim is told what hurt it and from where
   expect([death.name, death.item, death.zone, death.bearing]).toEqual(["ada", 0, ZONE_HEAD, 128]);
   expect(death.far).toBeGreaterThan(0.8);
   expect(death.far).toBeLessThan(1.6);
-  // Ada is told it killed, and what; and has the experience of it.
   const hit = ada.events.filter((ev) => ev.kind === EVENT_HIT);
   expect(hit.length).toBe(5);
   expect(hit[4]!.kill).toBe(true);
   const kill = ada.events.find((ev) => ev.kind === EVENT_KILL)!;
   expect([kill.name, kill.level, kill.xp]).toEqual(["bob", 1, 10]);
   expect(arec.xp).toBe(xp + 10);
-  // What Bob carried lies where he fell, as with any death.
   expect(h.host.items.inv(brec).used()).toBe(0);
   const cache = [...h.host.records.byPid.values()].find((r) => r.kind === id("cache"))!;
   expect(h.host.items.inv(cache).total(id("berry"))).toBe(5);
@@ -294,7 +284,7 @@ test("killing a creature gives the killer what it yields and the experience of i
   const level = grec.genome!.level;
   const inv = h.host.items.inv(rec);
   const xp = rec.xp;
-  // A box has one part: wherever it is hit, it is its torso.
+  // A box body has one part, so any hit is to its torso.
   pilot.pitch = Math.atan2(0.8 - 1.62, APART);
   const before = h.host.combat.hits;
   pilot.buttons |= BTN_PRIMARY;
@@ -303,14 +293,12 @@ test("killing a creature gives the killer what it yields and the experience of i
   h.run(TICK_MS * 4);
   expect(h.host.combat.hits).toBe(before + 1);
   expect([h.host.combat.last.zone, h.host.combat.last.damage, h.host.combat.last.killed]).toEqual([ZONE_TORSO, 8, false]);
-  // It runs from whoever hurt it.
   const z0 = ents.z[e]!;
   h.run(1500);
   expect(ents.z[e]! - z0).toBeGreaterThan(3);
-  // (It is made to stand, so that it can be reached: it runs faster than a survivor swings.)
+  // It is held still so it can be reached. It runs faster than a survivor swings.
   h.host.creatures.mind.stay(e, h.world.tick + 1e6);
   h.run(400);
-  // Brought to its last point and struck again, it dies, and the killer has its hide and meat.
   h.host.survival.add(grec, V_HEALTH, -(h.host.survival.value(grec, V_HEALTH) - 1));
   h.say(s, `tp ${ents.x[e]!.toFixed(3)} ${(ents.z[e]! - 1.3).toFixed(3)}`, 60);
   pilot.buttons |= BTN_PRIMARY;
@@ -325,7 +313,6 @@ test("killing a creature gives the killer what it yields and the experience of i
   expect(hide).toBeLessThanOrEqual(9);
   expect(meat).toBeGreaterThanOrEqual(3);
   expect(meat).toBeLessThanOrEqual(6);
-  // Four at level one, a tenth more for each level above it.
   expect(rec.xp - xp).toBeCloseTo(4 * (1 + 0.1 * (level - 1)), 1);
   const kill = s.events.find((ev) => ev.kind === EVENT_KILL)!;
   expect([kill.name, kill.level]).toEqual(["grazer", level]);
@@ -339,7 +326,7 @@ test("a swing lands on a standing target at 150 ms of latency as it does at none
   h.run(600);
   const head = swingAt(h, pilot, HEAD)!;
   expect([head.zone, head.damage]).toEqual([ZONE_HEAD, 24]);
-  // While it swings, whoever watches is sent the swing: an act, how it is held, and when it began.
+  // The watcher gets the swing in the anim word: the act in the low three bits and the hold above them.
   pilot.buttons |= BTN_PRIMARY;
   h.run(TICK_MS * 6);
   const st = new AnimState();
@@ -356,7 +343,7 @@ test("a swing lands on a standing target at 150 ms of latency as it does at none
   pilot.buttons &= ~BTN_PRIMARY;
   h.run(800);
   expect(seen).toBe(true);
-  // The one swinging saw its own swing begin when it asked, not when the server answered.
+  // The client predicted its own swing, so no state correction arrived.
   expect(s.stats.stateCorrections).toBe(0);
 });
 
@@ -378,7 +365,7 @@ test("a swing takes the upper body and leaves the legs walking", () => {
     expect(differs(walking, swinging, B_UPPER_ARM_R, B_HAND_R + 1)).toBe(true);
     expect(differs(walking, swinging, B_UPPER_LEG_L, B_UPPER_LEG_L + 8)).toBe(false);
     expect([...swinging.root]).toEqual([...walking.root]);
-    // Before it begins and after it ends the body is as it would be without it.
+    // At the tick it begins and from the tick it ends, the pose equals the walking pose.
     for (const tick of [100, 100 + SWING_TICKS, 100 + SWING_TICKS + 20]) {
       humanPose(anim, st, tick, swinging);
       st.setAction(ACT_NONE, hold, 0);
@@ -387,7 +374,7 @@ test("a swing takes the upper body and leaves the legs walking", () => {
       expect(differs(walking, swinging, 0, HUMAN_BONES)).toBe(false);
     }
   }
-  // A word that says "swinging" survives the trip.
+  // The packed word keeps the act and the hold. The start tick wraps at 256.
   st.setAction(ACT_SWING, HOLD_TOOL, 100 + 256 * 3);
   const back = new AnimState();
   back.unpack(st.pack());
@@ -409,11 +396,9 @@ test("what the server reports is shown and fades: a mark, a number over the plac
     f.begin(16 / 9);
     buildCombat(f, m);
   };
-  // Nothing has happened: nothing is drawn.
   show(1000);
   expect(f.count).toBe(0);
 
-  // A hit to a head, five metres ahead.
   session.events.push(event(EVENT_HIT, { x: 0, y: 1.6, z: 5, zone: ZONE_HEAD, damage: 24 }));
   show(1000);
   expect(session.events.length).toBe(0);
@@ -425,7 +410,7 @@ test("what the server reports is shown and fades: a mark, a number over the plac
   const number = f.find(KEY_DAMAGE)!;
   expect([number.text, number.style]).toEqual(["24", S_DAMAGE_HEAD]);
   expect(number.x + number.w / 2).toBeCloseTo(f.width / 2, 0);
-  // The mark goes first; the number rises and then fades.
+  // The mark goes first. The number rises, and fades over the second half of NUMBER_MS.
   show(1000 + MARK_MS + 1);
   expect(m.mark).toBe(0);
   expect(f.find(KEY_HIT_MARK)).toBeNull();
@@ -435,11 +420,10 @@ test("what the server reports is shown and fades: a mark, a number over the plac
   expect(f.find(KEY_DAMAGE)!.alpha).toBeCloseTo(0.5, 2);
   show(1000 + NUMBER_MS);
   expect(m.numberCount).toBe(0);
-  // A hit behind the camera has no place on the screen, but is still marked.
+  // A hit behind the camera gets a mark and no number.
   session.events.push(event(EVENT_HIT, { x: 0, y: 1.6, z: -5, zone: ZONE_TORSO, damage: 8 }));
   show(5000);
   expect([m.mark, m.numberCount]).toEqual([1, 0]);
-  // A kill is marked in its own colour and numbered as one.
   session.events.push(event(EVENT_HIT, { x: 0, y: 1.6, z: 5, zone: ZONE_TORSO, damage: 3, kill: true }), event(EVENT_KILL, { name: "grazer", level: 7, xp: 6.4 }));
   show(6000);
   expect(f.find(KEY_HIT_MARK)!.style).toBe(S_HIT_KILL);
@@ -447,7 +431,7 @@ test("what the server reports is shown and fades: a mark, a number over the plac
   expect(f.find(KEY_NOTICE)!.text).toBe("Killed grazer (level 7)  +6.4 xp");
   expect(NUMBER_BODY).toBe(0);
 
-  // Harm from the left: a mark to the left of the crosshair, and red at the edges, both fading.
+  // Bearing 64 is harm from the left of this camera.
   session.events.push(event(EVENT_HURT, { damage: 25, bearing: 64, zone: ZONE_TORSO }));
   show(20000);
   expect([m.hurtCount, m.blood]).toEqual([1, 0.5]);
@@ -462,12 +446,12 @@ test("what the server reports is shown and fades: a mark, a number over the plac
   show(20000 + 4000);
   expect([m.hurtCount, m.blood]).toEqual([0, 0]);
   expect(f.find(KEY_BLOOD)).toBeNull();
-  // Seen from another facing, the same harm is on another side: from behind, below the crosshair.
+  // Bearing 128 is harm from behind, marked below the crosshair.
   session.events.push(event(EVENT_HURT, { damage: 5, bearing: 128 }));
   show(30000);
   expect(f.find(KEY_HURT)!.y + 7).toBeGreaterThan(f.height / 2 + 50);
 
-  // Death: who, with what, where and from how far; it stays up while dead and goes once alive again.
+  // The death notice stays up while dead and goes once alive again.
   session.events.push(event(EVENT_DEATH, { damage: 12, bearing: 0, zone: ZONE_HEAD, name: "bob", item: id("hatchet"), far: 2.34, kill: true }));
   show(40000, false);
   expect(f.find(KEY_NOTICE)!.text).toBe("Killed by bob with hatchet: 12 to the head from 2.3 m");
@@ -475,7 +459,6 @@ test("what the server reports is shown and fades: a mark, a number over the plac
   expect(f.find(KEY_NOTICE)!.alpha).toBe(1);
   show(40000 + 61000, true);
   expect(f.find(KEY_NOTICE)).toBeNull();
-  // On every shape of window all of it is on the screen.
   session.events.push(event(EVENT_HIT, { x: 0, y: 1.6, z: 5, damage: 9 }), event(EVENT_HURT, { damage: 60, bearing: 30 }), event(EVENT_KILL, { name: "a creature with a very long name", level: 120, xp: 99 }));
   fb.absorb(session, reg, 200000);
   for (const aspect of [9 / 16, 4 / 3, 16 / 9, 32 / 9]) {

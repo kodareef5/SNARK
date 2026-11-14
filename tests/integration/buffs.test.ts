@@ -69,11 +69,10 @@ test("tranquilizer arrows: torpor at once and more to come, a creature goes down
   const survival = h.host.survival;
   const g = spawn("grazer", 8, 1);
   const ents = h.world.ents;
-  // It is held still for the test: a grazer wanders, and runs when hurt.
+  // A grazer wanders, and runs when hurt, so the test holds it still.
   h.host.creatures.mind.stay(g.e, h.world.tick + 1e6);
   survival.gods.add(g.rec.pid);
   const slot = arm("bow", "bow", 400);
-  // Tranquilizer arrows, not stone ones.
   h.host.items.load(rec, slot, id("arrow_tranq"), 1);
   h.run(900);
   const torpor = (): number => survival.value(g.rec, V_TORPOR);
@@ -83,10 +82,10 @@ test("tranquilizer arrows: torpor at once and more to come, a creature goes down
   survival.gods.delete(g.rec.pid);
   const health = survival.value(g.rec, V_HEALTH);
   let shots = 0;
-  // Arrows until it drops. Each does 20 to its body: 40 torpor at once and 50 more over five seconds.
+  // Each arrow does 20 damage, 40 torpor at once (twice the damage) and 50 more over five seconds (10 a second).
   let tries = 0;
   while (!g.rec.out && shots < 12 && tries++ < 40) {
-    // (Hurt, it runs, and faster than an arrow can be led by aiming where it is: it is stood still again before each.)
+    // A hit makes it run faster than the aim can lead, so it is held still again before each shot.
     h.host.creatures.mind.stay(g.e, h.world.tick + 1e6);
     h.run(300);
     aim(pilot, Math.hypot(ents.x[g.e]! - ents.x[h.ent(s)]!, ents.z[g.e]! - ents.z[h.ent(s)]!), 0.9);
@@ -97,7 +96,6 @@ test("tranquilizer arrows: torpor at once and more to come, a creature goes down
     shots++;
     if (shots === 1) {
       expect(h.host.combat.last.damage).toBe(20);
-      // At once, twice the damage; and a dose is on it, rising two and a half times the damage over five seconds.
       expect(torpor()).toBeGreaterThan(40);
       expect(torpor()).toBeLessThan(47);
       expect(g.rec.buffs.map((b) => b.buff)).toEqual([id("tranquilized")]);
@@ -106,18 +104,17 @@ test("tranquilizer arrows: torpor at once and more to come, a creature goes down
     }
   }
   expect(g.rec.out).toBe(true);
-  // A creature of 150 torpor takes about two arrows; it lost little health doing it.
+  // A creature of 150 torpor takes about two arrows.
   expect(shots).toBeGreaterThanOrEqual(2);
   expect(shots).toBeLessThanOrEqual(4);
   expect(health - survival.value(g.rec, V_HEALTH)).toBeLessThanOrEqual(20 * shots);
-  // Down, it lies where it is: it neither wanders nor runs.
   expect(ents.mflags[g.e]! & MF_OUT).toBe(MF_OUT);
   h.run(6000);
   const [x, z] = [ents.x[g.e]!, ents.z[g.e]!];
   h.run(3000);
   expect([ents.x[g.e]!, ents.z[g.e]!]).toEqual([x, z]);
   expect(g.rec.buffs.length).toBe(0);
-  // It shakes off six tenths a second, so it is out for minutes; then it is up, with none left.
+  // Torpor falls 0.6 a second, so it is out for minutes.
   const left = torpor();
   expect(left).toBeGreaterThan(100);
   h.run(((left / 0.6) * 1000) / 2);
@@ -143,7 +140,7 @@ test("a survivor knocked out lies down, can do nothing, sees the dark, and comes
   const f = app.ui.frame;
   const e = h.ent(s);
   const ents = h.world.ents;
-  // 150 of his 200: the bar shows it, and he shakes off four a second.
+  // 150 of his 200 torpor. It falls 4 a second.
   survival.add(rec, V_TORPOR, 150);
   run(300);
   expect(f.find(KEY_VITAL + 11)!.value).toBeGreaterThan(0.7);
@@ -151,7 +148,6 @@ test("a survivor knocked out lies down, can do nothing, sees the dark, and comes
   run(5000);
   expect(survival.value(rec, V_TORPOR)).toBeCloseTo(150 - 4 * 5.3, 0);
   expect(rec.out).toBe(false);
-  // Over the top: he is out.
   survival.add(rec, V_TORPOR, 200);
   app.controls.key("KeyW", true);
   app.controls.mouseButton(0, true);
@@ -159,7 +155,7 @@ test("a survivor knocked out lies down, can do nothing, sees the dark, and comes
   run(1500);
   expect(rec.out).toBe(true);
   expect(ents.mflags[e]! & MF_OUT).toBe(MF_OUT);
-  // Lying down, moved by nothing he presses, swinging at nothing: and his own client predicts the same, uncorrected.
+  // His own client predicts the same state, so the server corrects nothing.
   expect(ents.stance[e]).toBe(STANCE_PRONE);
   expect(Math.hypot(ents.x[e]! - x, ents.z[e]! - z)).toBeLessThan(0.3);
   expect([ents.act[e], s.own.act]).toEqual([ACT_NONE, ACT_NONE]);
@@ -167,10 +163,9 @@ test("a survivor knocked out lies down, can do nothing, sees the dark, and comes
   const corrections = s.stats.corrections;
   run(1000);
   expect(s.stats.corrections).toBe(corrections);
-  // The screen: dark, and saying why.
   expect(f.find(KEY_OUT)!.alpha).toBeGreaterThan(0.5);
   expect(f.find(KEY_BANNER)!.text).toBe("UNCONSCIOUS");
-  // Fifty seconds at four a second, and he is up, and walks.
+  // 200 torpor at 4 a second is gone in fifty seconds.
   run(51000);
   expect(rec.out).toBe(false);
   expect(f.find(KEY_OUT)).toBeNull();
@@ -192,20 +187,19 @@ test("a flame arrow sets its mark burning: eight health a second for eight secon
   loose(h, pilot, 300);
   expect(h.host.combat.last.damage).toBe(55);
   expect(d.rec.buffs.map((b) => [b.buff, b.by])).toEqual([[id("burning"), rec.pid]]);
-  // It burns at a rate, not by being visited: its health at any moment is where the rate puts it.
+  // The burn changes the health rate and steps nothing. The rate is 0.2 mending less 8 burning a second, in millionths per tick.
   const v = d.rec.vitals!;
   expect(v.rate[V_HEALTH]).toBe(Math.round(((0.2 - 8) * 1e6) / 30));
   const began = d.rec.buffs[0]!.until - 8 * 30;
   h.run(4000);
   const mid = h.world.tick;
   expect(survival.value(d.rec, V_HEALTH)).toBeCloseTo(full - 55 - (7.8 * (mid - began)) / 30, 1);
-  // Eight seconds from when it was lit it is out, having taken sixty-four less what it mended meanwhile.
   h.run(5000);
   expect(d.rec.buffs.length).toBe(0);
   expect(v.rate[V_HEALTH]).toBe(Math.round((0.2 * 1e6) / 30));
   const after = h.world.tick;
   expect(survival.value(d.rec, V_HEALTH)).toBeCloseTo(full - 55 - 8 * 8 + (0.2 * (after - began)) / 30, 1);
-  // Lit again while it burns, the fire is as long as it was, not longer by what was left.
+  // A second flame arrow restarts the eight seconds. It does not add to the time left.
   aim(pilot, 10, 1.25 + 0.1);
   loose(h, pilot, 300);
   h.run(2000);
@@ -214,13 +208,12 @@ test("a flame arrow sets its mark burning: eight health a second for eight secon
   expect(d.rec.buffs[0]!.until - h.world.tick).toBeGreaterThan(7 * 30);
   expect(d.rec.buffs[0]!.until - h.world.tick).toBeLessThanOrEqual(8 * 30);
 
-  // A grazer with little left, far from anyone, dies of the fire a while after the arrow: the archer has the kill.
   h.host.death.die(d.rec, 0);
   const g = spawn("grazer", 10);
-  // Put under first, so that it lies still to be shot.
+  // Knocked out first, so it lies still for the shot.
   survival.add(g.rec, V_TORPOR, 10000);
   survival.add(g.rec, V_HEALTH, -(survival.value(g.rec, V_HEALTH) - 70));
-  // The next arrow is on the string by now.
+  // The wait lets the next arrow nock.
   h.run(1000);
   const xp = rec.xp;
   const ents = h.world.ents;
@@ -229,7 +222,7 @@ test("a flame arrow sets its mark burning: eight health a second for eight secon
   const hits = h.host.combat.hits;
   loose(h, pilot, 200);
   expect(h.host.combat.hits).toBe(hits + 1);
-  // Fifty-five of seventy at once; the last fifteen take two seconds of burning.
+  // The arrow takes 55 of its 70 health. The last 15 take two seconds of burning.
   expect(h.host.records.byPid.has(g.rec.pid)).toBe(true);
   h.run(2500);
   expect(h.host.records.byPid.has(g.rec.pid)).toBe(false);
@@ -267,7 +260,6 @@ test("what acts on a body: a stun roots it, an injury slows it and mends, god mo
   };
   expect(marks()).toEqual([]);
 
-  // Stunned for three seconds: held where it stands, though the key is down; then free.
   app.controls.key("KeyW", true);
   run(600);
   say("buff stunned");
@@ -285,20 +277,19 @@ test("what acts on a body: a stun roots it, an injury slows it and mends, god mo
   expect(Math.hypot(ents.x[e]! - x, ents.z[e]! - z)).toBeGreaterThan(2);
   app.controls.key("KeyW", false);
 
-  // Hurt to under thirty: injured, and four fifths as fast. Mending past thirty ends it, with nobody looking.
+  // Health under 30 gives the injury. Mending past 30 ends it.
   expect(ents.speedQ[e]).toBe(1000);
   say("hurt 75");
   expect(buffs.has(rec, id("injured"))).toBe(true);
   expect(ents.speedQ[e]).toBe(800);
   expect(marks()).toEqual(["Injured"]);
-  // A fifth of a point a second: five points take twenty-five seconds.
+  // At 0.2 health a second, the five points take twenty-five seconds.
   run(20000);
   expect(buffs.has(rec, id("injured"))).toBe(true);
   run(6000);
   expect(buffs.has(rec, id("injured"))).toBe(false);
   expect(ents.speedQ[e]).toBe(1000);
 
-  // God mode: on the bar, without an end; harm does nothing, and a fire lit on a god does not burn it.
   h.host.survival.add(rec, V_HEALTH, 100);
   say("god");
   expect(marks()).toEqual(["God"]);
@@ -311,11 +302,10 @@ test("what acts on a body: a stun roots it, an injury slows it and mends, god mo
   say("god");
   expect(marks()).toEqual(["Burning  2s"]);
   expect(h.host.survival.gods.has(rec.pid)).toBe(false);
-  // The fire now bites, for what is left of it.
+  // With god mode off, the last 2 s of the fire burn.
   run(2500);
   expect(h.host.survival.value(rec, V_HEALTH)).toBeLessThan(health - 8);
   expect(marks()).toEqual([]);
-  // Taking one off by name; one that is not on; one that does not exist.
   say("buff stunned 60");
   expect(s.log.at(-1)!.text).toBe("core:stunned on");
   say("buff off stunned");
@@ -324,10 +314,8 @@ test("what acts on a body: a stun roots it, an injury slows it and mends, god mo
   expect(s.log.at(-1)!.text).toBe("you are not under core:stunned");
   say("buff nonsense");
   expect(s.log.at(-1)!.text).toBe('no buff "nonsense"');
-  // A body carries no more than sixteen at once: the oldest dose goes.
   for (let n = 0; n < MAX_BUFFS + 4; n++) buffs.give(rec, id("tranquilized"), 0, 30, 0.01);
   expect(rec.buffs.length).toBe(MAX_BUFFS);
-  // Death ends whatever was acting on it.
   say("suicide");
   expect(rec.dead).toBe(true);
   expect(rec.buffs.length).toBe(0);
@@ -352,7 +340,6 @@ test("torpor and being out survive a restart; a save from before torpor loads wi
   expect(back.out).toBe(true);
   expect(host.world.tick).toBe(tick);
   expect(host.survival.value(back, V_TORPOR)).toBeCloseTo(torpor, 3);
-  // Still down in the world, and still shaking it off: it comes round on time.
   const be = host.records.entOf.get(pid)!;
   host.refreshBody(back);
   expect(host.world.ents.mflags[be]! & MF_OUT).toBe(MF_OUT);

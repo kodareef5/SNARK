@@ -31,7 +31,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const ASPECTS: [string, number][] = [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]];
 
-/** Nothing off the canvas, no text wider than its box, no two controls or two texts sharing space. */
+/** Fails if a node is off the canvas, a text is wider than its box, or two controls or two texts overlap. */
 function fits(f: UiFrame, where: string): void {
   const over = (a: number, b: number): boolean => {
     const p = f.nodes[a]!;
@@ -79,18 +79,16 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
     run(34);
   };
 
-  // No body anywhere: not on the server, not in anyone's view, no record under the name.
   expect(session.sessionState).toBe(SESSION_CREATING);
   expect(h.client(session)!.ent).toBe(-1);
   expect(h.world.ents.count).toBe(0);
   expect(h.host.records.byPid.size).toBe(0);
-  // The creator is the whole interface: no crosshair, no vitals, and the mouse is free.
   expect(f.find(KEY_CREATOR_PANEL)).not.toBeNull();
   expect(f.find(KEY_CREATOR_TITLE)!.text).toBe("New survivor: ada");
   expect(f.find(KEY_CROSS)).toBeNull();
   expect(f.find(KEY_VITAL)).toBeNull();
   expect(ui.wantsPointerLock).toBe(false);
-  // The body being made is drawn, whole, as an ordinary body in front of the camera.
+  // The body being made is drawn whole, as an ordinary body in front of the camera.
   const flags = (): number[] => [...packet!.drawFlags.subarray(0, packet!.drawCount)];
   expect(flags().filter((x) => (x & DRAW_SKINNED) !== 0).length).toBe(6);
   expect(flags().filter((x) => (x & DRAW_NEAR) !== 0).length).toBe(0);
@@ -98,13 +96,11 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   expect(app.cam.project(session.own.x, session.own.y + 1, session.own.z, out)).toBe(true);
   expect(out[0]!).toBeLessThan(0.45); // left of the panel
   expect(out[0]!).toBeGreaterThan(0.15);
-  // Steering does nothing: there is nothing to steer.
   app.key("KeyW", true);
   run(600);
   app.key("KeyW", false);
   expect(h.world.ents.count).toBe(0);
 
-  // Both tabs fit every window shape.
   for (const [name, aspect] of ASPECTS) {
     for (const tab of [0, 1]) {
       ui.creator.tab = tab;
@@ -115,7 +111,7 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   ui.creator.tab = 0;
   run(34);
 
-  // Choose: female, the eighth skin tone, long hair, the tenth hair colour.
+  // Female, the eighth skin tone, long hair, the tenth hair colour.
   const look = ui.creator.look;
   expect([...look]).toEqual([...defaultLook()]);
   click(KEY_CREATOR_SEX + 1);
@@ -123,13 +119,13 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   click(KEY_CREATOR_HAIR + 3);
   click(KEY_CREATOR_HAIR_COLOR + 9);
   expect([look[LOOK_SEX], look[LOOK_SKIN], look[LOOK_HAIR], look[LOOK_HAIR_COLOR]]).toEqual([1, 7, 3, 9]);
-  // A beard chosen on one body does not follow to the other.
+  // Switching to the female body clears a beard.
   click(KEY_CREATOR_SEX);
   click(KEY_CREATOR_BEARD + 1);
   expect(look[LOOK_BEARD]).toBe(1);
   click(KEY_CREATOR_SEX + 1);
   expect(look[LOOK_BEARD]).toBe(0);
-  // The body tab: buttons step a region, a press on its bar sets it, and a drag follows.
+  // On the body tab each region has four keys: its label, minus, its bar and plus. A step is 0.1, a press on the bar sets the value, and a drag follows.
   click(KEY_CREATOR_TAB + 1);
   expect(f.find(KEY_CREATOR_REGION)!.text).toBe("Head size");
   for (let i = 0; i < 3; i++) click(KEY_CREATOR_REGION + 3);
@@ -146,15 +142,13 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   app.pointer(1, bar.key, bar.x + bar.w * 0.9, bar.y, 0);
   app.pointer(2, bar.key, bar.x + bar.w * 0.1, bar.y, -1); // not dragging any more
   expect(regionOf(look, 12)).toBeCloseTo(0.8, 1);
-  // Past either end stays at the end.
   for (let i = 0; i < 30; i++) app.pointer(0, KEY_CREATOR_REGION + 3, 0, 0, 0);
   expect(regionOf(look, 0)).toBe(1);
-  // Turning the body turns only the picture.
+  // The turn buttons turn only the drawn body.
   const turned = ui.creator.turn;
   click(KEY_CREATOR_TURN + 1);
   expect(ui.creator.turn).toBeGreaterThan(turned);
   expect(app.scene!.own!.yaw).toBe(ui.creator.turn);
-  // Random makes something else each time and always something a server will take; Reset is the plain look.
   click(KEY_CREATOR_RANDOM);
   const first = [...look];
   click(KEY_CREATOR_RANDOM);
@@ -164,7 +158,6 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   expect([...look]).toEqual([...defaultLook()]);
   expect(h.world.ents.count).toBe(0); // none of that was sent
 
-  // The look to keep, then Create.
   click(KEY_CREATOR_TAB);
   click(KEY_CREATOR_SEX + 1);
   click(KEY_CREATOR_SKIN + 8);
@@ -181,7 +174,6 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   expect([...rec.look!]).toEqual([...made]);
   expect([...h.world.ents.look[e]!]).toEqual([...made]);
   expect([...session.ownLook!]).toEqual([...made]);
-  // The game's interface is back, and the body is its own: seen from its eyes, without its head.
   expect(f.find(KEY_CREATOR_PANEL)).toBeNull();
   expect(f.find(KEY_CROSS)).not.toBeNull();
   expect(ui.wantsPointerLock).toBe(true);
@@ -189,7 +181,6 @@ test("a new name arrives in the creator with no body; it makes a look, and the s
   expect([...app.scene!.own!.look!]).toEqual([...made]);
   expect(app.cam.y).toBeCloseTo(session.own.y + 1.62, 5);
 
-  // Someone who arrives sees ada as she made herself, and she sees them as they are.
   const bo = h.join("bo", { latencyMs: 20 });
   run(600);
   const seen = new RemoteSample();
@@ -208,7 +199,6 @@ test("a look is kept with the survivor: it returns as it was made, through a res
   const look = randomLook(rng);
   const h = new Harness({}, 1, 60, { dbPath: db });
   const ada = h.join("ada", {}, { look });
-  // Grace brings no look and makes one in the creator; a creature has none at all.
   const grace = h.join("grace", {}, { look: null });
   h.run(500);
   expect(grace.sessionState).toBe(SESSION_CREATING);
@@ -225,7 +215,7 @@ test("a look is kept with the survivor: it returns as it was made, through a res
 
   const h2 = new Harness({}, 1, 60, { dbPath: db });
   expect([...h2.host.records.byPid.get(pid)!.look!]).toEqual([...look]);
-  // Returning with no look, or with another one: the survivor is as it was made.
+  // Returning with no look or with another one changes nothing.
   const again = h2.join("ada", {}, { look: null });
   const graceAgain = h2.join("grace", {}, { look: defaultLook() });
   h2.run(600);
@@ -237,7 +227,7 @@ test("a look is kept with the survivor: it returns as it was made, through a res
   const others = [...Array(seen.count).keys()].filter((i) => seen.hasLook[i] !== 0);
   expect(others.length).toBe(1);
   expect([...seen.look.subarray(others[0]! * LOOK_BYTES, others[0]! * LOOK_BYTES + LOOK_BYTES)]).toEqual([...hers]);
-  // The grazer came back too, and has no look.
+  // The grazer is restored too, and has no look.
   expect(seen.count).toBe(2);
   h2.host.shutdown();
 });
@@ -250,7 +240,7 @@ test("only a session in the creator can create, only once, and only with a look 
   const results = new Map<number, number>();
   ada.onResult = (seq, code) => results.set(seq, code);
   bo.onResult = (seq, code) => results.set(seq + 1000, code);
-  // Bytes that are no look: a sex that does not exist, a slider one step past its end, a hair that is not there.
+  // A sex that does not exist, a slider one step past its end, a hair that is not there, and a skin tone past the last.
   for (const [at, value] of [[LOOK_SEX, 2], [1, 128], [LOOK_HAIR, 200], [LOOK_SKIN, 10]] as const) {
     const bad = defaultLook();
     bad[at] = value;
@@ -260,17 +250,15 @@ test("only a session in the creator can create, only once, and only with a look 
     expect(results.get(seq)).toBe(RESULT_INVALID);
     expect(ada.sessionState).toBe(SESSION_CREATING);
   }
-  // Too short to be a look at all.
+  // One byte is too short to be a look.
   const w = new BitWriter(128);
   const short = ada.command(CMD_CREATE, (x) => x.u8(1));
   h.run(200);
   expect(results.get(short)).toBe(RESULT_INVALID);
-  // A session that already has its survivor cannot make another or change its look.
   const seq = bo.create(randomLook(new Rng(8)));
   h.run(200);
   expect(results.get(seq + 1000)).toBe(RESULT_DENIED);
   expect([...h.world.ents.look[h.ent(bo)]!]).toEqual([...defaultLook()]);
-  // A good look works, once.
   const good = randomLook(new Rng(9));
   const ok = ada.create(good);
   const twice = ada.create(defaultLook());
@@ -280,7 +268,7 @@ test("only a session in the creator can create, only once, and only with a look 
   expect([...h.world.ents.look[h.ent(ada)]!]).toEqual([...good]);
   expect(h.world.ents.count).toBe(2);
 
-  // A hello that brings a look that is none is refused before anything is made.
+  // A hello with an invalid look is refused before anything is made.
   const end = h.net.connect({});
   let closed = false;
   end.onClose = () => (closed = true);
@@ -309,8 +297,7 @@ test("a look picks colours and stretches bones along their own axes: longer legs
   lookScales(look, scales);
   expect([...scales].every((v) => v === 1)).toBe(true);
   expect(REGIONS.length).toBe(REGION_COUNT);
-  // Every slider at either end: every scale stays within a third of 1, and every bone that is not on
-  // the body's middle line is scaled like its twin on the other side.
+  // Every slider at either end. Left and right bones scale alike.
   for (const end of [-1, 1]) {
     for (let r = 0; r < REGION_COUNT; r++) setRegion(look, r, end);
     lookScales(look, scales);
@@ -323,7 +310,7 @@ test("a look picks colours and stretches bones along their own axes: longer legs
       for (let k = 0; k < 3; k++) expect(scales[twin * 3 + k]).toBe(scales[b * 3 + k]!);
     }
   }
-  // Arm length alone: the hand moves out along the arm and nowhere else; the forearm's girth is untouched.
+  // Region 8 is arm length. At its end the arm is a tenth longer, so the hand moves out along the arm only. The forearm's girth is unchanged.
   defaultLook(look);
   setRegion(look, 8, 1);
   lookScales(look, scales);
@@ -339,7 +326,7 @@ test("a look picks colours and stretches bones along their own axes: longer legs
   expect(long.pos[B_HAND_L * 3 + 2]).toBeCloseTo(rest.pos[B_HAND_L * 3 + 2]!, 5);
   expect([scales[B_LOWER_ARM_L * 3 + 1], scales[B_LOWER_ARM_L * 3 + 2]]).toEqual([1, 1]);
   expect(long.pos[B_HEAD * 3 + 1]).toBe(rest.pos[B_HEAD * 3 + 1]!);
-  // Leg length: the lift is what keeps a standing body's feet where the ground is.
+  // Region 12 is leg length. The lift raises the root so a standing body's feet stay on the ground.
   defaultLook(look);
   setRegion(look, 12, 1);
   lookScales(look, scales);
@@ -349,7 +336,6 @@ test("a look picks colours and stretches bones along their own axes: longer legs
   solve(HUMAN, pose, long, HUMAN.rest, scales);
   expect(long.pos[B_FOOT_L * 3 + 1]).toBeCloseTo(rest.pos[B_FOOT_L * 3 + 1]!, 4);
   expect(long.pos[B_HEAD * 3 + 1]! - rest.pos[B_HEAD * 3 + 1]!).toBeCloseTo(lift, 4);
-  // A thousand random looks are all looks.
   const rng = new Rng(21);
   let beards = 0;
   for (let i = 0; i < 1000; i++) {
@@ -364,7 +350,7 @@ test("a look picks colours and stretches bones along their own axes: longer legs
   expect(f(KEY_CREATOR_NOTE)).toBe(KEY_CREATOR_NOTE);
 });
 
-/** Keeps an import the tests above name only in passing. */
+/** Keeps the KEY_CREATOR_NOTE import in use. */
 function f(key: number): number {
   return key;
 }

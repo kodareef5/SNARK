@@ -14,7 +14,7 @@ import { Harness } from "../fixtures/net.ts";
 
 const pack = parsePack(buildCorePack());
 
-/** A whole client (input, session, scene, interface) on the harness's virtual clock. */
+/** A whole client on the harness's virtual clock. */
 function client(h: Harness, name: string): App {
   return new App(h.join(name, { latencyMs: 20 }, { manual: true }), h.reg, pack);
 }
@@ -29,7 +29,6 @@ function consoleRows(app: App): string[] {
 test("a headless client boots, draws, walks, and its interface says where it is", () => {
   const h = new Harness();
   const app = client(h, "ada");
-  // Before the world arrives there is nothing to draw, and the interface says why.
   expect(app.frame(0, 1280, 720)).toBeNull();
   expect(app.ui.frame.find(KEY_STATUS)!.text).toBe("connecting");
   let packet = null;
@@ -61,7 +60,7 @@ test("the console is typed into, answered by the server, and holds the keyboard 
   const e = h.ent(app.session);
   const ents = h.world.ents;
 
-  // Walking, then opening the console: the held key is let go, so the body stops.
+  // Opening the console releases the held key, so the body stops.
   app.key("KeyW", true);
   run(500);
   expect(app.key("Backquote", true)).toBe(true);
@@ -69,7 +68,6 @@ test("the console is typed into, answered by the server, and holds the keyboard 
   run(500);
   const z = ents.z[e]!;
   expect(z).toBeGreaterThan(241);
-  // Keys typed into the console do not steer.
   expect(app.key("KeyW", true)).toBe(false);
   app.mouseButton(0, true);
   app.look(500, 0);
@@ -97,13 +95,11 @@ test("the console is typed into, answered by the server, and holds the keyboard 
   expect(app.ui.frame.find(KEY_BANNER)!.text).toBe("SPECTATING");
   expect(app.ui.frame.find(KEY_CROSS)).toBeNull();
   expect(app.session.admin).toBe(true);
-  // The camera is the ghost body itself, with no eye height added, once the
-  // change of viewpoint has finished gliding (a correction is smoothed, not snapped).
+  // A spectator's camera is the body itself, with no eye height. The change of viewpoint is smoothed, so it is exact only after a wait.
   expect(Math.abs(app.cam.y - app.session.own.y)).toBeLessThan(0.2);
   run(900);
   expect(app.cam.y).toBe(app.session.own.y);
 
-  // History: up recalls the last line.
   app.key("ArrowUp", true);
   run(50);
   expect(app.ui.frame.find(KEY_CONSOLE_INPUT)!.text).toBe("spectate");
@@ -111,7 +107,6 @@ test("the console is typed into, answered by the server, and holds the keyboard 
   expect(app.ui.captureKeyboard).toBe(false);
   run(50);
   expect(app.ui.frame.find(KEY_CONSOLE_INPUT)).toBeNull();
-  // Closed: the same key steers again, now flying the camera.
   app.key("KeyW", true);
   run(500);
   expect(app.session.own.z).toBeGreaterThan(z + 3);
@@ -147,7 +142,6 @@ test("the inventory screen moves and eats through the server, and the HUD bars a
   const inv = h.host.items.inv(rec);
   h.host.survival.add(rec, V_FOOD, -30);
   run(300);
-  // The food bar is what the server holds.
   expect(app.ui.frame.find(KEY_VITAL + 5)!.value).toBeCloseTo(h.host.survival.value(rec, V_FOOD) / 100, 4);
 
   app.key("KeyI", true);
@@ -155,7 +149,6 @@ test("the inventory screen moves and eats through the server, and the HUD bars a
   const slot = (s: number) => KEY_INV_SLOT + s * 3;
   expect(app.ui.frame.find(slot(0) + 2)!.text).toBe("100");
   expect(app.ui.frame.find(slot(1) + 2)!.text).toBe("50");
-  // Pick up the 50 and put it in slot 9.
   app.pointer(0, slot(1), 0, 0, 0);
   app.pointer(0, slot(9), 0, 0, 0);
   run(300);
@@ -171,7 +164,7 @@ test("the inventory screen moves and eats through the server, and the HUD bars a
   expect(inv.count[berries]).toBe(4);
   expect(h.host.survival.value(rec, V_FOOD)).toBeGreaterThan(food + 3.9);
   expect(app.ui.frame.find(slot(berries) + 2)!.text).toBe("4");
-  // The screen leaves the keyboard to the body.
+  // The open inventory screen leaves the keyboard to the body.
   const z = h.world.ents.z[h.ent(app.session)]!;
   app.key("KeyW", true);
   run(1000);
@@ -198,7 +191,6 @@ test("two whole clients form a tribe, talk on three channels through the chat bo
     for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CHAT_ROW && f.nodes[i]!.key < KEY_CHAT_ROW + 14) out.push(f.nodes[i]!.text);
     return out;
   };
-  /** Open the box with `key`, type, and send. */
   const say = (app: App, key: string, words: string): void => {
     expect(app.key(key, true)).toBe(true);
     app.key(key, false);
@@ -216,20 +208,17 @@ test("two whole clients form a tribe, talk on three channels through the chat bo
   type(bob, `tp ${(g.x + 5).toFixed(3)} ${(g.z + 5.5).toFixed(3)}`);
   bob.controls.yaw = Math.PI;
   run(300);
-  // Looking at each other: a name and a level, and nothing yet to say they are together.
   expect(ada.ui.frame.find(KEY_PROMPT)!.text).toBe("bob  level 1");
   expect(bob.ui.frame.find(KEY_PROMPT)!.text).toBe("ada  level 1");
 
   type(ada, "tribe create Night Shift");
   type(ada, "tribe invite bob");
-  // The invitation is on Bob's screen without his opening anything.
   expect(chatRows(bob).join(" ")).toContain("ada invites you to join Night Shift.");
   type(bob, "tribe accept");
   expect(chatRows(ada)).toContain("bob joined Night Shift.");
   expect(ada.ui.frame.find(KEY_PROMPT)!.text).toBe("bob (tribe)  level 1");
   expect(bob.ui.frame.find(KEY_PROMPT)!.text).toBe("ada (tribe)  level 1");
 
-  // Enter, Insert and the slash key, each with its line.
   say(ada, "Enter", "hello, island");
   say(bob, "Insert", "right behind you");
   expect(bob.key("Slash", true)).toBe(true);
@@ -241,7 +230,7 @@ test("two whole clients form a tribe, talk on three channels through the chat bo
   run(300);
   expect(bob.ui.chat.open).toBe(false);
   for (const app of [ada, bob]) expect(chatRows(app).slice(-3)).toEqual(["ada: hello, island", "[Local] bob: right behind you", "[Tribe] bob: the wall is up"]);
-  // While the box was open the body stood still: typing is not walking.
+  // W typed into the open chat box does not move the body.
   const z = h.world.ents.z[h.ent(bob.session)]!;
   bob.key("Enter", true);
   bob.key("KeyW", true);
@@ -249,7 +238,6 @@ test("two whole clients form a tribe, talk on three channels through the chat bo
   bob.key("KeyW", false);
   bob.key("Escape", true);
   expect(h.world.ents.z[h.ent(bob.session)]).toBe(z);
-  // None of the talk went to the console.
   expect(ada.ui.console.lines.some((l) => l.includes("hello, island"))).toBe(false);
   expect(ada.session.stats.undecodable + bob.session.stats.undecodable).toBe(0);
 });
@@ -259,7 +247,7 @@ test("the talk key: held to talk, let go by anything that takes the keyboard, an
   const app = client(h, "ada");
   const run = (ms: number) => h.run(ms, (now) => app.frame(now, 1280, 720));
   run(500);
-  // With nothing to carry voice the key is still the app's, and does nothing.
+  // With no voice port the app still takes the key, and does nothing.
   expect(app.key("KeyB", true)).toBe(true);
   expect(app.key("KeyB", false)).toBe(true);
   run(50);
@@ -281,7 +269,7 @@ test("the talk key: held to talk, let go by anything that takes the keyboard, an
   };
   app.voice = port;
   app.key("KeyB", true);
-  app.key("KeyB", true, true); // held: once
+  app.key("KeyB", true, true); // a key repeat, so talk is called once
   run(50);
   expect(calls).toEqual([true]);
   expect(app.ui.frame.find(KEY_VOICE)!.text).toBe("TALKING");
@@ -289,28 +277,26 @@ test("the talk key: held to talk, let go by anything that takes the keyboard, an
   run(50);
   expect(calls).toEqual([true, false]);
   expect(app.ui.frame.find(KEY_VOICE)).toBeNull();
-  // Opening the chat box with the key down lets go of it, and B is then a letter.
+  // The chat box takes the keyboard, so B is then a letter.
   app.key("KeyB", true);
   app.key("Enter", true);
   expect(calls).toEqual([true, false, true, false]);
   expect(app.key("KeyB", true)).toBe(false);
   expect(calls.length).toBe(4);
   app.key("Escape", true);
-  // So does the window losing focus.
   app.key("KeyB", true);
   app.blur();
   expect(calls).toEqual([true, false, true, false, true, false]);
-  // While it has something to say, that is what is shown, pressed or not.
   port.notice = "voice: no microphone (refused, or none to be had)";
   run(50);
   expect(app.ui.frame.find(KEY_VOICE)!.text).toBe(port.notice);
   app.key("KeyB", true);
   run(50);
   expect(app.ui.frame.find(KEY_VOICE)!.text).toBe(port.notice);
-  // The session was given what opens the voice socket.
+  // The session received its voice token.
   expect(app.session.voice.version).toBe(1);
 
-  // Hearing others: whatever plays them is told how far off each is, and the screen names whoever is talking.
+  // hear() gets three numbers per speaker: the speaker number, the distance (-1 if unseen) and the pan.
   expect(told.length).toBe(0);
   const bob = h.join("bob");
   run(500);
@@ -323,14 +309,13 @@ test("the talk key: held to talk, let go by anything that takes the keyboard, an
   speakers.set(9, { handle: 0xfffff, name: "cy", speaking: true });
   port.notice = "";
   run(50);
-  // Bob is ten metres off, ahead and to the left (facing +Z, +X is the left); Cy is someone this client cannot see.
+  // Bob is 10 m off (6 in X, 8 in Z), ahead and to the left. Facing +Z, +X is the left. This client cannot see Cy.
   app.controls.yaw = 0;
   run(50);
   const last = told.at(-1)!;
   expect([last[0], last[3], last[4], last[5]]).toEqual([7, 9, -1, 0]);
   expect(last[1]).toBeCloseTo(10, 1);
   expect(last[2]).toBeCloseTo(-0.6, 2);
-  // Turning to face the other way puts him on the right.
   app.controls.yaw = Math.PI;
   run(50);
   expect(told.at(-1)![2]).toBeCloseTo(0.6, 2);
@@ -372,14 +357,14 @@ test("the talk key with Alt is a whisper and with Shift a yell; set to switch, o
   press("KeyB");
   expect(label()).toBe("TALKING");
   lift("KeyB");
-  expect(app.key("AltLeft", true)).toBe(true); // kept from the browser's menu
+  expect(app.key("AltLeft", true)).toBe(true); // handled, so Alt does not open the browser's menu
   app.key("AltLeft", false);
   press("KeyB", ["AltLeft"]);
   expect(label()).toBe("WHISPERING");
   lift("KeyB", ["AltLeft"]);
   press("KeyB", ["ShiftLeft"]);
   expect(label()).toBe("YELLING");
-  // How loud it is meant is settled when the key goes down, whatever is let go after.
+  // The mode is fixed at key down. Releasing Shift after does not change it.
   app.key("ShiftLeft", false);
   run(50);
   expect(label()).toBe("YELLING");
@@ -387,18 +372,16 @@ test("the talk key with Alt is a whisper and with Shift a yell; set to switch, o
   expect(label()).toBeUndefined();
   expect(calls).toEqual([[true, 1, false], [false, 1, false], [true, 0, false], [false, 0, false], [true, 2, false], [false, 2, false]]);
 
-  // Set to switch: one press opens the microphone, and it stays open with the key let go.
   calls.length = 0;
   app.ui.settings.toggleTalk = true;
   press("KeyB");
   lift("KeyB");
   expect(calls).toEqual([[true, 1, true]]);
-  // Open and hearing nothing worth sending, the screen says so; while something is being sent, it says that.
   expect(label()).toBe("MIC OPEN");
   port.sending = true;
   run(50);
   expect(label()).toBe("TALKING");
-  // Typing in the chat box does not shut a microphone that was switched on; nor does the window losing focus.
+  // Neither the chat box nor a blur shuts a microphone that was switched on.
   app.key("Enter", true);
   app.key("Escape", true);
   app.blur();
@@ -408,7 +391,7 @@ test("the talk key with Alt is a whisper and with Shift a yell; set to switch, o
   expect(calls).toEqual([[true, 1, true], [false, 1, true]]);
   expect(label()).toBeUndefined();
 
-  // How loud others are played follows the setting, told once each time it changes; and the meter is the microphone's.
+  // The port gets the volume once each time the setting changes. The settings meter shows the port's level.
   expect(volumes).toEqual([1]);
   app.ui.settings.voiceVolume = 0.5;
   run(100);

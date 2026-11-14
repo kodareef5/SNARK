@@ -49,7 +49,6 @@ const move = (s: ClientSession, fromBox: number, from: number, toBox: number, to
     w.u16(0);
     w.u16(item);
   });
-/** Tap the use key. */
 function tapUse(h: Harness, pilot: { buttons: number }): void {
   pilot.buttons = BTN_USE;
   h.run(100);
@@ -71,18 +70,17 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
   expect(had.length).toBe(4);
 
   expect(h.say(s, "suicide")).toEqual(["You were killed."]);
-  // The survivor: dead, bodiless, holding nothing, with a marker where it fell.
   expect(s.sessionState).toBe(SESSION_DEAD);
   expect(s.ownHandle).toBe(0);
   expect(h.client(s)!.ent).toBe(-1);
   expect(rec.dead).toBe(true);
-  expect(rec.inv).not.toBe(inv); // what it has now is a new, empty inventory
+  expect(rec.inv).not.toBe(inv); // it now has a new, empty inventory
   expect(items.inv(rec).used()).toBe(0);
   expect(s.inventory!.used()).toBe(0);
   expect(rec.markers).toEqual([{ kind: MARKER_DEATH, x: where.x, y: where.y, z: where.z, tick: rec.markers[0]!.tick }]);
   expect(s.markers).toEqual(rec.markers);
   expect(s.respawnPoints.map((p) => p.name)).toEqual(["Plaza", "Slopes", "Poolside"]);
-  // The cache: the very same inventory, nothing copied, standing where the body was.
+  // The cache holds the same inventory object. Nothing was copied.
   const [cache] = caches(h);
   expect(cache!.inv).toBe(inv);
   expect(contents(cache!.inv!)).toEqual(had);
@@ -92,13 +90,12 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
   expect([ents.x[ce], ents.z[ce]]).toEqual([where.x, where.z]);
   expect(items.audit()).toEqual([]);
   expect(h.host.death.count).toBe(1);
-  // Others see a cache there, by name, and no longer see her.
   const seen = new RemoteSample();
   bo.sampleRemote(seen);
   expect(seen.count).toBe(1);
   expect(seen.name[0]).toBe("ada's cache");
 
-  // Dead: nothing it presses moves it, feeds it, or runs its clock.
+  // Dead, it cannot move or eat, and its food does not fall.
   const codes: number[] = [];
   s.onResult = (_seq, code) => codes.push(code);
   const food = sv.value(rec, V_FOOD);
@@ -113,7 +110,7 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
   expect(sv.value(rec, V_FOOD)).toBe(food);
   expect(sv.value(rec, V_HEALTH)).toBe(0);
 
-  // Back to life at the second place offered: whole, empty-handed.
+  // Respawn at the second place offered.
   codes.length = 0;
   s.command(CMD_RESPAWN, (w) => w.u8(1));
   h.run(500);
@@ -125,11 +122,10 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
   expect(sv.value(rec, V_HEALTH)).toBe(100);
   expect(rec.dead).toBe(false);
   expect(items.inv(rec).used()).toBe(0);
-  s.command(CMD_RESPAWN, (w) => w.u8(0)); // alive: there is nothing to return from
+  s.command(CMD_RESPAWN, (w) => w.u8(0)); // alive, so there is nothing to respawn from
   h.run(200);
   expect(codes).toEqual([RESULT_OK, RESULT_INVALID]);
 
-  // Walk up to the cache (here: teleport beside it), look down at it, and use it.
   h.say(s, `tp ${where.x} ${where.z - 1.5}`);
   pilot.yaw = 0;
   pilot.pitch = Math.atan2(0.25 - 1.62, 1.5);
@@ -138,7 +134,7 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
   expect(s.open).not.toBeNull();
   expect(s.open!.name).toBe("ada's cache");
   expect(contents(s.open!.inventory)).toEqual(had);
-  // Take every stack. The emptied cache goes away by itself and the screen's other half with it.
+  // An emptied cache removes itself and closes.
   for (let i = 0; i < s.open!.inventory.cap; i++) {
     if (s.open!.inventory.item[i] !== 0) move(s, BOX_OPEN, i, BOX_SELF, i, s.open!.inventory.item[i]!);
   }
@@ -171,16 +167,16 @@ test("use opens only what the body can see and reach, and walking away closes it
     pilot.pitch = Math.atan2(0.25 - 1.62, Math.abs(z - 232));
     h.run(300);
   };
-  // Six metres off, looking straight at it: too far.
+  // 6 m off is too far.
   aim(238);
   tapUse(h, pilot);
   expect(s.open).toBeNull();
-  // Two metres off: it opens, and what is inside arrives.
+  // 2 m off it opens.
   aim(234);
   tapUse(h, pilot);
   expect(s.open?.name).toBe("crate of stone");
   expect(s.open!.inventory.total(stone)).toBe(60);
-  // Take ten, then use again: it closes.
+  // Take ten. A second use closes it.
   s.command(CMD_MOVE, (w) => {
     w.bits(BOX_OPEN, 1);
     w.varint(0);
@@ -194,7 +190,7 @@ test("use opens only what the body can see and reach, and walking away closes it
   expect(s.open!.inventory.total(stone)).toBe(50);
   tapUse(h, pilot);
   expect(s.open).toBeNull();
-  // Open again and walk off: out of reach, it closes by itself, and the box can no longer be touched.
+  // Out of reach it closes by itself, and a move from it is denied.
   tapUse(h, pilot);
   expect(s.open).not.toBeNull();
   pilot.yaw = 0;
@@ -210,13 +206,13 @@ test("use opens only what the body can see and reach, and walking away closes it
   h.run(300);
   expect(codes).toEqual([RESULT_DENIED]);
   expect(items.inv(box).total(stone)).toBe(50);
-  // In reach but behind a wall: the wall is what the body is looking at.
+  // In reach but behind a wall, the look hits the wall.
   h.world.structs.add(h.reg.index.get("core:wall")!, 256, 1.5, 233, 0, 0, 1);
   h.run(300);
   aim(234.6);
   tapUse(h, pilot);
   expect(s.open).toBeNull();
-  // Looking away from it, in reach, with nothing between: nothing to open.
+  // Looking away from it, in reach, use opens nothing.
   aim(230.5);
   pilot.yaw = 0;
   h.run(200);
@@ -236,7 +232,7 @@ test("drowning kills, the death is journalled, and a restart keeps the dead dead
   h.say(s, `tp ${PROVING_POOL.x} ${PROVING_POOL.z}`);
   let seconds = 0;
   while (s.sessionState !== SESSION_DEAD && seconds++ < 80) h.run(1000);
-  // A hundred points of air at three a second, then a hundred of health at eight.
+  // A hundred points of air at three a second, then a hundred of health at eight a second.
   expect(seconds).toBeGreaterThan(40);
   expect(seconds).toBeLessThan(52);
   expect(s.log.at(-1)!.text).toBe("You drowned.");
@@ -259,7 +255,6 @@ test("drowning kills, the death is journalled, and a restart keeps the dead dead
   expect(cache2.inv!.total(id("core:stone"))).toBe(77);
   expect(cache2.expiresAt).toBe(expires);
   expect(h2.world.ents.count).toBe(1); // the cache has its body back
-  // She returns dead, is told where she may respawn, and does.
   const again = h2.join("ada");
   h2.run(500);
   expect(again.sessionState).toBe(SESSION_DEAD);
@@ -271,7 +266,7 @@ test("drowning kills, the death is journalled, and a restart keeps the dead dead
   expect(again.sessionState).toBe(SESSION_ALIVE);
   expect(h2.host.survival.value(rec2, V_HEALTH)).toBe(100);
 
-  // Nobody collects the cache: at its time it goes, and what was in it is burned on the books.
+  // An uncollected cache expires on its tick, and its contents are burned through the ledger.
   const stone = id("core:stone");
   const burned = h2.host.items.burned[stone]!;
   while (h2.world.tick < expires - 1) h2.server.tick();
@@ -291,7 +286,7 @@ test("a starving creature dies on its tick with nobody in the world, and kill an
   const born = quiet.world.tick;
   const e = quiet.host.spawnCreature("core:grazer", 100, 100, 1);
   const pid = quiet.world.ents.pid[e]!;
-  // One point of food at sixty an hour is 70 ticks; then two of health at half a point a second, 120 more.
+  // One point of food at sixty an hour lasts 70 ticks. Two of health at half a point a second last 120 more.
   while (quiet.world.tick < born + 189) quiet.server.tick();
   expect(quiet.host.records.byPid.has(pid)).toBe(true);
   expect(quiet.host.survival.starving.has(pid)).toBe(true);
@@ -302,7 +297,6 @@ test("a starving creature dies on its tick with nobody in the world, and kill an
   expect(quiet.host.survival.starving.has(pid)).toBe(false);
 
   const { h, s, rec, pilot, ents, sv } = setup();
-  // Looking at a creature four metres ahead: kill removes it. Looking at nothing: nothing dies.
   pilot.yaw = 0;
   pilot.pitch = -0.2;
   h.run(200);
@@ -311,7 +305,7 @@ test("a starving creature dies on its tick with nobody in the world, and kill an
   expect(h.say(s, "kill")).toEqual(["killed core:grazer"]);
   expect(ents.count).toBe(1);
   expect(h.say(s, "kill")).toEqual(["nothing alive there"]);
-  // A god takes no harm from a long fall; without it the same fall kills.
+  // The tp to y = 60 is a long fall. It kills without god mode.
   expect(h.say(s, "god")).toEqual(["god on"]);
   h.say(s, "tp 256 60 240");
   h.run(5000);
@@ -338,7 +332,7 @@ test("the prompt under the crosshair names what the use key would open, and only
   box.expiresAt = h.world.tick + 1_000_000;
   h.host.death.place(box);
   run(300);
-  // Looking level, over it: no prompt. Looking down at it: the prompt, and E opens it.
+  // Looking level, the look passes over it. look() takes mouse pixels, at 0.0025 radians each.
   expect(app.ui.frame.find(KEY_PROMPT)).toBeNull();
   app.look(0, -Math.atan2(0.25 - 1.62, 2) / 0.0025);
   run(100);

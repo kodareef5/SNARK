@@ -26,14 +26,13 @@ test("creatures are simulated only near players, and only the moving ones cost a
   expect([...near, ...far].every((e) => e >= 0)).toBe(true);
   const where = (list: number[]) => list.map((e) => [ents.x[e], ents.z[e]]);
 
-  // Nobody online: nothing is awake and nothing moves.
   const start = where([...near, ...far]);
   h.run(3000);
   expect(h.host.creatures.awakeCount).toBe(0);
   expect(h.host.creatures.stepped).toBe(0);
   expect(where([...near, ...far])).toEqual(start);
 
-  // A player arrives at the spawn point: the herd beside it wakes, the one across the map does not.
+  // The player joins at the spawn point, beside the near herd. The far herd is across the map.
   const s = h.join("watcher");
   h.run(400);
   expect(h.host.creatures.awakeCount).toBe(30);
@@ -47,14 +46,12 @@ test("creatures are simulated only near players, and only the moving ones cost a
   expect(moved).toBeGreaterThan(20);
   expect(where(far)).toEqual(farStart);
   for (const e of far) expect(ents.flags[e]! & F_AWAKE).toBe(0);
-  // Standing creatures are skipped: fewer collision steps than awake creatures.
   expect(h.host.creatures.stepped).toBeLessThan(h.host.creatures.awakeCount);
-  // The player sees the herd.
   const seen = new RemoteSample();
   s.sampleRemote(seen);
   expect(seen.count).toBeGreaterThan(20);
 
-  // The player leaves: once its body has lingered out, everything goes back to sleep.
+  // The body lingers after the close and keeps the herd awake until it goes.
   s.close();
   h.run(200);
   expect(h.host.creatures.awakeCount).toBeGreaterThan(0);
@@ -81,7 +78,7 @@ test("hunger runs on the world clock with no per-tick work, and starvation fires
   };
   until(born + 350);
   expect(food(a)).toBeCloseTo(5, 3);
-  sv.add(b, V_FOOD, 3); // b eats: its deadline moves, the old one becomes stale
+  sv.add(b, V_FOOD, 3); // b eats, so its deadline moves and the old one is stale
   until(due - 1);
   expect(sv.starving.size).toBe(0);
   until(due);
@@ -92,12 +89,11 @@ test("hunger runs on the world clock with no per-tick work, and starvation fires
   expect(sv.starving.has(b.pid)).toBe(false);
   until(due + 210); // 3 points buy 210 ticks
   expect(sv.starving.has(b.pid)).toBe(true);
-  // Starving costs health, half a point a second, also without anyone stepping anything.
+  // Starving costs half a point of health a second.
   expect(sv.value(a, V_HEALTH)).toBeCloseTo(health - 0.5 * (210 / 30), 3);
   sv.add(a, V_FOOD, 4);
   expect(sv.starving.has(a.pid)).toBe(false);
   expect(food(a)).toBe(4);
-  // Fed again, health comes back instead of going.
   const low = sv.value(a, V_HEALTH);
   until(due + 510);
   expect(sv.value(a, V_HEALTH)).toBeGreaterThan(low);
@@ -138,7 +134,7 @@ test("a creature that holds more than four thousand of something keeps all of it
   const e = h.host.spawnCreature("core:parasaur", g.x + 5, g.z + 5, 1);
   expect(e).toBeGreaterThanOrEqual(0);
   const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
-  // Thirty levels in food: four times what it began with, 6,000.
+  // Thirty levels in food make it four times the base, 6,000.
   rec.genome!.wild[STAT_NAMES.indexOf("food")] = 30;
   h.host.refreshBody(rec);
   h.host.survival.refill(rec);
@@ -168,15 +164,14 @@ test("a raptor goes for a survivor it sees, runs it down and bites; led too far 
   const combat = h.host.combat;
   const me = (): number => h.ent(ada);
   const rec = h.host.records.byPid.get(h.client(ada)!.pid)!;
-  // Sixteen metres off, in the open: within its sight.
+  // 16 m off in the open, within its sight of 22.
   const e = h.host.spawnCreature("core:raptor", x0 + 16, z0, 1);
   const raptor = h.host.records.byPid.get(ents.pid[e]!)!;
   const far = (): number => Math.hypot(ents.x[e]! - ents.x[me()]!, ents.z[e]! - ents.z[me()]!);
   expect([reg.temper[ents.kind[e]!], reg.sight[ents.kind[e]!], reg.leash[ents.kind[e]!]]).toEqual([TEMPER_HUNTS, 22, 60]);
-  // It thinks twice a second: within a second it is after her, and looking at her.
+  // It thinks twice a second, so within a second it hunts her.
   h.run(1000);
   expect([mind.mind[e], mind.targetOf(e), mind.hunts]).toEqual([MIND_HUNT, me(), 1]);
-  // It runs her down and bites: the blow is its own, through the one damage function, and takes what its jaws do.
   const full = h.host.survival.value(rec, V_HEALTH);
   let ran = 0;
   for (let k = 0; k < 40 && h.host.survival.value(rec, V_HEALTH) >= full; k++) {
@@ -186,12 +181,11 @@ test("a raptor goes for a survivor it sees, runs it down and bites; led too far 
   expect(full - h.host.survival.value(rec, V_HEALTH)).toBeGreaterThan(10);
   expect([combat.last.by, combat.last.victim, mind.bites > 0]).toEqual([raptor.pid, rec.pid, true]);
   expect(far()).toBeLessThan(3.2);
-  // It ran at her (faster than it walks), and stopped to bite.
   expect(ran).toBeGreaterThan(reg.move[ents.kind[e]!]!.walkSpeed * 1.5);
-  // She is kept alive for the rest.
+  // God mode keeps her alive for the rest.
   h.host.survival.gods.add(rec.pid);
 
-  // Led away east, twelve metres ahead of it at a time: it follows, until it is sixty metres from where it began; then it gives up, with her still in plain sight.
+  // She leads it east, staying 12 m ahead. It gives up 60 m from where it began (its leash), with her still in sight.
   let led = 0;
   for (let k = 0; k < 60 && mind.mind[e] === MIND_HUNT; k++) {
     h.say(ada, `tp ${(ents.x[e]! + 12).toFixed(3)} ${z0.toFixed(3)}`, 60);
@@ -202,12 +196,11 @@ test("a raptor goes for a survivor it sees, runs it down and bites; led too far 
   expect(led).toBeGreaterThan(55);
   expect(led).toBeLessThan(72);
   expect(far()).toBeLessThan(22);
-  // It wants a rest before another hunt: for some seconds it leaves her be, though she stands in front of it. Then it is after her again.
+  // It rests six seconds before it hunts again, though she stands in front of it.
   h.run(3000);
   expect(mind.hunts).toBe(1);
   h.run(5000);
   expect([mind.mind[e], mind.hunts]).toEqual([MIND_HUNT, 2]);
-  // Out of its sight (far off), it loses her.
   h.say(ada, `tp ${(x0).toFixed(3)} ${z0.toFixed(3)}`, 60);
   h.run(1500);
   expect([mind.mind[e], mind.gaveUp, far() > 40]).toEqual([MIND_WANDER, 2, true]);
@@ -229,21 +222,19 @@ test("a hunter does not see through what is built; a parasaur runs from what hur
   const rec = h.host.records.byPid.get(h.client(ada)!.pid)!;
   h.host.survival.gods.add(rec.pid);
   const me = h.ent(ada);
-  // A wall five pieces long, four metres in front of her; a raptor ten metres beyond it.
+  // A wall five pieces long 4 m in front of her, and a raptor 10 m beyond it.
   const wall = registry!.index.get("core:wall_wood")!;
   const walls = [-2, -1, 0, 1, 2].map((k) => h.world.structs.add(wall, x0 + k * 3, g.y + 1.5, z0 + 4, 0, 0, 10000));
   const hunter = h.host.spawnCreature("core:raptor", x0, z0 + 14, 1);
   mind.stay(hunter, h.world.tick + 60);
   h.run(2500);
   expect([mind.mind[hunter], mind.hunts]).toEqual([MIND_WANDER, 0]);
-  // The wall gone, it sees her at once.
   mind.stay(hunter, h.world.tick + 30);
   for (const ref of walls) h.world.structs.remove(ref);
   h.run(2000);
   expect([mind.mind[hunter], mind.targetOf(hunter)]).toEqual([MIND_HUNT, me]);
   h.host.creatures.remove(hunter);
 
-  // A parasaur stands six metres off and does nothing about her. Hurt, it runs the other way, fast, and bites nobody.
   const para = h.host.spawnCreature("core:parasaur", x0, z0 + 8, 1);
   expect(registry!.temper[ents.kind[para]!]).toBe(TEMPER_FLEES);
   mind.stay(para, h.world.tick + 90);
@@ -255,12 +246,10 @@ test("a hunter does not see through what is built; a parasaur runs from what hur
   h.run(4000);
   expect(ents.z[para]! - (z0 + 8)).toBeGreaterThan(12);
   expect(mind.bites).toBe(bites);
-  // After a few seconds it has stopped running.
   h.run(2500);
   expect(mind.mind[para]).toBe(MIND_WANDER);
   h.host.creatures.remove(para);
 
-  // One that only defends itself: it sees her and leaves her be. Hurt by her, it goes for her.
   const w = h.host.spawnCreature("core:raptor_wary", x0 + 6, z0 + 6, 1);
   expect(registry!.temper[ents.kind[w]!]).toBe(TEMPER_DEFENDS);
   mind.stay(w, h.world.tick + 30);
@@ -268,7 +257,7 @@ test("a hunter does not see through what is built; a parasaur runs from what hur
   expect(mind.mind[w]).toBe(MIND_WANDER);
   h.host.creatures.provoke(w, ents.x[me]!, ents.z[me]!, me);
   expect([mind.mind[w], mind.targetOf(w)]).toEqual([MIND_HUNT, me]);
-  // What it hunts dies: it has nothing to hunt, and wanders.
+  // When its prey dies it wanders.
   h.host.survival.gods.delete(rec.pid);
   h.say(ada, "suicide");
   h.run(1500);
