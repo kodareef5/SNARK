@@ -10,7 +10,7 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 39 classes: 24 built, 3 partly built, and 12 stubs that
+There are 39 classes: 24 built, 4 partly built, and 11 stubs that
 wait for a feature. The core pack holds 244 definitions, and 77 renames of ids
 that are no longer defined.
 
@@ -287,9 +287,9 @@ Packs may add to: `entries`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `map` | a level and the game data it names | stub: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 0 |
+| `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 0 |
 
-- **`map`** on shelf `maps`. A world: its ground, its zones, and what spawns, grows and drops in each. Today the one map is code.
+- **`map`** on shelf `maps`. A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. Today a spawn zone is where a new world's creatures start.
 
 ARK's names: `game` is the game data a level names; `zones` is zone managers and crate volumes.
 
@@ -329,7 +329,7 @@ built.
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
 - **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot`, `item.blueprint`, `species.loot`.
 - **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `item.spoilsInto`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
-- **Maps as content: a map, its zones and what lives in them.** `map`, `engram.group`.
+- **Maps as content: a map, its zones and what lives in them.** `map` (partly built), `engram.group`, `map.label`, `map.game`.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built).
 - **Skins, dyes, costumes and shields.** `item/shield`, `item/costume`, `item/skin`, `item/dye`.
 - **Bosses, artifacts and what a boss unlocks.** `item/artifact`, `species.boss`, `engram.from`.

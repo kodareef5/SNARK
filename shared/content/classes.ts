@@ -239,10 +239,10 @@ const SPAWNS = {
 } satisfies Fields<SpawnsDef>;
 
 const MAP = {
-  label: f("text"),
+  label: stub("maps", "text"),
   chunks: f("list"),
   seaLevel: f("number"),
-  game: f("text", "the game data a level names", { refs: { "": "game" } }),
+  game: stub("maps", "text", "the game data a level names", { refs: { "": "game" } }),
   zones: f("list", "zone managers and crate volumes", { refs: { "[].spawns": "spawns", "[].crate": "prop/crate" } }),
 } satisfies Fields<MapDef>;
 
@@ -394,7 +394,7 @@ row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color
 row("damage", "damage", DAMAGE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", may: ["label", "torpor", "trueShare", "melee"], doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
 row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "stub", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts and qualities, drawn from when something is opened or dies." });
 row("spawns", "spawns", SPAWNS, { ark: "NPCSpawnEntriesContainer", status: "stub", waits: "spawner", shelf: "spawns", must: ["entries"], may: ["limits"], doc: "Which creatures live in a place, in what share and at what levels." });
-row("map", "map", MAP, { ark: "a level and the game data it names", status: "stub", waits: "maps", shelf: "maps", must: ["chunks"], may: ["label", "seaLevel", "game", "zones"], doc: "A world: its ground, its zones, and what spawns, grows and drops in each. Today the one map is code." });
+row("map", "map", MAP, { ark: "a level and the game data it names", status: "partial", waits: "maps", shelf: "maps", must: ["chunks"], may: ["label", "seaLevel", "game", "zones"], doc: "A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. Today a spawn zone is where a new world's creatures start." });
 row("game", "game", GAME, { ark: "PrimalGameData", status: "stub", waits: "polish", shelf: "game", must: ["survivor", "cache", "bag"], may: ["levels", "buffs"], doc: "What a game names once: the survivor's species, the death cache, the dropped bag, the standing buffs." });
 
 row("rename", "rename", RENAME, { ark: "a redirect for a class that was renamed", shelf: "renames", must: ["to"], doc: "An id that is no longer defined, and what it is called now. Saves and settings that use it still read." });
