@@ -419,10 +419,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
         if (d.lit) burning[i] = 1;
         if (d.bed) isBed[i] = 1;
       }
-      if (d.type === "structure" && d.material !== undefined) {
-        const m = materials.get(d.material)!;
-        structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
-        decayDays[i] = d.decayDays ?? m.decayDays ?? 0;
+      if (d.type === "structure") {
+        const m = d.material !== undefined ? materials.get(d.material)! : null;
+        if (m) structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
+        decayDays[i] = d.decayDays ?? m?.decayDays ?? 0;
       }
       if (d.type === "node") {
         nodeHits[i] = d.hits;
