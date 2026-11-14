@@ -770,9 +770,13 @@ export class GameServer {
     if (newest <= this.world.tick) this.stats.lateInputs++;
     // Track the newest tick even when it is too far ahead to buffer, because the margin sent back tells a
     // client its clock has run away. It moves backward only by a whole window, which is a restarted clock.
-    if (newest > c.newestInput || newest < c.newestInput - INPUT_WINDOW) c.newestInput = newest;
-    // An ack can only name a snapshot that was sent, and only move forward.
-    if (ack > c.ackTick && ack <= c.lastSnapshot) c.ackTick = ack;
+    const fresh = newest > c.newestInput || newest < c.newestInput - INPUT_WINDOW;
+    if (fresh) c.newestInput = newest;
+    // An ack can only name a snapshot that was sent, and only move forward. An ack of 0 says the client cannot read against
+    // the view it acknowledged, so the next snapshot is whole. An input that arrives out of order may not say that.
+    if (ack === 0) {
+      if (fresh) c.ackTick = 0;
+    } else if (ack > c.ackTick && ack <= c.lastSnapshot) c.ackTick = ack;
     return true;
   }
 

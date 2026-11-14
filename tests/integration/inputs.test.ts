@@ -1,9 +1,12 @@
 // What the server does with the inputs a client sends, and with the ones it does not.
 
 import { expect, test } from "bun:test";
-import { RESULT_BUSY, RESULT_OK } from "../../shared/net/protocol.ts";
+import { defaultLook } from "../../shared/anim/look.ts";
+import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { InputBuffer, PROTOCOL_VERSION, RESULT_BUSY, RESULT_OK, S_SNAPSHOT, writeHello, writeInputs } from "../../shared/net/protocol.ts";
+import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
 import { BTN_PRIMARY, BTN_PRONE, BTN_SPRINT, BTN_USE, STANCE_PRONE } from "../../shared/sim/character.ts";
-import { Harness } from "../fixtures/net.ts";
+import { Harness, testKey } from "../fixtures/net.ts";
 
 test("a survivor stops a quarter of a second after its inputs stop, and stays in its stance", () => {
   const h = new Harness();
@@ -67,4 +70,47 @@ test("commands that come faster than the server takes them are answered busy, ho
   expect([results.length, results.every((c) => c === RESULT_OK || c === RESULT_BUSY)]).toEqual([80, true]);
   expect([ada.state, h.client(ada)!.strikes, h.server.stats.malformed]).toEqual(["active", 0, 0]);
   expect(h.say(ada, "pos").length).toBe(1);
+});
+
+test("a client that acknowledges 0 is sent a whole snapshot next", () => {
+  const h = new Harness();
+  const end = h.net.connect();
+  const w = new BitWriter(256);
+  writeHello(w, PROTOCOL_VERSION, h.reg.hash, h.world.anim.set.hash, "raw", 0, testKey("raw"), defaultLook());
+  end.send(CH_RELIABLE, w.bytes());
+  // The newest snapshot's tick, and how many ticks back the view it was written against lies: 0 for a whole one.
+  const r = new BitReader();
+  let tick = 0;
+  let age = -1;
+  end.onMessage = (_channel, data) => {
+    r.reset(data);
+    if (r.bits(4) !== S_SNAPSHOT) return;
+    tick = r.u32();
+    age = r.u8();
+  };
+  const inputs = new InputBuffer(64);
+  const send = (ack: number): void => {
+    const t = h.world.tick + 2;
+    inputs.set(t, 0, 0, 0, 0, 0);
+    w.reset();
+    writeInputs(w, inputs, ack, t, 1);
+    end.send(CH_UNRELIABLE, w.bytes());
+    h.run(1000 / 30);
+  };
+  h.run(100);
+  for (let i = 0; i < 4; i++) send(tick);
+  expect(age).toBeGreaterThan(0);
+  // It can no longer read against what it acknowledged, and says so.
+  send(0);
+  send(0);
+  expect(age).toBe(0);
+  // An older input that arrives late does not ask again.
+  send(tick);
+  send(tick);
+  expect(age).toBeGreaterThan(0);
+  w.reset();
+  writeInputs(w, inputs, 0, h.world.tick, 1);
+  end.send(CH_UNRELIABLE, w.bytes());
+  h.run(1000 / 30);
+  expect(age).toBeGreaterThan(0);
 });
