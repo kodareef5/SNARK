@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { Assets, HYSTERESIS } from "../../client/core/assets/assets.ts";
 import { DEFAULT_TIER, TIERS, tierOf } from "../../client/core/assets/tiers.ts";
-import { SETTING_ROWS, Settings } from "../../client/core/settings.ts";
+import { SETTING_ROWS, Settings, keptLine } from "../../client/core/settings.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -101,7 +101,7 @@ test("a level is left only when another is right by a margin, and a mesh is neve
 
 test("the graphics setting steps through the tiers and stops at either end", () => {
   const s = new Settings();
-  const row = SETTING_ROWS[SETTING_ROWS.length - 1]!;
+  const row = SETTING_ROWS.find((r) => r.label === "Graphics")!;
   expect([row.label, row.value(s), s.tier]).toEqual(["Graphics", "medium", DEFAULT_TIER]);
   const seen: string[] = [];
   for (const by of [-1, -1, 1, 1, 1, 1]) {
@@ -109,4 +109,17 @@ test("the graphics setting steps through the tiers and stops at either end", () 
     seen.push(row.value(s));
   }
   expect(seen).toEqual(["low poly", "low poly", "medium", "high", "ultra", "ultra"]);
+});
+
+test("the settings screen says what is kept of the assets between visits, and asks for all of them when told", () => {
+  expect(keptLine(null)).toBe("all here");
+  expect(keptLine({ used: 0, mode: "memory", filling: 0 })).toBe("not kept");
+  expect(keptLine({ used: 3.5 * 1048576, mode: "disk", filling: 0 })).toBe("3.5 MB kept");
+  expect(keptLine({ used: 1200 * 1048576, mode: "disk", filling: 0 })).toBe("1200 MB kept");
+  expect(keptLine({ used: 1048576, mode: "disk", filling: 14 })).toBe("14 to fetch");
+  const s = new Settings();
+  const row = SETTING_ROWS.find((r) => r.label === "Keep all assets")!;
+  expect(s.download).toBe(false);
+  row.step(s, 1);
+  expect(s.download).toBe(true);
 });

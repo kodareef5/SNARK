@@ -1,7 +1,8 @@
 // The boot probe is the only place this project launches a browser, and it is not part of the check. It opens installed Chrome
 // headless at ?selfcheck=1 and exits 0 or 1 on the report the page posts back. CHROME sets the browser path. Flags: --bench, --no-voice, --voice,
 // --lose, which takes the page's graphics context away and gives it back before it reports, and --slow, which puts
-// the page's asset fetches on a link of 300 ms, 1,500 KB/s and 2% loss.
+// the page's asset fetches on a link of 300 ms, 1,500 KB/s and 2% loss. --twice loads the page a second time in the same
+// browser profile, and passes if that time no part of an asset file came over the network.
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -46,6 +47,13 @@ if (report && process.argv.includes("--voice")) {
 }
 browser.kill();
 await browser.exited;
+let again: { ok?: boolean; assets?: { fetched: number; cached: number } } | null | undefined;
+if (report && process.argv.includes("--twice")) {
+  const revisit = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
+  again = (await Promise.race([server.nextSelfcheck(), new Promise<null>((r) => setTimeout(() => r(null), 30000))])) as typeof again;
+  revisit.kill();
+  await revisit.exited;
+}
 if (report && process.argv.includes("--bench")) {
   // A second page load flies the camera through the same fixed scene. Headless frame times say little about a player's.
   // For a real number, run `bun run dev` and open http://localhost:8787/?bench=1 on the device in question.
@@ -66,6 +74,11 @@ if (second !== undefined) {
   console.log("\nthe page that listened:");
   console.log(second ? JSON.stringify(second, null, 2) : "no report within 30 s");
 }
-const ok = report.ok === true && (second === undefined || second?.ok === true);
+if (again !== undefined) {
+  console.log("\nthe second visit:");
+  console.log(again ? JSON.stringify(again.assets, null, 2) : "no report within 30 s");
+}
+const kept = again === undefined || (again?.ok === true && again.assets?.fetched === 0 && again.assets.cached > 0);
+const ok = report.ok === true && (second === undefined || second?.ok === true) && kept;
 console.log(ok ? "\nprobe: PASS" : "\nprobe: FAIL");
 process.exit(ok ? 0 : 1);

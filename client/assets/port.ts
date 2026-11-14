@@ -1,28 +1,44 @@
 // The page's end of the asset worker: what client/core asks of an AssetPort goes to the worker, and what the worker
 // has fetched waits here for the next frame to take.
 
-import type { AssetArrival, AssetPort, AssetRequest } from "../core/assets/port.ts";
+import type { AssetArrival, AssetPart, AssetPort, AssetRequest } from "../core/assets/port.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 
 export class WorkerPort implements AssetPort {
   readonly formats = 0;
-  readonly cache = { used: 0, limit: 64 * 1024 * 1024, mode: "memory" as const };
+  cache: AssetPort["cache"] = { used: 0, limit: 0, mode: "memory", filling: 0 };
   private readonly worker = new Worker("assets-worker.js", { type: "module" });
   private readonly manifest: Manifest;
   private readonly folder: string;
   private readonly arrived: AssetArrival[] = [];
 
-  /** `folder` is where the manifest's files are. `net` is a made-up link for trying things by hand: "delay ms, KB/s, % lost". */
-  constructor(manifest: Manifest, folder: string, net: string | null) {
+  /**
+   * `folder` is where the manifest's files are, and `keep` the most bytes to keep on disk between visits. `net` is a
+   * made-up link for trying things by hand: "delay ms, KB/s, % lost".
+   */
+  constructor(manifest: Manifest, folder: string, keep: number, net: string | null) {
     this.manifest = manifest;
     this.folder = folder;
-    this.worker.onmessage = (e) => void this.arrived.push(e.data as AssetArrival);
-    if (net) this.worker.postMessage({ net: net.split(",").map(Number) });
+    this.worker.onmessage = (e) => {
+      const m = e.data as AssetArrival & { cache?: AssetPort["cache"] };
+      if (m.cache) this.cache = m.cache;
+      else this.arrived.push(m);
+    };
+    this.worker.postMessage({ open: keep, ...(net ? { net: net.split(",").map(Number) } : {}) });
+  }
+
+  private ask(slot: number, file: number, part: AssetPart, fresh: boolean) {
+    return { slot, url: `${this.folder}/${this.manifest.files[file]!.name}`, offset: part.offset, length: part.length, hash: part.hash, fresh };
   }
 
   request(r: AssetRequest): void {
-    const part = r.parts[0]!;
-    this.worker.postMessage({ ask: { slot: r.slot, url: `${this.folder}/${this.manifest.files[r.file]!.name}`, offset: part.offset, length: part.length, hash: part.hash, fresh: r.fresh } });
+    this.worker.postMessage({ ask: this.ask(r.slot, r.file, r.parts[0]!, r.fresh) });
+  }
+
+  fill(parts: readonly { file: number; part: AssetPart }[]): void {
+    // What the player asked to keep should not be the first thing the browser clears when it is short of room.
+    void navigator.storage?.persist?.();
+    this.worker.postMessage({ fill: parts.map((p) => this.ask(-1, p.file, p.part, false)) });
   }
 
   cancel(slot: number): void {

@@ -5,6 +5,10 @@ import { DEFAULT_TIER, TIERS, type Tier } from "./assets/tiers.ts";
 export class Settings {
   /** How much detail is drawn (client/core/assets/tiers.ts). */
   tier: Tier["name"] = DEFAULT_TIER;
+  /** What is kept of the assets between visits, in words. The app writes it each frame. */
+  kept = "";
+  /** Set by the settings screen to ask for every asset to be fetched and kept. The app takes it. */
+  download = false;
   /** Applies only if the server allows it. */
   damageNumbers = true;
   /** A multiple of the default. */
@@ -40,5 +44,15 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Field of view", value: (s) => `${s.fov} degrees`, step: (s, by) => void (s.fov = clamp(s.fov + by * 5, FOV_MIN, FOV_MAX)) },
   { label: "Voice volume", value: (s) => `${Math.round(s.voiceVolume * 100)}%`, step: (s, by) => void (s.voiceVolume = clamp(Math.round((s.voiceVolume + by * 0.1) * 10) / 10, 0, VOLUME_MAX)) },
   { label: "Talk key (B)", value: (s) => (s.toggleTalk ? "on and off" : "hold"), step: (s) => void (s.toggleTalk = !s.toggleTalk) },
+  { label: "Keep all assets", value: (s) => s.kept, step: (s) => void (s.download = true) },
   { label: "Graphics", value: (s) => TIER_LABEL[s.tier], step: (s, by) => void (s.tier = TIERS[clamp(TIERS.findIndex((t) => t.name === s.tier) + by, 0, TIERS.length - 1)]!.name) },
 ];
+
+const megabytes = (bytes: number): string => (bytes >= 1048576 * 10 ? `${Math.round(bytes / 1048576)} MB` : `${(bytes / 1048576).toFixed(1)} MB`);
+
+/** What is kept of the assets between visits, for the settings screen. */
+export function keptLine(cache: { used: number; mode: "disk" | "memory" | "none"; filling: number } | null): string {
+  if (!cache || cache.mode === "none") return "all here";
+  if (cache.filling > 0) return `${cache.filling} to fetch`;
+  return cache.mode === "disk" ? `${megabytes(cache.used)} kept` : "not kept";
+}

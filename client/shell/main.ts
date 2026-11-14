@@ -7,6 +7,7 @@ import { KEY_BYTES } from "../../shared/net/protocol.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
+import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { PROVING_ID, buildProvingHeightfield, provingMapHash, provingNodes } from "../../shared/world/proving.ts";
 import { App } from "../core/app.ts";
@@ -47,7 +48,7 @@ async function boot(): Promise<void> {
   // The manifest says where every level of every mesh is. The boot pack is fetched whole, and the rest as it is wanted.
   const manifest = parseManifest(await (await fetch("assets/manifest.json")).text());
   const pack = parsePack(new Uint8Array(await (await fetch(`assets/${manifest.files[manifest.boot]!.name}`)).arrayBuffer()));
-  const port = new WorkerPort(manifest, "assets", params.get("assetnet"));
+  const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
   const hf = buildProvingHeightfield();
   const mapHash = provingMapHash(hf);
   const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
@@ -155,7 +156,7 @@ async function boot(): Promise<void> {
         // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
         ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0,
         restored,
-        assets: app.scene?.assets.residency.stats,
+        assets: { ...app.scene?.assets.residency.stats, kept: port.cache },
         ...(voiced ? { voice: voice.report } : {}),
         userAgent: navigator.userAgent,
         renderer: renderer.rendererName,

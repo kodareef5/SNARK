@@ -40,7 +40,10 @@ export interface AssetPort {
   cancel(slot: number): void;
   /** Moves what has arrived since the last call into `out`. Returns how many. */
   take(out: AssetArrival[]): number;
+  /** Fetches parts into the cache and hands none of them over, so that they need not be fetched while playing. */
+  fill(parts: readonly { file: number; part: AssetPart }[]): void;
   /** The texture formats the graphics card takes, as bits. */
   readonly formats: number;
-  readonly cache: { used: number; limit: number; mode: "disk" | "memory" | "none" };
+  /** Bytes kept between visits and the most that may be, where they are kept, and how many parts asked for with `fill` are still to come. */
+  readonly cache: { used: number; limit: number; mode: "disk" | "memory" | "none"; filling: number };
 }

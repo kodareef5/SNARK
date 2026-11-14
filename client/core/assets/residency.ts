@@ -244,6 +244,26 @@ export class Residency {
     this.stats.uploaded += data.length;
   }
 
+  /** Asks the port to keep every level that is not in the boot pack, so nothing need be fetched while playing. Returns their bytes. */
+  download(): number {
+    const parts: { file: number; part: { offset: number; length: number; hash: string } }[] = [];
+    let bytes = 0;
+    for (const m of this.manifest.meshes) {
+      for (const level of m.levels) {
+        if (level.file === this.manifest.boot) continue;
+        parts.push({ file: level.file, part: { offset: level.at, length: level.parts[0]!.bytes, hash: level.parts[0]!.hash } });
+        bytes += level.parts[0]!.bytes;
+      }
+    }
+    this.port?.fill(parts);
+    return bytes;
+  }
+
+  /** What the port keeps between visits, or null with no port. */
+  get cache(): AssetPort["cache"] | null {
+    return this.port ? this.port.cache : null;
+  }
+
   /** The graphics card could not take a level it was sent. */
   failed(slot: number): void {
     if (this.state[slot] !== RESIDENT) return;

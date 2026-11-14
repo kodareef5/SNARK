@@ -27,7 +27,9 @@ interface Transfer {
 
 export class FakeNet implements AssetPort {
   readonly formats = 0;
-  readonly cache = { used: 0, limit: 0, mode: "none" as const };
+  readonly cache = { used: 0, limit: 0, mode: "none" as const, filling: 0 };
+  /** Parts asked for with `fill`. */
+  readonly filled: number[] = [];
   /** Every request and cancellation, in order, for comparing two runs. */
   readonly log: string[] = [];
   /** The most requests under way at once, and the slots cancelled. */
@@ -56,6 +58,10 @@ export class FakeNet implements AssetPort {
     this.cancelled.delete(r.slot);
     this.transfers.push({ request: r, startsAt: this.now + this.latencyMs, left: bytes, failAt: this.rng.float() < this.loss ? Math.floor(bytes * this.rng.float()) : -1 });
     this.mostAtOnce = Math.max(this.mostAtOnce, this.transfers.length);
+  }
+
+  fill(parts: readonly { file: number; part: { offset: number; length: number; hash: string } }[]): void {
+    for (const p of parts) this.filled.push(p.part.length);
   }
 
   cancel(slot: number): void {

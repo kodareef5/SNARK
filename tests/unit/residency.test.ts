@@ -207,3 +207,15 @@ test("a card that refuses a level or loses everything is asked less of: a quarte
   w.frame(100);
   expect(w.r.budget).toBeCloseTo(tierOf("lowpoly").gpuBytes * 0.75 ** 6, 0);
 });
+
+test("asked to keep everything, the library asks the port for every level outside the boot pack and hands none to the card", () => {
+  const w = world();
+  w.frame(40);
+  const before = w.card.held.size;
+  const bytes = w.r.download();
+  const stream = SET.manifest.meshes.flatMap((m) => m.levels.filter((l) => l.file === 1).map((l) => l.parts[0]!.bytes));
+  expect([w.port.filled.length, bytes]).toEqual([stream.length, stream.reduce((a, b) => a + b, 0)]);
+  expect(w.port.filled).toEqual(stream);
+  expect(w.card.held.size).toBe(before);
+  expect(w.r.cache).toEqual({ used: 0, limit: 0, mode: "none", filling: 0 });
+});

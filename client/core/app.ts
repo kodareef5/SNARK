@@ -3,6 +3,7 @@
 
 import type { AssetPort } from "./assets/port.ts";
 import { tierOf } from "./assets/tiers.ts";
+import { keptLine } from "./settings.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
@@ -538,6 +539,10 @@ export class App {
     this.scene.hour = hourOfDay(session.serverTick, session.dayOffset, session.clock);
     this.scene.viewHeight = height;
     this.scene.now = nowMs;
+    const kept = this.scene.assets.residency.cache;
+    if (this.ui.settings.download) this.scene.assets.residency.download();
+    this.ui.settings.download = false;
+    this.ui.settings.kept = keptLine(kept);
     this.scene.assets.tier = tierOf(this.ui.settings.tier);
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps);
