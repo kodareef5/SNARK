@@ -50,7 +50,7 @@ test("a graphics context is read for its limits by WebGL's own numbers, with the
     getShaderPrecisionFormat: () => ({ precision: 23 }),
     getContextAttributes: () => ({ antialias: true }),
   });
-  expect(gpuOf(gl(true), "Apple GPU")).toEqual({ vendor: "Apple Inc.", renderer: "Apple GPU", version: "WebGL 2.0", maxTexture: 16384, maxArrayLayers: 2048, maxSamples: 4, vertexTextures: 16, highp: true, antialias: true, extensions: ["WEBGL_compressed_texture_astc"] });
+  expect(gpuOf(gl(true), "Apple GPU", "astc")).toEqual({ vendor: "Apple Inc.", renderer: "Apple GPU", version: "WebGL 2.0", maxTexture: 16384, maxArrayLayers: 2048, maxSamples: 4, vertexTextures: 16, highp: true, antialias: true, extensions: ["WEBGL_compressed_texture_astc"], variant: "astc" });
   expect(gpuOf(gl(false), "Apple GPU").vendor).toBe("WebKit");
 });
 

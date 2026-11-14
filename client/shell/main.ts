@@ -60,7 +60,8 @@ async function boot(): Promise<void> {
   const map = parseMap(new Uint8Array(await mapBytes));
   const hf = mapHeightfield(map);
   const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
-  const renderer = new GlRenderer(canvas, pack, hf);
+  // The texture variant is the best this device takes, or the one ?texfmt= names if it takes that.
+  const renderer = new GlRenderer(canvas, pack, hf, manifest, params.get("texfmt"));
   // The ground is one texture, a texel a sample.
   const widest = renderer.gl.getParameter(renderer.gl.MAX_TEXTURE_SIZE) as number;
   if (hf.nx > widest || hf.nz > widest) throw new Error(`this map is ${hf.nx} by ${hf.nz} samples, and this device draws ground of at most ${widest} a side`);
@@ -110,7 +111,7 @@ async function boot(): Promise<void> {
   });
   /** With ?lose=1 the self-check takes the graphics context away and gives it back, and must still see its picture. */
   const loser = params.has("lose") ? renderer.gl.getExtension("WEBGL_lose_context") : null;
-  device?.attach(app, renderer, pack, reg, hf);
+  device?.attach({ app, pack, reg, hf }, renderer);
 
   const frame = (now: number): void => {
     requestAnimationFrame(frame);
@@ -120,11 +121,14 @@ async function boot(): Promise<void> {
     if (bench) app.autopilot(now);
     voice.sync(session.voice);
     if (voiceCheck && voice.report.status === "listening") voice.talk(true);
+    if (app.scene) app.scene.assets.format = renderer.format;
     const packet = app.frame(now, cssWidth, cssHeight);
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
     const built = performance.now();
-    const ratio = device ? device.probe.ratio : devicePixelRatio;
+    // The tier says how many device pixels to draw for one CSS pixel, at most, and 0 is as many as the screen has.
+    const most = app.scene?.assets.tier.pixelRatio ?? 0;
+    const ratio = most > 0 ? Math.min(devicePixelRatio, most) : devicePixelRatio;
     const width = Math.floor(cssWidth * ratio);
     const height = Math.floor(cssHeight * ratio);
     if (canvas.width !== width || canvas.height !== height) {
@@ -132,8 +136,9 @@ async function boot(): Promise<void> {
       canvas.height = height;
     }
     renderer.draw(packet);
-    if (renderer.failed.length > 0) {
+    if (renderer.failed.length + renderer.failedTextures.length > 0) {
       for (const slot of renderer.failed) app.scene?.assets.residency.failed(slot);
+      for (const t of renderer.failedTextures) app.scene?.assets.residency.failedTexture(t);
       app.pressure();
     }
     device?.frame(now, packet, t0, built);
@@ -188,6 +193,7 @@ async function boot(): Promise<void> {
         ...(voiced ? { voice: voice.report } : {}),
         userAgent: navigator.userAgent,
         renderer: renderer.rendererName,
+        textures: { format: renderer.format, takes: renderer.formats, errors: renderer.errors },
         canvas: [width, height],
         probes,
         interface: { nodes: app.ui.frame.count, misplaced },
@@ -208,9 +214,9 @@ async function boot(): Promise<void> {
   requestAnimationFrame(frame);
 }
 
-(device ? device.probe.before().then((go) => (go ? boot() : undefined)) : boot()).catch((err: unknown) => {
+(device ? device.before().then((go) => (go ? boot() : undefined)) : boot()).catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
   root.textContent = message;
-  device?.probe.fail(message);
+  device?.fail(message);
   if (selfcheck) void fetch("__selfcheck", { method: "POST", body: JSON.stringify({ ok: false, error: message }) });
 });

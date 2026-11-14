@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="720" viewBox="0 0 1120 720">
+<rect width="1120" height="720" fill="#ede7dc"/>
+<style>text{font-family:Arial,sans-serif;fill:#302d28}.title{font-size:25px;font-weight:bold}.body{font-size:17px}.small{font-size:14px}.dim{stroke:#665e51;stroke-width:1;fill:none}.wall{stroke:#8b8272;stroke-width:12;fill:none}.opening{stroke:#ede7dc;stroke-width:15}.oak{stroke:#724f32;stroke-width:6}</style>
+<text x="50" y="45" class="title">STONE / SNAP LAYOUT</text>
+<text x="50" y="76" class="body">Six foundations below, six matching ceiling tiles above. Nominal 3 m grid; front is at bottom.</text>
+<rect x="80" y="150" width="540" height="360" fill="#ddd3c1"/>
+<path d="M260 150V510 M440 150V510 M80 330H620" stroke="#a99a83" stroke-dasharray="7 5" fill="none"/>
+<rect x="80" y="150" width="540" height="360" class="wall"/>
+<g class="opening"><path d="M308 510H392"/><path d="M494 510H566"/><path d="M620 378V462"/><path d="M80 204V276"/><path d="M134 150H206"/><path d="M494 150H566"/></g>
+<g class="oak"><path d="M494 510H566"/><path d="M620 378V462"/><path d="M80 204V276"/><path d="M134 150H206"/><path d="M494 150H566"/><path d="M308 510V426"/></g>
+<path d="M392 510A84 84 0 0 0 308 426" stroke="#724f32" stroke-dasharray="4 4" fill="none"/>
+<g class="body" text-anchor="middle"><text x="170" y="250">3 x 3</text><text x="350" y="250">3 x 3</text><text x="530" y="250">3 x 3</text><text x="170" y="428">3 x 3</text><text x="350" y="390">3 x 3</text><text x="530" y="428">3 x 3</text></g>
+<text x="350" y="126" class="small" text-anchor="middle">BACK: two matching windows</text>
+<text x="350" y="539" class="small" text-anchor="middle">OPEN DOOR</text><text x="530" y="539" class="small" text-anchor="middle">WINDOW</text>
+<text x="646" y="414" class="small">SHUT</text><text x="646" y="433" class="small">DOOR</text>
+<rect x="740" y="150" width="180" height="180" fill="#d3c4aa" stroke="#665e51" stroke-width="2"/>
+<rect x="890" y="150" width="30" height="30" fill="#8b8272" stroke="#302d28" stroke-width="2"/>
+<text x="830" y="232" class="body" text-anchor="middle">3 x 3 m</text><text x="830" y="255" class="body" text-anchor="middle">LANDING</text>
+<text x="938" y="164" class="small">One 0.5 m</text><text x="938" y="182" class="small">square pillar</text><path d="M935 167H921" class="dim"/>
+<rect x="740" y="330" width="180" height="180" fill="#c5b69d" stroke="#665e51" stroke-width="2"/>
+<path d="M740 348H920 M740 366H920 M740 384H920 M740 402H920 M740 420H920 M740 438H920 M740 456H920 M740 474H920 M740 492H920" stroke="#8b8272"/>
+<path d="M830 483V353L822 365M830 353L838 365" stroke="#302d28" stroke-width="3" fill="none"/>
+<text x="938" y="412" class="small">10 steps</text><text x="938" y="431" class="small">0.3 m rise</text><text x="938" y="450" class="small">0.3 m tread</text>
+<path d="M80 560H620 M80 550V570 M260 550V570 M440 550V570 M620 550V570 M80 583H620 M80 576V590 M620 576V590 M50 150V510 M42 150H58 M42 330H58 M42 510H58 M740 560H920 M740 550V570 M920 550V570" class="dim"/>
+<g class="small" text-anchor="middle"><text x="170" y="580">3 m</text><text x="350" y="580">3 m</text><text x="530" y="580">3 m</text><text x="350" y="608">9 m FRONT</text><text x="830" y="582">3 m STAIR WIDTH</text></g>
+<text x="29" y="337" class="small" transform="rotate(-90 29 337)" text-anchor="middle">6 m DEPTH</text>
+<text x="50" y="650" class="body">Walls: 3 m high / 0.20 m core. Foundation: 0.375 m. Ceiling: 0.25 m, flush with wall tops.</text>
+<text x="50" y="679" class="small">Plan is a dimension guide, not another painted view. The grass gap and pillar location establish the depicted assembly.</text>
+</svg>

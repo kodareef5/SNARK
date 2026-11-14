@@ -1,0 +1,60 @@
+{
+  "units": "mm",
+  "foundation": {
+    "width": 3000,
+    "depth": 3000,
+    "height": 375
+  },
+  "wall": {
+    "width": 3000,
+    "depth": 200,
+    "height": 3000
+  },
+  "doorframe": {
+    "width": 3000,
+    "depth": 200,
+    "height": 3000,
+    "opening": {
+      "left": 800,
+      "bottom": 0,
+      "width": 1400,
+      "height": 2310
+    }
+  },
+  "windowframe": {
+    "width": 3000,
+    "depth": 200,
+    "height": 3000,
+    "opening": {
+      "left": 900,
+      "bottom": 1200,
+      "width": 1200,
+      "height": 700
+    }
+  },
+  "door": {
+    "width": 1400,
+    "depth": 80,
+    "height": 2310,
+    "outside_hinge": "left",
+    "swing": "outward"
+  },
+  "ceiling": {
+    "width": 3000,
+    "depth": 3000,
+    "height": 250
+  },
+  "pillar": {
+    "width": 500,
+    "depth": 500,
+    "height": 3000
+  },
+  "stairs": {
+    "width": 3000,
+    "depth": 3000,
+    "height": 3000,
+    "steps": 10,
+    "rise": 300,
+    "going": 300
+  }
+}

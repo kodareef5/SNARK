@@ -1,0 +1,349 @@
+{
+  "revision": 3,
+  "seed": 831740,
+  "size_px": [
+    2048,
+    2048
+  ],
+  "metres_per_tile": [
+    1,
+    1
+  ],
+  "mm_per_pixel": 0.48828125,
+  "height_range_mm": 12.0,
+  "height_zero_mm": 0,
+  "normal_convention": "OpenGL +X right, +Y up image, +Z out",
+  "palette_srgb": {
+    "E": [
+      186,
+      149,
+      107
+    ],
+    "P": [
+      177,
+      142,
+      96
+    ],
+    "I": [
+      48,
+      45,
+      41
+    ],
+    "I+": [
+      90,
+      85,
+      75
+    ]
+  },
+  "palette_note": "Pass 3: end grain and pegs recoloured; iron base and all physical maps unchanged from pass 2.",
+  "wood_cells": [
+    {
+      "cell": 1,
+      "bounds_xyxy": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "kind": "boxed heart",
+      "pith_local_xy": [
+        250,
+        262
+      ],
+      "peg_local_xy": null,
+      "peg_diameter_mm": null
+    },
+    {
+      "cell": 2,
+      "bounds_xyxy": [
+        512,
+        0,
+        1024,
+        512
+      ],
+      "kind": "off-centre heart",
+      "pith_local_xy": [
+        180,
+        335
+      ],
+      "peg_local_xy": [
+        378,
+        135
+      ],
+      "peg_diameter_mm": 25
+    },
+    {
+      "cell": 3,
+      "bounds_xyxy": [
+        1024,
+        0,
+        1536,
+        512
+      ],
+      "kind": "off-centre heart",
+      "pith_local_xy": [
+        305,
+        185
+      ],
+      "peg_local_xy": null,
+      "peg_diameter_mm": null
+    },
+    {
+      "cell": 4,
+      "bounds_xyxy": [
+        1536,
+        0,
+        2048,
+        512
+      ],
+      "kind": "quarter-sawn corner",
+      "pith_local_xy": [
+        -310,
+        655
+      ],
+      "peg_local_xy": null,
+      "peg_diameter_mm": null
+    },
+    {
+      "cell": 5,
+      "bounds_xyxy": [
+        0,
+        512,
+        512,
+        1024
+      ],
+      "kind": "boxed heart",
+      "pith_local_xy": [
+        276,
+        264
+      ],
+      "peg_local_xy": [
+        134,
+        370
+      ],
+      "peg_diameter_mm": 25
+    },
+    {
+      "cell": 6,
+      "bounds_xyxy": [
+        512,
+        512,
+        1024,
+        1024
+      ],
+      "kind": "off-centre heart",
+      "pith_local_xy": [
+        360,
+        290
+      ],
+      "peg_local_xy": null,
+      "peg_diameter_mm": null
+    },
+    {
+      "cell": 7,
+      "bounds_xyxy": [
+        1024,
+        512,
+        1536,
+        1024
+      ],
+      "kind": "off-centre heart",
+      "pith_local_xy": [
+        160,
+        175
+      ],
+      "peg_local_xy": [
+        385,
+        373
+      ],
+      "peg_diameter_mm": 25
+    },
+    {
+      "cell": 8,
+      "bounds_xyxy": [
+        1536,
+        512,
+        2048,
+        1024
+      ],
+      "kind": "boxed heart",
+      "pith_local_xy": [
+        265,
+        248
+      ],
+      "peg_local_xy": null,
+      "peg_diameter_mm": null
+    }
+  ],
+  "iron_bands": [
+    {
+      "band": 1,
+      "name": "hammered_plate",
+      "rows_inclusive": [
+        1024,
+        1279
+      ],
+      "period_x_px": 2048
+    },
+    {
+      "band": 2,
+      "name": "riveted_strap",
+      "rows_inclusive": [
+        1280,
+        1407
+      ],
+      "period_x_px": 2048
+    },
+    {
+      "band": 3,
+      "name": "plain_strap",
+      "rows_inclusive": [
+        1408,
+        1535
+      ],
+      "period_x_px": 2048
+    },
+    {
+      "band": 4,
+      "name": "nailed_strap",
+      "rows_inclusive": [
+        1536,
+        1663
+      ],
+      "period_x_px": 2048
+    },
+    {
+      "band": 5,
+      "name": "rusted_strap",
+      "rows_inclusive": [
+        1664,
+        1791
+      ],
+      "period_x_px": 2048
+    },
+    {
+      "band": 6,
+      "name": "rusted_plate",
+      "rows_inclusive": [
+        1792,
+        2047
+      ],
+      "period_x_px": 2048
+    }
+  ],
+  "fasteners": [
+    {
+      "kind": "domed rivet",
+      "x": 128,
+      "diameter_mm": 16.0,
+      "crown_mm": 3.2,
+      "y": 1343.5
+    },
+    {
+      "kind": "domed rivet",
+      "x": 384,
+      "diameter_mm": 16.0,
+      "crown_mm": 3.2,
+      "y": 1343.5
+    },
+    {
+      "kind": "domed rivet",
+      "x": 640,
+      "diameter_mm": 16.0,
+      "crown_mm": 3.2,
+      "y": 1343.5
+    },
+    {
+      "kind": "domed rivet",
+      "x": 896,
+      "diameter_mm": 16.0,
+      "crown_mm": 3.2,
+      "y": 1343.5
+    },
+    {
+      "kind": "domed rivet",
+      "x": 1152,
+      "diameter_mm": 16.0,
+      "crown_mm": 3.2,
+      "y": 1343.5
+    },
+    {
+      "kind": "domed rivet",
+      "x": 1408,
+      "diameter_mm": 16.0,
+      "crown_mm": 3.2,
+      "y": 1343.5
+    },
+    {
+      "kind": "domed rivet",
+      "x": 1664,
+      "diameter_mm": 16.0,
+      "crown_mm": 3.2,
+      "y": 1343.5
+    },
+    {
+      "kind": "domed rivet",
+      "x": 1920,
+      "diameter_mm": 16.0,
+      "crown_mm": 3.2,
+      "y": 1343.5
+    },
+    {
+      "kind": "square forged nail",
+      "x": 128,
+      "width_mm": 12.0,
+      "crown_mm": 2.0,
+      "y": 1599.5
+    },
+    {
+      "kind": "square forged nail",
+      "x": 384,
+      "width_mm": 12.0,
+      "crown_mm": 2.0,
+      "y": 1599.5
+    },
+    {
+      "kind": "square forged nail",
+      "x": 640,
+      "width_mm": 12.0,
+      "crown_mm": 2.0,
+      "y": 1599.5
+    },
+    {
+      "kind": "square forged nail",
+      "x": 896,
+      "width_mm": 12.0,
+      "crown_mm": 2.0,
+      "y": 1599.5
+    },
+    {
+      "kind": "square forged nail",
+      "x": 1152,
+      "width_mm": 12.0,
+      "crown_mm": 2.0,
+      "y": 1599.5
+    },
+    {
+      "kind": "square forged nail",
+      "x": 1408,
+      "width_mm": 12.0,
+      "crown_mm": 2.0,
+      "y": 1599.5
+    },
+    {
+      "kind": "square forged nail",
+      "x": 1664,
+      "width_mm": 12.0,
+      "crown_mm": 2.0,
+      "y": 1599.5
+    },
+    {
+      "kind": "square forged nail",
+      "x": 1920,
+      "width_mm": 12.0,
+      "crown_mm": 2.0,
+      "y": 1599.5
+    }
+  ],
+  "build_seconds": 13.1
+}

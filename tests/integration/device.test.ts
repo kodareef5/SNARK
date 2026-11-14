@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
-import { DeviceProbe, deviceScenarios, deviceTable, newReport, type DeviceBrowser, type DeviceReport } from "../../client/core/device.ts";
+import { DeviceProbe, deviceScenarios, deviceTable, newReport, type DeviceBrowser, type DeviceReport, type RendererLike } from "../../client/core/device.ts";
 import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, lacking } from "../../tools/device.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -24,21 +24,44 @@ function browser(opts: { saved?: string; clock?: () => number; expected?: Record
     dpr: 3,
     now: opts.clock ?? (() => 0),
     sleep: () => new Promise(() => {}),
-    frames: (n) => Promise.resolve(Array.from({ length: n }, (_, i) => i * 16.6)),
-    ask: (path) => Promise.resolve(path === "ping" ? true : (opts.expected ?? null)),
-    send: (body) => (posts.push(JSON.parse(body) as DeviceReport), Promise.resolve(200)),
+    nextFrame: (fn) => queueMicrotask(() => fn((frame += 16.6))),
+    fetch: (path, body) => {
+      if (body !== undefined) posts.push(JSON.parse(body) as DeviceReport);
+      const value = path === "ping" ? true : path === "hashes" ? (opts.expected ?? null) : null;
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(value) });
+    },
     load: () => page.saved,
     save: (text) => void (page.saved = text),
-    show: (text, whole) => void Object.assign(page, { text, whole }),
+    show: (text, style) => void Object.assign(page, { text, whole: style.includes("inset:0") }),
     wake: () => Promise.resolve("held"),
     rest: () => {},
-    pageBytes: () => 500000,
+    entries: () => [{ transferSize: 300000, encodedBodySize: 280000 }, { transferSize: 0, encodedBodySize: 200000 }],
   };
+  let frame = 0;
   return { b, posts, page };
 }
 
-/** A context with the numbers of a phone that takes textures 2,048 wide at most. */
-const gl = { getParameter: (n: number) => (n === 0x0d33 ? 2048 : 4), getExtension: () => null, getSupportedExtensions: () => ["WEBGL_compressed_texture_astc"], getShaderPrecisionFormat: () => ({ precision: 23 }), getContextAttributes: () => ({ antialias: true }) };
+/** A renderer of a phone that takes textures 2,048 wide at most. It draws nothing, and its canvas is what a test says. */
+function renderer() {
+  const heard = new Map<string, () => void>();
+  const r: RendererLike = {
+    gl: {
+      getParameter: (n: number) => (n === 0x0d33 ? 2048 : 4),
+      getExtension: () => null,
+      getSupportedExtensions: () => ["WEBGL_compressed_texture_astc"],
+      getShaderPrecisionFormat: () => ({ precision: 23 }),
+      getContextAttributes: () => ({ antialias: true }),
+      createTexture: () => ({}),
+      canvas: { addEventListener: (type: string, fn: () => void) => heard.set(type, fn) },
+      drawingBufferWidth: 390,
+      drawingBufferHeight: 844,
+    },
+    rendererName: "a test GPU",
+    drawCalls: 50,
+    readPixel: () => [0, 0, 0],
+  };
+  return { r, fire: (type: string) => heard.get(type)!() };
+}
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 test("a run measures every tier the device can take in every scene, then the first again, and posts after every step", async () => {
@@ -49,12 +72,18 @@ test("a run measures every tier the device can take in every scene, then the fir
   const { b, posts, page } = browser({ clock: () => h.now, expected });
   const probe = new DeviceProbe(TOKEN, b, TIMING);
   expect(await probe.before()).toBe(true);
-  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gl, "a test GPU");
+  const { r: gpu } = renderer();
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
   const yaw = new Map<string, number>();
   for (let i = 0; i < 300 && !probe.report.done; i++) {
     h.run(100, (now) => {
       const p = app.frame(now, 390, 844);
-      if (p) probe.frame(now, p, 1, 0.5, p.drawCount, [Math.floor(390 * probe.ratio), Math.floor(844 * probe.ratio)], () => [0, 0, 0]);
+      if (!p) return;
+      // As the page sizes its canvas, from the tier in use.
+      const most = app.scene!.assets.tier.pixelRatio;
+      const ratio = most > 0 ? Math.min(3, most) : 3;
+      [gpu.gl.drawingBufferWidth, gpu.gl.drawingBufferHeight] = [Math.floor(390 * ratio), Math.floor(844 * ratio)];
+      probe.frame(now, p, now - 1, now - 0.5);
       yaw.set(probe.report.stage, app.controls.yaw);
     });
   }
@@ -106,12 +135,20 @@ test("a run whose frames stop ends, saying why, and one whose game never starts 
   const { b, posts } = browser({ clock: () => clock });
   const probe = new DeviceProbe(TOKEN, b, TIMING);
   await probe.before();
-  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gl, "a test GPU");
+  const { r: gpu, fire } = renderer();
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
   h.run(1000, (now) => {
     clock = now;
     const p = app.frame(now, 390, 844);
-    if (p) probe.frame(now, p, 1, 0.5, 10, [390, 844], () => [0, 0, 0]);
+    if (p) probe.frame(now, p, now - 1, now - 0.5);
   });
+  // A texture the renderer makes counts, except while a lost context is made again.
+  gpu.gl.createTexture();
+  fire("webglcontextlost");
+  gpu.gl.createTexture();
+  fire("webglcontextrestored");
+  gpu.gl.createTexture();
+  expect(probe.report.texturesMade).toBe(2);
   probe.watch();
   expect(probe.report.done).toBe(false);
   // Hidden, the frames' stopping does not count from before the page was shown again.

@@ -6,12 +6,14 @@
 | `latency.test.ts` | Views with a round trip between a snapshot and its acknowledgement: a body that had to wait stays as the client last had it, a lost baseline, and a link that loses and delays held to the true states |
 | `foundation.test.ts` | Deterministic trigonometry, identities, content hash, loopback ordering and loss |
 | `world.test.ts`, `ray.test.ts`, `nodes.test.ts` | Terrain continuity, structure tables, the collision grid and rays against brute force, resource nodes as a function |
-| `path.test.ts` | Ways across the ground: round a wall, never through a thin one, the search's budget, legs, and a body walking every way found on the proving ground |
+| `path.test.ts` | Ways across the ground: round a wall, never through a thin one, the search's budget, a search spread over calls, legs, a doorway off the grid, and a body walking every way found on the proving ground |
+| `bodies.test.ts` | The grid of awake bodies that creatures search for prey |
 | `mapfile.test.ts`, `maplayers.test.ts` | A map through its file and back; a damaged or unplayable one refused with its reason; a folder of layers built into a map and unpacked again |
 | `character.test.ts`, `swim.test.ts` | Movement rules and the anti-clipping fuzz tests, on land and in water |
 | `sim.test.ts`, `items.test.ts` | Deadlines, lazy quantities, stat points, inheritance statistics; inventories |
 | `weapon.test.ts`, `anim.test.ts`, `creature.test.ts` | The action step; skeletons, clips, poses and hit zones for survivors and for creatures that came as models |
 | `taming.test.ts`, `breeding.test.ts`, `station.test.ts` | The reference's taming table; litters and growing up by hundredths; a fire worked out from the last time anyone looked |
+| `dodo.test.ts` | The dodo against the ARK wiki: stats, speeds, its taming table level by level, torpor, breeding times, colour regions |
 | `building.test.ts`, `snap.test.ts`, `support.test.ts`, `collapse.test.ts` | Pieces made of boxes; where pieces go; the reference's support table; a collapse against brute force |
 | `joins.test.ts`, `pushorder.test.ts`, `swapfall.test.ts` | Joined pieces meet for every ray and every body at every turn; a body is pushed out of pieces in one order wherever they are stored; a piece that changes kind during a collapse is still judged |
 | `voice.test.ts` | Voice packets, the jitter buffer against scripted arrivals, the rate changer, the talk gate |

@@ -1,0 +1,5 @@
+# Kept: the accepted pictures, the generated originals they are built from, briefs and feedback, build scripts, reports.
+# Superseded rounds are deleted; a round<n>/ folder stays only for files an accepted picture is built from.
+!round[0-9]*/
+.module-cache/
+ref/concept/sources/round4/imageio

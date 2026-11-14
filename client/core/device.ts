@@ -57,7 +57,7 @@ export function spread(values: readonly number[]): Spread {
 export interface PhaseReport {
   tier: string;
   scene: SceneName;
-  /** Device pixels drawn for one CSS pixel, as the tier says, and the canvas in device pixels. */
+  /** Device pixels the page drew for one CSS pixel at this tier, and the canvas in device pixels. */
   ratio: number;
   canvas: number[];
   settleMs: number;
@@ -106,6 +106,8 @@ export interface GpuInfo {
   highp: boolean;
   antialias: boolean;
   extensions: string[];
+  /** The texture variant the renderer took for this device: "bc", "astc" or "rgba". */
+  variant: string;
 }
 
 export interface DeviceReport {
@@ -223,7 +225,7 @@ export interface GlLike {
 }
 const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245 };
 
-export function gpuOf(gl: GlLike, renderer: string): GpuInfo {
+export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
   const n = (name: number): number => Number(gl.getParameter(name));
   return {
     vendor: String(gl.getParameter(gl.getExtension("WEBGL_debug_renderer_info") ? GL.UNMASKED_VENDOR_WEBGL : GL.VENDOR)),
@@ -236,6 +238,7 @@ export function gpuOf(gl: GlLike, renderer: string): GpuInfo {
     highp: (gl.getShaderPrecisionFormat(GL.FRAGMENT_SHADER, GL.HIGH_FLOAT)?.precision ?? 0) > 0,
     antialias: gl.getContextAttributes()?.antialias === true,
     extensions: gl.getSupportedExtensions() ?? [],
+    variant,
   };
 }
 
@@ -342,11 +345,6 @@ export class DeviceRun {
     this.plan = TIERS.flatMap((tier) => SCENES.map((scene) => ({ tier, scene })));
   }
 
-  /** Device pixels to draw for one CSS pixel now. */
-  get ratio(): number {
-    const tier = (this.stage === "phases" || this.stage === "again") && this.plan[this.index] ? this.plan[this.index]!.tier : tierOf(DEFAULT_TIER);
-    return tier.pixelRatio === 0 ? this.side.dpr : Math.min(this.side.dpr, tier.pixelRatio);
-  }
 
   /** Each drawn frame, once it is handed to WebGL. True when the report has news worth sending. */
   frame(now: number, p: FramePacket, buildMs: number, drawMs: number, drawCalls: number, canvas: number[], read: (sx: number, sy: number) => [number, number, number]): boolean {
@@ -509,7 +507,7 @@ export class DeviceRun {
     const session = app.session;
     const missed = Math.max(0, session.latestSnapshot - this.phaseBase.latest - (session.stats.snapshots - this.phaseBase.snapshots));
     return {
-      tier: tier.name, scene, ratio: this.ratio, canvas: this.canvas, settleMs: this.settleMs, settled: this.settled, frames: s.frame.length,
+      tier: tier.name, scene, ratio: this.ratio(), canvas: this.canvas, settleMs: this.settleMs, settled: this.settled, frames: s.frame.length,
       frameMs: spread(s.frame), buildMs: spread(s.build), drawMs: spread(s.draw),
       drawCalls: spread(s.calls).median, triangles: spread(s.tris).median, textured: spread(s.textured).median,
       dropped: this.dropped, skipped: this.skipped, fetched: app.scene!.assets.residency.stats.fetched - this.fetchedAt, failed: this.failures() - this.failedAt, missed,
@@ -563,6 +561,12 @@ export class DeviceRun {
     return (this.stress = made.things.filter((t) => !wrong.has(t.mesh)));
   }
 
+  /** Device pixels the page draws for one CSS pixel, as client/shell/main.ts works it out from the tier in use. */
+  private ratio(): number {
+    const most = this.side.app.scene!.assets.tier.pixelRatio;
+    return most > 0 ? Math.min(this.side.dpr, most) : this.side.dpr;
+  }
+
   /** Asset requests that failed, to be asked again or given up. */
   private failures(): number {
     const stats = this.side.app.scene!.assets.residency.stats;
@@ -610,23 +614,35 @@ export interface DeviceBrowser {
   dpr: number;
   now(): number;
   sleep(ms: number): Promise<void>;
-  /** The times of the next `n` frames. */
-  frames(n: number): Promise<number[]>;
-  /** JSON from the probe's server, or null. */
-  ask(path: string): Promise<unknown>;
-  /** Posts the report and resolves with the server's status. */
-  send(body: string): Promise<number>;
+  /** Calls `fn` with the time of the next frame. */
+  nextFrame(fn: (t: number) => void): void;
+  /** A request to the probe's own routes on its server, with the token: a POST of `body` if given. */
+  fetch(path: string, body?: string): Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
   /** Session storage. */
   load(): string | null;
   save(text: string): void;
-  /** A line of progress, or the whole page when `whole`. */
-  show(text: string, whole: boolean): void;
+  /** Text in the box over the page, laid out by `style`. */
+  show(text: string, style: string): void;
   /** Asks to keep the screen on, and lets it go. */
   wake(): Promise<string>;
   rest(): void;
-  /** Bytes the page and what it fetched itself have taken. */
-  pageBytes(): number;
+  /** The page's own fetches so far, as its performance timeline lists them. */
+  entries(): { transferSize?: number; encodedBodySize?: number }[];
 }
+
+/** What the probe reads of the shell's renderer. A WebGL 2 context is a GlLike with these besides. */
+export interface RendererLike {
+  gl: GlLike & { createTexture(): unknown; canvas: unknown; drawingBufferWidth: number; drawingBufferHeight: number };
+  rendererName: string;
+  /** The texture variant it took. */
+  format?: string;
+  drawCalls: number;
+  readPixel(sx: number, sy: number): [number, number, number];
+}
+
+/** A line of progress over the bottom of the game, and the whole page at the end. */
+const BAR = "position:fixed;left:0;right:0;bottom:0;margin:0;padding:6px 8px;background:rgba(0,0,0,.55);color:#eee;font:12px ui-monospace,Menlo,monospace;white-space:pre-wrap;z-index:10;pointer-events:none";
+const PAGE = "position:fixed;inset:0;margin:0;padding:12px;background:#111;color:#eee;font:11px ui-monospace,Menlo,monospace;white-space:pre;overflow:auto;z-index:10";
 
 /**
  * A page's device probe from start to end. Before the game loads it reads the browser, the display and the link; then
@@ -640,6 +656,7 @@ export class DeviceProbe {
   private readonly timing: Timing;
   private readonly recovered: boolean;
   private run: DeviceRun | null = null;
+  private renderer: RendererLike | null = null;
   private expected: Record<string, string> | null = null;
   /** When the game began to load, or -1 before. */
   private bootAt = -1;
@@ -663,29 +680,24 @@ export class DeviceProbe {
     if (this.recovered) this.report.reloadedDuring = this.report.stage;
   }
 
-  /** Device pixels to draw for one CSS pixel. */
-  get ratio(): number {
-    return this.run ? this.run.ratio : this.b.dpr;
-  }
-
   /** Before the game loads. False if it should not load: the page found its run unfinished, and shows what it had. */
   async before(): Promise<boolean> {
     if (this.recovered) {
       this.finish();
       return false;
     }
-    this.b.show("Measuring this device. Keep this page open and the screen on. It takes about two minutes.", false);
+    this.b.show("Measuring this device. Keep this page open and the screen on. It takes about two minutes.", BAR);
     void this.wake();
     const within: Within = (f, ms, or) => this.within(f, ms, or);
     const pings: number[] = [];
     const [features, expected, frames] = await Promise.all([
       featuresOf(this.b.global, within),
-      within(() => this.b.ask("hashes"), 5000, null),
-      within(() => this.b.frames(31), 3000, null),
+      within(() => this.ask("hashes"), 5000, null),
+      within(() => this.frames(31), 3000, null),
       (async () => {
         for (let i = 0; i < 8; i++) {
           const t = this.b.now();
-          if ((await within(() => this.b.ask("ping"), 5000, null)) !== true) break;
+          if ((await within(() => this.ask("ping"), 5000, null)) !== true) break;
           pings.push(this.b.now() - t);
         }
       })(),
@@ -700,22 +712,35 @@ export class DeviceProbe {
     return true;
   }
 
-  /** Once the renderer is made. The run begins with the first frame. */
-  attach(side: { app: App; pack: Pack; reg: Registry; hf: Heightfield }, gl: GlLike, renderer: string): void {
-    const gpu = (this.report.gpu = gpuOf(gl, renderer));
+  /**
+   * Once the renderer is made, and after the shell's own listeners for a lost context. The run begins with the first
+   * frame. The renderer makes a material's texture as its pictures arrive, and so every texture it makes from here on
+   * counts, except those init() makes again for a restored context, which it does before this hears of it.
+   */
+  attach(side: { app: App; pack: Pack; reg: Registry; hf: Heightfield }, renderer: RendererLike): void {
+    const gl = renderer.gl;
+    const gpu = (this.report.gpu = gpuOf(gl, renderer.rendererName, renderer.format));
+    const create = gl.createTexture.bind(gl);
+    gl.createTexture = () => ((this.report.texturesMade += this.counting ? 1 : 0), create());
+    const canvas = gl.canvas as { addEventListener(type: string, fn: () => void): void };
+    canvas.addEventListener("webglcontextlost", () => this.lost());
+    canvas.addEventListener("webglcontextrestored", () => (this.counting = true));
+    this.renderer = renderer;
     const b = this.b;
-    this.run = new DeviceRun(this.report, { ...side, dpr: b.dpr, maxTexture: gpu.maxTexture, bootAt: this.bootAt, now: () => b.now(), pageBytes: () => b.pageBytes(), expected: this.expected }, this.timing);
+    const pageBytes = (): number => b.entries().reduce((sum, e) => sum + (e.transferSize || e.encodedBodySize || 0), 0);
+    this.run = new DeviceRun(this.report, { ...side, dpr: b.dpr, maxTexture: gpu.maxTexture, bootAt: this.bootAt, now: () => b.now(), pageBytes, expected: this.expected }, this.timing);
   }
 
-  /** After each frame is handed to WebGL. */
-  frame(now: number, p: FramePacket, buildMs: number, drawMs: number, drawCalls: number, canvas: number[], read: (sx: number, sy: number) => [number, number, number]): void {
+  /** After each frame is handed to WebGL. The frame began at `t0` and was built by `built`, on the clock of `now()`. */
+  frame(now: number, p: FramePacket, t0: number, built: number): void {
     const run = this.run;
+    const r = this.renderer!;
     if (!run || this.finished) return;
-    if (run.frame(now, p, buildMs, drawMs, drawCalls, canvas, read)) this.post();
+    if (run.frame(now, p, built - t0, this.b.now() - built, r.drawCalls, [r.gl.drawingBufferWidth, r.gl.drawingBufferHeight], (x, y) => r.readPixel(x, y))) this.post();
     if (this.report.done) this.finish();
     else if (now - this.progressAt > 500) {
       this.progressAt = now;
-      this.b.show(run.progress(now), false);
+      this.b.show(run.progress(now), BAR);
     }
   }
 
@@ -739,17 +764,9 @@ export class DeviceProbe {
     } else if (now - this.bootAt > this.timing.loadMs) this.fail("the game did not start");
   }
 
-  lost(): void {
+  private lost(): void {
     this.counting = false;
     this.run?.lost();
-  }
-
-  restored(): void {
-    this.counting = true;
-  }
-
-  textureMade(): void {
-    if (this.counting) this.report.texturesMade++;
   }
 
   error(message: string): void {
@@ -760,6 +777,20 @@ export class DeviceProbe {
   fail(message: string): void {
     this.error(message);
     this.finish();
+  }
+
+  /** JSON from the probe's server, or null. */
+  private ask(path: string): Promise<unknown> {
+    return this.b.fetch(path).then((res) => (res.ok ? res.json() : null));
+  }
+
+  /** The times of the next `n` frames. */
+  private frames(n: number): Promise<number[]> {
+    return new Promise((done) => {
+      const at: number[] = [];
+      const step = (t: number): void => (at.push(t) < n ? this.b.nextFrame(step) : done(at));
+      this.b.nextFrame(step);
+    });
   }
 
   private within<T>(f: () => Promise<T>, ms: number, or: T): Promise<T> {
@@ -788,7 +819,7 @@ export class DeviceProbe {
 
   private page(status: string): void {
     const early = this.report.errors.length > 0 || this.report.reloadedDuring !== null;
-    this.b.show(`${early ? "Stopped early" : "Done"}. ${status}\n\n${deviceTable(this.report).join("\n")}`, true);
+    this.b.show(`${early ? "Stopped early" : "Done"}. ${status}\n\n${deviceTable(this.report).join("\n")}`, PAGE);
   }
 
   /** Posts go one after another, so the server has them in order. The last is tried four times. */
@@ -802,7 +833,7 @@ export class DeviceProbe {
       let why = "";
       for (let i = 0; i < (last ? 4 : 1); i++) {
         if (i > 0) await this.b.sleep(2000 * i);
-        const status = await this.within(() => this.b.send(body), 15000, 0);
+        const status = await this.within(() => this.b.fetch("report", body).then((res) => res.status), 15000, 0);
         if (status === 200) return "";
         why = status === 0 ? "no answer" : `the server answered ${status}`;
       }
@@ -843,7 +874,7 @@ export function deviceTable(r: DeviceReport): string[] {
   if (g) {
     out.push(`gpu       ${g.renderer} (${g.vendor}), ${g.version}`);
     out.push(`limits    texture ${g.maxTexture}, layers ${g.maxArrayLayers}, samples ${g.maxSamples}, vertex textures ${g.vertexTextures}, highp ${yes(g.highp)}, antialias ${yes(g.antialias)}`);
-    out.push(`textures  compressed ${formatsOf(g.extensions).join(" ") || "none"}; float render ${yes(g.extensions.includes("EXT_color_buffer_float"))}, float filter ${yes(g.extensions.includes("OES_texture_float_linear"))}; depth textures yes, as in all WebGL 2`);
+    out.push(`textures  compressed ${formatsOf(g.extensions).join(" ") || "none"}; float render ${yes(g.extensions.includes("EXT_color_buffer_float"))}, float filter ${yes(g.extensions.includes("OES_texture_float_linear"))}; depth textures yes, as in all WebGL 2; drawn from the ${g.variant} variant`);
   }
   out.push(`display   ${r.idleFrameMs ?? "?"} ms between frames with nothing drawn; wake lock ${r.wakeLock}`);
   const l = r.link;
