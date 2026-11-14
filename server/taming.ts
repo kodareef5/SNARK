@@ -99,6 +99,8 @@ export class Taming {
   private readonly lying = new Set<number>();
   /** Those of them that a tame limit turned away, whose taker has been told. Each is offered again once it has been shut. */
   private readonly held = new Set<number>();
+  /** What each session had open at the last step, by its place in the server's list. */
+  private readonly shown: number[] = [];
   private readonly drugged: number;
 
   constructor(ctx: TamingContext, seed: number) {
@@ -171,8 +173,18 @@ export class Taming {
   }
 
   step(): void {
-    if (this.lying.size === 0) return;
     const { records, game } = this.ctx;
+    // A creature somebody was looking into, and no longer is, may eat of what it was left, however it came to be shut.
+    for (let i = 0; i < game.clients.length; i++) {
+      const c = game.clients[i];
+      const open = c?.active ? c.open : 0;
+      const was = this.shown[i] ?? 0;
+      if (open === was) continue;
+      this.shown[i] = open;
+      const rec = records.byPid.get(was);
+      if (rec) this.meal(rec);
+    }
+    if (this.lying.size === 0) return;
     for (const pid of this.lying) {
       const rec = records.byPid.get(pid);
       if (!rec || !rec.tame || !rec.out) {
