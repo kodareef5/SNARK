@@ -279,12 +279,13 @@ test("a world saved under one set of files and loaded under another is brought t
   const waiting = recOf(h, h.host.spawnCreature("core:parasaur", PLACE.x - 14, PLACE.z + 14, 4));
   h.host.taming.give(waiting, me, 1);
   waiting.mateReadyAt = h.world.tick + 90000;
-  // Cooked meat keeps two game hours a piece.
+  // Cooked meat keeps twenty minutes a piece. This was cooked a while ago: its top piece has two game hours left.
   const U = 16;
   const box = (dx: number): EntityRecord => {
     const ref = h.world.structs.add(id("storage_box"), PLACE.x + dx, Math.ceil(PLACE.y * U) / U + 0.3125, PLACE.z - 8, 0, me.team, 500);
     const state = h.host.fixtures.ensure(ref);
     h.host.items.mint(state, id("meat_cooked"), 20);
+    state.inv!.spoilAt[state.inv!.item.indexOf(id("meat_cooked"))] = h.world.tick + 2 * GAME_HOUR_TICKS;
     return state;
   };
   const opened = box(-2);

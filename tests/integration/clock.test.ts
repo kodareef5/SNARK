@@ -64,7 +64,7 @@ test("the server's day: its three scales reach the client, both tell the same ho
 
   // The day's pace changes nothing else. Spoiling and hunger keep their own hour, GAME_HOUR_TICKS.
   const rate = (w: Harness): number => w.host.records.byPid.get(w.world.ents.pid[w.host.spawnCreature("core:parasaur", 250, 250, 1)]!)!.vitals!.rate[V_FOOD]!;
-  expect([h.world.reg === h.reg, h.world.reg.spoilTicks[id("meat_cooked")], rate(h)]).toEqual([true, 2 * GAME_HOUR_TICKS, rate(plain)]);
+  expect([h.world.reg === h.reg, h.world.reg.spoilTicks[id("meat_cooked")], rate(h)]).toEqual([true, 1200 * TICK_RATE, rate(plain)]);
   expect(CLOCK_HOUR_TICKS).not.toBe(GAME_HOUR_TICKS);
 });
 

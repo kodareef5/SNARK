@@ -7,6 +7,8 @@ import { CREATURES } from "./creatures/index.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
 const id = (name: string): string => `core:${name}`;
+/** Real minutes, as the hours of 140 seconds that spoiling is written in. */
+const minutes = (n: number): number => (n * 60) / 140;
 
 // Every piece of an armor tier has the same rating and durability, so a full set rates five times one piece.
 const ARMOR_TIERS: readonly { tier: string; set: string; armor: number; uses: number; weight: number; colors: readonly [number, number, number] }[] = [
@@ -205,8 +207,8 @@ const ALL: readonly Def[] = [
   { type: "item", class: "resource", id: "core:fiber", stack: 200, weight: 0.01, color: 7 },
   { type: "item", class: "resource", id: "core:stone", stack: 100, weight: 0.5, color: 15 },
   { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: 4, eat: { food: 4, water: 2 }, color: 8 },
-  { type: "item", class: "consumable", id: "core:meat", stack: 20, weight: 0.1, spoilHours: 1, eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 } },
-  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 20, weight: 0.1, spoilHours: 2, eat: { food: 35, health: 8 }, color: 3, label: "cooked meat" },
+  { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 } },
+  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 20, weight: 0.1, spoilHours: minutes(20), eat: { food: 35, health: 8 }, color: 3, label: "cooked meat" },
   { type: "item", class: "consumable", id: "core:waterskin", stack: 1, weight: 1, eat: { water: 60 }, label: "water skin", color: 14 },
   { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
   { type: "item", class: "resource", id: "core:thatch", stack: 200, weight: 0.02, color: 18, fuel: 7.5 },
