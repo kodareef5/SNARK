@@ -305,7 +305,8 @@ test("setstat refreshes everything the points feed, with the load still counted"
 test("handing food to someone else does not make it fresher", () => {
   const { h, rec, id, items } = setup();
   const berry = id("core:berry");
-  const other = h.host.records.create(id("core:grazer"), "mule");
+  // A box keeps food as long as hands do. A creature keeps it longer (ark-numbers.test.ts).
+  const other = h.host.records.create(id("core:cache"), "box");
   const made = h.world.tick;
   items.mint(rec, berry, 30);
   const clock = items.inv(rec).spoilAt[0]!;

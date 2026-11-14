@@ -1,7 +1,10 @@
 // Content numbers as the ARK wiki (ark.wiki.gg) gave them on 2026-11-14. Each test names the page it was read from.
 
 import { expect, test } from "bun:test";
+import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { Inventory } from "../../shared/sim/items.ts";
+import { piecesNeeded, proneHunger } from "../../shared/sim/taming.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -10,4 +13,37 @@ const keeps = (name: string): number => reg.spoilTicks[at(name)]! / TICK_RATE;
 
 test("raw meat stacks to 40 and a piece keeps ten minutes; cooked meat keeps twenty (Raw Meat, Cooked Meat, Spoilage)", () => {
   expect([reg.stack[at("meat")], keeps("meat"), keeps("meat_cooked")]).toEqual([40, 600, 1200]);
+});
+
+test("food keeps four times as long in a creature, so a level 150 raptor is tamed on 52 pieces of raw meat (Spoilage, Raw Prime Meat, Taming)", () => {
+  const raptor = reg.defs[at("raptor")] as SpeciesDef;
+  const meat = at("meat");
+  expect([reg.keeps[at("raptor")], reg.keeps[at("parasaur")], reg.keeps[at("survivor")], reg.keeps[at("storage_box")]]).toEqual([4, 4, 1, 1]);
+  // A stack in a creature loses a piece every forty minutes, worked out in one call.
+  const kept = new Inventory(4);
+  kept.keep = 4;
+  kept.add(meat, 3, 0, 0, 1000, reg);
+  expect(kept.spoilAt[0]).toBe(1000 + 2400 * TICK_RATE);
+  kept.settle(1000 + 4800 * TICK_RATE, reg, () => {});
+  expect([kept.count[0], kept.spoilAt[0]]).toEqual([1, 1000 + 7200 * TICK_RATE]);
+
+  // It needs 51 pieces, and eats one of what is in it each time it is a piece's worth hungry: every fifty seconds.
+  const eats = raptor.eats!.find((f) => f.item === "core:meat")!;
+  const pieces = piecesNeeded(raptor.taming!, 150, eats.affinity, 1);
+  const every = Math.round((eats.food / proneHunger(raptor.taming!)) * TICK_RATE);
+  expect([pieces, every]).toEqual([51, 50 * TICK_RATE]);
+  const eaten = (given: number): number => {
+    const inv = new Inventory(raptor.slots!);
+    inv.keep = reg.keeps[at("raptor")]!;
+    inv.add(meat, given, 0, 0, 0, reg);
+    let n = 0;
+    for (let t = every; n < pieces; t += every) {
+      inv.settle(t, reg, () => {});
+      if (!inv.take(meat, 1)) break;
+      n++;
+    }
+    return n;
+  };
+  // One piece of the full stack spoils at forty minutes, two and a half minutes before the last is eaten.
+  expect([eaten(51), eaten(52)]).toEqual([50, 51]);
 });

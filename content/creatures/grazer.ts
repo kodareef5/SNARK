@@ -15,6 +15,7 @@ export const GRAZER: readonly Def[] = [
     sprintMul: 2.2,
     jumpSpeed: 5,
     food: { max: 400, perHour: 12 },
+    keeps: 4,
     drops: [{ item: "core:hide", min: 4, max: 9 }, { item: "core:meat", min: 3, max: 6 }],
     takes: { bullet: 0.7 },
     killXp: 4,

@@ -3,7 +3,7 @@
 
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
-import { GEAR_SLOTS, Inventory, QUALITY_MUL, moveSlot, type ItemTable } from "../shared/sim/items.ts";
+import { GEAR_SLOTS, Inventory, QUALITY_MUL, carried, moveSlot, type ItemTable } from "../shared/sim/items.ts";
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -53,6 +53,7 @@ export class Items {
       inv = rec.inv = grown;
       this.records.dirty.add(rec.pid);
     }
+    inv.keep = this.reg.keeps[rec.kind]!;
     // A burning fire is worked out first, so cooking happens before the leftovers spoil.
     if (rec.fire && this.onFire) this.onFire(rec);
     const before = inv.version;
@@ -82,6 +83,7 @@ export class Items {
     for (const rec of this.records.byPid.values()) {
       const inv = rec.inv;
       if (!inv) continue;
+      inv.keep = this.reg.keeps[rec.kind]!;
       const before = inv.version;
       inv.settle(tick, old, this.spoiled);
       for (let s = 0; s < inv.cap; s++) {
@@ -99,6 +101,7 @@ export class Items {
   spoilTo(rec: EntityRecord, at: number): void {
     const inv = rec.inv;
     if (!inv) return;
+    inv.keep = this.reg.keeps[rec.kind]!;
     const before = inv.version;
     inv.settle(at, this.table, this.spoiled);
     if (inv.version !== before) this.records.dirty.add(rec.pid);
@@ -240,7 +243,7 @@ export class Items {
 
   /** Within one record or across two. Returns how many moved. */
   move(a: EntityRecord, sa: number, b: EntityRecord, sb: number, n: number): number {
-    const moved = moveSlot(this.inv(a), sa, this.inv(b), sb, n, this.table);
+    const moved = moveSlot(this.inv(a), sa, this.inv(b), sb, n, this.table, this.world.tick);
     if (moved > 0) {
       this.records.dirty.add(a.pid);
       this.records.dirty.add(b.pid);
@@ -254,16 +257,18 @@ export class Items {
     const src = this.inv(from);
     const dst = this.inv(to);
     if (src.total(item) < n || dst.room(item, 0, this.table) < n) return false;
-    // Each stack keeps its spoil time, and an unstackable item keeps its rounds and attachment.
+    // Each stack keeps its spoil time, scaled if the other keeps things longer, and an unstackable item keeps its rounds and attachment.
+    const tick = this.world.tick;
     for (let s = src.cap - 1; s >= 0 && n > 0; s--) {
       if (src.item[s] !== item) continue;
       const k = Math.min(n, src.count[s]!);
+      const spoilAt = carried(src.spoilAt[s]!, tick, src.keep, dst.keep);
       if (this.table.stack[item] === 1) {
         const to = dst.free();
         if (to < 0) throw new Error("room was checked");
-        dst.set(to, item, 1, src.quality[s]!, src.dur[s]!, src.spoilAt[s]!);
+        dst.set(to, item, 1, src.quality[s]!, src.dur[s]!, spoilAt);
         dst.setGear(to, src.ammo[s]!, src.loaded[s]!, src.attach[s]!);
-      } else if (dst.add(item, k, src.quality[s]!, src.dur[s]!, this.world.tick, this.table, src.spoilAt[s]!) !== 0) throw new Error("room was checked");
+      } else if (dst.add(item, k, src.quality[s]!, src.dur[s]!, tick, this.table, spoilAt) !== 0) throw new Error("room was checked");
       src.remove(s, k);
       n -= k;
     }
