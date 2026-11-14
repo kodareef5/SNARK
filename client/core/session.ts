@@ -9,10 +9,12 @@ import { PI, TAU } from "../../shared/math/scalar.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import {
   CMD_TEXT,
+  CMD_VIEW,
   HELLO_SPECTATE,
   INPUT_REDUNDANCY,
   InputBuffer,
   MARGIN_UNKNOWN,
+  MAX_CLIENT_MESSAGE,
   MAX_NAME_BYTES,
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
@@ -81,6 +83,8 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
+import { S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { MapStore } from "./tactical.ts";
 
 export interface SessionOptions {
   name: string;
@@ -178,6 +182,8 @@ const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
 /** The content this client derives from the server's tuning does not hash to the server's. */
 export const CLOSED_BAD_CONTENT = -3;
+/** The server speaks another version of the protocol. REJECT_VERSION is the same news from the server's side. */
+export const CLOSED_BAD_VERSION = -4;
 const LOG_LINES = 200;
 
 /** Beyond this the oldest untaken event is dropped. */
@@ -303,6 +309,8 @@ export class ClientSession {
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
   /** The world's respawn points, then the tribe's beds. wait is in seconds. */
   readonly respawnPoints: { name: string; x: number; z: number; wait: number }[] = [];
+  /** The map beyond the view: structure cells and marks, as the server sends them. */
+  readonly tactical = new MapStore();
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { item: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
@@ -326,8 +334,11 @@ export class ClientSession {
   shown = 0;
   latestSnapshot = 0;
 
-  /** `corrections` counts snapshots that moved the predicted body. `stateCorrections` counts those that changed only other predicted state. */
-  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0 };
+  /**
+   * `corrections` counts snapshots that moved the predicted body. `stateCorrections` counts those that changed only other
+   * predicted state. `unsent` counts commands too long for a message.
+   */
+  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0, unsent: 0 };
   /** What is left to hide of the last correction. Add it to the body's position when drawing. */
   smoothX = 0;
   smoothY = 0;
@@ -340,7 +351,7 @@ export class ClientSession {
   private readonly bodies: Body[] = [];
   private readonly bodyTick = new Uint32Array(HISTORY);
   private readonly views = new ViewRing(() => new EntityView());
-  private readonly w = new BitWriter(256);
+  private readonly w = new BitWriter(MAX_CLIENT_MESSAGE);
   private readonly r = new BitReader();
   private readonly serverBody = new Body();
   private lastNow = -1;
@@ -348,6 +359,9 @@ export class ClientSession {
   private guardTick = 0;
   private needFull = true;
   private commandSeq = 0;
+  /** What `view` last asked the server for. */
+  private viewCap = 0;
+  private viewBytes = 0;
 
   constructor(conn: Connection, opts: SessionOptions) {
     this.registry = opts.registry;
@@ -371,13 +385,26 @@ export class ClientSession {
   command(op: number, args?: (w: BitWriter) => void): number {
     // The server expects sequence numbers without gaps, so an unsent command uses none.
     if (this.state !== "active") return 0;
-    const seq = (this.commandSeq = (this.commandSeq + 1) & 0xffff);
+    const seq = (this.commandSeq + 1) & 0xffff;
     const w = this.w;
     w.reset();
     writeCommand(w, seq, op);
     args?.(w);
+    // Part of a command is worse than none, so one that does not fit a message is counted and not sent.
+    if (w.overflow) {
+      this.stats.unsent++;
+      return 0;
+    }
+    this.commandSeq = seq;
     this.conn.send(CH_RELIABLE, w.bytes());
     return seq;
+  }
+
+  /** Asks to be shown at most `cap` entities, in snapshots of at most `bytes`. Sent when either changes. The server holds both to its limits. */
+  view(cap: number, bytes: number): void {
+    if ((cap === this.viewCap && bytes === this.viewBytes) || this.command(CMD_VIEW, (w) => (w.u16(cap), w.u16(bytes))) === 0) return;
+    this.viewCap = cap;
+    this.viewBytes = bytes;
   }
 
   create(look: Uint8Array): number {
@@ -565,6 +592,8 @@ export class ClientSession {
     else if (type === S_CHUNK_DROP) this.world?.structs.dropChunk(r.u16());
     else if (type === S_NODES) this.nodes(r);
     else if (type === S_EVENT) this.event(r);
+    else if (type === S_TACTICAL && this.world) this.tactical.readCells(r, this.world.hf);
+    else if (type === S_MARKS && this.world) this.tactical.readMarks(r, this.world.hf);
     else if (type === S_WELCOME) this.welcome(r);
     else if (type === S_RESULT) {
       const seq = r.u16();
@@ -855,7 +884,9 @@ export class ClientSession {
       this.closeReason = reason;
       this.conn.close();
     };
-    if (r.overflow || version !== PROTOCOL_VERSION) return refuse(CLOSED_BAD_MAP);
+    // Another version lays the rest out differently, so nothing after the version is believed.
+    if (version !== PROTOCOL_VERSION) return refuse(CLOSED_BAD_VERSION);
+    if (r.overflow) return refuse(CLOSED_BAD_MAP);
     // Derive the server's content here with the same function. If the hash differs, this client would predict other numbers, so it leaves.
     const reg = derive(this.registry, tuning);
     if (!reg || reg.hash !== contentHash) return refuse(CLOSED_BAD_CONTENT);

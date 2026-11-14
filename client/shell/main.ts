@@ -9,7 +9,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
 import { LEVEL_COLOURS, SKY_COLOR } from "../../shared/pack/palette.ts";
-import { PROVING_ID, buildProvingHeightfield, provingMapHash, provingNodes } from "../../shared/world/proving.ts";
+import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
 import { probePasses, provingProbes, type Probe } from "../core/selfcheck.ts";
 import { ClientSession } from "../core/session.ts";
@@ -45,14 +45,22 @@ function deviceKey(): Uint8Array {
 
 async function boot(): Promise<void> {
   const reg = compileContent(CORE_CONTENT).registry!;
+  // The server names its map's file. It is fetched whole, while the assets are, since the renderer draws the ground from it.
+  const mapBytes = (async () => {
+    const named = (await (await fetch("map.json")).json()) as { file: string };
+    return (await fetch(named.file)).arrayBuffer();
+  })();
   // The manifest says where every level of every mesh is. The boot pack is fetched whole, and the rest as it is wanted.
   const manifest = parseManifest(await (await fetch("assets/manifest.json")).text());
   const pack = parsePack(new Uint8Array(await (await fetch(`assets/${manifest.files[manifest.boot]!.name}`)).arrayBuffer()));
   const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
-  const hf = buildProvingHeightfield();
-  const mapHash = provingMapHash(hf);
+  const map = parseMap(new Uint8Array(await mapBytes));
+  const hf = mapHeightfield(map);
   const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
   const renderer = new GlRenderer(canvas, pack, hf);
+  // The ground is one texture, a texel a sample.
+  const widest = renderer.gl.getParameter(renderer.gl.MAX_TEXTURE_SIZE) as number;
+  if (hf.nx > widest || hf.nz > widest) throw new Error(`this map is ${hf.nx} by ${hf.nz} samples, and this device draws ground of at most ${widest} a side`);
   const session = new ClientSession(connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`), {
     name: params.get("name") ?? `survivor${Math.floor(performance.now() * 1000) % 100000}`,
     key: deviceKey(),
@@ -62,8 +70,8 @@ async function boot(): Promise<void> {
     clipHash: pack.clips.hash,
     // The self-check, the bench and ?quick skip the creator.
     ...(selfcheck || bench || params.has("quick") ? { look: defaultLook() } : {}),
-    resolveMap: (id, hash) => (id === PROVING_ID && hash === mapHash ? hf : null),
-    nodes: provingNodes,
+    resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
+    nodes: (ground, content) => mapNodes(map, ground, content),
   });
   const app = new App(session, reg, pack, { manifest, port });
   app.stress = params.has("stress");
@@ -165,7 +173,7 @@ async function boot(): Promise<void> {
       const misplaced = view.misplaced(app.ui.frame);
       const report = {
         // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
+        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
         rocks: rocks.map((m) => [m.level, m.drawn]),
         restored,
         assets: { ...app.scene?.assets.residency.stats, kept: port.cache },

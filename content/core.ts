@@ -3,6 +3,7 @@
 import type { Def } from "../shared/content/defs.ts";
 import { BUILDING_CONTENT } from "./building.ts";
 import { crafted, crafting } from "./craft.ts";
+import { CREATURES } from "./creatures/index.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
 const id = (name: string): string => `core:${name}`;
@@ -124,9 +125,7 @@ const LEVELS: Def = (() => {
   return { type: "levels", id: id("levels"), xp, engramPoints };
 })();
 
-// Stats are [base, gain per wild level, gain per level an owner gives]. For creatures the last is the raw gain times the
-// reference game's default multiplier for the stat (shared/sim/genome.ts TAMED_GAIN): health 27% x 0.2 = 0.054, melee
-// 10% x 0.17 = 0.017. A server's PerLevelStatsMultiplier settings scale each from there.
+// Stats are [base, gain per wild level, gain per level an owner gives]. The creatures are in content/creatures.
 const ALL: readonly Def[] = [
   {
     type: "species", class: "survivor",
@@ -150,91 +149,6 @@ const ALL: readonly Def[] = [
     // Knocked out at 200 torpor, and out for most of a minute.
     torporDrain: 4,
     stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015], torpidity: [200, 0, 0] },
-  },
-  {
-    type: "species", class: "creature",
-    id: "core:grazer",
-    tag: "grazer",
-    mesh: "box",
-    color: 9,
-    radius: 0.7,
-    height: 1.6,
-    eyeHeight: 1.3,
-    walkSpeed: 2.5,
-    sprintMul: 2.2,
-    jumpSpeed: 5,
-    food: { max: 400, perHour: 12 },
-    drops: [{ item: "core:hide", min: 4, max: 9 }, { item: "core:meat", min: 3, max: 6 }],
-    takes: { bullet: 0.7 },
-    killXp: 4,
-    // Once down it stays down for minutes.
-    torporDrain: 0.6,
-    stats: { health: [220, 0.2, 0.054], stamina: [180, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [400, 0.1, 0.1], weight: [200, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
-  },
-  // Modelled creatures. Each has a mesh, a skeleton and clips in the pack under its own id.
-  {
-    type: "species", class: "creature",
-    id: "core:parasaur",
-    tag: "parasaur",
-    mesh: "core:parasaur",
-    skeleton: "dino",
-    color: 9,
-    radius: 1.1,
-    height: 2.6,
-    eyeHeight: 2.4,
-    walkSpeed: 2.6,
-    sprintMul: 2.4,
-    jumpSpeed: 4,
-    turn: 110,
-    strafe: false,
-    fists: 12,
-    bite: { reach: 4.6 },
-    slots: 30,
-    // The reference game's taming numbers.
-    taming: { a0: 1500, a1: 75, foodBase: 0.001929, proneMult: 864.01, k: 0.4 },
-    eats: [{ item: "core:berry", food: 20, affinity: 20 }],
-    // The reference game's rate, 0.001929 a second. Its young start at 510 times that.
-    food: { max: 1500, perHour: 0.27 },
-    // The reference game's times, in seconds.
-    breeds: { egg: "core:egg_parasaur", incubate: 5142, mature: 95238 },
-    drops: [{ item: "core:hide", min: 8, max: 16 }, { item: "core:meat", min: 8, max: 14 }],
-    zones: { head: 1.5 },
-    killXp: 6,
-    torporDrain: 0.3,
-    stats: { health: [200, 0.2, 0.054], stamina: [200, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1500, 0.1, 0.1], weight: [255, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
-  },
-  {
-    type: "species", class: "creature",
-    id: "core:raptor",
-    tag: "raptor",
-    mesh: "core:raptor",
-    skeleton: "dino",
-    color: 5,
-    radius: 0.6,
-    height: 1.5,
-    eyeHeight: 1.3,
-    walkSpeed: 3.2,
-    sprintMul: 2.6,
-    jumpSpeed: 6,
-    turn: 240,
-    strafe: false,
-    fists: 15,
-    temper: "hunts",
-    sight: 22,
-    leash: 60,
-    bite: { reach: 2.6 },
-    slots: 20,
-    // The reference game's taming numbers.
-    taming: { a0: 1200, a1: 60, foodBase: 0.001543, proneMult: 648.09, k: 3.125 },
-    eats: [{ item: "core:meat", food: 50, affinity: 50 }, { item: "core:meat_cooked", food: 25, affinity: 25 }],
-    // The reference game's rate, 0.001543 a second.
-    food: { max: 1200, perHour: 0.216 },
-    breeds: { egg: "core:egg_raptor", incubate: 7199, mature: 133333 },
-    drops: [{ item: "core:hide", min: 5, max: 10 }, { item: "core:meat", min: 4, max: 8 }],
-    zones: { head: 3 },
-    killXp: 8,
-    torporDrain: 0.3,
-    stats: { health: [200, 0.2, 0.054], stamina: [150, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1200, 0.1, 0.1], weight: [140, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [180, 0.06, 0] },
   },
   // A practice target with a survivor's shape and zones.
   {
@@ -271,14 +185,12 @@ const ALL: readonly Def[] = [
   // The plaza floor has no material, so nothing harms it.
   { type: "structure", class: "static", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
   ...BUILDING_CONTENT,
+  ...CREATURES,
   { type: "prop", class: "projectile", id: "core:grenade_live", mesh: "core:grenade_thrown", color: 7, radius: 0.08, height: 0.12 },
   // Holds everything a survivor carried when it died.
   { type: "prop", class: "container", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // Holds items dropped on the ground.
   { type: "prop", class: "container", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
-  // One egg prop for each species that lays.
-  { type: "prop", class: "egg", id: "core:egg_parasaur", mesh: "core:egg", color: 9, radius: 0.3, height: 0.7 },
-  { type: "prop", class: "egg", id: "core:egg_raptor", mesh: "core:egg", color: 5, radius: 0.3, height: 0.7 },
   { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8 },
   { type: "buff", id: "core:tranquilized", label: "Tranquilized", color: 9, seconds: 5, again: "stack" },
   // A narcotic at work. Doses run one after another.
@@ -294,12 +206,6 @@ const ALL: readonly Def[] = [
   { type: "item", class: "resource", id: "core:stone", stack: 100, weight: 0.5, color: 15 },
   { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: 4, eat: { food: 4, water: 2 }, color: 8 },
   { type: "item", class: "consumable", id: "core:meat", stack: 20, weight: 0.1, spoilHours: 1, eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 } },
-  { type: "item", class: "saddle", id: "core:saddle_parasaur", stack: 1, weight: 10, label: "parasaur saddle", color: 3, saddle: { fits: "core:parasaur", armor: 25 } },
-  { type: "item", class: "saddle", id: "core:saddle_raptor", stack: 1, weight: 10, label: "raptor saddle", color: 3, saddle: { fits: "core:raptor", armor: 25 } },
-  crafting("core:saddle_parasaur", { needs: [{ item: "core:hide", count: 80 }, { item: "core:fiber", count: 50 }, { item: "core:wood", count: 15 }], seconds: 10, xp: 6 }),
-  crafting("core:saddle_raptor", { needs: [{ item: "core:hide", count: 110 }, { item: "core:fiber", count: 65 }, { item: "core:wood", count: 20 }], seconds: 10, xp: 8 }),
-  { type: "engram", id: "core:engram-saddle_parasaur", label: "Parasaur saddle", level: 9, cost: 9, item: "core:saddle_parasaur" },
-  { type: "engram", id: "core:engram-saddle_raptor", label: "Raptor saddle", level: 18, cost: 9, item: "core:saddle_raptor" },
   { type: "item", class: "consumable", id: "core:meat_cooked", stack: 20, weight: 0.1, spoilHours: 2, eat: { food: 35, health: 8 }, color: 3, label: "cooked meat" },
   { type: "item", class: "consumable", id: "core:waterskin", stack: 1, weight: 1, eat: { water: 60 }, label: "water skin", color: 14 },
   { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },

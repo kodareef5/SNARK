@@ -47,8 +47,8 @@ function fullHud(): HudModel {
   for (let i = 0; i < 8; i++) m.talkers.push("W".repeat(24));
   m.banner = "SPECTATING";
   m.vitals[4]!.fraction = 0.5;
-  for (let i = 0; i < 80; i++) m.markers.push({ kind: i % 2 ? "player" : "creature", u: (i % 9) / 8, v: (i % 7) / 6 });
   m.markers.push({ kind: "self", u: 1, v: 1 });
+  for (let i = 0; i < 300; i++) m.markers.push({ kind: i % 2 ? "player" : "creature", u: (i % 9) / 8, v: (i % 7) / 6 });
   return m;
 }
 
@@ -173,10 +173,13 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
         expect(f.find(KEY_INV_SLOT + 39 * 3 + 2)!.text).toBe("100");
         expect(f.find(KEY_INV_INFO)!.text).toContain("berry x100");
       }
-      // At most 64 markers are drawn. The local player's is last, so it is on top.
-      let markers = 0;
-      for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_MARKER && f.nodes[i]!.key < KEY_MARKER + 100) markers++;
-      expect(markers).toBe(64);
+      // At most 256 markers are drawn, the first the model lists. The reader's own is drawn last, so it is on top.
+      const markers: number[] = [];
+      for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_MARKER && f.nodes[i]!.key < KEY_MARKER + 1000) markers.push(i);
+      expect(markers.length).toBe(256);
+      const own = f.nodes[markers[255]!]!;
+      const map = f.find(KEY_MINIMAP)!;
+      expect([own.x + 2, own.y + 2]).toEqual([map.x + map.w, map.y + map.h]);
     }
   }
 });

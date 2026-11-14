@@ -1,8 +1,13 @@
 // Builds pack files from meshes in authoring form.
 
 import type { Clip } from "../../shared/anim/clip.ts";
-import { CLIP_ROOT_BYTES, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, lodVertices, readIndices, type Pack, type PackHeader, type PackMesh, type PackRig } from "../../shared/pack/pack.ts";
+import {
+  CLIP_ROOT_BYTES, MOST_SECTIONS, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
+  type Pack, type PackHeader, type PackLod, type PackMaterial, type PackMesh, type PackRig, type PackTexture,
+} from "../../shared/pack/pack.ts";
+import { TEXTURE_ROLES, stepOf } from "../../shared/pack/texture.ts";
 import { surfaceError } from "./error.ts";
+import { decodeSkin, decodeSurface, encodeSkin, encodeSurface, tangentsOf } from "./surface.ts";
 
 /** One level of detail before quantization. */
 export interface SourceLod {
@@ -15,6 +20,18 @@ export interface SourceLod {
   bones?: Uint8Array;
   /** How far, in metres, its surface lies from the finest level's, where what made it knows. Measured where it is not given. */
   error?: number;
+  // What follows is for a level drawn with materials, which needs `uvs` and `normals`. All but `sections` are per vertex.
+  /** u, v: 0 to 1 across the picture, with v = 0 at its first row. */
+  uvs?: Float32Array;
+  /** x, y, z, of length 1. */
+  normals?: Float32Array;
+  /** x, y, z and the sign of the bitangent, 1 or -1, as glTF has them. Worked out from the texture coordinates where not given. */
+  tangents?: Float32Array;
+  /** Four bones and their four weights, in a mesh with a skeleton. `bones[v]` must be one of the four. The weights need not sum to 1. */
+  joints?: Uint8Array;
+  weights?: Float32Array;
+  /** Per triangle, which of the mesh's `materials` it is drawn with. Absent where every triangle is drawn with the first. */
+  sections?: Uint8Array;
 }
 
 export interface SourceMesh {
@@ -24,6 +41,17 @@ export interface SourceMesh {
   /** Skeleton the vertices follow, and optionally the rig (by id) the mesh was made on. */
   skeleton?: string;
   rig?: string;
+  /**
+   * The first level that is flat. The levels before it are drawn with materials. It and every coarser one are written
+   * flat, whatever else they have. Absent when every level is flat.
+   */
+  flat?: number;
+  /**
+   * The materials its triangles are drawn with, and the textures those name: where a material names a texture it gives
+   * its place in `textures`, or -1. A pack keeps one material and one texture of each id, whichever meshes name it.
+   */
+  materials?: PackMaterial[];
+  textures?: PackTexture[];
 }
 
 /** The blob of a pack as it is put together: runs of bytes, each padded to a multiple of 4. */
@@ -68,12 +96,70 @@ export class PackBlob {
   }
 }
 
+const byId = (a: { id: string }, b: { id: string }): number => (a.id < b.id ? -1 : 1);
+
+/** How many of a mesh's levels are drawn with materials. */
+const surfaced = (mesh: SourceMesh): number => Math.min(mesh.flat ?? 0, mesh.lods.length);
+
+/** The materials the meshes' triangles are drawn with and the textures those name, one of each id, in order of id. */
+function pool(meshes: readonly SourceMesh[]): { materials: PackMaterial[]; textures: PackTexture[] } {
+  const textures = new Map<string, PackTexture>();
+  /** Per id: the material, the ids of its textures by role, and both as text, to tell two that differ. */
+  const materials = new Map<string, { material: PackMaterial; names: (string | null)[]; text: string }>();
+  for (const mesh of meshes) {
+    const used = new Set<number>();
+    for (const lod of mesh.lods.slice(0, surfaced(mesh))) for (let t = 0; t < lod.indices.length / 3; t++) used.add(lod.sections?.[t] ?? 0);
+    for (const k of used) {
+      const m = mesh.materials?.[k];
+      if (!m) throw new Error(`${mesh.id}: a triangle is drawn with material ${k}, which the mesh does not have`);
+      const names = TEXTURE_ROLES.map((role) => {
+        if (m[role] < 0) return null;
+        const t = mesh.textures?.[m[role]];
+        if (!t || t.role !== role || stepOf(t.top) < 0) throw new Error(`${mesh.id}: material ${m.id} has no usable ${role} texture at ${m[role]}`);
+        const had = textures.get(t.id);
+        if (had && (had.role !== t.role || had.top !== t.top)) throw new Error(`${mesh.id}: texture ${t.id} is described twice, and differently`);
+        textures.set(t.id, { id: t.id, role: t.role, top: t.top });
+        return t.id;
+      });
+      const material: PackMaterial = { id: m.id, base: -1, normal: -1, mro: -1, mask: -1, mask2: -1, tint: m.tint, grey: m.grey, emissive: m.emissive, flags: m.flags, cutoff: m.cutoff, span: m.span };
+      const text = JSON.stringify([material, names]);
+      const had = materials.get(m.id);
+      if (had && had.text !== text) throw new Error(`${mesh.id}: material ${m.id} is described twice, and differently`);
+      materials.set(m.id, { material, names, text });
+    }
+  }
+  const out = [...textures.values()].sort(byId);
+  for (const { material, names } of materials.values()) TEXTURE_ROLES.forEach((role, k) => (material[role] = out.findIndex((t) => t.id === names[k])));
+  return { textures: out, materials: [...materials.values()].map((m) => m.material).sort(byId) };
+}
+
+/**
+ * A level's triangles as one run for each material, in the pack's order of materials, and the runs as PackLod lists
+ * them. `place` is where the pack has each of the mesh's materials.
+ */
+function inSections(lod: SourceLod, place: readonly number[]): { indices: Uint32Array; sections: number[] } {
+  const of = Array.from({ length: lod.indices.length / 3 }, (_, t) => place[lod.sections?.[t] ?? 0]!);
+  const order = [...of.keys()].sort((a, b) => of[a]! - of[b]! || a - b);
+  const indices = new Uint32Array(order.length * 3);
+  const sections: number[] = [];
+  order.forEach((t, k) => {
+    indices.set(lod.indices.subarray(t * 3, t * 3 + 3), k * 3);
+    if (of[t] !== sections[sections.length - 3]) sections.push(of[t]!, k * 3, 0);
+    sections[sections.length - 1]! += 3;
+  });
+  return { indices, sections };
+}
+
 export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = []): Uint8Array {
   const blob = new PackBlob();
   const append = (bytes: Uint8Array): number => blob.append(bytes);
 
-  const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: [...rigs].sort((a, b) => (a.id < b.id ? -1 : 1)), clips: [] };
-  for (const mesh of [...meshes].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+  const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: [...rigs].sort(byId), clips: [] };
+  const sorted = [...meshes].sort(byId);
+  const { materials, textures } = pool(sorted);
+  if (materials.length > 0) header.materials = materials;
+  if (textures.length > 0) header.textures = textures;
+  for (const mesh of sorted) {
     if (mesh.lods.length === 0) throw new Error(`${mesh.id}: no geometry`);
     // One set of bounds for all levels, so they overlay exactly.
     const min = [Infinity, Infinity, Infinity];
@@ -94,7 +180,10 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
       out.rig = header.rigs.findIndex((r) => r.id === mesh.rig);
       if (out.rig < 0) throw new Error(`${mesh.id}: rig "${mesh.rig}" is not in the pack`);
     }
-    for (const lod of mesh.lods) {
+    const flat = surfaced(mesh);
+    if (flat > 0) out.flat = flat;
+    const place = (mesh.materials ?? []).map((m) => materials.findIndex((p) => p.id === m.id));
+    mesh.lods.forEach((lod, level) => {
       const n = lod.positions.length / 3;
       const verts = new Uint8Array(n * VERTEX_BYTES);
       const view = new DataView(verts.buffer);
@@ -107,19 +196,32 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
         if (lod.bones) verts[v * VERTEX_BYTES + 7] = lod.bones[v]!;
       }
       if (mesh.skeleton && !lod.bones) throw new Error(`${mesh.id}: a mesh with a skeleton needs a bone for every vertex`);
+      // A level drawn with materials has its triangles sorted by material. A flat one keeps the order it came in.
+      const textured = level < flat ? inSections(lod, place) : null;
+      const indices = textured ? textured.indices : lod.indices;
       const indexBytes = n > 65535 ? 4 : 2;
-      const idx = new Uint8Array(lod.indices.length * indexBytes);
+      const idx = new Uint8Array(indices.length * indexBytes);
       const iview = new DataView(idx.buffer);
-      lod.indices.forEach((i, k) => (indexBytes === 4 ? iview.setUint32(k * 4, i, true) : iview.setUint16(k * 2, i, true)));
+      indices.forEach((i, k) => (indexBytes === 4 ? iview.setUint32(k * 4, i, true) : iview.setUint16(k * 2, i, true)));
       const error = lod === mesh.lods[0] ? 0 : Math.round((lod.error ?? surfaceError(mesh.lods[0]!, lod)) * 1e5) / 1e5;
-      // Indices and then vertices, so the level is one run of bytes.
+      // Indices and then vertices, so the level is one run of bytes. The surface and the skin go on the end of it.
       const indexOffset = append(idx);
-      out.lods.push({ vertexOffset: append(verts), vertexCount: n, indexOffset, indexCount: lod.indices.length, indexBytes, error });
-    }
+      const made: PackLod = { vertexOffset: append(verts), vertexCount: n, indexOffset, indexCount: indices.length, indexBytes, error };
+      if (textured) {
+        const { uvs, normals } = lod;
+        if (uvs?.length !== n * 2 || normals?.length !== n * 3) throw new Error(`${mesh.id}: a level drawn with materials needs a texture coordinate and a normal for every vertex`);
+        const runs = textured.sections.length / 3;
+        if (runs < 1 || runs > MOST_SECTIONS) throw new Error(`${mesh.id}: a level is drawn with ${runs} materials, and may be with 1 to ${MOST_SECTIONS}`);
+        made.surfaceOffset = append(encodeSurface(uvs, normals, lod.tangents ?? tangentsOf({ positions: lod.positions, indices, uvs, normals })));
+        if (mesh.skeleton && lod.joints && lod.weights) made.skinOffset = append(encodeSkin(lod.joints, lod.weights, lod.bones!, mesh.id));
+        made.sections = textured.sections;
+      }
+      out.lods.push(made);
+    });
     header.meshes.push(out);
   }
 
-  for (const clip of [...clips].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+  for (const clip of [...clips].sort(byId)) {
     const rot = new Uint8Array(clip.frames * clipRotBytes(clip.bones));
     const rv = new DataView(rot.buffer);
     for (let k = 0; k < clip.frames * clip.bones; k++) {
@@ -153,12 +255,33 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
       const out: SourceLod = { positions, colors, indices: readIndices(pack, lod) };
       if (m.skeleton) out.bones = bones;
       if (level > 0 && !Number.isNaN(lod.error)) out.error = lod.error;
+      const surface = lodSurface(pack, lod);
+      const skin = lodSkin(pack, lod);
+      if (surface) Object.assign(out, decodeSurface(surface), skin ? decodeSkin(skin) : {});
       return out;
     });
     const out: SourceMesh = { id: m.id, lods };
     if (m.collider) out.collider = m.collider;
     if (m.skeleton) out.skeleton = m.skeleton;
     if (m.rig !== undefined) out.rig = pack.header.rigs[m.rig]!.id;
+    if (m.flat === undefined) return out;
+    // The mesh's own lists: the pack's materials that its sections name, and the textures those name.
+    const all = pack.header.materials ?? [];
+    const used = [...new Set(m.lods.flatMap((lod) => (lod.sections ?? []).filter((_, k) => k % 3 === 0)))].sort((a, b) => a - b);
+    const named = [...new Set(used.flatMap((k) => TEXTURE_ROLES.map((role) => all[k]![role])).filter((t) => t >= 0))].sort((a, b) => a - b);
+    out.flat = m.flat;
+    out.materials = used.map((k) => {
+      const material = { ...all[k]! };
+      for (const role of TEXTURE_ROLES) material[role] = named.indexOf(material[role]);
+      return material;
+    });
+    out.textures = named.map((t) => ({ ...pack.header.textures![t]! }));
+    m.lods.forEach((lod, level) => {
+      const runs = lod.sections;
+      if (!runs) return;
+      const sections = (lods[level]!.sections = new Uint8Array(lod.indexCount / 3));
+      for (let k = 0; k < runs.length; k += 3) sections.fill(used.indexOf(runs[k]!), runs[k + 1]! / 3, (runs[k + 1]! + runs[k + 2]!) / 3);
+    });
     return out;
   });
 }

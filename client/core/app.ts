@@ -10,7 +10,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, REJECT_PASSWORD, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, REJECT_PASSWORD, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -18,7 +18,8 @@ import { structName } from "./ui/structure.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls } from "./controls.ts";
-import { HudModel, fillAction, fillBuffs, fillHotbar, minimapImage, updateHud } from "./hud.ts";
+import { HudModel, fillAction, fillBuffs, fillHotbar, updateHud } from "./hud.ts";
+import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
@@ -33,7 +34,7 @@ import { handleIndex } from "../../shared/ids.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS } from "../../shared/sim/items.ts";
 import { Viewpoint } from "./viewpoint.ts";
-import { CLOSED_BAD_CONTENT, RemoteSample, type ClientSession } from "./session.ts";
+import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
 import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import { youngScale } from "../../shared/sim/breeding.ts";
@@ -44,7 +45,9 @@ import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts
 
 /** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
-import { IMAGE_MINIMAP, MINIMAP_SIZE } from "./ui/hud.ts";
+import { IMAGE_MAP, IMAGE_MINIMAP } from "./ui/hud.ts";
+import { CANVAS_HEIGHT } from "./ui/nodes.ts";
+import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
 
 /** Metres. Matches the server's REACH. */
@@ -194,6 +197,8 @@ export class App {
     }
     if (this.ui.captureKeyboard) return false;
     if (this.builder.key(code, down, repeat, this.nowMs, this.reg)) return true;
+    // Minus and Equal zoom the minimap, or the map while it is open, where the arrows move it.
+    if (this.hud.chart?.key(code, down, this.ui.map)) return true;
     if (code === "AltLeft" || code === "AltRight") {
       // Returning true keeps the browser from opening its menu.
       this.alt = down;
@@ -281,6 +286,7 @@ export class App {
 
   /** `kind` is 0 for down, 1 for up, 2 for move. The position is in canvas units. */
   pointer(kind: number, key: number, x: number, y: number, button: number): void {
+    if (mapPointer(this.hud, kind, key, x, y)) return;
     this.ui.pointer(kind, key, x, y, button, this.session);
   }
 
@@ -426,8 +432,8 @@ export class App {
     this.nowMs = nowMs;
 
     if (session.state === "closed") {
-      // Only the two reasons a player can act on are spelled out.
-      hud.status = session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : `disconnected (reason ${session.closeReason})`;
+      // Only the reasons a player can act on are spelled out.
+      hud.status = session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
       return null;
     }
@@ -454,7 +460,9 @@ export class App {
         this.marks = made.marks;
       }
       this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z));
-      this.ui.frame.images[IMAGE_MINIMAP] = { width: MINIMAP_SIZE, height: MINIMAP_SIZE, data: minimapImage(world.hf, this.pack.palette, MINIMAP_SIZE), version: 1 };
+      const chart = (hud.chart = new Chart(world.hf, this.pack.palette));
+      this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
+      this.ui.frame.images[IMAGE_MAP] = chart.full.image;
     }
     hud.status = this.debug ? this.scene.assets.line() : "";
 
@@ -556,8 +564,9 @@ export class App {
     this.ui.settings.download = false;
     this.ui.settings.kept = keptLine(kept);
     this.scene.assets.tier = tierOf(this.ui.settings.tier);
+    session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
     const packet = this.scene.build(cam, this.remote);
-    updateHud(hud, session, this.remote, this.fps);
+    updateHud(hud, session, this.remote, this.fps, height / CANVAS_HEIGHT);
     this.feedback.absorb(session, this.reg, nowMs);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.damageNumbers && this.ui.settings.damageNumbers, session.hitMarkers);
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);

@@ -35,9 +35,11 @@ const ZONES: Zone[] = [
   // What a module is written against. It names nothing of the server's own.
   { dir: "server/api", may: ["shared", "server/api"], builtins: false },
   { dir: "modules", may: ["shared", "server/api", "modules"], builtins: false },
+  // A player that is a program: headless core on a socket, with tools in place of keys. It names nothing of the server's.
+  { dir: "agent", may: ["shared", "content", "client/core", "agent"], builtins: true },
   { dir: "tools", may: "*", builtins: true },
   // Tests never touch the DOM zones. Logic that needs a test belongs in client/core.
-  { dir: "tests", may: ["shared", "content", "client/core", "server", "server/api", "modules", "tools", "tests"], builtins: true },
+  { dir: "tests", may: ["shared", "content", "client/core", "server", "server/api", "modules", "agent", "tools", "tests"], builtins: true },
 ];
 
 /** Directories where results must be bit-identical on JavaScriptCore and V8. */
