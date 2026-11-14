@@ -9,7 +9,7 @@ import { CMD_MAP_ZOOM, RESULT_INVALID, RESULT_OK, S_MARKS, S_TACTICAL } from "..
 import { CH_UNRELIABLE, type Connection } from "../shared/net/transport.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import type { MapExtent } from "../shared/world/coords.ts";
-import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, writeCells, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
+import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, pieceShapes, writeCells, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -132,8 +132,7 @@ export class Tactical {
     this.game = game;
     this.records = records;
     this.rules = rules;
-    const reg = world.reg;
-    this.shapes = { halfX: reg.halfX, halfY: reg.halfY, halfZ: reg.halfZ, tint: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0)) };
+    this.shapes = pieceShapes(world.reg);
     const chunks = chunkCount(world.dims);
     this.summaries = new Array<Summary | null>(chunks).fill(null);
     this.held = new Array<Held | null>(game.clients.length).fill(null);
