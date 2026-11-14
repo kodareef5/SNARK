@@ -22,6 +22,8 @@ export interface PersistenceOptions {
   positionTicks: number;
   /** Journal entries kept. Older ones are deleted. */
   journalKeep: number;
+  /** Load a save made on another map, or on other bytes of this one. From its next commit it is this map's. */
+  allowMapMismatch: boolean;
 }
 
 /**
@@ -112,7 +114,7 @@ export class Persistence {
     this.world = world;
     this.records = records;
     this.store = store;
-    this.opts = { positionTicks: 1800, journalKeep: 100_000, ...opts };
+    this.opts = { positionTicks: 1800, journalKeep: 100_000, allowMapMismatch: false, ...opts };
     this.keeper = this.keep(store);
     this.keeper.onBackup = (r) => this.onBackup?.(r);
     world.structs.onChunkChanged = (chunk, healthOnly) => (healthOnly ? this.hurtChunks : this.dirtyChunks).add(chunk);
@@ -124,7 +126,14 @@ export class Persistence {
     const world = this.world;
     if (!store.fresh) {
       const mapId = store.meta("map_id");
-      if (mapId !== world.mapId) throw new Error(`save is for map "${mapId}", not "${world.mapId}"`);
+      // A save from before maps were files has no hash. It takes this map's at its next commit.
+      const mapHash = store.meta("map_hash");
+      const hex = (hash: number): string => hash.toString(16).padStart(8, "0");
+      if (!this.opts.allowMapMismatch) {
+        const onto = "start with the map file it was made on, or with --allow-map-mismatch to load it onto this one";
+        if (mapId !== world.mapId) throw new Error(`save is for map "${mapId}", not "${world.mapId}": ${onto}`);
+        if (mapHash !== null && Number(mapHash) !== world.mapHash) throw new Error(`save is for other bytes of map "${mapId}" (hash ${hex(Number(mapHash))}, and this file's is ${hex(world.mapHash)}): ${onto}`);
+      }
       world.tick = Number(store.meta("tick") ?? 0);
       world.dayOffset = Number(store.meta("day_offset") ?? 0);
       this.records.nextSeq = Number(store.meta("next_seq") ?? 1);
@@ -354,6 +363,7 @@ export class Persistence {
         store.setMeta("day_offset", world.dayOffset);
         store.setMeta("next_seq", records.nextSeq);
         store.setMeta("map_id", world.mapId);
+        store.setMeta("map_hash", world.mapHash);
       });
     } catch (err) {
       // Nothing was written. Keep the callbacks so a later commit can release them.

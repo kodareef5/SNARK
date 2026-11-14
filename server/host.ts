@@ -98,6 +98,8 @@ export interface HostOptions {
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
   allowLedgerMismatch?: boolean;
+  /** Load a save made on another map, or on other bytes of this one, instead of refusing. */
+  allowMapMismatch?: boolean;
   /** The animation clips of the asset pack the clients are served. They decide where hit zones are. */
   clips?: ClipSet;
   /** The rigs of that pack. Creatures are posed and hit on the rigs that have their own bones. */
@@ -279,7 +281,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     bus.after(SESSION_JOIN, { pid: c.pid, name: c.name, isNew: made.delete(c.pid) });
   };
   let started = false;
-  const persistence = store ? new Persistence(world, records, store) : null;
+  const persistence = store ? new Persistence(world, records, store, { allowMapMismatch: opts.allowMapMismatch ?? false }) : null;
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
