@@ -39,6 +39,8 @@ export class Falling {
   private readonly vz = new Float32Array(MAX_FALLING);
   private readonly spin = new Float32Array(MAX_FALLING);
   private readonly under = new Float32Array(MAX_FALLING);
+  /** Scratch for `absorb`: how far each piece shown is from the eye, squared. */
+  private readonly off = new Float64Array(MAX_FALLING);
   private readonly halfY: Float32Array;
   private readonly heightAt: (x: number, z: number) => number;
   private readonly nearest = new Map<number, number>();
@@ -62,6 +64,8 @@ export class Falling {
       const known = nearest.get(r.tick);
       if (known === undefined || d < known) nearest.set(r.tick, d);
     }
+    const off = this.off;
+    let measured = false;
     let far = -1;
     let farAt = -1;
     for (const r of list) {
@@ -69,12 +73,15 @@ export class Falling {
       const d2 = (r.x - ex) * (r.x - ex) + (r.y - ey) * (r.y - ey) + (r.z - ez) * (r.z - ez);
       let i = this.count;
       if (i === MAX_FALLING) {
-        // No room. It replaces the farthest piece shown if it is nearer.
+        // No room. It replaces the farthest piece shown if it is nearer. How far each is, is worked out once.
+        if (!measured) {
+          for (let k = 0; k < MAX_FALLING; k++) off[k] = (this.x0[k]! - ex) * (this.x0[k]! - ex) + (this.y0[k]! - ey) * (this.y0[k]! - ey) + (this.z0[k]! - ez) * (this.z0[k]! - ez);
+          measured = true;
+        }
         if (farAt < 0) {
           for (let k = 0; k < MAX_FALLING; k++) {
-            const q = (this.x0[k]! - ex) * (this.x0[k]! - ex) + (this.y0[k]! - ey) * (this.y0[k]! - ey) + (this.z0[k]! - ez) * (this.z0[k]! - ez);
-            if (q > far) {
-              far = q;
+            if (off[k]! > far) {
+              far = off[k]!;
               farAt = k;
             }
           }
@@ -82,6 +89,7 @@ export class Falling {
         this.dropped++;
         if (d2 >= far) continue;
         i = farAt;
+        off[i] = d2;
         far = farAt = -1;
       } else this.count++;
       const dx = r.x - r.ox;
