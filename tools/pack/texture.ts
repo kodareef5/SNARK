@@ -5,7 +5,7 @@
 import { RGBA_TOP, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_MAGIC, TEXTURE_VERSION, pictureBytes, stepBytes, stepOf, stepOffset, textureBytes, topIn, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
 import { baseMips, normalMips, packedMips, type Picture } from "./image.ts";
 import { partHash } from "./manifest.ts";
-import { checkMask, maskMips } from "./mask.ts";
+import { checkMasks, maskMips, readMasks, readRegions } from "./mask.ts";
 
 export interface EncodedTexture {
   role: TextureRole;
@@ -75,21 +75,33 @@ export function rgbaTexture(role: TextureRole, mips: readonly Uint8Array[]): Enc
   return { role, pictures: mips.slice(0, Math.log2(RGBA_TOP) + 1).map((m) => rgbaPicture(role, m)) };
 }
 
+/** A material's source pictures. Its colour regions come as a painted region map, or as the two masks where those were made by hand. */
+export interface MaterialMaps {
+  base?: Picture;
+  normal?: Picture;
+  mro?: Picture;
+  regions?: Picture;
+  mask?: Picture;
+  mask2?: Picture;
+}
+
 /**
  * The mips of a material's maps from its source pictures: RGBA8, smallest first, to cut at the top each texture is
- * given and hand to an encoder. The packed map is roughened by what the normal map loses, and a mask that breaks the
- * ring rule is refused. `wraps` is for a material that tiles.
+ * given and hand to an encoder. The packed map is roughened by what the normal map loses. Both masks come from the
+ * one region map, and there is no `mask2` where regions 3 to 5 are empty. Masks made by hand are refused if they are
+ * not one size or their weights sum past 1.
  */
-export function materialMips(maps: Readonly<Partial<Record<TextureRole, Picture>>>, wraps = false): Partial<Record<TextureRole, Uint8Array[]>> {
+export function materialMips(maps: Readonly<MaterialMaps>): Partial<Record<TextureRole, Uint8Array[]>> {
   const out: Partial<Record<TextureRole, Uint8Array[]>> = {};
   const normal = maps.normal && normalMips(maps.normal);
   if (maps.base) out.base = baseMips(maps.base);
   if (normal) out.normal = normal.pictures;
   if (maps.mro) out.mro = packedMips(maps.mro, normal?.lengths);
-  if (maps.mask) {
-    const report = checkMask(maps.mask, wraps);
-    if (report.faults > 0) throw new Error(`mask: regions that are not neighbours on the ring touch with no black between: ${report.where.join("; ")}`);
-    out.mask = maskMips(maps.mask, wraps);
+  if (maps.regions) Object.assign(out, maskMips(readRegions(maps.regions)));
+  else if (maps.mask) {
+    const report = checkMasks(maps.mask, maps.mask2);
+    if (report.over > 0) throw new Error(`masks: the weights of ${(report.over * 100).toFixed(2)}% of the pixels sum past 1, to as much as ${report.most.toFixed(2)}`);
+    Object.assign(out, maskMips(readMasks(maps.mask, maps.mask2)));
   }
   return out;
 }
