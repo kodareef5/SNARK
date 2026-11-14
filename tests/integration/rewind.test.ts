@@ -20,8 +20,9 @@ test("a shot is judged no further back than the round trip the server measured, 
   expect(combat.lag(c)).toBe(1);
   expect(back()).toBe(h.world.tick - c.inputs.view[h.world.tick & c.inputs.mask]!);
   expect([back() > 3, back() < 6]).toEqual([true, true]);
-  // Bea's is 150 ms each way, nine ticks there and back. She saw the world thirteen ticks ago and is judged at the cap.
-  expect([combat.lag(far), back(far)]).toEqual([9, REWIND_TICKS]);
+  // Bea's is 150 ms each way, nine ticks there and back. She saw the world nearly thirteen ticks ago, within the cap, and is judged then.
+  expect([combat.lag(far), back(far), back(far) < REWIND_TICKS]).toEqual([9, h.world.tick - far.inputs.view[h.world.tick & far.inputs.mask]!, true]);
+  expect(back(far)).toBeGreaterThan(12);
 
   // A client made for the purpose now sends ada's inputs: each tick it acknowledges `ack` and says it draws `behind` ticks behind that.
   const end = h.ends[0]!;

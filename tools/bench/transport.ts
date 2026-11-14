@@ -2,7 +2,7 @@
 // that came too late, the input delay that is kept to avoid them, corrections, and whether the clock settles.
 // `bun tools/bench/transport.ts` runs these alone, on the proving ground.
 
-import { REMOTE_DELAY, type ClientSession } from "../../client/core/session.ts";
+import type { ClientSession } from "../../client/core/session.ts";
 import type { GameOptions } from "../../server/game.ts";
 import type { LinkOptions, LoopbackEnd } from "../../shared/net/loopback.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
@@ -26,6 +26,8 @@ export interface Lossy {
   settle: number;
   seconds: number;
   link?: LinkOptions;
+  /** Every client's line goes down for `ms`, `at` seconds into the watch. */
+  outage?: { at: number; ms: number };
   game?: Partial<GameOptions>;
   seed?: number;
 }
@@ -51,6 +53,8 @@ export interface Lossless {
   jumps: number;
   /** Ticks between the 5th and 95th percentile of how far a client's clock is ahead of the server's. */
   spread: number;
+  /** After an outage, milliseconds until a client reads a snapshot no older than its trip there and 100 ms, on average. */
+  recovered: number;
   /** Milliseconds between the server sending a snapshot and the client reading it: median and 99th percentile. */
   age: number;
   age99: number;
@@ -106,6 +110,9 @@ export function lossy(o: Lossy): Lossless {
   let judged = 0;
   const wasHeld = new Uint8Array(n);
   let prevNow = h.now;
+  let watchFrom = 0;
+  let back = -1;
+  const recovered = new Float64Array(n).fill(-1);
   const sentAt = new Float64Array(1 << 16);
   const tick = h.server.tick.bind(h.server);
   h.server.tick = () => {
@@ -147,12 +154,14 @@ export function lossy(o: Lossy): Lossless {
       lastSim[c] = s.simTick;
       if (!watching) continue;
       if (s.latestSnapshot !== lastSnap[c]) {
-        ages.push(now - sentAt[s.latestSnapshot & 0xffff]!);
+        const age = now - sentAt[s.latestSnapshot & 0xffff]!;
+        ages.push(age);
         lastSnap[c] = s.latestSnapshot;
+        if (back >= 0 && now > back && recovered[c]! < 0 && age <= o.rtt / 2 + 100) recovered[c] = now - back;
       }
       frames++;
-      drawn += REMOTE_DELAY;
-      const still = s.renderClock - REMOTE_DELAY >= s.latestSnapshot;
+      drawn += s.remoteDelay;
+      const still = s.renderClock - s.remoteDelay >= s.latestSnapshot;
       if (still) {
         frozen++;
         if (frozenSince[c]! < 0) {
@@ -165,6 +174,10 @@ export function lossy(o: Lossy): Lossless {
       }
       leads[c]!.push(s.simTick - h.world.tick);
     }
+    if (o.outage && watching && back < 0 && now >= watchFrom + o.outage.at * 1000) {
+      for (const e of h.ends) h.net.outage(e, o.outage.ms);
+      back = now + o.outage.ms;
+    }
     prevNow = now;
   };
   h.run(o.settle * 1000, frame);
@@ -174,6 +187,7 @@ export function lossy(o: Lossy): Lossless {
   const wire = ends.map((e) => e.wire.bytes);
   const before = sessions.map((s) => ({ ...s.stats }));
   watching = true;
+  watchFrom = h.now;
   h.run(o.seconds * 1000, frame);
   h.server.tick = tick;
   const minutes = o.seconds / 60;
@@ -191,6 +205,7 @@ export function lossy(o: Lossy): Lossless {
     longest,
     held: held / n / minutes,
     clipped: (100 * clipped) / Math.max(1, judged),
+    recovered: recovered.reduce((sum, r) => sum + (r < 0 ? o.seconds * 1000 : r), 0) / n,
     lateRuns: lateRuns / n / minutes,
     delay: delays / Math.max(1, delayed),
     corrections: sessions.reduce((sum, s, i) => sum + s.stats.corrections - before[i]!.corrections, 0) / n / minutes,

@@ -68,18 +68,18 @@ const TYPE_WORDS: readonly string[] = ["melee", "pierce", "bullet", "fire", "exp
 
 /** Ticks behind its newest acked snapshot a client is assumed to draw other bodies, when no input for the tick says. */
 const VIEW_BEHIND = 2;
-/** The farthest back a shot is judged. Beyond this the shooter must lead. */
-export const REWIND_TICKS = 12;
+/** The farthest back a shot is judged. Beyond this the shooter must lead. History keeps one more tick. */
+export const REWIND_TICKS = 15;
 /**
  * A shot is also judged no further back than its client's round trip as the server measured it, plus the ticks by which
- * its input came ahead of its tick, plus this many: two that a client draws others behind, and three for rounding and an
- * uneven line.
+ * its input came ahead of its tick, plus this many: up to four that a client draws others behind (REMOTE_DELAY_MAX of
+ * client/core/session.ts), and three for rounding and an uneven line.
  */
-export const REWIND_SLACK = 5;
+export const REWIND_SLACK = 7;
 /** The round trip is the least seen in this many ticks and the same number before them, so that holding acknowledgements back before a shot buys nothing. */
 const LAG_WINDOW = 64;
 /** Metres a body can have moved in REWIND_TICKS, and in the tick one segment of a flight takes. They pad the search for bodies near a ray. */
-const REWIND_REACH = 5;
+const REWIND_REACH = 6.5;
 const SWEEP_REACH = 1;
 
 /** What a blow or a shot carries. */

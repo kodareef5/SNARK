@@ -169,13 +169,20 @@ export class RemoteSample {
 }
 
 const HISTORY = 128;
-/** Remote entities are drawn this many ticks behind the render clock, so there are two snapshots to blend between. */
+/**
+ * Remote entities are drawn at least this many ticks behind the render clock, so there are two snapshots to blend between,
+ * and further while snapshots come unevenly, up to REMOTE_DELAY_MAX. The server allows for it when it judges a shot (REWIND_SLACK).
+ */
 export const REMOTE_DELAY = 2;
+export const REMOTE_DELAY_MAX = 4;
+/** Seconds of how far the render clock ran past the newest snapshot before the next came, that the delay is set from. */
+const JITTER_SECONDS = 5;
 /** Ticks the client starts ahead of the server before any feedback. */
 const INITIAL_LEAD = 4;
 /**
  * The clock steers on the margins of the last MARGIN_WINDOW ticks of snapshots: the server should have had at least
- * TARGET_MARGIN inputs in hand each time, and never more than MARGIN_CAP, because it judges shots on a few (REWIND_SLACK).
+ * TARGET_MARGIN inputs in hand each time, and never more than MARGIN_CAP, so that a lossy line does not spend on inputs in
+ * hand the rewind a shot may have (REWIND_TICKS).
  */
 const TARGET_MARGIN = 1;
 const MARGIN_CAP = 5;
@@ -338,6 +345,8 @@ export class ClientSession {
   tickClock = 0;
   /** Smoothed estimate of the newest server tick received. */
   renderClock = 0;
+  /** How many ticks behind the render clock remote entities are drawn: further while snapshots come unevenly. */
+  remoteDelay = REMOTE_DELAY;
   /** The tick sampleRemote last drew remote entities at, which is what was on screen when the next input is sampled. 0 before the first. */
   shown = 0;
   latestSnapshot = 0;
@@ -369,6 +378,11 @@ export class ClientSession {
   private lastNow = -1;
   private dilation = 1;
   private guardTick = 0;
+  /** The furthest the render clock ran past the newest snapshot before the next came, in each of the last few seconds, and which second each is. */
+  private readonly ahead = new Float32Array(8);
+  private readonly aheadAt = new Int32Array(8).fill(-1);
+  /** A frame came late, and the render clock has not yet come back to the snapshots. */
+  private hitch = false;
   /** The margins reported, by their snapshot's tick. */
   private readonly margins = new Int8Array(128);
   private readonly marginAt = new Uint32Array(128);
@@ -455,10 +469,12 @@ export class ClientSession {
     if (this.state !== "active") return;
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
     this.lastNow = nowMs;
+    if (dt > 100) this.hitch = true;
     if (dt > 250) dt = 250;
     const ticks = (dt / 1000) * TICK_RATE;
     this.tickClock += ticks * this.dilation;
     this.renderClock += ticks;
+    this.followJitter(ticks);
     if (this.smoothX !== 0 || this.smoothY !== 0 || this.smoothZ !== 0) {
       const keep = Math.exp(-dt / SMOOTH_MS);
       this.smoothX *= keep;
@@ -494,7 +510,7 @@ export class ClientSession {
   }
 
   /** Fill `out` with remote entities interpolated to the current render time. */
-  sampleRemote(out: RemoteSample, delayTicks = REMOTE_DELAY): void {
+  sampleRemote(out: RemoteSample, delayTicks = this.remoteDelay): void {
     out.count = 0;
     const at = this.renderClock - delayTicks;
     out.tick = at;
@@ -558,6 +574,38 @@ export class ClientSession {
     this.conn.close();
   }
 
+  /**
+   * How far the render clock ran past the newest snapshot before snapshot `tick` came. After a long frame the render clock
+   * runs ahead of the snapshots until it is pulled back, and that is not an uneven line.
+   */
+  private noteGap(tick: number): void {
+    const gap = this.renderClock - this.latestSnapshot;
+    if (this.hitch) {
+      this.hitch = gap > 1.5;
+      return;
+    }
+    const second = Math.floor(tick / TICK_RATE);
+    const k = second & 7;
+    if (this.aheadAt[k] !== second) {
+      this.aheadAt[k] = second;
+      this.ahead[k] = gap;
+    } else if (gap > this.ahead[k]!) this.ahead[k] = gap;
+  }
+
+  /**
+   * Draws remote entities far enough behind that the newest snapshot was ahead of them at every moment of the last few
+   * seconds. The delay grows quickly and shrinks slowly, so what is drawn never jumps.
+   */
+  private followJitter(ticks: number): void {
+    const second = Math.floor(this.latestSnapshot / TICK_RATE);
+    let most = 0;
+    for (let i = 0; i < 8; i++) if (this.aheadAt[i]! > second - JITTER_SECONDS && this.ahead[i]! > most) most = this.ahead[i]!;
+    // Half a tick more than the furthest, within the bounds. It moves a tenth of a tick a tick when growing, a hundredth when shrinking.
+    const want = most + 0.5 < REMOTE_DELAY ? REMOTE_DELAY : most + 0.5 > REMOTE_DELAY_MAX ? REMOTE_DELAY_MAX : most + 0.5;
+    const d = this.remoteDelay;
+    this.remoteDelay = want > d ? Math.min(want, d + ticks * 0.1) : Math.max(want, d - ticks * 0.01);
+  }
+
   private step(t: number): void {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
@@ -596,7 +644,7 @@ export class ClientSession {
     const w = this.w;
     w.reset();
     // The last argument is how far behind the newest snapshot remote entities were drawn when the newest input was sampled.
-    writeInputs(w, this.inputs, this.needFull ? 0 : this.latestSnapshot, this.simTick, count, this.latestSnapshot - (this.shown > 0 ? this.shown : this.renderClock - REMOTE_DELAY));
+    writeInputs(w, this.inputs, this.needFull ? 0 : this.latestSnapshot, this.simTick, count, this.latestSnapshot - (this.shown > 0 ? this.shown : this.renderClock - this.remoteDelay));
     this.conn.send(CH_UNRELIABLE, w.bytes());
   }
 
@@ -956,6 +1004,7 @@ export class ClientSession {
       this.needFull = true;
       return;
     }
+    if (this.latestSnapshot > 0) this.noteGap(tick);
     this.latestSnapshot = tick;
     this.needFull = false;
     this.sessionState = state;
