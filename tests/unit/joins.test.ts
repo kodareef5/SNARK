@@ -27,9 +27,9 @@ function at(w: TestWorld, ref: number): [number, number, number] {
   return [t.x[s]!, t.y[s]!, t.z[s]!];
 }
 
-/** Every turn within a quarter, each in one of the four quarters: every frame a first piece can have. */
+/** Every facing a first piece can be given. */
 function eachYaw(visit: (yaw: number) => void): void {
-  for (let within = 0; within < Q; within++) visit((within & 3) * Q + within);
+  for (let yaw = 0; yaw < 4 * Q; yaw++) visit(yaw);
 }
 
 test("no ray passes between two joined pieces, wherever the first was turned: not a look, and not a line from one point to another", () => {
@@ -108,7 +108,7 @@ test("no ray passes between two joined pieces, wherever the first was turned: no
     for (const ref of [c2, c1, u2, u1, w2, w1, f2, f1]) w.structs.remove(ref);
   });
   expect(leaks).toEqual([]);
-  expect(cast).toBe(Q * 22);
+  expect(cast).toBe(4 * Q * 22);
 });
 
 test("a door meets its frame: a look straight at either edge of a shut door ends on the door or the frame", () => {
