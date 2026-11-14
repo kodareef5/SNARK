@@ -13,7 +13,11 @@ import { Gait } from "../../../shared/anim/gait.ts";
 import { buildRigs, type Rig } from "../../../shared/anim/rigs.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
+import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import type { Assets } from "../assets/assets.ts";
+import { Corpses } from "../ragdoll.ts";
+import type { RemoteSample } from "../session.ts";
+import type { Camera } from "./camera.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
@@ -118,6 +122,8 @@ export class Characters {
    */
   private readonly bySeed = new Map<number, number>();
   private packet: FramePacket | null = null;
+  /** Bodies that died, as their death clips and ragdolls pose them. */
+  private readonly dead: Corpses;
 
   constructor(reg: Registry, pack: Pack, assets: Assets) {
     const { table, bind } = assets;
@@ -177,6 +183,7 @@ export class Characters {
       }
       return bodies.length > 0 ? { sets: bodies, color: d.color } : null;
     });
+    this.dead = new Corpses(this.creatures, reg.birthScale);
   }
 
   /** The gait of the body with this id, kept from frame to frame. */
@@ -263,6 +270,27 @@ export class Characters {
     this.id[n] = id;
     this.near[n] = 0;
     this.offset.fill(0, n * 3, n * 3 + 3);
+  }
+
+  /**
+   * Finds the creatures that have died among the remote entities, moves the dead on through their death clips and
+   * ragdolls, and draws those in view where they lie. `world` is what a ragdoll falls on.
+   */
+  corpses(p: FramePacket, cam: Camera, remote: RemoteSample, world: CollisionWorld): void {
+    this.dead.update(remote, world, cam.x, cam.z, this.gaits);
+    for (const d of this.dead.list) {
+      const c = this.creatures[d.kind]!;
+      const x = d.x - cam.x;
+      const y = d.y - cam.y;
+      const z = d.z - cam.z;
+      // A ragdoll may roll from where it died: its root bone says how far.
+      const r = (c.rig.reach + Math.abs(d.solved.pos[0]!) + Math.abs(d.solved.pos[2]!)) * d.size;
+      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+      const first = this.room(p, c.rig.bones, 1);
+      if (first < 0) return;
+      writeBones(p.bones, first * BONE_FLOATS, d.solved, c.rig.rest, null, x, y, z, d.yaw, d.size);
+      this.queueCreature(c, first, x, y, z, d.colors, 0, d.id, d.size, false);
+    }
   }
 
   /** Takes `bones` bones for a body of `parts` meshes and returns the first, or counts the body as dropped and returns -1. */

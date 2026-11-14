@@ -35,8 +35,11 @@ const percentile = (values: number[], q: number): number => {
   return sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(sorted.length * q)))] ?? 0;
 };
 
-/** `rig` with what its asset says of how it moves, by bone index: its feet and the stride of each gait. What names a bone the rig lacks is a fault. */
-export function withMotion(rig: PackRig, spec: CreatureAsset, _clips: readonly Clip[], faults: string[]): PackRig {
+/**
+ * `rig` with what its asset says of how it moves and dies, by bone index: its feet, the stride of each gait, and the
+ * bodies of its ragdoll with their limits. What names a bone the rig lacks is a fault. `clips` are its own.
+ */
+export function withMotion(rig: PackRig, spec: CreatureAsset, clips: readonly Clip[], faults: string[]): PackRig {
   const names = rig.names ?? [];
   const bone = (name: string, what: string): number => {
     const b = names.indexOf(name);
@@ -45,7 +48,14 @@ export function withMotion(rig: PackRig, spec: CreatureAsset, _clips: readonly C
   };
   const out: PackRig = { ...rig, feet: spec.feet.map((f) => bone(f, "foot")).filter((b) => b >= 0) };
   delete out.strides;
+  delete out.ragdoll;
   if (Object.keys(spec.gaits).length > 0) out.strides = Object.fromEntries(Object.entries(spec.gaits).map(([clip, g]) => [clip, g.stride]));
+  const r = spec.ragdoll;
+  if (r && r.bodies.length > 0) {
+    const death = clips.find((c) => c.id === `${rig.id}/death`);
+    const bodies = r.bodies.map((b) => ({ bone: bone(b.bone, "ragdoll body"), mass: b.mass, swing: b.swing ?? 0, twist: b.twist ?? 0 })).filter((b) => b.bone >= 0);
+    out.ragdoll = { limp: r.limp ?? (death ? death.frames - 1 : 0), bodies };
+  }
   return out;
 }
 

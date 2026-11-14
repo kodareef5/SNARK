@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --looks, --gear, --creator TAB, --house TIER, --falling MS, --build, --fight WHAT, --ui (--console TEXT, --inventory, --chat).
+// Scene flags: --poses N, --creatures, --looks, --gear, --creator TAB, --house TIER, --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --ui (--console TEXT, --inventory, --chat).
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -28,7 +28,7 @@ import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
 import { Heightfield } from "../shared/world/heightfield.ts";
 import { NodeField } from "../shared/world/nodes.ts";
-import { PROVING_DIMS, PROVING_SPAWN, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
+import { PROVING_DIMS, PROVING_SPAWN, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { findAssets } from "./art/assets.ts";
 import { buildCorePack } from "./pack/build.ts";
@@ -100,6 +100,55 @@ function fallingScene(view: ProvingView, ms: number): void {
   falling.absorb(gone, 0, view.cam.x, view.cam.y, view.cam.z);
   falling.step(ms);
   view.scene.falling = falling;
+}
+
+/**
+ * Creatures that died `seconds` ago, lying where they fell as a client draws them: on the proving ground's strips of 20
+ * and 30 degrees, across the edge of a foundation, and a young one, with one of each kind standing alive beside them.
+ */
+function ragdollScene(view: ProvingView, seconds: number): void {
+  const { reg, hf, structs, remote: r, cam } = view;
+  const strip = (k: number): number => SLOPE_X0 + SLOPE_WIDTH * (k + 0.5);
+  const [sx, sz] = [strip(1), SLOPE_Z0 + 8];
+  const foundation = reg.index.get("core:foundation_wood")!;
+  const [fx, fz] = [sx - 10, sz - 13];
+  const fy = Math.max(...[-1.5, 1.5].flatMap((dx) => [-1.5, 1.5].map((dz) => hf.heightAt(fx + dx, fz + dz)))) + reg.halfY[foundation]!;
+  structs.add(foundation, fx, fy, fz, 0, 0, 1);
+  const st = new AnimState();
+  const put = (id: number, kind: string, x: number, z: number, yaw: number, y = hf.heightAt(x, z), young = false): void => {
+    const n = r.count++;
+    [r.id[n], r.kind[n], r.x[n], r.y[n], r.z[n], r.yaw[n], r.flags[n]] = [id, reg.index.get(kind)!, x, y, z, yaw, 1];
+    r.colors.fill(0, n * 6, n * 6 + 6);
+    r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
+    [r.span[n], r.grown[n], r.seat[n], r.hasLook[n]] = [young ? 1000 : 0, young ? 1500 : 0, 0, 0];
+    r.anim[n] = st.pack();
+  };
+  r.count = 0;
+  // Sorted by id, as a view is. The first four die.
+  put(1, "core:raptor", sx, sz, 0.4);
+  put(2, "core:parasaur", strip(2) + 1, sz + 3, 2.2);
+  put(3, "core:raptor", fx + 1.2, fz, 1.3, fy + reg.halfY[foundation]!);
+  put(4, "core:parasaur", sx - 3, sz - 11, 4, undefined, true);
+  put(5, "core:raptor", sx - 13, sz - 6, 0.9);
+  put(6, "core:parasaur", sx + 6, sz - 9, 5.4);
+  put(7, "core:survivor", sx - 6, sz - 12, 2.8);
+  [cam.x, cam.z] = [sx - 3, sz - 24];
+  cam.y = hf.heightAt(cam.x, cam.z) + 3.5;
+  cam.yaw = 0.05;
+  cam.pitch = 0;
+  cam.fovY = 0.8;
+  r.tick = 100;
+  view.render();
+  r.tick += 0.5;
+  view.render();
+  // They die: gone from the view, as the server takes a dead creature out of the world.
+  const keep = [4, 5, 6];
+  for (const k of ["id", "kind", "x", "y", "z", "yaw", "flags", "anim", "span", "grown", "seat", "hasLook"] as const) for (let j = 0; j < 3; j++) r[k][j] = r[k][keep[j]!]!;
+  r.count = 3;
+  for (let f = 0; f < seconds * 60; f++) {
+    r.tick += 0.5;
+    view.scene.build(cam, r);
+  }
 }
 
 export interface ProvingView {
@@ -685,6 +734,7 @@ if (import.meta.main) {
   view.cam.pitch = (Number(arg("pitch") ?? -4) * Math.PI) / 180;
   if (args.includes("--house")) houseScene(view, arg("house") ?? "wood");
   if (args.includes("--falling")) fallingScene(view, Number(arg("falling") ?? 450));
+  if (args.includes("--ragdoll")) ragdollScene(view, Number(arg("ragdoll") ?? 4));
   if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
   if (args.includes("--creatures")) {

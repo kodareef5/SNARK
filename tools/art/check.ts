@@ -5,7 +5,8 @@
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Pose, sampleClip, type Clip } from "../../shared/anim/clip.ts";
 import { buildRig, type Rig } from "../../shared/anim/rigs.ts";
-import { boneToModel, rayZones, solve, zoneHit } from "../../shared/anim/skeleton.ts";
+import { Ragdoll } from "../../shared/anim/ragdoll.ts";
+import { Solved, boneToModel, rayZones, solve, zoneHit } from "../../shared/anim/skeleton.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
@@ -115,6 +116,8 @@ export interface Report {
   rig?: { skeleton: string; bones: number; capsules: number; buried: string[]; sockets: string[] };
   clips: ClipFacts[];
   gaits: GaitFacts[];
+  /** The bodies of the ragdoll, with their limits and how far the clips bend each, in degrees. */
+  ragdoll?: { limp: number; bodies: { bone: string; swing: number; twist: number; bent: [number, number] }[] };
   /** The materials the asset names, each with its pictures (tools/art/textures.ts), and what their textures weigh. */
   textures: MaterialFacts[];
   megabytes: { textures: number; budget: number | null };
@@ -464,8 +467,53 @@ function checkCreature(asset: Asset, spec: CreatureAsset, pack: Pack, meshes: So
       else faults.push(says);
     }
   }
+  if (spec.ragdoll) report.ragdoll = checkRagdoll(rig, spec, pack, faults, notes);
   for (const bone of spec.feet) if (!rig.names.includes(bone)) faults.push(`foot "${bone}" is not a bone of the rig`);
   for (const name of Object.keys(spec.gaits)) if (!spec.clips.some((c) => c.name === name)) faults.push(`gait "${name}" is not one of the clips`);
+}
+
+/**
+ * The ragdoll as the rig carries it. Faults: a body on a bone with no capsule, a body with no listed body above it but
+ * the first, a share of the mass not above 0, a limp frame past the death clip. Noted: a limit narrower than a clip bends
+ * the joint, which the ragdoll then starts past and closes in from.
+ */
+function checkRagdoll(rig: Rig, spec: CreatureAsset, pack: Pack, faults: string[], notes: string[]): Report["ragdoll"] {
+  const def = rig.ragdoll;
+  const listed = spec.ragdoll!.bodies;
+  if (!def || def.bone.length !== listed.length) {
+    faults.push(`ragdoll: the rig has ${def?.bone.length ?? 0} bodies of the ${listed.length} the asset lists. Build it again`);
+    return undefined;
+  }
+  const doll = new Ragdoll(rig, def);
+  listed.forEach((b, i) => {
+    if (!(rig.capR[def.bone[i]!]! > 0)) faults.push(`ragdoll: "${b.bone}" carries no hit capsule, and a body is its capsule`);
+    if (i > 0 && doll.parent[i]! < 0) faults.push(`ragdoll: "${b.bone}" has no listed body above it, and only the first may not`);
+    if (!(b.mass > 0)) faults.push(`ragdoll: "${b.bone}" has no share of the mass`);
+  });
+  if (rig.death && def.limp > rig.death.frames - 1) faults.push(`ragdoll: it goes limp at frame ${def.limp}, past the death clip's last, ${rig.death.frames - 1}`);
+  // How far each clip bends each joint, in the body's own frame against its parent body's.
+  const bent = listed.map((): [number, number] => [0, 0]);
+  const pose = new Pose(rig.bones);
+  const solved = new Solved(rig.bones);
+  for (const c of spec.clips) {
+    const clip = pack.clips.clips[pack.clips.index.get(`${rig.id}/${c.name}`) ?? -1];
+    if (!clip || clip.bones !== rig.bones) continue;
+    for (let f = 0; f < clip.frames; f++) {
+      sampleClip(clip, f, pose);
+      solve(rig, pose, solved);
+      doll.start(solved, solved, 0, 0, 0, 0, 1);
+      for (let i = 1; i < listed.length; i++) {
+        const [swing, twist] = doll.bend(i);
+        bent[i]![0] = Math.max(bent[i]![0], (swing * 180) / Math.PI);
+        bent[i]![1] = Math.max(bent[i]![1], (twist * 180) / Math.PI);
+      }
+    }
+  }
+  const bodies = listed.map((b, i) => ({ bone: b.bone, swing: b.swing ?? 0, twist: b.twist ?? 0, bent: bent[i]! }));
+  for (const b of bodies.slice(1)) {
+    if (b.bent[0] > b.swing + 1 || b.bent[1] > b.twist + 1) notes.push(`ragdoll: the clips bend "${b.bone}" ${b.bent[0].toFixed(0)} degrees and twist it ${b.bent[1].toFixed(0)}, past its limits of ${b.swing} and ${b.twist}`);
+  }
+  return { limp: def.limp, bodies };
 }
 
 /**
@@ -529,6 +577,10 @@ export function reportLines(r: Report): string[] {
   if (r.clips.length > 0 && judged) {
     out.push(...table(["clip", "frames", "seconds", "loop", "largest step cm", "wrap cm", "still frames"], r.clips.map((c) => [c.name, c.frames, c.seconds.toFixed(2), c.loop ? "yes" : "no", cm(c.step), c.wrap === undefined ? "-" : cm(c.wrap), c.still]), "  "));
   } else if (r.clips.length > 0) out.push(`  ${r.clips.length} clips, ${r.clips.filter((c) => c.loop).length} of them loops`);
+  if (r.ragdoll) {
+    out.push(`  ragdoll: limp from frame ${r.ragdoll.limp} of the death clip`);
+    out.push(...table(["body", "swing", "twist", "clips bend", "clips twist"], r.ragdoll.bodies.map((b, i) => [b.bone, i === 0 ? "-" : b.swing, i === 0 ? "-" : b.twist, i === 0 ? "-" : b.bent[0].toFixed(0), i === 0 ? "-" : b.bent[1].toFixed(0)]), "    "));
+  }
   for (const g of r.gaits) {
     out.push(`  gait ${g.clip}: stride ${g.stride ?? "-"} m, holds best at ${g.measured.toFixed(2)} m`);
     for (const f of g.feet) out.push(`    ${f.bone.padEnd(14)} planted ${(f.planted * 100).toFixed(0).padStart(3)}% of the clip, slides ${cm(f.slide)} cm`);

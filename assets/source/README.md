@@ -47,12 +47,11 @@ commit what comes out.
 ## A creature
 
 `asset.ts` exports a `CreatureAsset`: the skeleton, hit zones, sockets, colour
-regions, materials, clips, the feet and the stride of each gait, the triangle
-and texture budgets, and the first level drawn flat. It also has room for its
-ragdoll, which nothing reads yet. Every field is described in
-`tools/art/spec.ts`.
+regions, materials, clips, the feet and the stride of each gait, its ragdoll,
+the triangle and texture budgets, and the first level drawn flat. Every field
+is described in `tools/art/spec.ts`.
 
-### How it walks
+### How it walks and how it dies
 
 The game reads these from the pack, so build the asset again (or
 `--repack` it) after changing them.
@@ -70,6 +69,18 @@ The game reads these from the pack, so build the asset again (or
   Where the feet slide however the clip is played, or there is no ground
   (a swim), state the stride and say why in `stated`. A loop with no stride
   is played by time and switches to the run at the species' run speed.
+- **`ragdoll`**: what goes limp when it dies. `bodies` lists bones that carry
+  a hit capsule, each with its share of the mass. The first is the root of
+  the rest: every other body needs a listed body above it. Each other body
+  gives `swing` (degrees it may bend from its rest direction against its
+  parent body) and `twist` (degrees about its own length). Set them a little
+  past what the clips bend each joint; `--check` prints that, and notes a
+  limit narrower than it. A bone not listed stays as it was against the body
+  above it. Small, light parts (a short neck, little arms) are better left
+  out: as bodies of their own they shiver against the ground. `limp` is the
+  frame of the death clip at which it goes limp, as it begins to fall; the
+  ragdoll finishes the fall on whatever ground is there. Without `ragdoll`
+  the death clip plays and its last frame stays.
 
 Its model is either `source: { raw: "..." }`, a file under `assets/raw`
 converted as it is, or `source: { scripts: [...] }`. Scripts run in order in
@@ -173,6 +184,9 @@ prints numbers and fails only on what would draw wrong:
   ways round. A wanted opening is two faces back to back;
 - clips: a loop whose last pose does not lead into its first, a planted foot
   that slides at the stride given unless the stride is stated;
+- ragdoll: a body on a bone with no capsule, a body other than the first with
+  no listed body above it, a body with no mass, a limp frame past the death
+  clip;
 - pictures: one that is missing, not square or under 64 pixels, a tiling
   picture that jumps across its edge more than 4 times as hard as inside it, a
   normal map that leans against its height, a region map with more than 2% of

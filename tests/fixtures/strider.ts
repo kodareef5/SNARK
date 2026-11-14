@@ -1,6 +1,6 @@
 // A rig made in code: a body on two straight legs a metre long, with a tail and a head. Its walk and run plant each foot
 // for half the turn and carry it straight back along the ground, the body dropping as the leg leans, so a foot that is
-// down does not move at all when the clip is played by the ground covered.
+// down does not move at all when the clip is played by the ground covered. It dies by falling onto its side.
 
 import type { Clip, ClipSet } from "../../shared/anim/clip.ts";
 import { ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
@@ -13,6 +13,7 @@ export const [BODY, HIP_L, FOOT_L, HIP_R, FOOT_R, TAIL, HEAD] = [0, 1, 2, 3, 4, 
 /** Metres one turn carries it: four times the reach of a foot fore and aft of its hip. */
 export const WALK_STRIDE = 1.2;
 export const RUN_STRIDE = 2;
+export const LIMP = 8;
 
 /** A turn of `angle` about X then of `side` about Z, as x, y, z, w. */
 function legTurn(angle: number, side: number): number[] {
@@ -41,10 +42,24 @@ function gait(name: string, frames: number, reach: number): Clip {
   return { id: `${STRIDER}/${name}`, bones: 7, frames, loop: true, rot, root };
 }
 
+/** Falls onto its right side over twenty frames and lies there. */
+function death(): Clip {
+  const frames = 30;
+  const rot = new Float32Array(frames * 7 * 4);
+  const root = new Float32Array(frames * 3);
+  for (let k = 3; k < rot.length; k += 4) rot[k] = 1;
+  for (let f = 0; f < frames; f++) {
+    const k = Math.min(1, f / 20);
+    const a = (k * Math.PI) / 2;
+    rot.set([0, 0, Math.sin(a / 2), Math.cos(a / 2)], f * 7 * 4);
+    root[f * 3 + 1] = -0.75 * k * k;
+  }
+  return { id: `${STRIDER}/death`, bones: 7, frames, loop: false, rot, root };
+}
 
 export function striderClips(): Clip[] {
   const idle: Clip = { id: `${STRIDER}/idle`, bones: 7, frames: 2, loop: true, rot: new Float32Array(2 * 7 * 4).map((_, i) => (i % 4 === 3 ? 1 : 0)), root: new Float32Array(6) };
-  return [idle, gait("walk", 24, WALK_STRIDE / 4), gait("run", 16, RUN_STRIDE / 4)];
+  return [idle, gait("walk", 24, WALK_STRIDE / 4), gait("run", 16, RUN_STRIDE / 4), death()];
 }
 
 export const STRIDER_RIG: PackRig = {
@@ -63,6 +78,16 @@ export const STRIDER_RIG: PackRig = {
   sockets: [],
   feet: [FOOT_L, FOOT_R],
   strides: { walk: WALK_STRIDE, run: RUN_STRIDE },
+  ragdoll: {
+    limp: LIMP,
+    bodies: [
+      { bone: BODY, mass: 0.6, swing: 0, twist: 0 },
+      { bone: HIP_L, mass: 0.1, swing: 80, twist: 30 },
+      { bone: HIP_R, mass: 0.1, swing: 80, twist: 30 },
+      { bone: TAIL, mass: 0.06, swing: 45, twist: 20 },
+      { bone: HEAD, mass: 0.08, swing: 60, twist: 30 },
+    ],
+  },
 };
 
 export function striderSet(): ClipSet {

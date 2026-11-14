@@ -2,9 +2,11 @@
 // A rig's clips are found by its id ("core:raptor/walk").
 
 import type { PackRig } from "../pack/pack.ts";
+import { PI } from "../math/scalar.ts";
 import { Pose, type Clip, type ClipSet } from "./clip.ts";
 import { footRadius, footStart, gaitClip, type GaitClip } from "./gait.ts";
 import type { Socket } from "./human.ts";
+import type { RagdollDef } from "./ragdoll.ts";
 import { Solved, type Skeleton } from "./skeleton.ts";
 
 /** A rig's clip ids are "<rig id>/<one of these>". */
@@ -30,6 +32,7 @@ export interface Rig extends Skeleton {
   readonly gaits: readonly GaitClip[];
   /** How far its feet stand from where it turns, in metres. */
   readonly turn: number;
+  readonly ragdoll: RagdollDef | null;
   /** Scratch for posing it. */
   readonly a: Pose;
   readonly b: Pose;
@@ -104,6 +107,7 @@ export function buildRig(r: PackRig, clips: ClipSet): Rig | null {
     runGait,
     gaits: moving.length > 0 && moving.every((g) => g !== null) ? (moving as GaitClip[]).sort((p, q) => p.speed - q.speed) : [],
     turn: footRadius(skeleton, feet),
+    ragdoll: ragdollOf(r, skeleton),
     a,
     b: new Pose(bones),
     c: new Pose(bones),
@@ -112,6 +116,19 @@ export function buildRig(r: PackRig, clips: ClipSet): Rig | null {
   };
 }
 
+/** The ragdoll a rig's pack entry describes, with its limits in radians. Bodies on bones without a capsule are left out. */
+function ragdollOf(r: PackRig, skel: Skeleton): RagdollDef | null {
+  const bodies = (r.ragdoll?.bodies ?? []).filter((b) => b.bone >= 0 && b.bone < skel.bones && skel.capR[b.bone]! > 0);
+  if (bodies.length === 0) return null;
+  const deg = PI / 180;
+  return {
+    limp: r.ragdoll!.limp,
+    bone: Int16Array.from(bodies, (b) => b.bone),
+    mass: Float64Array.from(bodies, (b) => b.mass),
+    swing: Float64Array.from(bodies, (b) => b.swing * deg),
+    twist: Float64Array.from(bodies, (b) => b.twist * deg),
+  };
+}
 
 export function buildRigs(rigs: readonly PackRig[], clips: ClipSet): Map<string, Rig> {
   const out = new Map<string, Rig>();

@@ -143,6 +143,8 @@ export interface PackRig {
   /** The bones it stands on, and the metres one turn of each gait clip carries it, by the clip's name. */
   feet?: number[];
   strides?: Record<string, number>;
+  /** The bones that are bodies of its ragdoll, with their limits in degrees, and the frame of the death clip at which it goes limp. */
+  ragdoll?: { limp: number; bodies: { bone: number; mass: number; swing: number; twist: number }[] };
 }
 
 export interface PackClip {
