@@ -356,7 +356,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "tag", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },
@@ -367,9 +367,7 @@ row("species/creature", "species", SPECIES, {
   },
   doc: "A wild thing that may be tamed, ridden and bred.",
 });
-// A target may be modelled on any body, a survivor's or a creature's, so it may declare whatever either may.
-const TARGET_MUST = [...BODY, "still"] as const;
-row("species/target", "species", SPECIES, { parent: "species", ark: "none, ours", shelf: "targets", must: TARGET_MUST, may: (Object.keys(SPECIES) as (keyof typeof SPECIES)[]).filter((k) => !(TARGET_MUST as readonly string[]).includes(k)), slots: HUMAN_SLOTS, doc: "A body that stands where it is put, to be practised on." });
+row("species/target", "species", SPECIES, { parent: "species", ark: "none, ours", shelf: "targets", must: [...BODY, "skeleton", "still"], may: ["stats", "equips", "slots", "zones", "takes", "torporDrain", "crouch", "prone", "stamina", "fists", "food", "drops", "killXp"], slots: HUMAN_SLOTS, doc: "A human-shaped body that stands where it is put, to be practised on. A creature that must stand still is a creature that says so." });
 
 const BUILT = ["mesh", "color", "half", "hp"] as const;
 const STRUCTURE_SLOTS = { mesh: mesh("must", "{mesh}", "shape"), destroyed: mesh("may", "{id}/destroyed", "none"), preview: mesh("may", "{id}/preview", "#mesh") };

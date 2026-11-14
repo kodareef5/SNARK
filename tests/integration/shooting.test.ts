@@ -626,7 +626,7 @@ test("the client shows shots: its own arrow at once, another's when told, the li
 test("a creature that came as a model is hit where its capsules are, in the pose it is in: its head for half as much again, its body for what the round does", () => {
   // `still` keeps the parasaur where it is put, so the test can compute where its head is.
   const wild = CORE_CONTENT.find((d) => d.id === "core:parasaur")!;
-  const { registry } = compileContent([...CORE_CONTENT, { ...wild, class: "target", id: "core:parasaur_still", still: true } as Def]);
+  const { registry } = compileContent([...CORE_CONTENT, { ...wild, id: "core:parasaur_still", still: true } as Def]);
   const { h, s, pilot, at, arm } = range(64, {}, registry!);
   const kind = registry!.index.get("core:parasaur_still")!;
   // Thirty metres up the range, turned a quarter turn to face +X, so it stands side on.

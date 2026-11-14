@@ -122,13 +122,13 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 | --- | --- | --- | --- | --- | --- |
 | `species` | a character | a group |  |  |  |
 | `species/survivor` | the player's character | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats`, `equips` | `crouch`, `prone`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `fists`, `drops`, `takes`, `zones`, `killXp`, `torporDrain` | 1 |
-| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `fists`, `bite`, `drops`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `tag`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 3 |
-| `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `still` | `skeleton`, `crouch`, `prone`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `equips`, `fists`, `drops`, `stats`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `bite`, `taming`, `eats`, `torporDrain`, `breeds`, `tag`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 1 |
+| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `fists`, `bite`, `drops`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 3 |
+| `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `still` | `stats`, `equips`, `slots`, `zones`, `takes`, `torporDrain`, `crouch`, `prone`, `stamina`, `fists`, `food`, `drops`, `killXp` | 1 |
 
 - **`species`** on shelf `species`. A kind of body that lives.
 - **`species/survivor`** on shelf `survivors`. The body a player has.
 - **`species/creature`** on shelf `creatures`. A wild thing that may be tamed, ridden and bred.
-- **`species/target`** on shelf `targets`. A body that stands where it is put, to be practised on.
+- **`species/target`** on shelf `targets`. A human-shaped body that stands where it is put, to be practised on. A creature that must stand still is a creature that says so.
 
 Asset slots:
 

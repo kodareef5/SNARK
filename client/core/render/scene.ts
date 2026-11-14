@@ -3,6 +3,7 @@
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
+import { Assets } from "../assets/assets.ts";
 import { INSTANCE_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
@@ -102,7 +103,9 @@ export class Scene {
   shotTick = 0;
   /** Structures falling after a removal. The app sets it. */
   falling: Falling | null = null;
-  private readonly trisOfMesh: number[][];
+  /** What assets there are and which are loaded. */
+  readonly assets: Assets;
+  private readonly trisOfMesh: readonly (readonly number[])[];
   private readonly radiusOfMesh: Float32Array;
   private readonly world: RenderWorld;
   private readonly batches = new Map<number, ChunkBatch>();
@@ -131,7 +134,9 @@ export class Scene {
   constructor(world: RenderWorld, reg: Registry, pack: Pack) {
     this.world = world;
     this.terrain = new TerrainLod(world.hf);
-    const missing = pack.meshIndex.get(MISSING_MESH) ?? 0;
+    this.assets = new Assets(reg, pack);
+    const { table, bind } = this.assets;
+    const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
     this.colorOfKind = new Uint8Array(reg.defs.length);
     this.pitched = Uint8Array.from(reg.defs, (d) => (d?.type === "prop" && d.pitched ? 1 : 0));
@@ -139,19 +144,20 @@ export class Scene {
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
-      this.meshOfKind[k] = pack.meshIndex.get(d.mesh === "box" || d.mesh === "shape" ? d.id : d.mesh) ?? missing;
+      // A body drawn in parts has no one mesh. The characters draw it.
+      const mesh = bind.mesh(d.id, d.type === "species" ? "body" : "mesh");
+      this.meshOfKind[k] = mesh >= 0 ? mesh : missing;
       this.colorOfKind[k] = d.color;
     }
-    const meshes = pack.header.meshes;
-    this.trisOfMesh = meshes.map((m) => m.lods.map((l) => l.indexCount / 3));
-    this.radiusOfMesh = Float32Array.from(meshes, (m) => Math.hypot(m.half[0], m.half[1], m.half[2]) + Math.hypot(m.center[0], m.center[1], m.center[2]));
-    this.counts = new Uint32Array(meshes.length);
-    this.cursor = new Uint32Array(meshes.length);
+    this.trisOfMesh = table.tris;
+    this.radiusOfMesh = table.radius;
+    this.counts = new Uint32Array(table.count);
+    this.cursor = new Uint32Array(table.count);
     this.transient = new InstanceWriter(this.packet.transient);
-    this.characters = new Characters(reg, pack);
+    this.characters = new Characters(reg, pack, this.assets);
 
-    this.waterMesh = pack.meshIndex.get(WATER_MESH) ?? -1;
-    this.beamMesh = pack.meshIndex.get(BEAM_MESH) ?? -1;
+    this.waterMesh = table.find(WATER_MESH);
+    this.beamMesh = table.find(BEAM_MESH);
     for (let k = 0; k < 3; k++) {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
@@ -479,10 +485,11 @@ export class Scene {
     p.transientCount = total;
   }
 
-  private draw(mesh: number, lod: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags = 0): void {
+  private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags = 0): void {
     const p = this.packet;
     const n = p.drawCount;
     if (n === MAX_DRAWS) return;
+    const lod = this.assets.level(mesh, wanted);
     p.drawMesh[n] = mesh;
     p.drawLod[n] = lod;
     p.drawBuffer[n] = buffer;

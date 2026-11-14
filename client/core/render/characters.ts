@@ -1,6 +1,7 @@
 // A body is one skeleton and several meshes, one per body slot, so a worn piece can replace the part under it.
 // Its bones go into the packet once, and each of its meshes is one instance that names the body's first bone.
 
+import type { SpeciesDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { Pose } from "../../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
@@ -10,7 +11,8 @@ import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { creaturePose } from "../../../shared/anim/creature.ts";
 import { buildRigs, type Rig } from "../../../shared/anim/rigs.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
-import { lodVertices, type Pack } from "../../../shared/pack/pack.ts";
+import type { Pack } from "../../../shared/pack/pack.ts";
+import type { Assets } from "../assets/assets.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
@@ -23,7 +25,6 @@ export const BODY_LOD_FAR = 45;
 const LODS = 3;
 /** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, and a held item. */
 const PARTS = SLOT_COUNT + 4;
-const MANNEQUIN = "core:mannequin";
 const PLAIN = defaultLook();
 
 /** The meshes on one rig: one sex of a species, or the whole of a species modelled without sexes. */
@@ -88,14 +89,13 @@ export class Characters {
   private readonly counts: Uint32Array;
   private readonly cursor: Uint32Array;
 
-  constructor(reg: Registry, pack: Pack) {
+  constructor(reg: Registry, pack: Pack, assets: Assets) {
+    const { table, bind } = assets;
     this.anim = new HumanAnim(pack.clips);
-    this.counts = new Uint32Array(pack.header.meshes.length * LODS);
-    this.cursor = new Uint32Array(pack.header.meshes.length * LODS);
-    const find = (id: string): number => {
-      const m = pack.meshIndex.get(id);
-      return m !== undefined && pack.header.meshes[m]!.skeleton === HUMAN.id ? m : -1;
-    };
+    this.counts = new Uint32Array(table.count * LODS);
+    this.cursor = new Uint32Array(table.count * LODS);
+    /** Only a mesh on the human skeleton is drawn as part of a body. */
+    const human = (mesh: number): number => (mesh >= 0 && table.skeleton[mesh] === HUMAN.id ? mesh : -1);
     const sets: string[] = [];
     this.worn = reg.defs.map((d) => {
       if (d?.type !== "item" || !d.wear) return null;
@@ -103,38 +103,43 @@ export class Characters {
       return { slot: SLOT_NAMES.indexOf(d.wear.slot), set: sets.indexOf(d.wear.set), colors: d.wear.colors };
     });
     this.held = reg.defs.map((d) => {
-      const mesh = d?.type === "item" && d.weapon?.mesh ? find(d.weapon.mesh) : -1;
-      if (mesh < 0) return null;
-      // Every vertex of a held item follows the same bone, so the first vertex names it.
-      const lod = pack.header.meshes[mesh]!.lods[0]!;
-      return { mesh, bone: lodVertices(pack, lod)[7]! };
+      const mesh = d?.type === "item" && d.weapon ? human(bind.own(d.id, "held")) : -1;
+      return mesh < 0 ? null : { mesh, bone: table.bone[mesh]! };
     });
-    const setOf = (base: string): BodySet | null => {
-      const slots = Int32Array.from(SLOT_NAMES, (name) => find(`${base}/${name}`));
+    /** One piece of each armor set for each part. Its `worn` slot says where the set's mesh for a body is. */
+    const piece = (set: string, part: string): string => reg.defs.find((d) => d?.type === "item" && d.wear?.set === set && d.wear.slot === part)?.id ?? "";
+    const bodyOf = (d: SpeciesDef, sex: string): BodySet | null => {
+      const slots = Int32Array.from(SLOT_NAMES, (part) => human(bind.mesh(d.id, "body", `${sex}/${part}`)));
       const first = slots.find((m) => m >= 0);
       if (first === undefined) return null;
-      const rig = pack.header.meshes[first]!.rig;
+      const rig = table.rig[first]!;
+      // Armor is cut for a body, and keyed by the body's name without its pack.
+      const body = `${d.mesh}_${sex}`.replace(/^[^:]*:/, "");
       return {
         slots,
-        hair: Int32Array.from(HAIR_STYLES, (s) => find(`${base}/hair/${s.id}`)),
-        beard: Int32Array.from(BEARD_STYLES, (s) => find(`${base}/beard/${s.id}`)),
-        rest: rig === undefined ? HUMAN.rest : Float32Array.from(pack.header.rigs[rig]!.rest),
-        armor: sets.map((set) => Int32Array.from(SLOT_NAMES, (name) => find(`${base}/armor/${set}/${name}`))),
+        hair: Int32Array.from(HAIR_STYLES, (s) => human(bind.own(d.id, "hair", `${sex}/${s.id}`))),
+        beard: Int32Array.from(BEARD_STYLES, (s) => human(bind.own(d.id, "beard", `${sex}/${s.id}`))),
+        rest: rig < 0 ? HUMAN.rest : Float32Array.from(pack.header.rigs[rig]!.rest),
+        // A missing piece is -1 here, and the body's own part is drawn in the piece's colours.
+        armor: sets.map((set) => Int32Array.from(SLOT_NAMES, (part) => human(bind.own(piece(set, part), "worn", body)))),
       };
     };
     const rigs = buildRigs(pack.header.rigs, pack.clips);
     this.creatures = reg.defs.map((d, i) => {
       if (d?.type !== "species" || d.skeleton === undefined || d.skeleton === HUMAN.id) return null;
-      const rig = rigs.get(d.mesh);
-      const mesh = pack.meshIndex.get(d.mesh);
-      return rig && mesh !== undefined ? { rig, mesh, color: d.color, runAt: reg.runAt[i]! } : null;
+      const rig = rigs.get(bind.id(d.id, "rig"));
+      const mesh = bind.own(d.id, "body");
+      return rig && mesh >= 0 ? { rig, mesh, color: d.color, runAt: reg.runAt[i]! } : null;
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
-      // A modelled body for each sex, else one body, else the mannequin when the pack lacks the species' meshes.
-      const sexes = SEX_IDS.map((sex) => setOf(`${d.mesh}_${sex}`));
-      const sets = sexes.every((s) => s !== null) ? (sexes as BodySet[]) : [setOf(d.mesh) ?? setOf(MANNEQUIN)].filter((s) => s !== null);
-      return sets.length > 0 ? { sets, color: d.color } : null;
+      // A body for each sex. Where both are the same stand-in (a species with no art of its own) there is one body.
+      const bodies: BodySet[] = [];
+      for (const sex of SEX_IDS) {
+        const body = bodyOf(d, sex);
+        if (body && !bodies.some((b) => b.slots.every((m, k) => m === body.slots[k]))) bodies.push(body);
+      }
+      return bodies.length > 0 ? { sets: bodies, color: d.color } : null;
     });
   }
 

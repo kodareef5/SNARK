@@ -1,6 +1,7 @@
 // Pictures of shots: arrows and darts in the air, and tracer lines. They decide nothing. The server flies every shot
 // (server/projectiles.ts), and the client draws its own with the same arithmetic (shared/sim/projectiles.ts).
 
+import { Assets } from "./assets/assets.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { EVENT_BLAST, EVENT_SHOT } from "../../shared/net/protocol.ts";
@@ -57,9 +58,11 @@ export class Shots {
 
   constructor(reg: Registry, pack: Pack) {
     this.reg = reg;
-    this.meshOfAmmo = Int32Array.from(reg.defs, (d) => (d?.type === "item" && d.ammo?.mesh ? (pack.meshIndex.get(d.ammo.mesh) ?? -1) : -1));
-    this.tracerMesh = pack.meshIndex.get("core:tracer") ?? -1;
-    this.blastMesh = pack.meshIndex.get("core:blast") ?? -1;
+    const { table, bind } = new Assets(reg, pack);
+    // Its own mesh and no stand-in: ammunition without one is drawn as a tracer.
+    this.meshOfAmmo = Int32Array.from(reg.defs, (d) => (d?.type === "item" && d.ammo ? bind.own(d.id, "shot") : -1));
+    this.tracerMesh = table.find("core:tracer");
+    this.blastMesh = table.find("core:blast");
   }
 
   absorb(session: ClientSession, world: CollisionWorld, nowMs: number): void {
