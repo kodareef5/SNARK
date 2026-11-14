@@ -8,7 +8,7 @@ import { ZONE_TORSO } from "../../shared/anim/human.ts";
 import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { main } from "../../tools/art.ts";
-import type { Asset } from "../../tools/art/assets.ts";
+import { findAssets, type Asset } from "../../tools/art/assets.ts";
 import { checkAsset, measureSurface } from "../../tools/art/check.ts";
 import { readPacks } from "../../tools/art/source.ts";
 import type { CreatureAsset } from "../../tools/art/spec.ts";
@@ -17,9 +17,13 @@ import { readPng } from "../../tools/pack/png-read.ts";
 import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
 import { ASSETS } from "../fixtures/assets.ts";
 
-test("every asset folder has its pack, named as the folder is, and the pack passes its check", () => {
+/** The examples of scripted assets, which are in no game pack. */
+const EXAMPLES = await findAssets(join(import.meta.dir, "../../tools/blender/example"));
+
+test("every asset folder has its pack, named as the folder is, and the pack passes its check; so do the examples", () => {
   expect(ASSETS.length).toBeGreaterThan(0);
-  for (const asset of ASSETS) {
+  expect(EXAMPLES.map((a) => [a.id, a.spec.kind])).toEqual([["demo:pup", "creature"], ["demo:crate", "pieces"]]);
+  for (const asset of [...ASSETS, ...EXAMPLES]) {
     expect([asset.id, basename(asset.file), basename(dirname(asset.file)), existsSync(asset.file)]).toEqual([asset.id, `${asset.name}.snpk`, asset.name, true]);
     expect([asset.id, checkAsset(asset, parsePack(new Uint8Array(readFileSync(asset.file)))).faults]).toEqual([asset.id, []]);
   }

@@ -11,9 +11,10 @@
 #   {"folder": "...", "scripts": ["rig.py", "model.py"], "out": "model.glb"}
 #   {"folder": "...", "scripts": ["model.py"], "pieces": {"wall": "wall.glb"}}
 #
-# The scene starts empty. Each script runs top to bottom as "__main__" and
-# finds the scene as the one before left it. A script may import any module
-# in the asset's folder, which is how scripts share numbers.
+# The scene starts empty, at 30 frames a second: a frame is a tick. Each script
+# runs top to bottom as "__main__" and finds the scene as the one before left
+# it. A script may import any module in the asset's folder, which is how
+# scripts share numbers.
 #
 # With "out", the whole scene is written: one armature, the meshes skinned to
 # it, and every action as an animation of its own, named as the action is and
@@ -38,6 +39,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, folder)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
+# A frame is a tick of the game.
+bpy.context.scene.render.fps = 30
 for script in job["scripts"]:
     runpy.run_path(os.path.join(folder, script), run_name="__main__")
     print(f"build: ran {script}")
