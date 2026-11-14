@@ -3,6 +3,7 @@
 
 import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
+import { sortU32 } from "../sort.ts";
 import { SKIN, capsuleBox, capsuleFree, push, restsOnStructure, type CollisionWorld } from "../world/collide.ts";
 import { Found } from "../world/structures.ts";
 
@@ -383,6 +384,9 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
         if (!store) continue;
         // A radius of margin each way, for what a push within the round may bring into reach.
         const count = store.query(nx - r, nz - r, nx + r, nz + r, found, ny - r, ny + tall + r);
+        // A push moves the body before the next piece is tried, so the order decides where it ends. The grid lists pieces
+        // in the order they were stored, which differs between a client and its server. Refs are the same on both.
+        sortU32(found.refs, count);
         for (let k = 0; k < count; k++) {
           if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, height, 0)) continue;
           nx += push.x;
@@ -639,6 +643,8 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
         const store = pass === 0 ? structs : w.nodes;
         if (!store) continue;
         const count = store.query(nx - r, nz - r, nx + r, nz + r, found, ny - r, ny + (p.height > 2 * r ? p.height : 2 * r) + r);
+        // In ref order, as on land.
+        sortU32(found.refs, count);
         for (let k = 0; k < count; k++) {
           if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, p.height, 0)) continue;
           nx += push.x;
