@@ -301,7 +301,7 @@ test("the importer says what it dropped and what it put right", () => {
   const corners = Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]);
   const up = Float32Array.from([0, 0, 1, 0, 0, 1, 0, 0, 1]);
   // Six joints, the last hanging on the fifth and not a bone of the rig. The first vertex is weighted to five bones,
-  // the second to none, and the third twice to joints that are one bone. One coordinate pair is off the picture.
+  // the second to none, and the third twice to joints that are one bone. One coordinate pair is off the picture, which is kept.
   const skinned = writeGlb(
     {
       scenes: [{ nodes: [0, 1, 2, 3, 4, 5] }],
@@ -319,12 +319,11 @@ test("the importer says what it dropped and what it put right", () => {
   const report = importGlb(skinned, "t:tri", defaultPalette(), { skeleton: "t", bones: ["a", "b", "c", "d", "e"] });
   expect(report.warnings).toEqual([
     'material "glass" blends, which is not drawn: read as solid',
-    "2 texture coordinates lay outside the picture: held at its edge",
     "1 vertices were weighted to more than four bones: the lightest were dropped",
     "1 vertices had no weights: they follow the first bone",
   ]);
   const lod = report.mesh.lods[0]!;
-  expect([[...lod.uvs!], [...lod.bones!], [...lod.joints!]]).toEqual([[0, 0, 1, 0, 0, 1], [0, 0, 4], [0, 1, 2, 3, 0, 0, 0, 0, 4, 0, 0, 0]]);
+  expect([[...lod.uvs!], [...lod.bones!], [...lod.joints!]]).toEqual([[0, 0, 1.5, -0.25, 0, 1], [0, 0, 4], [0, 1, 2, 3, 0, 0, 0, 0, 4, 0, 0, 0]]);
   expect(apart(lod.weights!, [1 / 3, 0.25 / 0.9, 0.2 / 0.9, 0.15 / 0.9, 1, 0, 0, 0, 1, 0, 0, 0])).toBeLessThan(1e-6);
 
   // A skinned vertex rests where its joints put it. Here they sit away from the origin, their inverse bind matrices
@@ -360,4 +359,18 @@ test("the importer says what it dropped and what it put right", () => {
   expect([mixed.warnings, mixed.mesh.flat, mixed.mesh.lods[0]!.tangents]).toEqual([["level 0: only some of it has tangents, so all of them are worked out"], 1, undefined]);
   const bare = importGlb(parts({ attributes: { POSITION: 0, TEXCOORD_0: 2 } }), "t:wall", defaultPalette());
   expect([bare.warnings, bare.mesh.flat, bare.mesh.materials, bare.mesh.lods[0]!.uvs]).toEqual([["level 0: only some of it has texture coordinates and normals, so it is drawn flat"], undefined, undefined, undefined]);
+});
+
+test("a wall's material may repeat along it: texture coordinates past one texture are kept, to whole textures either side", () => {
+  // A 3 m wall of a material that covers 1.5 m: its coordinates run from 0 to 2 across and from -1 to 1 up.
+  const positions = Float32Array.from([0, 0, 0, 3, 0, 0, 3, 3, 0, 0, 3, 0]);
+  const uvs = Float32Array.from([0, -1, 2, -1, 2, 1, 0, 1]);
+  const lod: SourceLod = { positions, colors: new Uint8Array(4).fill(3), indices: Uint32Array.from([0, 1, 2, 0, 2, 3]), uvs, normals: Float32Array.from([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]) };
+  const material = { id: "t:planks", base: -1, normal: -1, mro: -1, mask: -1, mask2: -1, tint: [1, 1, 1] as [number, number, number], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 1.5 };
+  const pack = parsePack(buildPack([{ id: "t:wall", lods: [lod], flat: 1, materials: [material], textures: [] }], defaultPalette()));
+  expect(pack.header.meshes[0]!.uv).toEqual([0, -1, 2, 2]);
+  const back = unpackMeshes(pack)[0]!.lods[0]!.uvs!;
+  for (let i = 0; i < uvs.length; i++) expect(Math.abs(back[i]! - uvs[i]!)).toBeLessThan(2 / 65535);
+  // A mesh whose coordinates lie on one texture says nothing, and is the bytes it always was.
+  expect(parsePack(tubePack()).header.meshes.every((m) => m.uv === undefined)).toBe(true);
 });

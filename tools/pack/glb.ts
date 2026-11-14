@@ -132,7 +132,7 @@ export function importGlb(file: Uint8Array, id: string, palette: Uint8Array, opt
 
   const lods = new Map<number, Level>();
   let collider: [number, number, number] | undefined;
-  const count = { outside: 0, dropped: 0, unweighted: 0 };
+  const count = { dropped: 0, unweighted: 0 };
   if (!opts.skeleton && json.skins?.length) warnings.push("it has a skin, which is not read without a skeleton to follow");
 
   const visit = (nodeIndex: number): void => {
@@ -210,8 +210,7 @@ export function importGlb(file: Uint8Array, id: string, palette: Uint8Array, opt
           if (!uv || !normal) continue;
           for (let k = 0; k < 2; k++) {
             const c = uv[v * 2 + k]!;
-            if (c < -1e-6 || c > 1 + 1e-6) count.outside++;
-            lod.uvs.push(Math.min(Math.max(c, 0), 1));
+            lod.uvs.push(c);
           }
           // A normal goes through the inverse of the matrix, transposed, which its columns crossed in pairs give.
           const columns = [[m[0]!, m[1]!, m[2]!], [m[4]!, m[5]!, m[6]!], [m[8]!, m[9]!, m[10]!]];
@@ -240,7 +239,6 @@ export function importGlb(file: Uint8Array, id: string, palette: Uint8Array, opt
   };
 
   for (const root of json.scenes?.[json.scene ?? 0]?.nodes ?? []) visit(root);
-  if (count.outside > 0) warnings.push(`${count.outside} texture coordinates lay outside the picture: held at its edge`);
   if (count.dropped > 0) warnings.push(`${count.dropped} vertices were weighted to more than four bones: the lightest were dropped`);
   if (count.unweighted > 0) warnings.push(`${count.unweighted} vertices had no weights: they follow the first bone`);
 
