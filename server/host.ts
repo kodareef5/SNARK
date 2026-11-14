@@ -536,6 +536,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     stations.resume();
     taming.resume();
     breeding.resume();
+    // Last, because a buff's change refreshes its body, and that settles what the body carries.
+    for (const rec of records.byPid.values()) buffs.restore(rec, persistence!.store.unrated.has(rec.pid));
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
     // A wild creature's level is one of thirty steps, each the size of the server's difficulty.

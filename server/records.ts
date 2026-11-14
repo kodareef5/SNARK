@@ -58,7 +58,7 @@ export class EntityRecord {
   /** The owning team: a survivor's own, a tribe's, or 0 for a wild creature. `rank` is its standing in a tribe. */
   team = 0;
   rank = 0;
-  /** Timed effects (server/buffs.ts). Not saved. `buffsVersion` counts every change, for sending. */
+  /** Timed effects (server/buffs.ts). `buffsVersion` counts every change, for sending, and is not saved. */
   readonly buffs: BuffOn[] = [];
   buffsVersion = 0;
   /** Unconscious. Its torpor reached the maximum and has not yet run out. */

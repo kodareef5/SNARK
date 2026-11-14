@@ -22,8 +22,11 @@ const CHUNK_FORMAT = 1;
  * without it must not pass over. A build reads every revision up to its own and refuses a later one: it would write a part it
  * knows back without what was added. Revision 1 grew without being raised (a tame's stance and saddle, a bed's wait, a fire,
  * the slot in hand), so builds from before each of those read newer saves and dropped them. 2 is all of that.
+ * 3 saves buffs. A build without them would keep the part unread and leave a buff's rates in the vitals with no end.
  */
-const RECORD_FORMAT = 2;
+const RECORD_FORMAT = 3;
+/** The first revision whose vitals hold, beyond a body's own rates, only what its saved buffs give. */
+const FORMAT_BUFFS = 3;
 // A record is a list of components, each an id and a length-prefixed blob. A build that does not know a
 // component keeps its bytes and writes them back, so a save survives a server that lacks a content pack.
 const COMP_INVENTORY = 1;
@@ -58,6 +61,8 @@ const COMP_BREED2 = 18;
 const COMP_FIXTURE = 14;
 /** Experience, learned engrams, crafting jobs. */
 const COMP_PROGRESSION = 4;
+/** The buffs on it (server/buffs.ts): each one's content, the tick it ends, who gave it and the torpor a second it adds. */
+const COMP_BUFFS = 19;
 /** The most bytes of one part that a save holds. */
 const MAX_PART = 1 << 20;
 /** The most slots a converted COMP_INVENTORY may be laid out in. */
@@ -121,6 +126,11 @@ export class WorldStore {
   private readonly split = new Map<number, readonly number[]>();
   /** No commit has landed in the file, so it holds no world. */
   readonly fresh: boolean;
+  /**
+   * Loaded records whose vitals' rates may hold what a buff gave with no buff to end it: one saved before buffs were, or
+   * one whose buff this build lacks. Their rates are worked out again (Buffs.restore).
+   */
+  readonly unrated = new Set<number>();
 
   private readonly reg: Registry;
   private readonly allowMissing: boolean;
@@ -341,7 +351,18 @@ export class WorldStore {
     const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
     const hasBreed = rec.mating || rec.mateReadyAt !== 0 || rec.grown !== 0 || rec.egg !== null;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + (hasBreed ? 1 : 0) + rec.extra.size);
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + rec.extra.size);
+    if (rec.buffs.length > 0) {
+      c.reset();
+      c.varint(rec.buffs.length);
+      for (const b of rec.buffs) {
+        c.varint(this.toSaved[b.buff]!);
+        c.uint53(b.until);
+        c.uint53(b.by);
+        c.f64(b.torpor);
+      }
+      this.part(COMP_BUFFS);
+    }
     if (hasBreed) {
       c.reset();
       c.bool(rec.mating);
@@ -500,6 +521,7 @@ export class WorldStore {
     const rows = this.db.query("SELECT pid, kind, x, y, z, yaw, data FROM entities").all() as { pid: number; kind: number; x: number; y: number; z: number; yaw: number; data: Uint8Array }[];
     const out: EntityRecord[] = [];
     const r = this.r;
+    this.unrated.clear();
     for (const row of rows) {
       const kind = this.toRuntime[row.kind]!;
       if (kind === 0) continue; // The content is gone and the operator chose to proceed.
@@ -512,6 +534,7 @@ export class WorldStore {
       const format = r.u8();
       if (format > RECORD_FORMAT) throw new Error(`entity ${row.pid} was saved by a newer build (record format ${format}, and this build reads up to ${RECORD_FORMAT}): start the save with that build or a newer one`);
       if (format === 0) throw new Error(`entity ${row.pid}: unknown record format`);
+      let stale = format < FORMAT_BUFFS;
       rec.name = r.string(256);
       const c = this.cr;
       for (let n = r.varint(); n > 0 && !r.overflow; n--) {
@@ -653,10 +676,18 @@ export class WorldStore {
             rec.readyAt = c.uint53();
             if (c.bool()) rec.fire = { at: c.uint53(), fuel: c.varint(), cook: c.varint(), due: 0 };
           }
+        } else if (component === COMP_BUFFS) {
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) {
+            const on = { buff: this.toRuntime[c.varint()] ?? 0, until: c.uint53(), by: c.uint53(), torpor: c.f64() };
+            // A buff whose content is gone is dropped, and what it gave the vitals with it.
+            if (on.buff !== 0) rec.buffs.push(on);
+            else stale = true;
+          }
         } else rec.extra.set(component, blob);
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }
       if (r.overflow) throw new Error(`entity ${row.pid}: truncated record`);
+      if (stale && rec.vitals) this.unrated.add(row.pid);
       out.push(rec);
     }
     return out;
