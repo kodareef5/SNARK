@@ -113,14 +113,18 @@ export default {
   // The first level drawn under about 48 pixels tall. `--check` prints where each level of the real mesh is first
   // drawn; move this to the first one under 48 px once model.py exists.
   flat: 2,
-  ragdoll: [
-    { bone: "pelvis", mass: 0.7 },
-    { bone: "neck_2", mass: 0.06, swing: 35, twist: 20 },
-    { bone: "neck_4", mass: 0.04, swing: 35, twist: 20 },
-    { bone: "skull", mass: 0.08, swing: 40, twist: 25 },
-    { bone: "wing_upper_l", mass: 0.02, swing: 80, twist: 30 },
-    { bone: "wing_upper_r", mass: 0.02, swing: 80, twist: 30 },
-    { bone: "shank_l", mass: 0.03, swing: 70, twist: 10 },
-    { bone: "shank_r", mass: 0.03, swing: 70, twist: 10 },
-  ],
+  // Goes limp at the last frame of the death clip until `limp` names the frame it begins to fall. `--check` prints how far
+  // the clips bend each joint, which each limit should be a little past.
+  ragdoll: {
+    bodies: [
+      { bone: "pelvis", mass: 0.7 },
+      { bone: "neck_2", mass: 0.06, swing: 35, twist: 20 },
+      { bone: "neck_4", mass: 0.04, swing: 35, twist: 20 },
+      { bone: "skull", mass: 0.08, swing: 40, twist: 25 },
+      { bone: "wing_upper_l", mass: 0.02, swing: 80, twist: 30 },
+      { bone: "wing_upper_r", mass: 0.02, swing: 80, twist: 30 },
+      { bone: "shank_l", mass: 0.03, swing: 70, twist: 10 },
+      { bone: "shank_r", mass: 0.03, swing: 70, twist: 10 },
+    ],
+  },
 } satisfies CreatureAsset;

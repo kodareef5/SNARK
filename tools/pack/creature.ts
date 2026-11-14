@@ -35,6 +35,30 @@ const percentile = (values: number[], q: number): number => {
   return sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(sorted.length * q)))] ?? 0;
 };
 
+/**
+ * `rig` with what its asset says of how it moves and dies, by bone index: its feet, the stride of each gait, and the
+ * bodies of its ragdoll with their limits. What names a bone the rig lacks is a fault. `clips` are its own.
+ */
+export function withMotion(rig: PackRig, spec: CreatureAsset, clips: readonly Clip[], faults: string[]): PackRig {
+  const names = rig.names ?? [];
+  const bone = (name: string, what: string): number => {
+    const b = names.indexOf(name);
+    if (b < 0) faults.push(`${what} "${name}" is not a bone of the rig`);
+    return b;
+  };
+  const out: PackRig = { ...rig, feet: spec.feet.map((f) => bone(f, "foot")).filter((b) => b >= 0) };
+  delete out.strides;
+  delete out.ragdoll;
+  if (Object.keys(spec.gaits).length > 0) out.strides = Object.fromEntries(Object.entries(spec.gaits).map(([clip, g]) => [clip, g.stride]));
+  const r = spec.ragdoll;
+  if (r && r.bodies.length > 0) {
+    const death = clips.find((c) => c.id === `${rig.id}/death`);
+    const bodies = r.bodies.map((b) => ({ bone: bone(b.bone, "ragdoll body"), mass: b.mass, swing: b.swing ?? 0, twist: b.twist ?? 0 })).filter((b) => b.bone >= 0);
+    out.ragdoll = { limp: r.limp ?? (death ? death.frames - 1 : 0), bodies };
+  }
+  return out;
+}
+
 /** `id` is the id of the rig, and of the mesh. */
 export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): ConvertedCreature {
   const skeleton = spec.skeleton;
@@ -250,7 +274,7 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
   const made = convertClips(g, names, parent, specs, scale);
   warnings.push(...made.warnings);
   for (const c of spec.clips) if (!made.clips.some((m) => m.id === `${id}/${c.name}`)) faults.push(`clip "${c.name}" was not made`);
-  const rig: PackRig = { id, skeleton: skeleton.id, rest: rest.map((v) => +v.toFixed(5)), names, parent, caps, sockets };
+  const rig = withMotion({ id, skeleton: skeleton.id, rest: rest.map((v) => +v.toFixed(5)), names, parent, caps, sockets }, spec, made.clips, faults);
   const lods = levels.map((l): SourceLod => {
     const lod: SourceLod = { positions: Float32Array.from(l.positions), colors: Uint8Array.from(l.colors), indices: Uint32Array.from(l.indices), bones: Uint8Array.from(l.bones) };
     if (pictured.length === 0) return lod;

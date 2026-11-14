@@ -15,6 +15,7 @@ import { V_FOOD, V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -401,7 +402,10 @@ test("what it does about others is its stance: passive, nothing; neutral, it goe
   expect([h.host.records.byPid.has(other.rec.pid), h.host.survival.value(other.rec, V_HEALTH) > 150, me.dead]).toEqual([true, true, false]);
 
   // Ada and her raptor are moved out of sight, so the wild raptor hunts her parasaur. The parasaur is neutral, so once hurt it turns on the raptor.
-  h.say(ada, `tp ${ents.x[mine.e]!.toFixed(3)} ${(ents.z[mine.e]! - 3).toFixed(3)}`);
+  // Beside her raptor, wherever the fight left it, on a spot clear of trees and rocks.
+  const move = h.world.reg.move[ents.kind[h.ent(ada)]!]!;
+  const [bx, bz] = [[0, -3], [3, 0], [-3, 0], [0, 3]].map(([dx, dz]) => [ents.x[mine.e]! + dx!, ents.z[mine.e]! + dz!]).find(([x, z]) => capsuleFree(h.world, x!, groundUnder(h.world.hf, x!, z!, move.radius), z!, move.radius, move.height))!;
+  h.say(ada, `tp ${bx!.toFixed(3)} ${bz!.toFixed(3)}`);
   stance(STANCE_PASSIVE);
   h.say(ada, `tp ${(at.x + 80).toFixed(3)} ${(at.z + 8).toFixed(3)}`);
   ents.x[mine.e] = at.x + 85;

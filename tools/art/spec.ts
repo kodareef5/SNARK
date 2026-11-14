@@ -137,8 +137,17 @@ export interface CreatureClip {
 }
 
 export interface GaitSpec {
-  /** Metres the body travels in one turn of the clip. The clip is played by distance over this, so planted feet hold. */
+  /**
+   * Metres the body travels in one turn of the clip. The clip is played by distance over this, so planted feet hold, and
+   * plays at its own rate at this over its length. Measured where the clip allows: `--check` prints the stride its feet
+   * hold best at.
+   */
   readonly stride: number;
+  /**
+   * Why the stride is stated and not measured, for a clip whose feet slide however it is played or that has no feet on
+   * the ground (a swim). `--check` then notes how far they slide and does not count it a fault.
+   */
+  readonly stated?: string;
 }
 
 /** One rigid body of the ragdoll: a bone, with the hit capsule that bone carries. A bone that is not listed stays rigid with its nearest listed parent. */
@@ -146,9 +155,19 @@ export interface RagdollBody {
   readonly bone: string;
   /** Its share of the creature's mass. The shares need not sum to 1. */
   readonly mass: number;
-  /** Degrees it may bend away from its rest direction against its parent body, and turn about its own length. The first body has no parent and no limit. */
+  /**
+   * Degrees it may bend away from its rest direction against its parent body, and turn about its own length. The first
+   * body has no parent and no limit. At least as far as the clips bend it, which `--check` prints.
+   */
   readonly swing?: number;
   readonly twist?: number;
+}
+
+export interface RagdollSpec {
+  /** The frame of the death clip at which the body goes limp: as it begins to fall. Its last frame, where not given. */
+  readonly limp?: number;
+  /** The first is the root of the rest: every other body has a listed body above it. */
+  readonly bodies: readonly RagdollBody[];
 }
 
 export interface CreatureAsset {
@@ -197,8 +216,8 @@ export interface CreatureAsset {
    * with a budget, where not given. Read only with `materials`.
    */
   readonly flat?: number;
-  /** Nothing reads it yet: the ragdoll will. */
-  readonly ragdoll?: readonly RagdollBody[];
+  /** What goes limp when it dies. Without it the death clip plays and its last frame stays. */
+  readonly ragdoll?: RagdollSpec;
 }
 
 /**

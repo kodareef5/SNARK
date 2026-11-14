@@ -53,6 +53,8 @@ export class EntityStore {
   // The typed columns are replaced when the store grows, so none is kept across a create. That includes indexing
   // one with a create's result in the same expression: `ents.pid[spawn()]` reads the column from before the spawn.
   gen: Uint16Array;
+  /** The generation of the last body at each index that died, 0 for none. A view tells a client that one died. */
+  died: Uint16Array;
   flags: Uint8Array;
   kind: Uint16Array;
   x: Float32Array;
@@ -124,6 +126,7 @@ export class EntityStore {
     this.cap = cap;
     this.max = max;
     this.gen = new Uint16Array(cap).fill(1);
+    this.died = new Uint16Array(cap);
     this.flags = new Uint8Array(cap);
     this.kind = new Uint16Array(cap);
     this.x = new Float32Array(cap);
@@ -229,6 +232,7 @@ export class EntityStore {
     if (old >= this.max) return false;
     const cap = old * 2 < this.max ? old * 2 : this.max;
     this.gen = wider(this.gen, cap, 1);
+    this.died = wider(this.died, cap);
     this.flags = wider(this.flags, cap);
     this.kind = wider(this.kind, cap);
     this.x = wider(this.x, cap);

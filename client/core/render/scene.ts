@@ -351,6 +351,7 @@ export class Scene {
         const level = Math.cos(pitch);
         ch.loose(p, this.meshOfKind[kind]!, x, y, z, Math.sin(remote.yaw[i]!) * level, Math.sin(pitch), Math.cos(remote.yaw[i]!) * level, 1);
       }
+      ch.corpses(p, cam, remote, this.world);
     }
     // Then the shots in the air.
     this.shots?.draw(ch, p, cam, this.shotTick);

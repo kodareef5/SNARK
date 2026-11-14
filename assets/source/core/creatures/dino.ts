@@ -33,6 +33,19 @@ export const DINO = {
   ],
   feet: ["BackFoot.L", "BackFoot.R"],
   budgets: { triangles: [1500, 750, 375, 190, 95] },
+  // Limp as the death clip begins to fall. The neck and the small arms stay as they were: as bodies of their own they are
+  // light beside the trunk and shiver against the ground. Each limit is a little past what the clips bend the joint.
+  ragdoll: {
+    limp: 16,
+    bodies: [
+      { bone: "Body", mass: 0.55 },
+      { bone: "Head", mass: 0.06, swing: 95, twist: 45 },
+      { bone: "Tail1", mass: 0.08, swing: 30, twist: 10 },
+      { bone: "Tail3", mass: 0.04, swing: 60, twist: 35 },
+      { bone: "BackUpLeg.L", mass: 0.08, swing: 90, twist: 40 },
+      { bone: "BackUpLeg.R", mass: 0.08, swing: 90, twist: 40 },
+    ],
+  },
 } satisfies Partial<CreatureAsset>;
 
 /** The pack names each action "<model>_<Clip>". */

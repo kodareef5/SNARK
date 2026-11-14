@@ -6,7 +6,7 @@ import type { Clip } from "../../shared/anim/clip.ts";
 import { MOST_SECTIONS, parsePack, type PackMaterial, type PackRig, type PackTexture } from "../../shared/pack/pack.ts";
 import { RAMP_BASE, SKIN_BASE, defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, TEXTURE_ROLES, stepSize } from "../../shared/pack/texture.ts";
-import { convertCreature } from "../pack/creature.ts";
+import { convertCreature, withMotion } from "../pack/creature.ts";
 import { importGlb } from "../pack/glb.ts";
 import { readGltf } from "../pack/gltf.ts";
 import { withLevels, withSurfaceLevels } from "../pack/simplify.ts";
@@ -218,7 +218,7 @@ function recolour(was: Uint8Array, now: Uint8Array, asset?: Asset): (mesh: Sourc
  * A pack again in today's format and palette, made from itself: no Blender. How far each level lies from the finest
  * is measured afresh. With `levels`, every mesh that follows a rig of its own gets its coarser levels made afresh from
  * its finest, which undoes any the model brought. One drawn with materials has them made as its asset says, which
- * reads the asset's pictures.
+ * reads the asset's pictures. A creature's rig takes its feet, strides and ragdoll from its asset as it is now.
  */
 export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8Array {
   const pack = parsePack(file);
@@ -235,5 +235,10 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
     const budgets = spec.budgets.triangles.slice(1);
     return withSurfaceLevels({ ...measured, lods: [measured.lods[0]!] }, { budgets, flat: spec.flat ?? Math.max(1, budgets.length), maps: measured.materials!.map((d) => pictures.get(d.id) ?? {}), palette });
   });
-  return buildPack(meshes, palette, pack.clips.clips, pack.header.rigs);
+  // A creature's rig takes what its asset now says of how it moves and dies.
+  const faults: string[] = [];
+  const spec = asset?.spec;
+  const rigs = pack.header.rigs.map((r) => (spec?.kind === "creature" && r.id === asset!.id ? withMotion(r, spec, pack.clips.clips, faults) : r));
+  if (faults.length > 0) throw new Error(`${asset!.id}: ${faults.join("; ")}`);
+  return buildPack(meshes, palette, pack.clips.clips, rigs);
 }

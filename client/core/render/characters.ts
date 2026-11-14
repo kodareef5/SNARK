@@ -6,22 +6,24 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { Pose } from "../../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
-import { HumanAnim, humanPose, type AnimState } from "../../../shared/anim/pose.ts";
+import { HumanAnim, advanceHuman, humanPose, type AnimState } from "../../../shared/anim/pose.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
-import { creaturePose } from "../../../shared/anim/creature.ts";
+import { advanceCreature, creaturePose } from "../../../shared/anim/creature.ts";
+import { Gait } from "../../../shared/anim/gait.ts";
 import { buildRigs, type Rig } from "../../../shared/anim/rigs.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
+import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import type { Assets } from "../assets/assets.ts";
+import { Corpses } from "../ragdoll.ts";
+import type { RemoteSample } from "../session.ts";
+import type { Camera } from "./camera.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
-/** Distances at which a body drops to its second and third level of detail, metres. */
-/** The most levels of detail a mesh has. */
-const LODS = 5;
 /** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, and a held item. */
 const PARTS = SLOT_COUNT + 4;
 const PLAIN = defaultLook();
@@ -69,6 +71,14 @@ interface BodyKind {
 
 export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number) => void;
 
+/** A body's gait, and the frame it was last drawn in. */
+class Stride extends Gait {
+  seen = 0;
+}
+
+/** Frames a body may go undrawn before its gait is forgotten. */
+const FORGET_GAIT = 600;
+
 export class Characters {
   readonly anim: HumanAnim;
   /** Bodies posed this frame. */
@@ -87,8 +97,10 @@ export class Characters {
 
   // Instances queued this frame, one per mesh of each body.
   private count = 0;
-  /** Twice (pack mesh * LODS + level of detail), and one more for a body on one bone. */
+  /** Twice (pack mesh * levels + level of detail), and one more for a body on one bone. */
   private readonly key = new Uint32Array(MAX_SKINNED);
+  /** The most levels of detail any mesh of the pack has, so that a body can be drawn at every level its mesh has. */
+  private readonly levels: number;
   private readonly firstBone = new Uint16Array(MAX_SKINNED);
   private readonly region0 = new Uint8Array(MAX_SKINNED);
   private readonly colors = new Uint8Array(MAX_SKINNED * 6);
@@ -101,13 +113,25 @@ export class Characters {
   private readonly assets: Assets;
   /** The level each body was last drawn at, by its id. */
   private readonly last = new Map<number, number>();
+  /** Each body's gait, by its id, so its legs go by the ground it covers (shared/anim/gait.ts). */
+  private readonly gaits = new Map<number, Stride>();
+  private frame = 0;
+  /**
+   * The id of the creature last drawn of each mesh and body clock (bodySeed), for seat(), which is not told whose seat it
+   * is. The packet is the same one every frame, and holds the camera by the time seat() is asked.
+   */
+  private readonly bySeed = new Map<number, number>();
+  private packet: FramePacket | null = null;
+  /** Bodies that died, as their death clips and ragdolls pose them. */
+  private readonly dead: Corpses;
 
   constructor(reg: Registry, pack: Pack, assets: Assets) {
     const { table, bind } = assets;
     this.assets = assets;
     this.anim = new HumanAnim(pack.clips);
-    this.counts = new Uint32Array(table.count * LODS * 2);
-    this.cursor = new Uint32Array(table.count * LODS * 2);
+    this.levels = table.error.reduce((most, e) => Math.max(most, e.length), 1);
+    this.counts = new Uint32Array(table.count * this.levels * 2);
+    this.cursor = new Uint32Array(table.count * this.levels * 2);
     /** Only a mesh on the human skeleton is drawn as part of a body. */
     const human = (mesh: number): number => (mesh >= 0 && table.skeleton[mesh] === HUMAN.id ? mesh : -1);
     const sets: string[] = [];
@@ -129,7 +153,7 @@ export class Characters {
       const rig = table.rig[first]!;
       // A body is drawn at one level, so that its parts meet. Its error at a level is the average of its parts'.
       const parts = [...slots].filter((m) => m >= 0).map((m) => table.error[m]!);
-      const error = Array.from({ length: Math.min(LODS, ...parts.map((e) => e.length)) }, (_, level) => parts.reduce((sum, e) => sum + e[level]!, 0) / parts.length);
+      const error = Array.from({ length: Math.min(...parts.map((e) => e.length)) }, (_, level) => parts.reduce((sum, e) => sum + e[level]!, 0) / parts.length);
       // Armor is cut for a body, and keyed by the body's name without its pack.
       const body = `${d.mesh}_${sex}`.replace(/^[^:]*:/, "");
       return {
@@ -147,7 +171,7 @@ export class Characters {
       if (d?.type !== "species" || d.skeleton === undefined || d.skeleton === HUMAN.id) return null;
       const rig = rigs.get(bind.id(d.id, "rig"));
       const mesh = bind.own(d.id, "body");
-      return rig && mesh >= 0 ? { rig, mesh, color: d.color, runAt: reg.runAt[i]!, error: table.error[mesh]!.slice(0, LODS) } : null;
+      return rig && mesh >= 0 ? { rig, mesh, color: d.color, runAt: reg.runAt[i]!, error: table.error[mesh]! } : null;
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -159,6 +183,15 @@ export class Characters {
       }
       return bodies.length > 0 ? { sets: bodies, color: d.color } : null;
     });
+    this.dead = new Corpses(this.creatures, reg.birthScale);
+  }
+
+  /** The gait of the body with this id, kept from frame to frame. */
+  private gaitOf(id: number): Stride {
+    let g = this.gaits.get(id);
+    if (!g) this.gaits.set(id, (g = new Stride()));
+    g.seen = this.frame;
+    return g;
   }
 
   /** Whether content of this kind is drawn here rather than as a rigid mesh. */
@@ -186,7 +219,13 @@ export class Characters {
     const c = this.creatures[kind];
     const socket = c?.rig.sockets.get("seat");
     if (!c || !socket) return false;
-    creaturePose(c.rig, st, tick, c.runAt, c.rig.a);
+    // The mount's legs are where they will be drawn: its gait, found by its mesh and clock, if that body was drawn here.
+    const id = this.bySeed.get(c.mesh * 1024 + st.seed);
+    let g = id === undefined ? undefined : this.gaits.get(id);
+    const p = this.packet;
+    if (g && p && Math.abs(g.x - x - p.camX) < 3 && Math.abs(g.z - z - p.camZ) < 3) advanceCreature(c.rig, g, st, tick, c.runAt, x + p.camX, z + p.camZ, yaw, 1);
+    else g = undefined;
+    creaturePose(c.rig, st, tick, c.runAt, c.rig.a, g ?? null);
     solve(c.rig, c.rig.a, c.rig.solved);
     boneToModel(c.rig.solved, socket.bone, socket.x, socket.y, socket.z, out);
     const s = Math.sin(yaw);
@@ -204,24 +243,54 @@ export class Characters {
     if (first < 0) return false;
     if (rigid) writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size);
     else {
-      creaturePose(rig, st, tick, c.runAt, rig.a);
+      this.packet = p;
+      const g = this.gaitOf(id);
+      advanceCreature(rig, g, st, tick, c.runAt, x + p.camX, z + p.camZ, yaw, size);
+      this.bySeed.set(c.mesh * 1024 + st.seed, id);
+      creaturePose(rig, st, tick, c.runAt, rig.a, g);
       solve(rig, rig.a, rig.solved);
       writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
       this.posed++;
     }
+    this.queueCreature(c, first, x, y, z, colors, colorAt, id, size, rigid);
+    return true;
+  }
+
+  /** Queues a creature's mesh on the bones from `first`, at the level its distance and size call for. */
+  private queueCreature(c: Creature, first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean): void {
     const n = this.count++;
     // A young one is the same mesh drawn smaller, and so are its errors.
     const far = Math.sqrt(x * x + y * y + z * z) / size;
     const lod = this.levelOf(id, c.error, far);
     this.assets.wantTextured(c.mesh, lod, far);
-    this.key[n] = (c.mesh * LODS + lod) * 2 + (rigid ? 1 : 0);
+    this.key[n] = (c.mesh * this.levels + lod) * 2 + (rigid ? 1 : 0);
     this.firstBone[n] = first;
     this.region0[n] = c.color;
     for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
     this.id[n] = id;
     this.near[n] = 0;
     this.offset.fill(0, n * 3, n * 3 + 3);
-    return true;
+  }
+
+  /**
+   * Finds the creatures that have died among the remote entities, moves the dead on through their death clips and
+   * ragdolls, and draws those in view where they lie. `world` is what a ragdoll falls on.
+   */
+  corpses(p: FramePacket, cam: Camera, remote: RemoteSample, world: CollisionWorld): void {
+    this.dead.update(remote, world, cam.x, cam.z, this.gaits);
+    for (const d of this.dead.list) {
+      const c = this.creatures[d.kind]!;
+      const x = d.x - cam.x;
+      const y = d.y - cam.y;
+      const z = d.z - cam.z;
+      // A ragdoll may roll from where it died: its root bone says how far.
+      const r = (c.rig.reach + Math.abs(d.solved.pos[0]!) + Math.abs(d.solved.pos[2]!)) * d.size;
+      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+      const first = this.room(p, c.rig.bones, 1);
+      if (first < 0) return;
+      writeBones(p.bones, first * BONE_FLOATS, d.solved, c.rig.rest, null, x, y, z, d.yaw, d.size);
+      this.queueCreature(c, first, x, y, z, d.colors, 0, d.id, d.size, false);
+    }
   }
 
   /** Takes `bones` bones for a body of `parts` meshes and returns the first, or counts the body as dropped and returns -1. */
@@ -240,6 +309,8 @@ export class Characters {
     this.posed = 0;
     // Ids of bodies long gone would otherwise be kept for good.
     if (this.last.size > 4096) this.last.clear();
+    if (++this.frame % FORGET_GAIT === 0) for (const [id, g] of this.gaits) if (this.frame - g.seen > FORGET_GAIT) this.gaits.delete(id);
+    if (this.bySeed.size > 4096) this.bySeed.clear();
   }
 
   private levelOf(id: number, errors: readonly number[], distance: number): number {
@@ -268,7 +339,10 @@ export class Characters {
     if (view) lookColors(view, this.lookColor);
     if (rigid) writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, 1);
     else {
-      humanPose(this.anim, st, tick, this.pose);
+      this.packet = p;
+      const g = this.gaitOf(id);
+      advanceHuman(this.anim, g, st, tick, x + p.camX, z + p.camZ, yaw);
+      humanPose(this.anim, st, tick, this.pose, g);
       let scales: Float32Array | null = null;
       if (view) {
         scales = this.scales;
@@ -286,7 +360,7 @@ export class Characters {
     const queue = (m: number, tint: Uint8Array | null, tintAt: number, bone: number): void => {
       const n = this.count++;
       this.assets.wantTextured(m, lod, far);
-      this.key[n] = (m * LODS + lod) * 2 + (rigid ? 1 : 0);
+      this.key[n] = (m * this.levels + lod) * 2 + (rigid ? 1 : 0);
       this.firstBone[n] = first;
       this.region0[n] = k.color;
       for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = tint ? tint[tintAt + q]! : 0;
@@ -337,7 +411,7 @@ export class Characters {
   loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1): boolean {
     const first = this.room(p, 1, 1);
     if (first < 0) return false;
-    // Right is level and square to the direction. Up is square to both.
+    // Right is level and square to the direction. Up is the direction crossed with right, so the basis keeps its handedness.
     let rx = dz;
     let rz = -dx;
     const rl = Math.sqrt(rx * rx + rz * rz);
@@ -348,9 +422,9 @@ export class Characters {
       rx /= rl;
       rz /= rl;
     }
-    const ux = -rz * dy;
-    const uy = rz * dx - rx * dz;
-    const uz = rx * dy;
+    const ux = dy * rz;
+    const uy = dz * rx - dx * rz;
+    const uz = -dy * rx;
     const o = first * BONE_FLOATS;
     const b = p.bones;
     b[o] = rx * wide;
@@ -367,7 +441,7 @@ export class Characters {
     b[o + 11] = z;
     showMaterials(this.assets, mesh, Math.sqrt(x * x + y * y + z * z), wide);
     const n = this.count++;
-    this.key[n] = mesh * LODS * 2;
+    this.key[n] = mesh * this.levels * 2;
     this.firstBone[n] = first;
     this.region0[n] = 0;
     this.colors.fill(0, n * 6, n * 6 + 6);
@@ -393,7 +467,7 @@ export class Characters {
     for (let k = 0; k < counts.length; k++) {
       this.cursor[k] = total;
       // An odd key is the bodies on one bone, which are a draw of their own.
-      if (counts[k]! > 0) draw(Math.floor(k / (LODS * 2)), (k >> 1) % LODS, total, counts[k]!, (k & 1) !== 0 ? flags | DRAW_ONE_BONE : flags);
+      if (counts[k]! > 0) draw(Math.floor(k / (this.levels * 2)), (k >> 1) % this.levels, total, counts[k]!, (k & 1) !== 0 ? flags | DRAW_ONE_BONE : flags);
       total += counts[k]!;
     }
     for (let i = 0; i < this.count; i++) {
