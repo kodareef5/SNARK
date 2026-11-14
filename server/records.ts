@@ -1,13 +1,5 @@
-// Cold records: the slow-changing, valuable state of a persistent entity.
-//
-// The simulation's hot columns (position, velocity, flags) live in typed arrays
-// and change every tick. Everything else about a survivor or creature (name,
-// inventory, vitals, stat points, colours, ancestry, progression) lives here,
-// changes only when a command or deadline touches it, and is what a save must
-// never lose or duplicate.
-//
-// Records are keyed by persistent id and exist whether or not the entity is
-// currently in the simulation (an offline survivor still has one).
+// Cold records hold everything about a persistent entity that is not a hot simulation column. They are keyed by
+// persistent id and exist whether or not the entity is in the simulation.
 
 import type { BuffOn } from "./buffs.ts";
 import { makePid } from "../shared/ids.ts";
@@ -23,7 +15,7 @@ export interface Marker {
   tick: number;
 }
 
-/** A run of one recipe: `left` units still to make, the current one finished at tick `doneAt`. */
+/** A run of one recipe. `left` units remain, and the current one finishes at tick `doneAt`. */
 export interface Job {
   recipe: number;
   left: number;
@@ -32,86 +24,72 @@ export interface Job {
 
 export class EntityRecord {
   readonly pid: number;
-  /** Content index of the species. */
   kind: number;
   name = "";
-  /** Last known position; refreshed from the simulation when saved. */
+  /** Last known position, refreshed from the simulation when saved. */
   x = 0;
   y = 0;
   z = 0;
   yaw = 0;
-  /** What it carries. Edited only through server/items.ts; null until something is put in. */
+  /** Edited only through server/items.ts. Null until something is put in. */
   inv: Inventory | null = null;
-  /** Health, food, water, oxygen; null for bodies that have none. Owned by server/survival.ts. */
+  /** Owned by server/survival.ts. Null for bodies that have none. */
   vitals: Vitals | null = null;
-  /** Stat points, colours and ancestry; null for bodies that have none. */
   genome: Genome | null = null;
-  /** Hash of the device key that owns this survivor; null until one claims it. */
+  /** Hash of the device key that owns this survivor. Null until one claims it. */
   keyHash: Uint8Array | null = null;
-  /** A survivor's look, as the character creator made it (shared/anim/look.ts); null for anything else. */
+  /** A survivor's look (shared/anim/look.ts). */
   look: Uint8Array | null = null;
-  /** Which hotbar slot is in its hands, 0 to 9, or -1 for none. */
+  /** Hotbar slot in hand, 0 to 9, or -1 for none. */
   held = -1;
   /** A survivor waiting to respawn. */
   dead = false;
-  /** Tick at which a cache disappears with whatever is left in it; 0 for things that stay. */
+  /** Tick at which a cache disappears with its contents. 0 for records that stay. */
   expiresAt = 0;
-  /** Places this survivor should be able to find again, oldest first. */
+  /** Oldest first. */
   readonly markers: Marker[] = [];
   markersVersion = 0;
-  /** Experience, learned engrams (content indices), and what is being crafted. */
+  /** Experience, learned engrams (content indices), and crafting jobs. */
   xp = 0;
   readonly engrams: number[] = [];
   readonly jobs: Job[] = [];
   /** Counts every change to the three above, for sending. */
   progVersion = 0;
-  /**
-   * The team that owns it: a survivor's own, a tribe's, or 0 for nobody (a
-   * wild creature). A survivor alone is a team of one. `rank` is its standing
-   * in a tribe; nothing reads it yet.
-   */
+  /** The owning team: a survivor's own, a tribe's, or 0 for a wild creature. `rank` is its standing in a tribe. */
   team = 0;
   rank = 0;
-  /** What is acting on it for a time (server/buffs.ts). Not saved. `buffsVersion` counts every change, for sending. */
+  /** Timed effects (server/buffs.ts). Not saved. `buffsVersion` counts every change, for sending. */
   readonly buffs: BuffOn[] = [];
   buffsVersion = 0;
-  /** Unconscious: its torpor reached its most, and has not yet run out. */
+  /** Unconscious. Its torpor reached the maximum and has not yet run out. */
   out = false;
   /**
-   * For the state of something built (server/fixtures.ts): the structure it
-   * is the state of, as a ref, or -1 for anything else. Then whether that is
-   * locked (0: as its kind starts out, 1: locked, 2: unlocked) and its PIN (0
-   * to 9999, or -1 for none).
+   * For the state of a built structure (server/fixtures.ts). `at` is the structure's ref, or -1 for any other record.
+   * `lock` is 0 for its kind's default, 1 for locked, 2 for unlocked. `pin` is 0 to 9999, or -1 for none.
    */
   at = -1;
   lock = 0;
   pin = -1;
   /**
-   * For a creature lying unconscious and being tamed (server/taming.ts): the
-   * affinity it has been given, the sum its effectiveness is made from, who
-   * last looked into it (a persistent id: the tame will be theirs), and what
-   * was last seen of its inventory and when it is next due to eat. Null for
-   * anything else. And for a creature that has been tamed, how well: 0 to 1.
+   * For an unconscious creature being tamed (server/taming.ts): its affinity, the sum its effectiveness is made from,
+   * the record id of the survivor who last opened it (the tame will be theirs), the inventory version last seen, and
+   * the tick it is next due to eat. `te` is how well a tamed creature was tamed, 0 to 1.
    */
   tame: { affinity: number; sum: number; by: number; seen: number; due: number } | null = null;
   te = 0;
   /**
-   * For a creature that is somebody's: what it does about others (a STANCE_
-   * of server/behavior.ts), whom it follows (a persistent id; 0: it stays),
-   * and the tick it is next due to eat of what it carries (0: nothing set).
+   * For an owned creature: a STANCE_ of server/behavior.ts, the record id it follows (0 to stay), and the tick it
+   * is next due to eat from what it carries (0 for none).
    */
   stance = 1;
   follow = 0;
   mealDue = 0;
-  /** The saddle it wears (a content index), or 0. */
+  /** Content index of its saddle, or 0. */
   saddle = 0;
   /**
-   * Breeding (server/breeding.ts). For a creature that is somebody's: whether
-   * it is willing to mate, and the tick from which a female may again (0:
-   * now). For a young one: the ticks its growing takes and the tick it will be
-   * grown (both 0 for one that is grown, or was never young), and the tick
-   * it is next a hundredth more grown (not saved: worked out again from the
-   * other two).
+   * Breeding (server/breeding.ts). `mating` is whether an owned creature is willing to mate, and `mateReadyAt` the tick
+   * from which a female may again (0 for now). `span` and `grown` are the ticks growing takes and the tick it ends,
+   * both 0 for one that is grown. `growDue` is the tick it is next a hundredth more grown. It is derived, not saved.
    */
   mating = false;
   mateReadyAt = 0;
@@ -119,16 +97,13 @@ export class EntityRecord {
   grown = 0;
   growDue = 0;
   /**
-   * For an egg: the species that will hatch from it (a content index), the
-   * ticks its hatching takes and the tick it will hatch, and, for young that are carried and not
-   * laid, the mother carrying them (a persistent id; 0 for an egg that lies
-   * on the ground). What hatches has the genome of this record. Null for
-   * anything else.
+   * For an egg: the species that hatches (a content index), the ticks hatching takes, the tick it hatches, and the record
+   * id of a mother carrying unborn young (0 for a laid egg). The hatchling gets this record's genome.
    */
   egg: { species: number; span: number; hatchAt: number; carrier: number } | null = null;
-  /** For a bed: the tick from which someone may next return to life at it. */
+  /** For a bed, the tick from which a survivor may next respawn at it. */
   readyAt = 0;
-  /** For a fire that is burning: how far it has been worked out (shared/sim/station.ts), and the tick it is next due to be looked at. Null when it is out. */
+  /** For a burning fire: its state as of tick `at` (shared/sim/station.ts), and the tick of its deadline. Null when it is out. */
   fire: { at: number; fuel: number; cook: number; due: number } | null = null;
   /** Component blobs this build does not understand, kept byte for byte. */
   readonly extra = new Map<number, Uint8Array>();
@@ -153,7 +128,7 @@ export class Records {
     this.worldId = worldId;
   }
 
-  /** A new team id: from the same counter as records, so it is saved with it and never repeats. */
+  /** Team ids come from the record counter, so they are saved with it and never repeat. */
   newTeam(): number {
     return this.nextSeq++;
   }

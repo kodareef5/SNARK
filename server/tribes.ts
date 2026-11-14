@@ -1,15 +1,5 @@
-// Who is with whom.
-//
-// Everything that can be owned carries one number, its team: a survivor, a
-// structure row (its `owner` column), a tame. A survivor alone is a team of
-// one. A tribe is a team with a name and more than one way in: it takes its
-// founder's team as its own, so what the founder had is the tribe's from the
-// start, and what a survivor brings when it joins becomes the tribe's too.
-// Leaving takes nothing along. Every question of "may this one touch that" is
-// asked here (`may`, `relation`), so that ranks and alliances have one place
-// to arrive.
-//
-// Tribes are managed from the console in this round; the screen comes later.
+// Everything ownable carries one team number. A survivor alone is a team of one, and a tribe takes its founder's
+// team as its own. Every "may this one touch that" question goes through `may` and `relation`.
 
 import type { Rules } from "./settings/rules.ts";
 import { TICK_RATE } from "../shared/coords.ts";
@@ -17,25 +7,23 @@ import { MAX_TRIBE_NAME } from "../shared/net/protocol.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** A member, and the one the tribe belongs to. (1 is kept for an admin.) */
+/** 1 is reserved for an admin rank. */
 export const RANK_MEMBER = 0;
 export const RANK_OWNER = 2;
 
-/** How two teams stand: one of them is nobody's, they are the same, or they are not. */
+/** REL_NONE means one of the two teams is 0. */
 export const REL_NONE = 0;
 export const REL_SAME = 1;
 export const REL_OTHER = 2;
 
-/** An invitation waits this long for an answer. */
 export const INVITE_TICKS = 60 * TICK_RATE;
-/** How near the one invited must stand: an invitation is made face to face. */
+/** Metres. An invitation is made face to face. */
 export const INVITE_RANGE = 8;
 
 export interface Tribe {
-  /** Its team. */
   readonly id: number;
   name: string;
-  /** Persistent ids, in the order they joined; the owner is one of them. */
+  /** Record ids in the order they joined. The owner is one of them. */
   readonly members: number[];
   owner: number;
 }
@@ -46,24 +34,21 @@ interface Invite {
   until: number;
 }
 
-/** A tribe's name as it will be kept, or "" if it cannot be one. */
+/** Returns "" if the name cannot be a tribe's name. */
 export function cleanTribeName(name: string): string {
-  // Printable, single-spaced, not too long.
   const clean = name.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
   return clean.length > 0 && clean.length <= MAX_TRIBE_NAME ? clean : "";
 }
 
 export class Tribes {
-  /** The server's rules, given by whoever assembles the world: how many a tribe may hold. */
   rules: Rules | null = null;
   readonly byId = new Map<number, Tribe>();
   /** Counts every change to any tribe or invitation, for sending. */
   version = 0;
   /** Called when something that is saved changed. */
   onSave: (() => void) | null = null;
-  /** Called with a record whose team changed, so that its body says so. */
+  /** Called with a record whose team changed, so its body can show it. */
   onTeam: ((rec: EntityRecord) => void) | null = null;
-  /** Called with a line for one survivor (by persistent id) to read. */
   onNotice: ((pid: number, text: string) => void) | null = null;
   private readonly invites = new Map<number, Invite>();
   private readonly survivor: number;
@@ -76,22 +61,22 @@ export class Tribes {
     this.survivor = world.reg.index.get("core:survivor") ?? 0;
   }
 
-  /** How team `a` stands to team `b`. */
+  /** Returns a REL_ value. */
   relation(a: number, b: number): number {
     return a === 0 || b === 0 ? REL_NONE : a === b ? REL_SAME : REL_OTHER;
   }
 
-  /** Whether `rec` may do as an owner does with what belongs to `team`. Nobody may with what is nobody's. */
+  /** Whether `rec` may act as an owner of what belongs to `team`. Nobody may for team 0. */
   may(rec: EntityRecord | null | undefined, team: number): boolean {
     return !!rec && this.relation(rec.team, team) === REL_SAME;
   }
 
-  /** The tribe a record is in, or null for one alone. */
+  /** The tribe a record is in, or null. */
   of(rec: EntityRecord): Tribe | null {
     return this.byId.get(rec.team) ?? null;
   }
 
-  /** The invitation `rec` has yet to answer, or null. One that has run out is forgotten here. */
+  /** The invitation `rec` has not answered, or null. An expired one is deleted here. */
   inviteOf(rec: EntityRecord): { tribe: Tribe; by: string; until: number } | null {
     const inv = this.invites.get(rec.pid);
     if (!inv) return null;
@@ -104,7 +89,7 @@ export class Tribes {
     return { tribe, by: this.records.byPid.get(inv.by)?.name ?? "", until: inv.until };
   }
 
-  /** Found a tribe. It takes the founder's team, and with it everything the founder owns. Returns what went wrong, or "". */
+  /** The tribe takes the founder's team, and with it everything the founder owns. Returns what went wrong, or "". */
   create(rec: EntityRecord, name: string): string {
     if (this.of(rec)) return "you are in a tribe already; leave it first";
     const clean = cleanTribeName(name);
@@ -117,7 +102,7 @@ export class Tribes {
     return "";
   }
 
-  /** Ask `target` to join the tribe `by` owns. `near` says whether they stand close enough. */
+  /** `near` says whether the two stand within INVITE_RANGE. */
   invite(by: EntityRecord, target: EntityRecord, near: boolean): string {
     const tribe = this.of(by);
     if (!tribe) return "you are not in a tribe; found one first";
@@ -130,18 +115,16 @@ export class Tribes {
     return "";
   }
 
-  /** Take up an invitation: the survivor, and everything it owns, joins the tribe. */
   accept(rec: EntityRecord): string {
     const inv = this.inviteOf(rec);
     if (!inv) return "nobody has invited you";
     if (this.of(rec)) return "you are in a tribe already; leave it first";
     const tribe = inv.tribe;
-    // No more members than the server allows.
     const most = this.rules ? this.rules.num("MaxNumberOfPlayersInTribe") : 0;
     if (most > 0 && tribe.members.length >= most) return `${tribe.name} has as many members as a tribe may here (${most})`;
     this.invites.delete(rec.pid);
     const was = rec.team;
-    // What it built and tamed goes with it, and stays if it later leaves.
+    // What it built and tamed joins the tribe, and stays if it later leaves.
     this.world.structs.reown(was, tribe.id);
     for (const other of this.records.byPid.values()) {
       if (other.team !== was || other === rec) continue;
@@ -165,7 +148,7 @@ export class Tribes {
     return "";
   }
 
-  /** Leave a tribe, taking nothing: the survivor is a team of one again, with a team that owns nothing. */
+  /** The survivor leaves with nothing and gets a new team of one. */
   leave(rec: EntityRecord): string {
     const tribe = this.of(rec);
     if (!tribe) return "you are not in a tribe";
@@ -174,7 +157,6 @@ export class Tribes {
     return "";
   }
 
-  /** Put a member out. Only the owner may, and not itself. */
   kick(by: EntityRecord, name: string): string {
     const tribe = this.of(by);
     if (!tribe) return "you are not in a tribe";
@@ -206,10 +188,10 @@ export class Tribes {
     rec.team = this.records.newTeam();
     rec.rank = RANK_MEMBER;
     if (tribe.members.length === 0) {
-      // Nobody is left: the tribe is gone. What it owned keeps its team, which is now nobody's to act for.
+      // The last member left, so the tribe is gone. What it owned keeps the team id, which no one can act for now.
       this.byId.delete(tribe.id);
     } else if (tribe.owner === rec.pid) {
-      // It passes to whoever has been in it longest.
+      // Ownership passes to the longest-standing member.
       tribe.owner = tribe.members[0]!;
       const heir = this.records.byPid.get(tribe.owner);
       if (heir) {
@@ -233,10 +215,8 @@ export class Tribes {
   }
 
   /**
-   * Take in saved tribes. Records say who is on which team; the saved list
-   * gives a tribe its name, its owner and the order its members joined. A
-   * member the records do not put there is dropped, one they do put there
-   * and the list lacks is added, and a tribe nobody is in is forgotten.
+   * Records decide who is on which team. The saved list gives a tribe its name, owner and member order.
+   * A listed member the records put elsewhere is dropped, an unlisted one is added, and an empty tribe is forgotten.
    */
   restore(saved: string | number | null): void {
     if (typeof saved !== "string") return;

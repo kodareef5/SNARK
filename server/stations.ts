@@ -1,13 +1,5 @@
-// Fires: burning fuel and cooking, without a step.
-//
-// A lit campfire is a record with a `fire` on it and one deadline: the tick
-// its fuel will run out. Nothing else happens until someone looks into it or
-// that deadline comes, and then it is worked out from where it was left, one
-// event at a time, by the shared arithmetic (shared/sim/station.ts). What
-// lies on it is the record's inventory: fuel is burnt and food cooked through
-// the ledger, at the ticks those things happened.
-//
-// Lit and out are the row's kind, as a door open and shut are.
+// Nothing steps a fire. A lit one is a record with a `fire` and one deadline, the tick its fuel runs out, and
+// shared/sim/station.ts advances it when someone opens it or the deadline comes. Lit and out are the row's kind.
 
 import { RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../shared/net/protocol.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
@@ -21,7 +13,7 @@ import type { ServerWorld } from "./world.ts";
 export const DEADLINE_FIRE = 6;
 
 export class Stations {
-  /** Fires lit and fires that went out for want of fuel; things cooked. */
+  /** Counters. `wentOut` counts only fires that ran out of fuel. */
   lit = 0;
   wentOut = 0;
   cooked = 0;
@@ -30,9 +22,9 @@ export class Stations {
   private readonly items: Items;
   private readonly fixtures: Fixtures;
   private readonly deadlines: DeadlineHeap;
-  /** Ticks one of each thing burns: content's, but for the moment a save made under other content is brought up to date. */
+  /** Ticks one of each item burns. It is the registry's table, except while refuel() runs with the old one. */
   private fuelTicks: Uint32Array;
-  /** The fire being worked out, and what lies on it, for `hearth`. */
+  /** The record `hearth` works on while tend() runs, else null. */
   private rec: EntityRecord | null = null;
   private readonly hearth: Hearth;
 
@@ -65,7 +57,7 @@ export class Stations {
       done: (t) => {
         const s = first(reg.cooksInto);
         if (s < 0) return true;
-        // What it becomes first, so that nothing is lost if there is no room for it.
+        // Mint the cooked item first, so nothing is lost if there is no room for it.
         if (items.mint(this.rec!, reg.cooksInto[this.rec!.inv!.item[s]!]!, 1, 0, 0, t) === 0) return false;
         items.burn(this.rec!, first(reg.cooksInto), 1, true);
         this.cooked++;
@@ -76,13 +68,9 @@ export class Stations {
   }
 
   /**
-   * A save is being taken in that was made when fuel burned `was` times its
-   * own time, and it now burns `is` times it. Every fire is first worked out
-   * up to this tick as it would have burned then, by the table of then
-   * (`old`); then the piece burning on each has left what it had left, as
-   * much longer or shorter as the rule is. The pile under it burns by the
-   * table of now. Things spoil on the way as `Items.respoil` has them: this
-   * comes before it.
+   * For a save made when fuel burned `was` times its base time, where it now burns `is` times. Every fire is first
+   * advanced to this tick by the old table (`old`). Then the time left on each burning piece is scaled by is / was.
+   * Call it before Items.respoil.
    */
   refuel(old: Uint32Array, was: number, is: number): void {
     this.fuelTicks = old;
@@ -96,12 +84,12 @@ export class Stations {
     }
   }
 
-  /** After a load: every fire that was burning has its deadline again. */
+  /** Call after a load. Every burning fire gets its deadline again. */
   resume(): void {
     for (const rec of this.records.byPid.values()) if (rec.fire && rec.at >= 0) this.schedule(rec);
   }
 
-  /** Ticks of burning left in what lies on a fire, besides the piece now burning. */
+  /** Ticks of fuel in the fire's inventory, not counting the piece now burning. */
   private pile(rec: EntityRecord): number {
     const inv = rec.inv;
     const fuel = this.fuelTicks;
@@ -110,7 +98,6 @@ export class Stations {
     return ticks;
   }
 
-  /** Set the fire's deadline to the tick its fuel runs out, if that is not already when it is due. */
   private schedule(rec: EntityRecord): void {
     const fire = rec.fire!;
     const out = fire.at + fire.fuel + this.pile(rec);
@@ -119,7 +106,7 @@ export class Stations {
     this.deadlines.push(out, DEADLINE_FIRE, rec.pid, out);
   }
 
-  /** Work a burning fire out up to now. If its fuel ran out on the way, it is out, as of then. */
+  /** Advances a burning fire to now. If its fuel ran out on the way, it is out as of that tick. */
   tend(rec: EntityRecord): void {
     const fire = rec.fire;
     if (!fire || this.rec !== null || !rec.inv) return;
@@ -138,7 +125,6 @@ export class Stations {
     this.schedule(rec);
   }
 
-  /** The fire is out: its record says so, and its row is the kind that does not burn. */
   private quench(rec: EntityRecord): void {
     rec.fire = null;
     this.records.dirty.add(rec.pid);
@@ -151,7 +137,7 @@ export class Stations {
     }
   }
 
-  /** Light the fire at `ref`, or put it out if it is burning. Lighting needs fuel on it. Returns a result code. */
+  /** Lighting needs fuel on the fire. Returns a RESULT code. */
   toggle(ref: number): number {
     const reg = this.world.reg;
     const t = this.world.structs.chunks[Math.floor(ref / 65536)];
@@ -161,7 +147,7 @@ export class Stations {
     const rec = this.fixtures.ensure(ref);
     const inv = this.items.inv(rec);
     if (rec.fire) {
-      // Put out: what was burning is lost, and what was half cooked starts again another time.
+      // Putting it out loses the burning piece and any cooking progress.
       this.quench(rec);
       return RESULT_OK;
     }
@@ -179,7 +165,7 @@ export class Stations {
   due(pid: number, stamp: number): void {
     const rec = this.records.byPid.get(pid);
     if (!rec?.fire || rec.fire.due !== stamp) return;
-    // Looked at through the same door everyone uses: it is worked out, and what is on it is then brought up to now.
+    // Items.inv() advances the fire, the same path as a player opening it.
     rec.fire.due = 0;
     this.items.inv(rec);
   }

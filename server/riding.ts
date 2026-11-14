@@ -1,14 +1,5 @@
-// Riding: a survivor on a creature of its tribe.
-//
-// Nothing new moves a mount. The session's inputs drive the creature's body
-// in place of its own (GameServer.take, D73): the same movement, the same
-// action step, so its look turns the mount as fast as the mount turns and its
-// primary button is the mount's bite. The rider stays its own entity (D74):
-// not stepped, pinned each tick to the seat on the mount's back, where the
-// mount's pose has it, and it can be shot there.
-//
-// Getting on needs a saddle on the creature. Getting off puts the rider on
-// the ground beside it. A mount that goes under or dies puts its rider off.
+// The rider's inputs drive the mount's body in place of its own (GameServer.take, D73). The rider stays its own
+// entity (D74), unstepped and pinned each tick to the seat on the mount's back, and it can be shot there.
 
 import { creaturePose } from "../shared/anim/creature.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
@@ -23,9 +14,9 @@ import type { EntityRecord, Records } from "./records.ts";
 import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** How far from a creature a survivor may be to get on it: metres from its middle, besides its own size. */
+/** Metres from the creature's centre, on top of its body radius. */
 const MOUNT_REACH = 3.5;
-/** How far a rider's feet hang below where it sits. */
+/** A rider's feet hang this many metres below the seat. */
 const SEAT_DROP = 0.55;
 
 export interface RidingContext {
@@ -33,16 +24,15 @@ export interface RidingContext {
   readonly game: GameServer;
   readonly records: Records;
   readonly tribes: Tribes;
-  /** Recompute what follows from a record: here, a mount's load with and without its rider. */
+  /** Recomputes what derives from a record. Riding calls it for a mount's load when a rider gets on or off. */
   refresh(rec: EntityRecord): void;
 }
 
 export class Riding {
-  /** Times a survivor got on, and got or was put off. */
   mounted = 0;
   dismounted = 0;
   private readonly ctx: RidingContext;
-  /** Who rides what: the rider's session, by the mount's entity index. */
+  /** The rider's session, by the mount's entity index. */
   private readonly riders = new Map<number, Client>();
   private readonly st = new AnimState();
   private readonly body = new Body();
@@ -52,18 +42,16 @@ export class Riding {
     this.ctx = ctx;
   }
 
-  /** The record of whoever rides the creature at entity `e`, or null. */
   riderOf(e: number): EntityRecord | null {
     const c = this.riders.get(e);
     return c ? (this.ctx.records.byPid.get(c.pid) ?? null) : null;
   }
 
-  /** Whether a session is riding. */
   riding(c: Client): boolean {
     return c.drive >= 0 && this.riders.get(c.drive) === c;
   }
 
-  /** A survivor asks to get on the creature at entity `e`. Returns a result code. */
+  /** Returns a RESULT code. */
   mount(c: Client, e: number): number {
     const { world, game, records, tribes } = this.ctx;
     const ents = world.ents;
@@ -72,7 +60,6 @@ export class Riding {
     const rec = e >= 0 && (ents.flags[e]! & F_ALIVE) !== 0 ? records.byPid.get(ents.pid[e]!) : undefined;
     if (!rec || rec.keyHash !== null || world.reg.defs[rec.kind]?.type !== "species") return RESULT_INVALID;
     if (rec.team === 0 || !tribes.may(me, rec.team)) return RESULT_NOT_YOURS;
-    // Not without a saddle; not while it lies unconscious; not while someone else is on it.
     if (rec.saddle === 0) return RESULT_SHORT;
     if (rec.out) return RESULT_DENIED;
     if (this.riders.has(e)) return RESULT_BUSY;
@@ -81,7 +68,7 @@ export class Riding {
     if (!game.take(c, e)) return RESULT_DENIED;
     this.riders.set(e, c);
     ents.setSeat(c.ent, e);
-    // Seated: its body is still, and drawn and hit as one that is sitting low.
+    // A seated body is still. The crouch stance makes it drawn and hit as sitting low.
     ents.vx[c.ent] = ents.vy[c.ent] = ents.vz[c.ent] = 0;
     ents.stance[c.ent] = STANCE_CROUCH;
     this.pin(c);
@@ -92,7 +79,6 @@ export class Riding {
     return RESULT_OK;
   }
 
-  /** The session gets off what it rides, or is put off: it stands on the ground beside it. */
   dismount(c: Client): void {
     const { world, game, records } = this.ctx;
     const e = c.drive;
@@ -103,7 +89,7 @@ export class Riding {
     if (c.ent >= 0) {
       ents.setSeat(c.ent, -1);
       ents.stance[c.ent] = STANCE_STAND;
-      // Beside it, to its left or its right or behind it, wherever there is room; failing all, where it sat.
+      // It lands beside the mount or behind it, wherever there is room. With no room it stays where it sat.
       const p = world.reg.move[ents.kind[c.ent]!]!;
       const a = (ents.yaw[e]! / 65536) * TAU;
       const off = world.reg.bodyRadius[ents.kind[e]!]! + p.radius + 0.4;
@@ -129,7 +115,7 @@ export class Riding {
     if (rec) this.ctx.refresh(rec);
   }
 
-  /** Put the rider's body where the seat on its mount's back is now, facing as the mount faces. */
+  /** Moves the rider's body to the seat on its mount, facing as the mount faces. */
   private pin(c: Client): void {
     const world = this.ctx.world;
     const ents = world.ents;
@@ -140,7 +126,7 @@ export class Riding {
     const seat = this.seat;
     const socket = rig?.sockets.get("seat");
     if (rig && socket) {
-      // Where the mount's pose has it, as the clients that draw it will.
+      // Pose the mount as the clients do, so the seat is where they draw it.
       const st = this.st;
       st.unpack(ents.anim[e]!);
       st.seed = bodySeed(e);
@@ -168,7 +154,7 @@ export class Riding {
     ents.pose(c.ent, world.tick);
   }
 
-  /** Once a tick, after every body has moved: each rider goes where its mount has gone; one whose mount is no more, or has gone under, is put off. */
+  /** Call once a tick, after every body has moved. A rider whose mount died or fell unconscious is put off. */
   step(): void {
     if (this.riders.size === 0) return;
     const { world, records } = this.ctx;

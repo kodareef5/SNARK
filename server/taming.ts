@@ -1,21 +1,5 @@
-// Taming: a creature knocked out and fed comes to belong to whoever fed it.
-//
-// The arithmetic is the reference's (shared/sim/taming.ts). This keeps the
-// state, and nothing here steps. A creature that goes under and can be tamed
-// has a `tame` on its record. Lying there it hungers fast (the survival
-// system's rate for that); when it is hungry enough for a piece of the food
-// it likes best of what has been put in it, it eats one, and that moment is a
-// deadline worked out from how hungry it is and how fast it hungers. So a
-// tame finishes on the same tick watched or not (D77).
-//
-// Each piece adds affinity and costs a little effectiveness; harm done to it
-// while it lies there costs effectiveness in proportion. When it has been
-// given what its level needs it is tamed: it joins the team of whoever last
-// looked into it, gains levels for how well it was done, and wakes. If it
-// wakes by itself first, everything it was given is lost.
-//
-// A narcotic fed to it deepens its sleep; one after another, each begins
-// when the last has done.
+// Taming state. The arithmetic is ARK's (shared/sim/taming.ts). Nothing steps. Each bite is a deadline computed
+// from the creature's hunger, so a tame finishes on the same tick watched or not (D77).
 
 import { TICK_RATE } from "../shared/coords.ts";
 import type { BitReader } from "../shared/net/codec.ts";
@@ -51,42 +35,34 @@ export interface TamingContext {
   readonly deadlines: DeadlineHeap;
   readonly creatures: Creatures;
   readonly progression: Progression;
-  /** The record of the container a session has open, or null. */
   openOf(c: Client): EntityRecord | null;
-  /** Recompute what follows from a record: its body's level, name, team and limits. */
+  /** Recomputes what derives from a record: its body's level, name, team and limits. */
   refresh(rec: EntityRecord): void;
-  /** A creature has been tamed: it is somebody's now. */
   onTamed?(rec: EntityRecord): void;
-  /** The server's lists that name classes. */
   readonly lists: Lists;
-  /** Tell a survivor something, if they are here. */
   onNotice?(pid: number, text: string): void;
 }
 
-/** What a session looking into a creature is shown of it. */
+/** What a session sees of a creature it has open. */
 export interface Subject {
-  /** It is being tamed; it is somebody's. */
   taming: boolean;
   owned: boolean;
   level: number;
-  /** Share of the affinity it needs that it has, 0 to 1; effectiveness so far, 0 to 1. */
+  /** `progress` is its share of the affinity it needs. `te` is effectiveness so far. Both are 0 to 1. */
   progress: number;
   te: number;
-  /** Its torpor and its food as shares of the most it holds. */
+  /** Shares of their maxima, 0 to 1. */
   torpor: number;
   food: number;
-  /** Whether it wears a saddle. */
   saddled: boolean;
-  /** Which it is (an entity index, or -1), the levels it has to spend, its stance, and whether it follows someone. */
+  /** `id` is an entity index, or -1. `points` is the levels it has to spend. */
   id: number;
   points: number;
   stance: number;
   following: boolean;
   /**
-   * Its breeding: whether its kind breeds, whether it may mate, whether it is
-   * female; how grown it is (a stage of shared/sim/breeding.ts) and how far,
-   * 0 to 1; how far the pair it is one of has got, 0 to 1; and the seconds
-   * until a female may mate again.
+   * `breeds` is whether its kind breeds. `stage` is a stage of shared/sim/breeding.ts and `maturity` how far grown, 0 to 1.
+   * `mate` is how far its pair has got, 0 to 1. `wait` is the seconds until a female may mate again.
    */
   breeds: boolean;
   mating: boolean;
@@ -97,27 +73,23 @@ export interface Subject {
   wait: number;
 }
 
-/** What is shown of the breeding of a creature nobody has said anything about: grown, and no more. */
+/** Used when no `bred` hook is set. It shows a grown creature. */
 const NO_BREEDING = { mating: false, female: false, stage: 3, maturity: 1, mate: 0, wait: 0 };
 
 export class Taming {
-  /** Creatures tamed, pieces eaten, tames lost to waking, and narcotics fed; orders obeyed, and meals a creature that is somebody's ate of what it carries. */
+  /** Counters. `lost` is tames lost to waking. `bites` are pieces eaten during a tame, `meals` pieces an owned creature ate. */
   tamed = 0;
   bites = 0;
   lost = 0;
   doses = 0;
   orders = 0;
   meals = 0;
-  /**
-   * Breeding, given by whoever knows of it. `onMate`: a creature of the
-   * tribe of whoever asks is told it may mate, or may not (an ORDER_); the
-   * answer is a result code. `bred`: what to show of a creature's breeding.
-   */
+  /** Breeding hooks. `onMate` gets ORDER_MATE or ORDER_UNMATE and returns a RESULT code. `bred` fills a Subject's breeding fields. */
   onMate: ((rec: EntityRecord, what: number) => number) | null = null;
   bred: ((rec: EntityRecord) => typeof NO_BREEDING) | null = null;
   private readonly ctx: TamingContext;
   private readonly rng: Rng;
-  /** The creatures lying there being tamed: few at any time. */
+  /** Pids of creatures being tamed. Few at any time. */
   private readonly lying = new Set<number>();
   private readonly drugged: number;
 
@@ -127,7 +99,7 @@ export class Taming {
     this.drugged = ctx.world.reg.index.get("core:drugged") ?? 0;
   }
 
-  /** After a load: those that were lying there being tamed are again, and those that are somebody's know when they next eat. */
+  /** Call after a load. It restores the set of creatures being tamed and schedules owned creatures' meals. */
   resume(): void {
     for (const rec of this.ctx.records.byPid.values()) {
       if (rec.tame) {
@@ -140,11 +112,7 @@ export class Taming {
     }
   }
 
-  /**
-   * A creature that is somebody's eats of what it carries when it is hungry
-   * enough for a piece: set the tick of its next meal. Called when what it
-   * carries may have changed (someone has shut it), and after each meal.
-   */
+  /** Sets the tick an owned creature next eats from what it carries. Call it when its inventory may have changed, and after each meal. */
   meal(rec: EntityRecord): void {
     const { world, survival, deadlines } = this.ctx;
     if (rec.team === 0 || rec.tame || rec.dead || !rec.vitals) return;
@@ -170,22 +138,21 @@ export class Taming {
   }
 
   private wild(rec: EntityRecord): boolean {
-    // Not one that is young: that is taken, not tamed. And not if the server says nothing is to be, or not its kind.
+    // A young creature is claimed, not tamed.
     if (this.ctx.rules.on("bDisableDinoTaming") || this.ctx.lists.kinds("PreventDinoTameClassNames").has(rec.kind)) return false;
     return rec.team === 0 && rec.keyHash === null && rec.grown === 0 && this.ctx.world.reg.taming[rec.kind] !== null && this.ctx.world.reg.taming[rec.kind] !== undefined;
   }
 
-  /** A body went under, or came round. */
+  /** A body went unconscious, or came round. */
   out(rec: EntityRecord, out: boolean): void {
     if (out) {
-      // A wild creature that can be tamed: it can be, from now, by whoever feeds it.
       if (!this.wild(rec) || rec.tame) return;
       rec.tame = { affinity: 0, sum: 0, by: 0, seen: -1, due: 0 };
       this.lying.add(rec.pid);
       this.ctx.records.dirty.add(rec.pid);
       return;
     }
-    // Awake by itself before it was won: everything it was given is lost.
+    // It woke before the tame finished, so everything it was given is lost.
     if (rec.tame) {
       rec.tame = null;
       this.lost++;
@@ -194,7 +161,6 @@ export class Taming {
     this.lying.delete(rec.pid);
   }
 
-  /** Once a tick, for the few lying there: who is looking into each, and whether what it holds has changed. */
   step(): void {
     if (this.lying.size === 0) return;
     const { records, game } = this.ctx;
@@ -204,9 +170,9 @@ export class Taming {
         this.lying.delete(pid);
         continue;
       }
-      // Whoever has it open is who it is being tamed for: the last of them, if they come and go.
+      // The tame goes to the session that has it open, or the last one that did.
       for (const c of game.clients) if (c?.active && c.open === pid && rec.tame.by !== c.pid) rec.tame.by = c.pid;
-      // Already given all it needs, and now somebody's to be: it is theirs.
+      // A creature that already has the affinity it needs finishes once someone opens it.
       if (rec.tame.by !== 0 && rec.tame.affinity >= tameNeeded(this.ctx.world.reg.taming[rec.kind]!, rec.genome ? rec.genome.level : 1) - 1e-6) {
         this.finish(rec);
         continue;
@@ -219,7 +185,7 @@ export class Taming {
     }
   }
 
-  /** The food it likes best of what it holds, as an index into its species' list, or -1. */
+  /** Index into its species' `eats` list of the best food it holds, or -1. */
   private best(rec: EntityRecord): number {
     const eats = this.ctx.world.reg.eats[rec.kind];
     if (!eats || !rec.inv) return -1;
@@ -228,7 +194,7 @@ export class Taming {
     return -1;
   }
 
-  /** Set the tick it will next eat at: when it is hungry enough for a piece of the best it holds. Nothing to eat, no tick. */
+  /** Sets the tick a creature being tamed next eats. */
   private schedule(rec: EntityRecord): void {
     const { world, survival, deadlines } = this.ctx;
     const tame = rec.tame!;
@@ -239,9 +205,8 @@ export class Taming {
     }
     const reg = world.reg;
     const food = reg.eats[rec.kind]![k + 1]!;
-    // Hungry enough when it is short of full by a piece's worth. When that will be is worked out in the whole
-    // numbers its food is kept in, from where and when that was last written down: so that whenever this is
-    // asked, before a restart or after, the answer is the same tick.
+    // It is hungry enough when it is a piece's worth short of full. The tick is computed from the vital's stored
+    // integers and base tick, so the answer is the same before a restart and after.
     survival.value(rec, V_FOOD);
     const v = rec.vitals!;
     const level = v.max[V_FOOD]! - Math.round(food * 1e6);
@@ -258,12 +223,12 @@ export class Taming {
     deadlines.push(due, DEADLINE_TAME, rec.pid, due);
   }
 
-  /** A DEADLINE_TAME entry came due: it eats, if it still can and is still hungry enough. */
+  /** A DEADLINE_TAME entry came due, for an owned creature's meal or a bite of a tame. */
   due(pid: number, stamp: number): void {
     const { world, records, items, survival, rules } = this.ctx;
     const rec = records.byPid.get(pid);
     if (rec && !rec.tame && rec.team !== 0 && rec.mealDue === stamp) {
-      // Somebody's, and its mealtime: a piece of the best it carries, if it is still hungry enough for one.
+      // An owned creature's meal.
       rec.mealDue = 0;
       const k = this.best(rec);
       if (k >= 0 && rec.vitals) {
@@ -304,7 +269,7 @@ export class Taming {
     this.schedule(rec);
   }
 
-  /** Harm to a creature lying there costs effectiveness, by the share of its health it took. */
+  /** Harm to a creature being tamed costs effectiveness, by the share of its health taken. */
   harmed(rec: EntityRecord, points: number): void {
     const tame = rec.tame;
     if (!tame || !rec.out || !(points > 0) || !rec.vitals) return;
@@ -312,18 +277,18 @@ export class Taming {
     if (most > 0) tame.sum += harmCost(this.ctx.world.reg.taming[rec.kind]!, tame.sum, points / most);
   }
 
-  /** It has been given what it needs: it is whoever's last looked into it, better for how well it was done, and awake. */
+  /** It joins the team of the survivor who last opened it, and gains bonus levels for effectiveness. */
   private finish(rec: EntityRecord): void {
     const { world, records } = this.ctx;
     const tame = rec.tame!;
     const owner = records.byPid.get(tame.by);
-    // Nobody to belong to (fed by no hand): it waits, full of what it was given, for someone to look into it.
+    // With no owner it waits, keeping its affinity, until someone opens it.
     if (!owner || owner.team === 0) {
       tame.due = 0;
       tame.seen = -1;
       return;
     }
-    // The tribe, or the server, has as many as it may: it waits, as one fed by no hand does, until someone looks into it again.
+    // The tribe or the server is at its tame limit, so it waits the same way until someone opens it again.
     const full = this.full(owner.team);
     if (full !== "") {
       tame.by = 0;
@@ -336,7 +301,7 @@ export class Taming {
     const te = effectiveness(p, tame.sum);
     const g = rec.genome;
     if (g) {
-      // Levels for doing it well, where a wild creature's levels go.
+      // Bonus levels go into the stats a wild creature's levels go into.
       for (let n = bonusLevels(g.level, te); n > 0; n--) {
         const s = WILD_STATS[this.rng.int(WILD_STATS.length)]!;
         if (g.wild[s]! < POINT_CAP) g.wild[s]!++;
@@ -345,7 +310,6 @@ export class Taming {
     this.give(rec, owner, te);
   }
 
-  /** How many tamed creatures there are: in all, and of one team. */
   count(team: number): { all: number; ours: number } {
     const reg = this.ctx.world.reg;
     let all = 0;
@@ -358,7 +322,7 @@ export class Taming {
     return { all, ours };
   }
 
-  /** Why `team` may have no more tamed creatures, by the server's rules; "" if it may. */
+  /** Returns why `team` may have no more tamed creatures, or "" if it may. */
   full(team: number): string {
     const rules = this.ctx.rules;
     const most = rules.num("MaxTamedDinos");
@@ -369,11 +333,7 @@ export class Taming {
     return "";
   }
 
-  /**
-   * Creature `rec` is the tribe of `owner`'s from now, tamed this well (0 to
-   * 1), and awake. If it was being tamed, that is over. Its levels are as
-   * they are: whoever calls has given it what it earned.
-   */
+  /** `rec` joins `owner`'s team with effectiveness `te` (0 to 1), and wakes. Its levels are left alone, so the caller adds any it earned. */
   give(rec: EntityRecord, owner: EntityRecord, te: number): void {
     const { world, records, survival, game } = this.ctx;
     const g = rec.genome;
@@ -383,13 +343,13 @@ export class Taming {
     this.lying.delete(rec.pid);
     this.tamed++;
     records.dirty.add(rec.pid);
-    // It wakes: what was keeping it under is gone, and so is its torpor.
+    // It wakes. The drugged buff and all its torpor go.
     this.ctx.buffs.take(rec, this.drugged);
     survival.add(rec, V_TORPOR, -survival.value(rec, V_TORPOR) - 1);
     this.ctx.refresh(rec);
     this.ctx.onTamed?.(rec);
     this.meal(rec);
-    // Whoever it is told, so that they can say what it is to be called.
+    // The owner's client gets EVENT_TAMED, so it can ask for a name.
     const e = records.entOf.get(rec.pid);
     const to = game.clients.find((c) => c?.active && !c.closed && c.pid === owner.pid) ?? null;
     if (to && e !== undefined) {
@@ -404,9 +364,8 @@ export class Taming {
   }
 
   /**
-   * A session feeds something to the creature it has open, out of that
-   * creature's own inventory: which slot, and what it believes is there. Only
-   * a dose (a narcotic) can be fed so, and only to something unconscious.
+   * Uses an item in the open creature's own inventory on that creature. A saddle is put on, and a narcotic doses an
+   * unconscious creature. The command carries the slot and the item the client expects there.
    */
   feed(c: Client, r: BitReader): number {
     const slot = r.varint();
@@ -419,7 +378,7 @@ export class Taming {
     if (slot >= inv.cap) return RESULT_INVALID;
     const item = inv.item[slot]!;
     if (item !== expect || item === 0) return RESULT_STALE;
-    // A saddle that fits it, on a creature of one's tribe that has none: it is put on, and is no longer among what it carries.
+    // A saddle that fits leaves the inventory and is worn.
     if (world.reg.saddleFits[item] !== 0) {
       if (world.reg.saddleFits[item] !== box.kind || box.saddle !== 0) return RESULT_INVALID;
       // Nothing young is saddled.
@@ -436,7 +395,7 @@ export class Taming {
     const seconds = world.reg.doseSeconds[item]!;
     if (!(torpor > 0) || !(seconds > 0) || this.drugged === 0) return RESULT_INVALID;
     if (!items.burn(box, slot, 1)) return RESULT_STALE;
-    // One after another: this one begins when what is already acting has done.
+    // Doses queue. The time left on the active dose is added to this one's.
     const on = box.buffs.find((b) => b.buff === this.drugged);
     const left = on && on.until > world.tick ? (on.until - world.tick) / TICK_RATE : 0;
     buffs.give(box, this.drugged, c.pid, left + seconds, torpor / seconds);
@@ -444,7 +403,7 @@ export class Taming {
     return RESULT_OK;
   }
 
-  /** A session asks to look into a creature of its tribe, by its entity index: one near it, or the one it rides. */
+  /** The command carries an entity index. The creature must be near, or the one the session rides. */
   open(c: Client, r: BitReader): number {
     const which = r.u32();
     if (r.overflow) return RESULT_INVALID;
@@ -464,10 +423,7 @@ export class Taming {
     return RESULT_OK;
   }
 
-  /**
-   * A session tells a creature of its tribe what to do, or every one of them
-   * within a whistle's reach: stay, follow, a stance, or a level into a stat.
-   */
+  /** Orders one creature of the session's tribe, or with ORDER_ALL every one within WHISTLE_RANGE. */
   order(c: Client, r: BitReader): number {
     const which = r.u32();
     const what = r.u8();
@@ -481,7 +437,7 @@ export class Taming {
     if (what !== ORDER_STAY && what !== ORDER_FOLLOW && what !== ORDER_UNSADDLE && !mate && !(stance >= 0 && stance < 3) && what < ORDER_LEVEL) return RESULT_INVALID;
     const obey = (e: number, rec: EntityRecord): number => {
       if (what === ORDER_UNSADDLE) {
-        // Its saddle comes off into what it carries: not while someone sits on it, and not if there is no room.
+        // The saddle comes off into its inventory.
         if (rec.saddle === 0) return RESULT_INVALID;
         if (ents.driven[e] !== 0) return RESULT_BUSY;
         if (this.ctx.items.mint(rec, rec.saddle, 1) === 0) return RESULT_FULL;
@@ -506,7 +462,7 @@ export class Taming {
       return RESULT_OK;
     };
     if (which === ORDER_ALL) {
-      // A whistle: every one of the tribe's that hears it. Levels are not given by whistling, nor saddles taken off, nor anything told to mate.
+      // A whistle cannot give levels, take saddles off or order mating.
       if (what >= ORDER_LEVEL || what === ORDER_UNSADDLE || mate) return RESULT_INVALID;
       for (const e of creatures.mind.owned) {
         const rec = records.byPid.get(ents.pid[e]!);
@@ -527,7 +483,7 @@ export class Taming {
     return obey(e, rec);
   }
 
-  /** A session names a creature of its tribe: which (an entity handle) and what. */
+  /** The command carries an entity handle and the name. */
   rename(c: Client, r: BitReader): number {
     const handle = r.u32();
     const name = r.string(MAX_NAME_BYTES);
@@ -537,7 +493,7 @@ export class Taming {
     const rec = e >= 0 ? records.byPid.get(world.ents.pid[e]!) : undefined;
     if (!rec || world.reg.defs[rec.kind]?.type !== "species" || rec.keyHash !== null) return RESULT_INVALID;
     if (rec.team === 0 || !tribes.may(records.byPid.get(c.pid), rec.team)) return RESULT_NOT_YOURS;
-    // Letters, digits, spaces and a few marks; no more than a name's length.
+    // Letters, digits, spaces and a few marks.
     const clean = name.replace(/[^\p{L}\p{N} '._-]/gu, "").trim().slice(0, MAX_NAME_BYTES);
     rec.name = clean;
     records.dirty.add(rec.pid);
@@ -545,7 +501,7 @@ export class Taming {
     return RESULT_OK;
   }
 
-  /** What a session looking into `rec` is shown of it, or null if it is no creature. */
+  /** Null if `rec` is not a creature. */
   subject(rec: EntityRecord): Subject | null {
     const { world, survival } = this.ctx;
     if (world.reg.defs[rec.kind]?.type !== "species" || rec.keyHash !== null || !rec.vitals) return null;

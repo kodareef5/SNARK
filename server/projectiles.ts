@@ -1,23 +1,5 @@
-// Shots: the rifle round that arrives the tick it is fired, and the arrows and
-// darts that fly.
-//
-// One rule for all of them: a shot is a piece of a path, tested against the
-// world and the bodies in it. A rifle round is one long piece. An arrow is one
-// piece a tick (shared/sim/projectiles.ts) for as long as it flies.
-//
-// A shot is judged as its shooter saw it. A client draws everyone else a few
-// ticks in the past; it aims at that picture. So the bodies a shot is tested
-// against are where the history ring says they were at the moment the shooter
-// was looking at (Combat.viewTick), no more than twelve ticks back. A rifle
-// round is tested once, there. An arrow is flown through those remembered ticks
-// at once, the tick it is fired, each piece against the bodies of its own
-// moment; if it has hit nothing by now, it flies on in the present. The harm a
-// hit does is done now, to the body as it now is.
-//
-// An arrow that hits the world and does not break stands where it landed for a
-// minute, as a prop anyone can see, and is picked up by walking over it. The
-// round that was fired is spent on the books when it leaves; one picked up is
-// made anew.
+// A shot is judged as its shooter saw it. A rifle round is one piece, tested against the bodies of Combat.viewTick.
+// An arrow flies one piece a tick. On the tick it is fired it first flies from the view tick up to now.
 
 import { TAU } from "../shared/math/scalar.ts";
 import { EVENT_BLAST, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
@@ -34,21 +16,20 @@ import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** Things in flight at once, at most. One more than that and the oldest is given up. */
+/** One more than this in flight and the oldest is dropped. */
 export const MAX_FLYING = 4096;
-/** Arrows standing where they landed, at most; and how long one stands. */
+/** Arrows left standing where they landed. */
 export const MAX_STUCK = 2048;
 export const STUCK_TICKS = 60 * TICK_RATE;
-/** How near a body must come to an arrow to pick it up, and how often that is looked for. */
+/** Horizontal metres, and the ticks between pickup checks. */
 const PICKUP_REACH = 1.2;
 const PICKUP_EVERY = 5;
-/** Whoever is within this of a shot is told of it. */
+/** Clients within this many metres of a shot are sent it. */
 const HEARD = 260;
-/** A stuck arrow stands this far back out of what it hit. */
+/** A stuck arrow stands this many metres back from what it hit. */
 const STAND_OUT = 0.06;
-/** Thrown things in the world at once, at most. */
 const MAX_THROWN = 256;
-/** How a thrown thing falls, the upward speed a throw adds, what a bounce keeps of the speed into the surface and along it, and the speed under which it lies still. */
+/** A throw adds LOFT of upward speed. A bounce keeps BOUNCE of the speed into the surface and SLIDE of the speed along it. */
 const GRAVITY = 9.81;
 const LOFT = 2.5;
 const BOUNCE = 0.4;
@@ -63,14 +44,13 @@ export interface ProjectilesContext {
   readonly combat: Combat;
 }
 
-/** One thing in flight. */
 interface Flying extends Flight {
   gravity: number;
   ammo: number;
   weapon: number;
   quality: number;
   draw: number;
-  /** Who fired it (a persistent id) and from which entity slot, so that it does not hit its own shooter. */
+  /** The shooter's record id and entity index, so the shot skips its own shooter. */
   by: number;
   self: number;
   /** Where it left from. */
@@ -80,18 +60,17 @@ interface Flying extends Flight {
   /** The last tick it may fly, and the tick it has been flown through. */
   until: number;
   flown: number;
-  /** It was fired from something that works under water, and whether it is under water now. */
+  /** `wet` means its weapon works under water. `under` means it is under water now. */
   wet: boolean;
   under: boolean;
 }
 
-/** A thing thrown: where it is, how it moves, and when it goes off. */
 interface Thrown extends Flight {
   item: number;
   quality: number;
   by: number;
   until: number;
-  /** The thing in the world that everyone sees. */
+  /** The prop entity that shows it. */
   ent: number;
   gen: number;
   resting: boolean;
@@ -105,18 +84,17 @@ interface Stuck {
 }
 
 export class Projectiles {
-  /** Shots fired, shots that hit a body, and arrows picked up again, for tests and measurement. */
+  /** Counters for tests and measurement. */
   fired = 0;
   struck = 0;
   recovered = 0;
-  /** Where the last shot that ended did so, and on what: an entity index, or -1 for the world, or -2 for water. */
+  /** Where the last shot ended. `on` is an entity index, -1 for the world, or -2 for water. */
   readonly lastEnd = { x: 0, y: 0, z: 0, on: -1 };
 
   private readonly ctx: ProjectilesContext;
   private readonly flying: Flying[] = [];
   private readonly stuck: Stuck[] = [];
   private readonly thrown: Thrown[] = [];
-  /** Thrown things that have gone off. */
   bursts = 0;
   private readonly stuckKind: number;
   private readonly liveKind: number;
@@ -143,12 +121,11 @@ export class Projectiles {
     return this.thrown.length;
   }
 
-  /** Where the thrown things in the air or at rest are, for tests. */
+  /** For tests. */
   thrownAt(i: number): { x: number; y: number; z: number; resting: boolean } {
     return this.thrown[i]!;
   }
 
-  /** A round of `ammo` leaves `weapon` (of `quality`), drawn `draw`, from the eye of `c`'s body along its look. */
   launch(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number): void {
     const { world, combat } = this.ctx;
     const ents = world.ents;
@@ -168,7 +145,7 @@ export class Projectiles {
     const wet = reg.weapon[weapon]?.wet ?? false;
 
     if (full <= 0) {
-      // Not flown: one piece, as far as it reaches, judged at the moment the shooter was looking at.
+      // A round with no speed is not flown. It is one piece, tested at the shooter's view tick.
       let reach = HITSCAN_RANGE;
       let on = -1;
       // Water stops a round fired from above it.
@@ -203,11 +180,11 @@ export class Projectiles {
       gravity: reg.ammoGravity[ammo]!, ammo, weapon, quality, draw, by: rec.pid, self: e, ox, oy, oz,
       until: now + FLIGHT_TICKS, flown: now, wet, under: oy < sea,
     };
-    // Whoever is near is told of it as it left: they fly their own picture of it from there.
+    // Nearby clients get its launch state and fly their own copy from there.
     const back = now - view;
     this.tell(c, ox, oy, oz, ammo, true, f.vx, f.vy, f.vz, Math.round(back));
-    // Flown through the time since the shooter's picture: a tick's piece at a time, each against the bodies
-    // of its own moment, then whatever part of a tick is left, which brings it to now.
+    // Fly it from the view tick to now, one tick's piece at a time, each against the bodies of that tick,
+    // then the leftover part of a tick.
     const whole = Math.floor(back);
     for (let j = 1; j <= whole; j++) if (!this.fly(f, view + j, 1)) return;
     if (back - whole > 0.01 && !this.fly(f, now, back - whole)) return;
@@ -215,20 +192,18 @@ export class Projectiles {
     this.flying.push(f);
   }
 
-  /** Once a tick: fly everything in flight, take away arrows that have stood their time, and give those walked over to whoever walked. */
   step(): void {
     const tick = this.ctx.world.tick;
     const flying = this.flying;
     let kept = 0;
     for (let i = 0; i < flying.length; i++) {
       const f = flying[i]!;
-      // One fired this tick has been flown up to now already.
+      // A shot fired this tick has already been flown up to now.
       if (f.flown < tick && !(tick <= f.until && this.fly(f, tick, 1))) continue;
       flying[kept++] = f;
     }
     flying.length = kept;
 
-    // Thrown things: those whose fuse has run out go off; the rest fall and bounce.
     const thrown = this.thrown;
     kept = 0;
     for (let i = 0; i < thrown.length; i++) {
@@ -251,11 +226,7 @@ export class Projectiles {
     if (tick % PICKUP_EVERY === 0 && stuck.length > 0) this.pickUp();
   }
 
-  /**
-   * Fly `f` for `share` of a tick, to the moment `t` (now, or a moment the
-   * history remembers): one piece, against water, the world and the bodies of
-   * that moment. False if it ended.
-   */
+  /** Flies `f` for `share` of a tick, to tick `t`, which is now or a tick the history remembers. Returns false if it ended. */
   private fly(f: Flying, t: number, share: number): boolean {
     const { world, combat, records } = this.ctx;
     const dt = share / TICK_RATE;
@@ -265,7 +236,7 @@ export class Projectiles {
     if (!(length > 0)) return false;
     const { x, y, z, dx, dy, dz } = piece;
     const sea = world.hf.seaLevel;
-    // The surface: what is not made for water stops there; what is goes on, slowly.
+    // At the surface a shot from a dry weapon stops. One from a wet weapon goes on, slowed.
     let splash = false;
     if (!f.under && y > sea && y + dy * length <= sea) {
       length = (sea - y) / dy;
@@ -282,9 +253,9 @@ export class Projectiles {
       splash = false;
       if (what === HIT_STRUCTURE) built = rayHit.ref;
     }
-    // Its own shooter is in its way for the first piece only if it is skipped: it always is.
+    // Skip the shooter, if its entity slot still holds it.
     const shooter = (world.ents.flags[f.self]! & F_ALIVE) !== 0 && world.ents.pid[f.self] === f.by ? f.self : -1;
-    // The piece was cut short where it met the world, and took that much less of the tick.
+    // A piece cut short by the world took that much less of the tick.
     const target = combat.castBodies(shooter, x, y, z, dx, dy, dz, length, 0, t, (share * length) / piece.length);
     if (target >= 0) {
       const at = combat.t;
@@ -296,9 +267,9 @@ export class Projectiles {
       const hy = y + dy * length;
       const hz = z + dz * length;
       this.ended(hx, hy, hz, on);
-      // What it hit, if it was built, takes what the arrow brings; if that brought it down there is nothing left to stand in.
+      // A structure it hit takes the damage. If that destroyed it, the arrow has nothing to stand in.
       const gone = built >= 0 && combat.hitStructure(this.bring(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz), built, hx, hy, hz) > 0 && combat.lastStructure.left === 0;
-      // One that hit the ground or a wall and did not break stands there.
+      // An arrow that hit the world and did not break stands where it landed.
       if (on === -1 && !gone && this.rng.float() < world.reg.ammoRecover[f.ammo]!) this.stand(f.ammo, hx - dx * STAND_OUT, hy - dy * STAND_OUT, hz - dz * STAND_OUT, dx, dy, dz);
       return false;
     }
@@ -309,11 +280,9 @@ export class Projectiles {
       f.vy *= WATER_SPEED;
       f.vz *= WATER_SPEED;
     } else if (f.under && f.y > sea) f.under = false;
-    // Off the map, or through the floor of the world: gone.
     return f.x >= 0 && f.z >= 0 && f.x <= world.hf.sizeX && f.z <= world.hf.sizeZ && f.y > -1000;
   }
 
-  /** A shot reached a body: what it brings is worked out from the weapon and the round, and lands. */
   private hit(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oy: number, oz: number, target: number, zone: number, x: number, y: number, z: number): void {
     const src = this.bring(by, weapon, quality, ammo, draw, ox, oz);
     this.struck++;
@@ -321,7 +290,7 @@ export class Projectiles {
     this.ctx.combat.land(src, target, zone, x, y, z, Math.sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy) + (z - oz) * (z - oz)));
   }
 
-  /** What a round of `ammo` from `weapon` brings with it. */
+  /** Returns the shared Source, filled for a round of `ammo` from `weapon`. */
   private bring(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oz: number): Source {
     const reg = this.ctx.world.reg;
     const src = this.src;
@@ -341,11 +310,7 @@ export class Projectiles {
     return src;
   }
 
-  /**
-   * One of `item` leaves the hand of `c`'s body: thrown from its eye along its
-   * look, a little upward. It falls, bounces off the world, comes to rest, and
-   * goes off when its fuse runs out, wherever it then is.
-   */
+  /** Throws one `item` from the eye of `c`'s body. It goes off when its fuse runs out, wherever it then is. */
   lob(c: Client, rec: EntityRecord, item: number, quality: number): void {
     const world = this.ctx.world;
     const ents = world.ents;
@@ -365,7 +330,7 @@ export class Projectiles {
     this.fired++;
   }
 
-  /** Move a thrown thing through one tick: falling, and bouncing off whatever it meets. */
+  /** One tick of falling and bouncing. */
   private roll(g: Thrown): void {
     const world = this.ctx.world;
     let left = 1;
@@ -378,7 +343,7 @@ export class Projectiles {
         flyEnd(g, GRAVITY, dt);
         break;
       }
-      // It met something partway: there it is, a little off the surface, with the speed it had by then.
+      // It hit something partway. Place it 3 cm off the surface, with the speed it had by then.
       const part = rayHit.t / length;
       const nx = rayHit.nx;
       const ny = rayHit.ny;
@@ -387,7 +352,6 @@ export class Projectiles {
       g.y = piece.y + piece.dy * rayHit.t + ny * 0.03;
       g.z = piece.z + piece.dz * rayHit.t + nz * 0.03;
       g.vy -= GRAVITY * dt * part;
-      // Off the surface with part of the speed it came in with, and along it with most of what it had.
       const into = g.vx * nx + g.vy * ny + g.vz * nz;
       if (into < 0) {
         g.vx = (g.vx - into * nx) * SLIDE - into * nx * BOUNCE;
@@ -395,20 +359,18 @@ export class Projectiles {
         g.vz = (g.vz - into * nz) * SLIDE - into * nz * BOUNCE;
       }
       left *= 1 - part;
-      // Slow, on something near level: it lies there.
+      // Slow, on a surface near level, it comes to rest.
       if (ny > 0.7 && g.vx * g.vx + g.vy * g.vy + g.vz * g.vz < REST_SPEED * REST_SPEED) {
         g.resting = true;
         g.vx = g.vy = g.vz = 0;
       }
     }
-    // Out of the map it stops where the map does.
     const hf = world.hf;
     g.x = g.x < 0 ? 0 : g.x > hf.sizeX ? hf.sizeX : g.x;
     g.z = g.z < 0 ? 0 : g.z > hf.sizeZ ? hf.sizeZ : g.z;
     if ((world.ents.flags[g.ent]! & F_ALIVE) !== 0 && world.ents.gen[g.ent] === g.gen) world.ents.setPosition(g.ent, g.x, g.y, g.z);
   }
 
-  /** A thrown thing goes off where it is. */
   private burst(g: Thrown): void {
     const { world, records, combat, game } = this.ctx;
     const ents = world.ents;
@@ -429,7 +391,6 @@ export class Projectiles {
     const radius = reg.blast[g.item]!;
     this.bursts++;
     this.ended(g.x, g.y, g.z, -1);
-    // Whoever is near sees it go off.
     for (const other of game.clients) {
       if (!other?.active || other.closed) continue;
       const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
@@ -454,7 +415,6 @@ export class Projectiles {
     last.on = on;
   }
 
-  /** Stand an arrow of `ammo` at (x, y, z), pointing along (dx, dy, dz), for anyone to pick up. */
   private stand(ammo: number, x: number, y: number, z: number, dx: number, dy: number, dz: number): void {
     const ents = this.ctx.world.ents;
     if (this.stuckKind === 0) return;
@@ -464,20 +424,19 @@ export class Projectiles {
     }
     const e = ents.create(this.stuckKind, x, y, z, F_PROP);
     if (e < 0) return;
-    // Its facing and its tilt are the way it was flying: both are sent with it, as any body's are.
+    // Yaw and pitch point it the way it was flying. Both are sent like any body's.
     ents.yaw[e] = Math.round((Math.atan2(dx, dz) / TAU) * 65536) & 0xffff;
     ents.pitch[e] = Math.round((Math.asin(dy < -1 ? -1 : dy > 1 ? 1 : dy) / (Math.PI / 2)) * 16384);
     ents.pose(e);
     this.stuck.push({ ent: e, gen: ents.gen[e]!, ammo, until: this.ctx.world.tick + STUCK_TICKS });
   }
 
-  /** Whether a stuck arrow's entity is still the one that was made for it. */
+  /** Whether the arrow's entity is still the one made for it. */
   private stands(s: Stuck): boolean {
     const ents = this.ctx.world.ents;
     return (ents.flags[s.ent]! & F_ALIVE) !== 0 && ents.gen[s.ent] === s.gen && ents.kind[s.ent] === this.stuckKind;
   }
 
-  /** Every body standing over an arrow takes it, if it has room. */
   private pickUp(): void {
     const { world, game, records, items } = this.ctx;
     const ents = world.ents;
@@ -504,9 +463,8 @@ export class Projectiles {
   }
 
   /**
-   * Tell everyone near a shot, but the one who fired it, that it was fired:
-   * from where, what, and either how it flies (a velocity, and how many ticks
-   * ago it left) or where it ended.
+   * Sends the shot to every nearby client but the shooter. `a`, `b`, `c` are its velocity if it flies,
+   * else where it ended. `back` is how many ticks ago it left.
    */
   private tell(shooter: Client, ox: number, oy: number, oz: number, ammo: number, flies: boolean, a: number, b: number, c: number, back: number): void {
     const game = this.ctx.game;

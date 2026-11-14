@@ -1,5 +1,3 @@
-// The authoritative world: static map, structures, entities and the tick clock.
-
 import type { Rig } from "../shared/anim/rigs.ts";
 import { NO_CLIPS } from "../shared/anim/clip.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
@@ -15,9 +13,9 @@ import { StructureStore } from "../shared/world/structures.ts";
 import { History } from "./history.ts";
 
 export interface ServerWorld extends CollisionWorld {
-  /** Content as this server has it: what its settings make of the definitions (shared/content/tuning.ts). */
+  /** Content after this server's settings are applied (shared/content/tuning.ts). */
   readonly reg: Registry;
-  /** How fast the clock runs (shared/sim/clock.ts): the server's three rules for it, set by whoever assembles the world. */
+  /** The server's three clock-speed rules (shared/sim/clock.ts). */
   readonly clock: { cycle: number; day: number; night: number };
   readonly dims: MapDims;
   readonly hf: Heightfield;
@@ -26,20 +24,17 @@ export interface ServerWorld extends CollisionWorld {
   readonly mapId: string;
   readonly mapHash: number;
   readonly spawn: { readonly x: number; readonly z: number; readonly yaw: number };
-  /** Places a dead survivor may choose to return at. The first is `spawn`. */
+  /** Respawn choices for a dead survivor. The first is `spawn`. */
   readonly spawns: readonly { readonly name: string; readonly x: number; readonly z: number; readonly yaw: number }[];
-  /** The map's resource nodes, if it has any. `nodes` (from CollisionWorld) is this field's store. */
+  /** `nodes` (from CollisionWorld) is this field's store. */
   readonly nodeField: NodeField | null;
-  /**
-   * The clips bodies are posed with, which decide where their hit zones are.
-   * They must be the ones the clients draw with; without any, bodies rest in a T-pose.
-   */
+  /** These clips place hit zones, so they must be the ones clients draw with. With none, bodies rest in a T-pose. */
   anim: HumanAnim;
-  /** The skeletons that are data (creatures'), by rig id, out of the same pack: empty without one. */
+  /** Creature skeletons by rig id, from the same pack as the clips. Empty without one. */
   rigs: Map<string, Rig>;
-  /** Where moving entities were over the last few ticks. Whoever starts or stops stepping one tells it. */
+  /** Where moving entities were over the last few ticks. Code that starts or stops stepping an entity must tell it. */
   readonly history: History;
-  /** World clock in fixed steps. Persisted; never reset and never set by hand. */
+  /** Persisted. Never reset and never set by hand. */
   tick: number;
   /** Added to the tick to get the time of day (shared/sim/clock.ts). This is what `settime` changes. */
   dayOffset: number;
@@ -47,7 +42,7 @@ export interface ServerWorld extends CollisionWorld {
 
 export interface WorldOptions {
   entityCap?: number;
-  /** Place the proving ground's structures. False when a save will supply them. */
+  /** False when a save will supply the proving ground's structures. */
   populate?: boolean;
   /** False for a proving ground with no trees, rocks or bushes. */
   nodes?: boolean;
@@ -73,7 +68,6 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     spawn,
     spawns: spawns ?? [{ name: "Spawn", ...spawn }],
     tick: 0,
-    // A new world begins at nine in the morning.
     dayOffset: offsetForHour(0, 9),
   };
 }
