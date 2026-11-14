@@ -123,6 +123,8 @@ const COMMAND_QUEUE = 16;
 const COMMANDS_PER_TICK = 4;
 /** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
 const SNAPSHOT_BYTES_MIN = 600;
+/** The most bits one row of a chunk message takes. */
+const ROW_BITS = 190;
 const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** Metres. */
 const SPECTATOR_LIFT = 1.6;
@@ -313,7 +315,7 @@ export class GameServer {
   private readonly newNames = new Map<string, { n: number; since: number }>();
   /** Wrong passwords, for joining and for cheats, by the address they came from. */
   readonly guesses = new Guesses();
-  /** `overflows` counts snapshots that outgrew the writer and were not sent. */
+  /** `overflows` counts snapshots and chunk messages that outgrew the writer and were not sent. */
   readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0, overflows: 0 };
   /** May this device key use this name? Called before anything is created. */
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
@@ -1174,7 +1176,9 @@ export class GameServer {
     if (logged >= 0) {
       for (; count < logged; count++) this.row(w, t, this.changed[count]!, x0, z0);
     } else {
-      for (; s < t.high && count < budget; s++) {
+      // Rows stop where another might not fit, with a byte left for the count of removals.
+      const room = w.buf.length * 8 - ROW_BITS - 8;
+      for (; s < t.high && count < budget && w.pos <= room; s++) {
         if (t.mod[s]! <= from || (byRemoval && t.kind[s] === 0)) continue;
         this.row(w, t, s, x0, z0);
         count++;
@@ -1211,6 +1215,17 @@ export class GameServer {
         removals++;
         count += g.runs.length / 2;
       }
+    }
+    if (w.overflow) {
+      // The removals do not fit one message, and part of them is of no use. Nothing is sent, and from the next
+      // tick the chunk goes row by row, where a row that is gone says only that.
+      this.stats.overflows++;
+      c.syncChunk = chunk;
+      c.syncCursor = 0;
+      c.syncFrom = from;
+      c.syncTarget = target;
+      c.syncByRemoval = false;
+      return 0;
     }
     const end = w.pos;
     w.pos = at;
