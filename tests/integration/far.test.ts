@@ -9,6 +9,7 @@ import { S_FAR } from "../../shared/net/protocol.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { FarCells, farTopMetres, readFar } from "../../shared/world/tactical.ts";
+import { farJoin } from "../../tools/bench/far.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const DIMS = { chunksX: 128, chunksZ: 4 };
@@ -116,4 +117,15 @@ test("far cells stop at the reach asked and at FarRadius, leave out boxes, beds 
   run(b, 2048, 2500);
   expect(stats.far).toBe(sent + 1);
   expect([a.far.chunks.has(chunkAt(DIMS, 1310, 72)), b.far.chunks.size]).toEqual([false, 0]);
+});
+
+test("on one stream as Linux runs it, 400 base chunks in reach hold a join's near chunks back not at all, and freeze no one", () => {
+  // A survivor joins beside a 3,000-piece base, 100 ms there and back, asking for 2 km of far cells and, on a twin server, for none.
+  const r = farJoin({ rtt: 100, loss: 0, bases: 400, near: 3000, herd: 0, seconds: 7 });
+  expect(r.nearMs[1]).toBeGreaterThan(300);
+  expect(r.nearMs[0]).toBeLessThanOrEqual(r.nearMs[1] * 1.05);
+  expect(r.frozen).toEqual([0, 0]);
+  // The feed was busy meanwhile: most of the base chunks in reach came within the seven seconds, at 8 KB a second.
+  expect(r.held).toBeGreaterThan(300);
+  expect(r.farBytes).toBeLessThanOrEqual(7 * 8192);
 });
