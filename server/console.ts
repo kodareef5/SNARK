@@ -1,6 +1,5 @@
-// The console: one table of text commands, used by network sessions, by the
-// operator's terminal, and by tests. Nothing here gives a client power: a line
-// is a request, and each command decides whether to obey.
+// One table of text commands, used by network sessions, the operator's terminal and tests.
+// A line is only a request. Each command decides whether to obey.
 
 import { tokenize } from "../shared/console.ts";
 import type { Client } from "./game.ts";
@@ -8,7 +7,7 @@ import type { Host } from "./host.ts";
 
 export interface CommandContext {
   readonly host: Host;
-  /** The session that typed the line, or null for the operator, who may do anything. */
+  /** Null for the operator, who may do anything. */
   readonly client: Client | null;
 }
 
@@ -21,7 +20,7 @@ export interface ConsoleCommand {
   readonly admin: boolean;
   /** Not written to the journal even when admin (it would record a password). */
   readonly secret?: boolean;
-  /** The line as the journal should have it, for a command some of whose arguments are not to be kept (a password). Without it, the line as typed. */
+  /** Returns the line for the journal, without arguments that must not be kept (a password). Without it the journal gets the line as typed. */
   redact?(args: string[]): string;
   run(ctx: CommandContext, args: string[]): string;
 }
@@ -40,7 +39,7 @@ export class Console {
     return ctx.client === null || ctx.client.admin;
   }
 
-  /** Run one line and return what to print. Never throws. */
+  /** Returns what to print. Never throws. */
   exec(ctx: CommandContext, line: string): string {
     const words = tokenize(line);
     const name = words[0]?.toLowerCase();

@@ -1,14 +1,5 @@
-// Buffs: what acts on a body for a time.
-//
-// A buff is a definition (content) and an instance on a record: which buff,
-// the tick it ends, and who gave it. Nothing here is stepped. A buff's end is
-// a deadline. What it does to health or torpor each second is folded into the
-// rates the survival system already keeps, so a creature burning where nobody
-// is near costs nothing until the moment something runs out. What it
-// multiplies (speed, damage dealt, damage taken) is read where that is used.
-//
-// Instances are not saved: a restart ends them. What they did to vitals up to
-// then is in the vitals, which are.
+// Nothing here is stepped. A buff's end is a deadline, and its health and torpor per second are folded into the rates Survival keeps.
+// Instances are not saved, so a restart ends them.
 
 import type { BuffDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
@@ -18,30 +9,29 @@ import type { Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
 export const DEADLINE_BUFF = 5;
-/** Instances one record may carry. One more, and the oldest goes. */
+/** Instances one record may carry. One more drops the oldest. */
 export const MAX_BUFFS = 16;
 
-/** One buff on one record. */
 export interface BuffOn {
-  /** Content index of its definition. */
+  /** Content index. */
   buff: number;
-  /** The tick it ends, or 0 for one that lasts until it is taken away. */
+  /** The tick it ends, or 0 if it lasts until taken away. */
   until: number;
-  /** Persistent id of whoever gave it, or 0: if it kills, they did. */
+  /** Pid of the giver, or 0. The giver gets the kill if the buff kills. */
   by: number;
-  /** Torpor per second this instance adds, on top of its definition's: how a dose carries its strength. */
+  /** Torpor per second this instance adds on top of its definition's. A dose carries its strength this way. */
   torpor: number;
 }
 
 export class Buffs {
-  /** Called when what a record is under has changed: its speed, and what it is seen to be, may have. */
+  /** Called when a record's buffs change. Its speed and what clients see of it may have changed. */
   onChange: ((rec: EntityRecord) => void) | null = null;
 
   private readonly world: ServerWorld;
   private readonly records: Records;
   private readonly survival: Survival;
   private readonly deadlines: DeadlineHeap;
-  /** Records that take no harm because of a buff, as opposed to being made so directly. */
+  /** Pids in survival.gods because of a buff, not put there directly. */
   private readonly immune = new Set<number>();
 
   constructor(world: ServerWorld, records: Records, survival: Survival, deadlines: DeadlineHeap) {
@@ -57,10 +47,8 @@ export class Buffs {
   }
 
   /**
-   * Put a buff on a record. `by` is who did it; `seconds` how long, if not the
-   * buff's own time (0 or less: until taken away); `torpor` is torpor per
-   * second this one adds. A buff already on is started again, unless it is one
-   * that stacks.
+   * `by` is the giver's pid. `seconds` overrides the buff's own time, and 0 or less means until taken away.
+   * `torpor` is torpor per second this instance adds. A buff already on is restarted unless it stacks.
    */
   give(rec: EntityRecord, buff: number, by = 0, seconds?: number, torpor = 0): boolean {
     const def = this.def(buff);
@@ -82,7 +70,7 @@ export class Buffs {
     return true;
   }
 
-  /** Take every instance of a buff off a record. False if it had none. */
+  /** Takes off every instance. False if there was none. */
   take(rec: EntityRecord, buff: number): boolean {
     const on = rec.buffs;
     let kept = 0;
@@ -97,14 +85,13 @@ export class Buffs {
     return rec.buffs.some((b) => b.buff === buff);
   }
 
-  /** Take everything off a record: it died. */
   clear(rec: EntityRecord): void {
     if (rec.buffs.length === 0) return;
     rec.buffs.length = 0;
     this.apply(rec);
   }
 
-  /** A DEADLINE_BUFF entry came due: whatever of the record's has ended by now is over. */
+  /** A DEADLINE_BUFF entry came due. */
   due(pid: number, _stamp: number): void {
     const rec = this.records.byPid.get(pid);
     if (!rec) return;
@@ -117,33 +104,30 @@ export class Buffs {
     this.apply(rec);
   }
 
-  /** What a record's buffs multiply its speed by. */
+  /** The combined multiplier of the record's buffs on its speed. dealtOf and takenOf do the same for damage dealt and taken. */
   speedOf(rec: EntityRecord): number {
     let m = 1;
     for (const b of rec.buffs) m *= this.def(b.buff)?.speed ?? 1;
     return m;
   }
 
-  /** What they multiply the damage it deals by. */
   dealtOf(rec: EntityRecord): number {
     let m = 1;
     for (const b of rec.buffs) m *= this.def(b.buff)?.dealt ?? 1;
     return m;
   }
 
-  /** What they multiply the damage it takes by. */
   takenOf(rec: EntityRecord): number {
     let m = 1;
     for (const b of rec.buffs) m *= this.def(b.buff)?.taken ?? 1;
     return m;
   }
 
-  /** Whether any of them holds it where it is. */
   rooted(rec: EntityRecord): boolean {
     return rec.buffs.some((b) => this.def(b.buff)?.root === true);
   }
 
-  /** What a record is under changed: its rates and whether anything can harm it are worked out again, and whoever cares is told. */
+  /** Recomputes the record's rates and immunity after its buffs change, then calls onChange. */
   private apply(rec: EntityRecord): void {
     let health = 0;
     let torpor = 0;
@@ -155,7 +139,7 @@ export class Buffs {
       const h = def.health ?? 0;
       health += h;
       torpor += (def.torpor ?? 0) + b.torpor;
-      // Whoever gave it the thing that is hurting it is who kills it, if it dies of that.
+      // The giver of a harmful buff gets the kill if the record dies of it.
       if (h < 0 && b.by !== 0) by = b.by;
       if (def.immune) immune = true;
     }

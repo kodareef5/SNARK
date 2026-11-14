@@ -1,9 +1,5 @@
-// What survivors say to each other in writing.
-//
-// Three channels: everyone on the server, those standing near, and one's own
-// tribe. A line goes out as "name: words" on the channel it was said on, to
-// whoever that channel reaches and has not muted the speaker. The server
-// decides who that is; a client names a channel and nothing else.
+// Text chat. A line goes out as "name: words" to everyone its channel reaches who has not muted the speaker.
+// The server decides who that is. A client names a channel and nothing else.
 
 import { TICK_RATE } from "../shared/coords.ts";
 import { MAX_CHAT_CHARS, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SESSION_SPECTATING, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
@@ -12,9 +8,9 @@ import type { Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Tribes } from "./tribes.ts";
 
-/** How far what is said on the local channel carries, in metres. */
+/** Metres. */
 export const LOCAL_RANGE = 60;
-/** Lines a survivor may say in a burst, and how many ticks it takes to earn another. */
+/** A survivor may say BURST lines at once, and earns another every EARN_TICKS. */
 const BURST = 5;
 const EARN_TICKS = 2 * TICK_RATE;
 
@@ -25,18 +21,18 @@ export interface ChatContext {
   readonly tribes: Tribes;
 }
 
-/** What was typed as it will be shown, or "" if nothing is left of it. */
+/** The text as it will be shown, or "" if nothing is left. */
 export function cleanChat(text: string): string {
   const clean = text.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
   return clean.length > MAX_CHAT_CHARS ? clean.slice(0, MAX_CHAT_CHARS) : clean;
 }
 
 export class Chat {
-  /** Lines delivered, counting each listener once. */
+  /** Counts one per listener a line reaches. */
   delivered = 0;
-  /** For each listener (a name, lower case), the names it does not want to hear from. */
+  /** Muted names by listener name. Both are lower case. */
   private readonly mutes = new Map<string, Set<string>>();
-  /** For each speaker (a name, lower case): the lines it may still say at once, and the tick that was true at. */
+  /** By speaker name, lower case: the lines it may still say at once, and the tick that count was true at. */
   private readonly allowance = new Map<string, { lines: number; at: number }>();
 
   private readonly ctx: ChatContext;
@@ -45,12 +41,12 @@ export class Chat {
     this.ctx = ctx;
   }
 
-  /** Whether `listener` has muted `speaker`. Names, in any case. */
+  /** Names, in any case. */
   muted(listener: string, speaker: string): boolean {
     return this.mutes.get(listener.toLowerCase())?.has(speaker.toLowerCase()) ?? false;
   }
 
-  /** Stop hearing `speaker`, in writing and aloud, or start again. False if that changed nothing. */
+  /** Mutes text and voice. False if nothing changed. */
   mute(listener: string, speaker: string, on: boolean): boolean {
     const key = listener.toLowerCase();
     const who = speaker.toLowerCase();
@@ -69,7 +65,7 @@ export class Chat {
     return [...(this.mutes.get(listener.toLowerCase()) ?? [])];
   }
 
-  /** A session says `text` on `channel`. Returns a result code; a refusal also tells the speaker why. */
+  /** Returns a RESULT code. A refusal also tells the speaker why. */
   say(c: Client, channel: number, text: string): number {
     const { game, records, rules, tribes } = this.ctx;
     const line = cleanChat(text);
@@ -80,12 +76,11 @@ export class Chat {
       return code;
     };
     if (channel === TEXT_GLOBAL && rules.on("ProximityChat")) return refuse(RESULT_DENIED, "There is no global channel on this server; Insert speaks to those near you.");
-    // The other two need someone to be: a place to be heard around, a tribe to be heard by.
+    // Local chat needs a position and tribe chat needs a tribe, so both need a survivor.
     if (channel !== TEXT_GLOBAL && (!rec || c.state === SESSION_SPECTATING)) return refuse(RESULT_DENIED, "Only a survivor can say that.");
     const tribe = channel === TEXT_TRIBE ? tribes.of(rec!) : null;
     if (channel === TEXT_TRIBE && !tribe) return refuse(RESULT_DENIED, "You are not in a tribe.");
 
-    // A few lines at once, then one every two seconds.
     const now = game.world.tick;
     const key = c.name.toLowerCase();
     let a = this.allowance.get(key);

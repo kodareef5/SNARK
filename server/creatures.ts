@@ -1,16 +1,5 @@
-// Creatures: spawning, dormancy, and stepping. What each decides to do is
-// server/behavior.ts; here it is done, by the movement and the action step
-// everything is driven through.
-//
-// The cost model, which later AI must keep:
-//   - A chunk is awake while a player is within `wakeRadius` chunks of it.
-//     Creatures in sleeping chunks are rows: not stepped, not iterated.
-//   - Awake creatures are held in one dense list, so a tick touches exactly the
-//     creatures that can matter to someone.
-//   - A creature standing still on the ground is skipped without a collision query.
-//   - Hunger and every other slow quantity is lazy and belongs to
-//     server/survival.ts. The moment food runs out is a deadline, which fires on
-//     time whether or not the creature is awake.
+// Spawns creatures, wakes and sleeps them, and steps the awake ones. A chunk is awake while a player is within wakeRadius chunks of it.
+// Creatures in sleeping chunks are not stepped or iterated. Slow quantities such as hunger are lazy and belong to server/survival.ts.
 
 import { TICK_DT, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { Body, MODE_SWIM, stepBody } from "../shared/sim/character.ts";
@@ -25,30 +14,29 @@ import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** Palette indices wild creatures may roll for a colour region. */
+/** Palette indices a wild creature may roll. */
 const WILD_COLORS = [3, 5, 6, 7, 9, 12, 15];
 
 export class Creatures {
-  /** Chunks around a player that stay awake. */
+  /** In chunks. */
   readonly wakeRadius: number;
   awakeCount = 0;
   /** Creatures run through collision in the last step, for measurement. */
   stepped = 0;
-  /** The server's rule for how much swimming speed each level of oxygen gives; whoever assembles the world sets it. */
+  /** The OxygenSwimSpeedStatMultiplier rule. The host sets it. */
   swimGain = 1;
 
   private readonly world: ServerWorld;
   private readonly records: Records;
   private readonly survival: Survival;
   private readonly rng: Rng;
-  /** Entity slots of the awake creatures; the first `awakeCount` entries. */
+  /** Entity indices of the awake creatures, in the first `awakeCount` entries. */
   readonly awake: Int32Array;
   private readonly awakeSlot: Int32Array;
   /** Players keeping each chunk awake. */
   private readonly chunkRefs: Uint16Array;
-  /** What each creature has decided to do. */
   readonly mind: Behavior;
-  /** Called when a creature's bite lands, with its entity: whoever resolves blows finds what it hit. */
+  /** Called when a creature's bite strikes. The handler finds what it hit. */
   onStrike: ((e: number) => void) | null = null;
   /** 1 for kinds that stand where they are put. */
   private readonly still: Uint8Array;
@@ -69,16 +57,16 @@ export class Creatures {
     this.still = Uint8Array.from(world.reg.defs, (d) => (d?.type === "species" && d.still ? 1 : 0));
   }
 
-  /** Something at (x, z) hurt creature `e`; `by` is the entity that did it, or -1. What it does about it is its temper's. */
+  /** Something at (x, z) hurt `e`. `by` is the entity that did it, or -1. */
   provoke(e: number, x: number, z: number, by = -1): void {
     const ents = this.world.ents;
-    // Whoever was hurt, survivor or creature: those of its tribe near it may come to its help.
+    // The victim may be a survivor. Its tribe's creatures near it may come to help.
     this.mind.alert(ents.team[e]!, e, by);
     if (this.awakeSlot[e]! < 0 || this.still[ents.kind[e]!] || ents.driven[e] !== 0) return;
     this.mind.provoke(e, x, z, by);
   }
 
-  /** Create a wild creature with a rolled genome. Returns its entity index, or -1 if there is no room. */
+  /** Returns the entity index, or -1 if there is no room. */
   spawn(kind: number, x: number, z: number, level: number): number {
     const world = this.world;
     const p = world.reg.move[kind];
@@ -94,10 +82,10 @@ export class Creatures {
     return this.adopt(rec);
   }
 
-  /** Put a creature that already has a record (new or loaded) into the simulation. */
+  /** Puts a creature that has a record, new or loaded, into the simulation. */
   adopt(rec: EntityRecord): number {
     const ents = this.world.ents;
-    // It is put down standing: on the ground until the simulation says otherwise.
+    // It starts grounded until a step says otherwise.
     const e = ents.create(rec.kind, rec.x, rec.y, rec.z, F_GROUNDED);
     if (e < 0) return -1;
     ents.yaw[e] = rec.yaw;
@@ -107,36 +95,33 @@ export class Creatures {
     this.records.entOf.set(rec.pid, e);
     this.mind.reset(e);
     this.mind.stance[e] = rec.stance;
-    // Whose it is, if it is anyone's, is on its body from the start; and so is how young it is.
     ents.setTeam(e, rec.team);
     if (rec.grown !== 0) ents.setYoung(e, rec.span, rec.grown);
-    // New bodies start full; loaded ones keep their numbers and get their deadline back.
+    // A new body starts full. A loaded one keeps its vitals and gets its deadline back.
     if (rec.vitals) this.survival.restore(rec, true);
     else this.survival.init(rec);
     if (this.chunkRefs[ents.chunk[e]!]! > 0) this.wake(e);
     return e;
   }
 
-  /** Take a creature out of the simulation for good. Its record is the caller's to delete. */
+  /** The caller deletes its record. */
   remove(e: number): void {
     this.sleep(e);
     this.records.entOf.delete(this.world.ents.pid[e]!);
     this.world.ents.destroy(e);
   }
 
-  /** Whether a player is keeping this chunk simulated. */
   isChunkAwake(chunk: number): boolean {
     return this.chunkRefs[chunk]! > 0;
   }
 
-  /** A player entered the world or changed chunk. `from` is -1 on entry; `to` is -1 on exit. */
+  /** `from` is -1 on entry and `to` is -1 on exit. */
   playerMoved(from: number, to: number): void {
     // Add the new neighbourhood before removing the old, so shared chunks never dip to zero.
     if (to >= 0) this.adjust(to, 1);
     if (from >= 0) this.adjust(from, -1);
   }
 
-  /** Step every awake creature once. */
   step(tick: number): void {
     const world = this.world;
     const ents = world.ents;
@@ -145,24 +130,24 @@ export class Creatures {
     let stepped = 0;
     for (let n = this.awakeCount - 1; n >= 0; n--) {
       const e = this.awake[n]!;
-      // A session's inputs are driving it: it is stepped with that session's body, not here.
+      // A driven creature is stepped with its session's body, not here.
       if (ents.driven[e] !== 0) continue;
       const kind = ents.kind[e]!;
-      // One that is somebody's and was told to follow: found again when whoever it follows comes back into the world.
+      // Once a second, an owned creature with no leader checks whether the entity its record says to follow is back in the world.
       if (ents.team[e] !== 0 && mind.leader[e]! < 0 && (tick + e) % 30 === 0) this.relink(e);
       if (this.still[kind]) {
-        // It stands; it only falls, if it was put down in the air.
+        // A still kind only falls, if it was put down in the air.
         if ((ents.flags[e]! & F_GROUNDED) !== 0) continue;
       } else mind.steer(e, tick, ents.act[e]!);
       const flags = ents.flags[e]!;
       const move = mind.move[e]!;
       const pressed = mind.pressed[e]!;
-      // At rest on the ground or afloat, doing nothing and asked for nothing: nothing would change, so nothing is computed.
+      // At rest on the ground or afloat with no input, nothing would change, so the step is skipped.
       if (move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (ents.mode[e] === MODE_SWIM && ents.vy[e] === 0))) continue;
       ents.loadBody(e, b);
       const buttons = mind.buttons[e]! | pressed;
       stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, world.reg.move[kind]!, TICK_DT);
-      // Its jaws, if it has any, through the step every blow goes through.
+      // A bite goes through the same action step as any blow.
       const jaws = world.reg.weapon[kind];
       let struck = false;
       if (jaws) {
@@ -200,13 +185,13 @@ export class Creatures {
     }
   }
 
-  /** A creature has become somebody's, or stopped being: whoever decides for creatures knows which are. */
+  /** Call after a creature's team changes, so Behavior's owned set stays current. */
   claimed(e: number): void {
     if (this.awakeSlot[e]! >= 0 && this.world.ents.team[e] !== 0) this.mind.owned.add(e);
     else this.mind.owned.delete(e);
   }
 
-  /** If creature `e` was told to follow someone who is in the world, it follows them. */
+  /** Follows the entity its record names, if that entity is in the world. */
   private relink(e: number): void {
     const rec = this.records.byPid.get(this.world.ents.pid[e]!);
     if (!rec || rec.follow === 0) return;

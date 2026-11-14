@@ -1,30 +1,5 @@
-// Breeding: two creatures that are somebody's make young.
-//
-// The arithmetic is shared/sim/breeding.ts and shared/sim/genome.ts. This
-// keeps the state, and almost none of it steps (D77): an egg is a record with
-// the tick it hatches at; a young one is a record with the ticks its growing
-// takes and the tick it ends, and grows a hundredth at a time, each a moment known in
-// advance. So an egg hatches, and a young one is grown, on the same tick
-// watched or not, and across a restart.
-//
-// Mating is as the reference has it since its remake: both must be told they
-// may, and then a female and a male of one species and one tribe, standing
-// near each other, neither following anyone, ridden, overloaded, unconscious
-// or still young, become a pair. Pairs are looked for among the creatures
-// that are awake, once a second. A pair that stays together for half a minute
-// has done: the female lays (one egg, sometimes two or three), or carries her
-// young if her species does, and will not mate again for most of a day or
-// two. One that is parted first has nothing for it. A male may be several
-// females' at once.
-//
-// What hatches is nobody's until someone takes it (the use button): anyone
-// may. Until then it stands where it hatched, and it hungers many times as
-// fast as a grown one, so one that nobody comes for does not live long.
-//
-// What the reference does that this does not yet: an egg cannot be carried,
-// kept cold, eaten or broken, and wants no particular warmth; nothing is
-// imprinted on whoever raises it. Its twins come out of one egg; here each
-// has its own.
+// Breeding state. Almost none of it steps (D77). Eggs and young are records with deadlines, so they hatch and grow on the same
+// tick watched or not, and across a restart. Mating follows ARK since its remake, where both creatures must have mating enabled.
 
 import { TICK_RATE } from "../shared/coords.ts";
 import { EVENT_TAMED, ORDER_MATE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, S_EVENT } from "../shared/net/protocol.ts";
@@ -44,11 +19,11 @@ import type { Lists } from "./settings/lists.ts";
 import type { ServerWorld } from "./world.ts";
 
 export const DEADLINE_BREED = 8;
-/** Pairs are looked for, and those there are looked at again, this often: ticks. */
+/** In ticks. Pairs are sought and rechecked this often. */
 export const PAIR_TICKS = TICK_RATE;
-/** Palette indices a mutation may give a colour region: none of them one a wild creature has. */
+/** Palette indices a mutation may give a colour region. None is a wild colour. */
 export const MUTATION_COLORS: readonly number[] = [8, 10, 11, 13, 14, 17, 19, 21];
-/** In the event that says a creature is someone's, the mark of one that was taken as young and not tamed. */
+/** In EVENT_TAMED, marks a creature claimed as young, not tamed. */
 export const CLAIMED = 255;
 
 export interface BreedingContext {
@@ -59,39 +34,37 @@ export interface BreedingContext {
   readonly deadlines: DeadlineHeap;
   readonly creatures: Creatures;
   readonly persistence: Persistence | null;
-  /** Put the body of a prop (an egg) in the world where its record says it is. */
+  /** Puts a prop's body (an egg) in the world at its record's position. */
   place(rec: EntityRecord): void;
-  /** Recompute what follows from a record: its body's limits, level, name and team. */
+  /** Recomputes what follows from a record: its body's limits, level, name and team. */
   refresh(rec: EntityRecord): void;
-  /** Work out again when a creature that is somebody's next eats of what it carries. */
+  /** Recomputes when an owned creature next eats from what it carries. */
   meal(rec: EntityRecord): void;
-  /** The server's lists that name classes. */
   readonly lists: Lists;
-  /** Why a team may have no more tamed creatures; "" if it may. */
+  /** The reason a team may have no more tamed creatures, or "" if it may. */
   full(team: number): string;
-  /** Tell a survivor something, if they are here. */
+  /** Does nothing if the survivor is not connected. */
   notice(pid: number, text: string): void;
 }
 
-/** A rule that speeds something: what it divides a time by. Turned to nothing, it is as slow as a rule can make it. */
+/** A speed rule divides a time. A rule at or below 0.001 counts as 0.001, the slowest a rule can make it. */
 const speed = (rule: number): number => (rule > 0.001 ? rule : 0.001);
 
 export class Breeding {
-  /** Matings that came to something; eggs laid and young begun; young hatched or born; young taken by someone; young grown up. */
+  /** Counters. `laid` includes young carried, and `hatched` includes young born. */
   mated = 0;
   laid = 0;
   hatched = 0;
   claimed = 0;
   grownUp = 0;
-  /** Pairs begun, and pairs parted before they had done. */
   begun = 0;
   parted = 0;
   private readonly ctx: BreedingContext;
   private readonly rng: Rng;
-  /** The pairs there are, by the female's persistent id: the male, how many ticks their mating takes, and the tick they will have done. */
+  /** Pairs by the female's pid: the male's pid, the ticks the mating takes, and the tick it finishes. */
   private readonly pairs = new Map<number, { male: number; span: number; due: number }>();
   private readonly grew: [number, number] = [0, 0];
-  /** Scratch for a pass: the willing females and males that are awake (entity indices), and the females among them (persistent ids). */
+  /** Scratch for one pass: the willing awake females and males as entity indices, and the pids of females whose pair stands. */
   private readonly females: number[] = [];
   private readonly males: number[] = [];
   private readonly seen = new Set<number>();
@@ -101,7 +74,7 @@ export class Breeding {
     this.rng = new Rng(seed);
   }
 
-  /** After a load, with every body back in the world: eggs wait to hatch again, and the young go on growing. */
+  /** Call after a load, once every body is back in the world. */
   resume(): void {
     const { world, records, deadlines } = this.ctx;
     for (const rec of records.byPid.values()) {
@@ -115,17 +88,15 @@ export class Breeding {
     }
   }
 
-  /** Whether creature `rec`, whose body is entity `e`, would mate now if it had someone to mate with. */
+  /** Whether `rec`, with body `e`, would mate now given a partner. */
   private able(rec: EntityRecord, e: number): boolean {
     const { world } = this.ctx;
     const ents = world.ents;
-    // Not if the server says nothing breeds, or not its kind.
     if (this.ctx.rules.on("bDisableDinoBreeding") || this.ctx.lists.kinds("PreventBreedingForClassNames").has(rec.kind)) return false;
-    // Somebody's, told it may, grown, awake to the world, standing where it was left, nobody on it, and not weighed down.
+    // It must be owned, enabled for mating, grown, conscious, not following, not ridden, and not heavy or rooted.
     return rec.mating && rec.team !== 0 && rec.grown === 0 && rec.egg === null && !rec.out && !rec.dead && rec.follow === 0 && rec.genome !== null && world.reg.breedEgg[rec.kind] !== 0xffff && ents.driven[e] === 0 && (ents.mflags[e]! & MF_NO_SPRINT) === 0;
   }
 
-  /** Whether two bodies are near enough to be a pair. */
   private together(a: number, b: number): boolean {
     const ents = this.ctx.world.ents;
     const dx = ents.x[a]! - ents.x[b]!;
@@ -134,10 +105,8 @@ export class Breeding {
   }
 
   /**
-   * Once a tick; on one tick in every second, among the creatures that are
-   * somebody's and awake: every willing female with no pair takes the nearest
-   * willing male of her kind and tribe within reach, and every pair one of
-   * which has gone, or is no longer willing, is parted.
+   * Works once every PAIR_TICKS. Each willing female with no pair takes the nearest willing male of her kind and tribe
+   * within MATE_RANGE. A pair is parted when either one has gone, moved out of range, or is no longer willing.
    */
   step(tick: number): void {
     if (tick % PAIR_TICKS !== 0) return;
@@ -178,12 +147,11 @@ export class Breeding {
           seen.add(pid);
           continue;
         }
-        // He has gone, or will not: what they had begun is lost.
+        // The male has gone or is no longer willing, so the pair's progress is lost.
         this.pairs.delete(pid);
         this.parted++;
       }
       if (best < 0) continue;
-      // As long as the server's rule for it says.
       const span = Math.max(1, Math.ceil(MATE_TICKS / speed(this.ctx.rules.num("MatingSpeedMultiplier"))));
       const due = tick + span;
       this.pairs.set(pid, { male: ents.pid[best]!, span, due });
@@ -191,7 +159,7 @@ export class Breeding {
       seen.add(pid);
       this.begun++;
     }
-    // A pair whose female is awake and was not found willing just now is parted. One asleep cannot have changed.
+    // A pair whose female is awake but was not seen in this pass is parted. A sleeping female cannot have changed.
     for (const pid of this.pairs.keys()) {
       if (seen.has(pid)) continue;
       const e = records.entOf.get(pid);
@@ -202,7 +170,7 @@ export class Breeding {
     }
   }
 
-  /** A DEADLINE_BREED entry came due: an egg hatches, a young one is a hundredth more grown, or a pair has done. */
+  /** A DEADLINE_BREED entry came due: an egg hatches, a young creature grows one step, or a pair finishes. */
   due(pid: number, stamp: number): void {
     const { world, records } = this.ctx;
     const rec = records.byPid.get(pid);
@@ -221,7 +189,7 @@ export class Breeding {
     const pair = this.pairs.get(pid);
     if (!pair || pair.due !== stamp) return;
     this.pairs.delete(pid);
-    // Both still there, still willing, and still together, at the moment it counts.
+    // Both must still be present, willing and together at this tick.
     const father = records.byPid.get(pair.male);
     const fe = records.entOf.get(pid);
     const me = father ? records.entOf.get(father.pid) : undefined;
@@ -232,7 +200,7 @@ export class Breeding {
     this.lay(rec, father, fe);
   }
 
-  /** A pair has done: the female lays, or begins to carry, and will not mate again for a while. */
+  /** The female lays, or carries the young if her species has no egg, and her wait before the next mating starts. */
   private lay(mother: EntityRecord, father: EntityRecord, e: number): void {
     const { world, records, rules, deadlines } = this.ctx;
     const reg = world.reg;
@@ -246,11 +214,10 @@ export class Breeding {
     const what = id.slice(id.indexOf(":") + 1);
     const facing = (ents.yaw[e]! / 65536) * Math.PI * 2;
     for (let k = 0; k < n; k++) {
-      // Each of a litter is its own draw of what its parents have.
       const egg = records.create(eggKind !== 0 ? eggKind : mother.kind, `${what} egg`);
       egg.genome = breed(mother.genome!, father.genome!, mother.pid, father.pid, this.rng, MUTATION_COLORS);
       egg.egg = { species: mother.kind, span, hatchAt, carrier: eggKind !== 0 ? 0 : mother.pid };
-      // Just behind her, where it can be seen and she is not in the way of it; more than one lie fanned out. If there is no room there (a wall at her back), under her.
+      // The egg lies just behind her, and several fan out. If there is no room there, it lies under her.
       const a = facing + Math.PI + (k - (n - 1) / 2) * 0.7;
       const off = reg.bodyRadius[mother.kind]! + 0.45;
       egg.x = ents.x[e]! + Math.sin(a) * off;
@@ -272,14 +239,13 @@ export class Breeding {
     this.mated++;
   }
 
-  /** Put a laid egg's body in the world: anyone who looks at it can tell when it will hatch. */
+  /** Places the egg's body. setYoung carries its hatch time to clients. */
   private put(egg: EntityRecord): void {
     this.ctx.place(egg);
     const e = this.ctx.records.entOf.get(egg.pid);
     if (e !== undefined) this.ctx.world.ents.setYoung(e, egg.egg!.span, egg.egg!.hatchAt);
   }
 
-  /** Take an egg out of the world for good. */
   private discard(egg: EntityRecord): void {
     const { world, records } = this.ctx;
     const e = records.entOf.get(egg.pid);
@@ -287,7 +253,7 @@ export class Breeding {
     records.delete(egg.pid);
   }
 
-  /** An egg's time has come: what was in it is in the world, young, and nobody's. */
+  /** The young creature enters the world unclaimed. */
   private hatch(egg: EntityRecord): void {
     const { world, records, creatures, rules, deadlines, persistence } = this.ctx;
     const reg = world.reg;
@@ -298,7 +264,7 @@ export class Breeding {
     let y = egg.y;
     let z = egg.z;
     if (info.carrier !== 0) {
-      // Carried: born where its mother now stands. If she is gone, so is what she carried.
+      // A carried young is born where its mother now stands. If she is gone, so is the young.
       const mother = records.byPid.get(info.carrier);
       const me = mother ? records.entOf.get(mother.pid) : undefined;
       if (!mother || mother.dead || me === undefined) return this.discard(egg);
@@ -313,12 +279,12 @@ export class Breeding {
     rec.y = y;
     rec.z = z;
     rec.yaw = egg.yaw;
-    // Never so fast that a hundredth of it is less than a tick.
+    // Never so fast that one growth step takes less than a tick.
     rec.span = Math.max(GROWN, Math.ceil(reg.matureTicks[info.species]! / speed(rules.num("BabyMatureSpeedMultiplier"))));
     rec.grown = tick + rec.span;
     const e = creatures.adopt(rec);
     if (e < 0) {
-      // No room in the world for another body: it waits a moment longer in the egg.
+      // No room for another body, so the egg waits PAIR_TICKS and tries again.
       records.delete(rec.pid);
       info.hatchAt = tick + PAIR_TICKS;
       records.dirty.add(egg.pid);
@@ -331,7 +297,7 @@ export class Breeding {
     this.next(rec);
   }
 
-  /** Set the tick a young one is next a hundredth more grown. */
+  /** Schedules the young creature's next growth step. */
   private next(rec: EntityRecord): void {
     const tick = this.ctx.world.tick;
     const at = stepTick(rec.span, rec.grown, growthStep(rec.span, rec.grown, tick) + 1);
@@ -340,7 +306,7 @@ export class Breeding {
     this.ctx.deadlines.push(due, DEADLINE_BREED, rec.pid, due);
   }
 
-  /** A young one is a hundredth more grown: it can hold more, carry more, and hungers a little less. Or it is grown. */
+  /** One of a hundred growth steps. It can hold and carry more, and hungers a little less. The last step makes it grown. */
   private grow(rec: EntityRecord): void {
     const { world, records } = this.ctx;
     if (world.tick >= rec.grown) {
@@ -356,12 +322,8 @@ export class Breeding {
   }
 
   /**
-   * The rules that time breeding were `was` and are now what the server
-   * holds: everything under way is timed again from this tick (D91). An egg
-   * has left what it had left at the new speed, and so has a young one, which
-   * is no less grown for it; a female's wait is as much longer or shorter as
-   * the rule is; a pair goes on from where it had got. Each keeps its
-   * deadline, and its body says what it now is.
+   * The timing rules changed from `was` to the server's current ones, so every egg, young creature, female's wait
+   * and pair is timed again from this tick (D91). Each keeps its progress, and a female's wait scales with its rule.
    */
   retime(was: { hatch: number; mature: number; interval: number; mating: number }): void {
     const { world, records, rules, deadlines } = this.ctx;
@@ -391,7 +353,7 @@ export class Breeding {
         const e = records.entOf.get(rec.pid);
         if (e !== undefined) world.ents.setYoung(e, rec.span, rec.grown);
         records.dirty.add(rec.pid);
-        // The ends of the range may put it a hundredth on: then it is that much more of a grown one.
+        // At either end of regrow's span range the young may be one growth step further on, so its limits and meal are recomputed.
         if (growthStep(rec.span, rec.grown, tick) !== step) {
           this.ctx.refresh(rec);
           this.ctx.meal(rec);
@@ -413,7 +375,7 @@ export class Breeding {
     }
   }
 
-  /** A cheat: this egg hatches now. False if it is no egg. */
+  /** A cheat. False if it is not an egg. */
   hatchNow(egg: EntityRecord): boolean {
     if (!egg.egg) return false;
     egg.egg.hatchAt = this.ctx.world.tick;
@@ -421,7 +383,7 @@ export class Breeding {
     return true;
   }
 
-  /** A cheat: this young one is grown now. False if it is not young. */
+  /** A cheat. False if it is not young. */
   growNow(rec: EntityRecord): boolean {
     if (rec.grown === 0 || rec.egg) return false;
     rec.grown = this.ctx.world.tick;
@@ -429,18 +391,17 @@ export class Breeding {
     return true;
   }
 
-  /** Whether this is a young one that is nobody's yet. */
+  /** True for a young creature that has no team yet. */
   unclaimed(rec: EntityRecord): boolean {
     return rec.team === 0 && rec.grown !== 0 && rec.egg === null && rec.keyHash === null;
   }
 
-  /** A session takes a young one that is nobody's: it is its tribe's from now, and stands where it is until told otherwise. */
+  /** The claimed young joins the session's tribe and stays put until ordered. Returns a RESULT code. */
   claim(c: Client, rec: EntityRecord): number {
     const { world, records, creatures, game } = this.ctx;
     const me = records.byPid.get(c.pid);
     if (!me || me.team === 0 || me.dead || me.out) return RESULT_DENIED;
     if (!this.unclaimed(rec)) return RESULT_INVALID;
-    // Not if the tribe, or the server, has as many tamed creatures as it may.
     const full = this.ctx.full(me.team);
     if (full !== "") {
       this.ctx.notice(c.pid, full);
@@ -456,7 +417,7 @@ export class Breeding {
     }
     this.ctx.meal(rec);
     this.claimed++;
-    // Whoever took it is told, as of a creature tamed, so that they can say what it is to be called.
+    // The claimer gets the tamed event, so it can name the creature.
     if (e !== undefined) {
       const w = game.begin(S_EVENT);
       w.u8(EVENT_TAMED);
@@ -469,11 +430,7 @@ export class Breeding {
     return RESULT_OK;
   }
 
-  /**
-   * A creature of someone's tribe is told it may mate, or may not (an ORDER_
-   * of the protocol). Whether whoever tells it may is the caller's to have
-   * checked. Not one that is young, or of a species that does not breed.
-   */
+  /** `what` is an ORDER_ value. The caller checks who may give the order. Invalid for the young and for species that do not breed. */
   order(rec: EntityRecord, what: number): number {
     const { world, records } = this.ctx;
     if (world.reg.breedEgg[rec.kind] === 0xffff || rec.grown !== 0 || rec.team === 0) return RESULT_INVALID;
@@ -482,7 +439,7 @@ export class Breeding {
     if (rec.mating === on) return RESULT_OK;
     rec.mating = on;
     records.dirty.add(rec.pid);
-    // Told it may not: whatever it had begun is lost, now and not at the next look.
+    // Disabling parts its pairs now, not at the next pass.
     if (!on) {
       if (this.pairs.delete(rec.pid)) this.parted++;
       for (const [pid, pair] of this.pairs) {
@@ -494,7 +451,7 @@ export class Breeding {
     return RESULT_OK;
   }
 
-  /** How far along the pair this creature is one of has got, 0 to 1; 0 for one that is in none. A male's is that of the furthest along. */
+  /** Progress of this creature's pair, 0 to 1, or 0 if it has none. For a male, the furthest along of his pairs. */
   progress(rec: EntityRecord): number {
     const tick = this.ctx.world.tick;
     const share = (p: { span: number; due: number }): number => Math.max(0, Math.min(1, 1 - (p.due - tick) / p.span));
@@ -505,7 +462,7 @@ export class Breeding {
     return best;
   }
 
-  /** What a session looking into a creature is shown of its breeding. */
+  /** The breeding part of what a session sees of the creature it has open. */
   subject(rec: EntityRecord): { mating: boolean; female: boolean; stage: number; maturity: number; mate: number; wait: number } {
     const tick = this.ctx.world.tick;
     const step = growthStep(rec.span, rec.grown, tick);
@@ -515,12 +472,11 @@ export class Breeding {
       stage: stageOf(step),
       maturity: maturity(rec.span, rec.grown, tick),
       mate: rec.mating ? this.progress(rec) : 0,
-      // Seconds until a female may mate again.
+      // In seconds.
       wait: rec.mateReadyAt > tick ? Math.ceil((rec.mateReadyAt - tick) / TICK_RATE) : 0,
     };
   }
 
-  /** How many pairs there are now. */
   get pairCount(): number {
     return this.pairs.size;
   }

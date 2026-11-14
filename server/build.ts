@@ -1,27 +1,5 @@
-// Building: setting pieces down.
-//
-// A survivor holding a building piece asks to set it down: on open ground, or
-// joined to a piece already built. The client says which piece it joins and
-// which of that piece's places; where that puts the new piece is worked out
-// here, from the server's own rows, with the same arithmetic the client used
-// to show it (shared/world/snap.ts). Every rule is judged here: that the
-// place exists, that it is within reach, that what it joins is the builder's
-// tribe's, that a foundation is not left in the air, that nothing built and
-// nobody is in the way. A refusal says which, so the screen can.
-//
-// And what is done to a piece afterwards. Its tribe may take it back into the
-// hands while it is unharmed, take it down for half of what it is made of, or
-// mend it for the part that is missing (shared/world/upkeep.ts has the
-// numbers). What stood on a piece that is taken back or taken down comes back
-// the same way, as the collapse reaches it, and does not break. Anyone may
-// take down what has decayed (server/decay.ts).
-//
-// And using what can be used. A door opens and shuts by becoming another kind
-// of thing in the same place; a box is looked into like any container. Each
-// is its tribe's to use, and anyone's if it is unlocked or they know its
-// PIN. The lock, the PIN and what a box holds are a record beside the row
-// (server/fixtures.ts). When the row goes, what was in a box lies in a cache
-// where it stood; a vault whose floor goes comes down whole.
+// Judges every build request. The client names a piece and a socket, and the server works out the pose from its own rows (shared/world/snap.ts).
+// A door opens by becoming another kind in the same place. Locks, PINs and box contents are a record beside the row (server/fixtures.ts).
 
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
@@ -45,19 +23,16 @@ import type { EntityRecord, Records } from "./records.ts";
 import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** A target of this in a place command means open ground. */
+/** A place command with this target means open ground. */
 export const NO_TARGET = 0xffffffff;
-/** How far the middle of a piece may be from the eye of whoever sets it down: reach, and the piece's own size. */
+/** Metres from the builder's eye to the piece's middle. The 3 allows for the piece's own size. */
 const REACH = BUILD_REACH + 3;
-/** A body this far into where a piece would stand is in its way. */
+/** Metres. A body this far into a piece's place is in its way. */
 const BODY_SLACK = 0.1;
-/** Nothing is built this near a foundation another tribe laid, or this near a pillar it stood on the ground: metres. */
+/** Metres. Nothing is built this near another tribe's foundation, or this near its pillar. */
 export const ENEMY_FOUNDATION = 50;
 export const ENEMY_PILLAR = 10;
-/**
- * Work a collapse may do in one tick, in the units shared/world/collapse.ts
- * counts: about a millisecond. A greater collapse takes more ticks.
- */
+/** Work a collapse may do in one tick, in the units shared/world/collapse.ts counts. About a millisecond. A larger collapse takes more ticks. */
 const COLLAPSE_WORK = 16000;
 
 export interface BuildContext {
@@ -68,13 +43,13 @@ export interface BuildContext {
   readonly tribes: Tribes;
   readonly rules: Rules;
   readonly fixtures: Fixtures;
-  /** Light the fire at a ref, or put it out: a result code. */
+  /** Lights the fire at a ref, or puts it out. Returns a RESULT code. */
   light(ref: number): number;
-  /** An empty cache at a place, for what comes back and does not fit in the hands. */
+  /** Returns a new empty cache at that place. */
   spill(x: number, y: number, z: number, name: string): EntityRecord;
 }
 
-/** Whoever took a piece back or down, and so is owed what stood on it: who, which of the two, and the cache what did not fit is going into. */
+/** A survivor who picked up or demolished a piece is owed what stood on it. `action` says which. `cache` takes what does not fit. */
 interface Claim {
   pid: number;
   action: number;
@@ -82,38 +57,36 @@ interface Claim {
 }
 
 export class Build {
-  /** Pieces set down, requests refused, and pieces that fell when what held them went. */
+  /** Counters. `fallen` counts pieces that fell when their support went. */
   placed = 0;
   refused = 0;
   fallen = 0;
-  /** Pieces taken back into the hands, taken down, and mended; those counted in the first two that came down with another. */
+  /** `returned` counts pieces that came down with a picked-up or demolished one and were given back. */
   pickedUp = 0;
   demolished = 0;
   repaired = 0;
   returned = 0;
-  /** Doors opened or shut and boxes looked into; boxes whose contents were left in a cache; vaults that came down whole. */
+  /** `used` counts uses of doors and boxes, `spilled` boxes emptied into a cache, `landed` pieces that fell whole and were set down again. */
   used = 0;
   spilled = 0;
   landed = 0;
-  /** Which pieces nobody of their tribe has come near for too long. */
   readonly decay: Decay;
-  /** Where the last piece set down is: its ref. */
+  /** Ref of the last piece set down, or -1. */
   last = -1;
-  /** What holds what up, asked of the rows: for a piece about to be built. */
+  /** Checks whether a piece about to be built would stand. */
   readonly support: Support;
-  /** What comes down when something that held it goes. */
   readonly collapse: Collapse;
   private readonly ctx: BuildContext;
   private readonly pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
-  /** When each piece was last harmed, and when each was set down: ticks, by ref. Kept only as long as they matter. */
+  /** Ticks, by ref. Entries are dropped once they no longer matter. */
   private readonly hurtAt = new Map<number, number>();
   private readonly placedAt = new Map<number, number>();
-  /** Claims on the collapse under way, numbered from 1, and the one a removal being made now is under. */
+  /** Claims on the running collapse, numbered from 1. `claim` is the number the removal in progress is under, or 0. */
   private readonly claims: Claim[] = [];
   private claim = 0;
-  /** Things that fell whole and have yet to be set down where they land. */
+  /** Pieces that fell whole and are not yet set down where they land. */
   private readonly landing: { rec: EntityRecord | null; kind: number; x: number; y: number; z: number; yaw: number; owner: number; hp: number }[] = [];
-  /** Wrong PINs, by session: how many in a row, and until when it must wait. */
+  /** Wrong PINs by client id: how many in a row, and the tick until which it must wait. */
   private readonly strikes = new Map<number, { n: number; until: number }>();
   private readonly near = new Uint32Array(64);
 
@@ -130,8 +103,7 @@ export class Build {
       const node = this.support.node(ref);
       return node !== null && node.root && node.links.length === 0;
     };
-    // Whatever is taken away, by whatever means: what it held may have nothing left to stand on.
-    // (What falls is the collapse's own doing, and it knows.)
+    // Any removal may leave what the piece held unsupported. The collapse already knows about the pieces it fells itself.
     structs.onRemove = (ref, cause) => {
       this.hurtAt.delete(ref);
       this.placedAt.delete(ref);
@@ -141,7 +113,7 @@ export class Build {
     this.collapse.onClaim = (ref, claim) => {
       const of = this.claims[claim - 1];
       const t = structs.chunks[Math.floor(ref / 65536)]!;
-      // Only what is the claimant's tribe's to take: anything else that comes down with it simply falls.
+      // The claimant gets back only its own tribe's pieces. Anything else that comes down falls.
       if (!of || !ctx.tribes.may(ctx.records.byPid.get(of.pid), t.owner[ref & 0xffff]!)) return false;
       this.giveBack(of, t.kind[ref & 0xffff]!, t.x[ref & 0xffff]!, t.y[ref & 0xffff]!, t.z[ref & 0xffff]!);
       this.returned++;
@@ -149,11 +121,7 @@ export class Build {
     };
   }
 
-  /**
-   * A structure is about to go. If it comes down whole it is noted, to be set
-   * down where it lands. Otherwise whatever state it had goes with it: what
-   * it held is left in a cache where it stood.
-   */
+  /** A structure is about to go. One that falls whole is queued to land. Otherwise its fixture record goes too, and its contents go to a cache. */
   private leaving(ref: number, cause: number): void {
     const { world, fixtures } = this.ctx;
     const t = world.structs.chunks[Math.floor(ref / 65536)]!;
@@ -167,12 +135,12 @@ export class Build {
     if (rec) this.empty(rec, t.x[slot]!, t.y[slot]!, t.z[slot]!);
   }
 
-  /** The record of something built that is no more: whoever had it open has not, what it held lies in a cache, and it is deleted. */
+  /** Deletes the record of a removed fixture. Sessions that had it open no longer do, and its contents go to a cache. */
   private empty(rec: EntityRecord, x: number, y: number, z: number): void {
     const { game, records, spill } = this.ctx;
     for (const c of game.clients) if (c?.open === rec.pid) c.open = 0;
     if (rec.inv && rec.inv.used() > 0) {
-      // The same inventory, handed over: nothing is copied and nothing can be lost between.
+      // The cache takes the same inventory object, so nothing is copied or lost.
       const cache = spill(x, y, z, rec.name);
       cache.inv = rec.inv;
       rec.inv = null;
@@ -182,7 +150,7 @@ export class Build {
     records.delete(rec.pid);
   }
 
-  /** The height of whatever a thing falling at (x, z) from `below` metres would land on: the highest floor under that point, or the ground. */
+  /** Where a thing falling at (x, z) from height `below` lands: the top of the highest floor under it, or the ground. */
   private floorUnder(x: number, z: number, below: number): number {
     const { world } = this.ctx;
     const reg = world.reg;
@@ -200,7 +168,7 @@ export class Build {
     return top;
   }
 
-  /** Set down what fell whole, where it lands; its state, if it had any, is the state of the thing that now stands there. */
+  /** Sets down what fell whole where it lands. Its fixture record, if any, is bound to the new ref. */
   private land(): void {
     const { world, fixtures } = this.ctx;
     for (const l of this.landing) {
@@ -216,10 +184,8 @@ export class Build {
   }
 
   /**
-   * A survivor uses something built: by looking at it and pressing the use
-   * button (`pin` is then none), or by a command with a PIN. A door opens or
-   * shuts; a box is opened, or shut if this session had it open. Returns a
-   * result code, or -1 if it is nothing that can be used.
+   * `pin` is NO_PIN for the use button. A door opens or shuts. A box opens, or shuts if this session had it open.
+   * Returns a RESULT code, or -1 if the thing cannot be used.
    */
   use(c: Client, ref: number, pin = NO_PIN): number {
     const { world, records, tribes, fixtures } = this.ctx;
@@ -234,9 +200,8 @@ export class Build {
     const rec = records.byPid.get(c.pid);
     if (!rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
     const state = fixtures.find(ref);
-    // Its tribe's to use. Anyone else's only if it is unlocked, or they give its PIN.
+    // The owning tribe may always use it. Others may only if it is unlocked or they give its PIN.
     if (!tribes.may(rec, t.owner[slot]!) && fixtures.locked(ref)) {
-      // By the server's rule a PIN may open nothing for those outside the tribe.
       const need = state && !this.ctx.rules.on("PreventOutOfTribePinCodeUse") ? state.pin : -1;
       if (need < 0) return RESULT_LOCKED;
       const tick = world.tick;
@@ -245,7 +210,6 @@ export class Build {
       if (pin === NO_PIN) return RESULT_PIN;
       if (pin !== need) {
         if (!strike) this.strikes.set(c.id, (strike = { n: 0, until: 0 }));
-        // Three wrong in a row, and it will not listen for a while.
         if (++strike.n >= PIN_TRIES) {
           strike.n = 0;
           strike.until = tick + PIN_WAIT_TICKS;
@@ -255,7 +219,7 @@ export class Build {
       this.strikes.delete(c.id);
     }
     if (opens !== 0) {
-      // A door: the same thing, the other way. Not into anybody.
+      // A door swaps to its other kind, unless a body is in the way.
       if (this.bodyIn(opens, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!)) return RESULT_OBSTRUCTED;
       structs.swap(ref, opens);
       if (state) {
@@ -271,13 +235,13 @@ export class Build {
     return RESULT_OK;
   }
 
-  /** Something built was harmed (at tick `at`, now unless said): it cannot be mended for a while. */
+  /** Records harm at tick `at`, which starts the repair cooldown. */
   hurt(ref: number, at = this.ctx.world.tick): void {
     this.hurtAt.set(ref, at);
     if (this.hurtAt.size > 8192) this.forget(this.hurtAt, this.repairWait());
   }
 
-  /** How long after harm a thing built cannot be mended, by the server's rule: ticks. */
+  /** In ticks. */
   private repairWait(): number {
     return Math.round(this.ctx.rules.num("StructureDamageRepairCooldown") * TICK_RATE);
   }
@@ -287,12 +251,12 @@ export class Build {
     for (const [ref, at] of times) if (tick - at >= after) times.delete(ref);
   }
 
-  /** Pieces whose support is still to be looked at. */
+  /** Pieces whose support is still to be checked. */
   get pending(): number {
     return this.collapse.pending;
   }
 
-  /** Once a tick: a little more of whatever collapse is under way, and now and then who is near what they built. */
+  /** Call once a tick. */
   step(): void {
     const { world, game, records } = this.ctx;
     if (this.collapse.busy) {
@@ -303,7 +267,7 @@ export class Build {
     } else if (this.claims.length > 0) this.claims.length = 0;
     this.decay.step(world.tick, (visit) => {
       for (const c of game.clients) {
-        // Those who are here and awake: a body left lying by someone who has gone visits nothing.
+        // The lingering body of a session that has gone visits nothing.
         if (!c?.active || c.closed || c.ent < 0 || c.state !== SESSION_ALIVE) continue;
         const rec = records.byPid.get(c.pid);
         if (rec) visit(rec.team, c.chunk);
@@ -311,10 +275,7 @@ export class Build {
     });
   }
 
-  /**
-   * A session asks to do something to a thing built: take it back, take it
-   * down, or mend it. Returns a result code.
-   */
+  /** Runs a STRUCT_ action on a built piece. Returns a RESULT code. */
   act(c: Client, r: BitReader): number {
     const ref = r.u32();
     const action = r.u8();
@@ -332,7 +293,7 @@ export class Build {
     const x = t.x[slot]!;
     const y = t.y[slot]!;
     const z = t.z[slot]!;
-    // Within reach of the eye the server has for this survivor: to the piece's middle, less its size.
+    // Reach is from the server's eye position for this survivor to the piece's middle, less the piece's size.
     const e = c.ent;
     const ents = world.ents;
     const far = Math.hypot(ents.x[e]! - x, ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!) - y, ents.z[e]! - z);
@@ -345,19 +306,17 @@ export class Build {
       return done < 0 ? RESULT_INVALID : done;
     }
     if (action === STRUCT_LIGHT) {
-      // A fire is its tribe's to light and to put out.
       if (reg.lights[kind] === 0) return RESULT_INVALID;
       return mine ? this.ctx.light(ref) : RESULT_NOT_YOURS;
     }
     if (action === STRUCT_LOCK || action === STRUCT_UNLOCK || action === STRUCT_PIN) {
-      // Only what can be used can be locked, and only by its tribe.
       if (reg.opens[kind] === 0 && reg.structSlots[kind] === 0) return RESULT_INVALID;
       if (!mine) return RESULT_NOT_YOURS;
       if (action === STRUCT_PIN && code !== NO_PIN && code > 9999) return RESULT_INVALID;
       const state = fixtures.ensure(ref);
       if (action === STRUCT_UNLOCK) state.lock = 2;
       else state.lock = 1;
-      // A PIN locks what it is given to; taking the PIN away leaves it as it was.
+      // Setting a PIN locks the thing. Removing the PIN leaves the lock unchanged.
       if (action === STRUCT_PIN) {
         state.pin = code === NO_PIN ? -1 : code;
         if (code === NO_PIN) state.lock = fixtures.locked(ref) ? 1 : 2;
@@ -370,7 +329,6 @@ export class Build {
       if (item === 0) return RESULT_INVALID;
       if (t.hp[slot]! < reg.maxHp[kind]!) return RESULT_DAMAGED;
       if ((fixtures.find(ref)?.inv?.used() ?? 0) > 0) return RESULT_NOT_EMPTY;
-      // By rule, only for a while after it was set down.
       const window = rules.on("AlwaysAllowStructurePickup") ? 0 : rules.num("StructurePickupTimeAfterPlacement") * TICK_RATE;
       if (window > 0 && !(tick - (this.placedAt.get(ref) ?? -Infinity) <= window)) return RESULT_WAIT;
       if (items.mint(rec, item, 1) === 0) return RESULT_FULL;
@@ -379,7 +337,7 @@ export class Build {
       return RESULT_OK;
     }
     if (action === STRUCT_DEMOLISH) {
-      // Its tribe's to take down; or anyone's, once it has been left too long.
+      // Anyone may demolish a piece that has decayed.
       if (!mine && !this.decay.expired(ref, tick)) return RESULT_NOT_YOURS;
       const of = this.take(ref, rec, STRUCT_DEMOLISH);
       this.giveBack(of, kind, x, y, z);
@@ -401,7 +359,7 @@ export class Build {
     return RESULT_INVALID;
   }
 
-  /** Take a piece away for `rec`, who is then owed whatever comes down because of it. Returns the claim. */
+  /** Removes a piece for `rec`, who is then owed what comes down because of it. Returns the claim. */
   private take(ref: number, rec: EntityRecord, action: number): Claim {
     let n = this.claims.findIndex((q) => q.pid === rec.pid && q.action === action);
     if (n < 0 && this.claims.length < 65535) n = this.claims.push({ pid: rec.pid, action, cache: null }) - 1;
@@ -412,10 +370,8 @@ export class Build {
   }
 
   /**
-   * Give whoever holds a claim what a piece of `kind` that stood at (x, y, z)
-   * comes back as: the piece itself if it was taken back, half of what it is
-   * made of if it was taken down. What does not fit in their hands, or has no
-   * hands to go to, lies in a cache where the piece stood.
+   * Gives the claimant what a piece comes back as: the piece itself after a pickup, or half its materials after a
+   * demolition. What the claimant cannot take lies in a cache where the piece stood.
    */
   private giveBack(of: Claim, kind: number, x: number, y: number, z: number): void {
     const reg = this.ctx.world.reg;
@@ -423,7 +379,7 @@ export class Build {
     if (item === 0) return;
     if (of.action === STRUCT_PICKUP) this.hand(of, item, 1, x, y, z);
     else if (refundOf(reg, kind)) {
-      // `hand` may ask for another cost before this one is done with: its own copy.
+      // `hand` may compute another cost before this one is used up, so the loop works on a copy.
       const n = cost.n;
       const items = Array.from(cost.item.subarray(0, n));
       const counts = Array.from(cost.count.subarray(0, n));
@@ -436,7 +392,7 @@ export class Build {
     const rec = records.byPid.get(of.pid);
     let left = n;
     if (rec && !rec.dead && !rec.out && records.entOf.has(rec.pid)) left -= items.mint(rec, item, left);
-    // Whatever did not fit, into the claim's cache; when that is full, into another.
+    // The rest goes into the claim's cache, and into a new one when that is full.
     for (let tries = 0; left > 0 && tries < 4; tries++) {
       if (!of.cache || records.byPid.get(of.cache.pid) !== of.cache) of.cache = spill(x, y, z, "building materials");
       left -= items.mint(of.cache, item, left);
@@ -444,7 +400,6 @@ export class Build {
     }
   }
 
-  /** Whether a piece at (x, z) would be too near what another team has founded. */
   private enemyNear(team: number, x: number, z: number): boolean {
     const world = this.ctx.world;
     const structs = world.structs;
@@ -473,7 +428,7 @@ export class Build {
     return false;
   }
 
-  /** A session asks to set down the piece in its hands. Returns a result code. */
+  /** Returns a RESULT code. */
   place(c: Client, r: BitReader): number {
     const variant = r.u8();
     const target = r.u32();
@@ -503,14 +458,13 @@ export class Build {
     return code;
   }
 
-  /** Judge a request and, if nothing is against it, build the piece and take it from the builder's hands. */
+  /** Checks a decoded place request. If it passes, builds the piece and takes one from the builder's hand. Returns a RESULT code. */
   set(c: Client, variant: number, target: number, socket: number, turn: number, x: number, z: number, yaw: number, lift: number): number {
     const { world, records, items, tribes } = this.ctx;
     const reg = world.reg;
     const ents = world.ents;
     const rec = records.byPid.get(c.pid);
     if (!rec || c.state !== SESSION_ALIVE || c.ent < 0 || rec.out) return RESULT_DENIED;
-    // What is in its hands, and the form of it asked for.
     const inv = items.inv(rec);
     const slot = rec.held >= 0 ? inv.hotbar + rec.held : -1;
     const forms = slot >= 0 && inv.count[slot]! > 0 ? reg.places[inv.item[slot]!] : null;
@@ -519,7 +473,7 @@ export class Build {
     const structs = world.structs;
     const pose = this.pose;
     if (target === NO_TARGET) {
-      // Open ground: only what stands on the ground by itself, and only on the map.
+      // Open ground takes only a piece that stands on the ground by itself, and only inside the map.
       const px = x / STRUCT_UNITS;
       const pz = z / STRUCT_UNITS;
       if (!(px > 2 && pz > 2 && px < world.hf.sizeX - 2 && pz < world.hf.sizeZ - 2)) return RESULT_INVALID;
@@ -528,14 +482,14 @@ export class Build {
       const t = structs.chunks[Math.floor(target / 65536)];
       const ts = target & 0xffff;
       if (!t || ts >= t.high || t.kind[ts] === 0) return RESULT_NO_SNAP;
-      // A piece joins only what its builder's tribe built, and a thing is set only on such a floor.
+      // A piece joins or rests on only what the builder's tribe built.
       if (!tribes.may(rec, t.owner[ts]!)) return RESULT_NOT_YOURS;
       if (socket === ON_TOP ? !restPose(structs, reg, target, kind, x / STRUCT_UNITS, z / STRUCT_UNITS, yaw, pose) : !poseAt(structs, reg, target, kind, socket, turn, pose)) return RESULT_NO_SNAP;
     }
     const px = pose.x / STRUCT_UNITS;
     const py = pose.y / STRUCT_UNITS;
     const pz = pose.z / STRUCT_UNITS;
-    // Within reach of the eye the server has for this survivor, whatever the client's was.
+    // Reach is measured from the server's eye position, not the client's.
     const e = c.ent;
     const ex = ents.x[e]! - px;
     const ey = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!) - py;
@@ -548,12 +502,11 @@ export class Build {
     const def = reg.defs[kind] as StructureDef;
     const ref = structs.add(kind, px, py, pz, pose.yaw, rec.team, def.hp);
     if (ref < 0) return RESULT_FULL;
-    // One fewer in the hand.
     items.burn(rec, slot, 1);
     this.last = ref;
-    // A bed has something to remember from the first: it is found among the things with state.
+    // A bed gets its fixture record at once, so it is found among the fixtures.
     if (reg.isBed[kind] === 1) this.ctx.fixtures.ensure(ref);
-    // Its builder was here just now; and, where a piece may be taken back only for a while, when.
+    // Placing counts as a visit for decay. placedAt matters only when pickup is time-limited.
     this.decay.visit(rec.team, Math.floor(ref / 65536), world.tick);
     if (!this.ctx.rules.on("AlwaysAllowStructurePickup")) {
       this.placedAt.set(ref, world.tick);
@@ -564,7 +517,6 @@ export class Build {
     return RESULT_OK;
   }
 
-  /** Called with each piece set down and who set it. */
   onPlaced: ((by: EntityRecord, ref: number) => void) | null = null;
 
   /** Whether anything alive stands where a piece of `kind` at this pose would be. */

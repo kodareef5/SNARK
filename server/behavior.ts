@@ -1,28 +1,5 @@
-// What a wild creature decides to do.
-//
-// A creature is driven the way a survivor is: by an input (which way to face,
-// how hard to go, which buttons) fed to the same movement and the same action
-// step (D76). This is where that input comes from when nobody rides it. It
-// decides, it does not act: its bite lands through the shared action step and
-// the one damage function, like anything else's blow.
-//
-// A species has a temper. All of them wander. One that flees runs from
-// whatever hurt it. One that hunts goes for a survivor it sees, runs it down,
-// bites when it is in reach, and gives up when it has been led too far from
-// where it began, or has lost it. One that defends does the same to whoever
-// hurt it and to nobody else.
-//
-// A creature that is somebody's does none of that. It stands where it is, or
-// follows whoever it was told to. What it does about others is its stance:
-// passive, nothing, whatever is done to it; neutral, it goes for whoever
-// hurts it or hurts one of its tribe near it; aggressive, it also goes for
-// any wild creature and any stranger it sees. It never goes for its own.
-//
-// Thinking is not done every tick. Each creature thinks on a tick of its own
-// out of every few (by its index), so a crowd's thinking is spread evenly; in
-// between it keeps doing what it decided, and only one that is chasing
-// corrects its heading more often. A creature standing still, decided on
-// nothing, costs nothing.
+// Decides the input of a creature nobody rides. The input feeds the same movement and action step as a survivor's (D76).
+// Thinking is staggered by entity index, so a crowd's thinking is spread evenly over ticks.
 
 import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
@@ -39,7 +16,7 @@ export const TEMPER_DEFENDS = 1;
 export const TEMPER_HUNTS = 2;
 export const TEMPERS: readonly string[] = ["flees", "defends", "hunts"];
 
-/** What a creature that is somebody's does about others. */
+/** Neutral fights back when it or a nearby tribe mate is hurt. Aggressive also goes for wild creatures and strangers it sees. */
 export const STANCE_PASSIVE = 0;
 export const STANCE_NEUTRAL = 1;
 export const STANCE_AGGRESSIVE = 2;
@@ -49,40 +26,39 @@ export const MIND_WANDER = 0;
 export const MIND_FLEE = 1;
 export const MIND_HUNT = 2;
 
-/** A creature thinks once in this many ticks; one that is chasing looks to its heading this often. */
+/** A creature thinks once every THINK_TICKS. One that hunts or follows corrects its heading every STEER_TICKS. */
 export const THINK_TICKS = 15;
 const STEER_TICKS = 3;
-/** How long a creature that was hurt runs for. */
 const FLEE_TICKS = 5 * TICK_RATE;
-/** A hunt that has gone on this long is given up, and it does not start another for a while after any. */
+/** A hunt ends after HUNT_TICKS. After giving one up, a creature looks for no new prey for REST_TICKS. */
 const HUNT_TICKS = 40 * TICK_RATE;
 const REST_TICKS = 6 * TICK_RATE;
-/** It keeps after what it is hunting out to this many times the distance it would have noticed it at. */
+/** A hunter keeps chasing out to this many times its sight range. */
 const KEEP = 1.6;
-/** One that follows stops this near whoever it follows (besides the room the two of them take), and runs when it is further than this behind. */
+/** Metres. A follower stops FOLLOW_NEAR from its leader, plus both body radii, and sprints when more than FOLLOW_RUN behind. */
 const FOLLOW_NEAR = 2.5;
 const FOLLOW_RUN = 12;
-/** A creature that is somebody's comes to the help of one of its tribe hurt within this distance of it: metres. */
+/** Metres. An owned creature helps a tribe mate hurt within this distance. */
 const HELP_RANGE = 25;
 
 export class Behavior {
-  /** What each creature is doing (a MIND_), by entity index. */
+  /** A MIND_ value, by entity index. */
   readonly mind: Uint8Array;
-  /** The input it has decided on: how hard forward (-127 to 127), where it looks (yaw and pitch, wire units), which buttons, and which of them it presses this tick. */
+  /** The decided input. move is forward effort, -127 to 127. look and pitch are in wire units. pressed holds the buttons that go down this tick. */
   readonly move: Int8Array;
   readonly look: Uint16Array;
   readonly pitch: Int16Array;
   readonly buttons: Uint8Array;
   readonly pressed: Uint8Array;
-  /** For a creature that is somebody's: its stance, and the entity it follows (-1: it stays). */
+  /** For an owned creature: a STANCE_ value, and the entity it follows, or -1 to stay. */
   readonly stance: Uint8Array;
   readonly leader: Int32Array;
   private readonly leaderGen: Uint16Array;
-  /** The creatures that are somebody's and awake. */
+  /** Owned creatures that are awake. */
   readonly owned = new Set<number>();
-  /** Every awake creature, for one that is looking for something to go for: whoever steps creatures gives it. */
+  /** Every awake creature, set by Creatures. An aggressive owned creature searches it for wild prey. */
   herd: { readonly awake: Int32Array; awakeCount: number } | null = null;
-  /** Hunts begun, hunts given up, and bites asked for. */
+  /** `bites` counts bite presses, not hits. */
   hunts = 0;
   gaveUp = 0;
   bites = 0;
@@ -90,7 +66,7 @@ export class Behavior {
   private readonly game: GameServer;
   private readonly reg: Registry;
   private readonly rng: Rng;
-  /** What it is after or running from: an entity and its generation; where it began; when what it is doing ends; and when it may next begin a hunt. */
+  /** The hunted entity and its generation, where the hunt began, the tick the current state ends, and the tick it may next look for prey. */
   private readonly target: Int32Array;
   private readonly targetGen: Uint16Array;
   private readonly homeX: Float32Array;
@@ -121,7 +97,6 @@ export class Behavior {
     this.rested = new Uint32Array(cap);
   }
 
-  /** A creature has just been put in the world: it has decided on nothing, and looks the way it faces. */
   reset(e: number): void {
     this.mind[e] = MIND_WANDER;
     this.move[e] = 0;
@@ -136,23 +111,22 @@ export class Behavior {
     this.owned.delete(e);
   }
 
-  /** Creature `e` follows the entity `whom` from now, or with -1 stays where it is. */
+  /** `whom` is an entity index, or -1 to stay. */
   follow(e: number, whom: number): void {
     this.leader[e] = whom;
     if (whom >= 0) this.leaderGen[e] = this.world.ents.gen[whom]!;
     else if (this.mind[e] !== MIND_HUNT) this.stay(e, 0);
   }
 
-  /** Give a creature that is somebody's its stance. Made passive, it lets go of whatever it was after. */
+  /** Sets an owned creature's stance. One made passive drops its hunt. */
   order(e: number, stance: number): void {
     this.stance[e] = stance;
     if (stance === STANCE_PASSIVE && this.mind[e] === MIND_HUNT) this.wander(e, this.world.tick, 0);
   }
 
   /**
-   * One of `team` at entity `victim` has been hurt by entity `by`: every
-   * creature of that team near it that is not passive and not already after
-   * something goes for whoever did it.
+   * `by` hurt `victim`, a member of `team`. Each creature of that team within HELP_RANGE of the victim
+   * goes for `by`, unless it is passive or already hunting.
    */
   alert(team: number, victim: number, by: number): void {
     if (team === 0 || by < 0 || this.owned.size === 0) return;
@@ -167,7 +141,7 @@ export class Behavior {
     }
   }
 
-  /** Creature `e` stands where it is until tick `until`, unless something hurts it first. */
+  /** Stands still until tick `until`, unless something hurts it first. */
   stay(e: number, until: number): void {
     this.mind[e] = MIND_WANDER;
     this.target[e] = -1;
@@ -178,23 +152,20 @@ export class Behavior {
     this.rested[e] = until;
   }
 
-  /** What creature `e` is after, as an entity index, or -1. */
+  /** The entity index `e` hunts, or -1. */
   targetOf(e: number): number {
     return this.mind[e] === MIND_HUNT ? this.target[e]! : -1;
   }
 
-  /**
-   * Something at (x, z) hurt creature `e`; `by` is the entity that did it, or
-   * -1. One that flees runs the other way; any other goes for whoever it was.
-   */
+  /** Something at (x, z) hurt `e`. `by` is the entity that did it, or -1. A creature that flees runs away from (x, z). */
   provoke(e: number, x: number, z: number, by: number): void {
     const ents = this.world.ents;
     const tick = this.world.tick;
     const team = ents.team[e]!;
-    // Young and nobody's: it does nothing about anything.
+    // An unclaimed young creature reacts to nothing.
     if (team === 0 && ents.grown[e] !== 0) return;
     if (team !== 0) {
-      // Somebody's: by its stance, whatever its kind would do wild. It does nothing about its own.
+      // An owned creature goes by its stance, not its species' temper, and never attacks its own team.
       if (this.stance[e] !== STANCE_PASSIVE && by >= 0 && by !== e && ents.team[by] !== team) this.hunt(e, by, tick);
       return;
     }
@@ -235,7 +206,7 @@ export class Behavior {
     this.rested[e] = tick + rest;
   }
 
-  /** Turn its look to where `prey` is: its yaw to it on the flat, its pitch to the middle of it. */
+  /** Aims at the middle of `prey`. Returns the flat distance to it. */
   private aim(e: number, prey: number): number {
     const ents = this.world.ents;
     const reg = this.reg;
@@ -249,7 +220,7 @@ export class Behavior {
     return flat;
   }
 
-  /** The nearest survivor a hunter at `e` can see within its sight, as an entity index, or -1. */
+  /** The nearest target `e` can see within its sight range, as an entity index, or -1. */
   private prey(e: number): number {
     const world = this.world;
     const ents = world.ents;
@@ -263,35 +234,30 @@ export class Behavior {
     let near = sight * sight;
     const team = ents.team[e]!;
     const look = (o: number): void => {
-      // Not itself, not its own, and not a young one that is nobody's yet: that is no wild creature.
+      // Skips itself, the dead, its own team and unclaimed young.
       if (o === e || (ents.flags[o]! & F_ALIVE) === 0 || (team !== 0 && ents.team[o] === team) || (ents.team[o] === 0 && ents.grown[o] !== 0)) return;
       const dx = ents.x[o]! - ex;
       const dz = ents.z[o]! - ez;
       const d2 = dx * dx + dz * dz;
       if (d2 >= near) return;
-      // Seen, not sensed: nothing built and no hill between its eye and the middle of them.
+      // The target must be in line of sight, with nothing castWorld hits between the eye and the target's middle.
       const dy = ents.y[o]! + reg.bodyHeight[ents.kind[o]!]! * 0.55 - eye;
       const far = Math.sqrt(d2 + dy * dy);
       if (far > 0.5 && castWorld(world, ex, eye, ez, dx / far, dy / far, dz / far, far) !== HIT_NONE) return;
       near = d2;
       best = o;
     };
-    // Survivors, and creatures that are somebody's.
     for (const c of this.game.clients) if (c?.active && !c.closed && c.ent >= 0) look(c.ent);
     for (const o of this.owned) look(o);
-    // One that is somebody's and aggressive goes for wild creatures too.
+    // An aggressive owned creature goes for wild creatures too.
     if (team !== 0 && this.herd) for (let n = 0; n < this.herd.awakeCount; n++) if (ents.team[this.herd.awake[n]!] === 0) look(this.herd.awake[n]!);
     return best;
   }
 
-  /**
-   * Decide creature `e`'s input for this tick. Most ticks this only clears
-   * the press of the tick before; on its own tick out of every few it thinks.
-   * `act` is what its body is doing with its jaws now.
-   */
+  /** Most ticks this only clears last tick's press. `act` is the body's current ACT_ value. */
   steer(e: number, tick: number, act: number): void {
     this.pressed[e] = 0;
-    // Unconscious, it decides nothing; what it was about is forgotten.
+    // An unconscious creature drops what it was doing.
     if ((this.world.ents.mflags[e]! & MF_OUT) !== 0) {
       if (this.mind[e] !== MIND_WANDER || this.move[e] !== 0) this.wander(e, tick, REST_TICKS);
       return;
@@ -304,15 +270,15 @@ export class Behavior {
       const reg = this.reg;
       const kind = ents.kind[e]!;
       const prey = this.target[e]!;
-      // Gone, dead, another thing in its place, or one of its own now: there is nothing to hunt.
+      // The prey is gone, dead, replaced, or now on its own team.
       if (prey < 0 || (ents.flags[prey]! & F_ALIVE) === 0 || ents.gen[prey] !== this.targetGen[e] || (ents.team[e] !== 0 && ents.team[prey] === ents.team[e])) return this.wander(e, tick, 0);
       const flat = this.aim(e, prey);
       const hx = ents.x[e]! - this.homeX[e]!;
       const hz = ents.z[e]! - this.homeZ[e]!;
       const leash = reg.leash[kind]!;
-      // Led too far from where it began, lost, or at it too long: it gives up, and wants a rest before another.
+      // It gives up when led past its leash, when the prey is too far, or when the hunt has run too long. Then it rests.
       if (hx * hx + hz * hz > leash * leash || flat > reg.sight[kind]! * KEEP || tick >= this.until[e]!) return this.wander(e, tick, REST_TICKS);
-      // In reach of its jaws (from its eye, past its own length and into the other's): it stops and bites. Else it runs at it.
+      // Within reach it stops and bites, else it runs at the prey. Reach counts from its eye to half a radius inside the prey.
       const reach = reg.reach[kind]! + reg.bodyRadius[ents.kind[prey]!]! * 0.5;
       if (flat <= reach) {
         this.move[e] = 0;
@@ -329,7 +295,7 @@ export class Behavior {
     }
     const ents = this.world.ents;
     if (ents.team[e] !== 0) {
-      // Somebody's. Aggressive, it looks about on its turn; otherwise it follows, or stands.
+      // An owned creature follows its leader or stands. An aggressive one first looks for prey on its turn.
       if (turn && this.stance[e] === STANCE_AGGRESSIVE && tick >= this.rested[e]!) {
         const prey = this.prey(e);
         if (prey >= 0) return this.hunt(e, prey, tick);
@@ -349,7 +315,7 @@ export class Behavior {
       this.buttons[e] = flat > FOLLOW_RUN ? BTN_SPRINT : 0;
       return;
     }
-    // Young and nobody's: it waits where it hatched for someone to take it.
+    // An unclaimed young creature waits where it hatched.
     if (ents.grown[e] !== 0) {
       this.move[e] = 0;
       this.buttons[e] = 0;
@@ -360,13 +326,11 @@ export class Behavior {
       if (tick < this.until[e]!) return;
       this.wander(e, tick, 0);
     }
-    // Wandering. One that hunts looks about first.
     if (turn && this.reg.temper[ents.kind[e]!] === TEMPER_HUNTS && tick >= this.rested[e]!) {
       const prey = this.prey(e);
       if (prey >= 0) return this.hunt(e, prey, tick);
     }
     if (tick < this.until[e]!) return;
-    // Pick a heading and walk, or stand, for a few seconds.
     const rng = this.rng;
     this.move[e] = rng.int(3) === 0 ? 0 : 90;
     this.look[e] = rng.int(65536);

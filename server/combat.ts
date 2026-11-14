@@ -1,22 +1,5 @@
-// Combat: what a swing lands on, and what that does.
-//
-// The shared action step (shared/sim/weapon.ts) says *when*: the tick a swing
-// lands, a shot leaves, a reload ends. This file says *what*. It looks from the
-// body's own eye along where it is looking, on the server, against the world,
-// the resource nodes and the bodies near; a client never names what it hit.
-//
-// A body with a skeleton is hit by zone: it is posed as every client draws it
-// (shared/anim/zones.ts) and the ray is tested against its boxes. Anything else
-// is its box, and counts as its torso.
-//
-// What a hit does is `resolveDamage` (shared/sim/damage.ts) and nothing else.
-// This file gathers what that needs: the weapon, the attacker's strength, what
-// the victim's species makes of the kind of damage, the part hit, and the piece
-// of armor over that part.
-//
-// What clients are told (S_EVENT) is little. Whoever landed a hit learns where,
-// which part, how much, and whether it killed: never what the victim has left.
-// Whoever was hit learns how much and from which side.
+// Finds what a swing or shot lands on, on the server, from the body's own eye. A client never names what it hit.
+// What a hit does is resolveDamage (shared/sim/damage.ts) and nothing else. The attacker's events never say what the victim has left.
 
 import { HUMAN } from "../shared/anim/human.ts";
 import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
@@ -49,11 +32,10 @@ import type { EntityRecord, Records } from "./records.ts";
 import { STAT_MELEE, statOf, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** Chunks are this many metres across. */
 const CHUNK_METRES = 64;
-/** A swing is not a line: rays this far to each side of where it looks also land. */
+/** Metres. A swing also casts rays this far off its aim, to each side and above and below. */
 const SWING_WIDTH = 0.14;
-/** Bodies near enough to a ray to be worth posing, at most. */
+/** At most this many bodies near a ray are posed. */
 const MAX_NEAR = 256;
 /** From a chunk's middle to its corner. */
 const CHUNK_REACH = CHUNK_METRES * Math.SQRT1_2;
@@ -72,24 +54,24 @@ export interface CombatContext {
   readonly harvest: Harvest | null;
 }
 
-/** How far behind the newest snapshot it has a client draws everyone else, in ticks, when it has not said (client/core/session.ts says with each input). */
+/** Ticks behind its newest acked snapshot a client is assumed to draw other bodies, when no input for the tick says. */
 const VIEW_BEHIND = 2;
-/** The farthest back a shot is judged: beyond this the shooter must lead. */
+/** The farthest back a shot is judged. Beyond this the shooter must lead. */
 export const REWIND_TICKS = 12;
-/** How far a body can have moved in that time, for finding the bodies a rewound ray might touch; and in the tick a piece of a flight takes. */
+/** Metres a body can have moved in REWIND_TICKS, and in the tick one segment of a flight takes. They pad the search for bodies near a ray. */
 const REWIND_REACH = 5;
 const SWEEP_REACH = 1;
 
-/** What a blow or a shot brings with it: who, from where, with what, and how hard. */
+/** What a blow or a shot carries. */
 export interface Source {
-  /** Who did it, or null if they are no longer there to be credited. */
+  /** Null if the attacker is no longer there to be credited. */
   by: EntityRecord | null;
   /** Where it came from, for the side the victim is shown. */
   x: number;
   z: number;
-  /** What it was done with: the weapon's content index, or 0 for bare hands. */
+  /** The weapon's content index, or 0 for bare hands. */
   item: number;
-  /** As `hit` of shared/sim/damage.ts has them. */
+  /** As in `hit` of shared/sim/damage.ts. */
   base: number;
   type: number;
   quality: number;
@@ -97,18 +79,18 @@ export interface Source {
   attack: number;
   torporInstant: number;
   torporOver: number;
-  /** Seconds the torpor to come is spread over, and a buff the hit gives (a content index, or 0). */
+  /** Seconds torporOver is spread over, and a buff the hit gives (a content index, or 0). */
   torporSeconds: number;
   buff: number;
 }
 
-/** One blow as it was resolved, for tests, the console and measurement. */
+/** One resolved blow, for tests, the console and measurement. */
 export interface Blow {
-  /** Persistent ids of who struck and who was struck. */
+  /** Pids. */
   by: number;
   victim: number;
   zone: number;
-  /** Health taken, damage the armor stopped, and the uses that cost it. */
+  /** Health taken, damage the armor stopped, and the armor uses that cost. */
   damage: number;
   blocked: number;
   wear: number;
@@ -116,15 +98,13 @@ export interface Blow {
 }
 
 export class Combat {
-  /** Blows landed on bodies so far. */
+  /** Blows landed on bodies. */
   hits = 0;
-  /** The last blow landed. */
   readonly last: Blow = { by: 0, victim: 0, zone: 0, damage: 0, blocked: 0, wear: 0, killed: false };
 
   private readonly ctx: CombatContext;
   private readonly survivor: number;
-  /** 1 for kinds whose body has the humanoid skeleton. */
-  /** A body the cast under way is not to find besides its own: whoever sits on the creature that is biting. -1 for none. */
+  /** A second entity the cast in progress skips: the rider of the creature that is biting. -1 for none. */
   private spare = -1;
   private readonly human: Uint8Array;
   private readonly rig: (Rig | null)[];
@@ -134,22 +114,22 @@ export class Combat {
   private readonly near = new Int32Array(MAX_NEAR);
   private readonly past = new Past();
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
-  /** The buff a dose of narcotic is: each hit that brings torpor to come puts one on, carrying its strength. */
+  /** Content index of the tranquilized buff. Each hit with torpor over time gives one, carrying its strength. */
   private readonly dose: number;
-  /** Where the last `castBodies` hit: the part, and how far along the ray. */
+  /** Where the last `castBodies` hit: the zone, and the distance along the ray. */
   zone = ZONE_NONE;
   t = 0;
-  /** A shot left `c`'s weapon: `weapon` at `quality` fired a round of `ammo`, drawn `draw` (0 to 1). Set by whoever flies it. */
+  /** A shot left `c`'s weapon. `draw` is 0 to 1. */
   onFire: ((c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number) => void) | null = null;
-  /** A thrown thing left `c`'s hand: one of `item`, of `quality`. Set by whoever flies it. */
+  /** A thrown item left `c`'s hand. */
   onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number) => void) | null = null;
-  /** Hits landed on things built, and the last of them: which, how much it took, and what it has left (0: it is gone). */
+  /** Hits landed on structures. `lastStructure` holds the last one, and its `left` is 0 if the structure is gone. */
   structureHits = 0;
-  /** Whoever rides the creature with this record, or null: half of what a mount earns by a kill is its rider's too. */
+  /** The rider of a mount, or null. A rider also gets half the XP its mount earns by a kill. */
   riderOf: ((mount: EntityRecord) => EntityRecord | null) | null = null;
-  /** Called with a body that was harmed and how much health that took. */
+  /** `points` is the health taken. Not called for a blow that kills. */
   onHarm: ((victim: EntityRecord, points: number) => void) | null = null;
-  /** Called with something built that was harmed and still stands. */
+  /** Called for a structure that was harmed and still stands. */
   onStructureHurt: ((ref: number) => void) | null = null;
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
   private readonly refs = new Uint32Array(4096);
@@ -163,13 +143,13 @@ export class Combat {
     const reg = ctx.world.reg;
     this.survivor = reg.index.get("core:survivor")!;
     this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
-    // A creature whose skeleton came with its model is hit on that: where its capsules are in the pose it is in.
+    // A creature whose skeleton came with its model is hit on that rig's capsules, as posed.
     this.rig = reg.defs.map((d) => (d?.type === "species" && d.skeleton !== undefined && d.skeleton !== HUMAN.id ? (ctx.world.rigs.get(d.mesh) ?? null) : null));
     this.rng = new Rng(seed);
     this.dose = reg.index.get("core:tranquilized") ?? 0;
   }
 
-  /** Once a tick, after every body has stepped: act on what each body's step said happened. */
+  /** Call once a tick, after every body has stepped. */
   step(): void {
     for (const c of this.ctx.game.clients) {
       if (!c?.active || c.did === 0 || c.ent < 0) continue;
@@ -180,31 +160,29 @@ export class Combat {
     }
   }
 
-  /** The slot of what a record holds in its hands, or -1. */
+  /** The inventory slot of the held item, or -1. */
   private heldSlot(rec: EntityRecord): number {
     const inv = this.ctx.items.inv(rec);
     return inv.hotbar >= 0 && rec.held >= 0 && inv.item[inv.hotbar + rec.held] !== 0 ? inv.hotbar + rec.held : -1;
   }
 
-  /** A creature's bite landed: what is in front of its jaws is hit, as by any blow. */
   bite(e: number): void {
     const rec = this.ctx.records.byPid.get(this.ctx.world.ents.pid[e]!);
     if (rec) this.strikeBy(e, rec, null);
   }
 
-  /** A swing landed: find what is in front, and hit it. */
   private strike(c: Client): void {
     const rec = this.ctx.records.byPid.get(c.pid);
     if (rec) this.strikeBy(c.ent, rec, c);
   }
 
-  /** The blow of body `e`, whose record is `rec`: a survivor's (`c` its session) with what it holds, or a creature's with what it is. */
+  /** `c` is the session for a survivor's blow, or null for a creature's bite. */
   private strikeBy(e: number, rec: EntityRecord, c: Client | null): void {
     const { world, items, harvest } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
     const kind = ents.kind[e]!;
-    // What it swings: the thing in its hands if that is for swinging and not worn out, or its bare hands. A creature has only itself.
+    // It swings the held item if that is a melee weapon and not worn out, else its bare hands. A creature has only its own body.
     const inv = c ? items.inv(rec) : null;
     const slot = inv ? this.heldSlot(rec) : -1;
     let item = inv && slot >= 0 ? inv.item[slot]! : 0;
@@ -218,12 +196,11 @@ export class Combat {
     const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
     const ref = rayHit.ref;
     const worldT = rayHit.t;
-    // A mount does not bite whoever is on its back, who sits where its jaws begin.
+    // A mount does not bite its rider, who sits where its jaws begin.
     const rider = c === null ? (this.riderOf?.(rec) ?? null) : null;
     this.spare = rider ? (this.ctx.records.entOf.get(rider.pid) ?? -1) : -1;
     const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH);
     this.spare = -1;
-    // What the blow brings, whatever it lands on.
     const src = this.src;
     src.by = rec;
     src.x = ox;
@@ -240,13 +217,11 @@ export class Combat {
     if (target >= 0) {
       const t = this.t;
       this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
-      // A blow wears what struck it.
       if (wears) items.wear(rec, slot, 1);
     } else if (what === HIT_NODE && harvest && c) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
     else if (what === HIT_STRUCTURE && this.hitStructure(src, ref, ox + d[0]! * worldT, oy + d[1]! * worldT, oz + d[2]! * worldT) > 0 && wears) items.wear(rec, slot, 1);
   }
 
-  /** A reload ended: the rounds go from the bag into the weapon. */
   private reload(c: Client): void {
     const { world, records, items } = this.ctx;
     const rec = records.byPid.get(c.pid);
@@ -255,11 +230,10 @@ export class Combat {
     const params = slot >= 0 ? world.reg.weapon[items.inv(rec).item[slot]!] : null;
     const ammo = slot >= 0 ? this.ammoFor(rec, slot) : 0;
     if (params && ammo !== 0) items.load(rec, slot, ammo, params.clip);
-    // The body's count is the weapon's, whatever the step supposed.
+    // The weapon's count overrides what the action step assumed.
     world.ents.rounds[c.ent] = slot >= 0 ? items.inv(rec).loaded[slot]! : 0;
   }
 
-  /** A shot left: the round is spent, the weapon is worn by it, and what was fired is on its way. */
   private fire(c: Client): void {
     const { world, records, items } = this.ctx;
     const rec = records.byPid.get(c.pid);
@@ -271,7 +245,7 @@ export class Combat {
       return;
     }
     if (slot < 0 || !items.spend(rec, slot)) {
-      // The step supposed a round that the weapon does not have.
+      // The action step assumed a round the weapon does not have.
       world.ents.rounds[c.ent] = slot >= 0 ? inv.loaded[slot]! : 0;
       return;
     }
@@ -280,7 +254,6 @@ export class Combat {
     this.onFire?.(c, rec, weapon, inv.quality[slot]!, inv.ammo[slot]!, c.drawn);
   }
 
-  /** A thrown thing left the hand: one fewer of them is carried, and it is on its way. */
   private throwIt(c: Client, rec: EntityRecord, slot: number): void {
     const items = this.ctx.items;
     const inv = items.inv(rec);
@@ -291,11 +264,8 @@ export class Combat {
   }
 
   /**
-   * The moment `c` was looking at when it sampled the input being stepped
-   * now: a tick, perhaps between two, no later than now and no earlier than
-   * the rewind allows. It is what the client said it was drawing, which
-   * cannot be later than the last snapshot it was sent. Now, if that moment
-   * is not remembered.
+   * The moment `c` was drawing when it sampled the input stepped now. It may fall between two ticks, and is clamped
+   * to the last snapshot sent and to REWIND_TICKS back. Returns now if history does not remember that moment.
    */
   viewTick(c: Client): number {
     const world = this.ctx.world;
@@ -309,8 +279,8 @@ export class Combat {
   }
 
   /**
-   * The ammunition a reload of the weapon in `slot` would use: the kind it was
-   * last told to take, or else the first kind it takes that the body carries. 0 for none.
+   * The ammunition a reload of the weapon in `slot` would use: the kind last chosen if any is loaded or carried,
+   * else the first kind it takes that the record carries. 0 for none.
    */
   ammoFor(rec: EntityRecord, slot: number): number {
     const reg = this.ctx.world.reg;
@@ -328,13 +298,10 @@ export class Combat {
   }
 
   /**
-   * The nearest body a ray hits within `maxT`, other than `self`: its entity
-   * index, or -1. `this.zone` and `this.t` say where. With a `width`, rays that
-   * far to each side are tried when the middle one finds nothing, so that a
-   * swing lands on what it visibly passes through. `at` is the moment to test
-   * bodies at: now, or a moment the history remembers, for a shot judged as
-   * its shooter saw it. `sweep` is the ticks the ray took to cover `maxT`, for
-   * a piece of a flight: each body is then met where it was along the way.
+   * The nearest body a ray hits within `maxT`, other than `self`, as an entity index, or -1. `this.zone` and `this.t`
+   * say where. With a `width`, rays that far off the middle one are tried when it misses. `at` is the tick to test
+   * bodies at, now or one the history remembers. `sweep` is the ticks the ray took to cover `maxT`, for a segment of
+   * a flight, and each body is then met where it was along the way.
    */
   castBodies(self: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, width = 0, at = this.ctx.world.tick, sweep = 0): number {
     const world = this.ctx.world;
@@ -344,7 +311,7 @@ export class Combat {
     this.at = at >= world.tick ? -1 : at;
     this.sweep = sweep;
     this.span = maxT;
-    // Every body whose farthest reach could touch the ray. A body judged in the past may since have moved.
+    // Gather every body whose bounding sphere could touch the ray. A body judged in the past may have moved since, so the search is padded.
     let n = 0;
     const near = this.near;
     const slack = width + (this.at < 0 ? 0 : REWIND_REACH) + (sweep > 0 ? SWEEP_REACH : 0);
@@ -358,7 +325,7 @@ export class Combat {
     const flat2 = dx * dx + dz * dz;
     for (let cz = z0; cz <= z1; cz++) {
       for (let cx = x0; cx <= x1; cx++) {
-        // A long ray crosses few of the chunks its bounds cover: skip those it passes nowhere near.
+        // A long ray crosses few of the chunks its bounds cover, so skip those it passes nowhere near.
         const mx = (cx + 0.5) * CHUNK_METRES - ox;
         const mz = (cz + 0.5) * CHUNK_METRES - oz;
         let along = flat2 > 1e-9 ? (mx * dx + mz * dz) / flat2 : 0;
@@ -369,7 +336,7 @@ export class Combat {
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
           if (i === self || i === this.spare || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
           const kind = ents.kind[i]!;
-          // A sphere about the body that holds it whatever it does; a box that is larger has a larger one.
+          // A sphere that holds the body in any pose. A larger box gets a larger sphere.
           const h = reg.bodyHeight[kind]!;
           const rig = this.rig[kind];
           const r = (rig ? rig.reach : Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!)) + slack;
@@ -387,7 +354,7 @@ export class Combat {
     if (n === 0) return -1;
     let best = this.castNear(n, ox, oy, oz, dx, dy, dz);
     if (best >= 0 || width <= 0) return best;
-    // To each side and above and below: (rx, 0, rz) is level and square to the ray, (ux, uy, uz) square to both.
+    // Offsets to each side, above and below. (rx, 0, rz) is level and square to the ray, and (ux, uy, uz) is square to both.
     let rx = dz;
     let rz = -dx;
     const rl = Math.sqrt(rx * rx + rz * rz);
@@ -410,17 +377,14 @@ export class Combat {
     return best;
   }
 
-  /** The moment `castNear` tests bodies at: a remembered tick, or -1 for now. */
+  /** The tick `castNear` tests bodies at, or -1 for now. */
   private at = -1;
-  /** For a piece of a flight: the ticks it took, and its length. 0 for a ray that takes no time. */
+  /** For a segment of a flight: the ticks it took, and its length. `sweep` is 0 for a ray that takes no time. */
   private sweep = 0;
   private span = 0;
   private readonly before = new Past();
 
-  /**
-   * Where body `i` was at `tick`: now, a tick the history remembers, or a
-   * moment between two of those. False if it was not there then.
-   */
+  /** Where body `i` was at `tick`, which may be now, a remembered tick, or a moment between two. False if it was not there then. */
   private where(i: number, tick: number, out: Past): boolean {
     const world = this.ctx.world;
     const ents = world.ents;
@@ -435,7 +399,7 @@ export class Combat {
       out.anim = ents.anim[i]!;
       return true;
     }
-    // Between the last tick remembered and this one, which is not remembered yet: blended as a client blends.
+    // Between the last remembered tick and this one, which is not recorded yet. Blend as a client does.
     if (!world.history.at(whole, i, out)) return false;
     const k = tick - whole;
     out.x += (ents.x[i]! - out.x) * k;
@@ -449,7 +413,7 @@ export class Combat {
     return true;
   }
 
-  /** The nearest of the first `n` bodies in `near` that a ray hits nearer than `this.t`, or -1. Moves `this.t` and `this.zone` up to it. */
+  /** The nearest of the first `n` bodies in `near` that the ray hits nearer than `this.t`, or -1. Updates `this.t` and `this.zone`. */
   private castNear(n: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): number {
     const world = this.ctx.world;
     const reg = world.reg;
@@ -462,10 +426,9 @@ export class Combat {
     for (let k = 0; k < n; k++) {
       const i = this.near[k]!;
       const kind = world.ents.kind[i]!;
-      // Where it was then. A body that was not there then cannot have been hit.
       if (!this.where(i, tick, past)) continue;
-      // A piece of a flight took time, and the body moved in that time. Seen from the body, the piece
-      // began further back by as much as the body has come forward: tested so, nothing slips between ticks.
+      // A flight segment takes time, and the body moves in that time. In the body's frame the segment starts
+      // further back by as much as the body moved. Tested this way, nothing slips between ticks.
       let rx = ox, ry = oy, rz = oz, ux = dx, uy = dy, uz = dz;
       let scale = 1;
       if (this.sweep > 0 && this.where(i, tick - this.sweep, before)) {
@@ -484,7 +447,7 @@ export class Combat {
             ux = ex / length;
             uy = ey / length;
             uz = ez / length;
-            // Distances along this ray, as distances along the piece.
+            // Converts distances along this ray to distances along the segment.
             scale = span / length;
           }
         }
@@ -502,7 +465,8 @@ export class Combat {
       } else if (this.rig[kind]) {
         st.unpack(past.anim);
         st.seed = bodySeed(i);
-        // A young one is its kind's shape made small about where it stands. The ray is made large about there instead, and what it meets made small again.
+        // A young creature is its kind's shape scaled down about its position. The ray is scaled up about that
+        // point instead, and the hit distance is scaled back.
         const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
         const zone =
           size === 1
@@ -527,11 +491,7 @@ export class Combat {
     return best;
   }
 
-  /**
-   * The server's multiplier for what `by` deals: by what it is (a survivor, a
-   * wild creature, a tamed one), and for a creature by its species. What
-   * nobody dealt is as it is.
-   */
+  /** The server's multiplier on damage `by` deals. */
   private dealt(by: EntityRecord | null): number {
     if (!by) return 1;
     const { rules, lists } = this.ctx;
@@ -541,10 +501,8 @@ export class Combat {
   }
 
   /**
-   * The server's multiplier for what `victim` takes, by what it is. As ARK
-   * has it, the settings for a whole class are damage taken (higher takes
-   * more), and the lists that name a species are resistance (higher takes
-   * less): the two are written the opposite way round.
+   * The server's multiplier on damage `victim` takes. As in ARK, the class-wide settings are damage taken (higher
+   * takes more) and the per-species lists are resistance (higher takes less), so the lists divide.
    */
   private taken(victim: EntityRecord): number {
     const { rules, lists } = this.ctx;
@@ -555,13 +513,9 @@ export class Combat {
   }
 
   /**
-   * Whether the server's rules make nothing of what `by` does to something of
-   * `team`. On a PvE server, what is one tribe's cannot be harmed by
-   * another's: survivors, tames, and what they built. One's own side is
-   * spared a blow, an arrow or a shot, but not a blast, which spares nobody
-   * as it does not spare whoever set it off; the server may spare it blasts
-   * too, or nothing. What is nobody's (the wild, and what the wild does), and
-   * what one does to oneself, is never this.
+   * Whether the rules cancel what `by` does to something of `team`. On a PvE server one tribe cannot harm another's
+   * survivors, tames or structures. A team's own side is spared everything but explosions, unless a rule spares those
+   * too or spares nothing. The wild, and what a record does to itself, are never spared.
    */
   private spared(by: EntityRecord | null, team: number, type: number, self: boolean): boolean {
     if (!by || self || by.team === 0 || team === 0) return false;
@@ -572,11 +526,7 @@ export class Combat {
     return type !== DMG_EXPLOSIVE && !rules.on("FullFriendlyFire");
   }
 
-  /**
-   * What `src` brings lands on entity `target`, on `zone`, at (x, y, z),
-   * `far` metres from where it came. The harm is done now, to the body as it
-   * is now, whatever moment the hit was judged at.
-   */
+  /** `far` is metres from where `src` came. The harm applies to the body as it is now, even when the hit was judged at an earlier tick. */
   land(src: Source, target: number, zone: number, x: number, y: number, z: number, far: number): void {
     const { world, records, items, survival, creatures, buffs } = this.ctx;
     const ents = world.ents;
@@ -591,13 +541,11 @@ export class Combat {
     hit.type = src.type;
     hit.quality = src.quality;
     hit.draw = src.draw;
-    // What is acting on either of them is a factor like any other.
     hit.attack = src.attack * (by ? buffs.dealtOf(by) : 1);
     hit.resist = buffs.takenOf(victim);
     hit.torporInstant = src.torporInstant;
     hit.torporOver = src.torporOver;
     hit.takes = reg.takes[vkind]?.[hit.type] ?? 1;
-    // The server's rules: whether where it landed matters, and what this pairing of who and whom is worth.
     const rules = this.ctx.rules;
     hit.zone = rules.on("HeadMultipliers") ? (reg.zoneMul[vkind]?.[zone] ?? 1) : 1;
     const self = by === victim;
@@ -606,11 +554,11 @@ export class Combat {
     let piece = -1;
     let worn = 0;
     if (vinv && vinv.armor >= 0 && zone !== ZONE_NONE) {
-      // Aimed: the piece worn over the part hit, if it is not worn out, counted five times.
+      // An aimed hit counts only the piece worn over the zone hit, if it is not worn out, scaled by PIECE_SCALE.
       piece = vinv.armor + SLOT_OF_ZONE[zone]!;
       if (vinv.item[piece] !== 0 && vinv.dur[piece]! > 0) hit.armor = reg.armor[vinv.item[piece]!]! * (QUALITY_MUL[vinv.quality[piece]!] ?? 1) * PIECE_SCALE;
     } else if (vinv && vinv.armor >= 0) {
-      // Not aimed (a blast): everything worn stands against it together, each piece counted once.
+      // An unaimed hit (a blast) counts every worn piece once.
       for (let k = 0; k < ARMOR_SLOTS; k++) {
         const at = vinv.armor + k;
         if (vinv.item[at] === 0 || vinv.dur[at]! === 0) continue;
@@ -618,7 +566,7 @@ export class Combat {
         worn++;
       }
     } else if (victim.saddle !== 0) {
-      // A saddle is its wearer's armor, wherever it is hit: by the reference, damage is multiplied by 100 / (100 + twice its rating).
+      // A saddle is armor for its wearer wherever the hit lands. In ARK, damage is multiplied by 100 / (100 + twice its rating).
       hit.armor = reg.saddleArmor[victim.saddle]! * 2;
     }
     resolveDamage();
@@ -645,10 +593,10 @@ export class Combat {
     last.blocked = harm.blocked;
     last.wear = hit.armor > 0 ? harm.wear : 0;
     last.killed = killed;
-    // A blow that this pairing of who and whom makes nothing of is nothing: it provokes nobody and leaves nothing behind.
+    // A blow the rules cancel provokes nobody and leaves no torpor or buff.
     if (!killed && hit.rule !== 0 && (ents.flags[target]! & F_ALIVE) !== 0) {
       creatures.provoke(target, ax, az, by ? (records.entOf.get(by.pid) ?? -1) : -1);
-      // What the hit leaves behind: torpor at once, torpor to come as a dose, and whatever the round carries. Armor that stopped the harm stopped these in the same measure.
+      // The hit leaves instant torpor, torpor over time as a dose, and the round's buff. Armor reduces the torpor as it reduces the harm.
       const from = by ? by.pid : 0;
       if (harm.torpor > 0) survival.add(victim, V_TORPOR, harm.torpor);
       if (harm.torporOver > 0 && src.torporSeconds > 0 && this.dose !== 0) buffs.give(victim, this.dose, from, src.torporSeconds, harm.torporOver / src.torporSeconds);
@@ -674,7 +622,7 @@ export class Combat {
       const w = game.begin(S_EVENT);
       w.u8(killed ? EVENT_DEATH : EVENT_HURT);
       w.u16(shown);
-      // The side it came from, as a facing: 256ths of a turn.
+      // The side it came from, in 256ths of a turn.
       w.u8(Math.round((Math.atan2(ax - vx, az - vz) / (Math.PI * 2)) * 256) & 255);
       w.bits(zone, 4);
       if (killed) {
@@ -686,11 +634,7 @@ export class Combat {
     }
   }
 
-  /**
-   * What `src` brings, times `share`, lands on the structure `ref` at
-   * (x, y, z). What it is made of says what that kind of damage does to it;
-   * at no health left it is gone. Returns the damage done.
-   */
+  /** `src`, times `share`, lands on the structure `ref` at (x, y, z). Returns the damage done. */
   hitStructure(src: Source, ref: number, x: number, y: number, z: number, share = 1): number {
     const { world, buffs, game } = this.ctx;
     const structs = world.structs;
@@ -706,7 +650,7 @@ export class Combat {
     hit.draw = src.draw;
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
     hit.takes = takes[src.type]!;
-    // What its own side built is spared as its own side is; what another tribe built, as that tribe is.
+    // A structure is spared as its owning tribe would be.
     hit.rule = this.spared(src.by, t.owner[slot]!, src.type, false) ? 0 : this.dealt(src.by) * this.ctx.rules.num("StructureResistanceMultiplier");
     resolveDamage();
     if (!(harm.health > 0)) return 0;
@@ -735,9 +679,8 @@ export class Combat {
   }
 
   /**
-   * Something went off at (x, y, z). Every body within `radius` that it has a
-   * clear line to, and everything built within it, takes what `src` brings:
-   * all of it within a metre, and less the further off, to nothing at the edge.
+   * Every body within `radius` of (x, y, z) that has a clear line to it, and every structure within `radius`, takes
+   * `src`, in full within a metre and fading to nothing at the edge.
    */
   blast(src: Source, x: number, y: number, z: number, radius: number): void {
     const world = this.ctx.world;
@@ -746,7 +689,7 @@ export class Combat {
     const dims = world.dims;
     const fade = (far: number): number => (far <= 1 ? 1 : far >= radius ? 0 : 1 - (far - 1) / (radius - 1));
     const base = src.base;
-    // Who is in reach is found first: a blast that kills changes the lists it would be walking.
+    // Gather the bodies first, because a kill changes the chunk lists being walked.
     const found = this.found;
     const share = this.share;
     found.length = share.length = 0;
@@ -762,11 +705,11 @@ export class Combat {
           const mx = ents.x[i]! - x;
           const my = ents.y[i]! + reg.bodyHeight[kind]! * 0.5 - y;
           const mz = ents.z[i]! - z;
-          // From the blast to the nearest of the body, about: its middle, less its girth.
+          // The distance to the body's nearest point, approximated as the distance to its middle less its radius.
           const mid = Math.sqrt(mx * mx + my * my + mz * mz);
           const far = Math.max(0, mid - reg.bodyRadius[kind]!);
           if (far >= radius) continue;
-          // Something of the world between the two shields it.
+          // World geometry between the two shields the body.
           if (mid > 0.5 && castWorld(world, x, y + 0.1, z, mx / mid, (my - 0.1) / mid, mz / mid, mid - 0.3) !== HIT_NONE) continue;
           found.push(i);
           share.push(fade(far));
@@ -782,7 +725,7 @@ export class Combat {
       this.land(src, i, ZONE_NONE, ents.x[i]!, by, ents.z[i]!, Math.sqrt((ents.x[i]! - x) * (ents.x[i]! - x) + (by - y) * (by - y) + (ents.z[i]! - z) * (ents.z[i]! - z)));
     }
     src.base = base;
-    // Everything built within reach, by how near its nearest point is.
+    // Structures take the blast by the distance to their nearest point.
     const structs = world.structs;
     const n = structs.query(x - radius, z - radius, x + radius, z + radius, this.refs);
     found.length = share.length = 0;
@@ -819,11 +762,7 @@ export class Combat {
     }
   }
 
-  /**
-   * A body's health reached zero, and `by` (a persistent id, or 0) did it.
-   * Called before the body is taken out of the world: whoever killed it has
-   * the experience and what it yields.
-   */
+  /** A body's health reached zero and `by` (a pid, or 0) did it. Called before the body leaves the world. The killer gets the XP and the drops. */
   killed(rec: EntityRecord, by: number): void {
     this.died = true;
     const { world, records, items, progression, game } = this.ctx;
@@ -832,10 +771,8 @@ export class Combat {
     const reg = world.reg;
     const def = reg.defs[rec.kind] as SpeciesDef;
     const level = rec.kind === this.survivor ? progression.levelOf(rec.xp) : (rec.genome?.level ?? 1);
-    // What a kill is worth, by the server's rules for experience; the killer is told what it gained.
     const base = Math.round((def.killXp ?? 0) * (1 + 0.1 * (level - 1)) * 10) / 10;
     const xp = progression.addXp(killer, base, XP_KILL);
-    // Ridden, half as much again goes to whoever rides it.
     const rider = this.riderOf?.(killer) ?? null;
     if (rider) progression.addXp(rider, base / 2, XP_KILL);
     for (const drop of def.drops ?? []) {
@@ -859,7 +796,7 @@ export class Combat {
   }
 }
 
-/** A species' id without its namespace, for when a body has no name of its own. */
+/** A species id without its namespace, for a body with no name. */
 function speciesLabel(id: string): string {
   return id.slice(id.indexOf(":") + 1);
 }
