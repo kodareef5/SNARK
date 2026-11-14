@@ -4,6 +4,7 @@
 import { YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { PAD, type CollisionWorld } from "./collide.ts";
+import { frame, frameOf } from "./frame.ts";
 import { Found } from "./structures.ts";
 
 export const HIT_NONE = 0;
@@ -22,6 +23,8 @@ const TERRAIN_STEP = 0.25;
 const SEGMENT = 8;
 /** Half the distance over which the ground's slope is measured for a normal. */
 const NORMAL_STEP = 0.25;
+/** Metres a box is grown sideways for a ray, so that rounding leaves no crack between two boxes that share a face. */
+const SEAL = 1e-6;
 const found = new Found(256);
 
 /** `yaw` and `pitch` are in wire units (pitch 16384 is straight up). Writes a unit vector to `out`. */
@@ -119,25 +122,26 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
         const t = structs.chunks[Math.floor(r / 65536)]!;
         const slot = r & 0xffff;
         const k = t.kind[slot]!;
-        const a = t.yaw[slot]! * TO_RAD;
-        const s = detSin(a);
-        const c = detCos(a);
-        // The ray in the structure's frame.
+        frameOf(t.yaw[slot]!);
+        const s = frame.sin;
+        const c = frame.cos;
+        // The ray in the structure's frame, in the frame's own lengths, so the boxes are as written.
+        const shrink = 1 / frame.stretch;
         const px = ox - t.x[slot]!;
         const pz = oz - t.z[slot]!;
-        const lx = c * px - s * pz;
+        const lx = (c * px - s * pz) * shrink;
         const ly = oy - t.y[slot]!;
-        const lz = s * px + c * pz;
-        const ldx = c * dx - s * dz;
-        const ldz = s * dx + c * dz;
+        const lz = (s * px + c * pz) * shrink;
+        const ldx = (c * dx - s * dz) * shrink;
+        const ldz = (s * dx + c * dz) * shrink;
         const box = structs.parts.box;
         for (let p = structs.parts.start[k]! * 6, end = structs.parts.start[k + 1]! * 6; p < end; p += 6) {
           const bx = box[p]!;
           const by = box[p + 1]!;
           const bz = box[p + 2]!;
-          const hx = box[p + 3]!;
+          const hx = box[p + 3]! + SEAL;
           const hy = box[p + 4]!;
-          const hz = box[p + 5]!;
+          const hz = box[p + 5]! + SEAL;
           const hit = rayBox(lx, ly, lz, ldx, dy, ldz, bx - hx, by - hy, bz - hz, bx + hx, by + hy, bz + hz);
           if (hit >= best) continue;
           best = hit;
