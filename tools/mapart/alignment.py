@@ -5,10 +5,10 @@ from scipy import ndimage as nd
 from scipy.optimize import minimize
 from PIL import Image
 
-def shore_align(paint,truth):
+def shore_align(paint,truth,source_water=None):
     """Fit island silhouettes using a similarity transform, without urban shear."""
     n=256
-    wet=(paint[...,1]-paint[...,0]>3)&(paint[...,2]-paint[...,0]>-18)
+    wet=((paint[...,1]-paint[...,0]>3)&(paint[...,2]-paint[...,0]>-18)) if source_water is None else source_water
     def clean(a):
         a=np.asarray(Image.fromarray(a).resize((n,n),Image.Resampling.NEAREST))
         a=nd.binary_closing(a,iterations=2,border_value=1)

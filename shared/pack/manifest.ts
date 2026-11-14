@@ -2,10 +2,13 @@
 // hold it. A client reads this first and then asks for the levels it wants.
 
 import { MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodVertices, type Pack, type PackMaterial } from "./pack.ts";
-import { TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, stepOf, textureBytes, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
+import { TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
 
-/** Version 1 is still read. It had flat levels only, and no materials or textures. */
-export const MANIFEST_VERSION = 2;
+/**
+ * Versions 1 and 2 are still read. Version 2 had no part stored deflated. Version 1 had flat levels only, and no
+ * materials or textures.
+ */
+export const MANIFEST_VERSION = 3;
 
 export interface ManifestFile {
   name: string;
@@ -16,14 +19,22 @@ export interface ManifestFile {
   format?: TextureFormat;
 }
 
-/** A run of bytes fetched together, and the first eight bytes of its SHA-256 in hex. "" where nobody has hashed it. */
+/**
+ * A run of bytes fetched together, and the first eight bytes of its SHA-256 in hex. "" where nobody has hashed it.
+ * `bytes` and the hash are of the part as its counts give it. A part stored deflated says how many bytes it is stored
+ * in, fewer than `bytes` (shared/pack/stored.ts).
+ */
 export interface ManifestPart {
   bytes: number;
   hash: string;
+  stored?: number;
 }
 
+/** Bytes of a part in its file. */
+export const storedBytes = (p: ManifestPart): number => p.stored ?? p.bytes;
+
 export interface ManifestLevel {
-  /** Index into `files`, and where in that file the level starts. */
+  /** Index into `files`, and where in that file the level starts. Its parts follow one another there, as stored. */
   file: number;
   at: number;
   verts: number;
@@ -46,9 +57,22 @@ export interface ManifestTexture {
   role: TextureRole;
   /** The side of the largest picture, in pixels. The rgba variant stops at 1024. */
   top: number;
-  /** Per variant: index into `files`, where in that file the texture starts, and the hash of each step. */
-  in: Partial<Record<TextureFormat, { file: number; at: number; hash: string[] }>>;
+  /**
+   * Per variant: index into `files`, where in that file the texture starts, and the hash of each step. Where any step
+   * is stored deflated, `stored` gives the bytes each step is stored in, and the steps follow one another as stored.
+   */
+  in: Partial<Record<TextureFormat, ManifestVariant>>;
 }
+
+export interface ManifestVariant {
+  file: number;
+  at: number;
+  hash: string[];
+  stored?: number[];
+}
+
+/** Bytes of a step of a texture in its file. */
+export const storedStep = (v: ManifestVariant, format: TextureFormat, role: TextureRole, step: number): number => v.stored?.[step] ?? stepBytes(format, role, step);
 
 export interface ManifestMesh {
   id: string;
@@ -119,7 +143,7 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
 /** Throws with a reason if the text is not a manifest this build can use. */
 export function parseManifest(text: string): Manifest {
   const m = JSON.parse(text) as Manifest;
-  if (m.version !== MANIFEST_VERSION && m.version !== 1) throw new Error(`manifest: version ${String(m.version)} is not supported`);
+  if (m.version !== MANIFEST_VERSION && m.version !== 2 && m.version !== 1) throw new Error(`manifest: version ${String(m.version)} is not supported`);
   if (!Array.isArray(m.files) || !Array.isArray(m.meshes) || m.files[m.boot]?.role !== "boot") throw new Error("manifest: no boot pack");
   const textures = m.textures ?? [];
   const materials = m.materials ?? [];
@@ -131,8 +155,10 @@ export function parseManifest(text: string): Manifest {
       const file = m.files[v.file];
       const top = topIn(format, t.top);
       if (file?.role !== "tex" || file.format !== format) throw new Error(`manifest: texture ${t.id} names a file that does not hold ${format}`);
-      if (!(v.at >= TEXTURE_HEADER_BYTES) || !(v.at + textureBytes(format, t.role, top) <= file.bytes)) throw new Error(`manifest: texture ${t.id} lies outside its file`);
       if (!Array.isArray(v.hash) || v.hash.length !== stepOf(top) + 1) throw new Error(`manifest: texture ${t.id} does not have a hash for every step`);
+      if (v.stored && (v.stored.length !== v.hash.length || v.stored.some((s, k) => !(s > 0 && s <= stepBytes(format, t.role, k))))) throw new Error(`manifest: texture ${t.id} says it is stored in more bytes than it has`);
+      const bytes = v.hash.reduce((sum, _, k) => sum + storedStep(v, format, t.role, k), 0);
+      if (!(v.at >= TEXTURE_HEADER_BYTES) || !(v.at + bytes <= file.bytes)) throw new Error(`manifest: texture ${t.id} lies outside its file`);
     }
   }
   for (const mat of materials) {
@@ -149,8 +175,9 @@ export function parseManifest(text: string): Manifest {
     mesh.levels.forEach((level, at) => {
       const file = m.files[level.file];
       const parts = Array.isArray(level.parts) ? level.parts : [];
-      const bytes = parts.reduce((sum, p) => sum + p.bytes, 0);
-      const first = level.surface ? (parts[0]?.bytes ?? 0) : bytes;
+      if (parts.some((p) => p.stored !== undefined && !(p.stored > 0 && p.stored < p.bytes))) throw new Error(`manifest: a part of a level of ${mesh.id} says it is stored in as many bytes as it has, or more`);
+      const bytes = parts.reduce((sum, p) => sum + storedBytes(p), 0);
+      const first = level.surface && parts[0] ? storedBytes(parts[0]) : bytes;
       if (!file || parts.length === 0 || !(level.at >= 0) || !(level.at + first <= file.bytes)) throw new Error(`manifest: a level of ${mesh.id} lies outside its file`);
       if (level.surface && !(level.surface.at >= 0 && level.surface.at + bytes - first <= (m.files[level.surface.file]?.bytes ?? -1))) throw new Error(`manifest: the surface of a level of ${mesh.id} lies outside its file`);
       if ((level.index !== 2 && level.index !== 4) || !(level.error >= 0)) throw new Error(`manifest: a level of ${mesh.id} is not described`);
