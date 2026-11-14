@@ -95,6 +95,7 @@ a page served over TLS: start the server with `--cert cert.pem --key key.pem`.
 | `bun run snap` | Draws the proving ground to `artifacts/snap.png` with a software rasterizer. No browser. `-- --ui` draws the interface over it; `-- --poses N` a line-up of bodies in motion; `-- --fight bow` a survivor mid-fight as its own client shows it; `-- --creatures` the modelled creatures, with `--young` each at four ages beside its egg |
 | `bun run probe` | Opens installed Chrome headless once and prints the page's self-check report. `-- --bench` adds frame times |
 | `bun run dev` | Development server with client rebuild on change |
+| `bun tools/map.ts` | Builds a map file from a folder of plain layers, and unpacks one into its folder. A server runs it with `--map <file>`; see [maps as files](planning/reference/maps.md) |
 | `bun run build` | Builds the client into `client/dist` |
 
 Every change passes `bun run check`. There is no browser test suite and there

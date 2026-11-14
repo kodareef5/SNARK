@@ -448,19 +448,25 @@ export interface SpawnsDef extends Named {
 /** A place on a map where something spawns or drops. */
 export interface MapZone {
   readonly kind: "spawn" | "crate" | "biome";
-  /** Centre x and z, and radius, in metres. */
+  /** Centre x and z, in metres. */
   readonly at: readonly [number, number];
-  readonly radius: number;
+  /** A circle of this radius, in metres. */
+  readonly radius?: number;
+  /** In place of `radius`: a box of this half width and half depth. */
+  readonly half?: readonly [number, number];
   readonly spawns?: string;
   readonly crate?: string;
 }
 
-/** A world. A stub: the one map is code (shared/world/proving.ts). */
+/**
+ * A world. Its ground is the map file that carries its id (shared/world/mapfile.ts), and a server is started with that file.
+ * Until creatures spawn by region, a new world's herd starts in the first spawn zone and its hunters in the last.
+ */
 export interface MapDef extends Named {
   readonly type: "map";
   readonly id: string;
   readonly label?: string;
-  /** Its size in chunks, east to west and north to south. */
+  /** Its size in chunks along x and along z, and its sea level. Each must be what its file holds. */
   readonly chunks: readonly [number, number];
   readonly seaLevel?: number;
   readonly game?: string;
