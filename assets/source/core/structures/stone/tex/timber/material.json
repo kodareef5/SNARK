@@ -1,0 +1,53 @@
+{
+  "name": "timber_hewn_oak",
+  "dimensions_px": [
+    2048,
+    2048
+  ],
+  "tile_size_m": [
+    3,
+    3
+  ],
+  "wrap": [
+    "repeat",
+    "repeat"
+  ],
+  "grain_direction": "image +X",
+  "base": {
+    "file": "timber_base.png",
+    "space": "sRGB",
+    "channels": "RGB"
+  },
+  "height": {
+    "file": "timber_height.png",
+    "space": "linear",
+    "bits": 16,
+    "range_mm": 10,
+    "white": "high"
+  },
+  "normal": {
+    "file": "timber_normal.png",
+    "space": "linear",
+    "convention": "OpenGL",
+    "axes": [
+      "right",
+      "image up",
+      "out"
+    ]
+  },
+  "orm": {
+    "file": "timber_orm.png",
+    "space": "linear",
+    "R": "ambient occlusion",
+    "G": "roughness",
+    "B": "metalness (zero)"
+  },
+  "mean_base_srgb": [
+    118.0,
+    92.0,
+    66.0
+  ],
+  "seed": 149087,
+  "revision": "feedback_01",
+  "luminance_std": 21.4920814619294
+}

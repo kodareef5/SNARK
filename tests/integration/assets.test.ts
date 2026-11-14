@@ -5,7 +5,7 @@ import type { FramePacket } from "../../client/core/render/packet.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
-import { corePack } from "../fixtures/pack.ts";
+import { frozenPack } from "../fixtures/pack.ts";
 
 /** Everything of a frame packet that names a mesh, a level, an instance or a bone. */
 function fold(hash: number, p: FramePacket): number {
@@ -29,10 +29,13 @@ function fold(hash: number, p: FramePacket): number {
   return hash;
 }
 
-/** A survivor watching, ten metres off: a dressed and armed survivor, a bare dummy, creatures of every kind, and things built. */
+/**
+ * A survivor watching, ten metres off: a dressed and armed survivor, a bare dummy, creatures of every kind, and things
+ * built. The pack's art is frozen, so the frames change when code or content does and not when art does.
+ */
 function scene() {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const pack = corePack();
+  const pack = frozenPack();
+  const h = new Harness({}, 1, 60, { dev: true, clips: pack.clips, rigs: pack.header.rigs });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);
   const bob = h.join("bob");
   const frame = (now: number): void => void app.frame(now, 1280, 720);
@@ -40,7 +43,7 @@ function scene() {
   const e = h.world.ents;
   const ada = h.ent(app.session);
   // The console takes a line a third of a second. Each thing is set down in front of him, so he turns between them.
-  for (const line of ["enablecheats", `tp ${e.x[ada]!.toFixed(2)} ${(e.z[ada]! + 10).toFixed(2)}`, "armor hide", "kit rifle", "dummy", "spawn raptor 5", "spawn parasaur 5", "spawn grazer 3", "place wall_wood", "place storage_box", "place campfire"]) {
+  for (const line of ["enablecheats", `tp ${e.x[ada]!.toFixed(2)} ${(e.z[ada]! + 10).toFixed(2)}`, "armor hide", "kit rifle", "dummy", "spawn raptor 5", "spawn parasaur 5", "spawn grazer 3", "place wall_metal", "place storage_box", "place campfire"]) {
     h.say(bob, line, 500);
     h.pilots[1]!.yaw += 0.6;
   }
@@ -69,10 +72,11 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   }
   // Bodies in parts, armor, a held weapon, creatures, a dummy, structures and nodes: a scene that uses the pack widely.
   const drawn = new Set([...meshes].map((m) => pack.header.meshes[m]!.id));
-  const missing = ["core:human_m/head", "core:human_m/armor/hide/torso", "core:rifle", "core:mannequin/torso", "core:raptor", "core:parasaur", "core:grazer", "core:wall_wood", "core:storage_box", "core:campfire", "core:tree"].filter((id) => !drawn.has(id));
+  const missing = ["core:human_m/head", "core:human_m/armor/hide/torso", "core:rifle", "core:mannequin/torso", "core:raptor", "core:parasaur", "core:grazer", "core:wall_metal", "core:storage_box", "core:campfire", "core:tree"].filter((id) => !drawn.has(id));
   expect(missing).toEqual([]);
   expect(most).toBeGreaterThan(30);
   // It was 367ac8c0 while a draw recorded the level asked for. It records the level drawn, which for a far mesh with one
-  // level is 0 and not 1 or 2. Nothing else of these frames changed.
-  expect(hash.toString(16)).toBe("e47bd0b0");
+  // level is 0 and not 1 or 2. Nothing else of these frames changed. It was e47bd0b0 while the wall built was a wooden
+  // one, which the wood tier's art redraws; the metal wall in its place still draws as its grey box.
+  expect(hash.toString(16)).toBe("6ede278");
 });

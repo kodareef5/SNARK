@@ -1,0 +1,1432 @@
+{
+  "round": 4,
+  "seed": 830127,
+  "pixels": 2048,
+  "tile_metres": 3,
+  "mm_per_pixel": 1.46484375,
+  "height_range_mm": 48,
+  "normal_mode": "surface",
+  "normal_formula": "normalize(-dh/dx, +dh/dy_image, 1)",
+  "macro_height": "One monotone fit of layout corner rises and off-centre crowns into 48 mm, faces near 40 mm; micro relief unscaled",
+  "macro_fit": {
+    "function": "1.8 + 42 * (1 - exp(-model_mm / 13))",
+    "mortar_mm": 1.8,
+    "amplitude_mm": 42.0,
+    "decay_mm": 13.0
+  },
+  "reused_stone_count": 29,
+  "rebuilt_stone_count": 14,
+  "bevel_floor_limited_pixels": 0,
+  "newly_exposed_spall_limited_pixels": 47,
+  "appearance_archive": "round3",
+  "palette": "balanced warm buff continuum with six restrained ochre accents; exact original RGB mean",
+  "layout_sha256": "1d7c3709566cbefa8191e10bbbeef532da0fe03645c2997f11db561c5e05a4a7",
+  "source": {
+    "file": "source/limestone_pigment.png",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "sha256": "b0e257976087c2189fe27ec8018c9c1fb7068eff5b8f3d0b77ceb3c96de3394e",
+    "use": "Only subdued, band-limited mineral pigment and chroma. No generated relief or fine luminance."
+  },
+  "fracture_source": {
+    "file": "source/limestone_fracture_height.png",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "sha256": "39ecada8b71c0a58ec07a98ca1c923de4b87493565596b7cc3f565f64d8c5575",
+    "use": "Scalar displacement artwork, detrended, cropped independently, rescaled to millimetres. Native grain, pits and tool cuts added procedurally."
+  },
+  "mean_base_srgb": [
+    155.99951696395874,
+    149.99984288215637,
+    137.99976086616516
+  ],
+  "color_correction": [
+    -2.8687468137650285,
+    0.3572052948657074,
+    1.4740459133463446
+  ],
+  "course_balance": {
+    "0": [
+      -1.0029725839611061,
+      -0.9856205355198939,
+      -0.982198844169335
+    ],
+    "1": [
+      0.7541264454732869,
+      0.21045561515820027,
+      -0.5682665570588527
+    ],
+    "2": [
+      -0.3391500696293022,
+      -0.4451117888904307,
+      -0.5489895583184705
+    ],
+    "3": [
+      -0.8476186257334818,
+      -0.7965635072757152,
+      -0.7694243477608823
+    ],
+    "4": [
+      1.8906068148225375,
+      1.878704970681146,
+      1.76450543707729
+    ],
+    "5": [
+      -0.34169179044844644,
+      0.05747325162556365,
+      0.657888277297812
+    ],
+    "6": [
+      1.6976105553805199,
+      1.2852593761978142,
+      0.6989185509665661
+    ],
+    "7": [
+      -1.2261897632630765,
+      -0.8901286634892188,
+      -0.35624940795255644
+    ]
+  },
+  "repeat_review_stone_adjustments": {
+    "k0s0": 1.1920962042206895,
+    "k0s1": 0.0,
+    "k0s2": 0.0,
+    "k0s3a": 0.0,
+    "k0s3b": 0.0,
+    "k0s4": 0.0,
+    "k1s0a": 0.0,
+    "k1s0b": 0.0,
+    "k1s1": 0.0,
+    "k1s2": 0.0,
+    "k1s3": 0.0,
+    "k2s0u0": 0.0,
+    "k2s0u1": 0.0,
+    "k2s0l0": 0.0,
+    "k2s0l1": 0.0,
+    "k2s0l2": 0.0,
+    "k2s1": 0.0,
+    "k3s0": 0.6422460671796841,
+    "k3s1": 0.0,
+    "k3s2a": 0.0,
+    "k3s2b": 0.0,
+    "k3s3": 0.0,
+    "k4s0a": 0.0,
+    "k4s0b": 0.0,
+    "k4s1": 0.0,
+    "k4s2": 0.0,
+    "k5s0a": 0.0,
+    "k5s0b": 0.0,
+    "k5s1": 0.0,
+    "k5s2j": 0.0,
+    "k5s3": 0.0,
+    "k5s4": 0.0,
+    "k6s0": 0.0,
+    "k6s1": 0.0,
+    "k6s2a": 0.0,
+    "k6s2b": 0.0,
+    "k6s3": 0.0,
+    "k6s4": 0.0,
+    "k7s0": 0.0,
+    "k7s1a": 0.0,
+    "k7s1b": 0.0,
+    "k7s2": 0.0,
+    "k7s3": 0.0
+  },
+  "stones": [
+    {
+      "index": 0,
+      "name": "k0s0",
+      "surface": "coarse pitted",
+      "source_angle": 5.166983065078882,
+      "source_scale": 1.1632386489096715,
+      "source_offset": [
+        812.9449153270037,
+        348.9333332509664
+      ],
+      "fracture_angle": 5.792055677501552,
+      "fracture_scale": 0.9963703979973694,
+      "fracture_offset": [
+        777.7445740839348,
+        203.16448757952128
+      ],
+      "tone": -12.26748350258186,
+      "tint": 0.8221135872174696,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 0,
+      "seed": 831136,
+      "ochre_weight": 0.24827387871293427,
+      "crown_peak_model_mm": 45.21226126890157,
+      "crown_mm": 24.1,
+      "crown_at_metres": [
+        0.4013,
+        0.1223
+      ]
+    },
+    {
+      "index": 1,
+      "name": "k0s1",
+      "surface": "cleft crystalline",
+      "source_angle": 5.354905146427536,
+      "source_scale": 1.1318510032808216,
+      "source_offset": [
+        634.8209947287145,
+        870.0831850843799
+      ],
+      "fracture_angle": 0.8783500357141867,
+      "fracture_scale": 0.9965312802891853,
+      "fracture_offset": [
+        374.4259138347421,
+        760.6656301536583
+      ],
+      "tone": 10.349430984735807,
+      "tint": 1.9160746254294072,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 1,
+      "seed": 832145,
+      "ochre_weight": 0.013034821118749457,
+      "crown_peak_model_mm": 51.61647008257963,
+      "crown_mm": 26.8,
+      "crown_at_metres": [
+        1.0365,
+        0.1697
+      ]
+    },
+    {
+      "index": 2,
+      "name": "k0s2",
+      "surface": "pitch and punch dressed",
+      "source_angle": 1.9854546476342818,
+      "source_scale": 1.1324677809318549,
+      "source_offset": [
+        859.9792078629664,
+        900.9022095679604
+      ],
+      "fracture_angle": 4.942782038464665,
+      "fracture_scale": 1.0666263706921626,
+      "fracture_offset": [
+        468.9103369648815,
+        497.5916157163668
+      ],
+      "tone": 6.100743037467982,
+      "tint": -0.18579756347494603,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 2,
+      "seed": 833154,
+      "ochre_weight": 0.65,
+      "crown_peak_model_mm": 48.84712503941974,
+      "crown_mm": 23.3,
+      "crown_at_metres": [
+        1.823,
+        0.117
+      ]
+    },
+    {
+      "index": 3,
+      "name": "k0s3a",
+      "surface": "fine close limestone",
+      "source_angle": 2.8448863292267603,
+      "source_scale": 1.1093140769307823,
+      "source_offset": [
+        309.96617094782107,
+        1025.6907253637467
+      ],
+      "fracture_angle": 1.1618184263853313,
+      "fracture_scale": 1.1759522453954585,
+      "fracture_offset": [
+        371.1597048826662,
+        978.3872622337801
+      ],
+      "tone": 1.1161596984170323,
+      "tint": 1.386667329529941,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 3,
+      "seed": 834163,
+      "ochre_weight": 0.014812442629634492,
+      "crown_peak_model_mm": 33.960198972537725,
+      "crown_mm": 16.8,
+      "crown_at_metres": [
+        2.279,
+        0.077
+      ]
+    },
+    {
+      "index": 4,
+      "name": "k0s3b",
+      "surface": "coarse pitted",
+      "source_angle": 6.28300724003589,
+      "source_scale": 1.249530177449276,
+      "source_offset": [
+        211.67323560653364,
+        943.1851297718603
+      ],
+      "fracture_angle": 2.6845528022408,
+      "fracture_scale": 0.9703315758428854,
+      "fracture_offset": [
+        388.28251029419744,
+        707.8157613825115
+      ],
+      "tone": 0.9587265764387888,
+      "tint": 0.6238437768433044,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 4,
+      "seed": 835172,
+      "ochre_weight": 0.2286434043996567,
+      "crown_peak_model_mm": 51.45746999467717,
+      "crown_mm": 27.1,
+      "crown_at_metres": [
+        2.2902,
+        0.2734
+      ]
+    },
+    {
+      "index": 5,
+      "name": "k0s4",
+      "surface": "fine close limestone",
+      "source_angle": 3.658986476333297,
+      "source_scale": 1.0078305091730562,
+      "source_offset": [
+        950.9113830964758,
+        528.9656652865714
+      ],
+      "fracture_angle": 0.09694453818991612,
+      "fracture_scale": 1.0308780298813667,
+      "fracture_offset": [
+        993.0657351114814,
+        638.5810205237437
+      ],
+      "tone": 1.842052584784686,
+      "tint": -0.08454431849219468,
+      "calcite_vein": true,
+      "appearance_reused": true,
+      "previous_index": 5,
+      "seed": 836181,
+      "ochre_weight": 0.01200073423585199,
+      "crown_peak_model_mm": 41.70990981640972,
+      "crown_mm": 24.7,
+      "crown_at_metres": [
+        2.903,
+        0.1509
+      ]
+    },
+    {
+      "index": 6,
+      "name": "k1s0a",
+      "surface": "cleft crystalline",
+      "source_angle": 1.5379530652542426,
+      "source_scale": 1.0116589641152651,
+      "source_offset": [
+        882.3493471524594,
+        759.216805826785
+      ],
+      "fracture_angle": 1.6248919257121357,
+      "fracture_scale": 1.0956303192273054,
+      "fracture_offset": [
+        562.0824244753289,
+        609.5720055268777
+      ],
+      "tone": -3.5465322980983762,
+      "tint": 1.6035196652675061,
+      "calcite_vein": true,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 1044097732,
+      "ochre_weight": 0.20330842397677368,
+      "crown_peak_model_mm": 33.35617379285466,
+      "crown_mm": 16.7,
+      "crown_at_metres": [
+        0.919,
+        0.4134
+      ]
+    },
+    {
+      "index": 7,
+      "name": "k1s0b",
+      "surface": "cleft crystalline",
+      "source_angle": 3.8157397249726164,
+      "source_scale": 1.0749668248334483,
+      "source_offset": [
+        662.1185276316139,
+        573.8105763131098
+      ],
+      "fracture_angle": 6.129464473249761,
+      "fracture_scale": 1.2001859735228393,
+      "fracture_offset": [
+        500.91540072338427,
+        530.8932103890447
+      ],
+      "tone": 0.09917061023609575,
+      "tint": 0.34638726782951595,
+      "calcite_vein": true,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 2245755472,
+      "ochre_weight": 0.12026995943221233,
+      "crown_peak_model_mm": 50.088946342782066,
+      "crown_mm": 28.1,
+      "crown_at_metres": [
+        0.7104,
+        0.5836
+      ]
+    },
+    {
+      "index": 8,
+      "name": "k1s1",
+      "surface": "fine close limestone",
+      "source_angle": 5.83780511629046,
+      "source_scale": 1.1391342200670111,
+      "source_offset": [
+        573.2347147072406,
+        285.5045748445292
+      ],
+      "fracture_angle": 5.158555598628255,
+      "fracture_scale": 1.0769043011589556,
+      "fracture_offset": [
+        387.0558187286456,
+        310.77484232767324
+      ],
+      "tone": 1.3829810510415599,
+      "tint": 1.4550449460221824,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 7,
+      "seed": 838199,
+      "ochre_weight": 0.0514310275725757,
+      "crown_peak_model_mm": 45.696788881378836,
+      "crown_mm": 22.2,
+      "crown_at_metres": [
+        1.7326,
+        0.5242
+      ]
+    },
+    {
+      "index": 9,
+      "name": "k1s2",
+      "surface": "spalled face corner",
+      "source_angle": 4.949179995686902,
+      "source_scale": 1.114189240804509,
+      "source_offset": [
+        301.66740154738517,
+        787.2124563714359
+      ],
+      "fracture_angle": 1.0686712789447326,
+      "fracture_scale": 0.9581874689451869,
+      "fracture_offset": [
+        851.0102601031685,
+        629.7119499658548
+      ],
+      "tone": -7.801292271136739,
+      "tint": -0.3492395561023117,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 8,
+      "seed": 839208,
+      "ochre_weight": 0.0638204028738745,
+      "crown_peak_model_mm": 42.84613853319292,
+      "crown_mm": 19.0,
+      "crown_at_metres": [
+        2.2591,
+        0.5467
+      ]
+    },
+    {
+      "index": 10,
+      "name": "k1s3",
+      "surface": "fine close limestone",
+      "source_angle": 4.145058607966343,
+      "source_scale": 1.2049812620034719,
+      "source_offset": [
+        934.6270220793708,
+        407.30105723959707
+      ],
+      "fracture_angle": 5.654181013806023,
+      "fracture_scale": 0.9681584739039903,
+      "fracture_offset": [
+        835.3450525761339,
+        962.6504291468494
+      ],
+      "tone": 4.353774800992213,
+      "tint": 0.3900184232424577,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 9,
+      "seed": 840217,
+      "ochre_weight": 0.1682018975921153,
+      "crown_peak_model_mm": 45.4498637387707,
+      "crown_mm": 17.7,
+      "crown_at_metres": [
+        3.1033,
+        0.5419
+      ]
+    },
+    {
+      "index": 11,
+      "name": "k2s0u0",
+      "surface": "coarse pitted",
+      "source_angle": 2.5321626220467084,
+      "source_scale": 1.0058615909195119,
+      "source_offset": [
+        690.1040589372891,
+        886.3410253105416
+      ],
+      "fracture_angle": 3.835219458999854,
+      "fracture_scale": 1.1756134050434137,
+      "fracture_offset": [
+        621.6265301005024,
+        663.7505189362523
+      ],
+      "tone": 1.5099977321513358,
+      "tint": 0.019013644411473685,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 10,
+      "seed": 841226,
+      "ochre_weight": 0.13780582400555605,
+      "crown_peak_model_mm": 52.46482100014167,
+      "crown_mm": 30.4,
+      "crown_at_metres": [
+        0.9986,
+        0.7816
+      ]
+    },
+    {
+      "index": 12,
+      "name": "k2s0u1",
+      "surface": "spalled face corner",
+      "source_angle": 4.028645615559344,
+      "source_scale": 0.9925594958306875,
+      "source_offset": [
+        794.6156434433174,
+        606.7593399959782
+      ],
+      "fracture_angle": 1.3567591792075562,
+      "fracture_scale": 1.2072067227430112,
+      "fracture_offset": [
+        616.2833604245191,
+        664.869092673629
+      ],
+      "tone": -4.048600481732529,
+      "tint": -0.06330289957358881,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 11,
+      "seed": 842235,
+      "ochre_weight": 0.22045610062072754,
+      "crown_peak_model_mm": 55.06528742425298,
+      "crown_mm": 25.6,
+      "crown_at_metres": [
+        2.1043,
+        0.7416
+      ]
+    },
+    {
+      "index": 13,
+      "name": "k2s0l0",
+      "surface": "fine close limestone",
+      "source_angle": 3.548321425411591,
+      "source_scale": 0.9891056064964879,
+      "source_offset": [
+        425.51416604983143,
+        818.8661273953701
+      ],
+      "fracture_angle": 6.2666928602646,
+      "fracture_scale": 1.1397526943273864,
+      "fracture_offset": [
+        645.1819999063547,
+        389.1659142259728
+      ],
+      "tone": -3.661933046606519,
+      "tint": 0.6407077474757747,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 12,
+      "seed": 843244,
+      "ochre_weight": 0.23661550531286646,
+      "crown_peak_model_mm": 49.99022693611872,
+      "crown_mm": 21.9,
+      "crown_at_metres": [
+        0.9888,
+        0.9602
+      ]
+    },
+    {
+      "index": 14,
+      "name": "k2s0l1",
+      "surface": "coarse pitted",
+      "source_angle": 4.366103643232901,
+      "source_scale": 1.1465644218687139,
+      "source_offset": [
+        526.5239097925337,
+        433.27773628013927
+      ],
+      "fracture_angle": 5.63351531185558,
+      "fracture_scale": 1.167573213571809,
+      "fracture_offset": [
+        342.96438446009677,
+        330.9078279255567
+      ],
+      "tone": -3.4704426564447517,
+      "tint": 0.2885308781685041,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 13,
+      "seed": 844253,
+      "ochre_weight": 0.8,
+      "crown_peak_model_mm": 49.324576876822974,
+      "crown_mm": 32.7,
+      "crown_at_metres": [
+        1.6597,
+        0.9373
+      ]
+    },
+    {
+      "index": 15,
+      "name": "k2s0l2",
+      "surface": "pitch and punch dressed",
+      "source_angle": 1.0532398418119444,
+      "source_scale": 1.0229152439556344,
+      "source_offset": [
+        919.4546924696853,
+        353.1536994090151
+      ],
+      "fracture_angle": 4.605166721485641,
+      "fracture_scale": 1.0117645933667438,
+      "fracture_offset": [
+        776.5127805208732,
+        625.8126855917216
+      ],
+      "tone": -0.19580592389037865,
+      "tint": 1.0404127672456291,
+      "calcite_vein": true,
+      "appearance_reused": true,
+      "previous_index": 14,
+      "seed": 845262,
+      "ochre_weight": 0.11536058526588785,
+      "crown_peak_model_mm": 52.457809830555945,
+      "crown_mm": 18.5,
+      "crown_at_metres": [
+        2.1592,
+        0.946
+      ]
+    },
+    {
+      "index": 16,
+      "name": "k2s1",
+      "surface": "cleft crystalline",
+      "source_angle": 4.9329119874874205,
+      "source_scale": 0.9976676850806776,
+      "source_offset": [
+        353.37266179544287,
+        492.17498243275844
+      ],
+      "fracture_angle": 6.1987648787345835,
+      "fracture_scale": 1.0357128603600823,
+      "fracture_offset": [
+        568.5937047290223,
+        439.48016324505346
+      ],
+      "tone": 11.232090398198812,
+      "tint": -0.632448590058816,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 15,
+      "seed": 846271,
+      "ochre_weight": 0.10589666207304768,
+      "crown_peak_model_mm": 59.182701947316474,
+      "crown_mm": 28.8,
+      "crown_at_metres": [
+        3.0501,
+        0.9345
+      ]
+    },
+    {
+      "index": 17,
+      "name": "k3s0",
+      "surface": "pitch and punch dressed",
+      "source_angle": 2.4773313562287314,
+      "source_scale": 0.9673186391917533,
+      "source_offset": [
+        868.0046757439461,
+        456.71608598759593
+      ],
+      "fracture_angle": 1.6875973182417385,
+      "fracture_scale": 1.1764088032877122,
+      "fracture_offset": [
+        699.2779852053053,
+        909.2746114782683
+      ],
+      "tone": -13.0,
+      "tint": 0.4613350579976625,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 16,
+      "seed": 847280,
+      "ochre_weight": 0.55,
+      "crown_peak_model_mm": 57.07064623169379,
+      "crown_mm": 24.0,
+      "crown_at_metres": [
+        0.7701,
+        1.2501
+      ]
+    },
+    {
+      "index": 18,
+      "name": "k3s1",
+      "surface": "cleft crystalline",
+      "source_angle": 2.3869441307112638,
+      "source_scale": 0.9591786661557542,
+      "source_offset": [
+        588.5974490474514,
+        944.4527252864909
+      ],
+      "fracture_angle": 5.303706757778475,
+      "fracture_scale": 0.991830113514426,
+      "fracture_offset": [
+        741.9306473316478,
+        594.0109986449021
+      ],
+      "tone": 12.672899396382109,
+      "tint": 1.4262325354363183,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 17,
+      "seed": 848289,
+      "ochre_weight": 0.09500919592717591,
+      "crown_peak_model_mm": 43.24588329964236,
+      "crown_mm": 24.4,
+      "crown_at_metres": [
+        1.6376,
+        1.2674
+      ]
+    },
+    {
+      "index": 19,
+      "name": "k3s2a",
+      "surface": "fine close limestone",
+      "source_angle": 4.623052409512025,
+      "source_scale": 1.0280765070464994,
+      "source_offset": [
+        369.6665977552493,
+        1018.0269520777864
+      ],
+      "fracture_angle": 0.41676019926079666,
+      "fracture_scale": 1.0039233364164828,
+      "fracture_offset": [
+        922.6649006331684,
+        982.4309642645259
+      ],
+      "tone": -4.411584558605981,
+      "tint": 0.09653407970636094,
+      "calcite_vein": true,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 2315976257,
+      "ochre_weight": 0.08479493216387052,
+      "crown_peak_model_mm": 58.32361256844153,
+      "crown_mm": 29.4,
+      "crown_at_metres": [
+        2.3262,
+        1.1715
+      ]
+    },
+    {
+      "index": 20,
+      "name": "k3s2b",
+      "surface": "pitch and punch dressed",
+      "source_angle": 1.312148883218144,
+      "source_scale": 1.1619744156206813,
+      "source_offset": [
+        622.012114040889,
+        811.9961814697101
+      ],
+      "fracture_angle": 5.761260941674739,
+      "fracture_scale": 0.9662575991963058,
+      "fracture_offset": [
+        631.6089885651419,
+        749.7032236801667
+      ],
+      "tone": 6.021307115980971,
+      "tint": 0.28410569773908595,
+      "calcite_vein": false,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 1474489967,
+      "ochre_weight": 0.06272918534989574,
+      "crown_peak_model_mm": 50.3853722866404,
+      "crown_mm": 24.4,
+      "crown_at_metres": [
+        2.2784,
+        1.3399
+      ]
+    },
+    {
+      "index": 21,
+      "name": "k3s3",
+      "surface": "spalled face corner",
+      "source_angle": 1.5498748280854286,
+      "source_scale": 1.0588431383424737,
+      "source_offset": [
+        333.0879524182755,
+        810.8192616407787
+      ],
+      "fracture_angle": 3.61102060845459,
+      "fracture_scale": 1.1909033816549004,
+      "fracture_offset": [
+        714.6458861712729,
+        778.0875673908275
+      ],
+      "tone": -0.9568913818497231,
+      "tint": 1.4288991500844226,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 19,
+      "seed": 850307,
+      "ochre_weight": 0.07159860984244545,
+      "crown_peak_model_mm": 51.41045875681832,
+      "crown_mm": 20.2,
+      "crown_at_metres": [
+        3.0449,
+        1.248
+      ]
+    },
+    {
+      "index": 22,
+      "name": "k4s0a",
+      "surface": "fine close limestone",
+      "source_angle": 0.9227431986523361,
+      "source_scale": 0.9534765451217505,
+      "source_offset": [
+        307.49679696958924,
+        904.3710199547272
+      ],
+      "fracture_angle": 1.3790434436253054,
+      "fracture_scale": 1.0064823293529042,
+      "fracture_offset": [
+        1084.0396853669604,
+        745.8575322890736
+      ],
+      "tone": 0.21341441868358568,
+      "tint": 0.07374287919974054,
+      "calcite_vein": false,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 3209869705,
+      "ochre_weight": 0.16789916300185403,
+      "crown_peak_model_mm": 37.99868815472879,
+      "crown_mm": 19.1,
+      "crown_at_metres": [
+        1.0318,
+        1.5232
+      ]
+    },
+    {
+      "index": 23,
+      "name": "k4s0b",
+      "surface": "coarse pitted",
+      "source_angle": 3.145387734992149,
+      "source_scale": 1.0779882668850873,
+      "source_offset": [
+        562.8504497300488,
+        250.84631613410792
+      ],
+      "fracture_angle": 6.279507135297212,
+      "fracture_scale": 0.9655228801490313,
+      "fracture_offset": [
+        598.4571345220851,
+        968.0483634867632
+      ],
+      "tone": -0.8279000856652534,
+      "tint": 0.8981045753557615,
+      "calcite_vein": false,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 1013037429,
+      "ochre_weight": 0.85,
+      "crown_peak_model_mm": 53.30150023838451,
+      "crown_mm": 30.9,
+      "crown_at_metres": [
+        1.09,
+        1.7006
+      ]
+    },
+    {
+      "index": 24,
+      "name": "k4s1",
+      "surface": "coarse pitted",
+      "source_angle": 4.7399127336958875,
+      "source_scale": 1.1767542421385757,
+      "source_offset": [
+        314.127126001409,
+        419.57770940586585
+      ],
+      "fracture_angle": 0.341999293757639,
+      "fracture_scale": 1.2125075986470562,
+      "fracture_offset": [
+        532.8707984699338,
+        881.8570987537231
+      ],
+      "tone": -7.07838584457115,
+      "tint": 1.0934485053677458,
+      "calcite_vein": true,
+      "appearance_reused": true,
+      "previous_index": 21,
+      "seed": 852325,
+      "ochre_weight": 0.0282102240993167,
+      "crown_peak_model_mm": 43.948111895592646,
+      "crown_mm": 17.6,
+      "crown_at_metres": [
+        2.0803,
+        1.6609
+      ]
+    },
+    {
+      "index": 25,
+      "name": "k4s2",
+      "surface": "spalled face corner",
+      "source_angle": 4.209397535328519,
+      "source_scale": 1.0715070886974418,
+      "source_offset": [
+        770.5922069346818,
+        851.0692574228908
+      ],
+      "fracture_angle": 3.115688517227296,
+      "fracture_scale": 1.0183909641186488,
+      "fracture_offset": [
+        382.89368407269967,
+        779.8651479923604
+      ],
+      "tone": -11.454434532375613,
+      "tint": 1.3963126267024086,
+      "calcite_vein": true,
+      "appearance_reused": true,
+      "previous_index": 22,
+      "seed": 853334,
+      "ochre_weight": 0.07532960136023334,
+      "crown_peak_model_mm": 56.846874656135235,
+      "crown_mm": 26.5,
+      "crown_at_metres": [
+        3.0359,
+        1.5645
+      ]
+    },
+    {
+      "index": 26,
+      "name": "k5s0a",
+      "surface": "cleft crystalline",
+      "source_angle": 2.2097876006478003,
+      "source_scale": 0.9629823264569728,
+      "source_offset": [
+        703.4931070227447,
+        820.0232626699417
+      ],
+      "fracture_angle": 4.709389597095356,
+      "fracture_scale": 1.2101918177290947,
+      "fracture_offset": [
+        251.96189516999192,
+        861.5687266073779
+      ],
+      "tone": -4.2691027455911685,
+      "tint": -0.13276231219192883,
+      "calcite_vein": true,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 4057281243,
+      "ochre_weight": 0.0403264821166327,
+      "crown_peak_model_mm": 54.391094588393926,
+      "crown_mm": 20.2,
+      "crown_at_metres": [
+        0.4807,
+        1.8832
+      ]
+    },
+    {
+      "index": 27,
+      "name": "k5s0b",
+      "surface": "fine close limestone",
+      "source_angle": 3.252509277138088,
+      "source_scale": 1.1297704531632509,
+      "source_offset": [
+        794.0432146693643,
+        369.0668747980917
+      ],
+      "fracture_angle": 2.8140300392740665,
+      "fracture_scale": 1.0786091287667139,
+      "fracture_offset": [
+        488.5836899783408,
+        738.9001943290887
+      ],
+      "tone": -1.8496098341135037,
+      "tint": 1.6544834348314972,
+      "calcite_vein": false,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 2719625260,
+      "ochre_weight": 0.16153927630532747,
+      "crown_peak_model_mm": 46.58533240338076,
+      "crown_mm": 21.9,
+      "crown_at_metres": [
+        0.572,
+        2.0331
+      ]
+    },
+    {
+      "index": 28,
+      "name": "k5s1",
+      "surface": "cleft crystalline",
+      "source_angle": 1.0357561421653616,
+      "source_scale": 1.071375168636134,
+      "source_offset": [
+        396.1503233473507,
+        847.0830335765638
+      ],
+      "fracture_angle": 1.622624608393724,
+      "fracture_scale": 1.0415687586994247,
+      "fracture_offset": [
+        1048.0399972875086,
+        260.76630698385344
+      ],
+      "tone": -3.8692752780925144,
+      "tint": 0.37997340421144044,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 24,
+      "seed": 855352,
+      "ochre_weight": 0.0515182053394731,
+      "crown_peak_model_mm": 47.565008413784355,
+      "crown_mm": 20.1,
+      "crown_at_metres": [
+        1.0807,
+        1.9971
+      ]
+    },
+    {
+      "index": 29,
+      "name": "k5s2j",
+      "surface": "fine close limestone",
+      "source_angle": 0.9519422934347136,
+      "source_scale": 0.9614166255022412,
+      "source_offset": [
+        656.1379116503801,
+        535.8579597088965
+      ],
+      "fracture_angle": 6.197897790616033,
+      "fracture_scale": 1.0190300533425969,
+      "fracture_offset": [
+        308.7927705166529,
+        814.2763517752502
+      ],
+      "tone": 6.153222196203401,
+      "tint": 0.609773672785404,
+      "calcite_vein": false,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 3536732098,
+      "ochre_weight": 0.19188993504068358,
+      "crown_peak_model_mm": 45.02281887214778,
+      "crown_mm": 26.6,
+      "crown_at_metres": [
+        1.5444,
+        2.0785
+      ]
+    },
+    {
+      "index": 30,
+      "name": "k5s3",
+      "surface": "pitch and punch dressed",
+      "source_angle": 4.985462910168352,
+      "source_scale": 1.134058746026461,
+      "source_offset": [
+        393.0395224259854,
+        432.83928465505863
+      ],
+      "fracture_angle": 2.0682431790560973,
+      "fracture_scale": 1.0863715897042323,
+      "fracture_offset": [
+        608.8731491090638,
+        415.8138477642985
+      ],
+      "tone": -2.4042056158380585,
+      "tint": 1.5832167528019427,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 26,
+      "seed": 857370,
+      "ochre_weight": 0.75,
+      "crown_peak_model_mm": 46.132176425808254,
+      "crown_mm": 16.9,
+      "crown_at_metres": [
+        2.1603,
+        2.0174
+      ]
+    },
+    {
+      "index": 31,
+      "name": "k5s4",
+      "surface": "spalled face corner",
+      "source_angle": 0.40235473246737447,
+      "source_scale": 1.023436956719838,
+      "source_offset": [
+        1005.744568853425,
+        605.7389010707519
+      ],
+      "fracture_angle": 3.8214997393249517,
+      "fracture_scale": 0.9915192696574696,
+      "fracture_offset": [
+        677.8712595041873,
+        948.5189698737275
+      ],
+      "tone": -6.688318993905785,
+      "tint": -0.4546086887182793,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 27,
+      "seed": 858379,
+      "ochre_weight": 0.190629672849938,
+      "crown_peak_model_mm": 56.370234260715485,
+      "crown_mm": 22.6,
+      "crown_at_metres": [
+        2.9603,
+        1.9587
+      ]
+    },
+    {
+      "index": 32,
+      "name": "k6s0",
+      "surface": "coarse pitted",
+      "source_angle": 3.455731382816764,
+      "source_scale": 0.9525713135574851,
+      "source_offset": [
+        632.4232328625197,
+        960.1968665319898
+      ],
+      "fracture_angle": 6.002949825375703,
+      "fracture_scale": 1.1621716902920687,
+      "fracture_offset": [
+        282.5594823407099,
+        1028.5003780115035
+      ],
+      "tone": -3.368850595068748,
+      "tint": 0.543435953783043,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 28,
+      "seed": 859388,
+      "ochre_weight": 0.19944096034852507,
+      "crown_peak_model_mm": 46.161224178960815,
+      "crown_mm": 20.6,
+      "crown_at_metres": [
+        0.714,
+        2.347
+      ]
+    },
+    {
+      "index": 33,
+      "name": "k6s1",
+      "surface": "fine close limestone",
+      "source_angle": 4.323468824150578,
+      "source_scale": 0.9514206898038454,
+      "source_offset": [
+        423.5850632469427,
+        1085.60577207291
+      ],
+      "fracture_angle": 1.7026454078206195,
+      "fracture_scale": 1.217471346244818,
+      "fracture_offset": [
+        572.8736363659488,
+        775.8665041626925
+      ],
+      "tone": -3.698583761440929,
+      "tint": 0.8734725456917114,
+      "calcite_vein": false,
+      "appearance_reused": false,
+      "previous_index": 29,
+      "seed": 860397,
+      "ochre_weight": 0.1810272018118373,
+      "crown_peak_model_mm": 38.569670355270816,
+      "crown_mm": 16.2,
+      "crown_at_metres": [
+        1.2328,
+        2.3483
+      ]
+    },
+    {
+      "index": 34,
+      "name": "k6s2a",
+      "surface": "fine close limestone",
+      "source_angle": 5.590039981273885,
+      "source_scale": 1.151100088867619,
+      "source_offset": [
+        778.3332962611191,
+        815.0644971301775
+      ],
+      "fracture_angle": 5.268367970029768,
+      "fracture_scale": 1.0488898172946808,
+      "fracture_offset": [
+        97.38661998024354,
+        579.4879243812818
+      ],
+      "tone": -5.642335122282504,
+      "tint": 1.4681479000260755,
+      "calcite_vein": true,
+      "appearance_reused": false,
+      "previous_index": 30,
+      "seed": 861406,
+      "ochre_weight": 0.07446779101944379,
+      "crown_peak_model_mm": 51.30189577598854,
+      "crown_mm": 26.0,
+      "crown_at_metres": [
+        2.035,
+        2.2824
+      ]
+    },
+    {
+      "index": 35,
+      "name": "k6s2b",
+      "surface": "coarse pitted",
+      "source_angle": 4.625667764109602,
+      "source_scale": 1.2013123347490613,
+      "source_offset": [
+        888.4425462245778,
+        711.3167091278897
+      ],
+      "fracture_angle": 1.5688706204102028,
+      "fracture_scale": 1.2264405540682963,
+      "fracture_offset": [
+        1071.9657260184897,
+        813.6146460663847
+      ],
+      "tone": 3.2115849931101215,
+      "tint": -0.5848010253511771,
+      "calcite_vein": false,
+      "appearance_reused": false,
+      "previous_index": 31,
+      "seed": 862415,
+      "ochre_weight": 0.062171770797762343,
+      "crown_peak_model_mm": 46.07971397866531,
+      "crown_mm": 21.3,
+      "crown_at_metres": [
+        2.0238,
+        2.4923
+      ]
+    },
+    {
+      "index": 36,
+      "name": "k6s3",
+      "surface": "pitch and punch dressed",
+      "source_angle": 4.45070870558586,
+      "source_scale": 1.0225509939122546,
+      "source_offset": [
+        176.65638163125323,
+        519.2627259853916
+      ],
+      "fracture_angle": 3.8586899126058802,
+      "fracture_scale": 1.1211184610655744,
+      "fracture_offset": [
+        371.4226894698477,
+        998.0009984716052
+      ],
+      "tone": -3.8761186172048903,
+      "tint": 1.9939975563663594,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 32,
+      "seed": 863424,
+      "ochre_weight": 0.21193598587821358,
+      "crown_peak_model_mm": 51.80931937946319,
+      "crown_mm": 26.8,
+      "crown_at_metres": [
+        2.2826,
+        2.4196
+      ]
+    },
+    {
+      "index": 37,
+      "name": "k6s4",
+      "surface": "fine close limestone",
+      "source_angle": 2.8629777074265568,
+      "source_scale": 1.1594740978898737,
+      "source_offset": [
+        593.3657731621347,
+        898.0730218492172
+      ],
+      "fracture_angle": 2.142762844176112,
+      "fracture_scale": 1.0679074283282382,
+      "fracture_offset": [
+        434.3067330087111,
+        724.6205110152729
+      ],
+      "tone": -2.786858137050812,
+      "tint": -0.22371185665196947,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 33,
+      "seed": 864433,
+      "ochre_weight": 0.09275489425136793,
+      "crown_peak_model_mm": 41.912705498649515,
+      "crown_mm": 25.7,
+      "crown_at_metres": [
+        3.0392,
+        2.433
+      ]
+    },
+    {
+      "index": 38,
+      "name": "k7s0",
+      "surface": "cleft crystalline",
+      "source_angle": 1.2258485624931494,
+      "source_scale": 1.2133018495711032,
+      "source_offset": [
+        480.29498649749513,
+        767.0690061208406
+      ],
+      "fracture_angle": 3.547471460732796,
+      "fracture_scale": 0.9911578268743246,
+      "fracture_offset": [
+        961.6719616312052,
+        730.4636018309466
+      ],
+      "tone": 1.635668897088521,
+      "tint": 0.22537481834758832,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 34,
+      "seed": 865442,
+      "ochre_weight": 0.0790177750114184,
+      "crown_peak_model_mm": 40.09487256613647,
+      "crown_mm": 18.6,
+      "crown_at_metres": [
+        0.669,
+        2.8171
+      ]
+    },
+    {
+      "index": 39,
+      "name": "k7s1a",
+      "surface": "fine close limestone",
+      "source_angle": 0.9761252851392987,
+      "source_scale": 1.111732693004047,
+      "source_offset": [
+        970.1054915510263,
+        353.9006700314683
+      ],
+      "fracture_angle": 1.9657270493480308,
+      "fracture_scale": 0.9889779747681652,
+      "fracture_offset": [
+        1046.6585233689796,
+        924.4230279947163
+      ],
+      "tone": -2.8717300696595753,
+      "tint": 1.380320919167051,
+      "calcite_vein": false,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 838577214,
+      "ochre_weight": 0.0656484030757152,
+      "crown_peak_model_mm": 56.18866776963579,
+      "crown_mm": 28.6,
+      "crown_at_metres": [
+        1.3468,
+        2.7066
+      ]
+    },
+    {
+      "index": 40,
+      "name": "k7s1b",
+      "surface": "coarse pitted",
+      "source_angle": 2.0927011442441374,
+      "source_scale": 1.0224589187692819,
+      "source_offset": [
+        561.9954663048364,
+        427.5037749978165
+      ],
+      "fracture_angle": 3.00755195475067,
+      "fracture_scale": 1.1971802416804875,
+      "fracture_offset": [
+        713.0041466386114,
+        1141.0929092876963
+      ],
+      "tone": 1.423385730329191,
+      "tint": 0.7270007830684944,
+      "calcite_vein": false,
+      "appearance_reused": false,
+      "previous_index": null,
+      "seed": 2695315323,
+      "ochre_weight": 0.14111379876456623,
+      "crown_peak_model_mm": 62.793374246256064,
+      "crown_mm": 30.9,
+      "crown_at_metres": [
+        1.183,
+        2.9393
+      ]
+    },
+    {
+      "index": 41,
+      "name": "k7s2",
+      "surface": "coarse pitted",
+      "source_angle": 1.9112095050644025,
+      "source_scale": 1.2496271953524845,
+      "source_offset": [
+        821.2385962657236,
+        578.2510627651183
+      ],
+      "fracture_angle": 3.583453699519808,
+      "fracture_scale": 1.0817971689988064,
+      "fracture_offset": [
+        794.3097909292043,
+        551.0877476445843
+      ],
+      "tone": 13.0,
+      "tint": -0.440355207901153,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 36,
+      "seed": 867460,
+      "ochre_weight": 0.65,
+      "crown_peak_model_mm": 64.0035856569932,
+      "crown_mm": 30.3,
+      "crown_at_metres": [
+        2.2583,
+        2.789
+      ]
+    },
+    {
+      "index": 42,
+      "name": "k7s3",
+      "surface": "cleft crystalline",
+      "source_angle": 4.116034879918191,
+      "source_scale": 1.1738064466563236,
+      "source_offset": [
+        622.7544580477344,
+        581.9273457354549
+      ],
+      "fracture_angle": 1.9965133638254162,
+      "fracture_scale": 1.1821993048168595,
+      "fracture_offset": [
+        390.00814046802094,
+        657.7025653443511
+      ],
+      "tone": 0.33825981128503824,
+      "tint": 1.529961878502907,
+      "calcite_vein": false,
+      "appearance_reused": true,
+      "previous_index": 37,
+      "seed": 868469,
+      "ochre_weight": 0.1159373640615303,
+      "crown_peak_model_mm": 49.319988302033664,
+      "crown_mm": 24.7,
+      "crown_at_metres": [
+        3.0773,
+        2.7644
+      ]
+    }
+  ],
+  "build_seconds": 19.604763984680176
+}
