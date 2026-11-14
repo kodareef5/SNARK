@@ -4,6 +4,10 @@ Immutable definitions for species, items, and structures, as TypeScript data.
 `core.ts` holds the core pack: the survivor, a placeholder grazer, the graybox
 structures of the proving ground, and two items.
 
+Every definition is of a class. The classes, what each must and may declare,
+and the core pack by class are in the generated
+[catalogue](../planning/reference/catalogue.md).
+
 A definition has a stable id of the form `namespace:name`. Systems read numbers
 from the compiled registry; none branches on an id.
 

@@ -1,10 +1,12 @@
 // The class table: sound in itself, and true of the content that exists.
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
 import { CLASSES, FIELDS, classFaults, defFaults, eggIds, inferClass } from "../../shared/content/classes.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { FEATURES } from "../../shared/features.ts";
+import { CATALOGUE_PAGE, cataloguePage } from "../../tools/catalogue.ts";
 
 const eggs = eggIds(CORE_CONTENT);
 const classes = CORE_CONTENT.map((d) => inferClass(d, eggs));
@@ -68,4 +70,8 @@ test("a class that is built has content, a stub has none, and each kind of fault
 test("every feature that something waits for is waited for: by a setting or by a class", () => {
   const waited = new Set<string>([...CATALOG.filter((r) => r.status === "planned").map((r) => r.waits), ...CLASSES.map((r) => r.waits)]);
   expect(Object.keys(FEATURES).filter((f) => !waited.has(f))).toEqual([]);
+});
+
+test("the reference page is what the table generates", () => {
+  expect(readFileSync(CATALOGUE_PAGE, "utf8")).toBe(cataloguePage());
 });
