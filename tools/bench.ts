@@ -43,6 +43,7 @@ import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
 import { benchAgent } from "./bench/agent.ts";
 import { benchLatency } from "./bench/latency.ts";
 import { benchPoses } from "./bench/poses.ts";
+import { benchTextured } from "./bench/textured.ts";
 import { benchTextures } from "./bench/textures.ts";
 
 const PLAYERS = 100;
@@ -1176,6 +1177,7 @@ section("Asset library (headless): 64 rocks of five levels and a 263,169-vertex 
 benchAgent(section, record);
 benchLatency(section, record);
 benchPoses(section, record);
+benchTextured(section, record);
 await benchTextures(section, record);
 
 rmSync(dir, { recursive: true, force: true });

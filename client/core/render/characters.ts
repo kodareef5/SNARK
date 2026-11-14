@@ -213,7 +213,7 @@ export class Characters {
     // A young one is the same mesh drawn smaller, and so are its errors.
     const far = Math.sqrt(x * x + y * y + z * z) / size;
     const lod = this.levelOf(id, c.error, far);
-    this.assets.want(c.mesh, lod, far);
+    this.assets.wantTextured(c.mesh, lod, far);
     this.key[n] = (c.mesh * LODS + lod) * 2 + (rigid ? 1 : 0);
     this.firstBone[n] = first;
     this.region0[n] = c.color;
@@ -285,7 +285,7 @@ export class Characters {
     const lod = own ? this.assets.choose(set.error, 0, -1) : this.levelOf(id, set.error, far);
     const queue = (m: number, tint: Uint8Array | null, tintAt: number, bone: number): void => {
       const n = this.count++;
-      this.assets.want(m, lod, far);
+      this.assets.wantTextured(m, lod, far);
       this.key[n] = (m * LODS + lod) * 2 + (rigid ? 1 : 0);
       this.firstBone[n] = first;
       this.region0[n] = k.color;
@@ -365,6 +365,7 @@ export class Characters {
     b[o + 9] = uz * wide;
     b[o + 10] = dz * length;
     b[o + 11] = z;
+    showMaterials(this.assets, mesh, Math.sqrt(x * x + y * y + z * z), wide);
     const n = this.count++;
     this.key[n] = mesh * LODS * 2;
     this.firstBone[n] = first;
@@ -404,6 +405,15 @@ export class Characters {
     }
     p.transientCount = total;
   }
+}
+
+/**
+ * Says the materials of a mesh's finest level are on screen, `distance` metres off and `size` times as large as modelled.
+ * For a thing drawn at its finest however far off, which so never says what level it wants.
+ */
+export function showMaterials(assets: Assets, mesh: number, distance: number, size = 1): void {
+  const runs = assets.table.sections[mesh]![0]!;
+  for (let k = 0; k < runs.length; k += 3) assets.material(runs[k]!, distance, size);
 }
 
 /** Writes at `at` the one bone of a body left in its rest pose: it turns the body about +Y, sizes it and puts it in its place. */
