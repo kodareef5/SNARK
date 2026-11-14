@@ -5,6 +5,9 @@ import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../coord
 import type { Heightfield } from "./heightfield.ts";
 import { StructureStore } from "./structures.ts";
 
+/** A size is a whole number of these. A drawn node carries the number in its last colour region. */
+export const SIZE_UNITS = 64;
+
 export interface NodeSpot {
   /** Content index, or 0 if the slot is empty on this map. */
   kind: number;

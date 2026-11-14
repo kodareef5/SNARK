@@ -16,7 +16,10 @@ export const TRANSIENT_BUFFER = 0xffffffff;
 export const MAX_WATER_TILES = 256;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
-/** DRAW_ flags. A blended draw is see-through. It comes after everything opaque, shows both faces and writes no depth. */
+/**
+ * DRAW_ flags, a bit each of `drawFlags`, which holds 16. Bits 1 to 256 are taken; the next flag takes 512, then 1024, up to
+ * 32768. A blended draw is see-through. It comes after everything opaque, shows both faces and writes no depth.
+ */
 export const DRAW_BLEND = 1;
 /**
  * The mesh follows bones. Each vertex names a bone, and the instance carries the index of its first bone in `bones`
@@ -39,6 +42,12 @@ export const DRAW_TEXTURED = 32;
 export const DRAW_TWO_SIDED = 64;
 /** Nothing shows where the base colour's alpha is under the material's cutoff. */
 export const DRAW_CUTOUT = 128;
+/**
+ * A rigid draw whose instances carry their size in colour region SIZE_REGION, in SIZE_UNITS (shared/world/nodes.ts) of the
+ * size the mesh was made: a resource node. Each is drawn that size about its origin, and the region gives no colour.
+ */
+export const DRAW_SIZED = 256;
+export const SIZE_REGION = 5;
 
 /** Floats per bone: three rows of a 3 x 4 matrix, each row x, y, z, translation. */
 export const BONE_FLOATS = 12;
@@ -123,7 +132,7 @@ export class FramePacket {
   /** Camera-relative origin of the buffer's coordinates: x, y, z per draw. */
   readonly drawOffset = new Float32Array(MAX_DRAWS * 3);
   /** DRAW_ bits. Draws with DRAW_BLEND come last. */
-  readonly drawFlags = new Uint8Array(MAX_DRAWS);
+  readonly drawFlags = new Uint16Array(MAX_DRAWS);
   /** For a DRAW_TEXTURED draw: the manifest's material, and the run of indices it covers. */
   readonly drawMaterial = new Uint16Array(MAX_DRAWS);
   readonly drawFirstIndex = new Uint32Array(MAX_DRAWS);
@@ -188,6 +197,11 @@ export class InstanceWriter {
   /** The first bone goes where a rigid instance has its yaw. `x, y, z` is the offset DRAW_SKINNED describes. */
   setSkinned(i: number, firstBone: number, region0: number, x = 0, y = 0, z = 0): void {
     this.set(i, x, y, z, firstBone, region0);
+  }
+
+  /** For a DRAW_SIZED draw, in SIZE_UNITS. */
+  size(i: number, units: number): void {
+    this.bytes[i * INSTANCE_BYTES + 14 + SIZE_REGION] = units;
   }
 
   /** A zero leaves that region as `set` wrote it. */

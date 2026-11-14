@@ -3,13 +3,14 @@
 import { expect, test } from "bun:test";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import type { AssetRequest } from "../../client/core/assets/port.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, SIZE_REGION, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import type { OwnBody } from "../../client/core/render/scene.ts";
 import { Falling } from "../../client/core/rubble.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { PICK_ENTITY, PICK_STRUCTURE } from "../../tools/snap/raster.ts";
+import { SIZE_UNITS } from "../../shared/world/nodes.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
@@ -34,13 +35,13 @@ function drawn(w: World, p: FramePacket, id: string): number[][] {
 const textured = (p: FramePacket, d: number): boolean => (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
 const material = (w: World, id: string): number => w.manifest.materials!.findIndex((m) => m.id === id);
 
-/** Everything a renderer reads of a frame but its texture work, hashed onto `h`. */
-function hashPacket(p: FramePacket, h: number): number {
+/** Everything a renderer reads of a frame but its texture work, hashed onto `h`. `byte` hashes each draw's flags as one byte. */
+function hashPacket(p: FramePacket, h: number, byte = false): number {
   const add = (a: ArrayBufferView, n = a.byteLength): void => void (h = hashBytes(new Uint8Array(a.buffer, a.byteOffset, n), h));
   const count = (...n: number[]): void => add(Float64Array.from(n));
   for (const a of [p.viewProj, p.nearViewProj, p.sky, p.sun]) add(a);
   count(p.camX, p.camY, p.camZ, p.light, p.fogStart, p.fogEnd, p.skipped, p.dropped, p.triangles, p.drawCount, p.tileCount, p.transientCount, p.boneCount);
-  for (const a of [p.drawMesh, p.drawLod, p.drawSlot, p.drawBuffer, p.drawFirst, p.drawInstances, p.drawFlags]) add(a, p.drawCount * a.BYTES_PER_ELEMENT);
+  for (const a of [p.drawMesh, p.drawLod, p.drawSlot, p.drawBuffer, p.drawFirst, p.drawInstances, byte ? Uint8Array.from(p.drawFlags) : p.drawFlags]) add(a, p.drawCount * a.BYTES_PER_ELEMENT);
   add(p.drawOffset, p.drawCount * 12);
   add(p.tiles, p.tileCount * 16);
   add(p.tileOrigin, p.tileCount * 8);
@@ -289,6 +290,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   scene.things = [{ mesh: w.mesh(TUBE), x: 26, y: 0, z: 36, level: -1 }, { mesh: w.mesh("core:crate"), x: 38, y: 0.5, z: 33, level: -1 }];
 
   let hash = 0;
+  let bytes = 0;
   let [draws, rigid, uploads] = [0, 0, 0];
   for (let f = 0; f < 300; f++) {
     cam.yaw = Math.sin(f / 40) * 0.7;
@@ -302,6 +304,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
     if (f === 200) scene.assets.tier = { ...tierOf("lowpoly"), bones: 40 };
     const p = w.frame(1000 / 60, false);
     hash = hashPacket(p, hash);
+    bytes = hashPacket(p, bytes, true);
     draws += p.drawCount;
     uploads += p.assetUploads.length;
     for (let d = 0; d < p.drawCount; d++) {
@@ -319,7 +322,39 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
   // turned from down to up: negating that column of its bone gives that hash again.
-  expect(hash).toBe(57387346);
+  // It was 57387346 until draw flags took 16 bits each. Hashed a byte each, as they were, they give that hash still.
+  expect([hash, bytes]).toEqual([2089007614, 57387346]);
+});
+
+test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
+  /** Pieces turned several ways, drawn again as sized draws whose instances carry `size`, and what the rasterizer made of each. */
+  const pictures = (tier: Partial<Tier>, size: number): [Uint8ClampedArray, Uint8ClampedArray, number] => {
+    const [plain, sized] = [sceneWorld({}, tier), sceneWorld({}, tier)];
+    for (const w of [plain, sized]) for (let i = 0; i < 3; i++) w.structs.add(w.kind(PANEL), 30 + i * 2, 0, 26, FACING + i * 7000, 0, 1);
+    let flagged = 0;
+    for (let f = 0; f < 8; f++) {
+      plain.frame();
+      const p = sized.frame(100, false);
+      for (const u of p.uploads) for (let i = 0; i * INSTANCE_BYTES < u.data.length; i++) u.data[i * INSTANCE_BYTES + 14 + SIZE_REGION] = size;
+      for (let d = 0; d < p.drawCount; d++) {
+        if (p.drawBuffer[d] === TRANSIENT_BUFFER || (p.drawFlags[d]! & DRAW_SKINNED) !== 0) continue;
+        p.drawFlags[d]! |= DRAW_SIZED;
+        flagged++;
+      }
+      sized.raster.render(p);
+    }
+    expect(flagged).toBeGreaterThanOrEqual(8);
+    const covered = (w: World): number => w.raster.pickKind.filter((k) => k === PICK_STRUCTURE).length;
+    expect(covered(plain)).toBeGreaterThan(600);
+    return [plain.raster.color, sized.raster.color, covered(sized) / covered(plain)];
+  };
+  for (const tier of [{}, tierOf("lowpoly")]) {
+    const [plain, same] = pictures(tier, SIZE_UNITS);
+    expect(same).toEqual(plain);
+    const [, larger, grown] = pictures(tier, SIZE_UNITS * 1.5);
+    expect(larger).not.toEqual(plain);
+    expect(grown).toBeGreaterThan(1.5);
+  }
 });
 
 test("a body is drawn at every level its mesh has, eight of them as well as five", () => {
