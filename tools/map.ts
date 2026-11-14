@@ -10,7 +10,7 @@
 // highest x and the highest z. Places in the JSON files are metres from the map's south-east corner, x growing west and
 // z growing north. A yaw is degrees from north, turning toward +x.
 //
-//   map.json      { "id": "miami:city", "chunks": [125, 125], "minY": -32, "stepY": 0.00390625, "seaLevel": 0 }
+//   map.json      { "id": "core:miami", "chunks": [125, 125], "minY": -32, "stepY": 0.00390625, "seaLevel": 0 }
 //                 The id is the map's name to the server, and that of its definition in the content, if it has one.
 //                 A height is minY + value * stepY metres. Without seaLevel the map has no water.
 //   heights.png   16-bit greyscale, a pixel a sample. Or heights.u16: the same values, little-endian, with no header.
