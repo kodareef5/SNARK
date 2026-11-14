@@ -2,8 +2,16 @@
 // A collapse moves one end of an edge onto the other, so no new point is made and every vertex keeps the one bone it
 // follows. A triangle keeps its colour. Edges where the surface ends or its colour changes are held by planes through
 // them, so a colour region keeps its outline.
+//
+// A level drawn with materials keeps its surface as well. A vertex is then a wedge: a point with its texture
+// coordinate, normal, tangent and material. The wedge that survives a collapse keeps all of its own, so nothing is
+// interpolated. A point with more than one wedge lies on a seam, a crease or a border between materials, and moves
+// only along it.
 
+import { baker, flatOf, painted, placed } from "./bake.ts";
 import { surfaceError } from "./error.ts";
+import { fourHeaviest, tangentsOf } from "./surface.ts";
+import type { MaterialMaps } from "./texture.ts";
 import type { SourceLod, SourceMesh } from "./write.ts";
 
 /** A level is not made with fewer triangles than this. */
@@ -13,6 +21,16 @@ export const STEP = 0.5;
 export const MOST_LEVELS = 5;
 /** How much more a plane that holds a border weighs than a plane of the surface. */
 const BORDER = 8;
+/** A triangle may come to hold this many times the picture it held for its size, or one part in this many, and no more. */
+const STRETCH = 2;
+/** What the picture sliding a distance over the surface weighs, against the surface moving as far: it shows less. */
+const SLIDE = 0.25;
+/**
+ * What an edge that reaches across changing bone weights weighs. Its length times the share of the weight that changes
+ * along it, squared, is about eight times the square of how far its middle cuts inside a joint bent a quarter turn,
+ * and a point's quadric counts a distance about four times over.
+ */
+const BEND = 0.5;
 
 /** Symmetric 4 by 4, as ten numbers: the sum of the squared distances to a set of planes. */
 type Quadric = Float64Array;
@@ -73,38 +91,87 @@ class Heap {
 
 export interface Simplified {
   lod: SourceLod;
-  /** The square root of the dearest collapse made so far: about how far, in metres, a point has been moved. */
+  /**
+   * The square root of the dearest collapse made so far: about how far, in metres, a point has been moved. With a
+   * surface it also counts how far the picture has slid and how far a bent joint would cut in.
+   */
   moved: number;
 }
 
 /**
  * `fine` with fewer triangles: one level for each of `targets`, which fall. A level stops short of its target where
- * nothing more can be collapsed without turning a triangle over.
+ * nothing more can be collapsed without turning a triangle over. The levels are flat: what `fine` has of a surface is
+ * left behind.
  */
 export function simplify(fine: SourceLod, targets: readonly number[]): Simplified[] {
+  return collapsed(fine, targets, false);
+}
+
+/**
+ * As simplify(), for a level drawn with materials, whose levels keep their surface. A collapse is not made where it
+ * would carry a wedge across a seam, turn a triangle over in the picture, or stretch the picture over it by more
+ * than STRETCH. It costs more the further it slides the picture over the surface, and the further its new edges reach
+ * across changing bone weights, so the loops of edges at a joint are the last to go.
+ */
+export function simplifySurface(fine: SourceLod, targets: readonly number[]): Simplified[] {
+  if (!fine.uvs || !fine.normals) throw new Error("a level keeps its surface only if it has texture coordinates and normals");
+  return collapsed(fine, targets, true);
+}
+
+function collapsed(fine: SourceLod, targets: readonly number[], textured: boolean): Simplified[] {
+  const { joints, weights, tangents } = fine;
+  const uvs = fine.uvs ?? new Float32Array(0);
+  const normals = fine.normals ?? new Float32Array(0);
   // Vertices that are one point on one bone are one vertex here. The copies exist only to carry colours.
   const ids = new Map<string, number>();
   const pos: number[] = [];
   const bone: number[] = [];
+  /** A vertex of `fine` at each point. */
+  const origin: number[] = [];
+  const place = textured ? placed(fine) : null;
   const weld = (v: number): number => {
-    const key = `${fine.positions[v * 3]},${fine.positions[v * 3 + 1]},${fine.positions[v * 3 + 2]},${fine.bones ? fine.bones[v] : 0}`;
+    // With a surface, the two sides of a seam are one point however little apart, and two vertices that are weighted
+    // differently are two, since they would part when a bone turns.
+    const key = place
+      ? `${place[v]},${fine.bones ? fine.bones[v] : 0},${joints && weights ? `${joints.subarray(v * 4, v * 4 + 4)},${weights.subarray(v * 4, v * 4 + 4)}` : ""}`
+      : `${fine.positions[v * 3]},${fine.positions[v * 3 + 1]},${fine.positions[v * 3 + 2]},${fine.bones ? fine.bones[v] : 0}`;
     let id = ids.get(key);
     if (id === undefined) {
       id = bone.length;
       ids.set(key, id);
       pos.push(fine.positions[v * 3]!, fine.positions[v * 3 + 1]!, fine.positions[v * 3 + 2]!);
       bone.push(fine.bones ? fine.bones[v]! : 0);
+      origin.push(v);
+    }
+    return id;
+  };
+  /** With a surface: the wedge at each corner, and a vertex of `fine` that has what each wedge has. */
+  const wedges: number[] = [];
+  const source: number[] = [];
+  const wedgeIds = new Map<string, number>();
+  const wedge = (v: number, point: number, section: number): number => {
+    const key = `${point},${section},${uvs.subarray(v * 2, v * 2 + 2)},${normals.subarray(v * 3, v * 3 + 3)},${tangents ? tangents.subarray(v * 4, v * 4 + 4) : ""}`;
+    let id = wedgeIds.get(key);
+    if (id === undefined) {
+      id = source.length;
+      wedgeIds.set(key, id);
+      source.push(v);
     }
     return id;
   };
   const corners: number[] = [];
   const colors: number[] = [];
+  const sections: number[] = [];
   for (let t = 0; t + 2 < fine.indices.length; t += 3) {
     const [a, b, c] = [weld(fine.indices[t]!), weld(fine.indices[t + 1]!), weld(fine.indices[t + 2]!)];
     if (a === b || b === c || a === c) continue;
     corners.push(a, b, c);
     // A triangle is drawn in the colour of its last vertex.
     colors.push(fine.colors[fine.indices[t + 2]!]!);
+    if (!textured) continue;
+    const section = fine.sections?.[t / 3] ?? 0;
+    sections.push(section);
+    wedges.push(wedge(fine.indices[t]!, a, section), wedge(fine.indices[t + 1]!, b, section), wedge(fine.indices[t + 2]!, c, section));
   }
   const faces = colors.length;
   const alive = new Uint8Array(faces).fill(1);
@@ -122,6 +189,8 @@ export function simplify(fine: SourceLod, targets: readonly number[]): Simplifie
     out[1] = uz * vx - ux * vz;
     out[2] = ux * vy - uy * vx;
   };
+  /** Which corner of face `f` is at `point`, or -1. */
+  const cornerAt = (f: number, point: number): number => (corners[f * 3] === point ? 0 : corners[f * 3 + 1] === point ? 1 : corners[f * 3 + 2] === point ? 2 : -1);
 
   const quadrics: Quadric[] = Array.from({ length: bone.length }, () => new Float64Array(10));
   const n = [0, 0, 0];
@@ -149,9 +218,11 @@ export function simplify(fine: SourceLod, targets: readonly number[]): Simplifie
       else onEdge.set(key, [f]);
     }
   }
+  /** Whether faces `f` and `g` are one piece across the edge they share at `point`: one colour, or with a surface one wedge. */
+  const joined = (f: number, g: number, point: number): boolean => (textured ? wedges[f * 3 + cornerAt(f, point)] === wedges[g * 3 + cornerAt(g, point)] : colors[f] === colors[g]);
   for (const [key, list] of onEdge) {
-    if (list.length === 2 && colors[list[0]!] === colors[list[1]!]) continue;
     const [u, v] = [Math.floor(key / bone.length), key % bone.length];
+    if (list.length === 2 && joined(list[0]!, list[1]!, u) && joined(list[0]!, list[1]!, v)) continue;
     const ex = pos[v * 3]! - pos[u * 3]!, ey = pos[v * 3 + 1]! - pos[u * 3 + 1]!, ez = pos[v * 3 + 2]! - pos[u * 3 + 2]!;
     for (const f of list) {
       // The plane through the edge that stands square to the face.
@@ -168,11 +239,91 @@ export function simplify(fine: SourceLod, targets: readonly number[]): Simplifie
     }
   }
 
+  const before = [0, 0, 0];
+  const after = [0, 0, 0];
+  /** Twice the area face `f` has in the picture, signed, with the wedge at corner `swap` made `to` if given. */
+  const spread = (f: number, swap = -1, to = -1): number => {
+    const at = (k: number): number => source[k === swap ? to : wedges[f * 3 + k]!]! * 2;
+    const [a, b, c] = [at(0), at(1), at(2)];
+    return (uvs[b]! - uvs[a]!) * (uvs[c + 1]! - uvs[a + 1]!) - (uvs[c]! - uvs[a]!) * (uvs[b + 1]! - uvs[a + 1]!);
+  };
+  /** How much of the picture each face holds for its size, as `fine` has it. 0 where it holds none. */
+  const dense = new Float64Array(textured ? faces : 0);
+  for (let f = 0; f < dense.length; f++) {
+    normal(f, n);
+    dense[f] = Math.abs(spread(f)) / (Math.hypot(n[0]!, n[1]!, n[2]!) || 1);
+  }
+  /** The bones each point is weighted to, with weights that sum to 1. */
+  const skins = !textured || !fine.bones ? null : origin.map((v) => {
+    const four = joints && weights ? fourHeaviest(joints.subarray(v * 4, v * 4 + 4), weights.subarray(v * 4, v * 4 + 4)) : null;
+    return four && four.bones.length > 0 ? four : { bones: [fine.bones![v]!], weights: [1] };
+  });
+  /** The share of the weight of point `a` that is on other bones at point `b`, 0 to 1, times the distance between them, squared. */
+  const reach = (a: number, b: number): number => {
+    const [p, q] = [skins![a]!, skins![b]!];
+    let shared = 0;
+    p.bones.forEach((joint, k) => (shared += Math.min(p.weights[k]!, q.weights[q.bones.indexOf(joint)] ?? 0)));
+    const dx = pos[a * 3]! - pos[b * 3]!, dy = pos[a * 3 + 1]! - pos[b * 3 + 1]!, dz = pos[a * 3 + 2]! - pos[b * 3 + 2]!;
+    return (1 - shared) * (1 - shared) * (dx * dx + dy * dy + dz * dz);
+  };
+  /**
+   * The wedge of `to` that wedge `w` of `from` would become: the one it shares a triangle with. -1 where it shares
+   * none, being across a seam from the edge between them, or shares triangles with two.
+   */
+  const becomes = (w: number, from: number, to: number): number => {
+    let out = -1;
+    for (const f of around[from]!) {
+      const j = alive[f] ? cornerAt(f, to) : -1;
+      if (j < 0 || wedges[f * 3 + cornerAt(f, from)] !== w) continue;
+      if (out >= 0 && out !== wedges[f * 3 + j]) return -1;
+      out = wedges[f * 3 + j]!;
+    }
+    return out;
+  };
+  /**
+   * What moving `from` onto `to` costs the surface beyond the quadric, counted as the quadric counts, or Infinity
+   * where it is not to be done.
+   */
+  const strain = (from: number, to: number): number => {
+    let slide = 0;
+    let bend = 0;
+    for (const f of around[from]!) {
+      if (!alive[f] || cornerAt(f, to) >= 0) continue;
+      const k = cornerAt(f, from);
+      const next = becomes(wedges[f * 3 + k]!, from, to);
+      if (next < 0) return Infinity;
+      const [kb, kc] = [(k + 1) % 3, (k + 2) % 3];
+      // An edge that reaches across changing weights cuts inside its joint when the joint bends.
+      if (skins) bend = Math.max(bend, reach(to, corners[f * 3 + kb]!), reach(to, corners[f * 3 + kc]!));
+      const was = spread(f);
+      if (dense[f] === 0 || was === 0) continue;
+      const now = spread(f, k, next);
+      normal(f, before);
+      normal(f, after, from, to);
+      const size = before[0]! * before[0]! + before[1]! * before[1]! + before[2]! * before[2]!;
+      const held = Math.abs(now) / Math.hypot(after[0]!, after[1]!, after[2]!) / dense[f]!;
+      if (was * now <= 0 || !(held <= STRETCH && held >= 1 / STRETCH)) return Infinity;
+      // Where `to` lies in the triangle as it is now: how much of it each corner has, `from` first. The triangle
+      // with a corner moved to `to` has that corner's share of the size.
+      const own = (before[0]! * after[0]! + before[1]! * after[1]! + before[2]! * after[2]!) / size;
+      normal(f, after, corners[f * 3 + kb]!, to);
+      const second = (before[0]! * after[0]! + before[1]! * after[1]! + before[2]! * after[2]!) / size;
+      // The picture has `to` there now, and will have it where the wedge it becomes is: the distance between is how far it slides.
+      const [w0, w1, w2, w3] = [source[wedges[f * 3 + k]!]! * 2, source[wedges[f * 3 + kb]!]! * 2, source[wedges[f * 3 + kc]!]! * 2, source[next]! * 2];
+      const du = own * uvs[w0]! + second * uvs[w1]! + (1 - own - second) * uvs[w2]! - uvs[w3]!;
+      const dv = own * uvs[w0 + 1]! + second * uvs[w1 + 1]! + (1 - own - second) * uvs[w2 + 1]! - uvs[w3 + 1]!;
+      // In square metres, by the triangle's own scale, and weighed by its size as its plane is.
+      slide += (du * du + dv * dv) * (size / Math.abs(was) / mean);
+    }
+    return SLIDE * slide + BEND * bend;
+  };
+
   const version = new Uint32Array(bone.length);
   const heap = new Heap();
   const price = (from: number, to: number): void => {
-    const cost = Math.max(0, errorAt(quadrics[from]!, quadrics[to]!, pos[to * 3]!, pos[to * 3 + 1]!, pos[to * 3 + 2]!));
-    heap.push({ cost, from, to, stamp: version[from]! + version[to]! });
+    let cost = Math.max(0, errorAt(quadrics[from]!, quadrics[to]!, pos[to * 3]!, pos[to * 3 + 1]!, pos[to * 3 + 2]!));
+    if (textured) cost += strain(from, to);
+    if (cost < Infinity) heap.push({ cost, from, to, stamp: version[from]! + version[to]! });
   };
   const neighbours = (v: number): Set<number> => {
     const out = new Set<number>();
@@ -185,8 +336,6 @@ export function simplify(fine: SourceLod, targets: readonly number[]): Simplifie
     price(v, u);
   }
 
-  const before = [0, 0, 0];
-  const after = [0, 0, 0];
   /** Whether moving `from` onto `to` would turn a triangle over, or flatten one that is not on the edge between them. */
   const turns = (from: number, to: number): boolean => {
     for (const f of around[from]!) {
@@ -228,6 +377,32 @@ export function simplify(fine: SourceLod, targets: readonly number[]): Simplifie
     if (fine.bones) lod.bones = Uint8Array.from(bones);
     return lod;
   };
+  /** With a surface, a vertex is a wedge that is still in use, with all that its vertex of `fine` has. */
+  const emitSurface = (): SourceLod => {
+    const place = new Map<number, number>();
+    const kept: number[] = [];
+    const indices: number[] = [];
+    const drawn: number[] = [];
+    for (let f = 0; f < faces; f++) {
+      if (!alive[f]) continue;
+      for (let k = 0; k < 3; k++) {
+        const w = wedges[f * 3 + k]!;
+        let at = place.get(w);
+        if (at === undefined) place.set(w, (at = kept.push(source[w]!) - 1));
+        indices.push(at);
+      }
+      drawn.push(sections[f]!);
+    }
+    const floats = (all: Float32Array, each: number): Float32Array => Float32Array.from({ length: kept.length * each }, (_, i) => all[kept[Math.floor(i / each)]! * each + (i % each)]!);
+    const bytes = (all: Uint8Array, each: number): Uint8Array => Uint8Array.from({ length: kept.length * each }, (_, i) => all[kept[Math.floor(i / each)]! * each + (i % each)]!);
+    const lod: SourceLod = { positions: floats(fine.positions, 3), colors: bytes(fine.colors, 1), indices: Uint32Array.from(indices), uvs: floats(uvs, 2), normals: floats(normals, 3) };
+    if (fine.bones) lod.bones = bytes(fine.bones, 1);
+    if (tangents) lod.tangents = floats(tangents, 4);
+    if (joints) lod.joints = bytes(joints, 4);
+    if (weights) lod.weights = floats(weights, 4);
+    if (fine.sections) lod.sections = Uint8Array.from(drawn);
+    return lod;
+  };
 
   const out: Simplified[] = [];
   let dearest = 0;
@@ -236,6 +411,12 @@ export function simplify(fine: SourceLod, targets: readonly number[]): Simplifie
       const m = heap.pop();
       if (!m) break;
       if (m.stamp !== version[m.from]! + version[m.to]! || turns(m.from, m.to)) continue;
+      // With a surface, a move is priced by the triangles around its `from`, which this changes for every point beside either end.
+      const near = textured ? new Set([...neighbours(m.from), ...neighbours(m.to)]) : new Set([m.to]);
+      for (const f of textured ? around[m.from]! : []) {
+        const k = alive[f] && cornerAt(f, m.to) < 0 ? f * 3 + cornerAt(f, m.from) : -1;
+        if (k >= 0) wedges[k] = becomes(wedges[k]!, m.from, m.to);
+      }
       for (const f of around[m.from]!) {
         if (!alive[f]) continue;
         const k = corners[f * 3] === m.from ? 0 : corners[f * 3 + 1] === m.from ? 1 : 2;
@@ -250,15 +431,17 @@ export function simplify(fine: SourceLod, targets: readonly number[]): Simplifie
       around[m.from] = [];
       for (let i = 0; i < 10; i++) quadrics[m.to]![i]! += quadrics[m.from]![i]!;
       // Versions only rise, so a move priced before this one no longer matches the sum of its ends'.
-      version[m.from]!++;
-      version[m.to]!++;
+      near.add(m.from);
+      for (const v of near) version[v]!++;
       if (m.cost > dearest) dearest = m.cost;
-      for (const w of neighbours(m.to)) {
-        price(m.to, w);
-        price(w, m.to);
+      for (const v of near) {
+        for (const w of neighbours(v)) {
+          price(v, w);
+          if (!near.has(w)) price(w, v);
+        }
       }
     }
-    out.push({ lod: emit(), moved: Math.sqrt(dearest) });
+    out.push({ lod: textured ? emitSurface() : emit(), moved: Math.sqrt(dearest) });
   }
   return out;
 }
@@ -266,6 +449,7 @@ export function simplify(fine: SourceLod, targets: readonly number[]): Simplifie
 /**
  * `mesh` with coarser levels after its finest, each half the one before, where it has only the one level and enough
  * triangles for a coarser one to be worth having. Each level says how far it lies from the finest, as measured.
+ * The levels are flat, in the colours the finest came with.
  */
 export function withLevels(mesh: SourceMesh): SourceMesh {
   const fine = mesh.lods[0]!;
@@ -279,4 +463,44 @@ export function withLevels(mesh: SourceMesh): SourceMesh {
     lods.push({ ...made.lod, error: surfaceError(fine, made.lod) });
   }
   return { ...mesh, lods };
+}
+
+/** The levels a mesh drawn with materials is to have, and what its flat colours are read from. */
+export interface LevelPlan {
+  /** How many triangles each level after the finest may have. They fall. */
+  budgets: readonly number[];
+  /** Which level is the first flat one, the finest being level 0: 1 or more. The levels before it keep their surface. */
+  flat: number;
+  /** The pictures of each of the mesh's materials, in the order of `materials`. The base colour and the regions are read. */
+  maps: readonly MaterialMaps[];
+  palette: Uint8Array;
+}
+
+/**
+ * `mesh` with the levels of `plan`, all made from its finest, whatever others it came with. The finest and the levels
+ * before `plan.flat` keep their surface, and get the flat colours their pictures give them, for where they are drawn
+ * flat. The flat levels are made by simplify() from the coarsest of those, with every triangle in the colour the
+ * pictures give it (see bake.ts). Each level says how far it lies from the finest, as measured. A level that could
+ * not get much smaller than the one before it is left out, and with it those of its kind that would follow, so `flat`
+ * comes back lower where that was a level with a surface.
+ */
+export function withSurfaceLevels(mesh: SourceMesh, plan: LevelPlan): SourceMesh {
+  const first = mesh.lods[0]!;
+  if (plan.flat < 1 || !first.uvs || !first.normals) throw new Error(`${mesh.id}: the finest level must have a surface and keep it, so the first flat level is 1 or later`);
+  // A vertex has one tangent at every level, so where the mesh came without them they are worked out here, on the finest.
+  const fine: SourceLod = first.tangents ? first : { ...first, tangents: tangentsOf({ ...first, uvs: first.uvs, normals: first.normals }) };
+  const colours = baker(fine, mesh.materials ?? [], plan.maps, plan.palette);
+  const worth = (made: SourceLod, last: SourceLod): boolean => made.indices.length <= last.indices.length * 0.8;
+  const surface = [fine];
+  for (const made of simplifySurface(fine, plan.budgets.slice(0, plan.flat - 1))) {
+    if (!worth(made.lod, surface[surface.length - 1]!)) break;
+    surface.push(made.lod);
+  }
+  const flat = surface.map(colours);
+  const lods = surface.map((lod, level) => painted(lod, flat[level]!));
+  for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), plan.budgets.slice(plan.flat - 1))) {
+    if (!worth(made.lod, lods[lods.length - 1]!)) break;
+    lods.push(made.lod);
+  }
+  return { ...mesh, flat: surface.length, lods: lods.map((lod, level) => (level === 0 ? lod : { ...lod, error: surfaceError(fine, lod) })) };
 }
