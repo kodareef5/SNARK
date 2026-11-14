@@ -1,10 +1,11 @@
 // The authoritative game loop. It owns no socket or clock. The transport and the calls to
 // tick() come from outside, so tests run a whole server in memory.
 
-import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
+import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { TAU, detCos, detSin } from "../shared/math/scalar.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import {
+  CMD_VIEW,
   C_COMMAND,
   C_HELLO,
   C_INPUT,
@@ -31,6 +32,7 @@ import {
   RESULT_BUSY,
   RESULT_DENIED,
   RESULT_INVALID,
+  RESULT_OK,
   SESSION_ALIVE,
   SESSION_CREATING,
   SESSION_DEAD,
@@ -117,6 +119,8 @@ const MAX_PENDING = 64;
 const HELLO_TICKS = 150;
 const COMMAND_QUEUE = 16;
 const COMMANDS_PER_TICK = 4;
+/** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
+const SNAPSHOT_BYTES_MIN = 600;
 const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** Metres. */
 const SPECTATOR_LIFT = 1.6;
@@ -204,6 +208,10 @@ export class Client {
   /** The most entities it is shown and its snapshot byte budget, where it has asked. 0 for the server's own. */
   viewCap = 0;
   snapshotBytes = 0;
+  /** What CMD_VIEW last asked for, held to the server's limits, and the tick from which those two may next change. */
+  wantView = 0;
+  wantBytes = 0;
+  viewReadyAt = 0;
   strikes = 0;
   packets = 0;
   reliable = 0;
@@ -263,7 +271,7 @@ export class Client {
     this.subscribed.length = 0;
     this.syncChunk = -1;
     this.rotate = 0;
-    this.viewCap = this.snapshotBytes = 0;
+    this.viewCap = this.snapshotBytes = this.wantView = this.wantBytes = this.viewReadyAt = 0;
     this.strikes = 0;
     this.cmdSeq = 0;
     this.queue.length = 0;
@@ -751,12 +759,23 @@ export class GameServer {
       const seq = r.u16();
       const op = r.u8();
       const handler = this.handlers[op];
-      const code = !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
+      // What a session is shown is its own to ask in any state, so that is answered here.
+      const code = op === CMD_VIEW ? this.askView(c, r) : !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
       this.stats.commands++;
       // The handler may have ended the session (a kick, too many password attempts).
       if (this.clients[c.id] !== c || c.closed || !c.conn.open) return;
       this.result(c, seq, code);
     }
+  }
+
+  /** CMD_VIEW. The snapshot takes up what was asked. */
+  private askView(c: Client, r: BitReader): number {
+    const view = r.u16();
+    const bytes = r.u16();
+    if (r.overflow) return RESULT_INVALID;
+    c.wantView = Math.max(1, Math.min(view, this.cap));
+    c.wantBytes = Math.max(SNAPSHOT_BYTES_MIN, Math.min(bytes, this.opts.snapshotBytesMax));
+    return RESULT_OK;
   }
 
   /** A result with no sequence number, for news no command asked for. */
@@ -997,6 +1016,12 @@ export class GameServer {
     const self = c.drive >= 0 ? -1 : c.ent;
     const at = this.viewAround(c.chunk, T);
     const cur = this.around[at]!;
+    // What it asked for takes effect once a second at most, so that it cannot have its view sent over and over.
+    if ((c.wantView !== c.viewCap || c.wantBytes !== c.snapshotBytes) && T >= c.viewReadyAt) {
+      c.viewCap = c.wantView;
+      c.snapshotBytes = c.wantBytes;
+      c.viewReadyAt = T + TICK_RATE;
+    }
     const limit = c.viewCap !== 0 ? c.viewCap : Math.min(VIEW_DEFAULT, this.cap);
 
     const age = T - c.ackTick;
