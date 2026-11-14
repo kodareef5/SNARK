@@ -47,6 +47,7 @@ import { benchPoses } from "./bench/poses.ts";
 import { benchTextured } from "./bench/textured.ts";
 import { benchTextures } from "./bench/textures.ts";
 import { benchParts } from "./bench/parts.ts";
+import { benchTransport } from "./bench/transport.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -1183,6 +1184,7 @@ benchPoses(section, record);
 benchTextured(section, record);
 await benchTextures(section, record);
 await benchParts(section, record);
+benchTransport(section, record);
 
 rmSync(dir, { recursive: true, force: true });
 const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);

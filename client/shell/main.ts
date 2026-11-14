@@ -13,6 +13,7 @@ import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.t
 import { App } from "../core/app.ts";
 import { probePasses, provingProbes, type Probe } from "../core/selfcheck.ts";
 import { ClientSession } from "../core/session.ts";
+import { devicePage } from "./device.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
@@ -24,6 +25,8 @@ const selfcheck = params.has("selfcheck");
 /** A measurement run. The camera flies itself and the page reports frame times. */
 const bench = params.has("bench");
 const BENCH_FRAMES = 900;
+/** A device probe (tools/device.ts). The page measures itself and reports. */
+const device = params.has("device") ? devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
 
 /** Made once and kept in local storage. The key owns a survivor's name. */
@@ -69,19 +72,20 @@ async function boot(): Promise<void> {
     password: params.get("password") ?? "",
     registry: reg,
     clipHash: pack.clips.hash,
-    // The self-check, the bench and ?quick skip the creator.
-    ...(selfcheck || bench || params.has("quick") ? { look: defaultLook() } : {}),
+    // The self-check, the bench, the device probe and ?quick skip the creator.
+    ...(selfcheck || bench || device || params.has("quick") ? { look: defaultLook() } : {}),
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
     nodes: (ground, content) => mapNodes(map, ground, content),
   });
   const app = new App(session, reg, pack, { manifest, port });
   app.stress = params.has("stress");
   app.debug = app.stress || params.has("debug");
-  app.steer = !selfcheck;
+  app.steer = !selfcheck && !device;
   const intervals: number[] = [];
   let previous = 0;
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
-  bindInput(canvas, app);
+  // A device probe runs by itself, and a touch must not move or open anything.
+  if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
   const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`);
   app.voice = voice;
@@ -107,6 +111,7 @@ async function boot(): Promise<void> {
   });
   /** With ?lose=1 the self-check takes the graphics context away and gives it back, and must still see its picture. */
   const loser = params.has("lose") ? renderer.gl.getExtension("WEBGL_lose_context") : null;
+  device?.attach({ app, pack, reg, hf }, renderer);
 
   const frame = (now: number): void => {
     requestAnimationFrame(frame);
@@ -120,6 +125,7 @@ async function boot(): Promise<void> {
     const packet = app.frame(now, cssWidth, cssHeight);
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
+    const built = performance.now();
     // The tier says how many device pixels to draw for one CSS pixel, at most, and 0 is as many as the screen has.
     const most = app.scene?.assets.tier.pixelRatio ?? 0;
     const ratio = most > 0 ? Math.min(devicePixelRatio, most) : devicePixelRatio;
@@ -135,6 +141,7 @@ async function boot(): Promise<void> {
       for (const t of renderer.failedTextures) app.scene?.assets.residency.failedTexture(t);
       app.pressure();
     }
+    device?.frame(now, packet, t0, built);
     if (frames === 30) loser?.loseContext();
     if (frames === 45) loser?.restoreContext();
     times.push(performance.now() - t0);
@@ -207,8 +214,9 @@ async function boot(): Promise<void> {
   requestAnimationFrame(frame);
 }
 
-boot().catch((err: unknown) => {
+(device ? device.before().then((go) => (go ? boot() : undefined)) : boot()).catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
   root.textContent = message;
+  device?.fail(message);
   if (selfcheck) void fetch("__selfcheck", { method: "POST", body: JSON.stringify({ ok: false, error: message }) });
 });
