@@ -99,7 +99,15 @@ export function benchCollide(section: Section, record: Row): void {
   });
   const shoot = (w: CollisionWorld, s: number[], far: number): number => castWorld(w, s[0]!, s[1]!, s[2]!, s[3]!, s[4]!, s[5]!, far);
   // The same shots from 150 m up, over everything, so each goes its whole length.
-  const high = shots.map((s) => [s[0]!, 150, s[2]!, s[3]!, 0, s[5]!]);
+  const high = shots.map((s) => {
+    const l = Math.hypot(s[3]!, s[5]!);
+    return [s[0]!, 150, s[2]!, s[3]! / l, 0, s[5]! / l];
+  });
+  // Cells of 2 m that such a shot crosses, while it is over the map.
+  const crossed = (s: number[]): number => {
+    const cellOf = (v: number): number => Math.floor(Math.min(1023.99, Math.max(0, v)) / 2);
+    return Math.abs(cellOf(s[0]! + s[3]! * 600) - cellOf(s[0]!)) + Math.abs(cellOf(s[2]! + s[5]! * 600) - cellOf(s[2]!)) + 1;
+  };
   const sampled = (list: number[][]): number => {
     let samples = 0;
     const heightAt = hf.heightAt;
@@ -112,6 +120,7 @@ export function benchCollide(section: Section, record: Row): void {
   record("ground heights sampled by such a shot", sampled(shots), "");
   record("a 600 m shot that meets nothing", best(5, high.length, (i) => shoot(open, high[i]!, 600)), "us");
   record("ground heights sampled by that shot", sampled(high), "");
+  record("cells of the ground that shot crosses", high.reduce((n, s) => n + crossed(s), 0) / high.length, "");
   record("a 40 m line of sight over open ground", best(5, shots.length, (i) => shoot(open, shots[i]!, 40)), "us");
 
   // From inside and around the base, toward and through it.
