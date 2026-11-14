@@ -83,6 +83,8 @@ function applySinglePlayer(rules: Rules, report: Report): void {
 /** One pass over one source. A list begun in it replaces what weaker sources gave, then grows. */
 class Pass {
   private readonly begun = new Set<string>();
+  /** The lists begun, each put whole by end(), so a list read again as it was is not a change. */
+  private readonly lists = new Map<Row, (number | IniNode)[]>();
   private readonly rules: Rules;
   private readonly source: Source;
   private readonly report: Report;
@@ -103,18 +105,15 @@ class Pass {
     if (!rules.yields(row, source)) return;
     const first = !this.begun.has(row.name);
     this.begun.add(row.name);
-    let value: Value;
     if (row.kind === "indexed") {
       const now = [...rules.indexed(row.name)];
       if (index >= now.length) return refuse(`has no index ${index}`);
       now[index] = got.value as number;
-      value = now;
-    } else if (row.kind === "lines") {
-      value = first ? [got.value as number] : [...rules.numbers(row.name), got.value as number];
-    } else if (row.kind === "struct" || row.kind === "names") {
-      value = first ? [got.value as IniNode] : [...rules.list(row.name), got.value as IniNode];
-    } else value = got.value as Value;
-    rules.put(row, value, source);
+      rules.put(row, now, source);
+    } else if (row.kind === "lines" || row.kind === "struct" || row.kind === "names") {
+      if (first) this.lists.set(row, []);
+      this.lists.get(row)!.push(got.value as number | IniNode);
+    } else rules.put(row, got.value as Value, source);
     // A row is listed once, by the strongest source that gave it.
     if (!first) return;
     const list: { row: Row }[] = row.status === "live" ? report.applied : row.status === "none" ? report.nothing : report.waiting;
@@ -123,6 +122,11 @@ class Pass {
     if (row.status === "live") report.applied.push({ row, source, where });
     else if (row.status === "none") report.nothing.push({ row, where });
     else report.waiting.push({ row, where });
+  }
+
+  /** Call it when the source has been read through. */
+  end(): void {
+    for (const [row, list] of this.lists) this.rules.put(row, list as Value, this.source);
   }
 }
 
@@ -159,6 +163,7 @@ export function applyIni(rules: Rules, text: string, file: string, source: Sourc
     }
     pass.give(row, e.value, e.index, where);
   }
+  pass.end();
 }
 
 /** The live file is `Key=Value` lines with no sections. A setting that is read at start only is refused. */
@@ -173,6 +178,7 @@ export function applyLive(rules: Rules, text: string, report: Report): void {
     else if ((row.status === "live" || row.status === "todo") && !row.live) report.refused.push({ key: row.name, where, why: "is read at start only" });
     else pass.give(row, e.value, e.index, where);
   }
+  pass.end();
 }
 
 /**
@@ -216,6 +222,7 @@ export function applyArgs(rules: Rules, argv: readonly string[], report: Report)
       else pass.give(row, part.slice(eq + 1), -1, where);
     }
   }
+  pass.end();
   return ours;
 }
 
@@ -225,15 +232,18 @@ export interface ConfigText {
   live?: string;
 }
 
-/** Order: the two files, the command line, then the live file if -UseDynamicConfig was given. `ours` is this server's own arguments. */
+/**
+ * Order: the two files, the command line, the single-player factors, then the live file if -UseDynamicConfig was given. The live
+ * file is read again while the server runs, so its values are never multiplied. `ours` is this server's own arguments.
+ */
 export function loadConfig(text: ConfigText, argv: readonly string[] = []): { rules: Rules; report: Report; ours: string[] } {
   const rules = new Rules();
   const report = emptyReport();
   if (text.gus !== undefined) applyIni(rules, text.gus, GUS_FILE, "file", report);
   if (text.game !== undefined) applyIni(rules, text.game, GAME_FILE, "file", report);
   const ours = applyArgs(rules, argv, report);
-  if (text.live !== undefined && rules.flag("UseDynamicConfig") === true) applyLive(rules, text.live, report);
   if (rules.on("bUseSingleplayerSettings")) applySinglePlayer(rules, report);
+  if (text.live !== undefined && rules.flag("UseDynamicConfig") === true) applyLive(rules, text.live, report);
   return { rules, report, ours };
 }
 

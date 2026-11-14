@@ -7,7 +7,7 @@ import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL,
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
-import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPAWN_PANEL } from "../../client/core/ui/screens.ts";
+import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPAWN_PAGE, KEY_RESPAWN_PANEL } from "../../client/core/ui/screens.ts";
 import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder } from "../../client/core/ui/character.ts";
 import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
@@ -16,11 +16,14 @@ import { KEY_OPEN_LEVEL, KEY_OPEN_MATE, KEY_OPEN_ORDER, KEY_OPEN_PAGE, KEY_OPEN_
 import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
 import { CMD_FEED, CMD_NAME, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
+import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, MAX_NAME_BYTES, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import type { Def } from "../../shared/content/defs.ts";
+import { compileContent } from "../../shared/content/registry.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_MELEE, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
 
 const ASPECTS: [string, number][] = [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]];
@@ -476,6 +479,48 @@ test("the respawn and map screens fit every window shape, and a click on a place
   }
 });
 
+test("with more places to return to life at than fit the window, the list is paged, and every place can be chosen", () => {
+  for (const [name, aspect] of ASPECTS) {
+    const { session, sent } = fakeSession(new Inventory(40));
+    const places = Array.from({ length: 43 }, (_, i) => ({ name: i < 3 ? `spawn ${i}` : `bed at ${i * 10}, ${i * 7}`, x: i, z: i, wait: i === 20 ? 250 : 0 }));
+    Object.assign(session, { sessionState: SESSION_DEAD, respawnPoints: places, markers: [], world: flatWorld(2), own: { x: 1, y: 0, z: 1 } });
+    const ui = new Ui();
+    ui.registry = reg;
+    const f = ui.frame;
+    const chosen: number[] = [];
+    for (let page = 0; page < 20; page++) {
+      ui.build(aspect, fullHud(), session);
+      for (let i = 0; i < f.count; i++) {
+        const n = f.nodes[i]!;
+        const where = `${name} page ${page} key=${n.key}`;
+        if (n.key < KEY_RESPAWN_PANEL || n.key >= KEY_MAP_IMAGE - 1) continue;
+        expect(n.y, where).toBeGreaterThanOrEqual(-0.01);
+        expect(n.y + n.h, where).toBeLessThanOrEqual(f.height + 0.01);
+        expect(n.x + n.w, where).toBeLessThanOrEqual(f.width + 0.01);
+        if (n.kind === K_TEXT) expect(textWidth(n.text, n.style), where).toBeLessThanOrEqual(n.w + 0.01);
+        // Each place's button is pressed as it is shown.
+        const place = places.findIndex((p) => n.text === p.name || n.text === `${p.name}  (in ${p.wait} s)`);
+        if (n.interactive && place >= 0) {
+          ui.pointer(0, n.key, 0, 0, 0, session);
+          chosen.push(place);
+        }
+      }
+      if (f.find(KEY_RESPAWN_PAGE + 1) === null) break;
+      const before = f.find(KEY_RESPAWN_PAGE + 2)!.text;
+      ui.pointer(0, KEY_RESPAWN_PAGE + 1, 0, 0, 0, session);
+      ui.build(aspect, fullHud(), session);
+      // The last page's next button goes nowhere.
+      if (f.find(KEY_RESPAWN_PAGE + 2)!.text === before) break;
+    }
+    expect(chosen).toEqual(places.map((_, i) => i));
+    expect(sent.map((c) => [c.op, c.bytes[0]])).toEqual(places.map((_, i) => [CMD_RESPAWN, i]));
+    // Back to the first page, where the first button is the first place again.
+    for (let i = 0; i < 20; i++) ui.pointer(0, KEY_RESPAWN_PAGE, 0, 0, 0, session);
+    ui.build(aspect, fullHud(), session);
+    expect([f.find(KEY_RESPAWN_BUTTON)!.text, f.find(KEY_RESPAWN_PAGE + 2)!.text.startsWith("page 1 of ")]).toEqual(["spawn 0", true]);
+  }
+});
+
 test("the character screen fits every window shape on every tab and page, and its buttons send what they say", () => {
   const engram = (name: string) => reg.index.get(name)!;
   const engrams = engramOrder(reg);
@@ -586,6 +631,57 @@ test("the character screen fits every window shape on every tab and page, and it
     ui.key("KeyM", true, false, session);
     expect([ui.character, ui.map]).toEqual([false, true]);
   }
+});
+
+test("with hundreds of engrams and things to make, each button of the character screen still does what its row says", () => {
+  // 230 more things to make, each with its engram: past the hundredth engram and the two hundredth thing.
+  const more: Def[] = [];
+  for (let i = 0; i < 230; i++) {
+    more.push({ type: "item", class: "resource", id: `core:thing${i}`, label: `thing ${i}`, stack: 10, craft: { needs: [{ item: "core:stone", count: 1 }], seconds: 1, xp: 1 } });
+    more.push({ type: "engram", id: `core:engram-thing${i}`, label: `Thing ${i}`, level: 1, cost: 0, item: `core:thing${i}` });
+  }
+  const made = compileContent([...CORE_CONTENT, ...more]);
+  expect(made.errors).toEqual([]);
+  const big = made.registry!;
+  const engrams = engramOrder(big);
+  expect(engrams.length).toBeGreaterThan(230);
+  const { session, sent } = fakeSession(new Inventory(40));
+  const progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [], version: 1 };
+  Object.assign(session, { sessionState: SESSION_ALIVE, ownKind: big.index.get("core:survivor")!, progress });
+  const ui = new Ui();
+  ui.registry = big;
+  ui.key("KeyP", true, false, session);
+  const f = ui.frame;
+  /** Presses the button of the row whose line starts with `words`, paging to it. */
+  const press = (tab: number, words: string): void => {
+    ui.pointer(0, KEY_CHAR_TAB + tab, 0, 0, 0, session);
+    for (ui.sheet.page = 0; ; ui.sheet.page++) {
+      ui.build(16 / 9, fullHud(), session);
+      const keys = new Set<number>();
+      for (let i = 0; i < f.count; i++) {
+        expect(keys.has(f.nodes[i]!.key), `key ${f.nodes[i]!.key} twice`).toBe(false);
+        keys.add(f.nodes[i]!.key);
+      }
+      for (let i = 0; i < f.count; i++) {
+        if (!f.nodes[i]!.text.startsWith(words)) continue;
+        // A row is its line, then its button.
+        return ui.pointer(0, f.nodes[i]!.key + 1, 0, 0, 0, session);
+      }
+      if (ui.sheet.page >= ui.sheet.pages - 1) throw new Error(`no row says ${words}`);
+    }
+  };
+  for (const i of [3, 150, 229]) press(1, `Thing ${i}:`);
+  progress.engrams = engrams;
+  for (const i of [3, 150, 229]) press(2, `thing ${i}:`);
+  const asked = sent.map((c) => [c.op, big.ids[new BitReader(c.bytes).u16()]]);
+  expect(asked).toEqual([
+    [CMD_LEARN, "core:engram-thing3"],
+    [CMD_LEARN, "core:engram-thing150"],
+    [CMD_LEARN, "core:engram-thing229"],
+    [CMD_CRAFT, "core:thing3"],
+    [CMD_CRAFT, "core:thing150"],
+    [CMD_CRAFT, "core:thing229"],
+  ]);
 });
 
 test("the chat box: a key for each channel, Tab to change it, Enter to say the line, and the keyboard while it is open", () => {
@@ -961,6 +1057,30 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     ui.key("Escape", true, false, session);
     ui.build(aspect, fullHud(), session);
     expect([ui.naming.open, sent.length, session.tamed.length, f.find(KEY_NAME_PANEL)]).toEqual([false, 3, 0, null]);
+  }
+});
+
+test("a tame's name is cut to the 24 bytes the server takes, whatever the script, with no letter cut in two", () => {
+  const { session, sent } = fakeSession(new Inventory(40));
+  const ui = new Ui();
+  ui.registry = reg;
+  const cases = [
+    ["a name of thirty letters, no less", "a name of thirty letters"],
+    // Thirteen letters of two bytes each: twelve fit.
+    ["Абвгдежзийклм", "Абвгдежзийкл"],
+    // Twenty-three bytes, then one that takes four.
+    ["Rex the twenty-third..\u{1F996}", "Rex the twenty-third.."],
+    ["恐竜恐竜恐竜恐竜恐竜", "恐竜恐竜恐竜恐竜"],
+  ] as const;
+  for (const [typed, kept] of cases) {
+    session.tamed.push({ handle: 7, kind: reg.index.get("core:raptor")!, level: 1, te: 50 });
+    ui.build(16 / 9, fullHud(), session);
+    ui.input(KEY_NAME_INPUT, typed);
+    expect(ui.naming.text).toBe(kept);
+    ui.key("Enter", true, false, session);
+    // The server reads the name with this limit, and refuses the command if it is longer.
+    const r = new BitReader(sent[sent.length - 1]!.bytes);
+    expect([sent[sent.length - 1]!.op, r.u32(), r.string(MAX_NAME_BYTES), r.overflow]).toEqual([CMD_NAME, 7, kept, false]);
   }
 });
 

@@ -34,6 +34,8 @@ export class Creatures {
   /** Entity indices of the awake creatures, in the first `awakeCount` entries. Both columns grow with the entity store. */
   awake: Int32Array;
   private awakeSlot: Int32Array;
+  /** The slot being stepped, or -1 outside a step. Those above it have been stepped this tick and those below have not. */
+  private cursor = -1;
   /** Players keeping each chunk awake. */
   private readonly chunkRefs: Uint16Array;
   readonly mind: Behavior;
@@ -147,8 +149,8 @@ export class Creatures {
     const b = this.body;
     const mind = this.mind;
     let stepped = 0;
-    for (let n = this.awakeCount - 1; n >= 0; n--) {
-      const e = this.awake[n]!;
+    for (this.cursor = this.awakeCount - 1; this.cursor >= 0; this.cursor--) {
+      const e = this.awake[this.cursor]!;
       // A driven creature is stepped with its session's body, not here.
       if (ents.driven[e] !== 0) continue;
       const kind = ents.kind[e]!;
@@ -218,6 +220,11 @@ export class Creatures {
     if (whom !== undefined) this.mind.follow(e, whom);
   }
 
+  private seat(slot: number, e: number): void {
+    this.awake[slot] = e;
+    this.awakeSlot[e] = slot;
+  }
+
   private wake(e: number): void {
     const ents = this.world.ents;
     const flags = ents.flags[e]!;
@@ -230,16 +237,26 @@ export class Creatures {
   }
 
   private sleep(e: number): void {
-    const slot = this.awakeSlot[e]!;
+    let slot = this.awakeSlot[e]!;
     if (slot < 0) return;
     this.mind.owned.delete(e);
     const ents = this.world.ents;
     // Asleep it is no longer saved a slice at a time, so where it stopped is saved now.
     const rec = this.records.byPid.get(ents.pid[e]!);
     if (rec && (rec.x !== ents.x[e] || rec.y !== ents.y[e] || rec.z !== ents.z[e])) this.records.dirty.add(rec.pid);
-    const last = this.awake[--this.awakeCount]!;
-    this.awake[slot] = last;
-    this.awakeSlot[last] = slot;
+    // One that goes while its turn is still to come gives its slot to the next in turn, and the one being stepped moves
+    // down beside it. The last of the list, which has been stepped, then fills the slot above them and is not stepped again.
+    if (slot < this.cursor) {
+      const c = this.cursor--;
+      this.seat(slot, this.awake[c - 1]!);
+      slot = c - 1;
+      if (c < this.awakeCount) {
+        this.seat(slot, this.awake[c]!);
+        slot = c;
+      }
+    }
+    this.awakeCount--;
+    if (slot < this.awakeCount) this.seat(slot, this.awake[this.awakeCount]!);
     this.awakeSlot[e] = -1;
     ents.flags[e] = ents.flags[e]! & ~F_AWAKE;
     ents.vx[e] = 0;

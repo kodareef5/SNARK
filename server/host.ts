@@ -431,6 +431,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       bus.after(DEATH, { victim: rec.pid, kind: reg.ids[rec.kind]!, cause: CAUSE_WORDS[cause] ?? "", killer: killer ? killer.pid : 0, rider: rider ? rider.pid : 0, credit: !killer ? 0 : killer.kind === survivor ? killer.pid : rider ? rider.pid : 0, team: rec.team, item: struck && combat.blow.item !== 0 ? reg.ids[combat.blow.item]! : "", far: struck ? combat.blow.far : 0 });
     }
     combat.killed(rec, by);
+    // A creature may eat of what its kill left it.
+    const taker = by !== 0 ? records.byPid.get(by) : undefined;
+    if (taker) taming.meal(taker);
     buffs.died(rec);
     death.die(rec, cause);
   };

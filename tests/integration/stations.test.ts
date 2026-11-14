@@ -12,6 +12,7 @@ import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_RESPAWN, CMD_SELECT, CMD_STRUCT, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, RESULT_WAIT, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { ON_TOP } from "../../shared/world/snap.ts";
 import { STRUCT_LIGHT, STRUCT_PICKUP } from "../../shared/world/upkeep.ts";
+import { flatGround } from "../fixtures/arena.ts";
 import { builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -121,6 +122,28 @@ test("a campfire burns the fuel on it and cooks what lies over it, at the refere
   expect(h.host.items.audit()).toEqual([]);
   h.host.shutdown();
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("every bed of the tribe is offered to its dead, thirty as surely as two, and the last of them is one to rise at", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const ada = h.join("ada");
+  h.run(500);
+  h.say(ada, "enablecheats");
+  const g = flatGround(h, 70, 10);
+  const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
+  const bed = id("bed");
+  const refs = Array.from({ length: 30 }, (_, k) => h.world.structs.add(bed, g.x + 3 + k * 2.2, g.y + reg.halfY[bed]!, g.z + 5, 0, me.team, 100));
+  for (const ref of refs) h.host.fixtures.ensure(ref);
+  h.say(ada, "suicide");
+  h.run(300);
+  const spawns = h.world.spawns.length;
+  expect([ada.sessionState, ada.respawnPoints.length]).toEqual([SESSION_DEAD, spawns + 30]);
+  expect(ada.respawnPoints.slice(0, spawns).map((p) => p.name)).toEqual(h.world.spawns.map((p) => p.name));
+  let code = -1;
+  ada.onResult = (seq, c) => void (seq !== 0 && (code = c));
+  ada.command(CMD_RESPAWN, (w: BitWriter) => w.u8(spawns + 29));
+  h.run(500);
+  expect([code, ada.sessionState, Math.abs(ada.own.x - (g.x + 3 + 29 * 2.2)) < 0.5]).toEqual([RESULT_OK, SESSION_ALIVE, true]);
 });
 
 test("a bed is where its tribe returns to life: listed for them and nobody else, used once in five minutes, and stood on wherever it is", () => {

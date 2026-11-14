@@ -33,6 +33,7 @@
 | `tuned.test.ts`, `stats.test.ts` | Content as a server's settings have it, derived the same by server and client; the join password; what a client shows by the server's leave; stat multipliers and difficulty |
 | `retime.test.ts`, `clock.test.ts` | What is under way timed again when its rule changes, live and across a restart; the live file; the day at the server's scales |
 | `round5.test.ts` | Round 5's exit condition as four stories: operator, live, client, catalogue |
+| `listen.test.ts` | The address a server listens on: a development server on this machine only, unless asked |
 | `agent.test.ts`, `agent-play.test.ts` | An agent that plays, its tools called over the protocol: the protocol itself, the key file, observe, the tools that need no walking; then walking round the wall, a crate set down in the way, gathering, opening, and stopping for danger |
 
 `fixtures/net.ts` runs a real server and real client sessions in one process on
