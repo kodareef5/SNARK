@@ -14,8 +14,10 @@ import { restoreBackup } from "./persist/backup.ts";
 import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, normalize, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parsePack } from "../shared/pack/pack.ts";
+import { parseManifest } from "../shared/pack/manifest.ts";
+import { serveFile } from "./files.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -57,7 +59,6 @@ export interface RunningServer {
 /** Unsent bytes at which a slow client's unreliable traffic is skipped, and at which the client is dropped. */
 const SOFT_BACKLOG = 64 * 1024;
 const HARD_BACKLOG = 4 * 1024 * 1024;
-const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json" };
 
 /** Unsent bytes at which a listener's voice packets are dropped. About a quarter second of everyone it can hear. */
 const VOICE_BACKLOG = 16 * 1024;
@@ -83,10 +84,11 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error("content errors:\n" + errors.join("\n"));
   const clientDir = resolve(opts.clientDir ?? join(import.meta.dir, "../client/dist"));
-  // The server poses and hit-tests bodies with the clips of the pack the clients are served.
-  const packFile = join(clientDir, "assets/core.snpk");
-  if (!existsSync(packFile)) throw new Error(`${packFile} is missing: build the client first (bun run build)`);
-  const pack = parsePack(new Uint8Array(readFileSync(packFile)));
+  // The server poses and hit-tests bodies with the clips of the boot pack the clients are served. The manifest names it.
+  const manifestFile = join(clientDir, "assets/manifest.json");
+  if (!existsSync(manifestFile)) throw new Error(`${manifestFile} is missing: build the client first (bun run build)`);
+  const manifest = parseManifest(readFileSync(manifestFile, "utf8"));
+  const pack = parsePack(new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[manifest.boot]!.name))));
   const clips = pack.clips;
   const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
@@ -158,11 +160,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         measured(result);
         return new Response("ok");
       }
-      const path = normalize(join(clientDir, url.pathname === "/" ? "index.html" : url.pathname));
-      if (!path.startsWith(clientDir)) return new Response("not found", { status: 404 });
-      const file = Bun.file(path);
-      if (!(await file.exists())) return new Response("not found", { status: 404 });
-      return new Response(file, { headers: { "content-type": TYPES[path.split(".").pop() ?? ""] ?? "application/octet-stream", "cache-control": "no-store" } });
+      return serveFile(clientDir, req);
     },
     websocket: {
       maxPayloadLength: 4096,

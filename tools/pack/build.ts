@@ -1,7 +1,7 @@
-// Builds the core asset pack. Run directly, it also imports every .glb under assets/source as "<folder>:<file name>"
-// and writes client/dist/assets/core.snpk.
+// Builds the core asset pack: grayboxes made from the content, the art in assets/source, and every .glb under
+// assets/source as "<folder>:<file name>". `bun run build` splits it into the files a client fetches.
 
-import { mkdirSync, readFileSync, readdirSync, statSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
@@ -154,19 +154,14 @@ function findGlbs(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-if (import.meta.main) {
+/** Every .glb under assets/source, imported. What the import had to say of each is printed. */
+export function importedMeshes(): SourceMesh[] {
   const root = resolve(import.meta.dir, "../..");
   const palette = defaultPalette();
-  const imported: SourceMesh[] = [];
-  for (const file of findGlbs(join(root, "assets/source"))) {
+  return findGlbs(join(root, "assets/source")).map((file) => {
     const id = `${basename(dirname(file))}:${basename(file, ".glb")}`;
     const report = importGlb(readFileSync(file), id, palette);
     for (const w of report.warnings) console.warn(`${id}: ${w}`);
-    imported.push(report.mesh);
-  }
-  const pack = buildCorePack(imported);
-  const out = join(root, "client/dist/assets/core.snpk");
-  mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, pack);
-  console.log(`core.snpk  ${pack.length} bytes, ${grayboxMeshes(CORE_CONTENT).length} graybox + ${imported.length} imported meshes`);
+    return report.mesh;
+  });
 }

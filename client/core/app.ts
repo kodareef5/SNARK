@@ -1,7 +1,9 @@
 // One whole client without a browser. The shell owns the renderer, socket and DOM, forwards events
 // here, and draws what frame() returns. Tests drive this class directly.
 
+import type { AssetPort } from "./assets/port.ts";
 import { tierOf } from "./assets/tiers.ts";
+import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
@@ -71,6 +73,7 @@ export class App {
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
   scene: Scene | null = null;
+  private readonly stream: { manifest: Manifest; port: AssetPort } | undefined;
   /** Smoothed. */
   fps = 60;
   /** False while the self-check holds the body still. */
@@ -90,7 +93,9 @@ export class App {
     return this.session.registry;
   }
 
-  constructor(session: ClientSession, reg: Registry, pack: Pack) {
+  /** With `stream`, `pack` is the boot pack and other levels are fetched through the port as they are wanted. */
+  constructor(session: ClientSession, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort }) {
+    this.stream = stream;
     this.session = session;
     this.shown = reg;
     this.pack = pack;
@@ -433,7 +438,7 @@ export class App {
       this.shots.reg = this.shown;
     }
     if (!this.scene) {
-      this.scene = new Scene(world, this.reg, this.pack);
+      this.scene = new Scene(world, this.reg, this.pack, this.stream);
       this.scene.shots = this.shots;
       this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z));
       this.ui.frame.images[IMAGE_MINIMAP] = { width: MINIMAP_SIZE, height: MINIMAP_SIZE, data: minimapImage(world.hf, this.pack.palette, MINIMAP_SIZE), version: 1 };

@@ -6,8 +6,7 @@ people are kept unchanged in [raw](raw/README.md) with their licence and where
 they came from; `bun run art` converts them into `source`.
 
 The pipeline: a glTF binary export in `assets/source/<pack>/<name>.glb` becomes
-the mesh `<pack>:<name>` in a pack file when `bun tools/pack/build.ts` or
-`bun run build` runs. The pack format, palette, and export conventions are in
+the mesh `<pack>:<name>` in the pack when `bun run build` runs. The pack format, palette, and export conventions are in
 [rendering](../planning/architecture/rendering.md) and
 [contracts](../planning/architecture/contracts.md).
 
