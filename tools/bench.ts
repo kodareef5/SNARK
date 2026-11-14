@@ -660,6 +660,69 @@ section("Voice: 100 survivors in one crowd, all talking at once");
   for (const w of wires) voice.disconnect(w.peer);
 }
 
+// ---------------------------------------------------------------- brawl
+section("Brawl: all 100 survivors in one 18 m square, with 400 creatures walking among them");
+{
+  // The voice section left everyone here. Each client now has every other in view, and more moving bodies than a snapshot carries.
+  const crowd = centers[0]!;
+  const herd = new Rng(78);
+  let put = 0;
+  for (let tries = 0; put < 400 && tries < 20000; tries++) {
+    if (host.spawnCreature("core:grazer", crowd[0] + 70 + herd.range(-40, 40), crowd[1] + herd.range(-40, 40), 1 + herd.int(30)) >= 0) put++;
+  }
+  run(150, null);
+  const sent = host.game.clients.map((c) => (c ? (c.conn as LoopbackEnd).bytesSent : 0));
+  const ticks: number[] = [];
+  const TICKS = 600;
+  run(TICKS, ticks);
+  ticks.sort((a, b) => a - b);
+  const down = host.game.clients.map((c, i) => (c ? ((c.conn as LoopbackEnd).bytesSent - sent[i]!) / (TICKS / TICK_RATE) : 0)).filter((v) => v > 0);
+  record("creatures put among them", put, "");
+  record("tick time, median", percentile(ticks, 0.5), "ms", 8);
+  record("tick time, 99th percentile", percentile(ticks, 0.99), "ms", 16);
+  record("downstream per client", down.reduce((a, v) => a + v, 0) / down.length / 1024, "KB/s", 36);
+  record("snapshots the real clients could not decode", sessions.reduce((n, c) => n + c.stats.undecodable, 0), "", 0);
+}
+
+// ---------------------------------------------------------------- siege
+section("Siege: a 20,000-piece chunk beside that crowd, 50 of its pieces damaged every tick");
+/** The chunk the siege section fills, for the client frame section that draws it. */
+let siegeChunk = -1;
+{
+  const crowd = centers[0]!;
+  const wall = reg.index.get("core:wall")!;
+  siegeChunk = chunkAt(DIMS, crowd[0] + 70, crowd[1]);
+  const x0 = (siegeChunk % DIMS.chunksX) * 64;
+  const z0 = Math.floor(siegeChunk / DIMS.chunksX) * 64;
+  const pieces = new Rng(79);
+  const refs: number[] = [];
+  // High in the air, so no body touches them. It is the count that is measured.
+  for (let n = 0; n < 20000; n++) {
+    const ref = world.structs.add(wall, x0 + 1 + pieces.range(0, 62), 200 + pieces.range(0, 60), z0 + 1 + pieces.range(0, 62), 0, 1, 1e9);
+    if (ref >= 0) refs.push(ref);
+  }
+  record("pieces in the chunk", world.structs.chunks[siegeChunk]!.live, "");
+  // 256 rows a tick to each client: 80 ticks for the chunk, and the bots' own fists keep changing it meanwhile.
+  run(200, null);
+  const quiet: number[] = [];
+  run(150, quiet);
+  quiet.sort((a, b) => a - b);
+  commitTimes.length = 0;
+  const bytes = host.game.stats.chunkBytes;
+  const fire: number[] = [];
+  for (let i = 0; i < 300; i++) {
+    for (let k = 0; k < 50; k++) world.structs.damage(refs[pieces.int(refs.length)]!, 1);
+    run(1, fire);
+  }
+  fire.sort((a, b) => a - b);
+  commitTimes.sort((a, b) => a - b);
+  record("tick time before the damage, median", percentile(quiet, 0.5), "ms");
+  record("tick time under it, median", percentile(fire, 0.5), "ms", 8);
+  record("tick time under it, 99th percentile", percentile(fire, 0.99), "ms", 16);
+  record("sent to each client for the damage", (host.game.stats.chunkBytes - bytes) / host.game.playerCount / 10 / 1024, "KB/s", 26);
+  record("commit time under it, 99th percentile (the chunk is saved whole each commit)", percentile(commitTimes, 0.99), "ms", 10);
+}
+
 // ---------------------------------------------------------------- breeding
 section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and ten survivors among them");
 {
@@ -848,6 +911,34 @@ scene.structureDistance = Infinity;
 packet = scene.build(cam, null);
 record("draw calls if every base to the horizon were instanced", packet.drawCount, "");
 record("triangles if every base to the horizon were instanced", packet.triangles, "");
+
+section("Client frame build (headless): the 20,000-piece chunk told of 50 damaged pieces every frame");
+{
+  const t = restored.chunks[siegeChunk]!;
+  const hit = new Rng(80);
+  const times: number[] = [];
+  let uploaded = 0;
+  scene.build(cam, null);
+  for (let i = 0; i < 300; i++) {
+    // As a client is told: each damaged row whole, then the chunk's new version.
+    const version = t.version + 1;
+    for (let k = 0; k < 50; k++) {
+      let slot = hit.int(t.high);
+      while (t.kind[slot] === 0) slot = hit.int(t.high);
+      restored.put(siegeChunk, slot, t.kind[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.owner[slot]!, t.hp[slot]! - 1, version);
+    }
+    restored.setVersion(siegeChunk, version);
+    const at = performance.now();
+    packet = scene.build(cam, null);
+    times.push(performance.now() - at);
+    for (const u of packet.uploads) uploaded += u.data.length;
+  }
+  times.sort((a, b) => a - b);
+  record("pieces in the chunk", t.live, "");
+  record("take the rows in and build the frame, median", percentile(times, 0.5), "ms", 1);
+  record("take the rows in and build the frame, 99th percentile", percentile(times, 0.99), "ms", 2);
+  record("instance bytes uploaded again in those 300 frames", uploaded, "bytes", 0);
+}
 
 section("Client frame build (headless): 300 survivors in view, posed every frame");
 {

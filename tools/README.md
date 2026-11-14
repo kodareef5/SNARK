@@ -22,6 +22,19 @@ the shell line budget, and the check time budget. Changing any of them is a
 decision recorded in [decisions](../planning/decisions.md).
 
 `snap` options: `--pos x,y,z --yaw degrees --pitch degrees --size WxH --out file`.
+Yaw 0 faces +Z (north) and positive yaw turns toward +X.
 Scenes: `--ui`, `--poses N`, `--looks`, `--gear`, `--fight bow`, `--creator`,
 `--house`, `--build`, `--falling`, and `--creatures` (with `--near` for a rider
 up close, `--young` for each species at four ages beside its egg).
+With `--ui`: `--console "text"` types a console line, `--inventory` opens the
+inventory, `--chat` opens the chat box. `--face degrees` turns a line-up.
+`--house` takes a tier (`thatch`, `wood`, `stone`, `metal`), and with
+`--falling ms` shows the house that long after a corner foundation went.
+`--build --menu` shows the menu for a built piece.
+
+`probe` options: `--bench` also flies the camera for 900 frames and reports
+frame times, `--no-voice` leaves out the voice loop, and `--voice` opens a
+second page that must hear the first. `CHROME=/path/to/chrome` names the
+browser. A headless browser's frame times say little about a player's. For a
+real number run `bun run dev` and open `http://localhost:8787/?bench=1` on the
+device.
