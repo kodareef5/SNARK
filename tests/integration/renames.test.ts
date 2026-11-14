@@ -1,6 +1,6 @@
 // An id that was renamed: a save, a ledger and a settings file that still use it read as if they used the new one.
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CORE_CONTENT, CORE_PACK } from "../../content/core.ts";
@@ -18,21 +18,18 @@ const made = (defs: DefPatch[]): Registry => {
   if (!out.registry) throw new Error(out.errors.join("\n"));
   return out.registry;
 };
-const item = (id: string): DefPatch => ({ id, type: "item", class: "resource", stack: 100 });
-const recipe = (id: string, makes: string): DefPatch => ({ id, type: "recipe", makes, count: 1, needs: [{ item: "core:stone", count: 1 }], seconds: 5, xp: 1 });
+const item = (id: string): DefPatch => ({ id, type: "item", class: "resource", stack: 100, craft: { needs: [{ item: "core:stone", count: 1 }], seconds: 5, xp: 1 } });
 const engram = (id: string, unlocks: string[]): DefPatch => ({ id, type: "engram", label: id, level: 1, cost: 1, unlocks });
 
-const BEFORE = made([item("t:old"), item("t:other"), recipe("t:make-old", "t:old"), engram("t:engram-old", ["t:make-old"]), engram("t:engram-kit", [])]);
+const BEFORE = made([item("t:old"), item("t:other"), engram("t:engram-old", ["t:old"]), engram("t:engram-kit", [])]);
 const AFTER = made([
   item("t:new"),
-  recipe("t:make-new", "t:new"),
-  engram("t:engram-new", ["t:make-new"]),
+  engram("t:engram-new", ["t:new"]),
   engram("t:engram-kit-a", []),
   engram("t:engram-kit-b", []),
   { id: "t:old", type: "rename", to: ["t:new"] },
   // Two things that became one.
   { id: "t:other", type: "rename", to: ["t:new"] },
-  { id: "t:make-old", type: "rename", to: ["t:make-new"] },
   { id: "t:engram-old", type: "rename", to: ["t:engram-new"] },
   // One thing that became two.
   { id: "t:engram-kit", type: "rename", to: ["t:engram-kit-a", "t:engram-kit-b"] },
@@ -48,7 +45,7 @@ test("a save made before a rename loads after it: the stack, the ledger, what wa
   h.host.items.mint(rec, was("t:old"), 40);
   h.host.items.mint(rec, was("t:other"), 2);
   rec.engrams.push(was("t:engram-old"), was("t:engram-kit"));
-  rec.jobs.push({ recipe: was("t:make-old"), left: 3, doneAt: h.world.tick + 9000 });
+  rec.jobs.push({ item: was("t:old"), left: 3, doneAt: h.world.tick + 9000 });
   h.host.records.dirty.add(rec.pid);
   h.run(500);
   h.host.shutdown();
@@ -59,7 +56,7 @@ test("a save made before a rename loads after it: the stack, the ledger, what wa
   expect(back.inv!.total(now("t:new"))).toBe(42);
   expect(h2.host.items.audit()).toEqual([]);
   expect([...back.engrams].sort((a, b) => a - b)).toEqual([now("t:engram-new"), now("t:engram-kit-a"), now("t:engram-kit-b")].sort((a, b) => a - b));
-  expect(back.jobs.map((j) => [j.recipe, j.left])).toEqual([[now("t:make-new"), 3]]);
+  expect(back.jobs.map((j) => [j.item, j.left])).toEqual([[now("t:new"), 3]]);
   expect(h2.host.persistence!.store.missingContent).toEqual([]);
   // Saved again, it is written under the new ids, and reads the same a second time.
   h2.host.records.dirty.add(back.pid);
@@ -78,7 +75,7 @@ test("a settings file that names what was renamed still means it, and a rename i
   expect(lists.index("PreventDinoTameClassNames", "t:never")).toBe(0);
   expect([AFTER.index.has("t:old"), AFTER.ids.includes("t:old"), AFTER.redirects.get("t:engram-kit")!.length]).toEqual([false, false, 2]);
   // The hash is of the content. A rename alone does not change it.
-  const without = made([item("t:new"), recipe("t:make-new", "t:new"), engram("t:engram-new", ["t:make-new"]), engram("t:engram-kit-a", []), engram("t:engram-kit-b", [])]);
+  const without = made([item("t:new"), engram("t:engram-new", ["t:new"]), engram("t:engram-kit-a", []), engram("t:engram-kit-b", [])]);
   expect(without.hash).toBe(AFTER.hash);
 });
 
@@ -92,4 +89,28 @@ test("a rename must lead somewhere that exists, once, and to one kind of thing",
   expect(bad({ id: "t:old", type: "rename", to: [] })).toEqual([]);
   expect(bad({ id: "t:old", type: "rename" })).toEqual(['t:old: class rename must declare "to"']);
   expect(bad({ id: "t:old", type: "rename", to: "t:new" })).toEqual(['t:old: "to" must be a list']);
+});
+
+/**
+ * A save made by the code as it was before content was realigned (commit ea95969): a survivor at level 100 who has learned
+ * the spear, the pick, hide armor, cloth armor and the wooden wall, with three spears and a hide hat being made. Then a
+ * recipe was a definition of its own, "core:make-spear", and the job names it.
+ */
+const BEFORE_REALIGNMENT = join(import.meta.dir, "../fixtures/saves/before-realignment.db");
+const ADA = 1099511627777;
+
+test("a save from before recipes became part of their items goes on making what it was making", () => {
+  const db = join(dir, "before.db");
+  copyFileSync(BEFORE_REALIGNMENT, db);
+  const h = new Harness({}, 1, 60, { dbPath: db });
+  const id = (name: string): number => h.reg.index.get(`core:${name}`)!;
+  const rec = h.host.records.byPid.get(ADA)!;
+  expect(h.host.persistence!.store.missingContent).toEqual([]);
+  expect(rec.jobs.map((j) => [h.reg.ids[j.item], j.left])).toEqual([["core:spear", 3], ["core:hide_hat", 1]]);
+  expect(h.host.items.audit()).toEqual([]);
+  expect(rec.engrams.map((e) => h.reg.ids[e]).filter((e) => e === "core:engram-spear" || e === "core:engram-piece_wall_wood")).toEqual(["core:engram-spear", "core:engram-piece_wall_wood"]);
+  h.run(60000);
+  expect([rec.inv!.total(id("spear")), rec.inv!.total(id("hide_hat")), rec.jobs.length]).toEqual([3, 1, 0]);
+  expect(h.host.items.audit()).toEqual([]);
+  h.host.shutdown();
 });

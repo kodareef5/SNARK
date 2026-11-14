@@ -15,9 +15,9 @@ export interface Marker {
   tick: number;
 }
 
-/** A run of one recipe. `left` units remain, and the current one finishes at tick `doneAt`. */
+/** A run of making one item. `left` units remain, and the current one finishes at tick `doneAt`. */
 export interface Job {
-  recipe: number;
+  item: number;
   left: number;
   doneAt: number;
 }

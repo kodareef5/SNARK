@@ -1,7 +1,7 @@
 // Levels and unspent points are functions of experience and of what was spent, so neither is stored and neither can drift.
 // A craft job burns its ingredients when a unit starts and mints the product when its deadline comes due.
 
-import type { EngramDef, ItemDef, LevelsDef, RecipeDef } from "../shared/content/defs.ts";
+import type { CraftFacet, EngramDef, ItemDef, LevelsDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../shared/net/protocol.ts";
 import { STAT_COUNT, STAT_NAMES, spendPoint } from "../shared/sim/genome.ts";
@@ -31,7 +31,7 @@ export class Progression {
   private readonly items: Items;
   private readonly deadlines: DeadlineHeap;
   private readonly levels: LevelsDef | null;
-  /** Per recipe content index, the engram that unlocks it, or 0. */
+  /** Per item, the engram that unlocks the making of it, or 0. */
   private readonly engramOf: Uint16Array;
   /** Content indices of the engrams learned automatically. */
   private readonly autos: number[] = [];
@@ -152,13 +152,13 @@ export class Progression {
   }
 
   /** The first unit starts at once if nothing else is being made. */
-  craft(rec: EntityRecord, recipe: number, count: number): number {
-    const def = this.world.reg.defs[recipe];
-    if (def?.type !== "recipe" || !(count >= 1 && count <= 100)) return RESULT_INVALID;
-    if (!this.knows(rec, this.engramOf[recipe]!)) return RESULT_DENIED;
+  craft(rec: EntityRecord, item: number, count: number): number {
+    const craft = this.craftOf(item);
+    if (!craft || !(count >= 1 && count <= 100)) return RESULT_INVALID;
+    if (!this.knows(rec, this.engramOf[item]!)) return RESULT_DENIED;
     if (rec.jobs.length >= MAX_JOBS) return RESULT_FULL;
-    if (rec.jobs.length === 0 && !this.canStart(rec, def)) return RESULT_SHORT;
-    rec.jobs.push({ recipe, left: count, doneAt: 0 });
+    if (rec.jobs.length === 0 && !this.canStart(rec, craft)) return RESULT_SHORT;
+    rec.jobs.push({ item, left: count, doneAt: 0 });
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
     if (rec.jobs.length === 1) this.start(rec);
@@ -170,23 +170,24 @@ export class Progression {
     const rec = this.records.byPid.get(pid);
     const job = rec?.jobs[0];
     if (!rec || !job || job.doneAt !== stamp) return;
-    const def = this.world.reg.defs[job.recipe] as RecipeDef;
-    const reg = this.world.reg;
-    const product = reg.index.get(def.makes)!;
-    const tool = (reg.defs[product] as ItemDef).tool;
+    const product = job.item;
+    const def = this.world.reg.defs[product] as ItemDef;
+    const craft = def.craft!;
+    const made = craft.count ?? 1;
+    const tool = def.tool;
     // With no room for the whole product, retry in a second.
-    if (this.items.inv(rec).room(product, 0, this.items.table) < def.count) {
+    if (this.items.inv(rec).room(product, 0, this.items.table) < made) {
       job.doneAt = this.world.tick + TICK_RATE;
       this.deadlines.push(job.doneAt, DEADLINE_CRAFT, pid, job.doneAt);
       return;
     }
-    this.items.mint(rec, product, def.count, 0, tool ? tool.uses : 0);
+    this.items.mint(rec, product, made, 0, tool ? tool.uses : 0);
     job.left--;
     job.doneAt = 0;
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
     if (job.left <= 0) rec.jobs.shift();
-    this.addXp(rec, def.xp, XP_CRAFT);
+    this.addXp(rec, craft.xp, XP_CRAFT);
     this.start(rec);
   }
 
@@ -198,19 +199,25 @@ export class Progression {
     else this.deadlines.push(job.doneAt, DEADLINE_CRAFT, rec.pid, job.doneAt);
   }
 
-  private canStart(rec: EntityRecord, def: RecipeDef): boolean {
+  /** How `item` is made, or null if it is not. */
+  private craftOf(item: number): CraftFacet | null {
+    const def = this.world.reg.defs[item];
+    return def?.type === "item" && def.craft ? def.craft : null;
+  }
+
+  private canStart(rec: EntityRecord, craft: CraftFacet): boolean {
     const inv = this.items.inv(rec);
-    return def.needs.every((n) => inv.total(this.world.reg.index.get(n.item)!) >= n.count);
+    return craft.needs.every((n) => inv.total(this.world.reg.index.get(n.item)!) >= n.count);
   }
 
   /** Starts the next unit of the first job. Drops jobs that cannot start. */
   private start(rec: EntityRecord): void {
     while (rec.jobs.length > 0) {
       const job = rec.jobs[0]!;
-      const def = this.world.reg.defs[job.recipe] as RecipeDef;
-      if (this.canStart(rec, def)) {
-        for (const n of def.needs) this.items.burnItem(rec, this.world.reg.index.get(n.item)!, n.count);
-        job.doneAt = this.world.tick + Math.max(1, Math.round(def.seconds * TICK_RATE));
+      const craft = this.craftOf(job.item);
+      if (craft && this.canStart(rec, craft)) {
+        for (const n of craft.needs) this.items.burnItem(rec, this.world.reg.index.get(n.item)!, n.count);
+        job.doneAt = this.world.tick + Math.max(1, Math.round(craft.seconds * TICK_RATE));
         this.deadlines.push(job.doneAt, DEADLINE_CRAFT, rec.pid, job.doneAt);
         rec.progVersion++;
         this.records.dirty.add(rec.pid);

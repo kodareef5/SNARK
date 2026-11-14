@@ -3,7 +3,7 @@
 // nor may declare is refused. The reference page, the shape checks and the asset slots are all derived from these rows.
 
 import { FEATURES, type Feature } from "../features.ts";
-import type { BuffDef, DamageDef, Def, EngramDef, GameDef, ItemDef, LevelsDef, LootDef, MapDef, MaterialDef, NodeDef, PropDef, RecipeDef, RenameDef, ShapeDef, SpawnsDef, SpeciesDef, StructureDef } from "./defs.ts";
+import type { BuffDef, DamageDef, Def, EngramDef, GameDef, ItemDef, LevelsDef, LootDef, MapDef, MaterialDef, NodeDef, PropDef, RenameDef, ShapeDef, SpawnsDef, SpeciesDef, StructureDef } from "./defs.ts";
 
 /** "built": systems read it. "partial": part of it lives in code. "stub": the row exists and nothing reads it yet. */
 export type Status = "built" | "partial" | "stub";
@@ -84,6 +84,7 @@ const ITEM = {
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
+  craft: f("facet", "BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP", { refs: { "needs[].item": "item", at: "structure/station" } }),
   description: stub("polish", "text", "ItemDescription"),
   folder: stub("polish", "text", "DefaultFolderPaths"),
   spoilsInto: stub("polish", "text", "SpoilingItem", { refs: { "": "item" } }),
@@ -173,19 +174,11 @@ const PROP = {
   pitched: f("switch"),
 } satisfies Fields<PropDef>;
 
-const RECIPE = {
-  makes: f("text", "", { refs: { "": "item" } }),
-  count: f("number"),
-  needs: f("list", "BaseCraftingResourceRequirements", { refs: { "[].item": "item" } }),
-  seconds: f("number", "BlueprintTimeToCraft"),
-  xp: f("number", "BaseCraftingXP"),
-} satisfies Fields<RecipeDef>;
-
 const ENGRAM = {
   label: f("text"),
   level: f("number", "RequiredCharacterLevel"),
   cost: f("number", "RequiredEngramPoints"),
-  unlocks: f("list", "BluePrintEntry", { refs: { "[]": "recipe" } }),
+  unlocks: f("list", "BluePrintEntry", { refs: { "[]": "item" } }),
   hidden: f("switch", "EngramHidden"),
   auto: f("number", "EngramEntryAutoUnlocks"),
   requires: stub("polish", "list", "EngramRequirementSets", { refs: { "[]": "engram" } }),
@@ -270,7 +263,6 @@ export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>
   structure: STRUCTURE,
   node: NODE,
   prop: PROP,
-  recipe: RECIPE,
   engram: ENGRAM,
   levels: LEVELS,
   buff: BUFF,
@@ -324,7 +316,7 @@ function row<T extends Record<string, Field>>(id: string, type: ClassRow["type"]
   });
 }
 
-const ANY_ITEM = ["weight", "label", "color", "description", "folder", "blueprint"] as const;
+const ANY_ITEM = ["weight", "label", "color", "craft", "description", "folder", "blueprint"] as const;
 
 row("item", "item", ITEM, { abstract: true, ark: "PrimalItem", shelf: "items", doc: "Anything that is carried." });
 row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours", "spoilsInto"], slots: ITEM_SLOTS, doc: "A material: gathered, stacked, and spent in crafting." });
@@ -343,8 +335,7 @@ row("item/skin", "item", ITEM, { parent: "item", ark: "PrimalItemSkin_", status:
 row("item/dye", "item", ITEM, { parent: "item", ark: "PrimalItemDye_", status: "stub", waits: "cosmetics", shelf: "items/dyes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Colours a region of what it is used on." });
 row("item/artifact", "item", ITEM, { parent: "item", ark: "PrimalItemArtifact_", status: "stub", waits: "bosses", shelf: "items/artifacts", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Found once in its place and spent to call a boss." });
 
-row("recipe", "recipe", RECIPE, { ark: "the crafting cost on the item", shelf: "recipes", must: ["makes", "count", "needs", "seconds", "xp"], doc: "What an item is made of. ARK keeps this on the item, and so will we." });
-row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "unlocks"], may: ["hidden", "auto", "requires", "group", "from"], slots: { icon: { ...icon, fallback: ["#icon"] } }, doc: "Learned with points at a level, for good, to craft what it unlocks." });
+row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "unlocks"], may: ["hidden", "auto", "requires", "group", "from"], slots: { icon: { ...icon, fallback: ["#icon"] } }, doc: "Learned with points at a level, for good. What it unlocks can then be made." });
 row("levels", "levels", LEVELS, { ark: "the level ramp of the game data", shelf: "rules", must: ["xp", "engramPoints"], may: ["most", "tame"], doc: "The experience each level takes and the engram points it gives." });
 
 const BODY = ["mesh", "color", "radius", "height", "eyeHeight", "walkSpeed", "sprintMul", "jumpSpeed"] as const;

@@ -21,7 +21,7 @@ test("the class table is sound: parents exist, stubs name what they wait for, sl
   expect(Object.keys(FIELDS).filter((type) => !CLASSES.some((r) => r.type === type))).toEqual([]);
 });
 
-test("the core pack's 301 definitions fall into the classes, each passing its row", () => {
+test("the core pack's 228 definitions fall into the classes, each passing its row, and 73 recipe ids are renamed to their items", () => {
   const counts: Record<string, number> = {};
   for (const c of classes) counts[c] = (counts[c] ?? 0) + 1;
   expect(counts).toEqual({
@@ -33,7 +33,6 @@ test("the core pack's 301 definitions fall into the classes, each passing its ro
     "item/armor": 20,
     "item/saddle": 2,
     "item/structure": 27,
-    recipe: 73,
     engram: 57,
     levels: 1,
     "species/survivor": 1,
@@ -51,6 +50,7 @@ test("the core pack's 301 definitions fall into the classes, each passing its ro
     "prop/projectile": 2,
     "prop/egg": 2,
     buff: 7,
+    rename: 73,
   });
   expect(CORE_CONTENT.length).toBe(301);
   expect(CORE_CONTENT.flatMap(defFaults)).toEqual([]);

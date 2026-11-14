@@ -69,7 +69,9 @@ export function cataloguePage(): string {
   out.push("list is refused. Names and ids are this engine's own. The ARK column says what");
   out.push("the class corresponds to, so that what is known of ARK carries over.", "");
   out.push(`There are ${leaves.length} classes: ${count("built")} built, ${count("partial")} partly built, and ${count("stub")} stubs that`);
-  out.push(`wait for a feature. The core pack holds ${CORE_CONTENT.length} definitions.`, "");
+  const renames = CORE_CONTENT.filter((d) => d.type === "rename").length;
+  out.push(`wait for a feature. The core pack holds ${CORE_CONTENT.length - renames} definitions, and ${renames} renames of ids`);
+  out.push("that are no longer defined.", "");
   out.push("An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with");
   out.push("several values: `core:raptor#clip/walk`. Levels of detail are inside the asset");
   out.push("and are never named by content.", "");
@@ -119,12 +121,14 @@ export function cataloguePage(): string {
   for (const r of leaves) {
     const ids = core.get(r.id);
     if (!ids) continue;
-    out.push(`**\`${r.id}\`** (${ids.length}): ${ids.map((id) => id.replace(/^core:/, "")).join(", ")}.`, "");
+    // The renames are all of one pattern, so they are counted and not listed.
+    if (r.id === "rename") out.push(`**\`rename\`** (${ids.length}): each \`make-<item>\`, the recipe id an item had before recipes were folded into items.`, "");
+    else out.push(`**\`${r.id}\`** (${ids.length}): ${ids.map((id) => id.replace(/^core:/, "")).join(", ")}.`, "");
   }
   return out.join("\n");
 }
 
 if (import.meta.main) {
   writeFileSync(CATALOGUE_PAGE, cataloguePage());
-  console.log(`${CATALOGUE_PAGE}\n${CLASSES.filter((r) => !r.abstract).length} classes, ${CORE_CONTENT.length} definitions`);
+  console.log(`${CATALOGUE_PAGE}\n${CLASSES.filter((r) => !r.abstract).length} classes, ${CORE_CONTENT.filter((d) => d.type !== "rename").length} definitions`);
 }

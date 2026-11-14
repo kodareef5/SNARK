@@ -303,7 +303,7 @@ export class ClientSession {
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
   /** The world's respawn points, then the tribe's beds. wait is in seconds. */
   readonly respawnPoints: { name: string; x: number; z: number; wait: number }[] = [];
-  readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { recipe: number; left: number; doneAt: number }[], version: 0 };
+  readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { item: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
   private nodeChunk = -1;
@@ -755,8 +755,8 @@ export class ClientSession {
       const engramPoints = r.varint();
       const engrams: number[] = [];
       for (let k = r.varint(); k > 0 && !r.overflow; k--) engrams.push(r.u16());
-      const jobs: { recipe: number; left: number; doneAt: number }[] = [];
-      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ recipe: r.u16(), left: r.u8(), doneAt: r.u32() });
+      const jobs: { item: number; left: number; doneAt: number }[] = [];
+      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32() });
       if (r.overflow) return;
       p.xp = xp;
       p.level = level;

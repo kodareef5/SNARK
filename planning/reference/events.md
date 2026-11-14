@@ -189,7 +189,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 | `item.use` | before | `byPid`, `item` |  | the allow-use question and the use request | `server/own.ts` | stub |
 | `item.drop` | before | `byPid`, `item`, `n` |  | the drop request | `server/own.ts` | stub |
 | `container.open` | before | `byPid`, `pid` |  | inventory access | `server/host.ts` | stub |
-| `craft.start` | before | `pid`, `recipe`, `count` | `count` | the can-craft question and the craft request | `server/progression.ts` | stub |
+| `craft.start` | before | `pid`, `item`, `count` | `count` | the can-craft question and the craft request | `server/progression.ts` | stub |
 | `craft.done` | after | `pid`, `item`, `n` |  | the finish-crafting call | `server/progression.ts` | stub |
 | `harvest` | after | `pid`, `node`, `item`, `n` |  | the harvested call | `server/harvest.ts` | stub |
 

@@ -1,7 +1,7 @@
 // deriveRegistry runs the same on the server and every client. It is total, so any tuning gives content that compiles.
 
 import { expect, test } from "bun:test";
-import type { EngramDef, ItemDef, LevelsDef, NodeDef, RecipeDef, SpeciesDef } from "../../shared/content/defs.ts";
+import type { EngramDef, ItemDef, LevelsDef, NodeDef, SpeciesDef } from "../../shared/content/defs.ts";
 import { STAMINA_DEFAULT, type Registry } from "../../shared/content/registry.ts";
 import { STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { applyTuning, deriveRegistry, parseTuning, tuningText, type Tuning } from "../../shared/content/tuning.ts";
@@ -49,11 +49,11 @@ test("stacks: every stack of more than one by the multiplier, one item by its ow
 
 test("what a thing is made of is what the tuning says, of things there are", () => {
   const reg = deriveRegistry(base, { costs: { "core:hatchet": [{ item: "core:thatch", count: 2.4 }, { item: "core:wood", count: 3 }, { item: "core:unobtainium", count: 1 }, { item: "core:wood", count: 99 }, { item: "core:flint", count: 0 }], "core:pick": [], "core:thatch": [{ item: "core:wood", count: 1 }] } });
-  const needs = (r: Registry, name: string) => def<RecipeDef>(r, `make-${name}`).needs;
+  const needs = (r: Registry, name: string) => def<ItemDef>(r, name).craft!.needs;
   // A count becomes a whole number. An unknown item, a repeated item and a count of zero are skipped.
   expect(needs(reg, "hatchet")).toEqual([{ item: "core:thatch", count: 2 }, { item: "core:wood", count: 3 }]);
   expect([...reg.recipeOf[at(reg, "hatchet")]!]).toEqual([at(reg, "thatch"), 2, at(reg, "wood"), 3]);
-  // A recipe needs at least one ingredient, so an empty list changes nothing. An item no recipe makes is left alone too.
+  // A thing is made of at least one ingredient, so an empty list changes nothing. An item that cannot be made is left alone too.
   expect([needs(reg, "pick"), reg.recipeOf[at(reg, "thatch")]]).toEqual([needs(base, "pick"), null]);
   expect(needs(reg, "spear")).toBe(needs(base, "spear"));
 });

@@ -27,7 +27,7 @@ function setup(host = {}, name = "ada") {
 }
 const SPEED = STAT_NAMES.indexOf("speed");
 const learn = (s: ClientSession, engram: number) => s.command(CMD_LEARN, (w) => w.u16(engram));
-const craft = (s: ClientSession, recipe: number, count = 1) => s.command(CMD_CRAFT, (w) => (w.u16(recipe), w.u8(count)));
+const craft = (s: ClientSession, item: number, count = 1) => s.command(CMD_CRAFT, (w) => (w.u16(item), w.u8(count)));
 
 test("a tree is gathered by hand until it is used up, is gone for everyone, and grows back when nobody is near", () => {
   const { h, s, have, pilot, harvest, rec } = setup();
@@ -125,7 +125,7 @@ test("a pick gets three times the stone and flint besides, wears with each hit, 
   expect(have("core:flint")).toBe(flint);
   expect(items.inv(rec).dur[slot]).toBe(0);
   expect(harvest.hits).toBe(9);
-  // A repair takes half the recipe (one stone, one wood, ten thatch), rounded up, and restores full durability.
+  // A repair takes half of what the pick is made of (one stone, one wood, ten thatch), rounded up, and restores full durability.
   const codes: number[] = [];
   s.onResult = (_seq, code) => codes.push(code);
   const repair = (): number => {
@@ -231,7 +231,7 @@ test("experience earns levels, levels earn points, points buy stats and engrams,
   s.onResult = (_seq, code) => codes.push(code);
   const pick = id("core:engram-pick");
   const hatchet = id("core:engram-hatchet");
-  const makePick = id("core:make-pick");
+  const makePick = id("core:pick");
   const send = (f: () => void): number => {
     codes.length = 0;
     f();
@@ -292,7 +292,7 @@ test("a crafting job goes on across a restart, and waits when there is no room f
   h.say(s, "give stone 2");
   h.say(s, "give wood 2");
   h.say(s, "give thatch 20");
-  craft(s, id("core:make-pick"), 2);
+  craft(s, id("core:pick"), 2);
   h.run(1000);
   expect(have("core:pick")).toBe(0);
   const doneAt = rec.jobs[0]!.doneAt;
@@ -300,7 +300,7 @@ test("a crafting job goes on across a restart, and waits when there is no room f
 
   const h2 = new Harness({}, 1, 30, { dbPath: db, dev: true });
   const rec2 = h2.host.records.byPid.get(rec.pid)!;
-  expect(rec2.jobs).toEqual([{ recipe: id("core:make-pick"), left: 2, doneAt }]);
+  expect(rec2.jobs).toEqual([{ item: id("core:pick"), left: 2, doneAt }]);
   expect(rec2.engrams).toEqual([id("core:engram-pick")]);
   // Fill every free slot, so the pick has nowhere to go.
   const inv = h2.host.items.inv(rec2);

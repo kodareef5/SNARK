@@ -109,7 +109,7 @@ ev("item.move", "before", "byPid from to item n", "the remote-inventory question
 ev("item.use", "before", "byPid item", "the allow-use question and the use request", "server/own.ts", "stub", "An item is about to be eaten, drunk or used.");
 ev("item.drop", "before", "byPid item n", "the drop request", "server/own.ts", "stub", "A stack is about to be dropped.");
 ev("container.open", "before", "byPid pid", "inventory access", "server/host.ts", "stub", "A box, a body or a creature's bag is about to be opened.");
-ev("craft.start", "before", "pid recipe count!", "the can-craft question and the craft request", "server/progression.ts", "stub", "A crafting job is about to be queued.");
+ev("craft.start", "before", "pid item count!", "the can-craft question and the craft request", "server/progression.ts", "stub", "A crafting job is about to be queued.");
 ev("craft.done", "after", "pid item n", "the finish-crafting call", "server/progression.ts", "stub", "Something was made.");
 ev("harvest", "after", "pid node item n", "the harvested call", "server/harvest.ts", "stub", "A node gave something.");
 

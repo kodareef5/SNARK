@@ -359,7 +359,7 @@ export class WorldStore {
       for (const e of rec.engrams) c.varint(this.toSaved[e]!);
       c.varint(rec.jobs.length);
       for (const j of rec.jobs) {
-        c.varint(this.toSaved[j.recipe]!);
+        c.varint(this.toSaved[j.item]!);
         c.varint(j.left);
         c.uint53(j.doneAt);
       }
@@ -570,17 +570,18 @@ export class WorldStore {
           for (let k = c.varint(); k > 0 && !c.overflow; k--) rec.markers.push({ kind: c.u8(), x: c.f32(), y: c.f32(), z: c.f32(), tick: c.uint53() });
         } else if (component === COMP_PROGRESSION) {
           rec.xp = c.f64();
-          // Engrams and recipes whose content is gone are dropped. Nothing of value is lost with them.
+          // Engrams and jobs whose content is gone are dropped. Nothing of value is lost with them.
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
             const saved = c.varint();
             // An engram that became several is known as all of them.
             for (const e of this.split.get(saved) ?? [this.toRuntime[saved] ?? 0]) if (e !== 0 && !rec.engrams.includes(e)) rec.engrams.push(e);
           }
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
-            const recipe = this.toRuntime[c.varint()] ?? 0;
+            // A job saved when recipes were definitions of their own names the recipe. Its rename leads to the item.
+            const item = this.toRuntime[c.varint()] ?? 0;
             const left = c.varint();
             const doneAt = c.uint53();
-            if (recipe !== 0) rec.jobs.push({ recipe, left, doneAt });
+            if (item !== 0) rec.jobs.push({ item, left, doneAt });
           }
         } else if (component === COMP_STATE) {
           rec.dead = c.bool();

@@ -4,7 +4,8 @@ import { BUILD_REASONS, Builder, GHOST_BAD, GHOST_OK } from "../../client/core/b
 import { DRAW_BLEND, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { KEY_AMMO, KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { BUILDING_CONTENT } from "../../content/building.ts";
-import type { EngramDef, ItemDef, RecipeDef } from "../../shared/content/defs.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { buildCorePack } from "../../tools/pack/build.ts";
 import type { ClientSession } from "../../client/core/session.ts";
@@ -414,15 +415,16 @@ test("what is shown is what is built: over two thousand looks with every piece, 
   expect(DOOR_WIDTH).toBe(1.4);
 });
 
-test("pieces are made as anything is: an engram at the reference's level, a recipe at its cost, and the thing in hand to set down", () => {
-  const items = BUILDING_CONTENT.filter((d): d is ItemDef => d.type === "item" && d.places !== undefined);
+test("pieces are made as anything is: an engram at the reference's level, at its cost, and the thing in hand to set down", () => {
+  // The pack as assembled, where each piece carries how it is made.
+  const items = CORE_CONTENT.filter((d): d is ItemDef => d.type === "item" && d.places !== undefined);
   // Four thatch pieces, six each of wood, stone and metal, and five things: three containers, a campfire and a bed.
   expect(items.length).toBe(4 + 6 + 6 + 6 + 5);
   const levels: Record<string, number[]> = {};
   const stores: [string, number][] = [];
   for (const item of items) {
-    const recipe = BUILDING_CONTENT.find((d): d is RecipeDef => d.type === "recipe" && d.makes === item.id)!;
-    const engram = BUILDING_CONTENT.find((d): d is EngramDef => d.type === "engram" && d.unlocks.includes(recipe.id))!;
+    expect(item.craft !== undefined).toBe(true);
+    const engram = BUILDING_CONTENT.find((d): d is EngramDef => d.type === "engram" && d.unlocks.includes(item.id))!;
     expect(engram.label.toLowerCase()).toBe(item.label!);
     if (/_(thatch|wood|stone|metal)$/.test(item.id)) (levels[item.id.split("_").at(-1)!] ??= []).push(engram.level);
     else stores.push([item.id.slice(11), engram.level]);
@@ -430,7 +432,7 @@ test("pieces are made as anything is: an engram at the reference's level, a reci
   }
   expect(stores).toEqual([["storage_box", 4], ["storage_large", 16], ["vault", 52], ["campfire", 2], ["bed", 7]]);
   expect(Object.fromEntries(Object.entries(levels).map(([tier, l]) => [tier, [Math.min(...l), Math.max(...l)]]))).toEqual({ thatch: [4, 4], wood: [11, 14], stone: [24, 27], metal: [45, 47] });
-  const needs = (name: string): [string, number][] => (BUILDING_CONTENT.find((d) => d.id === `core:make-piece_${name}`) as RecipeDef).needs.map((n) => [n.item.slice(5), n.count]);
+  const needs = (name: string): [string, number][] => items.find((d) => d.id === `core:piece_${name}`)!.craft!.needs.map((n) => [n.item.slice(5), n.count]);
   expect(needs("wall_wood")).toEqual([["wood", 40], ["thatch", 10], ["fiber", 7]]);
   expect(needs("foundation_thatch")).toEqual([["thatch", 20], ["wood", 6], ["fiber", 15]]);
   expect(needs("ceiling_stone")).toEqual([["stone", 60], ["wood", 30], ["thatch", 20]]);
@@ -452,7 +454,7 @@ test("pieces are made as anything is: an engram at the reference's level, a reci
     h.run(ms);
   };
   say(() => s.command(CMD_LEARN, (w: BitWriter) => w.u16(id("engram-piece_foundation_thatch"))));
-  say(() => s.command(CMD_CRAFT, (w: BitWriter) => (w.u16(id("make-piece_foundation_thatch")), w.u8(2))), 11000);
+  say(() => s.command(CMD_CRAFT, (w: BitWriter) => (w.u16(id("piece_foundation_thatch")), w.u8(2))), 11000);
   const inv = s.inventory!;
   expect(inv.total(id("piece_foundation_thatch"))).toBe(2);
   expect([inv.total(id("thatch")), inv.total(id("wood")), inv.total(id("fiber"))]).toEqual([0, 0, 0]);

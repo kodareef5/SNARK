@@ -1,6 +1,7 @@
 // Sizes and health are the reference game's. Every piece height is a whole number of 1/256 m, so a piece set
 // on another stands exactly on the structure lattice.
 
+import { crafting } from "./craft.ts";
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 
 const box = (x: number, y: number, z: number, hx: number, hy: number, hz: number): ShapeBox => ({ at: [x, y, z], half: [hx, hy, hz] });
@@ -97,8 +98,8 @@ function store(s: (typeof STORES)[number]): Def[] {
     { type: "structure", class: s.bed ? "bed" : s.fire ? "station" : "container", id: `core:${s.name}`, mesh: "shape", shape: shapeId, half: s.half, color: s.color, hp: s.hp, material: `core:mat_${s.material}`, decayDays: 16, ...(s.slots ? { slots: s.slots } : {}), ...(s.falls ? { falls: true } : {}), ...(s.bed ? { bed: true } : {}), ...(s.fire ? { lights: `core:${s.name}_lit` } : {}) },
     ...(s.fire ? [{ type: "structure", class: "station", id: `core:${s.name}_lit`, mesh: "shape", shape: shapeId, half: s.half, color: 8, hp: s.hp, material: `core:mat_${s.material}`, decayDays: 16, slots: s.slots!, lights: `core:${s.name}`, lit: true } as StructureDef] : []),
     { type: "item", class: "structure", id: item, stack: s.stack, weight: s.weight, label: s.label.toLowerCase(), color: s.color, places: [`core:${s.name}`] },
-    { type: "recipe", id: `core:make-piece_${s.name}`, makes: item, count: 1, needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(s.level / 3)) },
-    { type: "engram", id: `core:engram-piece_${s.name}`, label: s.label, level: s.level, cost: s.cost, unlocks: [`core:make-piece_${s.name}`] },
+    crafting(item, { needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(s.level / 3)) }),
+    { type: "engram", id: `core:engram-piece_${s.name}`, label: s.label, level: s.level, cost: s.cost, unlocks: [`core:piece_${s.name}`] },
   ];
 }
 
@@ -174,8 +175,8 @@ function kit(tier: Tier, name: string): Def[] {
   const { level, needs } = m.pieces[name]!;
   return [
     { type: "item", class: "structure", id: item, stack: 100, weight: m.weight, label: label.toLowerCase(), color: tier.color, places: forms.map((f) => `core:${f}_${tier.name}`) },
-    { type: "recipe", id: `core:make-piece_${name}_${tier.name}`, makes: item, count: 1, needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(level / 3)) },
-    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: m.cost, unlocks: [`core:make-piece_${name}_${tier.name}`] },
+    crafting(item, { needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(level / 3)) }),
+    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: m.cost, unlocks: [`core:piece_${name}_${tier.name}`] },
   ];
 }
 
@@ -189,6 +190,6 @@ export const BUILDING_CONTENT: readonly Def[] = [
   ]),
   ...STORES.flatMap(store),
   { type: "item", class: "resource", id: "core:paste", stack: 100, weight: 0.01, label: "cementing paste", color: 15 },
-  { type: "recipe", id: "core:make-paste", makes: "core:paste", count: 1, needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 },
-  { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 15, cost: 3, unlocks: ["core:make-paste"] },
+  crafting("core:paste", { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 }),
+  { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 15, cost: 3, unlocks: ["core:paste"] },
 ];

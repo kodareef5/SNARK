@@ -135,7 +135,7 @@ export interface Registry {
   readonly fuelTicks: Uint32Array;
   readonly cooksInto: Uint16Array;
   readonly cookTicks: Uint32Array;
-  /** Per item a recipe makes: the ingredients as pairs of item and count, and how many one crafting makes. Null for everything else. */
+  /** Per item that can be made: the ingredients as pairs of item and count, and how many one crafting makes. Null for everything else. */
   readonly recipeOf: readonly (Uint16Array | null)[];
   readonly recipeMakes: Uint16Array;
   /** A thrown weapon: metres per second off the hand, ticks until it goes off, and how far its blast reaches. */
@@ -228,10 +228,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
       positive(d, "hits", d.hits, MAX_NODE_HITS);
       positive(d, "respawnHours", d.respawnHours, 1e6);
       for (const y of d.yields) if (!(y.min >= 0 && y.max >= y.min)) errors.push(`${d.id}: a yield's range must be 0 <= min <= max`);
-    } else if (d.type === "recipe") {
-      positive(d, "count", d.count, 1000);
-      positive(d, "seconds", d.seconds, 86400);
-      if (d.needs.length === 0) errors.push(`${d.id}: a recipe needs at least one ingredient`);
     } else if (d.type === "engram") {
       positive(d, "level", d.level, 1000);
       if (!(d.cost >= 0)) errors.push(`${d.id}: cost must not be negative`);
@@ -269,6 +265,11 @@ export function compileContent(all: readonly Def[]): CompileResult {
       }
     } else if (d.type === "item") {
       if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
+      if (d.craft) {
+        if (d.craft.count !== undefined) positive(d, "craft.count", d.craft.count, 1000);
+        positive(d, "craft.seconds", d.craft.seconds, 86400);
+        if (!Array.isArray(d.craft.needs) || d.craft.needs.length === 0) errors.push(`${d.id}: craft needs at least one ingredient`);
+      }
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
       if (d.cooks !== undefined) positive(d, "cooks.seconds", d.cooks.seconds, MAX_BURN_SECONDS);
@@ -513,10 +514,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
         cookTicks[i] = Math.max(1, Math.round(d.cooks.seconds * TICK_RATE));
       }
     }
-    // The first recipe that makes an item gives its ingredients.
-    if (d.type === "recipe" && recipeOf[index.get(d.makes)!] === null) {
-      recipeOf[index.get(d.makes)!] = Uint16Array.from(d.needs.flatMap((need) => [index.get(need.item)!, need.count]));
-      recipeMakes[index.get(d.makes)!] = d.count;
+    if (d.type === "item" && d.craft) {
+      recipeOf[index.get(d.id)!] = Uint16Array.from(d.craft.needs.flatMap((need) => [index.get(need.item)!, need.count]));
+      recipeMakes[index.get(d.id)!] = d.craft.count ?? 1;
     }
   }
   // An open door maps back to the closed door's item.

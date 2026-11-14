@@ -88,9 +88,9 @@ test("a save that uses removed content refuses to load unless told to drop it", 
 test("an item whose content is gone stops the load, and a ledger that does not balance stops it too", () => {
   const db = join(dir, "items.db");
   const full = coreRegistry();
-  // With its recipe and engram gone too, nothing else refers to the waterskin.
+  // With its engram gone too, nothing else refers to the waterskin.
   const meat = full.index.get("core:waterskin")!;
-  const gone = new Set(["core:waterskin", "core:make-waterskin", "core:engram-waterskin"]);
+  const gone = new Set(["core:waterskin", "core:make-waterskin", "core:engram-waterskin"]); // The middle one is the rename of its old recipe.
   const stone = full.index.get("core:stone")!;
   const host = createHost(full, { dbPath: db });
   const rec = host.records.create(full.index.get("core:grazer")!, "mule");

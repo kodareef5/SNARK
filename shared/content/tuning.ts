@@ -1,7 +1,7 @@
 // Server settings that change content become one piece of data, the tuning. applyTuning applies it to the definitions,
 // which then compile as usual (D90). The server sends its tuning in the welcome and the client derives the same registry.
 
-import type { Def, EngramDef, ItemDef, LevelsDef, NodeDef, RecipeDef, SpeciesDef } from "./defs.ts";
+import type { CraftFacet, Def, EngramDef, ItemDef, LevelsDef, NodeDef, SpeciesDef } from "./defs.ts";
 import { MAX_BURN_SECONDS, MAX_LEVELS, MAX_NODE_HITS, MAX_SPOIL_HOURS, STAMINA_DEFAULT, compileContent, type Registry } from "./registry.ts";
 
 export interface Tuning {
@@ -9,7 +9,7 @@ export interface Tuning {
   readonly stack?: number;
   /** One item's stack. `plain` leaves the multiplier out. */
   readonly stacks?: Readonly<Record<string, { readonly n: number; readonly plain?: boolean }>>;
-  /** Ingredients by the item made, in place of its recipe's. */
+  /** Ingredients by the item made, in place of its own. */
   readonly costs?: Readonly<Record<string, readonly { readonly item: string; readonly count: number }[]>>;
   /** Per engram: its level and cost, whether it is hidden, and the level at which it is learned automatically. */
   readonly engrams?: Readonly<Record<string, { readonly level?: number; readonly cost?: number; readonly hidden?: boolean; readonly auto?: number }>>;
@@ -145,17 +145,17 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
       // The floors keep the tuned values above 0, which compileContent requires.
       if (d.spoilHours !== undefined) out.spoilHours = within(d.spoilHours * spoil, 1e-4, MAX_SPOIL_HOURS);
       if (d.fuel !== undefined) out.fuel = within(d.fuel * fuel, 0.05, MAX_BURN_SECONDS);
-      return out.stack === d.stack && out.spoilHours === d.spoilHours && out.fuel === d.fuel ? d : out;
-    }
-    if (d.type === "recipe") {
-      const list = Object.hasOwn(costs, d.makes) ? costs[d.makes] : undefined;
-      if (!Array.isArray(list)) return d;
-      const needs: RecipeDef["needs"][number][] = [];
-      for (const need of list as { item?: unknown; count?: unknown }[]) {
-        if (need === null || typeof need !== "object" || typeof need.item !== "string" || !items.has(need.item) || !isNumber(need.count) || !(need.count > 0)) continue;
-        if (!needs.some((have) => have.item === need.item)) needs.push({ item: need.item, count: whole(need.count, 1, 65535) });
+      // What it is made of, where the server says otherwise.
+      const list = d.craft && Object.hasOwn(costs, d.id) ? costs[d.id] : undefined;
+      if (Array.isArray(list)) {
+        const needs: CraftFacet["needs"][number][] = [];
+        for (const need of list as { item?: unknown; count?: unknown }[]) {
+          if (need === null || typeof need !== "object" || typeof need.item !== "string" || !items.has(need.item) || !isNumber(need.count) || !(need.count > 0)) continue;
+          if (!needs.some((have) => have.item === need.item)) needs.push({ item: need.item, count: whole(need.count, 1, 65535) });
+        }
+        if (needs.length > 0) out.craft = { ...d.craft!, needs };
       }
-      return needs.length === 0 ? d : { ...d, needs };
+      return out.stack === d.stack && out.spoilHours === d.spoilHours && out.fuel === d.fuel && out.craft === d.craft ? d : out;
     }
     if (d.type === "engram") {
       const out: { -readonly [K in keyof EngramDef]: EngramDef[K] } = { ...d };

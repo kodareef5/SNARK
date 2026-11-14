@@ -52,7 +52,7 @@ function served(server: string[] = [], mode: string[] = []) {
     return code;
   };
   const has = (name: string): number => h.host.items.inv(me).total(id(name));
-  return { h, ada, at, me, ask, has, learn: (name: string): number => ask(CMD_LEARN, (w) => w.u16(id(`engram-${name}`))), craft: (name: string, n = 1): number => ask(CMD_CRAFT, (w) => (w.u16(id(`make-${name}`)), w.u8(n))) };
+  return { h, ada, at, me, ask, has, learn: (name: string): number => ask(CMD_LEARN, (w) => w.u16(id(`engram-${name}`))), craft: (name: string, n = 1): number => ask(CMD_CRAFT, (w) => (w.u16(id(name)), w.u8(n))) };
 }
 
 const HATCHET_OF_THATCH = 'ConfigOverrideItemCraftingCosts=(ItemClassString="core:hatchet",BaseCraftingResourceRequirements=((ResourceItemTypeString="core:thatch",BaseResourceRequirement=2.0,bCraftingRequireExactResourceType=false),(ResourceItemTypeString="core:wood",BaseResourceRequirement=3.0,bCraftingRequireExactResourceType=false)))';

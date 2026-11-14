@@ -1,6 +1,6 @@
 // Every button sends a command, and every number shown is the server's. A list longer than the panel is paged.
 
-import type { EngramDef, ItemDef, RecipeDef, SpeciesDef } from "../../../shared/content/defs.ts";
+import type { EngramDef, ItemDef, SpeciesDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CMD_CRAFT, CMD_LEARN, CMD_SPEND } from "../../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../../shared/sim/genome.ts";
@@ -21,7 +21,7 @@ export const KEY_CHAR_PAGE = 1107;
 export const KEY_CHAR_STAT = 1110;
 /** Per engram, in engramOrder: its line, then its button. */
 export const KEY_CHAR_ENGRAM = 1200;
-/** Per recipe, in content order: its line, then its button. */
+/** Per item that can be made, in content order: its line, then its button. */
 export const KEY_CHAR_RECIPE = 1400;
 export const TAB_STATS = 0;
 export const TAB_ENGRAMS = 1;
@@ -36,6 +36,13 @@ const CHOSEN = 0x3f6ea8;
 function ofType(reg: Registry, type: string): number[] {
   const out: number[] = [];
   reg.defs.forEach((d, k) => d?.type === type && out.push(k));
+  return out;
+}
+
+/** The items that can be made, in content order. */
+function craftable(reg: Registry): number[] {
+  const out: number[] = [];
+  reg.defs.forEach((d, k) => d?.type === "item" && d.craft && out.push(k));
   return out;
 }
 
@@ -69,7 +76,7 @@ export class CharacterScreen {
     f.text(KEY_CHAR_POINTS, x + PAD, y, inner, S_LABEL, `${p.statPoints} stat points  ${p.engramPoints} engram points`);
     y += lh;
     const job = p.jobs[0];
-    const making = job ? `making ${itemLabel(reg, reg.index.get((reg.defs[job.recipe] as RecipeDef).makes)!)} (${p.jobs.reduce((n, j) => n + j.left, 0)} to go)` : "nothing being made";
+    const making = job ? `making ${itemLabel(reg, job.item)} (${p.jobs.reduce((n, j) => n + j.left, 0)} to go)` : "nothing being made";
     f.text(KEY_CHAR_JOBS, x + PAD, y, inner, S_LABEL, making.slice(0, columns(inner, S_LABEL)));
     y += lh + 6;
     const tabW = (inner - 8) / TABS.length;
@@ -98,12 +105,11 @@ export class CharacterScreen {
       });
     } else {
       const known = new Set(p.engrams.flatMap((e) => (reg.defs[e] as EngramDef).unlocks));
-      ofType(reg, "recipe").forEach((r, n) => {
-        const def = reg.defs[r] as RecipeDef;
+      craftable(reg).forEach((k, n) => {
+        const def = reg.defs[k] as ItemDef;
         if (!known.has(def.id)) return;
-        const needs = def.needs.map((need) => `${need.count} ${itemLabel(reg, reg.index.get(need.item)!)}`).join(", ");
-        const label = (reg.defs[reg.index.get(def.makes)!] as ItemDef).label ?? itemLabel(reg, reg.index.get(def.makes)!);
-        rows.push({ key: KEY_CHAR_RECIPE + n * 2, text: `${label}: ${needs}`, button: "make" });
+        const needs = def.craft!.needs.map((need) => `${need.count} ${itemLabel(reg, reg.index.get(need.item)!)}`).join(", ");
+        rows.push({ key: KEY_CHAR_RECIPE + n * 2, text: `${def.label ?? itemLabel(reg, k)}: ${needs}`, button: "make" });
       });
     }
     const perPage = Math.max(1, Math.floor((y0 + h - PAD - ROW - 6 - y) / ROW));
@@ -153,7 +159,7 @@ export class CharacterScreen {
       return true;
     }
     if (key >= KEY_CHAR_RECIPE && key < KEY_CHAR_RECIPE + 400 && (key - KEY_CHAR_RECIPE) % 2 === 1) {
-      const r = ofType(reg, "recipe")[(key - KEY_CHAR_RECIPE - 1) / 2];
+      const r = craftable(reg)[(key - KEY_CHAR_RECIPE - 1) / 2];
       if (r === undefined) return false;
       session.command(CMD_CRAFT, (w) => (w.u16(r), w.u8(1)));
       return true;

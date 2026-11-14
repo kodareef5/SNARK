@@ -10,8 +10,9 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 40 classes: 25 built, 3 partly built, and 12 stubs that
-wait for a feature. The core pack holds 301 definitions.
+There are 39 classes: 24 built, 3 partly built, and 12 stubs that
+wait for a feature. The core pack holds 228 definitions, and 73 renames of ids
+that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -22,21 +23,21 @@ and are never named by content.
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
 | `item` | PrimalItem | a group |  |  |  |
-| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint`, `fuel`, `spoilHours`, `spoilsInto` | 11 |
-| `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose` | `weight`, `label`, `color`, `description`, `folder`, `blueprint`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel` | 5 |
-| `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `description`, `folder`, `blueprint`, `tool` | 8 |
-| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 7 |
-| `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 4 |
+| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `fuel`, `spoilHours`, `spoilsInto` | 11 |
+| `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel` | 5 |
+| `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `tool` | 8 |
+| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint` | 7 |
+| `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint` | 4 |
 | `item/equipment` | item type Equipment | a group |  |  |  |
-| `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 20 |
-| `item/saddle` | PrimalItemArmor_, DinoSaddle | built | `stack`, `saddle` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 2 |
-| `item/structure` | PrimalItemStructure_ | built | `stack`, `places` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 27 |
-| `item/egg` | PrimalItemConsumable_Egg_ | stub: eggs | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint`, `eat`, `spoilHours`, `spoilsInto` | 0 |
-| `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 0 |
-| `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 0 |
-| `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 0 |
-| `item/dye` | PrimalItemDye_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 0 |
-| `item/artifact` | PrimalItemArtifact_ | stub: bosses | `stack` | `weight`, `label`, `color`, `description`, `folder`, `blueprint` | 0 |
+| `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint` | 20 |
+| `item/saddle` | PrimalItemArmor_, DinoSaddle | built | `stack`, `saddle` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint` | 2 |
+| `item/structure` | PrimalItemStructure_ | built | `stack`, `places` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint` | 27 |
+| `item/egg` | PrimalItemConsumable_Egg_ | stub: eggs | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `eat`, `spoilHours`, `spoilsInto` | 0 |
+| `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint` | 0 |
+| `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint` | 0 |
+| `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint` | 0 |
+| `item/dye` | PrimalItemDye_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint` | 0 |
+| `item/artifact` | PrimalItemArtifact_ | stub: bosses | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint` | 0 |
 
 - **`item`** on shelf `items`. Anything that is carried.
 - **`item/resource`** on shelf `items/resources`. A material: gathered, stacked, and spent in crafting.
@@ -72,23 +73,11 @@ Asset slots:
 - `item/dye`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/artifact`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 
-ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `eat` is UseItemAddCharacterStatusValues; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is it may drop as a blueprint.
+ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `eat` is UseItemAddCharacterStatusValues; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `craft` is BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is it may drop as a blueprint.
 
-What names what: `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item/ammo`; `weapon.fits[]` names a `item/attachment`; `ammo.buff` names a `buff`; `places[]` names a `structure`; `spoilsInto` names a `item`.
+What names what: `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item/ammo`; `weapon.fits[]` names a `item/attachment`; `ammo.buff` names a `buff`; `places[]` names a `structure`; `craft.needs[].item` names a `item`; `craft.at` names a `structure/station`; `spoilsInto` names a `item`.
 
 Packs may add to: `weapon`, `places`.
-
-## Recipes
-
-| Class | ARK | Standing | Must | May | In core |
-| --- | --- | --- | --- | --- | --- |
-| `recipe` | the crafting cost on the item | built | `makes`, `count`, `needs`, `seconds`, `xp` |  | 73 |
-
-- **`recipe`** on shelf `recipes`. What an item is made of. ARK keeps this on the item, and so will we.
-
-ARK's names: `needs` is BaseCraftingResourceRequirements; `seconds` is BlueprintTimeToCraft; `xp` is BaseCraftingXP.
-
-What names what: `makes` names a `item`; `needs[].item` names a `item`.
 
 ## Engrams
 
@@ -96,7 +85,7 @@ What names what: `makes` names a `item`; `needs[].item` names a `item`.
 | --- | --- | --- | --- | --- | --- |
 | `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `unlocks` | `hidden`, `auto`, `requires`, `group`, `from` | 57 |
 
-- **`engram`** on shelf `engrams`. Learned with points at a level, for good, to craft what it unlocks.
+- **`engram`** on shelf `engrams`. Learned with points at a level, for good. What it unlocks can then be made.
 
 Asset slots:
 
@@ -104,7 +93,7 @@ Asset slots:
 
 ARK's names: `level` is RequiredCharacterLevel; `cost` is RequiredEngramPoints; `unlocks` is BluePrintEntry; `hidden` is EngramHidden; `auto` is EngramEntryAutoUnlocks; `requires` is EngramRequirementSets; `group` is EngramGroup; `from` is a boss's unlock.
 
-What names what: `unlocks[]` names a `recipe`; `requires[]` names a `engram`; `from` names a `species/creature`.
+What names what: `unlocks[]` names a `item`; `requires[]` names a `engram`; `from` names a `species/creature`.
 
 ## Levels
 
@@ -318,7 +307,7 @@ Packs may add to: `buffs`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `rename` | a redirect for a class that was renamed | built | `to` |  | 0 |
+| `rename` | a redirect for a class that was renamed | built | `to` |  | 73 |
 
 - **`rename`** on shelf `renames`. An id that is no longer defined, and what it is called now. Saves and settings that use it still read.
 
@@ -358,8 +347,6 @@ built.
 
 **`item/structure`** (27): piece_foundation_thatch, piece_wall_thatch, piece_ceiling_thatch, piece_door_thatch, piece_foundation_wood, piece_wall_wood, piece_ceiling_wood, piece_door_wood, piece_pillar_wood, piece_stairs_wood, piece_foundation_stone, piece_wall_stone, piece_ceiling_stone, piece_door_stone, piece_pillar_stone, piece_stairs_stone, piece_foundation_metal, piece_wall_metal, piece_ceiling_metal, piece_door_metal, piece_pillar_metal, piece_stairs_metal, piece_storage_box, piece_storage_large, piece_vault, piece_campfire, piece_bed.
 
-**`recipe`** (73): make-piece_foundation_thatch, make-piece_wall_thatch, make-piece_ceiling_thatch, make-piece_door_thatch, make-piece_foundation_wood, make-piece_wall_wood, make-piece_ceiling_wood, make-piece_door_wood, make-piece_pillar_wood, make-piece_stairs_wood, make-piece_foundation_stone, make-piece_wall_stone, make-piece_ceiling_stone, make-piece_door_stone, make-piece_pillar_stone, make-piece_stairs_stone, make-piece_foundation_metal, make-piece_wall_metal, make-piece_ceiling_metal, make-piece_door_metal, make-piece_pillar_metal, make-piece_stairs_metal, make-piece_storage_box, make-piece_storage_large, make-piece_vault, make-piece_campfire, make-piece_bed, make-paste, make-saddle_parasaur, make-saddle_raptor, make-pick, make-hatchet, make-waterskin, make-spear, make-narcotic, make-bow, make-arrow_stone, make-ingot, make-arrow_tranq, make-gunpowder, make-crossbow, make-flashlight, make-scope, make-arrow_flame, make-pistol, make-round_pistol, make-rifle, make-round_rifle, make-silencer, make-grenade, make-laser, make-dart_tranq, make-dart_shock, make-cloth_hat, make-cloth_shirt, make-cloth_gloves, make-cloth_pants, make-cloth_boots, make-hide_hat, make-hide_shirt, make-hide_gloves, make-hide_pants, make-hide_boots, make-chitin_hat, make-chitin_shirt, make-chitin_gloves, make-chitin_pants, make-chitin_boots, make-flak_hat, make-flak_shirt, make-flak_gloves, make-flak_pants, make-flak_boots.
-
 **`engram`** (57): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_raptor, engram-pick, engram-hatchet, engram-waterskin, engram-spear, engram-narcotic, engram-bow, engram-arrow_stone, engram-ingot, engram-arrow_tranq, engram-gunpowder, engram-crossbow, engram-flashlight, engram-scope, engram-arrow_flame, engram-pistol, engram-round_pistol, engram-rifle, engram-round_rifle, engram-silencer, engram-grenade, engram-laser, engram-dart_tranq, engram-dart_shock, engram-cloth, engram-hide, engram-chitin, engram-flak.
 
 **`levels`** (1): levels.
@@ -393,3 +380,5 @@ built.
 **`prop/egg`** (2): egg_parasaur, egg_raptor.
 
 **`buff`** (7): burning, tranquilized, drugged, stunned, injured, fed, god.
+
+**`rename`** (73): each `make-<item>`, the recipe id an item had before recipes were folded into items.

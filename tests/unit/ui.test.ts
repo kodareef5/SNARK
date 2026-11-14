@@ -476,14 +476,14 @@ test("the respawn and map screens fit every window shape, and a click on a place
 test("the character screen fits every window shape on every tab and page, and its buttons send what they say", () => {
   const engram = (name: string) => reg.index.get(name)!;
   const engrams = engramOrder(reg);
-  const recipes = reg.defs.flatMap((d, k) => (d?.type === "recipe" ? [k] : []));
+  const recipes = reg.defs.flatMap((d, k) => (d?.type === "item" && d.craft ? [k] : []));
   for (const [name, aspect] of ASPECTS) {
     const { session, sent } = fakeSession(new Inventory(40));
     Object.assign(session, {
       sessionState: SESSION_ALIVE,
       ownKind: reg.index.get("core:survivor")!,
       // Level 20 with every engram learned but two, so the lists are as long as they get.
-      progress: { xp: 99999, level: 20, statPoints: 19, engramPoints: 250, engrams: engrams.filter((e) => e !== engram("core:engram-waterskin") && e !== engram("core:engram-rifle")), jobs: [{ recipe: reg.index.get("core:make-hatchet")!, left: 3, doneAt: 5 }], version: 1 },
+      progress: { xp: 99999, level: 20, statPoints: 19, engramPoints: 250, engrams: engrams.filter((e) => e !== engram("core:engram-waterskin") && e !== engram("core:engram-rifle")), jobs: [{ item: reg.index.get("core:hatchet")!, left: 3, doneAt: 5 }], version: 1 },
     });
     const ui = new Ui();
     ui.registry = reg;
@@ -567,18 +567,18 @@ test("the character screen fits every window shape on every tab and page, and it
 
     // The making tab lists only what a known engram unlocks.
     ui.pointer(0, KEY_CHAR_TAB + 2, 0, 0, 0, session);
-    const pickRow = recipes.indexOf(reg.index.get("core:make-pick")!);
+    const pickRow = recipes.indexOf(reg.index.get("core:pick")!);
     expect(seek(KEY_CHAR_RECIPE + pickRow * 2)).toBe(true);
     expect(f.find(KEY_CHAR_RECIPE + pickRow * 2)!.text.startsWith("pick: 1 stone, 1 wood")).toBe(true);
     ui.pointer(0, KEY_CHAR_RECIPE + pickRow * 2 + 1, 0, 0, 0, session);
-    expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:make-waterskin")!) * 2)).toBe(false);
-    expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:make-flak_shirt")!) * 2)).toBe(true);
+    expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:waterskin")!) * 2)).toBe(false);
+    expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:flak_shirt")!) * 2)).toBe(true);
 
     expect(sent.map((c) => c.op)).toEqual([CMD_SPEND, CMD_LEARN, CMD_CRAFT]);
     expect(sent[0]!.bytes[0]).toBe(speed);
     expect(new BitReader(sent[1]!.bytes).u16()).toBe(engram("core:engram-waterskin"));
     const r = new BitReader(sent[2]!.bytes);
-    expect([r.u16(), r.u8()]).toEqual([reg.index.get("core:make-pick")!, 1]);
+    expect([r.u16(), r.u8()]).toEqual([reg.index.get("core:pick")!, 1]);
     // Only one screen shows at a time, so the map key puts this one away.
     ui.key("KeyM", true, false, session);
     expect([ui.character, ui.map]).toEqual([false, true]);

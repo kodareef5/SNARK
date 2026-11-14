@@ -1,7 +1,7 @@
 // Owner-private state, sent only to the survivor's own client on the reliable channel when it changes, at most once per tick
 // per component. Also the slot command handlers, the only way a client can ask for its inventory to change.
 
-import type { ItemDef, RecipeDef } from "../shared/content/defs.ts";
+import type { ItemDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
@@ -282,7 +282,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     for (const e of known) w.u16(e);
     w.u8(rec.jobs.length);
     for (const j of rec.jobs) {
-      w.u16(j.recipe);
+      w.u16(j.item);
       w.u8(j.left > 255 ? 255 : j.left);
       w.u32(j.doneAt);
     }
@@ -376,10 +376,10 @@ export function addOwnCommands(ctx: OwnContext): void {
     return r.overflow ? RESULT_INVALID : rec ? ctx.progression.learn(rec, engram) : RESULT_DENIED;
   });
   ctx.game.handle(CMD_CRAFT, (c: Client, r: BitReader) => {
-    const recipe = r.u16();
+    const item = r.u16();
     const count = r.u8();
     const rec = mine(c);
-    return r.overflow ? RESULT_INVALID : rec ? ctx.progression.craft(rec, recipe, count) : RESULT_DENIED;
+    return r.overflow ? RESULT_INVALID : rec ? ctx.progression.craft(rec, item, count) : RESULT_DENIED;
   });
 
   const reg = ctx.world.reg;
@@ -462,11 +462,11 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (slot >= inv.cap || inv.item[slot] === 0) return RESULT_INVALID;
     const item = inv.item[slot]!;
     const max = ctx.items.maxDur(item, inv.quality[slot]!);
-    const recipe = reg.defs.find((d): d is RecipeDef => d?.type === "recipe" && d.makes === reg.ids[item]);
-    if (max === 0 || !recipe || inv.dur[slot]! >= max) return RESULT_INVALID;
-    // Half the recipe's ingredients, scaled by wear, and at least one of each.
+    const craft = (reg.defs[item] as ItemDef).craft;
+    if (max === 0 || !craft || inv.dur[slot]! >= max) return RESULT_INVALID;
+    // Half of what it is made of, scaled by wear, and at least one of each.
     const worn = 1 - inv.dur[slot]! / max;
-    const cost = recipe.needs.map((n) => ({ item: reg.index.get(n.item)!, count: Math.max(1, Math.ceil(n.count * 0.5 * worn)) }));
+    const cost = craft.needs.map((n) => ({ item: reg.index.get(n.item)!, count: Math.max(1, Math.ceil(n.count * 0.5 * worn)) }));
     for (const n of cost) if (inv.total(n.item) < n.count) return RESULT_SHORT;
     for (const n of cost) if (!ctx.items.burnItem(rec, n.item, n.count)) throw new Error("the ingredients were counted");
     ctx.items.mend(rec, slot);

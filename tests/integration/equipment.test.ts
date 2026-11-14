@@ -9,7 +9,7 @@ import { KEY_HOTBAR } from "../../client/core/ui/hud.ts";
 import { KEY_INV_ACTION, KEY_INV_PANEL, KEY_INV_ROW_LABEL, KEY_INV_SLOT, KEY_INV_INFO } from "../../client/core/ui/inventory.ts";
 import { K_TEXT, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
 import { BAG_TICKS } from "../../server/death.ts";
-import type { EngramDef, ItemDef, RecipeDef } from "../../shared/content/defs.ts";
+import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
 import { BitReader, type BitWriter } from "../../shared/net/codec.ts";
 import {
   BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_SELECT, CMD_UNLOAD, CMD_USE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID,
@@ -89,14 +89,14 @@ test("an inventory with an equipment tail: things land in the bag, an armor slot
   expect([HOTBAR_SLOTS, ARMOR_SLOTS]).toEqual([10, 5]);
 });
 
-test("the content hangs together: every engram can be reached, every recipe made, every weapon fed, every piece drawn", () => {
+test("the content hangs together: every engram can be reached, every thing that is made unlocked, every weapon fed, every piece drawn", () => {
   const levels = reg.defs.find((d) => d?.type === "levels")!;
   expect(levels.type === "levels" && levels.xp.length).toBe(100);
   const pack = corePack();
   const items = reg.defs.filter((d): d is ItemDef => d?.type === "item");
-  const recipes = reg.defs.filter((d): d is RecipeDef => d?.type === "recipe");
+  const made = items.filter((d) => d.craft !== undefined);
   const engrams = reg.defs.filter((d): d is EngramDef => d?.type === "engram");
-  for (const r of recipes) expect(engrams.filter((e) => e.unlocks.includes(r.id)).length, r.id).toBe(1);
+  for (const r of made) expect(engrams.filter((e) => e.unlocks.includes(r.id)).length, r.id).toBe(1);
   for (const e of engrams) expect(e.level, e.id).toBeLessThanOrEqual(100);
   const points = levels.type === "levels" ? levels.engramPoints.reduce((a, b) => a + b, 0) : 0;
   expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));
@@ -107,8 +107,8 @@ test("the content hangs together: every engram can be reached, every recipe made
     const mesh = pack.header.meshes[pack.meshIndex.get(d.weapon!.mesh!)!]!;
     expect(mesh.skeleton, d.id).toBe("human");
     for (const a of d.weapon!.ammo ?? []) expect(items.find((x) => x.id === a)?.ammo, a).toBeDefined();
-    if (d.weapon!.ammo) expect(d.weapon!.ammo.some((a) => recipes.some((r) => r.makes === a))).toBe(true);
-    expect(recipes.some((r) => r.makes === d.id), d.id).toBe(true);
+    if (d.weapon!.ammo) expect(d.weapon!.ammo.some((a) => made.some((r) => r.id === a))).toBe(true);
+    expect(d.craft !== undefined, d.id).toBe(true);
   }
   // Four tiers of five pieces.
   const worn = items.filter((d) => d.wear);
@@ -117,9 +117,9 @@ test("the content hangs together: every engram can be reached, every recipe made
   expect([rating("cloth"), rating("hide"), rating("chitin"), rating("flak")]).toEqual([10, 20, 50, 100]);
   for (const d of worn) {
     for (const sex of ["m", "f"]) expect(pack.meshIndex.has(`core:human_${sex}/armor/${d.wear!.set}/${d.wear!.slot}`), `${d.id} on ${sex}`).toBe(true);
-    expect(recipes.some((r) => r.makes === d.id), d.id).toBe(true);
+    expect(d.craft !== undefined, d.id).toBe(true);
   }
-  for (const need of recipes.flatMap((r) => r.needs)) expect(reg.index.has(need.item), need.item).toBe(true);
+  for (const need of made.flatMap((r) => r.craft!.needs)) expect(reg.index.has(need.item), need.item).toBe(true);
   for (const mesh of ["core:arrow", "core:dart"]) expect(pack.meshIndex.has(mesh)).toBe(true);
 });
 

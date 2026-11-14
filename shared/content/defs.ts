@@ -193,6 +193,8 @@ export interface ItemDef {
   readonly attachment?: "scope" | "silencer" | "light" | "laser";
   /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
   readonly places?: readonly string[];
+  /** How it is made. An item without this cannot be crafted. */
+  readonly craft?: CraftFacet;
   // Stubs, read by nothing yet.
   readonly description?: string;
   /** Where it sits in the inventory and crafting lists: "Structures/Wood". */
@@ -201,6 +203,22 @@ export interface ItemDef {
   readonly spoilsInto?: string;
   /** It may be found as a blueprint: a copy that crafts it a limited number of times. */
   readonly blueprint?: boolean;
+}
+
+/** How an item is made. ARK keeps this on the item too. */
+export interface CraftFacet {
+  /** What one crafting uses up. */
+  readonly needs: readonly { readonly item: string; readonly count: number }[];
+  /** Seconds to make one. */
+  readonly seconds: number;
+  readonly xp: number;
+  /** How many one crafting makes. One, where not given. */
+  readonly count?: number;
+  // Stubs, read by nothing yet.
+  /** The station it is made at. Omitted, it is made in the hands. */
+  readonly at?: string;
+  /** The level below which it cannot be made, engram or no. */
+  readonly level?: number;
 }
 
 /** Species and structure materials each give a multiplier per type. */
@@ -292,17 +310,6 @@ export interface NodeDef {
   readonly xp: number;
 }
 
-export interface RecipeDef {
-  readonly type: "recipe";
-  readonly id: string;
-  readonly makes: string;
-  readonly count: number;
-  readonly needs: readonly { readonly item: string; readonly count: number }[];
-  /** Seconds to make one. */
-  readonly seconds: number;
-  readonly xp: number;
-}
-
 export interface EngramDef {
   readonly type: "engram";
   readonly id: string;
@@ -310,7 +317,7 @@ export interface EngramDef {
   /** Level needed to learn it, and what it costs in engram points. */
   readonly level: number;
   readonly cost: number;
-  /** Recipes it unlocks. */
+  /** The items it unlocks the making of. */
   readonly unlocks: readonly string[];
   /** It is not offered, so nobody can learn it. A survivor that already knows it keeps it. */
   readonly hidden?: boolean;
@@ -472,7 +479,7 @@ export interface RenameDef {
   readonly to: readonly string[];
 }
 
-export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef | RenameDef;
+export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef | RenameDef;
 
 /** Half extents of the box, centred on a shape's origin, that holds all of its boxes. */
 export function shapeHalf(boxes: readonly ShapeBox[]): [number, number, number] {

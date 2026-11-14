@@ -249,7 +249,7 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   for (const [item, n] of [["wood", 40], ["thatch", 10], ["fiber", 7]] as const) h.say(bob, `give ${item} ${n}`);
   bob.command(CMD_LEARN, (w: BitWriter) => w.u16(id("engram-piece_wall_wood")));
   h.run(300);
-  bob.command(CMD_CRAFT, (w: BitWriter) => (w.u16(id("make-piece_wall_wood")), w.u8(1)));
+  bob.command(CMD_CRAFT, (w: BitWriter) => (w.u16(id("piece_wall_wood")), w.u8(1)));
   h.run(6000);
   expect([count(bob, "wall"), made.has(bob, "wood"), made.has(bob, "thatch"), made.has(bob, "fiber")]).toEqual([STOCK + 1, 0, 0, 0]);
 

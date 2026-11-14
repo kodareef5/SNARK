@@ -58,7 +58,7 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
 
   // Only a pick gets flint from a rock.
   say((c) => c.command(CMD_LEARN, (w) => w.u16(id("core:engram-pick"))));
-  say((c) => c.command(CMD_CRAFT, (w) => (w.u16(id("core:make-pick")), w.u8(1))), 2600);
+  say((c) => c.command(CMD_CRAFT, (w) => (w.u16(id("core:pick")), w.u8(1))), 2600);
   expect(have("core:pick")).toBe(1);
   takeInHand(h, s, id("core:pick"));
   expect(standFacing(h, s, pilot, rock, 1.9)).toBe(true);
@@ -66,7 +66,7 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   expect(have("core:flint")).toBeGreaterThanOrEqual(2);
   // The hatchet costs three engram points.
   say((c) => c.command(CMD_LEARN, (w) => w.u16(id("core:engram-hatchet"))));
-  say((c) => c.command(CMD_CRAFT, (w) => (w.u16(id("core:make-hatchet")), w.u8(1))), 2600);
+  say((c) => c.command(CMD_CRAFT, (w) => (w.u16(id("core:hatchet")), w.u8(1))), 2600);
   expect(have("core:hatchet")).toBe(1);
   expect(s.progress.engrams.length).toBe(2);
 
