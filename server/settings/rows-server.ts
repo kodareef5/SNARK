@@ -255,6 +255,10 @@ new Sheet(SERVER_ROWS, "snark", "Damage")
   .f("SelfDamageMultiplier", 1, "What a survivor's own blast does to them.", live({ live: true, note: "Ours. ARK has no key; 1 is its behaviour." }))
   .b("FullFriendlyFire", false, "Members of a tribe can hurt each other, their tames and what they built with anything, not only with blasts.", live({ live: true, note: "Ours. ARK has no key; off is its behaviour as far as the research could tell." }));
 
+new Sheet(SERVER_ROWS, "snark", "PvP and PvE")
+  .i("TacticalRadius", 512, "Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's.", live({ live: true, max: 16384, note: "Ours. ARK's map shows no structures." }))
+  .t("MapPlayers", "off", "Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked.", live({ live: true, note: "Ours. ARK marks nobody. Any other word is off." }));
+
 const c = new Sheet(SERVER_ROWS, "cli", "Command line");
 c.flag("UseDynamicConfig", "The live file is read, and read again while the server runs.", live())
   .flag("AllowNetworkSave", "The save may be on a network disk, where it can be corrupted.", live({ note: "Ours. ARK has no such flag." }))

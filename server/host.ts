@@ -57,6 +57,7 @@ import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
 import { parseMap } from "../shared/world/mapfile.ts";
+import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
@@ -151,6 +152,7 @@ export interface Host {
   readonly taming: Taming;
   readonly riding: Riding;
   readonly breeding: Breeding;
+  readonly tactical: Tactical;
   /** The list settings that name classes, as tables, and the names this build lacks. */
   readonly lists: Lists;
   /** The content-changing settings the server skipped at startup, one line each. */
@@ -793,9 +795,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     },
     drop: (rec, slot, n) => death.drop(rec, slot, n),
   };
+  const tactical = new Tactical(world, game, records, rules);
   game.onReplicate = (c) => {
     syncOwn(own, c);
     harvest?.sync(c, game.opts.structRadius);
+    tactical.sync(c);
   };
   progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
@@ -898,6 +902,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     taming,
     riding,
     breeding,
+    tactical,
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
       const row = rowOf(name);

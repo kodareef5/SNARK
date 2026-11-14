@@ -35,6 +35,7 @@ import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { AUDIO_HEADER, AUTH_BYTES, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, VOICE_BATCH, flagsOf, readBatch, writeAudio, writeAuth } from "../shared/voice/packet.ts";
 import type { VoicePeer } from "../server/voice.ts";
 import { crowdRows, fullViewRows } from "./bench/limits.ts";
+import { benchTactical } from "./bench/tactical.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
@@ -746,6 +747,8 @@ let siegeChunk = -1;
   record("commit time under it, median", percentile(commitTimes, 0.5), "ms", 4);
   record("commit time under it, 99th percentile (a commit that writes the chunk)", percentile(commitTimes, 0.99), "ms", 10);
 }
+
+benchTactical(host, siegeChunk, (ticks) => run(ticks, null), section, record);
 
 // ---------------------------------------------------------------- breeding
 section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and ten survivors among them");

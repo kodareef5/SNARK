@@ -7,6 +7,7 @@
 | `movement.test.ts` | Swimming, stamina, and movement modifiers, predicted |
 | `persistence.test.ts` | Restart round trip; removed content; commit callbacks; three process kills with conservation |
 | `maps.test.ts` | A map made in the test run by a server, served, and walked on; where its definition starts creatures; a save refused on another map; the proving ground from its file equal to the one its functions build |
+| `tactical.test.ts` | The map on an 8 km map: a far base with no chunk sent, whose bases show, cells by zoom within a kilobyte a second, mates and tames as marks, the minimap and the map screen |
 | `determinism.test.ts` | The same scenario under Bun and Node produces the same hashes |
 | `items.test.ts`, `equipment.test.ts` | Inventories and the ledger under random moves; hotbar, armor, weapons that hold rounds and attachments |
 | `survival.test.ts`, `death.test.ts` | Vitals as rates and deadlines; dying, the cache, the marker, coming back |
