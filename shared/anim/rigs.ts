@@ -1,43 +1,34 @@
-// Skeletons that are data.
-//
-// The humanoid's skeleton is written in code (shared/anim/human.ts). A
-// creature's comes with its model: the pack holds, for each, a rig that names
-// its bones, says which hangs on which and where each rests, gives the few
-// large capsules it can be hit in and the named places on it, and its clips
-// are found by its id ("core:raptor/walk"). This turns that into the same
-// `Skeleton` everything else here already works on, so posing, solving and
-// hitting a creature are the code that poses, solves and hits a survivor.
-//
-// A new model is a new rig in the pack and a species that names it.
+// Turns a pack's creature rig into the same Skeleton the humanoid uses, so one code path poses, solves and hits both.
+// A rig's clips are found by its id ("core:raptor/walk").
 
 import type { PackRig } from "../pack/pack.ts";
 import { Pose, type Clip, type ClipSet } from "./clip.ts";
 import type { Socket } from "./human.ts";
 import { Solved, type Skeleton } from "./skeleton.ts";
 
-/** What a creature's clips are for, by the name after its rig's id. */
+/** A rig's clip ids are "<rig id>/<one of these>". */
 export const RIG_CLIPS = ["idle", "walk", "run", "attack", "jump", "death"] as const;
 
 export interface Rig extends Skeleton {
-  /** Its clips by what they are for: null for one it has not got. */
+  /** Null for a clip the rig lacks. */
   readonly idle: Clip | null;
   readonly walk: Clip | null;
   readonly run: Clip | null;
   readonly attack: Clip | null;
   readonly jump: Clip | null;
   readonly death: Clip | null;
-  /** Named places on it: where a rider sits, where it bites. */
+  /** Named points, such as where a rider sits and where it bites. */
   readonly sockets: ReadonlyMap<string, Socket>;
-  /** No part of it, in any pose, is further than this from the point on the ground it stands at, about: metres. And the height of its middle. */
+  /** In metres. Roughly, no part of it in any pose is farther than `reach` from the ground point it stands on. `mid` is the height of its middle. */
   readonly reach: number;
   readonly mid: number;
-  /** Scratch for whoever poses it: two poses and a solved one, of its size. */
+  /** Scratch for posing it. */
   readonly a: Pose;
   readonly b: Pose;
   readonly solved: Solved;
 }
 
-/** The skeleton a rig is, with its clips out of `clips`; null for a rig that is only a body's proportions on a skeleton of the code's. */
+/** Returns null for a rig without bones of its own, which is only a body's proportions on a skeleton written in code. */
 export function buildRig(r: PackRig, clips: ClipSet): Rig | null {
   if (!r.names || !r.parent || r.parent.length !== r.names.length || r.rest.length !== r.names.length * 3) return null;
   const bones = r.names.length;
@@ -91,7 +82,7 @@ export function buildRig(r: PackRig, clips: ClipSet): Rig | null {
     jump: clip("jump"),
     death: clip("death"),
     sockets,
-    // A limb swung out, a head lowered to bite: half as far again as it rests, and the width of its widest part.
+    // Half as far again as the rest pose reaches, plus the widest capsule radius, covers a swung limb or a lowered head.
     reach: Math.max(far, top) * 1.5 + wide,
     mid: top / 2,
     a: new Pose(bones),
@@ -100,7 +91,6 @@ export function buildRig(r: PackRig, clips: ClipSet): Rig | null {
   };
 }
 
-/** Every rig of a pack that is a skeleton in itself, by its id. */
 export function buildRigs(rigs: readonly PackRig[], clips: ClipSet): Map<string, Rig> {
   const out = new Map<string, Rig>();
   for (const r of rigs) {

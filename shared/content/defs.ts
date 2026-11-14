@@ -1,7 +1,5 @@
-// Content definitions: immutable data describing what can exist.
-//
 // Definitions are plain data keyed by a stable string id ("namespace:name").
-// Systems read numbers from the compiled registry; no system branches on an id.
+// Systems read numbers from the compiled registry and never branch on an id.
 
 import type { StatCurve, StatName } from "../sim/genome.ts";
 
@@ -11,9 +9,8 @@ export interface SpeciesDef {
   /** Mesh id in an asset pack, or "box" for a generated graybox. */
   readonly mesh: string;
   /**
-   * The skeleton its body hangs on ("human"). The body is then drawn from the
-   * meshes "<mesh>/head", "/torso", "/hands", "/legs" and "/feet", posed by
-   * shared/anim, and hit by zone. Omitted for a body that is one rigid mesh.
+   * The skeleton of its body ("human"). The body is then drawn from the meshes "<mesh>/head", "/torso", "/hands", "/legs"
+   * and "/feet", posed by shared/anim, and hit by zone. Omitted for a body that is one rigid mesh.
    */
   readonly skeleton?: string;
   /** Palette index used by graybox meshes. */
@@ -25,15 +22,14 @@ export interface SpeciesDef {
   readonly sprintMul: number;
   readonly jumpSpeed: number;
   /**
-   * Crouching and lying prone: capsule height, eye height, and share of the walk
-   * speed. Default to two thirds and (as low as the radius allows) of the height,
-   * with half and a fifth of the speed.
+   * Capsule height, eye height and share of the walk speed. Crouch defaults to two thirds of the height at half speed.
+   * Prone defaults to the lowest height the radius allows at a fifth of the speed.
    */
   readonly crouch?: { readonly height: number; readonly eye: number; readonly speed: number };
   readonly prone?: { readonly height: number; readonly eye: number; readonly speed: number };
-  /** Degrees a second its body turns toward where it looks. Omitted: it faces there at once, as a survivor does. */
+  /** Degrees per second its body turns toward its look. Omitted, it faces there at once, as a survivor does. */
   readonly turn?: number;
-  /** False for a body that cannot move sideways: it goes only where it faces. */
+  /** False for a body that cannot move sideways. */
   readonly strafe?: boolean;
   /** Metres per second in water. Defaults to 60% of the walk speed. */
   readonly swimSpeed?: number;
@@ -45,82 +41,64 @@ export interface SpeciesDef {
   readonly waterPerHour?: number;
   /** Inventory slots. Defaults to none. */
   readonly slots?: number;
-  /** It carries equipment: after its bag come ten hotbar slots and five armor slots. */
+  /** It carries equipment. Ten hotbar slots and five armor slots follow its bag. */
   readonly equips?: boolean;
   /** Damage of a bare-handed strike. Defaults to 8. */
   readonly fists?: number;
-  /** What a kill of one yields, each an item and a range. */
   readonly drops?: readonly { readonly item: string; readonly min: number; readonly max: number }[];
-  /** How points become values, per stat: [base, gain per wild point, gain per tamed point]. */
+  /** Per stat: [base, gain per wild point, gain per tamed point]. */
   readonly stats?: { readonly [S in StatName]?: StatCurve };
-  /** What it takes of each kind of damage: 1 where not given. */
+  /** Multiplier on each type of damage it takes. 1 where not given. */
   readonly takes?: { readonly [T in DamageType]?: number };
-  /** What a hit on each part of its body is multiplied by: 1 where not given. Arms, hands, legs and feet are both of them. */
+  /** Multiplier on a hit to each part of its body. 1 where not given. Arms, hands, legs and feet each cover both sides. */
   readonly zones?: { readonly head?: number; readonly torso?: number; readonly arms?: number; readonly hands?: number; readonly legs?: number; readonly feet?: number };
-  /** Experience for killing one at level 1; each level above that adds a tenth. Defaults to none. */
+  /** Experience for killing one at level 1. Each level above that adds a tenth. Defaults to none. */
   readonly killXp?: number;
-  /** It stands where it is put and does nothing: a target to practise on. */
+  /** It stands where it is put and does nothing, as a practice target. */
   readonly still?: boolean;
-  /**
-   * What it does about others: runs from what hurts it ("flees", the
-   * default), goes for what hurts it ("defends"), or goes for any survivor it
-   * sees ("hunts").
-   */
+  /** "flees" (the default) runs from what hurts it, "defends" attacks what hurts it, and "hunts" attacks any survivor it sees. */
   readonly temper?: "flees" | "defends" | "hunts";
-  /** How far off it notices what it hunts, metres. Defaults to 20. */
+  /** How far off it notices what it hunts, in metres. Defaults to 20. */
   readonly sight?: number;
-  /** How far from where a hunt began it will be led before it gives up, metres. Defaults to 60. */
+  /** How far from where a hunt began it follows before it gives up, in metres. Defaults to 60. */
   readonly leash?: number;
   /**
-   * Its bite, for the damage its `fists` say: how far from its eye it reaches
-   * (past its own length), the ticks one takes and the tick of those on which
-   * it lands. Defaults to its attack clip's length and two fifths of the way
-   * through.
+   * Its bite, which does its `fists` damage. `reach` is how far from its eye it reaches, past its own length. `ticks` is
+   * how long one bite takes and `lands` is the tick it lands on. They default to 27 and 11.
    */
   readonly bite?: { readonly reach: number; readonly ticks?: number; readonly lands?: number };
-  /**
-   * It can be tamed by knocking it out and feeding it: the reference's five
-   * numbers for its species (shared/sim/taming.ts). Omitted: it cannot.
-   */
+  /** It can be tamed by knocking it out and feeding it. These are the reference's five numbers for its species (shared/sim/taming.ts). */
   readonly taming?: { readonly a0: number; readonly a1: number; readonly foodBase: number; readonly proneMult: number; readonly k: number };
-  /** What it will eat, the food it likes best first: each an item, the food a piece is worth to it, and its affinity. */
+  /** What it eats, best liked first. Each entry is an item, the food one piece is worth to it, and its affinity. */
   readonly eats?: readonly { readonly item: string; readonly food: number; readonly affinity: number }[];
-  /** Torpor it loses each second. Defaults to 1. Its most is its torpidity stat; a species without that stat cannot be knocked out. */
+  /** Torpor lost per second. Defaults to 1. The maximum is its torpidity stat, and a species without that stat cannot be knocked out. */
   readonly torporDrain?: number;
   /**
-   * It breeds (shared/sim/breeding.ts): a female and a male of it, both
-   * somebody's and both willing, make young. `egg` is the prop she lays, which
-   * hatches after `incubate` seconds; without one she carries her young for
-   * that long and bears them where she then stands. A young one is grown
-   * `mature` seconds after it is born, and is drawn `scale` of a grown one's
-   * size at birth (a quarter where not given). Omitted: it does not breed.
+   * It breeds (shared/sim/breeding.ts). `egg` is the prop a female lays, which hatches after `incubate` seconds. Without
+   * one she carries her young for that long and bears them where she stands. A young one is grown `mature` seconds after
+   * birth and is drawn at `scale` of full size at birth (a quarter where not given).
    */
   readonly breeds?: { readonly egg?: string; readonly incubate: number; readonly mature: number; readonly scale?: number };
 }
 
-/** One box of a shape: its centre, measured from the piece's own origin, and its half extents, in metres. */
+/** `at` is the centre, measured from the piece's origin. `half` is the half extents. Both are in metres. */
 export interface ShapeBox {
   readonly at: readonly [number, number, number];
   readonly half: readonly [number, number, number];
 }
 
-/** What kind of piece a shape is: what it may join, and what may join it, go by this. */
+/** The role decides what a piece may join and what may join it. */
 export type PieceRole = "foundation" | "wall" | "ceiling" | "pillar" | "door" | "stairs" | "thing";
-/** A "thing" joins nothing: it is set down on the ground or on a floor, and stands on whatever is under it. */
+/** A "thing" joins nothing. It is set down on the ground or a floor and stands on what is under it. */
 export const PIECE_ROLES: readonly PieceRole[] = ["foundation", "wall", "ceiling", "pillar", "door", "stairs", "thing"];
 
-/**
- * The form of something built, shared by every material it is made in: a wall
- * with a doorway is the same three boxes in thatch and in metal. Bodies walk on
- * the boxes and into them, and rays stop at them. There are no slopes: stairs
- * are steps.
- */
+/** The form of a built piece, shared by every material. Bodies walk on the boxes and rays stop at them. There are no slopes, so stairs are steps. */
 export interface ShapeDef {
   readonly type: "shape";
   readonly id: string;
   readonly role: PieceRole;
   readonly boxes: readonly ShapeBox[];
-  /** A wall with a doorway: a door may be set in it. */
+  /** A door may be set in it. */
   readonly doorway?: boolean;
 }
 
@@ -130,40 +108,37 @@ export interface StructureDef {
   /** "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. */
   readonly mesh: string;
   readonly color: number;
-  /**
-   * Half extents in metres of the box that holds all of it; the structure's
-   * position is that box's centre. Without a shape, this box is its collider.
-   */
+  /** Half extents in metres of the box that holds all of it, centred on the structure's position. Without a shape, this box is its collider. */
   readonly half: readonly [number, number, number];
-  /** Its form, if it is more than one box. Its `half` must be what holds that form. */
+  /** A shape id, if it is more than one box. `half` must equal the box that holds the shape. */
   readonly shape?: string;
   readonly hp: number;
-  /** What it is made of: a material definition, which says what each kind of damage does to it. Omitted: nothing harms it. */
+  /** A material id. The material says what each type of damage does to it. Omitted, nothing harms it. */
   readonly material?: string;
-  /** It holds things: how many stacks. */
+  /** Stacks it holds. */
   readonly slots?: number;
-  /** Used, it becomes this other structure in the same place: a door and the same door stood open name each other. */
+  /** Using it turns it into this other structure in the same place. A door and its open form name each other. */
   readonly opens?: string;
-  /** Until its tribe says otherwise, only its tribe may use it. Omitted: anyone may. */
+  /** Only its tribe may use it until the tribe unlocks it. Omitted, anyone may. */
   readonly locked?: boolean;
-  /** With nothing left to hold it, it comes down whole onto the ground under it instead of breaking. */
+  /** When it loses its support it drops whole onto the ground under it instead of breaking. */
   readonly falls?: boolean;
-  /** Days it lasts unvisited, if not what its material says. */
+  /** Days it lasts unvisited, in place of its material's. */
   readonly decayDays?: number;
-  /** A fire: lit, it becomes this other structure in the same place, and that one, put out, becomes this again. */
+  /** A fire. Lighting it turns it into this other structure in the same place, and putting that one out turns it back. */
   readonly lights?: string;
-  /** This is the burning one of such a pair. */
+  /** The burning one of such a pair. */
   readonly lit?: boolean;
-  /** Its tribe may return to life at it. */
+  /** Its tribe may respawn at it. */
   readonly bed?: boolean;
 }
 
-/** What something built is made of: what it takes of each kind of damage. A kind not given does nothing to it. */
+/** Multiplier on each type of damage a structure of this material takes. A type not given does no damage. */
 export interface MaterialDef {
   readonly type: "material";
   readonly id: string;
   readonly takes: { readonly [T in DamageType]?: number };
-  /** Days before what is made of it, left unvisited by those it belongs to, may be demolished by anyone. Omitted: never. */
+  /** Days a structure of it may go unvisited by its owners before anyone may demolish it. Omitted, never. */
   readonly decayDays?: number;
 }
 
@@ -178,50 +153,42 @@ export interface ItemDef {
   readonly spoilHours?: number;
   /** What eating one restores, in points. */
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
-  /** It burns: seconds one of it keeps a fire going. */
+  /** Seconds one of it keeps a fire going. */
   readonly fuel?: number;
-  /** A saddle: the species it fits, and the armor it gives the creature that wears it (the reference's rating). */
+  /** The species it fits and the armor it gives the creature that wears it (the reference's rating). */
   readonly saddle?: { readonly fits: string; readonly armor: number };
-  /** Fed to something unconscious it deepens its sleep: so much torpor, over so many seconds. */
+  /** Fed to an unconscious creature, it adds this much torpor over this many seconds. */
   readonly dose?: { readonly torpor: number; readonly seconds: number };
-  /** Over a fire it becomes another item, in so many seconds. */
+  /** Over a fire it becomes `into` after `seconds`. */
   readonly cooks?: { readonly into: string; readonly seconds: number };
   /** Name shown in the interface. Defaults to the id without its namespace. */
   readonly label?: string;
   /** Palette index of its swatch in the interface. */
   readonly color?: number;
-  /** A tool: what it works on ("wood", "stone"), how many times stronger than bare hands, and how many uses it lasts. */
+  /** What it works on ("wood", "stone"), how many times stronger than bare hands it is, and how many uses it lasts. */
   readonly tool?: { readonly on: string; readonly power: number; readonly uses: number };
-  /** Something held and attacked with. */
   readonly weapon?: WeaponFacet;
-  /** Something a weapon is loaded with. */
   readonly ammo?: AmmoFacet;
-  /** Something worn in an armor slot. */
   readonly wear?: WearFacet;
-  /** Something fitted to a weapon: what kind of thing it is. A weapon lists the attachment items it takes. */
+  /** A weapon lists the attachment items it takes in `fits`. */
   readonly attachment?: "scope" | "silencer" | "light" | "laser";
-  /**
-   * Something set down as a structure: the structures it may be set down as.
-   * The first is what it is; the rest are other forms of the same piece (a
-   * wall as a doorframe), chosen as it is placed.
-   */
+  /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
   readonly places?: readonly string[];
 }
 
-/** How a kind of damage is named. Armor, species and structure materials each say what they make of a type. */
+/** Species and structure materials each give a multiplier per type. */
 export type DamageType = "melee" | "pierce" | "bullet" | "fire" | "explosive";
 
 export interface WeaponFacet {
   /**
-   * "melee" strikes what is in reach. "bow" is drawn and loosed: the longer the
-   * draw, the faster and harder the shot. "gun" fires what is loaded as it is
-   * (a crossbow is one). "thrown" is thrown itself.
+   * "melee" strikes what is in reach. "bow" is drawn and loosed, and a longer draw gives a faster, harder shot.
+   * "gun" fires what is loaded as it is (a crossbow is one). "thrown" is itself thrown.
    */
   readonly kind: "melee" | "bow" | "gun" | "thrown";
   /** Melee and thrown: damage of one hit at primitive quality, and its type. */
   readonly damage?: number;
   readonly type?: DamageType;
-  /** Melee: how far it reaches from the eye, metres. Defaults to 2.6. */
+  /** Melee: reach from the eye, in metres. Defaults to 2.6. */
   readonly reach?: number;
   /** Bow and gun: the ammunition items it takes, and what it multiplies their damage by. */
   readonly ammo?: readonly string[];
@@ -232,13 +199,13 @@ export interface WeaponFacet {
   readonly reload?: number;
   readonly draw?: number;
   readonly interval?: number;
-  /** Thrown: metres per second it leaves the hand at, seconds until it goes off, and how far its blast reaches, metres. */
+  /** Thrown: metres per second off the hand, seconds until it goes off, and how far its blast reaches in metres. */
   readonly speed?: number;
   readonly fuse?: number;
   readonly blast?: number;
   /** Uses before it breaks, at primitive quality. */
   readonly uses: number;
-  /** Works under water. */
+  /** Works under water. Melee does by default. */
   readonly wet?: boolean;
   /** Attachment items that fit it. */
   readonly fits?: readonly string[];
@@ -250,12 +217,12 @@ export interface WeaponFacet {
 export interface AmmoFacet {
   readonly damage: number;
   readonly type: DamageType;
-  /** Metres per second at full power, and its fall in metres per second squared. Omitted: it arrives the tick it is fired. */
+  /** Metres per second at full power, and its fall in metres per second squared. Without a speed it arrives the tick it is fired. */
   readonly speed?: number;
   readonly gravity?: number;
-  /** Torpor, as multiples of the damage done: at once, and then spread over some seconds. */
+  /** Torpor as multiples of the damage done: `instant` at once, then `over` spread across `seconds`. */
   readonly torpor?: { readonly instant: number; readonly over: number; readonly seconds: number };
-  /** A buff the target is given. */
+  /** A buff id given to the target. */
   readonly buff?: string;
   /** Chance, 0 to 1, that a spent one can be picked up again. */
   readonly recover?: number;
@@ -264,27 +231,23 @@ export interface AmmoFacet {
 
 export interface WearFacet {
   readonly slot: "head" | "torso" | "hands" | "legs" | "feet";
-  /** Armor rating at primitive quality: damage is multiplied by 100 / (100 + armor). */
+  /** Armor rating at primitive quality. Damage is multiplied by 100 / (100 + armor). */
   readonly armor: number;
   /** Durability at primitive quality. */
   readonly uses: number;
-  /** Mesh set drawn in place of the body's slot: "<set>" names meshes "<body>/armor/<set>/<slot>". */
+  /** Mesh set drawn in place of the body's slot. Its meshes are "<body>/armor/<set>/<slot>". */
   readonly set: string;
   /** Palette colours of its three colour regions: main, second, trim. */
   readonly colors: readonly [number, number, number];
 }
 
-/**
- * A resource node: a tree, a rock, a bush. Nodes are map data. Where they
- * stand comes from the map, is the same on every client, and is never saved;
- * only the ones that have been touched are.
- */
+/** A resource node: a tree, a rock, a bush. Node positions come from the map and are the same on every client. Only touched nodes are saved. */
 export interface NodeDef {
   readonly type: "node";
   readonly id: string;
   readonly mesh: string;
   readonly color: number;
-  /** Collider and graybox half extents; the node stands on its base. */
+  /** Collider and graybox half extents. The node stands on its base. */
   readonly half: readonly [number, number, number];
   /** A second box on top of the first, for a crown. Drawn, not collided with. */
   readonly top?: { readonly half: readonly [number, number, number]; readonly color: number };
@@ -294,9 +257,9 @@ export interface NodeDef {
   readonly hits: number;
   /** In-game hours until it grows back. */
   readonly respawnHours: number;
-  /** What kind of tool works on it: matched against a tool's `on`. Omitted for things picked by hand with the use key. */
+  /** Matched against a tool's `on`. Omitted for things picked by hand with the use key. */
   readonly material?: string;
-  /** What each hit gives: an item and a range. `tool` true means only with the right tool. */
+  /** What each hit gives. `tool` true means only with the right tool. */
   readonly yields: readonly { readonly item: string; readonly min: number; readonly max: number; readonly tool?: boolean }[];
   /** Experience per hit. */
   readonly xp: number;
@@ -322,29 +285,25 @@ export interface EngramDef {
   readonly cost: number;
   /** Recipes it unlocks. */
   readonly unlocks: readonly string[];
-  /** It is not offered: nobody can learn it. Whoever knows it already still does. */
+  /** It is not offered, so nobody can learn it. A survivor that already knows it keeps it. */
   readonly hidden?: boolean;
-  /** It is learned without asking, and for nothing, by whoever reaches this level. */
+  /** A survivor that reaches this level learns it automatically and for free. */
   readonly auto?: number;
 }
 
-/** The level table: experience needed to reach each level (index 0 is level 1), and engram points gained on reaching it. */
+/** Experience needed to reach each level (index 0 is level 1), and the engram points gained on reaching it. */
 export interface LevelsDef {
   readonly type: "levels";
   readonly id: string;
   readonly xp: readonly number[];
   readonly engramPoints: readonly number[];
-  /** The most experience a survivor may have. Omitted: what the last level takes. */
+  /** The most experience a survivor may have. Defaults to what the last level takes. */
   readonly most?: number;
-  /** Tamed creatures: a table of their own, and the most they may have. Omitted: the survivors'. */
+  /** A separate table and cap for tamed creatures. Omitted, they use the survivors'. */
   readonly tame?: { readonly xp: readonly number[]; readonly most?: number };
 }
 
-/**
- * A thing that stands in the world as an entity but does not move or live: an
- * item cache, later a dropped bag or a corpse. It has a body to look at and
- * click on, and its record can hold an inventory.
- */
+/** An entity that stands in the world but does not move or live, such as an item cache. Its record can hold an inventory. */
 export interface PropDef {
   readonly type: "prop";
   readonly id: string;
@@ -354,15 +313,14 @@ export interface PropDef {
   readonly height: number;
   /** Inventory slots of its record. */
   readonly slots?: number;
-  /** It is drawn tilted to its pitch as well as turned to its facing, its mesh's +Z leading: an arrow stuck where it landed. */
+  /** It is drawn tilted to its pitch as well as turned to its facing, with its mesh's +Z leading, like an arrow stuck where it landed. */
   readonly pitched?: boolean;
 }
 
 /**
- * Something that acts on a body for a time: burning, a dose of narcotic, a
- * stun. A body may be under several at once. Nothing about one is stepped: its
- * end is a moment known when it begins, what it does to vitals is a change of
- * rate, and what it multiplies is read when it matters.
+ * Something that acts on a body for a time, such as burning or a dose of narcotic. A body may have several at once.
+ * A buff is never stepped. Its end tick is known when it begins, its effect on vitals is a change of rate, and its
+ * multipliers are read when needed.
  */
 export interface BuffDef {
   readonly type: "buff";
@@ -370,22 +328,22 @@ export interface BuffDef {
   readonly label: string;
   /** Palette index of its mark in the interface. */
   readonly color: number;
-  /** Seconds it lasts when whatever gives it does not say. Omitted: until it is taken away. */
+  /** Seconds it lasts when its giver does not say. Omitted, it lasts until removed. */
   readonly seconds?: number;
-  /** Given again while it is on: "refresh" (the default) starts its time again; "stack" adds another, each with its own end. */
+  /** When given again while active, "refresh" (the default) restarts its time and "stack" adds another with its own end. */
   readonly again?: "refresh" | "stack";
-  /** Health per second (negative harms) and torpor per second, for as long as it lasts. */
+  /** Health per second (negative harms) and torpor per second while it lasts. */
   readonly health?: number;
   readonly torpor?: number;
-  /** Multipliers: of how fast the body moves, of the damage it deals, and of the damage it takes. */
+  /** Multipliers on the body's speed, the damage it deals and the damage it takes. */
   readonly speed?: number;
   readonly dealt?: number;
   readonly taken?: number;
-  /** It cannot move from where it is. */
+  /** The body cannot move. */
   readonly root?: boolean;
-  /** Nothing harms it. */
+  /** Nothing harms the body. */
   readonly immune?: boolean;
-  /** It is good for whoever has it; shown apart from those that are not. */
+  /** A beneficial buff, shown apart from harmful ones. */
   readonly good?: boolean;
 }
 

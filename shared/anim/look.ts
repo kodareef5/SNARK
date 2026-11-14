@@ -1,19 +1,5 @@
-// A survivor's look: what the character creator makes.
-//
-// Twenty-eight bytes: sex, twenty-two body regions, three colours, hair and
-// beard. It decides which meshes are drawn, in which colours, and how each bone
-// is stretched. It changes nothing else: hit zones, collision and the eye are
-// those of the skeleton, the same for every survivor, so no look is an
-// advantage.
-//
-//   0       sex: 0 or 1
-//   1..22   body regions, each -127..127 for -1..1
-//   23      skin tone, 24 hair colour, 25 eye colour (indices into the palette's lists)
-//   26      hair style, 27 beard style
-//
-// A region stretches named bones along their own axes. Because every bone
-// rests aligned with the model's axes, that is a stretch along or across the
-// limb and never a shear.
+// A look is the 28 bytes the character creator makes. It picks meshes, colours and bone stretches only.
+// Hit zones, collision and the eye are the skeleton's for every survivor, so no look is an advantage.
 
 import { REGION_BASE, EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../pack/palette.ts";
 import type { Rng } from "../rng.ts";
@@ -37,31 +23,25 @@ export const LOOK_BEARD = 27;
 export const SEX_IDS: readonly string[] = ["m", "f"];
 export const SEX_LABELS: readonly string[] = ["Male", "Female"];
 
-/**
- * The source model of each sex is scaled by this, so that both have their eyes
- * at the survivor's eye height and stand as tall as the skeleton does.
- */
+/** Scales each sex's source model so that its eyes are at the survivor's eye height and it stands as tall as the skeleton. */
 export const BODY_SCALES: readonly number[] = [0.953, 0.978];
 
-/** Colour regions of a body mesh, as vertex colours: resolved per body from its look. */
+/** Colour regions of a body mesh, stored as vertex colours and resolved per body from its look. */
 export const REGION_SKIN = REGION_BASE;
 export const REGION_CLOTH = REGION_BASE + 1;
 export const REGION_EYE = REGION_BASE + 2;
 export const REGION_HAIR = REGION_BASE + 3;
-/**
- * Colour regions of a worn piece's mesh: its main colour takes the place of
- * what a bare body wears, and two more follow. A piece says what they are.
- */
+/** Colour regions of a worn piece's mesh. The main colour replaces the bare body's cloth. The piece's definition gives all three. */
 export const REGION_MAIN = REGION_CLOTH;
 export const REGION_SECOND = REGION_BASE + 4;
 export const REGION_TRIM = REGION_BASE + 5;
-/** Palette colour of what a body wears under everything else. */
+/** Palette index of a bare body's cloth. */
 const CLOTH_COLOR = 4;
 
 export interface Style {
   readonly id: string;
   readonly label: string;
-  /** Source model in assets/raw, or null for none; `female` is used on the female head when given. */
+  /** Source model in assets/raw, or null for none. `female`, when given, is used on the female head. */
   readonly source: string | null;
   readonly female?: string;
 }
@@ -81,7 +61,7 @@ export const BEARD_STYLES: readonly Style[] = [
 const X = 1;
 const Y = 2;
 const Z = 4;
-/** A region: its name, and for each bone it stretches, which axes and by how much at full slider. */
+/** For each bone a region stretches: which axes, and by how much at full slider. */
 interface Region {
   readonly label: string;
   readonly bones: readonly (readonly [bone: number, axes: number, amount: number])[];
@@ -89,7 +69,7 @@ interface Region {
 
 const pair = (l: number, r: number, axes: number, amount: number): readonly (readonly [number, number, number])[] => [[l, axes, amount], [r, axes, amount]];
 
-/** The twenty-two regions, in the order their bytes are stored. Arms lie along X, legs and the spine along Y. */
+/** In the order their bytes are stored, each -127..127 for -1..1. Arms lie along X, legs and the spine along Y. */
 export const REGIONS: readonly Region[] = [
   { label: "Head size", bones: [[B_HEAD, X | Y | Z, 0.12]] },
   { label: "Head width", bones: [[B_HEAD, X, 0.1]] },
@@ -125,7 +105,6 @@ export const REGIONS: readonly Region[] = [
   },
 ];
 
-/** A look with every slider in the middle. */
 export function defaultLook(out: Uint8Array = new Uint8Array(LOOK_BYTES)): Uint8Array {
   out.fill(0, 0, LOOK_BYTES);
   out[LOOK_SKIN] = 3;
@@ -134,7 +113,7 @@ export function defaultLook(out: Uint8Array = new Uint8Array(LOOK_BYTES)): Uint8
   return out;
 }
 
-/** Whether these bytes are a look, as a client may send anything. */
+/** A client may send any bytes. */
 export function validLook(b: Uint8Array): boolean {
   if (b.length !== LOOK_BYTES || b[LOOK_SEX]! >= SEX_IDS.length) return false;
   // A region byte of 128 would be -128, one step outside the slider.
@@ -142,7 +121,7 @@ export function validLook(b: Uint8Array): boolean {
   return b[LOOK_SKIN]! < SKIN_TONES && b[LOOK_HAIR_COLOR]! < HAIR_COLORS && b[LOOK_EYE_COLOR]! < EYE_COLORS && b[LOOK_HAIR]! < HAIR_STYLES.length && b[LOOK_BEARD]! < BEARD_STYLES.length;
 }
 
-/** The value of region `r` as -1..1. */
+/** In -1..1. */
 export function regionOf(look: Uint8Array, r: number): number {
   const v = look[LOOK_REGIONS + r]!;
   return (v > 127 ? v - 256 : v) / 127;
@@ -153,10 +132,9 @@ export function setRegion(look: Uint8Array, r: number, value: number): void {
   look[LOOK_REGIONS + r] = v & 255;
 }
 
-/** A look made at random: every choice even, sliders mostly near the middle. */
 export function randomLook(rng: Rng, out: Uint8Array = new Uint8Array(LOOK_BYTES)): Uint8Array {
   out[LOOK_SEX] = rng.int(SEX_IDS.length);
-  // The mean of two throws: extremes are possible and uncommon.
+  // The mean of two throws, so extremes are possible but uncommon.
   for (let r = 0; r < REGION_COUNT; r++) setRegion(out, r, (rng.range(-1, 1) + rng.range(-1, 1)) * 0.5);
   out[LOOK_SKIN] = rng.int(SKIN_TONES);
   out[LOOK_HAIR_COLOR] = rng.int(HAIR_COLORS);
@@ -166,7 +144,7 @@ export function randomLook(rng: Rng, out: Uint8Array = new Uint8Array(LOOK_BYTES
   return out;
 }
 
-/** The six colour regions a body with this look is drawn with, as palette indices. */
+/** Writes six palette indices, one per colour region. */
 export function lookColors(look: Uint8Array, out: Uint8Array, at = 0): void {
   out[at] = SKIN_BASE + look[LOOK_SKIN]!;
   out[at + 1] = CLOTH_COLOR;
@@ -176,10 +154,7 @@ export function lookColors(look: Uint8Array, out: Uint8Array, at = 0): void {
   out[at + 5] = 0;
 }
 
-/**
- * How far each bone is stretched along its own x, y and z: `HUMAN_BONES * 3`
- * numbers around 1. Regions that touch the same bone multiply.
- */
+/** Writes `HUMAN_BONES * 3` stretch factors around 1, one per bone axis. Regions that touch the same bone multiply. */
 export function lookScales(look: Uint8Array, out: Float32Array): void {
   out.fill(1, 0, HUMAN_BONES * 3);
   for (let r = 0; r < REGION_COUNT; r++) {
@@ -194,11 +169,7 @@ export function lookScales(look: Uint8Array, out: Float32Array): void {
   }
 }
 
-/**
- * How much higher the hips must ride for the feet of a body with these scales
- * to stay on the ground: what the stretch adds to the length of a straight leg.
- * `rest` is where the body's joints rest.
- */
+/** Returns what the stretch adds to a straight leg, so that raising the hips by it keeps the feet on the ground. `rest` holds the rest joints. */
 export function lookLift(scales: Float32Array, rest: ArrayLike<number>): number {
   const upper = rest[B_UPPER_LEG_L * 3 + 1]! - rest[B_LOWER_LEG_L * 3 + 1]!;
   const lower = rest[B_LOWER_LEG_L * 3 + 1]! - rest[B_FOOT_L * 3 + 1]!;

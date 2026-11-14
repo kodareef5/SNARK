@@ -1,15 +1,13 @@
-// Asset pack format, version 2. One file holds a palette, many meshes, and
-// the animation clips of the skeletons those meshes hang on.
+// Asset pack file. It holds a palette, many meshes, and the animation clips of the skeletons those meshes use.
 //
 //   0   "SNPK"
 //   4   u16 version, u16 reserved
 //   8   u32 length of the JSON header in bytes (padded to a multiple of 4)
 //   12  JSON header (UTF-8)
-//   ..  binary blob; every offset in the header is relative to its start
+//   ..  binary blob. Every offset in the header is relative to its start.
 //
-// The header lists each mesh with byte ranges, so a client can fetch part of a
-// large pack. Vertex and instance layouts are fixed and shared with the
-// renderer:
+// The JSON header lists each mesh with byte ranges, so a client can fetch part of a large pack. The renderer shares these
+// fixed vertex and instance layouts:
 //
 //   vertex    8 bytes   i16 x, y, z   position, signed-normalized within bounds
 //                       u8 colour     palette index, or a colour region
@@ -24,7 +22,7 @@
 //             signed-normalized, w >= 0 implied; then per frame f32 x, y, z of
 //             the root bone's offset from rest
 //
-// Flat shading needs no stored normals: the renderer derives the face normal.
+// No normals are stored. The renderer derives the face normal for flat shading.
 
 import type { Clip, ClipSet } from "../anim/clip.ts";
 import { hashBytes, hashString } from "../hash.ts";
@@ -51,22 +49,19 @@ export interface PackMesh {
   collider?: [number, number, number];
   /** Id of the skeleton whose bones the vertices follow. Absent for a rigid mesh. */
   skeleton?: string;
-  /** Index into `rigs`: the body this mesh was made on. Absent when it was made on the skeleton itself. */
+  /** Index into `rigs` of the body this mesh was made on. Absent when it was made on the skeleton itself. */
   rig?: number;
 }
 
-/** A body of its own proportions on a shared skeleton: where each joint rests, x, y, z per bone. */
+/** A body with its own proportions on a shared skeleton. `rest` is each joint's rest position, x, y, z per bone. */
 export interface PackRig {
   id: string;
   skeleton: string;
   rest: number[];
   /**
-   * A rig that is a whole skeleton (a creature's): its bones by name, the
-   * root first; each bone's parent among them, -1 for the root; its hit
-   * capsules, nine numbers each (the bone that carries it, its zone, its two
-   * ends relative to that bone's joint, its radius); and named places on it,
-   * each relative to a bone's joint. Absent for a body made on a skeleton the
-   * code defines (the humanoid's).
+   * Present for a rig that is a whole skeleton (a creature's), absent for a body on a skeleton written in code (the humanoid's).
+   * `names` lists the bones, root first. `parent` is each bone's parent index, -1 for the root. `caps` is nine numbers per hit
+   * capsule: bone, zone, the two ends relative to the bone's joint, radius. A socket is positioned relative to its bone's joint.
    */
   names?: string[];
   parent?: number[];
@@ -92,21 +87,21 @@ export interface PackHeader {
 
 export interface Pack {
   readonly header: PackHeader;
-  /** The binary blob. Offsets in the header index into this. */
+  /** Offsets in the header index into this. */
   readonly blob: Uint8Array;
   readonly palette: Uint8Array;
   readonly meshIndex: ReadonlyMap<string, number>;
-  /** The clips, decoded. */
+  /** Decoded. */
   readonly clips: ClipSet;
 }
 
-/** Bytes one frame of a clip takes for its rotations, and for its root. */
+/** Bytes per frame of a clip's rotations, and of its root. */
 export function clipRotBytes(bones: number): number {
   return bones * 6;
 }
 export const CLIP_ROOT_BYTES = 12;
 
-/** Parse a pack file. Throws with a reason if it is not a readable pack of this version. */
+/** Throws with a reason if the file is not a readable pack of this version. */
 export function parsePack(file: Uint8Array): Pack {
   if (file.length < 12) throw new Error("pack: file too short");
   const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
@@ -161,12 +156,11 @@ function decodeClips(list: readonly PackClip[], blob: Uint8Array): ClipSet {
   return { clips, index, hash };
 }
 
-/** Vertex bytes of one level of detail, as a view into the pack. */
+/** lodVertices and lodIndices return views into the pack. Indices are u16 little-endian. */
 export function lodVertices(pack: Pack, lod: PackLod): Uint8Array {
   return pack.blob.subarray(lod.vertexOffset, lod.vertexOffset + lod.vertexCount * VERTEX_BYTES);
 }
 
-/** Index bytes (u16 little-endian) of one level of detail, as a view into the pack. */
 export function lodIndices(pack: Pack, lod: PackLod): Uint8Array {
   return pack.blob.subarray(lod.indexOffset, lod.indexOffset + lod.indexCount * 2);
 }

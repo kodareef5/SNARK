@@ -1,10 +1,5 @@
-// The palette: every colour drawn in the world is one of 256 entries.
-//
-// A vertex stores one byte. Values below REGION_BASE are fixed palette colours.
-// Values REGION_BASE..REGION_BASE+5 mean "colour region 0..5": the colour comes
-// from the instance being drawn, not the mesh. Creature colour regions,
-// mutations, dyed armour and painted structures are all that one mechanism, and
-// none of them needs a second mesh, texture or material.
+// A vertex stores one byte. Values below REGION_BASE are fixed palette colours. Values REGION_BASE..REGION_BASE+5 mean colour
+// region 0..5, whose colour comes from the instance being drawn, so a recoloured instance needs no second mesh or texture.
 
 export const PALETTE_SIZE = 256;
 export const REGION_BASE = 240;
@@ -38,11 +33,7 @@ const FIXED: readonly (readonly [number, number, number])[] = [
 export const SKY_COLOR = 13;
 export const WATER_COLOR = 14;
 
-/**
- * Colours of a survivor's body, at the end of the palette below the regions:
- * ten skin tones from pale to deep, ten hair colours, six eye colours. A look
- * stores an index into each list.
- */
+/** A survivor's body colours sit just below the regions. A look stores an index into each list. */
 export const SKIN_BASE = 214;
 export const SKIN_TONES = 10;
 export const HAIR_BASE = 224;

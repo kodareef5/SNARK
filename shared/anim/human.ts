@@ -1,14 +1,5 @@
-// The humanoid skeleton every survivor shares.
-//
-// Twenty-eight bones resting in a T-pose: standing on the origin, facing +Z,
-// arms out along X (the body's left is +X), palms down. All rest rotations are
-// identity. Proportions are those of the base male model scaled so its eyes are
-// at the survivor's eye height; a body of other proportions is a rig with its
-// own rest positions and the same bones.
-//
-// The first twenty bones carry hit capsules. The last eight (toes, fingers,
-// thumbs, and a prop bone in each hand) only move geometry: what hangs on them
-// is covered by the capsule of the hand or foot they belong to.
+// Twenty-eight bones resting in a T-pose: standing on the origin, facing +Z, arms out along X (the body's left is +X), palms down.
+// The first twenty carry hit capsules. The last eight only move geometry, which the capsule of their hand or foot covers.
 
 import type { Skeleton } from "./skeleton.ts";
 
@@ -38,7 +29,7 @@ export const B_FINGERS_L = 22;
 export const B_THUMB_L = 23;
 export const B_FINGERS_R = 24;
 export const B_THUMB_R = 25;
-/** What a hand holds hangs on its prop bone, so a clip can move the thing within the hand. */
+/** A held item hangs on the hand's prop bone, so a clip can move it within the hand. */
 export const B_PROP_L = 26;
 export const B_PROP_R = 27;
 export const HUMAN_BONES = 28;
@@ -57,7 +48,7 @@ export const ZONE_FOOT_R = 10;
 export const ZONE_COUNT = 11;
 export const ZONE_NAMES: readonly string[] = ["none", "head", "torso", "left arm", "right arm", "left hand", "right hand", "left leg", "right leg", "left foot", "right foot"];
 
-/** Body slots: the parts a body mesh is cut into, and the armor piece that covers each. */
+/** The parts a body mesh is cut into. One armor piece covers each. */
 export const SLOT_HEAD = 0;
 export const SLOT_TORSO = 1;
 export const SLOT_HANDS = 2;
@@ -65,15 +56,13 @@ export const SLOT_LEGS = 3;
 export const SLOT_FEET = 4;
 export const SLOT_COUNT = 5;
 export const SLOT_NAMES: readonly string[] = ["head", "torso", "hands", "legs", "feet"];
-/** The slot whose armor protects each zone. */
 export const SLOT_OF_ZONE: readonly number[] = [SLOT_TORSO, SLOT_HEAD, SLOT_TORSO, SLOT_TORSO, SLOT_TORSO, SLOT_HANDS, SLOT_HANDS, SLOT_LEGS, SLOT_LEGS, SLOT_FEET, SLOT_FEET];
 
 type Row = readonly [name: string, parent: number, x: number, y: number, z: number, zone: number, slot: number, capsule: readonly [ax: number, ay: number, az: number, bx: number, by: number, bz: number, r: number] | null];
 
-// Left-side rows are mirrored for the right below. A capsule's two ends are relative to the
-// joint. One capsule a bone, sized generously around what follows that bone on the modelled
-// bodies (the fingers with the hand, the toes with the foot): good and close, not exact.
-// `bun tools/fit-zones.ts --check` tabulates how the zone drawn compares with the zone hit.
+// Left-side rows are mirrored for the right below. A capsule's two ends are relative to the joint. Each bone has one
+// capsule, sized generously around what follows it on the modelled bodies. `bun tools/fit-zones.ts --check` compares
+// the zone drawn with the zone hit.
 const CENTER: readonly Row[] = [
   ["hips", -1, 0, 0.904, -0.041, ZONE_TORSO, SLOT_LEGS, [-0.05, 0.045, 0.007, 0.05, 0.045, 0.007, 0.125]],
   ["spine", B_HIPS, 0, 1.022, -0.007, ZONE_TORSO, SLOT_TORSO, [-0.05, 0.044, 0.013, 0.05, 0.044, 0.013, 0.105]],
@@ -100,7 +89,6 @@ const LEFT_MINOR: readonly Row[] = [
   ["prop", B_HAND_L, 0.752, 1.357, -0.052, ZONE_NONE, SLOT_HANDS, null],
 ];
 
-/** How far each left-side bone index is from its right-side twin, by group. */
 const ARM_SIDE = B_SHOULDER_R - B_SHOULDER_L;
 const LEG_SIDE = B_UPPER_LEG_R - B_UPPER_LEG_L;
 
@@ -123,7 +111,7 @@ function build(): Skeleton & { readonly slot: Uint8Array } {
     slot[b] = row[6];
     const cap = row[7];
     if (cap) {
-      // Mirrored, the ends swap sides with the body; `|| 0` keeps a zero from becoming minus zero.
+      // `|| 0` keeps a mirrored zero from becoming minus zero.
       capA.set([cap[0] * side || 0, cap[1], cap[2]], b * 3);
       capB.set([cap[3] * side || 0, cap[4], cap[5]], b * 3);
       capR[b] = cap[6];
@@ -133,7 +121,7 @@ function build(): Skeleton & { readonly slot: Uint8Array } {
   LEFT_ARM.forEach((row, i) => {
     const b = B_SHOULDER_L + i;
     put(b, row, row[0] + ".L", row[1], 1, row[5]);
-    // The right side: mirrored in X, the next zone id along, its parent on its own side.
+    // The right side is mirrored in X, takes the next zone id, and parents to its own side.
     const rightZone = row[5] === ZONE_TORSO ? ZONE_TORSO : row[5] + 1;
     put(b + ARM_SIDE, row, row[0] + ".R", row[1] === B_UPPER_CHEST ? row[1] : row[1] + ARM_SIDE, -1, rightZone);
   });
@@ -156,10 +144,10 @@ function build(): Skeleton & { readonly slot: Uint8Array } {
   return { id: "human", bones: HUMAN_BONES, names, parent, rest, zoneBones: B_FOOT_R + 1, zone, slot, capA, capB, capR };
 }
 
-/** The skeleton, with the body slot each bone's geometry belongs to. */
+/** `slot` is the body slot each bone's geometry belongs to. */
 export const HUMAN: Skeleton & { readonly slot: Uint8Array } = build();
 
-/** Points on the body other things attach to or look from: a bone and a place in its space. */
+/** A point on the body, as a bone and a position in that bone's space. */
 export interface Socket {
   readonly bone: number;
   readonly x: number;

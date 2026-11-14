@@ -1,5 +1,5 @@
-// Seeded random numbers (mulberry32). All game randomness comes from here so a
-// seed reproduces a run. Integer-only arithmetic: identical on every engine.
+// Seeded random numbers (mulberry32). All game randomness comes from here, so a seed reproduces a run. The generator uses
+// integer arithmetic only, so it is identical on every engine.
 
 export class Rng {
   private s: number;
@@ -8,7 +8,6 @@ export class Rng {
     this.s = seed >>> 0;
   }
 
-  /** Uniform 32-bit unsigned integer. */
   u32(): number {
     let t = (this.s = (this.s + 0x6d2b79f5) >>> 0);
     t = Math.imul(t ^ (t >>> 15), t | 1);

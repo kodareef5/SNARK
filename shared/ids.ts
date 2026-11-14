@@ -1,12 +1,9 @@
-// Identity. Three different things, never interchangeable:
-//
-//   Handle      u32, runtime only. 20-bit slot index + 12-bit generation. Names a
-//               live entity in one process and on the wire; a stale handle fails
-//               to resolve instead of naming whatever reused the slot.
-//   Pid         persistent id, a safe integer < 2^53: 13-bit world id of origin +
-//               40-bit sequence. Survives saves, restarts and transfers.
-//   Content id  stable string such as "core:wall". Compiled to a dense index per
-//               content build; saves store the string, never the index.
+// Three kinds of id, never interchangeable:
+//   Handle      u32, at run time and on the wire only. 20-bit slot index + 12-bit generation, so a stale handle fails to
+//               resolve instead of naming the slot's new entity.
+//   Pid         persistent id, a safe integer < 2^53. 13-bit world id of origin + 40-bit sequence. Survives saves, restarts
+//               and transfers.
+//   Content id  stable string such as "core:wall". Saves store the string, never the dense index it compiles to.
 
 export const HANDLE_INDEX_BITS = 20;
 export const HANDLE_INDEX_MASK = 0xfffff;

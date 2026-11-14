@@ -1,27 +1,14 @@
-// Content packs: how definitions stack.
-//
-// A pack is a named list of definitions. Packs load in order and build on what
-// came before, the way a child blueprint builds on its parent:
-//
-//   extends    a definition starts as a copy of another and states only what
-//              differs. One level of nested objects (food, stats) merges field
-//              by field.
-//   abstract   a template: it can be extended but never exists in the world.
-//   override   a pack changes a definition owned by an earlier pack, stating
-//              only the fields it changes. Balance mods are overrides.
-//
-// A pack may only define ids in its own namespace ("mypack:thing"), so two
-// packs cannot collide by accident; touching someone else's definition requires
-// the explicit override.
-//
-// Stacking is resolved once, here. The result is the same flat list a single
-// hand-written pack would be, so the simulation never follows an inheritance
-// chain at run time and a pack costs nothing after load.
+// A pack may only define ids in its own namespace ("mypack:thing"). Changing another pack's definition takes an explicit override.
+// Stacking is resolved once, here, into a flat list, so the simulation never follows an inheritance chain.
 
 import type { Def } from "./defs.ts";
 import { compileContent, type CompileResult } from "./registry.ts";
 
-/** A definition as written in a pack: any subset of fields, plus stacking directives. */
+/**
+ * A definition as written in a pack. `extends` starts it as a copy of another, and one level of nested objects merges
+ * field by field. `abstract` makes it a template that can be extended but never exists in the world. `override` changes
+ * a definition owned by an earlier pack, stating only the fields it changes.
+ */
 export interface DefPatch {
   id: string;
   type?: Def["type"];
@@ -48,7 +35,6 @@ interface Entry {
   resolving: boolean;
 }
 
-/** Resolve stacking into concrete definitions, in a stable order. */
 export function resolvePacks(packs: readonly ContentPack[]): { defs: Def[]; errors: string[] } {
   const errors: string[] = [];
   const entries = new Map<string, Entry>();
@@ -102,19 +88,18 @@ export function resolvePacks(packs: readonly ContentPack[]): { defs: Def[]; erro
   return { defs, errors };
 }
 
-/** Resolve stacking, then compile. */
 export function compilePacks(packs: readonly ContentPack[]): CompileResult {
   const { defs, errors } = resolvePacks(packs);
   if (errors.length > 0) return { registry: null, errors };
   return compileContent(defs);
 }
 
-/** Child fields over parent fields; plain objects merge one level; directives never inherit when `strip` is set. */
+/** Child fields replace parent fields, and plain objects merge one level. With `strip`, directives are not inherited. */
 function merge(parent: Record<string, unknown>, child: Record<string, unknown>, strip: boolean): Record<string, unknown> {
   const out: Record<string, unknown> = { ...parent };
   for (const key of Object.keys(child)) {
     if (strip && DIRECTIVES.has(key)) continue;
-    // An override patch keeps the original's directives; its own "override" flag is not a field.
+    // An override patch keeps the original's directives. Its own "override" flag is not a field.
     if (!strip && key === "override") continue;
     const a = out[key];
     const b = child[key];
@@ -142,13 +127,13 @@ const REQUIRED: Record<string, Record<string, string>> = {
   shape: { role: "string", boxes: "list" },
 };
 
-/** Why a resolved definition cannot be type-checked field by field, or null if it has every required field. */
+/** Returns the problem, or null if the definition has every required field. */
 function shapeProblem(d: Record<string, unknown>): string | null {
   const fields = REQUIRED[String(d.type)];
   if (!fields) return `unknown type "${String(d.type)}"`;
   for (const [key, kind] of Object.entries(fields)) {
     const v = d[key];
-    // "array" is three numbers (half extents); "list" is any array.
+    // "array" is three numbers (half extents) and "list" is any array.
     const ok = kind === "array" ? Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number") : kind === "list" ? Array.isArray(v) : typeof v === kind;
     if (!ok) return `missing or malformed field "${key}"`;
   }

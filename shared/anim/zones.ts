@@ -1,9 +1,4 @@
-// What a ray hits on a body standing in the world.
-//
-// The one place where a pose becomes a hit: the body is posed for the moment
-// asked about, the ray is carried into the body's own space, and the skeleton's
-// boxes are tested. The server calls this for the few bodies a shot passes
-// near; nothing is posed for a body nobody shoots at.
+// A humanoid pose becomes a hit here. The server poses only the few bodies a shot passes near.
 
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { Pose } from "./clip.ts";
@@ -14,18 +9,16 @@ import { Solved, rayZones, solve, zoneHit } from "./skeleton.ts";
 const pose = new Pose(HUMAN_BONES);
 const solved = new Solved(HUMAN_BONES);
 
-/** Height above a body's feet of the sphere that holds every pose it can take, and that sphere's radius. */
+/** The sphere that holds every pose a body can take: its height above the feet, and its radius. */
 export const BODY_REACH_Y = 0.9;
 export const BODY_REACH = 1.75;
 
 /**
- * The zone a ray hits on a humanoid body, or 0. The body stands at (bx, by, bz)
- * facing `yaw` (1/65536 turns) in the state `st` at `tick`. The ray starts at
- * (ox, oy, oz) and runs along the unit direction (dx, dy, dz) no farther than
- * `maxT`. `zoneHit` holds the bone and the distance.
+ * Returns the zone a ray hits, or 0. The body stands at (bx, by, bz) facing `yaw` (1/65536 turns). The ray starts at
+ * (ox, oy, oz) and runs along the unit direction (dx, dy, dz) no farther than `maxT`. `zoneHit` holds the bone and the distance.
  */
 export function rayBody(anim: HumanAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
-  // Cheap rejection first: most rays pass nowhere near.
+  // Most rays miss the bounding sphere, so test that first.
   const cx = bx - ox;
   const cy = by + BODY_REACH_Y - oy;
   const cz = bz - oz;
@@ -39,7 +32,7 @@ export function rayBody(anim: HumanAnim, st: AnimState, tick: number, bx: number
   }
   humanPose(anim, st, tick, pose);
   solve(HUMAN, pose, solved);
-  // Into the body's space: undo its place, then its yaw (x' = c x + s z, z' = c z - s x).
+  // Move the ray into the body's space by undoing its position, then its yaw. Yaw is x' = c x + s z, z' = c z - s x.
   const a = (yaw * TAU) / 65536;
   const s = detSin(a);
   const c = detCos(a);
@@ -48,7 +41,7 @@ export function rayBody(anim: HumanAnim, st: AnimState, tick: number, bx: number
   return rayZones(HUMAN, solved, c * rx - s * rz, oy - by, s * rx + c * rz, c * dx - s * dz, dy, s * dx + c * dz, maxT);
 }
 
-/** The zone of the hit box a bone's geometry is covered by: its own, or the nearest ancestor's that has one. */
+/** A bone without a capsule takes the zone of its nearest ancestor that has one. */
 export function zoneOfBone(bone: number): number {
   let b = bone;
   while (b >= 0 && HUMAN.zone[b] === 0) b = HUMAN.parent[b]!;

@@ -1,9 +1,5 @@
-// Quaternions, as four numbers (x, y, z, w) at an offset in any numeric array.
-//
-// Rotations of bones are composed here on the server (for hit zones) and on
-// the client (for drawing), and the two must agree, so only exactly rounded
-// operations are used: + - * / and Math.sqrt, plus the deterministic sine and
-// cosine of shared/math/scalar.ts.
+// Quaternions are four numbers (x, y, z, w) at an offset in any numeric array. The server and the client must compose the
+// same bone rotations, so only exactly rounded operations are used: + - * / and Math.sqrt, plus detSin and detCos.
 
 import { detCos, detSin } from "./scalar.ts";
 
@@ -23,7 +19,7 @@ export function quatCopy(o: Numbers, oi: number, a: Numbers, ai: number): void {
   o[oi + 3] = a[ai + 3]!;
 }
 
-/** o = a * b: the rotation b followed by the rotation a. `o` may be `a` or `b`. */
+/** o = a * b, the rotation b followed by the rotation a. `o` may be `a` or `b`. */
 export function quatMul(o: Numbers, oi: number, a: Numbers, ai: number, b: Numbers, bi: number): void {
   const ax = a[ai]!, ay = a[ai + 1]!, az = a[ai + 2]!, aw = a[ai + 3]!;
   const bx = b[bi]!, by = b[bi + 1]!, bz = b[bi + 2]!, bw = b[bi + 3]!;
@@ -33,7 +29,7 @@ export function quatMul(o: Numbers, oi: number, a: Numbers, ai: number, b: Numbe
   o[oi + 3] = aw * bw - ax * bx - ay * by - az * bz;
 }
 
-/** o = conj(a) * b: b seen from the frame a. */
+/** o = conj(a) * b, which is b seen from the frame a. */
 export function quatMulConj(o: Numbers, oi: number, a: Numbers, ai: number, b: Numbers, bi: number): void {
   const ax = -a[ai]!, ay = -a[ai + 1]!, az = -a[ai + 2]!, aw = a[ai + 3]!;
   const bx = b[bi]!, by = b[bi + 1]!, bz = b[bi + 2]!, bw = b[bi + 3]!;
@@ -43,7 +39,6 @@ export function quatMulConj(o: Numbers, oi: number, a: Numbers, ai: number, b: N
   o[oi + 3] = aw * bw - ax * bx - ay * by - az * bz;
 }
 
-/** Rotate the vector (x, y, z) by q into o[oi..oi+2]. */
 export function quatRotate(q: Numbers, qi: number, x: number, y: number, z: number, o: Numbers, oi: number): void {
   const qx = q[qi]!, qy = q[qi + 1]!, qz = q[qi + 2]!, qw = q[qi + 3]!;
   const tx = 2 * (qy * z - qz * y);
@@ -54,7 +49,7 @@ export function quatRotate(q: Numbers, qi: number, x: number, y: number, z: numb
   o[oi + 2] = z + qw * tz + (qx * ty - qy * tx);
 }
 
-/** Rotate the vector by the inverse of q. */
+/** Rotates by the inverse of q. */
 export function quatUnrotate(q: Numbers, qi: number, x: number, y: number, z: number, o: Numbers, oi: number): void {
   const qx = -q[qi]!, qy = -q[qi + 1]!, qz = -q[qi + 2]!, qw = q[qi + 3]!;
   const tx = 2 * (qy * z - qz * y);

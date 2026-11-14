@@ -1,52 +1,36 @@
-// Wire protocol, version 5. Message layouts live here and nowhere else.
-//
-// Every message starts with a 4-bit type. Channels are fixed per type:
+// Message layouts live here and nowhere else. Every message starts with a 4-bit type, and each type has a fixed channel.
 //
 //   client -> server
-//     HELLO     reliable     version u16, content hash u32 (of the definitions as they were
-//                            written, before any server tuned them), clip hash u32, name string,
-//                            flags u8, device key (16 bytes), with HELLO_LOOK a look (28 bytes),
-//                            and the server's password, a string ("" for none)
-//     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths),
-//                            newest tick u32, count-1 (3 bits),
-//                            then inputs newest first; each after the first is
-//                            preceded by one bit: 1 = same as the one before
+//     HELLO     reliable     version u16, content hash u32 (of the definitions as written, untuned), clip hash u32,
+//                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (28 bytes),
+//                            password string ("" for none)
+//     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths), newest tick u32,
+//                            count-1 (3 bits), then inputs newest first. Each after the first is preceded by
+//                            one bit: 1 = same as the one before.
 //     COMMAND   reliable     sequence u16, op u8, arguments by op
 //   server -> client
-//     WELCOME   reliable     version u16, tick u32, own handle u32, species u16,
-//                            session state 2 bits, admin 1 bit, day offset u32,
-//                            map id string, map hash u32, chunksX u8+1, chunksZ u8+1,
-//                            own body, yaw u16; then content as this server has it: its
-//                            hash u32 and the tuning that makes it (a string: see
-//                            shared/content/tuning.ts); the clock's three scales (f64 each:
-//                            the whole cycle, the day, the night); and the seconds its
-//                            message of the day is shown (u16)
-//     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8,
-//                            session state 2 bits, own body, entity delta (see view.ts)
-//     CHUNK     reliable     chunk u16, version u32, final 1 bit, count 16 bits, slots,
-//                            then removals: count u8, and for each: how many versions back
-//                            (varint), why (2 bits: taken, destroyed, fell), and unless it
-//                            was taken where it began (3 x f32) and when (tick u32); then
-//                            runs of slots (count varint; each how far its first slot is
-//                            from the end of the run before, svarint, and how many more,
-//                            varint). Rows are read first; a removal leaves alone any row
-//                            newer than itself.
+//     WELCOME   reliable     version u16, tick u32, own handle u32, species u16, session state 2 bits, admin 1 bit,
+//                            day offset u32, map id string, map hash u32, chunksX-1 u8, chunksZ-1 u8, own body,
+//                            yaw u16, tuned content hash u32, tuning string (shared/content/tuning.ts), the clock's
+//                            cycle, day and night scales (f64 each), MOTD seconds u16
+//     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8, session state 2 bits, driven
+//                            entity index + 1 varint (0 = its own body), that body, entity delta (see view.ts)
+//     CHUNK     reliable     chunk u16, version u32, final 1 bit, row count 16 bits, rows, then removals: count u8,
+//                            and per removal: versions back varint, cause 2 bits (taken, destroyed, fell), unless
+//                            taken where it began (3 x f32) and when (tick u32), then runs of slots: count varint,
+//                            and per run: first slot minus the end of the run before svarint, length-1 varint.
+//                            Rows are read first. A removal leaves alone any row newer than itself.
 //     CHUNK_DROP reliable    chunk u16
 //     REJECT    reliable     reason u8
 //     RESULT    reliable     command sequence u16, code u8
 //     TEXT      reliable     channel u8, text string
 //     OWN       reliable     component u8, then that component's fields
-//     NODES     reliable     chunk u16, version u32, count u8, used-up slots
+//     NODES     reliable     chunk u16, version u32, count u8, used-up slots (u8 each)
 //     EVENT     reliable     kind u8, then that kind's fields (see EVENT_*)
 //
-// The server never trusts a position or a target. A client can say what it
-// presses, one input per tick, and what it asks the interface to do, one
-// command at a time. Neither message has room for a coordinate of its own body
-// or the identity of something to hit.
-//
-// Commands are applied at most once. They are never resent after a reconnect:
-// the client learns what happened from the state it is sent, and RESULT only
-// tells the interface why something was refused.
+// The server never trusts a position or a target. Neither INPUT nor COMMAND has room for a coordinate of the client's own
+// body or the identity of something to hit. Commands are applied at most once and never resent after a reconnect. The
+// client learns the outcome from the state it is sent, and RESULT only tells the interface why something was refused.
 
 import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
@@ -66,9 +50,7 @@ export const S_REJECT = 5;
 export const S_RESULT = 6;
 export const S_TEXT = 7;
 export const S_OWN = 8;
-/** Which nodes of a chunk are used up: chunk u16, version u32, count u8, slot u8 each. Reliable. */
 export const S_NODES = 9;
-/** Something happened that this client is told about once: a hit it landed, harm it took, a death. See EVENT_*. */
 export const S_EVENT = 10;
 
 export const REJECT_VERSION = 1;
@@ -79,134 +61,109 @@ export const REJECT_NAME = 5;
 /** Wrong device key for the name, spectating not allowed, or too many password attempts. */
 export const REJECT_DENIED = 6;
 export const REJECT_KICKED = 7;
-/** The server asks a password of everyone who joins, and this was not it. */
 export const REJECT_PASSWORD = 8;
-/** The longest a server's password may be, and the longest a tuning: bytes. */
 export const MAX_PASSWORD_BYTES = 64;
 export const MAX_TUNING_BYTES = 1 << 20;
 
-/** HELLO flag: join without a body. */
 export const HELLO_SPECTATE = 1;
-/** HELLO flag: a look follows the key. A new survivor is made with it at once, without the creator. */
+/** A look follows the key. A new survivor gets it at once and skips the creator. */
 export const HELLO_LOOK = 2;
 export const KEY_BYTES = 16;
 
-/** What the session is doing. Sent with every snapshot. */
 export const SESSION_ALIVE = 0;
 export const SESSION_DEAD = 1;
 export const SESSION_SPECTATING = 2;
-/** A new survivor with no look yet: it has no body until it sends one with CMD_CREATE. */
+/** A new survivor with no look yet. It has no body until it sends a look with CMD_CREATE. */
 export const SESSION_CREATING = 3;
 
-/** Command ops. */
 export const CMD_TEXT = 1;
-/** Move items between slots: from box 1 bit, slot u8, to box 1 bit, slot u8, count u16 (0 = the whole stack), expected item u16. */
+/** From box 1 bit, slot varint, to box 1 bit, slot varint, count u16 (0 = the whole stack), expected item u16. */
 export const CMD_MOVE = 2;
-/** Eat or use what is in one of your own slots: slot u8, expected item u16. */
+/** Eats or uses the item in an own slot: slot varint, expected item u16. */
 export const CMD_USE = 3;
 
-/** Close the container this session has open. No arguments. */
+/** Closes the open container. No arguments. */
 export const CMD_CLOSE = 4;
-/** Return to life at one of the offered places: index u8. */
+/** Index u8 into the places OWN_RESPAWN listed. */
 export const CMD_RESPAWN = 5;
 
-/** Put a level-up point into a stat: stat u8. */
+/** Stat u8. It gets one level-up point. */
 export const CMD_SPEND = 6;
-/** Learn an engram: content index u16. */
+/** Engram content index u16. */
 export const CMD_LEARN = 7;
-/** Make something: recipe content index u16, how many u8. */
+/** Recipe content index u16, count u8. */
 export const CMD_CRAFT = 8;
 
-/** Make this session's survivor with a look: 28 bytes (shared/anim/look.ts). Only while the session is creating. */
+/** A look, 28 bytes (shared/anim/look.ts). Accepted only in SESSION_CREATING. */
 export const CMD_CREATE = 9;
 
-/** Take a hotbar slot's item in hand: slot u8, 0 to 9, or 255 to put away what is held. */
+/** Hotbar slot u8, 0 to 9, or 255 to put away the held item. */
 export const CMD_SELECT = 10;
-/** Set the weapon in a slot of your own to take a kind of ammunition: weapon slot u8, ammunition item u16. Rounds of another kind in it go back to the bag. */
+/** Weapon slot varint, ammunition item u16. The weapon then takes that ammunition, and rounds of another kind in it go back to the bag. */
 export const CMD_LOAD = 11;
-/** Fit an attachment to a weapon, both in slots of your own: weapon slot u8, attachment slot u8. */
+/** Weapon slot varint, attachment slot varint, both own slots. */
 export const CMD_ATTACH = 12;
-/** Take the attachment off the weapon in a slot of your own: slot u8. */
+/** DETACH, UNLOAD and REPAIR each take an own slot varint. A repair costs a share of the item's ingredients. */
 export const CMD_DETACH = 13;
-/** Take the rounds out of the weapon in a slot of your own: slot u8. */
 export const CMD_UNLOAD = 14;
-/** Repair the thing in a slot of your own, for a share of what it is made of: slot u8. */
 export const CMD_REPAIR = 15;
-/** Drop from a slot of your own onto the ground: slot u8, count u16 (0 = the whole stack), expected item u16. */
+/** Slot varint, count u16 (0 = the whole stack), expected item u16. */
 export const CMD_DROP = 16;
-/**
- * Round 4's commands, numbered here once so that nothing is renumbered as its parts arrive:
- * 17 chat, 18 place a structure, 19 act on a structure, 20 order a creature, 21 name one,
- * 22 feed one, 23 open one. Each is defined beside the part that handles it.
- */
-/** Say something: the channel (3 bits: TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE), then the words (a string). */
+/** Channel 3 bits (TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE), then the text string. */
 export const CMD_CHAT = 17;
 /**
- * Set down the building piece in hand: which of the forms it has (u8); the
- * structure it joins (u32, a ref) and which of that structure's places (u8;
- * or 255 for a thing set on top of it, and then where and facing which way:
- * x and z as s32 lattice units, u16), or 0xffffffff and, for open ground,
- * where (x and z as s32 lattice units) with the facing (u16) and how far it
- * is raised (s8 steps); then how it is turned in its place (u8). The server
- * works the position out again itself.
+ * Places the building piece in hand: form index u8, then target u32. A structure ref is followed by its socket u8, and for
+ * socket 255 (a thing set on top of it) by x and z (s32 lattice units) and yaw u16. 0xffffffff means open ground and is
+ * followed by x and z (s32 lattice units), yaw u16 and lift (s8 steps). Last is the turn in place u8. The server works
+ * the position out again itself.
  */
 export const CMD_PLACE = 18;
-/**
- * Do something to a thing built: which (u32, a ref) and what (u8, a STRUCT_
- * action of shared/world/upkeep.ts): take it back into the hands, take it
- * down for half of what it is made of, mend it, lock or unlock it, give it a
- * PIN, or use it (open a door, look into a box). The last two are followed
- * by a PIN (u16: 0 to 9999, or 0xffff for none).
- */
+/** Structure ref u32, then a STRUCT_ action u8 (shared/world/upkeep.ts). STRUCT_PIN and STRUCT_USE add a PIN u16: 0 to 9999, or 0xffff for none. */
 export const CMD_STRUCT = 19;
 /**
- * Tell a creature of one's tribe what to do: which (its entity index, u32, or
- * 0xffffffff for every one within a whistle's reach) and what (u8): stay,
- * follow me, be passive, neutral or aggressive, take its saddle off, mate or
- * do not; or 16 plus a stat, to put one of its unspent levels there.
+ * Orders a tribe creature: entity index u32 or ORDER_ALL, then order u8. The order is an ORDER_ value, ORDER_STANCE plus a
+ * stance (passive, neutral, aggressive), or ORDER_LEVEL plus a stat to spend one of its unspent levels on.
  */
 export const CMD_ORDER = 20;
 export const ORDER_STAY = 0;
 export const ORDER_FOLLOW = 1;
 export const ORDER_STANCE = 2;
-/** Take its saddle off: it goes into what the creature carries. */
+/** The saddle goes into the creature's inventory. */
 export const ORDER_UNSADDLE = 5;
-/** It may mate, with one of its kind and tribe that also may; and it may not. Neither can be whistled. */
+/** Allow or forbid mating. A creature mates only with one of its species and tribe that is also allowed. */
 export const ORDER_MATE = 6;
 export const ORDER_UNMATE = 7;
 export const ORDER_LEVEL = 16;
-/** In an order, the creature that means every one near. */
+/** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE or ORDER_LEVEL. */
 export const ORDER_ALL = 0xffffffff;
-/** How far a whistle carries: metres. */
+/** Metres. */
 export const WHISTLE_RANGE = 40;
-/** Name a creature of one's tribe: which (its entity handle, u32) and what (a string of at most 24 bytes). */
+/** Names a tribe creature: entity handle u32, then a string of at most 24 bytes. */
 export const CMD_NAME = 21;
-/** Feed the creature whose inventory is open something out of that inventory: its slot (varint) and what the client believes is there (u16). */
+/** Feeds the creature whose inventory is open from that inventory: slot varint, expected item u16. */
 export const CMD_FEED = 22;
-/** Look into a creature of one's tribe: which (its entity index, u32). The use button rides one that is saddled; this is how what it carries is reached. */
+/** Opens a tribe creature's inventory: entity index u32. The use button rides a saddled creature, so this command reaches its inventory. */
 export const CMD_OPEN = 23;
 
-/** Boxes a slot command can address. Nothing else can be named: no ids travel. */
+/** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;
-/** Whatever container the session has open, if any. */
+/** The container the session has open, if any. */
 export const BOX_OPEN = 1;
 
 export const RESULT_OK = 0;
-/** Too many commands in flight; try again. */
+/** Too many commands in flight. Try again. */
 export const RESULT_BUSY = 1;
 export const RESULT_INVALID = 2;
 export const RESULT_DENIED = 3;
-/** The slot does not hold what the client thought: its picture was out of date. */
+/** The slot does not hold the item the client expected. */
 export const RESULT_STALE = 4;
 export const RESULT_FULL = 5;
 export const RESULT_FAR = 6;
-/** Not enough of something: points, level, ingredients. */
+/** Not enough points, level or ingredients. */
 export const RESULT_SHORT = 7;
 /**
- * Why a piece could not be set down: something is in the way; a foundation
- * would stand too far clear of the ground; nothing would hold it up; it is too
- * near what another tribe has founded; what it would join is not this
- * survivor's tribe's; or there is no such place to join.
+ * Placement refusals. TOO_HIGH is a foundation too far above the ground, ENEMY_NEAR is too close to another tribe's foundation
+ * or pillar, and NO_SNAP is no such place to join.
  */
 export const RESULT_OBSTRUCTED = 16;
 export const RESULT_TOO_HIGH = 17;
@@ -214,85 +171,67 @@ export const RESULT_NO_SUPPORT = 18;
 export const RESULT_ENEMY_NEAR = 19;
 export const RESULT_NOT_YOURS = 20;
 export const RESULT_NO_SNAP = 21;
-/** Why a thing built could not be taken back or mended: it has been harmed; or it is too soon, or too late. */
+/** A pickup or repair refused. DAMAGED means the structure has been harmed, and WAIT means it is too soon or too late. */
 export const RESULT_DAMAGED = 22;
 export const RESULT_WAIT = 23;
-/** Why a thing built could not be used: it is locked; it is locked and wants its PIN; or, to be taken back, it must be empty. */
+/** LOCKED means no PIN opens it, PIN means it wants its PIN, and NOT_EMPTY means it must be empty before pickup. */
 export const RESULT_LOCKED = 24;
 export const RESULT_PIN = 25;
 export const RESULT_NOT_EMPTY = 26;
 
-/** OWN components. */
 export const OWN_SESSION = 1;
 /** base tick u32, then for health, food, water, oxygen: value uint53, rate svarint, max uint53 (millionths of a point). */
 export const OWN_VITALS = 2;
 /**
- * box 1 bit, capacity varint, bag size varint, full 1 bit (forget every slot first),
- * count u16, then per slot: index varint, item u16, and if the item is not 0: count
- * u16, quality u8, durability u16, spoil tick u32, and 1 bit for "it holds
+ * box 1 bit, capacity varint, bag size varint, full 1 bit (forget every slot first), count u16, then per slot: index varint,
+ * item u16, and if the item is not 0: count u16, quality u8, durability u16, spoil tick u32, and 1 bit for "it holds
  * something", then if so: ammunition item u16, rounds u8, attachment item u16.
  */
 export const OWN_SLOTS = 3;
 
-/** open 1 bit; if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */
+/** open 1 bit, and if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */
 export const OWN_OPEN = 4;
 /** count u8, then per marker: kind u8, x f32, y f32, z f32, tick u32. Oldest first. */
 export const OWN_MARKERS = 5;
-/** Where a dead survivor may return: count u8, then per place: name string, x f32, z f32. */
+/** count u8, then per place: name string, x f32, z f32, wait u16 (seconds until a bed is ready, 0 for a spawn point). */
 export const OWN_RESPAWN = 6;
 
 /**
- * experience u32, level u16, unspent stat points u16, unspent engram points
- * (varint), learned engrams (count varint, content index u16 each), crafting jobs (count u8,
- * then recipe u16, units left u8, tick the current unit is done u32 each).
+ * experience u32, level u16, unspent stat points u16, unspent engram points varint, learned engrams (count varint, content
+ * index u16 each), crafting jobs (count u8, then recipe u16, units left u8, tick the current unit is done u32 each).
  */
 export const OWN_PROGRESSION = 7;
 
-/** The survivor's own look: 28 bytes. Sent when it gets a body. */
+/** 28 bytes. Sent when the survivor gets a body. */
 export const OWN_LOOK = 8;
 
-/** Which hotbar slot is in the survivor's hands: u8, 255 for none. */
+/** Hotbar slot u8, 255 for none. */
 export const OWN_HELD = 9;
-/** What is acting on the body for a time: count u8, then for each a buff (u16 content index) and the tick it ends (u32; 0 for one with no end). */
+/** count u8, then per buff: content index u16, end tick u32 (0 for no end). */
 export const OWN_BUFFS = 10;
-/** The server's rules that a client acts on, and that may change while it runs: flags u16, the RULE_ bits. */
+/** The server rules a client acts on, which may change while it runs: flags u16 of RULE_ bits. */
 export const OWN_RULES = 11;
-/** The damage of hits may be shown as numbers; there is a global text channel; a mark is shown when a ranged hit lands. */
 export const RULE_DAMAGE_NUMBERS = 1;
 export const RULE_GLOBAL_CHAT = 2;
 export const RULE_HIT_MARKERS = 4;
-/** The body may be looked at from behind; a crosshair is shown; the map shows where its reader is; a beam marks where a survivor died. */
 export const RULE_THIRD_PERSON = 8;
 export const RULE_CROSSHAIR = 16;
 export const RULE_MAP_LOCATION = 32;
 export const RULE_CORPSE_LOCATOR = 64;
 /**
- * Who the survivor is with: its team (varint), its tribe's name (a string;
- * empty for a survivor alone, and then nothing more of the tribe follows), its
- * rank there (u8), and the members (count u8, then for each a name string, 1
- * bit for "here now" and 1 bit for "owns the tribe"). Then an invitation it
- * has yet to answer: the tribe's name (a string, empty for none) and, if
- * there is one, who asked (a string).
+ * team varint, tribe name string (empty for a survivor alone, and then rank and members are absent), rank u8, members (count
+ * u8, then per member: name string, online 1 bit, owner 1 bit). Then a pending invitation: tribe name string (empty for
+ * none) and, if there is one, the inviter's name string.
  */
 export const OWN_TRIBE = 12;
-/**
- * What lets this session open the voice socket: its speaker number (u16), the
- * token to show there (8 bytes), and what it may do (u8; bit 0: speak).
- * The creature opened or ridden (14) is reserved.
- */
+/** What the session needs to open the voice socket: speaker number u16, token (8 bytes), permissions u8 (bit 0: speak). */
 export const OWN_VOICE = 13;
 /**
- * SUBJECT: the creature whose inventory the session has open. Present 1 bit;
- * then whether it is being tamed and whether it is somebody's (1 bit each),
- * its level (u16), how far its taming has got and how well, and its torpor
- * and food as shares of their most: each in thousandths, 10 bits. Then which
- * it is (its entity index, u32), the levels it has to spend (u8), its stance
- * (2 bits), whether it is following someone and whether it wears a saddle (1
- * bit each). Then its breeding: whether its kind breeds, whether it may mate
- * and whether it is female (1 bit each); how grown it is (2 bits: baby,
- * juvenile, adolescent, grown) and how far (thousandths, 10 bits); how far
- * the pair it is one of has got (thousandths, 10 bits); and the seconds until
- * a female may mate again (varint).
+ * The creature whose inventory the session has open: present 1 bit, then being tamed 1 bit, owned 1 bit, level u16, taming
+ * progress and effectiveness and its torpor and food as shares of their maximum (thousandths, 10 bits each), entity index
+ * u32, unspent levels u8, stance 2 bits, following 1 bit, saddled 1 bit. Then breeding: its species breeds 1 bit, may mate
+ * 1 bit, female 1 bit, growth stage 2 bits (baby, juvenile, adolescent, grown), maturity and its pair's mating progress
+ * (thousandths, 10 bits each), and the seconds until a female may mate again (varint).
  */
 export const OWN_SUBJECT = 14;
 
@@ -300,64 +239,60 @@ export const MARKER_DEATH = 1;
 
 /**
  * Kinds of S_EVENT, each after a u8 naming it.
- * HIT, to whoever landed it: where (3 x f32), the part hit (4 bits), the damage (u16), whether it killed, whether armor stopped some of it.
- * HURT, to whoever took it: the damage (u16), the side it came from (u8, 256ths of a turn, as a facing), the part hit (4 bits).
- * DEATH, likewise, then: who did it (a string), with what (u16 content index, 0 for bare hands), from how far (u16, tenths of a metre).
- * KILL, to whoever did it: what died (a string), its level (u16), the experience gained (u16, tenths).
+ * HIT, to the attacker: position (3 x f32), zone 4 bits, damage u16, killed 1 bit, armor stopped some 1 bit.
+ * HURT, to the victim: damage u16, the side it came from (u8, 256ths of a turn, as a facing), zone 4 bits.
+ * DEATH, to the victim: the HURT fields, then killer name string, weapon content index u16 (0 for bare hands), distance u16 (tenths of a metre).
+ * KILL, to the killer: victim name string, its level u16, experience gained u16 (tenths).
  */
 export const EVENT_HIT = 1;
-/** Bytes of a name in an event, at most: 24 characters of up to three bytes each. */
+/** 24 characters of up to three bytes each. */
 export const EVENT_NAME_BYTES = 72;
 export const EVENT_HURT = 2;
 export const EVENT_DEATH = 3;
 export const EVENT_KILL = 4;
 /**
- * SHOT, to whoever is near: something was fired. Where from (3 x f32), then
- * the ammunition (u16 content index), then whether it flies. If it flies: its
- * velocity (3 x f32) and how many ticks ago it left (u8). If not: where it
- * ended (3 x f32).
+ * SHOT, to other clients nearby: origin (3 x f32), ammunition content index u16, flies 1 bit, then 3 x f32. For a shot that
+ * flies they are its velocity, followed by the ticks since it left u8. Otherwise they are where it ended.
  */
 export const EVENT_SHOT = 5;
-/** BLAST, to whoever is near: something went off. Where (3 x f32) and how far it reached (f32, metres). */
+/** BLAST, to clients nearby: position (3 x f32), reach f32 in metres. */
 export const EVENT_BLAST = 6;
 /**
- * TAMED, to whoever tamed it: a creature is theirs. Which (its entity handle,
- * u32), what it is (content index, u16), its level now (u16) and how well it
- * was done (percent, u8; or 255 for one that was not tamed but taken as
- * young). The client asks what to call it.
+ * TAMED, to the new owner: entity handle u32, species content index u16, level u16, taming effectiveness u8 in percent (255
+ * for one claimed as young, not tamed). The client then asks for a name.
  */
 export const EVENT_TAMED = 7;
 
-/** A removal a client is told of with its cause is one that happened within this many ticks: older ones are only the fact. */
+/** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;
 
 export const TEXT_CONSOLE = 0;
 export const TEXT_NOTICE = 1;
-/** What survivors say: to everyone, to those near, to their tribe. The text is "name: words". */
+/** Chat channels: everyone, those nearby, the tribe. The text is "name: words". */
 export const TEXT_GLOBAL = 2;
 export const TEXT_LOCAL = 3;
 export const TEXT_TRIBE = 4;
-/** What the server says to whoever joins: its name, and its message of the day. Shown as a notice, for as long as the server says. */
+/** The server's name and message of the day, shown as a notice for the seconds the WELCOME gives. */
 export const TEXT_MOTD = 5;
-/** Characters of a chat line, at most; and of a tribe's name. */
+/** Both in characters. */
 export const MAX_CHAT_CHARS = 120;
 export const MAX_TRIBE_NAME = 24;
 
-/** Snapshot input margin meaning "no input has arrived yet": the client must not steer its clock by it. */
+/** The snapshot input margin when no input has arrived yet. The client must not steer its clock by it. */
 export const MARGIN_UNKNOWN = -128;
 
 /** Inputs carried per packet. Losing up to three packets in a row costs nothing. */
 export const INPUT_REDUNDANCY = 4;
-/** How far ahead of the server tick an input may be and still be buffered. */
+/** How many ticks ahead of the server tick an input may be and still be buffered. */
 export const INPUT_WINDOW = 32;
-/** Largest message a client may send, in bytes. */
+/** In bytes. */
 export const MAX_CLIENT_MESSAGE = 256;
 export const MAX_NAME_BYTES = 24;
 /** A console line from a client. */
 export const MAX_TEXT_BYTES = 200;
 /** A text message from the server. */
 export const MAX_SERVER_TEXT_BYTES = 1000;
-/** Bits an input's buttons take on the wire, and the known ones; others are cleared on receipt. */
+/** Bits of an input's buttons on the wire. InputBuffer.set clears any outside the mask. */
 export const BUTTON_BITS = 10;
 export const BUTTON_MASK = 0x3ff;
 /** Pitch units: 16384 is straight up. */
@@ -373,10 +308,8 @@ export class InputBuffer {
   readonly pitch: Int16Array;
   readonly buttons: Uint16Array;
   /**
-   * On the server: the moment of the world the client was drawing when it
-   * sampled this input, in ticks, as the client said: the newest snapshot it
-   * had, less how far behind that it draws. It is what the client was looking
-   * at when it pressed the button. Unchecked; whoever uses it bounds it.
+   * Server only. The world tick the client says it was drawing when it sampled this input: its newest snapshot minus how far
+   * behind that it draws. Unchecked, so its user must bound it.
    */
   readonly view: Float64Array;
 
@@ -396,7 +329,7 @@ export class InputBuffer {
     return this.tick[tick & this.mask] === tick;
   }
 
-  /** Store an input, clamping every field to its legal range. */
+  /** Clamps every field to its legal range. */
   set(tick: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
     const i = tick & this.mask;
     this.tick[i] = tick;
@@ -457,7 +390,7 @@ export function readBody(r: BitReader, b: Body): void {
   b.reloadTo = r.u8();
 }
 
-/** Write a HELLO. `key` must be KEY_BYTES long. */
+/** `key` must be KEY_BYTES long. */
 export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = ""): void {
   w.bits(C_HELLO, 4);
   w.u16(version);
@@ -470,22 +403,17 @@ export function writeHello(w: BitWriter, version: number, contentHash: number, c
   w.string(password);
 }
 
-/** Start a COMMAND; the caller appends the op's arguments. */
+/** The caller appends the op's arguments. */
 export function writeCommand(w: BitWriter, seq: number, op: number): void {
   w.bits(C_COMMAND, 4);
   w.u16(seq);
   w.u8(op);
 }
 
-/** Write an INPUT message carrying the newest `count` inputs ending at `newest`. */
-/** Steps to a tick in which a client says how far behind its newest snapshot it draws the world. */
+/** INPUT's "behind" byte counts 1/VIEW_STEPS of a tick. */
 export const VIEW_STEPS = 16;
 
-/**
- * Write an INPUT: the newest snapshot decoded (`ack`), how many ticks behind
- * it the client is drawing everyone else (`behind`, up to 15), then the newest
- * `count` inputs.
- */
+/** `ack` is the newest snapshot decoded. `behind` is how many ticks behind it the client draws everyone else, and is clamped to 255 sixteenths. */
 export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newest: number, count: number, behind = 0): void {
   w.bits(C_INPUT, 4);
   w.u32(ack);
@@ -516,11 +444,9 @@ export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newe
 }
 
 /**
- * Read the body of an INPUT message (after its type) into `inputs`, keeping
- * only ticks in (serverTick, serverTick + INPUT_WINDOW) not already present.
- * Returns the newest tick named by the packet, or 0 if it was malformed.
+ * Call after reading `ack` and `behind` (in ticks). Keeps only ticks in (serverTick, serverTick + INPUT_WINDOW) not already
+ * present. Returns the newest tick named, or 0 if the message was malformed.
  */
-/** Read the inputs of an INPUT whose `ack` and `behind` (in ticks) have been read already. Returns the newest tick named, or 0. */
 export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number, ack = 0, behind = 0): number {
   const newest = r.u32();
   const count = r.bits(3) + 1;
@@ -540,7 +466,7 @@ export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number
     const tick = newest - k;
     if (tick > serverTick && tick < serverTick + INPUT_WINDOW && !inputs.has(tick)) {
       inputs.set(tick, moveX, moveZ, yaw, pitch, buttons);
-      // The message speaks of the moment its newest input was sampled; an older input was sampled that much earlier.
+      // `ack - behind` is when the newest input was sampled. Each older input was sampled one tick earlier.
       inputs.view[tick & inputs.mask] = ack - behind - k;
     }
   }

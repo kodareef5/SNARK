@@ -1,17 +1,5 @@
-// The pose of a humanoid body, as a pure function.
-//
-// `humanPose(anim, state, tick, out)` depends on nothing else: no pose is
-// carried from one tick to the next. The server evaluates it only when a shot
-// passes near a body; every client evaluates it to draw. Because the state is
-// the small set of whole numbers the server replicates, both get the same
-// answer, and what is hit is what is seen.
-//
-// A body is a lower half that follows where it is going and an upper half that
-// follows where it is looking. Gaits are loops stretched to a whole number of
-// ticks; the position in a loop comes from the tick, offset per body so a crowd
-// is not in step. Moving sideways or backward turns the hips toward the
-// direction of travel (playing the gait in reverse when that is behind) and
-// turns the spine back.
+// humanPose is a pure function of the replicated AnimState and the tick, so the server's hit test and every client's
+// drawing get the same pose. The lower body follows the direction of travel and the upper body follows the look.
 
 import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatAxis, quatMul, quatRotate } from "../math/quat.ts";
@@ -21,7 +9,7 @@ import { B_CHEST, B_FINGERS_L, B_HEAD, B_HIPS, B_NECK, B_SHOULDER_L, B_SHOULDER_
 import { MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
 import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
 
-/** The parts of a packed `AnimState`, as replication sends them: each part travels only when it changes. */
+/** The three parts of a packed AnimState. Replication sends each part only when it changes. */
 export const ANIM_MOTION_BITS = 12;
 export const ANIM_LOOK_BITS = 6;
 export const ANIM_ACTION_BITS = 14;
@@ -37,25 +25,21 @@ export const DIR_STEPS = 16;
 /** Steps of `AnimState.pitch` from level to straight up. */
 export const PITCH_STEPS = 31;
 
-/** Everything a pose depends on besides the tick. All whole numbers, as replicated. */
+/** Everything a pose depends on besides the tick, as whole numbers. */
 export class AnimState {
   mode = MODE_WALK;
   grounded = true;
-  /** Speed over the ground, 0..SPEED_MAX. */
+  /** Horizontal speed in SPEED_STEP units, 0..SPEED_MAX. */
   speed = 0;
   /** Direction of travel relative to facing, in sixteenths of a turn toward the body's left. */
   dir = 0;
-  /** Where it looks: -PITCH_STEPS (down) to PITCH_STEPS (up). */
+  /** -PITCH_STEPS (down) to PITCH_STEPS (up). */
   pitch = 0;
   stance = STANCE_STAND;
-  /**
-   * What it is doing with what it holds: an act of shared/sim/weapon.ts in the
-   * low three bits and how it holds the thing (HOLD_*) in the next three; and
-   * the low byte of the tick the act began.
-   */
+  /** The act (shared/sim/weapon.ts) in the low three bits, then the hold (HOLD_*) in three. actionStart is the low byte of the act's first tick. */
   action = 0;
   actionStart = 0;
-  /** Ticks added to the clock, so that bodies are out of step with each other. Not replicated: it comes from the entity's id. */
+  /** Ticks added to the clock so that bodies are out of step. Not replicated. It comes from the entity's index (bodySeed). */
   seed = 0;
 
   /** Everything but the seed as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
@@ -64,7 +48,7 @@ export class AnimState {
     return (motion | ((this.pitch & 63) << ANIM_LOOK_SHIFT) | (this.action << ANIM_ACTION_SHIFT) | ((this.actionStart & 255) << (ANIM_ACTION_SHIFT + 6))) >>> 0;
   }
 
-  /** Set the action from an act, a hold, and the tick the act began. An act of none has no beginning. */
+  /** ACT_NONE stores a start of 0. */
   setAction(act: number, hold: number, start: number): void {
     this.action = (act & 7) | ((hold & 7) << 3);
     this.actionStart = act === ACT_NONE ? 0 : start & 255;
@@ -82,7 +66,7 @@ export class AnimState {
     this.actionStart = (word >>> (ANIM_ACTION_SHIFT + 6)) & 255;
   }
 
-  /** Set speed, direction and pitch from a velocity, a facing (radians) and a look pitch (radians). */
+  /** `yaw` and `pitch` are in radians. */
   setMotion(vx: number, vz: number, yaw: number, pitch: number): void {
     const s = detSin(yaw);
     const c = detCos(yaw);
@@ -96,12 +80,12 @@ export class AnimState {
   }
 }
 
-/** Ticks a body's clock is ahead of the world's, so that a crowd does not move in step. `id` is its entity index: the server and every client get the same. */
+/** `id` is the entity index, so the server and every client get the same seed. */
 export function bodySeed(id: number): number {
   return (id * 37) % 1024;
 }
 
-/** The clips a humanoid uses, found once by id. A missing clip leaves that part of the body at rest. */
+/** A missing gait clip leaves the body at rest. A missing hold or swing clip is skipped. */
 export class HumanAnim {
   readonly set: ClipSet;
   readonly idle: Clip | null;
@@ -157,7 +141,7 @@ export class HumanAnim {
   }
 }
 
-/** Speeds at which each gait is played pure, metres per second, and the ticks one cycle of it takes. */
+/** The speed at which each gait plays unblended, in metres per second, and the ticks one cycle takes. */
 const WALK_SPEED = 1.8;
 const JOG_SPEED = 4.2;
 const SPRINT_SPEED = 7.2;
@@ -169,32 +153,28 @@ const CROUCH_TICKS = 34;
 const PRONE_SPEED = 0.6;
 const PRONE_TICKS = 40;
 const SWIM_SPEED = 2.4;
-/**
- * Swim clips are made with the water's surface at the origin. A swimmer's
- * capsule floats with three quarters of its height under water, so its
- * surface is this far above its feet (SWIM_FLOAT of a 1.8 m body).
- */
+/** Swim clips put the water's surface at the origin. It is SWIM_FLOAT of a 1.8 m body above a swimmer's feet. */
 const SWIM_LIFT = 1.35;
-/** The body pitches about this height when it swims up or down: where it lies when level. */
+/** A swimmer pitches about this height, where its body lies when level. */
 const SWIM_PIVOT = 1.25;
 /** Share of the look pitch taken by each of the three spine bones, the neck, and the head. */
 const PITCH_SPINE = 0.14;
 const PITCH_NECK = 0.2;
 const PITCH_HEAD = 0.3;
 
-/** A swing takes the upper body: the spine up to the hands, then the fingers and what they hold. The legs go on walking. */
+/** A swing takes the upper body: the spine through the hands, then the fingers and props. The legs keep their gait. */
 const UPPER_FROM = B_SPINE;
 const UPPER_TO = B_UPPER_LEG_L;
 const HANDS_FROM = B_FINGERS_L;
-/** Ticks over which a swing takes the upper body over, and gives it back. */
+/** Ticks to blend a swing in and out. */
 const SWING_IN = 2;
 const SWING_OUT = 3;
 
-/** Ticks a bow takes to come up as the draw begins and to go down after the shot; and a gun to come down to be loaded. */
+/** Ticks for a bow to come up as the draw begins and go down after the shot, and for a gun to come down for loading. */
 const BOW_RAISE = 9;
 const BOW_LOWER = 6;
 const GUN_LOWER = 5;
-/** A gun kicks up by this much when it fires, radians, and settles over these ticks. */
+/** A gun kicks up by this many radians when it fires and settles over KICK_TICKS. */
 const KICK = 0.09;
 const KICK_TICKS = 5;
 
@@ -203,7 +183,7 @@ const b = new Pose(HUMAN_BONES);
 const q = new Float64Array(4);
 const v = new Float64Array(3);
 
-/** A stretched loop: `cycle` ticks from start to start, backward when `reverse`. */
+/** Plays the clip stretched to `cycle` ticks per loop, backward when `reverse`. */
 function gait(clip: Clip | null, cycle: number, tick: number, reverse: boolean, out: Pose): void {
   if (!clip) {
     out.rest();
@@ -214,20 +194,20 @@ function gait(clip: Clip | null, cycle: number, tick: number, reverse: boolean, 
   sampleClip(clip, (reverse ? 1 - phase : phase) * clip.frames, out);
 }
 
-/** A loop at the rate it was made. */
+/** Plays the clip at one frame per tick. */
 function loop(clip: Clip | null, tick: number, out: Pose): void {
   if (!clip) out.rest();
   else sampleClip(clip, tick, out);
 }
 
-/** Turn bone `bone` by `angle` about the axis (ax, ay, az) of its parent's space. */
+/** The axis (ax, ay, az) is in the parent's space. */
 function turn(pose: Pose, bone: number, ax: number, ay: number, az: number, angle: number): void {
   if (angle === 0) return;
   quatAxis(q, 0, ax, ay, az, angle);
   quatMul(pose.rot, bone * 4, q, 0, pose.rot, bone * 4);
 }
 
-/** The pose at `tick` (which may fall between ticks, for drawing) into `out`. */
+/** `tick` may fall between ticks, for drawing. */
 export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pose): void {
   const t = tick + st.seed;
   const speed = st.speed * SPEED_STEP;
@@ -246,7 +226,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     const k = clamp(speed / SWIM_SPEED, 0, 1);
     blendPose(out, a, b, k);
     out.root[1]! += SWIM_LIFT;
-    // Swimming where it looks: the whole body tips, more the faster it goes.
+    // A swimmer's whole body tips toward its look, more the faster it goes.
     bodyPitch = pitch * k;
     twistAngle = 0;
   } else if (!st.grounded) {
@@ -256,7 +236,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     loop(anim.proneIdle, t, a);
     gait(anim.proneCrawl, PRONE_TICKS, t, reverse, b);
     blendPose(out, a, b, clamp(speed / PRONE_SPEED, 0, 1));
-    // Flat on the ground it turns as one piece, and only the head follows the look.
+    // A prone body turns as one piece, and only the neck and head follow the look.
     twistAngle = 0;
     spineShare = 0;
   } else if (st.stance === STANCE_CROUCH) {
@@ -282,15 +262,15 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
 
   const act = st.action & 7;
   const hold = st.action >>> 3;
-  // Ticks since what it is doing began. Drawn a moment before the tick it began, it has not begun.
+  // Ticks since the act began. A pose drawn a moment before the act's first tick wraps above 250, and that counts as 0.
   let e = act === ACT_NONE ? 0 : (tick - st.actionStart) % 256;
   if (e < 0) e += 256;
   if (e > 250) e = 0;
-  /** How far its arms are up and aimed, 0 to 1: they then follow the whole of the look, not the spine's share of it. */
+  /** How far the arms are up and aimed, 0 to 1. Raised arms follow the whole look pitch, not only the spine's share. */
   let raised = 0;
   let kick = 0;
   if (hold === HOLD_BOW) {
-    // Carried low; up as the draw begins; down again once the arrow is gone.
+    // The bow is carried low, comes up as the draw begins, and goes down once the arrow is gone.
     raised = act === ACT_DRAW ? clamp(e / BOW_RAISE, 0, 1) : act === ACT_HOLD ? 1 : act === ACT_COOL ? clamp(1 - e / BOW_LOWER, 0, 1) : 0;
     if (anim.bowReady && anim.bowDrawn) {
       sampleClip(anim.bowReady, 0, a);
@@ -299,7 +279,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
       blendPose(out, out, a, 1, UPPER_FROM, UPPER_TO);
     }
   } else if (hold === HOLD_RIFLE || hold === HOLD_PISTOL) {
-    // At the shoulder, except while it is loaded or being taken in hand.
+    // A gun is at the shoulder except during a reload or an equip.
     const low = act === ACT_RELOAD ? clamp(e / GUN_LOWER, 0, 1) : act === ACT_EQUIP ? clamp(1 - e / EQUIP_TICKS, 0, 1) : 0;
     raised = 1 - low;
     if (act === ACT_COOL && e < KICK_TICKS) kick = KICK * (1 - e / KICK_TICKS);
@@ -313,7 +293,6 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     }
   }
 
-  // A swing: the upper body leaves what the legs are doing, for as long as a swing lasts.
   if (act === ACT_SWING) {
     const clip = hold === HOLD_HANDS ? ((st.actionStart & 1) !== 0 ? (anim.punchCross ?? anim.punch) : anim.punch) : hold === HOLD_THROW ? anim.throwing : anim.toolSwing;
     const k = e < SWING_IN ? e / SWING_IN : (SWING_TICKS - e) / SWING_OUT;
@@ -325,7 +304,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   }
 
   if (twistAngle !== 0) {
-    // Hips toward the direction of travel, the spine back to where the body faces.
+    // The hips turn toward the direction of travel and the spine turns back to where the body faces.
     turnRoot(out, 0, 1, 0, twistAngle, 0);
     turn(out, B_SPINE, 0, 1, 0, -twistAngle / 3);
     turn(out, B_CHEST, 0, 1, 0, -twistAngle / 3);
@@ -334,14 +313,14 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   if (bodyPitch !== 0) turnRoot(out, 1, 0, 0, -bodyPitch, SWIM_PIVOT);
   const look = pitch - bodyPitch;
   if (look !== 0) {
-    // Looking up is a turn toward -X's right-hand sense: +Z rises toward +Y.
+    // Looking up is a negative turn about X, which raises +Z toward +Y.
     turn(out, B_SPINE, 1, 0, 0, -look * spineShare);
     turn(out, B_CHEST, 1, 0, 0, -look * spineShare);
     turn(out, B_UPPER_CHEST, 1, 0, 0, -look * spineShare);
     turn(out, B_NECK, 1, 0, 0, -look * PITCH_NECK);
     turn(out, B_HEAD, 1, 0, 0, -look * PITCH_HEAD);
   }
-  // Arms that are up and aimed point where it looks: the rest of the pitch the spine did not take, and a gun's kick.
+  // Raised arms take the pitch the spine did not, plus a gun's kick.
   const lift = (look * (1 - 3 * spineShare) + kick) * raised;
   if (lift !== 0) {
     turn(out, B_SHOULDER_L, 1, 0, 0, -lift);
@@ -349,7 +328,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   }
 }
 
-/** Turn the whole body about an axis through (0, pivotY, 0) of the model. */
+/** Turns the whole body about an axis through (0, pivotY, 0) in model space. */
 function turnRoot(pose: Pose, ax: number, ay: number, az: number, angle: number, pivotY: number): void {
   quatAxis(q, 0, ax, ay, az, angle);
   quatMul(pose.rot, B_HIPS * 4, q, 0, pose.rot, B_HIPS * 4);

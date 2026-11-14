@@ -5,7 +5,7 @@ import { Rng } from "../rng.ts";
 import { CH_UNRELIABLE, type Connection, type Listener } from "./transport.ts";
 
 export interface LinkOptions {
-  /** One-way delay in milliseconds. */
+  /** One-way. */
   latencyMs?: number;
   /** Extra uniform random delay per message. On the unreliable channel this reorders. */
   jitterMs?: number;
@@ -18,7 +18,7 @@ interface Queued {
   seq: number;
   to: LoopbackEnd;
   channel: number;
-  /** Null marks the peer closing: delivered in order after what it sent first. */
+  /** Null marks the peer closing. It is delivered in order after what the peer sent first. */
   data: Uint8Array | null;
 }
 
@@ -46,7 +46,7 @@ export class LoopbackEnd implements Connection {
     this.net.enqueue(this, channel, data);
   }
 
-  /** Close this end now. The peer sees everything sent before the close, then the close. */
+  /** The peer sees everything sent before the close, then the close. */
   close(): void {
     if (!this.open) return;
     this.open = false;
@@ -66,7 +66,7 @@ export class LoopbackNet implements Listener {
     this.rng = new Rng(seed);
   }
 
-  /** Open a connection. Returns the client end; the listener receives the server end. */
+  /** Returns the client end. The listener receives the server end. */
   connect(opts: LinkOptions = {}): LoopbackEnd {
     const link = { latencyMs: opts.latencyMs ?? 0, jitterMs: opts.jitterMs ?? 0, loss: opts.loss ?? 0 };
     const client = new LoopbackEnd(this, link);
@@ -95,7 +95,7 @@ export class LoopbackNet implements Listener {
     this.push({ at, seq: this.seq++, to: from.peer, channel: 1, data: null });
   }
 
-  /** Move virtual time to `nowMs` and deliver everything due, in order. */
+  /** Delivers everything due by `nowMs`, in order. */
   advance(nowMs: number): void {
     const heap = this.heap;
     while (heap.length > 0 && heap[0]!.at <= nowMs) {

@@ -1,8 +1,5 @@
-// Compiles content definitions into the tables the simulation reads.
-//
-// Dense indices are assigned in id order, so every process that loads the same
-// definitions gets the same indices and the same hash. Index 0 is reserved: it
-// marks an empty structure slot and stands in for content that no longer exists.
+// Dense indices are assigned in id order, so every process that loads the same definitions gets the same indices and hash.
+// Index 0 is reserved. It marks an empty structure slot and stands in for content that no longer exists.
 
 import { BIRTH_SCALE } from "../sim/breeding.ts";
 import type { TameParams } from "../sim/taming.ts";
@@ -19,7 +16,6 @@ import { PIECE_ROLES, shapeHalf, type Def, type SpeciesDef, type WeaponFacet } f
 
 export const MISSING = 0;
 export const MAX_STRUCTURE_HALF = 16;
-/** The most boxes a shape may be made of. */
 export const MAX_SHAPE_BOXES = 16;
 
 const ID = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_\/-]*$/;
@@ -34,111 +30,107 @@ export interface Registry {
   /** Changes whenever any definition changes. Client and server must match. */
   readonly hash: number;
   /**
-   * For content a server's settings have tuned (shared/content/tuning.ts):
-   * the hash of the definitions before they were, the tuning as text, and the
-   * registry of them untuned. For content as it was written: its own hash,
-   * "", and null.
+   * For a registry a server's settings have tuned (shared/content/tuning.ts): the hash of the untuned definitions, the
+   * tuning as text, and the untuned registry. For untuned content: its own hash, "", and null.
    */
   readonly baseHash: number;
   readonly tuning: string;
   readonly source: Registry | null;
-  /** Structure collider half extents by index; 0 for everything else. */
+  /** Collider half extents of structures and nodes. 0 for everything else. */
   readonly halfX: Float32Array;
   readonly halfY: Float32Array;
   readonly halfZ: Float32Array;
-  /** Movement parameters by index; null for everything that is not a species. */
+  /** Null for everything that is not a species. */
   readonly move: readonly (MoveParams | null)[];
   /** Item columns, zero for content that is not an item. See shared/sim/items.ts. */
   readonly stack: Uint16Array;
   readonly weight: Float32Array;
   readonly spoilTicks: Uint32Array;
-  /** Radius and height of anything that stands in the world as an entity; zero otherwise. */
+  /** Radius and height of a species or prop. Zero otherwise. */
   readonly bodyRadius: Float32Array;
   readonly bodyHeight: Float32Array;
   /** 1 for box kinds that bodies pass through (bushes). */
   readonly soft: Uint8Array;
-  /** Hits a node of this kind takes before it is used up. */
   readonly nodeHits: Float32Array;
   /** The armor slot an item is worn in (0 head, 1 torso, 2 hands, 3 legs, 4 feet), or -1. */
   readonly wearSlot: Int8Array;
-  /** Uses an item has at primitive quality before it breaks: a tool's, a weapon's, a worn piece's. 0 for things that do not wear. */
+  /** Uses a tool, weapon or worn piece has at primitive quality. 0 for things that do not wear out. */
   readonly uses: Uint16Array;
-  /** When a weapon swings, draws, fires and reloads; null for everything that is not one. Bare hands are `FISTS`. */
+  /** Timing of a weapon item, or of a species' bite. Null for everything else. Bare hands are `FISTS`. */
   readonly weapon: readonly (WeaponParams | null)[];
-  /** Damage of one hit of a melee or thrown weapon, or of one round of ammunition, at primitive quality; and its DMG_ type. For a species: of its bare hands. */
+  /** Damage of one melee or thrown hit, or of one round of ammunition, at primitive quality, and its DMG_ type. For a species, its bare hands. */
   readonly damage: Float32Array;
   readonly damageType: Uint8Array;
-  /** How far a melee weapon reaches from the eye, metres. For a species: its bare hands. */
+  /** Melee reach from the eye, in metres. For a species, its bare hands or its bite. */
   readonly reach: Float32Array;
   /** Armor rating of a worn piece at primitive quality. */
   readonly armor: Float32Array;
-  /** Per species: what it takes of each DMG_ type, and what a hit on each zone is multiplied by. Null for everything else. */
+  /** Per species: the multiplier on each DMG_ type it takes, and on a hit to each zone. Null for everything else. */
   readonly takes: readonly (Float32Array | null)[];
   readonly zoneMul: readonly (Float32Array | null)[];
   /** What a bow or gun multiplies its ammunition's damage by. */
   readonly power: Float32Array;
-  /** Ammunition: metres per second at full power (0 for a round that arrives the tick it is fired), its fall, and the chance a spent one can be picked up. */
+  /** Ammunition: metres per second at full power (0 if it arrives the tick it is fired), its fall, and the chance a spent round can be picked up. */
   readonly ammoSpeed: Float32Array;
   readonly ammoGravity: Float32Array;
   readonly ammoRecover: Float32Array;
-  /** Ammunition: torpor as multiples of the damage done, at once and then over `ammoTorporSeconds`; and the buff it gives (a content index, or 0). */
+  /** Ammunition: torpor as multiples of the damage done, at once and then over `ammoTorporSeconds`, and the buff it gives (a content index, or 0). */
   readonly ammoTorpor: Float32Array;
   readonly ammoTorporOver: Float32Array;
   readonly ammoTorporSeconds: Float32Array;
   readonly ammoBuff: Uint16Array;
-  /** Per structure: what it takes of each DMG_ type, from its material. Null for everything else, and for a structure nothing harms. */
+  /** Per structure: the multiplier on each DMG_ type, from its material. Null for everything else, and for a structure nothing harms. */
   readonly structTakes: readonly (Float32Array | null)[];
-  /** Per structure and node: the boxes bodies and rays meet. A plain one has one, its own. */
+  /** Per structure and node: the boxes bodies and rays meet. One without a shape has a single box. */
   readonly parts: PartTable;
-  /** Per structure with a shape: what kind of piece it is, as an index into PIECE_ROLES; -1 for everything else. */
+  /** Per structure with a shape: an index into PIECE_ROLES. -1 for everything else. */
   readonly role: Int8Array;
   /** Per structure: 1 if it is a wall with a doorway. */
   readonly doorway: Uint8Array;
-  /** Per item that is set down as a structure: the structures it may be set down as, the usual one first. Null for everything else. */
+  /** Per placeable item: the structures it may be set down as, the usual one first. Null for everything else. */
   readonly places: readonly (Uint16Array | null)[];
-  /** Per structure: the item that is set down as it (0 if none), its full health, and the days it lasts unvisited (0: for ever). */
+  /** Per structure: the item that places it (0 if none), its full health, and the days it lasts unvisited (0 means for ever). */
   readonly pieceItem: Uint16Array;
   readonly maxHp: Float32Array;
   readonly decayDays: Float32Array;
-  /** Per structure: how many stacks it holds (0: it holds nothing); the structure it becomes when used (0: none); whether it starts locked; whether it comes down whole. */
+  /** Per structure: the stacks it holds, the structure it becomes when used (0 for none), whether it starts locked, and whether it drops whole. */
   readonly structSlots: Uint16Array;
   readonly opens: Uint16Array;
   readonly lockedAtFirst: Uint8Array;
   readonly fallsWhole: Uint8Array;
-  /** Per structure: the structure it becomes when lit or put out (0: it is no fire); whether it is the burning one; whether it is a bed. */
+  /** Per structure: the structure it becomes when lit or put out (0 if it is no fire), whether it is the burning one, and whether it is a bed. */
   readonly lights: Uint16Array;
   readonly burning: Uint8Array;
   readonly isBed: Uint8Array;
-  /** Per species: the speed from which it is seen to run and not walk, metres per second. */
+  /** Per species: the speed from which it is drawn running, in metres per second. */
   readonly runAt: Float32Array;
-  /** Per species: its taming numbers, or null if it cannot be tamed; and what it eats, best first, as triples of item, food and affinity. */
+  /** Per species: its taming numbers, or null if it cannot be tamed, and what it eats, best first, as triples of item, food and affinity. */
   readonly taming: readonly (TameParams | null)[];
   readonly eats: readonly (readonly number[] | null)[];
   /**
-   * Per species that breeds: the prop a female lays (0: she bears her young
-   * alive), the ticks that takes to hatch and the ticks a young one takes to
-   * grow up, at the reference's rates; and the size of a newborn as a share
-   * of a grown one. `breedEgg` is 0xffff, and the ticks 0, for one that does not.
+   * Per species that breeds: the prop a female lays (0 if she bears live young), the ticks to hatch and the ticks to grow up,
+   * both at the reference's rates, and a newborn's size as a share of a grown one. A species that does not breed has 0xffff
+   * and 0 ticks.
    */
   readonly breedEgg: Uint16Array;
   readonly incubateTicks: Uint32Array;
   readonly matureTicks: Uint32Array;
   readonly birthScale: Float32Array;
-  /** Per item: the species it is a saddle for (0: it is no saddle), and the armor that gives. */
+  /** Per item: the species it is a saddle for (0 if it is no saddle), and the armor it gives. */
   readonly saddleFits: Uint16Array;
   readonly saddleArmor: Float32Array;
-  /** Per item: the torpor a dose of it gives and the seconds it takes to (0: it is no dose). */
+  /** Per item: the torpor a dose gives and the seconds it takes (0 if it is no dose). */
   readonly doseTorpor: Float32Array;
   readonly doseSeconds: Float32Array;
-  /** Per species: its temper (0 flees, 1 defends, 2 hunts), how far it sees what it hunts and how far it will be led, metres. */
+  /** Per species: its temper (0 flees, 1 defends, 2 hunts), and its sight and leash in metres. */
   readonly temper: Uint8Array;
   readonly sight: Float32Array;
   readonly leash: Float32Array;
-  /** Per item: ticks one of it burns (0: it is no fuel); what it becomes over a fire (0: nothing) and the ticks that takes. */
+  /** Per item: the ticks one burns (0 if it is no fuel), what it becomes over a fire (0 for nothing), and the ticks that takes. */
   readonly fuelTicks: Uint32Array;
   readonly cooksInto: Uint16Array;
   readonly cookTicks: Uint32Array;
-  /** Per item a recipe makes: what one making needs, as pairs of item and count, and how many it makes. Null for everything else. */
+  /** Per item a recipe makes: the ingredients as pairs of item and count, and how many one crafting makes. Null for everything else. */
   readonly recipeOf: readonly (Uint16Array | null)[];
   readonly recipeMakes: Uint16Array;
   /** A thrown weapon: metres per second off the hand, ticks until it goes off, and how far its blast reaches. */
@@ -147,19 +139,18 @@ export interface Registry {
   readonly blast: Float32Array;
 }
 
-/** How far bare hands and a melee weapon reach unless content says otherwise. */
+/** Default reach of bare hands and of a melee weapon, in metres. */
 const FIST_REACH = 2.2;
 const MELEE_REACH = 2.6;
-/** The longest any timing of a weapon may be, in ticks: what a body's act counter holds. */
+/** The longest any weapon timing may be, in ticks, which is what a body's act counter holds. */
 const MAX_ACT_TICKS = 250;
-/** The longest one piece of fuel may burn, or one thing take to cook: thirty days. */
+/** The longest one piece of fuel may burn or one item take to cook. Thirty days. */
 export const MAX_BURN_SECONDS = 30 * 86400;
-/** The longest a thing may keep before it spoils, in game hours: what its clock holds, with room to spare. */
+/** The longest an item may keep before it spoils, in game hours. The spoil clock holds this with room to spare. */
 export const MAX_SPOIL_HOURS = 1e6;
-/** The most blows a node may take, and the most levels a table may have. */
 export const MAX_NODE_HITS = 10000;
 export const MAX_LEVELS = 10000;
-/** What sprinting costs a second, what rest gives back a second, and what a jump costs, where a species does not say. */
+/** Stamina per second of sprinting, per second of rest, and per jump, where a species does not say. */
 export const STAMINA_DEFAULT = { sprint: 5, regen: 8, jump: 6 };
 
 export const WEAR_SLOTS: readonly string[] = ["head", "torso", "hands", "legs", "feet"];
@@ -188,7 +179,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       positive(d, "jumpSpeed", d.jumpSpeed, 30);
       if (d.swimSpeed !== undefined) positive(d, "swimSpeed", d.swimSpeed, 40);
       if (d.turn !== undefined) positive(d, "turn", d.turn, 3600);
-      // Which skeletons there are is the pack's to say: a creature's comes with its model.
+      // The pack decides which skeletons exist, so only an empty name is an error here.
       if (d.skeleton !== undefined && d.skeleton.length === 0) errors.push(`${d.id}: a skeleton must be named`);
       if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
       if (d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
@@ -260,11 +251,10 @@ export function compileContent(input: readonly Def[]): CompileResult {
     } else {
       if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
-      // A fuel burns, and a thing cooks, for some time and not for ever: each at least a tick, and no more than the tables hold.
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
       if (d.cooks !== undefined) positive(d, "cooks.seconds", d.cooks.seconds, MAX_BURN_SECONDS);
       if (d.spoilHours !== undefined && !(d.spoilHours > 0 && d.spoilHours <= MAX_SPOIL_HOURS)) errors.push(`${d.id}: spoilHours must be above 0 and at most ${MAX_SPOIL_HOURS}`);
-      // Anything that wears, holds rounds or takes an attachment is one thing to a slot.
+      // Anything that wears out, holds rounds or takes an attachment cannot stack.
       if ((d.weapon || d.wear || d.tool) && d.stack !== 1 && d.weapon?.kind !== "thrown") errors.push(`${d.id}: a tool, weapon or worn piece must have stack 1`);
       const w = d.weapon;
       if (w) {
@@ -315,7 +305,6 @@ export function compileContent(input: readonly Def[]): CompileResult {
       if (d.lights !== undefined) want(d, d.lights, "structure");
       if (d.shape !== undefined) {
         want(d, d.shape, "shape");
-        // The box that holds it is the shape's: the two cannot disagree.
         const shape = shapes.get(d.shape);
         const holds = shape ? shapeHalf(shape.boxes) : null;
         if (holds && holds.some((v, a) => Math.abs(v - d.half[a]!) > 1e-6)) errors.push(`${d.id}: half must be [${holds.join(", ")}], the box that holds ${d.shape}`);
@@ -415,7 +404,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
       halfX[i] = d.half[0];
       halfY[i] = d.half[1];
       halfZ[i] = d.half[2];
-      // What bodies and rays meet: its shape's boxes, or the one box it is.
+      // Collision parts are the shape's boxes, or else the one box.
       const shape = d.type === "structure" && d.shape !== undefined ? shapes.get(d.shape)! : null;
       if (shape) {
         role[i] = PIECE_ROLES.indexOf(shape.role);
@@ -454,7 +443,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
     } else if (d.type === "item") {
       stack[i] = d.stack;
       weight[i] = d.weight ?? 0.1;
-      // Never so short that it rounds to nothing, which is how a thing that keeps is told.
+      // At least 1 tick, because 0 means the item never spoils.
       spoilTicks[i] = d.spoilHours !== undefined ? Math.max(1, Math.round(d.spoilHours * GAME_HOUR_TICKS)) : 0;
       if (d.wear) wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
       uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? 0;
@@ -474,7 +463,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
         ammoTorpor[i] = d.ammo.torpor?.instant ?? 0;
         ammoTorporOver[i] = d.ammo.torpor?.over ?? 0;
         ammoTorporSeconds[i] = d.ammo.torpor?.seconds ?? 0;
-        // Ids are sorted, so a buff's index is its place among them.
+        // Ids are sorted, so a definition's index is its place among them plus one.
         if (d.ammo.buff !== undefined) ammoBuff[i] = sorted.findIndex((o) => o.id === d.ammo!.buff) + 1;
       }
       const hits = d.ammo ?? d.weapon;
@@ -486,17 +475,16 @@ export function compileContent(input: readonly Def[]): CompileResult {
   }
   partStart[n] = partBox.length / 6;
   const parts: PartTable = { start: partStart, box: Float32Array.from(partBox) };
-  // What an item is set down as, now that every definition has its number.
+  // A second pass resolves references, now that every definition has its index.
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;
     if (d.type === "item" && d.places) {
       places[i] = Uint16Array.from(d.places, (id) => index.get(id)!);
-      // Every form of the piece comes back as the one item.
+      // Every form of a piece maps back to the one item.
       for (const s of places[i]!) if (pieceItem[s] === 0) pieceItem[s] = i;
     }
     if (d.type === "structure" && d.opens !== undefined) opens[i] = index.get(d.opens)!;
     if (d.type === "structure" && d.lights !== undefined) lights[i] = index.get(d.lights)!;
-    // Half as fast again as it walks, it is running.
     if (d.type === "species") {
       runAt[i] = d.walkSpeed * 1.5;
       temper[i] = Math.max(0, ["flees", "defends", "hunts"].indexOf(d.temper ?? "flees"));
@@ -510,7 +498,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
         matureTicks[i] = Math.round(d.breeds.mature * TICK_RATE);
         birthScale[i] = d.breeds.scale ?? BIRTH_SCALE;
       }
-      // Its jaws are what it swings: one bite a blow, as long as its clip, landing part way through.
+      // A bite is the species' melee weapon.
       if (d.bite) {
         reach[i] = d.bite.reach;
         weapon[i] = { kind: W_MELEE, hold: HOLD_HANDS, swingTicks: d.bite.ticks ?? 27, strikeTick: d.bite.lands ?? 11, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true };
@@ -525,27 +513,27 @@ export function compileContent(input: readonly Def[]): CompileResult {
       doseSeconds[i] = d.dose.seconds;
     }
     if (d.type === "item") {
-      // Never so short that it rounds to nothing: a fuel stays a fuel.
+      // At least 1 tick, because 0 means it is no fuel.
       fuelTicks[i] = d.fuel !== undefined ? Math.max(1, Math.round(d.fuel * TICK_RATE)) : 0;
       if (d.cooks) {
         cooksInto[i] = index.get(d.cooks.into)!;
         cookTicks[i] = Math.max(1, Math.round(d.cooks.seconds * TICK_RATE));
       }
     }
-    // The first recipe that makes a thing says what it is made of.
+    // The first recipe that makes an item gives its ingredients.
     if (d.type === "recipe" && recipeOf[index.get(d.makes)!] === null) {
       recipeOf[index.get(d.makes)!] = Uint16Array.from(d.needs.flatMap((need) => [index.get(need.item)!, need.count]));
       recipeMakes[index.get(d.makes)!] = d.count;
     }
   }
-  // A door stood open comes back as the door it is.
+  // An open door maps back to the closed door's item.
   for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
-  // And a fire that is burning, as the fire it is.
+  // A burning fire maps back to the unlit fire's item.
   for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
   return { registry: { defs, ids, index, hash, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
-/** The zones each part of the body named in content covers (ZONE_* of shared/anim/human.ts). */
+/** The ZONE_* ids (shared/anim/human.ts) each body part named in content covers. */
 const ZONE_GROUPS: Readonly<Record<string, readonly number[]>> = { head: [1], torso: [2], arms: [3, 4], hands: [5, 6], legs: [7, 8], feet: [9, 10] };
 
 const HOLDS: Readonly<Record<WeaponFacet["hold"], number>> = { tool: HOLD_TOOL, spear: HOLD_SPEAR, bow: HOLD_BOW, rifle: HOLD_RIFLE, pistol: HOLD_PISTOL };
@@ -553,14 +541,14 @@ const HOLDS: Readonly<Record<WeaponFacet["hold"], number>> = { tool: HOLD_TOOL, 
 function weaponParams(w: WeaponFacet): WeaponParams {
   const ticks = (seconds: number | undefined, fallback: number): number => (seconds === undefined ? fallback : Math.max(1, Math.round(seconds * TICK_RATE)));
   const kind = w.kind === "melee" ? W_MELEE : w.kind === "bow" ? W_BOW : w.kind === "gun" ? W_GUN : W_THROWN;
-  // A swing, or the pause after a shot. For a bow, and for a gun that holds one round, the pause is short: the reload that follows is the wait.
+  // A swing, or the pause after a shot. A bow or a single-round gun pauses briefly, because the reload that follows is the wait.
   const swingTicks = ticks(w.interval, kind === W_BOW ? 6 : kind === W_GUN && (w.clip ?? 1) === 1 ? 3 : SWING_TICKS);
   const drawTicks = kind === W_BOW ? ticks(w.draw, 1) : 0;
   return {
     kind,
     hold: kind === W_THROWN ? HOLD_THROW : (HOLDS[w.hold] ?? HOLD_HANDS),
     swingTicks,
-    // A blow lands a third of the way through its swing; a throw leaves the hand a little later.
+    // A blow lands a third of the way through its swing. A throw leaves the hand a little later.
     strikeTick: Math.max(1, Math.min(swingTicks - 1, Math.round(swingTicks * (kind === W_THROWN ? 0.45 : 1 / 3)))),
     drawTicks,
     minDrawTicks: Math.round(drawTicks / 4),

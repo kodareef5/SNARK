@@ -6,8 +6,7 @@
 //   Yaw         rotation about +Y; yaw 0 faces +Z; forward = (sin yaw, 0, cos yaw)
 //   Right       forward x up = (-cos yaw, 0, sin yaw)
 //   Pitch       positive looks up
-//   Chunks      64 m squares, index = cz * chunksX + cx
-//   Time        fixed 30 Hz simulation step; a tick number is the world clock
+//   Time        a tick number is the world clock
 
 export const TICK_RATE = 30;
 export const TICK_DT = 1 / TICK_RATE;
@@ -40,7 +39,7 @@ export function chunkCount(d: MapDims): number {
   return d.chunksX * d.chunksZ;
 }
 
-/** Chunk containing (x, z). Positions outside the map clamp to the edge chunk. */
+/** Positions outside the map clamp to the edge chunk. */
 export function chunkAt(d: MapDims, x: number, z: number): number {
   let cx = Math.floor(x / CHUNK_SIZE);
   let cz = Math.floor(z / CHUNK_SIZE);

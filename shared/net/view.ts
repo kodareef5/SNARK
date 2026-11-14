@@ -1,35 +1,17 @@
-// Entity replication: what one client knows about the entities around it.
-//
-// A view is the sorted list of entities a client holds after applying one
-// snapshot. The server keeps the last 32 views it sent to each client; the
-// client keeps the last 32 it decoded. A snapshot is encoded against the newest
-// view the client has acknowledged, so a lost snapshot costs nothing: the next
-// one is still relative to something the client really has.
-//
-// Entities absent from a delta are unchanged. When the byte budget is too small
-// for every change, the server defers some and records the stale state it left
-// the client with, so later deltas stay correct. Deferral rotates, so no entity
-// starves.
+// A view is the sorted list of entities a client holds after applying one snapshot. A snapshot is encoded against the newest
+// view the client has acknowledged, so a lost snapshot costs nothing. Entities absent from a delta are unchanged.
 //
 // Wire form after the snapshot header:
 //   count varint, then per op in ascending id order:
 //     id gap varint: this id minus the previous id (first: id + 1), so always >= 1
 //     op 2 bits: 0 update, 1 create, 2 remove
-//     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4,
-//             pose state 31, then its appearance: revision 4, level varint,
-//             [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8],
-//             [gear? 1][6 x 16]
+//     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, then its appearance:
+//             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16],
+//             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
-//             [motion? 1][12] [look? 1][6] [action? 1][13]
+//             [motion? 1][12] [look? 1][6] [action? 1][14]
 //
-// The pose state is what shared/anim/pose.ts makes a pose from, in three parts
-// that change at different rates: how the body moves, where it looks, and what
-// it is doing. Each travels only when it changes.
-//
-// Appearance (level, colour regions, name) changes rarely, so it rides only on
-// create. A change bumps the entity's revision, which makes the next delta
-// send a create for it again. It therefore arrives with the entity, never
-// before or after, and loss is handled by the same baselines as everything else.
+// Appearance is sent only on create. A change bumps the entity's revision, and the next delta then sends a create for it again.
 
 import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK } from "../anim/pose.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
@@ -49,15 +31,15 @@ const OP_REMOVE = 2;
 const ANIM_BITS = ANIM_MOTION_BITS + ANIM_LOOK_BITS + ANIM_ACTION_BITS;
 const LOOK_MASK = (1 << ANIM_LOOK_BITS) - 1;
 const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 4 + 16 + 4 + 48 + 3;
-/** Longest name carried, in bytes. */
+/** In bytes. */
 export const MAX_NAME_LENGTH = 72;
 
 const UPDATE_BITS = 24 + 2 + 2 + 64 + 1 + 10 + 1 + 4 + 3 + ANIM_BITS;
 
-/** Bits a create for entry `j` of `v` takes at most: the fixed part plus its name's bytes. */
+/** An upper bound on the bits a create for entry `j` of `v` takes. */
 function createBits(v: EntityView, j: number): number {
   const name = v.name[j]!;
-  // What only some entries carry: a look, gear, a team, a seat, an age.
+  // The optional fields: a look, gear, a team, a seat, an age.
   const look = (v.look[j] ? LOOK_BYTES * 8 : 0) + (v.gear[j] ? GEAR_COUNT * 16 : 0) + (v.team[j] !== 0 ? 40 : 0) + (v.seat[j] !== 0 ? 40 : 0) + (v.span[j] !== 0 || v.grown[j] !== 0 ? 64 : 0);
   if (name === "") return CREATE_BITS + look;
   let bytes = 1;
@@ -85,7 +67,7 @@ export function dequantY(q: number): number {
 }
 
 export class EntityView {
-  /** Server tick this view belongs to; 0 marks an unused or invalid view. */
+  /** Server tick of this view. 0 marks an unused or invalid view. */
   tick = 0;
   count = 0;
   /** Entity slot index. Unique among live entities, ascending. */
@@ -98,24 +80,24 @@ export class EntityView {
   /** 10-bit yaw. */
   readonly yaw = new Uint16Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
-  /** Packed pose state: see `AnimState.pack`. */
+  /** Packed as `AnimState.pack` does. */
   readonly anim = new Uint32Array(MAX_VIEW);
   /** Appearance: revision (4 bits), level, six colour regions, name. */
   readonly rev = new Uint8Array(MAX_VIEW);
   readonly level = new Uint16Array(MAX_VIEW);
   readonly colors = new Uint8Array(MAX_VIEW * 6);
   readonly name: string[] = new Array<string>(MAX_VIEW).fill("");
-  /** A survivor's look (LOOK_BYTES), shared by reference and never changed in place; null for none. */
+  /** A survivor's look (LOOK_BYTES), shared by reference and never changed in place. */
   readonly look: (Uint8Array | null)[] = new Array<Uint8Array | null>(MAX_VIEW).fill(null);
-  /** What it holds and wears (GEAR_COUNT content indices), shared by reference; null for none. */
+  /** GEAR_COUNT content indices, shared by reference. */
   readonly gear: (Uint16Array | null)[] = new Array<Uint16Array | null>(MAX_VIEW).fill(null);
-  /** As `EntityStore` has them, each 0 for none: owning team; what it sits on, plus one; the ticks its growing takes and the tick it ends. */
+  /** As in `EntityStore`, each 0 for none. */
   readonly team = new Uint32Array(MAX_VIEW);
   readonly seat = new Uint32Array(MAX_VIEW);
   readonly span = new Uint32Array(MAX_VIEW);
   readonly grown = new Uint32Array(MAX_VIEW);
 
-  /** The rest of the appearance of the entry just pushed. Unset, each is none. */
+  /** For the entry just pushed. Call it after `appear`, which zeroes these fields. */
   belong(team: number, seat: number, span: number, grown: number): void {
     const n = this.count - 1;
     this.team[n] = team;
@@ -124,7 +106,7 @@ export class EntityView {
     this.grown[n] = grown;
   }
 
-  /** Set the appearance of the entry just pushed. `colors` is read from `at`, six bytes. */
+  /** For the entry just pushed. Reads six bytes of `colors` from `at`. */
   appear(rev: number, level: number, colors: Uint8Array, at: number, name: string, look: Uint8Array | null, gear: Uint16Array | null): void {
     const n = this.count - 1;
     this.rev[n] = rev;
@@ -172,7 +154,7 @@ export class ViewRing {
     return tick !== 0 && v.tick === tick ? v : null;
   }
 
-  /** Claim the slot for `tick`, emptied. */
+  /** Returns the slot for `tick`, emptied. */
   alloc(tick: number): EntityView {
     const v = this.views[tick % VIEW_RING]!;
     v.tick = tick;
@@ -184,7 +166,6 @@ export class ViewRing {
     return this.views[i]!;
   }
 
-  /** Forget every view, as after a new connection. */
   clear(): void {
     for (const v of this.views) {
       v.tick = 0;
@@ -195,7 +176,7 @@ export class ViewRing {
 
 const scratchColors = new Uint8Array(6);
 
-// Encoder scratch: one entry per merged entity.
+// Encoder scratch, one entry per merged entity.
 const opKind = new Uint8Array(MAX_VIEW * 2);
 const opBase = new Int16Array(MAX_VIEW * 2);
 const opCur = new Int16Array(MAX_VIEW * 2);
@@ -210,10 +191,10 @@ const K_STALE = 5;
 const K_SKIP = 6;
 
 /**
- * Encode `cur` (the true state, sorted by id) relative to `base` (what the
- * client has, or null) and fill `next` with what the client will hold after
- * applying it. `budgetBits` bounds the optional part. `rotate` is where
- * deferral started last time; the new value is returned.
+ * Encodes `cur` (the true state, sorted by id) against `base` (the view the client has, or null) and fills `next` with the
+ * view the client will hold after applying it. `budgetBits` bounds the deferrable ops. A deferred op is left out, and `next`
+ * records the stale state the client is left with, so later deltas stay correct. `rotate` is where deferral started last
+ * time. Returns its new value.
  */
 export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: EntityView, next: EntityView, budgetBits: number, rotate: number): number {
   const nb = base ? base.count : 0;
@@ -255,7 +236,7 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
     n++;
   }
 
-  // Over budget: let a rotating window of optional ops through, defer the rest.
+  // Over budget. A rotating window of deferrable ops goes through and the rest wait, so no entity starves.
   if (optionalBits > budgetBits && optional > 0) {
     const start = rotate % optional;
     let allowed = 0;
@@ -319,7 +300,7 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
       const gear = cur.gear[ci]!;
       w.bool(gear !== null);
       if (gear) for (let q = 0; q < GEAR_COUNT; q++) w.u16(gear[q]!);
-      // Whose it is, what it sits on, and how long its growing takes and when it ends: each only if it has one.
+      // Team, seat and growth are each sent only when set.
       w.bool(cur.team[ci] !== 0);
       if (cur.team[ci] !== 0) w.varint(cur.team[ci]!);
       w.bool(cur.seat[ci] !== 0);
@@ -373,7 +354,7 @@ export function writeViewDelta(w: BitWriter, base: EntityView | null, cur: Entit
   return rotate;
 }
 
-/** Decode a delta against `base` into `next`. Returns false if the data is inconsistent. */
+/** Returns false if the data is inconsistent. */
 export function readViewDelta(r: BitReader, base: EntityView | null, next: EntityView): boolean {
   const nb = base ? base.count : 0;
   const count = r.varint();

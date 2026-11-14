@@ -1,13 +1,5 @@
-// How a creature stands and moves: its pose from what it is doing.
-//
-// The same packed state a survivor has (shared/anim/pose.ts) says how fast a
-// creature is going and whether it is striking; its rig has a clip for each.
-// Standing it idles; moving it walks, and from a speed its species gives it
-// runs; a strike is the whole body's, from the tick it began. Between
-// standing and walking the two are blended by speed, so starting off is not a
-// jump. Exactly rounded arithmetic throughout: the server, which hits a
-// creature where its capsules are, and every client, which draws it there,
-// get the same pose.
+// A creature's pose from the same packed state a survivor has (shared/anim/pose.ts). The arithmetic is exactly rounded,
+// so the server's hit capsules and every client's drawing use the same pose.
 
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { ACT_NONE } from "../sim/weapon.ts";
@@ -16,15 +8,12 @@ import { SPEED_STEP, type AnimState } from "./pose.ts";
 import type { Rig } from "./rigs.ts";
 import { rayZones, solve, zoneHit } from "./skeleton.ts";
 
-/** Below this speed a creature's walk is blended with its standing: metres per second. */
+/** Below this speed, in metres per second, the walk is blended with the idle so that starting off is not a jump. */
 const EASE_IN = 1.2;
 
-/**
- * The pose of a creature on `rig` in the state `st` at `tick` (which may fall
- * between ticks). It runs from `runAt` metres per second.
- */
+/** `tick` may fall between ticks. The creature runs from `runAt` metres per second. */
 export function creaturePose(rig: Rig, st: AnimState, tick: number, runAt: number, out: Pose): void {
-  // A strike, from when it began, for as long as its clip is.
+  // A strike plays on the whole body from the tick it began, for the length of its clip.
   if ((st.action & 7) !== ACT_NONE && rig.attack) {
     const since = (((Math.floor(tick) & 255) - st.actionStart) & 255) + (tick - Math.floor(tick));
     if (since < rig.attack.frames - 1) {
@@ -49,13 +38,11 @@ export function creaturePose(rig: Rig, st: AnimState, tick: number, runAt: numbe
 }
 
 /**
- * The zone a ray hits on a creature, or 0. It stands at (bx, by, bz) facing
- * `yaw` (1/65536 turns) in the state `st` at `tick`. The ray starts at (ox,
- * oy, oz) and runs along the unit direction (dx, dy, dz) no farther than
- * `maxT`. `zoneHit` holds the bone and the distance.
+ * Returns the zone a ray hits, or 0. The creature stands at (bx, by, bz) facing `yaw` (1/65536 turns). The ray starts at
+ * (ox, oy, oz) and runs along the unit direction (dx, dy, dz) no farther than `maxT`. `zoneHit` holds the bone and the distance.
  */
 export function rayCreature(rig: Rig, st: AnimState, tick: number, runAt: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
-  // Cheap rejection first: most rays pass nowhere near.
+  // Most rays miss the bounding sphere, so test that first.
   const cx = bx - ox;
   const cy = by + rig.mid - oy;
   const cz = bz - oz;
@@ -69,7 +56,7 @@ export function rayCreature(rig: Rig, st: AnimState, tick: number, runAt: number
   }
   creaturePose(rig, st, tick, runAt, rig.a);
   solve(rig, rig.a, rig.solved);
-  // Into the body's space: undo its place, then its yaw (x' = c x + s z, z' = c z - s x).
+  // Move the ray into the body's space by undoing its position, then its yaw. Yaw is x' = c x + s z, z' = c z - s x.
   const a = (yaw * TAU) / 65536;
   const s = detSin(a);
   const c = detCos(a);

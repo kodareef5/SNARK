@@ -1,8 +1,5 @@
-// Bit-level wire codec. Least-significant bit first.
-//
-// Neither side throws on bad data: the writer and reader set `overflow` and keep
-// returning zeros, and the caller checks the flag once at the end. A hostile
-// packet therefore costs a bounded amount of work and never an exception.
+// Bit-level wire codec, least-significant bit first. Neither side throws on bad data. The writer and the reader set `overflow`
+// and carry on, the reader returning zeros. The caller checks the flag once at the end, so a hostile packet costs bounded work.
 
 const F32 = new Float32Array(1);
 const F32_BITS = new Uint32Array(F32.buffer);
@@ -13,7 +10,7 @@ const TWO_32 = 4294967296;
 
 export class BitWriter {
   readonly buf: Uint8Array;
-  /** Position in bits. */
+  /** In bits. */
   pos = 0;
   overflow = false;
   private readonly capBits: number;
@@ -35,12 +32,12 @@ export class BitWriter {
     return (this.pos + 7) >>> 3;
   }
 
-  /** The written bytes. A view, valid until the next reset. */
+  /** A view, valid until the next reset. */
   bytes(): Uint8Array {
     return this.buf.subarray(0, this.byteLength);
   }
 
-  /** Write the low `n` bits of `value`, 0 <= n <= 32. */
+  /** Writes the low `n` bits of `value`. 0 <= n <= 32. */
   bits(value: number, n: number): void {
     let p = this.pos;
     if (p + n > this.capBits) {
@@ -63,7 +60,7 @@ export class BitWriter {
     if (used > this.dirtyBytes) this.dirtyBytes = used;
   }
 
-  /** Move back to an earlier position, discarding what was written after it. */
+  /** Discards everything written after `pos`. */
   rewind(pos: number): void {
     const from = pos >>> 3;
     const to = this.byteLength;
@@ -93,7 +90,7 @@ export class BitWriter {
     this.bits(v, 32);
   }
 
-  /** Signed integer in `n` bits, two's complement. */
+  /** Two's complement in `n` bits. */
   sbits(v: number, n: number): void {
     this.bits(v, n);
   }
@@ -136,7 +133,7 @@ export class BitWriter {
     for (let i = 0; i < src.length; i++) this.bits(src[i]!, 8);
   }
 
-  /** UTF-8 string with a varint byte-length prefix. */
+  /** UTF-8 with a varint byte-length prefix. */
   string(s: string): void {
     this.varint(utf8Length(s));
     for (let i = 0; i < s.length; i++) {
@@ -275,7 +272,7 @@ export class BitReader {
     return F64[0]!;
   }
 
-  /** Length-prefixed bytes, copied. Lengths above `max` mark the packet bad. */
+  /** Returns a copy. A length above `max` sets `overflow`. */
   blob(max: number): Uint8Array {
     const n = this.varint();
     if (n > max || n * 8 > this.remainingBits) {
@@ -287,7 +284,7 @@ export class BitReader {
     return out;
   }
 
-  /** Length-prefixed UTF-8. Lengths above `maxBytes` mark the packet bad. */
+  /** A length above `maxBytes` sets `overflow`. */
   string(maxBytes: number): string {
     const n = this.varint();
     if (n > maxBytes || n * 8 > this.remainingBits) {
