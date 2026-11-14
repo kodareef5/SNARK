@@ -129,6 +129,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     host.voice.flush();
   };
 
+  /** A message is a channel byte and then what the game wrote. The game's writers hold 16 KB, and a welcome a little more. */
+  const outgoing = new Uint8Array(65536);
   const server = Bun.serve<Socket>({
     port: opts.port ?? 8787,
     ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) } } : {}),
@@ -180,7 +182,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
             // A datagram that cannot be sent now is dropped, as an unreliable channel would drop it.
             if (channel !== CH_RELIABLE && backlog > SOFT_BACKLOG) return;
             if (backlog > HARD_BACKLOG) return void ws.close(1008, "too slow");
-            const frame = new Uint8Array(data.length + 1);
+            // Bun copies what it is given before send returns, so every message goes out through one buffer.
+            const frame = data.length < outgoing.length ? outgoing.subarray(0, data.length + 1) : new Uint8Array(data.length + 1);
             frame[0] = channel;
             frame.set(data, 1);
             ws.send(frame);

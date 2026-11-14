@@ -139,25 +139,35 @@ are a guard against the pass becoming quadratic, not a target.
 
 ### After the review of round 5
 
-Recorded 2026-11-13 on commit `ee802ed`, on the same machine, with the round 5
-commit `4966993` run back to back for the "before" column. The review changed
-no feature. It changed how snapshots are built, how a body is tested against
-structures, when the database checkpoints, and what a damaged chunk costs.
-89 budgets are held, 12 of them new.
+Recorded 2026-11-13 on commit `5bf4d63`, on the same machine. The "before"
+column is the round 5 commit `4966993`. Each was run several times back to
+back (four before, three after), and a row whose result moved between runs
+gives the range. The review added no feature. It changed how snapshots are
+built, how a body is tested against structures, when the database checkpoints,
+what a damaged chunk costs, and closed the defects three adversarial reviews
+found. 89 budgets are held, 12 of them new.
 
 | Measurement | Before | After | Budget |
 | --- | --- | --- | --- |
-| Server tick, median | 2.81 ms | 2.03 ms | 8 ms |
-| Server tick, 99th percentile | 3.8 ms | 2.8 ms | 16 ms |
-| Server tick, worst of 900 | 11.7 ms | 3.2 ms | 33.3 ms |
-| Commit, 99th percentile | 4.9 ms | 0.9 ms | 10 ms |
-| Tick with everyone working, median | 2.94 ms | 2.14 ms | 8 ms |
-| Tick with 300,000 creatures, median | 3.91 ms | 3.03 ms | |
-| Tick in combat, median | 4.72 ms | 3.63 ms | 8 ms |
-| Worst tick while a 1,500-piece house fell | 12.7 ms | 8.0 ms | 16 ms |
+| Server tick, median | 2.8 to 2.9 ms | 2.0 to 2.3 ms | 8 ms |
+| Server tick, 99th percentile | 3.6 to 4.6 ms | 2.9 to 5.9 ms | 16 ms |
+| Server tick, worst of 900 | 6.9 to 13.7 ms | 11.4 to 19.9 ms | 33.3 ms |
+| Commit, 99th percentile | 3.4 to 4.9 ms | 0.9 to 2.1 ms | 10 ms |
+| Tick with everyone working, median | 2.9 to 3.1 ms | 2.1 to 2.2 ms | 8 ms |
+| Tick with everyone working, 99th percentile | 4.8 to 5.8 ms | 3.4 to 3.7 ms | 16 ms |
+| Tick with 300,000 creatures, median | 3.9 to 4.4 ms | 2.8 to 3.0 ms | |
+| Tick in combat, median | 4.7 to 5.0 ms | 3.5 ms | 8 ms |
+| Tick in combat, 99th percentile | 6.1 to 7.1 ms | 4.9 to 5.7 ms | 16 ms |
+| Worst tick while a 1,500-piece house fell | 9.7 to 12.7 ms | 7.5 to 8.5 ms | 16 ms |
 | Downstream per client in a 40-player fight | 12.3 KB/s | 17.9 KB/s | 34 KB/s |
 | Downstream per client at a quiet base | 11.6 KB/s | 12.5 KB/s | 16 KB/s |
-| Process memory | 467 MB | 374 MB | 2,048 MB |
+| Process memory | 462 to 467 MB | 374 to 385 MB | 2,048 MB |
+
+The worst single tick did not improve. In both versions it is a tick with no
+commit in it, which points at the garbage collector, and it lands on a
+different tick each run. The same 900 ticks run by hand gave a worst of 5 to
+7 ms after and 14 ms before, so the row is noise at this sample size. It is
+the one cost here that the language sets and the code does not.
 
 Three sections are new. The "before" figures for them were measured with the
 same scenes run by hand against the round 5 commit.
@@ -170,7 +180,7 @@ same scenes run by hand against the round 5 commit.
 | Siege: sent to each client for the damage | the same | 26.3 KB/s | 30 KB/s |
 | Client frame while told of that damage, median | not measured | 0.05 ms | 1 ms |
 | Client instance bytes uploaded again for that damage | 420 KB a frame | 0 | 0 |
-| A database checkpoint, between ticks | inside a commit | 3 ms | 10 ms |
+| A database checkpoint, between ticks | inside a commit | 4 to 5 ms | 10 ms |
 
 Downstream went up because the byte budget of a snapshot is now spent. See
 below.
@@ -223,8 +233,9 @@ lower.
 **The slowest tick was the database's.** SQLite checkpointed inside whichever
 commit took its log past 1,000 pages, and a commit runs inside a tick: 3 to 6 ms
 normally, about 20 ms after a large write. The loop now checkpoints after a
-tick that started on time, in the 30 ms the tick leaves. The worst tick of 900
-fell from 11.7 ms to 3.2 ms.
+tick that started on time, in the 30 ms the tick leaves. The 99th percentile
+of a commit fell from 3.4 to 4.9 ms to 0.9 to 2.1 ms. A checkpoint itself is 4
+to 5 ms, and 29 ms after the benchmark's bulk writes.
 
 **Saving positions was most of a quiet commit.** Each position saved rewrites a
 whole record and a database page. The slice of positions saved per commit now
@@ -261,7 +272,7 @@ among them is a tenth of a millisecond once a second. Eggs and growing up are
 deadlines and cost nothing between. What grew is the downstream of the ten
 survivors walking among them, 20.6 KB/s each, as bodies enter and leave view.
 
-**The check stays fast.** 398 tests run in 9.0 s against a 20 s budget.
+**The check stays fast.** 424 tests run in 9.4 s against a 20 s budget.
 
 ## Where the limits are
 
@@ -273,7 +284,8 @@ the third column are extrapolated from the measurements, not measured.
 | One thread runs the tick | 2 ms of 33 at the sizing target, 3.6 ms in combat | About five times the target's awake creatures, or about 400 players in one fight | Snapshot encoding in workers. The entity store is typed arrays, which workers can share without copying |
 | Snapshot compare and write | 0.6 ms for 100 clients with 500 entities each | Grows with clients times entities in view | The same, or a per-entity "changed since" stamp so unchanged entities are skipped |
 | A damaged chunk is saved whole | 570 KB a commit for a 20,000-piece chunk under fire, 6 to 8 ms at the 99th percentile | Several such chunks under fire at once | Save health apart from shape, or at most once a second |
-| The checkpoint is on the tick thread | 3 ms, between ticks | A disk whose sync takes longer than a tick | A second connection in a worker |
+| The checkpoint is on the tick thread | 4 to 5 ms, between ticks | A disk whose sync takes longer than a tick | A second connection in a worker |
+| Garbage collection pauses | A worst tick of 7 to 20 ms once in some hundreds, in a 370 MB process | A heap several times larger, or a tick budget shorter than 33 ms | Less garbage per tick (the sim allocates none; message buffers and SQLite rows do), or the simulation in a worker apart from the sockets |
 | Draw calls on the client | 40 to 80 a frame | One per mesh per visible chunk, so it grows with the variety of pieces and creatures: about 1,500 with 50 kinds in 30 chunks | Merged stand-ins for far chunks, then a WebGPU backend. The renderer backend is `client/shell/gl.ts`, under 400 lines, fed by a packet the core builds |
 | Textures and download size | None: every mesh is flat-coloured from a 256-colour palette | The first textured art | Compressed textures (KTX2), arrays or atlases so a chunk stays one draw per mesh, and streaming by distance |
 
