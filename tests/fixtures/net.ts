@@ -10,6 +10,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { LoopbackNet, type LinkOptions, type LoopbackEnd } from "../../shared/net/loopback.ts";
 import { hashString } from "../../shared/hash.ts";
 import { KEY_BYTES } from "../../shared/net/protocol.ts";
+import type { Connection } from "../../shared/net/transport.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { mapHeightfield, mapNodes, parseMap, type MapFile } from "../../shared/world/mapfile.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -79,6 +80,8 @@ export class Harness {
   readonly sessions: ClientSession[] = [];
   readonly ends: LoopbackEnd[] = [];
   readonly pilots: Pilot[] = [];
+  /** The server's side of each session's connection. */
+  private readonly servers: Connection[] = [];
   private readonly manual = new Set<ClientSession>();
   /** Virtual milliseconds. */
   now = 0;
@@ -103,14 +106,22 @@ export class Harness {
 
   join(name: string, link: LinkOptions = {}, opts: JoinOptions = {}): ClientSession {
     const end = this.net.connect({ ...link, ...FORCED, latencyMs: Math.max(link.latencyMs ?? 0, FORCED.latencyMs ?? 0) });
-    // The server's socket skips what it cannot send, as the real one does.
-    const server = end.peer;
+    this.gate(end.peer);
+    return this.adopt(name, end, end, end.peer, opts);
+  }
+
+  /** The server's socket skips what it cannot send, as the real one does. */
+  gate(server: LoopbackEnd): void {
     server.gate = (channel, buffered) => {
       const rule = backlog(channel, buffered, this.server.opts.snapshotBytesMax);
       if (rule === 2) server.close();
       return rule === 0;
     };
-    const session = new ClientSession(end, {
+  }
+
+  /** A session over a connection made apart, `end` standing for it in `ends`, whose server side the server has accepted as `server`. */
+  adopt(name: string, conn: Connection, end: LoopbackEnd, server: Connection, opts: JoinOptions = {}): ClientSession {
+    const session = new ClientSession(conn, {
       name,
       key: opts.key ?? testKey(name),
       spectate: opts.spectate ?? false,
@@ -124,6 +135,7 @@ export class Harness {
     this.sessions.push(session);
     if (opts.manual) this.manual.add(session);
     this.ends.push(end);
+    this.servers.push(server);
     this.pilots.push({ moveX: 0, moveZ: 0, yaw: 0, pitch: 0, buttons: 0 });
     return session;
   }
@@ -155,7 +167,7 @@ export class Harness {
   /** The server's Client for a session, or null. */
   client(session: ClientSession) {
     const i = this.sessions.indexOf(session);
-    return this.server.clients.find((c) => c !== null && c.conn === this.ends[i]!.peer) ?? null;
+    return this.server.clients.find((c) => c !== null && c.conn === this.servers[i]) ?? null;
   }
 
   /** Type a console line as `session` and return every line the server printed in reply. */

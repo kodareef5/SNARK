@@ -6,6 +6,7 @@ import type { ClientSession } from "../../client/core/session.ts";
 import type { GameOptions } from "../../server/game.ts";
 import { chunkCx, chunkCz } from "../../shared/coords.ts";
 import type { LinkOptions, LoopbackEnd } from "../../shared/net/loopback.ts";
+import { CH_RELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
@@ -21,6 +22,9 @@ export interface Lossy {
   burstMs?: number;
   /** Datagrams in place of one stream. */
   datagrams?: boolean;
+  /** The unreliable channel on two streams, each losing on its own or, `shared`, in the same spells. */
+  sockets?: 1 | 2;
+  shared?: boolean;
   clients: number;
   herd: number;
   /** Seconds before the watch, and the seconds watched. */
@@ -70,6 +74,64 @@ export interface Lossless {
   tick: number;
 }
 
+/**
+ * The unreliable channel on two sockets, as a review proposed: every input on both, snapshots taking turns, the reliable
+ * channel on the first. A study for the report; the client and the server have no such thing.
+ */
+class Pair implements Connection {
+  onMessage: ((channel: number, data: Uint8Array) => void) | null = null;
+  onClose: (() => void) | null = null;
+  private turn = 0;
+  private readonly a: LoopbackEnd;
+  private readonly b: LoopbackEnd;
+  private readonly both: boolean;
+
+  constructor(a: LoopbackEnd, b: LoopbackEnd, both: boolean) {
+    this.a = a;
+    this.b = b;
+    this.both = both;
+    a.onMessage = b.onMessage = (channel, data) => this.onMessage?.(channel, data);
+    a.onClose = () => this.onClose?.();
+  }
+
+  get open(): boolean {
+    return this.a.open;
+  }
+
+  get bytesSent(): number {
+    return this.a.bytesSent + this.b.bytesSent;
+  }
+
+  get wire(): { bytes: number } {
+    return { bytes: this.a.wire.bytes + this.b.wire.bytes };
+  }
+
+  send(channel: number, data: Uint8Array): void {
+    if (channel === CH_RELIABLE) return this.a.send(channel, data);
+    if (this.both) this.a.send(channel, data);
+    (this.both || this.turn++ % 2 === 1 ? this.b : this.a).send(channel, data);
+  }
+
+  close(): void {
+    this.a.close();
+    this.b.close();
+  }
+}
+
+/** A client on two connections over the same path. */
+function joinPair(h: Harness, name: string, link: LinkOptions, shared: boolean): ClientSession {
+  const accept = h.net.onConnection!;
+  const ends: LoopbackEnd[] = [];
+  h.net.onConnection = (end) => void ends.push(end as LoopbackEnd);
+  const a = h.net.connect(link);
+  const b = h.net.connect(link, shared ? a : undefined);
+  h.net.onConnection = accept;
+  for (const e of ends) h.gate(e);
+  const server = new Pair(ends[0]!, ends[1]!, false);
+  accept(server);
+  return h.adopt(name, new Pair(a, b, true), a, server);
+}
+
 function percentile(sorted: number[], p: number): number {
   return sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))]!;
 }
@@ -79,7 +141,7 @@ export function lossy(o: Lossy): Lossless {
   const h = new Harness(o.game ?? {}, o.seed ?? 3, 60, { dev: true });
   const link: LinkOptions = { latencyMs: o.rtt / 2, loss: o.loss, burstMs: o.burstMs ?? 0, tcp: !o.datagrams, ...o.link };
   const sessions: ClientSession[] = [];
-  for (let i = 0; i < o.clients; i++) sessions.push(h.join(`l${i}`, link));
+  for (let i = 0; i < o.clients; i++) sessions.push(o.sockets === 2 ? joinPair(h, `l${i}`, link, o.shared ?? false) : h.join(`l${i}`, link));
   h.run(1500);
   const ents = h.world.ents;
   const hf = h.world.hf;
@@ -250,22 +312,52 @@ export function lossy(o: Lossy): Lossless {
 
 export function benchTransport(section: Section, record: Row): void {
   const clients = 8;
-  section(`Transport: ${clients} survivors walking among 200 walking creatures, each on a WebSocket (TCP) with losses one by one`);
+  section(`Transport: ${clients} survivors walking among 200 walking creatures, each on a WebSocket (TCP), losses one by one`);
   for (const rtt of [50, 100, 180]) {
     for (const loss of [0, 0.01, 0.02]) {
-      const r = lossy({ rtt, loss, clients, herd: 200, settle: 5, seconds: 60 });
+      const r = lossy({ rtt, loss, clients, herd: 200, settle: 5, seconds: 30 });
       const name = (what: string): string => `${rtt} ms, ${loss * 100}%: ${what}`;
-      record(name("time others stand still"), r.frozen, "%");
-      record(name("times others stop, a minute"), r.freezes, "");
-      record(name("longest they stood still"), r.longest, "ms");
-      record(name("inputs the server had to guess, a minute"), r.held, "");
-      record(name("runs of them, a minute"), r.lateRuns, "");
+      record(name("time others stand still"), r.frozen, "%", loss === 0 ? 0 : null);
+      record(name("ticks others are drawn behind"), r.drawn, "");
+      record(name("inputs the server had to guess, a minute"), r.held, "", loss === 0 ? 0 : null);
       record(name("input delay beyond the trip there"), r.delay, "ms");
-      record(name("corrections a minute"), r.corrections, "");
-      record(name("clock jumps a minute"), r.jumps, "");
-      record(name("clock lead, 5th to 95th percentile"), r.spread, "ticks");
-      record(name("snapshot age on arrival, median"), r.age, "ms");
+      record(name("corrections a minute"), r.corrections, "", loss === 0 ? 0 : null);
+      record(name("clock jumps a minute"), r.jumps, "", 3);
+      record(name("clock lead, 5th to 95th percentile"), r.spread, "ticks", 4);
+      record(name("ticks a shot is judged later than seen"), r.clipped, "%");
       record(name("snapshot age on arrival, 99th percentile"), r.age99, "ms");
+    }
+  }
+  for (const [rtt, burstMs] of [[100, 60], [180, 60]] as const) {
+    const r = lossy({ rtt, loss: 0.02, burstMs, clients, herd: 200, settle: 5, seconds: 30 });
+    const name = (what: string): string => `${rtt} ms, 2% in ${burstMs} ms spells: ${what}`;
+    record(name("time others stand still"), r.frozen, "%");
+    record(name("inputs the server had to guess, a minute"), r.held, "");
+    record(name("corrections a minute"), r.corrections, "");
+    record(name("clock jumps a minute"), r.jumps, "");
+  }
+
+  section("Transport: 4 survivors among 200 creatures on slow and stalling lines, and a base of 6,000 pieces set down beside them");
+  const slow = lossy({ rtt: 100, loss: 0, clients: 4, herd: 200, settle: 5, seconds: 30, link: { bytesPerSecond: 20000 } });
+  record("20 KB/s line: snapshot age on arrival, median", slow.age, "ms", 2500);
+  record("20 KB/s line: time others stand still", slow.frozen, "%");
+  const down = lossy({ rtt: 100, loss: 0, clients: 4, herd: 200, settle: 5, seconds: 30, outage: { at: 10, ms: 2000 } });
+  record("line down 2 s: until snapshots are fresh again", down.recovered, "ms", 1300);
+  record("line down 2 s: snapshot age, 99th percentile", down.age99, "ms");
+  for (const [what, o] of [["60 KB/s line", { rtt: 100, loss: 0, link: { bytesPerSecond: 60000 } }], ["180 ms, 2%", { rtt: 180, loss: 0.02 }], ["clean 50 ms", { rtt: 50, loss: 0 }]] as const) {
+    const r = lossy({ clients: 4, herd: 120, settle: 5, seconds: 4, build: { at: 0.5, pieces: 6000 }, ...o });
+    record(`base on a ${what}: time others stand still`, r.frozen, "%");
+    record(`base on a ${what}: until every client holds it`, r.synced, "ms");
+  }
+
+  section("Transport: the unreliable channel on two sockets, inputs on both and snapshots taking turns (a study, not built)");
+  for (const [rtt, burstMs] of [[100, 0], [180, 0], [100, 60], [100, 20]] as const) {
+    for (const [how, extra] of [["one socket", {}], ["two", { sockets: 2 as const }], ["two in shared spells", { sockets: 2 as const, shared: true }]] as const) {
+      if (burstMs === 0 && "shared" in extra) continue;
+      const r = lossy({ rtt, loss: 0.02, burstMs, clients, herd: 200, settle: 5, seconds: 30, ...extra });
+      const name = (what: string): string => `${rtt} ms, 2%${burstMs > 0 ? ` in ${burstMs} ms spells` : ""}, ${how}: ${what}`;
+      record(name("time others stand still"), r.frozen, "%");
+      record(name("inputs the server had to guess, a minute"), r.held, "");
     }
   }
 }
