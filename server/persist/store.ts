@@ -104,6 +104,8 @@ export class WorldStore {
   readonly toRuntime: Uint16Array;
   /** Content ids present in the save but not in this build. */
   readonly missingContent: string[] = [];
+  /** Saved indices of ids that were renamed to more than one thing, and what they are now. */
+  private readonly split = new Map<number, readonly number[]>();
   readonly fresh: boolean;
 
   private readonly reg: Registry;
@@ -180,11 +182,15 @@ export class WorldStore {
       this.toRuntime = new Uint16Array(high + 1);
       for (const [id, idx] of saved) {
         const runtime = reg.index.get(id);
-        if (runtime === undefined) this.missingContent.push(id);
-        else {
+        const renamed = reg.redirects.get(id);
+        if (runtime !== undefined) {
           this.toSaved[runtime] = idx;
           this.toRuntime[idx] = runtime;
-        }
+        } else if (renamed) {
+          // What was saved under the old id is read as the new one, and written back under the new one's own row.
+          this.toRuntime[idx] = renamed[0]!;
+          if (renamed.length > 1) this.split.set(idx, renamed);
+        } else this.missingContent.push(id);
       }
       if (this.missingContent.length > 0 && !opts.allowMissingContent && this.referencesMissing()) {
         db.close();
@@ -566,8 +572,9 @@ export class WorldStore {
           rec.xp = c.f64();
           // Engrams and recipes whose content is gone are dropped. Nothing of value is lost with them.
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
-            const e = this.toRuntime[c.varint()] ?? 0;
-            if (e !== 0) rec.engrams.push(e);
+            const saved = c.varint();
+            // An engram that became several is known as all of them.
+            for (const e of this.split.get(saved) ?? [this.toRuntime[saved] ?? 0]) if (e !== 0 && !rec.engrams.includes(e)) rec.engrams.push(e);
           }
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
             const recipe = this.toRuntime[c.varint()] ?? 0;

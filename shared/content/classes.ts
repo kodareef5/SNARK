@@ -3,7 +3,7 @@
 // nor may declare is refused. The reference page, the shape checks and the asset slots are all derived from these rows.
 
 import { FEATURES, type Feature } from "../features.ts";
-import type { BuffDef, DamageDef, Def, EngramDef, GameDef, ItemDef, LevelsDef, LootDef, MapDef, MaterialDef, NodeDef, PropDef, RecipeDef, ShapeDef, SpawnsDef, SpeciesDef, StructureDef } from "./defs.ts";
+import type { BuffDef, DamageDef, Def, EngramDef, GameDef, ItemDef, LevelsDef, LootDef, MapDef, MaterialDef, NodeDef, PropDef, RecipeDef, RenameDef, ShapeDef, SpawnsDef, SpeciesDef, StructureDef } from "./defs.ts";
 
 /** "built": systems read it. "partial": part of it lives in code. "stub": the row exists and nothing reads it yet. */
 export type Status = "built" | "partial" | "stub";
@@ -259,6 +259,10 @@ const GAME = {
   buffs: f("list", "AdditionalDefaultBuffs", { refs: { "[]": "buff" }, open: true }),
 } satisfies Fields<GameDef>;
 
+const RENAME = {
+  to: f("list", "a reference redirect"),
+} satisfies Fields<RenameDef>;
+
 /** Every field of every family that has a definition type. */
 export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>>>> = {
   item: ITEM,
@@ -277,6 +281,7 @@ export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>
   spawns: SPAWNS,
   map: MAP,
   game: GAME,
+  rename: RENAME,
 };
 
 const mesh = (need: Slot["need"], from: string, ...fallback: string[]): Slot => ({ asset: "mesh", need, from, fallback });
@@ -398,6 +403,8 @@ row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory templat
 row("spawns", "spawns", SPAWNS, { ark: "NPCSpawnEntriesContainer", status: "stub", waits: "spawner", shelf: "spawns", must: ["entries"], may: ["limits"], doc: "Which creatures live in a place, in what share and at what levels." });
 row("map", "map", MAP, { ark: "a level and the game data it names", status: "stub", waits: "maps", shelf: "maps", must: ["chunks"], may: ["label", "seaLevel", "game", "zones"], doc: "A world: its ground, its zones, and what spawns, grows and drops in each. Today the one map is code." });
 row("game", "game", GAME, { ark: "PrimalGameData", status: "stub", waits: "polish", shelf: "game", must: ["survivor", "cache", "bag"], may: ["levels", "buffs"], doc: "What a game names once: the survivor's species, the death cache, the dropped bag, the standing buffs." });
+
+row("rename", "rename", RENAME, { ark: "a redirect for a class that was renamed", shelf: "renames", must: ["to"], doc: "An id that is no longer defined, and what it is called now. Saves and settings that use it still read." });
 
 export const CLASSES: readonly ClassRow[] = rows;
 const BY_ID = new Map(CLASSES.map((r) => [r.id, r]));

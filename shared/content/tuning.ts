@@ -222,7 +222,7 @@ export function deriveRegistry(reg: Registry, tuning: Tuning): Registry {
   const text = tuningText(tuning);
   if (text === reg.tuning) return reg;
   if (text === "") return base;
-  const made = compileContent(applyTuning(base.defs.filter((d): d is Def => d !== null), tuning));
+  const made = compileContent([...applyTuning(base.defs.filter((d): d is Def => d !== null), tuning), ...base.renames]);
   if (!made.registry) throw new Error("content does not compile as tuned:\n" + made.errors.join("\n"));
   return { ...made.registry, baseHash: base.hash, tuning: text, source: base };
 }

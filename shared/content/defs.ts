@@ -460,7 +460,19 @@ export interface GameDef {
   readonly buffs?: readonly string[];
 }
 
-export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef;
+/**
+ * An id that used to name something, and what it is called now. A save, a ledger or a settings file that still uses the old
+ * id is read as if it used the new ones. It is not content: it has no index, and the registry keeps it apart as a redirect.
+ */
+export interface RenameDef {
+  readonly type: "rename";
+  /** The id that is no longer defined. */
+  readonly id: string;
+  /** What it is now. More than one where a thing was split, as an engram for a whole set into one for each piece. */
+  readonly to: readonly string[];
+}
+
+export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | RecipeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef | RenameDef;
 
 /** Half extents of the box, centred on a shape's origin, that holds all of its boxes. */
 export function shapeHalf(boxes: readonly ShapeBox[]): [number, number, number] {

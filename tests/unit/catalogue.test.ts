@@ -61,7 +61,8 @@ test("a class that is built has content, a stub has none, and each kind of fault
   const used = new Set(classes);
   for (const r of CLASSES) {
     if (r.abstract) continue;
-    if (r.status === "built") expect([r.id, used.has(r.id)]).toEqual([r.id, true]);
+    // A rename is not content, so the core pack has one only when something of its has been renamed.
+    if (r.status === "built" && r.id !== "rename") expect([r.id, used.has(r.id)]).toEqual([r.id, true]);
     if (r.status === "stub") expect([r.id, used.has(r.id)]).toEqual([r.id, false]);
   }
 });

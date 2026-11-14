@@ -13,7 +13,7 @@ import { DAMAGE_TYPES } from "../sim/damage.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
 import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
-import { PIECE_ROLES, shapeHalf, type Def, type SpeciesDef, type WeaponFacet } from "./defs.ts";
+import { PIECE_ROLES, shapeHalf, type Def, type RenameDef, type SpeciesDef, type WeaponFacet } from "./defs.ts";
 
 export const MISSING = 0;
 export const MAX_STRUCTURE_HALF = 16;
@@ -30,6 +30,10 @@ export interface Registry {
   readonly index: ReadonlyMap<string, number>;
   /** Changes whenever any definition changes. Client and server must match. */
   readonly hash: number;
+  /** Ids that are no longer defined, and the content each now is. The hash does not cover them. */
+  readonly redirects: ReadonlyMap<string, readonly number[]>;
+  /** The renames the redirects came from, for compiling the same content again under other settings. */
+  readonly renames: readonly RenameDef[];
   /**
    * For a registry a server's settings have tuned (shared/content/tuning.ts): the hash of the untuned definitions, the
    * tuning as text, and the untuned registry. For untuned content: its own hash, "", and null.
@@ -161,9 +165,22 @@ export interface CompileResult {
   errors: string[];
 }
 
-export function compileContent(input: readonly Def[]): CompileResult {
+export function compileContent(all: readonly Def[]): CompileResult {
   const errors: string[] = [];
   const seen = new Set<string>();
+  // A rename is not content. It is checked here and kept apart.
+  const renames = all.filter((d): d is RenameDef => d.type === "rename");
+  const input = all.filter((d): d is Exclude<Def, RenameDef> => d.type !== "rename");
+  const typeOf = new Map(input.map((d) => [d.id, d.type]));
+  for (const r of renames) {
+    errors.push(...defFaults(r));
+    if (!ID.test(r.id)) errors.push(`"${r.id}": id must look like "namespace:name"`);
+    if (typeOf.has(r.id)) errors.push(`${r.id}: is renamed and also defined`);
+    if (!Array.isArray(r.to) || r.to.length === 0) continue;
+    for (const to of r.to) if (!typeOf.has(to)) errors.push(`${r.id}: is renamed to "${to}", which is not defined`);
+    if (new Set(r.to.map((to) => typeOf.get(to))).size > 1) errors.push(`${r.id}: is renamed to things of different types`);
+  }
+  if (new Set(renames.map((r) => r.id)).size !== renames.length) errors.push("an id is renamed twice");
   const positive = (d: Def, name: string, v: number, max: number) => {
     if (!(v > 0 && v <= max)) errors.push(`${d.id}: ${name} must be in (0, ${max}], got ${v}`);
   };
@@ -506,7 +523,8 @@ export function compileContent(input: readonly Def[]): CompileResult {
   for (let i = 1; i < n; i++) if (opens[i] !== 0 && pieceItem[opens[i]!] === 0) pieceItem[opens[i]!] = pieceItem[i]!;
   // A burning fire maps back to the unlit fire's item.
   for (let i = 1; i < n; i++) if (lights[i] !== 0 && pieceItem[lights[i]!] === 0) pieceItem[lights[i]!] = pieceItem[i]!;
-  return { registry: { defs, ids, index, hash, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  const redirects = new Map(renames.map((r) => [r.id, r.to.map((to) => index.get(to)!)]));
+  return { registry: { defs, ids, index, hash, redirects, renames, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 /** The ZONE_* ids (shared/anim/human.ts) each body part named in content covers. */

@@ -25,7 +25,8 @@ export class Lists {
 
   /** Returns 0, and records the name in `missing`, if this build has no content of that name or it is not of `type`. */
   index(setting: string, name: string, type?: string): number {
-    const i = this.reg.index.get(name) ?? 0;
+    // A file written before something was renamed still names it.
+    const i = this.reg.index.get(name) ?? this.reg.redirects.get(name)?.[0] ?? 0;
     if (i !== 0 && (type === undefined || this.reg.defs[i]!.type === type)) return i;
     if (!this.told.has(`${setting} ${name}`)) {
       this.told.add(`${setting} ${name}`);

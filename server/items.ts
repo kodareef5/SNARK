@@ -321,11 +321,12 @@ export class Items {
       return;
     }
     for (const [id, pair] of Object.entries(JSON.parse(saved) as Record<string, [number, number]>)) {
-      const k = this.reg.index.get(id);
+      // What was counted under an id that has since been renamed is counted under what it is now. Two ids may have become one.
+      const k = this.reg.index.get(id) ?? this.reg.redirects.get(id)?.[0];
       // Stacks of removed content were dropped when the records loaded.
       if (k === undefined) continue;
-      this.minted[k] = pair[0];
-      this.burned[k] = pair[1];
+      this.minted[k] = this.minted[k]! + pair[0];
+      this.burned[k] = this.burned[k]! + pair[1];
     }
   }
 }

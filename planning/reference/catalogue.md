@@ -10,7 +10,7 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 39 classes: 24 built, 3 partly built, and 12 stubs that
+There are 40 classes: 25 built, 3 partly built, and 12 stubs that
 wait for a feature. The core pack holds 301 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -313,6 +313,16 @@ ARK's names: `buffs` is AdditionalDefaultBuffs.
 What names what: `survivor` names a `species/survivor`; `cache` names a `prop/container`; `bag` names a `prop/container`; `levels` names a `levels`; `buffs[]` names a `buff`.
 
 Packs may add to: `buffs`.
+
+## Renames
+
+| Class | ARK | Standing | Must | May | In core |
+| --- | --- | --- | --- | --- | --- |
+| `rename` | a redirect for a class that was renamed | built | `to` |  | 0 |
+
+- **`rename`** on shelf `renames`. An id that is no longer defined, and what it is called now. Saves and settings that use it still read.
+
+ARK's names: `to` is a reference redirect.
 
 ## What waits for a feature
 
