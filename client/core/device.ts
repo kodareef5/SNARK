@@ -1,7 +1,9 @@
-// The device probe's run. A page opened with ?device=<token> measures the device it is on by itself and reports to
-// tools/device.ts: loading, the picture, the simulation's hashes, then each graphics tier in each scene. Here is what is
-// measured and in what order, the report, and its table, which the page shows and the terminal prints. What only a
-// browser can say comes from the shell (client/shell/device.ts).
+// The device probe. A page opened with ?device=<token> asks which test to run, then measures the device it is on by
+// itself and reports to tools/device.ts. Every test loads the game, reads the self-check's probes and runs the
+// simulation's hashes. Then the quick look measures each graphics tier in three light scenes; the load ladder adds
+// bodies, building pieces, triangles and draws a rung at a time until frames break, then texture memory until the device
+// refuses it; the soak turns through a heavy scene for ten minutes. What it adds is in devicescene.ts, and the table and
+// pages it shows in devicetext.ts. What only a browser can say comes from the shell (client/shell/device.ts).
 
 import { HumanAnim } from "../../shared/anim/pose.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
@@ -14,29 +16,54 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { App } from "./app.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
+import { BodyCopies, LOOK, TextureMemory, rocks, type GlMemory } from "./devicescene.ts";
+import { donePage, progressText, startPage } from "./devicetext.ts";
 import { DRAW_TEXTURED, type FramePacket } from "./render/packet.ts";
 import type { Thing } from "./render/scene.ts";
 import { probePasses, provingProbes } from "./selfcheck.ts";
 import { stressThings } from "./stress.ts";
 
-/** The proving ground as the self-check sees it; with the stress meshes; and turned round to the thatch and crowd of crowdScene. */
+export type Mode = "quick" | "ladder" | "soak";
+export const MODES: readonly Mode[] = ["quick", "ladder", "soak"];
+
+/** The quick look's scenes: the proving ground as the self-check sees it; with the stress meshes; turned round to the crowd. */
 export type SceneName = "plain" | "stress" | "crowd";
 export const SCENES: readonly SceneName[] = ["plain", "stress", "crowd"];
 
+/**
+ * What the ladder adds, a rung at a time. Bodies: copies of the crowd, posed. Pieces: stone and wood houses the server
+ * builds, with their materials near. Triangles: rocks near, each a draw. Draws: rocks far, each a draw of few triangles.
+ */
+export type Axis = "bodies" | "triangles" | "draws" | "pieces";
+export const AXES: readonly Axis[] = ["bodies", "triangles", "draws", "pieces"];
+/** Each axis's last rung is the most the engine takes: a view of 2,048 bodies, 4,096 draws a frame, the base's 4,096 pieces. */
+export const RUNGS: Readonly<Record<Axis, readonly number[]>> = { bodies: [25, 50, 100, 200, 400, 800, 1600, 2048], triangles: [8, 16, 32, 64, 128, 256, 512, 1024], draws: [256, 512, 1024, 2048, 3600], pieces: [64, 128, 256, 512, 1024, 2048, 4096] };
+/** Texture memory the ladder takes at the end, in megabytes, until the device refuses it or it is all held. */
+export const MEMORY_MB: readonly number[] = [128, 256, 512, 768, 1024, 1536, 2048, 3072, 4096];
+
 export interface Timing {
-  /** A phase is measured this long once what it shows has settled. */
+  /** A phase or rung is measured this long once what it shows has settled. */
   measureMs: number;
-  /** How long a phase may take to settle, and loading to reach full detail, before the run goes on without. */
+  rungMs: number;
+  /** How long a step may take to settle, and loading to reach full detail, before the run goes on without. */
   settleMs: number;
   loadMs: number;
+  /** How long the soak turns, and how long a held amount of texture memory is watched. */
+  soakMs: number;
+  holdMs: number;
 }
-export const TIMING: Timing = { measureMs: 5000, settleMs: 10000, loadMs: 60000 };
+export const TIMING: Timing = { measureMs: 5000, rungMs: 1500, settleMs: 10000, loadMs: 60000, soakMs: 600000, holdMs: 1500 };
 /** Frames in a row with nothing on its way and nothing waiting to go on the graphics card: settled then. */
 const STILL = 30;
-/** A phase this slow, in ms a frame, and the tiers above it are not tried. */
+/** A quick phase this slow, in ms a frame, and the tiers above it are not tried. */
 const TOO_SLOW = 100;
 /** Frames stopped this long while the page is shown, and the run ends. */
 const STALL_MS = 15000;
+/** A rung holds the display's rate when its median frame is within this share of the display's, and its 95th within the next. */
+const HOLD_MEDIAN = 1.12;
+const HOLD_P95 = 1.5;
+/** Texture memory taken a frame, in megabytes, so that frames keep coming while it grows. */
+const MEMORY_STEP = 16;
 
 export interface Spread {
   median: number;
@@ -68,20 +95,67 @@ export interface PhaseReport {
   /** In our own code: building the frame and the interface, and handing the frame to WebGL. */
   buildMs: Spread;
   drawMs: Spread;
-  /** Medians a frame: WebGL draw calls, triangles, and draws the frame asked to have drawn with their materials. */
+  /** Medians a frame: WebGL draw calls, triangles, draws the frame asked to have drawn with their materials, and bones posed. */
   drawCalls: number;
   triangles: number;
   textured: number;
+  bones: number;
   /** Totals over the measured frames, as the frame packet counted them. */
   dropped: number;
   skipped: number;
-  /** While the phase settled and ran: bytes fetched over the network, asset requests that failed, and snapshots missed. */
+  /** While the step settled and ran: bytes fetched over the network, asset requests that failed, and snapshots missed. */
   fetched: number;
   failed: number;
   missed: number;
   /** Times the graphics context was lost, and the tier the game fell to for want of memory, if it did. */
   lost: number;
   fellTo: string | null;
+}
+
+/** One rung of the ladder: `n` of `axis` on `tier`, and whether frames kept the display's rate. */
+export interface RungReport {
+  tier: string;
+  axis: Axis;
+  n: number;
+  held: boolean;
+  /** Where a rung that did not hold spent its frame: "our code", "the GPU", or "lost" for a lost context. Empty if it held. */
+  limit: string;
+  canvas: number[];
+  settled: boolean;
+  frameMs: Spread;
+  /** Medians: our code's ms, draw calls, triangles, bones posed and draws with materials. */
+  buildMs: number;
+  drawMs: number;
+  calls: number;
+  tris: number;
+  bones: number;
+  mat: number;
+  fetched: number;
+  missed: number;
+}
+
+export interface MemoryReport {
+  variant: string;
+  /** Megabytes of textures the game itself held on the card besides, when the step ended. */
+  gameMB: number;
+  /** The most held and watched with frames still coming, and the amount at which the device refused, or null if it never did. */
+  heldMB: number;
+  failedMB: number | null;
+  how: string;
+  /** For each amount held: the median frame while it was. */
+  rungs: { mb: number; frameMs: number }[];
+}
+
+export interface SoakReport {
+  tier: string;
+  /** What the soak turned through, and where the amounts came from: "defaults", or half what the ladder held on this page. */
+  load: { bodies: number; pieces: number; near: number; far: number; stress: boolean };
+  from: string;
+  minutesWanted: number;
+  minutes: { minute: number; frames: number; frameMs: Spread; buildMs: number; drawMs: number; missed: number }[];
+  /** Times the page was hidden, and how long in all. The soak's clock stops while it is. */
+  hidden: number;
+  hiddenMs: number;
 }
 
 export interface DeviceInfo {
@@ -103,6 +177,10 @@ export interface GpuInfo {
   maxArrayLayers: number;
   maxSamples: number;
   vertexTextures: number;
+  /** Textures a draw may read, colour targets it may write at once, and the most anisotropy, 0 for none. */
+  textureUnits: number;
+  drawBuffers: number;
+  anisotropy: number;
   highp: boolean;
   antialias: boolean;
   extensions: string[];
@@ -113,6 +191,7 @@ export interface GpuInfo {
 export interface DeviceReport {
   /** Made up by the page. A run is one file in .cache/device. */
   run: string;
+  mode: Mode;
   /** Counts the page's posts, so a late one cannot overwrite a newer. */
   seq: number;
   stage: string;
@@ -127,9 +206,14 @@ export interface DeviceReport {
     httpMs: Spread | null;
     /** The game's own measure of its round trip, which counts whole ticks. */
     gameMs: Spread | null;
+    /** Snapshots from the first this page had: received, and missed in all, while the game loaded, and while the page was hidden. */
     snapshots: number;
     missed: number;
-    /** The longest time between two frames that brought a snapshot while phases were measured. */
+    missedLoading: number;
+    missedHidden: number;
+    /** What the server says it held back, for every page it serves: unreliable messages it skipped because too much was waiting to go, and snapshots too large to send. */
+    server: { skipped: number; overflows: number } | null;
+    /** The longest time between two frames that brought a snapshot while steps were measured. */
     longestGapMs: number;
     bytesIn: number;
     clockJumps: number;
@@ -155,6 +239,8 @@ export interface DeviceReport {
   phases: PhaseReport[];
   /** The first phase once more at the end. A phone that has grown warm runs slower. */
   again: PhaseReport | null;
+  ladder: { display: number; rungs: RungReport[]; memory: MemoryReport | null } | null;
+  soak: SoakReport | null;
   skipped: string[];
   /** Textures the renderer made once the game had started. A material is drawn from them. */
   texturesMade: number;
@@ -165,11 +251,11 @@ export interface DeviceReport {
   reloadedDuring: string | null;
 }
 
-export function newReport(run: string): DeviceReport {
+export function newReport(run: string, mode: Mode = "quick"): DeviceReport {
   return {
-    run, seq: 0, stage: "starting", done: false, device: null, gpu: null, idleFrameMs: null, wakeLock: "not asked",
-    link: { httpMs: null, gameMs: null, snapshots: 0, missed: 0, longestGapMs: 0, bytesIn: 0, clockJumps: 0, corrections: 0, undecodable: 0 },
-    load: null, probes: null, hashes: null, phases: [], again: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
+    run, mode, seq: 0, stage: "starting", done: false, device: null, gpu: null, idleFrameMs: null, wakeLock: "not asked",
+    link: { httpMs: null, gameMs: null, snapshots: 0, missed: 0, missedLoading: 0, missedHidden: 0, server: null, longestGapMs: 0, bytesIn: 0, clockJumps: 0, corrections: 0, undecodable: 0 },
+    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
   };
 }
 
@@ -208,7 +294,7 @@ export async function featuresOf(g: Record<string, unknown>, within: Within): Pr
   };
 }
 
-function deviceOf(g: Record<string, unknown>, features: Record<string, boolean | string | number>): DeviceInfo {
+export function deviceOf(g: Record<string, unknown>, features: Record<string, boolean | string | number>): DeviceInfo {
   const nav = (g.navigator ?? {}) as Record<string, unknown>;
   const screen = (g.screen ?? {}) as Record<string, unknown>;
   const n = (v: unknown): number => (typeof v === "number" ? v : 0);
@@ -223,7 +309,7 @@ export interface GlLike {
   getShaderPrecisionFormat(shader: number, type: number): { precision: number } | null;
   getContextAttributes(): { antialias?: boolean } | null;
 }
-const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245 };
+const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, MAX_TEXTURE_IMAGE_UNITS: 0x8872, MAX_DRAW_BUFFERS: 0x8824, MAX_ANISOTROPY: 0x84ff, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245 };
 
 export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
   const n = (name: number): number => Number(gl.getParameter(name));
@@ -235,6 +321,10 @@ export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
     maxArrayLayers: n(GL.MAX_ARRAY_TEXTURE_LAYERS),
     maxSamples: n(GL.MAX_SAMPLES),
     vertexTextures: n(GL.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
+    textureUnits: n(GL.MAX_TEXTURE_IMAGE_UNITS),
+    drawBuffers: n(GL.MAX_DRAW_BUFFERS),
+    // Asked only once the extension is on, or the question is an error.
+    anisotropy: gl.getExtension("EXT_texture_filter_anisotropic") ? n(GL.MAX_ANISOTROPY) : 0,
     highp: (gl.getShaderPrecisionFormat(GL.FRAGMENT_SHADER, GL.HIGH_FLOAT)?.precision ?? 0) > 0,
     antialias: gl.getContextAttributes()?.antialias === true,
     extensions: gl.getSupportedExtensions() ?? [],
@@ -258,27 +348,75 @@ export function deviceScenarios(reg: Registry, pack: Pack): [string, () => strin
   return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(rigs.values())], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)]];
 }
 
+/** What a step shows. The pieces are the server's to build; the rest is added on the page. */
+export interface Load {
+  tier: Tier;
+  yaw: number;
+  stress: boolean;
+  bodies: number;
+  pieces: number;
+  near: number;
+  far: number;
+}
+
+interface Step {
+  kind: "phase" | "again" | "rung";
+  load: Load;
+  scene?: SceneName;
+  axis?: Axis;
+  n?: number;
+}
+
+const bare = (tier: Tier, yaw: number): Load => ({ tier, yaw, stress: false, bodies: 0, pieces: 0, near: 0, far: 0 });
+
+/** The rung of `axis` with `n` on `tier`. */
+export function rungLoad(tier: Tier, axis: Axis, n: number): Load {
+  const load = bare(tier, axis === "bodies" ? LOOK.bodies : axis === "pieces" ? LOOK.pieces : LOOK.rocks);
+  if (axis === "triangles") load.near = n;
+  else if (axis === "draws") load.far = n;
+  else load[axis] = n;
+  return load;
+}
+
+/** The tiers a device whose textures go up to `maxTexture` wide can take. */
+const takes = (maxTexture: number): Tier[] => TIERS.filter((t) => t.texture <= maxTexture);
+
 /**
- * What tools/device.ts stands behind the spawn point, where the crowd scene looks and the others do not. Near, a floor of
- * thatch with a wall down each side: thatch is the one material yet, and only a piece's finest level has it, so it must
- * be near to be drawn with it. Past it, bodies in rows that widen with distance, so a narrow screen has them all in
- * view. A piece's `y` is its height over the ground at `floor`.
+ * The ladder's order: for each tier the device can take, each axis a rung at a time from the lightest. The rung after
+ * one that did not hold is the next axis's first: the ladder stops climbing at the first rung that breaks, and a lost
+ * context ends the tier and those above it.
  */
-export function crowdScene(): { bodies: { species: string; x: number; z: number }[]; floor: { x: number; z: number }; pieces: { id: string; x: number; y: number; z: number; yaw: number }[] } {
-  const species = ["core:survivor", "core:parasaur", "core:raptor", "core:grazer"];
-  const bodies: { species: string; x: number; z: number }[] = [];
-  [4, 6, 8, 8, 10, 12].forEach((n, row) => {
-    const d = 17 + row * 6;
-    const half = d * 0.28;
-    for (let i = 0; i < n; i++) bodies.push({ species: species[bodies.length % species.length]!, x: PROVING_SPAWN.x - half + (2 * half * (i + 0.5)) / n, z: PROVING_SPAWN.z - d });
-  });
-  const floor = { x: PROVING_SPAWN.x, z: PROVING_SPAWN.z - 11 };
-  const pieces: { id: string; x: number; y: number; z: number; yaw: number }[] = [];
-  for (const a of [-1.5, 1.5]) {
-    for (const b of [-1.5, 1.5]) pieces.push({ id: "core:foundation_thatch", x: floor.x + a, y: 0.1875, z: floor.z + b, yaw: 0 });
-    pieces.push({ id: "core:wall_thatch", x: floor.x - 3, y: 1.875, z: floor.z + a, yaw: 16384 }, { id: "core:wall_thatch", x: floor.x + 3, y: 1.875, z: floor.z + a, yaw: 16384 });
+export class LadderPlan {
+  private readonly tiers: Tier[];
+  private tier = 0;
+  private axis = 0;
+  private rung = -1;
+
+  constructor(maxTexture: number) {
+    this.tiers = takes(maxTexture);
   }
-  return { bodies, floor, pieces };
+
+  /** The next rung after one that `held` or not, or was `lost`. Null at the end. */
+  next(held: boolean, lost: boolean): { tier: Tier; axis: Axis; n: number } | null {
+    if (lost) this.tier = this.tiers.length;
+    else if (this.rung >= 0 && !held) [this.axis, this.rung] = [this.axis + 1, -1];
+    for (;;) {
+      if (this.tier >= this.tiers.length) return null;
+      const axis = AXES[this.axis];
+      if (axis === undefined) [this.tier, this.axis, this.rung] = [this.tier + 1, 0, -1];
+      else if (++this.rung < RUNGS[axis].length) return { tier: this.tiers[this.tier]!, axis, n: RUNGS[axis][this.rung]! };
+      else [this.axis, this.rung] = [this.axis + 1, -1];
+    }
+  }
+}
+
+/** Half of what the ladder held on `tier` for each axis, a rung down, or `fallback` where it did not climb. */
+export function soakLoad(rungs: readonly RungReport[] | null, tier: string): { load: Omit<Load, "tier" | "yaw">; from: string } {
+  const fallback = { stress: true, bodies: 200, pieces: 1024, near: 16, far: 512 };
+  const held = (axis: Axis): number => Math.max(0, ...(rungs ?? []).filter((r) => r.tier === tier && r.axis === axis && r.held).map((r) => r.n));
+  if (!rungs || !AXES.some((a) => held(a) > 0)) return { load: fallback, from: "defaults" };
+  const half = (axis: Axis): number => [...RUNGS[axis]].reverse().find((n) => n <= held(axis) / 2) ?? 0;
+  return { load: { stress: true, bodies: half("bodies"), pieces: half("pieces"), near: half("triangles"), far: half("draws") }, from: `half what the ladder held on ${tier}` };
 }
 
 /** What the run needs from the page. */
@@ -298,18 +436,30 @@ export interface DeviceSide {
   pageBytes(): number;
   /** The server's hashes of deviceScenarios, by name. */
   expected: Record<string, string> | null;
+  /** Bodies added on the page, which the run sets the number of. */
+  bodies: BodyCopies;
+  /** Asks the probe's server to stand `n` pieces in its base. Resolves with how many stand, or null if it would not. */
+  base(n: number): Promise<number | null>;
+  /** Texture memory for the ladder's last step, in the renderer's variant. Null where the renderer gives none. */
+  memory: TextureMemory | null;
+  /** The display's interval between frames, which a rung holds or not. */
+  display: number;
 }
 
-type Stage = "load" | "probes" | "hashes" | "phases" | "again" | "done";
+type Stage = "load" | "probes" | "hashes" | "steps" | "memory" | "soak" | "done";
 
 export class DeviceRun {
   readonly report: DeviceReport;
   private readonly side: DeviceSide;
   private readonly timing: Timing;
-  private readonly plan: { tier: Tier; scene: SceneName }[];
+  private readonly mode: Mode;
   private stage: Stage = "load";
-  private index = 0;
-  /** When the stage or phase began, or -1 for at the next frame. */
+  private step: Step | null = null;
+  /** The quick look's phases, in order, and the one under way. */
+  private readonly plan: { tier: Tier; scene: SceneName }[];
+  private index = -1;
+  private readonly ladder: LadderPlan;
+  /** When the step began, or -1 for at the next frame. */
   private at = 0;
   private measuring = false;
   private settleMs = 0;
@@ -327,53 +477,92 @@ export class DeviceRun {
   private failedAt = 0;
   private dropped = 0;
   private skipped = 0;
-  private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[] };
-  /** Tiers above this index are not tried, for `stopWhy`. */
+  private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[], bones: [] as number[] };
+  /** Tiers above this index are not tried in the quick look, for `stopWhy`. */
   private stopAbove = TIERS.length;
   private stopWhy = "";
+  /** The base's pieces as the server last said, and whether it is still to say; the client's count of structures, and how long it has stood. */
+  private pieces = 0;
+  private asking = false;
+  private structs = -1;
+  private structsStill = 0;
+  /** Snapshot counts: from the first snapshot, at the step's start, and when the page was hidden. */
   private base: { snapshots: number; latest: number } | null = null;
-  private phaseBase = { snapshots: 0, latest: 0 };
+  private stepBase = { snapshots: 0, latest: 0 };
+  private hiddenBase: { snapshots: number; latest: number } | null = null;
   private snapTick = 0;
   private snapAt = 0;
   private longestGap = 0;
   private readonly rtt: number[] = [];
+  /** The memory step's amount under way, and how long it has held it. */
+  private memoryRung = 0;
+  private heldSince = -1;
+  /** The soak's amounts, clock and minute under way. */
+  private readonly soakFrom: { load: Omit<Load, "tier" | "yaw">; from: string };
+  private soakMs = 0;
+  private hiddenAt = -1;
 
-  constructor(report: DeviceReport, side: DeviceSide, timing: Timing = TIMING) {
+  /** `skipLoad` for a test begun on a page whose game is loaded already. `held` is a ladder's rungs from before, for the soak. */
+  constructor(report: DeviceReport, side: DeviceSide, mode: Mode, timing: Timing = TIMING, skipLoad = false, held: readonly RungReport[] | null = null) {
     this.report = report;
     this.side = side;
     this.timing = timing;
+    this.mode = mode;
     this.plan = TIERS.flatMap((tier) => SCENES.map((scene) => ({ tier, scene })));
+    this.ladder = new LadderPlan(side.maxTexture);
+    this.soakFrom = soakLoad(held, this.soakTier().name);
+    if (mode === "ladder") report.ladder = { display: side.display, rungs: [], memory: null };
+    if (skipLoad) {
+      this.lastFrameAt = side.now();
+      this.begin();
+    }
   }
-
 
   /** Each drawn frame, once it is handed to WebGL. True when the report has news worth sending. */
   frame(now: number, p: FramePacket, buildMs: number, drawMs: number, drawCalls: number, canvas: number[], read: (sx: number, sy: number) => [number, number, number]): boolean {
     if (this.stage === "done") return false;
-    const r = this.side.app.scene!.assets.residency;
+    const app = this.side.app;
+    const r = app.scene!.assets.residency;
     const gap = this.last > 0 ? now - this.last : 0;
     this.last = now;
     this.lastFrameAt = this.side.now();
     this.canvas = canvas;
-    const quiet = r.flying === 0 && r.waiting === 0 && p.assetUploads.length === 0 && p.texUploads.length === 0 && p.skipped === 0;
+    const count = app.session.world?.structs.count ?? 0;
+    this.structsStill = count === this.structs ? this.structsStill + 1 : 0;
+    this.structs = count;
+    const quiet = r.flying === 0 && r.waiting === 0 && p.assetUploads.length === 0 && p.texUploads.length === 0 && p.skipped === 0 && !this.asking && this.structsStill >= STILL;
     if (quiet && this.still === 0) this.stillSince = now;
     this.still = quiet ? this.still + 1 : 0;
     this.listen(now);
-    const news = this.stage === "load" ? this.load(now) : this.stage === "probes" ? this.probes(read) : this.stage === "hashes" ? this.hashes() : this.measure(now, gap, p, buildMs, drawMs, drawCalls);
+    let news = false;
+    if (this.stage === "load") news = this.load(now);
+    else if (this.stage === "probes") news = this.probes(read);
+    else if (this.stage === "hashes") news = this.hashes();
+    else if (this.stage === "steps") news = this.measure(now, gap, p, buildMs, drawMs, drawCalls);
+    else if (this.stage === "memory") news = this.memory(now, gap);
+    else if (this.stage === "soak") news = this.soak(now, gap, buildMs, drawMs);
     if (news) this.sync();
     return news;
   }
 
-  /** The page was hidden: what was under way starts again when it is shown. */
+  /** The page was hidden: what was under way starts again when it is shown, but the soak and the memory step go on. */
   hidden(): void {
     if (this.stage === "done") return;
-    const phase = this.plan[this.index]!;
-    this.report.hidden.push(this.stage === "phases" || this.stage === "again" ? `${phase.tier.name} ${phase.scene}` : this.stage);
-    if (this.stage === "phases" || this.stage === "again") this.begin();
+    const s = this.side.app.session;
+    this.hiddenBase = { snapshots: s.stats.snapshots, latest: s.latestSnapshot };
+    this.hiddenAt = this.side.now();
+    this.report.hidden.push(this.report.stage);
+    if (this.stage === "steps") this.show();
   }
 
   /** The page is shown again: the frames' stopping until now does not count. */
   shown(now: number): void {
     this.shownAt = now;
+    if (this.stage === "soak" && this.hiddenAt >= 0) {
+      this.report.soak!.hidden++;
+      this.report.soak!.hiddenMs = Math.round(this.report.soak!.hiddenMs + now - this.hiddenAt);
+    }
+    this.hiddenAt = -1;
   }
 
   lost(): void {
@@ -397,24 +586,17 @@ export class DeviceRun {
 
   /** A line or two for the page while the run goes on. */
   progress(now: number): string {
-    const keep = "\nKeep this page open and the screen on. It takes about two minutes.";
-    if (this.stage === "done") return "Done";
-    if (this.stage === "load") return `Loading the game: ${Math.round((now - this.side.bootAt) / 1000)} s${keep}`;
-    if (this.stage === "probes" || this.stage === "hashes") return `Checking the picture and the simulation${keep}`;
-    const { tier, scene } = this.plan[this.index]!;
-    const step = this.stage === "again" ? "the first again" : `${this.index + 1} of ${this.plan.length}`;
     const left = this.measuring ? `${Math.max(0, Math.ceil((this.timing.measureMs - (now - this.at)) / 1000))} s left` : "settling";
-    return `Measuring ${tier.name}, ${scene} (${step}): ${left}${keep}`;
+    return progressText(this.mode, this.report.stage, this.stage === "steps" && this.mode === "quick" ? left : this.stage === "soak" ? `${Math.floor(this.soakMs / 60000)} of ${this.timing.soakMs / 60000} minutes` : "");
   }
 
   private load(now: number): boolean {
     const side = this.side;
     if (!this.report.load) {
-      this.show("plain", tierOf(DEFAULT_TIER));
+      this.apply(bare(tierOf(DEFAULT_TIER), 0));
       this.report.stage = "loading";
       this.report.load = { firstFrameMs: tenth(now - side.bootAt), fullDetailMs: 0, settled: false, pageBytes: 0, assetBytes: 0, diskBytes: 0, failed: 0, cache: "" };
       this.at = now;
-      this.base = { snapshots: side.app.session.stats.snapshots, latest: side.app.session.latestSnapshot };
       return true;
     }
     if (this.still < STILL && now - this.at < this.timing.loadMs) return false;
@@ -452,14 +634,32 @@ export class DeviceRun {
       const got = run();
       return { name, got, want: side.expected?.[name] ?? null, ms: tenth(side.now() - t) };
     });
-    this.stage = "phases";
-    this.index = -1;
-    this.next();
+    this.begin();
     return true;
+  }
+
+  /** The test's own part begins: the first step, the soak, or the end. Snapshots missed until now were missed loading. */
+  private begin(): void {
+    const s = this.side.app.session;
+    if (this.base) this.report.link.missedLoading = this.missedSince(this.base);
+    this.base ??= s.latestSnapshot > 0 ? { snapshots: s.stats.snapshots, latest: s.latestSnapshot } : null;
+    if (this.mode === "soak") {
+      const tier = this.soakTier();
+      this.report.soak = { tier: tier.name, load: this.soakFrom.load, from: this.soakFrom.from, minutesWanted: this.timing.soakMs / 60000, minutes: [], hidden: 0, hiddenMs: 0 };
+      this.stage = "soak";
+      this.report.stage = "soak";
+      this.apply({ ...this.soakFrom.load, tier, yaw: 0 });
+      this.at = -1;
+      return;
+    }
+    this.stage = "steps";
+    this.next(null);
   }
 
   private measure(now: number, gap: number, p: FramePacket, buildMs: number, drawMs: number, drawCalls: number): boolean {
     if (this.at < 0) this.at = now;
+    const step = this.step!;
+    const measureMs = step.kind === "rung" ? this.timing.rungMs : this.timing.measureMs;
     if (!this.measuring) {
       if (this.still < STILL && now - this.at < this.timing.settleMs) return false;
       this.measuring = true;
@@ -470,85 +670,194 @@ export class DeviceRun {
       this.dropped = this.skipped = 0;
       return false;
     }
+    this.sample(gap, buildMs, drawMs, drawCalls, p);
+    if (now - this.at < measureMs) return false;
+    const phase = this.result();
+    if (step.kind === "again") {
+      this.report.again = phase;
+      this.next(null);
+    } else if (step.kind === "phase") {
+      this.report.phases.push(phase);
+      this.next(phase);
+    } else {
+      const display = this.side.display;
+      const held = phase.frameMs.median <= display * HOLD_MEDIAN && phase.frameMs.p95 <= display * HOLD_P95 && phase.lost === 0;
+      const ours = phase.buildMs.median + phase.drawMs.median;
+      const limit = held ? "" : phase.lost > 0 ? "lost" : ours >= phase.frameMs.median * 0.75 ? "our code" : "the GPU";
+      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, fetched: phase.fetched, missed: phase.missed });
+      this.nextRung(held, phase.lost > 0);
+    }
+    return true;
+  }
+
+  private sample(gap: number, buildMs: number, drawMs: number, drawCalls: number, p: FramePacket): void {
     const s = this.samples;
     s.frame.push(gap);
     s.build.push(buildMs);
     s.draw.push(drawMs);
     s.calls.push(drawCalls);
     s.tris.push(p.triangles);
+    s.bones.push(p.boneCount);
     let textured = 0;
     for (let d = 0; d < p.drawCount; d++) if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) textured++;
     s.textured.push(textured);
     this.dropped += p.dropped;
     this.skipped += p.skipped;
     if (s.frame.length % 30 === 0) this.rtt.push(tenth((this.side.app.session.stats.rttTicks * 1000) / TICK_RATE));
-    if (now - this.at < this.timing.measureMs) return false;
-    const phase = this.result();
-    if (this.stage === "again") {
-      this.report.again = phase;
-      this.end();
-      return true;
-    }
-    this.report.phases.push(phase);
-    const at = TIERS.findIndex((t) => t.name === phase.tier);
-    const why = phase.lost > 0 ? "the graphics context was lost" : phase.fellTo ? `the game fell to ${phase.fellTo} for want of memory` : phase.frameMs.median > TOO_SLOW ? `a frame took ${phase.frameMs.median} ms` : "";
-    if (why && at < this.stopAbove) {
-      this.stopAbove = at;
-      this.stopWhy = `${why} on ${phase.tier}, ${phase.scene}`;
-    }
-    this.next();
-    return true;
   }
 
   private result(): PhaseReport {
-    const { tier, scene } = this.plan[this.index]!;
+    const load = this.step!.load;
     const s = this.samples;
     const app = this.side.app;
-    const session = app.session;
-    const missed = Math.max(0, session.latestSnapshot - this.phaseBase.latest - (session.stats.snapshots - this.phaseBase.snapshots));
     return {
-      tier: tier.name, scene, ratio: this.ratio(), canvas: this.canvas, settleMs: this.settleMs, settled: this.settled, frames: s.frame.length,
+      tier: load.tier.name, scene: this.step!.scene ?? "plain", ratio: this.ratio(), canvas: this.canvas, settleMs: this.settleMs, settled: this.settled, frames: s.frame.length,
       frameMs: spread(s.frame), buildMs: spread(s.build), drawMs: spread(s.draw),
-      drawCalls: spread(s.calls).median, triangles: spread(s.tris).median, textured: spread(s.textured).median,
-      dropped: this.dropped, skipped: this.skipped, fetched: app.scene!.assets.residency.stats.fetched - this.fetchedAt, failed: this.failures() - this.failedAt, missed,
-      lost: this.lostCount - this.lostAt, fellTo: app.ui.settings.tier === tier.name ? null : app.ui.settings.tier,
+      drawCalls: spread(s.calls).median, triangles: spread(s.tris).median, textured: spread(s.textured).median, bones: spread(s.bones).median,
+      dropped: this.dropped, skipped: this.skipped, fetched: app.scene!.assets.residency.stats.fetched - this.fetchedAt, failed: this.failures() - this.failedAt, missed: this.missedSince(this.stepBase),
+      lost: this.lostCount - this.lostAt, fellTo: app.ui.settings.tier === load.tier.name ? null : app.ui.settings.tier,
     };
   }
 
-  /** On to the next phase the device can run, and after the last to the first once more. */
-  private next(): void {
+  /** The quick look's next phase the device can run, then the first once more, then the end. */
+  private next(last: PhaseReport | null): void {
+    if (this.mode === "ladder") return this.nextRung(true, false);
+    if (last) {
+      const at = TIERS.findIndex((t) => t.name === last.tier);
+      const why = last.lost > 0 ? "the graphics context was lost" : last.fellTo ? `the game fell to ${last.fellTo} for want of memory` : last.frameMs.median > TOO_SLOW ? `a frame took ${last.frameMs.median} ms` : "";
+      if (why && at < this.stopAbove) [this.stopAbove, this.stopWhy] = [at, `${why} on ${last.tier}, ${last.scene}`];
+    }
+    if (this.step?.kind === "again") return this.end();
     for (this.index++; this.index < this.plan.length; this.index++) {
       const { tier } = this.plan[this.index]!;
       const why = tier.texture > this.side.maxTexture ? `its textures are up to ${tier.texture} wide, and this device takes ${this.side.maxTexture}` : TIERS.indexOf(tier) > this.stopAbove ? this.stopWhy : "";
       if (!why) break;
       if (!this.report.skipped.some((line) => line.startsWith(`${tier.name}:`))) this.report.skipped.push(`${tier.name}: ${why}`);
     }
-    if (this.index >= this.plan.length) {
-      this.stage = "again";
-      this.index = 0;
-    }
-    this.begin();
+    const again = this.index >= this.plan.length;
+    const { tier, scene } = this.plan[again ? 0 : this.index]!;
+    const load = bare(tier, scene === "crowd" ? LOOK.crowd : 0);
+    load.stress = scene === "stress";
+    this.go({ kind: again ? "again" : "phase", load, scene }, `${again ? "again " : ""}${tier.name} ${scene}`);
   }
 
-  private begin(): void {
-    const { tier, scene } = this.plan[this.index]!;
-    this.report.stage = this.stage === "again" ? `again ${tier.name} ${scene}` : `${tier.name} ${scene}`;
+  private nextRung(held: boolean, lost: boolean): void {
+    const rung = this.ladder.next(held, lost);
+    if (!rung) {
+      this.apply(bare(tierOf(DEFAULT_TIER), 0));
+      this.stage = this.side.memory ? "memory" : "done";
+      if (this.side.memory) this.report.ladder!.memory = { variant: this.report.gpu?.variant ?? "rgba", gameMB: 0, heldMB: 0, failedMB: null, how: "", rungs: [] };
+      return this.stage === "done" ? this.end() : void (this.report.stage = `memory ${MEMORY_MB[0]} MB`);
+    }
+    this.go({ kind: "rung", load: rungLoad(rung.tier, rung.axis, rung.n), axis: rung.axis, n: rung.n }, `${rung.tier.name} ${rung.axis} ${rung.n}`);
+  }
+
+  private go(step: Step, name: string): void {
+    this.step = step;
+    this.report.stage = name;
+    this.show();
+  }
+
+  /** Begins the step under way afresh. */
+  private show(): void {
     this.measuring = false;
     this.at = -1;
-    this.show(scene, tier);
+    if (this.step) this.apply(this.step.load);
   }
 
-  private show(scene: SceneName, tier: Tier): void {
-    const app = this.side.app;
-    app.ui.settings.tier = tier.name;
-    app.controls.yaw = scene === "crowd" ? Math.PI : 0;
+  private apply(load: Load): void {
+    const { app, hf, bodies } = this.side;
+    app.ui.settings.tier = load.tier.name;
+    app.controls.yaw = load.yaw;
     app.controls.pitch = 0;
-    app.scene!.things = scene === "stress" ? this.stressed() : [];
-    this.fetchedAt = app.scene!.assets.residency.stats.fetched;
+    const assets = app.scene!.assets;
+    app.scene!.things = [...(load.stress ? this.stressed() : []), ...(load.near + load.far > 0 ? rocks(assets.table, hf, load.near, load.far) : [])];
+    bodies.n = load.bodies;
+    if (load.pieces !== this.pieces) {
+      this.asking = true;
+      this.pieces = load.pieces;
+      void this.side.base(load.pieces).then((n) => {
+        this.asking = false;
+        if (n === null) this.report.errors.length < 10 && this.report.errors.push(`${this.report.stage}: the server would not build the base`);
+      });
+    }
+    this.fetchedAt = assets.residency.stats.fetched;
     this.failedAt = this.failures();
-    this.phaseBase = { snapshots: app.session.stats.snapshots, latest: app.session.latestSnapshot };
+    this.stepBase = { snapshots: app.session.stats.snapshots, latest: app.session.latestSnapshot };
     this.lostAt = this.lostCount;
     this.still = 0;
+  }
+
+  /** The texture memory step: a megabyte at a time toward each amount, which is then watched with frames coming. */
+  private memory(now: number, gap: number): boolean {
+    const mem = this.side.memory!;
+    const report = this.report.ladder!.memory!;
+    const want = MEMORY_MB[this.memoryRung];
+    const finish = (how: string, failed: number | null): boolean => {
+      [report.how, report.failedMB, report.gameMB] = [how, failed, Math.round(this.side.app.scene!.assets.residency.texLedger / 1048576)];
+      mem.free();
+      this.end();
+      return true;
+    };
+    if (want === undefined) return finish(`held all ${report.heldMB} MB`, null);
+    const state = mem.grow(want, MEMORY_STEP);
+    if (state === "out of memory" || state === "context lost" || this.lostCount > this.lostAt) return finish(state === "growing" || state === "held" ? "context lost" : state, want);
+    if (state === "growing") return false;
+    if (this.heldSince < 0) {
+      this.heldSince = now;
+      this.samples.frame.length = 0;
+      return false;
+    }
+    this.samples.frame.push(gap);
+    if (now - this.heldSince < this.timing.holdMs) return false;
+    report.heldMB = want;
+    report.rungs.push({ mb: want, frameMs: spread(this.samples.frame).median });
+    this.heldSince = -1;
+    this.memoryRung++;
+    // Said before it is tried, so a page the browser has to reload says which amount it was trying.
+    this.report.stage = `memory ${MEMORY_MB[this.memoryRung] ?? want} MB`;
+    return true;
+  }
+
+  /** The soak: the camera turns once a minute through every scene at once, and each minute is measured by itself. */
+  private soak(now: number, gap: number, buildMs: number, drawMs: number): boolean {
+    const report = this.report.soak!;
+    if (this.at < 0) this.at = now;
+    if (!this.measuring) {
+      if (this.still < STILL && now - this.at < this.timing.settleMs * 2) return false;
+      this.measuring = true;
+      for (const list of Object.values(this.samples)) list.length = 0;
+      this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
+      return false;
+    }
+    // A gap of a second or more is the page coming back from hidden, which the soak's clock leaves out.
+    if (gap <= 0 || gap >= 1000) return false;
+    this.soakMs += gap;
+    this.side.app.controls.yaw = ((this.soakMs / 60000) * 2 * Math.PI) % (2 * Math.PI);
+    const s = this.samples;
+    s.frame.push(gap);
+    s.build.push(buildMs);
+    s.draw.push(drawMs);
+    const minute = report.minutes.length;
+    if (this.soakMs < (minute + 1) * 60000 && this.soakMs < this.timing.soakMs) return false;
+    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase) });
+    for (const list of Object.values(s)) list.length = 0;
+    this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
+    if (this.soakMs >= this.timing.soakMs) this.end();
+    else this.report.stage = `soak minute ${minute + 2}`;
+    return true;
+  }
+
+  /** The soak's tier: high, or the finest under it the device can take. */
+  private soakTier(): Tier {
+    const can = takes(this.side.maxTexture);
+    return can.find((t) => t.name === "high") ?? can.at(-1) ?? tierOf(DEFAULT_TIER);
+  }
+
+  /** Device pixels the page draws for one CSS pixel, as client/shell/main.ts works it out from the tier in use. */
+  private ratio(): number {
+    const most = this.side.app.scene!.assets.tier.pixelRatio;
+    return most > 0 ? Math.min(this.side.dpr, most) : this.side.dpr;
   }
 
   /** The stress scene, less the three meshes it lists wrongly on purpose: they are for the probe, and never settle. */
@@ -561,22 +870,32 @@ export class DeviceRun {
     return (this.stress = made.things.filter((t) => !wrong.has(t.mesh)));
   }
 
-  /** Device pixels the page draws for one CSS pixel, as client/shell/main.ts works it out from the tier in use. */
-  private ratio(): number {
-    const most = this.side.app.scene!.assets.tier.pixelRatio;
-    return most > 0 ? Math.min(this.side.dpr, most) : this.side.dpr;
-  }
-
   /** Asset requests that failed, to be asked again or given up. */
   private failures(): number {
     const stats = this.side.app.scene!.assets.residency.stats;
     return stats.failed + stats.dead;
   }
 
-  /** Snapshots that arrive, and the longest wait for one while phases are measured, to the frame. */
+  /** Snapshots the server ticked through since `from` that this page did not get. */
+  private missedSince(from: { snapshots: number; latest: number }): number {
+    const s = this.side.app.session;
+    return from.latest === 0 ? 0 : Math.max(0, s.latestSnapshot - from.latest - (s.stats.snapshots - from.snapshots));
+  }
+
+  /**
+   * Snapshots as they arrive, and the longest wait for one while a step is measured, to the frame. The count starts at the
+   * first snapshot: a page can draw its first frame before one has come, and counting from tick 0 would count every tick
+   * the server ran before the page joined.
+   */
   private listen(now: number): void {
     const s = this.side.app.session;
     if (s.latestSnapshot === this.snapTick) return;
+    this.base ??= { snapshots: s.stats.snapshots, latest: s.latestSnapshot };
+    if (this.stepBase.latest === 0) this.stepBase = { snapshots: s.stats.snapshots, latest: s.latestSnapshot };
+    if (this.hiddenBase) {
+      this.report.link.missedHidden += this.missedSince(this.hiddenBase);
+      this.hiddenBase = null;
+    }
     if (this.measuring && this.snapAt > 0) this.longestGap = Math.max(this.longestGap, now - this.snapAt);
     this.snapTick = s.latestSnapshot;
     this.snapAt = now;
@@ -587,7 +906,7 @@ export class DeviceRun {
     const link = this.report.link;
     if (this.base) {
       link.snapshots = s.stats.snapshots - this.base.snapshots;
-      link.missed = Math.max(0, s.latestSnapshot - this.base.latest - link.snapshots);
+      link.missed = this.missedSince(this.base);
     }
     link.gameMs = this.rtt.length > 0 ? spread(this.rtt) : null;
     link.longestGapMs = tenth(this.longestGap);
@@ -598,6 +917,7 @@ export class DeviceRun {
   }
 
   private end(): void {
+    this.apply(bare(tierOf(DEFAULT_TIER), 0));
     this.sync();
     this.stage = "done";
     this.report.stage = "done";
@@ -612,6 +932,8 @@ export interface DeviceBrowser {
   /** A fresh run's name: sixteen hex digits. */
   id: string;
   dpr: number;
+  /** A parameter of the page's address: `mode` starts a test without a tap, and `minutes` sets the soak's length. */
+  query(name: string): string | null;
   now(): number;
   sleep(ms: number): Promise<void>;
   /** Calls `fn` with the time of the next frame. */
@@ -621,8 +943,8 @@ export interface DeviceBrowser {
   /** Session storage. */
   load(): string | null;
   save(text: string): void;
-  /** Text in the box over the page, laid out by `style`. */
-  show(text: string, style: string): void;
+  /** HTML in the box over the page, laid out by `style`. A button in it with a data-mode starts that test. */
+  show(html: string, style: string): void;
   /** Asks to keep the screen on, and lets it go. */
   wake(): Promise<string>;
   rest(): void;
@@ -632,7 +954,7 @@ export interface DeviceBrowser {
 
 /** What the probe reads of the shell's renderer. A WebGL 2 context is a GlLike with these besides. */
 export interface RendererLike {
-  gl: GlLike & { createTexture(): unknown; canvas: unknown; drawingBufferWidth: number; drawingBufferHeight: number };
+  gl: GlLike & GlMemory & { canvas: unknown; drawingBufferWidth: number; drawingBufferHeight: number };
   rendererName: string;
   /** The texture variant it took. */
   format?: string;
@@ -640,36 +962,49 @@ export interface RendererLike {
   readPixel(sx: number, sy: number): [number, number, number];
 }
 
-/** A line of progress over the bottom of the game, and the whole page at the end. */
+/** A line of progress over the bottom of the game, and the whole page before and after. */
 const BAR = "position:fixed;left:0;right:0;bottom:0;margin:0;padding:6px 8px;background:rgba(0,0,0,.55);color:#eee;font:12px ui-monospace,Menlo,monospace;white-space:pre-wrap;z-index:10;pointer-events:none";
-const PAGE = "position:fixed;inset:0;margin:0;padding:12px;background:#111;color:#eee;font:11px ui-monospace,Menlo,monospace;white-space:pre;overflow:auto;z-index:10";
+const PAGE = "position:fixed;inset:0;margin:0;padding:16px;background:#111;color:#eee;font:15px -apple-system,system-ui,sans-serif;white-space:normal;overflow:auto;z-index:10";
 
 /**
- * A page's device probe from start to end. Before the game loads it reads the browser, the display and the link; then
- * the run measures the game; at the end the page shows the report. The report is posted after every step and kept in
- * session storage, so a page the browser reloads after a crash reports what it had, and does not run again.
+ * A page's device probe from start to end. Before the game loads it reads the browser, the display and the link, and
+ * shows which device it takes itself to be on and the tests to tap; the tap also asks to keep the screen on. The game
+ * loads only once a test is chosen, so a page opened on the wrong device starts nothing. When a test is done, another
+ * may be tapped on the same page. The report is posted after every step and kept in session storage, so a page the
+ * browser reloads after a crash reports what it had, and does not run again until a test is tapped.
  */
 export class DeviceProbe {
-  readonly report: DeviceReport;
+  report: DeviceReport;
   private readonly token: string;
   private readonly b: DeviceBrowser;
   private readonly timing: Timing;
   private readonly recovered: boolean;
   private run: DeviceRun | null = null;
+  private side: DeviceSide | null = null;
   private renderer: RendererLike | null = null;
   private expected: Record<string, string> | null = null;
+  /** The mode tapped, and what takes it to the game once the page has read the browser. */
+  private mode: Mode | null = null;
+  private choose: (mode: Mode) => void = () => {};
+  private readonly chosen = new Promise<Mode>((r) => (this.choose = r));
   /** When the game began to load, or -1 before. */
   private bootAt = -1;
   private progressAt = 0;
   /** Off while the graphics context is lost and made again, whose textures are not the materials'. */
   private counting = true;
   private finished = false;
+  private runs = 0;
+  /** The last ladder's rungs on this page, for a soak after it. */
+  private held: RungReport[] | null = null;
+  /** The server's counts of what it held back, when this run's first post was answered. */
+  private serverFrom: { skipped: number; overflows: number } | null = null;
   private sending: Promise<unknown> = Promise.resolve();
 
   constructor(token: string, browser: DeviceBrowser, timing: Timing = TIMING) {
     this.token = token;
     this.b = browser;
-    this.timing = timing;
+    const minutes = Number(browser.query("minutes"));
+    this.timing = minutes >= 1 && minutes <= 60 ? { ...timing, soakMs: minutes * 60000 } : timing;
     type Saved = { token?: unknown; report?: DeviceReport } | null;
     let saved: Saved = null;
     try {
@@ -680,13 +1015,13 @@ export class DeviceProbe {
     if (this.recovered) this.report.reloadedDuring = this.report.stage;
   }
 
-  /** Before the game loads. False if it should not load: the page found its run unfinished, and shows what it had. */
+  /**
+   * Before the game loads: what the browser has, a quiet measure of the display and the link, and the test to run. A page
+   * that found its run unfinished shows what it had first. Resolves true once a test is chosen.
+   */
   async before(): Promise<boolean> {
-    if (this.recovered) {
-      this.finish();
-      return false;
-    }
-    this.b.show("Measuring this device. Keep this page open and the screen on. It takes about two minutes.", BAR);
+    if (this.recovered) this.finish();
+    else this.b.show(startPage(this.report, this.b.global), PAGE);
     void this.wake();
     const within: Within = (f, ms, or) => this.within(f, ms, or);
     const pings: number[] = [];
@@ -703,13 +1038,41 @@ export class DeviceProbe {
       })(),
     ]);
     this.expected = expected !== null && typeof expected === "object" ? (expected as Record<string, string>) : null;
-    this.report.device = deviceOf(this.b.global, features);
-    this.report.idleFrameMs = frames ? spread(frames.slice(1).map((t, i) => t - frames[i]!)).median : null;
-    this.report.link.httpMs = pings.length > 0 ? spread(pings) : null;
+    const device = deviceOf(this.b.global, features);
+    const idle = frames ? spread(frames.slice(1).map((t, i) => t - frames[i]!)).median : null;
+    const http = pings.length > 0 ? spread(pings) : null;
+    const auto = MODES.find((m) => m === this.b.query("mode"));
+    if (auto) this.start(auto);
+    const mode = await this.chosen;
+    if (this.recovered) this.report = newReport(this.nextId(), mode);
+    this.report.mode = mode;
+    this.finished = false;
+    [this.report.device, this.report.idleFrameMs, this.report.link.httpMs] = [device, idle, http];
     this.report.stage = "loading";
     this.bootAt = this.b.now();
     this.post();
     return true;
+  }
+
+  /** A test was tapped, or named in the address. On a page done with one test, the next begins with the game as it is. */
+  start(name: string): void {
+    const mode = MODES.find((m) => m === name);
+    if (!mode) return;
+    if (this.mode === null) {
+      [this.mode, this.finished] = [mode, false];
+      void this.wake();
+      this.b.show(progressText(mode, "starting", ""), BAR);
+      return this.choose(mode);
+    }
+    if (!this.finished || !this.side) return;
+    const before = this.report;
+    this.report = { ...newReport(this.nextId(), mode), device: before.device, gpu: before.gpu, idleFrameMs: before.idleFrameMs, wakeLock: before.wakeLock, texturesMade: before.texturesMade };
+    this.report.link.httpMs = before.link.httpMs;
+    [this.finished, this.serverFrom, this.mode] = [false, null, mode];
+    void this.wake();
+    this.run = new DeviceRun(this.report, this.side, mode, this.timing, true, this.held);
+    this.b.show(progressText(mode, this.report.stage, ""), BAR);
+    this.post();
   }
 
   /**
@@ -727,8 +1090,20 @@ export class DeviceProbe {
     canvas.addEventListener("webglcontextrestored", () => (this.counting = true));
     this.renderer = renderer;
     const b = this.b;
-    const pageBytes = (): number => b.entries().reduce((sum, e) => sum + (e.transferSize || e.encodedBodySize || 0), 0);
-    this.run = new DeviceRun(this.report, { ...side, dpr: b.dpr, maxTexture: gpu.maxTexture, bootAt: this.bootAt, now: () => b.now(), pageBytes, expected: this.expected }, this.timing);
+    this.side = {
+      ...side,
+      dpr: b.dpr,
+      maxTexture: gpu.maxTexture,
+      bootAt: this.bootAt,
+      now: () => b.now(),
+      pageBytes: () => b.entries().reduce((sum, e) => sum + (e.transferSize || e.encodedBodySize || 0), 0),
+      expected: this.expected,
+      bodies: new BodyCopies(side.app.session, side.hf),
+      base: (n) => this.within(() => b.fetch(`base/${n}`, "").then((res) => (res.ok ? (res.json() as Promise<{ pieces: number }>) : null)).then((r) => r?.pieces ?? null), 20000, null),
+      memory: new TextureMemory(gl, create, gpu.variant),
+      display: this.report.idleFrameMs ?? 16.7,
+    };
+    this.run = new DeviceRun(this.report, this.side, this.mode ?? "quick", this.timing);
   }
 
   /** After each frame is handed to WebGL. The frame began at `t0` and was built by `built`, on the clock of `now()`. */
@@ -764,11 +1139,6 @@ export class DeviceProbe {
     } else if (now - this.bootAt > this.timing.loadMs) this.fail("the game did not start");
   }
 
-  private lost(): void {
-    this.counting = false;
-    this.run?.lost();
-  }
-
   error(message: string): void {
     if (this.report.errors.length < 10) this.report.errors.push(`${this.report.stage}: ${message.slice(0, 300)}`);
   }
@@ -777,6 +1147,16 @@ export class DeviceProbe {
   fail(message: string): void {
     this.error(message);
     this.finish();
+  }
+
+  private lost(): void {
+    this.counting = false;
+    this.run?.lost();
+  }
+
+  /** A run's name after the page's first: its first fourteen digits and a count. */
+  private nextId(): string {
+    return this.b.id.slice(0, 14) + (++this.runs).toString(16).padStart(2, "0");
   }
 
   /** JSON from the probe's server, or null. */
@@ -810,6 +1190,7 @@ export class DeviceProbe {
     if (this.finished) return;
     this.finished = true;
     this.report.done = true;
+    if (this.report.mode === "ladder" && this.report.ladder) this.held = this.report.ladder.rungs;
     this.page("Sending the report.");
     this.post(true);
     try {
@@ -818,92 +1199,38 @@ export class DeviceProbe {
   }
 
   private page(status: string): void {
-    const early = this.report.errors.length > 0 || this.report.reloadedDuring !== null;
-    this.b.show(`${early ? "Stopped early" : "Done"}. ${status}\n\n${deviceTable(this.report).join("\n")}`, PAGE);
+    this.b.show(donePage(this.report, this.b.global, status), PAGE);
   }
 
   /** Posts go one after another, so the server has them in order. The last is tried four times. */
   private post(last = false): void {
     this.report.seq++;
-    const body = JSON.stringify(this.report);
+    const report = this.report;
+    const body = JSON.stringify(report);
     try {
-      this.b.save(JSON.stringify({ token: this.token, report: this.report }));
+      this.b.save(JSON.stringify({ token: this.token, report }));
     } catch {}
     const send = async (): Promise<string> => {
       let why = "";
       for (let i = 0; i < (last ? 4 : 1); i++) {
         if (i > 0) await this.b.sleep(2000 * i);
-        const status = await this.within(() => this.b.fetch("report", body).then((res) => res.status), 15000, 0);
-        if (status === 200) return "";
-        why = status === 0 ? "no answer" : `the server answered ${status}`;
+        const res = await this.within(() => this.b.fetch("report", body), 15000, null);
+        if (res?.ok) {
+          // The server says what it has held back so far, for every page.
+          const told = (await this.within(() => res.json() as Promise<{ skipped?: number; overflows?: number }>, 5000, null)) ?? {};
+          if (typeof told.skipped === "number" && typeof told.overflows === "number" && report === this.report) {
+            this.serverFrom ??= { skipped: told.skipped, overflows: told.overflows };
+            report.link.server = { skipped: told.skipped - this.serverFrom.skipped, overflows: told.overflows - this.serverFrom.overflows };
+          }
+          return "";
+        }
+        why = res ? `the server answered ${res.status}` : "no answer";
       }
       return why;
     };
     this.sending = this.sending
       .then(send)
-      .then((why) => last && this.page(why === "" ? "Sent. You can close this page." : `Not sent: ${why}. The numbers are only here, so keep this page or take a screenshot.`))
+      .then((why) => last && report === this.report && this.page(why === "" ? "Sent." : `Not sent: ${why}. The numbers are only here, so keep this page or take a screenshot.`))
       .catch(() => {});
   }
-}
-
-const yes = (b: unknown): string => (b ? "yes" : "no");
-const mb = (bytes: number): string => (bytes / 1048576).toFixed(1);
-const secs = (ms: number): string => (ms / 1000).toFixed(1);
-const count = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${Math.round(n / 1000)}k` : String(Math.round(n)));
-const WIDTHS = [8, 7, 10, 6, 7, 7, 7, 7, 6, 6, 6, 7, 5, 5, 5, 5, 6, 5, 5];
-const row = (cells: string[]): string => cells.map((c, i) => (i < 3 ? c.padEnd(WIDTHS[i]!) : c.padStart(WIDTHS[i]!))).join(" ").trimEnd();
-
-function phaseRow(p: PhaseReport, tier = p.tier): string {
-  const line = row([tier, p.scene, p.canvas.join("x"), `${secs(p.settleMs)}${p.settled ? "" : "!"}`, String(p.frameMs.median), String(p.frameMs.p95), String(p.frameMs.p99), String(p.frameMs.worst), String(p.buildMs.median), String(p.drawMs.median), count(p.drawCalls), count(p.triangles), count(p.textured), String(p.dropped), String(p.skipped), String(p.lost), mb(p.fetched), String(p.failed), String(p.missed)]);
-  return p.fellTo ? `${line}  fell to ${p.fellTo}` : line;
-}
-
-/** The report as lines of plain text: on the page when it is done, and in the terminal of tools/device.ts. */
-export function deviceTable(r: DeviceReport): string[] {
-  const out: string[] = [`SNARK device report ${r.run}: ${r.done ? "done" : `stopped at ${r.stage}`}`];
-  if (r.reloadedDuring) out.push(`reloaded  the browser reloaded the page during ${r.reloadedDuring}, as it does after the page crashes`);
-  const d = r.device;
-  if (d) {
-    const f = d.features;
-    out.push(`device    ${d.userAgent}`);
-    out.push(`screen    ${d.screen.join("x")} CSS pixels, the page ${d.window.join("x")}, ${d.pixelRatio} device pixels to one; ${d.cores} cores${d.memoryGB ? `, ${d.memoryGB} GB` : ""}; ${d.touch} touch points`);
-    out.push(`features  workers ${yes(f.workers)}, file storage ${yes(f.opfs)}, decompression ${f.decompress || "none"}, audio worklet ${yes(f.audioWorklet)}, storage quota ${f.quotaMB ?? "?"} MB`);
-    out.push(`          opus encode ${yes(f.opusEncode)}, opus decode ${yes(f.opusDecode)}, webtransport ${yes(f.webTransport)}, webgpu ${yes(f.webgpu)}`);
-  }
-  const g = r.gpu;
-  if (g) {
-    out.push(`gpu       ${g.renderer} (${g.vendor}), ${g.version}`);
-    out.push(`limits    texture ${g.maxTexture}, layers ${g.maxArrayLayers}, samples ${g.maxSamples}, vertex textures ${g.vertexTextures}, highp ${yes(g.highp)}, antialias ${yes(g.antialias)}`);
-    out.push(`textures  compressed ${formatsOf(g.extensions).join(" ") || "none"}; float render ${yes(g.extensions.includes("EXT_color_buffer_float"))}, float filter ${yes(g.extensions.includes("OES_texture_float_linear"))}; depth textures yes, as in all WebGL 2; drawn from the ${g.variant} variant`);
-  }
-  out.push(`display   ${r.idleFrameMs ?? "?"} ms between frames with nothing drawn; wake lock ${r.wakeLock}`);
-  const l = r.link;
-  const measured = r.phases.reduce((sum, p) => sum + p.missed, 0);
-  out.push(`link      request ${l.httpMs ? `${l.httpMs.median} ms, worst ${l.httpMs.worst}` : "?"}; game ${l.gameMs ? `${l.gameMs.median} ms` : "?"}; snapshots ${l.snapshots}, missed ${l.missed} (${measured} while phases settled and ran), longest wait ${l.longestGapMs} ms; ${l.clockJumps} clock jumps, ${l.corrections} corrections`);
-  const load = r.load;
-  if (load) out.push(`load      first frame ${secs(load.firstFrameMs)} s, full detail ${secs(load.fullDetailMs)} s${load.settled ? "" : " (not reached)"}; page ${mb(load.pageBytes)} MB, assets ${mb(load.assetBytes)} MB, ${mb(load.diskBytes)} MB from disk, ${load.failed} fetches failed; asset cache in ${load.cache}`);
-  if (r.probes) {
-    const wrong = r.probes.filter((p) => !p.ok);
-    out.push(`picture   ${r.probes.length - wrong.length} of ${r.probes.length} probes right (${r.probes.map((p) => p.name).join(" ")})${wrong.map((p) => `; ${p.name} is ${p.got.join(",")}, not ${p.expected.join(",")}`).join("")}`);
-  }
-  if (r.hashes) {
-    const differ = r.hashes.filter((h) => h.got !== h.want);
-    out.push(`hashes    ${r.hashes.length - differ.length} of ${r.hashes.length} as the server's${differ.map((h) => `; ${h.name} ${h.got}, server ${h.want ?? "?"}`).join("")}; ${r.hashes.map((h) => `${h.name} ${h.ms} ms`).join(", ")}`);
-  }
-  const asked = [...new Set(r.phases.filter((p) => p.textured > 0).map((p) => p.tier))];
-  out.push(`materials ${asked.length === 0 ? "none asked for" : r.texturesMade > 0 ? `drawn on ${asked.join(", ")}: the renderer made ${r.texturesMade} textures` : `asked for on ${asked.join(", ")}, but the renderer made no textures, so drawn flat`}`);
-  out.push(`tiers run ${[...new Set(r.phases.map((p) => p.tier))].join(", ") || "none"}`);
-  if (r.phases.length > 0) {
-    out.push("");
-    out.push(row(["tier", "scene", "canvas", "settle", "median", "p95", "p99", "worst", "build", "draw", "calls", "tris", "mat", "drop", "skip", "lost", "MB", "fail", "miss"]));
-    for (const p of r.phases) out.push(phaseRow(p));
-    if (r.again) out.push(phaseRow(r.again, "again"));
-    out.push("median to worst: ms between frames. settle: s until nothing was on its way, ! if never. build, draw: ms in our code.");
-    out.push("calls: WebGL draws. mat: draws with materials. drop, skip: what the frame left out.");
-    out.push("MB, fail, miss: fetched, fetches failed and snapshots missed while the phase settled and ran.");
-  }
-  for (const line of r.skipped) out.push(`not run   ${line}`);
-  if (r.hidden.length > 0) out.push(`hidden    started again after the page was hidden: ${r.hidden.join(", ")}`);
-  for (const e of r.errors) out.push(`error     ${e}`);
-  return out;
 }

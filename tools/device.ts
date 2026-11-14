@@ -1,19 +1,24 @@
 // `bun run device`: a throwaway game server for measuring a phone, and the reports its page sends. It prints a short path
 // to open. With --tunnel it also runs a temporary Cloudflare tunnel (cloudflared, no account) and prints the whole link.
-// The page measures the device by itself (client/core/device.ts) and posts its report after every step; each run is kept
-// in .cache/device/ and printed as a table when it is done. With --self the local headless Chrome opens the link and the
-// run must finish: the test that the probe works, not part of the check. --port n, and --minutes n before it stops by
-// itself (30). CHROME and CLOUDFLARED name the programs.
+// The page shows which device it takes itself to be on and three tests to tap (client/core/device.ts): a quick look, a
+// load ladder, and a soak. It posts its report after every step; each run is kept in .cache/device/ and printed as a
+// table when it is done. With --self the local headless Chrome opens the link and runs a test without a tap, which must
+// finish: `--self` for the quick look, `--self ladder` or `--self soak` (with --soak-minutes n), the test that the probe
+// works, not part of the check. --port n, and --minutes n before it stops by itself (30). CHROME and CLOUDFLARED name
+// the programs.
 //
 // While the tunnel is up anyone may reach the server. The short path has four letters nobody is told and closes after
-// 64 wrong guesses, the report needs a 128-bit token, joining needs a random password, and cheats are off.
+// 64 wrong guesses, the probe's routes need a 128-bit token, joining needs a random password, and cheats are off. What a
+// page may change is the size of the base in front of it, up to BASE_MOST pieces.
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { TIERS } from "../client/core/assets/tiers.ts";
-import { SCENES, crowdScene, deviceScenarios, deviceTable, type DeviceReport } from "../client/core/device.ts";
+import { AXES, MEMORY_MB, MODES, SCENES, deviceScenarios, type DeviceReport, type Mode } from "../client/core/device.ts";
+import { BASE_MOST, basePieces, crowdScene } from "../client/core/devicescene.ts";
+import { deviceTable } from "../client/core/devicetext.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { startServer } from "../server/main.ts";
 import { loadConfig } from "../server/settings/config.ts";
@@ -23,10 +28,10 @@ import { parseManifest } from "../shared/pack/manifest.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { buildClient } from "./build-client.ts";
 
-/** A report larger than this is refused, and so is any post past these counts. */
+/** A report larger than this is refused, and so is any post past these counts. A ladder posts after each of a hundred or so rungs. */
 export const REPORT_BYTES = 64 * 1024;
 export const MAX_RUNS = 16;
-export const MAX_POSTS = 400;
+export const MAX_POSTS = 2000;
 /** Wrong guesses at the short path, after which it leads nowhere. */
 export const MAX_WRONG = 64;
 /** Letters for the short path, none easily taken for another. */
@@ -47,6 +52,10 @@ export interface DeviceOptions {
   say(line: string): void;
   /** Each run the page says is done, once. */
   done?(report: DeviceReport, file: string): void;
+  /** Stands `n` pieces in the base, from 0 to BASE_MOST, and says how many stand. */
+  base(n: number): number;
+  /** What the server has held back so far, which each report's answer tells the page. */
+  held(): { skipped: number; overflows: number };
 }
 
 interface Run {
@@ -57,7 +66,7 @@ interface Run {
   told: boolean;
 }
 
-/** The device probe's requests: the short path, and the token's ping, hashes and reports. Null for any other. */
+/** The device probe's requests: the short path, and the token's ping, hashes, base and reports. Null for any other. */
 export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: URL) => Response | Promise<Response> | null; unfinished(): Run[] } {
   const token = Buffer.from(o.token);
   const allowed = (given: string | null): boolean => {
@@ -69,6 +78,7 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
   let posts = 0;
   let wrong = 0;
   const answer = (text: string, status = 200): Response => new Response(text, { status, headers: { "cache-control": "no-store" } });
+  const json = (value: unknown): Response => Response.json(value, { headers: { "cache-control": "no-store" } });
 
   const receive = async (req: Request): Promise<Response> => {
     if (posts >= MAX_POSTS) return answer("too many reports", 429);
@@ -99,7 +109,7 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
       runs.set(report.run, run);
     }
     // Posts are sent in order. One older than what is kept changes nothing.
-    if (report.seq <= run.seq) return answer("ok");
+    if (report.seq <= run.seq) return json(o.held());
     run.seq = report.seq;
     run.last = report;
     try {
@@ -114,7 +124,7 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
       run.told = true;
       o.done?.(report, run.file);
     }
-    return answer("ok");
+    return json(o.held());
   };
 
   const routes = (req: Request, url: URL): Response | Promise<Response> | null => {
@@ -136,24 +146,41 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
     if (path.endsWith(".map")) return answer("not found", 404);
     if (!path.startsWith("/__device/")) return null;
     if (!allowed(url.searchParams.get("token"))) return answer("not found", 404);
-    if (path === "/__device/ping") return Response.json(true, { headers: { "cache-control": "no-store" } });
-    if (path === "/__device/hashes") return Response.json(o.expected, { headers: { "cache-control": "no-store" } });
+    if (path === "/__device/ping") return json(true);
+    if (path === "/__device/hashes") return json(o.expected);
     if (path === "/__device/report" && req.method === "POST") return receive(req);
+    const base = /^\/__device\/base\/(\d{1,5})$/.exec(path);
+    if (base && req.method === "POST") {
+      const n = Number(base[1]);
+      return n > BASE_MOST ? answer("too many pieces", 400) : json({ pieces: o.base(n) });
+    }
     return answer("not found", 404);
   };
   return { routes, unfinished: () => [...runs.values()].filter((r) => !r.told) };
 }
 
-/** What a report lacks of a whole run on a desktop, which can run every tier. Empty if nothing. */
-export function lacking(r: DeviceReport): string[] {
+/** What a report of `mode` lacks of a whole run on a desktop, which can run every tier and hold the screen on. Empty if nothing. */
+export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   const out: string[] = [];
+  if (r.mode !== mode) out.push(`it was a ${r.mode}, not a ${mode}`);
   if (!r.done) out.push("it never finished");
   if (r.reloadedDuring) out.push(`the page was reloaded during ${r.reloadedDuring}`);
   for (const e of r.errors) out.push(`error: ${e}`);
-  for (const [part, value] of [["device", r.device], ["gpu", r.gpu], ["load", r.load], ["link", r.link.httpMs], ["probes", r.probes], ["hashes", r.hashes], ["again", r.again]] as const) if (!value) out.push(`no ${part}`);
+  for (const [part, value] of [["device", r.device], ["gpu", r.gpu], ["load", r.load], ["link", r.link.httpMs], ["probes", r.probes], ["hashes", r.hashes]] as const) if (!value) out.push(`no ${part}`);
   for (const p of r.probes ?? []) if (!p.ok) out.push(`probe ${p.name} is wrong`);
   for (const h of r.hashes ?? []) if (h.got !== h.want) out.push(`hash ${h.name} differs from the server's`);
-  for (const t of TIERS) if (r.phases.filter((p) => p.tier === t.name).length !== SCENES.length) out.push(`tier ${t.name} did not run every scene`);
+  if (r.link.missed > 0) out.push(`${r.link.missed} snapshots missed on this machine's own link`);
+  if (mode === "quick") {
+    if (!r.again) out.push("no again");
+    for (const t of TIERS) if (r.phases.filter((p) => p.tier === t.name).length !== SCENES.length) out.push(`tier ${t.name} did not run every scene`);
+  }
+  if (mode === "ladder") {
+    const rungs = r.ladder?.rungs ?? [];
+    for (const t of TIERS) for (const a of AXES) if (!rungs.some((g) => g.tier === t.name && g.axis === a)) out.push(`tier ${t.name} has no ${a} rung`);
+    const m = r.ladder?.memory;
+    if (!m || (m.failedMB === null && m.heldMB !== MEMORY_MB.at(-1)) || m.heldMB === 0) out.push(`texture memory did not finish: ${m ? m.how : "no memory step"}`);
+  }
+  if (mode === "soak" && (r.soak?.minutes.length ?? 0) < (r.soak?.minutesWanted ?? 1)) out.push("the soak did not run its minutes");
   return out;
 }
 
@@ -175,6 +202,8 @@ async function lines(stream: ReadableStream<Uint8Array>, each: (line: string) =>
 
 if (import.meta.main) {
   const self = process.argv.includes("--self");
+  const mode = MODES.find((m) => m === value("--self")) ?? "quick";
+  const soakMinutes = Number(value("--soak-minutes") ?? 10);
   const tunnel = process.argv.includes("--tunnel");
   const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find((p) => p && existsSync(p));
   const cloudflared = process.env.CLOUDFLARED ?? Bun.which("cloudflared") ?? "/opt/homebrew/bin/cloudflared";
@@ -204,19 +233,38 @@ if (import.meta.main) {
   const print = (report: DeviceReport, file: string): void => {
     let table: string[];
     try {
-      table = deviceTable(report).slice(0, 80).map(clean);
+      table = deviceTable(report).slice(0, 120).map(clean);
     } catch {
       table = ["a report that could not be read as one"];
     }
     console.log(`\n${table.join("\n")}\n\nkept in ${file}\n`);
   };
-  const probe = deviceRoutes({ dir, token, code, password, expected, say, done: (report, file) => (print(report, file), finished({ report, file })) });
+  /** The base's pieces as they stand, in the order basePieces gives them, so that it shrinks from the far end. */
+  const built: number[] = [];
+  let server: ReturnType<typeof startServer> | null = null;
+  const base = (n: number): number => {
+    const world = server!.host.world;
+    while (built.length > n) world.structs.remove(built.pop()!);
+    const plan = basePieces(n);
+    for (let i = built.length; i < plan.length; i++) {
+      const p = plan[i]!;
+      const kind = world.reg.index.get(p.id) ?? 0;
+      const def = world.reg.defs[kind];
+      const ref = def?.type === "structure" ? world.structs.add(kind, p.x, world.hf.heightAt(p.house.x, p.house.z) + p.y, p.z, p.yaw, 0, def.hp) : -1;
+      // A piece the store will not take is left out, and the base is smaller than asked.
+      if (ref < 0) break;
+      built.push(ref);
+    }
+    return built.length;
+  };
+  const probe = deviceRoutes({ dir, token, code, password, expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }) });
   const { rules } = loadConfig({ gus: `[ServerSettings]\nServerPassword=${password}\n` });
   // The fixed scene of the boot probe, where nothing wakes, and behind the spawn point the crowd scene's thatch and bodies.
-  const server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", probeScene: true, config: rules, routes: probe.routes });
+  server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", probeScene: true, config: rules, routes: probe.routes });
+  const running = server;
   const scene = crowdScene();
-  const world = server.host.world;
-  const crowd = scene.bodies.filter((s) => server.host.spawnCreature(s.species, s.x, s.z, 1) >= 0).length;
+  const world = running.host.world;
+  const crowd = scene.bodies.filter((s) => running.host.spawnCreature(s.species, s.x, s.z, 1) >= 0).length;
   const ground = world.hf.heightAt(scene.floor.x, scene.floor.z);
   const pieces = scene.pieces.filter((p) => {
     const kind = world.reg.index.get(p.id) ?? 0;
@@ -229,7 +277,7 @@ if (import.meta.main) {
     for (const run of probe.unfinished()) print(run.last, run.file);
     child?.kill();
     child = null;
-    server.stop();
+    running.stop();
   };
   process.on("exit", () => child?.kill());
   stopOnSignals(stop);
@@ -240,7 +288,7 @@ if (import.meta.main) {
     process.exit(0);
   }, minutes * 60000);
 
-  let base = `http://127.0.0.1:${server.port}`;
+  let base0 = `http://127.0.0.1:${running.port}`;
   if (tunnel) {
     const out: string[] = [];
     let found: (url: string) => void = () => {};
@@ -254,7 +302,7 @@ if (import.meta.main) {
         if (url && /Registered tunnel connection/.test(line)) done();
       };
       // Its output is read to the end, or a full pipe would stall it.
-      child = Bun.spawn([cloudflared, "tunnel", "--no-autoupdate", "--url", base], { stdout: "pipe", stderr: "pipe" });
+      child = Bun.spawn([cloudflared, "tunnel", "--no-autoupdate", "--url", base0], { stdout: "pipe", stderr: "pipe" });
       void lines(child.stdout as ReadableStream<Uint8Array>, each);
       void lines(child.stderr as ReadableStream<Uint8Array>, each);
     });
@@ -264,9 +312,9 @@ if (import.meta.main) {
       stop();
       process.exit(1);
     }
-    base = gave;
+    base0 = gave;
     // A page through the tunnel is the server's own, but say so in case the tunnel does not pass the host on.
-    server.host.setSetting("AllowedOrigins", gave);
+    running.host.setSetting("AllowedOrigins", gave);
     let through = false;
     for (let i = 0; i < 20 && !through; i++) {
       await Bun.sleep(i === 0 ? 3000 : 1500);
@@ -276,20 +324,23 @@ if (import.meta.main) {
   }
 
   console.log(`\nSNARK device probe: ${crowd} bodies in the crowd and ${pieces} pieces of thatch; reports go to ${dir}`);
-  console.log(`  open on the device:  ${base}/d/${code}`);
-  console.log(`  where that leads:    ${base}/?device=${token}&password=${password}`);
-  if (tunnel) console.log(`  on this machine:     http://127.0.0.1:${server.port}/d/${code}`);
+  console.log(`  open on the device:  ${base0}/d/${code}`);
+  console.log(`  where that leads:    ${base0}/?device=${token}&password=${password}`);
+  if (tunnel) console.log(`  on this machine:     http://127.0.0.1:${running.port}/d/${code}`);
+  console.log(`  the page asks which test to run: a quick look, the load ladder, or a ten-minute soak`);
   console.log(`  Ctrl+C stops it; it stops by itself in ${minutes} minutes${tunnel ? ", and takes the tunnel down" : ""}\n`);
 
   if (self) {
     const profile = mkdtempSync(join(tmpdir(), "snark-device-"));
-    // A phone's shape: a narrow window three device pixels to the CSS pixel.
-    const browser = Bun.spawn([chrome!, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=430,932", "--force-device-scale-factor=3", `--user-data-dir=${profile}`, `${base}/d/${code}`], { stdout: "ignore", stderr: "ignore" });
-    const got = await Promise.race([whole, new Promise<null>((r) => setTimeout(() => r(null), 6 * 60000))]);
+    // A phone's shape: a narrow window three device pixels to the CSS pixel. The test starts without a tap.
+    const link = `${base0}/?device=${token}&password=${password}&mode=${mode}&minutes=${soakMinutes}`;
+    const browser = Bun.spawn([chrome!, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=430,932", "--force-device-scale-factor=3", `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
+    const limit = (mode === "soak" ? soakMinutes + 5 : mode === "ladder" ? 20 : 6) * 60000;
+    const got = await Promise.race([whole, new Promise<null>((r) => setTimeout(() => r(null), limit))]);
     browser.kill();
     await browser.exited;
     rmSync(profile, { recursive: true, force: true });
-    const missing = got ? lacking(got.report) : ["no finished report within six minutes"];
+    const missing = got ? lacking(got.report, mode) : [`no finished report within ${limit / 60000} minutes`];
     stop();
     for (const line of missing) console.log(`  ${clean(line)}`);
     console.log(missing.length === 0 ? "device: PASS" : "device: FAIL");

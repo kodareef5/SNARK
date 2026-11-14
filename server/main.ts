@@ -63,6 +63,8 @@ export interface RunningServer {
   nextSelfcheck(): Promise<unknown>;
   /** Resolves with the first frame-time report a page opened with ?bench=1 posts (dev only). */
   readonly bench: Promise<unknown>;
+  /** Unreliable messages skipped since the start because too much was waiting to go to their client. The device probe reports it. */
+  readonly skipped: number;
   stop(): void;
 }
 
@@ -200,6 +202,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
 
   /** A message is a channel byte and then what the game wrote. The game's writers hold 16 KB, and a welcome a little more. */
   const outgoing = new Uint8Array(65536);
+  let skipped = 0;
   // A development server gives cheats without a password, so nothing off this machine reaches it unless it is asked to listen there.
   const hostname = opts.hostname ?? (opts.dev ? "127.0.0.1" : undefined);
   const server = Bun.serve<Socket>({
@@ -259,7 +262,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           send(channel, data) {
             if (!conn.open) return;
             const rule = backlog(channel, ws.getBufferedAmount(), host.game.opts.snapshotBytesMax);
-            if (rule === 1) return;
+            if (rule === 1) return void skipped++;
             if (rule === 2) return void ws.close(1008, "too slow");
             // Bun copies what it is given before send returns, so every message goes out through one buffer.
             const frame = data.length < outgoing.length ? outgoing.subarray(0, data.length + 1) : new Uint8Array(data.length + 1);
@@ -330,6 +333,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     selfcheck,
     nextSelfcheck: () => (reports.length > 0 ? Promise.resolve(reports.shift()) : new Promise<unknown>((r) => waiting.push(r))),
     bench,
+    get skipped() {
+      return skipped;
+    },
     stop() {
       clearTimeout(timer);
       server.stop(true);

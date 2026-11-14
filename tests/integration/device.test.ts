@@ -1,4 +1,4 @@
-// The device probe: a whole run of a client on the harness, as a phone's page makes it, and the server's routes for it,
+// The device probe: whole runs of a client on the harness, as a phone's page makes them, and the server's routes for it,
 // which the internet can reach while a tunnel is up.
 
 import { afterAll, expect, test } from "bun:test";
@@ -6,28 +6,34 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
-import { DeviceProbe, deviceScenarios, deviceTable, newReport, type DeviceBrowser, type DeviceReport, type RendererLike } from "../../client/core/device.ts";
+import { DeviceProbe, MEMORY_MB, deviceScenarios, newReport, type DeviceBrowser, type DeviceReport, type RendererLike, type Timing } from "../../client/core/device.ts";
+import { deviceTable } from "../../client/core/devicetext.ts";
 import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, lacking } from "../../tools/device.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
-const TIMING = { measureMs: 300, settleMs: 3000, loadMs: 20000 };
+const TIMING: Timing = { measureMs: 300, rungMs: 100, settleMs: 3000, loadMs: 20000, soakMs: 2000, holdMs: 100 };
+const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 27_2_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.8103.37 Mobile/15E148 Safari/604.1";
 
-/** A browser made of numbers. Its timers never fire, so nothing is waited out. */
-function browser(opts: { saved?: string; clock?: () => number; expected?: Record<string, string> } = {}) {
+/** A browser made of numbers. Its timers never fire, so nothing is waited out. `frameMs` is the display's interval. */
+function browser(opts: { saved?: string; clock?: () => number; expected?: Record<string, string>; mode?: string; frameMs?: number } = {}) {
   const posts: DeviceReport[] = [];
+  const asked: number[] = [];
   const page = { text: "", whole: false, saved: opts.saved ?? null };
+  let frame = 0;
   const b: DeviceBrowser = {
-    global: { navigator: { userAgent: "a test", hardwareConcurrency: 6, maxTouchPoints: 5 }, screen: { width: 390, height: 844 }, innerWidth: 390, innerHeight: 844, devicePixelRatio: 3 },
+    global: { navigator: { userAgent: UA, hardwareConcurrency: 6, maxTouchPoints: 5 }, screen: { width: 390, height: 844 }, innerWidth: 390, innerHeight: 844, devicePixelRatio: 3 },
     id: "fedcba9876543210",
     dpr: 3,
+    query: (name) => (name === "mode" ? (opts.mode ?? null) : null),
     now: opts.clock ?? (() => 0),
     sleep: () => new Promise(() => {}),
-    nextFrame: (fn) => queueMicrotask(() => fn((frame += 16.6))),
+    nextFrame: (fn) => queueMicrotask(() => fn((frame += opts.frameMs ?? 16.6))),
     fetch: (path, body) => {
-      if (body !== undefined) posts.push(JSON.parse(body) as DeviceReport);
-      const value = path === "ping" ? true : path === "hashes" ? (opts.expected ?? null) : null;
+      if (path === "report") posts.push(JSON.parse(body!) as DeviceReport);
+      if (path.startsWith("base/")) asked.push(Number(path.slice(5)));
+      const value = path === "ping" ? true : path === "hashes" ? (opts.expected ?? null) : path === "report" ? { skipped: 3 + posts.length, overflows: 1 } : { pieces: asked.at(-1) };
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(value) });
     },
     load: () => page.saved,
@@ -37,45 +43,46 @@ function browser(opts: { saved?: string; clock?: () => number; expected?: Record
     rest: () => {},
     entries: () => [{ transferSize: 300000, encodedBodySize: 280000 }, { transferSize: 0, encodedBodySize: 200000 }],
   };
-  let frame = 0;
-  return { b, posts, page };
+  return { b, posts, page, asked };
 }
 
-/** A renderer of a phone that takes textures 2,048 wide at most. It draws nothing, and its canvas is what a test says. */
-function renderer() {
+/** A renderer of a phone that takes textures 2,048 wide at most and `room` megabytes of them. It draws nothing, and its canvas is what a test says. */
+function renderer(room = 300) {
   const heard = new Map<string, () => void>();
+  let [tiles, error] = [0, 0];
   const r: RendererLike = {
     gl: {
-      getParameter: (n: number) => (n === 0x0d33 ? 2048 : 4),
+      getParameter: (n: number) => (n === 0x0d33 ? 2048 : n === 0x84e0 ? 0x84c0 : 4),
       getExtension: () => null,
       getSupportedExtensions: () => ["WEBGL_compressed_texture_astc"],
       getShaderPrecisionFormat: () => ({ precision: 23 }),
       getContextAttributes: () => ({ antialias: true }),
       createTexture: () => ({}),
+      deleteTexture: () => void tiles--,
+      bindTexture: () => {},
+      activeTexture: () => {},
+      texStorage2D: () => void (++tiles > room && (error = 0x0505)),
+      compressedTexSubImage2D: () => {},
+      texSubImage2D: () => {},
+      getError: () => [error, (error = 0)][0]!,
+      isContextLost: () => false,
       canvas: { addEventListener: (type: string, fn: () => void) => heard.set(type, fn) },
       drawingBufferWidth: 390,
       drawingBufferHeight: 844,
     },
     rendererName: "a test GPU",
+    format: "astc",
     drawCalls: 50,
     readPixel: () => [0, 0, 0],
   };
-  return { r, fire: (type: string) => heard.get(type)!() };
+  return { r, fire: (type: string) => heard.get(type)!(), tiles: () => tiles };
 }
+
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
-test("a run measures every tier the device can take in every scene, then the first again, and posts after every step", async () => {
-  const h = new Harness();
-  const pack = corePack();
-  const app = new App(h.join("phone", { latencyMs: 20 }, { manual: true }), h.reg, pack);
-  const expected = Object.fromEntries(deviceScenarios(h.reg, pack).map(([name, run]) => [name, run()]));
-  const { b, posts, page } = browser({ clock: () => h.now, expected });
-  const probe = new DeviceProbe(TOKEN, b, TIMING);
-  expect(await probe.before()).toBe(true);
-  const { r: gpu } = renderer();
-  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
-  const yaw = new Map<string, number>();
-  for (let i = 0; i < 300 && !probe.report.done; i++) {
+/** A whole client on the harness with a probe on it, run until the probe says it is done, or `ms` of virtual time. */
+async function run(probe: DeviceProbe, h: Harness, app: App, gpu: RendererLike, ms = 30000, each?: (now: number) => void): Promise<void> {
+  for (let t = 0; t < ms && !probe.report.done; t += 100) {
     h.run(100, (now) => {
       const p = app.frame(now, 390, 844);
       if (!p) return;
@@ -84,55 +91,114 @@ test("a run measures every tier the device can take in every scene, then the fir
       const ratio = most > 0 ? Math.min(3, most) : 3;
       [gpu.gl.drawingBufferWidth, gpu.gl.drawingBufferHeight] = [Math.floor(390 * ratio), Math.floor(844 * ratio)];
       probe.frame(now, p, now - 1, now - 0.5);
-      yaw.set(probe.report.stage, app.controls.yaw);
+      each?.(now);
     });
+    await settle();
   }
   await settle();
+}
+
+function client() {
+  const h = new Harness();
+  const pack = corePack();
+  const app = new App(h.join("phone", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  return { h, pack, app, expected: Object.fromEntries(deviceScenarios(h.reg, pack).map(([name, f]) => [name, f()])) };
+}
+
+test("a page shows which device it is on and the tests, starts nothing until one is tapped, then runs the quick look and posts after every step", async () => {
+  const { h, pack, app, expected } = client();
+  const { b, posts, page } = browser({ clock: () => h.now, expected });
+  const probe = new DeviceProbe(TOKEN, b, TIMING);
+  const going = probe.before();
+  await settle();
+  expect(page.whole).toBe(true);
+  expect(page.text).toContain("This looks like <b>an iPhone, Chrome for iOS 157 (WebKit, as every iOS browser), iOS 27.2, 390 by 844 at 3x</b>");
+  expect(page.text).toContain('data-mode="ladder"');
+  expect(posts.length).toBe(0);
+  probe.start("quick");
+  expect(await going).toBe(true);
+  const { r: gpu } = renderer();
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
+  const yaw = new Map<string, number>();
+  await run(probe, h, app, gpu, 60000, () => yaw.set(probe.report.stage, app.controls.yaw));
   const r = probe.report;
-  expect([r.done, r.errors, r.reloadedDuring]).toEqual([true, [], null]);
-  // Ultra's textures are 4,096 wide, which this device does not take.
+  expect([r.mode, r.done, r.errors, r.reloadedDuring]).toEqual(["quick", true, [], null]);
   expect(r.phases.map((p) => `${p.tier} ${p.scene}`)).toEqual(["lowpoly plain", "lowpoly stress", "lowpoly crowd", "medium plain", "medium stress", "medium crowd", "high plain", "high stress", "high crowd"]);
   expect(r.skipped).toEqual(["ultra: its textures are up to 4096 wide, and this device takes 2048"]);
-  // Each tier draws as many device pixels to a CSS pixel as it says, and the crowd scene turns round.
   expect(r.phases.map((p) => p.ratio)).toEqual([1, 1, 1, 1.5, 1.5, 1.5, 2, 2, 2]);
   expect(r.phases[3]!.canvas).toEqual([585, 1266]);
   expect([yaw.get("medium crowd"), yaw.get("medium plain")]).toEqual([Math.PI, 0]);
   expect([r.again?.tier, r.again?.scene]).toEqual(["lowpoly", "plain"]);
-  for (const p of [...r.phases, r.again!]) expect(p.frames).toBeGreaterThan(10);
-  expect(r.hashes!.every((h) => h.got === h.want)).toBe(true);
-  expect(r.probes!.length).toBeGreaterThan(0);
-  expect([r.load!.pageBytes, r.link.httpMs!.median, r.idleFrameMs, r.wakeLock, r.gpu!.maxTexture, r.device!.touch]).toEqual([500000, 0, 16.6, "held", 2048, 5]);
-  // Every post is newer than the one before, the last says it is done, and the page keeps it.
+  expect(r.hashes!.every((x) => x.got === x.want)).toBe(true);
+  expect([r.load!.pageBytes, r.link.httpMs!.median, r.idleFrameMs, r.wakeLock, r.gpu!.maxTexture, r.gpu!.variant, r.device!.touch]).toEqual([500000, 0, 16.6, "held", 2048, "astc", 5]);
+  // Counted from the first snapshot, nothing is missed on the harness; the server's counts are this run's own.
+  expect([r.link.missed, r.link.missedLoading, r.link.missedHidden, r.link.snapshots > 0]).toEqual([0, 0, 0, true]);
+  expect(r.link.server).toEqual({ skipped: posts.length - 1, overflows: 0 });
   expect(posts.every((p, i) => i === 0 || p.seq > posts[i - 1]!.seq)).toBe(true);
   expect(posts.at(-1)!.done).toBe(true);
-  expect(JSON.parse(page.saved!).report.done).toBe(true);
-  expect(page.whole).toBe(true);
-  expect(page.text.startsWith("Done. Sent. You can close this page.")).toBe(true);
+  expect(page.text.startsWith("<div")).toBe(true);
+  expect(page.text).toContain("Done.</b> Sent.");
   expect(page.text).toContain("tiers run lowpoly, medium, high");
-  // The browser made of numbers draws nothing, so the probes of the picture are wrong.
   expect(lacking(r).filter((line) => !line.startsWith("probe "))).toEqual(["tier ultra did not run every scene"]);
+
+  // Another test on the same page begins at once, with the game as it is, under a run of its own.
+  probe.start("soak");
+  expect([probe.report.mode, probe.report.run, probe.report.done, probe.report.device?.touch]).toEqual(["soak", "fedcba9876543201", false, 5]);
+  await run(probe, h, app, gpu, 30000);
+  const s = probe.report.soak!;
+  expect([probe.report.done, probe.report.errors, s.tier, s.from, s.minutes.length]).toEqual([true, [], "high", "defaults", 1]);
+  expect(s.minutes[0]!.frames).toBeGreaterThan(100);
+  expect(deviceTable(probe.report).some((line) => line.startsWith("soak      high: 200 bodies, 1024 pieces"))).toBe(true);
 });
 
-test("a page the browser reloads in the middle of a run shows and sends what it had, and does not run again", async () => {
-  const saved = JSON.stringify({ token: TOKEN, report: { ...newReport("0011223344556677"), seq: 7, stage: "medium stress" } });
+test("the ladder climbs until a rung breaks, asks the server for the base, and ends taking texture memory until the device refuses it", async () => {
+  const { h, pack, app, expected } = client();
+  // A display twice as fast as the harness draws: no rung holds its rate, so each axis stops at its first.
+  const { b, asked } = browser({ clock: () => h.now, expected, mode: "ladder", frameMs: 8.3 });
+  const probe = new DeviceProbe(TOKEN, b, TIMING);
+  expect(await probe.before()).toBe(true);
+  const card = renderer(300);
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, card.r);
+  await run(probe, h, app, card.r, 60000);
+  const r = probe.report;
+  expect([r.mode, r.done, r.errors]).toEqual(["ladder", true, []]);
+  const l = r.ladder!;
+  expect(l.display).toBe(8.3);
+  expect(l.rungs.map((g) => `${g.tier} ${g.axis} ${g.n} ${g.held}`)).toEqual(["lowpoly", "medium", "high"].flatMap((t) => [`${t} bodies 25 false`, `${t} triangles 8 false`, `${t} draws 256 false`, `${t} pieces 64 false`]));
+  // The harness frames take its 16.7 ms while our code takes 1.5, so the GPU is said to have taken the frame.
+  expect(l.rungs.every((g) => g.limit === "the GPU")).toBe(true);
+  // The base was asked for on each tier's pieces rung, and let go after.
+  expect(asked).toEqual([64, 0, 64, 0, 64, 0]);
+  expect(l.memory).toEqual({ variant: "astc", gameMB: 0, heldMB: 256, failedMB: 512, how: "out of memory", rungs: [{ mb: 128, frameMs: 16.7 }, { mb: 256, frameMs: 16.7 }] });
+  expect(card.tiles()).toBe(0);
+  expect(MEMORY_MB[2]).toBe(512);
+  const table = deviceTable(r);
+  expect(table).toContain("memory    256 MB of astc textures held besides the game's 0 MB, frames 128 MB 16.7 ms, 256 MB 16.7 ms; at 512 MB: out of memory");
+  expect(table.some((line) => line.startsWith("broke     medium bodies 25: frames 16.7 ms"))).toBe(true);
+});
+
+test("a page the browser reloads in the middle of a run shows and sends what it had, and runs again only when a test is tapped", async () => {
+  const ladder = { display: 16.7, rungs: [], memory: { variant: "astc", gameMB: 40, heldMB: 1024, failedMB: null, how: "", rungs: [{ mb: 1024, frameMs: 17 }] } };
+  const saved = JSON.stringify({ token: TOKEN, report: { ...newReport("0011223344556677", "ladder"), seq: 7, stage: "memory 1536 MB", ladder } });
   const { b, posts, page } = browser({ saved });
   const probe = new DeviceProbe(TOKEN, b, TIMING);
-  expect(await probe.before()).toBe(false);
+  const going = probe.before();
   await settle();
-  expect([probe.report.run, probe.report.reloadedDuring, posts.length, posts[0]!.seq, posts[0]!.done]).toEqual(["0011223344556677", "medium stress", 1, 8, true]);
-  expect(page.text.startsWith("Stopped early. Sent.")).toBe(true);
+  expect([probe.report.run, probe.report.reloadedDuring, posts.length, posts[0]!.seq, posts[0]!.done]).toEqual(["0011223344556677", "memory 1536 MB", 1, 8, true]);
+  expect(page.text).toContain("Stopped early.</b> Sent.");
+  expect(page.text).toContain("memory    1024 MB of astc textures held besides the game&#39;s 40 MB, frames 1024 MB 17 ms; the page was reloaded while it took 1536 MB of textures: the browser dropped the tab");
+  probe.start("quick");
+  expect(await going).toBe(true);
+  expect([probe.report.run, probe.report.mode, probe.report.reloadedDuring, probe.report.done]).toEqual(["fedcba9876543201", "quick", null, false]);
   // A run of another server's page, or one that finished, is not taken up.
-  expect(await new DeviceProbe("another".padEnd(32, "0"), browser({ saved }).b, TIMING).before()).toBe(true);
-  const finished = JSON.stringify({ token: TOKEN, report: { ...newReport("0011223344556677"), done: true } });
-  expect(await new DeviceProbe(TOKEN, browser({ saved: finished }).b, TIMING).before()).toBe(true);
+  const other = new DeviceProbe("another".padEnd(32, "0"), browser({ saved, mode: "quick" }).b, TIMING);
+  expect([await other.before(), other.report.reloadedDuring]).toEqual([true, null]);
 });
 
 test("a run whose frames stop ends, saying why, and one whose game never starts ends too", async () => {
-  const h = new Harness();
-  const pack = corePack();
-  const app = new App(h.join("phone", {}, { manual: true }), h.reg, pack);
+  const { h, pack, app } = client();
   let clock = 0;
-  const { b, posts } = browser({ clock: () => clock });
+  const { b, posts } = browser({ clock: () => clock, mode: "quick" });
   const probe = new DeviceProbe(TOKEN, b, TIMING);
   await probe.before();
   const { r: gpu, fire } = renderer();
@@ -164,8 +230,7 @@ test("a run whose frames stop ends, saying why, and one whose game never starts 
   expect(probe.report.errors[0]).toMatch(/^[a-z ]+: the frames stopped for 16 s: /);
   expect(posts.at(-1)!.done).toBe(true);
 
-  const never = browser({ clock: () => clock });
-  const idle = new DeviceProbe(TOKEN, never.b, TIMING);
+  const idle = new DeviceProbe(TOKEN, browser({ clock: () => clock, mode: "quick" }).b, TIMING);
   await idle.before();
   clock += TIMING.loadMs + 1;
   idle.watch();
@@ -178,25 +243,31 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 function server() {
   const said: string[] = [];
   const done: string[] = [];
-  const { routes } = deviceRoutes({ dir, token: TOKEN, code: "bqzk", password: "secret", expected: { sim: "abc" }, say: (line) => said.push(line), done: (_, file) => done.push(file) });
+  const bases: number[] = [];
+  const { routes } = deviceRoutes({ dir, token: TOKEN, code: "bqzk", password: "secret", expected: { sim: "abc" }, say: (line) => said.push(line), done: (_, file) => done.push(file), base: (n) => (bases.push(n), Math.min(n, 1000)), held: () => ({ skipped: 7, overflows: 2 }) });
   const ask = async (path: string, init: RequestInit = {}): Promise<Response | null> => {
     const req = new Request(`http://127.0.0.1${path}`, init);
     return (await routes(req, new URL(req.url))) ?? null;
   };
-  return { ask, said, done };
+  return { ask, said, done, bases };
 }
 
 const post = (report: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(report) });
 
-test("the probe's routes need the token, and the short path leads to the page with the token and the password until it is guessed at too often", async () => {
-  const { ask, said } = server();
+test("the probe's routes need the token, the short path leads to the page until it is guessed at too often, and a page may only size the base", async () => {
+  const { ask, said, bases } = server();
   expect(await ask("/main.js")).toBeNull();
   expect(await ask("/ws")).toBeNull();
   expect((await ask("/main.js.map"))!.status).toBe(404);
   expect(said).toEqual(["a browser fetched the page's script", "a page opened the game's socket"]);
-  for (const path of ["/__device/ping", `/__device/ping?token=${TOKEN.slice(1)}`, `/__device/ping?token=${"é".repeat(32)}`, `/__device/hashes?token=${TOKEN.toUpperCase()}`]) expect((await ask(path))!.status).toBe(404);
+  for (const path of ["/__device/ping", `/__device/ping?token=${TOKEN.slice(1)}`, `/__device/ping?token=${"é".repeat(32)}`, `/__device/hashes?token=${TOKEN.toUpperCase()}`, "/__device/base/64"]) expect((await ask(path, { method: "POST" }))!.status).toBe(404);
   expect(await (await ask(`/__device/ping?token=${TOKEN}`))!.json()).toBe(true);
   expect(await (await ask(`/__device/hashes?token=${TOKEN}`))!.json()).toEqual({ sim: "abc" });
+  expect(await (await ask(`/__device/base/64?token=${TOKEN}`, { method: "POST" }))!.json()).toEqual({ pieces: 64 });
+  expect(await (await ask(`/__device/base/4096?token=${TOKEN}`, { method: "POST" }))!.json()).toEqual({ pieces: 1000 });
+  for (const path of ["/__device/base/4097", "/__device/base/-1", "/__device/base/12345678", "/__device/base/1e3"]) expect((await ask(`${path}?token=${TOKEN}`, { method: "POST" }))!.status).toBe(path.endsWith("4097") ? 400 : 404);
+  expect((await ask(`/__device/base/64?token=${TOKEN}`))!.status).toBe(404);
+  expect(bases).toEqual([64, 4096]);
   const to = await ask("/d/bqzk");
   expect([to!.status, to!.headers.get("location")]).toEqual([302, `/?device=${TOKEN}&password=secret`]);
   for (let i = 0; i < MAX_WRONG; i++) expect((await ask(`/d/x${i}`))!.status).toBe(404);
@@ -207,7 +278,8 @@ test("a report is kept in its folder under a name of the server's making, newer 
   const { ask, done } = server();
   const report = { ...newReport("aaaaaaaaaaaaaaaa"), seq: 2, stage: "medium plain" };
   const path = `/__device/report?token=${TOKEN}`;
-  expect((await ask(path, post(report)))!.status).toBe(200);
+  const first = await ask(path, post(report));
+  expect([first!.status, await first!.json()]).toEqual([200, { skipped: 7, overflows: 2 }]);
   expect((await ask(path, post({ ...report, seq: 1, stage: "loading" })))!.status).toBe(200);
   expect((await ask(path, post({ ...report, seq: 3, done: true })))!.status).toBe(200);
   expect((await ask(path, post({ ...report, seq: 4, done: true })))!.status).toBe(200);
