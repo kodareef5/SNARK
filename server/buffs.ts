@@ -1,5 +1,5 @@
 // Nothing here is stepped. A buff's end is a deadline, and its health and torpor per second are folded into the rates Survival keeps.
-// Instances are not saved, so a restart ends them.
+// Instances are saved with their record, because those rates are: a restart leaves each buff to end when it would have.
 
 import type { BuffDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
@@ -91,6 +91,17 @@ export class Buffs {
     this.apply(rec);
   }
 
+  /**
+   * For a record loaded from a save, once it is in the world: its buffs get their deadlines back and act on it again.
+   * `unrated` is a record whose saved rates may hold what a buff gave with no buff to end it (WorldStore.unrated),
+   * so they are worked out again from the buffs it has.
+   */
+  restore(rec: EntityRecord, unrated: boolean): void {
+    if (rec.buffs.length === 0 && !unrated) return;
+    for (const b of rec.buffs) if (b.until > 0) this.deadlines.push(b.until, DEADLINE_BUFF, rec.pid, b.until);
+    this.apply(rec);
+  }
+
   /** A DEADLINE_BUFF entry came due. */
   due(pid: number, _stamp: number): void {
     const rec = this.records.byPid.get(pid);
@@ -134,6 +145,7 @@ export class Buffs {
   died(rec: EntityRecord): void {
     rec.buffs.length = 0;
     rec.buffsVersion++;
+    this.records.dirty.add(rec.pid);
     if (this.immune.delete(rec.pid)) this.survival.gods.delete(rec.pid);
     this.survival.dropExtra(rec.pid);
   }
@@ -160,6 +172,7 @@ export class Buffs {
       gods.add(rec.pid);
     } else if (this.immune.delete(rec.pid)) gods.delete(rec.pid);
     rec.buffsVersion++;
+    this.records.dirty.add(rec.pid);
     this.survival.setExtra(rec, health, torpor, by);
     this.onChange?.(rec);
   }

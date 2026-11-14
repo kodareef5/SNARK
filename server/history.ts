@@ -1,7 +1,7 @@
 // Where every moving entity was over the last half second. A shot is judged against where its target was when the shooter saw it.
 // Only players and awake creatures have rows. A sleeping creature has none, because it has not moved.
 
-import { F_ALIVE, type EntityStore } from "../shared/sim/entities.ts";
+import { F_ALIVE, wider, type EntityStore } from "../shared/sim/entities.ts";
 
 /** Ticks kept. A power of two. Covers the 12-tick rewind cap with room for the tick being stepped. */
 export const HISTORY_TICKS = 16;
@@ -21,8 +21,8 @@ export class Past {
 
 export class History {
   private readonly ents: EntityStore;
-  /** Row of each entity slot, or -1. */
-  private readonly rowOf: Int32Array;
+  /** Row of each entity slot, or -1. It grows with the entity store. */
+  private rowOf: Int32Array;
   /** Entity slot of each row. Rows 0 to rows-1 are in use. */
   private entOf: Int32Array;
   rows = 0;
@@ -39,6 +39,7 @@ export class History {
   constructor(ents: EntityStore, capacity = 256) {
     this.ents = ents;
     this.rowOf = new Int32Array(ents.cap).fill(-1);
+    ents.onGrow.push((cap) => void (this.rowOf = wider(this.rowOf, cap, -1)));
     this.capacity = capacity;
     this.entOf = new Int32Array(capacity);
     this.x = new Float32Array(capacity * HISTORY_TICKS);

@@ -15,7 +15,8 @@
 //                       u8 colour     palette index, or a colour region
 //                       u8 bone       the one bone this vertex follows, in a
 //                                     mesh that names a skeleton; else 0
-//   surface   12 bytes  u16 u, v      texture coordinate, 0..65535 across the texture
+//   surface   12 bytes  u16 u, v      texture coordinate, 0..65535 across the mesh's `uv`
+//                                     range, which is one texture where none is given
 //                       u32 normal    x, y, z in 10 bits each, signed-normalized
 //                       u32 tangent   the same, and in the top 2 bits the sign of
 //                                     the bitangent: 1 or -1
@@ -118,6 +119,11 @@ export interface PackMesh {
   rig?: number;
   /** The first level that is flat: it and every coarser one have no surface. Absent when every level is flat. */
   flat?: number;
+  /**
+   * What a stored texture coordinate spans: least u, least v, width, height, in textures. A stored u is `uv[0] + u / 65535 *
+   * uv[2]`. Absent for 0, 0, 1, 1. A wall whose material repeats along it has a range wider than one texture.
+   */
+  uv?: [number, number, number, number];
 }
 
 /** A body with its own proportions on a shared skeleton. `rest` is each joint's rest position, x, y, z per bone. */

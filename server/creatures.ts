@@ -6,7 +6,7 @@ import { Body, MODE_SWIM, stepBody } from "../shared/sim/character.ts";
 import { ACT_NONE, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { Behavior } from "./behavior.ts";
 import type { GameServer } from "./game.ts";
-import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
+import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP, wider } from "../shared/sim/entities.ts";
 import { rollWild } from "../shared/sim/genome.ts";
 import { Rng } from "../shared/rng.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
@@ -31,9 +31,9 @@ export class Creatures {
   private readonly records: Records;
   private readonly survival: Survival;
   private readonly rng: Rng;
-  /** Entity indices of the awake creatures, in the first `awakeCount` entries. */
-  readonly awake: Int32Array;
-  private readonly awakeSlot: Int32Array;
+  /** Entity indices of the awake creatures, in the first `awakeCount` entries. Both columns grow with the entity store. */
+  awake: Int32Array;
+  private awakeSlot: Int32Array;
   /** Players keeping each chunk awake. */
   private readonly chunkRefs: Uint16Array;
   readonly mind: Behavior;
@@ -49,9 +49,12 @@ export class Creatures {
     this.survival = survival;
     this.rng = new Rng(seed);
     this.wakeRadius = wakeRadius;
-    const cap = world.ents.cap;
-    this.awake = new Int32Array(cap);
-    this.awakeSlot = new Int32Array(cap).fill(-1);
+    this.awake = new Int32Array(world.ents.cap);
+    this.awakeSlot = new Int32Array(world.ents.cap).fill(-1);
+    world.ents.onGrow.push((cap) => {
+      this.awake = wider(this.awake, cap);
+      this.awakeSlot = wider(this.awakeSlot, cap, -1);
+    });
     this.chunkRefs = new Uint16Array(chunkCount(world.dims));
     this.mind = new Behavior(world, game, seed + 7);
     this.mind.herd = this;
@@ -92,10 +95,13 @@ export class Creatures {
     rec.yaw = this.rng.int(65536);
     rec.genome = rollWild(this.rng, level, world.reg.colorSet[kind]!);
     if (colours !== "") colours.split(",").forEach((c, i) => void (i < rec.genome!.colors.length && Number(c) >= 0 && Number(c) <= 255 && c.trim() !== "" && (rec.genome!.colors[i] = Number(c))));
-    return this.adopt(rec);
+    const e = this.adopt(rec);
+    // With no body it keeps no record. A record left behind would be saved, and be a creature at the next start.
+    if (e < 0) this.records.delete(rec.pid);
+    return e;
   }
 
-  /** Puts a creature that has a record, new or loaded, into the simulation. */
+  /** Puts a creature that has a record, new or loaded, into the simulation. Returns -1, changing nothing, if the entity store has no place for it. */
   adopt(rec: EntityRecord): number {
     const ents = this.world.ents;
     // It starts grounded until a step says otherwise.

@@ -237,7 +237,19 @@ export class Survival {
     if (v.max[V_FOOD]! > 0 && v.at(V_FOOD, this.world.tick) <= 0) this.starving.add(rec.pid);
     let next = Infinity;
     for (let i = 0; i < V_COUNT; i++) if (v.rate[i]! < 0 && v.value[i]! > 0) next = Math.min(next, v.zeroTick(i));
-    if (next !== Infinity) this.deadlines.push(next, DEADLINE_VITALS, rec.pid, v.version);
+    this.schedule(rec, next);
+  }
+
+  /**
+   * Sets the record's one vitals deadline to tick `at`, or to none with Infinity. A body is rated far more often than its
+   * deadline moves (its food runs out on the same tick however it is hurt or mended), and an entry stays in the heap until
+   * its tick, so only a change is scheduled. The entry it replaces is passed over when it comes due.
+   */
+  private schedule(rec: EntityRecord, at: number): void {
+    const due = at === Infinity ? 0 : at;
+    if (due === rec.vitalsDue) return;
+    rec.vitalsDue = due;
+    if (due !== 0) this.deadlines.push(due, DEADLINE_VITALS, rec.pid, due);
   }
 
   /** In points. */
@@ -318,10 +330,12 @@ export class Survival {
     this.injured.delete(pid);
   }
 
-  /** A DEADLINE_VITALS entry came due. It is stale if the record is gone or its vitals changed since it was scheduled. */
+  /** A DEADLINE_VITALS entry came due. It is stale if the record is gone or its deadline has moved since it was scheduled. */
   due(pid: number, stamp: number): void {
     const rec = this.records.byPid.get(pid);
-    if (rec?.vitals && rec.vitals.version === stamp) this.update(rec);
+    if (!rec?.vitals || rec.vitalsDue !== stamp) return;
+    rec.vitalsDue = 0;
+    this.update(rec);
   }
 
   private update(rec: EntityRecord): void {
@@ -344,6 +358,7 @@ export class Survival {
     const ex = this.extra.get(rec.pid);
     if (v.max[V_HEALTH]! > 0 && v.value[V_HEALTH]! <= 0) {
       v.rate.fill(0);
+      this.schedule(rec, Infinity);
       rec.out = false;
       // Harm from someone takes the blame over starving or drowning, whether it was a blow or a buff they left on it.
       const by = this.pendingBy !== 0 ? this.pendingBy : ex && ex.health < 0 ? ex.by : 0;
@@ -353,6 +368,7 @@ export class Survival {
     }
     if (paused) {
       v.rate.fill(0);
+      this.schedule(rec, Infinity);
       return;
     }
     // Each rule multiplies a rate that content sets.
@@ -403,7 +419,7 @@ export class Survival {
     if (v.rate[V_TORPOR]! > 0 && !rec.out) next = Math.min(next, v.fullTick(V_TORPOR));
     if (injured && v.rate[V_HEALTH]! > 0) next = Math.min(next, v.riseTick(V_HEALTH, INJURED));
     else if (!injured && v.rate[V_HEALTH]! < 0 && v.max[V_HEALTH]! > INJURED) next = Math.min(next, v.tick + Math.floor((v.value[V_HEALTH]! - INJURED) / -v.rate[V_HEALTH]!) + 1);
-    if (next !== Infinity) this.deadlines.push(next, DEADLINE_VITALS, rec.pid, v.version);
+    this.schedule(rec, next);
     // The hooks may read this record's vitals, so they run after everything above is settled.
     if (wentOut || cameRound) this.onOut?.(rec, rec.out);
     if (injured !== wasInjured) this.onInjured?.(rec, injured);

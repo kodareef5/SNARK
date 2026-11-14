@@ -63,6 +63,8 @@ export interface ManifestMesh {
   levels: ManifestLevel[];
   /** The first level that is flat (see PackMesh). Absent when every level is. */
   flat?: number;
+  /** What a stored texture coordinate spans (see PackMesh). */
+  uv?: [number, number, number, number];
 }
 
 export interface Manifest {
@@ -88,6 +90,7 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
     // Every vertex of a one-bone mesh names the same bone, so the first says which.
     if (m.skeleton !== undefined && m.lods[0]!.vertexCount > 0) out.bone = lodVertices(pack, m.lods[0]!)[7]!;
     if (m.flat !== undefined) out.flat = m.flat;
+    if (m.uv !== undefined) out.uv = m.uv;
     for (const lod of m.lods) {
       const sizes = [pad4(lod.indexCount * lod.indexBytes) + lod.vertexCount * VERTEX_BYTES];
       if (lod.surfaceOffset !== undefined) sizes.push(lod.vertexCount * SURFACE_BYTES);

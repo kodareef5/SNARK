@@ -33,8 +33,9 @@ export class EntityRecord {
   yaw = 0;
   /** Edited only through server/items.ts. Null until something is put in. */
   inv: Inventory | null = null;
-  /** Owned by server/survival.ts. Null for bodies that have none. */
+  /** Owned by server/survival.ts. Null for bodies that have none. `vitalsDue` is the tick of their deadline, or 0. It is derived, not saved. */
   vitals: Vitals | null = null;
+  vitalsDue = 0;
   genome: Genome | null = null;
   /** Hash of the device key that owns this survivor. Null until one claims it. */
   keyHash: Uint8Array | null = null;
@@ -58,7 +59,7 @@ export class EntityRecord {
   /** The owning team: a survivor's own, a tribe's, or 0 for a wild creature. `rank` is its standing in a tribe. */
   team = 0;
   rank = 0;
-  /** Timed effects (server/buffs.ts). Not saved. `buffsVersion` counts every change, for sending. */
+  /** Timed effects (server/buffs.ts). `buffsVersion` counts every change, for sending, and is not saved. */
   readonly buffs: BuffOn[] = [];
   buffsVersion = 0;
   /** Unconscious. Its torpor reached the maximum and has not yet run out. */

@@ -1,0 +1,6 @@
+# Kept with an asset: what the image model returned, the finished pictures, briefs, scripts, reports and renders.
+# Left out: what its scripts make again from those.
+checks/
+qa/
+*.npz
+round[0-9]*/
