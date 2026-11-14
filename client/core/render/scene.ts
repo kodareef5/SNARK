@@ -170,9 +170,10 @@ export class Scene {
     }
   }
 
-  /** Call after a lost graphics context. Every buffer is uploaded again. */
+  /** Call after a lost graphics context. Every buffer and every level is uploaded again. */
   resetUploads(): void {
     for (const b of this.batches.values()) b.uploaded = false;
+    this.assets.residency.reset();
   }
 
   build(cam: Camera, remote: RemoteSample | null): FramePacket {
@@ -506,6 +507,7 @@ export class Scene {
     }
     p.drawMesh[n] = mesh;
     p.drawLod[n] = lod;
+    p.drawSlot[n] = this.assets.residency.slot(mesh, lod);
     p.drawBuffer[n] = buffer;
     p.drawFirst[n] = first;
     p.drawInstances[n] = count;

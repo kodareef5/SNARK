@@ -5,7 +5,7 @@ import { tierOf } from "./assets/tiers.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, REJECT_PASSWORD, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP } from "../../shared/net/protocol.ts";
+import { CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, REJECT_PASSWORD, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -395,6 +395,13 @@ export class App {
   }
 
   /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
+  /** The shell says the graphics card ran out of memory or lost everything. On every third time the graphics tier falls by one. */
+  pressure(): void {
+    if (!this.scene?.assets.pressure()) return;
+    this.ui.settings.tier = this.scene.assets.tier.name;
+    this.ui.chat.print(TEXT_NOTICE, `The graphics card keeps running out of memory, so the graphics setting is now ${this.ui.settings.tier}.`, this.session.serverTick);
+  }
+
   frame(nowMs: number, width: number, height: number): FramePacket | null {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
     this.last = nowMs;

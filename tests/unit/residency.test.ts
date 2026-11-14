@@ -183,3 +183,27 @@ test("a large part waits its turn without holding up small ones, and one part at
   expect(largeAtOnce).toBeLessThanOrEqual(IN_FLIGHT - SMALL_LANES);
   expect(assets.residency.ledger).toBe(sizes.reduce((a, b) => a + b, 0));
 });
+
+test("a card that refuses a level or loses everything is asked less of: a quarter less each time, and a tier less on the third", () => {
+  const w = world({ bytesPerSecond: 50e6 });
+  w.run(4, 100);
+  expect(w.settled()).toBe(true);
+  // The card could not give memory to a level it was sent, and the shell says so.
+  const slot = [...w.card.held.keys()].find((k) => SET.manifest.meshes.some((m, i) => m.levels.some((l, n) => l.file === 1 && w.r.slot(i, n) === k)))!;
+  w.card.bytes -= w.card.held.get(slot)!;
+  w.card.held.delete(slot);
+  const [budget, ledger] = [w.r.budget, w.r.ledger];
+  w.r.failed(slot);
+  expect(w.r.ledger).toBeLessThan(ledger);
+  expect(w.assets.pressure()).toBe(false);
+  w.frame(100);
+  expect(w.r.budget).toBeCloseTo(budget * 0.75, 0);
+  // It is fetched and sent again, and the scene is whole.
+  w.run(3, 100);
+  expect([w.settled(), w.card.held.has(slot), w.r.stats.skipped]).toEqual([true, true, 0]);
+  // The third time, the tier falls by one. At the lowest it falls no further.
+  expect([w.assets.pressure(), w.assets.pressure(), w.assets.tier.name]).toEqual([false, true, "lowpoly"]);
+  expect([w.assets.pressure(), w.assets.pressure(), w.assets.pressure(), w.assets.tier.name]).toEqual([false, false, false, "lowpoly"]);
+  w.frame(100);
+  expect(w.r.budget).toBeCloseTo(tierOf("lowpoly").gpuBytes * 0.75 ** 6, 0);
+});

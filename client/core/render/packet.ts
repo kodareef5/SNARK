@@ -74,6 +74,8 @@ export class FramePacket {
   readonly drawMesh = new Uint16Array(MAX_DRAWS);
   /** The level of detail to draw. It is one the mesh has and the graphics card holds. */
   readonly drawLod = new Uint8Array(MAX_DRAWS);
+  /** The slot of that level, as `assetUploads` and `assetDrops` name it. */
+  readonly drawSlot = new Uint32Array(MAX_DRAWS);
   readonly drawBuffer = new Uint32Array(MAX_DRAWS);
   readonly drawFirst = new Uint32Array(MAX_DRAWS);
   readonly drawInstances = new Uint32Array(MAX_DRAWS);

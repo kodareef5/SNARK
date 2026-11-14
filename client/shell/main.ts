@@ -78,11 +78,16 @@ async function boot(): Promise<void> {
   let frames = 0;
   const times: number[] = [];
 
+  let restored = 0;
   canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
   canvas.addEventListener("webglcontextrestored", () => {
     renderer.init();
     app.scene?.resetUploads();
+    app.pressure();
+    restored++;
   });
+  /** With ?lose=1 the self-check takes the graphics context away and gives it back, and must still see its picture. */
+  const loser = params.has("lose") ? renderer.gl.getExtension("WEBGL_lose_context") : null;
 
   const frame = (now: number): void => {
     requestAnimationFrame(frame);
@@ -102,6 +107,12 @@ async function boot(): Promise<void> {
       canvas.height = height;
     }
     renderer.draw(packet);
+    if (renderer.failed.length > 0) {
+      for (const slot of renderer.failed) app.scene?.assets.residency.failed(slot);
+      app.pressure();
+    }
+    if (frames === 30) loser?.loseContext();
+    if (frames === 45) loser?.restoreContext();
     times.push(performance.now() - t0);
     if (bench && previous > 0 && intervals.push(now - previous) === BENCH_FRAMES) {
       const sorted = (list: number[]) => [...list].sort((x, y) => x - y);
@@ -137,7 +148,8 @@ async function boot(): Promise<void> {
       const misplaced = view.misplaced(app.ui.frame);
       const report = {
         // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard,
+        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0),
+        restored,
         ...(voiced ? { voice: voice.report } : {}),
         userAgent: navigator.userAgent,
         renderer: renderer.rendererName,

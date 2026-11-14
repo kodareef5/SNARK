@@ -10,7 +10,7 @@ import { Binding } from "./bind.ts";
 import type { AssetPort } from "./port.ts";
 import { Residency } from "./residency.ts";
 import { AssetTable } from "./table.ts";
-import { DEFAULT_TIER, tierOf, type Tier } from "./tiers.ts";
+import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./tiers.ts";
 
 /** A level is left only when another is right by this margin, so that a body at the edge of a switch does not flicker. */
 export const HYSTERESIS = 0.15;
@@ -23,6 +23,9 @@ export class Assets {
   tier: Tier = tierOf(DEFAULT_TIER);
   /** The pixels a metre covers on screen from a metre away. */
   private scale = 0;
+  /** The share of the tier's budget in use: less each time the graphics card runs out of memory or is lost. */
+  private squeeze = 1;
+  private pressures = 0;
 
   /** Without a manifest the pack is taken to hold every level of every mesh. */
   constructor(reg: Registry, pack: Pack, manifest: Manifest = describePack(pack, { name: "", bytes: pack.blobAt + pack.blob.length }), port: AssetPort | null = null) {
@@ -35,9 +38,21 @@ export class Assets {
   /** Starts a frame: the time, and the view's height in pixels and vertical field of view in radians. */
   begin(nowMs: number, height: number, fovY: number): void {
     this.scale = height / (2 * Math.tan(fovY / 2));
-    this.residency.budget = this.tier.gpuBytes;
+    this.residency.budget = this.tier.gpuBytes * this.squeeze;
     this.residency.uploadBytes = this.tier.uploadBytes;
     this.residency.begin(nowMs);
+  }
+
+  /**
+   * The graphics card ran out of memory or lost everything. The budget falls by a quarter, and on every third time the
+   * tier falls by one: then this returns true, for the player to be told. Nothing raises either again in a session.
+   */
+  pressure(): boolean {
+    this.squeeze *= 0.75;
+    const at = TIERS.findIndex((t) => t.name === this.tier.name);
+    if (++this.pressures % 3 !== 0 || at <= 0) return false;
+    this.tier = TIERS[at - 1]!;
+    return true;
   }
 
   /** Ends a frame: what the graphics card must take on and let go goes into the packet. */

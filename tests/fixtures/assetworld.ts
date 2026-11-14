@@ -33,6 +33,7 @@ export class Card {
       const level = this.manifest.meshes[u.mesh]!.levels[u.level]!;
       if (this.held.has(u.slot)) throw new Error(`slot ${u.slot} uploaded twice`);
       if (partHash(u.data) !== level.parts[0]!.hash) throw new Error(`slot ${u.slot} uploaded with the wrong bytes`);
+      if (u.indexCount !== level.tris * 3 || u.indexBytes !== level.index) throw new Error(`slot ${u.slot} uploaded with the wrong counts`);
       this.held.set(u.slot, u.data.length);
       this.bytes += u.data.length;
     }

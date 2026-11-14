@@ -14,6 +14,9 @@ export interface AssetUpload {
   mesh: number;
   level: number;
   data: Uint8Array;
+  /** How many indices the data starts with, and the bytes of each. The vertices follow, from the next multiple of 4. */
+  indexCount: number;
+  indexBytes: 2 | 4;
 }
 
 /** Requests under way at once, and how many of them are kept for small parts so a large one never holds them up. */
@@ -236,8 +239,17 @@ export class Residency {
   }
 
   private upload(slot: number, data: Uint8Array, out: AssetUpload[]): void {
-    out.push({ slot, mesh: this.meshOf[slot]!, level: this.levelOf[slot]!, data });
+    const level = this.manifest.meshes[this.meshOf[slot]!]!.levels[this.levelOf[slot]!]!;
+    out.push({ slot, mesh: this.meshOf[slot]!, level: this.levelOf[slot]!, data, indexCount: level.tris * 3, indexBytes: level.index });
     this.stats.uploaded += data.length;
+  }
+
+  /** The graphics card could not take a level it was sent. */
+  failed(slot: number): void {
+    if (this.state[slot] !== RESIDENT) return;
+    if (this.inBoot[slot] === 0) this.unlink(slot);
+    this.state[slot] = ABSENT;
+    this.ledger -= this.size[slot]!;
   }
 
   /** Ends a frame: `uploads` and `drops` are what the graphics card must do before it draws this frame. */

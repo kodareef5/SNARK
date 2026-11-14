@@ -1,5 +1,6 @@
 // The boot probe is the only place this project launches a browser, and it is not part of the check. It opens installed Chrome
-// headless at ?selfcheck=1 and exits 0 or 1 on the report the page posts back. CHROME sets the browser path. Flags: --bench, --no-voice, --voice.
+// headless at ?selfcheck=1 and exits 0 or 1 on the report the page posts back. CHROME sets the browser path. Flags: --bench, --no-voice, --voice,
+// and --lose, which takes the page's graphics context away and gives it back before it reports.
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +27,7 @@ const server = startServer({ dev: true, port: 0, probeScene: true });
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
 // Unless --no-voice is given, the page talks to itself through the server. VOICE_FLAGS give Chrome a fake microphone, grant it
 // without a prompt, and let sound start without a gesture.
-const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${process.argv.includes("--no-voice") ? "" : "&voice=1"}`;
+const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}`;
 const VOICE_FLAGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
 const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
 

@@ -4,6 +4,7 @@
 import { NEAR_BODY } from "../../client/core/render/camera.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
+import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
@@ -54,7 +55,6 @@ export class Rasterizer {
   private readonly lods = new Map<number, DecodedLod>();
   /** Given a manifest, only what a packet has uploaded may be drawn, as on a graphics card. Levels are kept by slot. */
   private readonly manifest: Manifest | null;
-  private readonly firstSlot: number[] = [0];
   private packet!: FramePacket;
   /** The matrix and near distance in use: the packet's main pass or its near pass. */
   private matrix!: Float32Array;
@@ -73,7 +73,6 @@ export class Rasterizer {
     this.pack = pack;
     this.hf = hf;
     this.manifest = manifest;
-    for (const m of manifest?.meshes ?? []) this.firstSlot.push(this.firstSlot[this.firstSlot.length - 1]! + m.levels.length);
     this.color = new Uint8ClampedArray(width * height * 4);
     this.depth = new Float32Array(width * height);
     this.pickKind = new Uint8Array(width * height);
@@ -86,7 +85,7 @@ export class Rasterizer {
     for (const u of packet.uploads) this.buffers.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
     for (const id of packet.drops) this.buffers.delete(id);
     if (this.manifest) {
-      for (const u of packet.assetUploads) this.lods.set(u.slot, this.decodeUpload(u.mesh, u.level, u.data));
+      for (const u of packet.assetUploads) this.lods.set(u.slot, this.decodeUpload(u));
       for (const slot of packet.assetDrops) this.lods.delete(slot);
     }
 
@@ -155,7 +154,7 @@ export class Rasterizer {
 
   private draw(p: FramePacket, d: number): void {
     const meshIndex = p.drawMesh[d]!;
-    const lod = this.decode(meshIndex, p.drawLod[d]!);
+    const lod = this.decode(meshIndex, p.drawLod[d]!, p.drawSlot[d]!);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
     const buffer = transient ? null : this.buffers.get(p.drawBuffer[d]!);
     if (!transient && !buffer) throw new Error(`draw ${d} uses buffer ${p.drawBuffer[d]} which was never uploaded`);
@@ -211,9 +210,9 @@ export class Rasterizer {
     }
   }
 
-  private decode(mesh: number, level: number): DecodedLod {
+  private decode(mesh: number, level: number, slot: number): DecodedLod {
     if (this.manifest) {
-      const lod = this.lods.get(this.firstSlot[mesh]! + level);
+      const lod = this.lods.get(slot);
       if (!lod) throw new Error(`a draw of ${this.manifest.meshes[mesh]!.id} at level ${level}, which is not on the graphics card`);
       return lod;
     }
@@ -228,13 +227,12 @@ export class Rasterizer {
   }
 
   /** A level from the bytes a packet uploads: its indices, padded to a multiple of 4, and then its vertices. */
-  private decodeUpload(mesh: number, level: number, data: Uint8Array): DecodedLod {
-    const m = this.manifest!.meshes[mesh]!;
-    const l = m.levels[level]!;
-    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    const indices = new Uint32Array(l.tris * 3);
-    for (let i = 0; i < indices.length; i++) indices[i] = l.index === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
-    return { ...vertices(data.subarray((indices.length * l.index + 3) & ~3), l.verts, m), indices };
+  private decodeUpload(u: AssetUpload): DecodedLod {
+    const view = new DataView(u.data.buffer, u.data.byteOffset, u.data.byteLength);
+    const indices = new Uint32Array(u.indexCount);
+    for (let i = 0; i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
+    const verts = u.data.subarray((u.indexCount * u.indexBytes + 3) & ~3);
+    return { ...vertices(verts, verts.length / VERTEX_BYTES, this.manifest!.meshes[u.mesh]!), indices };
   }
 
   /** Positions are camera-relative. Counter-clockwise faces the viewer. */

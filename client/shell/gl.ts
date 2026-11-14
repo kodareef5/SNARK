@@ -3,7 +3,8 @@
 
 import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../core/render/shading.ts";
-import { INSTANCE_BYTES, VERTEX_BYTES, lodIndices, lodVertices, type Pack } from "../../shared/pack/pack.ts";
+import type { AssetUpload } from "../core/assets/residency.ts";
+import { INSTANCE_BYTES, VERTEX_BYTES, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 
@@ -99,7 +100,10 @@ interface Program {
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
+  buffers: WebGLBuffer[];
   indexCount: number;
+  /** UNSIGNED_SHORT, or UNSIGNED_INT for a level of more than 65,535 vertices. */
+  type: number;
 }
 
 export class GlRenderer {
@@ -109,7 +113,10 @@ export class GlRenderer {
   drawCalls = 0;
   private mesh!: Program;
   private terrain!: Program;
-  private meshLods: MeshLod[][] = [];
+  /** The levels the card holds, by slot. A frame packet says which to take on and which to let go. */
+  private readonly levels = new Map<number, MeshLod>();
+  /** Slots this frame's uploads could not be given memory for. The shell tells core. */
+  readonly failed: number[] = [];
   private readonly buffers = new Map<number, WebGLBuffer>();
   private transient!: WebGLBuffer;
   private tileVao!: WebGLVertexArrayObject;
@@ -151,28 +158,8 @@ export class GlRenderer {
     // Each bone is three texels of four floats, read by exact texel. The texture stays bound on unit 3, which draw() relies on.
     texture(3, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
 
-    // One vertex array per level of detail. Instance attributes are pointed per draw.
-    this.meshLods = this.pack.header.meshes.map((m) =>
-      m.lods.map((lod) => {
-        const vao = gl.createVertexArray()!;
-        gl.bindVertexArray(vao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-        gl.bufferData(gl.ARRAY_BUFFER, lodVertices(this.pack, lod), gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(0);
-        gl.vertexAttribPointer(0, 3, gl.SHORT, true, VERTEX_BYTES, 0);
-        gl.enableVertexAttribArray(1);
-        gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 6);
-        gl.enableVertexAttribArray(6);
-        gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 7);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, lodIndices(this.pack, lod), gl.STATIC_DRAW);
-        for (let a = 2; a <= 5; a++) {
-          gl.enableVertexAttribArray(a);
-          gl.vertexAttribDivisor(a, 1);
-        }
-        return { vao, indexCount: lod.indexCount };
-      }),
-    );
+    // A lost context took every level with it. Core sends them again.
+    this.levels.clear();
     this.transient = gl.createBuffer()!;
 
     // The terrain is one 32 x 32 grid with a skirt, drawn once per tile.
@@ -219,10 +206,53 @@ export class GlRenderer {
     gl.enable(gl.DEPTH_TEST);
   }
 
+  /** One vertex array for a level of detail. Instance attributes are pointed per draw. */
+  private take(u: AssetUpload): void {
+    const gl = this.gl;
+    const indexBytes = u.indexCount * u.indexBytes;
+    const vao = gl.createVertexArray()!;
+    const buffers = [gl.createBuffer()!, gl.createBuffer()!];
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers[0]!);
+    gl.bufferData(gl.ARRAY_BUFFER, u.data.subarray((indexBytes + 3) & ~3), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.SHORT, true, VERTEX_BYTES, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 6);
+    gl.enableVertexAttribArray(6);
+    gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 7);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers[1]!);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, u.data.subarray(0, indexBytes), gl.STATIC_DRAW);
+    for (let a = 2; a <= 5; a++) {
+      gl.enableVertexAttribArray(a);
+      gl.vertexAttribDivisor(a, 1);
+    }
+    this.levels.set(u.slot, { vao, buffers, indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT });
+  }
+
+  private drop(slot: number): void {
+    const lod = this.levels.get(slot);
+    if (!lod) return;
+    this.gl.deleteVertexArray(lod.vao);
+    for (const b of lod.buffers) this.gl.deleteBuffer(b);
+    this.levels.delete(slot);
+  }
+
   draw(p: FramePacket): void {
     const gl = this.gl;
     const hf = this.hf;
     this.drawCalls = 0;
+    this.failed.length = 0;
+    for (const slot of p.assetDrops) this.drop(slot);
+    for (const u of p.assetUploads) this.take(u);
+    // Running out of memory shows as an error after the fact. It is asked for only in a frame that uploaded, since
+    // asking makes the card catch up.
+    if (p.assetUploads.length > 0 && gl.getError() === gl.OUT_OF_MEMORY) {
+      for (const u of p.assetUploads) {
+        this.drop(u.slot);
+        this.failed.push(u.slot);
+      }
+    }
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -319,10 +349,9 @@ export class GlRenderer {
       }
       gl.uniform1f(solid, (flags & DRAW_PLAIN) !== 0 ? 2 : 1);
       gl.uniform1f(skin, (flags & DRAW_SKINNED) !== 0 ? 1 : 0);
-      const lods = this.meshLods[m]!;
-      const lod = lods[Math.min(p.drawLod[d]!, lods.length - 1)]!;
+      const lod = this.levels.get(p.drawSlot[d]!);
       const buffer = p.drawBuffer[d] === TRANSIENT_BUFFER ? this.transient : this.buffers.get(p.drawBuffer[d]!);
-      if (!buffer) continue;
+      if (!lod || !buffer) continue;
       const info = this.pack.header.meshes[m]!;
       gl.uniform3fv(center, info.center);
       gl.uniform3fv(half, info.half);
@@ -335,7 +364,7 @@ export class GlRenderer {
       gl.vertexAttribPointer(3, 1, gl.UNSIGNED_SHORT, true, INSTANCE_BYTES, at + 12);
       gl.vertexAttribIPointer(4, 4, gl.UNSIGNED_BYTE, INSTANCE_BYTES, at + 14);
       gl.vertexAttribIPointer(5, 2, gl.UNSIGNED_BYTE, INSTANCE_BYTES, at + 18);
-      gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, gl.UNSIGNED_SHORT, 0, p.drawInstances[d]!);
+      gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.drawInstances[d]!);
       this.drawCalls++;
     }
     if (blending && !near) opaque();
