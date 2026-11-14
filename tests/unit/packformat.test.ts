@@ -8,7 +8,7 @@ import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, parsePack
 import { TEXTURE_HEADER_BYTES, stepBytes, stepOf, stepOffset, stepSize, textureBytes, topIn } from "../../shared/pack/texture.ts";
 import { PackBlob } from "../../tools/pack/write.ts";
 
-const material = (id: string, over: Partial<PackMaterial> = {}): PackMaterial => ({ id, base: 0, normal: 1, mro: -1, mask: -1, tint: [1, 1, 1], grey: 0.5, emissive: 0, flags: 0, cutoff: 0, span: 1, ...over });
+const material = (id: string, over: Partial<PackMaterial> = {}): PackMaterial => ({ id, base: 0, normal: 1, mro: -1, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 0.5, emissive: 0, flags: 0, cutoff: 0, span: 1, ...over });
 
 /** A quad with a textured level in two sections and a flat level under it. `change` may spoil the header before it is written. */
 function quadPack(change: (h: PackHeader) => void = () => {}): Uint8Array {
@@ -61,7 +61,7 @@ test("a version 4 pack carries a surface, a skin, sections and materials, and sa
     ["does not fit", (h) => (h.meshes[0]!.lods[0]!.sections = [0, 0, 3, 1, 4, 2])],
     ["turn flat where it says", (h) => (h.meshes[0]!.flat = 2)],
     ["turn flat where it says", (h) => delete h.meshes[0]!.flat],
-    ["a texture that is not there", (h) => (h.materials![1]!.mask = 2)],
+    ["a texture that is not there", (h) => (h.materials![1]!.mask2 = 2)],
     ["pixels across", (h) => (h.textures![0]!.top = 1000)],
     ["outside the file", (h) => (h.meshes[0]!.lods[0]!.skinOffset = 1 << 20)],
   ];
