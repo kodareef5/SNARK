@@ -1,20 +1,5 @@
-// Durable world state in one SQLite database (WAL mode).
-//
-// The rule that prevents duplication and loss: one commit is one transaction,
-// and it contains every record touched by every valuable change since the last
-// commit. A crash therefore lands the whole world on a commit boundary. There
-// is no second store that could disagree with this one.
-//
-//   meta           schema version, world id, tick, id sequence
-//   content_ids    stable content id <-> the integer used in this save
-//   chunk_structs  one row per chunk: the structure table as column blobs
-//   entities       one row per persistent entity: position columns + record blob
-//   survivors      login name -> pid (placeholder until accounts exist)
-//   journal        append-only log of valuable operations, written in the same
-//                  transaction as the state they produced
-//
-// Saves store content by string id through content_ids, never by the dense
-// index of a particular content build, so adding content does not disturb them.
+// Durable world state in one SQLite database. One commit is one transaction, so a crash lands the whole world on a commit boundary.
+// Saves refer to content by string id through content_ids, never by a build's dense index, so adding content does not disturb them.
 
 import { Database, type Statement } from "bun:sqlite";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -29,54 +14,43 @@ import { validLook } from "../../shared/anim/look.ts";
 export const SCHEMA_VERSION = 2;
 const CHUNK_FORMAT = 1;
 const RECORD_FORMAT = 1;
-// A record is a list of components, each an id and a length-prefixed blob. A
-// build that does not know a component keeps its bytes and writes them back,
-// so a save survives a round trip through a server missing some content pack.
+// A record is a list of components, each an id and a length-prefixed blob. A build that does not know a
+// component keeps its bytes and writes them back, so a save survives a server that lacks a content pack.
 const COMP_INVENTORY = 1;
 const COMP_VITALS = 2;
 const COMP_GENOME = 3;
-// 4 (progression) and 5 (markers) are reserved; see planning/architecture/gameplay-model.md.
 const COMP_IDENTITY = 6;
-// Components 1 and 2 are round 1's inventory (item and count pairs) and food.
-// They are read once: the inventory becomes slots, the food is refilled. They are never written.
+// Components 1 and 2 are the oldest inventory (item and count pairs) and food. They are read and never written.
 const COMP_SLOTS = 7;
 const COMP_VITALS4 = 8;
 const COMP_MARKERS = 5;
-/** Dead flag and expiry tick. */
+/** Dead flag, expiry tick and the hotbar slot in hand. */
 const COMP_STATE = 9;
-/** A survivor's look: the bytes of shared/anim/look.ts. */
+/** The bytes of shared/anim/look.ts. */
 const COMP_LOOK = 10;
-/** Slots as component 7 has them, with the bag's size and, for weapons, what each holds. */
+/** COMP_SLOTS plus the bag's size and, for weapons, what each holds. */
 const COMP_SLOTS2 = 11;
-/** Vitals with room for eight, and whether the body is unconscious. COMP_VITALS4 held four and is still read. */
+/** Eight vitals and whether the body is unconscious. COMP_VITALS4 held four. Both are read and no longer written. */
 const COMP_VITALS8 = 12;
-/**
- * The same, with each value and the tick whole: COMP_VITALS8 wrote a value in
- * 32 bits of millionths, so anything above 4,294 points was cut short. It is
- * still read (what it cut is gone), and no longer written.
- */
+/** The same with 53-bit values and tick. COMP_VITALS8 wrote a value in 32 bits of millionths, which cut off anything above 4,294 points. */
 const COMP_VITALS53 = 17;
-/** The team that owns it, and its rank there. */
 const COMP_TEAM = 13;
-/** Taming: how well a tamed creature was tamed; and, for one lying there being tamed, what it has been given so far and for whom. */
+/** How well a tamed creature was tamed and, for one being tamed, what it has been given so far and for whom. */
 const COMP_TAME = 15;
-/** Breeding as it was first kept, with the ticks a young one was born and an egg was laid. Still read. */
+/** The first breeding form. It stored the ticks a young one was born and an egg was laid, where COMP_BREED2 stores spans. Still read. */
 const COMP_BREED = 16;
 /**
- * Breeding: whether a creature is willing to mate and when a female may
- * again; for a young one, the ticks its growing takes and the tick it will be
- * grown; and, for an egg, what will hatch from it, the ticks that takes and
- * the tick it does. A span and an end, never a beginning: growing made
- * slower part way through would put the beginning before the world's (D92).
+ * Breeding: mating state, a young one's growing and an egg's hatching. Each timer is a span and an end tick, never a
+ * start, because growing made slower part way through would put the start before the world began (D92).
  */
 const COMP_BREED2 = 18;
-/** The state of something built: the ref of the structure it belongs to, whether it is locked, and its PIN plus one. */
+/** The ref of the structure it belongs to, whether it is locked, and its PIN plus one. */
 const COMP_FIXTURE = 14;
 /** Experience, learned engrams, crafting jobs. */
 const COMP_PROGRESSION = 4;
-/** The most slots a round 1 inventory is laid out in when it is converted. */
+/** The most slots a converted COMP_INVENTORY may be laid out in. */
 const MAX_INVENTORY_SLOTS = 255;
-/** Bytes per structure slot in a chunk blob. */
+/** Per structure slot in a chunk blob: kind, x, y, z, yaw, owner, hp, mod. */
 const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
 
 const MIGRATIONS: ((db: Database) => void)[] = [
@@ -89,7 +63,7 @@ const MIGRATIONS: ((db: Database) => void)[] = [
       CREATE TABLE journal (seq INTEGER PRIMARY KEY, tick INTEGER NOT NULL, op INTEGER NOT NULL, data BLOB NOT NULL);
     `);
   },
-  // Schema 2: small per-chunk state other than structures, by tag. First use: resource nodes that have been touched.
+  // Schema 2 adds per-chunk state other than structures, keyed by tag.
   (db) => {
     db.exec("CREATE TABLE chunk_blobs (chunk INTEGER NOT NULL, tag INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (chunk, tag)) WITHOUT ROWID");
   },
@@ -103,7 +77,7 @@ export interface JournalEntry {
 }
 
 export interface StoreOptions {
-  /** "NORMAL" survives a process crash; "FULL" also survives power loss, at an fsync per commit. */
+  /** "NORMAL" survives a process crash. "FULL" also survives power loss, at an fsync per commit. */
   synchronous?: "NORMAL" | "FULL";
   /** Load saves that reference content ids this build lacks, dropping those objects. */
   allowMissingContent?: boolean;
@@ -111,9 +85,9 @@ export interface StoreOptions {
 
 export class WorldStore {
   readonly db: Database;
-  /** Runtime content index -> index stored in this save. */
+  /** Maps a runtime content index to the index stored in this save. */
   readonly toSaved: Uint16Array;
-  /** Index stored in this save -> runtime content index, 0 if the content is gone. */
+  /** The reverse. 0 if the content is gone. */
   readonly toRuntime: Uint16Array;
   /** Content ids present in the save but not in this build. */
   readonly missingContent: string[] = [];
@@ -151,7 +125,7 @@ export class WorldStore {
       })();
     }
 
-    // Intern every content id this build knows; map the save's indices to ours.
+    // Intern every content id this build knows, then map the save's indices to runtime ones.
     const saved = new Map<string, number>();
     for (const row of db.query("SELECT idx, id FROM content_ids").all() as { idx: number; id: string }[]) saved.set(row.id, row.idx);
     const add = db.prepare("INSERT INTO content_ids (idx, id) VALUES (?, ?)");
@@ -197,7 +171,6 @@ export class WorldStore {
     return row ? row.value : null;
   }
 
-  /** Run `write` inside one transaction. Everything it stores commits together or not at all. */
   transaction(write: () => void): void {
     this.db.transaction(write).immediate();
   }
@@ -221,7 +194,7 @@ export class WorldStore {
     this.putChunk.run(chunk, t.version, n, out);
   }
 
-  /** Restore every saved chunk into `structs`. Returns the number of structures. */
+  /** Returns the number of structures. */
   loadChunks(structs: StructureStore): number {
     const rows = this.db.query("SELECT chunk, version, slots, data FROM chunk_structs").all() as { chunk: number; version: number; slots: number; data: Uint8Array }[];
     for (const row of rows) {
@@ -229,7 +202,7 @@ export class WorldStore {
       if (row.data[0] !== CHUNK_FORMAT || row.data.length !== 1 + n * SLOT_BYTES) throw new Error(`chunk ${row.chunk}: unreadable structure data`);
       let off = 1;
       const take = <T extends Uint16Array | Uint32Array | Float32Array>(ctor: new (n: number) => T): T => {
-        // Copy rather than view: blob offsets are not aligned to the element size.
+        // Copy, because blob offsets are not aligned to the element size.
         const col = new ctor(n);
         const size = col.BYTES_PER_ELEMENT * n;
         new Uint8Array(col.buffer).set(row.data.subarray(off, off + size));
@@ -289,10 +262,10 @@ export class WorldStore {
         c.f64(rec.tame.sum);
         c.uint53(rec.tame.by);
       }
-      // Older saves end before these: its stance, and whom it follows.
+      // Older saves end before the stance and the follow target.
       c.u8(rec.stance);
       c.uint53(rec.follow);
-      // And, later still, the saddle it wears.
+      // Some saves have those two and end before the saddle.
       c.varint(rec.saddle === 0 ? 0 : this.toSaved[rec.saddle]!);
       w.varint(COMP_TAME);
       w.blob(c.bytes());
@@ -302,7 +275,7 @@ export class WorldStore {
       c.u32(rec.at);
       c.bits(rec.lock, 2);
       c.varint(rec.pin + 1);
-      // Older saves end before these: a bed's wait, and a fire that is burning.
+      // Older saves end before a bed's wait and a burning fire.
       c.uint53(rec.readyAt);
       c.bool(rec.fire !== null);
       if (rec.fire) {
@@ -344,7 +317,7 @@ export class WorldStore {
       c.reset();
       c.bool(rec.dead);
       c.uint53(rec.expiresAt);
-      // One more than the hotbar slot in hand; 0 for none. Older saves end before this.
+      // The hotbar slot in hand plus one, or 0 for none. Older saves end before this.
       c.u8(rec.held + 1);
       w.varint(COMP_STATE);
       w.blob(c.bytes());
@@ -369,7 +342,6 @@ export class WorldStore {
         c.u8(inv.quality[slot]!);
         c.varint(inv.dur[slot]!);
         c.varint(inv.spoilAt[slot]!);
-        // What a weapon holds: the kind of round, how many, and an attachment.
         const holds = inv.ammo[slot] !== 0 || inv.attach[slot] !== 0;
         c.bool(holds);
         if (holds) {
@@ -383,7 +355,7 @@ export class WorldStore {
     }
     const v = rec.vitals;
     if (v) {
-      // Which vitals this body has, then for each its value and rate. Maxima come from stats and are not saved.
+      // Maxima come from stats and are not saved.
       c.reset();
       let mask = 0;
       for (let i = 0; i < V_COUNT; i++) if (v.max[i]! > 0) mask |= 1 << i;
@@ -436,7 +408,7 @@ export class WorldStore {
     const r = this.r;
     for (const row of rows) {
       const kind = this.toRuntime[row.kind]!;
-      if (kind === 0) continue; // content gone and the operator chose to proceed
+      if (kind === 0) continue; // The content is gone and the operator chose to proceed.
       const rec = new EntityRecord(row.pid, kind);
       rec.x = row.x;
       rec.y = row.y;
@@ -451,8 +423,7 @@ export class WorldStore {
         const blob = r.blob(1 << 20);
         c.reset(blob);
         if (component === COMP_INVENTORY) {
-          // Round 1: a list of items and counts. Lay them out in slots, in an
-          // inventory large enough for all of them: converting must not lose anything.
+          // The oldest form is a list of items and counts. The inventory is sized to hold all of them, so converting loses nothing.
           const pairs: [number, number][] = [];
           let need = 0;
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
@@ -489,7 +460,7 @@ export class WorldStore {
             const dur = c.varint();
             const spoilAt = c.varint();
             const holds = c.bool();
-            // 0 is "none"; anything else must be content this build has.
+            // 0 is "none". Anything else must be content this build has.
             const held = (saved: number): number => (saved === 0 ? 0 : this.item(saved, row.pid));
             const ammo = holds ? held(c.varint()) : 0;
             const loaded = holds ? c.u8() : 0;
@@ -499,9 +470,9 @@ export class WorldStore {
             if (holds) inv.setGear(slot, ammo, ammo === 0 ? 0 : loaded, attach);
           }
         } else if (component === COMP_VITALS) {
-          // Round 1 food only: dropped; the survival system starts this body full.
+          // The oldest food is dropped. The survival system starts this body full.
         } else if (component === COMP_VITALS4 || component === COMP_VITALS8 || component === COMP_VITALS53) {
-          // The oldest form held four vitals behind a four-bit mask; a body saved in it has no torpor yet. The two older forms held each value in 32 bits.
+          // COMP_VITALS4 has a four-bit mask, and a body saved in it has no torpor. The two older forms hold each value in 32 bits.
           const whole = component === COMP_VITALS53;
           const v = (rec.vitals = new Vitals());
           const mask = component === COMP_VITALS4 ? c.bits(4) : c.u8();
@@ -527,13 +498,13 @@ export class WorldStore {
           g.father = c.uint53();
           g.female = c.bool();
         } else if (component === COMP_IDENTITY) rec.keyHash = blob;
-        // A look this build cannot read (another length, a style that is gone) is kept as it is and not worn.
+        // A look this build cannot read is kept in rec.extra and not worn.
         else if (component === COMP_LOOK && validLook(blob)) rec.look = blob;
         else if (component === COMP_MARKERS) {
           for (let k = c.varint(); k > 0 && !c.overflow; k--) rec.markers.push({ kind: c.u8(), x: c.f32(), y: c.f32(), z: c.f32(), tick: c.uint53() });
         } else if (component === COMP_PROGRESSION) {
           rec.xp = c.f64();
-          // Engrams and recipes whose content is gone are forgotten; nothing of value is lost with them.
+          // Engrams and recipes whose content is gone are dropped. Nothing of value is lost with them.
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
             const e = this.toRuntime[c.varint()] ?? 0;
             if (e !== 0) rec.engrams.push(e);
@@ -563,7 +534,7 @@ export class WorldStore {
             }
           }
         } else if (component === COMP_BREED || component === COMP_BREED2) {
-          // The first of each pair was once a beginning: the span is from it to the end.
+          // COMP_BREED stored a start tick where COMP_BREED2 stores a span, so the span is the end minus that start.
           const began = component === COMP_BREED;
           rec.mating = c.bool();
           rec.mateReadyAt = c.uint53();
@@ -593,7 +564,7 @@ export class WorldStore {
     return out;
   }
 
-  /** Store or, with null, delete a chunk's blob for a tag. */
+  /** A null `data` deletes the blob. */
   saveBlob(chunk: number, tag: number, data: Uint8Array | null): void {
     if (data) this.db.query("INSERT OR REPLACE INTO chunk_blobs (chunk, tag, data) VALUES (?, ?, ?)").run(chunk, tag, data);
     else this.db.query("DELETE FROM chunk_blobs WHERE chunk = ? AND tag = ?").run(chunk, tag);
@@ -603,7 +574,7 @@ export class WorldStore {
     return this.db.query("SELECT chunk, data FROM chunk_blobs WHERE tag = ?").all(tag) as { chunk: number; data: Uint8Array }[];
   }
 
-  /** Runtime index of a saved item index. An item whose content is gone stops the load unless the operator chose to drop such things. */
+  /** An item whose content is gone stops the load unless allowMissingContent is set. */
   private item(saved: number, pid: number): number {
     const item = this.toRuntime[saved] ?? 0;
     if (item === 0 && !this.allowMissing) throw new Error(`save uses content this build does not have: an item held by record ${pid}`);
@@ -614,12 +585,12 @@ export class WorldStore {
     this.putJournal.run(seq, tick, op, data);
   }
 
-  /** Sequence number of the newest journal entry, or 0. */
+  /** 0 for an empty journal. */
   lastJournalSeq(): number {
     return Number((this.db.query("SELECT MAX(seq) AS seq FROM journal").get() as { seq: number | null }).seq ?? 0);
   }
 
-  /** Delete journal entries older than the newest `keep`. */
+  /** Keeps the newest `keep` entries. */
   pruneJournal(keep: number): void {
     this.db.query("DELETE FROM journal WHERE seq <= (SELECT MAX(seq) FROM journal) - ?").run(keep);
   }
@@ -639,8 +610,7 @@ export class WorldStore {
   }
 
   private referencesMissing(): boolean {
-    // Content ids are interned when a build first sees them, so an id can be
-    // missing without anything in the save using it. Only real use blocks loading.
+    // Ids are interned when a build first sees them, so one can be missing while nothing in the save uses it. Only real use blocks loading.
     const missing = new Set<number>();
     for (const row of this.db.query("SELECT idx, id FROM content_ids").all() as { idx: number; id: string }[]) {
       if (this.missingContent.includes(row.id)) missing.add(row.idx);

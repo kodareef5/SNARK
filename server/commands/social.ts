@@ -1,4 +1,4 @@
-// Tribes and mutes, as console lines.
+// Tribe and mute commands.
 
 import type { Console, ConsoleCommand } from "../console.ts";
 import type { Client } from "../game.ts";
@@ -8,12 +8,10 @@ import { INVITE_RANGE } from "../tribes.ts";
 
 const needsSurvivor = "this needs a survivor; you have none right now";
 
-/** The session's survivor, or null if it has none. */
 function survivorOf(host: Host, c: Client | null): EntityRecord | null {
   return c ? (host.records.byPid.get(c.pid) ?? null) : null;
 }
 
-/** The session here now under `name`, in any case. */
 function sessionNamed(host: Host, name: string): Client | null {
   const wanted = name.toLowerCase();
   for (const c of host.game.clients) if (c?.active && !c.closed && c.name.toLowerCase() === wanted) return c;

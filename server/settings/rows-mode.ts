@@ -1,17 +1,12 @@
-// The catalogue, second half: Game.ini, `[/script/shootergame.shootergamemode]`.
-//
-// Names, defaults and meanings are ARK's, from its server configuration
-// reference (planning/reference/round5-game-ini.md). None of these may be
-// given on the command line. Lists that name classes take this engine's
-// content ids ("core:raptor") where ARK's take its class names.
+// The catalogue rows for Game.ini `[/script/shootergame.shootergamemode]`, which the command line cannot give. Names, defaults and
+// meanings are ARK's (planning/reference/round5-game-ini.md). Lists that name classes take content ids ("core:raptor").
 
 import { Sheet, live, none, plan, type Row } from "./row.ts";
 
 export const MODE_ROWS: Row[] = [];
 
-/** Twelve of one number: what an indexed stat setting is where a row does not say. */
+/** One value for each of ARK's twelve stat indices. */
 const twelve = (v: number): number[] => new Array<number>(12).fill(v);
-/** Twelve of 1, but for health (0) and melee (8). */
 const butHealthAndMelee = (health: number, melee: number): number[] => twelve(1).map((v, n) => (n === 0 ? health : n === 8 ? melee : v));
 
 const m = new Sheet(MODE_ROWS, "mode", "Breeding");

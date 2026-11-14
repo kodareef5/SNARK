@@ -1,5 +1,3 @@
-// Cheats for trying combat: something to hit, and things to hit it with.
-
 import { parseNumber } from "../../shared/console.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { V_TORPOR } from "../../shared/sim/vitals.ts";
@@ -10,7 +8,7 @@ import type { Console, ConsoleCommand } from "../console.ts";
 import type { Host } from "../host.ts";
 import type { EntityRecord } from "../records.ts";
 
-/** What each kit holds: item names without their namespace, and how many. */
+/** Item names without their namespace, and a count. */
 const KITS: Readonly<Record<string, readonly (readonly [string, number])[]>> = {
   tools: [["hatchet", 1], ["pick", 1], ["spear", 1]],
   bow: [["bow", 1], ["arrow_stone", 40], ["arrow_tranq", 20], ["arrow_flame", 20]],
@@ -22,7 +20,7 @@ const KITS: Readonly<Record<string, readonly (readonly [string, number])[]>> = {
 const TIERS: readonly string[] = ["cloth", "hide", "chitin", "flak"];
 const PIECES: readonly string[] = ["hat", "shirt", "gloves", "pants", "boots"];
 
-/** Create one of an item and put it in the armor slot it is worn in. False if the record has no such slot. */
+/** Mints one of the item and moves it to the armor slot it is worn in. False if the record has no such slot. */
 export function dress(host: Host, rec: EntityRecord, item: number): boolean {
   const inv = host.items.inv(rec);
   const slot = host.world.reg.wearSlot[item]!;
@@ -52,7 +50,7 @@ export function addCombatCommands(con: Console): void {
         if (e < 0) return "no room for it there";
         const ents = host.world.ents;
         const rec = host.records.byPid.get(ents.pid[e]!)!;
-        // It faces whoever put it there.
+        // The dummy faces the caller.
         ents.yaw[e] = rec.yaw = (c.heldYaw + 32768) & 0xffff;
         if (tier !== undefined) for (const piece of PIECES) dress(host, rec, reg.index.get(`core:${tier}_${piece}`)!);
         host.refreshBody(rec);
@@ -96,7 +94,6 @@ export function addCombatCommands(con: Console): void {
         const items = ctx.host.items;
         const inv = items.inv(rec);
         if (inv.armor < 0) return "you cannot wear armor";
-        // What is worn now is destroyed, on the books; the new set is made, on the books.
         for (let k = 0; k < PIECES.length; k++) if (inv.item[inv.armor + k] !== 0) items.burn(rec, inv.armor + k, 1);
         if (tier === "off") return "armor off";
         const reg = ctx.host.world.reg;
@@ -155,7 +152,6 @@ export function addCombatCommands(con: Console): void {
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
         const x = c.body.x + Math.sin(a) * 3;
         const z = c.body.z + Math.cos(a) * 3;
-        // It is its builder's team's, as anything built is.
         const ref = world.structs.add(kind, x, world.hf.heightAt(x, z) + def.half[1], z, c.heldYaw, ctx.host.records.byPid.get(c.pid)?.team ?? 0, def.hp);
         return ref < 0 ? "no room for it there" : `placed ${def.id} (${def.hp} health)`;
       },

@@ -1,8 +1,5 @@
-// The catalogue, first half: GameUserSettings.ini and the command line.
-//
-// Names, defaults and meanings are ARK's, from its server configuration
-// reference (planning/reference/round5-settings.md). Where the reference gives
-// no default the row's note says so.
+// The catalogue rows for GameUserSettings.ini and the command line. Names, defaults and meanings are ARK's, from its server
+// configuration reference (planning/reference/round5-settings.md). Where the reference gives no default, the row's note says so.
 
 import { Sheet, live, none, plan, type Row } from "./row.ts";
 

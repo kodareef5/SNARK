@@ -1,15 +1,5 @@
-// Decides what goes into each commit.
-//
-// Two classes of change:
-//   valuable   inventories, ownership, structures, births and deaths. Every
-//              record a valuable change touched is in the very next commit,
-//              together, along with its journal entry.
-//   lazy       positions. Each commit refreshes a slice of the live entities in
-//              rotation. A position a few seconds stale after a crash is
-//              harmless; an item saved on one side of a trade is not.
-//
-// Callers that must not tell a player "done" before it is durable register an
-// `afterCommit` callback instead of replying at once.
+// Valuable changes (inventories, ownership, structures, births, deaths) go into the next commit together, with their journal entries.
+// Positions are lazy, because a stale one is harmless after a crash. Each commit refreshes a slice of the live entities in rotation.
 
 import { F_ALIVE, F_AWAKE, F_PLAYER } from "../../shared/sim/entities.ts";
 import type { EntityRecord, Records } from "../records.ts";
@@ -19,7 +9,7 @@ import type { WorldStore } from "./store.ts";
 export interface PersistenceOptions {
   /** Live entity positions refreshed per commit. */
   lazyRowsPerCommit: number;
-  /** Journal entries kept; older ones are deleted. */
+  /** Journal entries kept. Older ones are deleted. */
   journalKeep: number;
 }
 
@@ -42,18 +32,16 @@ interface PendingJournal {
 
 export class Persistence {
   readonly store: WorldStore;
-  /** Completed commits. */
   commits = 0;
   /** Sequence number of the newest journal entry, durable or not. */
   journalSeq = 0;
-  /** Newest journal entry known to be on disk. */
   durableSeq = 0;
   readonly survivors = new Map<string, number>();
-  /** Per-chunk state other than structures: each provider encodes the chunks it has marked dirty. */
+  /** Per-chunk state other than structures. Each provider encodes the chunks it has marked dirty. */
   readonly blobs: { tag: number; dirty: Set<number>; encode(chunk: number): Uint8Array | null }[] = [];
   /** The item ledger, saved in the same transaction as the records it accounts for. */
   ledger: { dirty: boolean; serialize(): string } | null = null;
-  /** The settings that the timers in the records were worked out under, saved in the same transaction as those records (D91). */
+  /** The settings the records' timers were computed under, saved in the same transaction as those records (D91). */
   settingsAt: { dirty: boolean; serialize(): string } | null = null;
 
   private readonly world: ServerWorld;
@@ -75,7 +63,7 @@ export class Persistence {
     world.structs.onChunkChanged = (chunk) => this.dirtyChunks.add(chunk);
   }
 
-  /** Restore the world from the store. Call once, before the first tick. */
+  /** Call once, before the first tick. */
   load(): LoadReport {
     const store = this.store;
     const world = this.world;
@@ -87,7 +75,7 @@ export class Persistence {
       this.records.nextSeq = Number(store.meta("next_seq") ?? 1);
     }
     const structures = store.fresh ? world.structs.count : store.loadChunks(world.structs);
-    // A fresh save keeps the structures the world was created with; mark them all for the first commit.
+    // A fresh save keeps the structures the world was created with, so the first commit writes them all.
     this.dirtyChunks.clear();
     if (store.fresh) world.structs.chunks.forEach((t, chunk) => t && this.dirtyChunks.add(chunk));
     for (const rec of store.loadEntities()) this.records.byPid.set(rec.pid, rec);
@@ -96,7 +84,7 @@ export class Persistence {
     return { fresh: store.fresh, tick: world.tick, structures, records: this.records.byPid.size };
   }
 
-  /** Record a valuable operation. It is written in the same transaction as the state it produced. */
+  /** The entry is written in the same transaction as the state it produced. */
   journal(op: number, data: Uint8Array): number {
     const seq = ++this.journalSeq;
     this.pending.push({ seq, tick: this.world.tick, op, data: data.slice() });
@@ -113,7 +101,6 @@ export class Persistence {
     this.newSurvivors.push([name, pid]);
   }
 
-  /** An entity with a record entered the simulation. */
   attach(rec: EntityRecord, ent: number): void {
     this.records.entOf.set(rec.pid, ent);
     this.world.ents.pid[ent] = rec.pid;
@@ -123,7 +110,7 @@ export class Persistence {
     }
   }
 
-  /** An entity left the simulation; its record keeps its last position. */
+  /** The record keeps the entity's last position. */
   detach(pid: number): void {
     const rec = this.records.byPid.get(pid);
     const ent = this.records.entOf.get(pid);
@@ -139,7 +126,6 @@ export class Persistence {
     }
   }
 
-  /** Write one transaction: all valuable changes, the journal, and a slice of positions. */
   commit(): void {
     const store = this.store;
     const world = this.world;
@@ -177,7 +163,7 @@ export class Persistence {
         for (const j of this.pending) store.appendJournal(j.seq, j.tick, j.op, j.data);
         if (this.ledger?.dirty) store.setMeta("ledger", this.ledger.serialize());
         if (this.settingsAt?.dirty) store.setMeta("settings_at", this.settingsAt.serialize());
-        // The journal is an audit trail, not the state: keep the recent part.
+        // The journal is an audit trail, not the state, so only the recent part is kept.
         if (this.commits % PRUNE_EVERY === PRUNE_EVERY - 1) store.pruneJournal(this.opts.journalKeep);
         for (const [name, pid] of this.newSurvivors) store.saveSurvivor(name, pid);
         store.setMeta("tick", world.tick);
@@ -191,7 +177,7 @@ export class Persistence {
       throw err;
     }
 
-    // Only now is it safe to forget what was dirty and to tell anyone.
+    // The dirty sets are cleared and the callbacks run only after the transaction succeeds.
     this.dirtyChunks.clear();
     records.dirty.clear();
     records.deleted.length = 0;

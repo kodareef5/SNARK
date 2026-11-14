@@ -14,7 +14,7 @@ function digest(text: string): Uint8Array {
   return new Bun.CryptoHasher("sha256").update(text).digest();
 }
 
-/** Compare without revealing where two secrets differ: hash both, then fold every byte. */
+/** Hashes both and folds every byte, so timing does not reveal where two secrets differ. */
 function sameSecret(a: string, b: string): boolean {
   const x = digest(a);
   const y = digest(b);

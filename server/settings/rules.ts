@@ -1,22 +1,16 @@
-// The server's rules: the value each setting of the catalogue has now.
-//
-// A value comes from the catalogue's default, a config file, the command
-// line, the live file or the console, in that order of strength (D88), and
-// remembers which. Rules are read where they are used; nothing caches one.
-// They are factors and switches, never a branch at a call site (D66).
+// The value each catalogue setting has now, and the source it came from. A stronger source wins (D88). Rules are read where they are
+// used and nothing caches one. They are factors and switches, never a branch at a call site (D66).
 
 import { CATALOG, rowOf } from "./catalog.ts";
 import { isList, toNumber, toSwitch, unquote, type IniNode } from "./ini.ts";
 import type { Row } from "./row.ts";
 
-/** Where a value came from, weakest first. */
+/** Weakest first. */
 export const SOURCES = ["default", "file", "command line", "live file", "console"] as const;
 export type Source = (typeof SOURCES)[number];
 
-/** What a setting holds: a number, a switch, words, a number for each index, or the entries of a list. */
 export type Value = number | boolean | string | readonly number[] | readonly IniNode[];
 
-/** The key a row's value is kept under: its exact name, and for a command-line flag a dash before it. */
 const slot = (row: Row): string => (row.kind === "flag" ? "-" : "") + row.name;
 
 function defaultOf(row: Row): Value {
@@ -25,11 +19,7 @@ function defaultOf(row: Row): Value {
   return row.def as number | boolean | string;
 }
 
-/**
- * Read what a config line gives a setting. Returns the value, or words saying
- * why it will not do. For a list this is one entry; for an indexed setting,
- * the number for one index.
- */
+/** A string result says why the value is refused. For a list the value is one entry, and for an indexed setting the number at one index. */
 export function readValue(row: Row, node: IniNode): { value: number | boolean | string | IniNode } | string {
   if (row.kind === "struct") return isList(node) ? { value: node } : "wants a value in brackets";
   if (isList(node)) return "wants a single value, not a bracketed one";
@@ -52,7 +42,7 @@ export function readValue(row: Row, node: IniNode): { value: number | boolean | 
     }
     return { value: text };
   }
-  // A number: float, int, one index of an indexed setting, or one line of a list of numbers.
+  // The rest are numbers: float, int, one index of an indexed setting, or one line of a list of numbers.
   const n = toNumber(text);
   if (Number.isNaN(n)) return `wants a number, got "${text}"`;
   if ((row.kind === "int" || row.kind === "lines") && !Number.isInteger(n)) return `wants a whole number, got ${text}`;
@@ -61,12 +51,11 @@ export function readValue(row: Row, node: IniNode): { value: number | boolean | 
 }
 
 export class Rules {
-  /** Counts every change, for sending. */
+  /** Counts every change. */
   version = 0;
   private readonly vals = new Map<string, Value>();
   private readonly from = new Map<string, Source>();
 
-  /** Rules begin as the catalogue's defaults, which are ARK's. `first` gives some of the old rules other values to begin with. */
   constructor() {
     for (const row of CATALOG) this.vals.set(slot(row), defaultOf(row));
   }
@@ -77,80 +66,71 @@ export class Rules {
     return v;
   }
 
-  /** A number: a multiplier, a count, a time. */
   num(name: string): number {
     const v = this.need(name);
     if (typeof v !== "number") throw new Error(`${name} is not a number`);
     return v;
   }
 
-  /** A switch. */
   on(name: string): boolean {
     const v = this.need(name);
     if (typeof v !== "boolean") throw new Error(`${name} is not a switch`);
     return v;
   }
 
-  /** Words. */
   text(name: string): string {
     const v = this.need(name);
     if (typeof v !== "string") throw new Error(`${name} is not words`);
     return v;
   }
 
-  /** The numbers of an indexed setting, one for each index. */
   indexed(name: string): readonly number[] {
     const v = this.need(name);
     if (!Array.isArray(v)) throw new Error(`${name} is not indexed`);
     return v as readonly number[];
   }
 
-  /** The entries of a list of structs or of names, as they were written. */
+  /** The entries of a struct or names setting, as written. */
   list(name: string): readonly IniNode[] {
     const v = this.need(name);
     if (!Array.isArray(v)) throw new Error(`${name} is not a list`);
     return v as readonly IniNode[];
   }
 
-  /** The entries of a list of numbers, in the order of their lines. */
+  /** The entries of a lines setting, in the order of their lines. */
   numbers(name: string): readonly number[] {
     const v = this.need(name);
     if (!Array.isArray(v)) throw new Error(`${name} is not a list`);
     return v as readonly number[];
   }
 
-  /** A command-line flag: whether it was given, or for one that takes a value, that value ("" if it was not given). */
+  /** Whether the flag was given. For a flag that takes a value, that value, or "" if it was not given. */
   flag(name: string): boolean | string {
     return this.need("-" + name) as boolean | string;
   }
 
-  /** Where a setting's value came from. */
   sourceOf(row: Row): Source {
     return this.from.get(slot(row)) ?? "default";
   }
 
-  /** What a setting holds, whatever kind it is: for reports. */
+  /** Untyped, for reports. */
   valueOf(row: Row): Value {
     return this.need(slot(row));
   }
 
-  /** Whether a value from `source` may replace what the setting holds: only one from a source at least as strong. */
+  /** True if `source` is at least as strong as the source of the current value. */
   yields(row: Row, source: Source): boolean {
     return SOURCES.indexOf(source) >= SOURCES.indexOf(this.sourceOf(row));
   }
 
-  /** Give a setting a value that has been read and checked (`readValue`), from a source. */
+  /** `value` must already be read and checked by readValue. */
   put(row: Row, value: Value, source: Source): void {
     this.vals.set(slot(row), value);
     this.from.set(slot(row), source);
     this.version++;
   }
 
-  /**
-   * Set a setting from words, as the console does: by ARK's name, whatever
-   * its case. Returns "" if it was set, or why it was not. Lists and indexed
-   * settings are not set this way.
-   */
+  /** Takes ARK's name in any case, as the console does. Returns "" if it was set, or why not. Lists and indexed settings are refused. */
   assign(name: string, words: string, source: Source): string {
     const row = rowOf(name);
     if (!row) return `there is no setting called ${name}`;
@@ -161,11 +141,7 @@ export class Rules {
     return "";
   }
 
-  /**
-   * The values that timers already running were worked out under: every
-   * setting that re-times something, by name. Stored with the world (D91), so
-   * that a save loaded under other values can be re-timed once.
-   */
+  /** Every setting that re-times something, by name. Stored with the world (D91), so a save loaded under other values is re-timed once. */
   timers(): Record<string, number> {
     const out: Record<string, number> = {};
     for (const row of CATALOG) if (row.retime !== "") out[row.name] = this.num(row.name);
@@ -173,11 +149,7 @@ export class Rules {
   }
 }
 
-/**
- * What a save's timers were worked out under, read back: the stored
- * snapshot, or for a save from before there was one, the three old rules
- * that were saved with the world. Null if there is neither.
- */
+/** The values a save's timers were computed under. An older save has three old rules in place of the snapshot. Null if it has neither. */
 export function timersOf(snapshot: string | number | null, oldRules: string | number | null): Record<string, number> | null {
   const read = (text: string | number | null): Record<string, unknown> | null => {
     if (typeof text !== "string") return null;

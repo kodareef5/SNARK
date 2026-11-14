@@ -1,5 +1,3 @@
-// Cheats that act on the caller's own body: noclip, teleport, stat points.
-
 import { parseNumber } from "../../shared/console.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { MODE_GHOST, MODE_WALK } from "../../shared/sim/character.ts";
@@ -60,7 +58,7 @@ export function addAdminCommands(con: Console): void {
         const y = args.length === 3 ? parseNumber(args[1]) : world.hf.heightAt(x, z);
         if (Number.isNaN(y)) return "usage: tp <x> [y] <z>";
         if (c.ent < 0) {
-          // A spectator's body is private: just move it.
+          // A spectator's body is private, so it is moved directly.
           c.body.x = x;
           c.body.y = y;
           c.body.z = z;
@@ -92,7 +90,6 @@ export function addAdminCommands(con: Console): void {
         g.tamed[stat] = points;
         ctx.host.records.dirty.add(rec.pid);
         const world = ctx.host.world;
-        // Everything the points feed: vitals' maxima, movement (with what is carried), the level others see.
         ctx.host.refreshBody(rec);
         const value = statOf(world.reg.defs[rec.kind] as SpeciesDef, g, stat, 0);
         return `${STAT_NAMES[stat]}: ${points} points, value ${Number(value.toFixed(3))}`;
@@ -212,7 +209,6 @@ export function addAdminCommands(con: Console): void {
         const c = ctx.client;
         const rec = c ? ctx.host.records.byPid.get(c.pid) : undefined;
         if (!c || !rec) return "this needs a survivor";
-        // God mode is a buff like any other: it has no end, and is seen on the buff bar.
         const god = ctx.host.world.reg.index.get("core:god")!;
         if (ctx.host.buffs.take(rec, god)) return "god off";
         ctx.host.buffs.give(rec, god);

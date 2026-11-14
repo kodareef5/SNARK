@@ -1,12 +1,9 @@
-// The server's settings, from the console: what each is, where its value came
-// from, and, for those that may change while the server runs, a new value.
-
 import type { Console, ConsoleCommand } from "../console.ts";
 import { CATALOG, rowOf } from "../settings/catalog.ts";
 import { FEATURES, NOT_HERE, type Feature, type NotHere, type Row } from "../settings/row.ts";
 import type { Rules } from "../settings/rules.ts";
 
-/** A setting's value as words; a password is never shown. */
+/** A password is never shown. */
 function shown(row: Row, rules: Rules): string {
   const v = rules.valueOf(row);
   if (/password/i.test(row.name)) return v === "" ? "(none)" : "****";
@@ -17,7 +14,7 @@ function shown(row: Row, rules: Rules): string {
 export function addSettingsCommands(con: Console): void {
   const commands: ConsoleCommand[] = [
     {
-      // ARK's own name for it (ForceUpdateDynamicConfig): the console takes a command in any case.
+      // ARK's name for it is ForceUpdateDynamicConfig. The console matches command names in any case.
       name: "forceupdatedynamicconfig",
       usage: "",
       help: "Read the live file again now, without waiting for the next time it would be.",
@@ -42,7 +39,7 @@ export function addSettingsCommands(con: Console): void {
       usage: "<name> [value]",
       help: "What a setting is and does; with a value, set it until the server is started again (only those that may change while it runs).",
       admin: true,
-      // A password given here is not kept in the journal of what admins did.
+      // Keeps a password out of the admin journal.
       redact: (args) => `setting ${args[0] ?? ""}${args.length > 1 ? (/password/i.test(args[0] ?? "") ? " ****" : ` ${args.slice(1).join(" ")}`) : ""}`,
       run(ctx, args) {
         const row = args[0] === undefined ? undefined : rowOf(args[0]);

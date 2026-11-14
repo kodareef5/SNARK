@@ -1,5 +1,3 @@
-// Cheats for creatures: have one without taming it, and hurry what it lays and what hatches.
-
 import type { Console, ConsoleCommand } from "../console.ts";
 
 const needsBody = "this needs a body; you have none right now";

@@ -1,13 +1,5 @@
-// Reading a server's configuration as ARK's is read: GameUserSettings.ini,
-// Game.ini, the command line, and the live file.
-//
-// Each later source is stronger than the one before (D88). Every key is
-// looked up in the catalogue: one that takes effect is given its value; one
-// that is planned, or has no meaning here, is read and checked all the same
-// and listed; one the catalogue does not know, or a value that will not do, is
-// listed with where it was written. Nothing here stops a server from
-// starting: ARK ignores what it does not understand without a word, and this
-// says the word.
+// Reads a server's configuration as ARK does: GameUserSettings.ini, Game.ini, the command line and the live file. Each later source
+// is stronger (D88). Nothing here stops a server from starting. ARK ignores what it does not understand silently, and this reports it.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,7 +12,7 @@ export const GUS_FILE = "GameUserSettings.ini";
 export const GAME_FILE = "Game.ini";
 export const LIVE_FILE = "DynamicConfig.ini";
 
-/** The sections ARK reads, by their names in lower case, and the place in the catalogue each is. */
+/** The sections ARK reads, keyed in lower case. */
 const SECTIONS: Record<string, Place> = {
   serversettings: "server",
   sessionsettings: "session",
@@ -30,36 +22,28 @@ const SECTIONS: Record<string, Place> = {
   ragnarok: "map",
   "/script/shootergame.shootergamemode": "mode",
 };
-/** Sections a server's files hold that are not the server's to read: said nothing about. */
+/** Sections that ARK's files hold and the server does not read. They are skipped without a report. */
 const NOT_OURS = new Set(["/script/shootergame.shootergameusersettings", "/script/engine.gameusersettings", "scalabilitygroups", "multihome", "modinstaller", "shootergamemode_tempoverrides"]);
-/** Which file each place belongs to. */
 const FILE_OF: Record<Place, string> = { server: GUS_FILE, session: GUS_FILE, motd: GUS_FILE, gamesession: GUS_FILE, snark: GUS_FILE, map: GUS_FILE, mode: GAME_FILE, cli: "the command line", dynamic: LIVE_FILE };
 const SECTION_OF: Record<Place, string> = { server: "[ServerSettings]", session: "[SessionSettings]", motd: "[MessageOfTheDay]", gamesession: "[/Script/Engine.GameSession]", snark: "[SnarkSettings]", map: "a map's section", mode: "[/script/shootergame.shootergamemode]", cli: "", dynamic: "" };
 
-/** What was made of everything that was read. */
 export interface Report {
-  /** Settings that take effect and were given a value: which, and where it was written. */
+  /** Settings that take effect and were given a value. */
   applied: { row: Row; source: Source; where: string }[];
-  /** Read and checked, but not effective: it will be this round, or it waits for a feature. */
+  /** Read and checked, but not effective yet. */
   waiting: { row: Row; where: string }[];
-  /** Read, and of no meaning here. */
+  /** Read, with no meaning here. */
   nothing: { row: Row; where: string }[];
   /** Keys the catalogue does not know. */
   unknown: { key: string; where: string }[];
-  /** What would not do: a value out of range, a key in the wrong place, a line that could not be read. */
+  /** A value out of range, a key in the wrong place, or a line that could not be read. */
   refused: { key: string; where: string; why: string }[];
-  /** Anything else whoever started the server should know of what was read. */
   notes: string[];
 }
 
 export const emptyReport = (): Report => ({ applied: [], waiting: [], nothing: [], unknown: [], refused: [], notes: [] });
 
-/**
- * ARK's single-player settings (`bUseSingleplayerSettings`): fixed factors
- * on what the files and the command line give, as its reference lists them.
- * Each is a setting, the factor, and for an indexed setting ARK's index.
- * One more is not a factor: the life span of a corpse is set to 6.
- */
+/** ARK's fixed bUseSingleplayerSettings factors, as its reference lists them. The corpse life span is not a factor. It is set to 6. */
 const SINGLE_PLAYER: readonly (readonly [name: string, factor: number, index?: number])[] = [
   ["TamingSpeedMultiplier", 2.5],
   ["EggHatchSpeedMultiplier", 9],
@@ -78,7 +62,7 @@ const SINGLE_PLAYER: readonly (readonly [name: string, factor: number, index?: n
 ];
 const SINGLE_PLAYER_CORPSE = 6;
 
-/** Put ARK's single-player factors on what the rules hold, each kept within what its setting may be. Whatever sets one of them afterwards sets it outright. */
+/** Each result is clamped to its setting's range. Anything that sets one of them afterwards sets it outright. */
 function applySinglePlayer(rules: Rules, report: Report): void {
   const within = (row: Row, v: number): number => Math.min(row.max, Math.max(row.min, v));
   for (const [name, factor, index] of SINGLE_PLAYER) {
@@ -96,7 +80,7 @@ function applySinglePlayer(rules: Rules, report: Report): void {
   report.notes.push("bUseSingleplayerSettings: ARK's single-player factors are on top of what was read: taming x2.5, hatching x9, growing up x35, the wait to mate x0.15, a tame's health per level x2.125 and melee x2.3529, and what the dead leave lies six times as long");
 }
 
-/** One pass over one source: lists begun in it replace what weaker sources gave, and then grow. */
+/** One pass over one source. A list begun in it replaces what weaker sources gave, then grows. */
 class Pass {
   private readonly begun = new Set<string>();
   private readonly rules: Rules;
@@ -109,7 +93,7 @@ class Pass {
     this.report = report;
   }
 
-  /** Give `row` what `node` says, written at `where`; `index` is the number in `Key[3]`, or -1. */
+  /** `index` is the number in `Key[3]`, or -1. */
   give(row: Row, node: IniNode, index: number, where: string): void {
     const { rules, source, report } = this;
     const refuse = (why: string): void => void report.refused.push({ key: row.name, where, why });
@@ -131,7 +115,7 @@ class Pass {
       value = first ? [got.value as IniNode] : [...rules.list(row.name), got.value as IniNode];
     } else value = got.value as Value;
     rules.put(row, value, source);
-    // Listed once, however many lines it took, and by the strongest source that gave it.
+    // A row is listed once, by the strongest source that gave it.
     if (!first) return;
     const list: { row: Row }[] = row.status === "live" ? report.applied : row.status === "none" ? report.nothing : report.waiting;
     const was = list.findIndex((x) => x.row === row);
@@ -142,11 +126,7 @@ class Pass {
   }
 }
 
-/**
- * Take in the text of one of the two files. `source` is "file" at a start.
- * A key found in a section it does not belong to is refused, and says where
- * it does belong, since ARK would ignore it silently.
- */
+/** Reads one of the two files. A key in the wrong section is refused with the right one named, since ARK would ignore it silently. */
 export function applyIni(rules: Rules, text: string, file: string, source: Source, report: Report): void {
   const parsed = parseIni(text);
   for (const f of parsed.faults) report.refused.push({ key: "", where: `${file}:${f.line}`, why: f.why });
@@ -157,7 +137,7 @@ export function applyIni(rules: Rules, text: string, file: string, source: Sourc
     const section = e.section.toLowerCase();
     const place = SECTIONS[section];
     if (place === undefined) {
-      // A section that is not the server's: nothing is said of ARK's client settings; anything else is said once.
+      // An unknown section is reported once. NOT_OURS sections are not reported.
       if (!NOT_OURS.has(section) && !strange.has(section)) {
         strange.add(section);
         report.unknown.push({ key: `[${e.section}]`, where });
@@ -181,11 +161,7 @@ export function applyIni(rules: Rules, text: string, file: string, source: Sourc
   }
 }
 
-/**
- * Take in the live file: `Key=Value` lines with no sections. Only settings
- * that may change while the server runs are taken from it; whatever else it
- * names is refused, with the reason.
- */
+/** The live file is `Key=Value` lines with no sections. A setting that is read at start only is refused. */
 export function applyLive(rules: Rules, text: string, report: Report): void {
   const parsed = parseIni(text);
   for (const f of parsed.faults) report.refused.push({ key: "", where: `${LIVE_FILE}:${f.line}`, why: f.why });
@@ -200,11 +176,8 @@ export function applyLive(rules: Rules, text: string, report: Report): void {
 }
 
 /**
- * Take in a command line. ARK's forms are read: `Map?Key=Value?Key2=Value2`
- * (any setting of `[ServerSettings]` and its neighbours, never one of
- * Game.ini), and `-Flag` or `-Flag=value`. Words that begin with two dashes
- * are this server's own and are handed back untouched, each with the word
- * after it if that is its value.
+ * Reads ARK's forms: `Map?Key=Value?Key2=Value2` (never a Game.ini setting) and `-Flag` or `-Flag=value`. Words that begin
+ * with two dashes are this server's own. They are returned untouched, each with the word after it if that is its value.
  */
 export function applyArgs(rules: Rules, argv: readonly string[], report: Report): string[] {
   const pass = new Pass(rules, "command line", report);
@@ -214,7 +187,6 @@ export function applyArgs(rules: Rules, argv: readonly string[], report: Report)
     const word = argv[i]!;
     if (word.startsWith("--")) {
       ours.push(word);
-      // Its value, if the next word is one.
       if (i + 1 < argv.length && !argv[i + 1]!.startsWith("-") && !argv[i + 1]!.includes("?")) ours.push(argv[++i]!);
       continue;
     }
@@ -226,7 +198,7 @@ export function applyArgs(rules: Rules, argv: readonly string[], report: Report)
       else report.unknown.push({ key: `-${name}`, where });
       continue;
     }
-    // `Map?Key=Value?…`: the map's name, if there is one, is not ours to use.
+    // The map name, if the word starts with one, is ignored.
     const parts = word.split("?");
     for (let k = 0; k < parts.length; k++) {
       const part = parts[k]!;
@@ -236,7 +208,7 @@ export function applyArgs(rules: Rules, argv: readonly string[], report: Report)
         continue;
       }
       const name = part.slice(0, eq);
-      // A few of ARK's command-line options are written with a question mark though they are no file's key.
+      // ARK writes a few of its command-line flags with a question mark.
       const row = rowOf(name) ?? rowOf(name, true);
       if (!row) report.unknown.push({ key: `?${name}`, where });
       else if (row.at === "mode") report.refused.push({ key: row.name, where, why: `is a ${GAME_FILE} setting, which the command line cannot give` });
@@ -247,18 +219,13 @@ export function applyArgs(rules: Rules, argv: readonly string[], report: Report)
   return ours;
 }
 
-/** What the files of a configuration hold, as text; a file that is not there is left out. */
 export interface ConfigText {
   gus?: string;
   game?: string;
   live?: string;
 }
 
-/**
- * Rules from a configuration: ARK's defaults, then the two files, then the
- * command line, then (if `-UseDynamicConfig` was given) the live file.
- * `ours` is what of the command line is this server's own.
- */
+/** Order: the two files, the command line, then the live file if -UseDynamicConfig was given. `ours` is this server's own arguments. */
 export function loadConfig(text: ConfigText, argv: readonly string[] = []): { rules: Rules; report: Report; ours: string[] } {
   const rules = new Rules();
   const report = emptyReport();
@@ -270,7 +237,6 @@ export function loadConfig(text: ConfigText, argv: readonly string[] = []): { ru
   return { rules, report, ours };
 }
 
-/** The text of the files in a folder. */
 export function readConfigFolder(dir: string): ConfigText {
   const read = (name: string): string | undefined => (existsSync(join(dir, name)) ? readFileSync(join(dir, name), "utf8") : undefined);
   const out: ConfigText = {};
@@ -283,12 +249,11 @@ export function readConfigFolder(dir: string): ConfigText {
   return out;
 }
 
-/** Rules from a folder holding the files (any of which may be missing) and a command line. */
 export function loadConfigFolder(dir: string, argv: readonly string[] = []): { rules: Rules; report: Report; ours: string[] } {
   return loadConfig(readConfigFolder(dir), argv);
 }
 
-/** A value as it is shown in a report: a password never is. */
+/** A password is never shown. */
 function shown(row: Row, rules: Rules): string {
   if (/password/i.test(row.name)) return rules.valueOf(row) === "" ? "(none)" : "****";
   const v = rules.valueOf(row);
@@ -300,7 +265,6 @@ function shown(row: Row, rules: Rules): string {
 
 const named = (row: Row): string => (row.kind === "flag" ? "-" : "") + row.name;
 
-/** The report as lines, for whoever started the server to read. */
 export function formatReport(report: Report, rules: Rules): string[] {
   const out: string[] = [];
   const n = (count: number, one: string, many = one): string => `${count} ${count === 1 ? one : many}`;

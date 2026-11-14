@@ -1,31 +1,20 @@
-// Reading an ini file as ARK writes them.
-//
-// A file is sections (`[Name]`) of `Key=Value` lines. A key may be repeated
-// (a list), and may carry an index (`Key[3]=0.5`). A value is words to the end
-// of the line, or a struct in brackets: `(A=1,B="x",C=((D=1),(D=2)))`, which
-// may hold named fields, bare values, and other structs. `;` begins a comment
-// line. Names are matched without regard to case by whoever reads the result.
-//
-// Nothing here knows what any key means, and nothing here throws: a line that
-// cannot be read is reported with its number and the rest is read on.
+// Parses ini files as ARK writes them. A key may repeat (a list) or carry an index (`Key[3]=0.5`). A value is words to the end of the
+// line, or a struct such as `(A=1,B="x",C=((D=1),(D=2)))`. Nothing here throws. A line that cannot be read is reported with its number.
 
-/** A value: words, or a bracketed list of items. */
 export type IniNode = string | IniList;
 
-/** `(…)`: its items in order. */
 export interface IniList {
   readonly items: readonly IniItem[];
 }
 
-/** One item of a list: `Key=value`, or a bare value (`key` is then ""). */
+/** `Key=value` inside a struct, or a bare value, whose `key` is "". */
 export interface IniItem {
   readonly key: string;
   readonly value: IniNode;
 }
 
-/** One `Key=Value` line. */
 export interface IniEntry {
-  /** The section it is in, as written; "" before any section. */
+  /** As written. "" before any section. */
   readonly section: string;
   readonly key: string;
   /** The number in `Key[3]`, or -1. */
@@ -36,42 +25,36 @@ export interface IniEntry {
 
 export interface IniFile {
   readonly entries: IniEntry[];
-  /** Lines that could not be read: the line number and what is wrong with it. */
   readonly faults: { line: number; why: string }[];
 }
 
 export const isList = (n: IniNode | undefined): n is IniList => typeof n === "object";
 
-/** The value of the field of this name in a list, whatever its case; undefined if it has none. */
+/** Matches the name without regard to case. */
 export function field(list: IniList, name: string): IniNode | undefined {
   const want = name.toLowerCase();
   for (const item of list.items) if (item.key.toLowerCase() === want) return item.value;
   return undefined;
 }
 
-/** Words as a number, or NaN: a whole decimal number and nothing else. */
+/** NaN unless the text is a decimal number and nothing else. */
 export function toNumber(text: string): number {
   const t = text.trim();
   return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(t) ? Number(t) : NaN;
 }
 
-/** Words as a switch: true, false, or null for anything else. ARK writes True and False; 1 and 0 are read too. */
+/** ARK writes True and False. 1 and 0 are read too. Null for anything else. */
 export function toSwitch(text: string): boolean | null {
   const t = text.trim().toLowerCase();
   return t === "true" || t === "1" ? true : t === "false" || t === "0" ? false : null;
 }
 
-/** Words without the quotes around them, if they have any. */
 export function unquote(text: string): string {
   const t = text.trim();
   return t.length >= 2 && t.startsWith('"') && t.endsWith('"') ? t.slice(1, -1) : t;
 }
 
-/**
- * Read the value that starts at `at` in `s`, up to a `,` or `)` that is not
- * inside quotes or brackets of its own (or to the end, at the top). Returns
- * the node and where reading stopped, or a string saying what is wrong.
- */
+/** Reads up to a `,` or `)` outside quotes and nested brackets, or to the end of the line when `top`. A string result is the fault. */
 function readNode(s: string, at: number, top: boolean): { node: IniNode; end: number } | string {
   let i = at;
   while (i < s.length && s[i] === " ") i++;
@@ -85,7 +68,7 @@ function readNode(s: string, at: number, top: boolean): { node: IniNode; end: nu
         i++;
         break;
       }
-      // An item: `Key=value` if an `=` comes before anything that ends or nests it, else a bare value.
+      // An item is `Key=value` if an `=` comes before anything that ends or nests it, else a bare value.
       let j = i;
       let key = "";
       while (j < s.length && s[j] !== "=" && s[j] !== "," && s[j] !== ")" && s[j] !== "(" && s[j] !== '"') j++;
@@ -108,7 +91,6 @@ function readNode(s: string, at: number, top: boolean): { node: IniNode; end: nu
     }
     return { node: { items }, end: i };
   }
-  // Words: to the end of the line at the top; inside a list, to the comma or bracket that ends them, quotes kept whole.
   if (top) return { node: s.slice(at).trim(), end: s.length };
   let j = i;
   let quoted = false;
@@ -121,7 +103,6 @@ function readNode(s: string, at: number, top: boolean): { node: IniNode; end: nu
   return { node: s.slice(i, j).trim(), end: j };
 }
 
-/** Read a whole file's text. */
 export function parseIni(text: string): IniFile {
   const entries: IniEntry[] = [];
   const faults: { line: number; why: string }[] = [];
@@ -164,7 +145,7 @@ export function parseIni(text: string): IniFile {
   return { entries, faults };
 }
 
-/** A node written out again as ARK would write it, on one line with no spaces. */
+/** As ARK writes it, on one line with no spaces. */
 export function writeNode(n: IniNode): string {
   if (!isList(n)) return n;
   return `(${n.items.map((it) => (it.key === "" ? "" : `${it.key}=`) + writeNode(it.value)).join(",")})`;

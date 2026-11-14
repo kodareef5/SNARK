@@ -1,8 +1,4 @@
-// The catalogue: every setting an ARK dedicated server reads, in one table.
-//
-// It is the list that says what this engine does about each of ARK's
-// settings, and so the list that guides what is built next: a planned row
-// names the feature it waits for.
+// Every setting an ARK dedicated server reads, in one table. A planned row names the feature it waits for.
 
 import { FEATURES, NOT_HERE, type Row } from "./row.ts";
 import { MODE_ROWS } from "./rows-mode.ts";
@@ -10,25 +6,17 @@ import { SERVER_ROWS } from "./rows-server.ts";
 
 export const CATALOG: readonly Row[] = [...SERVER_ROWS, ...MODE_ROWS];
 
-/**
- * A setting's name as it is looked up: ARK's keys are matched without regard
- * to case, and a command-line flag is its own thing even when a file key has
- * the same letters.
- */
+/** ARK matches keys without regard to case. A command-line flag is distinct from a file key with the same letters. */
 export const keyOf = (name: string, flag = false): string => (flag ? "-" : "") + name.toLowerCase();
 
 const byKey = new Map<string, Row>();
 for (const row of CATALOG) byKey.set(keyOf(row.name, row.kind === "flag"), row);
 
-/** The row for a key from a file (or, with `flag`, from the command line), or undefined. */
 export function rowOf(name: string, flag = false): Row | undefined {
   return byKey.get(keyOf(name, flag));
 }
 
-/**
- * What is wrong with the catalogue itself, as lines; none if it is sound.
- * Run by the tests, so that a row cannot be added half made.
- */
+/** Faults in the catalogue itself, one per line. The tests run it, so a row cannot be added half made. */
 export function catalogFaults(): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -58,14 +46,13 @@ export function catalogFaults(): string[] {
       if (r.at !== "cli") out.push(`${r.name}: a flag belongs to the command line`);
     } else if (r.def !== null) out.push(`${r.name}: a list starts empty`);
     if (r.retime !== "" && r.kind !== "float") out.push(`${r.name}: only a multiplier re-times anything`);
-    // A divisor is never nothing.
+    // A speed setting divides a time, so its least value must be above 0.
     if (r.retime === "speed" && !(r.min > 0)) out.push(`${r.name}: what time is divided by has a least value above 0`);
     if (r.at === "mode" && r.kind === "flag") out.push(`${r.name}: Game.ini has no flags`);
   }
   return out;
 }
 
-/** How many rows stand in each way, for the report and the reference. */
 export function catalogCounts(): { live: number; todo: number; planned: number; none: number; all: number } {
   const n = { live: 0, todo: 0, planned: 0, none: 0, all: CATALOG.length };
   for (const r of CATALOG) n[r.status]++;

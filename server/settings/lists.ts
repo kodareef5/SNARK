@@ -1,23 +1,16 @@
-// The settings that are lists naming classes, as tables keyed by content.
-//
-// ARK writes these with its own class names; here they take content ids
-// ("core:raptor"). An entry naming something this build does not have is
-// counted and reported, never an error (D86): a list written for another
-// build of the content still starts the server.
-//
-// Each table is worked out when it is first asked for and again only when a
-// rule has changed since.
+// The settings that are lists naming classes, as tables keyed by content index. ARK writes its own class names, and here they are
+// content ids ("core:raptor"). An entry naming something this build lacks is counted and reported, never an error (D86).
 
 import type { Registry } from "../../shared/content/registry.ts";
 import { field, isList, toNumber, unquote } from "./ini.ts";
 import type { Rules } from "./rules.ts";
 
-/** The settings that are lists of names, and those that are lists of a name and a multiplier. */
+/** Settings that are lists of names, then settings that are lists of a name and a multiplier. */
 const NAMES = ["PreventDinoTameClassNames", "PreventBreedingForClassNames"];
 const MULTIPLIERS = ["HarvestResourceItemAmountClassMultipliers", "DinoClassDamageMultipliers", "TamedDinoClassDamageMultipliers", "DinoClassResistanceMultipliers", "TamedDinoClassResistanceMultipliers"];
 
 export class Lists {
-  /** Entries that named something this build does not have: the setting and the name. */
+  /** Entries that named something this build does not have. */
   readonly missing: { setting: string; name: string }[] = [];
   private readonly rules: Rules;
   private readonly reg: Registry;
@@ -30,11 +23,7 @@ export class Lists {
     this.reg = reg;
   }
 
-  /**
-   * The content a setting names, as its index: 0, and counted in `missing`,
-   * if this build has none of that name, or has one that is not of the type
-   * the setting is about.
-   */
+  /** Returns 0, and records the name in `missing`, if this build has no content of that name or it is not of `type`. */
   index(setting: string, name: string, type?: string): number {
     const i = this.reg.index.get(name) ?? 0;
     if (i !== 0 && (type === undefined || this.reg.defs[i]!.type === type)) return i;
@@ -45,13 +34,13 @@ export class Lists {
     return 0;
   }
 
-  /** Work every table out now, so that whatever names nothing here is known as the server starts and not when the table is first wanted. */
+  /** Builds every table now, so missing names are known when the server starts and not when a table is first used. */
   warm(): void {
     for (const name of NAMES) this.kinds(name);
     for (const name of MULTIPLIERS) this.multipliers(name);
   }
 
-  /** The content named by a list of names (`Key="core:raptor"`, any number of lines), as content indices. */
+  /** Content indices for a list of names, written `Key="core:raptor"` on any number of lines. */
   kinds(setting: string): ReadonlySet<number> {
     const have = this.sets.get(setting);
     if (have && have.at === this.rules.version) return have.of;
@@ -64,11 +53,7 @@ export class Lists {
     return of;
   }
 
-  /**
-   * A list of `(ClassName="core:thatch",Multiplier=2.0)` entries as content
-   * index to multiplier. What is not named is not in the table: its
-   * multiplier is 1. `key` is the field that holds the name.
-   */
+  /** From `(ClassName="core:thatch",Multiplier=2.0)` entries. Content that is not named is absent, and its multiplier is 1. */
   multipliers(setting: string, key = "ClassName"): ReadonlyMap<number, number> {
     const have = this.maps.get(setting);
     if (have && have.at === this.rules.version) return have.of;
