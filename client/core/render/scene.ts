@@ -1,5 +1,5 @@
-// Structures are drawn per chunk and per mesh as instanced batches. A chunk's instance buffer is rebuilt only when its
-// table version changes, and uploaded once.
+// Structures are drawn per chunk and per mesh as instanced batches. A chunk's instance buffer is rebuilt only when a
+// piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
@@ -62,8 +62,8 @@ const BEAM_MESH = "core:beam";
 const BEAM_COLOR = 8;
 
 interface ChunkBatch {
-  /** Table version the instances were built from. -1 forces a rebuild. */
-  version: number;
+  /** The table's `shape` when the instances were built. */
+  shape: number;
   data: Uint8Array;
   slots: Uint16Array;
   /** Triples: mesh, first instance, instance count. */
@@ -372,7 +372,7 @@ export class Scene {
         continue;
       }
       let batch = this.batches.get(id);
-      if (!batch || batch.version !== t.version) batch = this.rebuild(store, chunk, id, batch);
+      if (!batch || batch.shape !== t.shape) batch = this.rebuild(store, chunk, id, batch);
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
       const ax = batch.minX - cam.x;
@@ -415,7 +415,7 @@ export class Scene {
     const data = old && old.data.length === total * INSTANCE_BYTES ? old.data : new Uint8Array(total * INSTANCE_BYTES);
     const slots = old && old.slots.length === total ? old.slots : new Uint16Array(total);
     const w = new InstanceWriter(data);
-    const b: ChunkBatch = { version: t.version, data, slots, ranges, minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity, uploaded: false };
+    const b: ChunkBatch = { shape: t.shape, data, slots, ranges, minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity, uploaded: false };
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
       if (kind === 0) continue;
