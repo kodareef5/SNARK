@@ -1,0 +1,15 @@
+# Beyond assets/source/.gitignore: fittings is procedural, and its build writes these crops and masks from the
+# finished layers, keeping its first round beside them.
+tex/fittings/source/*.png
+tex/fittings/source/pass*/
+# The image model's run logs; its briefs and reports are kept.
+artist-transcript*.txt
+artist-last*.md
+# The concept's every generation (the chosen ones are copied up beside DESIGN.md, and manifest.json keeps all their
+# hashes), the guides and dimension sheet its scripts draw again, and the old renders it was shown.
+ref/concept/source/generations/
+ref/concept/source/guides/
+ref/concept/source/dimensions.png
+ref/concept/source/DESIGN.md
+ref/concept/source/gallery.html
+ref/concept/now/

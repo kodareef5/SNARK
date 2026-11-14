@@ -69,8 +69,8 @@ export class Harness {
 
   constructor(opts: Partial<GameOptions> = {}, seed = 1, clientFps = 60, host: HostOptions = {}, reg: Registry = coreRegistry()) {
     this.reg = reg;
-    // The host uses the real pack's clips and rigs, as a server started from the built client does.
-    this.host = createHost(reg, { clips: corePack().clips, rigs: corePack().header.rigs, ...host, game: opts });
+    // The host uses the real pack's clips and rigs, as a server started from the built client does, unless given others.
+    this.host = createHost(reg, { ...host, clips: host.clips ?? corePack().clips, rigs: host.rigs ?? corePack().header.rigs, game: opts });
     this.world = this.host.world;
     this.map = parseMap(this.host.mapFile!);
     this.hf = mapHeightfield(this.map);

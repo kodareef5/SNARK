@@ -1,0 +1,389 @@
+{
+  "seed": 141126,
+  "patches": [
+    {
+      "center_px": [
+        113.15342359810006,
+        1476.2030976889998
+      ],
+      "direction_degrees_image_down": 127.36462243179895,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1137.1099263405997,
+        409.3812944691954
+      ],
+      "direction_degrees_image_down": 14.485964477694601,
+      "style": "clawed"
+    },
+    {
+      "center_px": [
+        89.30803740452393,
+        422.1954040190494
+      ],
+      "direction_degrees_image_down": 159.08561791759274,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1033.7208475263185,
+        1339.4768331952744
+      ],
+      "direction_degrees_image_down": 20.297666273530844,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1645.1962415834018,
+        1967.8411760557597
+      ],
+      "direction_degrees_image_down": 172.30934624464683,
+      "style": "punched"
+    },
+    {
+      "center_px": [
+        603.9651845349645,
+        1958.9948725312734
+      ],
+      "direction_degrees_image_down": 124.27307527456794,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        649.0433958780541,
+        843.2052217146368
+      ],
+      "direction_degrees_image_down": 25.32683496220285,
+      "style": "clawed"
+    },
+    {
+      "center_px": [
+        1765.5624707685672,
+        904.9792410579382
+      ],
+      "direction_degrees_image_down": 112.51543547284373,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1193.6031183096084,
+        895.825257865605
+      ],
+      "direction_degrees_image_down": 52.86086960517782,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        195.09925215281737,
+        989.3304258095679
+      ],
+      "direction_degrees_image_down": 47.203429190649324,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1211.4065148014636,
+        1778.772622488139
+      ],
+      "direction_degrees_image_down": 176.96192282862063,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1522.133304971854,
+        1419.974033233226
+      ],
+      "direction_degrees_image_down": 104.20353062135169,
+      "style": "clawed"
+    },
+    {
+      "center_px": [
+        607.1763294447126,
+        358.8389982753838
+      ],
+      "direction_degrees_image_down": 135.3141641433665,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        219.6702590722025,
+        33.13205149906389
+      ],
+      "direction_degrees_image_down": 34.42093116737418,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        558.7551394105599,
+        1376.8167796901837
+      ],
+      "direction_degrees_image_down": 117.84200228855934,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1704.265929605919,
+        453.4855731705609
+      ],
+      "direction_degrees_image_down": 138.0191557626122,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        928.0628585643612,
+        124.63315858516103
+      ],
+      "direction_degrees_image_down": 5.291032912824956,
+      "style": "clawed"
+    },
+    {
+      "center_px": [
+        1926.2265739916263,
+        160.3406078003859
+      ],
+      "direction_degrees_image_down": 143.15711158349288,
+      "style": "punched"
+    },
+    {
+      "center_px": [
+        1408.513220121277,
+        230.33685246712798
+      ],
+      "direction_degrees_image_down": 129.1232187213428,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1872.9163255645467,
+        1243.4742653927824
+      ],
+      "direction_degrees_image_down": 171.477431510643,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1954.9638897086247,
+        1772.2642627209684
+      ],
+      "direction_degrees_image_down": 64.08325021578626,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        846.3513478355344,
+        1714.4558084197045
+      ],
+      "direction_degrees_image_down": 104.86773652196062,
+      "style": "clawed"
+    },
+    {
+      "center_px": [
+        340.2852669311367,
+        1699.4910878227163
+      ],
+      "direction_degrees_image_down": 22.776777662136794,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        368.8029023257336,
+        673.5805470088669
+      ],
+      "direction_degrees_image_down": 55.11902819460847,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1416.633797682663,
+        658.1092120498936
+      ],
+      "direction_degrees_image_down": 79.60664273354355,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1470.046701446895,
+        1026.5565133982843
+      ],
+      "direction_degrees_image_down": 88.27401225123451,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        9.018884239871113,
+        726.2560940811904
+      ],
+      "direction_degrees_image_down": 145.84490870633405,
+      "style": "clawed"
+    },
+    {
+      "center_px": [
+        869.6222940586845,
+        548.7166051031697
+      ],
+      "direction_degrees_image_down": 42.6281642154406,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        857.2109077181897,
+        1092.9852837326387
+      ],
+      "direction_degrees_image_down": 16.732970501590234,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1831.3896229758752,
+        1539.763412182831
+      ],
+      "direction_degrees_image_down": 135.77324955497448,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1298.802214584752,
+        1257.3584924446461
+      ],
+      "direction_degrees_image_down": 175.5016080162969,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1450.3894865732073,
+        1655.3778387364412
+      ],
+      "direction_degrees_image_down": 48.84927385642294,
+      "style": "clawed"
+    },
+    {
+      "center_px": [
+        535.7058337372764,
+        1127.8195023862377
+      ],
+      "direction_degrees_image_down": 117.13561040529886,
+      "style": "punched"
+    },
+    {
+      "center_px": [
+        1150.5401668928553,
+        2023.2205830465725
+      ],
+      "direction_degrees_image_down": 73.73824872091467,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        164.6083804243924,
+        1234.0924777245987
+      ],
+      "direction_degrees_image_down": 13.967745769905903,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        316.67443777611743,
+        304.8466605901235
+      ],
+      "direction_degrees_image_down": 126.34428345054317,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1654.751862566075,
+        170.25787275389507
+      ],
+      "direction_degrees_image_down": 43.53355209369554,
+      "style": "clawed"
+    },
+    {
+      "center_px": [
+        1258.9580725461299,
+        1513.1126552017918
+      ],
+      "direction_degrees_image_down": 105.21034040203135,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1413.694883148822,
+        1992.037100098072
+      ],
+      "direction_degrees_image_down": 11.785468657893281,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        970.9105899793901,
+        775.9027237795797
+      ],
+      "direction_degrees_image_down": 119.72170556213287,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        618.4872763531025,
+        1620.818439791949
+      ],
+      "direction_degrees_image_down": 77.09632472759125,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        806.4632906087452,
+        1334.0168601843889
+      ],
+      "direction_degrees_image_down": 118.55897747408758,
+      "style": "clawed"
+    },
+    {
+      "center_px": [
+        940.6074595811842,
+        1924.8086427749622
+      ],
+      "direction_degrees_image_down": 5.651334163494985,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        467.53129775739876,
+        146.1165745295723
+      ],
+      "direction_degrees_image_down": 144.57125131158585,
+      "style": "punched"
+    },
+    {
+      "center_px": [
+        422.80262455899924,
+        916.847749854425
+      ],
+      "direction_degrees_image_down": 29.146621884460817,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        119.53661618883461,
+        1836.623572161309
+      ],
+      "direction_degrees_image_down": 171.2425246761057,
+      "style": "batted"
+    },
+    {
+      "center_px": [
+        1981.284685770847,
+        1997.112092442536
+      ],
+      "direction_degrees_image_down": 132.77680091345752,
+      "style": "clawed"
+    },
+    {
+      "center_px": [
+        1732.9769370447418,
+        1749.3136114716233
+      ],
+      "direction_degrees_image_down": 154.56881694873303,
+      "style": "batted"
+    }
+  ]
+}

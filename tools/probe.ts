@@ -4,12 +4,14 @@
 // the page's asset fetches on a link of 300 ms, 1,500 KB/s and 2% loss. --twice loads the page a second time in the same
 // browser profile, and passes if that time no part of an asset file came over the network. --stress builds the stress
 // meshes in and has the page draw them: three rocks must each show the colour of the level their distance asks for.
+// --textured holds the shell's textures and materials to our decoders and the software rasterizer (tools/probe-textured.ts).
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/main.ts";
 import { buildClient } from "./build-client.ts";
+import { texturedProbe } from "./probe-textured.ts";
 
 const CANDIDATES = [
   process.env.CHROME,
@@ -26,6 +28,11 @@ if (!chrome) {
 }
 
 await buildClient({ stress: process.argv.includes("--stress") });
+if (process.argv.includes("--textured")) {
+  const passed = await texturedProbe(chrome);
+  console.log(passed ? "\nprobe: PASS" : "\nprobe: FAIL");
+  process.exit(passed ? 0 : 1);
+}
 const server = startServer({ dev: true, port: 0, probeScene: true });
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
 // Unless --no-voice is given, the page talks to itself through the server. VOICE_FLAGS give Chrome a fake microphone, grant it

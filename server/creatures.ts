@@ -148,6 +148,8 @@ export class Creatures {
     const ents = world.ents;
     const b = this.body;
     const mind = this.mind;
+    // Ways asked for are searched before anyone steers, within the tick's budget.
+    mind.plan(tick);
     let stepped = 0;
     for (this.cursor = this.awakeCount - 1; this.cursor >= 0; this.cursor--) {
       const e = this.awake[this.cursor]!;
@@ -167,7 +169,11 @@ export class Creatures {
       if (move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (ents.mode[e] === MODE_SWIM && ents.vy[e] === 0))) continue;
       ents.loadBody(e, b);
       const buttons = mind.buttons[e]! | pressed;
-      stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, world.reg.move[kind]!, TICK_DT);
+      const x0 = b.x;
+      const z0 = b.z;
+      const p = world.reg.move[kind]!;
+      stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, p, TICK_DT);
+      mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT);
       // A bite goes through the same action step as any blow.
       const jaws = world.reg.weapon[kind];
       let struck = false;

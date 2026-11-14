@@ -1,0 +1,82 @@
+[
+  {
+    "file": "source/01_house_front_initial.png",
+    "prompt": "P01",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 3446973,
+    "sha256": "b23a3fc1f1f62925d89a5df9343ba9c5a7cff63b6e74491f38596b4ab884d58e"
+  },
+  {
+    "file": "source/02_house_front_revised.png",
+    "prompt": "P02",
+    "width": 1881,
+    "height": 836,
+    "bytes": 3084331,
+    "sha256": "55c0c455d32815a4ae1b32c23736cd50ac318cb956e8f6ca04ac42168ce5a6a6"
+  },
+  {
+    "file": "source/03_pieces_walls.png",
+    "prompt": "P03",
+    "width": 1881,
+    "height": 836,
+    "bytes": 2847124,
+    "sha256": "df8c73757ac66adf5f842315f34421106fbded59149fb2de9ae7cd2a0352bdd4"
+  },
+  {
+    "file": "source/04_pieces_slabs.png",
+    "prompt": "P04",
+    "width": 2172,
+    "height": 724,
+    "bytes": 2293843,
+    "sha256": "ba77f20cd1a64d7856c0a879e757192f0bd02d9c6cb478315fd74ddd3ca53a5a"
+  },
+  {
+    "file": "source/05_pieces_structure_initial.png",
+    "prompt": "P05",
+    "width": 1881,
+    "height": 836,
+    "bytes": 2433819,
+    "sha256": "e9031de748fc6d8b7ec2515ecd8fa7517470fdc90aaad21d50521e34a042fd26"
+  },
+  {
+    "file": "source/06_pieces_stairs.png",
+    "prompt": "P06",
+    "width": 1448,
+    "height": 1086,
+    "bytes": 2288419,
+    "sha256": "b00dd237e07ba3596c0aa824dc64f5dae267b018629e6b2954971ff7e84b73fc"
+  },
+  {
+    "file": "source/07_house_front_final.png",
+    "prompt": "P07",
+    "width": 1882,
+    "height": 836,
+    "bytes": 2944112,
+    "sha256": "7a01bc973f62c86475153e5930b4bb56200675fb5e694d6360b5b13664ac73df"
+  },
+  {
+    "file": "source/08_house_far.png",
+    "prompt": "P08",
+    "width": 1882,
+    "height": 836,
+    "bytes": 2694635,
+    "sha256": "15a116296d8618721f1253ed72d9cbc159b7102b156bcf7adf7ba1d1e57c340a"
+  },
+  {
+    "file": "source/09_inside.png",
+    "prompt": "P09",
+    "width": 1672,
+    "height": 941,
+    "bytes": 3160494,
+    "sha256": "f17507bae40af2a19fe36782effede52d7063c3f5b9e1736a53de77f94b27665"
+  },
+  {
+    "file": "source/10_pieces_pillar_door.png",
+    "prompt": "P10",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 2201101,
+    "sha256": "71742f444368efe013f58c6bd19dfa48c6335faf756575a459a21d6ce6b7d608"
+  }
+]

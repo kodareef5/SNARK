@@ -1,0 +1,287 @@
+[
+  {
+    "name": "homestead_front_v03",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-e202f673-50c2-47e6-8028-a8c009205aa5.png",
+    "source": "source/generations/homestead_front_v03.png",
+    "final": "homestead_front.png",
+    "prompt": "source/prompts/homestead_front_v03.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/guides/homestead_front_geometry.png"
+    ],
+    "native_width": 1536,
+    "native_height": 1024,
+    "sha256": "0b421cbf2f9dadf385debbfed913acb4c28c9375771211c3cc0dce3e6de4d5a6"
+  },
+  {
+    "name": "piece_wall_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-1159a894-fbbc-4820-bd65-ff8e50290f14.png",
+    "source": "source/generations/piece_wall_v01.png",
+    "final": null,
+    "prompt": "source/prompts/piece_wall_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [],
+    "native_width": 1312,
+    "native_height": 1199,
+    "sha256": "9a0dc79c7c061d07a335e98db4ae66433a04779c768ddcb51448d05c77d344b8"
+  },
+  {
+    "name": "piece_foundation_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-b881ec38-16ec-42da-9205-34084a107ad2.png",
+    "source": "source/generations/piece_foundation_v01.png",
+    "final": "piece_foundation.png",
+    "prompt": "source/prompts/piece_foundation_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [],
+    "native_width": 1536,
+    "native_height": 1024,
+    "sha256": "f7b86a663b9cfe803943dc2feb514e64341d9cfc3d77d9196f74badfeb26e299"
+  },
+  {
+    "name": "piece_doorframe_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-49c66196-d5ca-4b92-9383-0b5dc646ff4c.png",
+    "source": "source/generations/piece_doorframe_v01.png",
+    "final": null,
+    "prompt": "source/prompts/piece_doorframe_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [],
+    "native_width": 1254,
+    "native_height": 1254,
+    "sha256": "5f361d08836240f9dcef24f33e827f66f27cad934b4423e9726ca44ab395347f"
+  },
+  {
+    "name": "piece_windowframe_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-923f7643-bae9-4076-9df3-319cdcc48a1b.png",
+    "source": "source/generations/piece_windowframe_v01.png",
+    "final": "piece_windowframe.png",
+    "prompt": "source/prompts/piece_windowframe_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [],
+    "native_width": 1254,
+    "native_height": 1254,
+    "sha256": "4a6825d06d1e30968b7b4fdc5f7996e8036f9be47a281ea543e0655f93d2cd2e"
+  },
+  {
+    "name": "piece_ceiling_above_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-2fe9bdf8-5719-442c-96c9-eb9671cc89b5.png",
+    "source": "source/generations/piece_ceiling_above_v01.png",
+    "final": "piece_ceiling_above.png",
+    "prompt": "source/prompts/piece_ceiling_above_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [],
+    "native_width": 1536,
+    "native_height": 1024,
+    "sha256": "1afcfaa665064aeabc8fe86a4ca5eb05303bc3a1e55214735aff07e28ea2fd63"
+  },
+  {
+    "name": "piece_pillar_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-a679e79e-b217-4677-836e-0ee2a7f69588.png",
+    "source": "source/generations/piece_pillar_v01.png",
+    "final": "piece_pillar.png",
+    "prompt": "source/prompts/piece_pillar_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [],
+    "native_width": 724,
+    "native_height": 2172,
+    "sha256": "ed1bc5ea69a4b9472a6b24915f760db299053a1c215e0c2a88fb3cbd317d74c2"
+  },
+  {
+    "name": "piece_door_shut_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-4f9e775d-9090-4be1-99ba-0241864dd358.png",
+    "source": "source/generations/piece_door_shut_v01.png",
+    "final": "piece_door_shut.png",
+    "prompt": "source/prompts/piece_door_shut_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [],
+    "native_width": 977,
+    "native_height": 1610,
+    "sha256": "d7fba14f79c522eaa155a90501f09baa22901be10bb9ee271b8d931bcc01316b"
+  },
+  {
+    "name": "piece_ceiling_below_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-04dfc663-549e-4ad4-9a40-7361f2e5db79.png",
+    "source": "source/generations/piece_ceiling_below_v01.png",
+    "final": "piece_ceiling_below.png",
+    "prompt": "source/prompts/piece_ceiling_below_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/generations/piece_ceiling_above_v01.png"
+    ],
+    "native_width": 1536,
+    "native_height": 1024,
+    "sha256": "9f30c48decc0fe7750f6c29ea753486cbe546574f70fdc0a7c33906836278f84"
+  },
+  {
+    "name": "piece_door_open_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-4290dd80-5a6c-45c1-a387-65c80adc6758.png",
+    "source": "source/generations/piece_door_open_v01.png",
+    "final": "piece_door_open.png",
+    "prompt": "source/prompts/piece_door_open_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/generations/piece_door_shut_v01.png"
+    ],
+    "native_width": 977,
+    "native_height": 1609,
+    "sha256": "48a833200d5a0d8728372dbb974de1ba4ed6fef7fbe4fe480e54b913f39b1e84"
+  },
+  {
+    "name": "homestead_above_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-da2249b8-c45b-4677-8908-72af7945d9ca.png",
+    "source": "source/generations/homestead_above_v01.png",
+    "final": "homestead_above.png",
+    "prompt": "source/prompts/homestead_above_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/guides/homestead_above_geometry.png",
+      "source/generations/homestead_front_v03.png"
+    ],
+    "native_width": 1536,
+    "native_height": 1024,
+    "sha256": "9213714e0ddc90c204ff8e20900cd17fff7313de793d48a56989d72f82a1bdbf"
+  },
+  {
+    "name": "homestead_field_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-a1fdefb5-fa6a-40b8-853e-f41a62b95113.png",
+    "source": "source/generations/homestead_field_v01.png",
+    "final": "homestead_field.png",
+    "prompt": "source/prompts/homestead_field_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/guides/homestead_field_geometry.png",
+      "source/generations/homestead_front_v03.png"
+    ],
+    "native_width": 1536,
+    "native_height": 1024,
+    "sha256": "4781c52664c6bd3fc13581b55caa07b2642925d0de417c1dbb218fad39169cb9"
+  },
+  {
+    "name": "piece_stairs_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-7cb3161b-3148-4421-be0a-476b573f71bc.png",
+    "source": "source/generations/piece_stairs_v01.png",
+    "final": null,
+    "prompt": "source/prompts/piece_stairs_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/guides/stairs_geometry.png"
+    ],
+    "native_width": 1536,
+    "native_height": 1024,
+    "sha256": "2691f18da6ef4db7a9c3f8cb4922f95eb6f51c0fab3c8f524af24e6eb789a72a"
+  },
+  {
+    "name": "piece_wall_v02",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-21ce0ad3-db22-4990-b329-f89ede438a2f.png",
+    "source": "source/generations/piece_wall_v02.png",
+    "final": "piece_wall.png",
+    "prompt": "source/prompts/piece_wall_v02.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/generations/piece_wall_v01.png"
+    ],
+    "native_width": 1312,
+    "native_height": 1199,
+    "sha256": "e4c709b25f809a4807d67a23a4a87e0765e5b9c709576f791409ed078689f38f"
+  },
+  {
+    "name": "piece_stairs_v02",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-ad6beb1a-37d3-45d4-b0d6-413fdb8a1a44.png",
+    "source": "source/generations/piece_stairs_v02.png",
+    "final": "piece_stairs.png",
+    "prompt": "source/prompts/piece_stairs_v02.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/generations/piece_stairs_v01.png"
+    ],
+    "native_width": 1536,
+    "native_height": 1024,
+    "sha256": "3d47e5ef9b4f1adf7b832553f5a6e285296637ff64fee3dae586b1d4c6313edd"
+  },
+  {
+    "name": "piece_doorframe_v02",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-16553ecf-b552-4625-8354-bf11982fa668.png",
+    "source": "source/generations/piece_doorframe_v02.png",
+    "final": null,
+    "prompt": "source/prompts/piece_doorframe_v02.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/guides/doorframe_geometry.png"
+    ],
+    "native_width": 1254,
+    "native_height": 1254,
+    "sha256": "c20315309c5b87009d7dcbc4c274f80ec5c9784dceae82db88323fa9146a4efc"
+  },
+  {
+    "name": "details_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-82b2bc02-b39e-425c-bb54-244006415ac6.png",
+    "source": "source/generations/details_v01.png",
+    "final": "details.png",
+    "prompt": "source/prompts/details_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/generations/piece_wall_v02.png",
+      "source/generations/piece_foundation_v01.png",
+      "source/generations/piece_door_shut_v01.png",
+      "source/generations/piece_ceiling_below_v01.png",
+      "source/generations/piece_pillar_v01.png"
+    ],
+    "native_width": 1448,
+    "native_height": 1086,
+    "sha256": "8e804f7202f7c7cb3f1af5de7c68717ae052c3d351523f70b7fd0a93de95596c"
+  },
+  {
+    "name": "piece_doorframe_v03",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-2a6fe491-809c-4620-a135-6354a2ae8f41.png",
+    "source": "source/generations/piece_doorframe_v03.png",
+    "final": null,
+    "prompt": "source/prompts/piece_doorframe_v03.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/generations/piece_doorframe_v02.png"
+    ],
+    "native_width": 1254,
+    "native_height": 1254,
+    "sha256": "fd1025b5abf7a28318690e3b5903842544dce39f999df9a77cc434717fdacb8f"
+  },
+  {
+    "name": "piece_doorframe_v04",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-4ea33131-30b7-4fbc-931f-4de6fc3b7a18.png",
+    "source": "source/generations/piece_doorframe_v04.png",
+    "final": "piece_doorframe.png",
+    "prompt": "source/prompts/piece_doorframe_v04.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/generations/piece_doorframe_v03.png"
+    ],
+    "native_width": 1254,
+    "native_height": 1254,
+    "sha256": "07a5e0bc863df0906b00bb258ff776f43f713ce1743740a7fb9cd86d8f40d5f9"
+  },
+  {
+    "name": "homestead_front_v01",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-d60b7782-72aa-4c5e-899a-0b252827eb07.png",
+    "source": "source/generations/homestead_front_v01.png",
+    "final": null,
+    "prompt": "source/prompts/homestead_front_v01.txt",
+    "tool": "built-in image_gen",
+    "references": [],
+    "native_width": 1672,
+    "native_height": 941,
+    "sha256": "8321fd0c54a613781a24be68619a3588ea43ba6da3c6c48be68b579a8e8dfd0b"
+  },
+  {
+    "name": "homestead_front_v02",
+    "path": "/home/user/.codex/generated_images/01a1db89-9b02-7ff0-a377-adff9f4022e9/exec-1b127bd6-480b-4c78-8ef9-d8f85a69413b.png",
+    "source": "source/generations/homestead_front_v02.png",
+    "final": null,
+    "prompt": "source/prompts/homestead_front_v02.txt",
+    "tool": "built-in image_gen",
+    "references": [
+      "source/guides/homestead_front_geometry.png",
+      "source/generations/homestead_front_v01.png"
+    ],
+    "native_width": 1672,
+    "native_height": 941,
+    "sha256": "031b7bfac333d330f8fc547e0f68e7c532f7b865a5359b25273582a27da5a359"
+  }
+]

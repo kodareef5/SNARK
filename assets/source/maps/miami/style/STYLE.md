@@ -39,3 +39,23 @@ The first finish lost the paper and forced all 11,919 footprints into every scal
 - **Narrative:** actual saved missing spans and flooded streets stay in the rendering. Symbols communicate the drowned district at far scales; exact corridors and open rooms take over close up. Never add cranes to residential islands or invented wrecks to empty water.
 
 `paper-study.png` is the first round-two art direction study, retained because it was an input to the accepted overview. Its geometry is not authoritative. Its elastic finishing experiment was rejected for warping architecture. The production log records the subsequent corrections.
+
+## Round three: the bay has a geography of its own
+
+Replace the shore-distance glow with hydrographic wash guided by NOAA's coastal
+DEM: slate-blue port cuts and turning areas, the narrow western waterway,
+irregular jade southern flats and submerged eastern bands. A quay may meet
+deep water directly. Avoid an identical soft rim around each island. Keep
+marker-readable midtones, real brush edges and rag tooth, with fewer, larger
+water strokes at distant scales. Each closer view gets its own marks.
+
+Preserve accepted district paint. Selected far landmarks have distinct
+silhouettes: banyan and circular arcade, unequal drowned towers with a broken
+link, reed-filled oval bowl, stepped Deco gallery, and three mangrove-swallowed
+tanks. They are generalized future-district pictures, not new surveyed
+footprints. Native room plans remain authoritative at z2/z3. The four saved
+wrecks have individual interiors without changing their positions.
+
+Mainland quays keep their real alignments with a living pressure line, bounded
+subpixel deviations and pen lifts. No mechanical parallel dash. Union water
+polygons before tracing: database record boundaries are not coastlines.

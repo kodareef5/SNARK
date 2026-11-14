@@ -2,7 +2,10 @@
 // water and capsule tests movement uses, so a way found is one a body can walk. Ground floor only: a floor above the ground is
 // a roof or an obstacle. Costs are integers and ties are broken by cell, so the same world gives the same way on every engine.
 
+import { CHUNK_SIZE } from "../coords.ts";
 import { capsuleFree, type CollisionWorld } from "./collide.ts";
+import { frame, frameOf } from "./frame.ts";
+import { Found, type StructureStore } from "./structures.ts";
 
 /** What the search needs of a body. MoveParams has all of it. */
 export interface Walker {
@@ -63,6 +66,9 @@ const NARROW = 0.75;
 /** Metres between the points tried along a straight line. */
 const SAMPLE = 0.5;
 
+/** Metres from a doorway's wall within which a cell may stand on the line through the doorway's middle. */
+const DOOR_REACH = 2;
+
 // Directions in a ring, odd ones diagonal. The opposite of d is d + 4.
 const DX = [1, 1, 0, -1, -1, -1, 0, 1];
 const DZ = [0, 1, 1, 1, 0, -1, -1, -1];
@@ -79,6 +85,12 @@ export class PathFinder {
   body: Walker;
   /** Cells one search may expand. */
   budget = PATH_BUDGET;
+  /**
+   * Per structure kind, 1 for a wall with a doorway in its middle (Registry.doorway), or null. A cell beside a doorway whose
+   * middle is blocked may stand on the line through the doorway's middle instead, so a body only a little narrower than the
+   * doorway finds it wherever the wall stands on the grid.
+   */
+  doorways: Uint8Array | null = null;
   /** The last way found: `count` points in metres, the first where it began. */
   readonly x: number[] = [];
   readonly z: number[] = [];
@@ -95,6 +107,25 @@ export class PathFinder {
   private readonly edge = new Uint8Array(SIDE * SIDE);
   private readonly g = new Int32Array(SIDE * SIDE);
   private readonly from = new Int32Array(SIDE * SIDE);
+  /** Per free cell, where a body stands in it, from its middle. Zero but beside a doorway. */
+  private readonly offX = new Float32Array(SIDE * SIDE);
+  private readonly offZ = new Float32Array(SIDE * SIDE);
+  private readonly doors = new Found();
+  private doorX = 0;
+  private doorZ = 0;
+  // The search under way: its ends in metres, its start and goal cells (-1 for a goal beyond the grid) and the goal's
+  // place on the grid, the cell it ended on (-1 until it has), and the cell reached nearest the goal.
+  private fromX = 0;
+  private fromZ = 0;
+  private toX = 0;
+  private toZ = 0;
+  private start = -1;
+  private goal = -1;
+  private gi = 0;
+  private gj = 0;
+  private end = -1;
+  private best = -1;
+  private bestH = 0;
   // The open list: a binary heap of cells, lowest key first. A key is cost so far plus estimate, then the estimate alone.
   private key = new Float64Array(4096);
   private cell = new Int32Array(4096);
@@ -120,37 +151,65 @@ export class PathFinder {
 
   /** Fills `x`, `z` and `count` and returns a PATH_ value. */
   find(fromX: number, fromZ: number, toX: number, toZ: number): number {
+    if (!this.begin(fromX, fromZ, toX, toZ)) return PATH_NONE;
+    this.run(this.budget);
+    return this.finish();
+  }
+
+  /**
+   * Starts a search that `run` carries on, so it may be spread over several calls. False if there is nothing to search,
+   * because no cell near the start or the goal can be stood on: the answer is then PATH_NONE.
+   */
+  begin(fromX: number, fromZ: number, toX: number, toZ: number): boolean {
     this.count = 0;
     this.expanded = 0;
     this.cost = 0;
+    this.end = -1;
+    this.open = 0;
+    this.fromX = fromX;
+    this.fromZ = fromZ;
+    this.toX = toX;
+    this.toZ = toZ;
     this.ox = Math.floor(fromX) - PATH_REACH;
     this.oz = Math.floor(fromZ) - PATH_REACH;
     this.state.fill(0);
     this.edge.fill(0);
     const start = this.nearest(fromX, fromZ, true);
-    if (start < 0) return PATH_NONE;
+    this.start = start;
+    if (start < 0) return false;
     let gi = Math.floor(toX) - this.ox;
     let gj = Math.floor(toZ) - this.oz;
     let goal = -1;
     if (gi >= 0 && gj >= 0 && gi < SIDE && gj < SIDE) {
       goal = this.nearest(toX, toZ, false);
-      if (goal < 0) return PATH_NONE;
+      if (goal < 0) {
+        this.start = -1;
+        return false;
+      }
       gi = goal % SIDE;
       gj = (goal - gi) / SIDE;
     }
+    this.goal = goal;
+    this.gi = gi;
+    this.gj = gj;
+    this.g.fill(0x7fffffff);
+    this.g[start] = 0;
+    this.from[start] = -1;
+    this.push(start, 0, estimate(start % SIDE, Math.floor(start / SIDE), gi, gj));
+    this.best = start;
+    this.bestH = 0x7fffffff;
+    return true;
+  }
 
+  /** Expands up to `cells` more cells, and never more than `budget` in all. True once the search is over. */
+  run(cells: number): boolean {
+    if (this.start < 0) return true;
     const g = this.g;
     const from = this.from;
     const state = this.state;
-    g.fill(0x7fffffff);
-    g[start] = 0;
-    from[start] = -1;
-    this.open = 0;
-    this.push(start, 0, estimate(start % SIDE, Math.floor(start / SIDE), gi, gj));
-    let end = -1;
-    let best = start;
-    let bestH = 0x7fffffff;
-    while (this.open > 0 && this.expanded < this.budget) {
+    const { goal, gi, gj } = this;
+    const stop = Math.min(this.budget, this.expanded + cells);
+    while (this.end < 0 && this.open > 0 && this.expanded < stop) {
       const c = this.pop();
       if ((state[c]! & CLOSED) !== 0) continue;
       state[c] = state[c]! | CLOSED;
@@ -158,12 +217,12 @@ export class PathFinder {
       const i = c % SIDE;
       const j = (c - i) / SIDE;
       const h = estimate(i, j, gi, gj);
-      if (h < bestH) {
-        bestH = h;
-        best = c;
+      if (h < this.bestH) {
+        this.bestH = h;
+        this.best = c;
       }
       if (c === goal || (goal < 0 && (i === 0 || j === 0 || i === SIDE - 1 || j === SIDE - 1))) {
-        end = c;
+        this.end = c;
         break;
       }
       for (let d = 0; d < 8; d++) {
@@ -179,32 +238,48 @@ export class PathFinder {
         this.push(n, cost, estimate(ni, nj, gi, gj));
       }
     }
-    const status = end < 0 ? PATH_SHORT : goal < 0 ? PATH_LEG : PATH_FOUND;
-    if (end < 0) end = best;
-    if (end === start && status !== PATH_FOUND) return PATH_NONE;
-    this.cost = g[end]!;
+    return this.end >= 0 || this.open === 0 || this.expanded >= this.budget;
+  }
 
-    // The cells from the start to the end, then their middles as points, after where the body is.
+  /** After `run` has said the search is over: fills `x`, `z` and `count` and returns a PATH_ value, as `find` does. */
+  finish(): number {
+    const start = this.start;
+    if (start < 0) return PATH_NONE;
+    let end = this.end;
+    const status = end < 0 ? PATH_SHORT : this.goal < 0 ? PATH_LEG : PATH_FOUND;
+    if (end < 0) end = this.best;
+    if (end === start && status !== PATH_FOUND) return PATH_NONE;
+    this.cost = this.g[end]!;
+
+    // The cells from the start to the end, then where a body stands in each as points, after where the body is.
     const trail = this.trail;
     trail.length = 0;
-    for (let c = end; c >= 0; c = from[c]!) trail.push(c);
+    for (let c = end; c >= 0; c = this.from[c]!) trail.push(c);
     const px = this.px;
     const pz = this.pz;
     px.length = pz.length = 0;
-    px.push(fromX);
-    pz.push(fromZ);
+    px.push(this.fromX);
+    pz.push(this.fromZ);
     for (let k = trail.length - 1; k >= 0; k--) {
-      const i = trail[k]! % SIDE;
-      px.push(this.ox + i + 0.5);
-      pz.push(this.oz + (trail[k]! - i) / SIDE + 0.5);
+      px.push(this.pointX(trail[k]!));
+      pz.push(this.pointZ(trail[k]!));
     }
     // Then the goal itself, where a body can stand on it and walk to it from the last cell.
+    const { toX, toZ } = this;
     if (status === PATH_FOUND && groundAt(this.world, this.body, toX, toZ) === GROUND_FREE && this.sight(px[px.length - 1]!, pz[pz.length - 1]!, toX, toZ)) {
       px.push(toX);
       pz.push(toZ);
     }
     this.straighten();
     return status;
+  }
+
+  private pointX(c: number): number {
+    return this.ox + (c % SIDE) + 0.5 + this.offX[c]!;
+  }
+
+  private pointZ(c: number): number {
+    return this.oz + Math.floor(c / SIDE) + 0.5 + this.offZ[c]!;
   }
 
   /** True while a body at (x, z), bound for point `next` of the last way, can still walk the rest of it. */
@@ -265,9 +340,48 @@ export class PathFinder {
     const i = c % SIDE;
     const x = this.ox + i;
     const z = this.oz + (c - i) / SIDE;
-    const ok = groundAt(this.world, this.body, x + 0.5, z + 0.5) === GROUND_FREE && !this.avoided.has(x * 65536 + z);
+    this.offX[c] = this.offZ[c] = 0;
+    const ground = groundAt(this.world, this.body, x + 0.5, z + 0.5);
+    let ok = ground === GROUND_FREE;
+    // Blocked beside a doorway, the cell's point moves onto the line through the doorway's middle.
+    if (ground === GROUND_SOLID && this.doorways !== null && this.onDoor(x + 0.5, z + 0.5)) {
+      this.offX[c] = this.doorX - x - 0.5;
+      this.offZ[c] = this.doorZ - z - 0.5;
+      ok = true;
+    }
+    ok &&= !this.avoided.has(x * 65536 + z);
     this.state[c] = s | KNOWN | (ok ? FREE : 0);
     return ok;
+  }
+
+  /**
+   * Whether (x, z) is within half a metre of the line through a doorway's middle, near its wall, and a body can stand on that
+   * line there. If so, that place is left in doorX and doorZ.
+   */
+  private onDoor(x: number, z: number): boolean {
+    const structs = this.world.structs;
+    const found = this.doors;
+    const n = structs.query(x - DOOR_REACH, z - DOOR_REACH, x + DOOR_REACH, z + DOOR_REACH, found);
+    for (let k = 0; k < n; k++) {
+      const ref = found.refs[k]!;
+      const t = structs.chunks[Math.floor(ref / 65536)]!;
+      const slot = ref & 0xffff;
+      if (this.doorways![t.kind[slot]!] !== 1) continue;
+      // The doorway's middle runs along the piece's +Z, through its centre.
+      frameOf(t.yaw[slot]!);
+      const dx = x - t.x[slot]!;
+      const dz = z - t.z[slot]!;
+      const along = dx * frame.sin + dz * frame.cos;
+      const across = dx * frame.cos - dz * frame.sin;
+      if (along > DOOR_REACH || along < -DOOR_REACH || across > 0.5 || across < -0.5) continue;
+      const px = t.x[slot]! + along * frame.sin;
+      const pz = t.z[slot]! + along * frame.cos;
+      if (groundAt(this.world, this.body, px, pz) !== GROUND_FREE) continue;
+      this.doorX = px;
+      this.doorZ = pz;
+      return true;
+    }
+    return false;
   }
 
   /** Whether any of the eight cells around (i, j) is not free, or cannot be stepped to: a thin wall may stand between two free cells. */
@@ -285,7 +399,10 @@ export class PathFinder {
     return yes;
   }
 
-  /** Whether a body can go from cell (i, j) to the free cell in direction `d`: the point between them is free, and no corner is cut. */
+  /**
+   * Whether a body can go from free cell (i, j) to the free cell in direction `d`: the point between them is free, or beside a
+   * doorway's middle, and no corner is cut.
+   */
   private passes(i: number, j: number, d: number): boolean {
     // An edge is kept at the end from which its direction is one of the first four.
     if (d >= 4) {
@@ -297,14 +414,18 @@ export class PathFinder {
     const e = this.edge[c]!;
     const bit = 1 << d;
     if ((e & bit) !== 0) return (e & (bit << 4)) !== 0;
-    let ok = groundAt(this.world, this.body, this.ox + i + 0.5 + DX[d]! / 2, this.oz + j + 0.5 + DZ[d]! / 2) === GROUND_FREE;
+    const n = c + DZ[d]! * SIDE + DX[d]!;
+    const x = (this.pointX(c) + this.pointX(n)) / 2;
+    const z = (this.pointZ(c) + this.pointZ(n)) / 2;
+    const ground = groundAt(this.world, this.body, x, z);
+    let ok = ground === GROUND_FREE || (ground === GROUND_SOLID && this.doorways !== null && this.onDoor(x, z));
     if (ok && (d & 1) !== 0) ok = this.free(c + DX[d]!) && this.free(c + DZ[d]! * SIDE);
     this.edge[c] = e | bit | (ok ? bit << 4 : 0);
     return ok;
   }
 
   /**
-   * The free cell whose middle is nearest (x, z) and within NEAR metres of it, or -1. With `seen`, one a body at the point
+   * The free cell whose point is nearest (x, z) and within NEAR metres of it, or -1. With `seen`, one a body at the point
    * can walk straight to comes first, so a start beside a wall is not moved to the wall's other side.
    */
   private nearest(x: number, z: number, seen: boolean): number {
@@ -318,8 +439,8 @@ export class PathFinder {
     for (let j = cj - NEAR; j <= cj + NEAR; j++) {
       for (let i = ci - NEAR; i <= ci + NEAR; i++) {
         if (i < 0 || j < 0 || i >= SIDE || j >= SIDE || !this.free(j * SIDE + i)) continue;
-        const mx = this.ox + i + 0.5;
-        const mz = this.oz + j + 0.5;
+        const mx = this.pointX(j * SIDE + i);
+        const mz = this.pointZ(j * SIDE + i);
         const d = (mx - x) * (mx - x) + (mz - z) * (mz - z);
         if (d > NEAR * NEAR || (bestSeen && d >= bestD)) continue;
         // One in sight beats one that is not. Between two alike, the nearer wins.
@@ -379,6 +500,31 @@ export class PathFinder {
     cell[at] = c;
     return top;
   }
+}
+
+/**
+ * A number that changes whenever a structure or a node is put down, taken away, moved or turned in a chunk that meets the
+ * rectangle, so a way found across it may be kept until then.
+ */
+export function shapeStamp(w: CollisionWorld, minX: number, minZ: number, maxX: number, maxZ: number): number {
+  const dims = w.structs.dims;
+  const cx0 = Math.max(0, Math.floor(minX / CHUNK_SIZE));
+  const cz0 = Math.max(0, Math.floor(minZ / CHUNK_SIZE));
+  const cx1 = Math.min(dims.chunksX - 1, Math.floor(maxX / CHUNK_SIZE));
+  const cz1 = Math.min(dims.chunksZ - 1, Math.floor(maxZ / CHUNK_SIZE));
+  let h = 0;
+  for (let cz = cz0; cz <= cz1; cz++) {
+    for (let cx = cx0; cx <= cx1; cx++) {
+      h = mix(h, w.structs, cz * dims.chunksX + cx);
+      if (w.nodes) h = mix(h, w.nodes, cz * dims.chunksX + cx);
+    }
+  }
+  return h;
+}
+
+/** Any one chunk's change changes the result, as 31 is odd. */
+function mix(h: number, store: StructureStore, chunk: number): number {
+  return (Math.imul(h, 31) + (store.chunks[chunk]?.shape ?? 0)) | 0;
 }
 
 /** The cost of the way from (i, j) to (gi, gj) over open ground, which no way undercuts. */
