@@ -146,6 +146,10 @@ export class Persistence {
     this.dirtyChunks.clear();
     if (store.fresh) world.structs.chunks.forEach((t, chunk) => t && this.dirtyChunks.add(chunk));
     for (const rec of store.loadEntities()) this.records.byPid.set(rec.pid, rec);
+    // What the operator chose to go on without leaves the save in the next commit, so that choice is made once.
+    for (const chunk of store.dropped.chunks) this.dirtyChunks.add(chunk);
+    for (const pid of store.dropped.changed) this.records.dirty.add(pid);
+    for (const pid of store.dropped.pids) this.records.deleted.push(pid);
     for (const [name, pid] of store.survivors()) this.survivors.set(name, pid);
     this.journalSeq = this.durableSeq = store.lastJournalSeq();
     return { fresh: store.fresh, tick: world.tick, structures, records: this.records.byPid.size };

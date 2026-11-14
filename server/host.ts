@@ -299,7 +299,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const items = new Items(world, records);
   items.bus = bus;
   if (persistence) {
-    items.restore(loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null));
+    const ledger = loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null);
+    items.restore(ledger);
+    const dropped = persistence.store.dropped;
+    if (dropped.count.size > 0) {
+      // What went with the content an operator chose to go on without leaves the ledger too. A save with no ledger never counted it.
+      if (ledger !== null) for (const [item, n] of dropped.burn) items.burned[item] = items.burned[item]! + n;
+      items.dirty = true;
+      say(`left out, as --allow-missing-content asked, and gone from the save at its next commit: ${[...dropped.count].map(([id, n]) => `${n} of ${id}`).join(", ")}`);
+      if (dropped.burn.size > 0) say(`what they held went with them: ${[...dropped.burn].map(([item, n]) => `${n} of ${reg.ids[item]}`).join(", ")}`);
+    }
     const wrong = items.audit();
     if (wrong.length > 0 && !opts.allowLedgerMismatch) throw new Error("the item ledger does not balance:\n" + wrong.join("\n"));
     persistence.sidecar("ledger", items);

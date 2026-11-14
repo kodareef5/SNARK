@@ -67,6 +67,8 @@ const COMP_BUFFS = 19;
 const MAX_PART = 1 << 20;
 /** The most slots a converted COMP_INVENTORY may be laid out in. */
 const MAX_INVENTORY_SLOTS = 255;
+/** How an operator goes on from a save that uses content the build lacks. */
+const WITHOUT = "start with the content it was made with, or with --allow-missing-content to go on without what is made of it, which is then dropped for good";
 /** Per structure slot in a chunk blob: kind, x, y, z, yaw, owner, hp, mod. */
 const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
 
@@ -122,6 +124,16 @@ export class WorldStore {
   readonly toRuntime: Uint16Array;
   /** Content ids present in the save but not in this build. */
   readonly missingContent: string[] = [];
+  /** Their saved indices. */
+  private readonly lost = new Map<number, string>();
+  /**
+   * What loading left out because its content is gone and the operator chose to go on. `count` is how many things of each
+   * missing id. `burn` is what went with them and still has content, by item, for the ledger to burn: what a record of a
+   * missing kind held, the rounds in a missing weapon. `pids` are the records of a missing kind, and `changed` and `chunks`
+   * the records and chunks that held some of it. The next commit deletes the first and writes the others again
+   * (Persistence.load), so one start is enough.
+   */
+  readonly dropped = { count: new Map<string, number>(), burn: new Map<number, number>(), pids: [] as number[], changed: new Set<number>(), chunks: new Set<number>() };
   /** Saved indices of ids that were renamed to more than one thing, and what they are now. */
   private readonly split = new Map<number, readonly number[]>();
   /** No commit has landed in the file, so it holds no world. */
@@ -218,11 +230,14 @@ export class WorldStore {
           // What was saved under the old id is read as the new one, and written back under the new one's own row.
           this.toRuntime[idx] = renamed[0]!;
           if (renamed.length > 1) this.split.set(idx, renamed);
-        } else this.missingContent.push(id);
+        } else {
+          this.missingContent.push(id);
+          this.lost.set(idx, id);
+        }
       }
       if (this.missingContent.length > 0 && !opts.allowMissingContent && this.referencesMissing()) {
         db.close();
-        throw new Error(`save uses content this build does not have: ${this.missingContent.join(", ")}`);
+        throw new Error(`save uses content this build does not have: ${this.missingContent.join(", ")}: ${WITHOUT}`);
       }
 
       this.putMeta = db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
@@ -312,7 +327,12 @@ export class WorldStore {
       const hp = take(Float32Array);
       const mod = take(Uint32Array);
       for (let s = 0; s < n; s++) {
-        structs.put(row.chunk, s, this.toRuntime[kind[s]!]!, x[s]!, y[s]!, z[s]!, yaw[s]!, owner[s]!, hp[s]!, mod[s]!);
+        const now = this.toRuntime[kind[s]!]!;
+        if (now === 0 && kind[s] !== 0 && this.allowMissing) {
+          this.drop(kind[s]!, 1);
+          this.dropped.chunks.add(row.chunk);
+        }
+        structs.put(row.chunk, s, now, x[s]!, y[s]!, z[s]!, yaw[s]!, owner[s]!, hp[s]!, mod[s]!);
       }
       structs.setVersion(row.chunk, row.version);
     }
@@ -524,7 +544,9 @@ export class WorldStore {
     this.unrated.clear();
     for (const row of rows) {
       const kind = this.toRuntime[row.kind]!;
-      if (kind === 0) continue; // The content is gone and the operator chose to proceed.
+      if (kind === 0 && !this.allowMissing) continue;
+      // Past here a kind of 0 is content that is gone, which the operator chose to go on without. The record is read all
+      // the same, because what it held leaves the ledger with it.
       const rec = new EntityRecord(row.pid, kind);
       rec.x = row.x;
       rec.y = row.y;
@@ -546,8 +568,9 @@ export class WorldStore {
           const pairs: [number, number][] = [];
           let need = 0;
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
-            const item = this.item(c.varint(), row.pid);
+            const saved = c.varint();
             const count = c.varint();
+            const item = this.item(saved, row.pid, count);
             if (item === 0) continue;
             pairs.push([item, count]);
             need += Math.ceil(count / (this.reg.stack[item] || 1));
@@ -561,8 +584,9 @@ export class WorldStore {
           const inv = (rec.inv = new Inventory(c.varint()));
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
             const slot = c.varint();
-            const item = this.item(c.varint(), row.pid);
+            const saved = c.varint();
             const count = c.varint();
+            const item = this.item(saved, row.pid, count);
             const quality = c.u8();
             const dur = c.varint();
             const spoilAt = c.varint();
@@ -573,18 +597,26 @@ export class WorldStore {
           const inv = (rec.inv = new Inventory(cap, c.varint()));
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
             const slot = c.varint();
-            const item = this.item(c.varint(), row.pid);
+            const saved = c.varint();
             const count = c.varint();
+            const item = this.item(saved, row.pid, count);
             const quality = c.u8();
             const dur = c.varint();
             const spoilAt = c.varint();
             const holds = c.bool();
             // 0 is "none". Anything else must be content this build has.
-            const held = (saved: number): number => (saved === 0 ? 0 : this.item(saved, row.pid));
-            const ammo = holds ? held(c.varint()) : 0;
+            const savedAmmo = holds ? c.varint() : 0;
             const loaded = holds ? c.u8() : 0;
-            const attach = holds ? held(c.varint()) : 0;
-            if (item === 0 || slot >= inv.cap) continue;
+            const savedAttach = holds ? c.varint() : 0;
+            const ammo = savedAmmo === 0 ? 0 : this.item(savedAmmo, row.pid, loaded);
+            const attach = savedAttach === 0 ? 0 : this.item(savedAttach, row.pid, 1);
+            if (item === 0) {
+              // The rounds in a weapon that is gone, and what was fixed to it, go with it.
+              if (ammo !== 0 && loaded > 0) this.burn(ammo, loaded);
+              if (attach !== 0) this.burn(attach, 1);
+              continue;
+            }
+            if (slot >= inv.cap) continue;
             inv.set(slot, item, count, quality, dur, spoilAt);
             if (holds) inv.setGear(slot, ammo, ammo === 0 ? 0 : loaded, attach);
           }
@@ -687,10 +719,34 @@ export class WorldStore {
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }
       if (r.overflow) throw new Error(`entity ${row.pid}: truncated record`);
+      if (kind === 0) {
+        this.drop(row.kind, 1);
+        this.dropped.pids.push(row.pid);
+        this.dropped.changed.delete(row.pid);
+        const inv = rec.inv;
+        for (let s = 0; inv && s < inv.cap; s++) {
+          if (inv.item[s] === 0) continue;
+          this.burn(inv.item[s]!, inv.count[s]!);
+          if (inv.loaded[s]! > 0) this.burn(inv.ammo[s]!, inv.loaded[s]!);
+          if (inv.attach[s] !== 0) this.burn(inv.attach[s]!, 1);
+        }
+        continue;
+      }
       if (stale && rec.vitals) this.unrated.add(row.pid);
       out.push(rec);
     }
     return out;
+  }
+
+  /** Counts `n` things of the missing content with saved index `saved` as left out. */
+  private drop(saved: number, n: number): void {
+    const id = this.lost.get(saved) ?? `content ${saved}`;
+    this.dropped.count.set(id, (this.dropped.count.get(id) ?? 0) + n);
+  }
+
+  /** Counts `n` of `item` as gone with something that was left out. */
+  private burn(item: number, n: number): void {
+    this.dropped.burn.set(item, (this.dropped.burn.get(item) ?? 0) + n);
   }
 
   /** A null `data` deletes the blob. */
@@ -703,11 +759,14 @@ export class WorldStore {
     return this.db.query("SELECT chunk, data FROM chunk_blobs WHERE tag = ?").all(tag) as { chunk: number; data: Uint8Array }[];
   }
 
-  /** An item whose content is gone stops the load unless allowMissingContent is set. */
-  private item(saved: number, pid: number): number {
+  /** An item whose content is gone stops the load unless allowMissingContent is set. Then the `n` of it that record `pid` held are left out. */
+  private item(saved: number, pid: number, n: number): number {
     const item = this.toRuntime[saved] ?? 0;
-    if (item === 0 && !this.allowMissing) throw new Error(`save uses content this build does not have: an item held by record ${pid}`);
-    return item;
+    if (item !== 0) return item;
+    if (!this.allowMissing) throw new Error(`save uses content this build does not have: ${this.lost.get(saved) ?? "an item"}, held by record ${pid}: ${WITHOUT}`);
+    this.drop(saved, n);
+    this.dropped.changed.add(pid);
+    return 0;
   }
 
   appendJournal(seq: number, tick: number, op: number, data: Uint8Array): void {

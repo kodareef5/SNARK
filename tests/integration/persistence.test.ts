@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -97,7 +97,7 @@ test("a save that uses removed content refuses to load unless told to drop it", 
   createHost(full, { dbPath: db }).shutdown();
   const without = compileContent(CORE_CONTENT.filter((d) => d.id !== "core:wall")).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/core:wall/);
-  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true } });
+  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true }, log: () => {} });
   expect(forced.world.structs.count).toBeLessThan(createHost(full).world.structs.count);
   forced.persistence!.store.close(); // closed without committing, so the save keeps its walls
   const back = createHost(full, { dbPath: db });
@@ -120,7 +120,7 @@ test("an item whose content is gone stops the load, and a ledger that does not b
 
   const without = compileContent(CORE_CONTENT.filter((d) => !gone.has(d.id))).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/content this build does not have/);
-  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true } });
+  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true }, log: () => {} });
   expect(forced.records.byPid.get(rec.pid)!.inv!.total(without.index.get("core:stone")!)).toBe(250);
   expect(forced.items.audit()).toEqual([]);
   forced.persistence!.store.close(); // not committed, so the save keeps what it had
@@ -135,6 +135,51 @@ test("an item whose content is gone stops the load, and a ledger that does not b
   back.shutdown();
   expect(() => createHost(full, { dbPath: db })).toThrow(/ledger does not balance[\s\S]*core:stone: 349 in the world, ledger says 250/);
   createHost(full, { dbPath: db, allowLedgerMismatch: true }).persistence!.store.close();
+});
+
+test("an operator goes on without removed content by one start: what was made of it is dropped for good, said aloud, and the ledger balances", () => {
+  const db = join(dir, "species.db");
+  const full = coreRegistry();
+  const stone = full.index.get("core:stone")!;
+  const host = createHost(full, { dbPath: db });
+  const mule = host.records.create(full.index.get("core:grazer")!, "mule");
+  const keeper = host.records.create(full.index.get("core:dummy")!, "keeper");
+  expect(host.items.mint(mule, stone, 250)).toBe(250);
+  expect(host.items.mint(keeper, stone, 40)).toBe(40);
+  expect(host.items.mint(keeper, full.index.get("core:waterskin")!, 3)).toBe(3);
+  host.shutdown();
+
+  // A species, an item with its engram, and a piece of building.
+  const gone = new Set(["core:grazer", "core:waterskin", "core:make-waterskin", "core:engram-waterskin", "core:wall"]);
+  const without = compileContent(CORE_CONTENT.filter((d) => !gone.has(d.id))).registry!;
+  expect(() => createHost(without, { dbPath: db })).toThrow(/core:grazer[^]*--allow-missing-content/);
+  // The server reads the flag its refusal names.
+  expect(readFileSync(join(import.meta.dir, "../../server/main.ts"), "utf8")).toContain('allowMissingContent: args.includes("--allow-missing-content")');
+  const said: string[] = [];
+  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true }, log: (line) => void said.push(line) });
+  expect(forced.records.byPid.has(mule.pid)).toBe(false);
+  // The stone the mule carried went with it, so the ledger burns it.
+  expect(forced.items.audit()).toEqual([]);
+  const told = said.join("\n");
+  expect(told).toContain("1 of core:grazer");
+  expect(told).toContain("3 of core:waterskin");
+  expect(told).toMatch(/\d+ of core:wall/);
+  expect(told).toContain("250 of core:stone");
+  forced.shutdown();
+
+  // One start was enough: nothing in the save is made of what is gone, so the next needs no leave.
+  const next = createHost(without, { dbPath: db, log: (line) => void said.push(line) });
+  expect(said.join("\n")).toBe(told);
+  expect(next.items.audit()).toEqual([]);
+  expect(next.records.byPid.get(keeper.pid)!.inv!.total(without.index.get("core:stone")!)).toBe(40);
+  next.shutdown();
+  // With the content back, what was dropped stays dropped and the ledger still agrees.
+  const back = createHost(full, { dbPath: db });
+  expect(back.records.byPid.has(mule.pid)).toBe(false);
+  expect(back.records.byPid.get(keeper.pid)!.inv!.total(full.index.get("core:waterskin")!)).toBe(0);
+  expect(back.items.audit()).toEqual([]);
+  expect(back.world.structs.count).toBe(forced.world.structs.count);
+  back.shutdown();
 });
 
 test("a round 1 inventory is converted whole: nothing is dropped for want of slots", () => {
