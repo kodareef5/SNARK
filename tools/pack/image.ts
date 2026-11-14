@@ -129,6 +129,12 @@ export function encodePng(p: Picture): Uint8Array {
   return join([Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", new Uint8Array(deflateSync(raw))), chunk("IEND", new Uint8Array(0))]);
 }
 
+/** A mip as a picture again, to measure it or write it as a PNG. */
+export function asPicture(mip: Uint8Array): Picture {
+  const size = Math.sqrt(mip.length / 4);
+  return { width: size, height: size, channels: 4, depth: 8, data: mip };
+}
+
 const toLinear = (s: number): number => (s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4));
 const toSrgb = (l: number): number => (l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055);
 
@@ -186,7 +192,7 @@ function resize(src: Float32Array, from: number, to: number, channels: number): 
 }
 
 /** The pixels of `p` as a square with a power of two for a side: as they are when it is one, resized to the nearest when not. */
-export function square(data: Float32Array, p: Picture, channels: number): { data: Float32Array; size: number } {
+export function square(data: Float32Array, p: { width: number; height: number }, channels: number): { data: Float32Array; size: number } {
   if (p.width !== p.height) throw new Error(`a texture is square, and this picture is ${p.width} by ${p.height}`);
   const size = 2 ** Math.round(Math.log2(p.width));
   return { size, data: size === p.width ? data : resize(data, p.width, size, channels) };
