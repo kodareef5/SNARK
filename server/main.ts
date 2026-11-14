@@ -171,6 +171,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         }
         const conn: Connection & { open: boolean } = {
           open: true,
+          address: ws.remoteAddress,
           onMessage: null,
           onClose: null,
           send(channel, data) {

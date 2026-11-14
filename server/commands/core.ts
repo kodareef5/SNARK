@@ -1,6 +1,7 @@
 // Session, server and clock commands.
 
 import { parseNumber } from "../../shared/console.ts";
+import { TICK_RATE } from "../../shared/coords.ts";
 import { REJECT_DENIED, REJECT_KICKED, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
@@ -86,10 +87,17 @@ export function addCoreCommands(con: Console): void {
         if (c.admin) return "cheats are already enabled";
         const password = ctx.host.adminPassword;
         if (password === null && !ctx.host.dev) return "cheats are disabled on this server";
+        const guesses = ctx.host.game.guesses;
+        const who = c.conn.address ?? c.name;
+        const tick = ctx.host.world.tick;
+        const wait = guesses.wait(who, tick);
+        if (wait > 0) return `too many wrong passwords: wait ${Math.ceil(wait / TICK_RATE)} s`;
         if (password !== null && !sameSecret(args[0] ?? "", password)) {
+          guesses.wrong(who, tick);
           if (++c.cheatAttempts >= MAX_PASSWORD_ATTEMPTS) ctx.host.game.reject(c, REJECT_DENIED);
           return "wrong password";
         }
+        guesses.right(who);
         c.admin = true;
         c.ownDirty = true;
         return "cheats enabled";

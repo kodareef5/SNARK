@@ -9,6 +9,7 @@ import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOUR
 import { Body, STANCE_CROUCH, STANCE_STAND } from "../shared/sim/character.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
+import { HIT_NONE, castWorld } from "../shared/world/ray.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Tribes } from "./tribes.ts";
@@ -100,6 +101,11 @@ export class Riding {
         const z = ents.z[e]! + fz * off;
         const y = Math.max(world.hf.heightAt(x, z), ents.y[e]!);
         if (!capsuleFree(world, x, y, z, p.radius, p.height)) continue;
+        // Nothing built or grown may stand between the mount and the spot, or a mount beside a wall would set its rider down inside the base.
+        const chest = p.height * 0.5;
+        const [dx, dy, dz] = [x - ents.x[e]!, y - ents.y[e]!, z - ents.z[e]!];
+        const far = Math.hypot(dx, dy, dz);
+        if (castWorld(world, ents.x[e]!, ents.y[e]! + chest, ents.z[e]!, dx / far, dy / far, dz / far, far) !== HIT_NONE) continue;
         b.x = x;
         b.y = y;
         b.z = z;
@@ -161,9 +167,19 @@ export class Riding {
     const ents = world.ents;
     for (const [e, c] of this.riders) {
       const rec = (ents.flags[e]! & F_ALIVE) !== 0 ? records.byPid.get(ents.pid[e]!) : undefined;
-      if (c.drive !== e || !c.active || c.closed || c.ent < 0 || c.state !== SESSION_ALIVE || !rec || rec.out) {
+      // A rider who is knocked out falls off, as one whose mount is.
+      if (c.drive !== e || !c.active || c.closed || c.ent < 0 || c.state !== SESSION_ALIVE || !rec || rec.out || records.byPid.get(c.pid)?.out) {
         if (c.drive === e) this.dismount(c);
-        else this.riders.delete(e);
+        else {
+          // The game let go of the mount first (the connection dropped, or the mount died). The body must not stay marked as seated,
+          // or others would draw it on the mount while it stands somewhere else.
+          this.riders.delete(e);
+          if (c.ent >= 0 && c.drive < 0 && ents.seat[c.ent] === e + 1) {
+            ents.setSeat(c.ent, -1);
+            ents.stance[c.ent] = STANCE_STAND;
+            ents.pose(c.ent, world.tick);
+          }
+        }
         continue;
       }
       this.pin(c);

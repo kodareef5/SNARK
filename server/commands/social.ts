@@ -18,6 +18,8 @@ function sessionNamed(host: Host, name: string): Client | null {
   return null;
 }
 
+const MAX_MUTED = 100;
+
 export function addSocialCommands(con: Console): void {
   const commands: ConsoleCommand[] = [
     {
@@ -95,6 +97,9 @@ export function addSocialCommands(con: Console): void {
           return all.length === 0 ? "You have muted nobody." : `Muted: ${all.join(", ")}`;
         }
         if (name.toLowerCase() === c.name.toLowerCase()) return "That is you.";
+        // A survivor's name, and a list of bounded length: each entry is kept for as long as the server runs.
+        if (!/^[A-Za-z0-9 _-]{1,24}$/.test(name)) return "That is not a survivor's name.";
+        if (chat.mutedBy(c.name).length >= MAX_MUTED) return `You have muted ${MAX_MUTED} survivors. Unmute one first.`;
         return chat.mute(c.name, name, true) ? `You will not hear ${name}.` : `${name} is muted already.`;
       },
     },

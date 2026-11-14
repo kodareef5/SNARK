@@ -23,6 +23,8 @@ export const DEADLINE_DESPAWN = 2;
 export const OP_DEATH = 3;
 export const CACHE_TICKS = 15 * 60 * TICK_RATE;
 export const BAG_TICKS = 2 * 60 * TICK_RATE;
+/** Places in the entity store a dropped bag may not take. */
+const STORE_RESERVE = 256;
 export const MAX_MARKERS = 5;
 /** Metres from the eye. */
 export const REACH = 3.5;
@@ -69,20 +71,45 @@ export class Death {
     this.bag = reg.index.get("core:bag") ?? this.cache;
   }
 
+  /** Per survivor pid, the pid of the bag it last dropped. */
+  private readonly lastBag = new Map<number, number>();
+
   /** Drops `n` of the stack in `slot` (0 for all) in a bag ahead of the body. False, changing nothing, if nothing moved or it has no body. */
   drop(rec: EntityRecord, slot: number, n: number): boolean {
     const { world, records, items } = this.ctx;
     const e = records.entOf.get(rec.pid);
     if (e === undefined) return false;
     const ents = world.ents;
+    lookDirection(ents.yaw[e]!, 0, this.dir);
+    const x = ents.x[e]! + this.dir[0]! * 0.8;
+    const z = ents.z[e]! + this.dir[2]! * 0.8;
+    // The bag this survivor last dropped takes the next thing too, while it lies within a step and has room. Each drop
+    // used to make a bag, and one survivor dropping single items filled the entity store in half a minute.
+    const last = records.byPid.get(this.lastBag.get(rec.pid) ?? 0);
+    if (last && last.kind === this.bag && records.entOf.has(last.pid) && (last.x - x) * (last.x - x) + (last.z - z) * (last.z - z) < 1.5 * 1.5) {
+      const inv = items.inv(last);
+      const what = items.inv(rec).item[slot]!;
+      let to = -1;
+      for (let s = 0; s < inv.bag && to < 0; s++) if (inv.item[s] === what && inv.count[s]! < items.table.stack[what]!) to = s;
+      if (to < 0) to = inv.free();
+      if (to >= 0 && items.move(rec, slot, last, to, n) > 0) {
+        // Its time starts again, so the thing just dropped lies as long as any other.
+        last.expiresAt = world.tick + this.lifetime(this.bag);
+        this.ctx.deadlines.push(last.expiresAt, DEADLINE_DESPAWN, last.pid, last.expiresAt);
+        records.dirty.add(last.pid);
+        return true;
+      }
+    }
+    // The last places in the store are kept for bodies, and for what the dead leave.
+    if (ents.count > ents.cap - STORE_RESERVE) return false;
     const bag = records.create(this.bag, "bag");
     if (items.move(rec, slot, bag, 0, n) === 0) {
       records.delete(bag.pid);
       return false;
     }
-    lookDirection(ents.yaw[e]!, 0, this.dir);
-    bag.x = ents.x[e]! + this.dir[0]! * 0.8;
-    bag.z = ents.z[e]! + this.dir[2]! * 0.8;
+    this.lastBag.set(rec.pid, bag.pid);
+    bag.x = x;
+    bag.z = z;
     const ground = world.hf.heightAt(bag.x, bag.z);
     bag.y = ground > ents.y[e]! ? ground : ents.y[e]!;
     bag.expiresAt = world.tick + this.lifetime(this.bag);
@@ -275,7 +302,7 @@ export class Death {
           if (dx * dx + dy * dy + dz * dz > (REACH + 1.5) * (REACH + 1.5)) this.close(c);
         }
       }
-      if (c.ent >= 0 && (c.pressed & BTN_USE) !== 0) this.use(c);
+      if (c.ent >= 0 && (c.pressed & BTN_USE) !== 0 && !records.byPid.get(c.pid)?.out) this.use(c);
     }
   }
 

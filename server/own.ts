@@ -55,6 +55,8 @@ export interface OwnContext {
   online(pid: number): boolean;
   /** See `Host.refreshBody`. */
   refresh(rec: EntityRecord): void;
+  /** The item in this survivor's hands was replaced by a move, perhaps by another of its kind. It takes a moment to be ready, as a change of hotbar slot does. */
+  rearm(rec: EntityRecord): void;
   /** See `Death.drop`. */
   drop(rec: EntityRecord, slot: number, n: number): boolean;
 }
@@ -333,7 +335,14 @@ export function addOwnCommands(ctx: OwnContext): void {
     const src = ctx.items.inv(a);
     if (fromSlot >= src.cap || toSlot >= ctx.items.inv(b).cap) return RESULT_INVALID;
     if (src.item[fromSlot] !== expect || expect === 0) return RESULT_STALE;
-    return ctx.items.move(a, fromSlot, b, toSlot, count) > 0 ? RESULT_OK : RESULT_INVALID;
+    if (ctx.items.move(a, fromSlot, b, toSlot, count) === 0) return RESULT_INVALID;
+    // A loaded weapon swapped into the hands for a spent one of its kind must not fire at once.
+    const me = ctx.records.byPid.get(c.pid);
+    if (me && me.held >= 0) {
+      const held = ctx.items.inv(me).hotbar + me.held;
+      if ((a === me && fromSlot === held) || (b === me && toSlot === held)) ctx.rearm(me);
+    }
+    return RESULT_OK;
   });
 
   ctx.game.handle(CMD_CREATE, (c: Client, r: BitReader) => {

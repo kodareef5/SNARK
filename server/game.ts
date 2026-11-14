@@ -27,6 +27,7 @@ import {
   REJECT_PASSWORD,
   REJECT_VERSION,
   RESULT_BUSY,
+  RESULT_DENIED,
   RESULT_INVALID,
   SESSION_ALIVE,
   SESSION_CREATING,
@@ -55,6 +56,7 @@ import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
+import { Guesses } from "./guesses.ts";
 import type { ServerWorld } from "./world.ts";
 
 export interface GameOptions {
@@ -265,6 +267,8 @@ export class GameServer {
   readonly world: ServerWorld;
   readonly opts: GameOptions;
   readonly clients: (Client | null)[];
+  /** Wrong passwords, for joining and for cheats, by the address they came from. */
+  readonly guesses = new Guesses();
   readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0 };
   /** May this device key use this name? Called before anything is created. */
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
@@ -282,6 +286,8 @@ export class GameServer {
   onStep: ((tick: number) => void) | null = null;
   /** Called for each connected session just before its snapshot. */
   onReplicate: ((c: Client) => void) | null = null;
+  /** Whether the session may run command `op` now. A refused command answers RESULT_DENIED and its handler is not called. */
+  allows: ((c: Client, op: number) => boolean) | null = null;
   /** speed is in metres per second. */
   onLand: ((c: Client, speed: number) => void) | null = null;
   /** Without this hook nobody is sent to the creator. */
@@ -695,8 +701,9 @@ export class GameServer {
       r.reset(c.queue.shift()!);
       r.bits(4);
       const seq = r.u16();
-      const handler = this.handlers[r.u8()];
-      const code = handler ? handler(c, r) : RESULT_INVALID;
+      const op = r.u8();
+      const handler = this.handlers[op];
+      const code = !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
       this.stats.commands++;
       // The handler may have ended the session (a kick, too many password attempts).
       if (this.clients[c.id] !== c || c.closed || !c.conn.open) return;
@@ -740,7 +747,15 @@ export class GameServer {
     // The client hashes content as written. The welcome tells it this server's tuning, and it derives the rest.
     if (contentHash !== world.reg.baseHash || clipHash !== world.anim.set.hash) return this.refuse(c, REJECT_CONTENT);
     // A reconnect to a lingering body is asked too.
-    if (this.opts.password !== "" && !sameText(password, this.opts.password)) return this.refuse(c, REJECT_PASSWORD);
+    if (this.opts.password !== "") {
+      const who = c.conn.address ?? name;
+      if (this.guesses.wait(who, world.tick) > 0) return this.refuse(c, REJECT_PASSWORD);
+      if (!sameText(password, this.opts.password)) {
+        this.guesses.wrong(who, world.tick);
+        return this.refuse(c, REJECT_PASSWORD);
+      }
+      this.guesses.right(who);
+    }
     if (!NAME.test(name)) return this.refuse(c, REJECT_NAME);
     if (this.authorize && !this.authorize(name, key)) return this.refuse(c, REJECT_DENIED);
     // One body per survivor. A second login is refused unless the first connection is gone, and then it takes over the body.
@@ -764,7 +779,8 @@ export class GameServer {
     c.key = key;
     c.look = look;
     c.kind = this.survivor;
-    if ((flags & HELLO_SPECTATE) !== 0) {
+    // A dead survivor joins dead, whatever it asks. As a spectator it could ask for its body back and get one that cannot die.
+    if ((flags & HELLO_SPECTATE) !== 0 && !this.savedPosition?.(name)?.dead) {
       if (this.opts.spectators !== "anyone") return this.refuse(c, REJECT_DENIED);
       const b = c.body;
       b.x = world.spawn.x;

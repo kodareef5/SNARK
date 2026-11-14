@@ -6,6 +6,7 @@ import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
 import { RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { stanceEye } from "../shared/sim/character.ts";
+import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { capsuleKind } from "../shared/world/collide.ts";
 import { BUILD_REACH, ON_TOP, ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, freePose, obstructed, overPiece, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
@@ -89,6 +90,7 @@ export class Build {
   /** Wrong PINs by client id: how many in a row, and the tick until which it must wait. */
   private readonly strikes = new Map<number, { n: number; until: number }>();
   private readonly near = new Found();
+  private readonly look = [0, 0, 0];
 
   constructor(ctx: BuildContext) {
     this.ctx = ctx;
@@ -148,6 +150,22 @@ export class Build {
       this.spilled++;
     }
     records.delete(rec.pid);
+  }
+
+  /** Whether nothing stands between the eye of body `e` and piece `ref`, along the line to the piece's middle or along where the body looks. */
+  private inSight(e: number, ref: number, x: number, y: number, z: number): boolean {
+    const world = this.ctx.world;
+    const ents = world.ents;
+    const ex = ents.x[e]!;
+    const ey = ents.y[e]! + stanceEye(world.reg.move[ents.kind[e]!]!, ents.stance[e]!);
+    const ez = ents.z[e]!;
+    const far = Math.hypot(x - ex, y - ey, z - ez);
+    if (far < 1e-6) return true;
+    const hit = castWorld(world, ex, ey, ez, (x - ex) / far, (y - ey) / far, (z - ez) / far, far);
+    if (hit === HIT_NONE || (hit === HIT_STRUCTURE && rayHit.ref === ref)) return true;
+    const d = this.look;
+    lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
+    return castWorld(world, ex, ey, ez, d[0]!, d[1]!, d[2]!, far + 2) === HIT_STRUCTURE && rayHit.ref === ref;
   }
 
   /** Where a thing falling at (x, z) from height `below` lands: the top of the highest floor under it, or the ground. */
@@ -303,6 +321,8 @@ export class Build {
     const item = reg.pieceItem[kind]!;
     const tick = world.tick;
     if (action === STRUCT_USE) {
+      // Every client is sent the ref and place of every piece near it, so reach alone would open a box through a wall.
+      if (!this.inSight(e, ref, x, y, z)) return RESULT_FAR;
       const done = this.use(c, ref, code);
       return done < 0 ? RESULT_INVALID : done;
     }

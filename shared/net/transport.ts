@@ -11,6 +11,8 @@ export interface Connection {
   send(channel: number, data: Uint8Array): void;
   close(): void;
   readonly open: boolean;
+  /** Where it came from, if the transport knows: a network address. Wrong passwords are counted by it. */
+  readonly address?: string;
   /** Called with a buffer the receiver may keep. */
   onMessage: ((channel: number, data: Uint8Array) => void) | null;
   onClose: (() => void) | null;

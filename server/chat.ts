@@ -57,7 +57,9 @@ export class Chat {
       set.add(who);
       return true;
     }
-    return set?.delete(who) ?? false;
+    if (!set?.delete(who)) return false;
+    if (set.size === 0) this.mutes.delete(key);
+    return true;
   }
 
   /** Everyone `listener` has muted. */

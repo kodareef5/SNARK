@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_CLOSE, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -586,6 +586,8 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     if (persistence && build.decay.dirty && tick % DECAY_SAVE_TICKS === 0) persistence.store.setMeta("decay", build.decay.serialize());
     if (persistence && tick % commitEvery === 0) persistence.commit();
   };
+  // An unconscious survivor can talk, use the console and shut what it had open. Its client can make it do nothing else.
+  game.allows = (c, op) => op === CMD_TEXT || op === CMD_CHAT || op === CMD_CLOSE || !records.byPid.get(c.pid)?.out;
   game.onLand = (c, speed) => {
     const rec = records.byPid.get(c.pid);
     if (rec) survival.landed(rec, speed);
@@ -626,6 +628,11 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       return out;
     },
     refresh: (rec) => refreshBody(rec),
+    rearm: (rec) => {
+      // No slot is -2, so the refresh sees a change of what is in hand.
+      inHand.set(rec.pid, -2);
+      refreshBody(rec);
+    },
     drop: (rec, slot, n) => death.drop(rec, slot, n),
   };
   game.onReplicate = (c) => {

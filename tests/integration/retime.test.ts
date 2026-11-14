@@ -190,11 +190,10 @@ test("a rule changed while the server runs: a female's wait, a pair part way thr
   expect(cache.expiresAt).toBe(cacheAt);
   t = set("UseCorpseLifeSpanMultiplier", "0.25");
   expect(cache.expiresAt).toBe(t + leftAtPeriod(cacheAt - t, 1, 0.5));
-  // New drops use the current rules from the start.
+  // A drop into the same bag starts its time again, under the current rules.
   h.host.items.mint(me, id("flint"), 5);
   h.host.death.drop(me, h.host.items.inv(me).item.indexOf(id("flint")), 0);
-  const next = [...h.host.records.byPid.values()].filter((r) => r.kind === id("bag")).find((r) => r !== bag)!;
-  expect([next.expiresAt - h.world.tick, h.host.death.spill(PLACE.x + 8, PLACE.y, PLACE.z, "x").expiresAt - h.world.tick]).toEqual([BAG_TICKS * 3, CACHE_TICKS / 2]);
+  expect([bag.expiresAt - h.world.tick, h.host.death.spill(PLACE.x + 8, PLACE.y, PLACE.z, "x").expiresAt - h.world.tick]).toEqual([BAG_TICKS * 3, CACHE_TICKS / 2]);
   const gone = bag.expiresAt;
   const bagPid = bag.pid;
   while (h.world.tick < gone - 1) h.run(33);

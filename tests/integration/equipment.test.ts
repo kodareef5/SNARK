@@ -266,6 +266,7 @@ test("a weapon is set to its ammunition, loaded, fired empty, fitted and strippe
 });
 
 test("what is dropped lies in a bag anyone can open, and is gone, on the books, after two minutes", () => {
+  // Two drops from where she stands go into one bag (DEV99).
   const { h, s, rec, send, inv, give, items } = setup();
   const bo = h.join("bo");
   h.run(300);
@@ -278,16 +279,16 @@ test("what is dropped lies in a bag anyone can open, and is gone, on the books, 
   expect(send(CMD_DROP, (w) => (w.u8(stone), w.u16(30), w.u16(id("stone"))))).toBe(RESULT_OK);
   expect(send(CMD_DROP, (w) => (w.u8(rifle), w.u16(0), w.u16(id("rifle"))))).toBe(RESULT_OK);
   expect(send(CMD_DROP, (w) => (w.u8(rifle), w.u16(0), w.u16(id("rifle"))))).toBe(RESULT_STALE);
-  expect(h.world.ents.count).toBe(before + 2);
+  expect(h.world.ents.count).toBe(before + 1);
   expect([inv().total(id("stone")), inv().total(id("rifle")), items.total(id("stone")), items.total(id("round_rifle"))]).toEqual([50, 0, 80, 3]);
   const bags = [...h.host.records.byPid.values()].filter((r) => r.name === "bag");
-  expect(bags.length).toBe(2);
+  expect(bags.length).toBe(1);
   const e = h.ent(s);
   expect(Math.hypot(bags[0]!.x - h.world.ents.x[e]!, bags[0]!.z - h.world.ents.z[e]!)).toBeCloseTo(0.8, 2);
   expect(items.audit()).toEqual([]);
 
   h.say(bo, "enablecheats");
-  h.say(bo, `tp ${(bags[1]!.x - 1.2).toFixed(2)} ${bags[1]!.z.toFixed(2)}`);
+  h.say(bo, `tp ${(bags[0]!.x - 1.2).toFixed(2)} ${bags[0]!.z.toFixed(2)}`);
   const p = h.pilots[1]!;
   p.yaw = Math.PI / 2;
   p.pitch = -0.9;
@@ -297,13 +298,13 @@ test("what is dropped lies in a bag anyone can open, and is gone, on the books, 
   p.buttons = 0;
   h.run(300);
   expect(bo.open?.name).toBe("bag");
-  expect(bo.open!.inventory.item[0]).toBe(id("rifle"));
-  expect(bo.open!.inventory.loaded[0]).toBe(1);
-  bo.command(CMD_MOVE, (w) => (w.bits(BOX_OPEN, 1), w.varint(0), w.bits(BOX_SELF, 1), w.varint(0), w.u16(0), w.u16(id("rifle"))));
+  expect([bo.open!.inventory.item[0], bo.open!.inventory.item[1]]).toEqual([id("stone"), id("rifle")]);
+  expect(bo.open!.inventory.loaded[1]).toBe(1);
+  bo.command(CMD_MOVE, (w) => (w.bits(BOX_OPEN, 1), w.varint(1), w.bits(BOX_SELF, 1), w.varint(0), w.u16(0), w.u16(id("rifle"))));
   h.run(300);
   const boRec = h.host.records.byPid.get(h.world.ents.pid[h.ent(bo)]!)!;
   expect([items.inv(boRec).item[0], items.inv(boRec).loaded[0], items.inv(boRec).ammo[0]]).toEqual([id("rifle"), 1, id("round_rifle")]);
-  // The emptied bag is gone at once. The other lasts BAG_TICKS, and its stone is burned with it.
+  // The bag still holds the stone. It lasts BAG_TICKS from the last drop, and the stone is burned with it.
   h.run(600);
   expect([...h.host.records.byPid.values()].filter((r) => r.name === "bag").length).toBe(1);
   const burned = items.burned[id("stone")]!;
