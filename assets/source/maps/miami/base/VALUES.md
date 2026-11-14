@@ -53,4 +53,10 @@ The fine canopy preserves close-scale crown outlines and controls vegetation in 
 
 `areawater.geojson`, `roads.geojson` and `buildings.geojson` retain clipped vector geometry in the **local projected CRS**, not RFC 7946 geographic degrees. Their `crs` member declares it. Use them to render reference images afresh at every zoom. Do not enlarge the 2 m masks for close-scale shoreline tracing.
 
-Known source limits: TIGER is cartographic rather than a modern cadastral coastline survey; FEMA excludes many structures below 450 square feet and does not certify sub-metre positional accuracy. A 1 px painting-registration score measures agreement with these inputs, not their accuracy on Earth. Source dates differ. No ocean bathymetry has been acquired.
+Known source limits: TIGER is cartographic rather than a modern cadastral coastline survey; FEMA excludes many structures below 450 square feet and does not certify sub-metre positional accuracy. A 1 px painting-registration score measures agreement with these inputs, not their accuracy on Earth. Source dates differ.
+
+Round three adds the separate [NOAA bathymetry subset](bathymetry/README.md),
+with Float32 NAVD88 elevations and its own geographic transform. It informs
+watercolour structure only. Existing height.png, height_valid.png, water
+polygons and future-world layers are unchanged. The missing-ground-height
+convention above has not been silently replaced with seabed observations.
