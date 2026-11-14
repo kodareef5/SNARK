@@ -215,3 +215,15 @@ test("ARK's single-player settings are its own fixed factors on top of what the 
   expect([h.host.setSetting("TamingSpeedMultiplier", "3"), h.host.rules.num("TamingSpeedMultiplier")]).toEqual(["", 3]);
   expect(loadConfig({ gus: "[ServerSettings]\nTamingSpeedMultiplier=2\n" }).rules.num("TamingSpeedMultiplier")).toBe(2);
 });
+
+test("the single-player factors are not on top of the live file: what it gives is that value at the start and at every reading after", () => {
+  const game = "[/script/shootergame.shootergamemode]\nbUseSingleplayerSettings=True\nEggHatchSpeedMultiplier=2\nBabyMatureSpeedMultiplier=2\n";
+  const live = "EggHatchSpeedMultiplier=8\n";
+  const { rules } = loadConfig({ game, live }, ["-UseDynamicConfig"]);
+  // Growing up is 35 times the file's 2. Hatching is the live file's 8, not 9 times it.
+  expect([rules.num("BabyMatureSpeedMultiplier"), rules.num("EggHatchSpeedMultiplier")]).toEqual([70, 8]);
+  applyLive(rules, live, emptyReport());
+  expect([rules.num("BabyMatureSpeedMultiplier"), rules.num("EggHatchSpeedMultiplier")]).toEqual([70, 8]);
+  // Without the live file the factor is on the file's value.
+  expect(loadConfig({ game, live }).rules.num("EggHatchSpeedMultiplier")).toBe(18);
+});

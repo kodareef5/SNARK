@@ -225,15 +225,18 @@ export interface ConfigText {
   live?: string;
 }
 
-/** Order: the two files, the command line, then the live file if -UseDynamicConfig was given. `ours` is this server's own arguments. */
+/**
+ * Order: the two files, the command line, the single-player factors, then the live file if -UseDynamicConfig was given. The live
+ * file is read again while the server runs, so its values are never multiplied. `ours` is this server's own arguments.
+ */
 export function loadConfig(text: ConfigText, argv: readonly string[] = []): { rules: Rules; report: Report; ours: string[] } {
   const rules = new Rules();
   const report = emptyReport();
   if (text.gus !== undefined) applyIni(rules, text.gus, GUS_FILE, "file", report);
   if (text.game !== undefined) applyIni(rules, text.game, GAME_FILE, "file", report);
   const ours = applyArgs(rules, argv, report);
-  if (text.live !== undefined && rules.flag("UseDynamicConfig") === true) applyLive(rules, text.live, report);
   if (rules.on("bUseSingleplayerSettings")) applySinglePlayer(rules, report);
+  if (text.live !== undefined && rules.flag("UseDynamicConfig") === true) applyLive(rules, text.live, report);
   return { rules, report, ours };
 }
 
