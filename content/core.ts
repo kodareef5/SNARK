@@ -21,41 +21,41 @@ const ARMOR_PIECES: readonly { slot: "head" | "torso" | "hands" | "legs" | "feet
   { slot: "feet", name: "boots", label: "boots" },
 ];
 const ARMOR: Def[] = ARMOR_TIERS.flatMap((t) =>
-  ARMOR_PIECES.map((p): Def => ({ type: "item", id: id(`${t.tier}_${p.name}`), stack: 1, weight: t.weight, label: `${t.tier} ${p.label}`, color: t.colors[0], wear: { slot: p.slot, armor: t.armor, uses: t.uses, set: t.set, colors: t.colors } })),
+  ARMOR_PIECES.map((p): Def => ({ type: "item", class: "armor", id: id(`${t.tier}_${p.name}`), stack: 1, weight: t.weight, label: `${t.tier} ${p.label}`, color: t.colors[0], wear: { slot: p.slot, armor: t.armor, uses: t.uses, set: t.set, colors: t.colors } })),
 );
 
 const ATTACHMENTS = [id("scope"), id("silencer"), id("flashlight"), id("laser")];
 const ARROWS = [id("arrow_stone"), id("arrow_tranq"), id("arrow_flame")];
 
 const GEAR: Def[] = [
-  { type: "item", id: id("hide"), stack: 200, weight: 0.01, color: 227 },
-  { type: "item", id: id("chitin"), stack: 100, weight: 0.05, color: 9 },
-  { type: "item", id: id("ore"), stack: 200, weight: 1, label: "metal ore", color: 4 },
-  { type: "item", id: id("ingot"), stack: 200, weight: 1, label: "metal ingot", color: 2 },
-  { type: "item", id: id("gunpowder"), stack: 100, weight: 0.1, color: 11 },
-  { type: "item", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, dose: { torpor: 40, seconds: 8 } },
+  { type: "item", class: "resource", id: id("hide"), stack: 200, weight: 0.01, color: 227 },
+  { type: "item", class: "resource", id: id("chitin"), stack: 100, weight: 0.05, color: 9 },
+  { type: "item", class: "resource", id: id("ore"), stack: 200, weight: 1, label: "metal ore", color: 4 },
+  { type: "item", class: "resource", id: id("ingot"), stack: 200, weight: 1, label: "metal ingot", color: 2 },
+  { type: "item", class: "resource", id: id("gunpowder"), stack: 100, weight: 0.1, color: 11 },
+  { type: "item", class: "consumable", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, dose: { torpor: 40, seconds: 8 } },
 
-  { type: "item", id: id("spear"), stack: 1, weight: 2, color: 3, weapon: { kind: "melee", damage: 30, type: "pierce", reach: 3, uses: 20, mesh: id("spear"), hold: "spear" } },
+  { type: "item", class: "weapon", id: id("spear"), stack: 1, weight: 2, color: 3, weapon: { kind: "melee", damage: 30, type: "pierce", reach: 3, uses: 20, mesh: id("spear"), hold: "spear" } },
   // A bow does a quarter of the arrow's damage undrawn and all of it after 1.2 s of draw.
-  { type: "item", id: id("bow"), stack: 1, weight: 4, color: 3, weapon: { kind: "bow", ammo: ARROWS, power: 1, reload: 0.66, draw: 1.2, uses: 50, mesh: id("bow"), hold: "bow" } },
+  { type: "item", class: "weapon", id: id("bow"), stack: 1, weight: 4, color: 3, weapon: { kind: "bow", ammo: ARROWS, power: 1, reload: 0.66, draw: 1.2, uses: 50, mesh: id("bow"), hold: "bow" } },
   // A stone arrow from a crossbow does 95.
-  { type: "item", id: id("crossbow"), stack: 1, weight: 6, color: 4, weapon: { kind: "gun", ammo: ARROWS, power: 95 / 55, reload: 2.6, uses: 100, wet: true, mesh: id("crossbow"), hold: "rifle" } },
-  { type: "item", id: id("rifle"), stack: 1, weight: 9, label: "long rifle", color: 228, weapon: { kind: "gun", ammo: [id("round_rifle"), id("dart_tranq"), id("dart_shock")], power: 1, reload: 4.5, uses: 70, fits: ATTACHMENTS, mesh: id("rifle"), hold: "rifle" } },
-  { type: "item", id: id("pistol"), stack: 1, weight: 3, color: 2, weapon: { kind: "gun", ammo: [id("round_pistol")], power: 1, clip: 6, reload: 2.2, interval: 0.35, uses: 60, fits: ATTACHMENTS, mesh: id("pistol"), hold: "pistol" } },
-  { type: "item", id: id("grenade"), stack: 10, weight: 1, color: 7, weapon: { kind: "thrown", damage: 788, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" } },
+  { type: "item", class: "weapon", id: id("crossbow"), stack: 1, weight: 6, color: 4, weapon: { kind: "gun", ammo: ARROWS, power: 95 / 55, reload: 2.6, uses: 100, wet: true, mesh: id("crossbow"), hold: "rifle" } },
+  { type: "item", class: "weapon", id: id("rifle"), stack: 1, weight: 9, label: "long rifle", color: 228, weapon: { kind: "gun", ammo: [id("round_rifle"), id("dart_tranq"), id("dart_shock")], power: 1, reload: 4.5, uses: 70, fits: ATTACHMENTS, mesh: id("rifle"), hold: "rifle" } },
+  { type: "item", class: "weapon", id: id("pistol"), stack: 1, weight: 3, color: 2, weapon: { kind: "gun", ammo: [id("round_pistol")], power: 1, clip: 6, reload: 2.2, interval: 0.35, uses: 60, fits: ATTACHMENTS, mesh: id("pistol"), hold: "pistol" } },
+  { type: "item", class: "weapon", id: id("grenade"), stack: 10, weight: 1, color: 7, weapon: { kind: "thrown", damage: 788, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" } },
 
-  { type: "item", id: id("arrow_stone"), stack: 50, weight: 0.2, label: "stone arrow", color: 15, ammo: { damage: 55, type: "pierce", speed: 70, gravity: 9.81, recover: 0.5, mesh: id("arrow") } },
-  { type: "item", id: id("arrow_tranq"), stack: 50, weight: 0.2, label: "tranquilizer arrow", color: 9, ammo: { damage: 20, type: "pierce", speed: 70, gravity: 9.81, torpor: { instant: 2, over: 2.5, seconds: 5 }, mesh: id("arrow") } },
-  { type: "item", id: id("arrow_flame"), stack: 50, weight: 0.2, label: "flame arrow", color: 3, ammo: { damage: 55, type: "fire", speed: 70, gravity: 9.81, buff: id("burning"), mesh: id("arrow") } },
-  { type: "item", id: id("round_rifle"), stack: 50, weight: 0.1, label: "rifle round", color: 6, ammo: { damage: 280, type: "bullet" } },
-  { type: "item", id: id("round_pistol"), stack: 50, weight: 0.05, label: "pistol round", color: 6, ammo: { damage: 100, type: "bullet" } },
-  { type: "item", id: id("dart_tranq"), stack: 50, weight: 0.2, label: "tranquilizer dart", color: 9, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 6, over: 2.5, seconds: 5 }, mesh: id("dart") } },
-  { type: "item", id: id("dart_shock"), stack: 50, weight: 0.2, label: "shock dart", color: 6, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 12, over: 5, seconds: 5 }, buff: id("stunned"), mesh: id("dart") } },
+  { type: "item", class: "ammo", id: id("arrow_stone"), stack: 50, weight: 0.2, label: "stone arrow", color: 15, ammo: { damage: 55, type: "pierce", speed: 70, gravity: 9.81, recover: 0.5, mesh: id("arrow") } },
+  { type: "item", class: "ammo", id: id("arrow_tranq"), stack: 50, weight: 0.2, label: "tranquilizer arrow", color: 9, ammo: { damage: 20, type: "pierce", speed: 70, gravity: 9.81, torpor: { instant: 2, over: 2.5, seconds: 5 }, mesh: id("arrow") } },
+  { type: "item", class: "ammo", id: id("arrow_flame"), stack: 50, weight: 0.2, label: "flame arrow", color: 3, ammo: { damage: 55, type: "fire", speed: 70, gravity: 9.81, buff: id("burning"), mesh: id("arrow") } },
+  { type: "item", class: "ammo", id: id("round_rifle"), stack: 50, weight: 0.1, label: "rifle round", color: 6, ammo: { damage: 280, type: "bullet" } },
+  { type: "item", class: "ammo", id: id("round_pistol"), stack: 50, weight: 0.05, label: "pistol round", color: 6, ammo: { damage: 100, type: "bullet" } },
+  { type: "item", class: "ammo", id: id("dart_tranq"), stack: 50, weight: 0.2, label: "tranquilizer dart", color: 9, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 6, over: 2.5, seconds: 5 }, mesh: id("dart") } },
+  { type: "item", class: "ammo", id: id("dart_shock"), stack: 50, weight: 0.2, label: "shock dart", color: 6, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 12, over: 5, seconds: 5 }, buff: id("stunned"), mesh: id("dart") } },
 
-  { type: "item", id: id("scope"), stack: 1, weight: 0.5, color: 11, attachment: "scope" },
-  { type: "item", id: id("silencer"), stack: 1, weight: 0.5, color: 11, attachment: "silencer" },
-  { type: "item", id: id("flashlight"), stack: 1, weight: 0.5, color: 6, attachment: "light" },
-  { type: "item", id: id("laser"), stack: 1, weight: 0.5, color: 8, attachment: "laser" },
+  { type: "item", class: "attachment", id: id("scope"), stack: 1, weight: 0.5, color: 11, attachment: "scope" },
+  { type: "item", class: "attachment", id: id("silencer"), stack: 1, weight: 0.5, color: 11, attachment: "silencer" },
+  { type: "item", class: "attachment", id: id("flashlight"), stack: 1, weight: 0.5, color: 6, attachment: "light" },
+  { type: "item", class: "attachment", id: id("laser"), stack: 1, weight: 0.5, color: 8, attachment: "laser" },
   ...ARMOR,
 ];
 
@@ -124,7 +124,7 @@ const LEVELS: Def = (() => {
 // 10% x 0.17 = 0.017. A server's PerLevelStatsMultiplier settings scale each from there.
 export const CORE_CONTENT: readonly Def[] = [
   {
-    type: "species",
+    type: "species", class: "survivor",
     id: "core:survivor",
     mesh: "core:human",
     skeleton: "human",
@@ -147,7 +147,7 @@ export const CORE_CONTENT: readonly Def[] = [
     stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015], torpidity: [200, 0, 0] },
   },
   {
-    type: "species",
+    type: "species", class: "creature",
     id: "core:grazer",
     mesh: "box",
     color: 9,
@@ -167,7 +167,7 @@ export const CORE_CONTENT: readonly Def[] = [
   },
   // Modelled creatures. Each has a mesh, a skeleton and clips in the pack under its own id.
   {
-    type: "species",
+    type: "species", class: "creature",
     id: "core:parasaur",
     mesh: "core:parasaur",
     skeleton: "dino",
@@ -197,7 +197,7 @@ export const CORE_CONTENT: readonly Def[] = [
     stats: { health: [200, 0.2, 0.054], stamina: [200, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1500, 0.1, 0.1], weight: [255, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
   },
   {
-    type: "species",
+    type: "species", class: "creature",
     id: "core:raptor",
     mesh: "core:raptor",
     skeleton: "dino",
@@ -230,7 +230,7 @@ export const CORE_CONTENT: readonly Def[] = [
   },
   // A practice target with a survivor's shape and zones.
   {
-    type: "species",
+    type: "species", class: "target",
     id: "core:dummy",
     mesh: "core:mannequin",
     skeleton: "human",
@@ -253,24 +253,24 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "material", id: "core:mat_wood", takes: { fire: 3, explosive: 1 }, decayDays: 8 },
   { type: "material", id: "core:mat_stone", takes: { explosive: 2.3325 }, decayDays: 12 },
   { type: "material", id: "core:mat_metal", takes: { explosive: 0.3008 }, decayDays: 16 },
-  { type: "structure", id: "core:block", mesh: "box", color: 2, half: [1, 1, 1], hp: 1000, material: "core:mat_stone" },
-  { type: "structure", id: "core:crate", mesh: "box", color: 3, half: [0.5, 0.5, 0.5], hp: 200, material: "core:mat_wood" },
-  { type: "structure", id: "core:foundation", mesh: "box", color: 4, half: [1.5, 0.15, 1.5], hp: 15000, material: "core:mat_stone" },
-  { type: "structure", id: "core:wall", mesh: "box", color: 5, half: [1.5, 1.5, 0.1], hp: 10000, material: "core:mat_stone" },
-  { type: "structure", id: "core:ceiling", mesh: "box", color: 4, half: [1.5, 0.1, 1.5], hp: 10000, material: "core:mat_stone" },
-  { type: "structure", id: "core:pillar", mesh: "box", color: 6, half: [0.25, 3, 0.25], hp: 6250, material: "core:mat_stone" },
-  { type: "structure", id: "core:step", mesh: "box", color: 7, half: [1, 0.15, 0.5], hp: 400, material: "core:mat_wood" },
+  { type: "structure", class: "static", id: "core:block", mesh: "box", color: 2, half: [1, 1, 1], hp: 1000, material: "core:mat_stone" },
+  { type: "structure", class: "static", id: "core:crate", mesh: "box", color: 3, half: [0.5, 0.5, 0.5], hp: 200, material: "core:mat_wood" },
+  { type: "structure", class: "static", id: "core:foundation", mesh: "box", color: 4, half: [1.5, 0.15, 1.5], hp: 15000, material: "core:mat_stone" },
+  { type: "structure", class: "static", id: "core:wall", mesh: "box", color: 5, half: [1.5, 1.5, 0.1], hp: 10000, material: "core:mat_stone" },
+  { type: "structure", class: "static", id: "core:ceiling", mesh: "box", color: 4, half: [1.5, 0.1, 1.5], hp: 10000, material: "core:mat_stone" },
+  { type: "structure", class: "static", id: "core:pillar", mesh: "box", color: 6, half: [0.25, 3, 0.25], hp: 6250, material: "core:mat_stone" },
+  { type: "structure", class: "static", id: "core:step", mesh: "box", color: 7, half: [1, 0.15, 0.5], hp: 400, material: "core:mat_wood" },
   // The plaza floor has no material, so nothing harms it.
-  { type: "structure", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
+  { type: "structure", class: "static", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
   ...BUILDING_CONTENT,
-  { type: "prop", id: "core:grenade_live", mesh: "core:grenade_thrown", color: 7, radius: 0.08, height: 0.12 },
+  { type: "prop", class: "projectile", id: "core:grenade_live", mesh: "core:grenade_thrown", color: 7, radius: 0.08, height: 0.12 },
   // Holds everything a survivor carried when it died.
-  { type: "prop", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
+  { type: "prop", class: "container", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // Holds items dropped on the ground.
-  { type: "prop", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
+  { type: "prop", class: "container", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
   // One egg prop for each species that lays.
-  { type: "prop", id: "core:egg_parasaur", mesh: "core:egg", color: 9, radius: 0.3, height: 0.7 },
-  { type: "prop", id: "core:egg_raptor", mesh: "core:egg", color: 5, radius: 0.3, height: 0.7 },
+  { type: "prop", class: "egg", id: "core:egg_parasaur", mesh: "core:egg", color: 9, radius: 0.3, height: 0.7 },
+  { type: "prop", class: "egg", id: "core:egg_raptor", mesh: "core:egg", color: 5, radius: 0.3, height: 0.7 },
   { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8 },
   { type: "buff", id: "core:tranquilized", label: "Tranquilized", color: 9, seconds: 5, again: "stack" },
   // A narcotic at work. Doses run one after another.
@@ -281,24 +281,24 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "buff", id: "core:fed", label: "Fed", color: 12, seconds: 5, health: 1.6, good: true },
   { type: "buff", id: "core:god", label: "God", color: 14, immune: true, good: true },
   // A missed arrow that did not break. It stays where it landed until someone walks over it.
-  { type: "prop", id: "core:arrow_stuck", mesh: "core:arrow", color: 15, radius: 0.1, height: 0.1, pitched: true },
-  { type: "item", id: "core:fiber", stack: 200, weight: 0.01, color: 7 },
-  { type: "item", id: "core:stone", stack: 100, weight: 0.5, color: 15 },
-  { type: "item", id: "core:berry", stack: 100, weight: 0.1, spoilHours: 4, eat: { food: 4, water: 2 }, color: 8 },
-  { type: "item", id: "core:meat", stack: 20, weight: 0.1, spoilHours: 1, eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 } },
-  { type: "item", id: "core:saddle_parasaur", stack: 1, weight: 10, label: "parasaur saddle", color: 3, saddle: { fits: "core:parasaur", armor: 25 } },
-  { type: "item", id: "core:saddle_raptor", stack: 1, weight: 10, label: "raptor saddle", color: 3, saddle: { fits: "core:raptor", armor: 25 } },
+  { type: "prop", class: "projectile", id: "core:arrow_stuck", mesh: "core:arrow", color: 15, radius: 0.1, height: 0.1, pitched: true },
+  { type: "item", class: "resource", id: "core:fiber", stack: 200, weight: 0.01, color: 7 },
+  { type: "item", class: "resource", id: "core:stone", stack: 100, weight: 0.5, color: 15 },
+  { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: 4, eat: { food: 4, water: 2 }, color: 8 },
+  { type: "item", class: "consumable", id: "core:meat", stack: 20, weight: 0.1, spoilHours: 1, eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 } },
+  { type: "item", class: "saddle", id: "core:saddle_parasaur", stack: 1, weight: 10, label: "parasaur saddle", color: 3, saddle: { fits: "core:parasaur", armor: 25 } },
+  { type: "item", class: "saddle", id: "core:saddle_raptor", stack: 1, weight: 10, label: "raptor saddle", color: 3, saddle: { fits: "core:raptor", armor: 25 } },
   { type: "recipe", id: "core:make-saddle_parasaur", makes: "core:saddle_parasaur", count: 1, needs: [{ item: "core:hide", count: 80 }, { item: "core:fiber", count: 50 }, { item: "core:wood", count: 15 }], seconds: 10, xp: 6 },
   { type: "recipe", id: "core:make-saddle_raptor", makes: "core:saddle_raptor", count: 1, needs: [{ item: "core:hide", count: 110 }, { item: "core:fiber", count: 65 }, { item: "core:wood", count: 20 }], seconds: 10, xp: 8 },
   { type: "engram", id: "core:engram-saddle_parasaur", label: "Parasaur saddle", level: 9, cost: 9, unlocks: ["core:make-saddle_parasaur"] },
   { type: "engram", id: "core:engram-saddle_raptor", label: "Raptor saddle", level: 18, cost: 9, unlocks: ["core:make-saddle_raptor"] },
-  { type: "item", id: "core:meat_cooked", stack: 20, weight: 0.1, spoilHours: 2, eat: { food: 35, health: 8 }, color: 3, label: "cooked meat" },
-  { type: "item", id: "core:waterskin", stack: 1, weight: 1, eat: { water: 60 }, label: "water skin", color: 14 },
-  { type: "item", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
-  { type: "item", id: "core:thatch", stack: 200, weight: 0.02, color: 18, fuel: 7.5 },
-  { type: "item", id: "core:flint", stack: 100, weight: 0.05, color: 4 },
-  { type: "item", id: "core:pick", stack: 1, weight: 1, color: 2, tool: { on: "stone", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 16, type: "melee", uses: 60, mesh: "core:pick", hold: "tool" } },
-  { type: "item", id: "core:hatchet", stack: 1, weight: 1, color: 5, tool: { on: "wood", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 20, type: "melee", uses: 60, mesh: "core:hatchet", hold: "tool" } },
+  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 20, weight: 0.1, spoilHours: 2, eat: { food: 35, health: 8 }, color: 3, label: "cooked meat" },
+  { type: "item", class: "consumable", id: "core:waterskin", stack: 1, weight: 1, eat: { water: 60 }, label: "water skin", color: 14 },
+  { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
+  { type: "item", class: "resource", id: "core:thatch", stack: 200, weight: 0.02, color: 18, fuel: 7.5 },
+  { type: "item", class: "resource", id: "core:flint", stack: 100, weight: 0.05, color: 4 },
+  { type: "item", class: "weapon", id: "core:pick", stack: 1, weight: 1, color: 2, tool: { on: "stone", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 16, type: "melee", uses: 60, mesh: "core:pick", hold: "tool" } },
+  { type: "item", class: "weapon", id: "core:hatchet", stack: 1, weight: 1, color: 5, tool: { on: "wood", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 20, type: "melee", uses: 60, mesh: "core:hatchet", hold: "tool" } },
   ...GEAR,
 
   {

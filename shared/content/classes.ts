@@ -54,7 +54,7 @@ export type StubType = "damage" | "loot" | "spawns" | "map" | "game";
 
 const f = (kind: Field["kind"], ark = "", more: Partial<Field> = {}): Field => ({ kind, ark, ...more });
 
-type Fields<D> = { [K in Exclude<keyof D, "type" | "id">]-?: Field };
+type Fields<D> = { [K in Exclude<keyof D, "type" | "class" | "id">]-?: Field };
 
 const ITEM = {
   stack: f("number", "MaxItemQuantity"),
@@ -305,7 +305,9 @@ row("species/creature", "species", SPECIES, {
   },
   doc: "A wild thing that may be tamed, ridden and bred.",
 });
-row("species/target", "species", SPECIES, { parent: "species", ark: "none, ours", shelf: "targets", must: [...BODY, "still"], may: ["skeleton", "stats", "slots", "equips", "zones", "takes", "torporDrain", "crouch", "prone", "stamina", "fists"], slots: HUMAN_SLOTS, doc: "A body that stands where it is put, to be practised on." });
+// A target may be modelled on any body, a survivor's or a creature's, so it may declare whatever either may.
+const TARGET_MUST = [...BODY, "still"] as const;
+row("species/target", "species", SPECIES, { parent: "species", ark: "none, ours", shelf: "targets", must: TARGET_MUST, may: (Object.keys(SPECIES) as (keyof typeof SPECIES)[]).filter((k) => !(TARGET_MUST as readonly string[]).includes(k)), slots: HUMAN_SLOTS, doc: "A body that stands where it is put, to be practised on." });
 
 const BUILT = ["mesh", "color", "half", "hp"] as const;
 const STRUCTURE_SLOTS = { mesh: mesh("must", "{mesh}", "shape"), destroyed: mesh("may", "{id}/destroyed", "none"), preview: mesh("may", "{id}/preview", "#mesh") };
@@ -381,37 +383,45 @@ export function classFaults(): string[] {
   return out;
 }
 
+/** The class of a definition: its family, and its `class` where the family has several. */
+export function classOf(d: Def): string {
+  return "class" in d ? `${d.type}/${d.class}` : d.type;
+}
+
+const article = (type: string): string => (/^[aeiou]/.test(type) ? `an ${type}` : `a ${type}`);
+
+const KIND: Record<Field["kind"], [is: (v: unknown) => boolean, said: string]> = {
+  text: [(v) => typeof v === "string", "text"],
+  number: [(v) => typeof v === "number", "a number"],
+  switch: [(v) => typeof v === "boolean", "true or false"],
+  vec3: [(v) => Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number"), "three numbers"],
+  list: [(v) => Array.isArray(v), "a list"],
+  facet: [(v) => typeof v === "object" && v !== null && !Array.isArray(v), "a group of fields"],
+};
+
 /**
- * The class of a definition that does not say, from the fields it has. `eggs` holds the ids species name as their egg.
- * This is how today's content is read until every definition declares its class.
+ * What is wrong with the shape of a definition: no class or one that does not exist, a field its class must declare and
+ * does not, a field of the wrong kind, a field its class may not declare. Ranges and what names what are checked when
+ * content is compiled.
  */
-export function inferClass(d: Def, eggs: ReadonlySet<string>): string {
-  if (d.type === "item") return d.weapon ? "item/weapon" : d.ammo ? "item/ammo" : d.attachment ? "item/attachment" : d.wear ? "item/armor" : d.saddle ? "item/saddle" : d.places ? "item/structure" : d.eat || d.dose ? "item/consumable" : "item/resource";
-  if (d.type === "species") return d.still ? "species/target" : d.equips ? "species/survivor" : "species/creature";
-  if (d.type === "structure") return d.bed ? "structure/bed" : d.lights !== undefined || d.lit ? "structure/station" : d.slots ? "structure/container" : d.shape !== undefined ? "structure/piece" : "structure/static";
-  if (d.type === "prop") return eggs.has(d.id) ? "prop/egg" : d.slots ? "prop/container" : "prop/projectile";
-  return d.type;
-}
-
-/** The ids that species name as their egg. */
-export function eggIds(defs: readonly Def[]): Set<string> {
-  const out = new Set<string>();
-  for (const d of defs) if (d.type === "species" && d.breeds?.egg) out.add(d.breeds.egg);
-  return out;
-}
-
-/** What is wrong with `d` as a definition of class `id`: a missing field, a field its class does not allow. */
-export function defFaults(d: Def, id: string): string[] {
-  const r = BY_ID.get(id);
-  if (!r || r.abstract) return [`${d.id}: "${id}" is no class a definition can be of`];
-  if (r.type !== d.type) return [`${d.id}: class ${id} is of family ${r.type}, and this is a ${d.type}`];
-  const out: string[] = [];
+export function defFaults(d: Def): string[] {
   const has = d as unknown as Record<string, unknown>;
-  for (const k of r.must) if (has[k] === undefined) out.push(`${d.id}: a ${id} must declare "${k}"`);
-  if (r.any.length > 0 && !r.any.some((k) => has[k] !== undefined)) out.push(`${d.id}: a ${id} must declare one of ${r.any.map((k) => `"${k}"`).join(", ")}`);
+  const leaves = CLASSES.filter((r) => r.type === has.type && !r.abstract && r.type in FIELDS);
+  if (leaves.length === 0) return [`${d.id}: unknown type "${String(has.type)}"`];
+  const r = BY_ID.get(typeof has.class === "string" ? `${d.type}/${has.class}` : d.type);
+  if (!r || r.abstract || r.type !== d.type) {
+    const said = has.class === undefined ? "" : `, not "${String(has.class)}"`;
+    if (leaves.length === 1 && leaves[0]!.id === d.type) return [`${d.id}: ${article(d.type)} has no class${said}`];
+    return [`${d.id}: ${article(d.type)} says its class: ${leaves.map((l) => l.id.slice(d.type.length + 1)).join(", ")}${said}`];
+  }
+  const fields = FIELDS[d.type] as Record<string, Field>;
+  const out: string[] = [];
+  for (const k of r.must) if (has[k] === undefined) out.push(`${d.id}: class ${r.id} must declare "${k}"`);
+  if (r.any.length > 0 && !r.any.some((k) => has[k] !== undefined)) out.push(`${d.id}: class ${r.id} must declare one of ${r.any.map((k) => `"${k}"`).join(", ")}`);
   for (const k of Object.keys(has)) {
-    if (k === "type" || k === "id" || has[k] === undefined) continue;
-    if (!r.must.includes(k) && !r.may.includes(k)) out.push(`${d.id}: a ${id} may not declare "${k}"`);
+    if (k === "type" || k === "class" || k === "id" || has[k] === undefined) continue;
+    if (!r.must.includes(k) && !r.may.includes(k)) out.push(`${d.id}: class ${r.id} may not declare "${k}"`);
+    else if (!KIND[fields[k]!.kind][0](has[k])) out.push(`${d.id}: "${k}" must be ${KIND[fields[k]!.kind][1]}`);
   }
   return out;
 }

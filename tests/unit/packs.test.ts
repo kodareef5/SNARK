@@ -54,11 +54,11 @@ test("stacking mistakes are reported, each with the definition at fault", () => 
   const bad = (defs: ContentPack["defs"], requires?: string[]): string[] => resolvePacks([CORE_PACK, { name: "mod", requires, defs }]).errors;
   expect(bad([{ id: "mod:a", extends: "mod:nowhere" }])[0]).toMatch(/mod:a: extends "mod:nowhere"/);
   expect(bad([{ id: "mod:a", extends: "mod:b" }, { id: "mod:b", extends: "mod:a" }]).join()).toMatch(/cycle/);
-  expect(bad([{ id: "core:sneaky", type: "item", stack: 1 }])[0]).toMatch(/may only define ids starting with "mod:"/);
+  expect(bad([{ id: "core:sneaky", type: "item", class: "resource", stack: 1 }])[0]).toMatch(/may only define ids starting with "mod:"/);
   expect(bad([{ id: "core:nothing", override: true, hp: 1 }])[0]).toMatch(/overrides a definition that does not exist/);
-  expect(bad([{ id: "mod:a", type: "item", stack: 1 }], ["missing"])[0]).toMatch(/requires "missing"/);
-  expect(bad([{ id: "mod:half", type: "structure", mesh: "box" }])[0]).toMatch(/mod:half: missing or malformed field "color"/);
-  expect(bad([{ id: "mod:a", type: "item", stack: 1 }, { id: "mod:a", type: "item", stack: 2 }])[0]).toMatch(/defined twice/);
+  expect(bad([{ id: "mod:a", type: "item", class: "resource", stack: 1 }], ["missing"])[0]).toMatch(/requires "missing"/);
+  expect(bad([{ id: "mod:half", type: "structure", class: "static", mesh: "box" }])[0]).toMatch(/mod:half: class structure\/static must declare "color"/);
+  expect(bad([{ id: "mod:a", type: "item", class: "resource", stack: 1 }, { id: "mod:a", type: "item", class: "resource", stack: 2 }])[0]).toMatch(/defined twice/);
   // A resolved definition still has to pass the ordinary range checks.
   expect(compilePacks([CORE_PACK, { name: "mod", defs: [{ id: "mod:fast", extends: "core:grazer", walkSpeed: 900 }] }]).errors[0]).toMatch(/walkSpeed/);
   expect(compilePacks([CORE_PACK, { name: "mod", defs: [{ id: "mod:odd", extends: "core:grazer", stats: { luck: [1, 0, 0] } }] }]).errors[0]).toMatch(/unknown stat "luck"/);

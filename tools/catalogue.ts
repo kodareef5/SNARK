@@ -4,7 +4,7 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { CORE_CONTENT } from "../content/core.ts";
-import { CLASSES, FIELDS, eggIds, inferClass, type ClassRow, type Slot } from "../shared/content/classes.ts";
+import { CLASSES, FIELDS, classOf, type ClassRow, type Slot } from "../shared/content/classes.ts";
 import { FEATURES, type Feature } from "../shared/features.ts";
 
 export const CATALOGUE_PAGE = resolve(import.meta.dir, "../planning/reference/catalogue.md");
@@ -43,10 +43,9 @@ function slotLine(name: string, s: Slot): string {
 
 /** The core pack's ids by class, as the content stands. */
 function coreByClass(): Map<string, string[]> {
-  const eggs = eggIds(CORE_CONTENT);
   const out = new Map<string, string[]>();
   for (const d of CORE_CONTENT) {
-    const c = inferClass(d, eggs);
+    const c = classOf(d);
     const list = out.get(c) ?? [];
     list.push(d.id);
     out.set(c, list);

@@ -1,10 +1,13 @@
 // Definitions are plain data keyed by a stable string id ("namespace:name").
 // Systems read numbers from the compiled registry and never branch on an id.
+// `type` is a definition's family. A family with several classes also says which: shared/content/classes.ts has what
+// each class must and may declare.
 
 import type { StatCurve, StatName } from "../sim/genome.ts";
 
 export interface SpeciesDef {
   readonly type: "species";
+  readonly class: "survivor" | "creature" | "target";
   readonly id: string;
   /** Mesh id in an asset pack, or "box" for a generated graybox. */
   readonly mesh: string;
@@ -104,6 +107,7 @@ export interface ShapeDef {
 
 export interface StructureDef {
   readonly type: "structure";
+  readonly class: "piece" | "container" | "station" | "bed" | "static" | "defence";
   readonly id: string;
   /** "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. */
   readonly mesh: string;
@@ -144,6 +148,7 @@ export interface MaterialDef {
 
 export interface ItemDef {
   readonly type: "item";
+  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "egg" | "shield" | "costume" | "skin" | "dye" | "artifact";
   readonly id: string;
   /** Largest stack. 1 for things that carry their own quality and durability. */
   readonly stack: number;
@@ -306,6 +311,7 @@ export interface LevelsDef {
 /** An entity that stands in the world but does not move or live, such as an item cache. Its record can hold an inventory. */
 export interface PropDef {
   readonly type: "prop";
+  readonly class: "container" | "projectile" | "egg" | "crate";
   readonly id: string;
   readonly mesh: string;
   readonly color: number;

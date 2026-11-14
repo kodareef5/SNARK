@@ -1,6 +1,7 @@
 // A pack may only define ids in its own namespace ("mypack:thing"). Changing another pack's definition takes an explicit override.
 // Stacking is resolved once, here, into a flat list, so the simulation never follows an inheritance chain.
 
+import { defFaults } from "./classes.ts";
 import type { Def } from "./defs.ts";
 import { compileContent, type CompileResult } from "./registry.ts";
 
@@ -81,8 +82,8 @@ export function resolvePacks(packs: readonly ContentPack[]): { defs: Def[]; erro
   for (const [id, entry] of entries) {
     const resolved = resolve(id, id);
     if (!resolved || entry.patch.abstract) continue;
-    const problem = shapeProblem(resolved);
-    if (problem) errors.push(`${id}: ${problem}`);
+    const faults = defFaults(resolved as unknown as Def);
+    if (faults.length > 0) errors.push(...faults);
     else defs.push(resolved as unknown as Def);
   }
   return { defs, errors };
@@ -111,31 +112,4 @@ function merge(parent: Record<string, unknown>, child: Record<string, unknown>, 
 
 function isPlain(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-const REQUIRED: Record<string, Record<string, string>> = {
-  species: { mesh: "string", color: "number", radius: "number", height: "number", eyeHeight: "number", walkSpeed: "number", sprintMul: "number", jumpSpeed: "number" },
-  structure: { mesh: "string", color: "number", half: "array", hp: "number" },
-  item: { stack: "number" },
-  prop: { mesh: "string", color: "number", radius: "number", height: "number" },
-  node: { mesh: "string", color: "number", half: "array", hits: "number", respawnHours: "number", yields: "list", xp: "number" },
-  recipe: { makes: "string", count: "number", needs: "list", seconds: "number", xp: "number" },
-  engram: { label: "string", level: "number", cost: "number", unlocks: "list" },
-  levels: { xp: "list", engramPoints: "list" },
-  buff: { label: "string", color: "number" },
-  material: { takes: "object" },
-  shape: { role: "string", boxes: "list" },
-};
-
-/** Returns the problem, or null if the definition has every required field. */
-function shapeProblem(d: Record<string, unknown>): string | null {
-  const fields = REQUIRED[String(d.type)];
-  if (!fields) return `unknown type "${String(d.type)}"`;
-  for (const [key, kind] of Object.entries(fields)) {
-    const v = d[key];
-    // "array" is three numbers (half extents) and "list" is any array.
-    const ok = kind === "array" ? Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number") : kind === "list" ? Array.isArray(v) : typeof v === kind;
-    if (!ok) return `missing or malformed field "${key}"`;
-  }
-  return null;
 }

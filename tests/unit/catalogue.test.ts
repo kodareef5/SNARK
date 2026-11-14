@@ -3,13 +3,14 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
-import { CLASSES, FIELDS, classFaults, defFaults, eggIds, inferClass } from "../../shared/content/classes.ts";
+import { CLASSES, FIELDS, classFaults, classOf, defFaults } from "../../shared/content/classes.ts";
+import type { Def } from "../../shared/content/defs.ts";
+import { compilePacks } from "../../shared/content/packs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { FEATURES } from "../../shared/features.ts";
 import { CATALOGUE_PAGE, cataloguePage } from "../../tools/catalogue.ts";
 
-const eggs = eggIds(CORE_CONTENT);
-const classes = CORE_CONTENT.map((d) => inferClass(d, eggs));
+const classes = CORE_CONTENT.map(classOf);
 
 test("the class table is sound: parents exist, stubs name what they wait for, slots have fallbacks, references name classes", () => {
   expect(classFaults()).toEqual([]);
@@ -49,7 +50,7 @@ test("the core pack's 301 definitions fall into the classes, each passing its ro
     buff: 7,
   });
   expect(CORE_CONTENT.length).toBe(301);
-  expect(CORE_CONTENT.flatMap((d, i) => defFaults(d, classes[i]!))).toEqual([]);
+  expect(CORE_CONTENT.flatMap(defFaults)).toEqual([]);
   expect(compileContent(CORE_CONTENT).errors).toEqual([]);
 });
 
@@ -59,12 +60,23 @@ test("a class that is built has content, a stub has none, and each kind of fault
     if (r.abstract || !(r.type in FIELDS)) continue;
     expect([r.id, used.has(r.id)]).toEqual([r.id, r.status !== "stub"]);
   }
+});
+
+test("a definition says its class, and its class says what it may be", () => {
   const spear = CORE_CONTENT.find((d) => d.id === "core:spear")!;
-  expect(defFaults({ ...spear, eat: { food: 1 } } as typeof spear, "item/weapon")).toEqual(['core:spear: a item/weapon may not declare "eat"']);
-  expect(defFaults({ ...spear, weapon: undefined } as typeof spear, "item/weapon")).toEqual(['core:spear: a item/weapon must declare "weapon"']);
-  expect(defFaults(spear, "item/consumable")).toEqual(['core:spear: a item/consumable must declare one of "eat", "dose"', 'core:spear: a item/consumable may not declare "weapon"']);
-  expect(defFaults(spear, "structure/piece")[0]).toContain("is of family structure");
-  expect(defFaults(spear, "item")[0]).toContain("is no class a definition can be of");
+  const as = (more: Record<string, unknown>): string[] => defFaults({ ...spear, ...more } as Def);
+  expect(as({ eat: { food: 1 } })).toEqual(['core:spear: class item/weapon may not declare "eat"']);
+  expect(as({ weapon: undefined })).toEqual(['core:spear: class item/weapon must declare "weapon"']);
+  expect(as({ class: "consumable" })).toEqual(['core:spear: class item/consumable must declare one of "eat", "dose"', 'core:spear: class item/consumable may not declare "weapon"']);
+  expect(as({ weight: "heavy", weapon: [] })).toEqual(['core:spear: "weight" must be a number', 'core:spear: "weapon" must be a group of fields']);
+  expect(as({ class: "sword" })[0]).toContain('an item says its class: resource, consumable, weapon');
+  expect(as({ class: undefined })[0]).toContain("an item says its class: resource");
+  expect(as({ class: "equipment" })[0]).toContain("an item says its class");
+  expect(as({ type: "thing" })).toEqual(['core:spear: unknown type "thing"']);
+  expect(defFaults({ type: "node", class: "tree", id: "t:n" } as unknown as Def)).toEqual(['t:n: a node has no class, not "tree"']);
+  // The same checks stop a pack and stop a compile.
+  expect(compilePacks([{ name: "mod", defs: [{ id: "mod:odd", type: "item", class: "weapon", stack: 1, eat: { food: 1 } }] }]).errors).toEqual(['mod:odd: class item/weapon must declare "weapon"', 'mod:odd: class item/weapon may not declare "eat"']);
+  expect(compileContent([{ ...spear, eat: { food: 1 } } as Def]).errors).toContain('core:spear: class item/weapon may not declare "eat"');
 });
 
 test("every feature that something waits for is waited for: by a setting or by a class", () => {

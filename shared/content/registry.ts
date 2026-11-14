@@ -12,6 +12,7 @@ import { ZONE_COUNT } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
 import type { PartTable } from "../world/structures.ts";
+import { defFaults } from "./classes.ts";
 import { PIECE_ROLES, shapeHalf, type Def, type SpeciesDef, type WeaponFacet } from "./defs.ts";
 
 export const MISSING = 0;
@@ -168,6 +169,7 @@ export function compileContent(input: readonly Def[]): CompileResult {
   };
 
   for (const d of input) {
+    errors.push(...defFaults(d));
     if (!ID.test(d.id)) errors.push(`"${d.id}": id must look like "namespace:name"`);
     if (seen.has(d.id)) errors.push(`${d.id}: duplicate id`);
     seen.add(d.id);

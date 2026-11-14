@@ -58,7 +58,7 @@ test("the pack carries each creature as a rig that is a whole skeleton, one mesh
   expect(long("core:parasaur")).toBeLessThan(8.5);
   expect(long("core:raptor")).toBeGreaterThan(3.3);
   expect(long("core:raptor")).toBeLessThan(4.2);
-  for (const id of rigs.keys()) expect(reg.defs[reg.index.get(id)!]).toMatchObject({ type: "species", mesh: id, skeleton: "dino" });
+  for (const id of rigs.keys()) expect(reg.defs[reg.index.get(id)!]).toMatchObject({ type: "species", class: "creature", mesh: id, skeleton: "dino" });
 });
 
 test("a creature stands, walks, runs and strikes on its clips: its feet stay by the ground and its head stays ahead of it", () => {

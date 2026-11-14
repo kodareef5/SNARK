@@ -123,7 +123,7 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 | `species` | a character | a group |  |  |  |
 | `species/survivor` | the player's character | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats`, `equips` | `crouch`, `prone`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `fists`, `drops`, `takes`, `zones`, `killXp`, `torporDrain` | 1 |
 | `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `fists`, `bite`, `drops`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds` | 3 |
-| `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `still` | `skeleton`, `stats`, `slots`, `equips`, `zones`, `takes`, `torporDrain`, `crouch`, `prone`, `stamina`, `fists` | 1 |
+| `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `still` | `skeleton`, `crouch`, `prone`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `equips`, `fists`, `drops`, `stats`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `bite`, `taming`, `eats`, `torporDrain`, `breeds` | 1 |
 
 - **`species`** on shelf `species`. A kind of body that lives.
 - **`species/survivor`** on shelf `survivors`. The body a player has.

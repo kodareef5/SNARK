@@ -63,10 +63,10 @@ test("content compiles to the same indices and hash regardless of order", () => 
 
 test("invalid content is rejected with a reason per problem", () => {
   const { registry, errors } = compileContent([
-    { type: "item", id: "Bad Id", stack: 1 },
-    { type: "item", id: "core:a", stack: 0 },
-    { type: "item", id: "core:a", stack: 1 },
-    { type: "structure", id: "core:huge", mesh: "box", color: 1, half: [99, 1, 1], hp: 1 },
+    { type: "item", class: "resource", id: "Bad Id", stack: 1 },
+    { type: "item", class: "resource", id: "core:a", stack: 0 },
+    { type: "item", class: "resource", id: "core:a", stack: 1 },
+    { type: "structure", class: "static", id: "core:huge", mesh: "box", color: 1, half: [99, 1, 1], hp: 1 },
   ]);
   expect(registry).toBeNull();
   expect(errors.length).toBe(4);
