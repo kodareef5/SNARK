@@ -155,7 +155,8 @@ CLIPS = {
     "call":        {"owner": "life", "loop": False, "frames": 45, "min": 30, "max": 75, "start": "rest", "end": "rest"},
     "startled":    {"owner": "life", "loop": False, "frames": 15, "min": 9, "max": 24, "start": "rest"},
     "torpor_in":   {"owner": "life", "loop": False, "frames": 36, "min": 24, "max": 60, "start": "rest"},
-    "torpor_idle": {"owner": "life", "loop": True,  "frames": 90, "min": 60, "max": 150},
+    # Watched for minutes while taming, so its loop may run to ten seconds.
+    "torpor_idle": {"owner": "life", "loop": True,  "frames": 90, "min": 60, "max": 300},
     "torpor_out":  {"owner": "life", "loop": False, "frames": 45, "min": 30, "max": 75, "end": "rest"},
     "death":       {"owner": "life", "loop": False, "frames": 30, "min": 20, "max": 60, "start": "rest"},
 }
