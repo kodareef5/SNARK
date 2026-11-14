@@ -1,0 +1,30 @@
+# `bun run ci` on every push: the pushed commit, written out clean, installed from the lockfile and checked.
+# No step uses an action, so nothing is fetched from GitHub or a marketplace. planning/ci.md says what this needs of the
+# runner and how to set one up.
+on: [push, workflow_dispatch]
+
+jobs:
+  ci:
+    # The label the runner is registered with in planning/ci.md. The job brings its own image.
+    runs-on: docker
+    container:
+      image: docker.io/library/node:24-bookworm
+    timeout-minutes: 30
+    steps:
+      - name: Check out the commit with git
+        env:
+          TOKEN: ${{ forge.token }}
+        run: |
+          git init --quiet .
+          auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          git -c http.extraHeader="Authorization: Basic $auth" fetch --quiet --depth 1 "${FORGEJO_SERVER_URL%/}/$FORGEJO_REPOSITORY.git" "$FORGEJO_SHA"
+          git checkout --quiet --detach FETCH_HEAD
+
+      - name: Install the Bun that package.json pins
+        run: |
+          version=$(node -p 'require("./package.json").engines.bun')
+          npm install --global --prefix "$RUNNER_TEMP/bun" --no-fund --no-audit --allow-scripts=bun "bun@$version"
+          echo "$RUNNER_TEMP/bun/bin" >> "$FORGEJO_PATH"
+
+      - name: bun run ci
+        run: bun run ci
