@@ -39,7 +39,7 @@ export const POST = "test:post";
 export const SHARD = "test:shard";
 export const W = 160;
 export const H = 90;
-const HORN = 146;
+const HORN = 174;
 
 const DEFS: readonly Def[] = [
   ...CORE_CONTENT,

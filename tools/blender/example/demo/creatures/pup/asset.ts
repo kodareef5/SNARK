@@ -15,10 +15,15 @@ export default {
     { zone: "legR", on: "Leg.R", from: "Leg.R", to: "Foot.R", covers: ["Leg.R", "Foot.R"] },
   ],
   sockets: [{ name: "mouth", bone: "Head", of: ["Head"], at: "front" }],
+  // In the order the region map paints them: red, then green.
   regions: [
-    { name: "coat", material: "Coat", sample: 3 },
-    { name: "legs", material: "Legs", sample: 15 },
+    { name: "coat", sample: 3 },
+    { name: "legs", sample: 15 },
   ],
+  // By the name model.py gives the material. The paths are within this folder, and ../../pictures.ts drew them.
+  materials: {
+    Hide: { base: "tex/hide_base.png", normal: "tex/hide_normal.png", packed: "tex/hide_packed.png", regions: "tex/hide_regions.png", height: "tex/hide_height.png" },
+  },
   clips: [
     { name: "idle", source: "Idle", loop: true },
     { name: "walk", source: "Walk", loop: true },
@@ -26,5 +31,7 @@ export default {
   feet: ["Foot.L", "Foot.R"],
   // Two steps of plan.py's STEP to a turn of the clip.
   gaits: { walk: { stride: 0.6 } },
-  budgets: { triangles: [400, 200, 100] },
+  // The finest level is the model's. The next keeps its surface, and the last is drawn flat.
+  budgets: { triangles: [400, 200, 100], texture: { top: 64, megabytes: 1 } },
+  flat: 2,
 } satisfies CreatureAsset;

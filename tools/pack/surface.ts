@@ -150,8 +150,12 @@ const cross = (a: ArrayLike<number>, b: ArrayLike<number>): number[] => [a[1]! *
  * surface the way u grows, square to the normal. The bitangent is the normal crossed with the tangent, times the sign,
  * and runs the way v falls, toward the picture's first row. Vertices that are one point with one normal and one
  * texture coordinate share a tangent, so a border between materials does not show in the lighting.
+ *
+ * `mixed`, where given, receives every vertex whose triangles lay the picture both ways round, as along the seam of a
+ * mirrored half. One tangent cannot serve both, so one side of such a vertex is lit wrongly: a model with any should
+ * bring tangents of its own.
  */
-export function tangentsOf(lod: Textured & { normals: Float32Array }): Float32Array {
+export function tangentsOf(lod: Textured & { normals: Float32Array }, mixed?: number[]): Float32Array {
   const { positions: p, normals, uvs, indices } = lod;
   const n = p.length / 3;
   const group = new Uint32Array(n);
@@ -165,6 +169,8 @@ export function tangentsOf(lod: Textured & { normals: Float32Array }): Float32Ar
   // Per group: how the surface runs as u grows, and as v grows. Each triangle counts by its area.
   const alongU = new Float64Array(ids.size * 3);
   const alongV = new Float64Array(ids.size * 3);
+  /** Per group: 1 where a triangle lays the picture one way round, 2 the other, 3 where it has both. */
+  const sense = new Uint8Array(ids.size);
   edges(lod, (t, e1, e2, du1, dv1, du2, dv2) => {
     const det = du1 * dv2 - du2 * dv1;
     const area = Math.hypot(...cross(e1, e2));
@@ -173,6 +179,7 @@ export function tangentsOf(lod: Textured & { normals: Float32Array }): Float32Ar
     const w = e2.map((e, k) => (e * du1 - e1[k]! * du2) / det);
     const [lu, lw] = [Math.hypot(...u) || 1, Math.hypot(...w) || 1];
     for (let c = 0; c < 3; c++) {
+      sense[group[indices[t * 3 + c]!]!]! |= det > 0 ? 1 : 2;
       const g = group[indices[t * 3 + c]!]! * 3;
       for (let k = 0; k < 3; k++) {
         alongU[g + k]! += (u[k]! / lu) * area;
@@ -183,6 +190,7 @@ export function tangentsOf(lod: Textured & { normals: Float32Array }): Float32Ar
   const out = new Float32Array(n * 4);
   for (let v = 0; v < n; v++) {
     const g = group[v]! * 3;
+    if (sense[group[v]!] === 3) mixed?.push(v);
     const normal = normals.subarray(v * 3, v * 3 + 3);
     const dot = normal[0]! * alongU[g]! + normal[1]! * alongU[g + 1]! + normal[2]! * alongU[g + 2]!;
     let tangent = [alongU[g]! - normal[0]! * dot, alongU[g + 1]! - normal[1]! * dot, alongU[g + 2]! - normal[2]! * dot];

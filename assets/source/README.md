@@ -47,9 +47,9 @@ commit what comes out.
 ## A creature
 
 `asset.ts` exports a `CreatureAsset`: the skeleton, hit zones, sockets, colour
-regions, clips, the feet and the stride of each gait, and the triangle
-budgets. It also has room for the level it is drawn flat from, its ragdoll
-and its texture budget, which nothing reads yet. Every field is described in
+regions, materials, clips, the feet and the stride of each gait, the triangle
+and texture budgets, and the first level drawn flat. It also has room for its
+ragdoll, which nothing reads yet. Every field is described in
 `tools/art/spec.ts`.
 
 Its model is either `source: { raw: "..." }`, a file under `assets/raw`
@@ -60,25 +60,88 @@ import a module from the folder to share numbers. When the last has run the
 scene holds:
 
 - one armature;
-- the meshes skinned to it, facing -Y with +Z up, in metres. A mesh object
-  named `..._LOD1` is level 1, and so on. With no such names the coarser
-  levels are made from the one there is;
-- one material for each colour region, named as `regions` names it;
+- the meshes skinned to it, facing -Y with +Z up, in metres;
 - one action for each clip, named as `clips` names its `source`. A loop's last
   key repeats its first.
 
+Its colours come one of two ways:
+
+- **With pictures.** `materials` names the pictures of each Blender material
+  (see Materials below). The mesh then needs texture coordinates and smooth
+  normals, and may weigh a vertex to four bones. Only its finest level is
+  read. The others are made from it to `budgets.triangles`: those before `flat`
+  keep their surface, and `flat` and the rest are drawn in flat colours read
+  off the pictures. Colour regions are painted in the region map.
+- **Without.** One material for each colour region, named as `regions` names
+  it. A mesh object named `..._LOD1` is level 1, and so on. With no such names
+  the coarser levels are made from the one there is.
+
 Several people can work in one folder at once if each owns a script.
 
-`tools/blender/example/demo/creatures/pup/` is a whole creature in five short
-files, built by `bun run art -- --source tools/blender/example demo:pup`.
+`tools/blender/example/demo/creatures/pup/` is a whole creature with pictures
+in five short files, built by
+`bun run art -- --source tools/blender/example demo:pup`.
 
 ## Rigid pieces
 
 `kind: "pieces"` is for structure pieces and other rigid meshes: one script
 makes several, each a mesh object named in `pieces`, modelled about the origin
 as the piece stands in the game. `tools/blender/example/demo/structures/crate/`
-is the example. A material named `region0` to `region5` is a colour region.
-Any other takes the nearest palette colour.
+is the example. A material that `materials` names has pictures. Of the rest,
+one named `region0` to `region5` is a colour region and any other takes the
+palette colour nearest its own.
+
+A piece keeps the levels its script makes (`..._LOD1` and so on). The ones
+with texture coordinates are drawn with materials, and the rest flat. With
+`flat` in `asset.ts` its levels are made from its finest instead, as a
+creature's are.
+
+## Materials
+
+A material is its pictures, named in `asset.ts` under the name the model gives
+it. Paths are within the asset's folder.
+
+```ts
+materials: {
+  Hide: {
+    base: "tex/hide_base.png",        // base colour, unlit
+    normal: "tex/hide_normal.png",    // green points up the picture
+    packed: "tex/hide_packed.png",    // occlusion, roughness, metalness in red, green, blue
+    regions: "tex/hide_regions.png",  // the colour regions, painted in flat colours
+    height: "tex/hide_height.png",    // kept for the record, and for the check
+  },
+  Planks: { base: "tex/planks_base.png", normal: "tex/planks_normal.png", packed: "tex/planks_packed.png", tiles: 1.5 },
+},
+```
+
+- `packed` may be `{ occlusion, roughness, metal }`, three grey pictures.
+- `regions` is one map in red, green, blue, cyan, magenta and yellow for
+  regions 0 to 5, with black for what is never dyed. Regions may touch. Or it
+  is `{ mask, mask2 }`, the two masks made by hand. The base colour is light
+  grey where a region dyes it.
+- `tiles` is the metres one picture spans, for a material that repeats. Texture
+  coordinates may run past one picture, so a wall need not be cut where its
+  material repeats.
+- `twoSided`, `cutout` (the base colour's alpha is how much shows) and `tint`
+  say how it is drawn. A material's tint is 1 unless given: the colour it has
+  in the model is not read.
+- `flat` is the colour it is drawn flat in, as red, green and blue. Without
+  it, that is read off the pictures: the mean of the base colour, or a colour
+  region where one dyes half of it or more. Either way the nearest palette
+  colour is used, so no palette index is written down anywhere.
+- Every picture is square. Base colour and normal are stored as large as they
+  come, up to `budgets.texture.top`, and the packed map and masks one size
+  under the base colour.
+- A material that several assets use is said once, beside its pictures:
+  `export const POLE = shared(import.meta.dir, "core:pole", { ... })`, and
+  `materials: { Pole: POLE }` in each asset. It must say how far it `tiles`.
+
+Blender writes tangents wherever a mesh has texture coordinates. A model
+converted from a raw file must bring its own if any part of it is mirrored.
+
+The game's build finds the pictures through the packs: `gameTextures()` in
+`tools/art/materials.ts` lists every texture the packs name, and
+`bun run build` encodes them. Nothing but the source pictures is committed.
 
 ## The check
 
@@ -87,16 +150,24 @@ prints numbers and fails only on what would draw wrong:
 
 - mesh: a hole, faces that look opposite ways across an edge, a part inside
   out, a vertex on no bone or on more than four (at conversion), a vertex on a
-  bone the rig lacks. A wanted opening is two faces back to back;
+  bone the rig lacks, a vertex shared by triangles that lay the picture both
+  ways round. A wanted opening is two faces back to back;
 - clips: a loop whose last pose does not lead into its first, a planted foot
   that slides at the stride given;
-- budgets: triangles a level.
+- pictures: one that is missing, not square or under 64 pixels, a tiling
+  picture that jumps across its edge more than 4 times as hard as inside it, a
+  normal map that leans against its height, a region map with more than 2% of
+  it no region's colour, masks that sum past 1, a large picture that is not
+  its small one when shrunk (under 30 dB);
+- budgets: triangles a level, megabytes of textures in one variant.
 
 It also says how tall the creature stands when each level is first drawn, the
 stride each gait holds best at, a loop that walks and has no stride, a loop
-that stands still, and a hit capsule buried in others. A test runs the check
-over every asset here, so a pack with a fault does not pass `bun run check`.
-Textures are not measured yet.
+that stands still, a hit capsule buried in others, how many pixels a metre each
+material has on each mesh, and how far each material's mean colour is from the
+palette colour it is drawn flat in. A test runs the check over every asset
+here, so a pack with a fault does not pass `bun run check`. That test reads
+only the sizes of the pictures. `--check` reads and measures them.
 
 ## The sheet
 

@@ -9,9 +9,12 @@ import { boneToModel, rayZones, solve, zoneHit } from "../../shared/anim/skeleto
 import { TICK_RATE } from "../../shared/coords.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
+import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
+import { spanOf } from "../pack/surface.ts";
 import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import type { Asset } from "./assets.ts";
 import type { CreatureAsset } from "./spec.ts";
+import { measureTextures, type MaterialFacts } from "./textures.ts";
 
 /** A level's distance and height on screen are worked out for this tier, on a screen this many pixels high with this field of view. */
 const TIER = "medium";
@@ -32,6 +35,8 @@ const SAMPLES = 400;
 const STILL = 1e-4;
 /** A loop that stands still for this share of its frames is remarked on. */
 const STILL_SHARE = 0.25;
+/** Texel density is remarked on when one material on one mesh has this many times the pixels to a metre of another. */
+const DENSITY = 2;
 
 export interface LevelFacts {
   triangles: number;
@@ -55,6 +60,9 @@ export interface LevelFacts {
   /** Edges with more than two triangles, and triangles with no area. Neither is a fault. */
   crowded: number;
   collapsed: number;
+  /** In a level drawn with materials: how many it is drawn with, and its vertices shared by triangles that lay the picture both ways round. */
+  materials?: number;
+  bothWays?: number;
 }
 
 export interface MeshFacts {
@@ -64,6 +72,11 @@ export interface MeshFacts {
   levels: LevelFacts[];
   /** In a skinned mesh: vertices, over all levels, that follow a bone the rig does not have. */
   strays?: number;
+  /**
+   * In a mesh drawn with materials, for each on its finest level: the metres one picture spans as measured there,
+   * and the pixels of its widest texture to a metre.
+   */
+  materials?: { id: string; span: number; texels: number }[];
 }
 
 export interface ClipFacts {
@@ -102,15 +115,26 @@ export interface Report {
   rig?: { skeleton: string; bones: number; capsules: number; buried: string[]; sockets: string[] };
   clips: ClipFacts[];
   gaits: GaitFacts[];
-  /**
-   * Nothing yet. Texture measures go here when the converter reads textures: layers of one size (`oddSizes`), a tiling
-   * texture that wraps (`seam`), a normal map that agrees with its height (`normalAgainstHeight`), a larger size that
-   * matches the smaller when shrunk (`shrunkAgainst`), all in tools/pack/image.ts, and masks that hold to their rule
-   * (`checkMasks` in tools/pack/mask.ts).
-   */
-  textures: never[];
+  /** The materials the asset names, each with its pictures (tools/art/textures.ts), and what their textures weigh. */
+  textures: MaterialFacts[];
+  megabytes: { textures: number; budget: number | null };
+  /** Whether the pictures were read and measured. Without that only their sizes are known. */
+  pictures: boolean;
   notes: string[];
   faults: string[];
+}
+
+/** The vertices of a level that are shared by triangles that lay the picture both ways round. Each has one tangent, which is wrong for one side. */
+export function bothWays(lod: SourceLod): number[] {
+  const { uvs, indices } = lod;
+  if (!uvs) return [];
+  const sense = new Uint8Array(uvs.length / 2);
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    const [a, b, c] = [indices[t]! * 2, indices[t + 1]! * 2, indices[t + 2]! * 2];
+    const det = (uvs[b]! - uvs[a]!) * (uvs[c + 1]! - uvs[a + 1]!) - (uvs[c]! - uvs[a]!) * (uvs[b + 1]! - uvs[a + 1]!);
+    if (det !== 0) for (const v of [a, b, c]) sense[v / 2]! |= det > 0 ? 1 : 2;
+  }
+  return [...sense.keys()].filter((v) => sense[v] === 3);
 }
 
 /** Counts what is wrong with the surface of one level. Points at one place are one point, whatever colour or bone they carry. */
@@ -234,9 +258,23 @@ function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], f
     if (facts.flipped > 0) faults.push(`${where}: ${facts.flipped} edges between faces that look opposite ways`);
     if (facts.insideOut > 0) faults.push(`${where}: ${facts.insideOut} of its ${facts.parts} parts inside out`);
     if (bones !== undefined && lod.bones) for (const b of lod.bones) if (b >= bones) strays++;
+    if (l >= (mesh.flat ?? 0)) return facts;
+    const mixed = bothWays(lod);
+    facts.materials = new Set(lod.sections ?? [0]).size;
+    facts.bothWays = mixed.length;
+    if (mixed.length > 0) faults.push(`${where}: ${mixed.length} vertices are shared by triangles that lay the picture both ways round, so one side of each is lit wrongly (the first at ${[...lod.positions.subarray(mixed[0]! * 3, mixed[0]! * 3 + 3)].map((v) => v.toFixed(3)).join(", ")}). A model whose export writes tangents has such vertices twice`);
     return facts;
   });
   const out: MeshFacts = { id: mesh.id, size: [header.half[0] * 2, tall, header.half[2] * 2], levels };
+  if (mesh.flat) {
+    const fine = mesh.lods[0]!;
+    out.materials = (mesh.materials ?? []).flatMap((m, k) => {
+      if (!(fine.sections ? fine.sections.includes(k) : k === 0)) return [];
+      const span = spanOf(fine, k);
+      const widest = Math.max(0, ...TEXTURE_ROLES.map((role) => mesh.textures?.[m[role]]?.top ?? 0));
+      return [{ id: m.id, span, texels: widest / span }];
+    });
+  }
   if (bones !== undefined) {
     out.strays = strays;
     if (strays > 0) faults.push(`${mesh.id}: ${strays} vertices follow a bone the rig does not have`);
@@ -426,9 +464,12 @@ function checkCreature(asset: Asset, spec: CreatureAsset, pack: Pack, meshes: So
   for (const name of Object.keys(spec.gaits)) if (!spec.clips.some((c) => c.name === name)) faults.push(`gait "${name}" is not one of the clips`);
 }
 
-/** Measures the pack an asset was converted to. */
-export function checkAsset(asset: Asset, pack: Pack): Report {
-  const report: Report = { id: asset.id, kind: asset.spec.kind, meshes: [], clips: [], gaits: [], textures: [], notes: [], faults: [] };
+/**
+ * Measures the pack an asset was converted to. With `pictures`, the pictures its materials name are read and measured
+ * too, which takes seconds. Without, only their sizes are.
+ */
+export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
+  const report: Report = { id: asset.id, kind: asset.spec.kind, meshes: [], clips: [], gaits: [], textures: [], megabytes: { textures: 0, budget: null }, pictures, notes: [], faults: [] };
   const meshes = unpackMeshes(pack);
   const spec = asset.spec;
   if (spec.kind === "creature") checkCreature(asset, spec, pack, meshes, report);
@@ -442,6 +483,16 @@ export function checkAsset(asset: Asset, pack: Pack): Report {
     // Bodies are cut by slot, so every mesh ends at a cut. Their surfaces are counted and not judged.
     for (const mesh of meshes) report.meshes.push(measureMesh(mesh, pack, [], []));
     for (const clip of pack.clips.clips) report.clips.push({ name: clip.id, frames: clip.frames, seconds: clip.frames / TICK_RATE, loop: clip.loop, step: 0, still: 0 });
+    return report;
+  }
+  const textures = measureTextures(asset, pack, pictures, report.faults, report.notes);
+  report.textures = textures.materials;
+  report.megabytes = { textures: textures.megabytes, budget: textures.budget };
+  // One material drawn much finer on one mesh than on another shows as a blurred mesh beside a sharp one.
+  const drawn = report.meshes.flatMap((m) => (m.materials ?? []).filter((d) => d.texels > 0).map((d) => ({ mesh: m.id, ...d })));
+  const [least, most] = [drawn.reduce((a, b) => (b.texels < a.texels ? b : a), drawn[0]!), drawn.reduce((a, b) => (b.texels > a.texels ? b : a), drawn[0]!)];
+  if (drawn.length > 1 && most.texels > DENSITY * least.texels) {
+    report.notes.push(`texel density runs from ${least.texels.toFixed(0)} pixels a metre (${least.id} on ${least.mesh}) to ${most.texels.toFixed(0)} (${most.id} on ${most.mesh}), more than ${DENSITY} times apart`);
   }
   return report;
 }
@@ -465,8 +516,9 @@ export function reportLines(r: Report): string[] {
       continue;
     }
     out.push(`  mesh ${m.id}: ${m.size.map((v) => v.toFixed(2)).join(" x ")} m${m.strays === undefined ? "" : `, ${m.strays} vertices on a bone the rig lacks`}`);
-    const heads = ["level", "triangles", "budget", "vertices", "error cm", "from m", "px tall", "parts", "holes", "open edges", "flipped", "inside out"];
-    out.push(...table(heads, m.levels.map((l, i) => [i, l.triangles, l.budget ?? "-", l.vertices, cm(l.error), i === 0 ? "-" : l.from.toFixed(0), i === 0 ? "-" : l.tall.toFixed(0), l.parts, l.holes, l.openEdges, l.flipped, l.insideOut]), "    "));
+    const heads = ["level", "triangles", "budget", "vertices", "error cm", "from m", "px tall", "parts", "holes", "open edges", "flipped", "inside out", "materials"];
+    out.push(...table(heads, m.levels.map((l, i) => [i, l.triangles, l.budget ?? "-", l.vertices, cm(l.error), i === 0 ? "-" : l.from.toFixed(0), i === 0 ? "-" : l.tall.toFixed(0), l.parts, l.holes, l.openEdges, l.flipped, l.insideOut, l.materials ?? "flat"]), "    "));
+    for (const d of m.materials ?? []) out.push(`    ${d.id}: a picture spans ${d.span.toFixed(2)} m here${d.texels > 0 ? `, ${d.texels.toFixed(0)} pixels a metre` : ""}`);
   }
   if (r.meshes.length > 0 && judged) out.push(`    from m and px tall: where the level is first drawn on ${TIER}, and how tall the mesh then stands on a ${SCREEN} pixel screen`);
   if (r.rig) out.push(`  rig: skeleton "${r.rig.skeleton}", ${r.rig.bones} bones, ${r.rig.capsules} hit capsules of which ${r.rig.buried.length} buried, sockets ${r.rig.sockets.join(", ") || "none"}`);
@@ -477,7 +529,19 @@ export function reportLines(r: Report): string[] {
     out.push(`  gait ${g.clip}: stride ${g.stride ?? "-"} m, holds best at ${g.measured.toFixed(2)} m`);
     for (const f of g.feet) out.push(`    ${f.bone.padEnd(14)} planted ${(f.planted * 100).toFixed(0).padStart(3)}% of the clip, slides ${cm(f.slide)} cm`);
   }
-  out.push("  textures: not measured yet");
+  for (const t of r.textures) {
+    const tops = Object.entries(t.tops).map(([role, top]) => `${role} ${top}`).join(", ");
+    out.push(`  material ${t.id}: ${t.tiles ? "tiles every" : "a picture spans"} ${+t.span.toFixed(2)} m, stored as ${tops || "nothing"}`);
+    out.push(...table(["picture", "pixels", "bits", "wraps", "file"], t.layers.map((l) => [l.what, l.width === l.height ? l.width : `${l.width}x${l.height}`, l.depth, l.seam ? l.seam.map((v) => v.toFixed(2)).join(" ") : "-", ` ${l.file}`]), "    "));
+    if (t.mean && t.nearest) out.push(`    mean colour ${t.mean.join(", ")}: the nearest palette colour is ${t.nearest.colour}, ${t.nearest.distance.toFixed(1)} away`);
+    if (t.normal) out.push(`    normal against height: ${t.normal.x.toFixed(2)} across, ${t.normal.y.toFixed(2)} down (1 is exactly), mean length ${t.normal.length.toFixed(3)}, furthest from 1 by ${t.normal.off.toFixed(3)}`);
+    if (t.regions) out.push(`    regions:${t.regions.stray === undefined ? "" : ` ${(t.regions.stray * 100).toFixed(2)}% of the map is no region's colour,`} cover ${t.regions.cover.map((c) => `${(c * 100).toFixed(0)}%`).join(" ")}, the weights sum to ${t.regions.most.toFixed(2)} at most`);
+    for (const [what, db] of Object.entries(t.shrunk ?? {})) out.push(`    ${what}, shrunk, against its small one: ${db.toFixed(1)} dB`);
+  }
+  if (r.textures.length > 0) {
+    out.push(`  textures: ${r.megabytes.textures.toFixed(1)} MB in the largest variant${r.megabytes.budget === null ? "" : `, of ${r.megabytes.budget} MB allowed`}${r.pictures ? "" : ". The pictures were not read: wraps, normals, regions and sizes against each other are measured by --check"}`);
+    if (r.textures.some((t) => t.layers.some((l) => l.seam))) out.push("    wraps: how hard a tiling picture jumps across its edge, across and down, against inside it. About 1 where it tiles");
+  }
   for (const n of r.notes) out.push(`  note: ${n}`);
   for (const f of r.faults) out.push(`  FAULT: ${f}`);
   out.push(r.faults.length === 0 ? "  ok" : `  ${r.faults.length} ${r.faults.length === 1 ? "fault" : "faults"}`);

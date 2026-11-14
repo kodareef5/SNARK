@@ -1,0 +1,171 @@
+// The materials an asset names in its asset.ts: where their pictures are, what a pack says of each, the colour each is
+// drawn flat in, and the mips of each of their textures for the texture build.
+
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type PackTexture } from "../../shared/pack/pack.ts";
+import { REGION_BASE, nearestColour } from "../../shared/pack/palette.ts";
+import { LAST_STEP, STEP0_SIZE, stepSize, type TextureRole } from "../../shared/pack/texture.ts";
+import type { TextureSource } from "../pack/encode.ts";
+import { baseMips, packMro, readPicture, type Picture } from "../pack/image.ts";
+import { checkMasks, maskMips, readMasks, readRegions } from "../pack/mask.ts";
+import { materialMips, type MaterialMaps } from "../pack/texture.ts";
+import { findAssets, type Asset } from "./assets.ts";
+import { SOURCE } from "./source.ts";
+import type { MaterialSpec } from "./spec.ts";
+
+export interface Material {
+  /** As the model names it. */
+  name: string;
+  /** Its id in the pack: its own where several assets share it, "<asset>/<name>" where not. A texture is "<material>/<role>". */
+  id: string;
+  spec: MaterialSpec;
+  /** The folder its paths are in. */
+  dir: string;
+}
+
+export function materialsOf(asset: Asset): Material[] {
+  const spec = asset.spec;
+  if (spec.kind !== "creature" && spec.kind !== "pieces") return [];
+  return Object.entries(spec.materials ?? {}).map(([name, m]) => ({ name, id: m.id ?? `${asset.id}/${name}`, spec: m, dir: m.dir ?? asset.dir }));
+}
+
+/** The picture files of a material, by what each is. A packed map of layers and masks made by hand are several. */
+export function pictureFiles(m: Material): Record<string, string> {
+  const { base, normal, packed, regions, height, small } = m.spec;
+  const out: Record<string, string | undefined> = { base, normal, height, "small base": small?.base, "small normal": small?.normal };
+  if (typeof packed === "string") out.packed = packed;
+  else if (packed) Object.assign(out, { occlusion: packed.occlusion, roughness: packed.roughness, metal: packed.metal });
+  if (typeof regions === "string") out.regions = regions;
+  else if (regions) Object.assign(out, { mask: regions.mask, mask2: regions.mask2 });
+  return Object.fromEntries(Object.entries(out).flatMap(([what, file]) => (file === undefined ? [] : [[what, join(m.dir, file)]])));
+}
+
+/** A material's pictures as the texture pipeline takes them, read from its files: all of them, or those the `roles` given are made from. */
+export function readMaps(m: Material, roles?: readonly TextureRole[]): MaterialMaps {
+  const files = pictureFiles(m);
+  const want = (role: TextureRole): boolean => !roles || roles.includes(role);
+  const read = (what: string): Picture | undefined => (files[what] === undefined ? undefined : readPicture(files[what]));
+  const out: MaterialMaps = {};
+  if (want("base")) out.base = read("base");
+  // A packed map is roughened by what its normal map loses, so it is made with it.
+  if (want("normal") || want("mro")) out.normal = read("normal");
+  if (want("mro")) out.mro = files.occlusion !== undefined ? packMro(read("occlusion")!, read("roughness")!, read("metal")) : read("packed");
+  if (want("mask") || want("mask2")) Object.assign(out, { regions: read("regions"), mask: read("mask"), mask2: read("mask2") });
+  for (const key of Object.keys(out) as (keyof MaterialMaps)[]) if (!out[key]) delete out[key];
+  return out;
+}
+
+/** The side a picture has as a texture: the power of two nearest its own. */
+export const sideOf = (p: { width: number }): number => 2 ** Math.round(Math.log2(p.width));
+
+const linear = (s: number): number => (s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4));
+const srgb = (l: number): number => (l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055);
+
+/** What a pack says of a material, the colour it is drawn flat in, and its pictures for whoever reads colours off them. */
+export interface Described {
+  /** Its textures are named by their place in `textures`. `span` is how far it tiles, or 0 for the meshes it is on to be measured. */
+  material: PackMaterial;
+  textures: PackTexture[];
+  maps: MaterialMaps;
+  /** A palette colour, or the region that dyes half of it or more. */
+  flat: number;
+  faults: string[];
+}
+
+/**
+ * Reads a material's pictures and says what the pack holds of it. Base colour and normal are stored as large as they
+ * come, up to `top`, and the packed map and the masks one size under the base colour.
+ */
+export function describe(m: Material, top: number, palette: Uint8Array): Described {
+  const faults: string[] = [];
+  const maps = readMaps(m);
+  for (const [what, p] of Object.entries(maps) as [string, Picture][]) {
+    if (p.width !== p.height) throw new Error(`${m.id}: its ${what} picture is ${p.width} by ${p.height}, and a texture is square`);
+    if (sideOf(p) < STEP0_SIZE) throw new Error(`${m.id}: its ${what} picture is ${p.width} pixels across, and a texture is ${STEP0_SIZE} at least`);
+  }
+  const base = maps.base && baseMips(maps.base);
+  let masks: ReturnType<typeof maskMips> | null = null;
+  if (maps.regions) masks = maskMips(readRegions(maps.regions));
+  else if (maps.mask) {
+    const report = checkMasks(maps.mask, maps.mask2);
+    if (!report.sameSize) throw new Error(`${m.id}: its two masks are not one size`);
+    if (report.over > 0) faults.push(`${m.id}: the weights of ${(report.over * 100).toFixed(2)}% of its masks' pixels sum past 1, to as much as ${report.most.toFixed(2)}`);
+    else masks = maskMips(readMasks(maps.mask, maps.mask2));
+  }
+  const most = Math.min(top, stepSize(LAST_STEP));
+  const under = Math.max(STEP0_SIZE, Math.min(maps.base ? sideOf(maps.base) : most, most) / 2);
+  const tops: Partial<Record<TextureRole, number>> = {};
+  if (maps.base) tops.base = Math.min(sideOf(maps.base), most);
+  if (maps.normal) tops.normal = Math.min(sideOf(maps.normal), most);
+  if (maps.mro) tops.mro = Math.min(sideOf(maps.mro), under);
+  if (masks) tops.mask = Math.min(1 << (masks.mask.length - 1), under);
+  if (masks?.mask2) tops.mask2 = tops.mask;
+  const textures = (Object.keys(tops) as TextureRole[]).sort().map((role): PackTexture => ({ id: `${m.id}/${role}`, role, top: tops[role]! }));
+  const place = (role: TextureRole): number => textures.findIndex((t) => t.role === role);
+  const tint = (m.spec.tint ?? [1, 1, 1]).slice(0, 3) as [number, number, number];
+  const cutout = m.spec.cutout !== undefined && m.spec.cutout !== false;
+
+  // How much of each region the whole picture has, and how bright the base colour is where a region dyes it.
+  const cover = [0, 0, 0, 0, 0, 0];
+  let grey = 1;
+  if (masks) {
+    const one = [masks.mask[0]!, masks.mask2?.[0]];
+    for (let k = 0; k < 6; k++) cover[k] = (one[k < 3 ? 0 : 1]?.[k % 3] ?? 0) / 255;
+    // Read where base colour and masks are one size, and no finer than 256 pixels.
+    const at = Math.min(8, masks.mask.length - 1, (base?.length ?? 1) - 1);
+    let lit = 0;
+    let dyed = 0;
+    for (let p = 0; base && p < base[at]!.length; p += 4) {
+      const share = (masks.mask[at]![p]! + masks.mask[at]![p + 1]! + masks.mask[at]![p + 2]! + (masks.mask2 ? masks.mask2[at]![p]! + masks.mask2[at]![p + 1]! + masks.mask2[at]![p + 2]! : 0)) / 255;
+      lit += share * (0.2126 * linear(base[at]![p]! / 255) + 0.7152 * linear(base[at]![p + 1]! / 255) + 0.0722 * linear(base[at]![p + 2]! / 255));
+      dyed += share;
+    }
+    if (dyed > 0 && lit > 0) grey = Math.round((lit / dyed) * 1e4) / 1e4;
+  }
+  const material: PackMaterial = {
+    id: m.id, base: place("base"), normal: place("normal"), mro: place("mro"), mask: place("mask"), mask2: place("mask2"), tint, grey, emissive: 0,
+    flags: (m.spec.twoSided ? MATERIAL_TWO_SIDED : 0) | (cutout ? MATERIAL_CUTOUT : 0), cutoff: cutout ? (m.spec.cutout === true ? 0.5 : (m.spec.cutout as number)) : 0, span: m.spec.tiles ?? 0,
+  };
+  if (m.spec.id !== undefined && !m.spec.tiles) faults.push(`${m.id}: a material several assets share says how far it tiles, so that it is the same on all of them`);
+
+  // Flat, it is the region that dyes half of it or more, the colour its asset gives it, or its base colour's mean as light.
+  const region = cover.indexOf(Math.max(...cover));
+  let flat: number;
+  if (m.spec.flat) flat = nearestColour(palette, ...(m.spec.flat as [number, number, number]));
+  else if (cover[region]! >= 0.5) flat = REGION_BASE + region;
+  else {
+    const mean = base ? [...base[0]!.subarray(0, 3)].map((c) => linear(c / 255)) : [1, 1, 1];
+    flat = nearestColour(palette, ...(mean.map((c, k) => srgb(Math.min(1, c * tint[k]!)) * 255) as [number, number, number]));
+  }
+  return { material, textures, maps, flat, faults };
+}
+
+/** The mips of one of a material's textures: RGBA8, smallest first, from one pixel across up to `top`. */
+export function mipsOf(m: Material, role: TextureRole, top: number): Uint8Array[] {
+  const mips = materialMips(readMaps(m, [role]))[role];
+  if (!mips || mips.length < Math.log2(top) + 1) throw new Error(`${m.id}: its pictures do not make a ${role} texture ${top} pixels across`);
+  return mips.slice(0, Math.log2(top) + 1);
+}
+
+/**
+ * Every texture the packs under `source` name, for the texture build (tools/pack/encode.ts): its id, role and top as
+ * its pack has them, and a way to its mips, which reads its pictures only when asked. A texture several packs name
+ * is listed once.
+ */
+export async function gameTextures(source: string = SOURCE): Promise<TextureSource[]> {
+  const out = new Map<string, TextureSource>();
+  for (const asset of await findAssets(source)) {
+    if (!existsSync(asset.file)) continue;
+    const named = parsePack(new Uint8Array(readFileSync(asset.file))).header.textures ?? [];
+    const materials = materialsOf(asset);
+    for (const t of named) {
+      const m = materials.find((m) => t.id === `${m.id}/${t.role}`);
+      if (!m) throw new Error(`${asset.id}: its pack names the texture ${t.id}, which no material in its asset.ts has. Build it again`);
+      const had = out.get(t.id);
+      if (had && had.top !== t.top) throw new Error(`texture ${t.id} is ${had.top} pixels across in one pack and ${t.top} in ${asset.id}: assets that share a material give it one size`);
+      out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf(m, t.role, t.top) });
+    }
+  }
+  return [...out.values()];
+}

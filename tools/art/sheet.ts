@@ -593,6 +593,8 @@ export function drawSheet(asset: Asset, pack: Pack, report: Report): Sheet | nul
     if (n > 0) pages.push(views);
     views.line(`${id} at level 0, from eight sides. Ground lines ${gridStep(s.radius)} m apart.`);
     around(views, s, 0, 4, 284, true);
+    // The views are flat. The same eight drawn with the level's materials belong here: ModelView would queue a draw
+    // for each section and send the textures, as tests/fixtures/stage.ts does by hand, with mips from mipsOf.
 
     if (s.mesh.lods.length > 1) {
       const levels = new Page(`${tag}levels`);

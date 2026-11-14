@@ -26,7 +26,7 @@ test("a mesh's flat colours are its regions and a few palette colours, a dozen a
   const alone = new Set(baker(whole, [plainMaterial("a")], [{ base: rainbow(0, 255) }], palette)(whole)).size;
   expect([alone > 3, alone <= 6]).toEqual([true, true]);
   expect([...new Set(baker(whole, [plainMaterial("a")], [{ base: picture(64, () => [150, 152, 156]) }], palette)(whole))]).toEqual([2]);
-  expect([...new Set(baker(whole, [{ ...plainMaterial("a"), tint: [0.2, 0.2, 0.2] }], [{}], palette)(whole))]).toEqual([15]);
+  expect([...new Set(baker(whole, [{ ...plainMaterial("a"), tint: [0.2, 0.2, 0.2] }], [{}], palette)(whole))]).toEqual([99]);
   expect(() => baker(plate(2, () => 1), [plainMaterial("a")], [], palette)).toThrow("which the mesh does not have");
 
   // Grey with a blue cell and a red one. Where the red is only half its cell, one triangle, it has no neighbour of its colour and goes.

@@ -64,10 +64,64 @@ export type SocketSpec =
 export interface RegionSpec {
   /** What a player sees it called. */
   readonly name: string;
-  /** The Blender material whose faces take this region's colour. */
-  readonly material: string;
+  /** The Blender material whose faces take this region's colour, in a model with no `materials`. One with pictures marks its regions in them. */
+  readonly material?: string;
   /** A palette index to draw it in on the review sheet. Content gives the colours a wild one rolls. */
   readonly sample: number;
+}
+
+/**
+ * A material's pictures, and how it is drawn. A path is within the folder of the asset that names the material. Every
+ * picture is square, and one that is not a power of two across is resized to the nearest. Base colour and normal are
+ * stored at the size they come in, up to the asset's `budgets.texture.top`, and the packed map and the masks one size
+ * under the base colour.
+ */
+export interface MaterialSpec {
+  /** Base colour, unlit. Its alpha is how much shows, where the material is cut out. */
+  readonly base?: string;
+  /** x in red, y in green and pointing up the picture, z in blue. */
+  readonly normal?: string;
+  /** Occlusion in red, roughness in green and metalness in blue, as one picture or as grey layers of one size. */
+  readonly packed?: string | { readonly occlusion: string; readonly roughness: string; readonly metal?: string };
+  /**
+   * The colour regions: one map painted in flat colours (red, green, blue, cyan, magenta and yellow for regions 0 to
+   * 5, black for what is never dyed), or the two masks made by hand (tools/pack/mask.ts).
+   */
+  readonly regions?: string | { readonly mask: string; readonly mask2?: string };
+  /** Kept for the record. `--check` holds the normal map against it. */
+  readonly height?: string;
+  /** The same pictures at a smaller size, where the set was made small first. `--check` holds each large one, shrunk, against its small one. */
+  readonly small?: { readonly base?: string; readonly normal?: string };
+  readonly twoSided?: boolean;
+  /** Nothing is drawn where the base colour's alpha is under this. `true` is 0.5. */
+  readonly cutout?: boolean | number;
+  /** Metres one whole picture spans, for a material that tiles. Measured on the meshes where not given. */
+  readonly tiles?: number;
+  /** Multiplied over the base colour: linear, 0 to 1. Nothing is, where not given. */
+  readonly tint?: readonly [number, number, number];
+  /**
+   * The colour it is drawn flat in, red, green and blue of 255, where that is not to be read off its pictures. The
+   * palette colour nearest it is used.
+   */
+  readonly flat?: readonly [number, number, number];
+  /** For a material several assets name: its id in the pack, and the folder its paths are in. Set by `shared`. */
+  readonly id?: string;
+  readonly dir?: string;
+}
+
+/**
+ * A material that several assets name, said once: `export const POLE = shared(import.meta.dir, "core:pole", { ... })`
+ * beside its pictures, with paths within that folder, and `materials: { Pole: POLE }` in each asset that uses it. A
+ * shared material says how far it tiles, so that it is one material whichever mesh it is on.
+ */
+export function shared(dir: string, id: string, spec: MaterialSpec): MaterialSpec {
+  return { ...spec, id, dir };
+}
+
+/** The side in pixels of the largest base colour and normal map, and the most megabytes all of an asset's maps may take in one variant. */
+export interface TextureBudget {
+  readonly top: number;
+  readonly megabytes: number;
 }
 
 export interface CreatureClip {
@@ -119,6 +173,12 @@ export interface CreatureAsset {
   readonly sockets: readonly SocketSpec[];
   /** At most six, in the order of the six region colours an instance carries. */
   readonly regions: readonly RegionSpec[];
+  /**
+   * The pictures of each Blender material, by its name: three materials at most. With these the creature is drawn
+   * with materials. Its finest level is the model's, with its texture coordinates, normals and four bone weights a
+   * vertex, and its other levels are made from that one to the triangle budgets (tools/pack/simplify.ts).
+   */
+  readonly materials?: Readonly<Record<string, MaterialSpec>>;
   readonly clips: readonly CreatureClip[];
 
   /** The bones that stand on the ground. `--check` watches them in each gait. */
@@ -129,16 +189,12 @@ export interface CreatureAsset {
   readonly budgets: {
     /** The most triangles at each level, finest first. A model may have fewer levels than this lists. */
     readonly triangles: readonly number[];
-    /**
-     * The side in pixels of the largest base colour and normal map, and the most megabytes all its maps may take in one
-     * variant. Nothing reads it yet: the converter that reads textures will.
-     */
-    readonly texture?: { readonly top: number; readonly megabytes: number };
+    readonly texture?: TextureBudget;
   };
   /**
    * The first level drawn flat: palette colours, one bone a vertex, one draw, no textures. Set it to the level drawn when
-   * the creature stands under about 48 pixels tall on medium, which `--check` prints for every level. Nothing reads it
-   * yet: the converter that reads textures will.
+   * the creature stands under about 48 pixels tall on medium, which `--check` prints for every level. The last level
+   * with a budget, where not given. Read only with `materials`.
    */
   readonly flat?: number;
   /** Nothing reads it yet: the ragdoll will. */
@@ -158,11 +214,20 @@ export interface PiecesAsset {
    * and any other takes the nearest palette colour (tools/pack/glb.ts).
    */
   readonly pieces: readonly { readonly id: string; readonly object: string }[];
+  /**
+   * The pictures of each Blender material, by its name. A piece is drawn with them on its levels that have texture
+   * coordinates, and flat in the palette colour nearest each material's mean colour.
+   */
+  readonly materials?: Readonly<Record<string, MaterialSpec>>;
+  /**
+   * Where given, every piece's coarser levels are made from its finest to the triangle budgets, as a creature's are,
+   * and this is the first flat one. Where not, a piece keeps the levels its script made.
+   */
+  readonly flat?: number;
   readonly budgets: {
     /** The most triangles any one piece may have at each level, finest first. */
     readonly triangles: readonly number[];
-    /** As a creature's. */
-    readonly texture?: { readonly top: number; readonly megabytes: number };
+    readonly texture?: TextureBudget;
   };
 }
 

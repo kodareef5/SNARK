@@ -5,6 +5,7 @@
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { brotliCompressSync, constants } from "node:zlib";
+import { gameTextures } from "./art/materials.ts";
 import { buildCorePack, importedMeshes } from "./pack/build.ts";
 import { buildTextures, type TextureSource } from "./pack/encode.ts";
 import { partHash } from "./pack/manifest.ts";
@@ -40,8 +41,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean } = 
   copyFileSync(join(root, "client/index.html"), join(dist, "index.html"));
   const { files, manifest } = splitPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]), "core");
   if (opts.stress) spoilStress(files, manifest);
-  // The game's own textures join this list when its asset folders are read. Until then there are only the cards.
-  const sources: TextureSource[] = opts.stress ? stressCards() : [];
+  // The game's own textures, from its asset folders, and the cards.
+  const sources: TextureSource[] = [...(await gameTextures()), ...(opts.stress ? stressCards() : [])];
   const t0 = performance.now();
   const textures = await buildTextures(manifest, sources, "core");
   if (textures.files.length > 0) {
