@@ -160,6 +160,48 @@ test("2,048 bodies that all change their looks in one tick are sent again within
   expect(steps).toBeGreaterThan(40);
 });
 
+test("a budget smaller than one create still carries one of each kind a snapshot, so nothing waits for ever", () => {
+  const N = 6;
+  const BUDGET = 300;
+  const w = new BitWriter(4096);
+  const r = new BitReader();
+  const looks = looksFor(N);
+  for (let id = 0; id < N; id++) looks.name[id] = `a name of some length ${id}`;
+  // Two players and four creatures, each named, and each sent again for a new look.
+  const scene = (rev: number): SentView => {
+    const v = new SentView();
+    for (let id = 0; id < N; id++) {
+      v.push(id, 1, 7, 1000 + id, 200, 300, 5, 1, 0, rev);
+      v.urgent[id] = id < 2 ? 1 : 0;
+    }
+    return v;
+  };
+  let sent: SentView = scene(0);
+  let held = new EntityView();
+  for (let id = 0; id < N; id++) {
+    held.push(id, 1, 7, 1000 + id, 200, 300, 5, 1, 0);
+    held.appear(0, 0, looks.colors, 0, looks.name[id]!, null, null);
+  }
+  const cur = scene(1);
+  let rotate = 0;
+  const fresh: number[] = [];
+  for (let step = 0; step < 4; step++) {
+    const next = new SentView();
+    w.reset();
+    rotate = writeViewDelta(w, sent, cur, next, BUDGET, rotate, looks);
+    // One alone is more than the whole budget.
+    expect(w.pos).toBeGreaterThan(BUDGET);
+    r.reset(w.bytes());
+    const got = new EntityView();
+    expect(readViewDelta(r, held, got)).toBe(true);
+    fresh.push(Array.from(got.rev.subarray(0, N)).filter((v) => v === 1).length);
+    sent = next;
+    held = got;
+  }
+  // A player and a creature in each of the first two, then the two creatures left.
+  expect(fresh).toEqual([2, 4, 5, 6]);
+});
+
 test("a frame short of bones poses survivors first, then the nearest, and draws every other body rigid on one bone where it stands", () => {
   const view = provingView(320, 180);
   const { remote, cam, scene, reg, hf, raster, pack } = view;

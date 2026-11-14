@@ -274,7 +274,8 @@ function varintBits(v: number): number {
 
 /**
  * Lets through a window of the `count` ops in `list` that fits `budgetBits`, starting at `rotate`, and defers the rest.
- * Sets `admitted` and returns where the next window starts, so no entity starves.
+ * Sets `admitted` and returns where the next window starts, so no entity starves. The first op always goes, or one larger
+ * than the budget would hold the window where it is for good.
  */
 function admit(list: Int16Array, count: number, rotate: number, budgetBits: number): number {
   const start = rotate % count;
@@ -282,7 +283,7 @@ function admit(list: Int16Array, count: number, rotate: number, budgetBits: numb
   let bits = 0;
   for (; allowed < count; allowed++) {
     const cost = opBits[list[(start + allowed) % count]!]!;
-    if (bits + cost > budgetBits) break;
+    if (bits + cost > budgetBits && allowed > 0) break;
     bits += cost;
   }
   for (let t = allowed; t < count; t++) {
