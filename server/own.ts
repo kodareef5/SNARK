@@ -46,8 +46,8 @@ export interface BedPoint {
   wait: number;
 }
 
-/** A larger tribe sends only its first members. */
-const MAX_MEMBERS_SENT = 100;
+/** The count is one byte on the wire. A larger tribe sends only its first members. */
+const MAX_MEMBERS_SENT = 255;
 
 export interface OwnContext {
   readonly world: ServerWorld;

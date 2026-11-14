@@ -212,6 +212,28 @@ test("a tribe: founded, joined face to face with everything the joiner owns, saf
   expect(h.host.items.audit()).toEqual([]);
 });
 
+test("each member is sent the whole roster of a tribe of a hundred and fifty, not its first hundred; the wire holds 255", () => {
+  const { h, sessions, rec } = gather(["ada"]);
+  const ada = sessions[0]!;
+  h.say(ada, "tribe create Crowd");
+  const me = rec(ada);
+  const tribe = h.host.tribes.of(me)!;
+  for (let k = 1; k < 150; k++) {
+    const member = h.host.records.create(me.kind, `member${k}`);
+    member.team = tribe.id;
+    tribe.members.push(member.pid);
+  }
+  h.host.tribes.version++;
+  h.run(300);
+  expect([ada.tribe.name, ada.tribe.members.length]).toEqual(["Crowd", 150]);
+  expect([ada.tribe.members[0], ada.tribe.members[149]]).toEqual([{ name: "ada", online: true, owner: true }, { name: "member149", online: false, owner: false }]);
+  // The count is one byte on the wire, so a tribe of three hundred is sent as its first 255, whole.
+  for (let k = 150; k < 300; k++) tribe.members.push(h.host.records.create(me.kind, `member${k}`).pid);
+  h.host.tribes.version++;
+  h.run(300);
+  expect([ada.tribe.name, ada.tribe.members.length, ada.tribe.members[254]!.name]).toEqual(["Crowd", 255, "member254"]);
+});
+
 test("tribes are part of the world: a restart keeps who is in which, whose it is, and its name", () => {
   const db = join(dir, "tribes.db");
   let { h, sessions, rec } = gather(["ada", "bob", "cy"], { dbPath: db });
