@@ -10,8 +10,16 @@ import { AnimState } from "../../shared/anim/pose.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { PICK_ENTITY, PICK_STRUCTURE } from "../../tools/snap/raster.ts";
-import { CLUB, H, PANEL, POST, SHARD, W, sceneSet, sceneWorld } from "../fixtures/sceneworld.ts";
-import { TUBE } from "../fixtures/textured.ts";
+import { Camera } from "../../client/core/render/camera.ts";
+import { Scene } from "../../client/core/render/scene.ts";
+import { RemoteSample } from "../../client/core/session.ts";
+import { parsePack } from "../../shared/pack/pack.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
+import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { StructureStore } from "../../shared/world/structures.ts";
+import { buildPack, type SourceLod } from "../../tools/pack/write.ts";
+import { CLUB, H, PANEL, POST, SHARD, W, sceneRegistry, sceneSet, sceneWorld } from "../fixtures/sceneworld.ts";
+import { TUBE, TUBE_RIG, tubeClips, tubeMesh } from "../fixtures/textured.ts";
 
 type World = ReturnType<typeof sceneWorld>;
 const BODY = DRAW_SKINNED | DRAW_PLAIN;
@@ -310,6 +318,30 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It moved once when a loose thing's up turned from down to up: negating that column of its bone gives the old hash.
   expect(hash).toBe(3486152837);
+});
+
+test("a body is drawn at every level its mesh has, eight of them as well as five", () => {
+  // The tube made flat with eight levels, the coarsest a long way from the finest.
+  const tube = tubeMesh();
+  const lods = Array.from({ length: 8 }, (_, l): SourceLod => {
+    const { positions, colors, indices, bones } = tube.lods[Math.min(l, 2)]!;
+    return { positions, colors, indices, bones, error: l === 0 ? undefined : 0.01 * 2 ** l };
+  });
+  const pack = parsePack(buildPack([{ id: TUBE, skeleton: TUBE, rig: TUBE, lods }], defaultPalette(), tubeClips(), [TUBE_RIG]));
+  const reg = sceneRegistry();
+  const dims = { chunksX: 2, chunksZ: 2 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
+  const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  const scene = new Scene({ dims, hf, structs }, reg, pack);
+  const cam = new Camera();
+  const remote = new RemoteSample();
+  [remote.count, remote.id[0], remote.kind[0], remote.x[0], remote.y[0], remote.z[0], remote.flags[0]] = [1, 100, reg.index.get(TUBE)!, 0, 0, 0, 1];
+  const level = (far: number): number => {
+    [cam.x, cam.z] = [0, -far];
+    const p = scene.build(cam, remote);
+    return p.drawLod[[...Array(p.drawCount).keys()].find((d) => p.drawMesh[d] === pack.meshIndex.get(TUBE))!]!;
+  };
+  expect([level(3), level(5000)]).toEqual([0, 7]);
 });
 
 test("a loose thing is turned, not mirrored: its bone takes +Y up and keeps the handedness of the model", () => {

@@ -19,9 +19,6 @@ import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BO
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
-/** Distances at which a body drops to its second and third level of detail, metres. */
-/** The most levels of detail a mesh has. */
-const LODS = 5;
 /** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, and a held item. */
 const PARTS = SLOT_COUNT + 4;
 const PLAIN = defaultLook();
@@ -87,8 +84,10 @@ export class Characters {
 
   // Instances queued this frame, one per mesh of each body.
   private count = 0;
-  /** Twice (pack mesh * LODS + level of detail), and one more for a body on one bone. */
+  /** Twice (pack mesh * levels + level of detail), and one more for a body on one bone. */
   private readonly key = new Uint32Array(MAX_SKINNED);
+  /** The most levels of detail any mesh of the pack has, so that a body can be drawn at every level its mesh has. */
+  private readonly levels: number;
   private readonly firstBone = new Uint16Array(MAX_SKINNED);
   private readonly region0 = new Uint8Array(MAX_SKINNED);
   private readonly colors = new Uint8Array(MAX_SKINNED * 6);
@@ -106,8 +105,9 @@ export class Characters {
     const { table, bind } = assets;
     this.assets = assets;
     this.anim = new HumanAnim(pack.clips);
-    this.counts = new Uint32Array(table.count * LODS * 2);
-    this.cursor = new Uint32Array(table.count * LODS * 2);
+    this.levels = table.error.reduce((most, e) => Math.max(most, e.length), 1);
+    this.counts = new Uint32Array(table.count * this.levels * 2);
+    this.cursor = new Uint32Array(table.count * this.levels * 2);
     /** Only a mesh on the human skeleton is drawn as part of a body. */
     const human = (mesh: number): number => (mesh >= 0 && table.skeleton[mesh] === HUMAN.id ? mesh : -1);
     const sets: string[] = [];
@@ -129,7 +129,7 @@ export class Characters {
       const rig = table.rig[first]!;
       // A body is drawn at one level, so that its parts meet. Its error at a level is the average of its parts'.
       const parts = [...slots].filter((m) => m >= 0).map((m) => table.error[m]!);
-      const error = Array.from({ length: Math.min(LODS, ...parts.map((e) => e.length)) }, (_, level) => parts.reduce((sum, e) => sum + e[level]!, 0) / parts.length);
+      const error = Array.from({ length: Math.min(...parts.map((e) => e.length)) }, (_, level) => parts.reduce((sum, e) => sum + e[level]!, 0) / parts.length);
       // Armor is cut for a body, and keyed by the body's name without its pack.
       const body = `${d.mesh}_${sex}`.replace(/^[^:]*:/, "");
       return {
@@ -147,7 +147,7 @@ export class Characters {
       if (d?.type !== "species" || d.skeleton === undefined || d.skeleton === HUMAN.id) return null;
       const rig = rigs.get(bind.id(d.id, "rig"));
       const mesh = bind.own(d.id, "body");
-      return rig && mesh >= 0 ? { rig, mesh, color: d.color, runAt: reg.runAt[i]!, error: table.error[mesh]!.slice(0, LODS) } : null;
+      return rig && mesh >= 0 ? { rig, mesh, color: d.color, runAt: reg.runAt[i]!, error: table.error[mesh]! } : null;
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -214,7 +214,7 @@ export class Characters {
     const far = Math.sqrt(x * x + y * y + z * z) / size;
     const lod = this.levelOf(id, c.error, far);
     this.assets.wantTextured(c.mesh, lod, far);
-    this.key[n] = (c.mesh * LODS + lod) * 2 + (rigid ? 1 : 0);
+    this.key[n] = (c.mesh * this.levels + lod) * 2 + (rigid ? 1 : 0);
     this.firstBone[n] = first;
     this.region0[n] = c.color;
     for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
@@ -286,7 +286,7 @@ export class Characters {
     const queue = (m: number, tint: Uint8Array | null, tintAt: number, bone: number): void => {
       const n = this.count++;
       this.assets.wantTextured(m, lod, far);
-      this.key[n] = (m * LODS + lod) * 2 + (rigid ? 1 : 0);
+      this.key[n] = (m * this.levels + lod) * 2 + (rigid ? 1 : 0);
       this.firstBone[n] = first;
       this.region0[n] = k.color;
       for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = tint ? tint[tintAt + q]! : 0;
@@ -367,7 +367,7 @@ export class Characters {
     b[o + 11] = z;
     showMaterials(this.assets, mesh, Math.sqrt(x * x + y * y + z * z), wide);
     const n = this.count++;
-    this.key[n] = mesh * LODS * 2;
+    this.key[n] = mesh * this.levels * 2;
     this.firstBone[n] = first;
     this.region0[n] = 0;
     this.colors.fill(0, n * 6, n * 6 + 6);
@@ -393,7 +393,7 @@ export class Characters {
     for (let k = 0; k < counts.length; k++) {
       this.cursor[k] = total;
       // An odd key is the bodies on one bone, which are a draw of their own.
-      if (counts[k]! > 0) draw(Math.floor(k / (LODS * 2)), (k >> 1) % LODS, total, counts[k]!, (k & 1) !== 0 ? flags | DRAW_ONE_BONE : flags);
+      if (counts[k]! > 0) draw(Math.floor(k / (this.levels * 2)), (k >> 1) % this.levels, total, counts[k]!, (k & 1) !== 0 ? flags | DRAW_ONE_BONE : flags);
       total += counts[k]!;
     }
     for (let i = 0; i < this.count; i++) {
