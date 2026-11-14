@@ -129,6 +129,94 @@ take their colours triangle by triangle from its pictures: a thatch wall's
 first flat level then has two tones of straw where it had one. The script's own
 coarse levels are not used then.
 
+## Trees, rocks and bushes
+
+A node kind is a row in `content/core.ts`: what is harvested from it and what it
+yields. Its art is rigid pieces (`kind: "pieces"`), one mesh for each individual
+it grows as, and the content names them. Until a kind names any, it is drawn as
+the grey box of its `half` (with its `top` for a crown) at every node.
+
+| Kind | Family | Grows as |
+| --- | --- | --- |
+| `core:tree` | trees | hardwood hammock trees: gumbo limbo, mahogany, live oak |
+| `core:palm` | trees | palms |
+| `core:fig` | trees | strangler figs |
+| `core:banyan` | trees | banyans, with their hanging roots |
+| `core:mangrove` | trees | mangroves at the water |
+| `core:rock` | rocks | pale coastal limestone boulders |
+| `core:rubble` | rocks | the rubble of buildings |
+| `core:bush` | plants | berry bushes |
+| `core:palmetto` | plants | saw palmetto |
+| `core:fern` | plants | ferns |
+
+`core:tree`, `core:rock` and `core:bush` are the kinds old worlds hold, so the
+hardwoods, the limestone and the berry bushes take their places there.
+
+### What a kind may name
+
+```ts
+{
+  type: "node", id: "core:palm", mesh: "box", color: 3, half: [0.25, 3, 0.25], ...,
+  variants: [
+    { mesh: "core:palm_1", weight: 3, boxes: [{ at: [0, 3, 0], half: [0.22, 3, 0.22] }] },
+    { mesh: "core:palm_2", weight: 3, boxes: [{ at: [0, 2, 0], half: [0.2, 2, 0.2] }, { at: [0.5, 5.5, 0], half: [0.2, 1.5, 0.2] }] },
+    { mesh: "core:palm_3" },
+  ],
+  size: [0.8, 1.25],
+  depleted: { mesh: "core:palm_depleted", boxes: [{ at: [0, 0.3, 0], half: [0.25, 0.3, 0.25] }] },
+}
+```
+
+- **`variants`**: the individuals it grows as, each a mesh of a pack. Each node
+  of the kind is one of them. `weight`, a whole number from 1 to 255, is how
+  often one is chosen against the others' (1 where not given). Name them
+  `<kind>_1`, `<kind>_2` and so on.
+- **`boxes`**: what a body bumps into and what a swing or a look meets, as a
+  structure's shape has them: each box's centre `at` and its `half` extents, in
+  metres from the mesh's origin, along the mesh's own axes, at its modelled
+  size. A variant without boxes has the kind's `half` standing on its origin.
+  Leaves and crowns are not in them: bodies pass under a crown and a swing at
+  one gathers nothing, as in ARK, where a tree is struck at its trunk.
+- **`size`**: the least and the most a node of it is drawn, as multiples of the
+  size it was modelled at, from 0.25 to 3.9. Without it, 1.
+- **`depleted`**: what stands where a node was from the moment it is used up
+  until it grows back: a stump, a broken base, a stripped bush. Its boxes are
+  met as a variant's are, and without boxes it is walked through. A variant may
+  name its own, where one stump would not fit all of them (a banyan's trunks).
+  Without one, a used-up node is not drawn at all until it grows back. Name it
+  `<kind>_depleted`, or `<kind>_<n>_depleted` for a variant's own.
+
+### What the engine does with them
+
+- Every node's variant, its turn about the vertical (any of 65,536) and its size
+  come from its place on the map and the map's seed alone. The server and every
+  client work out the same three, so nothing about them is sent or saved, and
+  the far layer will place distant trees by the same rule.
+- A node is drawn, bumped into, swung at, looked at and walked round as one
+  thing: its boxes turn and grow with its picture. Sizes come in 16 steps from
+  the least to the most, each a whole number of 64ths.
+- The mesh's origin is where the node meets the ground, under the middle of the
+  trunk or the rock, with +Y up, in metres. It stands at the ground's height
+  under its origin. A node may stand on a slope of up to 32 degrees, where the
+  ground falls away from its middle by six tenths of the distance, so carry a
+  trunk, its roots or a rock's base on below the origin by six tenths of how
+  far it reaches out from it.
+- It is turned every way, so it must hold up from every side.
+- Its levels are chosen by distance, as any piece's are, at every size, so a
+  level must hold at the largest size the kind is drawn. Its coarsest level is
+  what the far layer will draw out to kilometres.
+- A soft kind (`soft`, the bushes) is walked through, and its boxes are what a
+  look meets when it is picked.
+- A node mesh may use colour regions 0 to 4: region 0 is the kind's `color`.
+  Region 5 carries its size and is not a colour.
+- Each variant in a chunk is a draw of its own (one for each of its materials),
+  so three to six variants a kind is the range to aim for.
+
+Declare a variant in the content only when its mesh is in a pack: until then the
+kind's own mesh stands in for it, and the boxes would not match what is drawn.
+An artist says in their report which meshes and boxes each kind should name, and
+the content takes them in.
+
 ## Materials
 
 A material is its pictures, named in `asset.ts` under the name the model gives
