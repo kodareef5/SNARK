@@ -1,16 +1,22 @@
 // Builds client/dist: the bundled shell, the workers and worklets, the page, and the core assets as a boot file, a mesh
-// file and a manifest. An asset file is named after its own hash, so a browser keeps it for good. What is fetched whole
-// has a Brotli copy beside it.
+// file, a texture file for each variant and a manifest. An asset file is named after its own hash, so a browser keeps
+// it for good. What is fetched whole has a Brotli copy beside it.
 
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
 import { buildCorePack, importedMeshes } from "./pack/build.ts";
+import { buildTextures, type TextureSource } from "./pack/encode.ts";
 import { partHash } from "./pack/manifest.ts";
 import { splitPack } from "./pack/split.ts";
-import { spoilStress, stressMeshes } from "./pack/stress.ts";
+import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
 
-/** With `stress`, the stress meshes go into the pack as well, three of them listed wrongly, for the page at ?stress=1 to draw. */
+/** The stress cards as textures to build: every picture of each, from one pixel across up to its top. */
+function stressCards(): TextureSource[] {
+  return STRESS_CARDS.map((card) => ({ ...card, mips: () => Array.from({ length: Math.log2(card.top) + 1 }, (_, i) => cardPicture(card, 1 << i)) }));
+}
+
+/** With `stress`, the stress meshes and cards are built as well, three of the meshes listed wrongly, for the page at ?stress=1 to draw. */
 export async function buildClient(opts: { stress?: boolean } = {}): Promise<{ jsBytes: number; packBytes: number }> {
   const root = resolve(import.meta.dir, "..");
   const dist = join(root, "client/dist");
@@ -23,8 +29,16 @@ export async function buildClient(opts: { stress?: boolean } = {}): Promise<{ js
   copyFileSync(join(root, "client/index.html"), join(dist, "index.html"));
   const { files, manifest } = splitPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]), "core");
   if (opts.stress) spoilStress(files, manifest);
-  files.forEach((f, i) => {
-    manifest.files[i]!.name = f.name.replace(/\.snpk$/, `.${partHash(f.bytes)}.snpk`);
+  // The game's own textures join this list when its asset folders are read. Until then there are only the cards.
+  const sources: TextureSource[] = opts.stress ? stressCards() : [];
+  const t0 = performance.now();
+  const textures = await buildTextures(manifest, sources, "core");
+  if (textures.files.length > 0) {
+    const { pictures, encoded, megapixels } = textures.report;
+    console.log(`textures     ${manifest.textures!.length} in ${textures.files.length} variants, ${textures.files.reduce((sum, f) => sum + f.bytes.length, 0)} bytes: ${encoded} of ${pictures} pictures encoded (${megapixels.toFixed(1)} megapixels), ${(performance.now() - t0).toFixed(0)} ms`);
+  }
+  [...files, ...textures.files].forEach((f, i) => {
+    manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);
     writeFileSync(join(dist, "assets", manifest.files[i]!.name), f.bytes);
   });
   writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(manifest));
@@ -35,6 +49,6 @@ export async function buildClient(opts: { stress?: boolean } = {}): Promise<{ js
 
 if (import.meta.main) {
   const t0 = performance.now();
-  const { jsBytes, packBytes } = await buildClient();
+  const { jsBytes, packBytes } = await buildClient({ stress: process.argv.includes("--stress") });
   console.log(`client/dist  main.js ${jsBytes} bytes, assets ${packBytes} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
 }
