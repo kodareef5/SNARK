@@ -8,6 +8,7 @@
 | `arena.ts` | Level, dry, empty ground of a given size near the spawn point |
 | `build.ts` | Survivors set up to build: cheats, strength, and sixty of every wooden piece in the hotbar |
 | `gather.ts` | Finding a resource node and standing a survivor in reach of it |
+| `agent.ts` | An agent that plays on the harness: its tools called over the protocol while virtual time runs |
 | `pack.ts` | The core asset pack, built once per test process |
 | `glb.ts` | A glTF binary file written in code, standing in for a Blender export |
 | `crash-child.ts` | A process that trades items and commits until it is killed |

@@ -43,3 +43,5 @@ bpy.ops.export_scene.gltf(
     export_materials="EXPORT",
     export_image_format="NONE",
 )
+
+print(f"convert: wrote {out}")

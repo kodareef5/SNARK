@@ -9,7 +9,7 @@ no DOM, no Bun, no packages, no clock. Environmental inputs are passed in.
 | `ids.ts` | Handles, persistent ids |
 | `math/` | Trigonometry that is bit-identical on every engine |
 | `rng.ts`, `hash.ts`, `sort.ts` | Seeded randomness, FNV hash, allocation-free sort |
-| `world/` | Height grid, structure tables and collision grid, capsule collision, the map file, the proving ground |
+| `world/` | Height grid, structure tables and collision grid, capsule collision, path finding, the map file, the proving ground |
 | `sim/` | Entity store, character controller, deadlines, lazy quantities, genome |
 | `net/` | Bit codec, protocol messages, entity views and deltas, transport interface, loopback |
 | `content/` | Definition types, pack stacking, the compiled registry |
