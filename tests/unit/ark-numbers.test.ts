@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import type { LevelsDef, SpeciesDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { Inventory } from "../../shared/sim/items.ts";
+import { Inventory, moveSlot, type ItemTable } from "../../shared/sim/items.ts";
 import { piecesNeeded, proneHunger } from "../../shared/sim/taming.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -13,6 +13,25 @@ const keeps = (name: string): number => reg.spoilTicks[at(name)]! / TICK_RATE;
 
 test("raw meat stacks to 40 and a piece keeps ten minutes; cooked meat keeps twenty (Raw Meat, Cooked Meat, Spoilage)", () => {
   expect([reg.stack[at("meat")], keeps("meat"), keeps("meat_cooked")]).toEqual([40, 600, 1200]);
+});
+
+test("arrows, rounds and darts stack to 100, fiber and metal ore to 300 (Stone Arrow, Tranq Arrow, Flame Arrow, Simple Rifle Ammo, Simple Bullet, Tranquilizer Dart, Shocking Tranquilizer Dart, Fiber, Metal)", () => {
+  const stack = (name: string): number => reg.stack[at(name)]!;
+  expect(["arrow_stone", "arrow_tranq", "arrow_flame", "round_rifle", "round_pistol", "dart_tranq", "dart_shock"].map(stack)).toEqual([100, 100, 100, 100, 100, 100, 100]);
+  expect([stack("fiber"), stack("ore")]).toEqual([300, 300]);
+});
+
+test("a stack saved above the size its item now has stays whole: it takes no more, moves as it is, and joins another only up to the size", () => {
+  // 300 fiber in one slot, under a table that allows 200.
+  const fiber = at("fiber");
+  const small: ItemTable = { stack: reg.stack.map((n) => Math.min(n, 200)), weight: reg.weight, spoilTicks: reg.spoilTicks, wearSlot: reg.wearSlot };
+  const a = new Inventory(4);
+  a.set(0, fiber, 300, 0, 0, 0);
+  expect([a.room(fiber, 0, small), a.add(fiber, 50, 0, 0, 0, small), a.count[0], a.count[1]]).toEqual([600, 0, 300, 50]);
+  const b = new Inventory(4);
+  expect([moveSlot(a, 0, b, 0, 0, small), a.count[0], b.count[0]]).toEqual([300, 0, 300]);
+  expect([moveSlot(b, 0, a, 1, 0, small), a.count[1], b.count[0]]).toEqual([150, 200, 150]);
+  expect([a.take(fiber, 10), a.total(fiber) + b.total(fiber)]).toEqual([true, 340]);
 });
 
 test("a survivor has ARK's 105 levels, the experience each takes, and its engram points for each (Leveling)", () => {

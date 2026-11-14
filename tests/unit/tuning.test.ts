@@ -38,7 +38,7 @@ test("stacks: every stack of more than one by the multiplier, one item by its ow
   const reg = deriveRegistry(base, { stack: 3, stacks: { "core:thatch": { n: 543, plain: true }, "core:flint": { n: 70 }, "core:hatchet": { n: 5 }, "core:saddle_parasaur": { n: 4, plain: true }, "core:nothing": { n: 9 } } });
   const stack = (name: string): number => reg.stack[at(reg, name)]!;
   // Wood is multiplied by three. Thatch takes its own number without the multiplier, and flint its own number times the multiplier.
-  expect([stack("wood"), stack("thatch"), stack("flint"), stack("arrow_stone")]).toEqual([300, 543, 210, 150]);
+  expect([stack("wood"), stack("thatch"), stack("flint"), stack("arrow_stone")]).toEqual([300, 543, 210, 300]);
   // A tool wears, so it stays one to a slot even if the tuning says otherwise. A saddle does not wear and may stack.
   expect([stack("hatchet"), stack("spear"), stack("saddle_parasaur"), stack("saddle_raptor")]).toEqual([1, 1, 4, 1]);
   expect(def<ItemDef>(reg, "wood").stack).toBe(300);

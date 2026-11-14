@@ -34,7 +34,7 @@ const ARROWS = [id("arrow_stone"), id("arrow_tranq"), id("arrow_flame")];
 const GEAR: Def[] = [
   { type: "item", class: "resource", id: id("hide"), stack: 200, weight: 0.01, color: 227 },
   { type: "item", class: "resource", id: id("chitin"), stack: 100, weight: 0.05, color: 9 },
-  { type: "item", class: "resource", id: id("ore"), stack: 200, weight: 1, label: "metal ore", color: 4 },
+  { type: "item", class: "resource", id: id("ore"), stack: 300, weight: 1, label: "metal ore", color: 4 },
   { type: "item", class: "resource", id: id("ingot"), stack: 200, weight: 1, label: "metal ingot", color: 2 },
   { type: "item", class: "resource", id: id("gunpowder"), stack: 100, weight: 0.1, color: 11 },
   { type: "item", class: "consumable", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, dose: { torpor: 40, seconds: 8 } },
@@ -48,13 +48,13 @@ const GEAR: Def[] = [
   { type: "item", class: "weapon", id: id("pistol"), stack: 1, weight: 3, color: 2, weapon: { kind: "gun", ammo: [id("round_pistol")], power: 1, clip: 6, reload: 2.2, interval: 0.35, uses: 60, fits: ATTACHMENTS, mesh: id("pistol"), hold: "pistol" } },
   { type: "item", class: "weapon", id: id("grenade"), stack: 10, weight: 1, color: 7, weapon: { kind: "thrown", damage: 788, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" } },
 
-  { type: "item", class: "ammo", id: id("arrow_stone"), stack: 50, weight: 0.2, label: "stone arrow", color: 15, ammo: { damage: 55, type: "pierce", speed: 70, gravity: 9.81, recover: 0.5, mesh: id("arrow") } },
-  { type: "item", class: "ammo", id: id("arrow_tranq"), stack: 50, weight: 0.2, label: "tranquilizer arrow", color: 9, ammo: { damage: 20, type: "pierce", speed: 70, gravity: 9.81, torpor: { instant: 2, over: 2.5, seconds: 5 }, mesh: id("arrow") } },
-  { type: "item", class: "ammo", id: id("arrow_flame"), stack: 50, weight: 0.2, label: "flame arrow", color: 3, ammo: { damage: 55, type: "fire", speed: 70, gravity: 9.81, buff: id("burning"), mesh: id("arrow") } },
-  { type: "item", class: "ammo", id: id("round_rifle"), stack: 50, weight: 0.1, label: "rifle round", color: 6, ammo: { damage: 280, type: "bullet" } },
-  { type: "item", class: "ammo", id: id("round_pistol"), stack: 50, weight: 0.05, label: "pistol round", color: 6, ammo: { damage: 100, type: "bullet" } },
-  { type: "item", class: "ammo", id: id("dart_tranq"), stack: 50, weight: 0.2, label: "tranquilizer dart", color: 9, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 6, over: 2.5, seconds: 5 }, mesh: id("dart") } },
-  { type: "item", class: "ammo", id: id("dart_shock"), stack: 50, weight: 0.2, label: "shock dart", color: 6, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 12, over: 5, seconds: 5 }, buff: id("stunned"), mesh: id("dart") } },
+  { type: "item", class: "ammo", id: id("arrow_stone"), stack: 100, weight: 0.2, label: "stone arrow", color: 15, ammo: { damage: 55, type: "pierce", speed: 70, gravity: 9.81, recover: 0.5, mesh: id("arrow") } },
+  { type: "item", class: "ammo", id: id("arrow_tranq"), stack: 100, weight: 0.2, label: "tranquilizer arrow", color: 9, ammo: { damage: 20, type: "pierce", speed: 70, gravity: 9.81, torpor: { instant: 2, over: 2.5, seconds: 5 }, mesh: id("arrow") } },
+  { type: "item", class: "ammo", id: id("arrow_flame"), stack: 100, weight: 0.2, label: "flame arrow", color: 3, ammo: { damage: 55, type: "fire", speed: 70, gravity: 9.81, buff: id("burning"), mesh: id("arrow") } },
+  { type: "item", class: "ammo", id: id("round_rifle"), stack: 100, weight: 0.1, label: "rifle round", color: 6, ammo: { damage: 280, type: "bullet" } },
+  { type: "item", class: "ammo", id: id("round_pistol"), stack: 100, weight: 0.05, label: "pistol round", color: 6, ammo: { damage: 100, type: "bullet" } },
+  { type: "item", class: "ammo", id: id("dart_tranq"), stack: 100, weight: 0.2, label: "tranquilizer dart", color: 9, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 6, over: 2.5, seconds: 5 }, mesh: id("dart") } },
+  { type: "item", class: "ammo", id: id("dart_shock"), stack: 100, weight: 0.2, label: "shock dart", color: 6, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 12, over: 5, seconds: 5 }, buff: id("stunned"), mesh: id("dart") } },
 
   { type: "item", class: "attachment", id: id("scope"), stack: 1, weight: 0.5, color: 11, attachment: "scope" },
   { type: "item", class: "attachment", id: id("silencer"), stack: 1, weight: 0.5, color: 11, attachment: "silencer" },
@@ -217,7 +217,7 @@ const ALL: readonly Def[] = [
   { type: "buff", id: "core:god", label: "God", color: 14, immune: true, good: true },
   // A missed arrow that did not break. It stays where it landed until someone walks over it.
   { type: "prop", class: "projectile", id: "core:arrow_stuck", mesh: "core:arrow", color: 15, radius: 0.1, height: 0.1, pitched: true },
-  { type: "item", class: "resource", id: "core:fiber", stack: 200, weight: 0.01, color: 7 },
+  { type: "item", class: "resource", id: "core:fiber", stack: 300, weight: 0.01, color: 7 },
   { type: "item", class: "resource", id: "core:stone", stack: 100, weight: 0.5, color: 15 },
   { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: 4, eat: { food: 4, water: 2 }, color: 8 },
   { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 } },
