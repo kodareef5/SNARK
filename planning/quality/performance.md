@@ -137,6 +137,44 @@ over happens once, at a start, and the requirement is that a full server
 restarted under new files is back within seconds, not that it is quick. They
 are a guard against the pass becoming quadratic, not a target.
 
+### After the review of round 5
+
+Recorded 2026-11-13 on commit `ee802ed`, on the same machine, with the round 5
+commit `4966993` run back to back for the "before" column. The review changed
+no feature. It changed how snapshots are built, how a body is tested against
+structures, when the database checkpoints, and what a damaged chunk costs.
+89 budgets are held, 12 of them new.
+
+| Measurement | Before | After | Budget |
+| --- | --- | --- | --- |
+| Server tick, median | 2.81 ms | 2.03 ms | 8 ms |
+| Server tick, 99th percentile | 3.8 ms | 2.8 ms | 16 ms |
+| Server tick, worst of 900 | 11.7 ms | 3.2 ms | 33.3 ms |
+| Commit, 99th percentile | 4.9 ms | 0.9 ms | 10 ms |
+| Tick with everyone working, median | 2.94 ms | 2.14 ms | 8 ms |
+| Tick with 300,000 creatures, median | 3.91 ms | 3.03 ms | |
+| Tick in combat, median | 4.72 ms | 3.63 ms | 8 ms |
+| Worst tick while a 1,500-piece house fell | 12.7 ms | 8.0 ms | 16 ms |
+| Downstream per client in a 40-player fight | 12.3 KB/s | 17.9 KB/s | 34 KB/s |
+| Downstream per client at a quiet base | 11.6 KB/s | 12.5 KB/s | 16 KB/s |
+| Process memory | 467 MB | 374 MB | 2,048 MB |
+
+Three sections are new. The "before" figures for them were measured with the
+same scenes run by hand against the round 5 commit.
+
+| Measurement | Before | After | Budget |
+| --- | --- | --- | --- |
+| Brawl: all 100 survivors in an 18 m square with 400 creatures, tick median | 3.3 ms | 2.0 ms | 8 ms |
+| Brawl: downstream per client | 17.5 KB/s | 31.9 KB/s | 36 KB/s |
+| Siege: 100 clients beside a 20,000-piece chunk, 50 pieces damaged a tick, added to the tick | 1.3 ms | 0.25 ms | |
+| Siege: sent to each client for the damage | the same | 26.3 KB/s | 30 KB/s |
+| Client frame while told of that damage, median | not measured | 0.05 ms | 1 ms |
+| Client instance bytes uploaded again for that damage | 420 KB a frame | 0 | 0 |
+| A database checkpoint, between ticks | inside a commit | 3 ms | 10 ms |
+
+Downstream went up because the byte budget of a snapshot is now spent. See
+below.
+
 ## What the results say
 
 **Settings cost nothing per tick.** A rule is read where it is used, as one
@@ -164,10 +202,50 @@ cost nothing between changes because clients evaluate them.
 **Stored things do not run.** 600,000 stacks, half of them food with spoil
 clocks, changed neither the tick nor the commit.
 
-**Bandwidth at a quiet base is still the largest line.** 11.3 KB/s against a
-16 KB/s budget, almost all of it creatures walking. The two changes that would
-cut it (update distant entities less often; send velocity so clients
-extrapolate) are planned, not built.
+**A crowd costs what it sends, once.** A snapshot used to gather, sort and
+quantise the entities around each client, and copy each one's name, colours,
+look and gear into a ring of 32 views. A hundred players in one place did that
+a hundred times a tick. Now the entities around a chunk are gathered once a
+tick for every client centred on it, and the server keeps only the nine fields
+a delta compares. What is left grows with clients times entities in view: the
+compare and the write, under a millisecond a tick at 100 by 500.
+
+**The byte budget is now spent, on players first.** A snapshot may carry 1,100
+bytes of changes. The encoder counted every update at its worst case of 142
+bits. A walking body takes 41. In a crowd a snapshot left 60% of its budget
+unused and carried a third of the updates it could: every moving body, players
+included, was refreshed about three times a second. Updates are now counted
+exactly, and players and the mounts they drive go before everything else,
+which keeps a quarter of the budget. In the brawl a client is sent every player every tick and each creature about six
+times a second, for 31.9 KB/s. A server that wants less sets `snapshotBytes`
+lower.
+
+**The slowest tick was the database's.** SQLite checkpointed inside whichever
+commit took its log past 1,000 pages, and a commit runs inside a tick: 3 to 6 ms
+normally, about 20 ms after a large write. The loop now checkpoints after a
+tick that started on time, in the 30 ms the tick leaves. The worst tick of 900
+fell from 11.7 ms to 3.2 ms.
+
+**Saving positions was most of a quiet commit.** Each position saved rewrites a
+whole record and a database page. The slice of positions saved per commit now
+walks only the bodies that can move and gets round them once a minute: 12
+records a commit at the sizing target, where it was 30, and no longer four
+minutes behind in a world of 300,000 creatures.
+
+**Damage to a big base costs its changes, not its size.** One damaged piece
+made the server look at every slot of the chunk for every client watching, and
+made each of those clients rebuild and upload the chunk's instances. A chunk
+now keeps a log of its last 256 changes, and a client rebuilds only when a
+piece is added, removed or replaced.
+
+**A walking body asks the grid half as often.** A structure query takes a
+height band, a structure too far off sideways is rejected before any
+trigonometry, and a body found clear is not tested a second time. The movement
+hashes are unchanged.
+
+**Bandwidth at a quiet base is still the largest line.** 12.5 KB/s against a
+16 KB/s budget, almost all of it creatures walking. Sending velocity so that
+clients extrapolate would cut it and is not built.
 
 **Instancing every base to the horizon is too much.** With no distance limit the
 bench view is 1,026 draw calls and 1.8 million triangles. Distant bases and
@@ -183,7 +261,21 @@ among them is a tenth of a millisecond once a second. Eggs and growing up are
 deadlines and cost nothing between. What grew is the downstream of the ten
 survivors walking among them, 20.6 KB/s each, as bodies enter and leave view.
 
-**The check stays fast.** 390 tests run in 9.1 s against a 20 s budget.
+**The check stays fast.** 398 tests run in 9.0 s against a 20 s budget.
+
+## Where the limits are
+
+These are the costs that grow, in the order they would be met. The figures in
+the third column are extrapolated from the measurements, not measured.
+
+| Limit | Today | What meets it | What would move it |
+| --- | --- | --- | --- |
+| One thread runs the tick | 2 ms of 33 at the sizing target, 3.6 ms in combat | About five times the target's awake creatures, or about 400 players in one fight | Snapshot encoding in workers. The entity store is typed arrays, which workers can share without copying |
+| Snapshot compare and write | 0.6 ms for 100 clients with 500 entities each | Grows with clients times entities in view | The same, or a per-entity "changed since" stamp so unchanged entities are skipped |
+| A damaged chunk is saved whole | 570 KB a commit for a 20,000-piece chunk under fire, 6 to 8 ms at the 99th percentile | Several such chunks under fire at once | Save health apart from shape, or at most once a second |
+| The checkpoint is on the tick thread | 3 ms, between ticks | A disk whose sync takes longer than a tick | A second connection in a worker |
+| Draw calls on the client | 40 to 80 a frame | One per mesh per visible chunk, so it grows with the variety of pieces and creatures: about 1,500 with 50 kinds in 30 chunks | Merged stand-ins for far chunks, then a WebGPU backend. The renderer backend is `client/shell/gl.ts`, under 400 lines, fed by a packet the core builds |
+| Textures and download size | None: every mesh is flat-coloured from a 256-colour palette | The first textured art | Compressed textures (KTX2), arrays or atlases so a chunk stays one draw per mesh, and streaming by distance |
 
 ## Browser result so far
 
