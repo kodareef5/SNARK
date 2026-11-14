@@ -4,7 +4,7 @@
 //   bun run art -- --all                  every asset
 //   bun run art -- core:raptor --check    measure the pack it has, and the pictures its materials name. No Blender.
 //   bun run art -- core:raptor --sheet    draw the review sheet of the pack it has. No Blender.
-//   bun run art -- --all --repack         the packs again in today's format, made from themselves
+//   bun run art -- --all --repack         the packs again in today's format and palette, made from themselves
 //
 // --source DIR looks in another tree than assets/source. --out DIR is where sheets go (artifacts/art).
 // --repack --levels also makes a creature's coarser levels afresh from its finest, with its pictures where it has them.

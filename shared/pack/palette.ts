@@ -32,6 +32,8 @@ const FIXED: readonly (readonly [number, number, number])[] = [
 
 export const SKY_COLOR = 13;
 export const WATER_COLOR = 14;
+/** The first of the colours made by rule (rampColours), which run up to SKIN_BASE. */
+export const RAMP_BASE = FIXED.length;
 
 /** A survivor's body colours sit just below the regions. A look stores an index into each list. */
 export const SKIN_BASE = 214;
@@ -56,26 +58,40 @@ const BODY: readonly (readonly [number, number, number])[] = [
 const DYE_HUES = 12;
 const DYE_ROWS = 5;
 /**
- * Natural tones, in rings round grey: how far a ring's colours are from grey (the spread of their channels, of 1), and
- * the hues on it in degrees. Warm and cool grey; taupe and stone; red-brown, brown, tan and khaki; rust, straw and
- * olive. Each hue of each ring runs from near black to near white in this many steps.
+ * Natural tones, in rings round grey in OKLab, where equal steps look equal: a ring's chroma, how many colours each of
+ * its runs has from dark to light, and how many hues it has, spread evenly from the first to the last in degrees.
  */
-const EARTH: readonly (readonly [number, readonly number[]])[] = [[0.04, [40, 220]], [0.11, [28, 56]], [0.22, [20, 31, 42, 53]], [0.33, [16, 36, 56]]];
-const EARTH_STEPS = 12;
+const EARTH: readonly (readonly [chroma: number, steps: number, hues: number, first: number, last: number])[] = [
+  [0.016, 12, 2, 244, 78], // slate and warm grey
+  [0.061, 10, 4, 33, 153], // dusky rose, umber to buff, olive grey, grey-green
+  [0.086, 8, 4, 124, 65], // moss, olive, khaki, tan
+  [0.115, 8, 3, 43, 139], // rust, mustard, leaf
+  [0.124, 6, 2, 52, 79], // dull orange, ochre
+];
+/** Lightness of the darkest and lightest colours of the longest runs, and of the middle of the shorter ones. */
+const EARTH_LIGHT = [0.273, 0.912, 0.585] as const;
+/** Below this lightness chroma falls in proportion toward black. */
+const EARTH_DARK = 0.59;
+/** Degrees a run's hue turns a unit of lightness from its middle: lighter is yellower, as in bark, hide and soil. */
+const EARTH_TURN = 35;
 
 /** Entries 22..213: the dyes, row by row, then the natural tones, a run from dark to light for each hue of each ring. */
 export function rampColours(): [number, number, number][] {
   const out: [number, number, number][] = [];
   for (let row = 0; row < DYE_ROWS; row++) for (let hue = 0; hue < DYE_HUES; hue++) out.push(hsl(hue / DYE_HUES, 0.7, 0.22 + 0.145 * row));
-  EARTH.forEach(([spread, hues], ring) => {
-    hues.forEach((hue, k) => {
-      for (let step = 0; step < EARTH_STEPS; step++) {
-        // Neighbouring runs are half a step apart, so the colours of one fall between those of the next.
-        const l = 0.09 + (0.83 * (step + ((ring + k) % 2) / 2)) / (EARTH_STEPS - 0.5);
-        // Near black and near white there is no room to be far from grey.
-        out.push(hsl(hue / 360, Math.min(0.6, spread / (1 - Math.abs(2 * l - 1))), l));
+  const [lo, hi, mid] = EARTH_LIGHT;
+  const longest = Math.max(...EARTH.map((ring) => ring[1]));
+  const step = (hi - lo) / (longest - 0.5);
+  EARTH.forEach(([chroma, steps, hues, first, last], ring) => {
+    for (let k = 0; k < hues; k++) {
+      const hue = hues === 1 ? first : first + ((last - first) * k) / (hues - 1);
+      // Neighbouring runs, on a ring and from ring to ring, are half a step apart, so the colours of one fall between those of the next.
+      const start = (steps === longest ? lo : mid - ((steps - 1) / 2) * step) + (((ring + k) % 2) * step) / 2;
+      for (let s = 0; s < steps; s++) {
+        const l = start + s * step;
+        out.push(oklch(l, chroma * Math.min(1, l / EARTH_DARK), hue + EARTH_TURN * (l - mid)));
       }
-    });
+    }
   });
   return out;
 }
@@ -120,6 +136,19 @@ function hsl(h: number, s: number, l: number): [number, number, number] {
     return Math.round(255 * (l - a * (m < -1 ? -1 : m > 1 ? 1 : m)));
   };
   return [f(0), f(8), f(4)];
+}
+
+/** sRGB of 255 a channel from OKLab lightness, chroma and hue in degrees, clipped to what sRGB holds. */
+function oklch(l: number, c: number, hue: number): [number, number, number] {
+  const a = c * Math.cos((hue * Math.PI) / 180);
+  const b = c * Math.sin((hue * Math.PI) / 180);
+  const [m1, m2, m3] = [(l + 0.3963377774 * a + 0.2158037573 * b) ** 3, (l - 0.1055613458 * a - 0.0638541728 * b) ** 3, (l - 0.0894841775 * a - 1.291485548 * b) ** 3];
+  const linear = [4.0767416621 * m1 - 3.3077115913 * m2 + 0.2309699292 * m3, -1.2684380046 * m1 + 2.6097574011 * m2 - 0.3413193965 * m3, -0.0041960863 * m1 - 0.7034186147 * m2 + 1.707614701 * m3];
+  const [r, g, bl] = linear.map((v) => {
+    const x = Math.min(1, Math.max(0, v));
+    return Math.round(255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055));
+  });
+  return [r!, g!, bl!];
 }
 
 /** The colour of each level of a stress mesh, finest first: red, yellow, green, blue, orange. A picture then shows which level was drawn. */

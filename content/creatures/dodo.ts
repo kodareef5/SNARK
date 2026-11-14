@@ -12,21 +12,22 @@ const tone = (rgb: number): number => nearestColour(PALETTE, rgb >> 16, (rgb >> 
 const even = (...rgb: number[]): (readonly [number, number])[] => rgb.map((c) => [tone(c), 3] as const);
 const rare = (rgb: number): readonly [number, number] => [tone(rgb), 1];
 
-// ARK's six regions under its names, in its order. The colours are ours (DESIGN.md), each the palette tone the design
-// chose, and the first of each region is the default bird.
+// ARK's six regions under its names, in its order. The colours are ours (DESIGN.md), each the tone the concept meant,
+// and the first of each region is the default bird.
 const REGIONS = [
   // slate, dark slate, ash, peat brown, dun, russet, olive drab, sooty, sand; cream
-  { name: "Body", colors: [...even(0x777a81, 0x65686f, 0x8a8780, 0x534437, 0xab9073, 0x81442d, 0x6f6d53, 0x413d37, 0xbda285), rare(0xcbc9af)] },
+  { name: "Body", colors: [...even(0x6b737a, 0x5d6266, 0x8e8b85, 0x5a4636, 0x9c8a6e, 0x8a4e32, 0x6b6a45, 0x3c3a38, 0xb7a688), rare(0xd8cdb4)] },
   // rose buff, flesh pink, pale straw, ivory, pale olive; dusky taupe
-  { name: "Face", colors: [...even(0xdda089, 0xe8b6a3, 0xd4b380, 0xf3e5d0, 0xcfc997), rare(0xafa093)] },
+  { name: "Face", colors: [...even(0xdda58e, 0xe3b0a3, 0xe0c07e, 0xede3cb, 0xc8c28f), rare(0xa88f8e)] },
   // olive horn, pale horn, slate, charcoal, umber, moss; oxblood
-  { name: "Beak", colors: [...even(0x989260, 0xb4a37c, 0x52565c, 0x2d3138, 0x614629, 0x736d3b), rare(0x6e321c)] },
-  // ochre, amber, mustard, dull orange, olive, dark slate, dull pink
-  { name: "Forehead, Neck and Feet", colors: even(0xc49c58, 0xaa7c30, 0xa6a152, 0xb0602c, 0x867f4e, 0x65686f, 0xb48e7c) },
-  // umber-charcoal, sooty, chestnut, peat brown, slate, ash; white
-  { name: "Head", colors: [...even(0x413225, 0x2e2b24, 0x6a4532, 0x534437, 0x52565c, 0x8a8780), rare(0xe6e3dc)] },
+  { name: "Beak", colors: [...even(0x8f8a5e, 0xb3a47a, 0x5d6266, 0x38393a, 0x5c4330, 0x5e6b3a), rare(0x6e2e2a)] },
+  // ochre, amber (the survivor colour), mustard, dull orange, olive, slate, dull pink
+  { name: "Forehead, Neck and Feet", colors: even(0xc4983c, 0xaa7c30, 0xb5a03e, 0xc47a3e, 0x7d7a44, 0x666c70, 0xb98576) },
+  // umber-charcoal, sooty, chestnut, peat brown, slate, ash; white. The sooty is given as the palette's next nearest
+  // to it (0x2c2a28), since the umber-charcoal takes the nearest.
+  { name: "Head", colors: [...even(0x3b302a, 0x24282a, 0x6b3b25, 0x5a4636, 0x4e555b, 0x8e8b85), rare(0xe9e6dd)] },
   // cream, pale buff, ash white, rust, pale olive, pale blue-grey, sooty
-  { name: "Wings and Patterning", colors: even(0xdddbc1, 0xd9c8a1, 0xd4d1ca, 0x945640, 0xbdb685, 0xaeb2b8, 0x2e2b24) },
+  { name: "Wings and Patterning", colors: even(0xe6dcc4, 0xd9c49a, 0xd3d3cc, 0xa8573a, 0xb9b68a, 0xa9b6c2, 0x2f2d2b) },
 ];
 
 /** The default bird, region by region. Its asset draws the review sheet in these. */

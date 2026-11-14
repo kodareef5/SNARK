@@ -32,7 +32,7 @@ bun run art -- core:raptor --check    measure the pack it has. No Blender
 bun run art -- core:raptor --sheet    draw the sheet of the pack it has. No Blender
 bun run art -- --all                  every asset
 bun run art                           list them
-bun run art -- --all --repack         write the packs again in today's format, from themselves
+bun run art -- --all --repack         write the packs again in today's format and palette, from themselves
 ```
 
 Blender is needed only to build. `BLENDER=/path/to/blender` names it if it is

@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Clip } from "../../shared/anim/clip.ts";
 import { MOST_SECTIONS, parsePack, type PackMaterial, type PackRig, type PackTexture } from "../../shared/pack/pack.ts";
-import { defaultPalette } from "../../shared/pack/palette.ts";
+import { RAMP_BASE, SKIN_BASE, defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, TEXTURE_ROLES, stepSize } from "../../shared/pack/texture.ts";
 import { convertCreature } from "../pack/creature.ts";
 import { importGlb } from "../pack/glb.ts";
@@ -12,7 +12,7 @@ import { readGltf } from "../pack/gltf.ts";
 import { withLevels, withSurfaceLevels } from "../pack/simplify.ts";
 import { spanOf, tangentsOf } from "../pack/surface.ts";
 import type { MaterialMaps } from "../pack/texture.ts";
-import { buildPack, unpackMeshes, type SourceMesh } from "../pack/write.ts";
+import { buildPack, unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import type { Asset } from "./assets.ts";
 import { RAW, blender, withScratch } from "./blender.ts";
 import { convertBodies, convertClipLibraries } from "./human.ts";
@@ -181,17 +181,52 @@ export function packOf(built: Built): Uint8Array {
 }
 
 /**
- * A pack again in today's format, made from itself: no Blender. How far each level lies from the finest is measured
- * afresh. With `levels`, every mesh that follows a rig of its own gets its coarser levels made afresh from its
- * finest, which undoes any the model brought. One drawn with materials has them made as its asset says, which reads
- * the asset's pictures.
+ * A pack's levels in today's palette, where it was made with another. A material with pictures takes the colour read
+ * off them again, on every vertex a piece draws with it and wherever its old colour was no other material's. Any other
+ * colour of the block made by rule becomes today's nearest. The fixed colours, the body colours and the regions stay.
+ */
+function recolour(was: Uint8Array, now: Uint8Array, asset?: Asset): (mesh: SourceMesh, lod: SourceLod) => SourceLod {
+  if (was.every((b, i) => b === now[i])) return (_, lod) => lod;
+  const spec = asset?.spec;
+  const top = spec && (spec.kind === "creature" || spec.kind === "pieces") ? (spec.budgets.texture?.top ?? stepSize(LAST_STEP)) : 0;
+  const flats = new Map(asset ? materialsOf(asset).map((m) => [m.id, [describe(m, top, was).flat, describe(m, top, now).flat] as const]) : []);
+  const mine = new Map<number, number>();
+  const shared = new Set<number>();
+  for (const [old, made] of flats.values()) {
+    if (mine.has(old) && mine.get(old) !== made) shared.add(old);
+    mine.set(old, made);
+  }
+  const again = (c: number): number => {
+    if (c < RAMP_BASE || c >= SKIN_BASE) return c;
+    if (mine.has(c) && !shared.has(c)) return mine.get(c)!;
+    return nearestColour(now, was[c * 4]!, was[c * 4 + 1]!, was[c * 4 + 2]!);
+  };
+  return (mesh, lod) => {
+    const colors = lod.colors.map(again);
+    // A piece's vertex drawn with a material has the material's flat colour, so it is known by its triangle.
+    if (spec?.kind === "pieces" && lod.sections && mesh.materials) {
+      for (let t = 0; t < lod.indices.length / 3; t++) {
+        const flat = flats.get(mesh.materials[lod.sections[t]!]!.id)?.[1];
+        if (flat !== undefined) for (let k = 0; k < 3; k++) colors[lod.indices[t * 3 + k]!] = flat;
+      }
+    }
+    return { ...lod, colors };
+  };
+}
+
+/**
+ * A pack again in today's format and palette, made from itself: no Blender. How far each level lies from the finest
+ * is measured afresh. With `levels`, every mesh that follows a rig of its own gets its coarser levels made afresh from
+ * its finest, which undoes any the model brought. One drawn with materials has them made as its asset says, which
+ * reads the asset's pictures.
  */
 export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8Array {
   const pack = parsePack(file);
   const palette = defaultPalette();
+  const colour = recolour(pack.palette, palette, asset);
   const own = new Set(pack.header.rigs.filter((r) => r.names).map((r) => r.id));
   const meshes = unpackMeshes(pack).map((m) => {
-    const measured = { ...m, lods: m.lods.map(({ error: _, ...lod }) => lod) };
+    const measured = { ...m, lods: m.lods.map(({ error: _, ...lod }) => colour(m, lod)) };
     if (!levels || m.rig === undefined || !own.has(m.rig)) return measured;
     if (!m.flat) return withLevels({ ...measured, lods: [measured.lods[0]!] });
     const spec = asset?.spec;

@@ -130,6 +130,12 @@ const COMMANDS_PER_TICK = 4;
 const SNAPSHOT_BYTES_MIN = 600;
 /** The most bits one row of a chunk message takes. */
 const ROW_BITS = 190;
+/**
+ * Chunk bytes a client may have on the way, or two ticks of the slot budget if that is more. On one stream everything
+ * sent before a snapshot it has read has reached it, so what was sent since its newest acknowledged snapshot is still
+ * coming, ahead of the snapshots after it.
+ */
+const CHUNK_WINDOW = 16 * 1024;
 const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** Metres. */
 const SPECTATOR_LIFT = 1.6;
@@ -190,6 +196,8 @@ export class Client {
   /** Centre of this session's interest. */
   chunk = 0;
   readonly inputs = new InputBuffer(INPUT_WINDOW);
+  /** The tick on which each buffered input arrived, by its own tick: how far ahead the client really sent it. */
+  readonly arrived = new Uint32Array(INPUT_WINDOW);
   heldX = 0;
   heldZ = 0;
   heldYaw = 0;
@@ -215,6 +223,9 @@ export class Client {
   sentProgress = -1;
   readonly subscribed: number[] = [];
   syncChunk = -1;
+  /** Bytes of chunk messages sent on each of the last 32 ticks, and the tick each slot is for. */
+  readonly chunkSent = new Uint32Array(32);
+  readonly chunkSentAt = new Uint32Array(32);
   syncCursor = 0;
   syncFrom = 0;
   syncTarget = 0;
@@ -286,6 +297,7 @@ export class Client {
     this.sentProgress = -1;
     this.subscribed.length = 0;
     this.syncChunk = -1;
+    this.chunkSent.fill(0);
     this.rotate = 0;
     this.viewCap = this.snapshotBytes = this.wantView = this.wantBytes = this.viewReadyAt = 0;
     this.strikes = 0;
@@ -813,7 +825,11 @@ export class GameServer {
     // Track the newest tick even when it is too far ahead to buffer, because the margin sent back tells a
     // client its clock has run away. It moves backward only by a whole window, which is a restarted clock.
     const fresh = newest > c.newestInput || newest < c.newestInput - INPUT_WINDOW;
-    if (fresh) c.newestInput = newest;
+    if (fresh) {
+      // A stream delivers in order, so an input arrives with the first message whose newest reaches it.
+      for (let t = Math.max(newest > c.newestInput ? c.newestInput + 1 : 0, newest - INPUT_WINDOW + 1); t <= newest; t++) c.arrived[t & (INPUT_WINDOW - 1)] = this.world.tick;
+      c.newestInput = newest;
+    }
     // An ack can only name a snapshot that was sent, and only move forward. An ack of 0 says the client cannot read against
     // the view it acknowledged, so the next snapshot is whole. An input that arrives out of order may not say that.
     if (ack === 0) {
@@ -1163,7 +1179,13 @@ export class GameServer {
     const ccx = chunkCx(dims, c.chunk);
     const ccz = chunkCz(dims, c.chunk);
     const offsets = this.structOffsets;
-    let budget = this.opts.chunkSlotsPerTick;
+    const slot = T & 31;
+    c.chunkSent[slot] = 0;
+    c.chunkSentAt[slot] = T;
+    let owed = 0;
+    for (let i = 0; i < 32; i++) if (c.chunkSentAt[i]! >= c.ackTick && c.chunkSentAt[i]! + 32 > T) owed += c.chunkSent[i]!;
+    const allowed = Math.max(CHUNK_WINDOW, (this.opts.chunkSlotsPerTick * ROW_BITS) / 4);
+    let budget = Math.min(this.opts.chunkSlotsPerTick, Math.floor((allowed - owed) / (ROW_BITS / 8)));
     for (let o = 0; o < offsets.length && budget > 0; o += 2) {
       const cx = ccx + offsets[o]!;
       const cz = ccz + offsets[o + 1]!;
@@ -1323,6 +1345,8 @@ export class GameServer {
     w.pos = end;
     const bytes = w.bytes();
     this.stats.chunkBytes += bytes.length;
+    const k = this.world.tick & 31;
+    c.chunkSent[k] = c.chunkSent[k]! + bytes.length;
     c.conn.send(CH_RELIABLE, bytes);
     if (final) {
       if (c.known[chunk] === 0 && !c.subscribed.includes(chunk)) c.subscribed.push(chunk);
