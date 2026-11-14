@@ -337,7 +337,7 @@ export class Characters {
   loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1): boolean {
     const first = this.room(p, 1, 1);
     if (first < 0) return false;
-    // Right is level and square to the direction. Up is square to both.
+    // Right is level and square to the direction. Up is the direction crossed with right, so the basis keeps its handedness.
     let rx = dz;
     let rz = -dx;
     const rl = Math.sqrt(rx * rx + rz * rz);
@@ -348,9 +348,9 @@ export class Characters {
       rx /= rl;
       rz /= rl;
     }
-    const ux = -rz * dy;
-    const uy = rz * dx - rx * dz;
-    const uz = rx * dy;
+    const ux = dy * rz;
+    const uy = dz * rx - dx * rz;
+    const uz = -dy * rx;
     const o = first * BONE_FLOATS;
     const b = p.bones;
     b[o] = rx * wide;

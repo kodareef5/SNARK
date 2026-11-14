@@ -308,5 +308,19 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   expect(w.port.log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([7643, 767, 20, 0]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
-  expect(hash).toBe(3323304581);
+  // It moved once when a loose thing's up turned from down to up: negating that column of its bone gives the old hash.
+  expect(hash).toBe(3486152837);
+});
+
+test("a loose thing is turned, not mirrored: its bone takes +Y up and keeps the handedness of the model", () => {
+  const w = sceneWorld();
+  const p = w.scene.packet;
+  for (const [dx, dy, dz] of [[0, 0, 1], [0.6, 0, 0.8], [0, 0.6, 0.8], [0.48, -0.6, -0.64]] as const) {
+    p.beginFrame();
+    w.scene.characters.begin();
+    expect(w.scene.characters.loose(p, w.mesh(PANEL), 0, 0, 0, dx, dy, dz, 1)).toBe(true);
+    const b = p.bones;
+    const det = b[0]! * (b[5]! * b[10]! - b[6]! * b[9]!) - b[1]! * (b[4]! * b[10]! - b[6]! * b[8]!) + b[2]! * (b[4]! * b[9]! - b[5]! * b[8]!);
+    expect([det, b[5]! > 0]).toEqual([expect.closeTo(1, 6), true]);
+  }
 });
