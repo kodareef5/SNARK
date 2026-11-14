@@ -1,4 +1,4 @@
-// The art tool: the asset folders it finds and what its check counts as a fault. Blender is never run here.
+// The art tool: the asset folders it finds, what its check counts as a fault, and the sheet it draws. Blender is never run here.
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,11 +7,13 @@ import type { Clip } from "../../shared/anim/clip.ts";
 import { ZONE_TORSO } from "../../shared/anim/human.ts";
 import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
+import { main } from "../../tools/art.ts";
 import type { Asset } from "../../tools/art/assets.ts";
 import { checkAsset, measureSurface } from "../../tools/art/check.ts";
 import { readPacks } from "../../tools/art/source.ts";
 import type { CreatureAsset } from "../../tools/art/spec.ts";
 import { withArt } from "../../tools/pack/build.ts";
+import { readPng } from "../../tools/pack/png-read.ts";
 import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
 import { ASSETS } from "../fixtures/assets.ts";
 
@@ -123,6 +125,68 @@ test("the check faults what would draw wrong: a level over its budget, a hole, a
   // A loop that walks and has no stride is remarked on, and is no fault.
   const loose = hopper({ gaits: {} });
   expect(checkAsset(loose.asset, parsePack(loose.file))).toMatchObject({ faults: [], gaits: [], notes: ['clip "hop" walks about 1.00 m a turn and has no stride in asset.ts'] });
+});
+
+test("the command checks an asset, draws its sheet and writes the pack again from itself, in any tree it is pointed at", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-art-test-"));
+  try {
+    const h = hopper();
+    const folder = join(dir, "source/t/creatures/hopper");
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "asset.ts"), `export default ${JSON.stringify(h.asset.spec)};\n`);
+    writeFileSync(join(folder, "hopper.snpk"), h.file);
+    const said: string[] = [];
+    const run = (...args: string[]): Promise<number> => main(["--source", join(dir, "source"), "--out", join(dir, "out"), ...args], (line) => said.push(line));
+
+    expect(await run()).toBe(0);
+    expect(said.join("\n")).toContain("t:hopper");
+    await expect(run("t:nothing")).rejects.toThrow(/no asset "t:nothing".*t:hopper/);
+
+    expect(await run("--all", "--check", "--sheet")).toBe(0);
+    expect(said.join("\n")).toMatch(/gait hop: stride 1 m, holds best at 1\.00 m[\s\S]*\n {2}ok/);
+    const out = join(dir, "out/t/hopper");
+    const facts = JSON.parse(readFileSync(join(out, "sheet.json"), "utf8")) as { id: string; faults: string[]; sheet: { width: number; height: number; pages: { name: string; file: string; y: number; height: number }[]; cells: { page: string; what: string; x: number; y: number; width: number; height: number; clip?: string; frame?: number; around?: number }[] } };
+    expect([facts.id, facts.faults, facts.sheet.pages.map((p) => p.name)]).toEqual(["t:hopper", [], ["views", "rig", "clips-1"]]);
+    // Eight sides, four of wireframe, three each of bones and capsules, and six frames of each of two clips.
+    const count = (what: string): number => facts.sheet.cells.filter((c) => c.what === what).length;
+    expect([count("shaded"), count("wireframe"), count("bones"), count("capsules"), count("clip")]).toEqual([8, 4, 3, 3, 12]);
+    expect(facts.sheet.cells.filter((c) => c.clip === "hop").map((c) => c.frame)).toEqual([0, 3, 7, 10, 13, 17]);
+    // The whole sheet is its pages one under another.
+    const whole = new DataView(new Uint8Array(readFileSync(join(out, "sheet.png"))).buffer);
+    expect([whole.getUint32(16), whole.getUint32(20)]).toEqual([facts.sheet.width, facts.sheet.pages.reduce((h, p) => h + p.height, 0)]);
+    expect(facts.sheet.pages.map((p) => p.y)).toEqual(facts.sheet.pages.map((_, i) => facts.sheet.pages.slice(0, i).reduce((h, p) => h + p.height, 0)));
+    // Each picture lies on its page, with something drawn in it.
+    for (const p of facts.sheet.pages) {
+      const page = readPng(join(out, p.file));
+      expect([page.width, page.height, page.channels]).toEqual([facts.sheet.width, p.height, 4]);
+      const at = (x: number, y: number): number => (page.data[(y * page.width + x) * 4]! << 16) | (page.data[(y * page.width + x) * 4 + 1]! << 8) | page.data[(y * page.width + x) * 4 + 2]!;
+      for (const c of facts.sheet.cells.filter((c) => c.page === p.name)) {
+        expect(c.x >= 0 && c.y >= 0 && c.x + c.width <= page.width && c.y + c.height <= page.height).toBe(true);
+        const empty = at(c.x + c.width - 2, c.y + c.height - 2);
+        let drawn = 0;
+        for (let y = c.y + 30; y < c.y + c.height; y += 6) for (let x = c.x; x < c.x + c.width; x += 6) if (at(x, y) !== empty) drawn++;
+        expect([c.what, c.around, c.frame, drawn > 20]).toEqual([c.what, c.around, c.frame, true]);
+      }
+    }
+
+    // Written again from itself, the pack says the same, and a second time it is the same bytes.
+    await run("t:hopper", "--repack");
+    const once = readFileSync(join(folder, "hopper.snpk"));
+    expect(parsePack(new Uint8Array(once)).clips.hash).toBe(parsePack(h.file).clips.hash);
+    await run("--all", "--repack", "--levels");
+    expect(readFileSync(join(folder, "hopper.snpk")).equals(once)).toBe(true);
+
+    // A fault is counted and told.
+    const over = join(dir, "over/t/hopper");
+    mkdirSync(over, { recursive: true });
+    writeFileSync(join(over, "asset.ts"), `export default ${JSON.stringify({ ...h.asset.spec, budgets: { triangles: [8] } })};\n`);
+    writeFileSync(join(over, "hopper.snpk"), h.file);
+    said.length = 0;
+    expect(await main(["--source", join(dir, "over"), "t:hopper", "--check"], (line) => said.push(line))).toBe(1);
+    expect(said.join("\n")).toContain("FAULT: t:hopper level 0: 24 triangles, and its budget is 8");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("the pack build takes every pack it finds, refuses the same id from two, and lets a modelled mesh replace a grey box", () => {
