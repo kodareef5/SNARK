@@ -279,11 +279,12 @@ test("only so many are shown falling: the nearest to the eye, whatever order the
     for (let k = to - 1; k >= from; k--) out.push({ kind: 1, x: k + 1, y: 50, z: 0, yaw: 0, cause: GONE_DESTROYED, ox: 0, oy: 0, oz: 0, tick: 7 });
     return out;
   };
-  f.absorb(row(200, 400), 0, 0, 50, 0);
-  expect([f.count, f.dropped]).toEqual([MAX_FALLING, 0].map((v, i) => (i === 0 ? Math.min(200, MAX_FALLING) : v)));
-  f.absorb(row(0, 200), 0, 0, 50, 0);
+  const half = MAX_FALLING / 2;
+  f.absorb(row(half * 2, half * 3), 0, 0, 50, 0);
+  expect([f.count, f.dropped]).toEqual([half, 0]);
+  f.absorb(row(0, half * 2), 0, 0, 50, 0);
   f.step(1);
-  expect([f.count, f.taken, f.dropped]).toEqual([MAX_FALLING, 400, 400 - MAX_FALLING]);
+  expect([f.count, f.taken, f.dropped]).toEqual([MAX_FALLING, half * 3, half]);
   const xs = Array.from(f.x.subarray(0, f.count)).sort((a, b) => a - b);
   expect([xs[0], xs[MAX_FALLING - 1]]).toEqual([1, MAX_FALLING]);
   // When they have gone there is room again.

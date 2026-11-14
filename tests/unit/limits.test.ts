@@ -1,10 +1,16 @@
-// The limits of a view: how many entities it holds, how each client gets its own part of a shared list, and what a full snapshot leaves for the next.
+// The limits of a view and of a frame: how many entities a view holds, how each client gets its own part of a shared list,
+// what a full snapshot leaves for the next, which bodies a frame short of bones poses, and what a full frame counts as left out.
 
 import { expect, test } from "bun:test";
+import { DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_DRAWS } from "../../client/core/render/packet.ts";
+import { HUMAN_BONES } from "../../shared/anim/human.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
+import { AnimState } from "../../shared/anim/pose.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { EntityView, MAX_VIEW, SentView, readViewDelta, writeViewDelta, type Looks } from "../../shared/net/view.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
+import { provingView } from "../../tools/snap.ts";
+import { PICK_ENTITY } from "../../tools/snap/raster.ts";
 
 function looksFor(n: number): Looks {
   return { level: new Uint16Array(n), colors: new Uint8Array(n * 6), name: new Array<string>(n).fill(""), look: new Array<Uint8Array | null>(n).fill(null), gear: new Array<Uint16Array | null>(n).fill(null), team: new Uint32Array(n), seat: new Uint32Array(n), span: new Uint32Array(n), grown: new Uint32Array(n) };
@@ -152,4 +158,93 @@ test("2,048 bodies that all change their looks in one tick are sent again within
   // 66 snapshots, a little over two seconds, with the 128 players whole after 14.
   expect(playersDone).toBeLessThan(steps / 2);
   expect(steps).toBeGreaterThan(40);
+});
+
+test("a frame short of bones poses survivors first, then the nearest, and draws every other body rigid on one bone where it stands", () => {
+  const view = provingView(320, 180);
+  const { remote, cam, scene, reg, hf, raster, pack } = view;
+  const raptor = reg.index.get("core:raptor")!;
+  const survivor = reg.index.get("core:survivor")!;
+  const each = scene.characters.bones(raptor);
+  expect([scene.characters.bones(survivor), each > 1]).toEqual([HUMAN_BONES, true]);
+  // Six raptors in a fan going away from the camera, and two survivors beyond them all.
+  cam.yaw = 0;
+  remote.count = 0;
+  for (let k = 0; k < 8; k++) {
+    remote.id[k] = 200 + k;
+    remote.kind[k] = k < 6 ? raptor : survivor;
+    remote.x[k] = cam.x + (k - 3.5) * 1.5;
+    remote.z[k] = cam.z + 10 + k * 3;
+    remote.y[k] = hf.heightAt(remote.x[k]!, remote.z[k]!);
+    remote.yaw[k] = 0;
+    remote.flags[k] = 1;
+    remote.anim[k] = 0;
+  }
+  remote.count = 8;
+  const tier = scene.assets.tier;
+  /** The ids drawn on one bone, the bodies posed and the bones used, with this many bones to pose with. */
+  const frame = (bones: number): { rigid: number[]; posed: number; used: number } => {
+    scene.assets.tier = { ...tier, bones };
+    const p = view.render();
+    const rigid: number[] = [];
+    for (let d = 0; d < p.drawCount; d++) {
+      if ((p.drawFlags[d]! & DRAW_ONE_BONE) === 0) continue;
+      expect(p.drawFlags[d]).toBe(DRAW_SKINNED | DRAW_PLAIN | DRAW_ONE_BONE);
+      for (let k = 0; k < p.drawInstances[d]!; k++) rigid.push(p.transientIds[p.drawFirst[d]! + k]!);
+    }
+    expect(p.dropped).toBe(0);
+    return { rigid: [...new Set(rigid)].sort((a, b) => a - b), posed: scene.characters.posed, used: p.boneCount };
+  };
+  /** How many pixels show body `k`, and how far their middle is from where the middle of its mesh stands, in pixels. */
+  const shown = (k: number): [number, number] => {
+    const m = pack.header.meshes[scene.meshOfKind[remote.kind[k]!]!]!;
+    const out = [0, 0, 0];
+    cam.project(remote.x[k]! + m.center[0]!, remote.y[k]! + m.center[1]!, remote.z[k]! + m.center[2]!, out);
+    let n = 0;
+    let sx = 0;
+    let sy = 0;
+    for (let i = 0; i < raster.pickId.length; i++) {
+      if (raster.pickKind[i] !== PICK_ENTITY || raster.pickId[i] !== remote.id[k]) continue;
+      n++;
+      sx += i % raster.width;
+      sy += Math.floor(i / raster.width);
+    }
+    return [n, n === 0 ? Infinity : Math.hypot(sx / n - out[0]! * raster.width, sy / n - out[1]! * raster.height)];
+  };
+  // With the tier's own bones every body is posed.
+  expect(frame(tier.bones)).toEqual({ rigid: [], posed: 8, used: 2 * HUMAN_BONES + 6 * each });
+  // With enough for the survivors and two raptors, and one bone each for the rest, the four farther raptors are rigid.
+  const short = 2 * HUMAN_BONES + 2 * each + 4;
+  expect(frame(short)).toEqual({ rigid: [202, 203, 204, 205], posed: 4, used: short });
+  for (let k = 2; k < 6; k++) {
+    const [pixels, off] = shown(k);
+    expect(pixels).toBeGreaterThan(8);
+    expect(off).toBeLessThan(3);
+  }
+  // One bone less and a raptor more is rigid. With hardly any, all are, and none is left out.
+  expect(frame(short - 1).rigid).toEqual([201, 202, 203, 204, 205]);
+  expect(frame(3)).toEqual({ rigid: [200, 201, 202, 203, 204, 205, 206, 207], posed: 0, used: 8 });
+  for (let k = 0; k < 8; k++) expect(shown(k)[0]).toBeGreaterThan(8);
+  // The viewer's own body is posed whatever is left.
+  scene.own = { kind: survivor, x: cam.x, y: hf.heightAt(cam.x, cam.z + 3), z: cam.z + 3, yaw: 0, state: new AnimState(), tick: 0, firstPerson: false, colors: new Uint8Array(6), look: null, gear: new Uint16Array(6), id: 7 };
+  expect(frame(3)).toEqual({ rigid: [200, 201, 202, 203, 204, 205, 206, 207], posed: 1, used: 8 + HUMAN_BONES });
+});
+
+test("what a full frame leaves out is counted: draws past 4,096 and beams past sixteen", () => {
+  const view = provingView(160, 90);
+  const { scene, cam, hf } = view;
+  cam.yaw = 0;
+  const usual = scene.build(cam, null);
+  const draws = usual.drawCount;
+  expect(usual.dropped).toBe(0);
+  // Twenty places to mark, and sixteen beams in their one draw.
+  for (let k = 0; k < 20; k++) scene.beams.push(cam.x, hf.heightAt(cam.x, cam.z + 5 + k), cam.z + 5 + k);
+  const beamed = scene.build(cam, null);
+  expect([beamed.dropped, beamed.drawCount]).toEqual([4, draws + 1]);
+  scene.beams.length = 0;
+  // A loose thing is a draw of its own. With as many in view as a frame has draws, as many are left out as the frame drew before.
+  const mesh = scene.meshOfKind[view.reg.index.get("core:crate")!]!;
+  scene.things = Array.from({ length: MAX_DRAWS }, (_, k) => ({ mesh, x: cam.x + ((k % 16) - 7.5) / 2, y: cam.y, z: cam.z + 20 + (k >> 4) / 2, level: -1 }));
+  const full = scene.build(cam, null);
+  expect([full.drawCount, full.dropped]).toEqual([MAX_DRAWS, draws]);
 });
