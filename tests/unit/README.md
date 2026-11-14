@@ -6,7 +6,8 @@
 | `latency.test.ts` | Views with a round trip between a snapshot and its acknowledgement: a body that had to wait stays as the client last had it, a lost baseline, and a link that loses and delays held to the true states |
 | `foundation.test.ts` | Deterministic trigonometry, identities, content hash, loopback ordering and loss |
 | `world.test.ts`, `ray.test.ts`, `nodes.test.ts` | Terrain continuity, structure tables, the collision grid and rays against brute force, resource nodes as a function |
-| `path.test.ts` | Ways across the ground: round a wall, never through a thin one, the search's budget, legs, and a body walking every way found on the proving ground |
+| `path.test.ts` | Ways across the ground: round a wall, never through a thin one, the search's budget, a search spread over calls, legs, a doorway off the grid, and a body walking every way found on the proving ground |
+| `bodies.test.ts` | The grid of awake bodies that creatures search for prey |
 | `mapfile.test.ts`, `maplayers.test.ts` | A map through its file and back; a damaged or unplayable one refused with its reason; a folder of layers built into a map and unpacked again |
 | `character.test.ts`, `swim.test.ts` | Movement rules and the anti-clipping fuzz tests, on land and in water |
 | `sim.test.ts`, `items.test.ts` | Deadlines, lazy quantities, stat points, inheritance statistics; inventories |
