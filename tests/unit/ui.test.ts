@@ -7,7 +7,7 @@ import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL,
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
-import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPAWN_PANEL } from "../../client/core/ui/screens.ts";
+import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPAWN_PAGE, KEY_RESPAWN_PANEL } from "../../client/core/ui/screens.ts";
 import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder } from "../../client/core/ui/character.ts";
 import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
@@ -476,6 +476,48 @@ test("the respawn and map screens fit every window shape, and a click on a place
         expect(ui.map).toBe(false);
       }
     }
+  }
+});
+
+test("with more places to return to life at than fit the window, the list is paged, and every place can be chosen", () => {
+  for (const [name, aspect] of ASPECTS) {
+    const { session, sent } = fakeSession(new Inventory(40));
+    const places = Array.from({ length: 43 }, (_, i) => ({ name: i < 3 ? `spawn ${i}` : `bed at ${i * 10}, ${i * 7}`, x: i, z: i, wait: i === 20 ? 250 : 0 }));
+    Object.assign(session, { sessionState: SESSION_DEAD, respawnPoints: places, markers: [], world: flatWorld(2), own: { x: 1, y: 0, z: 1 } });
+    const ui = new Ui();
+    ui.registry = reg;
+    const f = ui.frame;
+    const chosen: number[] = [];
+    for (let page = 0; page < 20; page++) {
+      ui.build(aspect, fullHud(), session);
+      for (let i = 0; i < f.count; i++) {
+        const n = f.nodes[i]!;
+        const where = `${name} page ${page} key=${n.key}`;
+        if (n.key < KEY_RESPAWN_PANEL || n.key >= KEY_MAP_IMAGE - 1) continue;
+        expect(n.y, where).toBeGreaterThanOrEqual(-0.01);
+        expect(n.y + n.h, where).toBeLessThanOrEqual(f.height + 0.01);
+        expect(n.x + n.w, where).toBeLessThanOrEqual(f.width + 0.01);
+        if (n.kind === K_TEXT) expect(textWidth(n.text, n.style), where).toBeLessThanOrEqual(n.w + 0.01);
+        // Each place's button is pressed as it is shown.
+        const place = places.findIndex((p) => n.text === p.name || n.text === `${p.name}  (in ${p.wait} s)`);
+        if (n.interactive && place >= 0) {
+          ui.pointer(0, n.key, 0, 0, 0, session);
+          chosen.push(place);
+        }
+      }
+      if (f.find(KEY_RESPAWN_PAGE + 1) === null) break;
+      const before = f.find(KEY_RESPAWN_PAGE + 2)!.text;
+      ui.pointer(0, KEY_RESPAWN_PAGE + 1, 0, 0, 0, session);
+      ui.build(aspect, fullHud(), session);
+      // The last page's next button goes nowhere.
+      if (f.find(KEY_RESPAWN_PAGE + 2)!.text === before) break;
+    }
+    expect(chosen).toEqual(places.map((_, i) => i));
+    expect(sent.map((c) => [c.op, c.bytes[0]])).toEqual(places.map((_, i) => [CMD_RESPAWN, i]));
+    // Back to the first page, where the first button is the first place again.
+    for (let i = 0; i < 20; i++) ui.pointer(0, KEY_RESPAWN_PAGE, 0, 0, 0, session);
+    ui.build(aspect, fullHud(), session);
+    expect([f.find(KEY_RESPAWN_BUTTON)!.text, f.find(KEY_RESPAWN_PAGE + 2)!.text.startsWith("page 1 of ")]).toEqual(["spawn 0", true]);
   }
 });
 
