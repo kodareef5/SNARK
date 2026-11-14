@@ -2,7 +2,7 @@
 // used and nothing caches one. They are factors and switches, never a branch at a call site (D66).
 
 import { CATALOG, rowOf } from "./catalog.ts";
-import { isList, toNumber, toSwitch, unquote, type IniNode } from "./ini.ts";
+import { isList, toNumber, toSwitch, unquote, writeNode, type IniNode } from "./ini.ts";
 import type { Row } from "./row.ts";
 
 /** Weakest first. */
@@ -17,6 +17,13 @@ function defaultOf(row: Row): Value {
   if (row.kind === "struct" || row.kind === "names" || row.kind === "lines") return [];
   if (row.kind === "indexed") return [...(row.def as readonly number[])];
   return row.def as number | boolean | string;
+}
+
+/** Whether two values of one setting are the same. Bracketed entries are compared as they would be written. */
+function same(a: Value, b: Value): boolean {
+  if (!Array.isArray(a) || !Array.isArray(b)) return a === b;
+  const plain = (v: number | IniNode): number | string => (typeof v === "number" ? v : writeNode(v));
+  return a.length === b.length && a.every((v: number | IniNode, i) => plain(v) === plain(b[i] as number | IniNode));
 }
 
 /** A string result says why the value is refused. For a list the value is one entry, and for an indexed setting the number at one index. */
@@ -123,10 +130,12 @@ export class Rules {
     return SOURCES.indexOf(source) >= SOURCES.indexOf(this.sourceOf(row));
   }
 
-  /** `value` must already be read and checked by readValue. */
+  /** `value` must already be read and checked by readValue. The value the setting already has is not a change. */
   put(row: Row, value: Value, source: Source): void {
-    this.vals.set(slot(row), value);
-    this.from.set(slot(row), source);
+    const name = slot(row);
+    this.from.set(name, source);
+    if (same(this.vals.get(name)!, value)) return;
+    this.vals.set(name, value);
     this.version++;
   }
 

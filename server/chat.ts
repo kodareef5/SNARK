@@ -26,9 +26,12 @@ export interface ChatContext {
 const CHAT_SAY = event("chat.say");
 const CHAT_SAID = event("chat.said");
 
-/** The text as it will be shown, or "" if nothing is left. */
+/**
+ * The text as it will be shown, or "" if nothing is left. Format characters go: the marks that turn text round and the ones
+ * of no width, with which a line can show as another's or a word slip past whoever looks for it.
+ */
 export function cleanChat(text: string): string {
-  const clean = text.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  const clean = text.replace(/\p{Cf}/gu, "").replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim();
   return clean.length > MAX_CHAT_CHARS ? clean.slice(0, MAX_CHAT_CHARS) : clean;
 }
 

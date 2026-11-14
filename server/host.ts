@@ -92,6 +92,9 @@ export interface HostOptions {
   map?: Uint8Array<ArrayBuffer>;
   /** Use this world instead of creating one from a map file. Its structures are kept only if the save is new. */
   world?: ServerWorld;
+  /** For a world the host creates: the most entities it holds, in place of the MaxEntities setting, and the size its store starts at. */
+  entityMax?: number;
+  entityStart?: number;
   seed?: number;
   /** Password for `enablecheats`. Without one, cheats are off unless `dev` is set. */
   adminPassword?: string;
@@ -251,7 +254,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   if (store) opened.push(store);
   // A save supplies its own structures. Only a new world gets the map's.
   const mapFile = opts.world ? null : (opts.map ?? provingFile(reg));
-  const world = opts.world ?? createMapWorld(reg, parseMap(mapFile!), { populate: !store || store.fresh });
+  const world = opts.world ?? createMapWorld(reg, parseMap(mapFile!), { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
@@ -277,6 +280,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")),
   });
   game.bus = bus;
+  // A full world still has a place for every survivor that may join.
+  world.ents.reserve = game.clients.length;
   /** Survivors made since they were last told of: a module hears of each once, as new. */
   const made = new Set<number>();
   const joined = (c: Client): void => {
@@ -285,6 +290,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     bus.after(SESSION_JOIN, { pid: c.pid, name: c.name, isNew: made.delete(c.pid) });
   };
   let started = false;
+  /** Creates the entity store had refused when the log last said so, and the tick from which it may say so again. */
+  let refusedTold = 0;
+  let refusedNext = 0;
   const persistence = store ? new Persistence(world, records, store, { allowMapMismatch: opts.allowMapMismatch ?? false }) : null;
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
@@ -299,7 +307,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const items = new Items(world, records);
   items.bus = bus;
   if (persistence) {
-    items.restore(loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null));
+    const ledger = loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null);
+    items.restore(ledger);
+    const dropped = persistence.store.dropped;
+    if (dropped.count.size > 0) {
+      // What went with the content an operator chose to go on without leaves the ledger too. A save with no ledger never counted it.
+      if (ledger !== null) for (const [item, n] of dropped.burn) items.burned[item] = items.burned[item]! + n;
+      items.dirty = true;
+      say(`left out, as --allow-missing-content asked, and gone from the save at its next commit: ${[...dropped.count].map(([id, n]) => `${n} of ${id}`).join(", ")}`);
+      if (dropped.burn.size > 0) say(`what they held went with them: ${[...dropped.burn].map(([item, n]) => `${n} of ${reg.ids[item]}`).join(", ")}`);
+    }
     const wrong = items.audit();
     if (wrong.length > 0 && !opts.allowLedgerMismatch) throw new Error("the item ledger does not balance:\n" + wrong.join("\n"));
     persistence.sidecar("ledger", items);
@@ -415,6 +432,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       bus.after(DEATH, { victim: rec.pid, kind: reg.ids[rec.kind]!, cause: CAUSE_WORDS[cause] ?? "", killer: killer ? killer.pid : 0, rider: rider ? rider.pid : 0, credit: !killer ? 0 : killer.kind === survivor ? killer.pid : rider ? rider.pid : 0, team: rec.team, item: struck && combat.blow.item !== 0 ? reg.ids[combat.blow.item]! : "", far: struck ? combat.blow.far : 0 });
     }
     combat.killed(rec, by);
+    // A creature may eat of what its kill left it.
+    const taker = by !== 0 ? records.byPid.get(by) : undefined;
+    if (taker) taming.meal(taker);
     buffs.died(rec);
     death.die(rec, cause);
   };
@@ -507,6 +527,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     // Bodies saved under other rates are rated again as they load.
     survival.rerate = RATES.some((name) => wasAt(name) !== rules.num(name));
     const survivors = new Set(persistence!.survivors.values());
+    let bodiless = 0;
     for (const rec of records.byPid.values()) {
       if (survivors.has(rec.pid)) {
         // A survivor stays out of the world until its owner returns, with its vitals stopped.
@@ -520,7 +541,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
         const e = creatures.adopt(rec);
         if (e >= 0) persistence!.attach(rec, e);
       }
+      if (!records.entOf.has(rec.pid)) bodiless++;
     }
+    // Their records stay in the save, and get bodies at a start that allows more.
+    if (bodiless > 0) say(`no body for ${bodiless} of the creatures and things in the save, which stay in it without one: the world holds ${world.ents.count} of the ${world.ents.max} that MaxEntities allows, with ${world.ents.reserve} kept for survivors`);
+    refusedTold = world.ents.refused;
     survival.rerate = false;
     // The hour of day survives a change of clock pace, so the offset is recomputed for the new pace. A save from before
     // the clock had a pace counted 140 seconds to the hour.
@@ -537,6 +562,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     stations.resume();
     taming.resume();
     breeding.resume();
+    // Last, because a buff's change refreshes its body, and that settles what the body carries.
+    for (const rec of records.byPid.values()) buffs.restore(rec, persistence!.store.unrated.has(rec.pid));
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
     // A wild creature's level is one of thirty steps, each the size of the server's difficulty.
@@ -685,6 +712,12 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     taming.step();
     breeding.step(tick);
     voice.step(tick);
+    // A full entity store is logged when it first refuses, and then at most once a minute.
+    if (world.ents.refused !== refusedTold && tick >= refusedNext) {
+      say(`the world has no place for more bodies (${world.ents.refused - refusedTold} refused): it holds ${world.ents.count} of the ${world.ents.max} that MaxEntities allows, with ${world.ents.reserve} kept for survivors`);
+      refusedTold = world.ents.refused;
+      refusedNext = tick + 60 * TICK_RATE;
+    }
     // The idle kick runs only with ARK's -EnableIdlePlayerKick.
     if (tick % TICK_RATE === 0 && rules.flag("EnableIdlePlayerKick") === true) {
       const most = Math.round(rules.num("KickIdlePlayersPeriod") * TICK_RATE);

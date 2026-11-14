@@ -35,11 +35,14 @@ import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { AUDIO_HEADER, AUTH_BYTES, FRAME_SAMPLES, MODE_TALK, REACH_LOCAL, VOICE_BATCH, flagsOf, readBatch, writeAudio, writeAuth } from "../shared/voice/packet.ts";
 import type { VoicePeer } from "../server/voice.ts";
 import { crowdRows, fullViewRows } from "./bench/limits.ts";
+import { storeRows } from "./bench/store.ts";
 import { benchTactical } from "./bench/tactical.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
 import { benchAgent } from "./bench/agent.ts";
+import { benchPoses } from "./bench/poses.ts";
+import { benchTextures } from "./bench/textures.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -183,7 +186,10 @@ const mapHash = hashBytes(new Uint8Array(hf.heights.buffer, 0, 4096));
 // Trees, rocks and bushes cover the whole map, at 160 slots a chunk, most of them filled.
 const nodeKinds = ["core:tree", "core:tree", "core:tree", "core:rock", "core:rock", "core:bush"].map((id) => reg.index.get(id)!);
 const nodeSource = scatterNodes(DIMS, hf, 0xbe7c, 160, nodeKinds, reg.halfY, () => true);
-const world = createWorld(reg, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 4096, undefined, nodeSource);
+// The entity store is a server's own: it starts at 4,096 slots and doubles as the world fills, up to the MaxEntities setting.
+// Settings that allow less than these sections put in the world are passed over, or the spawning below would not end.
+const ENTITY_MAX = Math.max(benchRules.num("MaxEntities"), CREATURES + DORMANT_EXTRA + 16384);
+const world = createWorld(reg, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, ENTITY_MAX, undefined, nodeSource);
 record("terrain build, 8 km at 2 m", performance.now() - t0, "ms");
 const rng = new Rng(2026);
 t0 = performance.now();
@@ -203,6 +209,7 @@ t0 = performance.now();
 let spawned = 0;
 while (spawned < CREATURES) if (host.spawnCreature("core:grazer", rng.range(200, 7990), rng.range(200, 7990), 1 + rng.int(150)) >= 0) spawned++;
 record(`spawn ${CREATURES} creatures with genomes`, performance.now() - t0, "ms");
+record("entity store slots after them, doubled from 4,096", world.ents.cap, "");
 t0 = performance.now();
 persistence.commit();
 record(`commit ${CREATURES} new creature records`, performance.now() - t0, "ms");
@@ -422,6 +429,8 @@ const after: number[] = [];
 run(300, after);
 after.sort((a, b) => a - b);
 record("creatures in the world", host.world.ents.count, "");
+record("entity store slots after them", host.world.ents.cap, "");
+record("bodies the entity store has refused", host.world.ents.refused, "", 0);
 record("creatures awake before", awakeBefore, "");
 record("creatures awake after (players wandered into denser ground)", host.creatures.awakeCount, "");
 record("tick time, median, 30k creatures", baseline, "ms");
@@ -780,12 +789,13 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
       const e = host.spawnCreature("core:parasaur", ox + (i % 20) * 4 + place.range(-wide, wide), oz + row * 4 + Math.floor(i / 20) * 4 + place.range(-wide, wide), 1 + place.int(60));
       if (e >= 0) return e;
     }
-    throw new Error(`no room for the breeding base (${ents.count} of ${ents.cap} bodies in the world)`);
+    throw new Error(`no room for the breeding base (${ents.count} of ${ents.max} bodies in the world)`);
   };
   // 300 adults, alternating female and male four metres apart, all tamed and all set to mate.
   t0 = performance.now();
   for (let i = 0; i < 300; i++) {
-    const rec = records.byPid.get(ents.pid[put(i, 0)]!)!;
+    const e = put(i, 0);
+    const rec = records.byPid.get(ents.pid[e]!)!;
     rec.genome!.female = i % 2 === 0;
     host.taming.give(rec, owner, 1);
     rec.mating = true;
@@ -891,7 +901,7 @@ section("Restart under other settings: the save of the sizing target, every time
 {
   // Starts a host on the save twice, under the settings it was saved under and under settings that change every timer and
   // rate a load converts. The difference is the cost of the conversion.
-  const fresh = (content: typeof reg): ServerWorld => createWorld(content, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, CREATURES + DORMANT_EXTRA + 4096, undefined, nodeSource);
+  const fresh = (content: typeof reg): ServerWorld => createWorld(content, DIMS, hf, MAP_ID, mapHash, { x: 4096, z: 4096, yaw: 0 }, ENTITY_MAX, undefined, nodeSource);
   const start = (rules: Rules): { host: Host; ms: number } => {
     Bun.gc(true);
     const at = performance.now();
@@ -920,6 +930,9 @@ section("Restart under other settings: the save of the sizing target, every time
   record("the item ledger still balances after it (0 is yes)", moved.host.items.audit().length, "", 0);
   moved.host.shutdown();
 }
+
+// ---------------------------------------------------------------- entity store
+storeRows(section, record);
 
 // ---------------------------------------------------------------- client frame
 section("Client frame build (headless): standing 60 m from a 2,000-piece base");
@@ -1160,6 +1173,8 @@ section("Asset library (headless): 64 rocks of five levels and a 263,169-vertex 
 }
 
 benchAgent(section, record);
+benchPoses(section, record);
+await benchTextures(section, record);
 
 rmSync(dir, { recursive: true, force: true });
 const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);

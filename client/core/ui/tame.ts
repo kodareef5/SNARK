@@ -14,6 +14,19 @@ export const KEY_NAME_INPUT = 2463;
 /** The `te` the server sends for a creature claimed as young and not tamed. Matches CLAIMED in server/breeding.ts. */
 const CLAIMED = 255;
 
+/** The start of `text` that is no more than `most` bytes of UTF-8, with no character cut in two. */
+function fitBytes(text: string, most: number): string {
+  let bytes = 0;
+  let end = 0;
+  for (const ch of text) {
+    const c = ch.codePointAt(0)!;
+    bytes += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
+    if (bytes > most) break;
+    end += ch.length;
+  }
+  return text.slice(0, end);
+}
+
 export class NamePrompt {
   /** While open, the panel asks about session.tamed[0]. */
   open = false;
@@ -27,7 +40,7 @@ export class NamePrompt {
   }
 
   edit(value: string): void {
-    this.text = value.slice(0, MAX_NAME_BYTES);
+    this.text = fitBytes(value, MAX_NAME_BYTES);
   }
 
   /** Returns true for Enter and Escape while the panel is up. Every other key is typing. */

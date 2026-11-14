@@ -150,6 +150,8 @@ test("the console obeys admins, refuses everyone else, and never moves the world
   expect(bo.dayOffset).toBe(h.world.dayOffset);
   expect(h.say(bo, "time")).toEqual(["06:30"]);
   expect(h.say(ada, "who").sort()).toEqual(["ada  alive  admin", "bo  alive"]);
+  // Who is an admin is for admins and the operator to know.
+  expect([h.say(bo, "who").sort(), h.host.exec("who").split("\n").sort()]).toEqual([["ada  alive", "bo  alive"], ["ada  alive  admin", "bo  alive"]]);
   expect(h.say(bo, "pos")[0]).toMatch(/^x 2\d\d\.\d\d  y -?\d+\.\d\d  z 2\d\d\.\d\d  alive$/);
 
   h.say(bo, "enablecheats a");

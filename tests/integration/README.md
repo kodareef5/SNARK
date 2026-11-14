@@ -6,6 +6,7 @@
 | `sessions.test.ts` | Spectators, lingering bodies, device keys, the console and its cheats |
 | `movement.test.ts` | Swimming, stamina, and movement modifiers, predicted |
 | `persistence.test.ts` | Restart round trip; removed content; commit callbacks; three process kills with conservation |
+| `save-buffs.test.ts` | Buffs across a restart: a fire burns for what was left of it, a dose wears off, a stun is shown again; a save from before buffs were saved |
 | `maps.test.ts` | A map made in the test run by a server, served, and walked on; where its definition starts creatures; a save refused on another map; the proving ground from its file equal to the one its functions build |
 | `tactical.test.ts` | The map on an 8 km map: a far base with no chunk sent, whose bases show, cells by zoom within a kilobyte a second, mates and tames as marks, the minimap and the map screen |
 | `determinism.test.ts` | The same scenario under Bun and Node produces the same hashes |
@@ -32,6 +33,7 @@
 | `tuned.test.ts`, `stats.test.ts` | Content as a server's settings have it, derived the same by server and client; the join password; what a client shows by the server's leave; stat multipliers and difficulty |
 | `retime.test.ts`, `clock.test.ts` | What is under way timed again when its rule changes, live and across a restart; the live file; the day at the server's scales |
 | `round5.test.ts` | Round 5's exit condition as four stories: operator, live, client, catalogue |
+| `listen.test.ts` | The address a server listens on: a development server on this machine only, unless asked |
 | `agent.test.ts`, `agent-play.test.ts` | An agent that plays, its tools called over the protocol: the protocol itself, the key file, observe, the tools that need no walking; then walking round the wall, a crate set down in the way, gathering, opening, and stopping for danger |
 
 `fixtures/net.ts` runs a real server and real client sessions in one process on

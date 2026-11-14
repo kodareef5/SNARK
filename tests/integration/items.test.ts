@@ -244,11 +244,12 @@ test("berries spoil one by one on the world clock, seen or not, and the ledger c
   h.run(300);
   const interval = h.reg.spoilTicks[berry]!;
   const start = h.world.tick;
-  while (h.world.tick < start + interval * 3 + 400) h.server.tick();
+  // Twenty minutes and a little: two pieces. Much longer and she would die of thirst with them.
+  while (h.world.tick < start + interval * 2 + 400) h.server.tick();
   h.run(500); // the client learns of it when the server next looks
-  expect(items.inv(rec).total(berry)).toBe(47);
-  expect(s.inventory!.total(berry)).toBe(47);
-  expect(items.burned[berry]).toBe(3);
+  expect(items.inv(rec).total(berry)).toBe(48);
+  expect(s.inventory!.total(berry)).toBe(48);
+  expect(items.burned[berry]).toBe(2);
   expect(items.audit()).toEqual([]);
 });
 
@@ -305,7 +306,8 @@ test("setstat refreshes everything the points feed, with the load still counted"
 test("handing food to someone else does not make it fresher", () => {
   const { h, rec, id, items } = setup();
   const berry = id("core:berry");
-  const other = h.host.records.create(id("core:grazer"), "mule");
+  // A box keeps food as long as hands do. A creature keeps it longer (ark-numbers.test.ts).
+  const other = h.host.records.create(id("core:cache"), "box");
   const made = h.world.tick;
   items.mint(rec, berry, 30);
   const clock = items.inv(rec).spoilAt[0]!;

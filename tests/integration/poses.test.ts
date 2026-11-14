@@ -187,12 +187,9 @@ test("history costs what is awake, not what exists", () => {
   for (let i = 0; i < 300000; i++) ents.create(1, (i % 200) + 10, 0, (Math.floor(i / 200) % 200) + 10, 0);
   const history = new History(ents);
   for (let e = 0; e < 5000; e++) history.track(e * 7);
-  const t0 = performance.now();
   for (let tick = 1; tick <= 300; tick++) history.record(tick);
-  const perTick = (performance.now() - t0) / 300;
-  // 5,000 awake among 300,000. Measured at about 0.02 ms a tick.
-  expect(perTick).toBeLessThan(0.3);
-  // 8,192 rows of 16 ticks and one index per slot. A copy of everything took 96 MB.
+  // 5,000 awake among 300,000: 8,192 rows of 16 ticks and one index per slot. A copy of everything took 96 MB. What a
+  // tick of it takes is a row of the benchmark.
   expect(history.bytes).toBeLessThan(4 * 1024 * 1024);
 });
 
@@ -305,13 +302,9 @@ test("no pose reaches outside the sphere the hit test rejects by, and a body cos
   st.speed = 7;
   const rounds = 20000;
   let hits = 0;
-  const t0 = performance.now();
   for (let i = 0; i < rounds; i++) {
     if (rayBody(anim, st, i * 0.37, 100, 0, 100, (i * 311) & 0xffff, 100.1, 1.1 + (i % 7) * 0.1, 96, 0, 0, 1, 20) !== 0) hits++;
   }
-  const micros = ((performance.now() - t0) / rounds) * 1000;
   expect(hits).toBeGreaterThan(rounds * 0.4);
   expect(zoneHit.t).toBeGreaterThan(3);
-  // Measured at about one microsecond. The bound allows a slow or busy machine.
-  expect(micros).toBeLessThan(15);
 });

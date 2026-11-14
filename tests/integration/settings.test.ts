@@ -146,6 +146,25 @@ test("each source is stronger than the one before it: default, files, command li
   expect([rules.num("TamingSpeedMultiplier"), rules.sourceOf(rowOf("TamingSpeedMultiplier")!)]).toEqual([20, "console"]);
 });
 
+test("a live file read again with nothing changed is not a change, lists and all; a value or an entry that differs is one", () => {
+  const live = (taming: number, wood: number): string => `TamingSpeedMultiplier=${taming}\nShowFloatingDamageText=True\nHarvestResourceItemAmountClassMultipliers=(ClassName="core:wood",Multiplier=${wood})\nHarvestResourceItemAmountClassMultipliers=(ClassName="core:stone",Multiplier=3)\n`;
+  const { rules, report } = loadConfig({ gus: "[ServerSettings]\nXPMultiplier=2\n", live: live(8, 2) }, ["-UseDynamicConfig"]);
+  expect([report.refused, report.unknown]).toEqual([[], []]);
+  let at = rules.version;
+  const read = (text: string): boolean => {
+    applyLive(rules, text, emptyReport());
+    const changed = rules.version !== at;
+    at = rules.version;
+    return changed;
+  };
+  expect([read(live(8, 2)), read(live(8, 2))]).toEqual([false, false]);
+  expect([read(live(9, 2)), rules.num("TamingSpeedMultiplier")]).toEqual([true, 9]);
+  expect([read(live(9, 4)), rules.list("HarvestResourceItemAmountClassMultipliers").length, read(live(9, 4))]).toEqual([true, 2, false]);
+  // The value a setting already has, given by a stronger source, is no change, and the setting is that source's from then on.
+  expect([rules.assign("XPMultiplier", "2", "console"), rules.version === at, rules.sourceOf(rowOf("XPMultiplier")!)]).toEqual(["", true, "console"]);
+  expect([rules.assign("XPMultiplier", "3", "console"), rules.version === at]).toEqual(["", false]);
+});
+
 test("a folder is read from disk, any of its files missing; a server started on it has its rules, the console changes only what may change while it runs, and nothing of them is kept with the world but what its timers were worked out under", () => {
   const folder = join(dir, "config");
   const dbPath = join(dir, "world.db");
@@ -214,4 +233,16 @@ test("ARK's single-player settings are its own fixed factors on top of what the 
   // A value set at the console afterwards does not get the factor again.
   expect([h.host.setSetting("TamingSpeedMultiplier", "3"), h.host.rules.num("TamingSpeedMultiplier")]).toEqual(["", 3]);
   expect(loadConfig({ gus: "[ServerSettings]\nTamingSpeedMultiplier=2\n" }).rules.num("TamingSpeedMultiplier")).toBe(2);
+});
+
+test("the single-player factors are not on top of the live file: what it gives is that value at the start and at every reading after", () => {
+  const game = "[/script/shootergame.shootergamemode]\nbUseSingleplayerSettings=True\nEggHatchSpeedMultiplier=2\nBabyMatureSpeedMultiplier=2\n";
+  const live = "EggHatchSpeedMultiplier=8\n";
+  const { rules } = loadConfig({ game, live }, ["-UseDynamicConfig"]);
+  // Growing up is 35 times the file's 2. Hatching is the live file's 8, not 9 times it.
+  expect([rules.num("BabyMatureSpeedMultiplier"), rules.num("EggHatchSpeedMultiplier")]).toEqual([70, 8]);
+  applyLive(rules, live, emptyReport());
+  expect([rules.num("BabyMatureSpeedMultiplier"), rules.num("EggHatchSpeedMultiplier")]).toEqual([70, 8]);
+  // Without the live file the factor is on the file's value.
+  expect(loadConfig({ game, live }).rules.num("EggHatchSpeedMultiplier")).toBe(18);
 });

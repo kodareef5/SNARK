@@ -49,6 +49,8 @@ export interface SpeciesDef extends Named {
   readonly waterPerHour?: number;
   /** Inventory slots. Defaults to none. */
   readonly slots?: number;
+  /** How many times as long things keep in its inventory before they spoil. Defaults to 1. */
+  readonly keeps?: number;
   /** It carries equipment. Ten hotbar slots and five armor slots follow its bag. */
   readonly equips?: boolean;
   /** Damage of a bare-handed strike. Defaults to 8. */

@@ -91,7 +91,7 @@ test("an inventory with an equipment tail: things land in the bag, an armor slot
 
 test("the content hangs together: every engram can be reached, every thing that is made unlocked, every weapon fed, every piece drawn", () => {
   const levels = reg.defs.find((d) => d?.type === "levels")!;
-  expect(levels.type === "levels" && levels.xp.length).toBe(100);
+  expect(levels.type === "levels" && levels.xp.length).toBe(105);
   const pack = corePack();
   const items = reg.defs.filter((d): d is ItemDef => d?.type === "item");
   const made = items.filter((d) => d.craft !== undefined);

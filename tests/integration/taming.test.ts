@@ -9,7 +9,7 @@ import { MIND_HUNT, MIND_WANDER, STANCE_AGGRESSIVE, STANCE_NEUTRAL, STANCE_PASSI
 import type { EntityRecord } from "../../server/records.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_FEED, CMD_MOVE, CMD_NAME, CMD_ORDER, ORDER_ALL, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_FEED, CMD_MOVE, CMD_NAME, CMD_OPEN, CMD_ORDER, ORDER_ALL, ORDER_FOLLOW, ORDER_LEVEL, ORDER_STANCE, ORDER_STAY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { V_FOOD, V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -411,6 +411,78 @@ test("what it does about others is its stance: passive, nothing; neutral, it goe
   for (let k = 0; k < 20 && mind.targetOf(other.e) !== hunter; k++) h.run(500);
   expect(mind.targetOf(other.e)).toBe(hunter);
   expect(h.host.items.audit()).toEqual([]);
+});
+
+test("at its tribe's limit a creature fed full waits, and whoever is looking into it is told so once, and once more each time it is opened again", () => {
+  const { h, ada, at, rec: me } = camp();
+  tameNow(h, ada, at, "raptor", -4, 3);
+  h.say(ada, "setting MaxPersonalTamedDinos 1");
+  const { e, rec } = knockOut(h, at, "raptor", 2.6, 1);
+  press(h, ada, e);
+  expect(ada.open).not.toBeNull();
+  const notices = (): number => ada.log.filter((l) => l.text === "Your tribe has as many tamed creatures as it may (1).").length;
+  // One piece is all it needs at this server's rate. It eats it with her looking on.
+  h.host.survival.add(rec, V_FOOD, -80);
+  give(h, ada, "meat", 1, 0);
+  h.run(2000);
+  expect([rec.team, rec.tame !== null, ada.open !== null, notices()]).toEqual([0, true, true, 1]);
+  ada.command(CMD_CLOSE);
+  h.run(300);
+  press(h, ada, e);
+  h.run(1000);
+  expect([ada.open !== null, notices()]).toEqual([true, 2]);
+  // With room in the tribe, it is hers the next time she looks.
+  h.say(ada, "setting MaxPersonalTamedDinos 2");
+  h.run(500);
+  expect(rec.team).toBe(0);
+  ada.command(CMD_CLOSE);
+  h.run(300);
+  press(h, ada, e);
+  h.run(500);
+  expect([rec.team, rec.tame, notices()]).toEqual([me.team, null, 2]);
+});
+
+test("a hungry tame eats of the meat its kill leaves it, with nobody looking into it", () => {
+  const { h, ada, at } = camp();
+  const ents = h.world.ents;
+  const mine = tameNow(h, ada, at, "raptor", 0, 3);
+  // It is hungry by more than two pieces and carries nothing, so no meal is due.
+  h.host.survival.add(mine.rec, V_FOOD, -120);
+  h.host.taming.meal(mine.rec);
+  expect([h.host.items.inv(mine.rec).total(id("meat")), mine.rec.mealDue, h.host.taming.meals]).toEqual([0, 0, 0]);
+  const prey = h.host.spawnCreature("core:grazer", ents.x[mine.e]!, ents.z[mine.e]! + 3, 1);
+  const preyRec = h.host.records.byPid.get(ents.pid[prey]!)!;
+  h.host.survival.add(preyRec, V_HEALTH, 1 - h.host.survival.value(preyRec, V_HEALTH));
+  h.host.creatures.mind.stay(prey, h.world.tick + 3000);
+  h.host.creatures.provoke(mine.e, ents.x[prey]!, ents.z[prey]!, prey);
+  for (let k = 0; k < 40 && h.host.records.byPid.has(preyRec.pid); k++) h.run(250);
+  expect(h.host.records.byPid.has(preyRec.pid)).toBe(false);
+  // A grazer leaves three pieces at least, and the raptor has room for two.
+  h.run(1000);
+  const meals = h.host.taming.meals;
+  expect([meals >= 2, h.host.items.inv(mine.rec).total(id("meat")) > 0, mine.rec.mealDue > h.world.tick]).toEqual([true, true, true]);
+  expect(h.host.survival.value(mine.rec, V_FOOD)).toBeGreaterThan(mine.rec.vitals!.max[V_FOOD]! / 1e6 - 50);
+  expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a tame given meat eats it however its inventory came to be shut: by the key that opened it, or by its keeper leaving the server", () => {
+  for (const how of ["key", "leave"] as const) {
+    const { h, ada, at } = camp();
+    const mine = tameNow(h, ada, at, "raptor", 0, 2.6);
+    h.host.creatures.mind.stay(mine.e, 0xffffffff);
+    h.host.survival.add(mine.rec, V_FOOD, -120);
+    press(h, ada, mine.e);
+    expect(ada.open).not.toBeNull();
+    give(h, ada, "meat", 6, 0);
+    expect([h.host.taming.meals, h.host.items.inv(mine.rec).total(id("meat"))]).toEqual([0, 6]);
+    // A piece is worth fifty, and it eats as many as fit under its maximum.
+    const pieces = Math.floor((mine.rec.vitals!.max[V_FOOD]! / 1e6 - h.host.survival.value(mine.rec, V_FOOD)) / 50);
+    expect(pieces).toBeGreaterThanOrEqual(2);
+    if (how === "key") ada.command(CMD_OPEN, (w: BitWriter) => w.u32(mine.e));
+    else ada.close();
+    h.run(how === "leave" ? 7000 : 500);
+    expect([how, h.client(ada)?.open ?? 0, h.host.taming.meals, h.host.items.inv(mine.rec).total(id("meat"))]).toEqual([how, 0, pieces, 6 - pieces]);
+  }
 });
 
 test("a creature that is somebody's is next due to eat at the same moment after a restart as before it", () => {

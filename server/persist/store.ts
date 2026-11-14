@@ -17,7 +17,16 @@ import { holdSave, type SaveLock } from "./lock.ts";
 
 export const SCHEMA_VERSION = 2;
 const CHUNK_FORMAT = 1;
-const RECORD_FORMAT = 1;
+/**
+ * The revision of a record's parts, in its first byte. Raise it whenever a part gains a field, or a part is added that a build
+ * without it must not pass over. A build reads every revision up to its own and refuses a later one: it would write a part it
+ * knows back without what was added. Revision 1 grew without being raised (a tame's stance and saddle, a bed's wait, a fire,
+ * the slot in hand), so builds from before each of those read newer saves and dropped them. 2 is all of that.
+ * 3 saves buffs. A build without them would keep the part unread and leave a buff's rates in the vitals with no end.
+ */
+const RECORD_FORMAT = 3;
+/** The first revision whose vitals hold, beyond a body's own rates, only what its saved buffs give. */
+const FORMAT_BUFFS = 3;
 // A record is a list of components, each an id and a length-prefixed blob. A build that does not know a
 // component keeps its bytes and writes them back, so a save survives a server that lacks a content pack.
 const COMP_INVENTORY = 1;
@@ -52,8 +61,14 @@ const COMP_BREED2 = 18;
 const COMP_FIXTURE = 14;
 /** Experience, learned engrams, crafting jobs. */
 const COMP_PROGRESSION = 4;
+/** The buffs on it (server/buffs.ts): each one's content, the tick it ends, who gave it and the torpor a second it adds. */
+const COMP_BUFFS = 19;
+/** The most bytes of one part that a save holds. */
+const MAX_PART = 1 << 20;
 /** The most slots a converted COMP_INVENTORY may be laid out in. */
 const MAX_INVENTORY_SLOTS = 255;
+/** How an operator goes on from a save that uses content the build lacks. */
+const WITHOUT = "start with the content it was made with, or with --allow-missing-content to go on without what is made of it, which is then dropped for good";
 /** Per structure slot in a chunk blob: kind, x, y, z, yaw, owner, hp, mod. */
 const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
 
@@ -95,6 +110,11 @@ export function sqliteCode(err: unknown): string {
   return typeof code === "string" && code.startsWith("SQLITE_") ? code : "";
 }
 
+/** Bun reports SQLite's extended codes, so a `base` of SQLITE_READONLY is also SQLITE_READONLY_DBMOVED. */
+export function sqliteIs(code: string, base: string): boolean {
+  return code === base || code.startsWith(`${base}_`);
+}
+
 export class WorldStore {
   readonly db: Database;
   readonly path: string;
@@ -104,9 +124,25 @@ export class WorldStore {
   readonly toRuntime: Uint16Array;
   /** Content ids present in the save but not in this build. */
   readonly missingContent: string[] = [];
+  /** Their saved indices. */
+  private readonly lost = new Map<number, string>();
+  /**
+   * What loading left out because its content is gone and the operator chose to go on. `count` is how many things of each
+   * missing id. `burn` is what went with them and still has content, by item, for the ledger to burn: what a record of a
+   * missing kind held, the rounds in a missing weapon. `pids` are the records of a missing kind, and `changed` and `chunks`
+   * the records and chunks that held some of it. The next commit deletes the first and writes the others again
+   * (Persistence.load), so one start is enough.
+   */
+  readonly dropped = { count: new Map<string, number>(), burn: new Map<number, number>(), pids: [] as number[], changed: new Set<number>(), chunks: new Set<number>() };
   /** Saved indices of ids that were renamed to more than one thing, and what they are now. */
   private readonly split = new Map<number, readonly number[]>();
+  /** No commit has landed in the file, so it holds no world. */
   readonly fresh: boolean;
+  /**
+   * Loaded records whose vitals' rates may hold what a buff gave with no buff to end it: one saved before buffs were, or
+   * one whose buff this build lacks. Their rates are worked out again (Buffs.restore).
+   */
+  readonly unrated = new Set<number>();
 
   private readonly reg: Registry;
   private readonly allowMissing: boolean;
@@ -117,8 +153,11 @@ export class WorldStore {
   private readonly dropEntity: Statement;
   private readonly putJournal: Statement;
   private readonly putSurvivor: Statement;
-  private readonly w = new BitWriter(65536);
-  private readonly c = new BitWriter(32768);
+  /** A record, and the part of it being written. Both grow when a record needs it (saveEntity). */
+  private w = new BitWriter(65536);
+  private c = new BitWriter(32768);
+  /** A part of the record being written did not fit in `c`. */
+  private cut = false;
   private readonly r = new BitReader();
   private readonly cr = new BitReader();
 
@@ -152,7 +191,8 @@ export class WorldStore {
       db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID");
 
       const current = Number(this.meta("schema_version") ?? 0);
-      this.fresh = current === 0;
+      // Every commit writes the tick. A file with tables and no tick is a first start that stopped before its first commit.
+      this.fresh = this.meta("tick") === null;
       if (current > SCHEMA_VERSION) throw new Error(`save has schema ${current}; this build understands up to ${SCHEMA_VERSION}`);
       if (current < SCHEMA_VERSION) {
         // The save as it was, kept beside it before its form changes. An older copy of the same form is left alone.
@@ -190,11 +230,14 @@ export class WorldStore {
           // What was saved under the old id is read as the new one, and written back under the new one's own row.
           this.toRuntime[idx] = renamed[0]!;
           if (renamed.length > 1) this.split.set(idx, renamed);
-        } else this.missingContent.push(id);
+        } else {
+          this.missingContent.push(id);
+          this.lost.set(idx, id);
+        }
       }
       if (this.missingContent.length > 0 && !opts.allowMissingContent && this.referencesMissing()) {
         db.close();
-        throw new Error(`save uses content this build does not have: ${this.missingContent.join(", ")}`);
+        throw new Error(`save uses content this build does not have: ${this.missingContent.join(", ")}: ${WITHOUT}`);
       }
 
       this.putMeta = db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
@@ -211,7 +254,7 @@ export class WorldStore {
       }
       this.lock.release();
       const code = sqliteCode(err);
-      if (code === "SQLITE_CORRUPT" || code === "SQLITE_NOTADB") {
+      if (sqliteIs(code, "SQLITE_CORRUPT") || sqliteIs(code, "SQLITE_NOTADB")) {
         const newest = listBackups(path)[0];
         throw new Error(`${path} is damaged (${err instanceof Error ? err.message : code}): ${newest ? `start with --restore ${newest}` : "there is no backup of it"}`);
       }
@@ -284,7 +327,12 @@ export class WorldStore {
       const hp = take(Float32Array);
       const mod = take(Uint32Array);
       for (let s = 0; s < n; s++) {
-        structs.put(row.chunk, s, this.toRuntime[kind[s]!]!, x[s]!, y[s]!, z[s]!, yaw[s]!, owner[s]!, hp[s]!, mod[s]!);
+        const now = this.toRuntime[kind[s]!]!;
+        if (now === 0 && kind[s] !== 0 && this.allowMissing) {
+          this.drop(kind[s]!, 1);
+          this.dropped.chunks.add(row.chunk);
+        }
+        structs.put(row.chunk, s, now, x[s]!, y[s]!, z[s]!, yaw[s]!, owner[s]!, hp[s]!, mod[s]!);
       }
       structs.setVersion(row.chunk, row.version);
     }
@@ -292,8 +340,29 @@ export class WorldStore {
   }
 
   saveEntity(rec: EntityRecord): void {
+    // A record that outgrows the writers is written again in larger ones, which are kept. Nothing is ever saved cut short.
+    while (!this.encode(rec)) {
+      if (this.cut) {
+        if (this.c.buf.length >= MAX_PART) throw new Error(`record ${rec.pid} is too large to save: one part of it is over ${MAX_PART} bytes, the most a save holds`);
+        this.c = new BitWriter(this.c.buf.length * 2);
+      }
+      if (this.w.overflow) this.w = new BitWriter(this.w.buf.length * 2);
+    }
+    this.putEntity.run(rec.pid, this.toSaved[rec.kind]!, rec.x, rec.y, rec.z, rec.yaw, this.w.bytes().slice());
+  }
+
+  /** Ends the part written in `c` and puts it in the record. */
+  private part(component: number): void {
+    if (this.c.overflow) this.cut = true;
+    this.w.varint(component);
+    this.w.blob(this.c.bytes());
+  }
+
+  /** Writes the record into `w`. False if it did not fit. */
+  private encode(rec: EntityRecord): boolean {
     const w = this.w;
     const c = this.c;
+    this.cut = false;
     w.reset();
     w.u8(RECORD_FORMAT);
     w.string(rec.name);
@@ -302,7 +371,18 @@ export class WorldStore {
     const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
     const hasBreed = rec.mating || rec.mateReadyAt !== 0 || rec.grown !== 0 || rec.egg !== null;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + (hasBreed ? 1 : 0) + rec.extra.size);
+    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + rec.extra.size);
+    if (rec.buffs.length > 0) {
+      c.reset();
+      c.varint(rec.buffs.length);
+      for (const b of rec.buffs) {
+        c.varint(this.toSaved[b.buff]!);
+        c.uint53(b.until);
+        c.uint53(b.by);
+        c.f64(b.torpor);
+      }
+      this.part(COMP_BUFFS);
+    }
     if (hasBreed) {
       c.reset();
       c.bool(rec.mating);
@@ -316,8 +396,7 @@ export class WorldStore {
         c.uint53(rec.egg.hatchAt);
         c.uint53(rec.egg.carrier);
       }
-      w.varint(COMP_BREED2);
-      w.blob(c.bytes());
+      this.part(COMP_BREED2);
     }
     if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0) {
       c.reset();
@@ -333,8 +412,7 @@ export class WorldStore {
       c.uint53(rec.follow);
       // Some saves have those two and end before the saddle.
       c.varint(rec.saddle === 0 ? 0 : this.toSaved[rec.saddle]!);
-      w.varint(COMP_TAME);
-      w.blob(c.bytes());
+      this.part(COMP_TAME);
     }
     if (rec.at >= 0) {
       c.reset();
@@ -349,8 +427,7 @@ export class WorldStore {
         c.varint(rec.fire.fuel);
         c.varint(rec.fire.cook);
       }
-      w.varint(COMP_FIXTURE);
-      w.blob(c.bytes());
+      this.part(COMP_FIXTURE);
     }
     if (hasProgress) {
       c.reset();
@@ -363,8 +440,7 @@ export class WorldStore {
         c.varint(j.left);
         c.uint53(j.doneAt);
       }
-      w.varint(COMP_PROGRESSION);
-      w.blob(c.bytes());
+      this.part(COMP_PROGRESSION);
     }
     if (rec.markers.length > 0) {
       c.reset();
@@ -376,8 +452,7 @@ export class WorldStore {
         c.f32(m.z);
         c.uint53(m.tick);
       }
-      w.varint(COMP_MARKERS);
-      w.blob(c.bytes());
+      this.part(COMP_MARKERS);
     }
     if (hasState) {
       c.reset();
@@ -385,15 +460,13 @@ export class WorldStore {
       c.uint53(rec.expiresAt);
       // The hotbar slot in hand plus one, or 0 for none. Older saves end before this.
       c.u8(rec.held + 1);
-      w.varint(COMP_STATE);
-      w.blob(c.bytes());
+      this.part(COMP_STATE);
     }
     if (rec.team !== 0) {
       c.reset();
       c.varint(rec.team);
       c.u8(rec.rank);
-      w.varint(COMP_TEAM);
-      w.blob(c.bytes());
+      this.part(COMP_TEAM);
     }
     if (inv && used > 0) {
       c.reset();
@@ -416,8 +489,7 @@ export class WorldStore {
           c.varint(inv.attach[slot] === 0 ? 0 : this.toSaved[inv.attach[slot]!]!);
         }
       }
-      w.varint(COMP_SLOTS2);
-      w.blob(c.bytes());
+      this.part(COMP_SLOTS2);
     }
     const v = rec.vitals;
     if (v) {
@@ -433,8 +505,7 @@ export class WorldStore {
         c.svarint(v.rate[i]!);
       }
       c.bool(rec.out);
-      w.varint(COMP_VITALS53);
-      w.blob(c.bytes());
+      this.part(COMP_VITALS53);
     }
     const g = rec.genome;
     if (g) {
@@ -445,8 +516,7 @@ export class WorldStore {
       c.uint53(g.mother);
       c.uint53(g.father);
       c.bool(g.female);
-      w.varint(COMP_GENOME);
-      w.blob(c.bytes());
+      this.part(COMP_GENOME);
     }
     if (rec.keyHash) {
       w.varint(COMP_IDENTITY);
@@ -460,8 +530,7 @@ export class WorldStore {
       w.varint(component);
       w.blob(blob);
     }
-    if (w.overflow || c.overflow) throw new Error(`record ${rec.pid} is too large to save`);
-    this.putEntity.run(rec.pid, this.toSaved[rec.kind]!, rec.x, rec.y, rec.z, rec.yaw, w.bytes().slice());
+    return !this.cut && !w.overflow;
   }
 
   deleteEntity(pid: number): void {
@@ -472,29 +541,36 @@ export class WorldStore {
     const rows = this.db.query("SELECT pid, kind, x, y, z, yaw, data FROM entities").all() as { pid: number; kind: number; x: number; y: number; z: number; yaw: number; data: Uint8Array }[];
     const out: EntityRecord[] = [];
     const r = this.r;
+    this.unrated.clear();
     for (const row of rows) {
       const kind = this.toRuntime[row.kind]!;
-      if (kind === 0) continue; // The content is gone and the operator chose to proceed.
+      if (kind === 0 && !this.allowMissing) continue;
+      // Past here a kind of 0 is content that is gone, which the operator chose to go on without. The record is read all
+      // the same, because what it held leaves the ledger with it.
       const rec = new EntityRecord(row.pid, kind);
       rec.x = row.x;
       rec.y = row.y;
       rec.z = row.z;
       rec.yaw = row.yaw;
       r.reset(row.data);
-      if (r.u8() !== RECORD_FORMAT) throw new Error(`entity ${row.pid}: unknown record format`);
+      const format = r.u8();
+      if (format > RECORD_FORMAT) throw new Error(`entity ${row.pid} was saved by a newer build (record format ${format}, and this build reads up to ${RECORD_FORMAT}): start the save with that build or a newer one`);
+      if (format === 0) throw new Error(`entity ${row.pid}: unknown record format`);
+      let stale = format < FORMAT_BUFFS;
       rec.name = r.string(256);
       const c = this.cr;
       for (let n = r.varint(); n > 0 && !r.overflow; n--) {
         const component = r.varint();
-        const blob = r.blob(1 << 20);
+        const blob = r.blob(MAX_PART);
         c.reset(blob);
         if (component === COMP_INVENTORY) {
           // The oldest form is a list of items and counts. The inventory is sized to hold all of them, so converting loses nothing.
           const pairs: [number, number][] = [];
           let need = 0;
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
-            const item = this.item(c.varint(), row.pid);
+            const saved = c.varint();
             const count = c.varint();
+            const item = this.item(saved, row.pid, count);
             if (item === 0) continue;
             pairs.push([item, count]);
             need += Math.ceil(count / (this.reg.stack[item] || 1));
@@ -508,8 +584,9 @@ export class WorldStore {
           const inv = (rec.inv = new Inventory(c.varint()));
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
             const slot = c.varint();
-            const item = this.item(c.varint(), row.pid);
+            const saved = c.varint();
             const count = c.varint();
+            const item = this.item(saved, row.pid, count);
             const quality = c.u8();
             const dur = c.varint();
             const spoilAt = c.varint();
@@ -520,18 +597,26 @@ export class WorldStore {
           const inv = (rec.inv = new Inventory(cap, c.varint()));
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
             const slot = c.varint();
-            const item = this.item(c.varint(), row.pid);
+            const saved = c.varint();
             const count = c.varint();
+            const item = this.item(saved, row.pid, count);
             const quality = c.u8();
             const dur = c.varint();
             const spoilAt = c.varint();
             const holds = c.bool();
             // 0 is "none". Anything else must be content this build has.
-            const held = (saved: number): number => (saved === 0 ? 0 : this.item(saved, row.pid));
-            const ammo = holds ? held(c.varint()) : 0;
+            const savedAmmo = holds ? c.varint() : 0;
             const loaded = holds ? c.u8() : 0;
-            const attach = holds ? held(c.varint()) : 0;
-            if (item === 0 || slot >= inv.cap) continue;
+            const savedAttach = holds ? c.varint() : 0;
+            const ammo = savedAmmo === 0 ? 0 : this.item(savedAmmo, row.pid, loaded);
+            const attach = savedAttach === 0 ? 0 : this.item(savedAttach, row.pid, 1);
+            if (item === 0) {
+              // The rounds in a weapon that is gone, and what was fixed to it, go with it.
+              if (ammo !== 0 && loaded > 0) this.burn(ammo, loaded);
+              if (attach !== 0) this.burn(attach, 1);
+              continue;
+            }
+            if (slot >= inv.cap) continue;
             inv.set(slot, item, count, quality, dur, spoilAt);
             if (holds) inv.setGear(slot, ammo, ammo === 0 ? 0 : loaded, attach);
           }
@@ -623,13 +708,45 @@ export class WorldStore {
             rec.readyAt = c.uint53();
             if (c.bool()) rec.fire = { at: c.uint53(), fuel: c.varint(), cook: c.varint(), due: 0 };
           }
+        } else if (component === COMP_BUFFS) {
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) {
+            const on = { buff: this.toRuntime[c.varint()] ?? 0, until: c.uint53(), by: c.uint53(), torpor: c.f64() };
+            // A buff whose content is gone is dropped, and what it gave the vitals with it.
+            if (on.buff !== 0) rec.buffs.push(on);
+            else stale = true;
+          }
         } else rec.extra.set(component, blob);
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }
       if (r.overflow) throw new Error(`entity ${row.pid}: truncated record`);
+      if (kind === 0) {
+        this.drop(row.kind, 1);
+        this.dropped.pids.push(row.pid);
+        this.dropped.changed.delete(row.pid);
+        const inv = rec.inv;
+        for (let s = 0; inv && s < inv.cap; s++) {
+          if (inv.item[s] === 0) continue;
+          this.burn(inv.item[s]!, inv.count[s]!);
+          if (inv.loaded[s]! > 0) this.burn(inv.ammo[s]!, inv.loaded[s]!);
+          if (inv.attach[s] !== 0) this.burn(inv.attach[s]!, 1);
+        }
+        continue;
+      }
+      if (stale && rec.vitals) this.unrated.add(row.pid);
       out.push(rec);
     }
     return out;
+  }
+
+  /** Counts `n` things of the missing content with saved index `saved` as left out. */
+  private drop(saved: number, n: number): void {
+    const id = this.lost.get(saved) ?? `content ${saved}`;
+    this.dropped.count.set(id, (this.dropped.count.get(id) ?? 0) + n);
+  }
+
+  /** Counts `n` of `item` as gone with something that was left out. */
+  private burn(item: number, n: number): void {
+    this.dropped.burn.set(item, (this.dropped.burn.get(item) ?? 0) + n);
   }
 
   /** A null `data` deletes the blob. */
@@ -642,11 +759,14 @@ export class WorldStore {
     return this.db.query("SELECT chunk, data FROM chunk_blobs WHERE tag = ?").all(tag) as { chunk: number; data: Uint8Array }[];
   }
 
-  /** An item whose content is gone stops the load unless allowMissingContent is set. */
-  private item(saved: number, pid: number): number {
+  /** An item whose content is gone stops the load unless allowMissingContent is set. Then the `n` of it that record `pid` held are left out. */
+  private item(saved: number, pid: number, n: number): number {
     const item = this.toRuntime[saved] ?? 0;
-    if (item === 0 && !this.allowMissing) throw new Error(`save uses content this build does not have: an item held by record ${pid}`);
-    return item;
+    if (item !== 0) return item;
+    if (!this.allowMissing) throw new Error(`save uses content this build does not have: ${this.lost.get(saved) ?? "an item"}, held by record ${pid}: ${WITHOUT}`);
+    this.drop(saved, n);
+    this.dropped.changed.add(pid);
+    return 0;
   }
 
   appendJournal(seq: number, tick: number, op: number, data: Uint8Array): void {

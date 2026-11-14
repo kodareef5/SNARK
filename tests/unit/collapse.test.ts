@@ -2,14 +2,14 @@ import { expect, test } from "bun:test";
 import { FALL_GRAVITY, FRONT_MS_PER_METRE, Falling, MAX_WAIT_MS } from "../../client/core/rubble.ts";
 import { MAX_FALLING } from "../../client/core/render/packet.ts";
 import type { Rubble } from "../../client/core/session.ts";
-import { FOUNDATION_THICK } from "../../content/building.ts";
+import { FOUNDATION_THICK, WALL_HEIGHT } from "../../content/building.ts";
 import { STRUCT_UNITS, TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Collapse } from "../../shared/world/collapse.ts";
 import { ROLE_FOUNDATION, ROLE_PILLAR, obstructed, poseAt, socketsOf, makeSockets, type Pose } from "../../shared/world/snap.ts";
-import { GONE_DESTROYED, GONE_FELL, GONE_KEPT, GONE_TAKEN } from "../../shared/world/structures.ts";
+import { GONE_DESTROYED, GONE_FELL, GONE_KEPT, GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 import { Support } from "../../shared/world/support.ts";
-import { flatWorld, type TestWorld } from "../fixtures/world.ts";
+import { coreRegistry, flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
 
@@ -218,6 +218,33 @@ test("what leaned on a wall falls when the wall loses its footing, though the wa
   expect([there(p.far), result.fell]).toEqual([false, 1]);
   askEach(naive, [lean[1]!.north]);
   expect(rows(w)).toEqual(rows(naive));
+});
+
+test("two columns that lose their footing at once are two columns, though one is eight kilometres north of the other", () => {
+  // A map may be 16 km a side. This one is long enough to hold both.
+  const reg = coreRegistry();
+  const structs = new StructureStore({ chunksX: 4, chunksZ: 132 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  const kind = (piece: string): number => reg.index.get(`core:${piece}_wood`)!;
+  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const join = (target: number, piece: string, k: number): number => {
+    expect(poseAt(structs, reg, target, kind(piece), k, 0, pose)).toBe(true);
+    return structs.add(kind(piece), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 100);
+  };
+  // In the north, a floor on a pillar and a second floor hanging from the side of the first.
+  const pillar = structs.add(kind("pillar"), 100, WALL_HEIGHT / 2 - 0.125, 8292, 0, 7, 100);
+  const floor = join(pillar, "ceiling", 0);
+  const hung = join(floor, "ceiling", 1);
+  const t = structs.chunks[Math.floor(floor / 65536)]!;
+  // In the south, a foundation a lattice step east of that first floor and 8,192 m from it.
+  const south = structs.add(kind("foundation"), t.x[floor & 0xffff]! + 1 / U, FOUNDATION_THICK / 2, t.z[floor & 0xffff]! - 8192, 0, 7, 100);
+  const collapse = new Collapse(structs, reg, () => 0);
+  structs.onRemove = (ref, cause) => void (cause !== GONE_FELL && collapse.gone(ref));
+  structs.damage(south, 1e9, 40);
+  structs.damage(floor, 1e9, 40);
+  for (let k = 0; collapse.busy && k < 1000; k++) collapse.step(16000, 41 + k);
+  const there = (ref: number): boolean => structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff] !== 0;
+  // The floor that hung from the lost one has nothing to hold it.
+  expect([collapse.busy, there(pillar), there(hung), collapse.fallen]).toEqual([false, true, false, 1]);
 });
 
 test("a piece seen to go waits its turn, drops as a thing dropped does, drifts out from where it began, and is gone when the ground has it", () => {

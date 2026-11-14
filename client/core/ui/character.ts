@@ -19,10 +19,12 @@ export const KEY_CHAR_TAB = 1104;
 export const KEY_CHAR_PAGE = 1107;
 /** Per stat: its line, then its "+" button. */
 export const KEY_CHAR_STAT = 1110;
+/** Keys for a line and a button for each content index there can be. The two lists stand clear of every other key. */
+const LIST_KEYS = 2 * 65536;
 /** Per engram, in engramOrder: its line, then its button. */
-export const KEY_CHAR_ENGRAM = 1200;
+export const KEY_CHAR_ENGRAM = 200000;
 /** Per item that can be made, in content order: its line, then its button. */
-export const KEY_CHAR_RECIPE = 1400;
+export const KEY_CHAR_RECIPE = KEY_CHAR_ENGRAM + LIST_KEYS;
 export const TAB_STATS = 0;
 export const TAB_ENGRAMS = 1;
 export const TAB_MAKE = 2;
@@ -147,7 +149,7 @@ export class CharacterScreen {
       this.page = Math.max(0, Math.min(this.pages - 1, this.page + (key === KEY_CHAR_PAGE ? -1 : 1)));
       return true;
     }
-    if (key >= KEY_CHAR_STAT && key < KEY_CHAR_ENGRAM && (key - KEY_CHAR_STAT) % 2 === 1) {
+    if (key >= KEY_CHAR_STAT && key < KEY_CHAR_STAT + STAT_NAMES.length * 2 && (key - KEY_CHAR_STAT) % 2 === 1) {
       const stat = (key - KEY_CHAR_STAT - 1) / 2;
       session.command(CMD_SPEND, (w) => w.u8(stat));
       return true;
@@ -158,7 +160,7 @@ export class CharacterScreen {
       session.command(CMD_LEARN, (w) => w.u16(e));
       return true;
     }
-    if (key >= KEY_CHAR_RECIPE && key < KEY_CHAR_RECIPE + 400 && (key - KEY_CHAR_RECIPE) % 2 === 1) {
+    if (key >= KEY_CHAR_RECIPE && key < KEY_CHAR_RECIPE + LIST_KEYS && (key - KEY_CHAR_RECIPE) % 2 === 1) {
       const r = craftable(reg)[(key - KEY_CHAR_RECIPE - 1) / 2];
       if (r === undefined) return false;
       session.command(CMD_CRAFT, (w) => (w.u16(r), w.u8(1)));

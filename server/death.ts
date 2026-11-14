@@ -155,7 +155,7 @@ export class Death {
       }
     }
     // The last places in the store are kept for bodies, and for what the dead leave.
-    if (ents.count > ents.cap - STORE_RESERVE) return false;
+    if (ents.room < STORE_RESERVE) return false;
     const bag = records.create(this.bag, "bag");
     if (items.move(rec, slot, bag, 0, n) === 0) {
       records.delete(bag.pid);

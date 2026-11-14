@@ -1,4 +1,4 @@
-// bun server/main.ts [--dev] [--config dir] [--port 8787] [--map file.snmap] [--db var/world.db] [--allow-map-mismatch] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--map file.snmap] [--db var/world.db] [--allow-map-mismatch] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
@@ -21,6 +21,8 @@ import { serveFile } from "./files.ts";
 
 export interface ServerOptions {
   port?: number;
+  /** The address to listen on. Without one a development server listens on this machine only, and any other on every address. */
+  hostname?: string;
   /** Enables the self-check report endpoint and cheats without a password. Never set in a public deployment. */
   dev?: boolean;
   /** Password for `enablecheats`. Without it (and without `dev`) cheats are off. */
@@ -31,6 +33,8 @@ export interface ServerOptions {
   map?: string;
   /** See `HostOptions.allowMapMismatch`. */
   allowMapMismatch?: boolean;
+  /** See `StoreOptions.allowMissingContent`. */
+  allowMissingContent?: boolean;
   dbPath?: string;
   /** With a save: skip the backups made beside it at every autosave mark. */
   noBackups?: boolean;
@@ -111,7 +115,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const pack = parsePack(new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[manifest.boot]!.name))));
   const clips = pack.clips;
   const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: new Uint8Array(readFileSync(opts.map)) } : {}), allowMapMismatch: opts.allowMapMismatch ?? false, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
-  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
+  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
   for (const m of host.lists.renamed) console.log(`settings: ${m.setting} names ${m.name}, which is now ${m.to.join(", ")}`);
@@ -164,8 +168,11 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
 
   /** A message is a channel byte and then what the game wrote. The game's writers hold 16 KB, and a welcome a little more. */
   const outgoing = new Uint8Array(65536);
+  // A development server gives cheats without a password, so nothing off this machine reaches it unless it is asked to listen there.
+  const hostname = opts.hostname ?? (opts.dev ? "127.0.0.1" : undefined);
   const server = Bun.serve<Socket>({
     port: opts.port ?? 8787,
+    ...(hostname ? { hostname } : {}),
     ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) } } : {}),
     async fetch(req, srv) {
       const url = new URL(req.url);
@@ -319,11 +326,13 @@ if (import.meta.main) {
   const flagPort = rules.flag("port");
   const running = startServer({
     port: Number(value("--port") ?? (typeof flagPort === "string" && flagPort !== "" ? flagPort : rules.num("Port"))),
+    hostname: value("--host"),
     dev,
     config: rules,
     ...(live ? { live } : {}),
     map: value("--map"),
     allowMapMismatch: args.includes("--allow-map-mismatch"),
+    allowMissingContent: args.includes("--allow-missing-content"),
     dbPath: value("--db"),
     noBackups: args.includes("--no-backups"),
     modules,
