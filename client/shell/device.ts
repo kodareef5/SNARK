@@ -10,17 +10,19 @@ export function devicePage(token: string): DeviceProbe {
     global: globalThis as unknown as Record<string, unknown>,
     id: Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join(""),
     dpr: devicePixelRatio,
+    query: (name) => new URLSearchParams(location.search).get(name),
     now: () => performance.now(),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     nextFrame: (fn) => void requestAnimationFrame(fn),
     fetch: (path, body) => fetch(`__device/${path}?token=${token}`, body === undefined ? { cache: "no-store" } : { method: "POST", body, headers: { "content-type": "application/json" } }),
     load: () => sessionStorage.getItem("snark.device"),
     save: (text) => sessionStorage.setItem("snark.device", text),
-    show: (text, style) => void ((box.style.cssText = style), (box.textContent = text)),
+    show: (html, style) => void ((box.style.cssText = style), (box.innerHTML = html)),
     wake: async () => ((lock = await navigator.wakeLock.request("screen")), "held"),
     rest: () => void lock?.release().catch(() => {}),
     entries: () => [...performance.getEntriesByType("navigation"), ...performance.getEntriesByType("resource")] as PerformanceResourceTiming[],
   });
+  box.addEventListener("click", (e) => probe.start((e.target as Element).closest("[data-mode]")?.getAttribute("data-mode") ?? ""));
   addEventListener("error", (e) => probe.error(e.message));
   addEventListener("unhandledrejection", (e) => probe.error(String(e.reason)));
   document.addEventListener("visibilitychange", () => probe.visible(!document.hidden));

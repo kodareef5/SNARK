@@ -14,7 +14,7 @@ import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts"
 import { ModelView, type ModelShot } from "../snap.ts";
 import { SNAP_CACHE, rgbaOf, type RgbaTexture } from "../snap/files.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "../snap/font.ts";
-import type { Asset } from "./assets.ts";
+import { isNode, type Asset } from "./assets.ts";
 import { Poser, levelStarts, type Report } from "./check.ts";
 import { materialsOf } from "./materials.ts";
 
@@ -335,8 +335,13 @@ interface Subject {
   centre: [number, number, number];
   half: [number, number, number];
   radius: number;
-  /** The height the ground is drawn at: 0 under a creature, which stands on its origin, and the underside of a piece, which is centred on its own. */
+  /**
+   * The height the ground is drawn at: 0 under a creature or a node, which stand on their origins, and the underside of
+   * a piece, which is centred on its own.
+   */
   floor: number;
+  /** Whether what lies below the floor is hidden, as the ground hides the foot of a node. */
+  buried: boolean;
   /** Its first level drawn flat: 0 where it has no materials, or none can be drawn. */
   flat: number;
   views: Views;
@@ -419,7 +424,7 @@ function fit(half: readonly number[], around: number, above: number): number {
 /** Draws the subject into a view and returns the view, with what is to be drawn over it. */
 function shoot(s: Subject, view: ModelView, shot: Shot): Overlay {
   if (shot.textured) stock(s, view);
-  view.draw({ mesh: s.index, rig: s.rig, colors: s.colours, centre: s.centre, radius: s.radius, ...shot });
+  view.draw({ mesh: s.index, rig: s.rig, colors: s.colours, centre: s.centre, radius: s.radius, ...(s.buried ? { floor: s.floor } : {}), ...shot });
   return new Overlay(view);
 }
 
@@ -811,7 +816,7 @@ function clipRows(page: Page, s: Subject, report: Report, names: readonly string
   poser.set(null, 0);
 }
 
-function subjectOf(views: Views, meshes: SourceMesh[], id: string, colours: readonly number[], cells: SheetCell[]): Subject | null {
+function subjectOf(views: Views, meshes: SourceMesh[], id: string, colours: readonly number[], cells: SheetCell[], node = false): Subject | null {
   const pack = views.pack;
   const mesh = meshes.find((m) => m.id === id);
   const index = pack.meshIndex.get(id);
@@ -821,9 +826,16 @@ function subjectOf(views: Views, meshes: SourceMesh[], id: string, colours: read
   const rig = packRig ? buildRig(packRig, pack.clips) : null;
   const poser = rig ? new Poser(rig) : null;
   poser?.set(null, 0);
-  const radius = Math.max(...AROUND.map((a) => fit(header.half, a, ABOVE)));
+  const centre: [number, number, number] = [...header.center];
+  const half: [number, number, number] = [...header.half];
+  if (node) {
+    // The pictures hold what stands above the ground.
+    const [low, top] = [Math.max(centre[1] - half[1], 0), Math.max(centre[1] + half[1], 0)];
+    [centre[1], half[1]] = [(low + top) / 2, (top - low) / 2];
+  }
+  const radius = Math.max(...AROUND.map((a) => fit(half, a, ABOVE)));
   const flat = views.textures.length > 0 ? (header.flat ?? 0) : 0;
-  return { pack, id, mesh, index, rig, poser, colours, centre: [...header.center], half: [...header.half], radius, floor: rig ? 0 : header.center[1] - header.half[1], flat, views, cells };
+  return { pack, id, mesh, index, rig, poser, colours, centre, half, radius, floor: rig || node ? 0 : header.center[1] - header.half[1], buried: node, flat, views, cells };
 }
 
 /** The textures of an asset's pack in the rgba variant, by their place in it, made from the pictures its asset.ts names. */
@@ -871,7 +883,7 @@ export function drawSheet(asset: Asset, pack: Pack, report: Report, cache: strin
     first.line(`its materials are drawn flat here, as its pictures could not be made into textures: ${(e as Error).message}`, BAD);
   }
   ids.forEach((id, n) => {
-    const s = subjectOf(views, meshes, id, spec.kind === "creature" ? spec.regions.map((r) => r.sample) : [15], cells);
+    const s = subjectOf(views, meshes, id, spec.kind === "creature" ? spec.regions.map((r) => r.sample) : [15], cells, isNode(asset));
     if (!s) return;
     const tag = tagOf(id);
     const page = n === 0 ? first : new Page(`${tag}views`);

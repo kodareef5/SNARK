@@ -249,6 +249,11 @@ lies. Nothing in `artifacts/` is committed. A mesh with materials is drawn:
   letters read upright and unmirrored where a picture is laid the right way;
   and its colour regions dyed in the asset's colours and in loud ones.
 
+A piece stands on its underside there, and a creature on its origin. So does
+a node, an asset whose group folder is `nodes` (`<pack>/nodes/<name>/`): the
+ground is drawn at its origin, and what it carries below hides under it as
+the ground hides it in the game.
+
 `bun run snap -- --house <tier> --graphics medium` draws the proving ground's
 house of a building tier as a client on that graphics tier draws it, once its
 card holds all it wants, the asset files read from these folders where a

@@ -1,9 +1,12 @@
-// The device probe's pieces that need no game: its statistics, what it reads off a browser and a graphics context,
-// the crowd scene's layout, and its table.
+// The device probe's pieces that need no game: its statistics, what it reads off a browser and a graphics context, the
+// ladder's order, the soak's amounts, the layouts it stands in view, texture memory, and its words.
 
 import { expect, test } from "bun:test";
-import { crowdScene, deviceTable, featuresOf, formatsOf, gpuOf, newReport, spread, type Within } from "../../client/core/device.ts";
-import { PROVING_SPAWN } from "../../shared/world/proving.ts";
+import { TIERS } from "../../client/core/assets/tiers.ts";
+import { AXES, LadderPlan, RUNGS, featuresOf, formatsOf, gpuOf, newReport, soakLoad, spread, type RungReport, type Within } from "../../client/core/device.ts";
+import { BASE_MOST, TextureMemory, basePieces, bodySpots, crowdScene, type GlMemory } from "../../client/core/devicescene.ts";
+import { deviceTable, escape, identify, limitsLine } from "../../client/core/devicetext.ts";
+import { PROVING_DIMS, PROVING_SPAWN } from "../../shared/world/proving.ts";
 
 const within: Within = (f, _ms, or) => Promise.resolve().then(f).catch(() => or);
 
@@ -41,36 +44,138 @@ test("features are read off a global object, and what a browser lacks or will no
   expect(String(some.decompress).split(" ")).toEqual(expect.arrayContaining(["gzip", "deflate", "deflate-raw"]));
 });
 
-test("a graphics context is read for its limits by WebGL's own numbers, with the unmasked vendor where the browser gives it", () => {
-  const params: Record<number, unknown> = { 0x1f00: "WebKit", 0x9245: "Apple Inc.", 0x1f02: "WebGL 2.0", 0x0d33: 16384, 0x88ff: 2048, 0x8d57: 4, 0x8b4c: 16 };
-  const gl = (debug: boolean) => ({
-    getParameter: (n: number) => params[n],
-    getExtension: (name: string) => (debug && name === "WEBGL_debug_renderer_info" ? {} : null),
-    getSupportedExtensions: () => ["WEBGL_compressed_texture_astc"],
-    getShaderPrecisionFormat: () => ({ precision: 23 }),
-    getContextAttributes: () => ({ antialias: true }),
-  });
-  expect(gpuOf(gl(true), "Apple GPU", "astc")).toEqual({ vendor: "Apple Inc.", renderer: "Apple GPU", version: "WebGL 2.0", maxTexture: 16384, maxArrayLayers: 2048, maxSamples: 4, vertexTextures: 16, highp: true, antialias: true, extensions: ["WEBGL_compressed_texture_astc"], variant: "astc" });
-  expect(gpuOf(gl(false), "Apple GPU").vendor).toBe("WebKit");
+const params: Record<number, unknown> = { 0x1f00: "WebKit", 0x9245: "Apple Inc.", 0x1f02: "WebGL 2.0", 0x0d33: 16384, 0x88ff: 2048, 0x8d57: 4, 0x8b4c: 16, 0x8872: 16, 0x8824: 8, 0x84ff: 16 };
+const context = (exts: string[], debug = true) => ({
+  getParameter: (n: number) => params[n],
+  getExtension: (name: string) => ((debug && name === "WEBGL_debug_renderer_info") || (name === "EXT_texture_filter_anisotropic" && exts.includes(name)) ? {} : null),
+  getSupportedExtensions: () => exts,
+  getShaderPrecisionFormat: () => ({ precision: 23 }),
+  getContextAttributes: () => ({ antialias: true }),
+});
+
+test("a graphics context is read for its limits by WebGL's own numbers, anisotropy only once its extension is on", () => {
+  const phone = ["EXT_color_buffer_float", "EXT_color_buffer_half_float", "EXT_clip_control", "EXT_texture_filter_anisotropic", "WEBGL_compressed_texture_astc", "WEBGL_compressed_texture_etc", "WEBGL_multi_draw"];
+  const g = gpuOf(context(phone), "Apple GPU", "astc");
+  expect(g).toEqual({ vendor: "Apple Inc.", renderer: "Apple GPU", version: "WebGL 2.0", maxTexture: 16384, maxArrayLayers: 2048, maxSamples: 4, vertexTextures: 16, textureUnits: 16, drawBuffers: 8, anisotropy: 16, highp: true, antialias: true, extensions: phone, variant: "astc" });
+  expect(gpuOf(context([], false), "Apple GPU")).toMatchObject({ vendor: "WebKit", anisotropy: 0, variant: "rgba" });
+  // What lighting may count on: this phone draws to 32-bit float but cannot filter or blend it.
+  expect(limitsLine(g)).toBe("16-bit float targets yes, filtered yes; 32-bit float targets yes, filtered no, blended no; antialiasing up to 4x; 8 targets at once; 16 textures a draw, 16 in vertex shaders; textures to 16384 px; anisotropy 16; reversed depth yes; GPU timers no; multi-draw yes; compressed astc etc2");
+});
+
+test("a user agent is told as the device, the browser and the system, and every iOS browser as WebKit", () => {
+  const cases: [string, number, string][] = [
+    ["Mozilla/5.0 (iPhone; CPU iPhone OS 27_2_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.8103.37 Mobile/15E148 Safari/604.1", 5, "an iPhone, Chrome for iOS 157 (WebKit, as every iOS browser), iOS 27.2"],
+    ["Mozilla/5.0 (iPhone; CPU iPhone OS 27_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Mobile/15E148 Safari/604.1", 5, "an iPhone, Safari 27.2 (WebKit, as every iOS browser), iOS 27.2"],
+    ["Mozilla/5.0 (iPhone; CPU iPhone OS 27_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS]", 5, "an iPhone, an app's own browser (WebKit, as every iOS browser), iOS 27.2"],
+    ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36", 0, "a Mac, Chrome 157, macOS"],
+    ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15", 5, "an iPad asking for desktop pages, Safari 27.2, macOS"],
+    ["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36", 0, "a Mac, headless Chrome 157, macOS"],
+    ["Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Mobile Safari/537.36", 5, "an Android device, Chrome 157, Android 16"],
+  ];
+  for (const [ua, touch, said] of cases) expect(identify(ua, touch)).toBe(said);
+  expect(escape(`<b onclick="x">'&`)).toBe("&#60;b onclick=&#34;x&#34;&#62;&#39;&#38;");
+});
+
+test("the ladder climbs each axis of each tier the device takes until a rung breaks, and a lost context ends it", () => {
+  const climb = (maxTexture: number, breaks: (axis: string, n: number) => boolean, lostAt = ""): string[] => {
+    const plan = new LadderPlan(maxTexture);
+    const seen: string[] = [];
+    let [held, lost] = [true, false];
+    for (let rung = plan.next(true, false); rung; rung = plan.next(held, lost)) {
+      const name = `${rung.tier.name} ${rung.axis} ${rung.n}`;
+      seen.push(name);
+      [held, lost] = [!breaks(rung.axis, rung.n), name === lostAt];
+    }
+    return seen;
+  };
+  const all = climb(16384, () => false);
+  expect(all.length).toBe(TIERS.length * AXES.reduce((sum, a) => sum + RUNGS[a].length, 0));
+  expect(all.slice(0, 3)).toEqual(["lowpoly bodies 25", "lowpoly bodies 50", "lowpoly bodies 100"]);
+  // A device that takes textures only 2,048 wide is not given ultra.
+  expect(climb(2048, () => false).some((s) => s.startsWith("ultra"))).toBe(false);
+  // Bodies break at 400 on every tier: each tier goes on with triangles after it.
+  const broken = climb(1024, (axis, n) => axis === "bodies" && n >= 400);
+  expect(broken.filter((s) => s.includes("bodies"))).toEqual(["lowpoly bodies 25", "lowpoly bodies 50", "lowpoly bodies 100", "lowpoly bodies 200", "lowpoly bodies 400", "medium bodies 25", "medium bodies 50", "medium bodies 100", "medium bodies 200", "medium bodies 400"]);
+  expect(broken[5]).toBe("lowpoly triangles 8");
+  expect(climb(16384, () => false, "medium draws 512").at(-1)).toBe("medium draws 512");
+});
+
+test("the soak takes half of what the ladder held on its tier, a rung down, or its own amounts without a ladder", () => {
+  const rung = (axis: RungReport["axis"], n: number, held: boolean): RungReport => ({ tier: "high", axis, n, held, limit: "", canvas: [], settled: true, frameMs: spread([]), buildMs: 0, drawMs: 0, calls: 0, tris: 0, bones: 0, mat: 0, fetched: 0, missed: 0 });
+  const ladder = [rung("bodies", 400, true), rung("bodies", 800, false), rung("pieces", 4096, true), rung("triangles", 64, true), rung("draws", 256, false)];
+  expect(soakLoad(ladder, "high")).toEqual({ load: { stress: true, bodies: 200, pieces: 2048, near: 32, far: 0 }, from: "half what the ladder held on high" });
+  expect(soakLoad(null, "high").from).toBe("defaults");
+  expect(soakLoad(ladder, "medium").from).toBe("defaults");
+});
+
+test("the base stands in its wedge, nearest first, stone and wood by turns, and on the map", () => {
+  const all = basePieces(BASE_MOST);
+  expect(all.length).toBe(BASE_MOST);
+  expect(basePieces(100)).toEqual(all.slice(0, 100));
+  const houses = [...new Set(all.map((p) => p.house))];
+  expect(houses.length).toBe(BASE_MOST / 16);
+  for (let i = 1; i < houses.length; i++) expect(Math.hypot(PROVING_SPAWN.x - houses[i]!.x, PROVING_SPAWN.z - houses[i]!.z)).toBeGreaterThanOrEqual(Math.hypot(PROVING_SPAWN.x - houses[i - 1]!.x, PROVING_SPAWN.z - houses[i - 1]!.z));
+  expect(all.slice(0, 16).every((p) => p.id.endsWith("_stone")) && all.slice(16, 32).every((p) => p.id.endsWith("_wood"))).toBe(true);
+  const side = PROVING_DIMS.chunksX * 64;
+  for (const p of all) {
+    expect(p.x).toBeLessThan(PROVING_SPAWN.x - 5);
+    expect(p.x > 4 && p.z > 4 && p.z < side - 4).toBe(true);
+  }
+  // Added bodies stand toward +X, in view of a portrait phone.
+  const spots = bodySpots(2048);
+  for (const s of spots) expect(Math.abs(Math.atan2(s.z - PROVING_SPAWN.z, s.x - PROVING_SPAWN.x))).toBeLessThan(0.3);
 });
 
 test("the crowd scene stands behind the spawn point: the thatch near, and every body inside a portrait phone's view", () => {
   const { bodies, floor, pieces } = crowdScene();
   expect(bodies.length).toBe(48);
-  // Facing south, a 70 degree tall view on a screen 390 by 844 is 36 degrees wide.
   const half = Math.atan(Math.tan((70 * Math.PI) / 360) * (390 / 844));
   for (const b of bodies) {
     expect(PROVING_SPAWN.z - b.z).toBeGreaterThan(15);
     expect(Math.abs(Math.atan2(b.x - PROVING_SPAWN.x, PROVING_SPAWN.z - b.z))).toBeLessThan(half);
   }
-  // A piece's finest level, the one with materials, is drawn only near.
   for (const p of pieces) expect(Math.hypot(p.x - PROVING_SPAWN.x, p.z - PROVING_SPAWN.z)).toBeLessThan(15);
   expect(PROVING_SPAWN.z - floor.z).toBeLessThan(15);
 });
 
+/** A context that holds `room` megabytes of textures and then runs out, or loses itself. */
+function card(room: number, lose = false) {
+  const made: object[] = [];
+  let error = 0;
+  let unit = 0x84c0;
+  const gl: GlMemory = {
+    createTexture: () => ({}),
+    deleteTexture: (t) => void made.splice(made.indexOf(t as object), 1),
+    bindTexture: (_target, t) => void (t && !made.includes(t as object) && made.push(t as object)),
+    activeTexture: (u) => void (unit = u),
+    texStorage2D: () => void (made.length > room && (error = 0x0505)),
+    compressedTexSubImage2D: () => {},
+    texSubImage2D: () => {},
+    getError: () => [error, (error = 0)][0]!,
+    isContextLost: () => lose && made.length > room,
+    getParameter: () => unit,
+  };
+  return { gl, made, unit: () => unit };
+}
+
+test("texture memory grows a megabyte at a time on a spare unit, and says when the context runs out or is lost", () => {
+  const c = card(300);
+  const mem = new TextureMemory(c.gl, () => c.gl.createTexture(), "astc");
+  let state = "";
+  for (let i = 0; i < 20 && state !== "held"; i++) state = mem.grow(128, 16);
+  expect([state, mem.mb, c.made.length, c.unit()]).toEqual(["held", 128, 128, 0x84c0]);
+  for (let i = 0; i < 40 && (state === "held" || state === "growing"); i++) state = mem.grow(512, 16);
+  expect(state).toBe("out of memory");
+  mem.free();
+  expect(c.made.length).toBe(0);
+  const lost = card(64, true);
+  const gone = new TextureMemory(lost.gl, () => lost.gl.createTexture(), "rgba");
+  for (let i = 0; i < 10 && state !== "context lost"; i++) state = gone.grow(128, 16);
+  expect(state).toBe("context lost");
+});
+
 test("a report with nothing in it yet still reads as a table", () => {
-  const lines = deviceTable(newReport("0123456789abcdef"));
-  expect(lines[0]).toBe("SNARK device report 0123456789abcdef: stopped at starting");
+  const lines = deviceTable(newReport("0123456789abcdef", "ladder"));
+  expect(lines[0]).toBe("SNARK device report 0123456789abcdef, ladder: stopped at starting");
   expect(lines).toContain("materials none asked for");
-  expect(lines).toContain("tiers run none");
 });

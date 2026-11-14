@@ -600,6 +600,8 @@ export interface ModelShot {
   colors: readonly number[];
   /** Draws the level with its materials, a draw for each of its sections, where it has them. Their textures must be on the card. */
   textured?: boolean;
+  /** The height of the ground: what lies below it is hidden, as the ground hides it, from a camera above it. */
+  floor?: number;
 }
 
 /**
@@ -691,9 +693,26 @@ export class ModelView {
     const sky = sections ? [0, 1, 2].map((k) => this.pack.palette[SKY_COLOR * 4 + k]! / 255) : this.background;
     p.sky.set(sky);
     this.raster.render(p);
-    if (!sections) return;
-    const { color, pickKind } = this.raster;
+    const { color, pickKind, depth, width, height } = this.raster;
     const [red, green, blue] = this.background.map((c) => c * 255) as [number, number, number];
+    if (shot.floor !== undefined && cam.y > shot.floor) {
+      // Where the ground lies nearer than what was drawn, it hides it.
+      const ray = [0, 0, 0];
+      const on = [0, 0, 0];
+      for (let at = 0; at < pickKind.length; at++) {
+        if (pickKind[at] === PICK_SKY) continue;
+        cam.ray(((at % width) + 0.5) / width, (Math.floor(at / width) + 0.5) / height, ray);
+        if (ray[1]! >= 0) continue;
+        const t = (shot.floor - cam.y) / ray[1]!;
+        if (!this.project(cam.x + ray[0]! * t, shot.floor, cam.z + ray[2]! * t, on) || on[2]! >= depth[at]!) continue;
+        pickKind[at] = PICK_SKY;
+        depth[at] = on[2]!;
+        color[at * 4] = red;
+        color[at * 4 + 1] = green;
+        color[at * 4 + 2] = blue;
+      }
+    }
+    if (!sections) return;
     for (let at = 0; at < pickKind.length; at++) {
       if (pickKind[at] !== PICK_SKY) continue;
       color[at * 4] = red;

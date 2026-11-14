@@ -27,6 +27,9 @@
 //                   stands each node on the ground where it says.
 //   spawns.json   [{ "name": "Plaza", "x": 256, "z": 240, "yaw": 0 }]
 //                 Up to 16. The first is where a new survivor arrives, and a dead one chooses among them.
+//   regions.json  [{ "spawns": "core:spawns_beach", "count": 12, "x": 180, "z": 300, "radius": 40 }]
+//                 Where wild creatures live: the spawns definition a region is stocked from, how many it holds at a
+//                 DinoCountMultiplier of 1, and a circle, or a box given as "half": [half width, half depth]. Optional.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -56,8 +59,9 @@ export function describe(file: Uint8Array): string[] {
     ...map.nodes.map((layer) => ("first" in layer ? `${layer.kind.length} listed nodes` : `${layer.perChunk} node slots a chunk, scattered${layer.allow ? ` where a picture of ${layer.allowCell} m a pixel allows` : ""}: ${layer.kinds.map(([id, weight]) => `${id} x${weight}`).join(", ")}`)),
     `spawn points: ${map.spawns.map((s) => `${s.name} (${s.x}, ${s.z})`).join(", ")}`,
   ];
+  if (map.regions) lines.push(`spawn regions: ${map.regions.map((r) => `${r.count} of ${r.spawns} at (${r.at[0]}, ${r.at[1]})`).join(", ")}`);
   const known = registry().index;
-  const named = new Set([...map.statics.map((s) => s.kind), ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : layer.kinds.map(([id]) => id)))]);
+  const named = new Set([...map.statics.map((s) => s.kind), ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : layer.kinds.map(([id]) => id))), ...(map.regions ?? []).map((r) => r.spawns!)]);
   const lacking = [...named].filter((id) => !known.has(id));
   if (lacking.length > 0) lines.push(`not in the core content: ${lacking.join(", ")}`);
   return lines;

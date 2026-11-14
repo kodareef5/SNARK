@@ -130,7 +130,7 @@ const SPECIES = {
   tag: f("text", "DinoNameTag"),
   regions: f("list", "the ColorSetDefinitions of RandomColorSetsMale, PreventColorizationRegions"),
   mutations: f("list"),
-  variant: stub("spawner", "text", "a child blueprint's kind"),
+  variant: stub("bosses", "text", "a child blueprint's kind"),
   attacks: stub("polish", "list", "AttackInfos"),
   loot: stub("loot", "text", "DeathInventoryTemplates", { refs: { "": "loot" } }),
   saddle: stub("polish", "text", "SaddleItemClass", { refs: { "": "item/saddle" } }),
@@ -236,7 +236,7 @@ const LOOT = {
 } satisfies Fields<LootDef>;
 
 const SPAWNS = {
-  entries: f("list", "NPCSpawnEntries", { refs: { "[].species": "species/creature" }, open: true }),
+  entries: f("list", "NPCSpawnEntries", { refs: { "[].group[]": "species/creature" }, open: true }),
   limits: f("list", "NPCSpawnLimits", { refs: { "[].species": "species/creature" } }),
 } satisfies Fields<SpawnsDef>;
 
@@ -395,8 +395,8 @@ row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color
 
 row("damage", "damage", DAMAGE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", may: ["label", "torpor", "trueShare", "melee"], doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
 row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "stub", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts and qualities, drawn from when something is opened or dies." });
-row("spawns", "spawns", SPAWNS, { ark: "NPCSpawnEntriesContainer", status: "stub", waits: "spawner", shelf: "spawns", must: ["entries"], may: ["limits"], doc: "Which creatures live in a place, in what share and at what levels." });
-row("map", "map", MAP, { ark: "a level and the game data it names", status: "partial", waits: "maps", shelf: "maps", must: ["chunks"], may: ["label", "seaLevel", "game", "zones"], doc: "A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. Today a spawn zone is where a new world's creatures start." });
+row("spawns", "spawns", SPAWNS, { ark: "NPCSpawnEntriesContainer", shelf: "spawns", must: ["entries"], may: ["limits"], doc: "Which creatures live in a place, in what share and in what groups. A map's spawn zones name these." });
+row("map", "map", MAP, { ark: "a level and the game data it names", status: "partial", waits: "maps", shelf: "maps", must: ["chunks"], may: ["label", "seaLevel", "game", "zones"], doc: "A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. A spawn zone with a spawns definition is kept stocked from it; one without is where a test's starting creatures are put." });
 row("game", "game", GAME, { ark: "PrimalGameData", status: "stub", waits: "polish", shelf: "game", must: ["survivor", "cache", "bag"], may: ["levels", "buffs"], doc: "What a game names once: the survivor's species, the death cache, the dropped bag, the standing buffs." });
 
 row("rename", "rename", RENAME, { ark: "a redirect for a class that was renamed", shelf: "renames", must: ["to"], doc: "An id that is no longer defined, and what it is called now. Saves and settings that use it still read." });

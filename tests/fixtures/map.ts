@@ -45,5 +45,9 @@ export function busyMap(): MapData {
     ],
     nodes: [scatter, list],
     spawns: [{ name: "Shore", x: 20, z: 30.5, yaw: 49152 }, { name: "Çà et là", x: 100, z: 150, yaw: 1 }],
+    regions: [
+      { kind: "spawn", spawns: "core:spawns_beach", count: 12, at: [30, 60.5], radius: 25 + 1 / 512 },
+      { kind: "spawn", spawns: "test:elsewhere", count: 0, at: [100, 150], half: [20, 40] },
+    ],
   };
 }

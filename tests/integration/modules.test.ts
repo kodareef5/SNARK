@@ -680,7 +680,7 @@ test("a module hears a creature spawned, tamed, ordered, ridden and bred, and ma
     return { e, rec: r };
   };
   const [f, m] = [made(true, -2), made(false, 2)];
-  expect(said("creature.spawn").pop()).toEqual({ kind: "core:parasaur", why: "admin", level: 3, colours: "" });
+  expect(said("creature.spawn").pop()).toEqual({ kind: "core:parasaur", why: "admin", x: x + 2, z: z + 4, level: 3, colours: "" });
   expect([f.rec.genome!.level, [...f.rec.genome!.colors.slice(0, 2)]]).toEqual([7, [9, 9]]);
 
   // A tame may be refused, and the one who earned it is told why.

@@ -84,7 +84,7 @@ ev("level.up", "after", "pid from to", "the level-up call", "server/progression.
 ev("stat.spend", "before", "pid stat", "the level-up request", "server/progression.ts", "wired", "A point is about to be put into a stat.");
 ev("engram.learn", "before", "pid engram", "the engram-points request", "server/progression.ts", "wired", "An engram is about to be learned.");
 
-ev("creature.spawn", "before", "kind why level! colours!", "the creature's begin play", "server/creatures.ts", "wired", "A creature is about to enter the world.");
+ev("creature.spawn", "before", "kind why x z level! colours!", "the creature's begin play", "server/creatures.ts", "wired", "A creature is about to enter the world at (x, z): `why` is wild for the world's own and admin for one an admin asked for.");
 ev("tame.allow", "before", "pid kind level byPid team how", "the allow-taming question, and tame limits", "server/taming.ts", "wired", "A creature is about to become somebody's.");
 ev("tame.done", "after", "pid kind level byPid team how te", "the tame call", "server/taming.ts", "wired", "A creature became somebody's.");
 ev("creature.order", "before", "pid byPid order", "", "server/taming.ts", "wired", "A tame is about to be told to follow, stay or change stance.");

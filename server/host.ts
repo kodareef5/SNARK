@@ -56,6 +56,8 @@ import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
+import { DEADLINE_SPAWN, Spawner, wildStep } from "./spawner.ts";
+import { spawnTables } from "./settings/spawns.ts";
 import { parseMap } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
@@ -82,6 +84,8 @@ export interface HostOptions {
   log?: (line: string) => void;
   game?: Partial<GameOptions>;
   store?: StoreOptions;
+  /** Keep the map's spawn regions stocked with wild creatures (server/spawner.ts), as a running server does. Off where not given. */
+  wild?: boolean;
   /** For a new world: wild creatures scattered near the spawn point, their species (core:grazer by default), and hunters further off. */
   startingCreatures?: number;
   startingSpecies?: string;
@@ -156,6 +160,8 @@ export interface Host {
   readonly riding: Riding;
   readonly breeding: Breeding;
   readonly tactical: Tactical;
+  /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
+  readonly spawner: Spawner | null;
   /** The list settings that name classes, as tables, and the names this build lacks. */
   readonly lists: Lists;
   /** The content-changing settings the server skipped at startup, one line each. */
@@ -349,6 +355,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     harvest.lists = lists;
   }
   const buffs = new Buffs(world, records, survival, deadlines);
+  const spawns = spawnTables(reg, rules, lists);
+  // No spawn region here is forced, streamed, put by hand or in water, so each -NoDinosExcept flag is -NoDinos.
+  const quiet = ["NoDinos", "NoDinosExceptForcedSpawn", "NoDinosExceptStreamingSpawn", "NoDinosExceptManualSpawn", "NoDinosExceptWaterSpawn"].some((f) => rules.flag(f) === true);
+  const stocked = opts.wild && !quiet ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
+  const spawner = stocked && stocked.regions.length > 0 ? stocked : null;
   // The save keeps the setting values its timers were computed under, so they can be re-timed under other rules.
   const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at"), persistence.store.meta("rules")) : null;
   if (persistence) {
@@ -364,6 +375,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
+    spawner?.left(rec);
     // A new tame stays where it woke until ordered otherwise.
     if (e !== undefined) {
       creatures.mind.stay(e, 0xffffffff);
@@ -437,6 +449,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const taker = by !== 0 ? records.byPid.get(by) : undefined;
     if (taker) taming.meal(taker);
     buffs.died(rec);
+    spawner?.left(rec);
     death.die(rec, cause);
   };
   // Unconsciousness, an injury and any buff change how a body moves.
@@ -567,7 +580,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     for (const rec of records.byPid.values()) buffs.restore(rec, persistence!.store.unrated.has(rec.pid));
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
-    // A wild creature's level is one of thirty steps, each the size of the server's difficulty.
+    // A wild creature's level is one of thirty steps, drawn by ARK's weights, each the size of the server's difficulty.
     const difficulty = difficultyOf(rules);
     // A place off the zone or inside a structure is tried again. A map with no spawn zone starts empty, and so does ARK's -NoDinos.
     const scatter = (zone: ServerWorld["zones"][number] | undefined, species: string, wanted: number): void => {
@@ -577,7 +590,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       for (let tries = wanted * 20; wanted > 0 && tries > 0; tries--) {
         const x = rng.range(cx - hx, cx + hx);
         const z = rng.range(cz - hz, cz + hz);
-        const level = wildLevel(1 + rng.int(30), difficulty);
+        const level = wildLevel(wildStep(rng), difficulty);
         if (!zone.half && (x - cx) * (x - cx) + (z - cz) * (z - cz) > hx * hx) continue;
         if (spawnCreature(species, x, z, level) >= 0) wanted--;
       }
@@ -585,6 +598,15 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     // The herd starts in the map's first spawn zone and the hunters in its last.
     scatter(world.zones[0], opts.startingSpecies ?? "core:grazer", opts.startingCreatures ?? 0);
     scatter(world.zones[world.zones.length - 1], "core:raptor", opts.startingHunters ?? 0);
+  }
+  if (spawner) {
+    const fresh = !loaded || loaded.fresh;
+    // -ForceRespawnDinos, or ServerAutoForceRespawnWildDinosInterval come round, replaces the wild of a saved world at its start.
+    const forced = spawner.forced(persistence && !fresh ? persistence.store.meta("spawner") : null, Date.now() / 1000);
+    const wiped = forced && !fresh ? spawner.wipe() : -1;
+    spawner.begin(fresh || wiped >= 0);
+    if (wiped >= 0) say(`destroyed ${wiped} wild creatures at the start, to be replaced`);
+    persistence?.sidecar("spawner", spawner.saved);
   }
 
   // A name belongs to the first device key that takes a body under it.
@@ -701,6 +723,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       else if (kind === DEADLINE_FIRE) stations.due(pid, stamp);
       else if (kind === DEADLINE_TAME) taming.due(pid, stamp);
       else if (kind === DEADLINE_BREED) breeding.due(pid, stamp);
+      else if (kind === DEADLINE_SPAWN) spawner?.due(pid, stamp);
     });
     death.step();
     // Riders move with their mounts before combat aims at either.
@@ -709,6 +732,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     combat.step();
     projectiles.step();
     creatures.step(tick);
+    spawner?.step(tick);
     build.step();
     taming.step();
     breeding.step(tick);
@@ -938,6 +962,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     riding,
     breeding,
     tactical,
+    spawner,
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
       const row = rowOf(name);
@@ -959,7 +984,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     modules,
     adminPassword: opts.adminPassword || rules.text("ServerAdminPassword") || null,
     lists,
-    passed: tuned.passed,
+    passed: [...tuned.passed, ...spawns.passed],
     dev: opts.dev ?? false,
     spawnCreature,
     refreshBody,
