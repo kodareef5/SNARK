@@ -2,6 +2,7 @@
 // that is too large, how long a chat line may be, and what a page of the wrong version is told.
 
 import { expect, test } from "bun:test";
+import { loadConfig } from "../../server/settings/config.ts";
 import { App } from "../../client/core/app.ts";
 import { CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { SETTING_ROWS } from "../../client/core/settings.ts";
@@ -172,4 +173,18 @@ test("a snapshot that outgrows the server's writer is counted and not sent, and 
   const all = seen(watcher);
   expect([h.server.stats.overflows - over, watcher.stats.undecodable, all.count]).toEqual([0, 0, 450]);
   expect(new Set(all.name.slice(0, 450)).size).toBe(450);
+});
+
+test("an operator sets the two caps in the settings file, and a client's ask is held to them", () => {
+  const made = loadConfig({ gus: "[SnarkSettings]\nViewCap=128\nSnapshotBytesMax=2200\n", game: "" });
+  expect([made.report.refused, made.report.unknown]).toEqual([[], []]);
+  const h = new Harness({}, 1, 30, { config: made.rules });
+  const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
+  app.ui.settings.tier = "ultra";
+  const row = SETTING_ROWS.find((r) => r.label === "Connection")!;
+  row.step(app.ui.settings, 1);
+  row.step(app.ui.settings, 1);
+  h.run(1500, (now) => void app.frame(now, 1280, 720));
+  const c = h.client(app.session)!;
+  expect([c.viewCap, c.snapshotBytes]).toEqual([128, 2200]);
 });
