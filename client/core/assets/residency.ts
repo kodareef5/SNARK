@@ -1,9 +1,12 @@
 // What is on the graphics card, and what is asked for, kept and let go to keep it so. There are three kinds of slot.
 // A level is the indices and flat vertices of one level of a mesh. A surface is what that level needs besides to be
-// drawn with materials, and is of use only with its level. A texture holds its pictures up to some step, and changes
-// step by being made again. What the boot pack holds is resident as soon as it is wanted and is never let go, so there
-// is always some level of every mesh to draw. Everything else is asked of the port, most urgent first, put on the card
-// within a frame's allowance of bytes, and let go, least lately drawn first, when the card's budget is passed.
+// drawn with materials, its surface and its skin, and is of use only with its level. A texture holds its pictures up
+// to some step, and changes step by being made again from its first picture while the card still draws with the old.
+//
+// What the boot pack holds is resident as soon as it is wanted and is never let go, so there is always some level of
+// every mesh to draw. Everything else is asked of the port, most urgent first, put on the card within a frame's
+// allowance of bytes, and let go, least lately drawn first, when the card's budget is passed. Textures have a share of
+// the budget and a ring of their own, and levels and surfaces have what textures leave of it.
 
 import type { Manifest, ManifestLevel } from "../../../shared/pack/manifest.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";

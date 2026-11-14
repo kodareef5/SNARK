@@ -21,7 +21,7 @@ export class Assets {
   readonly table: AssetTable;
   readonly bind: Binding;
   readonly residency: Residency;
-  /** The graphics tier: how much error on screen is let pass, and the finest level ever drawn. */
+  /** The graphics tier: how much error on screen is let pass, the finest level ever drawn, and how wide a texture. */
   tier: Tier = tierOf(DEFAULT_TIER);
   /** The variant of the textures the device takes. The shell says which. */
   format: TextureFormat = "rgba";
@@ -70,7 +70,11 @@ export class Assets {
     return `assets: ${mb(r.ledger)} MB on the card${r.texLedger > 0 ? `, ${mb(r.texLedger)} of it textures` : ""}, ${r.flying} coming, ${mb(r.waiting)} MB waiting, ${mb(r.stats.fetched)} MB fetched, ${mb(r.stats.cached)} MB from the cache, ${r.stats.failed} failed, ${r.stats.dead} given up, ${r.stats.skipped} left out, x${r.relax.toFixed(2)}`;
   }
 
-  /** Ends a frame: what the graphics card must take on and let go goes into the packet. */
+  /**
+   * Ends a frame: what the graphics card must take on and let go goes into the packet. Levels and their surfaces are
+   * in `assetUploads` and `assetDrops`. Textures are in `texUploads` and `texDrops`, each known there by its index in
+   * the manifest.
+   */
   end(packet: FramePacket, nowMs: number): void {
     this.residency.end(packet.assetUploads, packet.assetDrops, packet.texUploads, packet.texDrops, nowMs);
   }

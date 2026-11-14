@@ -237,6 +237,42 @@ test("what cannot be had: a body is drawn without a normal, a texture stays at t
   expect(w.r.stats.requests - requests).toBe(0);
 });
 
+test("through random flights, tiers, budgets, lost contexts and refused textures, no frame draws what the card lacks and the count of the card stays exact", () => {
+  const did = { shown: 0, shrunk: 0, dropped: 0, failed: 0 };
+  for (let episode = 16; episode < 24; episode++) {
+    const rng = new Rng(episode);
+    const pick = <T>(of: readonly T[]): T => of[rng.int(of.length)]!;
+    const tier = (): Partial<Tier> => ({ gpuBytes: pick([0.6e6, 1.5e6, 4e6, 100e6]), textureShare: pick([0.2, 0.6, 0.9]), uploadBytes: pick([4096, 64 * 1024, 1e6]), texture: pick([0, 64, 256, 1024]) });
+    const things = [0, 1, 2, 3].map((i) => ({ mesh: i, x: rng.range(-4, 4), z: pick([0, 30, 150]), size: pick([1, 0.3]) }));
+    const w = world(things, { latencyMs: pick([0, 150]), bytesPerSecond: pick([0.5e6, 20e6]), loss: pick([0, 0.2]), seed: episode, keep: episode % 2 === 0 }, tier(), SET, "bc", pick([Infinity, 100]));
+    // The world throws at the first frame that breaks either rule.
+    for (let f = 0, z = 0, speed = 0; f < 700; f++) {
+      if (rng.float() < 0.02) {
+        const what = rng.int(6);
+        if (what === 0) [z, speed] = [pick([0, 30, 150]) - rng.range(1, 6), 0];
+        else if (what === 1) speed = rng.range(-40, 40);
+        else if (what === 2) w.assets.tier = { ...w.assets.tier, ...tier() };
+        else if (what === 3) {
+          w.card.clear();
+          w.r.reset();
+        } else if (what === 4 && w.card.textures.size > 0) {
+          const texture = pick([...w.card.textures.keys()]);
+          w.card.forget(texture);
+          w.r.failedTexture(texture);
+        } else if (what === 5) w.assets.pressure();
+      }
+      w.frame((z += speed / 60));
+      did.shown += w.shown[0]!;
+    }
+    expect(w.r.stats.skipped).toBe(0);
+    did.shrunk += w.r.stats.shrunk;
+    did.dropped += w.dropped.textures;
+    did.failed += w.r.stats.failed;
+  }
+  // The flights did draw with materials, remake textures smaller, let textures go and lose requests.
+  expect(Object.values(did).every((times) => times > 0)).toBe(true);
+});
+
 test("low poly asks for no surface and no texture: its requests and uploads are those of a scene that never asked", () => {
   const things = [0, 1, 2, 3].map((i) => ({ mesh: i, x: 3 * i, z: 200 }));
   const net = { latencyMs: 80, bytesPerSecond: 1.2e6, loss: 0.1, seed: 4 };

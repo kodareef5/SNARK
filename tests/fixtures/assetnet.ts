@@ -98,31 +98,17 @@ export class FakeNet implements AssetPort {
       t.left -= each;
       if (t.failAt >= 0 && t.left <= t.failAt) this.finish(t, null, FAIL_NET, 0);
       else if (t.left <= 0) {
-        let data = file.slice(parts[0]!.offset, parts[0]!.offset + parts[0]!.length);
-        if (parts.length > 1) {
-          // Several parts come as one run of bytes, in the order asked.
-          data = new Uint8Array(parts.reduce((sum, p) => sum + p.length, 0));
-          let at = 0;
-          for (const p of parts) {
-            const part = file.subarray(p.offset, p.offset + p.length);
-            data.set(part, at);
-            at += part.length;
-          }
-          if (at < data.length) data = data.subarray(0, at);
-        }
-        const whole = parts.reduce((sum, p) => sum + p.length, 0);
+        const got = parts.map((p) => file.subarray(p.offset, p.offset + p.length));
+        const bytes = got.reduce((sum, part) => sum + part.length, 0);
         const linked = t.link.reduce((sum, p) => sum + p.length, 0);
-        const wrong = (): boolean => {
-          let at = 0;
-          return parts.some((p) => p.hash !== "" && partHash(data.subarray(at, (at += p.length))) !== p.hash);
-        };
         // A range that runs off the end comes back short.
-        if (data.length < whole) this.finish(t, null, FAIL_NET, data.length);
-        else if (wrong()) this.finish(t, null, FAIL_HASH, linked);
+        if (got.some((part, k) => part.length < parts[k]!.length)) this.finish(t, null, FAIL_NET, bytes);
+        else if (got.some((part, k) => parts[k]!.hash !== "" && partHash(part) !== parts[k]!.hash)) this.finish(t, null, FAIL_HASH, linked);
         else {
           for (const p of t.link) this.over.set(`${t.request.file}:${p.offset}`, (this.over.get(`${t.request.file}:${p.offset}`) ?? 0) + 1);
           for (const p of parts) this.kept?.add(`${t.request.file}:${p.offset}`);
-          this.finish(t, data, 0, linked, whole - linked);
+          // Several parts come as one run of bytes, in the order asked.
+          this.finish(t, got.length === 1 ? got[0]!.slice() : Buffer.concat(got), 0, linked, bytes - linked);
         }
       }
     }
