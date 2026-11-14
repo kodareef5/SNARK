@@ -33,6 +33,7 @@ import { DEADLINE_DESPAWN, Death } from "./death.ts";
 import { DEADLINE_NODE, Harvest } from "./harvest.ts";
 import { DEADLINE_CRAFT, Progression } from "./progression.ts";
 import { stanceEye } from "../shared/sim/character.ts";
+import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Items } from "./items.ts";
@@ -291,7 +292,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   fixtures.rules = rules;
   fixtures.index();
   const stations = new Stations(world, records, items, fixtures, deadlines);
-  const build = new Build({ world, game, records, items, tribes, rules, fixtures, light: (ref) => stations.toggle(ref), spill: (x, y, z, name) => death.spill(x, y, z, name) });
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, light: (ref) => stations.toggle(ref), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   combat.onStructureHurt = (ref) => build.hurt(ref);
@@ -318,6 +319,9 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   };
   // Unconsciousness, an injury and any buff change how a body moves.
   const injured = reg.index.get("core:injured") ?? 0;
+  const fed = reg.index.get("core:fed") ?? 0;
+  const fedDef = reg.defs[fed];
+  const fedRate = fedDef?.type === "buff" ? (fedDef.health ?? 0) : 0;
   survival.onOut = (rec, out) => {
     refreshBody(rec);
     taming.out(rec, out);
@@ -627,6 +631,11 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       return out;
     },
     refresh: (rec) => refreshBody(rec),
+    mend: (rec, points) => {
+      // Health from food comes over time, at the rate of the buff that shows it, and one meal at a time.
+      if (fedRate > 0) buffs.give(rec, fed, 0, points / fedRate);
+      else survival.add(rec, V_HEALTH, points);
+    },
     rearm: (rec) => {
       // No slot is -2, so the refresh sees a change of what is in hand.
       inHand.set(rec.pid, -2);

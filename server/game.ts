@@ -111,6 +111,9 @@ const COMMANDS_PER_TICK = 4;
 const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** Metres. */
 const SPECTATOR_LIFT = 1.6;
+/** New names one address may make in NEW_NAME_TICKS, an hour. */
+const NEW_NAMES = 8;
+const NEW_NAME_TICKS = 108000;
 
 /** Bits of Client.did, set by the action step on the tick just stepped. */
 export const DID_STRIKE = 1;
@@ -267,6 +270,8 @@ export class GameServer {
   readonly world: ServerWorld;
   readonly opts: GameOptions;
   readonly clients: (Client | null)[];
+  /** New survivor names made from each address in the last hour. */
+  private readonly newNames = new Map<string, { n: number; since: number }>();
   /** Wrong passwords, for joining and for cheats, by the address they came from. */
   readonly guesses = new Guesses();
   readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0 };
@@ -770,6 +775,17 @@ export class GameServer {
       return true;
     }
 
+    // Every new name leaves a survivor record for good, so one address may make only so many an hour.
+    if (c.conn.address !== undefined && this.savedPosition && this.savedPosition(name) === null) {
+      const made = this.newNames.get(c.conn.address);
+      if (made && world.tick - made.since < NEW_NAME_TICKS) {
+        if (made.n >= NEW_NAMES) return this.refuse(c, REJECT_DENIED);
+        made.n++;
+      } else {
+        if (this.newNames.size > 4096) this.newNames.clear();
+        this.newNames.set(c.conn.address, { n: 1, since: world.tick });
+      }
+    }
     const slot = this.clients.indexOf(null);
     if (slot < 0) return this.refuse(c, REJECT_FULL);
     this.pending.delete(c);

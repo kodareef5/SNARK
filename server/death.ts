@@ -25,6 +25,8 @@ export const CACHE_TICKS = 15 * 60 * TICK_RATE;
 export const BAG_TICKS = 2 * 60 * TICK_RATE;
 /** Places in the entity store a dropped bag may not take. */
 const STORE_RESERVE = 256;
+/** Bags and spill caches one survivor may have lying at once. */
+const LYING_MOST = 12;
 export const MAX_MARKERS = 5;
 /** Metres from the eye. */
 export const REACH = 3.5;
@@ -71,8 +73,57 @@ export class Death {
     this.bag = reg.index.get("core:bag") ?? this.cache;
   }
 
-  /** Per survivor pid, the pid of the bag it last dropped. */
-  private readonly lastBag = new Map<number, number>();
+  /** Per survivor pid, the pids of the bags and spill caches it has lying, oldest first. */
+  private readonly lyingOf = new Map<number, number[]>();
+
+  /** The newest container of `kind` that `owner` has lying within `reach` metres of a point, or null. */
+  private lying(owner: number, kind: number, x: number, y: number, z: number, reach: number): EntityRecord | null {
+    const list = this.lyingOf.get(owner);
+    if (!list) return null;
+    const records = this.ctx.records;
+    for (let k = list.length - 1; k >= 0; k--) {
+      const rec = records.byPid.get(list[k]!);
+      if (!rec || rec.kind !== kind || !records.entOf.has(rec.pid)) continue;
+      if ((rec.x - x) * (rec.x - x) + (rec.y - y) * (rec.y - y) + (rec.z - z) * (rec.z - z) < reach * reach) return rec;
+    }
+    return null;
+  }
+
+  /** Counts a new bag or spill cache as `owner`'s. One survivor has LYING_MOST at most: the oldest goes, with what is in it. */
+  private lie(owner: number, made: EntityRecord): void {
+    const records = this.ctx.records;
+    let list = this.lyingOf.get(owner);
+    if (!list) this.lyingOf.set(owner, (list = []));
+    let kept = 0;
+    for (const pid of list) if (records.byPid.has(pid)) list[kept++] = pid;
+    list.length = kept;
+    while (list.length >= LYING_MOST) {
+      const old = records.byPid.get(list.shift()!);
+      if (old) this.remove(old);
+    }
+    list.push(made.pid);
+  }
+
+  /** Starts a lying container's time again, so that what was just put in it lies as long as anything else. */
+  private renew(rec: EntityRecord): void {
+    rec.expiresAt = this.ctx.world.tick + this.lifetime(rec.kind);
+    this.ctx.deadlines.push(rec.expiresAt, DEADLINE_DESPAWN, rec.pid, rec.expiresAt);
+    this.ctx.records.dirty.add(rec.pid);
+  }
+
+  /** Removes one lying bag or spill cache with a body, anyone's, to make room in the entity store. False if there is none. */
+  private evict(): boolean {
+    const records = this.ctx.records;
+    for (const list of this.lyingOf.values()) {
+      for (const pid of list) {
+        const rec = records.byPid.get(pid);
+        if (!rec || !records.entOf.has(pid)) continue;
+        this.remove(rec);
+        return true;
+      }
+    }
+    return false;
+  }
 
   /** Drops `n` of the stack in `slot` (0 for all) in a bag ahead of the body. False, changing nothing, if nothing moved or it has no body. */
   drop(rec: EntityRecord, slot: number, n: number): boolean {
@@ -83,20 +134,17 @@ export class Death {
     lookDirection(ents.yaw[e]!, 0, this.dir);
     const x = ents.x[e]! + this.dir[0]! * 0.8;
     const z = ents.z[e]! + this.dir[2]! * 0.8;
-    // The bag this survivor last dropped takes the next thing too, while it lies within a step and has room. Each drop
+    // A bag this survivor dropped takes the next thing too, while it lies within reach of the body and has room. Each drop
     // used to make a bag, and one survivor dropping single items filled the entity store in half a minute.
-    const last = records.byPid.get(this.lastBag.get(rec.pid) ?? 0);
-    if (last && last.kind === this.bag && records.entOf.has(last.pid) && (last.x - x) * (last.x - x) + (last.z - z) * (last.z - z) < 1.5 * 1.5) {
+    const last = this.lying(rec.pid, this.bag, ents.x[e]!, ents.y[e]!, ents.z[e]!, 2);
+    if (last) {
       const inv = items.inv(last);
       const what = items.inv(rec).item[slot]!;
       let to = -1;
       for (let s = 0; s < inv.bag && to < 0; s++) if (inv.item[s] === what && inv.count[s]! < items.table.stack[what]!) to = s;
       if (to < 0) to = inv.free();
       if (to >= 0 && items.move(rec, slot, last, to, n) > 0) {
-        // Its time starts again, so the thing just dropped lies as long as any other.
-        last.expiresAt = world.tick + this.lifetime(this.bag);
-        this.ctx.deadlines.push(last.expiresAt, DEADLINE_DESPAWN, last.pid, last.expiresAt);
-        records.dirty.add(last.pid);
+        this.renew(last);
         return true;
       }
     }
@@ -107,7 +155,7 @@ export class Death {
       records.delete(bag.pid);
       return false;
     }
-    this.lastBag.set(rec.pid, bag.pid);
+    this.lie(rec.pid, bag);
     bag.x = x;
     bag.z = z;
     const ground = world.hf.heightAt(bag.x, bag.z);
@@ -200,8 +248,16 @@ export class Death {
   }
 
   /** Places an empty cache for items with nowhere else to go, such as a demolition refund that did not fit. The caller fills it. */
-  spill(x: number, y: number, z: number, name: string): EntityRecord {
+  spill(x: number, y: number, z: number, name: string, owner = 0): EntityRecord {
     const { world, records } = this.ctx;
+    if (owner !== 0) {
+      // A cache this survivor's last refund went into takes the next one too, while it has a slot free.
+      const last = this.lying(owner, this.cache, x, y, z, 3);
+      if (last && this.ctx.items.inv(last).free() >= 0) {
+        this.renew(last);
+        return last;
+      }
+    }
     const cache = records.create(this.cache, name);
     const ground = world.hf.heightAt(x, z);
     cache.x = x;
@@ -210,6 +266,7 @@ export class Death {
     cache.expiresAt = world.tick + this.lifetime(this.cache);
     records.dirty.add(cache.pid);
     this.place(cache);
+    if (owner !== 0) this.lie(owner, cache);
     return cache;
   }
 
@@ -242,12 +299,15 @@ export class Death {
   place(cache: EntityRecord): void {
     const { world, records, deadlines } = this.ctx;
     const ents = world.ents;
-    const e = ents.create(cache.kind, cache.x, cache.y, cache.z, F_PROP);
-    if (e < 0) return; // The entity store is full. The record stays, and the next load places it again.
+    // Its time runs whether or not it gets a body, or a record made with the store full would never go.
+    if (cache.expiresAt > 0) deadlines.push(cache.expiresAt, DEADLINE_DESPAWN, cache.pid, cache.expiresAt);
+    let e = ents.create(cache.kind, cache.x, cache.y, cache.z, F_PROP);
+    // The store is full. What the dead leave matters more than a bag someone dropped.
+    if (e < 0 && this.evict()) e = ents.create(cache.kind, cache.x, cache.y, cache.z, F_PROP);
+    if (e < 0) return;
     ents.pid[e] = cache.pid;
     ents.setLook(e, 0, null, cache.name);
     records.entOf.set(cache.pid, e);
-    if (cache.expiresAt > 0) deadlines.push(cache.expiresAt, DEADLINE_DESPAWN, cache.pid, cache.expiresAt);
   }
 
   /** A deadline whose stamp no longer matches expiresAt is stale and is ignored. */

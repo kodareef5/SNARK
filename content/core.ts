@@ -277,6 +277,8 @@ export const CORE_CONTENT: readonly Def[] = [
   { type: "buff", id: "core:drugged", label: "Drugged", color: 9, seconds: 8 },
   { type: "buff", id: "core:stunned", label: "Stunned", color: 6, seconds: 3, root: true },
   { type: "buff", id: "core:injured", label: "Injured", color: 8, speed: 0.8 },
+  // What a meal mends comes at this rate. A piece of cooked meat is 8 health over five seconds.
+  { type: "buff", id: "core:fed", label: "Fed", color: 12, seconds: 5, health: 1.6, good: true },
   { type: "buff", id: "core:god", label: "God", color: 14, immune: true, good: true },
   // A missed arrow that did not break. It stays where it landed until someone walks over it.
   { type: "prop", id: "core:arrow_stuck", mesh: "core:arrow", color: 15, radius: 0.1, height: 0.1, pitched: true },

@@ -47,7 +47,8 @@ export interface BuildContext {
   /** Lights the fire at a ref, or puts it out. Returns a RESULT code. */
   light(ref: number): number;
   /** Returns a new empty cache at that place. */
-  spill(x: number, y: number, z: number, name: string): EntityRecord;
+  /** `owner` is the survivor a refund is for, so that its refunds share a cache and are counted as its own. */
+  spill(x: number, y: number, z: number, name: string, owner?: number): EntityRecord;
 }
 
 /** A survivor who picked up or demolished a piece is owed what stood on it. `action` says which. `cache` takes what does not fit. */
@@ -117,7 +118,7 @@ export class Build {
       const t = structs.chunks[Math.floor(ref / 65536)]!;
       // The claimant gets back only its own tribe's pieces. Anything else that comes down falls.
       if (!of || !ctx.tribes.may(ctx.records.byPid.get(of.pid), t.owner[ref & 0xffff]!)) return false;
-      this.giveBack(of, t.kind[ref & 0xffff]!, t.x[ref & 0xffff]!, t.y[ref & 0xffff]!, t.z[ref & 0xffff]!);
+      this.giveBack(of, t.kind[ref & 0xffff]!, t.x[ref & 0xffff]!, t.y[ref & 0xffff]!, t.z[ref & 0xffff]!, this.whole(ref));
       this.returned++;
       return true;
     };
@@ -389,15 +390,25 @@ export class Build {
     return this.claims[n] ?? { pid: rec.pid, action, cache: null };
   }
 
+  /** Whether a piece could be picked up as it stands: undamaged, empty, and inside its window. One that could not comes back as materials. */
+  private whole(ref: number): boolean {
+    const { world, rules, fixtures } = this.ctx;
+    const t = world.structs.chunks[Math.floor(ref / 65536)]!;
+    const slot = ref & 0xffff;
+    if (t.hp[slot]! < world.reg.maxHp[t.kind[slot]!]! || (fixtures.find(ref)?.inv?.used() ?? 0) > 0) return false;
+    const window = rules.on("AlwaysAllowStructurePickup") ? 0 : rules.num("StructurePickupTimeAfterPlacement") * TICK_RATE;
+    return !(window > 0 && !(world.tick - (this.placedAt.get(ref) ?? -Infinity) <= window));
+  }
+
   /**
-   * Gives the claimant what a piece comes back as: the piece itself after a pickup, or half its materials after a
-   * demolition. What the claimant cannot take lies in a cache where the piece stood.
+   * Gives the claimant what a piece comes back as: the piece itself after a pickup it could have had by itself, or half its
+   * materials. What the claimant cannot take lies in a cache where the piece stood.
    */
-  private giveBack(of: Claim, kind: number, x: number, y: number, z: number): void {
+  private giveBack(of: Claim, kind: number, x: number, y: number, z: number, whole = true): void {
     const reg = this.ctx.world.reg;
     const item = reg.pieceItem[kind]!;
     if (item === 0) return;
-    if (of.action === STRUCT_PICKUP) this.hand(of, item, 1, x, y, z);
+    if (of.action === STRUCT_PICKUP && whole) this.hand(of, item, 1, x, y, z);
     else if (refundOf(reg, kind)) {
       // `hand` may compute another cost before this one is used up, so the loop works on a copy.
       const n = cost.n;
@@ -414,7 +425,7 @@ export class Build {
     if (rec && !rec.dead && !rec.out && records.entOf.has(rec.pid)) left -= items.mint(rec, item, left);
     // The rest goes into the claim's cache, and into a new one when that is full.
     for (let tries = 0; left > 0 && tries < 4; tries++) {
-      if (!of.cache || records.byPid.get(of.cache.pid) !== of.cache) of.cache = spill(x, y, z, "building materials");
+      if (!of.cache || records.byPid.get(of.cache.pid) !== of.cache) of.cache = spill(x, y, z, "building materials", of.pid);
       left -= items.mint(of.cache, item, left);
       if (left > 0) of.cache = null;
     }

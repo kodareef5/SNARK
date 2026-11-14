@@ -7,7 +7,7 @@ import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_D
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
-import { V_COUNT, V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
+import { V_COUNT, V_FOOD, V_WATER } from "../shared/sim/vitals.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -55,6 +55,8 @@ export interface OwnContext {
   online(pid: number): boolean;
   /** See `Host.refreshBody`. */
   refresh(rec: EntityRecord): void;
+  /** Food gives `points` of health. */
+  mend(rec: EntityRecord, points: number): void;
   /** The item in this survivor's hands was replaced by a move, perhaps by another of its kind. It takes a moment to be ready, as a change of hotbar slot does. */
   rearm(rec: EntityRecord): void;
   /** See `Death.drop`. */
@@ -505,7 +507,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (!ctx.items.burn(rec, slot, 1)) return RESULT_STALE;
     if (eat.food) ctx.survival.add(rec, V_FOOD, eat.food);
     if (eat.water) ctx.survival.add(rec, V_WATER, eat.water);
-    if (eat.health) ctx.survival.add(rec, V_HEALTH, eat.health);
+    if (eat.health) ctx.mend(rec, eat.health);
     return RESULT_OK;
   });
 }
