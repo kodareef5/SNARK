@@ -14,8 +14,8 @@ import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts"
 import { ModelView, type ModelShot } from "../snap.ts";
 import { SNAP_CACHE, rgbaOf, type RgbaTexture } from "../snap/files.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "../snap/font.ts";
-import type { Asset } from "./assets.ts";
-import { Poser, type Report } from "./check.ts";
+import { isNode, type Asset } from "./assets.ts";
+import { Poser, levelStarts, type Report } from "./check.ts";
 import { materialsOf } from "./materials.ts";
 
 type Rgb = readonly [number, number, number];
@@ -46,7 +46,6 @@ const LOUD = [56, 49, 52, 47, 55, 48];
 const LOUD_NAMES = ["magenta", "lime", "cyan", "orange", "violet", "yellow"];
 /** Levels are chosen as the check works them out: for a screen this many pixels high, with this field of view. */
 const SCREEN = 1080;
-const FOV_Y = 1.2217;
 
 class Canvas {
   readonly width: number;
@@ -336,8 +335,13 @@ interface Subject {
   centre: [number, number, number];
   half: [number, number, number];
   radius: number;
-  /** The height the ground is drawn at: 0 under a creature, which stands on its origin, and the underside of a piece, which is centred on its own. */
+  /**
+   * The height the ground is drawn at: 0 under a creature or a node, which stand on their origins, and the underside of
+   * a piece, which is centred on its own.
+   */
   floor: number;
+  /** Whether what lies below the floor is hidden, as the ground hides the foot of a node. */
+  buried: boolean;
   /** Its first level drawn flat: 0 where it has no materials, or none can be drawn. */
   flat: number;
   views: Views;
@@ -420,7 +424,7 @@ function fit(half: readonly number[], around: number, above: number): number {
 /** Draws the subject into a view and returns the view, with what is to be drawn over it. */
 function shoot(s: Subject, view: ModelView, shot: Shot): Overlay {
   if (shot.textured) stock(s, view);
-  view.draw({ mesh: s.index, rig: s.rig, colors: s.colours, centre: s.centre, radius: s.radius, ...shot });
+  view.draw({ mesh: s.index, rig: s.rig, colors: s.colours, centre: s.centre, radius: s.radius, ...(s.buried ? { floor: s.floor } : {}), ...shot });
   return new Overlay(view);
 }
 
@@ -676,16 +680,8 @@ interface Start {
 /** The levels a tier draws a mesh at beyond its finest, each from where it begins: the coarsest level whose error the tier lets pass is drawn. */
 function startsOf(s: Subject, tier: (typeof TIERS)[number]): Start[] {
   const header = s.pack.header.meshes[s.index]!;
-  const errors = header.lods.map((l) => l.error);
-  const scale = SCREEN / (2 * Math.tan(FOV_Y / 2));
-  const out: Start[] = [];
-  for (let level = Math.min(tier.finest, errors.length - 1) + 1; level < errors.length; level++) {
-    // A level no coarser one is better than is never drawn.
-    if (errors[level]! <= 0 || errors.slice(level + 1).some((e) => e <= errors[level]!)) continue;
-    const distance = (errors[level]! * scale) / tier.threshold;
-    out.push({ level, distance, tall: (header.half[1] * 2 * scale) / distance, textured: tier.texture > 0 && level < s.flat });
-  }
-  return out;
+  const starts = levelStarts(header.lods.map((l, level) => (level === 0 ? 0 : l.error)), header.half[1] * 2, tier);
+  return starts.flatMap((st, level) => (st === null || st.from === 0 ? [] : [{ level, distance: st.from, tall: st.tall, textured: tier.texture > 0 && level < s.flat }]));
 }
 
 /** A level drawn `tall` pixels high in a picture BOX pixels square, as a screen shows it. */
@@ -820,7 +816,7 @@ function clipRows(page: Page, s: Subject, report: Report, names: readonly string
   poser.set(null, 0);
 }
 
-function subjectOf(views: Views, meshes: SourceMesh[], id: string, colours: readonly number[], cells: SheetCell[]): Subject | null {
+function subjectOf(views: Views, meshes: SourceMesh[], id: string, colours: readonly number[], cells: SheetCell[], node = false): Subject | null {
   const pack = views.pack;
   const mesh = meshes.find((m) => m.id === id);
   const index = pack.meshIndex.get(id);
@@ -830,9 +826,16 @@ function subjectOf(views: Views, meshes: SourceMesh[], id: string, colours: read
   const rig = packRig ? buildRig(packRig, pack.clips) : null;
   const poser = rig ? new Poser(rig) : null;
   poser?.set(null, 0);
-  const radius = Math.max(...AROUND.map((a) => fit(header.half, a, ABOVE)));
+  const centre: [number, number, number] = [...header.center];
+  const half: [number, number, number] = [...header.half];
+  if (node) {
+    // The pictures hold what stands above the ground.
+    const [low, top] = [Math.max(centre[1] - half[1], 0), Math.max(centre[1] + half[1], 0)];
+    [centre[1], half[1]] = [(low + top) / 2, (top - low) / 2];
+  }
+  const radius = Math.max(...AROUND.map((a) => fit(half, a, ABOVE)));
   const flat = views.textures.length > 0 ? (header.flat ?? 0) : 0;
-  return { pack, id, mesh, index, rig, poser, colours, centre: [...header.center], half: [...header.half], radius, floor: rig ? 0 : header.center[1] - header.half[1], flat, views, cells };
+  return { pack, id, mesh, index, rig, poser, colours, centre, half, radius, floor: rig || node ? 0 : header.center[1] - header.half[1], buried: node, flat, views, cells };
 }
 
 /** The textures of an asset's pack in the rgba variant, by their place in it, made from the pictures its asset.ts names. */
@@ -850,7 +853,7 @@ function heading(page: Page, asset: Asset, report: Report): void {
   page.line(`${asset.id}   ${asset.spec.kind}`, INK, 3);
   for (const m of report.meshes) {
     page.line(`${m.id}: ${m.size.map((v) => v.toFixed(2)).join(" x ")} m (across, up, along); triangles a level ${m.levels.map((l) => l.triangles).join(", ")}; budget ${m.levels.map((l) => l.budget ?? "-").join(", ")}`);
-    page.line(`holes ${m.levels.map((l) => l.holes).join(", ")}; edges between faces that look opposite ways ${m.levels.map((l) => l.flipped).join(", ")}; parts inside out ${m.levels.map((l) => l.insideOut).join(", ")}; error cm ${m.levels.map((l) => (l.error * 100).toFixed(1)).join(", ")}`, FAINT);
+    page.line(`holes ${m.levels.map((l) => l.holes).join(", ")}; edges between faces that look opposite ways ${m.levels.map((l) => l.flipped).join(", ")}; parts inside out ${m.levels.map((l) => l.insideOut).join(", ")}; error cm ${m.levels.map((l) => (l.error * 100).toFixed(1) + (l.measured === undefined ? "" : ` stated, ${(l.measured * 100).toFixed(1)} measured`)).join(", ")}`, FAINT);
   }
   if (report.rig) page.line(`rig: skeleton "${report.rig.skeleton}", ${report.rig.bones} bones, ${report.rig.capsules} hit capsules, sockets ${report.rig.sockets.join(", ") || "none"}; ${report.clips.length} clips`, FAINT);
   for (const n of report.notes) page.line(`note: ${n}`, FAINT);
@@ -880,7 +883,7 @@ export function drawSheet(asset: Asset, pack: Pack, report: Report, cache: strin
     first.line(`its materials are drawn flat here, as its pictures could not be made into textures: ${(e as Error).message}`, BAD);
   }
   ids.forEach((id, n) => {
-    const s = subjectOf(views, meshes, id, spec.kind === "creature" ? spec.regions.map((r) => r.sample) : [15], cells);
+    const s = subjectOf(views, meshes, id, spec.kind === "creature" ? spec.regions.map((r) => r.sample) : [15], cells, isNode(asset));
     if (!s) return;
     const tag = tagOf(id);
     const page = n === 0 ? first : new Page(`${tag}views`);
@@ -898,7 +901,10 @@ export function drawSheet(asset: Asset, pack: Pack, report: Report, cache: strin
       pages.push(levels);
       const facts = report.meshes.find((m) => m.id === id)!.levels;
       for (let l = 1; l < s.mesh.lods.length; l++) {
-        levels.line(`level ${l}: ${facts[l]!.triangles} triangles, ${(facts[l]!.error * 100).toFixed(1)} cm from the finest, drawn from ${facts[l]!.from.toFixed(0)} m off on medium${l < s.flat ? ", with its materials" : s.flat > 0 ? ", flat" : ""}`);
+        const f = facts[l]!;
+        const error = f.measured === undefined ? `${(f.error * 100).toFixed(1)} cm from the finest` : `${(f.error * 100).toFixed(1)} cm from the finest as its asset states (${(f.measured * 100).toFixed(1)} cm measured on its points)`;
+        const drawn = Number.isFinite(f.from) ? `drawn from ${f.from.toFixed(0)} m off on medium, ${f.tall.toFixed(0)} px tall` : "never drawn on medium";
+        levels.line(`level ${l}: ${f.triangles} triangles, ${error}, ${drawn}${l < s.flat ? ", with its materials" : s.flat > 0 ? ", flat" : ""}`);
         around(levels, s, l, 8, 140, false, l < s.flat);
       }
       asSeen(levels, s);

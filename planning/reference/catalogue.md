@@ -10,8 +10,8 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 39 classes: 24 built, 4 partly built, and 11 stubs that
-wait for a feature. The core pack holds 256 definitions, and 77 renames of ids
+There are 39 classes: 25 built, 4 partly built, and 10 stubs that
+wait for a feature. The core pack holds 259 definitions, and 77 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -273,13 +273,13 @@ Packs may add to: `from`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `spawns` | NPCSpawnEntriesContainer | stub: spawner | `entries` | `limits` | 0 |
+| `spawns` | NPCSpawnEntriesContainer | built | `entries` | `limits` | 3 |
 
-- **`spawns`** on shelf `spawns`. Which creatures live in a place, in what share and at what levels.
+- **`spawns`** on shelf `spawns`. Which creatures live in a place, in what share and in what groups. A map's spawn zones name these.
 
 ARK's names: `entries` is NPCSpawnEntries; `limits` is NPCSpawnLimits.
 
-What names what: `entries[].species` names a `species/creature`; `limits[].species` names a `species/creature`.
+What names what: `entries[].group[]` names a `species/creature`; `limits[].species` names a `species/creature`.
 
 Packs may add to: `entries`.
 
@@ -289,7 +289,7 @@ Packs may add to: `entries`.
 | --- | --- | --- | --- | --- | --- |
 | `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 0 |
 
-- **`map`** on shelf `maps`. A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. Today a spawn zone is where a new world's creatures start.
+- **`map`** on shelf `maps`. A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. A spawn zone with a spawns definition is kept stocked from it; one without is where a test's starting creatures are put.
 
 ARK's names: `game` is the game data a level names; `zones` is zone managers and crate volumes.
 
@@ -325,14 +325,13 @@ Each class below has a row and no content, and each field is declared and
 checked and read by nothing. They are filled in when the feature under them is
 built.
 
-- **Wild creatures that spawn and respawn by region.** `spawns`, `species.variant`.
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
 - **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot`, `item.blueprint`, `species.loot`.
 - **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `item.spoilsInto`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
 - **Maps as content: a map, its zones and what lives in them.** `map` (partly built), `engram.group`, `map.label`, `map.game`.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built).
 - **Skins, dyes, costumes and shields.** `item/shield`, `item/costume`, `item/skin`, `item/dye`.
-- **Bosses, artifacts and what a boss unlocks.** `item/artifact`, `species.boss`, `engram.from`.
+- **Bosses, artifacts and what a boss unlocks.** `item/artifact`, `species.variant`, `species.boss`, `engram.from`.
 - **Eggs as items that are carried, kept and eaten.** `item/egg`.
 
 ## The core pack by class
@@ -386,5 +385,7 @@ built.
 **`prop/egg`** (3): egg_dodo, egg_parasaur, egg_raptor.
 
 **`buff`** (7): burning, tranquilized, drugged, stunned, injured, fed, god.
+
+**`spawns`** (3): spawns_beach, spawns_proving_herd, spawns_proving_hunters.
 
 **`rename`** (77): 73 of `make-<item>`, the recipe id an item had before recipes were folded into items; and engram-cloth, engram-hide, engram-chitin, engram-flak.

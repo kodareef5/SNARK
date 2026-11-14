@@ -9,7 +9,7 @@ import { offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapFile, type MapStatic } from "../shared/world/mapfile.ts";
-import { PROVING_DIMS, PROVING_ID, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodeLayers } from "../shared/world/proving.ts";
+import { PROVING_DIMS, PROVING_ID, PROVING_POOL, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodeLayers } from "../shared/world/proving.ts";
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
 import { History } from "./history.ts";
@@ -28,7 +28,7 @@ export interface ServerWorld extends CollisionWorld {
   readonly spawn: { readonly x: number; readonly z: number; readonly yaw: number };
   /** Respawn choices for a dead survivor. The first is `spawn`. */
   readonly spawns: readonly { readonly name: string; readonly x: number; readonly z: number; readonly yaw: number }[];
-  /** The spawn zones of the map's definition, in its order. None for a map the content does not define. */
+  /** The spawn zones of the map's definition, in its order, then the spawn regions of its file. */
   readonly zones: readonly MapZone[];
   /** `nodes` (from CollisionWorld) is this field's store. */
   readonly nodeField: NodeField | null;
@@ -82,15 +82,20 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
   };
 }
 
-/** The herd starts north of the spawn point, and the hunters at the far edge of that ground, too far to see a new arrival. */
+/**
+ * The herd lives north of the spawn point, and the hunters at the far edge of that ground, too far to see a new arrival.
+ * Dodos and a few parasaurs live round the pool to the west, twelve of them as most of The Island's beach regions hold.
+ * A test's starting creatures are put in the first zone and its hunters in the last.
+ */
 const PROVING_DEF: MapDef = {
   type: "map",
   id: PROVING_ID,
   chunks: [PROVING_DIMS.chunksX, PROVING_DIMS.chunksZ],
   seaLevel: PROVING_SEA_LEVEL,
   zones: [
-    { kind: "spawn", at: [256, 272], half: [30, 28] },
-    { kind: "spawn", at: [256, 294], half: [30, 6] },
+    { kind: "spawn", at: [256, 272], half: [30, 28], spawns: "core:spawns_proving_herd", count: 24 },
+    { kind: "spawn", at: [PROVING_POOL.x, PROVING_POOL.z], radius: 50, spawns: "core:spawns_beach", count: 12 },
+    { kind: "spawn", at: [256, 294], half: [30, 6], spawns: "core:spawns_proving_hunters", count: 4 },
   ],
 };
 
@@ -107,7 +112,7 @@ function defOf(reg: Registry, map: MapFile): MapDef | null {
 /** A world on the ground a map file holds (shared/world/mapfile.ts), with what the map's definition says lives there. */
 export function createMapWorld(reg: Registry, map: MapFile, opts: WorldOptions = {}): ServerWorld {
   const hf = mapHeightfield(map);
-  const zones = (defOf(reg, map)?.zones ?? []).filter((z) => z.kind === "spawn");
+  const zones = [...(defOf(reg, map)?.zones ?? []).filter((z) => z.kind === "spawn"), ...(map.regions ?? [])];
   const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityMax ?? ENTITY_LIMIT, map.spawns, mapNodes(map, hf, reg) ?? undefined, zones, opts.entityStart);
   if (opts.populate !== false) placeStatics(map, world.structs, reg);
   return world;

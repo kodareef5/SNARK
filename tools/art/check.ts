@@ -2,7 +2,7 @@
 // as a fault only what would draw wrong: a hole, a face turned inward, a vertex on no bone, a loop that jumps as it
 // wraps, a planted foot that slides, a level over its budget. A wanted opening in a mesh is two faces back to back.
 
-import { tierOf } from "../../client/core/assets/tiers.ts";
+import { TIERS, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Pose, sampleClip, type Clip } from "../../shared/anim/clip.ts";
 import { buildRig, type Rig } from "../../shared/anim/rigs.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
@@ -11,6 +11,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
+import { surfaceError } from "../pack/error.ts";
 import { spanOf } from "../pack/surface.ts";
 import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import type { Asset } from "./assets.ts";
@@ -44,11 +45,15 @@ export interface LevelFacts {
   vertices: number;
   /** The most triangles the asset allows the level, or null where it gives none. */
   budget: number | null;
-  /** Metres its surface lies from the finest level's. */
+  /** Metres its surface lies from the finest level's, as the pack holds it: measured, or stated by the asset. */
   error: number;
-  /** Metres off at which the level is first drawn, and how many pixels tall the mesh then stands. Both 0 for the finest. */
+  /** Where the asset states the error: the error measured on its points, for the reader to set against it. */
+  measured?: number;
+  /** Metres off at which the level is first drawn on medium, and how many pixels tall the mesh then stands. Both 0 for the finest. */
   from: number;
   tall: number;
+  /** The same on each tier in TIERS' order, 0 for the finest the tier draws, null where the tier never draws it. */
+  starts: ({ from: number; tall: number } | null)[];
   /** Pieces that share no point. */
   parts: number;
   /** Edges with a triangle on one side only, and the openings they ring. */
@@ -190,24 +195,20 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
     return i;
   };
   const onRim = new Set<number>();
-  const broken = new Set<number>();
   for (const [key, [fore, back]] of edges) {
     const [u, v] = [Math.floor(key / n), key % n];
     if (fore + back === 1) {
       openEdges++;
       rim[rimOf(u)] = rimOf(v);
       onRim.add(u).add(v);
-      broken.add(find(u));
     } else if (fore + back > 2) crowded++;
-    else if (fore !== back) {
-      flipped++;
-      broken.add(find(u));
-    }
+    else if (fore !== back) flipped++;
   }
   const holes = new Set([...onRim].map(rimOf)).size;
 
-  // A part's volume, measured about its own middle, is below zero when its faces look inward. An open part is
-  // judged only if it holds enough volume for its area to be a body and not a sheet.
+  // A part's volume, measured about its own middle, is below zero when its faces look inward. A part is judged only if
+  // it holds enough volume for its area to be a body and not a sheet: what a simplified level leaves of a small part
+  // (two triangles back to back) and a thin card hold none to speak of, and either sign.
   const parts = new Map<number, { faces: number[]; sum: [number, number, number]; count: number }>();
   for (let f = 0; f < faces.length; f += 3) {
     const g = find(faces[f]!);
@@ -220,7 +221,7 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
     }
   }
   let insideOut = 0;
-  for (const [g, part] of parts) {
+  for (const part of parts.values()) {
     const mid = part.sum.map((s) => s / part.count);
     let volume = 0;
     let area = 0;
@@ -232,28 +233,49 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
       const vx = c[0]! - a[0]!, vy = c[1]! - a[1]!, vz = c[2]! - a[2]!;
       area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
     }
-    if (volume < 0 && (!broken.has(g) || -volume > 0.002 * area ** 1.5)) insideOut++;
+    if (-volume > 0.002 * area ** 1.5) insideOut++;
   }
   return { parts: parts.size, openEdges, holes, flipped, insideOut, crowded, collapsed };
 }
 
-function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], faults: string[], bones?: number): MeshFacts {
+/**
+ * Where each level of a mesh `height` metres tall with these errors is first drawn on `tier`, on a SCREEN-row screen,
+ * and how many pixels tall it then stands: the tier draws the coarsest level whose error it lets pass. The finest
+ * the tier draws is drawn from 0 m. Null for a level the tier never draws: one finer than its finest, or one no
+ * coarser level is worse than.
+ */
+export function levelStarts(errors: readonly number[], height: number, tier: Tier): ({ from: number; tall: number } | null)[] {
+  const scale = SCREEN / (2 * Math.tan(FOV_Y / 2));
+  const finest = Math.min(tier.finest, errors.length - 1);
+  return errors.map((error, level) => {
+    if (level === finest) return { from: 0, tall: 0 };
+    if (level < finest || error <= 0 || errors.slice(level + 1).some((e) => e <= error)) return null;
+    const from = (error * scale) / tier.threshold;
+    return { from, tall: (height * scale) / from };
+  });
+}
+
+function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], faults: string[], bones?: number, stated?: readonly number[]): MeshFacts {
   const header = pack.header.meshes[pack.meshIndex.get(mesh.id)!]!;
   const tall = header.half[1] * 2;
-  const threshold = tierOf(TIER).threshold;
-  const scale = SCREEN / (2 * Math.tan(FOV_Y / 2));
+  const errors = header.lods.map((l, level) => (level === 0 ? 0 : l.error));
+  const starts = TIERS.map((tier) => levelStarts(errors, tall, tier));
+  const medium = TIERS.indexOf(tierOf(TIER));
   let strays = 0;
   const levels = mesh.lods.map((lod, l): LevelFacts => {
-    const error = l === 0 ? 0 : header.lods[l]!.error;
+    const error = errors[l]!;
+    const at = starts.map((s) => s[l] ?? null);
     const facts: LevelFacts = {
       triangles: lod.indices.length / 3,
       vertices: lod.positions.length / 3,
       budget: budgets[l] ?? null,
       error,
-      from: error > 0 ? (error * scale) / threshold : 0,
-      tall: error > 0 ? (tall * threshold) / error : 0,
+      from: l === 0 ? 0 : (at[medium]?.from ?? Infinity),
+      tall: l === 0 ? 0 : (at[medium]?.tall ?? 0),
+      starts: at,
       ...measureSurface(lod),
     };
+    if (l > 0 && stated?.[l - 1] !== undefined) facts.measured = surfaceError(mesh.lods[0]!, lod);
     const where = `${mesh.id} level ${l}`;
     if (facts.budget !== null && facts.triangles > facts.budget) faults.push(`${where}: ${facts.triangles} triangles, and its budget is ${facts.budget}`);
     if (facts.budget === null && budgets.length > 0) faults.push(`${where}: the asset gives this level no triangle budget`);
@@ -528,7 +550,7 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
   else if (spec.kind === "pieces") {
     for (const piece of spec.pieces) {
       const mesh = meshes.find((m) => m.id === piece.id);
-      if (mesh) report.meshes.push(measureMesh(mesh, pack, spec.budgets.triangles, report.faults));
+      if (mesh) report.meshes.push(measureMesh(mesh, pack, spec.budgets.triangles, report.faults, undefined, piece.errors));
       else report.faults.push(`${piece.id}: not in the pack`);
     }
   } else {
@@ -568,11 +590,16 @@ export function reportLines(r: Report): string[] {
       continue;
     }
     out.push(`  mesh ${m.id}: ${m.size.map((v) => v.toFixed(2)).join(" x ")} m${m.strays === undefined ? "" : `, ${m.strays} vertices on a bone the rig lacks`}`);
-    const heads = ["level", "triangles", "budget", "vertices", "error cm", "from m", "px tall", "parts", "holes", "open edges", "flipped", "inside out", "materials"];
-    out.push(...table(heads, m.levels.map((l, i) => [i, l.triangles, l.budget ?? "-", l.vertices, cm(l.error), i === 0 ? "-" : l.from.toFixed(0), i === 0 ? "-" : l.tall.toFixed(0), l.parts, l.holes, l.openEdges, l.flipped, l.insideOut, l.materials ?? "flat"]), "    "));
+    const stated = m.levels.some((l) => l.measured !== undefined);
+    const heads = ["level", "triangles", "budget", "vertices", "error cm", ...(stated ? ["measured cm"] : []), ...TIERS.map((t) => `${t.name} m, px`), "parts", "holes", "open edges", "flipped", "inside out", "materials"];
+    const start = (s: { from: number; tall: number } | null): string => (s === null ? "-" : s.from === 0 ? "0" : `${s.from.toFixed(0)}, ${s.tall.toFixed(0)}`);
+    out.push(...table(heads, m.levels.map((l, i) => [i, l.triangles, l.budget ?? "-", l.vertices, cm(l.error), ...(stated ? [l.measured === undefined ? "-" : cm(l.measured)] : []), ...l.starts.map(start), l.parts, l.holes, l.openEdges, l.flipped, l.insideOut, l.materials ?? "flat"]), "    "));
     for (const d of m.materials ?? []) out.push(`    ${d.id}: a picture spans ${d.span.toFixed(2)} m here${d.texels > 0 ? `, ${d.texels.toFixed(0)} pixels a metre` : ""}`);
   }
-  if (r.meshes.length > 0 && judged) out.push(`    from m and px tall: where the level is first drawn on ${TIER}, and how tall the mesh then stands on a ${SCREEN} pixel screen`);
+  if (r.meshes.length > 0 && judged) {
+    out.push(`    m, px: where each tier first draws the level and how many pixels tall the mesh then stands on a ${SCREEN} pixel screen; 0 the finest it draws, - never`);
+    if (r.meshes.some((m) => m.levels.some((l) => l.measured !== undefined))) out.push("    measured cm: where the asset states a level's error, what is measured on its points, set against it");
+  }
   if (r.rig) out.push(`  rig: skeleton "${r.rig.skeleton}", ${r.rig.bones} bones, ${r.rig.capsules} hit capsules of which ${r.rig.buried.length} buried, sockets ${r.rig.sockets.join(", ") || "none"}`);
   if (r.clips.length > 0 && judged) {
     out.push(...table(["clip", "frames", "seconds", "loop", "largest step cm", "wrap cm", "still frames"], r.clips.map((c) => [c.name, c.frames, c.seconds.toFixed(2), c.loop ? "yes" : "no", cm(c.step), c.wrap === undefined ? "-" : cm(c.wrap), c.still]), "  "));

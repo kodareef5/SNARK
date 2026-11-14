@@ -294,6 +294,19 @@ export function compileContent(all: readonly Def[]): CompileResult {
       }
       if (d.engramPoints.length !== d.xp.length) errors.push(`${d.id}: engramPoints must have one entry per level`);
       if ((d.most !== undefined && !(d.most > 0)) || (d.tame?.most !== undefined && !(d.tame.most > 0))) errors.push(`${d.id}: the most experience must be above 0`);
+    } else if (d.type === "spawns") {
+      for (const e of d.entries) {
+        const n = Array.isArray(e.group) ? e.group.length : 0;
+        if (!(e.weight >= 0) || n === 0) errors.push(`${d.id}: an entry needs a weight of at least 0 and a group of at least one`);
+        if (e.chances !== undefined && (!Array.isArray(e.chances) || e.chances.length !== n || e.chances.some((c) => !(c >= 0 && c <= 1)))) errors.push(`${d.id}: an entry's chances are one for each of its group, each from 0 to 1`);
+        if (e.offsets !== undefined && (!Array.isArray(e.offsets) || e.offsets.length !== n || e.offsets.some((o) => !(Math.abs(o[0]) <= 64 && Math.abs(o[1]) <= 64)))) errors.push(`${d.id}: an entry's offsets are one for each of its group, each within 64 m`);
+      }
+      for (const l of d.limits ?? []) if (!(l.share >= 0 && l.share <= 1)) errors.push(`${d.id}: the limit of ${l.species} must be a share from 0 to 1`);
+    } else if (d.type === "map") {
+      for (const z of d.zones ?? []) {
+        if (z.count !== undefined && !(Number.isInteger(z.count) && z.count >= 0 && z.count <= 65535)) errors.push(`${d.id}: a zone holds a whole number of creatures from 0 to 65,535`);
+        if ((z.spawns === undefined) !== (z.count === undefined)) errors.push(`${d.id}: a zone that names spawns says how many it holds, and only such a zone does`);
+      }
     } else if (d.type === "material") {
       for (const [type, v] of Object.entries(d.takes)) {
         if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);

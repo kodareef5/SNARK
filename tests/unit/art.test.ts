@@ -51,6 +51,15 @@ test("a surface is counted: its holes, faces turned against their neighbours, an
   expect(measureSurface(both)).toMatchObject({ parts: 2, holes: 0, insideOut: 1 });
   // A sheet with an edge to it is open, and is not called inside out whichever way it faces.
   expect(measureSurface({ ...box, indices: box.indices.slice(0, 6) })).toMatchObject({ parts: 1, openEdges: 4, holes: 1, insideOut: 0 });
+  // A thin plate turned inward still holds a body's volume for its area, and is inside out.
+  const plate = boxMesh([1, 0.05, 1], REGION_BASE);
+  expect(measureSurface({ ...plate, indices: Uint32Array.from(plate.indices, (_, i) => plate.indices[i - (i % 3) + [0, 2, 1][i % 3]!]!) })).toMatchObject({ holes: 0, insideOut: 1 });
+  // What a simplified level leaves of a small part: two triangles back to back, closed, and no volume but rounding's.
+  const sliver: SourceLod = { positions: Float32Array.from([0.1, 0.2, 0.3, 0.4, 0.2, 0.31, 0.12, 0.45, 0.29]), colors: new Uint8Array(3).fill(REGION_BASE), indices: Uint32Array.from([0, 1, 2, 0, 2, 1]) };
+  expect(measureSurface(sliver)).toMatchObject({ parts: 1, openEdges: 0, holes: 0, flipped: 0, insideOut: 0 });
+  // Nor is a thin closed card a body: one whose two sides have crossed is not called inside out.
+  const card = boxMesh([0.2, 0.0002, 0.1], REGION_BASE);
+  expect(measureSurface({ ...card, indices: Uint32Array.from(card.indices, (_, i) => card.indices[i - (i % 3) + [0, 2, 1][i % 3]!]!) })).toMatchObject({ holes: 0, insideOut: 0 });
 });
 
 const FRAMES = 20;

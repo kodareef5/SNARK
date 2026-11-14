@@ -51,9 +51,10 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "prop/container": 2,
     "prop/projectile": 2,
     buff: 7,
+    spawns: 3,
     rename: 75,
   });
-  expect(rest.length).toBe(320);
+  expect(rest.length).toBe(323);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length);
   const brought: Record<string, number> = {};
@@ -116,10 +117,10 @@ const STUBS: ContentPack = {
     { id: "stub:crate", type: "prop", class: "crate", mesh: "box", color: 6, radius: 0.5, height: 1, slots: 20 },
     { id: "stub:poison", type: "damage", label: "poison", torpor: 2, trueShare: 1 },
     { id: "stub:drop", type: "loot", sets: { min: 1, max: 2 }, from: [{ min: 1, max: 3, entries: [{ items: ["core:stone", "stub:relic"], min: 1, max: 20, quality: [1, 3], blueprint: 0.25 }] }] },
-    { id: "stub:beach", type: "spawns", entries: [{ species: "core:parasaur", weight: 3, levels: [1, 30] }, { species: "stub:alpha", weight: 0.1 }], limits: [{ species: "stub:alpha", share: 0.05 }] },
+    { id: "stub:beach", type: "spawns", entries: [{ group: ["core:parasaur"], weight: 3 }, { name: "Alphas", group: ["stub:alpha", "core:raptor"], chances: [1, 0.5], offsets: [[0, 2], [0, -2]], weight: 0.1 }], limits: [{ species: "stub:alpha", share: 0.05 }] },
     { id: "stub:alpha", extends: "core:raptor", tag: "raptor", variant: "alpha", boss: true, loot: "stub:drop", buffs: ["core:fed"], saddle: "core:saddle_raptor", attacks: [{ name: "bite", damage: 60, type: "melee", reach: 2, ticks: 27, lands: 11 }] },
     { id: "stub:rules", type: "game", survivor: "core:survivor", cache: "core:cache", bag: "core:bag", levels: "core:levels", buffs: ["core:fed"] },
-    { id: "stub:island", type: "map", label: "The island", chunks: [16, 16], seaLevel: 0, game: "stub:rules", zones: [{ kind: "spawn", at: [100, 100], radius: 80, spawns: "stub:beach" }, { kind: "crate", at: [300, 200], radius: 40, crate: "stub:crate" }] },
+    { id: "stub:island", type: "map", label: "The island", chunks: [16, 16], seaLevel: 0, game: "stub:rules", zones: [{ kind: "spawn", at: [100, 100], radius: 80, spawns: "stub:beach", count: 12 }, { kind: "crate", at: [300, 200], radius: 40, crate: "stub:crate" }] },
     { id: "stub:engram-shield", type: "engram", label: "Shield", level: 80, cost: 0, item: "stub:shield", requires: ["core:engram-spear"], group: "island", from: "stub:alpha" },
   ],
 };
@@ -134,7 +135,9 @@ test("one of every stub class and stub field compiles beside the core pack, and 
   expect(CLASSES.filter((r) => !r.abstract && r.status !== "built" && !used.has(r.id)).map((r) => r.id)).toEqual([]);
 
   const bad = (id: string, more: Record<string, unknown>): string[] => compilePacks([CORE_PACK, { ...STUBS, defs: STUBS.defs.map((d) => (d.id === id ? { ...d, ...more } : d)) }]).errors;
-  expect(bad("stub:beach", { entries: [{ species: "core:stone", weight: 1 }] })).toEqual(['stub:beach: "core:stone" is not a species/creature']);
+  expect(bad("stub:beach", { entries: [{ group: ["core:stone"], weight: 1 }] })).toEqual(['stub:beach: "core:stone" is not a species/creature']);
+  expect(bad("stub:beach", { entries: [{ group: ["core:raptor"], chances: [2], weight: 1 }, { group: [], weight: 1 }] })).toEqual(["stub:beach: an entry's chances are one for each of its group, each from 0 to 1", "stub:beach: an entry needs a weight of at least 0 and a group of at least one"]);
+  expect(bad("stub:island", { zones: [{ kind: "spawn", at: [0, 0], radius: 1, spawns: "stub:beach" }] })).toEqual(["stub:island: a zone that names spawns says how many it holds, and only such a zone does"]);
   expect(bad("stub:beach", { limits: [{ species: "core:survivor", share: 1 }] })).toEqual(['stub:beach: "core:survivor" is not a species/creature']);
   expect(bad("stub:island", { zones: [{ kind: "crate", at: [0, 0], radius: 1, crate: "core:cache" }] })).toEqual(['stub:island: "core:cache" is not a prop/crate']);
   expect(bad("stub:rules", { survivor: "core:raptor" })).toEqual(['stub:rules: "core:raptor" is not a species/survivor']);

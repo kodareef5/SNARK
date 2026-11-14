@@ -26,6 +26,8 @@ test("a map unpacked into a folder of layers and built from it again is the same
     "3 listed nodes",
     "30 node slots a chunk, by zones of 16 m: 1 core:palm x1, bare x2; 2 core:fig x1, core:fern x2",
     "spawn points: Shore (20, 30.5), Çà et là (100, 150)",
+    "spawn regions: 12 of core:spawns_beach at (30, 60.5), 0 of test:elsewhere at (100, 150)",
+    "not in the core content: test:elsewhere",
   ]);
 });
 

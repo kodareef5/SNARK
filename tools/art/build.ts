@@ -113,6 +113,14 @@ export function convertModel(asset: Asset & { spec: CreatureAsset }, glb: string
   out.lines.push(`clips ${made.clips.map((c) => `${c.id.split("/")[1]} ${c.frames}`).join(", ")}`);
 }
 
+/** `mesh` with the errors its piece states for its levels after the finest. The rest are measured when it is written. */
+function withStated(mesh: SourceMesh, errors: readonly number[] | undefined, faults: string[]): SourceMesh {
+  if (!errors) return mesh;
+  if (errors.length > mesh.lods.length - 1) faults.push(`${mesh.id}: it states errors for ${errors.length} levels after the finest, and has ${mesh.lods.length - 1}`);
+  if (errors.some((e) => !(e > 0))) faults.push(`${mesh.id}: a stated error is not above 0`);
+  return { ...mesh, lods: mesh.lods.map((lod, level) => (level > 0 && errors[level - 1] !== undefined ? { ...lod, error: errors[level - 1] } : lod)) };
+}
+
 /** Rigid pieces from the file Blender wrote of each, by the name of its object. */
 export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Readonly<Record<string, string>>, out: Built): void {
   const spec = asset.spec;
@@ -134,8 +142,9 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
   out.meshes = out.meshes.map((mesh) => {
     out.faults.push(...surfaceFaults(mesh));
     // Asked for, a piece's levels are made from its finest as a creature's are. Otherwise it keeps its own.
-    if (spec.flat === undefined || !maps.has(mesh.id)) return mesh;
-    return withSurfaceLevels({ ...mesh, lods: [mesh.lods[0]!] }, { budgets: spec.budgets.triangles.slice(1), flat: spec.flat, maps: maps.get(mesh.id)!, palette });
+    const errors = spec.pieces.find((p) => p.id === mesh.id)?.errors;
+    if (spec.flat === undefined || !maps.has(mesh.id)) return withStated(mesh, errors, out.faults);
+    return withStated(withSurfaceLevels({ ...mesh, lods: [mesh.lods[0]!] }, { budgets: spec.budgets.triangles.slice(1), flat: spec.flat, maps: maps.get(mesh.id)!, palette }), errors, out.faults);
   });
   for (const mesh of out.meshes) out.lines.push(`${mesh.id.padEnd(28)} triangles ${triangles(mesh)}`);
 }
@@ -216,7 +225,7 @@ function recolour(was: Uint8Array, now: Uint8Array, asset?: Asset): (mesh: Sourc
 
 /**
  * A pack again in today's format and palette, made from itself: no Blender. How far each level lies from the finest
- * is measured afresh. With `levels`, every mesh that follows a rig of its own gets its coarser levels made afresh from
+ * is measured afresh, or stated again where a piece's asset states it. With `levels`, every mesh that follows a rig of its own gets its coarser levels made afresh from
  * its finest, which undoes any the model brought. One drawn with materials has them made as its asset says, which
  * reads the asset's pictures. A creature's rig takes its feet, strides and ragdoll from its asset as it is now.
  */
@@ -225,8 +234,11 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
   const palette = defaultPalette();
   const colour = recolour(pack.palette, palette, asset);
   const own = new Set(pack.header.rigs.filter((r) => r.names).map((r) => r.id));
+  const stating = asset?.spec.kind === "pieces" ? asset.spec.pieces : [];
+  const faults: string[] = [];
   const meshes = unpackMeshes(pack).map((m) => {
-    const measured = { ...m, lods: m.lods.map(({ error: _, ...lod }) => colour(m, lod)) };
+    // What a piece's asset states of its levels' errors now, it states again.
+    const measured = withStated({ ...m, lods: m.lods.map(({ error: _, ...lod }) => colour(m, lod)) }, stating.find((p) => p.id === m.id)?.errors, faults);
     if (!levels || m.rig === undefined || !own.has(m.rig)) return measured;
     if (!m.flat) return withLevels({ ...measured, lods: [measured.lods[0]!] });
     const spec = asset?.spec;
@@ -236,7 +248,6 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
     return withSurfaceLevels({ ...measured, lods: [measured.lods[0]!] }, { budgets, flat: spec.flat ?? Math.max(1, budgets.length), maps: measured.materials!.map((d) => pictures.get(d.id) ?? {}), palette });
   });
   // A creature's rig takes what its asset now says of how it moves and dies.
-  const faults: string[] = [];
   const spec = asset?.spec;
   const rigs = pack.header.rigs.map((r) => (spec?.kind === "creature" && r.id === asset!.id ? withMotion(r, spec, pack.clips.clips, faults) : r));
   if (faults.length > 0) throw new Error(`${asset!.id}: ${faults.join("; ")}`);

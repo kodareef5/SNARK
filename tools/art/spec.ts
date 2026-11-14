@@ -231,8 +231,13 @@ export interface PiecesAsset {
    * `object` is the Blender mesh object the scripts leave for the piece, modelled about the origin as the structure
    * stands: +Y up, metres. "<object>_LOD<n>" is its level n. A material named region0 to region5 is a colour region,
    * and any other takes the nearest palette colour (tools/pack/glb.ts).
+   *
+   * `errors` states, for each level after the finest in turn, how far in metres at the size it is modelled its picture
+   * lies from the finest's, in place of measuring how far its points moved. It is for levels a measure of points
+   * cannot judge, such as a crown that is other leaves in the same outline. A level it leaves out is measured.
+   * `--check` and the sheet print both, and where each level is then first drawn on each tier.
    */
-  readonly pieces: readonly { readonly id: string; readonly object: string }[];
+  readonly pieces: readonly { readonly id: string; readonly object: string; readonly errors?: readonly number[] }[];
   /**
    * The pictures of each Blender material, by its name. A piece is drawn with them on its levels that have texture
    * coordinates, and flat in the palette colour nearest each material's mean colour.

@@ -71,6 +71,24 @@ def run_scripts(names):
         print(f"preview: ran {name}")
 
 
+def asset_regions():
+    """Each region's material and dye as asset.ts gives them, read by Bun: the dyes come from the content's colour set,
+    worked out when it loads. None without Bun."""
+    import json
+    import shutil
+    import subprocess
+
+    bun = shutil.which("bun")
+    if bun is None:
+        return None
+    path = os.path.join(FOLDER, "asset.ts")
+    code = f'const a = (await import({json.dumps(path)})).default; console.log(JSON.stringify(a.regions.map((r) => [r.material, r.sample])));'
+    said = subprocess.run([bun, "-e", code], capture_output=True, text=True, cwd=FOLDER)
+    if said.returncode != 0:
+        raise RuntimeError(f"preview: Bun could not read asset.ts:\n{said.stderr[-800:]}")
+    return [tuple(x) for x in json.loads(said.stdout.strip().splitlines()[-1])]
+
+
 def agree(rig):
     """Says where asset.ts and rig.py disagree on the numbers both hold."""
     text = open(os.path.join(FOLDER, "asset.ts")).read()
@@ -106,9 +124,16 @@ def agree(rig):
             out.append(f"clip {name}: missing from asset.ts")
         elif name in clips and clips[name] != spec["loop"]:
             out.append(f"clip {name}: loop differs")
-    regions = [(m, int(s)) for m, s in re.findall(r'\{ name: "[^"]+", material: "(\w+)", sample: (\d+) \}', text)]
-    if regions != list(zip(rig.REGION_MATERIALS, rig.REGION_DEFAULT)):
-        out.append(f"regions: asset.ts {regions}, rig.py {list(zip(rig.REGION_MATERIALS, rig.REGION_DEFAULT))}")
+    want = list(zip(rig.REGION_MATERIALS, rig.REGION_DEFAULT))
+    regions = asset_regions()
+    if regions is None:
+        # Without Bun the dyes cannot be read (the content works them out), so only the materials are compared.
+        names = re.findall(r'\{ name: "[^"]+", material: "(\w+)", sample: [^}]+\}', text)
+        if names != rig.REGION_MATERIALS:
+            out.append(f"region materials: asset.ts {names}, rig.py {rig.REGION_MATERIALS}")
+        print("preview: Bun was not found, so the regions' dyes were not compared")
+    elif regions != want:
+        out.append(f"regions: asset.ts {regions}, rig.py {want}")
     print("preview: asset.ts agrees with rig.py" if not out else "preview: asset.ts DISAGREES with rig.py:\n  " + "\n  ".join(out))
     return out
 

@@ -51,6 +51,10 @@ regions, materials, clips, the feet and the stride of each gait, its ragdoll,
 the triangle and texture budgets, and the first level drawn flat. Every field
 is described in `tools/art/spec.ts`.
 
+### Rest a chain with slack
+
+A chain a solver places by its end (a neck to a head, a leg to a foot) must not rest straight at full length. Straight, the end cannot move away at all, and moving it 2 mm closer bends the joints 8 to 9 degrees in a direction nothing decides. The dodo's neck rests that way (0.1817 m of reach on 0.1818 m of bone), and its animators each worked round it in their own file. Changing the rest pose afterwards was measured and refused: it moved the neck's surface about a centimetre in clips already approved and the head up to 6 cm in others. So give a new rig's chains a bent rest with about 5% of slack before anyone animates on it.
+
 ### How it walks and how it dies
 
 The game reads these from the pack, so build the asset again (or
@@ -128,6 +132,20 @@ finest instead, as a creature's are, to `budgets.triangles`, and the flat ones
 take their colours triangle by triangle from its pictures: a thatch wall's
 first flat level then has two tones of straw where it had one. The script's own
 coarse levels are not used then.
+
+A level is drawn once the tier lets its error pass: how far its surface lies
+from the finest's, against a fraction of a pixel. That is measured on its
+points, which judges a wall well and a tree badly: a coarser crown is other
+leaves in the same outline, and its points lie far from the finest's however
+alike the two look. A piece whose levels a measure of points cannot judge may
+state their errors in metres, for its levels after the finest in turn:
+`pieces: [{ id, object, errors: [0.012, 0.04] }]`. A level it leaves out is
+measured. State an error as the size of the difference a player would see, at
+the size the piece is modelled: a node drawn larger has its errors scaled with
+it. `--check` and the sheet print each stated error beside the one measured on
+its points, and where each level is first drawn on each tier and how tall the
+piece then stands on a 1,080-row screen, so a reader can judge the claim by
+looking.
 
 ## Trees, rocks and bushes
 
@@ -329,6 +347,11 @@ lies. Nothing in `artifacts/` is committed. A mesh with materials is drawn:
   colour replaced by a checker lettered A to H across and 1 to 8 down, whose
   letters read upright and unmirrored where a picture is laid the right way;
   and its colour regions dyed in the asset's colours and in loud ones.
+
+A piece stands on its underside there, and a creature on its origin. So does
+a node, an asset whose group folder is `nodes` (`<pack>/nodes/<name>/`): the
+ground is drawn at its origin, and what it carries below hides under it as
+the ground hides it in the game.
 
 `bun run snap -- --house <tier> --graphics medium` draws the proving ground's
 house of a building tier as a client on that graphics tier draws it, once its
