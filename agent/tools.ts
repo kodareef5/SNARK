@@ -11,9 +11,9 @@ import type { Inventory } from "../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../shared/sim/vitals.ts";
 import { NO_PIN } from "../shared/world/upkeep.ts";
 import { Commands, resultWords } from "./commands.ts";
-import { Controller, VIEW_PROP, type Target } from "./controller.ts";
+import { Controller, type Target } from "./controller.ts";
 import type { Answer, ToolDef, ToolHost } from "./mcp.ts";
-import { compass, observe, shortName, type FarLayer } from "./observe.ts";
+import { VIEW_PROP, compass, observe, shortName, type FarLayer } from "./observe.ts";
 
 export const INSTRUCTIONS =
   "You play one survivor in SNARK, a survival game, through these tools. You can do what a player can and no more. " +
@@ -33,14 +33,14 @@ const CHANNEL_WORDS: Record<number, string> = { [TEXT_GLOBAL]: "global", [TEXT_L
 const wait = { type: "number", description: "Seconds to wait for it to finish before answering running, 0 to 50." };
 const thing = { type: "string", description: "An id from observe." };
 const DEFS: ToolDef[] = [
-  { name: "observe", description: "Look around: a map of the ground about you in letters, north up, and the nearest trees, rocks, bushes, boxes, doors, creatures and players with their ids. Use it before walking anywhere.", inputSchema: { type: "object", properties: { radius: { type: "number", description: "Metres each way, 8 to 96. Default 32." }, cell: { enum: [1, 2, 4], description: "Metres a letter covers. Default 2. A letter shows the most solid thing in its square, so a doorway may only show at 1. A letter of 1 m shows at most 32 m each way, and one of 2 m at most 64." } } } },
+  { name: "observe", description: "Look around: a map of the ground about you in letters, north up, and the nearest trees, rocks, bushes, boxes, doors, creatures and players with their ids. Use it before walking anywhere.", inputSchema: { type: "object", properties: { radius: { type: "number", description: "Metres each way, 8 to 96. Default 32." }, cell: { type: "integer", enum: [1, 2, 4], description: "Metres a letter covers. Default 2. A letter shows the most solid thing in its square, so a doorway may only show at 1. A letter of 1 m shows at most 32 m each way, and one of 2 m at most 64." } } } },
   { name: "walk_to", description: "Walk to a place, or up to a thing, round whatever is in between. Give x and z, or an id. Ground floor only: it climbs no stairs, and it swims only to get out of water.", inputSchema: { type: "object", properties: { x: { type: "number" }, z: { type: "number" }, id: thing, within: { type: "number", description: "How near to come, in metres: to the place, or to the thing's side. Default 0.6." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } } } },
   { name: "harvest", description: "Gather from a tree, a rock or a bush: walk to it, then strike it, or pick it, until it is used up or you have enough. It stops after a minute.", inputSchema: { type: "object", properties: { id: thing, until: { type: "object", description: "Stop once this many more of an item are carried. Left out: when the node is used up.", properties: { item: { type: "string" }, count: { type: "integer" } }, required: ["item", "count"] }, tool: { type: "string", description: "An item you carry to take in hand first, such as hatchet for wood or pick for stone." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["id"] } },
   { name: "open", description: "Open a box or a bag, or swing a door: walk to it and use it. What a box holds is in the answer and in status, and move_item moves things in and out of it. It shuts when you walk away.", inputSchema: { type: "object", properties: { id: thing, pin: { type: "integer", description: "The PIN of a locked thing that is not your tribe's, 0 to 9999." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["id"] } },
-  { name: "move_item", description: "Move a stack between slots of your inventory (self) and the box you have open (box). Slots are numbered as status lists them.", inputSchema: { type: "object", properties: { from: { enum: ["self", "box"] }, slot: { type: "integer" }, to: { enum: ["self", "box"] }, to_slot: { type: "integer", description: "Left out: onto a stack of the same item, else the first empty slot." }, count: { type: "integer", description: "Left out: the whole stack." } }, required: ["from", "slot", "to"] } },
-  { name: "craft", description: "Make an item you know the engram for, from what you carry.", inputSchema: { type: "object", properties: { recipe: { type: "string", description: "The item, such as hatchet." }, count: { type: "integer", description: "1 to 100. Default 1." }, learn: { type: "boolean", description: "Spend engram points to learn it first if you do not know it." }, wait_s: wait }, required: ["recipe"] } },
+  { name: "move_item", description: "Move a stack between slots of your inventory (self) and the box you have open (box). Slots are numbered as status lists them.", inputSchema: { type: "object", properties: { from: { type: "string", enum: ["self", "box"] }, slot: { type: "integer" }, to: { type: "string", enum: ["self", "box"] }, to_slot: { type: "integer", description: "Left out: onto a stack of the same item, else the first empty slot." }, count: { type: "integer", description: "Left out: the whole stack." } }, required: ["from", "slot", "to"] } },
+  { name: "craft", description: "Make an item you know the engram for, from what you carry.", inputSchema: { type: "object", properties: { recipe: { type: "string", description: "The item, such as hatchet." }, count: { type: "integer", description: "1 to 100. Default 1." }, learn: { type: "boolean", description: "Spend engram points to learn it first if you do not know it." }, wait_s: { ...wait, description: `${wait.description} Default 20.` } }, required: ["recipe"] } },
   { name: "eat", description: "Eat or drink something you carry.", inputSchema: { type: "object", properties: { item: { type: "string", description: "Left out: the first thing you carry that can be eaten." } } } },
-  { name: "say", description: "Say a line of chat. Five at once, then one every two seconds.", inputSchema: { type: "object", properties: { channel: { enum: ["global", "local", "tribe"], description: "Everyone, those within 60 m, or your tribe." }, text: { type: "string", description: `At most ${MAX_CHAT_CHARS} characters.` } }, required: ["channel", "text"] } },
+  { name: "say", description: "Say a line of chat. Five at once, then one every two seconds.", inputSchema: { type: "object", properties: { channel: { type: "string", enum: ["global", "local", "tribe"], description: "Everyone, those within 60 m, or your tribe." }, text: { type: "string", description: `At most ${MAX_CHAT_CHARS} characters.` } }, required: ["channel", "text"] } },
   { name: "status", description: "How you are and how the running task is doing: place, vitals, what you carry, the box you have open, what you are making, and chat heard since you last asked.", inputSchema: { type: "object", properties: { wait_s: { ...wait, description: "Seconds to wait for the running task to end before answering, 0 to 50. Default 0." } } } },
   { name: "cancel", description: "Stop the running task where it is.", inputSchema: { type: "object", properties: {} } },
   { name: "console", description: "Type a line at the server's console, as a player does with the backquote key. Most commands need admin rights.", inputSchema: { type: "object", properties: { line: { type: "string" } }, required: ["line"] } },
@@ -99,9 +99,8 @@ export class Agent implements ToolHost {
   private consoleAt = -CONSOLE_GAP_MS;
   /** `session.logVersion` when status last told what was heard. */
   private heardTo = 0;
-  /** Resolves when the session closes, so no call is left waiting on a server that has gone. */
-  private readonly gone: Promise<Answer>;
-  private lost: (a: Answer) => void = () => {};
+  /** The calls not yet answered. They are answered when the session closes, so none is left waiting on a server that has gone. */
+  private readonly pending = new Set<(a: Answer) => void>();
 
   constructor(session: ClientSession, opts: AgentOptions = {}) {
     this.session = session;
@@ -109,7 +108,6 @@ export class Agent implements ToolHost {
     this.controller = new Controller(session, this.remote, this.commands);
     this.withConsole = opts.console ?? false;
     this.far = opts.far;
-    this.gone = new Promise((resolve) => (this.lost = resolve));
     this.run = {
       observe: (a) => {
         const cell = a.cell ?? 2;
@@ -134,7 +132,10 @@ export class Agent implements ToolHost {
     this.now = now;
     this.commands.step(now);
     const s = this.session;
-    if (s.state === "closed") return this.lost(this.down());
+    if (s.state === "closed") {
+      for (const answer of this.pending) answer(this.down());
+      return this.pending.clear();
+    }
     if (s.state === "active") s.sampleRemote(this.remote);
     const c = this.controller;
     c.step(now);
@@ -162,11 +163,20 @@ export class Agent implements ToolHost {
       const dangers = this.controller.dangers();
       return dangers.length > 0 && answer.state !== "refused" ? { ...answer, dangers } : answer;
     };
+    // The tool starts now, in this turn, so whoever ticks next finds it under way.
+    let running: Answer | Promise<Answer>;
     try {
-      return Promise.race([Promise.resolve(run(args)).then(warned, bad), this.gone]);
+      running = run(args);
     } catch (err) {
       return Promise.resolve(bad(err));
     }
+    return new Promise((resolve, reject) => {
+      this.pending.add(resolve);
+      void Promise.resolve(running)
+        .then(warned, bad)
+        .then(resolve, reject)
+        .finally(() => this.pending.delete(resolve));
+    });
   }
 
   private down(): Answer {

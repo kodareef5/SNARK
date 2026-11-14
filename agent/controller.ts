@@ -13,7 +13,7 @@ import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } f
 import { NO_PIN, STRUCT_USE } from "../shared/world/upkeep.ts";
 import { resultWords, type Commands } from "./commands.ts";
 import type { Answer } from "./mcp.ts";
-import { compass, shortName } from "./observe.ts";
+import { VIEW_PLAYER, VIEW_PROP, compass, shortName } from "./observe.ts";
 
 export type Phase = "waiting" | "walking" | "approaching" | "facing" | "swinging" | "using";
 
@@ -70,6 +70,8 @@ const TURN = 6;
 const ALIGNED = 0.5;
 /** A point of the way this near is reached. */
 const PASS = 0.35;
+/** The most it walks straight at a target from the end of a way: as far as a way's end may lie from its goal, and a little. */
+const LAST_STEPS = 4;
 /** The way is looked over this often. Less than STUCK_M gained in that time, while walking, is being stuck. */
 const CHECK_MS = 1000;
 const STUCK_M = 0.3;
@@ -92,8 +94,6 @@ const BREATH_BACK = 0.4;
 const USE_REACH = 3.5;
 /** A thing whose foot is this far above the ground under it is on another floor. */
 const FLOOR_UP = 1.5;
-const VIEW_PLAYER = 4;
-export const VIEW_PROP = 8;
 
 const wrap = (a: number): number => (a > PI ? a - TAU : a <= -PI ? a + TAU : a);
 const within = (v: number, most: number): number => (v > most ? most : v < -most ? -most : v);
@@ -133,6 +133,7 @@ export class Controller {
   private jumped = false;
   private jumpUntil = 0;
   private stuck = 0;
+  private stuckFar = Infinity;
   private nearest = 0;
   // Gathering.
   private readonly had = new Map<number, number>();
@@ -319,6 +320,7 @@ export class Controller {
     this.ended = null;
     this.planned = false;
     this.plans = this.replans = this.stuck = 0;
+    this.stuckFar = Infinity;
     this.jumped = false;
     this.finder?.forget();
     this.had.clear();
@@ -489,20 +491,24 @@ export class Controller {
       this.planned = false;
       return;
     }
-    if (!this.planned && !this.plan(now, t)) return this.end({ state: "blocked", reason: "there is no way there on foot" });
+    const none: Answer = { state: "blocked", reason: "there is no way there on foot" };
+    if (!this.planned && !this.plan(now, t)) return this.end(none);
     const f = this.finder!;
     if (now >= this.checkAt) {
       const gained = Math.hypot(b.x - this.markX, b.z - this.markZ);
       const stuck = gained < STUCK_M && this.pushed > CHECK_MS * 0.7;
-      if (gained > 1) {
+      // Two metres nearer the goal than where the trouble began, and the trouble is behind it. Stepping aside is not that.
+      if (far < this.stuckFar - 2) {
         this.stuck = 0;
         this.jumped = false;
+        this.stuckFar = Infinity;
       }
       let again = this.status === PATH_LEG || Math.hypot(t.gx - this.planX, t.gz - this.planZ) > 1;
       if (stuck && !this.jumped) {
         // First it tries to hop over whatever it is.
         this.jumped = true;
         this.jumpUntil = now + JUMP_MS;
+        if (this.stuck === 0) this.stuckFar = far;
       } else if (stuck) {
         if (++this.stuck === STUCK_PLANS) return this.end({ state: "blocked", reason: "stuck: something that cannot be walked round is in the way", short_m: Math.round(far * 10) / 10 });
         this.jumped = false;
@@ -525,8 +531,9 @@ export class Controller {
       this.next++;
     }
     if (this.next < f.count) return this.steer(dt, f.x[this.next]!, f.z[this.next]!);
-    if (this.status === PATH_LEG) return void this.plan(now, t);
-    if (this.status === PATH_SHORT) return this.short(now, t, "there is no way through to it");
+    // A leg walked to its end is followed by the next.
+    if (this.status === PATH_LEG) return this.plan(now, t) ? undefined : this.end(none);
+    if (this.status === PATH_SHORT || far - t.stop > LAST_STEPS) return this.short(now, t, "there is no way through to it");
     // The way ends at the nearest place to stand, and the rest is straight ahead.
     this.nearest = far;
     this.check(now);
@@ -697,7 +704,7 @@ export class Controller {
       if (kind !== g.kind) this.end({ state: "done", now: shortName(reg.ids[kind]) });
       return;
     }
-    if (s.open) return this.end({ state: "done", box: s.open.name });
+    if (s.open) return this.end({ state: "done", opened: s.open.name });
     if (g.entity >= 0 && this.commands.news > 0) this.end({ state: "blocked", reason: resultWords(this.commands.news) });
   }
 }

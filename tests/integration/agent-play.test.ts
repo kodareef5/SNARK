@@ -85,6 +85,30 @@ test("a crate set down in the way forces a new way, and what cannot be reached i
   await p.typed("tp 172 256");
   expect(await p.call("walk_to", { x: 214, z: 256, wait_s: 50 })).toMatchObject({ state: "done" });
   expect(Math.hypot(p.s.own.x - 214, p.s.own.z - 256)).toBeLessThan(0.6);
+
+  // A goal 130 m off, in among the trees and rocks, is further than one search reaches: it is walked in legs, each found anew.
+  const far = await p.call("walk_to", { x: 250, z: 130, within: 3, wait_s: 50 });
+  expect(far).toMatchObject({ state: "done" });
+  expect(Math.hypot(p.s.own.x - 250, p.s.own.z - 130)).toBeLessThan(3);
+  expect(c.plans).toBeGreaterThan(5);
+  expect(p.s.stats.corrections).toBeLessThan(3);
+});
+
+test("stuck on what it was never told of, it hops, plans round the place, and the third time says it is blocked", async () => {
+  const p = play();
+  const c = p.agent.controller;
+  // Nine metres of wall the server has and this client loses, as if the news of it had not come.
+  const walls = [253, 256, 259].map((x) => p.h.world.structs.add(p.id("wall"), x, 1.5, 228, 0, 0, 10000));
+  p.run(300);
+  for (const ref of walls) p.s.world!.structs.put(Math.floor(ref / 65536), ref & 0xffff, 0, 0, 0, 0, 0, 0, 0, 1);
+  expect((await p.call("walk_to", { x: 256, z: 215, wait_s: 0 })).state).toBe("running");
+  follow(p);
+  const ended = await p.call("status");
+  expect(ended).toMatchObject({ state: "blocked", task: "walk_to", reason: "stuck: something that cannot be walked round is in the way" });
+  expect(c.replans).toBeGreaterThanOrEqual(2);
+  // It never got past the wall on the server, whatever its own prediction thought.
+  expect(p.h.world.ents.z[p.h.ent(p.s)]!).toBeGreaterThan(228.4);
+  expect(ended.short_m as number).toBeGreaterThan(12);
 });
 
 test("harvest walks to a tree and cuts five wood with a hatchet, and picks a bush clean by hand", async () => {

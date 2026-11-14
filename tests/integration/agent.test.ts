@@ -186,3 +186,13 @@ test("commands go out no faster than ten a second", async () => {
   expect(eaten.filter((a) => a.state === "refused").length).toBe(2);
   expect(p.h.host.items.inv(p.rec).total(p.id("berry"))).toBe(20);
 });
+
+test("a call left waiting when the server goes is answered, and so is every call after", async () => {
+  const p = play();
+  const walking = p.call("walk_to", { x: 256, z: 200 });
+  p.run(500);
+  p.h.ends[0]!.peer.close();
+  expect(await walking).toEqual({ state: "refused", reason: "not connected (reason -1)" });
+  expect(await p.call("status")).toEqual({ state: "refused", reason: "not connected (reason -1)" });
+  expect((await p.ask("tools/list"))!.result.tools.length).toBe(11);
+});

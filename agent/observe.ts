@@ -36,8 +36,8 @@ const LISTED = 40;
 /** Metres between the points of ground tried. */
 const TRY = 0.5;
 /** Bits of a replicated entity's flags. */
-const VIEW_PLAYER = 4;
-const VIEW_PROP = 8;
+export const VIEW_PLAYER = 4;
+export const VIEW_PROP = 8;
 const found = new Found();
 
 /** The compass point a facing in radians is nearest. Yaw 0 faces north, and turning right, toward the east, lowers it. */
