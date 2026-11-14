@@ -127,6 +127,8 @@ const SPECIES = {
   torporDrain: f("number"),
   breeds: f("facet", "EggItemsToSpawn, BabyAgeSpeed", { refs: { egg: "prop/egg" } }),
   tag: f("text", "DinoNameTag"),
+  regions: f("list", "the ColorSetDefinitions of RandomColorSetsMale, PreventColorizationRegions"),
+  mutations: f("list"),
   variant: stub("spawner", "text", "a child blueprint's kind"),
   attacks: stub("polish", "list", "AttackInfos"),
   loot: stub("loot", "text", "DeathInventoryTemplates", { refs: { "": "loot" } }),
@@ -352,7 +354,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },

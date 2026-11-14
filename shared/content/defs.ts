@@ -89,6 +89,14 @@ export interface SpeciesDef extends Named {
   readonly breeds?: { readonly egg?: string; readonly incubate: number; readonly mature: number; readonly scale?: number };
   /** A name shared by every variant of a creature, for settings that speak of all of them at once. */
   readonly tag?: string;
+  /**
+   * Its colour set: for each of the six colour regions in order, a name and the palette colours a wild one may take, each
+   * with a weight, or null for a region that takes no colour. Omitted, every region draws evenly from WILD_COLORS
+   * (shared/content/registry.ts).
+   */
+  readonly regions?: readonly ({ readonly name: string; readonly colors: readonly (readonly [palette: number, weight: number])[] } | null)[];
+  /** The palette colours a mutation may give one of its regions. Defaults to MUTATION_COLORS. */
+  readonly mutations?: readonly number[];
   // The rest are stubs: declared, checked and read by nothing yet. The catalogue says what each waits for.
   /** What kind of variant of its base it is: "alpha", "event". */
   readonly variant?: string;
