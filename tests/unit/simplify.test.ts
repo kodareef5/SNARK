@@ -126,7 +126,9 @@ test("a mesh with one level gets more only if it has the triangles for them, and
   }
   // The levels in the pack were made before the simplifier learned to keep a surface. It still makes those very levels
   // of a mesh that has none, vertex for vertex.
-  for (const mesh of unpackMeshes(core).filter((m) => m.id === "core:parasaur" || m.id === "core:raptor")) {
+  const ours = CREATURE_ASSETS.filter(({ spec }) => "raw" in spec.source).map(({ id }) => id);
+  expect(ours.length).toBeGreaterThanOrEqual(2);
+  for (const mesh of unpackMeshes(core).filter((m) => ours.includes(m.id))) {
     const again = simplify(mesh.lods[0]!, mesh.lods.slice(1).map(tris));
     for (const [i, made] of again.entries()) {
       for (const part of ["positions", "colors", "bones", "indices"] as const) expect([mesh.id, i, part, made.lod[part]]).toEqual([mesh.id, i, part, mesh.lods[i + 1]![part]]);
