@@ -24,3 +24,10 @@ test("on a line slower than its snapshots, what waits unsent is a couple of snap
   const r = lossy({ rtt: 100, loss: 0, clients: 2, herd: 60, settle: 3, seconds: 8, link: { bytesPerSecond: 12000 } });
   expect(r.age).toBeLessThan(3500);
 });
+
+test("a base set down beside clients on a 60 KB/s line is sent at the pace they take it, so their snapshots do not wait behind it", () => {
+  const r = lossy({ rtt: 100, loss: 0, clients: 2, herd: 0, settle: 3, seconds: 4, build: { at: 0.5, pieces: 5000 }, link: { bytesPerSecond: 60000 } });
+  expect(r.age99).toBeLessThan(500);
+  expect(r.frozen).toBeLessThan(12);
+  expect(r.synced).toBeLessThan(2500);
+});

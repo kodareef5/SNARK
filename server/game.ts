@@ -130,6 +130,12 @@ const COMMANDS_PER_TICK = 4;
 const SNAPSHOT_BYTES_MIN = 600;
 /** The most bits one row of a chunk message takes. */
 const ROW_BITS = 190;
+/**
+ * Chunk bytes a client may have on the way, or two ticks of the slot budget if that is more. On one stream everything
+ * sent before a snapshot it has read has reached it, so what was sent since its newest acknowledged snapshot is still
+ * coming, ahead of the snapshots after it.
+ */
+const CHUNK_WINDOW = 16 * 1024;
 const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** Metres. */
 const SPECTATOR_LIFT = 1.6;
@@ -217,6 +223,9 @@ export class Client {
   sentProgress = -1;
   readonly subscribed: number[] = [];
   syncChunk = -1;
+  /** Bytes of chunk messages sent on each of the last 32 ticks, and the tick each slot is for. */
+  readonly chunkSent = new Uint32Array(32);
+  readonly chunkSentAt = new Uint32Array(32);
   syncCursor = 0;
   syncFrom = 0;
   syncTarget = 0;
@@ -288,6 +297,7 @@ export class Client {
     this.sentProgress = -1;
     this.subscribed.length = 0;
     this.syncChunk = -1;
+    this.chunkSent.fill(0);
     this.rotate = 0;
     this.viewCap = this.snapshotBytes = this.wantView = this.wantBytes = this.viewReadyAt = 0;
     this.strikes = 0;
@@ -1166,7 +1176,13 @@ export class GameServer {
     const ccx = chunkCx(dims, c.chunk);
     const ccz = chunkCz(dims, c.chunk);
     const offsets = this.structOffsets;
-    let budget = this.opts.chunkSlotsPerTick;
+    const slot = T & 31;
+    c.chunkSent[slot] = 0;
+    c.chunkSentAt[slot] = T;
+    let owed = 0;
+    for (let i = 0; i < 32; i++) if (c.chunkSentAt[i]! >= c.ackTick && c.chunkSentAt[i]! + 32 > T) owed += c.chunkSent[i]!;
+    const allowed = Math.max(CHUNK_WINDOW, (this.opts.chunkSlotsPerTick * ROW_BITS) / 4);
+    let budget = Math.min(this.opts.chunkSlotsPerTick, Math.floor((allowed - owed) / (ROW_BITS / 8)));
     for (let o = 0; o < offsets.length && budget > 0; o += 2) {
       const cx = ccx + offsets[o]!;
       const cz = ccz + offsets[o + 1]!;
@@ -1326,6 +1342,8 @@ export class GameServer {
     w.pos = end;
     const bytes = w.bytes();
     this.stats.chunkBytes += bytes.length;
+    const k = this.world.tick & 31;
+    c.chunkSent[k] = c.chunkSent[k]! + bytes.length;
     c.conn.send(CH_RELIABLE, bytes);
     if (final) {
       if (c.known[chunk] === 0 && !c.subscribed.includes(chunk)) c.subscribed.push(chunk);
