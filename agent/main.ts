@@ -12,7 +12,7 @@ import { defaultLook } from "../shared/anim/look.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { KEY_BYTES, REJECT_CONTENT, REJECT_DENIED, REJECT_FULL, REJECT_KICKED, REJECT_NAME, REJECT_PASSWORD, REJECT_VERSION } from "../shared/net/protocol.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
-import { PROVING_ID, buildProvingHeightfield, provingMapHash, provingNodes } from "../shared/world/proving.ts";
+import { mapHeightfield, mapNodes, parseMap } from "../shared/world/mapfile.ts";
 import { Mcp, type ToolHost } from "./mcp.ts";
 import { connect } from "./socket.ts";
 import { Agent, INSTRUCTIONS, toolDefs } from "./tools.ts";
@@ -58,9 +58,9 @@ export function loadKey(dir: string, name: string): Uint8Array {
   return key;
 }
 
-/** Where the server that answers at `url` serves its asset manifest. */
-export function manifestUrl(url: string): string {
-  return new URL("assets/manifest.json", url.replace(/^ws/, "http")).href;
+/** Where the server whose socket is at `url` serves a file, such as its asset manifest or what names its map. */
+export function fileUrl(url: string, file: string): string {
+  return new URL(file, url.replace(/^ws/, "http")).href;
 }
 
 const RETRY_MS = 5000;
@@ -88,8 +88,6 @@ async function main(): Promise<void> {
   }
   const key = loadKey(join(homedir(), ".snark"), args.name);
   const reg = compileContent(CORE_CONTENT).registry!;
-  const hf = buildProvingHeightfield();
-  const mapHash = provingMapHash(hf);
 
   let agent: Agent | null = null;
   /** Why there is no agent, for whoever calls a tool meanwhile. */
@@ -100,10 +98,17 @@ async function main(): Promise<void> {
   const enter = async (): Promise<void> => {
     joining = true;
     try {
+      const get = async (file: string): Promise<Response> => {
+        const res = await fetch(fileUrl(args.url, file));
+        if (!res.ok) throw new Error(`asked for ${file} and got ${res.status}`);
+        return res;
+      };
       // The server poses bodies with the clips of the pack it serves, and wants the same of whoever joins.
-      const res = await fetch(manifestUrl(args.url));
-      if (!res.ok) throw new Error(`asked for the asset manifest and got ${res.status}`);
-      const clipHash = parseManifest(await res.text()).clipHash;
+      const clipHash = parseManifest(await (await get("assets/manifest.json")).text()).clipHash;
+      // It names its map's file, which holds the ground and where the trees and rocks stand.
+      const named = (await (await get("map.json")).json()) as { file: string };
+      const map = parseMap(new Uint8Array(await (await get(named.file)).arrayBuffer()));
+      const hf = mapHeightfield(map);
       const session = new ClientSession(connect(args.url), {
         name: args.name,
         key,
@@ -111,8 +116,8 @@ async function main(): Promise<void> {
         clipHash,
         look: defaultLook(),
         password: process.env.SNARK_PASSWORD ?? "",
-        resolveMap: (id, hash) => (id === PROVING_ID && hash === mapHash ? hf : null),
-        nodes: provingNodes,
+        resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
+        nodes: (ground, content) => mapNodes(map, ground, content),
       });
       agent = new Agent(session, { console: args.console });
       console.error(`joining ${args.url} as ${args.name}`);

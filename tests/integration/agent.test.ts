@@ -4,7 +4,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadKey, manifestUrl, parseArgs } from "../../agent/main.ts";
+import { fileUrl, loadKey, parseArgs } from "../../agent/main.ts";
 import { INVALID_PARAMS, INVALID_REQUEST, NO_METHOD, PARSE_ERROR, type Answer } from "../../agent/mcp.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { play } from "../fixtures/agent.ts";
@@ -43,8 +43,8 @@ test("the key that owns the name is made once, for its owner alone, and the argu
   expect(parseArgs(["--url", "wss://play.example/ws", "--name", "Scout", "--console"])).toEqual({ url: "wss://play.example/ws", name: "Scout", console: true });
   expect(parseArgs(["--name", "Scout"])).toEqual({ url: "ws://localhost:8787/ws", name: "Scout", console: false });
   for (const bad of [[], ["--name", "../x"], ["--name", "Scout", "--url", "http://x"], ["--name"], ["--fly"]]) expect(typeof parseArgs(bad)).toBe("string");
-  expect(manifestUrl("ws://localhost:8787/ws")).toBe("http://localhost:8787/assets/manifest.json");
-  expect(manifestUrl("wss://play.example/ws")).toBe("https://play.example/assets/manifest.json");
+  expect(fileUrl("ws://localhost:8787/ws", "assets/manifest.json")).toBe("http://localhost:8787/assets/manifest.json");
+  expect(fileUrl("wss://play.example/ws", "map.json")).toBe("https://play.example/map.json");
 });
 
 test("say is heard by another survivor, the sixth line at once is refused, and the console is a tool only when asked for", async () => {
