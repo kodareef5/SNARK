@@ -203,6 +203,11 @@ export class Harvest {
     this.dirty.add(chunk);
   }
 
+  /** Marks every chunk with a touched node for saving. */
+  all(): void {
+    for (const key of this.touched.keys()) this.dirty.add(Math.floor(key / 256));
+  }
+
   /** A chunk's touched nodes for saving, or null if it has none. Layout: a count, then slot, hits and respawnAt for each. */
   encode(chunk: number): Uint8Array | null {
     const slots: number[] = [];

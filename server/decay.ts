@@ -142,7 +142,6 @@ export class Decay {
       }
       if (of.size === 0) this.clocks.delete(team);
     }
-    this.dirty = false;
     return JSON.stringify(out);
   }
 

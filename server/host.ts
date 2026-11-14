@@ -168,6 +168,9 @@ export interface Host {
 export const BED_WAIT_TICKS = 5 * 60 * TICK_RATE;
 /** One minute, in ticks. */
 const DECAY_SAVE_TICKS = 1800;
+/** How long commits have failed, in ticks, before sessions are told and before logins are refused. */
+const UNSAVED_TELL_TICKS = 10 * TICK_RATE;
+const UNSAVED_REFUSE_TICKS = 60 * TICK_RATE;
 
 /** The registry a server with these rules runs on. A world built before its host must be built from this. */
 export function contentFor(content: Registry, rules: Rules): Registry {
@@ -218,7 +221,8 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     items.restore(loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null));
     const wrong = items.audit();
     if (wrong.length > 0 && !opts.allowLedgerMismatch) throw new Error("the item ledger does not balance:\n" + wrong.join("\n"));
-    persistence.ledger = items;
+    persistence.sidecar("ledger", items);
+    persistence.open = (path) => new WorldStore(path, reg, opts.store);
   }
   const creatures = new Creatures(world, game, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
   creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");
@@ -248,7 +252,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at"), persistence.store.meta("rules")) : null;
   if (persistence) {
     const at = { dirty: true, version: rules.version, serialize: () => JSON.stringify({ timers: rules.timers() }) };
-    persistence.settingsAt = at;
+    persistence.sidecar("settings_at", at);
     settingsAt = at;
   }
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest }, (opts.seed ?? 1) + 53);
@@ -295,6 +299,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
   const build = new Build({ world, game, records, items, tribes, rules, fixtures, light: (ref) => stations.toggle(ref), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
+  persistence?.sidecar("decay", build.decay, DECAY_SAVE_TICKS);
   combat.onStructureHurt = (ref) => build.hurt(ref);
   const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.on("globalVoiceChat") }, (out) => void crypto.getRandomValues(out));
   /** Lingering bodies are not counted. */
@@ -303,7 +308,11 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     const to = sessionOf(pid);
     if (to) game.sendText(to, TEXT_NOTICE, text);
   }
-  tribes.onSave = () => persistence?.store.setMeta("tribes", tribes.serialize());
+  const tribesSaved = { dirty: false, serialize: () => tribes.serialize() };
+  persistence?.sidecar("tribes", tribesSaved);
+  tribes.onSave = () => {
+    tribesSaved.dirty = true;
+  };
   tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 97);
@@ -454,6 +463,8 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
 
   // A name belongs to the first device key that takes a body under it.
   game.authorize = (name, key) => {
+    // Nobody joins a world that has not saved for a minute.
+    if (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS) return false;
     const rec = recordOf(name);
     return !rec || !rec.keyHash || sameBytes(rec.keyHash, hashKey(key));
   };
@@ -586,9 +597,20 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
       settingsAt.version = rules.version;
       settingsAt.dirty = true;
     }
-    if (persistence && build.decay.dirty && tick % DECAY_SAVE_TICKS === 0) persistence.store.setMeta("decay", build.decay.serialize());
-    if (persistence && tick % commitEvery === 0) persistence.commit();
+    if (persistence && !persistence.tryCommit(commitEvery)) {
+      const late = tick - persistence.failing!.since;
+      if (late === UNSAVED_TELL_TICKS || (late > UNSAVED_TELL_TICKS && late % (60 * TICK_RATE) === 0)) {
+        for (const c of game.clients) if (c?.active && !c.closed) game.sendText(c, TEXT_NOTICE, `the server has not been able to save for ${Math.round(late / TICK_RATE)} seconds; what happens now is lost if it stops`);
+      }
+    }
   };
+  if (persistence) {
+    persistence.onFailing = (f) => {
+      if (f === null) console.log("saving again");
+      else if (f.tries === 1) console.log(`the world could not be saved (${f.code}: ${f.error}); trying again, and the world runs on`);
+    };
+    persistence.onMoved = (path) => console.log(`the save file is broken; the world is now saved in ${path}, so start the server with --db ${path} next time`);
+  }
   // An unconscious survivor can talk, use the console and shut what it had open. Its client can make it do nothing else.
   game.allows = (c, op) => op === CMD_TEXT || op === CMD_CHAT || op === CMD_CLOSE || !records.byPid.get(c.pid)?.out;
   game.onLand = (c, speed) => {
@@ -754,8 +776,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
         const pid = world.ents.pid[world.history.tracked(r)]!;
         if (pid !== 0) records.dirty.add(pid);
       }
-      if (build.decay.dirty) persistence.store.setMeta("decay", build.decay.serialize());
-      persistence.commit();
+      persistence.commit(true);
       persistence.store.close();
     },
   };

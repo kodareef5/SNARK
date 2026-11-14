@@ -154,8 +154,22 @@ export function addCoreCommands(con: Console): void {
       run(ctx) {
         const p = ctx.host.persistence;
         if (!p) return "this world is not saved to disk";
-        p.commit();
+        p.commit(true);
         return `saved at tick ${ctx.host.world.tick}`;
+      },
+    },
+    {
+      name: "saveas",
+      usage: "<file>",
+      help: "Write the whole world to a new file and carry on saving there. For the server's own console.",
+      admin: true,
+      run(ctx, args) {
+        const p = ctx.host.persistence;
+        if (!p) return "this world is not saved to disk";
+        if (ctx.client) return "saveas is for the server's own console";
+        if (!args[0]) return "usage: saveas <file>";
+        p.saveAs(args[0]);
+        return `the world is now saved in ${args[0]}`;
       },
     },
     {

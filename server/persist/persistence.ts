@@ -1,5 +1,6 @@
 // Valuable changes (inventories, ownership, structures, births, deaths) go into the next commit together, with their journal entries.
 // Positions are lazy, because a stale one is harmless after a crash. Each commit refreshes a slice of the live entities in rotation.
+// Nothing is written to the save outside a commit. A commit that fails leaves everything it held for the next one.
 
 import { TICK_RATE } from "../../shared/coords.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
@@ -22,6 +23,31 @@ export interface PersistenceOptions {
 
 /** Commits between journal prunings. */
 const PRUNE_EVERY = 512;
+/** The longest wait between two tries of a failing commit, in ticks. */
+const RETRY_MOST = 150;
+/** The file itself is broken or cannot be written. Trying again will not help, so the world is saved elsewhere. */
+const BROKEN = new Set(["SQLITE_CORRUPT", "SQLITE_NOTADB", "SQLITE_READONLY"]);
+
+/** Something saved as one value under a key of its own, in the same transaction as the records it describes. */
+export interface Sidecar {
+  dirty: boolean;
+  serialize(): string;
+}
+
+/** Commits have failed since tick `since`. `code` is SQLite's, and `tries` counts the failures. */
+export interface Failing {
+  since: number;
+  tries: number;
+  code: string;
+  error: string;
+  retryAt: number;
+}
+
+/** SQLite's code for an error it raised ("SQLITE_FULL"), or "" for an error of our own. */
+export function sqliteCode(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === "string" && code.startsWith("SQLITE_") ? code : "";
+}
 
 export interface LoadReport {
   fresh: boolean;
@@ -38,23 +64,30 @@ interface PendingJournal {
 }
 
 export class Persistence {
-  readonly store: WorldStore;
+  /** Changes when the world is saved elsewhere (saveAs). */
+  store: WorldStore;
   commits = 0;
   /** Sequence number of the newest journal entry, durable or not. */
   journalSeq = 0;
   durableSeq = 0;
   readonly survivors = new Map<string, number>();
-  /** Per-chunk state other than structures. Each provider encodes the chunks it has marked dirty. */
-  readonly blobs: { tag: number; dirty: Set<number>; encode(chunk: number): Uint8Array | null }[] = [];
-  /** The item ledger, saved in the same transaction as the records it accounts for. */
-  ledger: { dirty: boolean; serialize(): string } | null = null;
-  /** The settings the records' timers were computed under, saved in the same transaction as those records (D91). */
-  settingsAt: { dirty: boolean; serialize(): string } | null = null;
+  /** Per-chunk state other than structures. Each provider encodes the chunks it has marked dirty, and `all` marks every chunk it has state for. */
+  readonly blobs: { tag: number; dirty: Set<number>; encode(chunk: number): Uint8Array | null; all(): void }[] = [];
+  /** Null while commits succeed. */
+  failing: Failing | null = null;
+  /** Called with each failure, and once with null when a commit succeeds again. */
+  onFailing: ((f: Failing | null) => void) | null = null;
+  /** Called with the path when a broken file made the world move to a new one. */
+  onMoved: ((path: string) => void) | null = null;
+  /** Opens a store at another path, for saveAs. */
+  open: ((path: string) => WorldStore) | null = null;
 
   private readonly world: ServerWorld;
   private readonly records: Records;
   private readonly opts: PersistenceOptions;
   private readonly dirtyChunks = new Set<number>();
+  private readonly sidecars: { key: string; of: Sidecar; every: number; at: number }[] = [];
+  private readonly written: number[] = [];
   private readonly pending: PendingJournal[] = [];
   private readonly newSurvivors: [string, number][] = [];
   private callbacks: (() => void)[] = [];
@@ -90,6 +123,14 @@ export class Persistence {
     for (const [name, pid] of store.survivors()) this.survivors.set(name, pid);
     this.journalSeq = this.durableSeq = store.lastJournalSeq();
     return { fresh: store.fresh, tick: world.tick, structures, records: this.records.byPid.size };
+  }
+
+  /**
+   * Saves `of` under meta key `key` in the commit after it turns dirty: the item ledger, the settings the records' timers
+   * were computed under (D91), the tribes, the decay clocks. `every` is the fewest ticks between two writes of it.
+   */
+  sidecar(key: string, of: Sidecar, every = 0): void {
+    this.sidecars.push({ key, of, every, at: -every });
   }
 
   /** The entry is written in the same transaction as the state it produced. */
@@ -136,7 +177,89 @@ export class Persistence {
     this.store.checkpoint();
   }
 
-  commit(): void {
+  /**
+   * Call every tick. Commits when one is due, every `every` ticks. A commit SQLite refused is tried again after 6 ticks,
+   * then 12, up to five seconds apart, and the world runs on meanwhile with nothing lost. An error of our own is thrown:
+   * it would fail the same way every time, and stopping on the last good commit loses less than running on unsaved.
+   * Returns false while commits are failing.
+   */
+  tryCommit(every: number): boolean {
+    const tick = this.world.tick;
+    const f = this.failing;
+    if (f ? tick < f.retryAt : tick % every !== 0) return f === null;
+    try {
+      this.commit();
+    } catch (err) {
+      const code = sqliteCode(err);
+      if (code === "") throw err;
+      const now = f ?? (this.failing = { since: tick, tries: 0, code, error: "", retryAt: 0 });
+      now.tries++;
+      now.code = code;
+      now.error = err instanceof Error ? err.message : String(err);
+      now.retryAt = tick + Math.min(RETRY_MOST, every * 2 ** Math.min(now.tries - 1, 8));
+      if (BROKEN.has(code) && this.open && this.store.path !== "" && this.rescue(tick)) return true;
+      this.onFailing?.(now);
+      return false;
+    }
+    if (f) {
+      this.failing = null;
+      this.onFailing?.(null);
+    }
+    return true;
+  }
+
+  private rescue(tick: number): boolean {
+    const path = `${this.store.path}.rescue-t${tick}`;
+    try {
+      this.saveAs(path);
+    } catch {
+      return false;
+    }
+    this.onMoved?.(path);
+    return true;
+  }
+
+  /**
+   * Writes the whole world from memory into a new file at `path` and carries on there. The old file is closed and left
+   * as it is. Its journal stays in it: the new file's journal starts with what is pending. Throws, with the old file
+   * still in use, if `path` holds a save or cannot be written.
+   */
+  saveAs(path: string): void {
+    if (!this.open) throw new Error("this world cannot be saved elsewhere");
+    const next = this.open(path);
+    if (!next.fresh) {
+      next.close();
+      throw new Error(`${path} already holds a save`);
+    }
+    const old = this.store;
+    const world = this.world;
+    this.store = next;
+    world.structs.chunks.forEach((t, chunk) => t && this.dirtyChunks.add(chunk));
+    for (const pid of this.records.byPid.keys()) this.records.dirty.add(pid);
+    for (const b of this.blobs) b.all();
+    for (const s of this.sidecars) s.of.dirty = true;
+    this.newSurvivors.length = 0;
+    for (const [name, pid] of this.survivors) this.newSurvivors.push([name, pid]);
+    try {
+      this.commit(true);
+    } catch (err) {
+      this.store = old;
+      next.close();
+      throw err;
+    }
+    try {
+      old.close();
+    } catch {
+      // The old file is the one that failed. There is nothing more to do with it.
+    }
+    if (this.failing) {
+      this.failing = null;
+      this.onFailing?.(null);
+    }
+  }
+
+  /** `last` writes every dirty sidecar whatever its interval, as a shutdown does. */
+  commit(last = false): void {
     const store = this.store;
     const world = this.world;
     const records = this.records;
@@ -175,8 +298,12 @@ export class Persistence {
         }
         for (const b of this.blobs) for (const chunk of b.dirty) store.saveBlob(chunk, b.tag, b.encode(chunk));
         for (const j of this.pending) store.appendJournal(j.seq, j.tick, j.op, j.data);
-        if (this.ledger?.dirty) store.setMeta("ledger", this.ledger.serialize());
-        if (this.settingsAt?.dirty) store.setMeta("settings_at", this.settingsAt.serialize());
+        this.written.length = 0;
+        this.sidecars.forEach((s, i) => {
+          if (!s.of.dirty || (!last && world.tick - s.at < s.every)) return;
+          store.setMeta(s.key, s.of.serialize());
+          this.written.push(i);
+        });
         // The journal is an audit trail, not the state, so only the recent part is kept.
         if (this.commits % PRUNE_EVERY === PRUNE_EVERY - 1) store.pruneJournal(this.opts.journalKeep);
         for (const [name, pid] of this.newSurvivors) store.saveSurvivor(name, pid);
@@ -198,8 +325,10 @@ export class Persistence {
     this.pending.length = 0;
     this.newSurvivors.length = 0;
     this.durableSeq = this.journalSeq;
-    if (this.ledger) this.ledger.dirty = false;
-    if (this.settingsAt) this.settingsAt.dirty = false;
+    for (const i of this.written) {
+      this.sidecars[i]!.of.dirty = false;
+      this.sidecars[i]!.at = world.tick;
+    }
     for (const b of this.blobs) b.dirty.clear();
     this.commits++;
     for (const cb of callbacks) cb();

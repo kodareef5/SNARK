@@ -85,6 +85,8 @@ export interface StoreOptions {
 
 export class WorldStore {
   readonly db: Database;
+  /** "" for a database in memory. */
+  readonly path: string;
   /** Maps a runtime content index to the index stored in this save. */
   readonly toSaved: Uint16Array;
   /** The reverse. 0 if the content is gone. */
@@ -109,10 +111,14 @@ export class WorldStore {
   constructor(path: string, reg: Registry, opts: StoreOptions = {}) {
     const db = new Database(path, { create: true });
     this.db = db;
+    this.path = path === ":memory:" ? "" : path;
     this.reg = reg;
     this.allowMissing = opts.allowMissingContent ?? false;
     db.exec("PRAGMA journal_mode = WAL");
     db.exec(`PRAGMA synchronous = ${opts.synchronous ?? "NORMAL"}`);
+    // Milliseconds a commit waits for another program that holds the file (a backup, an operator's query). After that it
+    // fails and is tried again later (Persistence.tryCommit), so a tick never stops for longer.
+    db.exec("PRAGMA busy_timeout = 15");
     // SQLite checkpoints inside whichever commit passes this many WAL pages, which stops a tick for 3 to 20 ms. The server
     // checkpoints between ticks (checkpoint()), so this is only a ceiling of 64 MB for a host that nobody calls idle() on.
     db.exec("PRAGMA wal_autocheckpoint = 16000");
