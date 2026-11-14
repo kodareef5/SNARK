@@ -14,6 +14,14 @@ const MOST = 4096;
  */
 export class Guesses {
   private readonly by = new Map<string, { wrong: number; until: number }>();
+  private readonly free: number;
+  private readonly first: number;
+
+  /** `free` wrong guesses are allowed before the first wait, of `first` ticks. */
+  constructor(free = FREE, first = WAIT) {
+    this.free = free;
+    this.first = first;
+  }
 
   /** Ticks `who` must still wait before a guess is judged, or 0. */
   wait(who: string, tick: number): number {
@@ -34,7 +42,7 @@ export class Guesses {
       this.by.set(who, (e = { wrong: 0, until: 0 }));
     }
     e.wrong++;
-    if (e.wrong >= FREE) e.until = tick + Math.min(LONGEST, WAIT * 2 ** Math.min(20, e.wrong - FREE));
+    if (e.wrong >= this.free) e.until = tick + Math.min(LONGEST, this.first * 2 ** Math.min(20, e.wrong - this.free));
   }
 
   right(who: string): void {

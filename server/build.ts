@@ -17,6 +17,7 @@ import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_L
 import type { Fixtures } from "./fixtures.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Decay } from "./decay.ts";
+import { Guesses } from "./guesses.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
@@ -98,8 +99,11 @@ export class Build {
   private claim = 0;
   /** Pieces that fell whole and are not yet set down where they land. */
   private readonly landing: { rec: EntityRecord | null; kind: number; x: number; y: number; z: number; yaw: number; owner: number; hp: number }[] = [];
-  /** Wrong PINs by client id: how many in a row, and the tick until which it must wait. */
-  private readonly strikes = new Map<number, { n: number; until: number }>();
+  /**
+   * Wrong PINs, counted against the survivor who gave them. Counted against the session's slot, a count went to whoever had
+   * the slot next, and it began again after every wait, so a PIN was three guesses every half minute for as long as it took.
+   */
+  private readonly guesses = new Guesses(PIN_TRIES, PIN_WAIT_TICKS);
   /** By survivor pid: the box it last opened with a PIN, and the PIN it gave. */
   private readonly entered = new Map<number, { box: number; pin: number }>();
   private readonly near = new Found();
@@ -309,19 +313,14 @@ export class Build {
     if (byPin) {
       const need = state && !this.ctx.rules.on("PreventOutOfTribePinCodeUse") ? state.pin : -1;
       if (need < 0) return RESULT_LOCKED;
-      const tick = world.tick;
-      let strike = this.strikes.get(c.id);
-      if (strike && strike.until > tick) return RESULT_WAIT;
+      const who = String(rec.pid);
+      if (this.guesses.wait(who, world.tick) > 0) return RESULT_WAIT;
       if (pin === NO_PIN) return RESULT_PIN;
       if (pin !== need) {
-        if (!strike) this.strikes.set(c.id, (strike = { n: 0, until: 0 }));
-        if (++strike.n >= PIN_TRIES) {
-          strike.n = 0;
-          strike.until = tick + PIN_WAIT_TICKS;
-        }
+        this.guesses.wrong(who, world.tick);
         return RESULT_DENIED;
       }
-      this.strikes.delete(c.id);
+      this.guesses.right(who);
     }
     if (opens !== 0) {
       // A door swaps to its other kind, unless a body is in the way.

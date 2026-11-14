@@ -3,9 +3,9 @@
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { FLOOR_THICK, FOUNDATION_THICK, WALL_THICK } from "../../content/building.ts";
-import { STRUCT_UNITS } from "../../shared/coords.ts";
+import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_STRUCT, RESULT_FAR, RESULT_LOCKED, RESULT_OK } from "../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_STRUCT, RESULT_DENIED, RESULT_FAR, RESULT_LOCKED, RESULT_OK, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { BTN_USE, STANCE_CROUCH, stanceEye, stanceHeight } from "../../shared/sim/character.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
@@ -302,4 +302,40 @@ test("a vault that comes down whole does not come down on whoever stands under i
     expect(Math.hypot(ents.x[e]! - was[i]![0], ents.z[e]! - was[i]![1])).toBeLessThan(2);
     expect(ents.x[e]!).toBeLessThan(row(screen).x - WALL_THICK / 2);
   });
+});
+
+test("wrong PINs are counted against the survivor who gives them, and each one past the third makes the next wait twice as long", () => {
+  const { h, sessions, recs, at } = arena(["ada", "bob", "cy"]);
+  const [, bob, cy] = sessions as [ClientSession, ClientSession, ClientSession];
+  // Ada's box, locked with a PIN. Bob and Cy are not of her tribe.
+  const box = h.world.structs.add(id("storage_box"), at.x + 1, at.y + reg.halfY[id("storage_box")]!, at.z - 6, 0, recs[0]!.team, 500);
+  const state = h.host.fixtures.ensure(box);
+  state.lock = 1;
+  state.pin = 4071;
+  const guess = (s: ClientSession, pin: number): number => h.host.build.use(h.client(s)!, box, pin);
+  // From here the clock is moved on by hand, and nothing else in the world runs.
+  const pass = (seconds: number): void => void (h.world.tick += seconds * TICK_RATE);
+
+  // Three wrong, and then even the right one must wait half a minute.
+  expect([1, 2, 3].map((pin) => guess(bob, pin))).toEqual([RESULT_DENIED, RESULT_DENIED, RESULT_DENIED]);
+  expect(guess(bob, 4071)).toBe(RESULT_WAIT);
+  // After it, one more wrong one is judged and the wait is a whole minute: half of it gone, he still waits.
+  pass(30);
+  expect([guess(bob, 4), guess(bob, 5)]).toEqual([RESULT_DENIED, RESULT_WAIT]);
+  pass(30);
+  expect(guess(bob, 5)).toBe(RESULT_WAIT);
+  pass(30);
+  expect(guess(bob, 5)).toBe(RESULT_DENIED);
+  // He goes on for an hour, trying every ten seconds. Three every half minute used to be judged: 360 in the hour.
+  let judged = 0;
+  for (let t = 0; t < 3600; t += 10) {
+    pass(10);
+    if (guess(bob, 6) === RESULT_DENIED) judged++;
+  }
+  expect(judged).toBeLessThanOrEqual(5);
+  // His guessing keeps nobody else waiting, and the right PIN ends a survivor's own count.
+  expect([guess(cy, 7), guess(cy, 8), guess(cy, 4071)]).toEqual([RESULT_DENIED, RESULT_DENIED, RESULT_OK]);
+  expect(h.client(cy)!.open).toBe(state.pid);
+  expect(guess(cy, 4071)).toBe(RESULT_OK);
+  expect([1, 2].map((pin) => guess(cy, pin))).toEqual([RESULT_DENIED, RESULT_DENIED]);
 });
