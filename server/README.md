@@ -22,8 +22,9 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | `build.ts`, `decay.ts` | Setting pieces down, acting on them, collapse, and decay |
 | `fixtures.ts`, `stations.ts` | Things built that have state: doors, locks, boxes, fires, beds |
 | `creatures.ts`, `behavior.ts` | Spawning, dormancy and stepping; what a creature decides to do |
+| `spawner.ts` | The map's spawn regions kept stocked with wild creatures, at ARK's pace and away from survivors and bases |
 | `taming.ts`, `riding.ts`, `breeding.ts` | Creatures that become somebody's, are told what to do, ridden, and bred |
-| `settings/` | ARK's settings: the catalogue of them (`row.ts`, `rows-*.ts`, `catalog.ts`), the ini reader, the rules they give (`rules.ts`), reading a config folder, a command line and the live file (`config.ts`), lists that name content (`lists.ts`), and the settings that change content, as a tuning (`tune.ts`) |
+| `settings/` | ARK's settings: the catalogue of them (`row.ts`, `rows-*.ts`, `catalog.ts`), the ini reader, the rules they give (`rules.ts`), reading a config folder, a command line and the live file (`config.ts`), lists that name content (`lists.ts`), the settings that change content, as a tuning (`tune.ts`), and those that change the spawn tables (`spawns.ts`) |
 | `console.ts`, `commands/` | The console and its commands: session, admin, combat, social, creatures, settings |
 | `persist/store.ts` | SQLite schema and encoding |
 | `persist/persistence.ts` | What each commit contains |

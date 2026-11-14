@@ -144,8 +144,9 @@ export class Spawner {
   }
 
   /**
-   * Call once, after a save's bodies are back. Each wild creature the save holds counts for the region it stands in that could
-   * have made it, or else the nearest such. A new world fills at once; a saved one tops up at the pace of its checks.
+   * Call once, after a save's bodies are back. Each wild creature the save holds counts for a region that could have made it:
+   * the nearest of those over its chunk and the chunks beside it, 0 m off if it stands in one, or else the nearest of all. A
+   * new world fills at once; a saved one tops up at the pace of its checks.
    */
   begin(fresh: boolean): void {
     if (fresh) return this.refill();
@@ -157,7 +158,8 @@ export class Spawner {
         for (let cx = Math.max(0, Math.floor((r.x - r.rx) / CHUNK_SIZE)); cx <= Math.min(dims.chunksX - 1, Math.floor((r.x + r.rx) / CHUNK_SIZE)); cx++) over[cz * dims.chunksX + cx]!.push(i);
       }
     });
-    for (const rec of this.ctx.records.byPid.values()) this.adopt(rec, over);
+    const made = new Set(this.regions.flatMap((r) => [...r.makes]));
+    for (const rec of this.ctx.records.byPid.values()) this.adopt(rec, over, made);
     const tick = this.ctx.world.tick;
     this.regions.forEach((_, i) => this.schedule(i, tick + 1 + this.rng.int(this.checkTicks)));
   }
@@ -266,25 +268,27 @@ export class Spawner {
     this.ctx.deadlines.push(tick, DEADLINE_SPAWN, i, r.due);
   }
 
-  private adopt(rec: EntityRecord, over: readonly (readonly number[])[]): void {
-    if (!isWild(this.ctx.world.reg, rec)) return;
+  private adopt(rec: EntityRecord, over: readonly (readonly number[])[], made: ReadonlySet<number>): void {
+    if (!made.has(rec.kind) || !isWild(this.ctx.world.reg, rec)) return;
     const dims = this.ctx.world.dims;
     const cx = Math.min(dims.chunksX - 1, Math.max(0, Math.floor(rec.x / CHUNK_SIZE)));
     const cz = Math.min(dims.chunksZ - 1, Math.max(0, Math.floor(rec.z / CHUNK_SIZE)));
-    for (const i of over[cz * dims.chunksX + cx]!) {
-      const r = this.regions[i]!;
-      if (r.makes.has(rec.kind) && this.outside(r, rec.x, rec.z) === 0) return this.join(i, rec);
-    }
     let best = -1;
     let near = Infinity;
-    this.regions.forEach((r, i) => {
+    const consider = (i: number): void => {
+      const r = this.regions[i]!;
       if (!r.makes.has(rec.kind)) return;
       const d = this.outside(r, rec.x, rec.z);
       if (d < near) {
         near = d;
         best = i;
       }
-    });
+    };
+    // The regions over its chunk and those beside it, and only if none of them could have made it, every region.
+    for (let z = Math.max(0, cz - 1); z <= Math.min(dims.chunksZ - 1, cz + 1); z++) {
+      for (let x = Math.max(0, cx - 1); x <= Math.min(dims.chunksX - 1, cx + 1); x++) for (const i of over[z * dims.chunksX + x]!) consider(i);
+    }
+    if (best < 0) this.regions.forEach((_, i) => consider(i));
     if (best >= 0) this.join(best, rec);
   }
 
@@ -332,7 +336,7 @@ export class Spawner {
     entry.kinds.forEach((kind, m) => {
       if (this.rng.float() >= entry.chances[m]! || this.full(r, kind)) return;
       const [ox, oz] = entry.offsets[m]!;
-      if ((ox !== 0 || oz !== 0) && !this.land(world.reg.move[kind]!, x + ox, z + oz)) return;
+      if ((m > 0 || ox !== 0 || oz !== 0) && !this.land(world.reg.move[kind]!, x + ox, z + oz)) return;
       const e = creatures.spawn(kind, x + ox, z + oz, wildLevel(wildStep(this.rng), difficulty), "wild");
       if (e < 0) return;
       const rec = records.byPid.get(world.ents.pid[e]!)!;

@@ -4,7 +4,9 @@
 import { CORE_CONTENT } from "../../content/core.ts";
 import { contentFor, createHost } from "../../server/host.ts";
 import { Rules } from "../../server/settings/rules.ts";
-import { TICK_MADE } from "../../server/spawner.ts";
+import { spawnTables } from "../../server/settings/spawns.ts";
+import { Spawner, TICK_MADE } from "../../server/spawner.ts";
+import { DeadlineHeap } from "../../shared/sim/schedule.ts";
 import { createWorld } from "../../server/world.ts";
 import type { MapZone } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -75,6 +77,12 @@ export function benchSpawn(section: Section, record: Row): void {
   record("held: the spawner's share of a tick, mean", (held.spawner.reduce((a, b) => a + b, 0) / held.spawner.length) * 1000, "µs", 50);
   record("held: the spawner's share of a tick, worst", Math.max(...held.spawner) * 1000, "µs");
   record("held: creatures made", held.made.reduce((a, b) => a + b, 0), "", 0);
+
+  // What a start on a save of them does: each is counted for the region it stands in.
+  const t = performance.now();
+  const counted = new Spawner({ ...host, persistence: null, deadlines: new DeadlineHeap(), tables: spawnTables(reg, host.rules, host.lists).tables }, 1);
+  counted.begin(false);
+  record(`a start: count ${counted.count} saved creatures for their regions`, performance.now() - t, "ms", 1000);
 
   // A hundredth of them die, spread over the map.
   const rng = new Rng(7);
