@@ -49,7 +49,7 @@ import {
   writeBody,
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
-import { MAX_VIEW, SentView, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
+import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
@@ -935,6 +935,7 @@ export class GameServer {
     const movers = this.movers;
     const idle = this.idle;
     const offsets = this.entityOffsets;
+    const cap = VIEW_DEFAULT;
     let n = 0;
     let nm = 0;
     let ni = 0;
@@ -945,14 +946,14 @@ export class GameServer {
       for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
         const f = ents.flags[i]!;
         if ((f & F_PLAYER) !== 0) {
-          if (n < MAX_VIEW) ids[n++] = i;
+          if (n < cap) ids[n++] = i;
         } else if ((f & F_PROP) === 0 && (ents.vx[i] !== 0 || ents.vz[i] !== 0 || ents.vy[i] !== 0 || ents.act[i] !== 0 || ents.driven[i] !== 0)) {
-          if (nm < MAX_VIEW) movers[nm++] = i;
-        } else if (ni < MAX_VIEW) idle[ni++] = i;
+          if (nm < cap) movers[nm++] = i;
+        } else if (ni < cap) idle[ni++] = i;
       }
     }
-    for (let k = 0; k < nm && n < MAX_VIEW; k++) ids[n++] = movers[k]!;
-    for (let k = 0; k < ni && n < MAX_VIEW; k++) ids[n++] = idle[k]!;
+    for (let k = 0; k < nm && n < cap; k++) ids[n++] = movers[k]!;
+    for (let k = 0; k < ni && n < cap; k++) ids[n++] = idle[k]!;
     sortU32(ids, n);
     const at = this.gathered++;
     const cur = (this.around[at] ??= new SentView());

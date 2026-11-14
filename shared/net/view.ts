@@ -12,6 +12,7 @@
 //             [motion? 1][12] [look? 1][6] [action? 1][14]
 //
 // Appearance is sent only on create. A change bumps the entity's revision, and the next delta then sends a create for it again.
+// Only a remove is sent whatever it costs. Every other op waits its turn when a snapshot is full.
 
 import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK } from "../anim/pose.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
@@ -20,7 +21,12 @@ import { GEAR_COUNT } from "../sim/entities.ts";
 import type { BitReader, BitWriter } from "./codec.ts";
 
 export const VIEW_RING = 32;
-export const MAX_VIEW = 512;
+/** The most entities a view can hold. A server shows a client fewer: its own cap, and what the client asks for. */
+export const MAX_VIEW = 2048;
+/** What a client is shown until it asks for another number. */
+export const VIEW_DEFAULT = 512;
+/** A view's columns start with room for this many and double as it fills. */
+const VIEW_START = 256;
 /** Position units per metre on the wire. */
 export const POS_UNITS = 256;
 
@@ -62,6 +68,13 @@ function createBits(v: Looks, id: number): number {
   return CREATE_BITS + look + bytes * 8;
 }
 
+/** A longer copy of a column. */
+function wider<T extends Uint8Array | Uint16Array | Uint32Array | Int32Array>(a: T, length: number): T {
+  const out = new (a.constructor as unknown as new (length: number) => T)(length);
+  out.set(a);
+  return out;
+}
+
 export function quantX(x: number): number {
   return Math.round(x * POS_UNITS);
 }
@@ -83,26 +96,28 @@ export class SentView {
   /** Server tick of this view. 0 marks an unused or invalid view. */
   tick = 0;
   count = 0;
+  /** Entries the columns have room for. */
+  protected cap = VIEW_START;
   /** Entity slot index. Unique among live entities, ascending. */
-  readonly id = new Uint32Array(MAX_VIEW);
-  readonly gen = new Uint16Array(MAX_VIEW);
-  readonly kind = new Uint16Array(MAX_VIEW);
-  readonly qx = new Int32Array(MAX_VIEW);
-  readonly qy = new Int32Array(MAX_VIEW);
-  readonly qz = new Int32Array(MAX_VIEW);
+  id = new Uint32Array(VIEW_START);
+  gen = new Uint16Array(VIEW_START);
+  kind = new Uint16Array(VIEW_START);
+  qx = new Int32Array(VIEW_START);
+  qy = new Int32Array(VIEW_START);
+  qz = new Int32Array(VIEW_START);
   /** 10-bit yaw. */
-  readonly yaw = new Uint16Array(MAX_VIEW);
-  readonly flags = new Uint8Array(MAX_VIEW);
+  yaw = new Uint16Array(VIEW_START);
+  flags = new Uint8Array(VIEW_START);
   /** Packed as `AnimState.pack` does. */
-  readonly anim = new Uint32Array(MAX_VIEW);
+  anim = new Uint32Array(VIEW_START);
   /** Appearance revision, 4 bits. A change makes the next delta send a create. */
-  readonly rev = new Uint8Array(MAX_VIEW);
+  rev = new Uint8Array(VIEW_START);
   /** Not sent. 1 for an entity whose changes go before the others when a snapshot cannot carry them all: a player, or a mount one drives. */
-  readonly urgent = new Uint8Array(MAX_VIEW);
+  urgent = new Uint8Array(VIEW_START);
 
   push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0): boolean {
     const n = this.count;
-    if (n === MAX_VIEW) return false;
+    if (n === this.cap && !this.grow()) return false;
     this.id[n] = id;
     this.gen[n] = gen;
     this.kind[n] = kind;
@@ -120,22 +135,57 @@ export class SentView {
   copyFrom(o: SentView, i: number): boolean {
     return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!);
   }
+
+  /** Doubles the columns. False when they are at MAX_VIEW. */
+  protected grow(): boolean {
+    if (this.cap >= MAX_VIEW) return false;
+    const cap = (this.cap *= 2);
+    this.id = wider(this.id, cap);
+    this.gen = wider(this.gen, cap);
+    this.kind = wider(this.kind, cap);
+    this.qx = wider(this.qx, cap);
+    this.qy = wider(this.qy, cap);
+    this.qz = wider(this.qz, cap);
+    this.yaw = wider(this.yaw, cap);
+    this.flags = wider(this.flags, cap);
+    this.anim = wider(this.anim, cap);
+    this.rev = wider(this.rev, cap);
+    this.urgent = wider(this.urgent, cap);
+    return true;
+  }
 }
 
 /** A view as a client holds it: each entity with its appearance. */
 export class EntityView extends SentView {
-  readonly level = new Uint16Array(MAX_VIEW);
-  readonly colors = new Uint8Array(MAX_VIEW * 6);
-  readonly name: string[] = new Array<string>(MAX_VIEW).fill("");
+  level = new Uint16Array(VIEW_START);
+  colors = new Uint8Array(VIEW_START * 6);
+  readonly name: string[] = new Array<string>(VIEW_START).fill("");
   /** A survivor's look (LOOK_BYTES), shared by reference and never changed in place. */
-  readonly look: (Uint8Array | null)[] = new Array<Uint8Array | null>(MAX_VIEW).fill(null);
+  readonly look: (Uint8Array | null)[] = new Array<Uint8Array | null>(VIEW_START).fill(null);
   /** GEAR_COUNT content indices, shared by reference. */
-  readonly gear: (Uint16Array | null)[] = new Array<Uint16Array | null>(MAX_VIEW).fill(null);
+  readonly gear: (Uint16Array | null)[] = new Array<Uint16Array | null>(VIEW_START).fill(null);
   /** As in `EntityStore`, each 0 for none. */
-  readonly team = new Uint32Array(MAX_VIEW);
-  readonly seat = new Uint32Array(MAX_VIEW);
-  readonly span = new Uint32Array(MAX_VIEW);
-  readonly grown = new Uint32Array(MAX_VIEW);
+  team = new Uint32Array(VIEW_START);
+  seat = new Uint32Array(VIEW_START);
+  span = new Uint32Array(VIEW_START);
+  grown = new Uint32Array(VIEW_START);
+
+  protected override grow(): boolean {
+    if (!super.grow()) return false;
+    const cap = this.cap;
+    this.level = wider(this.level, cap);
+    this.colors = wider(this.colors, cap * 6);
+    while (this.name.length < cap) {
+      this.name.push("");
+      this.look.push(null);
+      this.gear.push(null);
+    }
+    this.team = wider(this.team, cap);
+    this.seat = wider(this.seat, cap);
+    this.span = wider(this.span, cap);
+    this.grown = wider(this.grown, cap);
+    return true;
+  }
 
   /** For the entry just pushed. Call it after `appear`, which zeroes these fields. */
   belong(team: number, seat: number, span: number, grown: number): void {
@@ -207,7 +257,7 @@ const opCur = new Int16Array(MAX_VIEW * 2);
 /** Positions in the op list of the ops that may be deferred: those of urgent entities, and the rest. */
 const urgIndex = new Int16Array(MAX_VIEW * 2);
 const optIndex = new Int16Array(MAX_VIEW * 2);
-/** Bits each deferrable op takes. Exact for an update but for its id gap, an upper bound for a create. */
+/** Bits each deferrable op takes. Exact for an update but for its id gap, an upper bound for a create, new or again. */
 const opBits = new Uint16Array(MAX_VIEW * 2);
 let admitted = 0;
 const K_KEEP = 0;
@@ -245,12 +295,15 @@ function admit(list: Int16Array, count: number, rotate: number, budgetBits: numb
 
 /**
  * Encodes `cur` (the true state, sorted by id) against `base` (the view the client has, or null) and fills `next` with the
- * view the client will hold after applying it. `budgetBits` bounds the deferrable ops. A deferred op is left out, and `next`
- * records the stale state the client is left with, so later deltas stay correct. Urgent entities are deferred last.
- * `rotate` holds where deferral started last time. Pass back what this returns, and 0 the first time. `looks` gives the appearance a create carries. The entry of `cur` with id `skip` is left out,
- * so clients around one place can share one `cur`.
+ * view the client will hold after applying it. `budgetBits` bounds the deferrable ops, which are all but the removes. A
+ * deferred op is left out, and `next` records the stale state the client is left with, so later deltas stay correct.
+ * Urgent entities are deferred last. `rotate` holds where deferral started last time. Pass back what this returns, and 0
+ * the first time. `looks` gives the appearance a create carries.
+ *
+ * Clients around one place share one `cur`, and each is sent its own part of it. The entry with id `skip` is left out, and
+ * so is every entry whose `rank` is `limit` or more. `rank` is each entry's place in the order they were chosen in.
  */
-export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1): number {
+export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1, rank: Uint16Array | null = null, limit = MAX_VIEW): number {
   const nb = base ? base.count : 0;
   const nc = cur.count;
   let i = 0;
@@ -264,12 +317,12 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
   /** One more than the id of the last op, for the size of the next op's id gap. A deferred op between two makes the real gap larger. */
   let last = 0;
   while (i < nb || j < nc) {
-    const bid = i < nb ? base!.id[i]! : 0xffffffff;
-    const cid = j < nc ? cur.id[j]! : 0xffffffff;
-    if (cid === skip) {
+    if (j < nc && (cur.id[j] === skip || (rank !== null && rank[j]! >= limit))) {
       j++;
       continue;
     }
+    const bid = i < nb ? base!.id[i]! : 0xffffffff;
+    const cid = j < nc ? cur.id[j]! : 0xffffffff;
     let bits = 0;
     if (bid < cid) {
       opKind[n] = K_REMOVE;
@@ -285,8 +338,9 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       opBase[n] = i;
       opCur[n] = j;
       if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
+        // Deferred, it leaves the client the entry it has.
         opKind[n] = K_REPLACE;
-        written++;
+        bits = createBits(looks, cid);
         last = cid + 1;
       } else {
         const dx = cur.qx[j]! - base!.qx[i]!;

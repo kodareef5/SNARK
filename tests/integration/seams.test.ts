@@ -11,7 +11,7 @@ import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkAt } from "../../shared/coords.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
-import { MAX_VIEW } from "../../shared/net/view.ts";
+import { VIEW_DEFAULT } from "../../shared/net/view.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_JUMP, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
@@ -170,19 +170,19 @@ test("a view fills with players first, then what moves, then what stands: a crow
   h.say(bob, `tp ${b!.x.toFixed(3)} ${b!.z.toFixed(3)}`);
   const rng = new Rng(5);
   let crowd = 0;
-  for (let i = 0; i < 4000 && crowd < MAX_VIEW + 90; i++) {
+  for (let i = 0; i < 4000 && crowd < VIEW_DEFAULT + 90; i++) {
     const [x, z] = [g.x + rng.range(0.5, 11.5), g.z + rng.range(0.5, 11.5)];
     if (chunkAt(w.dims, x, z) === chunkAt(w.dims, a.x, a.z) && h.host.spawnCreature("core:dummy", x, z, 1) >= 0) crowd++;
   }
-  expect(crowd).toBe(MAX_VIEW + 90);
+  expect(crowd).toBe(VIEW_DEFAULT + 90);
   const e = h.host.spawnCreature("core:grazer", b!.x, b!.z + 2, 1);
   expect(h.server.take(h.client(bob)!, e)).toBe(true);
   h.pilots[1]!.moveZ = 1;
   // A view that full takes a while to arrive whole.
   h.run(4000);
   const hers = seen(ada);
-  // Clients around one place share one list of MAX_VIEW entities, and her own body is one of them.
-  expect(hers.count).toBe(MAX_VIEW - 1);
+  // She is shown VIEW_DEFAULT entities of the list that clients around one place share, and her own body is one of them.
+  expect(hers.count).toBe(VIEW_DEFAULT - 1);
   expect(indexOf(hers, "bob")).toBeGreaterThanOrEqual(0);
   let grazers = 0;
   let dummies = 0;
@@ -191,7 +191,7 @@ test("a view fills with players first, then what moves, then what stands: a crow
     if (hers.kind[i] === id("dummy")) dummies++;
   }
   expect(grazers).toBe(1);
-  expect(dummies).toBeGreaterThanOrEqual(MAX_VIEW - 2 - 60);
+  expect(dummies).toBeGreaterThanOrEqual(VIEW_DEFAULT - 2 - 60);
   expect(dummies).toBeLessThan(crowd);
   expect(indexOf(seen(bob), "ada")).toBeGreaterThanOrEqual(0);
   expect(ada.stats.undecodable + bob.stats.undecodable).toBe(0);
