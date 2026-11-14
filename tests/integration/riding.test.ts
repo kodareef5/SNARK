@@ -222,14 +222,14 @@ test("a rider is shot where she sits; a saddle is her mount's armor; a mount tha
   expect(combat.castBodies(h.ent(bob), at.x - 12, at.y + 1.5, at.z, 1, 0, 0, 11.5)).toBe(-1);
   expect(ZONE_NONE).toBe(0);
 
-  // A saddle cuts a 60 point blow to two thirds.
+  // A saddle of 25 halves a 60 point blow.
   const blow = (): number => {
     const before = h.host.survival.value(rec, V_HEALTH);
     combat.land({ by: null, x: at.x, z: at.z, item: 0, base: 60, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 }, e, 2, ents.x[e]!, ents.y[e]! + 1, ents.z[e]!, 3);
     return before - h.host.survival.value(rec, V_HEALTH);
   };
   const saddled = blow();
-  expect(saddled).toBeCloseTo(40, 1);
+  expect(saddled).toBeCloseTo(30, 1);
   h.host.survival.add(rec, V_TORPOR, rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
   h.run(300);
   expect([rec.out, ada.driving, h.client(ada)!.drive, ents.seat[rider], h.host.riding.dismounted]).toEqual([true, -1, -1, 0, 1]);

@@ -94,7 +94,8 @@ test("property: no sequence of moves creates or destroys anything", () => {
 });
 
 test("spoilage: one item per interval, the same whether looked at once or every tick, and never for things that keep", () => {
-  expect(SPOIL).toBe(4 * 4200);
+  // Ten minutes.
+  expect(SPOIL).toBe(18000);
   const once = new Inventory(4);
   const often = new Inventory(4);
   for (const inv of [once, often]) {

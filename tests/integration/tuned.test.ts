@@ -16,7 +16,6 @@ import type { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_CRAFT, CMD_LEARN, EVENT_HIT, MARKER_DEATH, REJECT_CONTENT, REJECT_PASSWORD, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_SHORT, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE } from "../../shared/net/transport.ts";
 import { BTN_SPRINT } from "../../shared/sim/character.ts";
-import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { buildCorePack } from "../../tools/pack/build.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -201,9 +200,10 @@ test("engrams and levels are the server's: its level table and the tames', the m
   expect([capped.h.host.progression.addXp(pet, 5000), pet.xp, capped.h.host.progression.most(pet), capped.h.host.progression.most(capped.me) > 150]).toEqual([150, 150, 150, true]);
   // At ARK's defaults experience stops at the last level of content's table.
   const plain = served();
-  const last = (plain.h.world.reg.defs.find((d) => d?.type === "levels") as LevelsDef).xp[99]!;
-  plain.h.say(plain.ada, "addxp 1000000");
-  expect([plain.me.xp, plain.h.host.progression.level(plain.me), plain.ada.progress.level]).toEqual([last, 100, 100]);
+  const last = (plain.h.world.reg.defs.find((d) => d?.type === "levels") as LevelsDef).xp[104]!;
+  // The command gives a million at most, and the last level takes four.
+  for (let n = 0; n < 5; n++) plain.h.say(plain.ada, "addxp 1000000");
+  expect([plain.me.xp, plain.h.host.progression.level(plain.me), plain.ada.progress.level]).toEqual([last, 105, 105]);
 });
 
 test("every engram learned as its level is reached; or only those the server names offered", () => {
@@ -214,7 +214,7 @@ test("every engram learned as its level is reached; or only those the server nam
   expect([[...all.ada.progress.engrams].sort((a, b) => a - b), all.me.engrams]).toEqual([at(1), []]);
   // Auto-unlocked engrams are not recorded as learned and cost no points.
   all.h.say(all.ada, "addxp 480");
-  expect([all.ada.progress.level, [...all.ada.progress.engrams].sort((a, b) => a - b), all.me.engrams, all.h.host.progression.engramPoints(all.me)]).toEqual([10, at(10), [], 8 * 5 + 12 * 4]);
+  expect([all.ada.progress.level, [...all.ada.progress.engrams].sort((a, b) => a - b), all.me.engrams, all.h.host.progression.engramPoints(all.me)]).toEqual([10, at(10), [], 8 * 8 + 12]);
   expect(at(10).length).toBeGreaterThan(at(1).length);
   all.h.say(all.ada, "give flint 1");
   all.h.say(all.ada, "give wood 1");
@@ -236,7 +236,7 @@ test("how long things keep, how long fuel burns, and how much a tree takes and g
     const inv = m.h.host.items.inv(m.me);
     return inv.spoilAt[inv.item.indexOf(id("meat_cooked"))]! - made;
   };
-  expect([keeps(plain), keeps(kept)]).toEqual([2 * GAME_HOUR_TICKS, 6 * GAME_HOUR_TICKS]);
+  expect([keeps(plain), keeps(kept)]).toEqual([1200 * TICK_RATE, 3600 * TICK_RATE]);
   expect([plain.h.world.reg.fuelTicks[id("wood")], kept.h.world.reg.fuelTicks[id("wood")], kept.h.world.reg.fuelTicks[id("thatch")]]).toEqual([30 * TICK_RATE, 60 * TICK_RATE, 15 * TICK_RATE]);
 
   // The creature and survivor stamina settings are separate. staminaSprint is a whole number of units a tick, so the ratio is rounded.

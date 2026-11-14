@@ -5,7 +5,6 @@ import type { EngramDef, ItemDef, LevelsDef, NodeDef, SpeciesDef } from "../../s
 import { STAMINA_DEFAULT, type Registry } from "../../shared/content/registry.ts";
 import { STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { applyTuning, deriveRegistry, parseTuning, tuningText, type Tuning } from "../../shared/content/tuning.ts";
-import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { FIXED_TUNING } from "../../tools/simhash.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -39,7 +38,7 @@ test("stacks: every stack of more than one by the multiplier, one item by its ow
   const reg = deriveRegistry(base, { stack: 3, stacks: { "core:thatch": { n: 543, plain: true }, "core:flint": { n: 70 }, "core:hatchet": { n: 5 }, "core:saddle_parasaur": { n: 4, plain: true }, "core:nothing": { n: 9 } } });
   const stack = (name: string): number => reg.stack[at(reg, name)]!;
   // Wood is multiplied by three. Thatch takes its own number without the multiplier, and flint its own number times the multiplier.
-  expect([stack("wood"), stack("thatch"), stack("flint"), stack("arrow_stone")]).toEqual([300, 543, 210, 150]);
+  expect([stack("wood"), stack("thatch"), stack("flint"), stack("arrow_stone")]).toEqual([300, 543, 210, 300]);
   // A tool wears, so it stays one to a slot even if the tuning says otherwise. A saddle does not wear and may stack.
   expect([stack("hatchet"), stack("spear"), stack("saddle_parasaur"), stack("saddle_raptor")]).toEqual([1, 1, 4, 1]);
   expect(def<ItemDef>(reg, "wood").stack).toBe(300);
@@ -102,8 +101,8 @@ test("how fast a body tires, how long things keep and burn, and how much a tree 
   const costs = (name: string): number[] => [move(reg, name).staminaSprint, move(reg, name).staminaJump, move(reg, name).staminaRegen];
   expect([costs("survivor"), costs("raptor"), costs("parasaur")]).toEqual([cost("survivor", 0.5), cost("raptor", 2), cost("parasaur", 2)]);
   expect([move(reg, "survivor").staminaSprint < move(base, "survivor").staminaSprint, move(reg, "raptor").staminaSprint > move(base, "raptor").staminaSprint, move(reg, "raptor").walkSpeed]).toEqual([true, true, move(base, "raptor").walkSpeed]);
-  // Cooked meat keeps two game hours, so six here. Wood burns thirty seconds, so fifteen. An item that does not spoil or burn still does not.
-  expect([reg.spoilTicks[at(reg, "meat_cooked")], reg.fuelTicks[at(reg, "wood")], reg.fuelTicks[at(reg, "thatch")], reg.spoilTicks[at(reg, "wood")], reg.fuelTicks[at(reg, "flint")]]).toEqual([6 * GAME_HOUR_TICKS, 15 * TICK_RATE, Math.round(3.75 * TICK_RATE), 0, 0]);
+  // Cooked meat keeps twenty minutes, so an hour here. Wood burns thirty seconds, so fifteen. An item that does not spoil or burn still does not.
+  expect([reg.spoilTicks[at(reg, "meat_cooked")], reg.fuelTicks[at(reg, "wood")], reg.fuelTicks[at(reg, "thatch")], reg.spoilTicks[at(reg, "wood")], reg.fuelTicks[at(reg, "flint")]]).toEqual([3600 * TICK_RATE, 15 * TICK_RATE, Math.round(3.75 * TICK_RATE), 0, 0]);
   // A tree takes twelve blows, so thirty here. A bush takes four, so ten.
   expect([reg.nodeHits[at(reg, "tree")], reg.nodeHits[at(reg, "bush")], def<NodeDef>(reg, "rock").hits]).toEqual([30, 10, 25]);
   // The results never reach zero, which would mean keeping for ever, burning for no time or falling to no blow.

@@ -130,6 +130,8 @@ export interface Registry {
   /** Per species: the colours each region of a wild one may take, and the palette colours a mutation may give a region. Null for everything else. */
   readonly colorSet: readonly (ColorSet | null)[];
   readonly mutationColors: readonly (readonly number[] | null)[];
+  /** Per species: how many times as long things keep in its inventory. 1 for everything else. */
+  readonly keeps: Float32Array;
   /** Per item: the species it is a saddle for (0 if it is no saddle), and the armor it gives. */
   readonly saddleFits: Uint16Array;
   readonly saddleArmor: Float32Array;
@@ -218,6 +220,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       positive(d, "sprintMul", d.sprintMul, 4);
       positive(d, "jumpSpeed", d.jumpSpeed, 30);
       if (d.swimSpeed !== undefined) positive(d, "swimSpeed", d.swimSpeed, 40);
+      if (d.keeps !== undefined) positive(d, "keeps", d.keeps, 1000);
       if (d.turn !== undefined) positive(d, "turn", d.turn, 3600);
       // The pack decides which skeletons exist, so only an empty name is an error here.
       if (d.skeleton !== undefined && d.skeleton.length === 0) errors.push(`${d.id}: a skeleton must be named`);
@@ -409,6 +412,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const birthScale = new Float32Array(n).fill(1);
   const colorSet: (ColorSet | null)[] = new Array(n).fill(null);
   const mutationColors: (readonly number[] | null)[] = new Array(n).fill(null);
+  const keeps = new Float32Array(n).fill(1);
   const saddleFits = new Uint16Array(n);
   const saddleArmor = new Float32Array(n);
   const doseTorpor = new Float32Array(n);
@@ -525,6 +529,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       taming[i] = d.taming ?? null;
       if (d.eats) eats[i] = d.eats.flatMap((f) => [index.get(f.item)!, f.food, f.affinity]);
       leash[i] = d.leash ?? 60;
+      keeps[i] = d.keeps ?? 1;
       if (d.breeds) {
         breedEgg[i] = d.breeds.egg !== undefined ? index.get(d.breeds.egg)! : 0;
         incubateTicks[i] = Math.round(d.breeds.incubate * TICK_RATE);
@@ -571,7 +576,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
