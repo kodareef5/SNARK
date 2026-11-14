@@ -81,10 +81,12 @@ export interface PackMaterial {
   base: number;
   normal: number;
   mro: number;
+  /** Regions 0 to 2, and regions 3 to 5. A material with three regions or fewer has no second. */
   mask: number;
+  mask2: number;
   /** Multiplied over the base colour, linear 0..1. */
   tint: [number, number, number];
-  /** The mean linear brightness of the base colour where the mask marks a region. A region's colour is divided by it, so the dyed surface averages that colour. */
+  /** The mean linear brightness of the base colour where the masks mark a region. A region's colour is divided by it, so the dyed surface averages that colour. */
   grey: number;
   /** How much the base colour glows where its alpha is high. 0 when alpha means coverage. */
   emissive: number;
@@ -186,7 +188,8 @@ export function parsePack(file: Uint8Array): Pack {
   const materials = header.materials ?? [];
   for (const t of textures) if (stepOf(t.top) < 0) throw new Error(`pack: texture ${t.id} is ${t.top} pixels across`);
   for (const m of materials) {
-    for (const t of [m.base, m.normal, m.mro, m.mask]) if (!(t >= -1 && t < textures.length)) throw new Error(`pack: material ${m.id} names a texture that is not there`);
+    m.mask2 ??= -1;
+    for (const t of [m.base, m.normal, m.mro, m.mask, m.mask2]) if (!(t >= -1 && t < textures.length)) throw new Error(`pack: material ${m.id} names a texture that is not there`);
   }
   header.meshes.forEach((m, i) => {
     meshIndex.set(m.id, i);

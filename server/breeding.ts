@@ -22,8 +22,6 @@ import { event } from "./events/bus.ts";
 export const DEADLINE_BREED = 8;
 /** In ticks. Pairs are sought and rechecked this often. */
 export const PAIR_TICKS = TICK_RATE;
-/** Palette indices a mutation may give a colour region. None is a wild colour. */
-export const MUTATION_COLORS: readonly number[] = [8, 10, 11, 13, 14, 17, 19, 21];
 /** In EVENT_TAMED, marks a creature claimed as young, not tamed. */
 export const CLAIMED = 255;
 
@@ -222,7 +220,7 @@ export class Breeding {
     const facing = (ents.yaw[e]! / 65536) * Math.PI * 2;
     for (let k = 0; k < n; k++) {
       const egg = records.create(eggKind !== 0 ? eggKind : mother.kind, `${what} egg`);
-      egg.genome = breed(mother.genome!, father.genome!, mother.pid, father.pid, this.rng, MUTATION_COLORS);
+      egg.genome = breed(mother.genome!, father.genome!, mother.pid, father.pid, this.rng, reg.mutationColors[mother.kind]!);
       egg.egg = { species: mother.kind, span, hatchAt, carrier: eggKind !== 0 ? 0 : mother.pid };
       this.ctx.game.bus.after(BREED_EGG, { mother: mother.pid, father: father.pid, pid: egg.pid });
       // The egg lies just behind her, and several fan out. If there is no room there, it lies under her.

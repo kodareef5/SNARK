@@ -15,9 +15,6 @@ import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
-/** Palette indices a wild creature may roll. */
-const WILD_COLORS = [3, 5, 6, 7, 9, 12, 15];
-
 const CREATURE_SPAWN = event("creature.spawn");
 
 export class Creatures {
@@ -93,7 +90,7 @@ export class Creatures {
     rec.y = y;
     rec.z = z;
     rec.yaw = this.rng.int(65536);
-    rec.genome = rollWild(this.rng, level, WILD_COLORS);
+    rec.genome = rollWild(this.rng, level, world.reg.colorSet[kind]!);
     if (colours !== "") colours.split(",").forEach((c, i) => void (i < rec.genome!.colors.length && Number(c) >= 0 && Number(c) <= 255 && c.trim() !== "" && (rec.genome!.colors[i] = Number(c))));
     return this.adopt(rec);
   }

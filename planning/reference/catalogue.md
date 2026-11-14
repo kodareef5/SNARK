@@ -10,7 +10,7 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 39 classes: 24 built, 3 partly built, and 12 stubs that
+There are 39 classes: 24 built, 4 partly built, and 11 stubs that
 wait for a feature. The core pack holds 244 definitions, and 77 renames of ids
 that are no longer defined.
 
@@ -117,7 +117,7 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 | --- | --- | --- | --- | --- | --- |
 | `species` | a character | a group |  |  |  |
 | `species/survivor` | the player's character | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats`, `equips` | `crouch`, `prone`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `fists`, `drops`, `takes`, `zones`, `killXp`, `torporDrain` | 1 |
-| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `fists`, `bite`, `drops`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 3 |
+| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `fists`, `bite`, `drops`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `regions`, `mutations`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 3 |
 | `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `still` | `stats`, `equips`, `slots`, `zones`, `takes`, `torporDrain`, `crouch`, `prone`, `stamina`, `fists`, `food`, `drops`, `killXp` | 1 |
 
 - **`species`** on shelf `species`. A kind of body that lives.
@@ -131,7 +131,7 @@ Asset slots:
 - `species/creature`: `#body` mesh, must, from `{mesh}`, else `box`; `#rig` rig, must with `skeleton`, from `{mesh}`, else `rigid`; `#clip/{idle, walk, run, attack, death}` clip, must with `skeleton`, from `{mesh}/{key}`, else `{mesh}/idle` then `rest`; `#move/{jump, swim, eat, sleep}` clip, may with `skeleton`, from `{mesh}/{key}`, else `{mesh}/walk` then `{mesh}/idle` then `rest`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#sound/<any>` sound, may, from `{id}/sound/{key}`, else `none`.
 - `species/target`: `#body/{head, torso, hands, legs, feet}` mesh, must with `skeleton`, from `{mesh}_{sex}/{key}`, else `{mesh}/{key}` then `core:mannequin/{key}`; `#hair/<hair>` mesh, may with `skeleton`, from `{mesh}_{sex}/hair/{key}`, else `none`; `#beard/<beard>` mesh, may with `skeleton`, from `{mesh}_{sex}/beard/{key}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`.
 
-ARK's names: `drops` is DeathHarvestingComponent; `stats` is MaxStatusValues and the per-level gains; `takes` is DamageTypeAdjusters; `bite` is AttackInfos; `taming` is RequiredTameAffinity; `eats` is DinoSettings food effectiveness; `breeds` is EggItemsToSpawn, BabyAgeSpeed; `tag` is DinoNameTag; `variant` is a child blueprint's kind; `attacks` is AttackInfos; `loot` is DeathInventoryTemplates; `saddle` is SaddleItemClass; `buffs` is DefaultBuffs; `boss` is bIsBossDino.
+ARK's names: `drops` is DeathHarvestingComponent; `stats` is MaxStatusValues and the per-level gains; `takes` is DamageTypeAdjusters; `bite` is AttackInfos; `taming` is RequiredTameAffinity; `eats` is DinoSettings food effectiveness; `breeds` is EggItemsToSpawn, BabyAgeSpeed; `tag` is DinoNameTag; `regions` is the ColorSetDefinitions of RandomColorSetsMale, PreventColorizationRegions; `variant` is a child blueprint's kind; `attacks` is AttackInfos; `loot` is DeathInventoryTemplates; `saddle` is SaddleItemClass; `buffs` is DefaultBuffs; `boss` is bIsBossDino.
 
 What names what: `drops[].item` names a `item`; `eats[].item` names a `item`; `breeds.egg` names a `prop/egg`; `loot` names a `loot`; `saddle` names a `item/saddle`; `buffs[]` names a `buff`.
 
@@ -287,9 +287,9 @@ Packs may add to: `entries`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `map` | a level and the game data it names | stub: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 0 |
+| `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 0 |
 
-- **`map`** on shelf `maps`. A world: its ground, its zones, and what spawns, grows and drops in each. Today the one map is code.
+- **`map`** on shelf `maps`. A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. Today a spawn zone is where a new world's creatures start.
 
 ARK's names: `game` is the game data a level names; `zones` is zone managers and crate volumes.
 
@@ -329,7 +329,7 @@ built.
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
 - **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot`, `item.blueprint`, `species.loot`.
 - **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `item.spoilsInto`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
-- **Maps as content: a map, its zones and what lives in them.** `map`, `engram.group`.
+- **Maps as content: a map, its zones and what lives in them.** `map` (partly built), `engram.group`, `map.label`, `map.game`.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built).
 - **Skins, dyes, costumes and shields.** `item/shield`, `item/costume`, `item/skin`, `item/dye`.
 - **Bosses, artifacts and what a boss unlocks.** `item/artifact`, `species.boss`, `engram.from`.

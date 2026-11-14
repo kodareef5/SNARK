@@ -6,7 +6,7 @@ import type { TameParams } from "../sim/taming.ts";
 import { TICK_RATE } from "../coords.ts";
 import { hashString } from "../hash.ts";
 import { STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
-import { STAT_NAMES } from "../sim/genome.ts";
+import { COLOR_REGIONS, STAT_NAMES, type ColorSet } from "../sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
 import { ZONE_COUNT } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
@@ -127,6 +127,9 @@ export interface Registry {
   readonly incubateTicks: Uint32Array;
   readonly matureTicks: Uint32Array;
   readonly birthScale: Float32Array;
+  /** Per species: the colours each region of a wild one may take, and the palette colours a mutation may give a region. Null for everything else. */
+  readonly colorSet: readonly (ColorSet | null)[];
+  readonly mutationColors: readonly (readonly number[] | null)[];
   /** Per item: the species it is a saddle for (0 if it is no saddle), and the armor it gives. */
   readonly saddleFits: Uint16Array;
   readonly saddleArmor: Float32Array;
@@ -163,6 +166,10 @@ export const MAX_NODE_HITS = 10000;
 export const MAX_LEVELS = 10000;
 /** Stamina per second of sprinting, per second of rest, and per jump, where a species does not say. */
 export const STAMINA_DEFAULT = { sprint: 5, regen: 8, jump: 6 };
+/** Palette colours every region of a wild creature draws from evenly, where its species has no colour set. */
+export const WILD_COLORS: readonly number[] = [3, 5, 6, 7, 9, 12, 15];
+/** Palette colours a mutation may give a region, where the species does not say. None is a wild colour. */
+export const MUTATION_COLORS: readonly number[] = [8, 10, 11, 13, 14, 17, 19, 21];
 
 export const WEAR_SLOTS: readonly string[] = ["head", "torso", "hands", "legs", "feet"];
 
@@ -234,6 +241,14 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (!(STAT_NAMES as readonly string[]).includes(stat)) errors.push(`${d.id}: unknown stat "${stat}"`);
         else if (!Array.isArray(curve) || curve.length !== 3 || !(curve[0] > 0) || !(curve[1] >= 0) || !(curve[2] >= 0)) errors.push(`${d.id}: stats.${stat} must be [base > 0, perWild >= 0, perTamed >= 0]`);
       }
+      if (Array.isArray(d.regions)) {
+        if (d.regions.length !== COLOR_REGIONS) errors.push(`${d.id}: regions must list all ${COLOR_REGIONS} colour regions, with null for one that takes no colour`);
+        const weighted = (c: unknown): boolean => Array.isArray(c) && c.length === 2 && paletteIndex(c[0]) && Number.isFinite(c[1]) && c[1] > 0;
+        for (const r of d.regions) {
+          if (r !== null && !(typeof r?.name === "string" && r.name !== "" && Array.isArray(r.colors) && r.colors.length > 0 && r.colors.every(weighted))) errors.push(`${d.id}: a region is null, or a name and its colours, each [palette index, weight above 0]`);
+        }
+      }
+      if (Array.isArray(d.mutations) && !(d.mutations.length > 0 && d.mutations.every(paletteIndex))) errors.push(`${d.id}: mutations must be palette indices, and at least one`);
     } else if (d.type === "prop") {
       positive(d, "radius", d.radius, 8);
       positive(d, "height", d.height, 32);
@@ -392,6 +407,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const incubateTicks = new Uint32Array(n);
   const matureTicks = new Uint32Array(n);
   const birthScale = new Float32Array(n).fill(1);
+  const colorSet: (ColorSet | null)[] = new Array(n).fill(null);
+  const mutationColors: (readonly number[] | null)[] = new Array(n).fill(null);
   const saddleFits = new Uint16Array(n);
   const saddleArmor = new Float32Array(n);
   const doseTorpor = new Float32Array(n);
@@ -514,6 +531,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
         matureTicks[i] = Math.round(d.breeds.mature * TICK_RATE);
         birthScale[i] = d.breeds.scale ?? BIRTH_SCALE;
       }
+      colorSet[i] = d.regions ? compileColors(d.regions.map((r) => r && r.colors)) : WILD_SET;
+      mutationColors[i] = d.mutations ?? MUTATION_COLORS;
       // A bite is the species' melee weapon.
       if (d.bite) {
         reach[i] = d.bite.reach;
@@ -552,8 +571,29 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
 }
+
+const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
+
+/** Each region's colours as pairs of palette index and weight, or null for a region that takes none. */
+function compileColors(regions: readonly (readonly (readonly [palette: number, weight: number])[] | null)[]): ColorSet {
+  const start = new Uint32Array(COLOR_REGIONS + 1);
+  const palette: number[] = [];
+  const upTo: number[] = [];
+  for (let r = 0; r < COLOR_REGIONS; r++) {
+    let sum = 0;
+    for (const [color, weight] of regions[r] ?? []) {
+      palette.push(color);
+      upTo.push((sum += weight));
+    }
+    start[r + 1] = palette.length;
+  }
+  return { start, palette: Uint8Array.from(palette), upTo: Float64Array.from(upTo) };
+}
+
+/** What a species with no colour set rolls: WILD_COLORS at equal weight in every region. */
+const WILD_SET = compileColors(new Array(COLOR_REGIONS).fill(WILD_COLORS.map((c) => [c, 1] as const)));
 
 /** The ZONE_* ids (shared/anim/human.ts) each body part named in content covers. */
 const ZONE_GROUPS: Readonly<Record<string, readonly number[]>> = { head: [1], torso: [2], arms: [3, 4], hands: [5, 6], legs: [7, 8], feet: [9, 10] };

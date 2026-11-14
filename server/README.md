@@ -7,7 +7,7 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | `main.ts` | Process entry: static files, WebSocket adapter for the game and for voice, wall-clock tick loop |
 | `host.ts` | Assembles world, records, every system below, persistence, and the game loop |
 | `game.ts` | Connections, input buffering and validation, the body each session drives, snapshots by class, structure sync |
-| `world.ts` | The world container |
+| `world.ts` | The world container, made from a map file; the proving ground as one |
 | `records.ts` | Cold records: name, inventory, vitals, genome, team, and what each system keeps on one |
 | `own.ts` | What only a survivor's own client is told, and the commands that act on its own things |
 | `items.ts` | The only code that edits inventories, and the ledger |
