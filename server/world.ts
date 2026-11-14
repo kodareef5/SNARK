@@ -1,14 +1,15 @@
 import type { Rig } from "../shared/anim/rigs.ts";
 import { NO_CLIPS } from "../shared/anim/clip.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
+import type { MapDef, MapZone } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { CHUNK_SIZE, type MapDims } from "../shared/coords.ts";
 import { EntityStore } from "../shared/sim/entities.ts";
 import { offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
-import { mapHeightfield, mapNodes, placeStatics, writeMap, type MapFile, type MapStatic } from "../shared/world/mapfile.ts";
-import { PROVING_DIMS, PROVING_ID, PROVING_NODES_PER_CHUNK, PROVING_SEA_LEVEL, PROVING_SPAWN, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingMapHash, provingNodes } from "../shared/world/proving.ts";
+import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapFile, type MapStatic } from "../shared/world/mapfile.ts";
+import { PROVING_DIMS, PROVING_ID, PROVING_NODES_PER_CHUNK, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving } from "../shared/world/proving.ts";
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
 import { History } from "./history.ts";
@@ -27,6 +28,8 @@ export interface ServerWorld extends CollisionWorld {
   readonly spawn: { readonly x: number; readonly z: number; readonly yaw: number };
   /** Respawn choices for a dead survivor. The first is `spawn`. */
   readonly spawns: readonly { readonly name: string; readonly x: number; readonly z: number; readonly yaw: number }[];
+  /** The spawn zones of the map's definition, in its order. None for a map the content does not define. */
+  readonly zones: readonly MapZone[];
   /** `nodes` (from CollisionWorld) is this field's store. */
   readonly nodeField: NodeField | null;
   /** These clips place hit zones, so they must be the ones clients draw with. With none, bodies rest in a T-pose. */
@@ -47,7 +50,7 @@ export interface WorldOptions {
   populate?: boolean;
 }
 
-export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityCap: number, spawns?: ServerWorld["spawns"], nodeSource?: NodeSource): ServerWorld {
+export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId: string, mapHash: number, spawn: ServerWorld["spawn"], entityCap: number, spawns?: ServerWorld["spawns"], nodeSource?: NodeSource, zones: ServerWorld["zones"] = []): ServerWorld {
   const nodeField = nodeSource ? new NodeField(dims, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, nodeSource) : null;
   const ents = new EntityStore(dims, entityCap);
   return {
@@ -66,15 +69,39 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     mapHash,
     spawn,
     spawns: spawns ?? [{ name: "Spawn", ...spawn }],
+    zones,
     tick: 0,
     dayOffset: offsetForHour(0, 9),
   };
 }
 
-/** A world on the ground a map file holds (shared/world/mapfile.ts). */
+/** The herd starts north of the spawn point, and the hunters at the far edge of that ground, too far to see a new arrival. */
+const PROVING_DEF: MapDef = {
+  type: "map",
+  id: PROVING_ID,
+  chunks: [PROVING_DIMS.chunksX, PROVING_DIMS.chunksZ],
+  seaLevel: PROVING_SEA_LEVEL,
+  zones: [
+    { kind: "spawn", at: [256, 272], half: [30, 28] },
+    { kind: "spawn", at: [256, 294], half: [30, 6] },
+  ],
+};
+
+/** The content's definition of the map a file holds, found by the file's id. The proving ground's is here, since it is no pack's. */
+function defOf(reg: Registry, map: MapFile): MapDef | null {
+  const def = map.id === PROVING_ID ? PROVING_DEF : reg.defs[reg.index.get(map.id) ?? -1];
+  if (def?.type !== "map") return null;
+  if (def.chunks[0] !== map.dims.chunksX || def.chunks[1] !== map.dims.chunksZ || (def.seaLevel !== undefined && def.seaLevel !== map.seaLevel)) {
+    throw new Error(`map "${map.id}": its file is ${map.dims.chunksX} by ${map.dims.chunksZ} chunks with the sea at ${map.seaLevel}, and its definition says ${def.chunks[0]} by ${def.chunks[1]}${def.seaLevel === undefined ? "" : ` with the sea at ${def.seaLevel}`}`);
+  }
+  return def;
+}
+
+/** A world on the ground a map file holds (shared/world/mapfile.ts), with what the map's definition says lives there. */
 export function createMapWorld(reg: Registry, map: MapFile, opts: WorldOptions = {}): ServerWorld {
   const hf = mapHeightfield(map);
-  const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityCap ?? 4096, map.spawns, mapNodes(map, hf, reg) ?? undefined);
+  const zones = (defOf(reg, map)?.zones ?? []).filter((z) => z.kind === "spawn");
+  const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityCap ?? 4096, map.spawns, mapNodes(map, hf, reg) ?? undefined, zones);
   if (opts.populate !== false) placeStatics(map, world.structs, reg);
   return world;
 }
@@ -114,8 +141,5 @@ export function provingFile(reg: Registry): Uint8Array<ArrayBuffer> {
 }
 
 export function createProvingWorld(reg: Registry, opts: WorldOptions = {}): ServerWorld {
-  const hf = buildProvingHeightfield();
-  const world = createWorld(reg, PROVING_DIMS, hf, PROVING_ID, provingMapHash(hf), PROVING_SPAWN, opts.entityCap ?? 4096, PROVING_SPAWNS, provingNodes(hf, reg));
-  if (opts.populate !== false) populateProving(world.structs, hf, reg);
-  return world;
+  return createMapWorld(reg, parseMap(provingFile(reg)), opts);
 }

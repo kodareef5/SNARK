@@ -1,4 +1,4 @@
-// bun server/main.ts [--dev] [--config dir] [--port 8787] [--db var/world.db] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--config dir] [--port 8787] [--map file.snmap] [--db var/world.db] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
@@ -27,6 +27,8 @@ export interface ServerOptions {
   adminPassword?: string;
   /** Read console commands from standard input, as the operator. */
   terminal?: boolean;
+  /** Path of the map file to run (shared/world/mapfile.ts). Without one, the proving ground. */
+  map?: string;
   dbPath?: string;
   /** With a save: skip the backups made beside it at every autosave mark. */
   noBackups?: boolean;
@@ -77,6 +79,22 @@ export function liveFileOf(folder: string): (() => string | null) | undefined {
   return () => (existsSync(path) ? readFileSync(path, "utf8") : null);
 }
 
+/**
+ * Answers the two requests a client makes for the map. `/map.json` names the map and its file. The file's name carries the
+ * start of its SHA-256, so whoever fetched it keeps it for good, and it goes out compressed. Null for any other path.
+ */
+export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: number): (path: string, accepts: string) => Response | null {
+  const name = `map.${new Bun.CryptoHasher("sha256").update(file).digest("hex").slice(0, 16)}.snmap`;
+  const json = JSON.stringify({ id, hash, file: name });
+  const packed = Bun.gzipSync(file);
+  return (path, accepts) => {
+    if (path === "/map.json") return new Response(json, { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
+    if (path !== `/${name}`) return null;
+    const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
+    return accepts.includes("gzip") ? new Response(packed, { headers: { ...headers, "content-encoding": "gzip" } }) : new Response(file, { headers });
+  };
+}
+
 /** The default settings folder of a development server. It speeds up taming, hatching and growth so raising a creature takes minutes. */
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
@@ -90,13 +108,15 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const manifest = parseManifest(readFileSync(manifestFile, "utf8"));
   const pack = parsePack(new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[manifest.boot]!.name))));
   const clips = pack.clips;
-  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
+  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: new Uint8Array(readFileSync(opts.map)) } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
   for (const m of host.lists.renamed) console.log(`settings: ${m.setting} names ${m.name}, which is now ${m.to.join(", ")}`);
   for (const m of host.lists.unclear) console.log(`settings: ${m.setting} names ${m.name}, which could be ${m.could.join(" or ")}, so write the one meant in full`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
+  if (host.world.zones.length === 0) console.log(`map: the content has no spawn zone for ${host.world.mapId}, so no creature starts on it`);
+  const mapRoute = mapRoutes(host.mapFile!, host.world.mapId, host.world.mapHash);
   if (opts.probeScene) {
     const ents = host.world.ents;
     const e = host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
@@ -160,7 +180,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         measured(result);
         return new Response("ok");
       }
-      return serveFile(clientDir, req);
+      return mapRoute(url.pathname, req.headers.get("accept-encoding") ?? "") ?? serveFile(clientDir, req);
     },
     websocket: {
       maxPayloadLength: 4096,
@@ -300,6 +320,7 @@ if (import.meta.main) {
     dev,
     config: rules,
     ...(live ? { live } : {}),
+    map: value("--map"),
     dbPath: value("--db"),
     noBackups: args.includes("--no-backups"),
     modules,

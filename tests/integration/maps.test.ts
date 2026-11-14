@@ -1,12 +1,72 @@
 import { expect, test } from "bun:test";
+import { CORE_PACK } from "../../content/core.ts";
+import { createHost } from "../../server/host.ts";
+import { mapRoutes } from "../../server/main.ts";
 import { createMapWorld, provingFile } from "../../server/world.ts";
+import { compilePacks } from "../../shared/content/packs.ts";
 import { chunkCount } from "../../shared/coords.ts";
-import { parseMap } from "../../shared/world/mapfile.ts";
+import { parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import type { NodeSpot } from "../../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodes } from "../../shared/world/proving.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { simHash } from "../../tools/simhash.ts";
+import { flatMap } from "../fixtures/map.ts";
+import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+
+test("a new map is a file: a flat one made here runs a server, is served as a browser fetches it, and is walked on", async () => {
+  const file = writeMap(flatMap(4, { statics: [{ kind: "core:crate", x: 140, y: 0.5, z: 128, yaw: 0 }] }));
+  const h = new Harness({}, 1, 60, { map: file });
+  expect([h.world.mapId, h.world.dims, h.world.structs.count, h.world.nodeField]).toEqual(["test:flat", { chunksX: 4, chunksZ: 4 }, 1, null]);
+
+  // map.json names the file, and the file is the map, compressed for whoever takes it so.
+  const route = mapRoutes(h.host.mapFile!, h.world.mapId, h.world.mapHash);
+  const named = (await route("/map.json", "")!.json()) as { id: string; hash: number; file: string };
+  expect([named.id, named.hash, /^map\.[0-9a-f]{16}\.snmap$/.test(named.file)]).toEqual(["test:flat", h.world.mapHash, true]);
+  const packed = route(`/${named.file}`, "gzip, br")!;
+  expect([packed.headers.get("content-encoding"), packed.headers.get("cache-control")]).toEqual(["gzip", "public, max-age=31536000, immutable"]);
+  expect(parseMap(Bun.gunzipSync(await packed.arrayBuffer())).hash).toBe(h.world.mapHash);
+  expect(new Uint8Array(await route(`/${named.file}`, "")!.arrayBuffer())).toEqual(file);
+  expect(route("/index.html", "gzip")).toBeNull();
+
+  const ada = h.join("ada");
+  h.run(500);
+  expect(ada.state).toBe("active");
+  expect(ada.world!.structs.count).toBe(1);
+  const e = h.ent(ada);
+  const ents = h.world.ents;
+  expect([ents.x[e], ents.y[e], ents.z[e]]).toEqual([128, 0, 128]);
+  h.pilots[0]!.moveZ = 1;
+  h.run(3000);
+  expect(ents.z[e]!).toBeGreaterThan(136);
+  expect([ents.y[e], ada.stats.corrections]).toEqual([0, 0]);
+});
+
+test("a map's definition says where a new world's creatures start, and must agree with its file", () => {
+  const file = writeMap(flatMap(4));
+  const withDef = (more: Record<string, unknown>) =>
+    compilePacks([CORE_PACK, { name: "test", defs: [{ id: "test:flat", type: "map", chunks: [4, 4], zones: [{ kind: "crate", at: [10, 10], radius: 5 }, { kind: "spawn", at: [60, 190], radius: 12 }, { kind: "spawn", at: [200, 60], half: [8, 20] }], ...more }] }]);
+  const made = withDef({});
+  expect(made.errors).toEqual([]);
+  const reg = made.registry!;
+  const host = createHost(reg, { map: file, startingCreatures: 9, startingHunters: 4 });
+  let herd = 0;
+  let hunters = 0;
+  for (const rec of host.records.byPid.values()) {
+    if (rec.kind === reg.index.get("core:raptor")) {
+      hunters++;
+      expect(Math.abs(rec.x - 200) <= 8 && Math.abs(rec.z - 60) <= 20).toBe(true);
+    } else {
+      herd++;
+      expect((rec.x - 60) * (rec.x - 60) + (rec.z - 190) * (rec.z - 190)).toBeLessThanOrEqual(144);
+    }
+  }
+  expect([herd, hunters]).toEqual([9, 4]);
+  // A map the content does not define starts with nothing on it.
+  expect(createHost(coreRegistry(), { map: file, startingCreatures: 9, startingHunters: 4 }).world.ents.count).toBe(0);
+  expect(() => createHost(withDef({ chunks: [8, 4] }).registry!, { map: file })).toThrow('map "test:flat": its file is 4 by 4 chunks with the sea at -Infinity, and its definition says 8 by 4');
+  expect(() => createHost(withDef({ seaLevel: 3 }).registry!, { map: file })).toThrow("and its definition says 4 by 4 with the sea at 3");
+});
 
 test("the proving ground loaded from its file is the one its functions build: every height, piece and node slot, and the same simulation", () => {
   const reg = coreRegistry();
