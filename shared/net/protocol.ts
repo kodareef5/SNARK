@@ -36,7 +36,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -144,6 +144,11 @@ export const CMD_NAME = 21;
 export const CMD_FEED = 22;
 /** Opens a tribe creature's inventory: entity index u32. The use button rides a saddled creature, so this command reaches its inventory. */
 export const CMD_OPEN = 23;
+/**
+ * The most entities the client wants to be shown u16, and its snapshot byte budget u16. The server holds both to its own
+ * limits and lets them change once a second. A client that never asks is shown VIEW_DEFAULT entities in the server's own budget.
+ */
+export const CMD_VIEW = 24;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;
@@ -286,10 +291,12 @@ export const INPUT_REDUNDANCY = 4;
 /** How many ticks ahead of the server tick an input may be and still be buffered. */
 export const INPUT_WINDOW = 32;
 /** In bytes. */
-export const MAX_CLIENT_MESSAGE = 256;
+export const MAX_CLIENT_MESSAGE = 512;
 export const MAX_NAME_BYTES = 24;
 /** A console line from a client. */
 export const MAX_TEXT_BYTES = 200;
+/** A chat line from a client. Each of its MAX_CHAT_CHARS takes at most three bytes, whatever the script. */
+export const MAX_CHAT_BYTES = 360;
 /** A text message from the server. */
 export const MAX_SERVER_TEXT_BYTES = 1000;
 /** Bits of an input's buttons on the wire. InputBuffer.set clears any outside the mask. */

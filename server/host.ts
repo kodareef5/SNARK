@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_CLOSE, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CMD_CHAT, CMD_CLOSE, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -269,6 +269,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const game = new GameServer(world, {
     password: rules.text("ServerPassword"),
     motdSeconds: rules.num("Duration"),
+    viewCap: rules.num("ViewCap"),
+    snapshotBytesMax: rules.num("SnapshotBytesMax"),
     ...opts.game,
     maxClients: opts.game?.maxClients ?? (typeof seats === "string" && seats !== "" ? Number(seats) : rules.num("MaxPlayers")),
   });
@@ -945,7 +947,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
   game.handle(CMD_CHAT, (c, r) => {
     const channel = r.bits(3);
-    const words = r.string(MAX_TEXT_BYTES);
+    const words = r.string(MAX_CHAT_BYTES);
     if (r.overflow) return RESULT_INVALID;
     return chat.say(c, channel, words);
   });

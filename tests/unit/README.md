@@ -5,6 +5,7 @@
 | `codec.test.ts`, `protocol.test.ts` | Bit codec round trips; malformed input is flagged, not thrown; every message's layout |
 | `foundation.test.ts` | Deterministic trigonometry, identities, content hash, loopback ordering and loss |
 | `world.test.ts`, `ray.test.ts`, `nodes.test.ts` | Terrain continuity, structure tables, the collision grid and rays against brute force, resource nodes as a function |
+| `path.test.ts` | Ways across the ground: round a wall, never through a thin one, the search's budget, legs, and a body walking every way found on the proving ground |
 | `mapfile.test.ts`, `maplayers.test.ts` | A map through its file and back; a damaged or unplayable one refused with its reason; a folder of layers built into a map and unpacked again |
 | `character.test.ts`, `swim.test.ts` | Movement rules and the anti-clipping fuzz tests, on land and in water |
 | `sim.test.ts`, `items.test.ts` | Deadlines, lazy quantities, stat points, inheritance statistics; inventories |

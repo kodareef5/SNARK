@@ -2,7 +2,7 @@
 // in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../core/render/glsl.ts";
-import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../core/render/packet.ts";
+import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../core/render/packet.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES, type Pack } from "../../shared/pack/pack.ts";
@@ -263,7 +263,7 @@ export class GlRenderer {
         gl.uniformMatrix4fv(this.mesh.uniform("uViewProj"), false, p.nearViewProj);
       }
       gl.uniform1f(solid, (flags & DRAW_PLAIN) !== 0 ? 2 : 1);
-      gl.uniform1f(skin, (flags & DRAW_SKINNED) !== 0 ? 1 : 0);
+      gl.uniform1f(skin, (flags & DRAW_SKINNED) === 0 ? 0 : (flags & DRAW_ONE_BONE) !== 0 ? 2 : 1);
       const lod = this.levels.get(p.drawSlot[d]!);
       const buffer = p.drawBuffer[d] === TRANSIENT_BUFFER ? this.transient : this.buffers.get(p.drawBuffer[d]!);
       if (!lod || !buffer) continue;

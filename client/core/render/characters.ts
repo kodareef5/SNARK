@@ -15,7 +15,7 @@ import type { Pack } from "../../../shared/pack/pack.ts";
 import type { Assets } from "../assets/assets.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
-import { BONE_FLOATS, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
+import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
@@ -87,7 +87,7 @@ export class Characters {
 
   // Instances queued this frame, one per mesh of each body.
   private count = 0;
-  /** Pack mesh * LODS + level of detail. */
+  /** Twice (pack mesh * LODS + level of detail), and one more for a body on one bone. */
   private readonly key = new Uint32Array(MAX_SKINNED);
   private readonly firstBone = new Uint16Array(MAX_SKINNED);
   private readonly region0 = new Uint8Array(MAX_SKINNED);
@@ -106,8 +106,8 @@ export class Characters {
     const { table, bind } = assets;
     this.assets = assets;
     this.anim = new HumanAnim(pack.clips);
-    this.counts = new Uint32Array(table.count * LODS);
-    this.cursor = new Uint32Array(table.count * LODS);
+    this.counts = new Uint32Array(table.count * LODS * 2);
+    this.cursor = new Uint32Array(table.count * LODS * 2);
     /** Only a mesh on the human skeleton is drawn as part of a body. */
     const human = (mesh: number): number => (mesh >= 0 && table.skeleton[mesh] === HUMAN.id ? mesh : -1);
     const sets: string[] = [];
@@ -176,6 +176,11 @@ export class Characters {
     return this.creatures[kind]?.rig.reach ?? BODY_RADIUS;
   }
 
+  /** The bones a body of this kind takes when it is posed. */
+  bones(kind: number): number {
+    return this.creatures[kind]?.rig.bones ?? HUMAN_BONES;
+  }
+
   /** Writes the seat socket's position to `out` for a creature at (x, y, z) facing `yaw` radians. False for a kind without a seat. */
   seat(kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, out: number[]): boolean {
     const c = this.creatures[kind];
@@ -193,21 +198,23 @@ export class Characters {
     return true;
   }
 
-  private addCreature(p: FramePacket, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number): boolean {
+  private addCreature(p: FramePacket, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean): boolean {
     const rig = c.rig;
-    if (p.boneCount + rig.bones > MAX_BONES || this.count + 1 > MAX_SKINNED) return false;
-    creaturePose(rig, st, tick, c.runAt, rig.a);
-    solve(rig, rig.a, rig.solved);
-    const first = p.boneCount;
-    writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
-    p.boneCount = first + rig.bones;
-    this.posed++;
+    const first = this.room(p, rigid ? 1 : rig.bones, 1);
+    if (first < 0) return false;
+    if (rigid) writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size);
+    else {
+      creaturePose(rig, st, tick, c.runAt, rig.a);
+      solve(rig, rig.a, rig.solved);
+      writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
+      this.posed++;
+    }
     const n = this.count++;
     // A young one is the same mesh drawn smaller, and so are its errors.
     const far = Math.sqrt(x * x + y * y + z * z) / size;
     const lod = this.levelOf(id, c.error, far);
     this.assets.want(c.mesh, lod, far);
-    this.key[n] = c.mesh * LODS + lod;
+    this.key[n] = (c.mesh * LODS + lod) * 2 + (rigid ? 1 : 0);
     this.firstBone[n] = first;
     this.region0[n] = c.color;
     for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
@@ -215,6 +222,17 @@ export class Characters {
     this.near[n] = 0;
     this.offset.fill(0, n * 3, n * 3 + 3);
     return true;
+  }
+
+  /** Takes `bones` bones for a body of `parts` meshes and returns the first, or counts the body as dropped and returns -1. */
+  private room(p: FramePacket, bones: number, parts: number): number {
+    const first = p.boneCount;
+    if (first + bones > MAX_BONES || this.count + parts > MAX_SKINNED) {
+      p.dropped++;
+      return -1;
+    }
+    p.boneCount = first + bones;
+    return first;
   }
 
   begin(): void {
@@ -234,37 +252,41 @@ export class Characters {
    * `x, y, z` is the origin relative to the camera, `yaw` is in radians, and `tick` may fall between ticks. `look` holds a
    * 28-byte look at `lookAt`, or is null for a body drawn in the six colour regions of `colors` at `colorAt`. `gear` is
    * laid out as EntityStore.gear, at `gearAt`, or is null. `own` draws it in the near pass. `headless` leaves out the head
-   * and what is on it. `size` scales a creature, below 1 for a young one. Returns false when the frame has no room left.
+   * and what is on it. `size` scales a creature, below 1 for a young one. `rigid` leaves it in its rest pose on one bone, for
+   * a frame without the bones to pose it. Returns false when the frame has no room left even for that, and counts it dropped.
    */
-  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1): boolean {
+  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1, rigid = false): boolean {
     const creature = this.creatures[kind];
-    if (creature) return this.addCreature(p, creature, x, y, z, yaw, st, tick, colors, colorAt, id, size);
+    if (creature) return this.addCreature(p, creature, x, y, z, yaw, st, tick, colors, colorAt, id, size, rigid);
     const k = this.kinds[kind];
-    if (!k || p.boneCount + HUMAN_BONES > MAX_BONES || this.count + PARTS > MAX_SKINNED) return false;
+    if (!k) return false;
+    const first = this.room(p, rigid ? 1 : HUMAN_BONES, PARTS);
+    if (first < 0) return false;
     // A modelled body without a look gets the plain one, so its regions have colours.
     const view = look ? look.subarray(lookAt) : k.sets.length > 1 ? PLAIN : null;
     const set = k.sets[view && view[LOOK_SEX]! < k.sets.length ? view[LOOK_SEX]! : 0]!;
-    humanPose(this.anim, st, tick, this.pose);
-    let scales: Float32Array | null = null;
-    if (view) {
-      scales = this.scales;
-      lookScales(view, scales);
-      // Longer legs lift the hips, so the feet stay on the ground.
-      this.pose.root[1]! += lookLift(scales, set.rest);
-      lookColors(view, this.lookColor);
+    if (view) lookColors(view, this.lookColor);
+    if (rigid) writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, 1);
+    else {
+      humanPose(this.anim, st, tick, this.pose);
+      let scales: Float32Array | null = null;
+      if (view) {
+        scales = this.scales;
+        lookScales(view, scales);
+        // Longer legs lift the hips, so the feet stay on the ground.
+        this.pose.root[1]! += lookLift(scales, set.rest);
+      }
+      solve(HUMAN, this.pose, this.solved, set.rest, scales);
+      writeBones(p.bones, first * BONE_FLOATS, this.solved, set.rest, scales, x, y, z, yaw);
+      this.posed++;
     }
-    solve(HUMAN, this.pose, this.solved, set.rest, scales);
-    const first = p.boneCount;
-    writeBones(p.bones, first * BONE_FLOATS, this.solved, set.rest, scales, x, y, z, yaw);
-    p.boneCount = first + HUMAN_BONES;
-    this.posed++;
     // The viewer's own body is as fine as the tier draws anything.
     const far = own ? 0 : Math.sqrt(x * x + y * y + z * z);
     const lod = own ? this.assets.choose(set.error, 0, -1) : this.levelOf(id, set.error, far);
     const queue = (m: number, tint: Uint8Array | null, tintAt: number, bone: number): void => {
       const n = this.count++;
       this.assets.want(m, lod, far);
-      this.key[n] = m * LODS + lod;
+      this.key[n] = (m * LODS + lod) * 2 + (rigid ? 1 : 0);
       this.firstBone[n] = first;
       this.region0[n] = k.color;
       for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = tint ? tint[tintAt + q]! : 0;
@@ -310,10 +332,11 @@ export class Characters {
    * Queues a rigid mesh that has its own position and direction, such as an arrow in the air. Its origin goes to (x, y, z)
    * relative to the camera and its +Z along the unit direction (dx, dy, dz), stretched `length` times along it and `wide`
    * times across. It is drawn through the bone path with one bone, which gives it a tilt and a size as well as a facing.
-   * False when the frame has no room left.
+   * False when the frame has no room left, and then it is counted dropped.
    */
   loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1): boolean {
-    if (p.boneCount + 1 > MAX_BONES || this.count + 1 > MAX_SKINNED) return false;
+    const first = this.room(p, 1, 1);
+    if (first < 0) return false;
     // Right is level and square to the direction. Up is square to both.
     let rx = dz;
     let rz = -dx;
@@ -328,7 +351,6 @@ export class Characters {
     const ux = -rz * dy;
     const uy = rz * dx - rx * dz;
     const uz = rx * dy;
-    const first = p.boneCount++;
     const o = first * BONE_FLOATS;
     const b = p.bones;
     b[o] = rx * wide;
@@ -344,7 +366,7 @@ export class Characters {
     b[o + 10] = dz * length;
     b[o + 11] = z;
     const n = this.count++;
-    this.key[n] = mesh * LODS;
+    this.key[n] = mesh * LODS * 2;
     this.firstBone[n] = first;
     this.region0[n] = 0;
     this.colors.fill(0, n * 6, n * 6 + 6);
@@ -369,7 +391,8 @@ export class Characters {
     const flags = DRAW_SKINNED | DRAW_PLAIN | (own ? DRAW_NEAR : 0);
     for (let k = 0; k < counts.length; k++) {
       this.cursor[k] = total;
-      if (counts[k]! > 0) draw(Math.floor(k / LODS), k % LODS, total, counts[k]!, flags);
+      // An odd key is the bodies on one bone, which are a draw of their own.
+      if (counts[k]! > 0) draw(Math.floor(k / (LODS * 2)), (k >> 1) % LODS, total, counts[k]!, (k & 1) !== 0 ? flags | DRAW_ONE_BONE : flags);
       total += counts[k]!;
     }
     for (let i = 0; i < this.count; i++) {
@@ -381,6 +404,21 @@ export class Characters {
     }
     p.transientCount = total;
   }
+}
+
+/** Writes at `at` the one bone of a body left in its rest pose: it turns the body about +Y, sizes it and puts it in its place. */
+function writeRigid(out: Float32Array, at: number, x: number, y: number, z: number, yaw: number, size: number): void {
+  const s = Math.sin(yaw) * size;
+  const c = Math.cos(yaw) * size;
+  out.fill(0, at, at + BONE_FLOATS);
+  out[at] = c;
+  out[at + 2] = s;
+  out[at + 3] = x;
+  out[at + 5] = size;
+  out[at + 7] = y;
+  out[at + 8] = -s;
+  out[at + 10] = c;
+  out[at + 11] = z;
 }
 
 /**
