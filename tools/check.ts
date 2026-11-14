@@ -10,8 +10,8 @@ const ROOT = resolve(import.meta.dir, "..");
 
 /** Wall-clock budget for the whole check. */
 const BUDGET_SECONDS = 20;
-/** Non-blank, non-comment lines allowed in client/shell, which has no tests. */
-const SHELL_MAX_LINES = 900;
+/** Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares the last 250 among round 8's phases. */
+const SHELL_MAX_LINES = 1150;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** The asset worker and its port: fetching, hashing and caching, with no decisions of their own. */
