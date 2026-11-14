@@ -1,4 +1,5 @@
-// Message layouts live here and nowhere else. Every message starts with a 4-bit type, and each type has a fixed channel.
+// Message layouts live here and nowhere else. Every message starts with its type, and each type has a fixed channel. A client's
+// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 13 to 255 are free.
 //
 //   client -> server
 //     HELLO     reliable     version u16, content hash u32 (of the definitions as written, untuned), clip hash u32,
@@ -34,7 +35,7 @@
 
 import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
-import { Body } from "../sim/character.ts";
+import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
 export const PROTOCOL_VERSION = 7;
 
@@ -305,6 +306,12 @@ export const MARGIN_UNKNOWN = -128;
 export const INPUT_REDUNDANCY = 4;
 /** How many ticks ahead of the server tick an input may be and still be buffered. */
 export const INPUT_WINDOW = 32;
+/**
+ * Ticks the server goes on with a client's last input when none comes: about a quarter of a second, as in ARK. After that the
+ * body stops moving and lets go of every button but INPUT_KEPT, its stance.
+ */
+export const INPUT_HOLD_TICKS = 8;
+export const INPUT_KEPT = BTN_CROUCH | BTN_PRONE;
 /** In bytes. */
 export const MAX_CLIENT_MESSAGE = 512;
 export const MAX_NAME_BYTES = 24;

@@ -16,6 +16,7 @@ import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
 import { V_FOOD, V_HEALTH, V_TORPOR, V_WATER } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { nodesOf } from "../fixtures/gather.ts";
+import { listener } from "../fixtures/module.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -279,12 +280,13 @@ test("a world saved under one set of files and loaded under another is brought t
   const waiting = recOf(h, h.host.spawnCreature("core:parasaur", PLACE.x - 14, PLACE.z + 14, 4));
   h.host.taming.give(waiting, me, 1);
   waiting.mateReadyAt = h.world.tick + 90000;
-  // Cooked meat keeps two game hours a piece.
+  // Cooked meat keeps twenty minutes a piece. This was cooked a while ago: its top piece has two game hours left.
   const U = 16;
   const box = (dx: number): EntityRecord => {
     const ref = h.world.structs.add(id("storage_box"), PLACE.x + dx, Math.ceil(PLACE.y * U) / U + 0.3125, PLACE.z - 8, 0, me.team, 500);
     const state = h.host.fixtures.ensure(ref);
     h.host.items.mint(state, id("meat_cooked"), 20);
+    state.inv!.spoilAt[state.inv!.item.indexOf(id("meat_cooked"))] = h.world.tick + 2 * GAME_HOUR_TICKS;
     return state;
   };
   const opened = box(-2);
@@ -438,6 +440,31 @@ test("a world saved under one set of files and loaded under another is brought t
   h3.host.shutdown();
   rmSync(dir, { recursive: true, force: true });
   void ada;
+});
+
+test("a live file that has not changed is read again in silence: no report, no change told to a module, no rule counted as changed", () => {
+  let text = 'EggHatchSpeedMultiplier=4\nDinoClassDamageMultipliers=(ClassName="core:raptor",Multiplier=2)\nDinoClassDamageMultipliers=(ClassName="core:parasaur",Multiplier=3)\n';
+  let reads = 0;
+  const ears = listener("ears", ["server.settings"]);
+  const live = (): string => (reads++, text);
+  const h = new Harness({}, 1, 60, { dev: true, config: loadConfig({ gus: "[ServerSettings]\nAutoSavePeriodMinutes=0.5\n", live: text }, ["-UseDynamicConfig"]).rules, live, modules: [ears.def] });
+  const rules = h.host.rules;
+  const said: unknown[] = [];
+  const log = console.log;
+  console.log = (line: unknown) => void said.push(line);
+  try {
+    const at = rules.version;
+    h.run(65000);
+    expect([reads, said, ears.heard.lines, rules.version - at]).toEqual([2, [], [], 0]);
+    // A value that differs is reported and told of once.
+    text = text.replace("=4", "=8");
+    h.run(30000);
+    expect([reads, said.length, ears.heard.lines.length, rules.num("EggHatchSpeedMultiplier")]).toEqual([3, 3, 1, 8]);
+    h.run(30000);
+    expect([reads, said.length, ears.heard.lines.length]).toEqual([4, 3, 1]);
+  } finally {
+    console.log = log;
+  }
 });
 
 test("the live file is read again as often as the server says, and at once when an admin asks; what it changes is timed again like any change", () => {

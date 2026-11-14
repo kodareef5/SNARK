@@ -5,6 +5,8 @@
 // Stats are [base, gain per wild level, gain per level an owner gives]. The last is the raw gain times the reference
 // game's default multiplier for the stat (shared/sim/genome.ts TAMED_GAIN): health 27% x 0.2 = 0.054, melee
 // 10% x 0.17 = 0.017. A server's PerLevelStatsMultiplier settings scale each from there.
+//
+// `keeps: 4` is the reference game's: food keeps four times as long in a creature as in a survivor's hands.
 
 import type { Def } from "../../shared/content/defs.ts";
 import { GRAZER } from "./grazer.ts";

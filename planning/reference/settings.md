@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 520 of them: 119 take effect,
+is listed here, 523 of them: 122 take effect,
 207 wait for a feature that is not built yet, and 194 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -96,6 +96,9 @@ may change a setting without a restart.
 | --- | --- | --- | --- |
 | `ViewCap` | 1024 | The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this. *Ours. ARK has no key.* | no |
 | `SnapshotBytesMax` | 1100 | The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor. *Ours. ARK has no key.* | no |
+| `MaxEntities` | 524288 | The most bodies the world holds at once: creatures wild and tamed, survivors, eggs, bags, caches, arrows left standing and things thrown. Memory is taken as the world fills, 178 bytes a body: 0.7 MB to start with and 93 MB for all 524288. A place is kept for each of MaxPlayers. *Ours. ARK has no key.* | no |
+| `PendingPerAddress` | 8 | The most connections from one network address that may be waiting to join at once. One more closes the one that has waited longest, or is itself turned away if none has waited half a second. 0 is no limit: set it behind a proxy, where every survivor comes from one address. *Ours. ARK has no key.* | no |
+| `AllowedOrigins` | none | The web sites whose pages may connect besides the server's own, as origins such as https://play.example.com, separated by commas or spaces. * is any site. A server whose page is served from elsewhere, or behind a proxy that does not pass the Host on, names that site here. A program that is not a browser is not asked. *Ours. ARK has no key.* | yes |
 | `HeadMultipliers` | True | Where a hit lands matters: a head counts for more. Off, every part counts once. *Ours. ARK has no key; this is its behaviour.* | yes |
 | `SelfDamageMultiplier` | 1 | What a survivor's own blast does to them. *Ours. ARK has no key; 1 is its behaviour.* | yes |
 | `FullFriendlyFire` | False | Members of a tribe can hurt each other, their tames and what they built with anything, not only with blasts. *Ours. ARK has no key; off is its behaviour as far as the research could tell.* | yes |

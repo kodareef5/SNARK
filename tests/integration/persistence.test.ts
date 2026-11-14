@@ -1,13 +1,16 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { OP_DEATH } from "../../server/death.ts";
 import { createHost } from "../../server/host.ts";
 import { WorldStore } from "../../server/persist/store.ts";
+import { EntityRecord } from "../../server/records.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { Inventory } from "../../shared/sim/items.ts";
+import { Vitals } from "../../shared/sim/vitals.ts";
 import { HOLDERS, OP_BURN, OP_MINT, OP_TRANSFER, START } from "../fixtures/crash-child.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -64,11 +67,29 @@ test("a world survives restart: tick, structures, records and where a survivor s
   expect(h2.world.ents.pid[h2.ent(again)]).toBe(pid);
   expect(Math.abs(h2.world.ents.x[h2.ent(again)]! - where.x)).toBeLessThan(0.01);
   expect(Math.abs(h2.world.ents.z[h2.ent(again)]! - where.z)).toBeLessThan(0.01);
+  // One body per survivor: the same device on a second connection takes it over from the first.
   const twin = h2.join("ada");
   h2.run(200);
-  expect(twin.state).toBe("closed");
+  expect([twin.state, again.state]).toEqual(["active", "closed"]);
   expect(h2.server.playerCount).toBe(1);
   h2.host.shutdown();
+});
+
+test("a first start that stopped before its first commit left no world, so the next start is the first again", () => {
+  const db = join(dir, "stillborn.db");
+  const reg = coreRegistry();
+  const whole = createHost(reg).world.structs.count;
+  // A start that got as far as opening the file: a bad map file, a port in use, a module that throws.
+  new WorldStore(db, reg).close();
+  // And one that was killed in its first ticks.
+  createHost(reg, { dbPath: db }).persistence!.store.close();
+  const host = createHost(reg, { dbPath: db });
+  expect(host.loaded).toEqual({ fresh: true, tick: 0, structures: whole, records: 0 });
+  for (let n = 0; n < 12; n++) host.game.tick();
+  host.shutdown();
+  const again = createHost(reg, { dbPath: db });
+  expect(again.loaded).toEqual({ fresh: false, tick: 12, structures: whole, records: 0 });
+  again.shutdown();
 });
 
 test("a save that uses removed content refuses to load unless told to drop it", () => {
@@ -77,7 +98,7 @@ test("a save that uses removed content refuses to load unless told to drop it", 
   createHost(full, { dbPath: db }).shutdown();
   const without = compileContent(CORE_CONTENT.filter((d) => d.id !== "core:wall")).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/core:wall/);
-  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true } });
+  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true }, log: () => {} });
   expect(forced.world.structs.count).toBeLessThan(createHost(full).world.structs.count);
   forced.persistence!.store.close(); // closed without committing, so the save keeps its walls
   const back = createHost(full, { dbPath: db });
@@ -100,7 +121,7 @@ test("an item whose content is gone stops the load, and a ledger that does not b
 
   const without = compileContent(CORE_CONTENT.filter((d) => !gone.has(d.id))).registry!;
   expect(() => createHost(without, { dbPath: db })).toThrow(/content this build does not have/);
-  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true } });
+  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true }, log: () => {} });
   expect(forced.records.byPid.get(rec.pid)!.inv!.total(without.index.get("core:stone")!)).toBe(250);
   expect(forced.items.audit()).toEqual([]);
   forced.persistence!.store.close(); // not committed, so the save keeps what it had
@@ -115,6 +136,51 @@ test("an item whose content is gone stops the load, and a ledger that does not b
   back.shutdown();
   expect(() => createHost(full, { dbPath: db })).toThrow(/ledger does not balance[\s\S]*core:stone: 349 in the world, ledger says 250/);
   createHost(full, { dbPath: db, allowLedgerMismatch: true }).persistence!.store.close();
+});
+
+test("an operator goes on without removed content by one start: what was made of it is dropped for good, said aloud, and the ledger balances", () => {
+  const db = join(dir, "species.db");
+  const full = coreRegistry();
+  const stone = full.index.get("core:stone")!;
+  const host = createHost(full, { dbPath: db });
+  const mule = host.records.create(full.index.get("core:grazer")!, "mule");
+  const keeper = host.records.create(full.index.get("core:dummy")!, "keeper");
+  expect(host.items.mint(mule, stone, 250)).toBe(250);
+  expect(host.items.mint(keeper, stone, 40)).toBe(40);
+  expect(host.items.mint(keeper, full.index.get("core:waterskin")!, 3)).toBe(3);
+  host.shutdown();
+
+  // A species, an item with its engram, and a piece of building.
+  const gone = new Set(["core:grazer", "core:waterskin", "core:make-waterskin", "core:engram-waterskin", "core:wall"]);
+  const without = compileContent(CORE_CONTENT.filter((d) => !gone.has(d.id))).registry!;
+  expect(() => createHost(without, { dbPath: db })).toThrow(/core:grazer[^]*--allow-missing-content/);
+  // The server reads the flag its refusal names.
+  expect(readFileSync(join(import.meta.dir, "../../server/main.ts"), "utf8")).toContain('allowMissingContent: args.includes("--allow-missing-content")');
+  const said: string[] = [];
+  const forced = createHost(without, { dbPath: db, store: { allowMissingContent: true }, log: (line) => void said.push(line) });
+  expect(forced.records.byPid.has(mule.pid)).toBe(false);
+  // The stone the mule carried went with it, so the ledger burns it.
+  expect(forced.items.audit()).toEqual([]);
+  const told = said.join("\n");
+  expect(told).toContain("1 of core:grazer");
+  expect(told).toContain("3 of core:waterskin");
+  expect(told).toMatch(/\d+ of core:wall/);
+  expect(told).toContain("250 of core:stone");
+  forced.shutdown();
+
+  // One start was enough: nothing in the save is made of what is gone, so the next needs no leave.
+  const next = createHost(without, { dbPath: db, log: (line) => void said.push(line) });
+  expect(said.join("\n")).toBe(told);
+  expect(next.items.audit()).toEqual([]);
+  expect(next.records.byPid.get(keeper.pid)!.inv!.total(without.index.get("core:stone")!)).toBe(40);
+  next.shutdown();
+  // With the content back, what was dropped stays dropped and the ledger still agrees.
+  const back = createHost(full, { dbPath: db });
+  expect(back.records.byPid.has(mule.pid)).toBe(false);
+  expect(back.records.byPid.get(keeper.pid)!.inv!.total(full.index.get("core:waterskin")!)).toBe(0);
+  expect(back.items.audit()).toEqual([]);
+  expect(back.world.structs.count).toBe(forced.world.structs.count);
+  back.shutdown();
 });
 
 test("a round 1 inventory is converted whole: nothing is dropped for want of slots", () => {
@@ -157,6 +223,75 @@ test("a round 1 inventory is converted whole: nothing is dropped for want of slo
   // More than an inventory can hold is refused, never trimmed.
   legacy(30000);
   expect(() => createHost(reg, { dbPath: db })).toThrow(/needs 300 slots/);
+});
+
+test("a record larger than the writer is saved whole, and one larger than a save can hold is refused, never cut short", () => {
+  const reg = coreRegistry();
+  const store = new WorldStore(join(dir, "large.db"), reg);
+  const stone = reg.index.get("core:stone")!;
+  const filled = (pid: number, slots: number): EntityRecord => {
+    const rec = new EntityRecord(pid, reg.index.get("core:grazer")!);
+    const inv = (rec.inv = new Inventory(slots));
+    // About seventeen bytes a slot.
+    for (let s = 0; s < slots; s++) inv.set(s, stone, 1000 + (s % 7), 3, 60000 - s, 4e9 - s);
+    // Written after the inventory, as every part but four is.
+    rec.vitals = new Vitals();
+    rec.vitals.max.fill(1e6);
+    rec.vitals.value.fill(1e6);
+    return rec;
+  };
+  // The part writer held 32 KB and the record's 64 KB: the first outgrows one and the second both.
+  const recs = [filled(11, 3000), filled(12, 20000)];
+  store.transaction(() => recs.forEach((rec) => store.saveEntity(rec)));
+  const back = store.loadEntities();
+  expect(back.map((rec) => rec.pid)).toEqual([11, 12]);
+  recs.forEach((rec, i) => {
+    const [was, is] = [rec.inv!, back[i]!.inv!];
+    expect(is.cap).toBe(was.cap);
+    for (const col of ["item", "count", "quality", "dur", "spoilAt"] as const) expect(is[col]).toEqual(was[col]);
+    expect(back[i]!.vitals!.value).toEqual(rec.vitals!.value);
+  });
+  // A part over a megabyte is more than the reader takes. The record keeps what it last saved whole.
+  expect(() => store.transaction(() => store.saveEntity(filled(11, 70000)))).toThrow(/record 11 is too large to save/);
+  expect(store.loadEntities()[0]!.inv!.cap).toBe(3000);
+  // A small record after a large one is still written small.
+  store.transaction(() => store.saveEntity(filled(13, 2)));
+  expect((store.db.query("SELECT length(data) AS n FROM entities WHERE pid = 13").get() as { n: number }).n).toBeLessThan(100);
+  store.close();
+});
+
+test("a record carries the revision of its parts: a build from before the saddle refuses it, and this one refuses a later", () => {
+  const db = join(dir, "revision.db");
+  const reg = coreRegistry();
+  const saddle = reg.index.get("core:saddle_raptor")!;
+  const host = createHost(reg, { dbPath: db });
+  const rec = host.records.create(reg.index.get("core:raptor")!, "mount");
+  rec.saddle = saddle;
+  host.shutdown();
+  /** Reads the record's first byte, and writes `to` there if given. */
+  const revision = (to?: number): number => {
+    const store = new WorldStore(db, reg);
+    const data = (store.db.query("SELECT data FROM entities WHERE pid = ?").get(rec.pid) as { data: Uint8Array }).data;
+    const was = data[0]!;
+    if (to !== undefined) {
+      data[0] = to;
+      store.db.query("UPDATE entities SET data = ? WHERE pid = ?").run(data, rec.pid);
+    }
+    store.close();
+    return was;
+  };
+  // Every build before this one reads revision 1 alone. One from before the saddle wrote a tame's part back without it.
+  const ours = revision();
+  expect(ours).toBeGreaterThan(1);
+  revision(ours + 1);
+  expect(() => createHost(reg, { dbPath: db })).toThrow(new RegExp(`${rec.pid} was saved by a newer build[^]*start the save with that build or a newer one`));
+  // What older builds wrote still loads, and the refusal changed nothing.
+  for (const old of [1, ours]) {
+    revision(old);
+    const back = createHost(reg, { dbPath: db });
+    expect(back.records.byPid.get(rec.pid)!.saddle).toBe(saddle);
+    back.persistence!.store.close();
+  }
 });
 
 test("commit callbacks run only after the transaction is durable", () => {

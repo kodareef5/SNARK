@@ -3,7 +3,10 @@
 
 import { STRUCT_UNITS, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
+import { frameAxes } from "./frame.ts";
 import { Found, type PartTable, type StructureStore } from "./structures.ts";
+
+export { HALF_SIDE, frameAxes } from "./frame.ts";
 
 /** Indices into PIECE_ROLES of shared/content/defs.ts. */
 export const ROLE_FOUNDATION = 0;
@@ -17,8 +20,6 @@ export const ROLE_THING = 6;
 /** In a build request, this socket number means "on top of the target, at the point that follows". */
 export const ON_TOP = 255;
 
-/** In lattice units. A metre and a half. */
-export const HALF_SIDE = (STRUCT_UNITS * 3) / 2;
 const QUARTER = YAW_UNITS / 4;
 /** The most sockets one piece offers another. */
 export const MAX_SOCKETS = 8;
@@ -27,38 +28,6 @@ export const MAX_SOCKETS = 8;
 export function units(metres: number): number {
   return Math.round(metres * STRUCT_UNITS);
 }
-
-/**
- * The world directions of the +X and +Z axes of a frame turned `yaw`, each as a whole-number vector half a side long, written to
- * `out` as [xX, xZ, zX, zZ]. Frames a quarter turn apart share their vectors exactly, swapped and signed.
- */
-export function frameAxes(yaw: number, out: Int32Array): void {
-  const quarters = (yaw >>> 14) & 3;
-  const within = yaw & (QUARTER - 1);
-  // All pieces joined to one first piece share this part of the yaw, so the last result is cached.
-  if (within !== lastWithin) {
-    const a = within * (TAU / YAW_UNITS);
-    lastCos = Math.round(detCos(a) * HALF_SIDE);
-    lastSin = Math.round(detSin(a) * HALF_SIDE);
-    lastWithin = within;
-  }
-  let c = lastCos;
-  let s = lastSin;
-  // A quarter turn takes (c, s) to (-s, c).
-  for (let k = 0; k < quarters; k++) {
-    const t = c;
-    c = -s;
-    s = t;
-  }
-  out[0] = c;
-  out[1] = -s;
-  out[2] = s;
-  out[3] = c;
-}
-
-let lastWithin = -1;
-let lastCos = 0;
-let lastSin = 0;
 
 /**
  * The sockets one piece offers another. Each is half-sides along the target's X and Z (i, j), lattice units up (dy), and quarter

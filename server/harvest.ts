@@ -273,8 +273,9 @@ export class Harvest {
         const w = this.game.begin(S_NODES);
         w.u16(chunk);
         w.u32(this.version[chunk]!);
+        // A chunk holds up to 256 nodes, and all of them may be used up, so the count takes more than a byte.
         const at = w.pos;
-        w.u8(0);
+        w.u16(0);
         let n = 0;
         for (let i = 0; i < this.per; i++) {
           if ((this.touched.get(this.key(chunk, i))?.respawnAt ?? 0) === 0) continue;
@@ -283,7 +284,7 @@ export class Harvest {
         }
         const end = w.pos;
         w.pos = at;
-        w.u8(n);
+        w.u16(n);
         w.pos = end;
         this.game.endOwn(c);
         c.nodesKnown[chunk] = this.version[chunk]!;

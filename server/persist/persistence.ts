@@ -9,7 +9,7 @@ import type { EntityRecord, Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
 import type { BackupReport } from "./backup.ts";
 import { inlineKeeper, type Keeper } from "./keeper.ts";
-import { sqliteCode, type WorldStore } from "./store.ts";
+import { sqliteCode, sqliteIs, type WorldStore } from "./store.ts";
 
 /** Five seconds. A checkpoint syncs the database file, so this is not every commit. */
 const CHECKPOINT_TICKS = 5 * TICK_RATE;
@@ -35,8 +35,11 @@ const HEALTH_TICKS = TICK_RATE;
 const PRUNE_EVERY = 512;
 /** The longest wait between two tries of a failing commit, in ticks. */
 const RETRY_MOST = 150;
-/** The file itself is broken or cannot be written. Trying again will not help, so the world is saved elsewhere. */
-const BROKEN = new Set(["SQLITE_CORRUPT", "SQLITE_NOTADB", "SQLITE_READONLY"]);
+/**
+ * The file itself is broken, gone or cannot be written. Trying again will not help, so the world is saved elsewhere.
+ * A save moved or deleted under the server is SQLITE_READONLY_DBMOVED to SQLite, and SQLITE_IOERR_VNODE to the one macOS ships.
+ */
+const BROKEN = ["SQLITE_CORRUPT", "SQLITE_NOTADB", "SQLITE_READONLY", "SQLITE_IOERR_VNODE"];
 
 /** Something saved as one value under a key of its own, in the same transaction as the records it describes. */
 export interface Sidecar {
@@ -143,6 +146,10 @@ export class Persistence {
     this.dirtyChunks.clear();
     if (store.fresh) world.structs.chunks.forEach((t, chunk) => t && this.dirtyChunks.add(chunk));
     for (const rec of store.loadEntities()) this.records.byPid.set(rec.pid, rec);
+    // What the operator chose to go on without leaves the save in the next commit, so that choice is made once.
+    for (const chunk of store.dropped.chunks) this.dirtyChunks.add(chunk);
+    for (const pid of store.dropped.changed) this.records.dirty.add(pid);
+    for (const pid of store.dropped.pids) this.records.deleted.push(pid);
     for (const [name, pid] of store.survivors()) this.survivors.set(name, pid);
     this.journalSeq = this.durableSeq = store.lastJournalSeq();
     return { fresh: store.fresh, tick: world.tick, structures, records: this.records.byPid.size };
@@ -238,7 +245,7 @@ export class Persistence {
       now.code = code;
       now.error = err instanceof Error ? err.message : String(err);
       now.retryAt = tick + Math.min(RETRY_MOST, every * 2 ** Math.min(now.tries - 1, 8));
-      if (BROKEN.has(code) && this.open && this.rescue(tick)) return true;
+      if (BROKEN.some((base) => sqliteIs(code, base)) && this.open && this.rescue(tick)) return true;
       this.onFailing?.(now);
       return false;
     }

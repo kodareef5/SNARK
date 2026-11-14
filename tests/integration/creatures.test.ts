@@ -59,14 +59,45 @@ test("creatures are simulated only near players, and only the moving ones cost a
   expect(h.host.creatures.awakeCount).toBe(0);
 });
 
+test("a creature killed while the others are being stepped leaves each of them stepped once that tick", () => {
+  const h = new Harness({}, 1, 30, { dev: true });
+  const ada = h.join("ada");
+  h.run(500);
+  h.host.survival.gods.add(h.client(ada)!.pid);
+  const g = flatGround(h, 60, 40);
+  const ents = h.world.ents;
+  const mind = h.host.creatures.mind;
+  // Woken in this order, the prey is stepped last, the hunter before it, and the others before both.
+  const prey = h.host.spawnCreature("core:parasaur", g.x + 30, g.z + 20, 1);
+  const hunter = h.host.spawnCreature("core:raptor", g.x + 30, g.z + 23, 1);
+  const others = [0, 1, 2].map((k) => h.host.spawnCreature("core:grazer", g.x + 10 + k * 5, g.z + 6, 1));
+  expect(Array.from(h.host.creatures.awake.subarray(0, 5))).toEqual([prey, hunter, ...others]);
+  const preyRec = h.host.records.byPid.get(ents.pid[prey]!)!;
+  // One bite kills it.
+  h.host.survival.add(preyRec, V_HEALTH, 1 - h.host.survival.value(preyRec, V_HEALTH));
+  mind.stay(prey, h.world.tick + 3000);
+  h.host.creatures.provoke(hunter, ents.x[prey]!, ents.z[prey]!, prey);
+  const steered = new Map<number, number>();
+  let twice = 0;
+  const steer = mind.steer.bind(mind);
+  mind.steer = (e, tick, act) => {
+    if (steered.get(e) === tick) twice++;
+    steered.set(e, tick);
+    steer(e, tick, act);
+  };
+  for (let k = 0; k < 40 && !preyRec.dead && h.host.records.byPid.has(preyRec.pid); k++) h.run(250);
+  expect([h.host.records.byPid.has(preyRec.pid), mind.bites > 0, h.host.creatures.awakeCount]).toEqual([false, true, 4]);
+  expect(twice).toBe(0);
+});
+
 test("hunger runs on the world clock with no per-tick work, and starvation fires on its exact tick while dormant", () => {
   const fast = compileContent(CORE_CONTENT.map((d) => (d.id === "core:grazer" && d.type === "species" ? { ...d, food: { max: 10, perHour: 60 }, stats: { ...d.stats, food: [10, 0, 0] as const } } : d))).registry!;
   const h = new Harness({}, 1, 30, {}, fast);
   const c = h.host.creatures;
   const sv = h.host.survival;
   const food = (rec: EntityRecord) => sv.value(rec, V_FOOD);
-  const a = h.host.records.byPid.get(h.world.ents.pid[h.host.spawnCreature("core:grazer", 100, 100, 1)]!)!;
-  const b = h.host.records.byPid.get(h.world.ents.pid[h.host.spawnCreature("core:grazer", 104, 100, 1)]!)!;
+  const a = h.host.records.byPid.get(((e: number) => h.world.ents.pid[e]!)(h.host.spawnCreature("core:grazer", 100, 100, 1)))!;
+  const b = h.host.records.byPid.get(((e: number) => h.world.ents.pid[e]!)(h.host.spawnCreature("core:grazer", 104, 100, 1)))!;
   const born = h.world.tick;
   const due = a.vitals!.zeroTick(V_FOOD);
   expect(due - born).toBe(700); // 10 points at 60 per 4200-tick hour

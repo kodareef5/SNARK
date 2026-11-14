@@ -38,7 +38,7 @@ Then look at what comes back, tiled 3 by 3 and beside its neighbours' materials,
 
 **2. The pieces, as a script.** A Blender Python script builds every piece of the tier from numbers (Blender 5.3; the example shows how it is run). For each piece:
 - Real geometry where a silhouette or a shadow needs it: frames, posts, beam ends, a sill, a threshold, the lashings or pegs or mortar lines that say how it is held together. Flat where a normal map will do.
-- Texture coordinates in metres on the building grid, so a material runs unbroken across a wall of many pieces and round a corner.
+- Texture coordinates in metres on the building grid, so a material runs unbroken across a wall of many pieces and round a corner. Coordinates may run past one texture: do not cut faces at a texture's border.
 - One section per material, at most three materials a piece.
 - A flat palette colour for every vertex too, because the low poly setting and distant pieces are drawn in flat colours, and because the textured renderer is still being built: your pieces will appear in the game first as flat-coloured models, and they should already look good that way. Look at `shared/pack/palette.ts` for the colours there are.
 - Levels of detail of your own making, from the full piece down to a plain box for the far distance, since a base may show thousands at once. A sensible top level for a wall is a few hundred triangles; decide per piece and say what you chose.
@@ -52,9 +52,20 @@ Someone opening the render of your small house should think it is a screenshot f
 ## Rules
 - You own `assets/source/core/structures/<tier>/` and nothing else. Do not edit `content/`, `tools/`, `shared/` or any other asset. If the tooling cannot do something you need, say exactly what in your report.
 - Commit the pack (`<tier>.snpk`) only if `bun run check` passes with it in place: your meshes replace the grey boxes of the same ids in the game at once, and one test pins a hash of 300 rendered frames of the house on the proving ground, which your tier may change. If the check fails only on that hash, leave the pack out of your commits, keep it beside them uncommitted, and say so; it will be merged deliberately.
-- Everything else is committed: scripts, briefs, source pictures at full size, reports, your renders. Write plainly, no em dashes.
+- Commit the artwork and what made it: the finished layer pictures, what the image model returned, briefs, scripts, reports, your renders. Leave out what the scripts make again: check and QA pictures, tilings, `.npz` files, assembled masters, superseded rounds. Write plainly, no em dashes.
 - Commit on your branch as you reach good states, with messages like `art: <tier> pieces and materials` ending with the line `Co-Authored-By: Claude assistant 5.2 <noreply@anthropic.com>`. Never commit to `main`, never push.
 - The machine is shared with other agents; Blender renders and image jobs are fine, but do not run `bun run bench` or `bun run probe`.
 
 ## Final report (this is all I will see)
 The materials (what each is, metres per tile, the paths of its layer pictures), the pieces (triangles per level, materials used), the paths of the renders worth looking at, what the asset check said, anything the tooling could not do, anything that fell short of the bar, and the commit hashes.
+
+## What the first thatch taught
+
+The first tier to finish was sent back by the project's owner. It was careful, well-built work: the pieces fitted, the joints were invisible, the materials were clean. And it was not good enough. It looked like a pattern printed on a box. These are the reasons, so nobody repeats them.
+
+- **It was designed while it was built.** Nobody saw what it should look like before the geometry and materials existed. Have the image model paint the tier first: a small house in your tier from two or three angles, and each piece alone. Argue with those pictures until they are something you would want to build in, then build to them.
+- **The material did the work the shape should do.** Every bundle was the same width, cut square, in ruler-straight courses, and the wall was a flat plane with that picture on it. The outline of every piece was a straight line. A wall of thatch is a mass of long stems: thick, soft, ragged at its foot, darker in its hollows, bleached at its tips, with strays and sag. A wall of planks has boards that do not line up, gaps, bowed and split ends. A wall of stone has stones that stand proud and a top that is not level. Put that in the geometry and in the outline. The format takes cut-out, two-sided materials, so a ragged edge can be real.
+- **One picture covered everything.** Walls, roof and door all wore the same wallpaper. Each piece is its own made thing and should look made for its job: a roof sheds water, a door is carried on a frame, a foundation holds the ground back.
+- **It repeated.** A material that covered 1.5 m showed its repeat twice on every wall and as stripes along a row. A material may cover a whole piece or more now, and a building is allowed its natural rhythm of panels, so spend the picture where the eye goes.
+- **The renders flattered nothing.** Flat light with no shadows made it look printed. Light the review renders as the sun would, with shadows and the dark of an interior, and look from where a player stands and from across a field.
+- **It was judged against the brief, not against the best.** Before calling it done, put your render beside the best building art you know of in any game and ask which one a stranger would choose. There is no limit on time or on what this may cost. Aim for the stars, and say plainly in your report where you fell short.

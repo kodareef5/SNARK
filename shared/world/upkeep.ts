@@ -18,7 +18,7 @@ export const STRUCT_USE = 6;
 export const STRUCT_LIGHT = 7;
 /** The PIN value that means none. */
 export const NO_PIN = 0xffff;
-/** Wrong PINs in a row before a session must wait, and the wait in ticks. */
+/** Wrong PINs in a row before a survivor must wait, and the first wait in ticks. Each further wrong one doubles the wait, up to an hour. */
 export const PIN_TRIES = 3;
 export const PIN_WAIT_TICKS = 30 * TICK_RATE;
 

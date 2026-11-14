@@ -575,7 +575,7 @@ test("a world saved when a young one's birth and an egg's laying were kept as ti
   h.run(60000);
   const g = flatGround(h, 20, 20);
   // A young one a third grown, an egg part way to hatching, and an adult female resting after laying.
-  const young = h.host.records.byPid.get(h.world.ents.pid[h.host.spawnCreature("core:parasaur", g.x + 5, g.z + 5, 4)]!)!;
+  const young = h.host.records.byPid.get(((e: number) => h.world.ents.pid[e]!)(h.host.spawnCreature("core:parasaur", g.x + 5, g.z + 5, 4)))!;
   young.span = 1500;
   young.grown = h.world.tick + 1000;
   h.world.ents.setYoung(h.host.records.entOf.get(young.pid)!, young.span, young.grown);
@@ -586,7 +586,7 @@ test("a world saved when a young one's birth and an egg's laying were kept as ti
   egg.y = g.y;
   egg.egg = { species: id("parasaur"), span: 1200, hatchAt: h.world.tick + 800, carrier: 0 };
   h.host.death.place(egg);
-  const mother = h.host.records.byPid.get(h.world.ents.pid[h.host.spawnCreature("core:parasaur", g.x + 13, g.z + 5, 4)]!)!;
+  const mother = h.host.records.byPid.get(((e: number) => h.world.ents.pid[e]!)(h.host.spawnCreature("core:parasaur", g.x + 13, g.z + 5, 4)))!;
   mother.mating = true;
   mother.mateReadyAt = h.world.tick + 777777;
   for (const r of [young, egg, mother]) h.host.records.dirty.add(r.pid);

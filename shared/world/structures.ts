@@ -1,8 +1,8 @@
 // A structure is a row in its chunk's table, not an entity, with no per-tick cost. ref = chunk * 65536 + slot, stable until removed.
 // Each slot records the table version that last changed it, so a client is brought up to date by a scan, without an op log.
 
-import { CHUNK_SIZE, STRUCT_UNITS, YAW_UNITS, chunkAt, chunkCount, type MapDims } from "../coords.ts";
-import { TAU, detCos, detSin } from "../math/scalar.ts";
+import { CHUNK_SIZE, STRUCT_UNITS, chunkAt, chunkCount, type MapDims } from "../coords.ts";
+import { STRETCH_MOST, frame, frameOf } from "./frame.ts";
 
 export const GRID_CELL = 4;
 /**
@@ -32,7 +32,6 @@ function oneBoxEach(halfX: Float32Array, halfY: Float32Array, halfZ: Float32Arra
 /** Grid cells per chunk side (64 m / 4 m). */
 const CELLS = 16;
 export const MAX_SLOTS_PER_CHUNK = 65535;
-const YAW_TO_RAD = TAU / YAW_UNITS;
 
 /** Why a structure was removed: taken (picked up or demolished), out of health, or left with no support. */
 export const GONE_TAKEN = 0;
@@ -229,7 +228,7 @@ export class StructureStore {
       }
       this.low[k] = low;
       this.high[k] = high;
-      this.spread[k] = spread;
+      this.spread[k] = spread * STRETCH_MOST;
     }
   }
 
@@ -576,11 +575,11 @@ export class StructureStore {
 
   /** Writes the grid cells a structure's rotated box covers to fx0..fz1. */
   private footprint(kind: number, x: number, z: number, yaw: number): void {
-    const a = yaw * YAW_TO_RAD;
-    const s = Math.abs(detSin(a));
-    const c = Math.abs(detCos(a));
-    const hx = this.halfX[kind]!;
-    const hz = this.halfZ[kind]!;
+    frameOf(yaw);
+    const s = Math.abs(frame.sin);
+    const c = Math.abs(frame.cos);
+    const hx = this.halfX[kind]! * frame.stretch;
+    const hz = this.halfZ[kind]! * frame.stretch;
     const ex = c * hx + s * hz;
     const ez = s * hx + c * hz;
     let x0 = Math.floor((x - ex) / GRID_CELL);

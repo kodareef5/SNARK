@@ -93,7 +93,9 @@ export class Support {
   /** The node of the piece at `ref`, built on first use. Null if nothing is built there, it is not a building piece, or the question was cut. */
   node(ref: number): SupportNode | null {
     const known = this.nodes.get(ref);
-    if (known) return this.alive(known) ? known : null;
+    if (known && this.alive(known)) return known;
+    // A piece that is gone has no node. One that changed in place since it was described (a fire that went out, a door
+    // that was opened) is described again, or it would count as gone and never be judged.
     const t = this.structs.chunks[Math.floor(ref / 65536)];
     const slot = ref & 0xffff;
     if (!t || slot >= t.high || t.kind[slot] === 0 || this.tables.role[t.kind[slot]!]! < 0) return null;

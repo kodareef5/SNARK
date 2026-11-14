@@ -23,6 +23,7 @@ export const RAPTOR: readonly Def[] = [
     leash: 60,
     bite: { reach: 2.6 },
     slots: 20,
+    keeps: 4,
     // The reference game's taming numbers.
     taming: { a0: 1200, a1: 60, foodBase: 0.001543, proneMult: 648.09, k: 3.125 },
     eats: [{ item: "core:meat", food: 50, affinity: 50 }, { item: "core:meat_cooked", food: 25, affinity: 25 }],

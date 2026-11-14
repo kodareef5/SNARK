@@ -6,7 +6,7 @@ import { AnimState, bodySeed } from "../shared/anim/pose.ts";
 import { boneToModel, solve } from "../shared/anim/skeleton.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { TEXT_NOTICE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, SESSION_ALIVE } from "../shared/net/protocol.ts";
-import { Body, STANCE_CROUCH, STANCE_STAND } from "../shared/sim/character.ts";
+import { Body, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../shared/sim/character.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -32,12 +32,24 @@ export interface RidingContext {
   refresh(rec: EntityRecord): void;
 }
 
+/** A rider's session, and its mount as it stood when the rider was last pinned to it: the place it gets off at, though the mount be gone by then. */
+interface Ride {
+  readonly c: Client;
+  /** The mount's record id and body radius. */
+  readonly pid: number;
+  readonly r: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+}
+
 export class Riding {
   mounted = 0;
   dismounted = 0;
   private readonly ctx: RidingContext;
-  /** The rider's session, by the mount's entity index. */
-  private readonly riders = new Map<number, Client>();
+  /** By the mount's entity index. */
+  private readonly riders = new Map<number, Ride>();
   private readonly st = new AnimState();
   private readonly body = new Body();
   private readonly seat = [0, 0, 0];
@@ -47,12 +59,12 @@ export class Riding {
   }
 
   riderOf(e: number): EntityRecord | null {
-    const c = this.riders.get(e);
-    return c ? (this.ctx.records.byPid.get(c.pid) ?? null) : null;
+    const ride = this.riders.get(e);
+    return ride ? (this.ctx.records.byPid.get(ride.c.pid) ?? null) : null;
   }
 
   riding(c: Client): boolean {
-    return c.drive >= 0 && this.riders.get(c.drive) === c;
+    return c.drive >= 0 && this.riders.get(c.drive)?.c === c;
   }
 
   /** Returns a RESULT code. */
@@ -75,12 +87,13 @@ export class Riding {
       return RESULT_DENIED;
     }
     if (!game.take(c, e)) return RESULT_DENIED;
-    this.riders.set(e, c);
+    const ride: Ride = { c, pid: rec.pid, r: world.reg.bodyRadius[rec.kind]!, x: 0, y: 0, z: 0, yaw: 0 };
+    this.riders.set(e, ride);
     ents.setSeat(c.ent, e);
     // A seated body is still. The crouch stance makes it drawn and hit as sitting low.
     ents.vx[c.ent] = ents.vy[c.ent] = ents.vz[c.ent] = 0;
     ents.stance[c.ent] = STANCE_CROUCH;
-    this.pin(c);
+    this.pin(ride);
     this.mounted++;
     c.open = 0;
     c.ownDirty = true;
@@ -91,53 +104,85 @@ export class Riding {
   dismount(c: Client): void {
     const { world, game, records } = this.ctx;
     const e = c.drive;
-    if (e < 0 || this.riders.get(e) !== c) return;
+    const ride = e >= 0 ? this.riders.get(e) : undefined;
+    if (!ride || ride.c !== c) return;
     const ents = world.ents;
     this.riders.delete(e);
     game.release(c);
     game.bus.after(RIDE_DISMOUNT, { pid: c.pid, mount: ents.pid[e]! });
+    const rec = (ents.flags[e]! & F_ALIVE) !== 0 ? records.byPid.get(ents.pid[e]!) : undefined;
     if (c.ent >= 0) {
-      ents.setSeat(c.ent, -1);
-      ents.stance[c.ent] = STANCE_STAND;
-      // It lands beside the mount or behind it, wherever there is room. With no room it stays where it sat.
-      const p = world.reg.move[ents.kind[c.ent]!]!;
-      const a = (ents.yaw[e]! / 65536) * TAU;
-      const off = world.reg.bodyRadius[ents.kind[e]!]! + p.radius + 0.4;
-      const b = this.body;
-      ents.loadBody(c.ent, b);
-      for (const [fx, fz] of [[Math.cos(a), -Math.sin(a)], [-Math.cos(a), Math.sin(a)], [-Math.sin(a), -Math.cos(a)]] as const) {
-        const x = ents.x[e]! + fx * off;
-        const z = ents.z[e]! + fz * off;
-        const y = Math.max(world.hf.heightAt(x, z), ents.y[e]!);
-        if (!capsuleFree(world, x, y, z, p.radius, p.height)) continue;
-        // The body must fit all the way from the mount to the spot, or a mount beside a wall would set its rider down inside the base.
-        let clear = true;
-        for (let k = 1, steps = Math.ceil(off / (p.radius * 0.5)); k < steps && clear; k++) {
-          const sx = ents.x[e]! + (fx * off * k) / steps;
-          const sz = ents.z[e]! + (fz * off * k) / steps;
-          clear = capsuleFree(world, sx, Math.max(world.hf.heightAt(sx, sz), ents.y[e]!), sz, p.radius, p.height);
-        }
-        if (!clear) continue;
-        b.x = x;
-        b.y = y;
-        b.z = z;
-        break;
-      }
-      b.vx = b.vy = b.vz = 0;
-      ents.storeBody(c.ent, b);
-      ents.pose(c.ent, world.tick);
+      // The mount has moved this tick since its rider was pinned.
+      if (rec?.pid === ride.pid) this.note(ride, e);
+      this.setDown(ride);
     }
     this.dismounted++;
     c.ownDirty = true;
-    const rec = (ents.flags[e]! & F_ALIVE) !== 0 ? records.byPid.get(ents.pid[e]!) : undefined;
     if (rec) this.ctx.refresh(rec);
   }
 
-  /** Moves the rider's body to the seat on its mount, facing as the mount faces. */
-  private pin(c: Client): void {
+  private note(ride: Ride, e: number): void {
+    const ents = this.ctx.world.ents;
+    ride.x = ents.x[e]!;
+    ride.y = ents.y[e]!;
+    ride.z = ents.z[e]!;
+    ride.yaw = ents.yaw[e]!;
+  }
+
+  /**
+   * Sets a rider down beside where its mount stood or behind it, wherever there is room and a clear way there. With no room it
+   * is set where the mount itself stood, as low as it must be to fit. It is never left at the seat, which may be inside a ceiling.
+   */
+  private setDown(ride: Ride): void {
     const world = this.ctx.world;
     const ents = world.ents;
+    const body = ride.c.ent;
+    ents.setSeat(body, -1);
+    const p = world.reg.move[ents.kind[body]!]!;
+    const a = (ride.yaw / 65536) * TAU;
+    const off = ride.r + p.radius + 0.4;
+    const b = this.body;
+    ents.loadBody(body, b);
+    let beside = false;
+    for (const [fx, fz] of [[Math.cos(a), -Math.sin(a)], [-Math.cos(a), Math.sin(a)], [-Math.sin(a), -Math.cos(a)]] as const) {
+      const x = ride.x + fx * off;
+      const z = ride.z + fz * off;
+      const y = Math.max(world.hf.heightAt(x, z), ride.y);
+      if (!capsuleFree(world, x, y, z, p.radius, p.height)) continue;
+      // The body must fit all the way from the mount to the spot, or a mount beside a wall would set its rider down inside the base.
+      let clear = true;
+      for (let k = 1, steps = Math.ceil(off / (p.radius * 0.5)); k < steps && clear; k++) {
+        const sx = ride.x + (fx * off * k) / steps;
+        const sz = ride.z + (fz * off * k) / steps;
+        clear = capsuleFree(world, sx, Math.max(world.hf.heightAt(sx, sz), ride.y), sz, p.radius, p.height);
+      }
+      if (!clear) continue;
+      b.x = x;
+      b.y = y;
+      b.z = z;
+      beside = true;
+      break;
+    }
+    b.stance = STANCE_STAND;
+    if (!beside) {
+      // Where the mount stood is clear of everything but the mount, which is wider than its rider though it may be lower.
+      b.x = ride.x;
+      b.y = ride.y;
+      b.z = ride.z;
+      if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) b.stance = capsuleFree(world, b.x, b.y, b.z, p.radius, p.crouchHeight) ? STANCE_CROUCH : STANCE_PRONE;
+    }
+    b.vx = b.vy = b.vz = 0;
+    ents.storeBody(body, b);
+    ents.pose(body, world.tick);
+  }
+
+  /** Moves the rider's body to the seat on its mount, facing as the mount faces. */
+  private pin(ride: Ride): void {
+    const world = this.ctx.world;
+    const ents = world.ents;
+    const c = ride.c;
     const e = c.drive;
+    this.note(ride, e);
     const kind = ents.kind[e]!;
     const def = world.reg.defs[kind];
     const rig = def?.type === "species" ? world.rigs.get(def.mesh) : undefined;
@@ -172,29 +217,27 @@ export class Riding {
     ents.pose(c.ent, world.tick);
   }
 
-  /** Call once a tick, after every body has moved. A rider whose mount died or fell unconscious is put off. */
+  /** Call once a tick, after every body has moved. A rider whose mount died or fell unconscious, or is no longer its tribe's, is put off. */
   step(): void {
     if (this.riders.size === 0) return;
-    const { world, records } = this.ctx;
+    const { world, records, tribes } = this.ctx;
     const ents = world.ents;
-    for (const [e, c] of this.riders) {
+    for (const [e, ride] of this.riders) {
+      const c = ride.c;
       const rec = (ents.flags[e]! & F_ALIVE) !== 0 ? records.byPid.get(ents.pid[e]!) : undefined;
-      // A rider who is knocked out falls off, as one whose mount is.
-      if (c.drive !== e || !c.active || c.closed || c.ent < 0 || c.state !== SESSION_ALIVE || !rec || rec.out || records.byPid.get(c.pid)?.out) {
+      const me = records.byPid.get(c.pid);
+      // A rider who is knocked out falls off, as one whose mount is. One put out of the tribe has no mount there.
+      if (c.drive !== e || !c.active || c.closed || c.ent < 0 || c.state !== SESSION_ALIVE || !rec || rec.out || me?.out || !tribes.may(me, rec.team)) {
         if (c.drive === e) this.dismount(c);
         else {
-          // The game let go of the mount first (the connection dropped, or the mount died). The body must not stay marked as seated,
-          // or others would draw it on the mount while it stands somewhere else.
+          // The game let go of the mount first (the connection dropped, or the mount died). Its rider is set down as one who
+          // got off, and no longer marked as seated, or others would draw it on the mount while it stands somewhere else.
           this.riders.delete(e);
-          if (c.ent >= 0 && c.drive < 0 && ents.seat[c.ent] === e + 1) {
-            ents.setSeat(c.ent, -1);
-            ents.stance[c.ent] = STANCE_STAND;
-            ents.pose(c.ent, world.tick);
-          }
+          if (c.ent >= 0 && c.drive < 0 && ents.seat[c.ent] === e + 1) this.setDown(ride);
         }
         continue;
       }
-      this.pin(c);
+      this.pin(ride);
     }
   }
 }

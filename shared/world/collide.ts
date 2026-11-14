@@ -1,14 +1,12 @@
 // Bodies are upright capsules and structure boxes turn about Y only, so the closest-point test in a box's frame is exact.
 // capsuleFree is the authority on legal space. Movement, spawning, mounting and teleporting must all end in a position it accepts.
 
-import { YAW_UNITS } from "../coords.ts";
-import { TAU, detCos, detSin } from "../math/scalar.ts";
+import { frame, frameOf } from "./frame.ts";
 import type { Heightfield } from "./heightfield.ts";
 import { Found, type PartTable, type StructureStore } from "./structures.ts";
 
 /** Penetration below this depth counts as touching, not overlapping. */
 export const SKIN = 0.002;
-const YAW_TO_RAD = TAU / YAW_UNITS;
 
 export interface CollisionWorld {
   readonly hf: Heightfield;
@@ -43,9 +41,10 @@ export function capsuleBox(structs: StructureStore, ref: number, x: number, y: n
 
 /** The same test against a structure of `kind` at (sx, sy, sz) facing `syaw`, built or not, to check a piece before it is built. */
 export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, x: number, y: number, z: number, r: number, h: number, slack: number): boolean {
-  const a = syaw * YAW_TO_RAD;
-  const s = detSin(a);
-  const c = detCos(a);
+  frameOf(syaw);
+  const s = frame.sin;
+  const c = frame.cos;
+  const wide = frame.stretch;
   // The capsule's axis in the structure's frame.
   const dx = x - sx;
   const dz = z - sz;
@@ -61,12 +60,12 @@ export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: numb
   let by = 0;
   let bz = 0;
   for (let p = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; p < end; p += 6) {
-    const hx = box[p + 3]!;
+    const hx = box[p + 3]! * wide;
     const hy = box[p + 4]!;
-    const hz = box[p + 5]!;
+    const hz = box[p + 5]! * wide;
     // The axis relative to this box's centre.
-    const lx = fx - box[p]!;
-    const lz = fz - box[p + 2]!;
+    const lx = fx - box[p]! * wide;
+    const lz = fz - box[p + 2]! * wide;
     const y0 = fy0 - box[p + 1]!;
     const y1 = fy1 - box[p + 1]!;
 

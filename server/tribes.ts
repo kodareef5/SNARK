@@ -5,6 +5,7 @@ import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Rules } from "./settings/rules.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { MAX_TRIBE_NAME } from "../shared/net/protocol.ts";
+import { NAME_UNCLEAR, meant } from "./names.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -184,8 +185,10 @@ export class Tribes {
     const tribe = this.of(by);
     if (!tribe) return "you are not in a tribe";
     if (tribe.owner !== by.pid) return "only the tribe's owner may put a member out";
-    const wanted = name.toLowerCase();
-    const target = tribe.members.map((pid) => this.records.byPid.get(pid)).find((m) => m && m.name.toLowerCase() === wanted);
+    const members = tribe.members.map((pid) => this.records.byPid.get(pid));
+    const which = meant(members.map((m) => m?.name ?? ""), name);
+    if (which === NAME_UNCLEAR) return `more than one member of ${tribe.name} could be ${name}; give the name exactly`;
+    const target = members[which];
     if (!target) return `nobody called ${name} is in ${tribe.name}`;
     if (target.pid === by.pid) return "leave the tribe instead";
     this.remove(tribe, target, "put out");

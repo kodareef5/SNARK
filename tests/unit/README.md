@@ -13,8 +13,10 @@
 | `weapon.test.ts`, `anim.test.ts`, `creature.test.ts` | The action step; skeletons, clips, poses and hit zones for survivors and for creatures that came as models |
 | `taming.test.ts`, `breeding.test.ts`, `station.test.ts` | The reference's taming table; litters and growing up by hundredths; a fire worked out from the last time anyone looked |
 | `building.test.ts`, `snap.test.ts`, `support.test.ts`, `collapse.test.ts` | Pieces made of boxes; where pieces go; the reference's support table; a collapse against brute force |
+| `joins.test.ts`, `pushorder.test.ts`, `swapfall.test.ts` | Joined pieces meet for every ray and every body at every turn; a body is pushed out of pieces in one order wherever they are stored; a piece that changes kind during a collapse is still judged |
 | `voice.test.ts` | Voice packets, the jitter buffer against scripted arrivals, the rate changer, the talk gate |
 | `packs.test.ts`, `pack.test.ts` | Content pack stacking and its error reports; glTF import and the asset pack format |
+| `build.test.ts` | The client build's Brotli copies, best and quick |
 | `render.test.ts` | Frame packets through the software rasterizer, asserted per pixel |
 | `hud.test.ts`, `ui.test.ts` | The HUD model, the minimap, the self-check logic; every screen laid out at four window shapes |
 | `tactical.test.ts`, `map.test.ts` | Latitude and longitude; a chunk's structures baked to cells against brute force, and on the wire; marks; the map's tiles and its four zooms lining up |

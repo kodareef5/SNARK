@@ -7,7 +7,7 @@ import {
 } from "../../shared/pack/pack.ts";
 import { TEXTURE_ROLES, stepOf } from "../../shared/pack/texture.ts";
 import { surfaceError } from "./error.ts";
-import { decodeSkin, decodeSurface, encodeSkin, encodeSurface, tangentsOf } from "./surface.ts";
+import { decodeSkin, decodeSurface, encodeSkin, encodeSurface, tangentsOf, uvRange } from "./surface.ts";
 
 /** One level of detail before quantization. */
 export interface SourceLod {
@@ -182,6 +182,8 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
     }
     const flat = surfaced(mesh);
     if (flat > 0) out.flat = flat;
+    const range = uvRange(mesh.lods.slice(0, flat).map((lod) => lod.uvs));
+    if (range) out.uv = range;
     const place = (mesh.materials ?? []).map((m) => materials.findIndex((p) => p.id === m.id));
     mesh.lods.forEach((lod, level) => {
       const n = lod.positions.length / 3;
@@ -212,7 +214,7 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
         if (uvs?.length !== n * 2 || normals?.length !== n * 3) throw new Error(`${mesh.id}: a level drawn with materials needs a texture coordinate and a normal for every vertex`);
         const runs = textured.sections.length / 3;
         if (runs < 1 || runs > MOST_SECTIONS) throw new Error(`${mesh.id}: a level is drawn with ${runs} materials, and may be with 1 to ${MOST_SECTIONS}`);
-        made.surfaceOffset = append(encodeSurface(uvs, normals, lod.tangents ?? tangentsOf({ positions: lod.positions, indices, uvs, normals })));
+        made.surfaceOffset = append(encodeSurface(uvs, normals, lod.tangents ?? tangentsOf({ positions: lod.positions, indices, uvs, normals }), out.uv));
         if (mesh.skeleton && lod.joints && lod.weights) made.skinOffset = append(encodeSkin(lod.joints, lod.weights, lod.bones!, mesh.id));
         made.sections = textured.sections;
       }
@@ -257,7 +259,7 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
       if (level > 0 && !Number.isNaN(lod.error)) out.error = lod.error;
       const surface = lodSurface(pack, lod);
       const skin = lodSkin(pack, lod);
-      if (surface) Object.assign(out, decodeSurface(surface), skin ? decodeSkin(skin) : {});
+      if (surface) Object.assign(out, decodeSurface(surface, m.uv), skin ? decodeSkin(skin) : {});
       return out;
     });
     const out: SourceMesh = { id: m.id, lods };

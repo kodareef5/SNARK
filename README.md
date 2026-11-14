@@ -52,7 +52,8 @@ raptors that will come for you.
 | Backquote or Tab | Console. `help` lists commands; `tribe` founds and runs a tribe; `mute <name>` stops you hearing someone |
 | Escape | Close a screen |
 
-Under `bun run dev` cheats need no password: type `enablecheats`, then try
+Under `bun run dev` cheats need no password, so the server answers this machine
+only (`bun run dev -- --host 0.0.0.0` lets the network in): type `enablecheats`, then try
 `give stone 50`, `spawn grazer 150`, `tp 172 256`, `ghost`, `settime 21`,
 `spectate`. For a fight: `kit bow`, `kit rifle`, `kit grenades` (then move the
 weapon to the hotbar in the inventory and press its number), `dummy flak` for

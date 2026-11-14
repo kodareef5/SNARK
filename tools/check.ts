@@ -3,6 +3,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { dynamicLoads, stripComments } from "./policy.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
@@ -70,9 +71,8 @@ function zoneOf(rel: string): Zone | undefined {
   return best;
 }
 
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
-}
+/** The one file that may load a file it is given the name of: an operator's modules. */
+const MAY_LOAD_BY_NAME = new Set(["server/main.ts"]);
 
 const IMPORT = /^[ \t]*(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|^[ \t]*import\s*['"]([^'"]+)['"]/gm;
 
@@ -119,6 +119,10 @@ function checkPolicy(): void {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/assets has no tests; move the logic into client/core/assets`);
       assetLines += src.split("\n").filter((l) => l.trim().length > 0).length;
     }
+
+    // An import the rules below cannot read the name of is an import they cannot judge.
+    const named = (src.match(/\bimport\s*\(\s*['"][^'"]+['"]\s*\)/g) ?? []).length;
+    if (zone.may !== "*" && dynamicLoads(src) > named && !MAY_LOAD_BY_NAME.has(rel)) fail(`${rel}: import() must name its file as a plain string, and require() is not used here`);
 
     for (const m of src.matchAll(IMPORT)) {
       const spec = m[1] ?? m[2] ?? m[3]!;
@@ -176,7 +180,9 @@ async function checkTypes(): Promise<void> {
 async function checkTests(): Promise<void> {
   const hasTests = walk(join(ROOT, "tests")).some((f) => f.endsWith(".test.ts"));
   if (!hasTests) return;
-  const r = await run(["bun", "test"], true);
+  // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
+  // A busy machine can make a one-second test take five, so a test is called hung at 20 s. The whole check keeps its budget.
+  const r = await run(["bun", "test", "--parallel", "--timeout", "20000"], true);
   if (!r.ok) fail(`tests failed:\n${r.out.trim()}`);
   else console.log("  " + (r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim()).join(", ")));
 }

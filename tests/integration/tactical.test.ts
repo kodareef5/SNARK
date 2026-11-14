@@ -194,12 +194,12 @@ test("a mate two kilometres off and its tame are marked, a stranger is not unles
   expect(seen().length).toBe(3);
   expect(seen(c.tactical.marks).length).toBe(1);
 
-  // Nobody moves: each list is sent again only every five seconds, 17 bytes for three marks.
+  // Nobody moves: each list is sent again only every five seconds, 18 bytes for three marks.
   const stats = h.host.tactical.stats;
   const [sent, bytes] = [stats.marks, stats.markBytes];
   h.run(10000);
   expect(stats.marks - sent).toBeLessThanOrEqual(6);
-  expect(stats.markBytes - bytes).toBeLessThanOrEqual(2 * (17 + 17 + 8));
+  expect(stats.markBytes - bytes).toBeLessThanOrEqual(2 * (18 + 18 + 9));
 
   // With the rule at "all" strangers are marked wherever they are, and the client is told which rule holds.
   expect(h.host.setSetting("MapPlayers", "all")).toBe("");

@@ -20,6 +20,7 @@ export const PARASAUR: readonly Def[] = [
     fists: 12,
     bite: { reach: 4.6 },
     slots: 30,
+    keeps: 4,
     // The reference game's taming numbers.
     taming: { a0: 1500, a1: 75, foodBase: 0.001929, proneMult: 864.01, k: 0.4 },
     eats: [{ item: "core:berry", food: 20, affinity: 20 }],

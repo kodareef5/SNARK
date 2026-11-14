@@ -15,14 +15,39 @@ function unpack10(word: number, shift: number): number {
   return Math.max((((word >>> shift) & 1023) ^ 512) - 512, -511) / 511;
 }
 
+
+/** A mesh whose texture coordinates all lie on one texture. */
+const UNIT: readonly number[] = [0, 0, 1, 1];
+
+/**
+ * What the texture coordinates of a mesh's levels span, as PackMesh.uv has it, or undefined when they lie on one
+ * texture. Whole textures either side, so that two meshes cut from one wall store the same coordinate for a shared corner.
+ */
+export function uvRange(levels: readonly (Float32Array | undefined)[]): [number, number, number, number] | undefined {
+  const lo = [Infinity, Infinity];
+  const hi = [-Infinity, -Infinity];
+  for (const uvs of levels) {
+    if (!uvs) continue;
+    for (let i = 0; i < uvs.length; i++) {
+      if (uvs[i]! < lo[i & 1]!) lo[i & 1] = uvs[i]!;
+      if (uvs[i]! > hi[i & 1]!) hi[i & 1] = uvs[i]!;
+    }
+  }
+  if (!(lo[0]! >= -1e-6 && lo[1]! >= -1e-6 && hi[0]! <= 1 + 1e-6 && hi[1]! <= 1 + 1e-6) && hi[0]! >= lo[0]!) {
+    const from = [Math.floor(lo[0]! + 1e-6), Math.floor(lo[1]! + 1e-6)];
+    return [from[0]!, from[1]!, Math.max(1, Math.ceil(hi[0]! - 1e-6) - from[0]!), Math.max(1, Math.ceil(hi[1]! - 1e-6) - from[1]!)];
+  }
+  return undefined;
+}
+
 /** Texture coordinates outside the picture are held at its edge. */
-export function encodeSurface(uvs: Float32Array, normals: Float32Array, tangents: Float32Array): Uint8Array {
+export function encodeSurface(uvs: Float32Array, normals: Float32Array, tangents: Float32Array, range: readonly number[] = UNIT): Uint8Array {
   const n = normals.length / 3;
   const out = new Uint8Array(n * SURFACE_BYTES);
   const view = new DataView(out.buffer);
   for (let v = 0; v < n; v++) {
     const at = v * SURFACE_BYTES;
-    for (let k = 0; k < 2; k++) view.setUint16(at + k * 2, Math.round(Math.min(Math.max(uvs[v * 2 + k]!, 0), 1) * 65535), true);
+    for (let k = 0; k < 2; k++) view.setUint16(at + k * 2, Math.round(Math.min(Math.max((uvs[v * 2 + k]! - range[k]!) / range[k + 2]!, 0), 1) * 65535), true);
     view.setUint32(at + 4, pack10(normals[v * 3]!, normals[v * 3 + 1]!, normals[v * 3 + 2]!, 0), true);
     // The sign of the bitangent as two bits: 1 is 01 and -1 is 11.
     view.setUint32(at + 8, pack10(tangents[v * 4]!, tangents[v * 4 + 1]!, tangents[v * 4 + 2]!, tangents[v * 4 + 3]! < 0 ? 3 : 1), true);
@@ -30,7 +55,7 @@ export function encodeSurface(uvs: Float32Array, normals: Float32Array, tangents
   return out;
 }
 
-export function decodeSurface(bytes: Uint8Array): { uvs: Float32Array; normals: Float32Array; tangents: Float32Array } {
+export function decodeSurface(bytes: Uint8Array, range: readonly number[] = UNIT): { uvs: Float32Array; normals: Float32Array; tangents: Float32Array } {
   const n = bytes.length / SURFACE_BYTES;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const uvs = new Float32Array(n * 2);
@@ -38,8 +63,8 @@ export function decodeSurface(bytes: Uint8Array): { uvs: Float32Array; normals: 
   const tangents = new Float32Array(n * 4);
   for (let v = 0; v < n; v++) {
     const at = v * SURFACE_BYTES;
-    uvs[v * 2] = view.getUint16(at, true) / 65535;
-    uvs[v * 2 + 1] = view.getUint16(at + 2, true) / 65535;
+    uvs[v * 2] = range[0]! + (view.getUint16(at, true) / 65535) * range[2]!;
+    uvs[v * 2 + 1] = range[1]! + (view.getUint16(at + 2, true) / 65535) * range[3]!;
     const [normal, tangent] = [view.getUint32(at + 4, true), view.getUint32(at + 8, true)];
     for (let k = 0; k < 3; k++) {
       normals[v * 3 + k] = unpack10(normal, k * 10);

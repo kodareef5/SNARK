@@ -41,6 +41,8 @@ export class Inventory {
   /** `version` at which each slot last changed, for sending only what a client lacks. */
   readonly mod: Uint32Array;
   version = 0;
+  /** How many times as long things keep here before they spoil. Whoever holds the inventory sets it (server/items.ts). */
+  keep = 1;
 
   constructor(cap: number, bag = cap) {
     this.cap = cap;
@@ -141,7 +143,7 @@ export class Inventory {
     const stack = t.stack[item]!;
     if (stack === 0) return n;
     const spoil = t.spoilTicks[item]!;
-    const clock = spoil === 0 ? 0 : spoilAt > 0 ? spoilAt : now + spoil;
+    const clock = spoil === 0 ? 0 : spoilAt > 0 ? spoilAt : clock32(now + Math.round(spoil * this.keep));
     if (stack > 1) {
       for (let s = 0; s < this.bag && n > 0; s++) {
         if (this.item[s] !== item || this.quality[s] !== quality) continue;
@@ -189,24 +191,39 @@ export class Inventory {
       const at = this.spoilAt[s]!;
       if (at === 0 || at > now || this.item[s] === 0) continue;
       const item = this.item[s]!;
-      const interval = t.spoilTicks[item]! || 1;
+      const interval = Math.round(t.spoilTicks[item]! * this.keep) || 1;
       const gone = Math.min(this.count[s]!, 1 + Math.floor((now - at) / interval));
       lost(item, gone);
       if (gone === this.count[s]) this.set(s, 0, 0, 0, 0, 0);
       else {
         this.count[s] = this.count[s]! - gone;
-        this.spoilAt[s] = at + gone * interval;
+        this.spoilAt[s] = clock32(at + gone * interval);
         this.mod[s] = ++this.version;
       }
     }
   }
 }
 
+/** A spoil clock holds 32 bits. */
+function clock32(at: number): number {
+  return at > 0xffffffff ? 0xffffffff : at;
+}
+
+/**
+ * The spoil clock `at` as it is in an inventory that keeps things `to` times as long, coming from one that keeps them
+ * `from` times: what it had left at `now` is scaled, and rounded down so that moving food never makes it fresher.
+ */
+export function carried(at: number, now: number, from: number, to: number): number {
+  if (at === 0 || from === to || at <= now) return at;
+  return clock32(now + Math.floor(((at - now) * to) / from));
+}
+
 /**
  * Moves up to `n` items (0 means the whole stack) into an empty slot or onto a matching stack. A whole stack moved onto a
- * different item swaps with it. Returns how many moved. 0 means the move was refused and nothing changed.
+ * different item swaps with it. Returns how many moved. 0 means the move was refused and nothing changed. `now` is needed
+ * only between inventories that keep things for different times.
  */
-export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: number, t: ItemTable): number {
+export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: number, t: ItemTable, now = 0): number {
   if (sa >= a.cap || sb >= b.cap || (a === b && sa === sb)) return 0;
   const item = a.item[sa]!;
   const have = a.count[sa]!;
@@ -215,8 +232,9 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   const other = b.item[sb]!;
   // An armor slot takes only its own kind of piece, and an item swapped back must fit its slot too.
   if (!fitsSlot(b, sb, item, t) || (other !== 0 && other !== item && !fitsSlot(a, sa, other, t))) return 0;
+  const sp = carried(a.spoilAt[sa]!, now, a.keep, b.keep);
   if (other === 0) {
-    b.set(sb, item, n, a.quality[sa]!, a.dur[sa]!, a.spoilAt[sa]!);
+    b.set(sb, item, n, a.quality[sa]!, a.dur[sa]!, sp);
     // A weapon moved whole keeps its rounds and attachment.
     if (n === have) b.setGear(sb, a.ammo[sa]!, a.loaded[sa]!, a.attach[sa]!);
     a.remove(sa, n);
@@ -227,7 +245,6 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
     const fit = Math.min(n, stack - b.count[sb]!);
     if (fit <= 0) return 0;
     // The joined stack spoils as its older part would have.
-    const sp = a.spoilAt[sa]!;
     if (sp !== 0 && (b.spoilAt[sb] === 0 || sp < b.spoilAt[sb]!)) b.spoilAt[sb] = sp;
     b.count[sb] = b.count[sb]! + fit;
     b.mod[sb] = ++b.version;
@@ -237,11 +254,10 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   if (n !== have) return 0;
   const q = a.quality[sa]!;
   const d = a.dur[sa]!;
-  const sp = a.spoilAt[sa]!;
   const ammo = a.ammo[sa]!;
   const loaded = a.loaded[sa]!;
   const attach = a.attach[sa]!;
-  a.set(sa, other, b.count[sb]!, b.quality[sb]!, b.dur[sb]!, b.spoilAt[sb]!);
+  a.set(sa, other, b.count[sb]!, b.quality[sb]!, b.dur[sb]!, carried(b.spoilAt[sb]!, now, b.keep, a.keep));
   a.setGear(sa, b.ammo[sb]!, b.loaded[sb]!, b.attach[sb]!);
   b.set(sb, item, have, q, d, sp);
   b.setGear(sb, ammo, loaded, attach);

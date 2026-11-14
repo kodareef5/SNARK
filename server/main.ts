@@ -1,4 +1,4 @@
-// bun server/main.ts [--dev] [--config dir] [--port 8787] [--map file.snmap] [--db var/world.db] [--allow-map-mismatch] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--map file.snmap] [--db var/world.db] [--allow-map-mismatch] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
@@ -21,6 +21,8 @@ import { serveFile } from "./files.ts";
 
 export interface ServerOptions {
   port?: number;
+  /** The address to listen on. Without one a development server listens on this machine only, and any other on every address. */
+  hostname?: string;
   /** Enables the self-check report endpoint and cheats without a password. Never set in a public deployment. */
   dev?: boolean;
   /** Password for `enablecheats`. Without it (and without `dev`) cheats are off. */
@@ -31,6 +33,8 @@ export interface ServerOptions {
   map?: string;
   /** See `HostOptions.allowMapMismatch`. */
   allowMapMismatch?: boolean;
+  /** See `StoreOptions.allowMissingContent`. */
+  allowMissingContent?: boolean;
   dbPath?: string;
   /** With a save: skip the backups made beside it at every autosave mark. */
   noBackups?: boolean;
@@ -97,6 +101,23 @@ export function mapRoutes(file: Uint8Array<ArrayBuffer>, id: string, hash: numbe
   };
 }
 
+/**
+ * Whether a web page at `origin` may open a socket to the server it asked for as `host`. A request with no Origin is not
+ * from a page, so it is not asked: the agent and other programs send none, and could send any. A page is let in if this
+ * server served it, which is when its origin's host is the host it asks for, or if `allowed` names its origin. `allowed`
+ * is the AllowedOrigins setting: origins separated by commas or spaces, or * for any.
+ */
+export function originAllowed(origin: string | null, host: string | null, allowed: string): boolean {
+  if (origin === null) return true;
+  const page = origin.toLowerCase();
+  const scheme = page.indexOf("://");
+  if (scheme > 0 && host !== null && page.slice(scheme + 3) === host.toLowerCase()) return true;
+  for (const name of allowed.toLowerCase().split(/[\s,]+/)) {
+    if (name === "*" || (name !== "" && name.replace(/\/+$/, "") === page)) return true;
+  }
+  return false;
+}
+
 /** The default settings folder of a development server. It speeds up taming, hatching and growth so raising a creature takes minutes. */
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
@@ -111,7 +132,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const pack = parsePack(new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[manifest.boot]!.name))));
   const clips = pack.clips;
   const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: new Uint8Array(readFileSync(opts.map)) } : {}), allowMapMismatch: opts.allowMapMismatch ?? false, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
-  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
+  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
   for (const m of host.lists.renamed) console.log(`settings: ${m.setting} names ${m.name}, which is now ${m.to.join(", ")}`);
@@ -162,14 +183,30 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     host.voice.flush();
   };
 
+  /** Sites whose pages were turned away, so each is logged once. */
+  const refused = new Set<string>();
+
   /** A message is a channel byte and then what the game wrote. The game's writers hold 16 KB, and a welcome a little more. */
   const outgoing = new Uint8Array(65536);
+  // A development server gives cheats without a password, so nothing off this machine reaches it unless it is asked to listen there.
+  const hostname = opts.hostname ?? (opts.dev ? "127.0.0.1" : undefined);
   const server = Bun.serve<Socket>({
     port: opts.port ?? 8787,
+    ...(hostname ? { hostname } : {}),
     ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) } } : {}),
     async fetch(req, srv) {
       const url = new URL(req.url);
       if (url.pathname === "/ws" || url.pathname === "/voice") {
+        // A page on another site may not use its visitor's browser, and that visitor's address, to reach this server.
+        const origin = req.headers.get("origin");
+        if (!originAllowed(origin, req.headers.get("host"), host.rules.text("AllowedOrigins"))) {
+          const site = origin!.slice(0, 100);
+          if (!refused.has(site) && refused.size < 32) {
+            refused.add(site);
+            console.log(`refused a socket to a page of ${site}: AllowedOrigins in [SnarkSettings] names the sites whose pages may connect`);
+          }
+          return new Response("pages of this site may not connect to this server", { status: 403 });
+        }
         return srv.upgrade(req, { data: { conn: null, voice: null, isVoice: url.pathname === "/voice" } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
       }
       if (url.pathname === "/__selfcheck" && req.method === "POST" && opts.dev) {
@@ -319,11 +356,13 @@ if (import.meta.main) {
   const flagPort = rules.flag("port");
   const running = startServer({
     port: Number(value("--port") ?? (typeof flagPort === "string" && flagPort !== "" ? flagPort : rules.num("Port"))),
+    hostname: value("--host"),
     dev,
     config: rules,
     ...(live ? { live } : {}),
     map: value("--map"),
     allowMapMismatch: args.includes("--allow-map-mismatch"),
+    allowMissingContent: args.includes("--allow-missing-content"),
     dbPath: value("--db"),
     noBackups: args.includes("--no-backups"),
     modules,

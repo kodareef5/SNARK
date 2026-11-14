@@ -6,6 +6,7 @@ import { MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } fr
 import { BTN_USE, stanceEye } from "../shared/sim/character.ts";
 import { leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
 import { F_PROP } from "../shared/sim/entities.ts";
+import { Inventory } from "../shared/sim/items.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { TICK_RATE, chunkCx, chunkCz } from "../shared/coords.ts";
 import { castWorld, lookDirection, rayBox, rayHit, HIT_NONE, HIT_STRUCTURE } from "../shared/world/ray.ts";
@@ -55,6 +56,8 @@ export class Death {
   onUseBuilt: ((c: Client, ref: number) => number) | null = null;
   /** Whether a session may open a creature that is awake (one of its tribe's). */
   canOpen: ((c: Client, rec: EntityRecord) => boolean) | null = null;
+  /** Whether a session that has the built container at `ref` open may go on using it. */
+  keepsBuilt: ((c: Client, ref: number) => boolean) | null = null;
   /** Riding hooks. onRide gets the entity the use button was pressed on and returns a result code, or -1 if it does not take the press. */
   riding: ((c: Client) => boolean) | null = null;
   offMount: ((c: Client) => void) | null = null;
@@ -153,7 +156,7 @@ export class Death {
       }
     }
     // The last places in the store are kept for bodies, and for what the dead leave.
-    if (ents.count > ents.cap - STORE_RESERVE) return false;
+    if (ents.room < STORE_RESERVE) return false;
     const bag = records.create(this.bag, "bag");
     if (items.move(rec, slot, bag, 0, n) === 0) {
       records.delete(bag.pid);
@@ -181,7 +184,13 @@ export class Death {
     const ents = world.ents;
     const e = records.entOf.get(rec.pid);
     if (rec.kind !== this.survivor) {
-      // A creature leaves no cache. Its items are burned through the ledger.
+      if (e !== undefined) {
+        rec.x = ents.x[e]!;
+        rec.y = ents.y[e]!;
+        rec.z = ents.z[e]!;
+      }
+      this.leave(rec);
+      // Anything that could not be left is burned through the ledger.
       if (rec.inv) items.burnAll(rec);
       if (e !== undefined) {
         persistence?.detach(rec.pid);
@@ -238,6 +247,30 @@ export class Death {
       c.sentRespawn = false;
       this.ctx.game.sendText(c, TEXT_NOTICE, `You ${CAUSE_NAMES[cause] ?? "died"}.`);
     }
+  }
+
+  /**
+   * A dead creature's body keeps what it carried and its saddle, for anyone to take, as in the reference. Here the body is a
+   * cache where it fell, which lies as long as a survivor's. One that carried nothing leaves nothing.
+   */
+  private leave(rec: EntityRecord): void {
+    const { world, records, items } = this.ctx;
+    const inv = rec.inv ? items.inv(rec) : null;
+    if ((!inv || inv.used() === 0) && rec.saddle === 0) return;
+    const kind = world.reg.ids[rec.kind]!;
+    const cache = records.create(this.cache, `${rec.name !== "" ? rec.name : kind.slice(kind.indexOf(":") + 1)}'s cache`);
+    // A slot for each of the creature's and one for its saddle. Items.move sets each stack's spoil clock for where it now lies:
+    // food keeps longer inside a creature than in a cache.
+    cache.inv = new Inventory((inv ? inv.cap : 0) + 1);
+    for (let s = 0; inv && s < inv.cap; s++) if (inv.item[s] !== 0) items.move(rec, s, cache, s, 0);
+    // A saddle was taken out of the ledger when it was put on, and comes back as it does when it is taken off.
+    if (rec.saddle !== 0 && items.mint(cache, rec.saddle, 1) === 1) rec.saddle = 0;
+    cache.x = rec.x;
+    cache.y = rec.y;
+    cache.z = rec.z;
+    cache.expiresAt = world.tick + this.lifetime(this.cache);
+    records.dirty.add(cache.pid);
+    this.place(cache);
   }
 
   respawn(c: Client, x: number, z: number, yaw: number, y?: number): number {
@@ -333,8 +366,26 @@ export class Death {
     records.delete(cache.pid);
   }
 
+  /**
+   * What the session has open, or null. Whether it still may is asked here, at every use, because its tribe, the lock or the
+   * PIN may have changed since it opened it. One it may not is shut.
+   */
   openOf(c: Client): EntityRecord | null {
-    return c.open === 0 ? null : (this.ctx.records.byPid.get(c.open) ?? null);
+    const box = c.open === 0 ? undefined : this.ctx.records.byPid.get(c.open);
+    if (!box) return null;
+    if (!this.allowed(c, box)) {
+      this.close(c);
+      return null;
+    }
+    return box;
+  }
+
+  /** A built container asks keepsBuilt. A creature that is awake asks canOpen. Anything else lying open is anyone's. */
+  private allowed(c: Client, box: EntityRecord): boolean {
+    if (box.at >= 0) return this.keepsBuilt?.(c, box.at) ?? true;
+    const e = this.ctx.records.entOf.get(box.pid);
+    if (e === undefined || (this.ctx.world.ents.flags[e]! & F_PROP) !== 0 || box.out) return true;
+    return this.canOpen?.(c, box) ?? false;
   }
 
   close(c: Client): void {
@@ -353,15 +404,15 @@ export class Death {
         const box = records.byPid.get(c.open);
         const e = box ? records.entOf.get(box.pid) : undefined;
         if (box && box.at >= 0 && c.ent >= 0) {
-          // A built container has no entity. It stays open, empty or not, while it stands and its user is near.
+          // A built container has no entity. It stays open, empty or not, while it stands, its user is near and may use it.
           const dx = box.x - ents.x[c.ent]!;
           const dy = box.y - ents.y[c.ent]!;
           const dz = box.z - ents.z[c.ent]!;
-          if (dx * dx + dy * dy + dz * dz > (REACH + 2.5) * (REACH + 2.5)) this.close(c);
+          if (dx * dx + dy * dy + dz * dz > (REACH + 2.5) * (REACH + 2.5) || !this.allowed(c, box)) this.close(c);
         } else if (!box || e === undefined || c.ent < 0) this.close(c);
         else if ((ents.flags[e]! & F_PROP) !== 0 && items.inv(box).used() === 0) this.remove(box);
         // A creature that woke up closes unless canOpen allows it.
-        else if ((ents.flags[e]! & F_PROP) === 0 && !box.out && !(this.canOpen?.(c, box) ?? false)) this.close(c);
+        else if (!this.allowed(c, box)) this.close(c);
         else {
           const dx = ents.x[e]! - ents.x[c.ent]!;
           const dy = ents.y[e]! - ents.y[c.ent]!;
