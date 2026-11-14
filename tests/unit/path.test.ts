@@ -1,0 +1,191 @@
+import { expect, test } from "bun:test";
+import { TICK_DT, YAW_UNITS } from "../../shared/coords.ts";
+import { Rng } from "../../shared/rng.ts";
+import { Body, MODE_WALK, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { GROUND_FREE, GROUND_SOLID, GROUND_STEEP, GROUND_WATER, PATH_BUDGET, PATH_FOUND, PATH_LEG, PATH_NONE, PATH_REACH, PATH_SHORT, PathFinder, groundAt } from "../../shared/world/path.ts";
+import { PROVING_POOL, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0 } from "../../shared/world/proving.ts";
+import { flatWorld, provingWorld, sealedRoom, type TestWorld } from "../fixtures/world.ts";
+
+const survivor = (w: TestWorld): MoveParams => w.reg.move[w.kind("core:survivor")]!;
+const finder = (w: TestWorld): PathFinder => new PathFinder(w, survivor(w));
+const points = (f: PathFinder): number[][] => Array.from({ length: f.count }, (_, k) => [f.x[k]!, f.z[k]!]);
+
+function lengthOf(f: PathFinder): number {
+  let m = 0;
+  for (let k = 1; k < f.count; k++) m += Math.hypot(f.x[k]! - f.x[k - 1]!, f.z[k]! - f.z[k - 1]!);
+  return m;
+}
+
+/** Steps a body along the last way as a player holding forward would. Returns it where it stopped. */
+function walk(w: TestWorld, f: PathFinder): Body {
+  const p = survivor(w);
+  const b = new Body();
+  b.x = f.x[0]!;
+  b.z = f.z[0]!;
+  b.y = w.hf.heightAt(b.x, b.z);
+  b.grounded = true;
+  let next = 1;
+  for (let tick = (lengthOf(f) / p.walkSpeed) * 45 + 90; tick > 0 && next < f.count; tick--) {
+    const dx = f.x[next]! - b.x;
+    const dz = f.z[next]! - b.z;
+    if (Math.hypot(dx, dz) < 0.25) next++;
+    else stepBody(w, b, 0, 127, Math.round((Math.atan2(dx, dz) / (2 * Math.PI)) * YAW_UNITS) & 0xffff, 0, 0, p, TICK_DT);
+  }
+  expect(next).toBe(f.count);
+  return b;
+}
+
+test("open ground is crossed in one straight line", () => {
+  const w = flatWorld();
+  const f = finder(w);
+  expect(f.find(20.2, 30.7, 50.4, 70.1)).toBe(PATH_FOUND);
+  expect(points(f)).toEqual([[20.2, 30.7], [50.4, 70.1]]);
+  // 30 cells diagonally and 10 straight on.
+  expect(f.cost).toBe(30 * 14 + 10 * 10);
+  expect(f.expanded).toBeLessThan(60);
+  expect(f.find(20.2, 30.7, 20.4, 30.9)).toBe(PATH_FOUND);
+  expect(points(f)).toEqual([[20.2, 30.7], [20.4, 30.9]]);
+});
+
+test("a wall is rounded by its nearer end, a body can walk the way, and the same world gives the same way", () => {
+  const build = (): TestWorld => {
+    const w = flatWorld();
+    for (let i = 0; i < 8; i++) w.structs.add(w.kind("core:wall"), 41.5 + 3 * i, 1.5, 64, 0, 0, 1);
+    return w;
+  };
+  const w = build();
+  const f = finder(w);
+  expect(f.find(48.3, 58, 48.6, 70)).toBe(PATH_FOUND);
+  // The wall runs from x 40 to 64, so the west end is nearer. Around a post at that end the way would be 24.9 m.
+  const best = Math.hypot(8.3, 6) + Math.hypot(8.6, 6);
+  expect(lengthOf(f)).toBeGreaterThan(best);
+  expect(lengthOf(f)).toBeLessThan(best * 1.12);
+  expect(Math.min(...f.x.slice(0, f.count))).toBeLessThan(40);
+  const b = walk(w, f);
+  expect(Math.hypot(b.x - 48.6, b.z - 70)).toBeLessThan(0.3);
+  expect(f.holds(1, f.x[0]!, f.z[0]!)).toBe(true);
+
+  const again = points(f);
+  f.find(1, 1, 100, 100);
+  f.find(48.3, 58, 48.6, 70);
+  expect(points(f)).toEqual(again);
+  const other = finder(build());
+  other.find(48.3, 58, 48.6, 70);
+  expect([points(other), other.cost, other.expanded]).toEqual([again, f.cost, f.expanded]);
+  expect(Number.isInteger(f.cost)).toBe(true);
+});
+
+test("a wall as thin as a cell's edge is not walked through, and a goal inside something moves to the nearest free cell", () => {
+  const w = flatWorld();
+  const f = finder(w);
+  // The wall stands on the line between two columns of cells, whose middles are both free.
+  w.structs.add(w.kind("core:wall"), 64, 1.5, 64, 16384, 0, 1);
+  expect(groundAt(w, survivor(w), 63.5, 64.5)).toBe(GROUND_FREE);
+  expect(groundAt(w, survivor(w), 64.5, 64.5)).toBe(GROUND_FREE);
+  expect(f.find(63.5, 64.5, 64.5, 64.5)).toBe(PATH_FOUND);
+  expect(lengthOf(f)).toBeGreaterThan(3);
+  walk(w, f);
+
+  w.structs.add(w.kind("core:block"), 30, 1, 30, 0, 0, 1);
+  expect(groundAt(w, survivor(w), 30, 30)).toBe(GROUND_SOLID);
+  expect(f.find(20.5, 30.5, 30, 30)).toBe(PATH_FOUND);
+  const end = [f.x[f.count - 1]!, f.z[f.count - 1]!];
+  expect(Math.hypot(end[0]! - 30, end[1]! - 30)).toBeLessThan(3);
+  expect(groundAt(w, survivor(w), end[0]!, end[1]!)).toBe(GROUND_FREE);
+  // The middle of an 8 m slab at knee height is further than 3 m from anywhere to stand. Lying on the ground it is a step up.
+  const slab = w.structs.add(w.kind("core:slab"), 90, 1, 90, 0, 0, 1);
+  expect(f.find(80.5, 80.5, 90, 90)).toBe(PATH_NONE);
+  w.structs.remove(slab);
+  w.structs.add(w.kind("core:slab"), 90, 0.25, 90, 0, 0, 1);
+  expect(f.find(80.5, 80.5, 90, 90)).toBe(PATH_FOUND);
+  expect(walk(w, f).y).toBe(0.5);
+});
+
+test("a search stops at its budget, and a goal nothing leads to gets the way to the nearest cell reached", () => {
+  const w = flatWorld(4);
+  sealedRoom(w, 128, 128);
+  const f = finder(w);
+  expect(f.find(100.5, 128.5, 128.5, 128.5)).toBe(PATH_SHORT);
+  expect(f.expanded).toBe(PATH_BUDGET);
+  // It ends against the outside of the nearest wall, which is the north one.
+  expect([f.x[f.count - 1], f.z[f.count - 1]]).toEqual([128.5, 131.5]);
+  f.budget = 40;
+  expect(f.find(100.5, 128.5, 128.5, 128.5)).toBe(PATH_SHORT);
+  expect(f.expanded).toBe(40);
+  // From inside, the only cells are the room's own.
+  f.budget = PATH_BUDGET;
+  expect(f.find(128.5, 128.5, 100.5, 128.5)).toBe(PATH_SHORT);
+  expect(f.expanded).toBeLessThan(40);
+});
+
+test("a goal beyond the grid is walked toward in legs", () => {
+  const w = flatWorld(8);
+  const f = finder(w);
+  expect(f.find(100.5, 100.5, 400.5, 300.5)).toBe(PATH_LEG);
+  const end = [f.x[f.count - 1]!, f.z[f.count - 1]!];
+  expect(end[0]).toBe(100.5 + PATH_REACH);
+  expect(Math.hypot(400.5 - end[0]!, 300.5 - end[1]!)).toBeLessThan(Math.hypot(300, 200) - 100);
+  expect(f.expanded).toBeLessThan(200);
+  // The next leg starts where this one ended.
+  expect(f.find(end[0]!, end[1]!, 400.5, 300.5)).toBe(PATH_LEG);
+  expect(f.find(330.5, 250.5, 400.5, 300.5)).toBe(PATH_FOUND);
+});
+
+test("a way stops holding when something is set down on it, and a cell to avoid is gone around", () => {
+  const w = flatWorld();
+  const f = finder(w);
+  f.find(20.5, 20.5, 60.5, 20.5);
+  expect(f.count).toBe(2);
+  expect(f.holds(1, 30, 20.5)).toBe(true);
+  const crate = w.structs.add(w.kind("core:crate"), 45, 0.5, 20.5, 0, 0, 1);
+  expect(f.holds(1, 30, 20.5)).toBe(false);
+  // Past the crate it holds again.
+  expect(f.holds(1, 50, 20.5)).toBe(true);
+  expect(f.find(30, 20.5, 60.5, 20.5)).toBe(PATH_FOUND);
+  expect(f.count).toBeGreaterThan(2);
+  expect(f.holds(1, 30, 20.5)).toBe(true);
+  walk(w, f);
+
+  w.structs.remove(crate);
+  f.avoid(45.2, 20.9);
+  f.find(20.5, 20.5, 60.5, 20.5);
+  expect(f.count).toBeGreaterThan(2);
+  f.forget();
+  f.find(20.5, 20.5, 60.5, 20.5);
+  expect(f.count).toBe(2);
+});
+
+test("on the proving ground a body walks every way found, round water, steep ground and everything built", () => {
+  const w = provingWorld();
+  const p = survivor(w);
+  const f = finder(w);
+  expect(groundAt(w, p, PROVING_POOL.x, PROVING_POOL.z)).toBe(GROUND_WATER);
+  expect(groundAt(w, p, SLOPE_X0 + SLOPE_WIDTH * 5.5, SLOPE_Z0 + 3)).toBe(GROUND_STEEP);
+  expect(f.find(256, 240, PROVING_POOL.x, PROVING_POOL.z)).toBe(PATH_NONE);
+  // Into the house by its doorway, and up beside the 60 degree strip by the gentle ones.
+  expect(f.find(256, 240, 240.5, 274.5)).toBe(PATH_FOUND);
+  walk(w, f);
+  expect(f.find(SLOPE_X0 + SLOPE_WIDTH * 5.5, SLOPE_Z0 - 4, SLOPE_X0 + SLOPE_WIDTH * 5.5, SLOPE_Z0 + 20)).toBe(PATH_FOUND);
+  expect(walk(w, f).y).toBeGreaterThan(11.9);
+
+  const rng = new Rng(11);
+  const spot = (): [number, number] => {
+    for (;;) {
+      const x = rng.range(200, 310);
+      const z = rng.range(215, 330);
+      if (groundAt(w, p, x, z) === GROUND_FREE) return [x, z];
+    }
+  };
+  let found = 0;
+  for (let n = 0; n < 40; n++) {
+    const [ax, az] = spot();
+    const [bx, bz] = spot();
+    const status = f.find(ax, az, bx, bz);
+    if (status !== PATH_FOUND) continue;
+    found++;
+    const b = walk(w, f);
+    expect(Math.hypot(b.x - bx, b.z - bz)).toBeLessThan(0.3);
+    expect(b.mode).toBe(MODE_WALK);
+  }
+  expect(found).toBeGreaterThan(30);
+});

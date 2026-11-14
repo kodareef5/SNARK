@@ -27,7 +27,7 @@ export interface AssetRequest {
 
 export interface AssetArrival {
   slot: number;
-  /** Null when it failed, and `fail` says how: a FAIL_ code. */
+  /** Every part of the request, one after another in the order asked. Null when any failed, and `fail` says how: a FAIL_ code. */
   data: Uint8Array | null;
   fail: number;
   /** Bytes that came over the network, and bytes that came from the disk cache. */

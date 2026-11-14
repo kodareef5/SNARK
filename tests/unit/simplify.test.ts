@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { buildCorePack } from "../../tools/pack/build.ts";
+import { CREATURE_ASSETS } from "../fixtures/assets.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
 import { FEWEST, simplify, withLevels } from "../../tools/pack/simplify.ts";
 import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
@@ -93,7 +94,7 @@ test("a ball's levels lie further from it as they get coarser, by about what the
   }
 });
 
-test("a mesh with one level gets more only if it has the triangles for them, and the creatures have five", () => {
+test("a mesh with one level gets more only if it has the triangles for them, and a creature that brings one gets five", () => {
   const box = withLevels({ id: "t:box", lods: [boxMesh([1, 1, 1], 3)] });
   expect(box.lods.length).toBe(1);
   expect(withLevels({ id: "t:small", lods: [ball(8, 6)] }).lods.map(tris)).toEqual([80]);
@@ -110,15 +111,17 @@ test("a mesh with one level gets more only if it has the triangles for them, and
   expect(packed.lods.map((l) => l.indexCount / 3)).toEqual([960, 480, 240, 120, 60]);
   expect(packed.lods[4]!.error).toBeCloseTo(round.lods[4]!.error!, 4);
 
+  // A creature converted from a model as it came has one level of its own, so the rest are ours.
   const core = parsePack(buildCorePack());
-  for (const id of ["core:parasaur", "core:raptor"]) {
-    const lods = core.header.meshes[core.meshIndex.get(id)!]!.lods;
-    expect([id, lods.length]).toEqual([id, 5]);
+  for (const { id, spec } of CREATURE_ASSETS) {
+    if (!("raw" in spec.source)) continue;
+    const mesh = core.header.meshes[core.meshIndex.get(id)!]!;
+    expect([id, mesh.lods.length]).toEqual([id, 5]);
     for (let l = 1; l < 5; l++) {
-      expect(lods[l]!.indexCount).toBeLessThanOrEqual(lods[l - 1]!.indexCount * 0.51);
-      expect(lods[l]!.error).toBeGreaterThan(lods[l - 1]!.error);
+      expect(mesh.lods[l]!.indexCount).toBeLessThanOrEqual(mesh.lods[l - 1]!.indexCount * 0.51);
+      expect(mesh.lods[l]!.error).toBeGreaterThan(mesh.lods[l - 1]!.error);
     }
-    // Half the triangles within a hand's width of the whole creature.
-    expect(lods[1]!.error).toBeLessThan(0.04);
+    // Half the triangles within a hundredth of the creature's length.
+    expect(mesh.lods[1]!.error).toBeLessThan(mesh.half[2] * 2 * 0.01);
   }
 });

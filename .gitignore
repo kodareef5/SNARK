@@ -47,3 +47,16 @@ MEMORY.md
 memory.md
 .codex/
 .claude/
+
+# Python leaves these beside the Blender and map scripts
+__pycache__/
+*.pyc
+
+# What a save leaves beside itself, and certificates
+*.db.lock
+.rescue-t*
+.pre-v*
+.replaced-*
+*.crt
+*.p12
+*.pfx

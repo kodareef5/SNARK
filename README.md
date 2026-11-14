@@ -96,6 +96,7 @@ a page served over TLS: start the server with `--cert cert.pem --key key.pem`.
 | `bun run probe` | Opens installed Chrome headless once and prints the page's self-check report. `-- --bench` adds frame times |
 | `bun run dev` | Development server with client rebuild on change |
 | `bun tools/map.ts` | Builds a map file from a folder of plain layers, and unpacks one into its folder. A server runs it with `--map <file>`; see [maps as files](planning/reference/maps.md) |
+| `bun run agent` | Joins a running server as a survivor and serves tools over stdio for a model to play with (MCP). `claude mcp add snark -- bun agent/main.ts --name Scout`; see [the agent](agent/README.md) |
 | `bun run build` | Builds the client into `client/dist` |
 
 Every change passes `bun run check`. There is no browser test suite and there
@@ -110,6 +111,7 @@ will not be one: see the [testing policy](planning/quality/testing.md).
 | [content](content/README.md) | Definitions as data |
 | [client](client/README.md) | `core`: headless session and frame building. `shell`: WebGL2 and DOM |
 | [server](server/README.md) | Game loop, every gameplay system, records, persistence, the voice relay, process entry |
+| [agent](agent/README.md) | A player that is a program: observe, walk, gather, open and speak as tools for a model |
 | [tools](tools/README.md) | Check, bench, snapshot, pack build, probe, dev server |
 | `config` | Example server configurations: ARK's two ini files in a folder each |
 | [tests](tests/README.md) | Unit and integration tests, fixtures |
