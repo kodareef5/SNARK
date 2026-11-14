@@ -587,9 +587,9 @@ export class GameServer {
     return true;
   }
 
-  /** `y` defaults to the ground. A bed on an upper floor passes its own. */
-  revive(c: Client, x: number, z: number, yaw: number, y = this.world.hf.heightAt(x, z)): boolean {
-    if (c.state !== SESSION_DEAD || !this.spawnBody(c, { x, y, z, yaw })) return false;
+  /** Without `y` the place is on the ground, and a free spot around it will do. With `y` it is a bed, which is stood on or nothing. */
+  revive(c: Client, x: number, z: number, yaw: number, y?: number): boolean {
+    if (c.state !== SESSION_DEAD || !this.spawnBody(c, { x, y: y ?? this.world.hf.heightAt(x, z), z, yaw }, y !== undefined)) return false;
     c.ownDirty = true;
     return true;
   }
@@ -611,8 +611,12 @@ export class GameServer {
     c.state = SESSION_SPECTATING;
   }
 
-  /** Spawns at `at`, else where the survivor was last seen, else the spawn point. If that spot is taken, the first free one around it. */
-  private spawnBody(c: Client, at?: { x: number; y: number; z: number; yaw: number }): boolean {
+  /**
+   * Spawns at `at`, else where the survivor was last seen, else the spawn point. If that spot is taken, the first free one on the
+   * ground around it, or one beside another body if every one is taken. An `exact` place, a bed, is stood on whoever else is
+   * there, as in ARK, and nowhere else. False if there is no room: a body is never put inside anything.
+   */
+  private spawnBody(c: Client, at?: { x: number; y: number; z: number; yaw: number }, exact = false): boolean {
     const world = this.world;
     const kind = this.survivor;
     const p = world.reg.move[kind]!;
@@ -623,21 +627,38 @@ export class GameServer {
     let z = cz;
     let y = 0;
     let yaw = at ? at.yaw : world.spawn.yaw;
-    if (want && capsuleFree(world, want.x, want.y, want.z, p.radius, p.height) && !(at && this.occupied(want.x, want.z))) {
+    if (want && capsuleFree(world, want.x, want.y, want.z, p.radius, p.height) && (exact || !(at && this.occupied(want.x, want.y, want.z)))) {
       x = want.x;
       y = want.y;
       z = want.z;
       yaw = want.yaw;
     } else {
-      // First free spot on rings around the place.
-      for (let k = 0; k < 96; k++) {
+      if (exact) return false;
+      // First free spot on rings around the place, else the first that only another body is in.
+      let free = false;
+      let beside = false;
+      let bx = 0;
+      let bz = 0;
+      for (let k = 0; k < 96 && !free; k++) {
         const ring = Math.ceil(k / 8);
         const a = (k * TAU) / 8 + ring * 0.4;
         x = cx + detSin(a) * ring * 1.5;
         z = cz + detCos(a) * ring * 1.5;
-        if (capsuleFree(world, x, world.hf.heightAt(x, z), z, p.radius, p.height) && !this.occupied(x, z)) break;
+        y = world.hf.heightAt(x, z);
+        if (!capsuleFree(world, x, y, z, p.radius, p.height)) continue;
+        free = !this.occupied(x, y, z);
+        if (!free && !beside) {
+          beside = true;
+          bx = x;
+          bz = z;
+        }
       }
-      y = world.hf.heightAt(x, z);
+      if (!free) {
+        if (!beside) return false;
+        x = bx;
+        z = bz;
+        y = world.hf.heightAt(x, z);
+      }
     }
     const ents = world.ents;
     const e = ents.create(kind, x, y, z, F_PLAYER | F_AWAKE);
@@ -959,13 +980,16 @@ export class GameServer {
     return true;
   }
 
-  private occupied(x: number, z: number): boolean {
+  /** Whether a survivor's body is within a metre of the spot, on its level and not a floor above or below. */
+  private occupied(x: number, y: number, z: number): boolean {
     const ents = this.world.ents;
+    const tall = this.world.reg.move[this.survivor]!.height;
     for (const c of this.clients) {
       if (!c?.active || c.ent < 0) continue;
       const dx = ents.x[c.ent]! - x;
+      const dy = ents.y[c.ent]! - y;
       const dz = ents.z[c.ent]! - z;
-      if (dx * dx + dz * dz < 1) return true;
+      if (dx * dx + dz * dz < 1 && dy < tall && dy > -tall) return true;
     }
     return false;
   }
