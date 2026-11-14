@@ -1,0 +1,7 @@
+Created all four 2048×2048 maps, retained sources, build/check scripts, and inspection images.
+
+- Tile: **1.5 m**, height range: **10 mm**
+- Mean base colour: **(118.008, 96.006, 64.004)**
+- Checks passed; rebuilds are byte-identical.
+
+[Report](/home/user/dev/SNARK/.claude/worktrees/agent-a5227c12dec939d96/assets/source/core/structures/thatch/tex/cord/REPORT.md) · [Relighting preview](/home/user/dev/SNARK/.claude/worktrees/agent-a5227c12dec939d96/assets/source/core/structures/thatch/tex/cord/checks/relighting_detail.png)

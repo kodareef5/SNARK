@@ -83,6 +83,7 @@ export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]
     if (m.rig !== undefined) out.rig = m.rig;
     if (m.skeleton !== undefined && m.lods[0]!.vertexCount > 0) out.bone = lodVertices(pack, m.lods[0]!)[7]!;
     if (m.flat !== undefined) out.flat = m.flat;
+    if (m.uv !== undefined) out.uv = m.uv;
     out.levels = placed[i]!.map((l, k): ManifestLevel => {
       const at = blobAt[l.file]! + l.lod.indexOffset;
       const level: ManifestLevel = { file: l.file, at, verts: l.lod.vertexCount, tris: l.lod.indexCount / 3, index: l.lod.indexBytes, error: l.lod.error, parts: partsAt(files[l.file]!.bytes, at, l.surfaceAt < 0 ? l.sizes : l.sizes.slice(0, 1)) };

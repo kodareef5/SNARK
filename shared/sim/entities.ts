@@ -1,5 +1,6 @@
 // Struct-of-arrays store for everything that moves. There are no per-entity objects, so the tick
-// allocates nothing. Each entity is linked into the list of the chunk it stands in.
+// allocates nothing. Each entity is linked into the list of the chunk it stands in. The columns double
+// when every slot is taken, up to the store's limit.
 
 import { chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import { HANDLE_GEN_MASK, HANDLE_INDEX_MASK, NULL_HANDLE, handleGen, handleIndex, makeHandle } from "../ids.ts";
@@ -22,79 +23,106 @@ export const F_PLAYER = 8;
 /** A thing that stands where it is put: never stepped, never woken. */
 export const F_PROP = 16;
 
+/** The most slots a store can have: what a handle's index can name. */
+export const ENTITY_LIMIT = HANDLE_INDEX_MASK + 1;
+
+type Column = Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array | Float32Array | Float64Array;
+
+/** A longer copy of a column. Its new entries hold `fill`. */
+export function wider<T extends Column>(a: T, length: number, fill = 0): T {
+  const out = new (a.constructor as unknown as new (length: number) => T)(length);
+  out.set(a);
+  if (fill !== 0) out.fill(fill, a.length);
+  return out;
+}
+
 export class EntityStore {
   readonly dims: MapDims;
-  readonly cap: number;
+  /** Slots the columns have room for. It doubles when every one is taken, up to `max`. */
+  cap: number;
+  /** The most slots it may grow to. */
+  readonly max: number;
   count = 0;
+  /** Slots kept for players' bodies. Once only these are left, a create for anything else is refused. */
+  reserve = 0;
+  /** Creates refused because there was no slot to give. */
+  refused = 0;
+  /** Each is called with the new capacity after the store grows. Whoever keeps a column for each entity widens it here. */
+  readonly onGrow: ((cap: number) => void)[] = [];
 
-  readonly gen: Uint16Array;
-  readonly flags: Uint8Array;
-  readonly kind: Uint16Array;
-  readonly x: Float32Array;
-  readonly y: Float32Array;
-  readonly z: Float32Array;
-  readonly vx: Float32Array;
-  readonly vy: Float32Array;
-  readonly vz: Float32Array;
+  // The typed columns are replaced when the store grows, so none is kept across a create. That includes indexing
+  // one with a create's result in the same expression: `ents.pid[spawn()]` reads the column from before the spawn.
+  gen: Uint16Array;
+  flags: Uint8Array;
+  kind: Uint16Array;
+  x: Float32Array;
+  y: Float32Array;
+  z: Float32Array;
+  vx: Float32Array;
+  vy: Float32Array;
+  vz: Float32Array;
   /** Facing, 1/65536 turns. */
-  readonly yaw: Uint16Array;
+  yaw: Uint16Array;
   /** Persistent id, or 0 for entities that are never saved. */
-  readonly pid: Float64Array;
+  pid: Float64Array;
   /** In input pitch units: 16384 is straight up. */
-  readonly pitch: Int16Array;
+  pitch: Int16Array;
   /** The pose, packed as shared/net/view.ts sends it. Whoever moves the body writes it. */
-  readonly anim: Uint32Array;
+  anim: Uint32Array;
   /** The rest of the predicted state. See `Body` in character.ts. */
-  readonly mode: Uint8Array;
-  readonly stance: Uint8Array;
-  readonly stamina: Int32Array;
-  readonly staminaMax: Uint16Array;
-  readonly speedQ: Uint16Array;
-  readonly swimQ: Uint16Array;
-  readonly mflags: Uint8Array;
+  mode: Uint8Array;
+  stance: Uint8Array;
+  stamina: Int32Array;
+  staminaMax: Uint16Array;
+  speedQ: Uint16Array;
+  swimQ: Uint16Array;
+  mflags: Uint8Array;
   /** Action state (shared/sim/weapon.ts): the act, its ticks, rounds loaded, and what a reload would bring that to. */
-  readonly act: Uint8Array;
-  readonly actTicks: Uint8Array;
-  readonly rounds: Uint8Array;
-  readonly reloadTo: Uint8Array;
+  act: Uint8Array;
+  actTicks: Uint8Array;
+  rounds: Uint8Array;
+  reloadTo: Uint8Array;
   /** HOLD_*, for the pose. Set with its gear. */
-  readonly hold: Uint8Array;
+  hold: Uint8Array;
   /** 1 while a session's inputs drive it (a mount). */
-  readonly driven: Uint8Array;
+  driven: Uint8Array;
   /**
    * Sent when it enters a view, 0 for none: the owning team, the entity it sits on plus one, and for the
    * young the ticks its growing takes and the tick it ends. Set only through the setters, so `rev` follows.
    */
-  readonly team: Uint32Array;
-  readonly seat: Uint32Array;
-  readonly span: Uint32Array;
-  readonly grown: Uint32Array;
+  team: Uint32Array;
+  seat: Uint32Array;
+  span: Uint32Array;
+  grown: Uint32Array;
   /** Also sent when it enters a view. `rev` changes whenever any of it does. */
-  readonly level: Uint16Array;
-  readonly colors: Uint8Array;
+  level: Uint16Array;
+  colors: Uint8Array;
   readonly name: string[];
   /** A survivor's look (shared/anim/look.ts). */
   readonly look: (Uint8Array | null)[];
   /** Content indices: GEAR_HELD, then one per armor slot. Replaced, never changed in place. */
   readonly gear: (Uint16Array | null)[];
-  readonly rev: Uint8Array;
+  rev: Uint8Array;
 
   /** Chunk the entity is linked into, or -1. */
-  readonly chunk: Int32Array;
+  chunk: Int32Array;
   /** Per chunk: first entity index, or -1. */
   readonly chunkHead: Int32Array;
-  readonly next: Int32Array;
-  readonly prev: Int32Array;
+  next: Int32Array;
+  prev: Int32Array;
 
   /** Free slots, oldest first, so a slot rests as long as possible before reuse. */
-  private readonly freeRing: Int32Array;
+  private freeRing: Int32Array;
   private freeRead = 0;
   private freeCount: number;
 
-  constructor(dims: MapDims, cap: number) {
-    if (cap > HANDLE_INDEX_MASK + 1) throw new Error("entity capacity exceeds handle index range");
+  /** It starts with room for `cap` and may grow to `max`. With no `max` it never grows. */
+  constructor(dims: MapDims, cap: number, max = cap) {
+    if (max > ENTITY_LIMIT) throw new Error("entity capacity exceeds handle index range");
+    if (cap < 1 || cap > max) throw new Error("an entity store starts with at least one slot and no more than its limit");
     this.dims = dims;
     this.cap = cap;
+    this.max = max;
     this.gen = new Uint16Array(cap).fill(1);
     this.flags = new Uint8Array(cap);
     this.kind = new Uint16Array(cap);
@@ -140,9 +168,18 @@ export class EntityStore {
     this.freeCount = cap;
   }
 
-  /** Returns the index, or -1 when the store is full. */
+  /** Slots left for anything but a player's body. */
+  get room(): number {
+    const left = this.max - this.reserve - this.count;
+    return left > 0 ? left : 0;
+  }
+
+  /** Returns the index, or -1 when there is no slot to give, which is counted in `refused`. */
   create(kind: number, x: number, y: number, z: number, flags: number): number {
-    if (this.freeCount === 0) return -1;
+    if (((flags & F_PLAYER) === 0 && this.count >= this.max - this.reserve) || (this.freeCount === 0 && !this.grow())) {
+      this.refused++;
+      return -1;
+    }
     const i = this.freeRing[this.freeRead]!;
     this.freeRead = (this.freeRead + 1) % this.cap;
     this.freeCount--;
@@ -184,6 +221,62 @@ export class EntityStore {
     this.rev[i] = (this.rev[i]! + 1) & 15;
     this.link(i, chunkAt(this.dims, x, z));
     return i;
+  }
+
+  /** Doubles the columns. False when they are at `max`. Called only with every slot taken. */
+  private grow(): boolean {
+    const old = this.cap;
+    if (old >= this.max) return false;
+    const cap = old * 2 < this.max ? old * 2 : this.max;
+    this.gen = wider(this.gen, cap, 1);
+    this.flags = wider(this.flags, cap);
+    this.kind = wider(this.kind, cap);
+    this.x = wider(this.x, cap);
+    this.y = wider(this.y, cap);
+    this.z = wider(this.z, cap);
+    this.vx = wider(this.vx, cap);
+    this.vy = wider(this.vy, cap);
+    this.vz = wider(this.vz, cap);
+    this.yaw = wider(this.yaw, cap);
+    this.pitch = wider(this.pitch, cap);
+    this.anim = wider(this.anim, cap);
+    this.pid = wider(this.pid, cap);
+    this.mode = wider(this.mode, cap);
+    this.stance = wider(this.stance, cap);
+    this.stamina = wider(this.stamina, cap);
+    this.staminaMax = wider(this.staminaMax, cap);
+    this.speedQ = wider(this.speedQ, cap);
+    this.swimQ = wider(this.swimQ, cap);
+    this.mflags = wider(this.mflags, cap);
+    this.act = wider(this.act, cap);
+    this.actTicks = wider(this.actTicks, cap);
+    this.rounds = wider(this.rounds, cap);
+    this.reloadTo = wider(this.reloadTo, cap);
+    this.hold = wider(this.hold, cap);
+    this.driven = wider(this.driven, cap);
+    this.team = wider(this.team, cap);
+    this.seat = wider(this.seat, cap);
+    this.span = wider(this.span, cap);
+    this.grown = wider(this.grown, cap);
+    this.level = wider(this.level, cap);
+    this.colors = wider(this.colors, cap * 6);
+    while (this.name.length < cap) {
+      this.name.push("");
+      this.look.push(null);
+      this.gear.push(null);
+    }
+    this.rev = wider(this.rev, cap);
+    this.chunk = wider(this.chunk, cap, -1);
+    this.next = wider(this.next, cap, -1);
+    this.prev = wider(this.prev, cap, -1);
+    // Every old slot is taken, so the free slots are the new ones, in order.
+    this.freeRing = new Int32Array(cap);
+    for (let i = old; i < cap; i++) this.freeRing[i - old] = i;
+    this.freeRead = 0;
+    this.freeCount = cap - old;
+    this.cap = cap;
+    for (const widen of this.onGrow) widen(cap);
+    return true;
   }
 
   /** The setters bump `rev` only on a change, and clients that already see the entity are then sent it again. */
