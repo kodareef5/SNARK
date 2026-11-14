@@ -41,6 +41,7 @@ import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
 import { benchAgent } from "./bench/agent.ts";
 import { benchPoses } from "./bench/poses.ts";
+import { benchTextures } from "./bench/textures.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -1162,6 +1163,7 @@ section("Asset library (headless): 64 rocks of five levels and a 263,169-vertex 
 
 benchAgent(section, record);
 benchPoses(section, record);
+await benchTextures(section, record);
 
 rmSync(dir, { recursive: true, force: true });
 const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);
