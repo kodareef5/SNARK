@@ -159,6 +159,19 @@ export function addCoreCommands(con: Console): void {
       },
     },
     {
+      name: "backup",
+      usage: "",
+      help: "Copy the save into a new backup folder beside it now.",
+      admin: true,
+      run(ctx) {
+        const p = ctx.host.persistence;
+        if (!p) return "this world is not saved to disk";
+        p.commit(true);
+        p.keeper.backup();
+        return "a backup was started; the server's log says where it went";
+      },
+    },
+    {
       name: "saveas",
       usage: "<file>",
       help: "Write the whole world to a new file and carry on saving there. For the server's own console.",

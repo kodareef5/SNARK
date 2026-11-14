@@ -7,6 +7,8 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
 import type { EntityRecord, Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
+import type { BackupReport } from "./backup.ts";
+import { inlineKeeper, type Keeper } from "./keeper.ts";
 import { sqliteCode, type WorldStore } from "./store.ts";
 
 /** Five seconds. A checkpoint syncs the database file, so this is not every commit. */
@@ -77,6 +79,11 @@ export class Persistence {
   onMoved: ((path: string) => void) | null = null;
   /** Opens a store at another path, for saveAs. */
   open: ((path: string) => WorldStore) | null = null;
+  /** Does the checkpoints and backups: on this thread unless `keepWith` gave it a worker. */
+  keeper: Keeper;
+  /** Called with what came of each backup. */
+  onBackup: ((r: BackupReport) => void) | null = null;
+  private keep: (store: WorldStore) => Keeper = (store) => inlineKeeper(store.db, store.path);
 
   private readonly world: ServerWorld;
   private readonly records: Records;
@@ -97,6 +104,8 @@ export class Persistence {
     this.records = records;
     this.store = store;
     this.opts = { positionTicks: 1800, journalKeep: 100_000, ...opts };
+    this.keeper = this.keep(store);
+    this.keeper.onBackup = (r) => this.onBackup?.(r);
     world.structs.onChunkChanged = (chunk) => this.dirtyChunks.add(chunk);
   }
 
@@ -127,6 +136,24 @@ export class Persistence {
    */
   sidecar(key: string, of: Sidecar, every = 0): void {
     this.sidecars.push({ key, of, every, at: -every });
+  }
+
+  /** Replaces the keeper with one `make` builds, now and whenever the world moves to another file. */
+  keepWith(make: (store: WorldStore) => Keeper): void {
+    this.keep = make;
+    this.rekeep();
+  }
+
+  private rekeep(): void {
+    this.keeper.close();
+    this.keeper = this.keep(this.store);
+    this.keeper.onBackup = (r) => this.onBackup?.(r);
+  }
+
+  /** Stops the keeper, then closes the save without a commit. A server stopping commits first (Host.shutdown). */
+  close(): void {
+    this.keeper.close();
+    this.store.close();
   }
 
   /** The entry is written in the same transaction as the state it produced. */
@@ -170,7 +197,7 @@ export class Persistence {
     if (this.world.tick - this.checkpointAt < CHECKPOINT_TICKS || this.commits === this.checkpointed) return;
     this.checkpointAt = this.world.tick;
     this.checkpointed = this.commits;
-    this.store.checkpoint();
+    this.keeper.checkpoint();
   }
 
   /**
@@ -244,6 +271,7 @@ export class Persistence {
       next.close();
       throw err;
     }
+    this.rekeep();
     try {
       old.close();
     } catch {

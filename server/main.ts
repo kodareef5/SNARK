@@ -1,4 +1,4 @@
-// bun server/main.ts [--dev] [--config dir] [--port 8787] [--db var/world.db] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--config dir] [--port 8787] [--db var/world.db] [--restore backup-folder] [--no-backups] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
@@ -9,6 +9,7 @@ import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
 import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
 import type { Rules } from "./settings/rules.ts";
+import { restoreBackup } from "./persist/backup.ts";
 import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
 import { existsSync, readFileSync } from "node:fs";
@@ -24,6 +25,8 @@ export interface ServerOptions {
   /** Read console commands from standard input, as the operator. */
   terminal?: boolean;
   dbPath?: string;
+  /** With a save: skip the backups made beside it at every autosave mark. */
+  noBackups?: boolean;
   /** Directory holding the built client. */
   clientDir?: string;
   /** A fixed scene for the boot probe: no wandering herd, nothing woken, and one creature standing at the spot the self-check looks at. */
@@ -83,7 +86,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const pack = parsePack(new Uint8Array(readFileSync(packFile)));
   const clips = pack.clips;
   const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.live ? { live: opts.live } : {}) };
-  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
+  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups } : {}), startingCreatures: 24, startingSpecies: "core:parasaur", startingHunters: 4 });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
@@ -230,8 +233,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       next += tickMs;
       steps++;
     }
-    // On time, so there are about 30 ms before the next tick.
-    if (steps === 1) host.idle();
+    // The checkpoint is the keeper thread's work, so asking for it costs nothing here, late or not.
+    host.idle();
     if (now - next > 250) next = now + tickMs;
     timer = setTimeout(loop, Math.max(0, next - performance.now()));
   };
@@ -271,6 +274,12 @@ if (import.meta.main) {
   const { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
   const live = liveFileOf(folder);
+  const restore = value("--restore");
+  if (restore !== undefined) {
+    if (!value("--db")) throw new Error("--restore needs --db: the save to put the backup in place of");
+    const put = restoreBackup(value("--db")!, restore, new Date());
+    console.log(`restored the backup of tick ${put.tick}; what it replaced is in ${put.aside}`);
+  }
   // Precedence: --port, then ARK's -port flag, then the Port setting.
   const flagPort = rules.flag("port");
   const running = startServer({
@@ -279,6 +288,7 @@ if (import.meta.main) {
     config: rules,
     ...(live ? { live } : {}),
     dbPath: value("--db"),
+    noBackups: args.includes("--no-backups"),
     cert: value("--cert"),
     key: value("--key"),
     adminPassword: process.env.SNARK_ADMIN_PASSWORD,

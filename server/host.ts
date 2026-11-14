@@ -40,6 +40,7 @@ import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
+import { workerKeeper } from "./persist/keeper.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
 import { Rules, timersOf } from "./settings/rules.ts";
@@ -64,6 +65,10 @@ export interface HostOptions {
   worldId?: number;
   /** Ticks between commits. 6 ticks is 200 ms. */
   commitEvery?: number;
+  /** "worker" gives checkpoints and backups to a thread of their own, as a running server wants. The default does them on the calling thread. */
+  keeper?: "inline" | "worker";
+  /** Back the save up beside itself at every autosave mark (AutoSavePeriodMinutes). */
+  backups?: boolean;
   game?: Partial<GameOptions>;
   store?: StoreOptions;
   /** For a new world: wild creatures scattered near the spawn point, their species (core:grazer by default), and hunters further off. */
@@ -616,6 +621,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       settingsAt.version = rules.version;
       settingsAt.dirty = true;
     }
+    if (persistence && opts.backups && tick % liveEvery === 0) persistence.keeper.backup();
     if (persistence && !persistence.tryCommit(commitEvery)) {
       const late = tick - persistence.failing!.since;
       if (late === UNSAVED_TELL_TICKS || (late > UNSAVED_TELL_TICKS && late % (60 * TICK_RATE) === 0)) {
@@ -629,6 +635,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       else if (f.tries === 1) console.log(`the world could not be saved (${f.code}: ${f.error}); trying again, and the world runs on`);
     };
     persistence.onMoved = (path) => console.log(`the save file is broken; the world is now saved in ${path}, so start the server with --db ${path} next time`);
+    persistence.onBackup = (r) => console.log(r.path === "" ? `no backup was made: ${r.why}` : `backup of tick ${r.tick} in ${r.path} (${(r.bytes / 1e6).toFixed(1)} MB, ${Math.round(r.ms)} ms)`);
+    // Last, so a host that fails to start has no thread to stop.
+    if (opts.keeper === "worker") persistence.keepWith((s) => workerKeeper(s.path));
   }
   // An unconscious survivor can talk, use the console and shut what it had open. Its client can make it do nothing else.
   game.allows = (c, op) => op === CMD_TEXT || op === CMD_CHAT || op === CMD_CLOSE || !records.byPid.get(c.pid)?.out;
@@ -796,7 +805,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
         if (pid !== 0) records.dirty.add(pid);
       }
       persistence.commit(true);
-      persistence.store.close();
+      persistence.close();
     },
   };
   game.handle(CMD_PLACE, (c, r) => build.place(c, r));

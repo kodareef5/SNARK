@@ -10,6 +10,8 @@ import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { ChunkTable, StructureStore } from "../../shared/world/structures.ts";
 import { EntityRecord } from "../records.ts";
 import { validLook } from "../../shared/anim/look.ts";
+import { existsSync } from "node:fs";
+import { listBackups } from "./backup.ts";
 import { refuseNetworkDisk } from "./disk.ts";
 import { holdSave, type SaveLock } from "./lock.ts";
 
@@ -143,12 +145,16 @@ export class WorldStore {
       // SQLite checkpoints inside whichever commit passes this many WAL pages, which stops a tick for 3 to 20 ms. The server
       // checkpoints between ticks (checkpoint()), so this is only a ceiling of 64 MB for a host that nobody calls idle() on.
       db.exec("PRAGMA wal_autocheckpoint = 16000");
+      // In bytes. After a burst the log file is cut back to this when it is next emptied.
+      db.exec("PRAGMA journal_size_limit = 67108864");
       db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID");
 
       const current = Number(this.meta("schema_version") ?? 0);
       this.fresh = current === 0;
       if (current > SCHEMA_VERSION) throw new Error(`save has schema ${current}; this build understands up to ${SCHEMA_VERSION}`);
       if (current < SCHEMA_VERSION) {
+        // The save as it was, kept beside it before its form changes. An older copy of the same form is left alone.
+        if (current > 0 && !existsSync(`${path}.pre-v${current}`)) db.query("VACUUM INTO ?").run(`${path}.pre-v${current}`);
         db.transaction(() => {
           for (let v = current; v < SCHEMA_VERSION; v++) MIGRATIONS[v]!(db);
           db.query("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)").run(SCHEMA_VERSION);
@@ -168,6 +174,7 @@ export class WorldStore {
           add.run(high, reg.ids[i]!);
         }
       })();
+      add.finalize();
       if (high > 65535) throw new Error("save has interned more than 65535 content ids");
       this.toSaved = new Uint16Array(reg.ids.length);
       this.toRuntime = new Uint16Array(high + 1);
@@ -198,14 +205,12 @@ export class WorldStore {
       }
       this.lock.release();
       const code = sqliteCode(err);
-      if (code === "SQLITE_CORRUPT" || code === "SQLITE_NOTADB") throw new Error(`${path} is damaged (${err instanceof Error ? err.message : code}): restore a backup`);
+      if (code === "SQLITE_CORRUPT" || code === "SQLITE_NOTADB") {
+        const newest = listBackups(path)[0];
+        throw new Error(`${path} is damaged (${err instanceof Error ? err.message : code}): ${newest ? `start with --restore ${newest}` : "there is no backup of it"}`);
+      }
       throw err;
     }
-  }
-
-  /** Copies committed pages from the write-ahead log into the database file and syncs it. Never waits for a reader. */
-  checkpoint(): void {
-    this.db.exec("PRAGMA wal_checkpoint(PASSIVE)");
   }
 
   /** Empties the write-ahead log into the file, closes it and lets go of the save. */
@@ -215,6 +220,8 @@ export class WorldStore {
     } catch {
       // A file that cannot be written is closed as it is.
     }
+    // A statement left open keeps the connection, and its hold on the file, alive after close.
+    for (const s of [this.putMeta, this.putChunk, this.putEntity, this.dropEntity, this.putJournal, this.putSurvivor]) s.finalize();
     this.db.close();
     this.lock.release();
   }
