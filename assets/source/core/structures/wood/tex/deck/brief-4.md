@@ -1,0 +1,7 @@
+This is the fourth pass on the `deck` material (floorboards of foundations, ceilings and stair treads). Work only in this folder; no git commands that write. Read your `REPORT.md` and scripts first. Only the base colour changes: the layout, height, normal and packed map stay exactly as they are.
+
+The tier now has concept art, in `/home/user/dev/SNARK/.claude/worktrees/agent-ae515c340350f410b/assets/source/core/structures/wood/ref/concept/` (look at `piece_foundation.png`, `piece_ceiling_above.png`, `homestead_front.png`, `homestead_above.png`). The pieces are being modelled to it, and the materials must now take its palette: warm, saturated, inviting wood. Measured means of the painted concept, which include its warm light: floor deck about sRGB (177, 117, 66), wall boards (170, 102, 54), frame (97, 54, 31).
+
+The concept's floors are warm, not grey. Move the base colour to a warm, sun-faded honey brown, mean about sRGB (156, 106, 64): warmer and less grey than now, and a touch lighter and less saturated than the wall boards (around (162, 100, 56)) so a floor still reads as the floor. Keep its foot-worn, weathered character (raised grain lighter, low grain and gaps darker, a few water marks) and the board-to-board variety relative to the new mean.
+
+Do it inside your build so it rebuilds the same. Rerun your checks, add a before/after of the base colour to the contact sheet, and note the change in `REPORT.md`.
