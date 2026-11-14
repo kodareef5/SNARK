@@ -181,6 +181,31 @@ test("a save file that is broken is left, and the world is saved beside it", () 
   h2.host.shutdown();
 });
 
+test("SQLite's longer codes for a file that is gone or broken bring the rescue too, and one for a busy file does not", () => {
+  const { h, rec, stone } = world("gone");
+  const p = h.host.persistence!;
+  h.host.items.mint(rec, stone, 9);
+  const moved: string[] = [];
+  // Bun reports the extended code. The first is macOS's for a save that was moved or deleted, the second SQLite's own.
+  for (const code of ["SQLITE_IOERR_VNODE", "SQLITE_READONLY_DBMOVED", "SQLITE_CORRUPT_INDEX"]) {
+    breakStore(p, code);
+    p.onMoved = (path) => void moved.push(path);
+    h.run(500);
+    expect([code, p.failing, p.store.path]).toEqual([code, null, moved.at(-1)!]);
+  }
+  expect(moved.length).toBe(3);
+  const fault = breakStore(p, "SQLITE_BUSY_SNAPSHOT");
+  p.onMoved = (path) => void moved.push(path);
+  h.run(500);
+  expect([p.failing!.code, moved.length]).toEqual(["SQLITE_BUSY_SNAPSHOT", 3]);
+  fault.mend();
+  h.run(6000);
+  h.host.shutdown();
+  const h2 = new Harness({}, 1, 60, { dbPath: moved[2]! });
+  expect(h2.host.records.byPid.get(rec.pid)!.inv!.total(stone)).toBe(9);
+  h2.host.shutdown();
+});
+
 test("nothing writes to the save outside a commit", () => {
   const root = join(import.meta.dir, "../../server");
   const outside: string[] = [];

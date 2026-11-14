@@ -6,6 +6,7 @@
 | `sessions.test.ts` | Spectators, lingering bodies, device keys, the console and its cheats |
 | `movement.test.ts` | Swimming, stamina, and movement modifiers, predicted |
 | `persistence.test.ts` | Restart round trip; removed content; commit callbacks; three process kills with conservation |
+| `save-buffs.test.ts` | Buffs across a restart: a fire burns for what was left of it, a dose wears off, a stun is shown again; a save from before buffs were saved |
 | `maps.test.ts` | A map made in the test run by a server, served, and walked on; where its definition starts creatures; a save refused on another map; the proving ground from its file equal to the one its functions build |
 | `tactical.test.ts` | The map on an 8 km map: a far base with no chunk sent, whose bases show, cells by zoom within a kilobyte a second, mates and tames as marks, the minimap and the map screen |
 | `determinism.test.ts` | The same scenario under Bun and Node produces the same hashes |

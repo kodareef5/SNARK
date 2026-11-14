@@ -307,7 +307,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const items = new Items(world, records);
   items.bus = bus;
   if (persistence) {
-    items.restore(loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null));
+    const ledger = loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null);
+    items.restore(ledger);
+    const dropped = persistence.store.dropped;
+    if (dropped.count.size > 0) {
+      // What went with the content an operator chose to go on without leaves the ledger too. A save with no ledger never counted it.
+      if (ledger !== null) for (const [item, n] of dropped.burn) items.burned[item] = items.burned[item]! + n;
+      items.dirty = true;
+      say(`left out, as --allow-missing-content asked, and gone from the save at its next commit: ${[...dropped.count].map(([id, n]) => `${n} of ${id}`).join(", ")}`);
+      if (dropped.burn.size > 0) say(`what they held went with them: ${[...dropped.burn].map(([item, n]) => `${n} of ${reg.ids[item]}`).join(", ")}`);
+    }
     const wrong = items.audit();
     if (wrong.length > 0 && !opts.allowLedgerMismatch) throw new Error("the item ledger does not balance:\n" + wrong.join("\n"));
     persistence.sidecar("ledger", items);
@@ -549,6 +558,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     stations.resume();
     taming.resume();
     breeding.resume();
+    // Last, because a buff's change refreshes its body, and that settles what the body carries.
+    for (const rec of records.byPid.values()) buffs.restore(rec, persistence!.store.unrated.has(rec.pid));
   } else {
     const rng = new Rng((opts.seed ?? 1) + 17);
     // A wild creature's level is one of thirty steps, each the size of the server's difficulty.
