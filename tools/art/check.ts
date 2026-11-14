@@ -103,9 +103,10 @@ export interface Report {
   clips: ClipFacts[];
   gaits: GaitFacts[];
   /**
-   * Nothing yet. Texture measures go here when the converter reads textures: layers of one size and aligned, a normal
-   * map that agrees with its height, a tiling texture that wraps, a mask of pure colours with only ring neighbours
-   * touching, a larger size that matches the smaller when shrunk. planning/artist-test/tools/measure.py has each of them.
+   * Nothing yet. Texture measures go here when the converter reads textures: layers of one size (`oddSizes`), a tiling
+   * texture that wraps (`seam`), a normal map that agrees with its height (`normalAgainstHeight`), a larger size that
+   * matches the smaller when shrunk (`shrunkAgainst`), all in tools/pack/image.ts, and masks that hold to their rule
+   * (`checkMasks` in tools/pack/mask.ts).
    */
   textures: never[];
   notes: string[];

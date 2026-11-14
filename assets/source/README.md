@@ -9,7 +9,8 @@ core/creatures/raptor/        core:raptor
   asset.ts                    what it is: the spec, typed by tools/art/spec.ts
   raptor.snpk                 what the game reads: converted, committed
   rig.py model.py clips.py    the Blender scripts that build it, if it is built by script
-  ref/                        what it was looked at against, with SOURCES.md: where each came from and its licence
+  ref/                        what it was looked at against, in folders of its own if it likes, with SOURCES.md:
+                              where each thing came from and its licence
   tex/                        source pictures at full size
 core/creatures/dino.ts        shared by the two sample dinosaurs' specs
 core/humans/human-bodies/     core:human-bodies, the two modelled bodies with hair, beards and armor
@@ -18,7 +19,10 @@ core/humans/human-clips/      core:human-clips, the humanoid's clips
 
 The raptor and the parasaur are converted from files kept unchanged in
 [raw](../raw/README.md), so they have no scripts of their own. They are
-stand-ins.
+stand-ins. A folder is an asset once it has an `asset.ts`: until then it may
+hold a study in `ref/` and nothing else, and the command passes it by. An
+`asset.ts` may be committed before its pack: the asset is listed as not built
+yet, and neither the game nor a test reads it until the pack is there.
 
 ## The command
 

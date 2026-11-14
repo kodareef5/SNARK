@@ -181,6 +181,14 @@ test("the command checks an asset, draws its sheet and writes the pack again fro
     await run("--all", "--repack", "--levels");
     expect(readFileSync(join(folder, "hopper.snpk")).equals(once)).toBe(true);
 
+    // An asset described before it is built is listed as such, and nothing is asked of it.
+    const early = join(dir, "source/t/creatures/early");
+    mkdirSync(early, { recursive: true });
+    writeFileSync(join(early, "asset.ts"), `export default ${JSON.stringify(h.asset.spec)};\n`);
+    said.length = 0;
+    expect([await run(), await run("--all", "--check")]).toEqual([0, 0]);
+    expect(said.join("\n")).toMatch(/t:early +creature .*\(not built yet\)[\s\S]*t:early: not built yet/);
+
     // A fault is counted and told.
     const over = join(dir, "over/t/hopper");
     mkdirSync(over, { recursive: true });

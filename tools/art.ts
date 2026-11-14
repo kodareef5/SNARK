@@ -36,13 +36,18 @@ export async function main(args: readonly string[], say: (line: string) => void 
     return asset;
   });
   if (chosen.length === 0) {
-    say(`usage: bun run art -- <id>... | --all  [--check] [--sheet] [--repack [--levels]] [--source DIR] [--out DIR]\n${found.map((a) => `  ${a.id.padEnd(20)} ${a.spec.kind.padEnd(13)} ${relative(process.cwd(), a.dir)}`).join("\n")}`);
+    say(`usage: bun run art -- <id>... | --all  [--check] [--sheet] [--repack [--levels]] [--source DIR] [--out DIR]\n${found.map((a) => `  ${a.id.padEnd(20)} ${a.spec.kind.padEnd(13)} ${relative(process.cwd(), a.dir)}${existsSync(a.file) ? "" : "  (not built yet)"}`).join("\n")}`);
     return 0;
   }
 
   let failed = 0;
   for (const asset of chosen) {
     const t0 = performance.now();
+    // An asset may be described before it is built. There is then nothing to measure, draw or write again.
+    if ((has("repack") || has("check") || has("sheet")) && !existsSync(asset.file)) {
+      say(`${asset.id}: not built yet`);
+      continue;
+    }
     if (has("repack")) {
       const again = repack(new Uint8Array(readFileSync(asset.file)), has("levels"));
       writeFileSync(asset.file, again);
@@ -63,8 +68,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
         writeFileSync(asset.file, file);
         say(`  ${relative(process.cwd(), asset.file)}, ${file.length} bytes, ${((performance.now() - t0) / 1000).toFixed(1)} s`);
       } else say(`  not written: ${relative(process.cwd(), asset.file)} is as it was`);
-    } else if (existsSync(asset.file)) file = new Uint8Array(readFileSync(asset.file));
-    else throw new Error(`${asset.id}: no ${asset.file}. Build it first.`);
+    } else file = new Uint8Array(readFileSync(asset.file));
 
     const pack = parsePack(file);
     const report = checkAsset(asset, pack);
