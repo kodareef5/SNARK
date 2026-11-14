@@ -1,5 +1,5 @@
 // Message layouts live here and nowhere else. Every message starts with its type, and each type has a fixed channel. A client's
-// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 13 to 255 are free.
+// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 14 to 255 are free.
 //
 //   client -> server
 //     HELLO     reliable     version u16, content hash u32 (of the definitions as written, untuned), clip hash u32,
@@ -37,7 +37,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -66,6 +66,13 @@ export const S_TACTICAL = 11;
  * (mate, tame, other), x and z as 14-bit shares of the map, heading 5 bits.
  */
 export const S_MARKS = 12;
+/**
+ * Every tribe's structures beyond the view, to draw on the horizon (shared/world/tactical.ts). Reliable. chunk u16, then runs
+ * until its 256 cells of 4 m are covered, row by row: length-1 u8, filled 1 bit, and if filled: palette colour u8, top u8
+ * (half metres above the ground at the cell's middle to 64 m, then 2 m steps to 318 m). No owner or team. A chunk is sent
+ * whole, and an emptied one is sent empty. Protocol 9.
+ */
+export const S_FAR = 13;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -165,6 +172,8 @@ export const CMD_OPEN = 23;
 export const CMD_VIEW = 24;
 /** The finest map zoom the client is showing, 2 bits. Structure cells are sent at the size that suits it (S_TACTICAL). */
 export const CMD_MAP_ZOOM = 25;
+/** Metres u16: how far off the client wants far cells (S_FAR). The server holds it to FarRadius and reads it once a second. 0, or never asking, is none. */
+export const CMD_FAR = 26;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;
