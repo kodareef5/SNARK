@@ -157,6 +157,8 @@ export interface Host {
   refreshBody(rec: EntityRecord): void;
   /** Run a console line as the operator, or as `client`. Returns what it printed. */
   exec(line: string, client?: Client): string;
+  /** Call between ticks, when there is time to spare. Does work that would otherwise stop a tick: the database checkpoint. */
+  idle(): void;
   /** Commit and close the store. */
   shutdown(): void;
 }
@@ -726,6 +728,7 @@ export function createHost(content: Registry, opts: HostOptions = {}): Host {
     spawnCreature,
     refreshBody,
     exec: (line, client) => con.exec({ host, client: client ?? null }, line),
+    idle: () => persistence?.idle(),
     shutdown() {
       if (!persistence) return;
       // Every body that can have moved is saved where it stands.

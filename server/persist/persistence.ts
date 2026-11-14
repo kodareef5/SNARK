@@ -7,6 +7,9 @@ import type { EntityRecord, Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
 import type { WorldStore } from "./store.ts";
 
+/** Five seconds. A checkpoint syncs the database file, so this is not every commit. */
+const CHECKPOINT_TICKS = 5 * TICK_RATE;
+
 export interface PersistenceOptions {
   /**
    * Ticks in which every body that can move has its position saved once. Each save rewrites a database page, and that
@@ -57,6 +60,8 @@ export class Persistence {
   private callbacks: (() => void)[] = [];
   private cursor = 0;
   private savedAt = 0;
+  private checkpointAt = 0;
+  private checkpointed = 0;
 
   constructor(world: ServerWorld, records: Records, store: WorldStore, opts: Partial<PersistenceOptions> = {}) {
     this.world = world;
@@ -118,6 +123,17 @@ export class Persistence {
       this.records.dirty.add(pid);
     }
     this.records.entOf.delete(pid);
+  }
+
+  /**
+   * Call between ticks, when there is time to spare. Checkpoints the database if anything was committed in the last
+   * CHECKPOINT_TICKS, so that no commit, and so no tick, stops for it.
+   */
+  idle(): void {
+    if (this.world.tick - this.checkpointAt < CHECKPOINT_TICKS || this.commits === this.checkpointed) return;
+    this.checkpointAt = this.world.tick;
+    this.checkpointed = this.commits;
+    this.store.checkpoint();
   }
 
   commit(): void {

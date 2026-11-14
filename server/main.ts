@@ -225,6 +225,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       next += tickMs;
       steps++;
     }
+    // On time, so there are about 30 ms before the next tick.
+    if (steps === 1) host.idle();
     if (now - next > 250) next = now + tickMs;
     timer = setTimeout(loop, Math.max(0, next - performance.now()));
   };

@@ -241,6 +241,8 @@ persistence.commit = () => {
 
 let now = 0;
 const tickMs = 1000 / TICK_RATE;
+/** How long each database checkpoint between ticks took, in ms. */
+const checkpoints: number[] = [];
 function run(ticks: number, times: number[] | null): void {
   for (let i = 0; i < ticks; i++) {
     now += tickMs;
@@ -248,6 +250,11 @@ function run(ticks: number, times: number[] | null): void {
     const t = performance.now();
     host.game.tick();
     if (times) times.push(performance.now() - t);
+    // As the server's loop does between ticks. It is timed apart, because it runs in the time a tick leaves over.
+    const idleAt = performance.now();
+    host.idle();
+    const idled = performance.now() - idleAt;
+    if (idled > 0.2) checkpoints.push(idled);
     for (const b of bots) b.update(host.world.tick);
     for (const s of sessions) s.update(now, 0.4, 1, (i % 600) / 95, 0, i % 90 === 0 ? 1 : 0);
   }
@@ -834,6 +841,14 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
 }
 
 // ---------------------------------------------------------------- restart
+section("Between ticks");
+// A tick leaves about 30 ms before the next, and the checkpoint runs in that. The worst follows the bulk writes above
+// (10,000 containers in one commit, 270,000 creatures in another), which a running server does not make.
+checkpoints.sort((a, b) => a - b);
+record("database checkpoints so far", checkpoints.length, "");
+record("a checkpoint, median", percentile(checkpoints, 0.5), "ms", 10);
+record("a checkpoint, worst", checkpoints[checkpoints.length - 1] ?? 0, "ms");
+
 section("Restart");
 persistence.commit = commit;
 host.shutdown();

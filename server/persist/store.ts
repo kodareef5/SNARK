@@ -113,6 +113,9 @@ export class WorldStore {
     this.allowMissing = opts.allowMissingContent ?? false;
     db.exec("PRAGMA journal_mode = WAL");
     db.exec(`PRAGMA synchronous = ${opts.synchronous ?? "NORMAL"}`);
+    // SQLite checkpoints inside whichever commit passes this many WAL pages, which stops a tick for 3 to 20 ms. The server
+    // checkpoints between ticks (checkpoint()), so this is only a ceiling of 64 MB for a host that nobody calls idle() on.
+    db.exec("PRAGMA wal_autocheckpoint = 16000");
     db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value) WITHOUT ROWID");
 
     const current = Number(this.meta("schema_version") ?? 0);
@@ -160,6 +163,11 @@ export class WorldStore {
     this.dropEntity = db.prepare("DELETE FROM entities WHERE pid = ?");
     this.putJournal = db.prepare("INSERT INTO journal (seq, tick, op, data) VALUES (?, ?, ?, ?)");
     this.putSurvivor = db.prepare("INSERT OR REPLACE INTO survivors (name, pid) VALUES (?, ?)");
+  }
+
+  /** Copies committed pages from the write-ahead log into the database file and syncs it. Never waits for a reader. */
+  checkpoint(): void {
+    this.db.exec("PRAGMA wal_checkpoint(PASSIVE)");
   }
 
   close(): void {

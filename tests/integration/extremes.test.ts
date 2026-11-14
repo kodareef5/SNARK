@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WorldStore } from "../../server/persist/store.ts";
@@ -85,6 +85,26 @@ test("a body that moved is saved within a second, however many creatures sleep e
   h.say(ada, "tp 20 20");
   expect(h.host.creatures.isChunkAwake(ents.chunk[e]!)).toBe(false);
   expect(saved()).toBe(ents.x[e]!);
+  h.host.shutdown();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("the database is checkpointed between ticks when the host is given the time, not inside a commit", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-extremes-"));
+  const dbPath = join(dir, "world.db");
+  const h = new Harness({}, 1, 60, { dev: true, dbPath });
+  h.join("ada");
+  h.run(1000);
+  for (let n = 0; n < 2000; n++) h.host.spawnCreature("core:dummy", 8 + (n % 50), 8 + Math.floor(n / 50), 1);
+  h.run(6000);
+  // The harness never calls idle, so what was committed is still in the write-ahead log.
+  const before = statSync(dbPath).size;
+  h.host.idle();
+  expect(statSync(dbPath).size).toBeGreaterThan(before + 100_000);
+  // Nothing new was committed since, so there is nothing to do.
+  const after = statSync(dbPath).size;
+  h.host.idle();
+  expect(statSync(dbPath).size).toBe(after);
   h.host.shutdown();
   rmSync(dir, { recursive: true, force: true });
 });
