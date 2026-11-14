@@ -70,6 +70,13 @@ const TYPE_WORDS: readonly string[] = ["melee", "pierce", "bullet", "fire", "exp
 const VIEW_BEHIND = 2;
 /** The farthest back a shot is judged. Beyond this the shooter must lead. */
 export const REWIND_TICKS = 12;
+/**
+ * A shot is also judged no further back than its client's round trip as the server measured it, plus this many ticks:
+ * two that a client draws others behind, two of inputs it keeps in hand, and two for rounding and an uneven line.
+ */
+export const REWIND_SLACK = 6;
+/** The round trip is the least seen in this many ticks and the same number before them, so that holding acknowledgements back before a shot buys nothing. */
+const LAG_WINDOW = 64;
 /** Metres a body can have moved in REWIND_TICKS, and in the tick one segment of a flight takes. They pad the search for bodies near a ray. */
 const REWIND_REACH = 5;
 const SWEEP_REACH = 1;
@@ -150,6 +157,14 @@ export class Combat {
   private readonly share: number[] = [];
   /** Set by `killed`, which the hurt in progress may call. */
   private died = false;
+  /**
+   * Per session slot, for `lag`: the least age of its newest acknowledged snapshot in the window of ticks that began at
+   * `lagFrom` (-1 before any) and in the window before, and the acknowledgement seen last.
+   */
+  private readonly lagNow: number[] = [];
+  private readonly lagWas: number[] = [];
+  private readonly lagFrom: number[] = [];
+  private readonly lagAck: number[] = [];
 
   constructor(ctx: CombatContext, seed: number) {
     this.ctx = ctx;
@@ -164,8 +179,11 @@ export class Combat {
 
   /** Call once a tick, after every body has stepped. */
   step(): void {
+    const now = this.ctx.world.tick;
     for (const c of this.ctx.game.clients) {
-      if (!c?.active || c.did === 0 || c.ent < 0) continue;
+      if (!c?.active) continue;
+      this.measure(c, now);
+      if (c.did === 0 || c.ent < 0) continue;
       if ((c.did & DID_RELOAD) !== 0) this.reload(c);
       if ((c.did & DID_STRIKE) !== 0) this.strike(c);
       if ((c.did & DID_BITE) !== 0 && c.drive >= 0) this.bite(c.drive);
@@ -277,8 +295,36 @@ export class Combat {
   }
 
   /**
-   * The moment `c` was drawing when it sampled the input stepped now. It may fall between two ticks, and is clamped
-   * to the last snapshot sent and to REWIND_TICKS back. Returns now if history does not remember that moment.
+   * Notes how old the newest snapshot `c` has acknowledged is: its round trip, as the server sees it. The client names
+   * the tick, so it can make this longer but not for one shot, because `lag` takes the least over some seconds.
+   */
+  private measure(c: Client, now: number): void {
+    const i = c.id;
+    // Nothing is known of a connection until it acknowledges. Fewer acknowledged than before is another connection in this slot.
+    if (this.lagFrom[i] === undefined || c.ackTick === 0 || c.ackTick < this.lagAck[i]!) this.lagFrom[i] = -1;
+    this.lagAck[i] = c.ackTick;
+    if (c.ackTick === 0) return;
+    const age = now - c.ackTick;
+    if (this.lagFrom[i]! < 0) {
+      this.lagNow[i] = this.lagWas[i] = age;
+      this.lagFrom[i] = now;
+    } else if (now - this.lagFrom[i]! >= LAG_WINDOW) {
+      this.lagWas[i] = this.lagNow[i]!;
+      this.lagNow[i] = age;
+      this.lagFrom[i] = now;
+    } else if (age < this.lagNow[i]!) this.lagNow[i] = age;
+  }
+
+  /** The round trip of `c` in ticks, as measured. 0 until it has acknowledged a snapshot. */
+  lag(c: Client): number {
+    const i = c.id;
+    return (this.lagFrom[i] ?? -1) < 0 ? 0 : Math.min(this.lagNow[i]!, this.lagWas[i]!);
+  }
+
+  /**
+   * The moment `c` was drawing when it sampled the input stepped now, as it says. It may fall between two ticks, and is
+   * clamped to the last snapshot sent, to REWIND_TICKS back, and to what its measured round trip explains. Returns now
+   * if history does not remember that moment.
    */
   viewTick(c: Client): number {
     const world = this.ctx.world;
@@ -286,7 +332,8 @@ export class Combat {
     const inputs = c.inputs;
     let view = inputs.has(now) ? inputs.view[now & inputs.mask]! : c.ackTick - VIEW_BEHIND;
     if (view > c.lastSnapshot) view = c.lastSnapshot;
-    if (view < now - REWIND_TICKS) view = now - REWIND_TICKS;
+    const back = Math.min(REWIND_TICKS, this.lag(c) + REWIND_SLACK);
+    if (view < now - back) view = now - back;
     if (view >= now || !world.history.has(Math.floor(view))) return now;
     return view;
   }
