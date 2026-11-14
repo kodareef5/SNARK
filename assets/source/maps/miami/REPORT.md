@@ -1,108 +1,103 @@
-# Miami — the drowned atlas
+# Miami — the drowned atlas, round two
 
-**Complete and accepted for this delivery.** Produced 2026-11-14, 17:28–19:38 UTC (about 2 h 10 min wall time). All 85 independently painted tiles, shared geographic layers, references, originals, prompts, measurements and reproduction tools are present.
+The distant map has been redrawn as an illustrated atlas. **Zooms 0–2 have 21 new accepted original paintings; zoom 3 keeps its 64 original room paintings with a new paper, coast and district finish.** The delivery remains 85 north-up, 1,024 × 1,024 RGB tiles. Geography and world layers are unchanged.
 
-## Delivery and geography
+[Open the whole-map painting](tiles/z0/0_0.png). [Original style sheet](style/style-sheet.png). [Production log](reports/round2-production-log.md). [Reproduction instructions](../../../../tools/mapart/README.md).
 
-This is an original painted atlas of an **8,128 × 8,128 m** square: downtown and Brickell, the port, Biscayne Bay, the Venetian and other island chains, South Beach, Fisher Island, and northern Virginia Key. The projection is a local WGS84 Transverse Mercator centred at 25.78° N, 80.166° W, scale 1. Bounds are −4,064 to +4,064 m on both axes. North is up; grid/true-north convergence is below 0.018° at the edges.
+## What changed, by looking
 
-| Corner | Longitude | Latitude |
-|---|---:|---:|
-| Northwest | −80.2065295168 | 25.8166780455 |
-| Northeast | −80.1254704832 | 25.8166780455 |
-| Southeast | −80.1254954055 | 25.7433104873 |
-| Southwest | −80.2065045945 | 25.7433104873 |
+The old overview's eleven-thousand-building mesh is gone. The bay, islands and causeways organize the picture. Downtown is a few skeletal tower groups rising out of flooded green ground; the port has roofless sheds and rust-coloured cranes; the beach has long pale hotel ruins; western neighborhoods have low courtyard shells; parks and southern shores have groves and directional grass hatching. Ivory ground shows between them. The principal roads remain geographical guides, without every local street competing with the scene or future game markers.
 
-| Zoom | Canvas | Tiles | Metres per pixel |
-|---|---:|---:|---:|
-| 0 | 1,024² | 1 | 7.9375 |
-| 1 | 2,048² | 4 | 3.96875 |
-| 2 | 4,096² | 16 | 1.984375 |
-| 3 | 8,192² | 64 | 0.9921875 |
+Zoom 1 adds district detail, still with deliberate omissions. Zoom 2 returns to the actual neighborhood fabric and has been repainted throughout: open rooms, broken warehouse bays, palms, exposed paper and more economical ground marks. Zoom 3 retains the first round's rich interiors. Warm port trusses and pale hotel galleries distinguish those footprints; downtown masonry is cooler and heavier. These district conventions are an interpretation of the future city, not an additional building-use survey.
 
-Every game tile is 1,024 × 1,024 RGB PNG, named `tiles/z<zoom>/<column>_<row>.png`, west to east and north to south. Tiles contain no lettering, border, compass or coordinate grid. `checks/viewer.html` provides an offline review viewer with optional separate overlays. `paintings/z*/final-master.png` stores the uncut canvases; `checks/overview_z*.png` provides small previews.
+The shoreline now has varying ink pressure, small deviations, pen lifts at beaches, a second broken stroke at urban quays, and a shallow wash that follows the source coast. It is no longer one constant dark vector stroke. The coast's underlying land/water division stays at the native data boundary; ink is permitted a narrow finishing band around it.
 
-The engine foundation consists of 4,065 inclusive samples at 2 m spacing: exactly 4,064 cells, or 127 chunks of 64 m. Height is 16-bit PNG; classifications are 8-bit PNG. Canonical water, road, building and authored-canopy masks are additionally retained at 8,192² so narrow features survive world placement. [Layer encodings](base/VALUES.md) explain units, values, vertex versus image-pixel registration, and the normalized 0–100 overlay transform. `map.json` is the machine-readable geographic contract.
+Flooded road corridors, four missing spans and four wrecks still come from the saved future-world layers. The overview emphasizes drowned downtown and mangrove reclamation. Wreck symbols are enlarged at z0/z1 so they survive that viewing distance; their centres and directions are exact, but their pictorial size is not a physical footprint. At z2/z3 the hull drawing uses the actual saved outline.
 
-## Sources and fictional changes
+## Geography and scale contract
 
-[SOURCES.md](SOURCES.md) records addresses, licences, attribution and what was taken. [downloads.json](downloads.json) records exact requests, dates, byte counts and SHA-256 checksums. Downloads are ignored under `raw/`.
+The map covers **8,128 × 8,128 m**: downtown and Brickell, the port, Biscayne Bay, the Venetian and other island chains, South Beach, Fisher Island, and northern Virginia Key. Local WGS84 Transverse Mercator is centred at 25.78° N, 80.166° W, scale 1, with bounds −4,064 to +4,064 m in easting and northing. Grid/true-north convergence is below 0.018° at the edges.
 
-- NOAA's 2021 Miami-Dade bare-earth DEM: 369 intersecting tiles, CC0. Converted from NAVD88 US survey feet to metres. Valid coverage includes **99.9714% of source land samples**; 2,203 land samples are missing. Surveyed heights range from −5.53 to 17.18 m.
-- Census TIGER/Line 2025: 38 clipped hydrography polygons and 1,184 road features, public domain/CC0. These define the shore and road centrelines.
-- FEMA/ORNL USA Structures: 11,919 clipped building footprints. The federal catalogue describes a government work, but the delivery item declares CC BY 4.0. Attribution is retained conservatively; include SOURCES.md when redistributing.
-- USGS NLCD 2021: public-domain land-cover classes at their actual approximately 30 m source resolution.
-
-Road widths are authored corridors around the source centrelines. Future mangrove/reclamation, low street flooding, four broken causeway spans and four submerged wrecks are explicit world layers. Added tree crowns were frozen from the complete registered finest-scale paintings, then reused by every zoom: 6,878,251 fine pixels, with a 4,065-sample companion for the engine. These changes describe an invented future, not present-day surveys.
-
-## How the painting was made
-
-The original [style sheet](style/style-sheet.png) and [written style specification](style/STYLE.md) came first: ivory rag paper, warm quill ink, limestone ruins, olive foliage, mineral-teal water and pale jade shallows. No other game's map image or commercial basemap was supplied to image generation. The earlier project test was inspected as a quality comparison.
-
-Each zoom received a newly rasterized geographic reference at its own resolution. All **85 tiles have a separately generated original painting**; none of the final zooms is a resized lower-level painting. The image tool returned approximately 1,254 px squares. Finer paintings include 64 px overlap around a 1,024 px tile, and were made against the native geometry, a crop of the accepted parent painting, and the shared style sheet. All original outputs, used prompts and context crops are preserved.
-
-Image generation alone did not preserve geography. Finishing registers the pigment to geographic corners using position-constrained SIFT/RANSAC similarity fits, with a multistart main-water-silhouette fit in sparse scenes and a small smooth local shoreline correction. Original paint supplies washes, quill texture, foliage and ruin interiors. Exact native vector masks control every visible coast, road corridor and building silhouette. A continuous shallow wash repairs exposed water without dragging masonry or tree fragments into the bay. Interior ruin partitions are illustrative, not surveyed floorplans.
-
-Overlapping paint is blended with smooth 128 px transitions on one continuous canvas per zoom. Geometry and colour finishing then run across the entire canvas before it is cut into tiles. Broad material-local pigment matching keeps parent colours stable while retaining separately painted close detail. The finest authored canopy is shared by all zooms and saved with world data.
-
-## Measurements
-
-Final exported RGB measurements:
-
-| Zoom | Water / road / building IoU | Max boundary error | Tile reconstruction error | Join-jump / nearby-jump range |
-|---|---|---:|---:|---:|
-| z0 | 1.000 / 1.000 / 1.000 | 0 px | 0 / 255 | No internal join |
-| z1 | 1.000 / 1.000 / 1.000 | 0 px | 0 / 255 | 0.933–0.958 |
-| z2 | 1.000 / 1.000 / 1.000 | 0 px | 0 / 255 | 0.884–1.171 |
-| z3 | 1.000 / 1.000 / 1.000 | 0 px | 0 / 255 | 0.878–1.063 |
-
-Adjacent zooms, reduced to their parent scale:
-
-| Pair | Mean absolute RGB difference / 255 | 95th-percentile channel difference | 8 px blurred mean difference / 255 | Mean RGB shift / 255 |
+| Zoom | Native canvas | Tiles | Metres per pixel | What is drawn |
 |---|---:|---:|---:|---|
-| z1 → z0 | 11.003 | 40 | 0.978 | +0.182, +0.087, -0.080 |
-| z2 → z1 | 9.960 | 39 | 0.849 | +0.099, +0.111, -0.011 |
-| z3 → z2 | 10.148 | 43 | 0.829 | -0.029, +0.112, -0.041 |
+| 0 | 1,024² | 1 | 7.9375 | Exact coasts, islands, causeways and principal roads; generalized district wash and landmark pictures |
+| 1 | 2,048² | 4 | 3.96875 | Same geographical skeleton, selected additional avenues, more ruin groups |
+| 2 | 4,096² | 16 | 1.984375 | Native road corridors and building footprints, newly painted neighborhood detail |
+| 3 | 8,192² | 64 | 0.9921875 | Native footprints, retained room paintings, canopy and fine shore/district treatment |
 
-The final format audit passed: **85 RGB 1,024² tiles, 85 original paintings, all required prompts, grayscale base layers with correct sizes and bit depths**, and SHA-256 inventory. Whole-map views, the complete 64-tile closest-scale sheet, native downtown/island/port/beach/mangrove tiles, and joined-corner crops were inspected. No visible tile joins or accidental lettering were found. See [zoom comparison](checks/zoom_comparison.jpg), [joined corners](checks/native_seams.jpg), and [all close-scale tiles](checks/final_z3.jpg).
+Names remain `tiles/z<zoom>/<column>_<row>.png`, with columns increasing eastward and rows southward. Every tile has no lettering, border, compass or grid. No engine map file was made.
 
-The additional engine-grid check exposed a half-open polygon endpoint convention and surface-road/tunnel overlap. Endpoint classes and tunnel precedence were corrected. The **canonical fine masks have zero differing pixels and zero boundary error** against the finest geographic references. The 2 m companions still quantize narrow source features:
+The far geometric plans provide **32 spaced footprint anchors at z0 and 128 at z1**. These anchors direct an illustrator; they are not a claim that a generated tower's every window or projected upper storey coincides with a surveyed building. At those scales, ruins and groves are representative pictures of districts. Elevated crane arms can project over water and skyline symbols can occlude a road. Do not extract world footprints or tree positions from those pictures. At close scales, native masks clip masonry to supplied footprints; interior walls and structural bays are invented ruin drawings.
 
-| 2 m companion versus finest vectors | IoU | 95th-percentile boundary distance | Maximum boundary distance |
+All **21 base data artifacts** checked against round one's audit have unchanged hashes; only their interpretation document, VALUES.md, changed. The base foundation is 4,065 inclusive vertex samples at 2 m spacing: 4,064 cells, or 127 chunks of 64 m. Use the canonical 8,192² masks or vectors for fine feature placement; the 2 m companions cannot preserve every narrow feature. [Integrity check](reports/base-integrity-round2.json), [original grid quantization measurements](reports/base-grid-agreement.json), [endpoint corrections](reports/canonical-layers.json).
+
+## Engine coordinates: do not mirror this map
+
+Checked against `planning/reference/maps.md`, `tools/map.ts` and the actual north-up layer reader in `tools/map/layers.ts`. Our `(E,N)` is east/north from the centre. The engine's `(x,z)` is west/north from the south-east corner:
+
+```text
+x = 4064 - E
+z = 4064 + N
+```
+
+North-west is `(8128,8128)`, north-east `(0,8128)`, south-east `(0,0)`, south-west `(8128,0)`. **Keep the PNGs north-up; the importer already reverses the sample order.** [base/VALUES.md](base/VALUES.md) also gives inverse transforms, vertex and pixel-centre formulas, yaw conversion, reflected polygon winding and height-encoding cautions. [Corner/direction check](reports/coordinate-check.json).
+
+## How the artwork is reproduced
+
+Every new raster painting was made with the built-in image tool. There were **23 image calls**: 21 replacement originals, one preceding overview study retained as an art-direction input, and one preceding northeast district painting retained for its targeted correction. The correction removed erroneous port cranes from residential Belle Isle. The exact used prompts, accepted originals and these supplementary inputs are kept. The original 64 z3 paintings are unchanged. No external comparison artwork was supplied to generation.
+
+Far views use native generalized plans and similarity registration. An early elastic correction bent architectural drawings and was rejected. Narrow displaced coast marks are cleaned before the native coast is redrawn. Close views use the established position-constrained SIFT/RANSAC registration, shoreline fallback and small local correction. Original pigment supplies penwork, rooms, plants and wash; native geometry controls material placement. A 64 px gutter gives neighboring paintings a 128 px shared blend interval.
+
+Each zoom is assembled and finished as **one continuous canvas**. Paper, coast ink, district treatments and broad colour adjustments happen before cutting any tile. A symmetric, seven-pass RGB wash adjustment shares differences between neighboring scales without spatially moving native marks. It replaced earlier local transfer experiments that produced halos or muddy foliage. Wreck symbols are applied before the final cut as well. No special blur or edge repair is applied at tile joins.
+
+The finishing masters, references, registration-image caches and review pictures are ignored and reconstructible. The kept originals, style sheet, base layers, prompts, code and pinned packages are sufficient. Run the current round-two sequence in [tools/mapart/README.md](../../../../tools/mapart/README.md); the old `finish.py` entry point would restore the superseded all-features-at-all-scales treatment. Its registration helpers remain in use. Image generation itself is nondeterministic; finishing from frozen originals is reproducible. Verification rebuilt both far canvases from their originals with identical hashes, recomputed three representative close registrations without their caches with zero differing pixels, and reran all four scales' colour balance and export: all 85 final tile hashes were identical.
+
+## Measurements and their limits
+
+The format audit passes: **85 RGB 1,024² tiles, 85 accepted originals, corresponding prompts, correct grayscale base sizes and bit depths**. Each tile set reconstructs its uncut canvas with **zero differing RGB values**.
+
+| Parent comparison | Raw mean absolute RGB difference /255 | 8 px blurred mean difference /255 | Mean RGB shift /255 |
+|---|---:|---:|---|
+| z1 → z0 | 13.645 | **0.802** | +0.492, +0.519, +0.530 |
+| z2 → z1 | 15.738 | **1.440** | +0.662, +0.578, +0.645 |
+| z3 → z2 | 11.622 | **1.028** | +0.480, +0.500, +0.516 |
+
+All three broad-colour comparisons remain below 2/255. Raw differences are larger because a far landmark picture and a close floorplan are intentionally different drawings. The test reduces the child by a 2× box filter and compares exported RGB, with an 8 px Gaussian comparison separating broad pigment from native detail.
+
+All **140 tile-edge segments** were measured independently: 4 at z1, 24 at z2, 112 at z3. The mean absolute RGB jump across each join is compared with the other boundaries in a 66-boundary neighborhood.
+
+| Zoom | Join-ratio minimum | Join-ratio maximum | Reconstruction error |
 |---|---:|---:|---:|
-| water | 0.998298 | 1 px | 4.000 px |
-| roads | 0.907230 | 1 px | 23.195 px |
-| buildings | 0.921490 | 1 px | 117.209 px |
+| z0 | — | — | 0 |
+| z1 | 0.956 | 1.118 | 0 |
+| z2 | 0.643 | 1.568 | 0 |
+| z3 | 0.458 | 1.401 | 0 |
 
-The large maxima include very narrow/disappearing pieces and boundaries truncated by the map frame; they do not indicate a translation of the whole layer. **Do not use only the 2 m companions to reconstruct all fine outlines. Use `*_fine.png` or the supplied vectors for world feature placement.** Their finer resolution is necessary to preserve all source detail. The base height grid remains exactly 4,065².
+**The raw worst ratio is higher than round one's independently reported 1.29; that numerical bound is not claimed here.** The largest value is at z2, horizontal y=1024, segment x=1024…2047. A real building wall lies across the first 44 pixels of that cut: its jump is 39.88 versus 12.31 beside it. In the large open-water portion, x=1152…2047, the join jump is 1.47 and the adjacent jumps average about 1.51. Inspection of the largest ratios, native joined strips and complete contact sheets shows continuous painting, not a tile-shaped colour or drawing discontinuity. Softening every wall to improve that statistic was tested and rejected. The complete unselected set of ratios is retained, not just favourable examples.
 
-Machine-readable results: [paint measurements](checks/measurements.json), [base-grid comparison](checks/base_grid_agreement.json), [delivery audit](checks/delivery_audit.json), and [endpoint corrections](checks/canonical_layers.json).
+The independent teal-pigment diagnostic puts **99.38–99.61% of sampled source shoreline pixels within 2 pixels** of a visible teal edge. Its maximum distances are 5.10, 17.03, 19.00 and 19.03 pixels by zoom. Inspection locates the largest outliers at crane symbols, dark thin causeway decks, quays and grey/green water: a palette classifier cannot distinguish every ink or flood mark from coastline. These numbers are **one-way pigment proximity, not full coast IoU and not a certificate of surveying accuracy**. The coast ink's mathematical wavering is at most 0.66 pixel; thickening/double strokes occupy a wider narrow band. Exact selected-road support matches the source-rendered corridors at every zoom, before pictorial occlusion. Neither support identity nor a pigment score proves the correctness of every illustrative detail.
 
-The geographic test classifies the final RGB pigments into water, roads and buildings, then compares those visible regions to native vector-derived masks. Water includes authored flooded streets; surface occlusion by bridges/buildings and authored bridge gaps is accounted for. These tests measure agreement with the supplied data, not the absolute surveying accuracy of that data. The distinct material palettes make the result directly inspectable; zero boundary error is a consequence of the constrained finish, not evidence that the image model traced perfectly.
+Evidence is kept outside ignored `checks/`: [all exported measurements](reports/round2-measurements.json), [delivery audit](reports/round2-delivery-audit.json), [tile/original/base hashes](reports/round2-sha256.json), [colour adjustment](reports/round2-balance.json), [shore diagnostic locations](reports/coast-diagnostic-locations.json), [registration reproduction](reports/round2-registration-reproduction.json), [export reproduction](reports/round2-reproduction.json). The old measurements remain explicitly labelled [round one](reports/round1-measurements.json).
 
-Seam tests reconstruct every tile into its canvas and measure colour jumps at joins against nearby non-join boundaries. Parent comparisons use a 2× box reduction, with both raw RGB differences and an 8 px blurred comparison to separate native ink detail from broad colour agreement. Visual inspection remains necessary: correct masks alone did not catch the foliage and ghost-shoreline defects rejected during development.
+## The wall test, and where this still falls short
 
-## Artistic assessment and limits
+I put the whole-map image beside **Caroline Harper's [Sea of Thieves commission](https://www.carolineharper.com/portfolio-2/sea-of-thieves)**, **Joan Blaeu's [Amsterdam, 1649](https://www.mapsperhaps.com/products/amstelodami-celeberrimi-hollandiae-emporii-delineatio-nova-1)**, and **Pauline Baynes's [Middle-earth map, reproduced by the Library of Congress](https://blogs.loc.gov/loc/2016/10/lcm-mapping-the-imaginary/)**. They were comparisons for visual criticism only; their lettering, borders, figures and decorative devices were not imported into the tiles.
 
-The strongest result is the combination of Miami's distinctive island/port geometry with luminous water and fine, footprint-specific masonry. The pale street network remains legible beneath a game overlay; the closer drawings add room walls, courtyards, vegetation, flooded reaches and small wreck ribs without moving the world. Water-dominated tiles preserve open space.
+For this brief, **I would frame this Miami overview**. The open teal bay gives the skeletal skyline, diagonal port and pale beach a clear composition at viewing distance. The change from a tiny street plan to a few purposeful pictures is decisive. The paper and quiet water also leave room for the game's coloured cells. This is an artistic judgment, not evidence that every stranger would prefer it to those maps.
 
-The exact city fabric is denser at zoom 0 than a freely generalized explorer's atlas would be. That is the principal artistic compromise made to preserve every supplied building and road. Ruin interiors are symbolic, and some large structures still read as shaded masonry masses rather than fully exposed floorplans. Mangrove crowns are authored marks without surveyed heights. This is a map-art and shared-layer delivery, not a finished 3D terrain or building reconstruction.
+It still falls short of those illustrators in the individuality of every small mark. Some palms and courtyard ruins repeat a common vocabulary; Baynes has more local surprises and Harper more varied miniature narratives. The close views remain more geometric than a wholly freehand atlas because actual footprints are enforced. Large quays and straight causeways still reveal their engineered geometry. The real missing spans are small at overview scale; drowned ground and skeletal towers carry more of the first glance than those breaks. Broad colour continuity cannot make a miniature tower turn continuously into a top-down room plan: the zoom change deliberately changes the cartographic convention. Those are visible limits, not claims concealed by a successful numerical audit.
 
-TIGER is cartographic rather than a cadastral shoreline survey, FEMA omits some small structures, and source dates differ. Neither road widths nor individual tree crowns are measured. No bathymetry was acquired: missing DEM values use an explicit −1 m engine convention with a separate validity mask. Shallow-water colour is artistic and does not encode measured depth. NOAA point-cloud classifications and USGS 3DEP were not used because the selected DEM, footprints and land cover supplied the required layers.
+## Sources and world-building limits
 
-## Time and handoff
+[SOURCES.md](SOURCES.md) retains attribution and licences; [downloads.json](downloads.json) retains exact requests and source hashes. Geography was not reacquired or changed in this round:
 
-| Stage | UTC | Elapsed |
-|---|---|---:|
-| Inspect first test, acquire sources, freeze bounds, original style | 17:28–17:35 | 7 min |
-| Base layers, native references, whole-map painting | 17:35–17:43 | 8 min |
-| Four district paintings | 17:43–17:47 | 4 min |
-| Close district pilot and registration corrections | 17:47–18:10 | 23 min |
-| Complete and inspect zoom 2 | 18:10–18:24 | 14 min |
-| Remaining 60 zoom-3 originals, concurrent image requests | 18:24–18:59 | 35 min |
-| Full assembly, island/foliage refinement, canopy freeze | 18:59–19:23 | 24 min |
-| Final finishing, visual review, measurements, grid correction and audit | 19:23–19:38 | 15 min |
+- NOAA 2021 Miami-Dade bare-earth DEM, 369 intersecting tiles, CC0. Surveyed coverage is 99.9714% of source land samples; 2,203 land samples are absent. Heights −5.53 to 17.18 m NAVD88, converted from US survey feet.
+- Census TIGER/Line 2025: 38 clipped water polygons and 1,184 road features. Shorelines are cartographic, not cadastral; road corridor widths are authored around source centrelines.
+- FEMA/ORNL USA Structures: 11,919 clipped footprints. The delivery item declares CC BY 4.0; retain the conservative attribution in SOURCES.md when redistributing.
+- USGS NLCD 2021: land-cover classes at their actual approximately 30 m source resolution.
 
-Detailed development history is in `checks/production-log.md`. Reproduction commands and pinned packages are in [the tool README](../../../../tools/mapart/README.md). The tool virtual environment is ignored. No engine/build dependencies were added, no other repository area was edited, and no git write command was run. Image generation is nondeterministic; saved originals make the finishing process reproducible.
+Reclamation, mangrove, low-street flooding, bridge gaps, wrecks and the frozen painted canopy describe an invented future. Room walls, crane shapes, tower heights and hotel/gallery treatments are illustrative. Source dates differ; FEMA can omit smaller structures. No bathymetry was acquired. Missing height values use an explicit −1 m convention with a separate validity mask; shallow colour does not encode measured depth. This is artwork and shared geographic data, not a finished 3D world or an engine map file.
 
-Delivery is complete. `STATE.md` records the accepted artifacts and the handoff. No tile generation or finishing work remains.
+## Handoff
+
+Round two began at 19:40 UTC on 2026-11-14. The [production log](reports/round2-production-log.md) records painting, rejected trials, finishing, visual review and final validation. [STATE.md](STATE.md) records the completion checkpoint. Work is confined to `assets/source/maps/miami/` and `tools/mapart/`. No git command that writes was run.

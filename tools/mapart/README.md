@@ -2,6 +2,43 @@
 
 Offline source/art tools only. They add no dependency to the engine or its build.
 
+## Current delivery: round two
+
+The original geographic pipeline below remains authoritative for source layers. The current art finish is **round2.py**, followed by **round2_balance.py**. Do not use the old `finish.py` entry point to export the round-two delivery: its all-features-at-all-scales treatment is the artistic behavior replaced in this round. Its registration/overlap helpers are still used for the close original paintings.
+
+Saved originals are sufficient to reproduce the current artwork; no image calls or downloads are needed when the base vectors and PNGs are present:
+
+```sh
+tools/mapart/.venv/bin/python tools/mapart/reference.py
+tools/mapart/.venv/bin/python tools/mapart/round2_restore.py
+tools/mapart/.venv/bin/python tools/mapart/round2.py finish 0
+tools/mapart/.venv/bin/python tools/mapart/round2.py finish 1
+tools/mapart/.venv/bin/python tools/mapart/round2.py finish 2
+tools/mapart/.venv/bin/python tools/mapart/round2.py finish 3
+tools/mapart/.venv/bin/python tools/mapart/round2_balance.py
+tools/mapart/.venv/bin/python tools/mapart/round2_measure.py
+tools/mapart/.venv/bin/python tools/mapart/audit.py
+```
+
+Close-tile registration additionally needs the native 64-pixel geometry contexts. `round2_restore.py` reconstructs these for z2/z3 without altering the historical used prompts; run it immediately after `reference.py`, as above. Contexts used for registration contain geometry, not the parent painting, so the generation-time parent is not needed to re-finish saved originals. The context-generation tools listed below are for commissioning new paintings and can overwrite prompts; they are not part of the reproduction sequence.
+
+| Round-two tool | Purpose |
+|---|---|
+| round2.py generalized 0 | Rebuild the overview's generalized plan from native vectors and spaced footprint anchors. The exact generation-time reference is also preserved as paintings/z0/geometry-input.png. |
+| round2.py contexts 1 | Prepare four generalized district references, parent crops and prompts for **new** image generation. Overwrites the z1 queue/prompts; not necessary for reproduction. |
+| round2_close_contexts.py | Prepare sixteen native neighborhood references and new district-parent crops; writes round2-queue.json. The accepted outputs replace z2 originals in place. |
+| round2.py finish Z | Continuous native canvas, scale-selected roads, geography-constrained coast, exposed rag paper, data-clipped architecture and district treatments. Keeps z3's original room paintings. Writes an ignored unbalanced-master.png and provisional final-master/tiles. |
+| round2_balance.py | Share broad RGB wash corrections across all four independent paintings without moving any ink geometry; cut final 1,024² tiles only after the continuous-canvas adjustment. |
+| round2_symbols.py | Called by the balance/export pass: draw legible z0/z1 wreck symbols at the four saved world positions and directions. Symbol size is not a new world footprint. |
+| round2_measure.py | All 140 separate tile joins, zero-loss reconstruction, adjacent-zoom RGB/8-pixel broad comparison, explicit limited pigment-boundary diagnostic, selected road support, and retained SHA-256 inventory. |
+| round2_restore.py | Recreate native registration contexts and review sheets from kept layers/originals/tiles. |
+
+Measurements, production notes and delivery audit are retained under `assets/source/maps/miami/reports/`, and interpreted in `REPORT.md`. `checks/` contains only regenerable review pictures, external comparison copies, and experiments. Raw downloads, references, warped copies and continuous finishing masters are ignored. No runtime/engine package or map file is produced.
+
+The built-in image tool was used for every new raster painting. Exact prompts are beside the originals. The corrected z1 northeast original also has a correction prompt and its preceding source under `paintings/z1/studies/`. The first new overview study is retained under `style/` because it supplied art direction to the accepted overview. Foreign comparison images were inspected only, never passed to image generation. Generation itself is nondeterministic; the saved originals make finishing reproducible.
+
+## Original geographic preparation and round-one tools
+
 From the repository root, create the isolated environment:
 
 ```sh
