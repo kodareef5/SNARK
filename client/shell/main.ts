@@ -173,7 +173,7 @@ async function boot(): Promise<void> {
       const misplaced = view.misplaced(app.ui.frame);
       const report = {
         // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
+        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
         rocks: rocks.map((m) => [m.level, m.drawn]),
         restored,
         assets: { ...app.scene?.assets.residency.stats, kept: port.cache },

@@ -958,8 +958,8 @@ export class GameServer {
 
   /**
    * Where in `around` and `ranks` the entities are that a client centred on `chunk` may see at tick `T`, sorted by index. Every
-   * client centred there shares the list, so it includes each one's own body, and the delta writer leaves that out. Players are
-   * chosen first, then anything moving or acting, then idle entities and props, so with more entities than the server's cap or
+   * client centred there shares the list, so it includes each one's own body, and the delta writer leaves that out. Players and
+   * what they ride are chosen first, then anything moving or acting, then idle entities and props, so with more entities than the server's cap or
    * a client's own, a crowd of idle creatures never hides a player.
    */
   private viewAround(chunk: number, T: number): number {
@@ -983,9 +983,9 @@ export class GameServer {
       if (cx < 0 || cz < 0 || cx >= dims.chunksX || cz >= dims.chunksZ) continue;
       for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
         const f = ents.flags[i]!;
-        if ((f & F_PLAYER) !== 0) {
+        if ((f & F_PLAYER) !== 0 || ents.driven[i] !== 0) {
           if (n < cap) ids[n++] = i;
-        } else if ((f & F_PROP) === 0 && (ents.vx[i] !== 0 || ents.vz[i] !== 0 || ents.vy[i] !== 0 || ents.act[i] !== 0 || ents.driven[i] !== 0)) {
+        } else if ((f & F_PROP) === 0 && (ents.vx[i] !== 0 || ents.vz[i] !== 0 || ents.vy[i] !== 0 || ents.act[i] !== 0)) {
           if (nm < cap) movers[nm++] = i;
         } else if (ni < cap) idle[ni++] = i;
       }
