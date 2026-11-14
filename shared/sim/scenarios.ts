@@ -1,6 +1,6 @@
 // Fixed, seeded scenarios and their hashes. Equal hashes on two JavaScript engines mean the simulation is bit-identical
 // on both, which client prediction relies on. tools/simhash.ts runs them under Bun and Node, and the device probe in a
-// browser. What reads files stays in the tool: these take the content and the built packs as arguments.
+// browser. Reading files stays in the tools: these are given the content, the human clips and the creature rigs.
 
 import { Pose } from "../anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../anim/human.ts";
@@ -124,7 +124,7 @@ export function simHash(reg: Registry, ticks = 3000, ground: { hf: Heightfield; 
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-/** `anim` is the human clips: tools/simhash.ts has them from the converted and authored clips. */
+/** Poses of the human clips in `anim` over every state a body can be in, and what three rays hit. */
 export function poseHash(anim: HumanAnim): string {
   const st = new AnimState();
   const pose = new Pose(HUMAN_BONES);
