@@ -81,7 +81,7 @@ class Pair {
       const held = this.sent.find(p.tick);
       if (held) {
         let differ = view.count === held.count ? 0 : 1;
-        for (let i = 0; i < view.count && differ === 0; i++) if (view.id[i] !== held.id[i] || view.gen[i] !== held.gen[i] || view.rev[i] !== held.rev[i] || view.qx[i] !== held.qx[i] || view.yaw[i] !== held.yaw[i]) differ = 1;
+        for (let i = 0; i < view.count && differ === 0; i++) if (view.id[i] !== held.id[i] || view.gen[i] !== held.gen[i] || view.rev[i] !== held.rev[i] || view.qx[i] !== held.qx[i] || view.qy[i] !== held.qy[i] || view.qz[i] !== held.qz[i] || view.yaw[i] !== held.yaw[i] || view.flags[i] !== held.flags[i] || view.anim[i] !== held.anim[i]) differ = 1;
         expect(differ).toBe(0);
       }
       watch?.(p.tick, before, drawn, was, view);
@@ -406,7 +406,9 @@ test("over a link that loses and delays snapshots and acknowledgements, what a c
           if (rng.int(200) === 0) s.gen = (s.gen % 4000) + 1;
           if (rng.int(150) === 0) s.rev = (s.rev + 1) & 15;
           if (here[id] === 0) continue;
-          cur.push(id, s.gen, 7, s.qx, 2000, 3000, s.yaw, 1, 0, s.rev);
+          // The other fields follow from these, each part of the pose changing at its own pace, so that every part of an update is sent.
+          const pose = (((s.qx >> 4) & 0xfff) | ((s.yaw === 300 ? 17 : 0) << 12) | ((Math.floor(s.qx / 400) & 0x3fff) << 18)) >>> 0;
+          cur.push(id, s.gen, 7, s.qx, 2000 + (s.qx & 127), 3000 + ((s.qx >> 2) & 0xffff), s.yaw, s.yaw === 300 ? 5 : 1, pose, s.rev);
           const h = history[id]!;
           const was = h[h.length - 1];
           if (!was || was.gen !== s.gen || was.rev !== s.rev || was.qx !== s.qx || was.yaw !== s.yaw) h.push({ ...s });
@@ -423,6 +425,6 @@ test("over a link that loses and delays snapshots and acknowledgements, what a c
     const last = link.drawn.find(link.latest)!;
     expect(link.latest).toBeGreaterThan(540);
     expect(last.count).toBe(cur.count);
-    for (let i = 0; i < cur.count; i++) expect([last.id[i], last.gen[i], last.rev[i], last.qx[i], last.yaw[i]]).toEqual([cur.id[i]!, cur.gen[i]!, cur.rev[i]!, cur.qx[i]!, cur.yaw[i]!]);
+    for (let i = 0; i < cur.count; i++) expect([last.id[i], last.gen[i], last.rev[i], last.qx[i], last.qz[i], last.yaw[i], last.flags[i], last.anim[i]]).toEqual([cur.id[i]!, cur.gen[i]!, cur.rev[i]!, cur.qx[i]!, cur.qz[i]!, cur.yaw[i]!, cur.flags[i]!, cur.anim[i]!]);
   }
 });

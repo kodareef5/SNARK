@@ -739,41 +739,46 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       }
       next.copyFrom(cur, ci);
     } else {
-      w.bits(OP_UPDATE, 2);
+      // The parts are gathered into three writes, lowest bits first as the reader takes them: the op with the move, then the
+      // yaw, the flags and the motion, then the look and the action.
       const dx = cur.qx[ci]! - base!.qx[bi]!;
       const dy = cur.qy[ci]! - base!.qy[bi]!;
       const dz = cur.qz[ci]! - base!.qz[bi]!;
-      const moved = dx !== 0 || dy !== 0 || dz !== 0;
-      w.bool(moved);
-      if (moved) {
-        const small = dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127;
-        w.bool(small);
-        if (small) {
-          w.sbits(dx, 8);
-          w.sbits(dy, 8);
-          w.sbits(dz, 8);
-        } else {
-          w.bits(cur.qx[ci]!, 22);
-          w.bits(cur.qy[ci]!, 20);
-          w.bits(cur.qz[ci]!, 22);
-        }
+      if (dx === 0 && dy === 0 && dz === 0) w.bits(OP_UPDATE, 3);
+      else if (dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127) w.bits(OP_UPDATE | 12 | ((dx & 255) << 4) | ((dy & 255) << 12) | ((dz & 255) << 20), 28);
+      else {
+        w.bits(OP_UPDATE | 4, 4);
+        w.bits(cur.qx[ci]!, 22);
+        w.bits(cur.qy[ci]!, 20);
+        w.bits(cur.qz[ci]!, 22);
       }
-      const turned = cur.yaw[ci] !== base!.yaw[bi];
-      w.bool(turned);
-      if (turned) w.bits(cur.yaw[ci]!, 10);
-      const flagged = cur.flags[ci] !== base!.flags[bi];
-      w.bool(flagged);
-      if (flagged) w.bits(cur.flags[ci]!, 4);
       const changed = cur.anim[ci]! ^ base!.anim[bi]!;
-      const motion = (changed & ANIM_MOTION_MASK) !== 0;
-      w.bool(motion);
-      if (motion) w.bits(cur.anim[ci]! & ANIM_MOTION_MASK, ANIM_MOTION_BITS);
-      const look = ((changed >>> ANIM_LOOK_SHIFT) & LOOK_MASK) !== 0;
-      w.bool(look);
-      if (look) w.bits((cur.anim[ci]! >>> ANIM_LOOK_SHIFT) & LOOK_MASK, ANIM_LOOK_BITS);
-      const action = changed >>> ANIM_ACTION_SHIFT !== 0;
-      w.bool(action);
-      if (action) w.bits(cur.anim[ci]! >>> ANIM_ACTION_SHIFT, ANIM_ACTION_BITS);
+      let v = 0;
+      let n = 1;
+      if (cur.yaw[ci] !== base!.yaw[bi]) {
+        v = 1 | ((cur.yaw[ci]! & 0x3ff) << 1);
+        n = 11;
+      }
+      if (cur.flags[ci] !== base!.flags[bi]) {
+        v |= (1 | ((cur.flags[ci]! & 15) << 1)) << n;
+        n += 5;
+      } else n++;
+      if ((changed & ANIM_MOTION_MASK) !== 0) {
+        v |= (1 | ((cur.anim[ci]! & ANIM_MOTION_MASK) << 1)) << n;
+        n += 1 + ANIM_MOTION_BITS;
+      } else n++;
+      w.bits(v, n);
+      v = 0;
+      n = 1;
+      if (((changed >>> ANIM_LOOK_SHIFT) & LOOK_MASK) !== 0) {
+        v = 1 | (((cur.anim[ci]! >>> ANIM_LOOK_SHIFT) & LOOK_MASK) << 1);
+        n = 1 + ANIM_LOOK_BITS;
+      }
+      if (changed >>> ANIM_ACTION_SHIFT !== 0) {
+        v |= (1 | ((cur.anim[ci]! >>> ANIM_ACTION_SHIFT) << 1)) << n;
+        n += 1 + ANIM_ACTION_BITS;
+      } else n++;
+      w.bits(v, n);
       next.copyFrom(cur, ci);
     }
   }
