@@ -17,6 +17,7 @@ import type { EntityRecord, Records } from "./records.ts";
 import { CAUSE_NAMES, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 import type { Rules } from "./settings/rules.ts";
+import { event, type Bus } from "./events/bus.ts";
 
 export const DEADLINE_DESPAWN = 2;
 /** Journal op: survivor pid, cause, cache pid (0 if it carried nothing). */
@@ -41,7 +42,10 @@ export interface DeathContext {
   readonly persistence: Persistence | null;
   readonly deadlines: DeadlineHeap;
   readonly rules: Rules;
+  readonly bus: Bus;
 }
+
+const DEATH_CACHE = event("death.cache");
 
 export class Death {
   count = 0;
@@ -197,7 +201,10 @@ export class Death {
     // The cache takes the survivor's inventory object. Nothing is copied.
     let cachePid = 0;
     const inv = items.inv(rec);
-    if (inv.used() > 0) {
+    // A module may have the dead keep what they carried, by refusing the cache or saying so.
+    const asked = { pid: rec.pid, keep: false };
+    const kept = this.ctx.bus.before(DEATH_CACHE, asked) !== "" || asked.keep === true;
+    if (inv.used() > 0 && !kept) {
       const cache = records.create(this.cache, `${rec.name}'s cache`);
       cache.inv = inv;
       rec.inv = null;

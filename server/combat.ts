@@ -21,7 +21,7 @@ import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, ra
 import { Found } from "../shared/world/structures.ts";
 import type { Buffs } from "./buffs.ts";
 import type { Creatures } from "./creatures.ts";
-import { V_TORPOR } from "../shared/sim/vitals.ts";
+import { V_HEALTH, V_TORPOR } from "../shared/sim/vitals.ts";
 import { DID_FIRE, DID_RELOAD, DID_BITE, DID_STRIKE, type Client, type GameServer } from "./game.ts";
 import type { Harvest } from "./harvest.ts";
 import { Past } from "./history.ts";
@@ -32,6 +32,8 @@ import type { Lists } from "./settings/lists.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { STAT_MELEE, statOf, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
+import type { EventData } from "./api/module.ts";
+import { event, type Bus } from "./events/bus.ts";
 
 const CHUNK_METRES = 64;
 /** Metres. A swing also casts rays this far off its aim, to each side and above and below. */
@@ -53,7 +55,13 @@ export interface CombatContext {
   readonly rules: Rules;
   readonly lists: Lists;
   readonly harvest: Harvest | null;
+  readonly bus: Bus;
 }
+
+const DAMAGE = event("damage");
+const DAMAGED = event("damaged");
+/** A damage type as a module is told it. */
+const TYPE_WORDS: readonly string[] = ["melee", "pierce", "bullet", "fire", "explosive"];
 
 /** Ticks behind its newest acked snapshot a client is assumed to draw other bodies, when no input for the tick says. */
 const VIEW_BEHIND = 2;
@@ -564,6 +572,11 @@ export class Combat {
     hit.zone = rules.on("HeadMultipliers") ? (reg.zoneMul[vkind]?.[zone] ?? 1) : 1;
     const self = by === victim;
     hit.rule = this.spared(by, victim.team, hit.type, self) ? 0 : this.dealt(by) * this.taken(victim) * (self ? rules.num("SelfDamageMultiplier") : 1);
+    const bus = this.ctx.bus;
+    if (bus.n[DAMAGE] !== 0 && hit.rule !== 0) hit.rule *= this.asked("body", victim.pid, reg.ids[vkind]!, victim.team, by, item, hit.type, zone);
+    this.blow.victim = victim.pid;
+    this.blow.item = item;
+    this.blow.far = far;
     const vinv = victim.inv;
     let piece = -1;
     let worn = 0;
@@ -597,6 +610,10 @@ export class Combat {
     this.died = false;
     const taken = survival.hurt(victim, harm.health, by ? by.pid : 0);
     const killed = this.died;
+    this.blow.victim = 0;
+    if (bus.n[DAMAGED] !== 0) {
+      bus.after(DAMAGED, { target: "body", victim: victim.pid, kind: reg.ids[vkind]!, team: victim.team, byPid: by ? by.pid : 0, byTeam: by ? by.team : 0, item: item !== 0 ? reg.ids[item]! : "", type: TYPE_WORDS[hit.type]!, zone, taken, blocked: harm.blocked, killed, left: killed ? 0 : survival.value(victim, V_HEALTH) });
+    }
     if (taken > 0 && !killed) this.onHarm?.(victim, taken);
     this.hits++;
     const last = this.last;
@@ -666,10 +683,16 @@ export class Combat {
     hit.takes = takes[src.type]!;
     // A structure is spared as its owning tribe would be.
     hit.rule = this.spared(src.by, t.owner[slot]!, src.type, false) ? 0 : this.dealt(src.by) * this.ctx.rules.num("StructureResistanceMultiplier");
+    const bus = this.ctx.bus;
+    const [kind, owner] = [world.reg.ids[t.kind[slot]!]!, t.owner[slot]!];
+    if (bus.n[DAMAGE] !== 0 && hit.rule !== 0) hit.rule *= this.asked("structure", ref, kind, owner, src.by, src.item, src.type, ZONE_NONE);
     resolveDamage();
     if (!(harm.health > 0)) return 0;
     const before = t.hp[slot]!;
     const left = structs.damage(ref, harm.health, world.tick);
+    if (bus.n[DAMAGED] !== 0) {
+      bus.after(DAMAGED, { target: "structure", victim: ref, kind, team: owner, byPid: src.by ? src.by.pid : 0, byTeam: src.by ? src.by.team : 0, item: src.item !== 0 ? world.reg.ids[src.item]! : "", type: TYPE_WORDS[src.type]!, zone: ZONE_NONE, taken: left === 0 ? before : harm.health, blocked: 0, killed: left === 0, left });
+    }
     if (left > 0) this.onStructureHurt?.(ref);
     const done = left === 0 ? before : harm.health;
     this.structureHits++;
@@ -775,6 +798,32 @@ export class Combat {
       const slot = ref & 0xffff;
       this.hitStructure(src, ref, t.x[slot]!, t.y[slot]!, t.z[slot]!, share[k]!);
     }
+  }
+
+  /** The blow being landed, for whoever is told of a death it causes. `victim` is 0 when none is. */
+  readonly blow = { victim: 0, item: 0, far: 0 };
+  // One object for every asking. A handler may not keep it.
+  private readonly asking: EventData = {};
+
+  /**
+   * Asks modules about a blow that the rules let land. Returns the share of it that lands: 1 unless a module says
+   * otherwise, and 0 if one refuses it.
+   */
+  private asked(target: string, victim: number, kind: string, team: number, by: EntityRecord | null, item: number, type: number, zone: number): number {
+    const d = this.asking;
+    d.target = target;
+    d.victim = victim;
+    d.kind = kind;
+    d.team = team;
+    d.byPid = by ? by.pid : 0;
+    d.byTeam = by ? by.team : 0;
+    d.item = item !== 0 ? this.ctx.world.reg.ids[item]! : "";
+    d.type = TYPE_WORDS[type]!;
+    d.zone = zone;
+    d.scale = 1;
+    if (this.ctx.bus.before(DAMAGE, d) !== "") return 0;
+    const scale = Number(d.scale);
+    return scale >= 0 ? scale : 1;
   }
 
   /** A body's health reached zero and `by` (a pid, or 0) did it. Called before the body leaves the world. The killer gets the XP and the drops. */

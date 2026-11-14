@@ -10,7 +10,7 @@ marked "may change". An **after** event says what has happened, in values, and
 is delivered once a tick, before the commit. The module contract is in
 `server/api/module.ts`.
 
-There are 82 events: 30 raised today, 33 with a place in the code and not
+There are 82 events: 40 raised today, 23 with a place in the code and not
 raised yet, and 19 that wait for a feature.
 
 The ARK column says what a plugin for ARK's unofficial server API hooks for the
@@ -104,12 +104,12 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `damage` (hot) | before | `target`, `victim`, `kind`, `team`, `byPid`, `byTeam`, `item`, `type`, `zone`, `scale` | `scale` | three take-damage hooks and the tribe-war question | `server/combat.ts` | stub |
-| `damaged` (hot) | after | `target`, `victim`, `kind`, `team`, `byPid`, `byTeam`, `item`, `type`, `zone`, `taken`, `blocked`, `killed`, `left` |  |  | `server/combat.ts` | stub |
-| `death` | after | `victim`, `cause`, `killer`, `rider`, `credit`, `team`, `item`, `far` |  | the player's and the creature's death | `server/host.ts` | stub |
-| `death.cache` | before | `pid`, `keep` | `keep` | the death inventory | `server/death.ts` | stub |
-| `body.out` | after | `pid`, `out` |  |  | `server/host.ts` | stub |
-| `projectile.hit` | after | `byPid`, `ammo`, `target` |  | the projectile's impact | `server/projectiles.ts` | stub |
+| `damage` (hot) | before | `target`, `victim`, `kind`, `team`, `byPid`, `byTeam`, `item`, `type`, `zone`, `scale` | `scale` | three take-damage hooks and the tribe-war question | `server/combat.ts` | wired |
+| `damaged` (hot) | after | `target`, `victim`, `kind`, `team`, `byPid`, `byTeam`, `item`, `type`, `zone`, `taken`, `blocked`, `killed`, `left` |  |  | `server/combat.ts` | wired |
+| `death` | after | `victim`, `cause`, `killer`, `rider`, `credit`, `team`, `item`, `far` |  | the player's and the creature's death | `server/host.ts` | wired |
+| `death.cache` | before | `pid`, `keep` | `keep` | the death inventory | `server/death.ts` | wired |
+| `body.out` | after | `pid`, `out` |  |  | `server/host.ts` | wired |
+| `projectile.hit` | after | `byPid`, `ammo`, `target` |  | the projectile's impact | `server/projectiles.ts` | wired |
 
 - **`damage`.** A blow is about to land on a body or a structure. A scale of 0 stops it.
 - **`damaged`.** A blow landed.
@@ -122,10 +122,10 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `xp.gain` | before | `pid`, `source`, `amount` | `amount` | the add-experience call | `server/progression.ts` | stub |
-| `level.up` | after | `pid`, `from`, `to` |  | the level-up call | `server/progression.ts` | stub |
-| `stat.spend` | before | `pid`, `stat` |  | the level-up request | `server/progression.ts` | stub |
-| `engram.learn` | before | `pid`, `engram` |  | the engram-points request | `server/progression.ts` | stub |
+| `xp.gain` | before | `pid`, `source`, `amount` | `amount` | the add-experience call | `server/progression.ts` | wired |
+| `level.up` | after | `pid`, `from`, `to` |  | the level-up call | `server/progression.ts` | wired |
+| `stat.spend` | before | `pid`, `stat` |  | the level-up request | `server/progression.ts` | wired |
+| `engram.learn` | before | `pid`, `engram` |  | the engram-points request | `server/progression.ts` | wired |
 
 - **`xp.gain`.** A body is about to gain experience.
 - **`level.up`.** A body gained a level.

@@ -10,6 +10,7 @@ import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
+import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
 export const DEADLINE_CRAFT = 4;
 const MAX_JOBS = 8;
@@ -22,8 +23,16 @@ export const XP_CRAFT = 3;
 /** Indexed by source. */
 const XP_RULES = ["", "KillXPMultiplier", "HarvestXPMultiplier", "CraftXPMultiplier"];
 
+const XP_GAIN = event("xp.gain");
+const LEVEL_UP = event("level.up");
+const STAT_SPEND = event("stat.spend");
+const ENGRAM_LEARN = event("engram.learn");
+/** Where experience came from, as a module is told it, by XP_ source. */
+const XP_WORDS: readonly string[] = ["given", "kill", "harvest", "craft"];
+
 export class Progression {
   rules: Rules | null = null;
+  bus: Bus = NO_BUS;
   /** Called after anything that changes a record's stat points or level. */
   onChange: ((rec: EntityRecord) => void) | null = null;
   private readonly world: ServerWorld;
@@ -114,6 +123,10 @@ export class Progression {
   addXp(rec: EntityRecord, amount: number, source = XP_GIVEN): number {
     if (!(amount > 0)) return 0;
     if (source !== XP_GIVEN && this.rules) amount *= this.rules.num("XPMultiplier") * this.rules.num(XP_RULES[source]!);
+    // A module may change the amount, or refuse it.
+    const asked = { pid: rec.pid, source: XP_WORDS[source] ?? "", amount };
+    if (this.bus.before(XP_GAIN, asked) !== "") return 0;
+    amount = Number(asked.amount);
     const room = this.most(rec) - rec.xp;
     if (amount > room) amount = room;
     if (!(amount > 0)) return 0;
@@ -121,7 +134,11 @@ export class Progression {
     rec.xp += amount;
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
-    if (this.level(rec) !== before) this.onChange?.(rec);
+    const now = this.level(rec);
+    if (now !== before) {
+      this.onChange?.(rec);
+      this.bus.after(LEVEL_UP, { pid: rec.pid, from: before, to: now });
+    }
     return amount;
   }
 
@@ -132,6 +149,7 @@ export class Progression {
     const curve = def?.type === "species" ? def.stats?.[STAT_NAMES[stat]!] : undefined;
     if (!curve || !(curve[2] > 0)) return RESULT_INVALID;
     if (this.statPoints(rec) < 1) return RESULT_SHORT;
+    if (this.bus.before(STAT_SPEND, { pid: rec.pid, stat: STAT_NAMES[stat]! }) !== "") return RESULT_DENIED;
     if (!spendPoint(rec.genome, stat)) return RESULT_INVALID;
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
@@ -145,6 +163,7 @@ export class Progression {
     // A hidden engram is one the server does not offer.
     if (def.hidden) return RESULT_DENIED;
     if (this.level(rec) < def.level || this.engramPoints(rec) < def.cost) return RESULT_SHORT;
+    if (this.bus.before(ENGRAM_LEARN, { pid: rec.pid, engram: def.id }) !== "") return RESULT_DENIED;
     rec.engrams.push(engram);
     rec.progVersion++;
     this.records.dirty.add(rec.pid);

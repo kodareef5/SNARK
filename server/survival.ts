@@ -15,6 +15,7 @@ import { V_COUNT, V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER, Vitals } from "
 import type { EntityRecord, Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
+import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
 export const STAT_HEALTH = STAT_NAMES.indexOf("health");
 export const STAT_FOOD = STAT_NAMES.indexOf("food");
@@ -126,9 +127,14 @@ const SAFE_LANDING = 12;
 const LANDING_DAMAGE = 7;
 
 /** Nothing is stepped. A change of circumstance sets new rates and one deadline for the next tick a vital runs out. */
+const DAMAGE = event("damage");
+/** A cause of death as a module is told it. */
+export const CAUSE_WORDS: readonly string[] = ["", "starved", "thirst", "drowned", "fall", "killed"];
+
 export class Survival {
   readonly deadlines: DeadlineHeap;
   rules: Rules | null = null;
+  bus: Bus = NO_BUS;
   readonly starving = new Set<number>();
   /** Called when health reaches zero. `by` is the killer's record id, or 0. */
   onDeath: ((rec: EntityRecord, cause: number, by: number) => void) | null = null;
@@ -289,7 +295,12 @@ export class Survival {
   /** `speed` is in metres per second. */
   landed(rec: EntityRecord, speed: number): void {
     const safe = SAFE_LANDING * (this.rules ? this.rules.num("MaxFallSpeedMultiplier") : 1);
-    if (speed > safe) this.add(rec, V_HEALTH, -(speed - safe) * LANDING_DAMAGE, CAUSE_FALL);
+    if (!(speed > safe)) return;
+    // A fall is a blow with nobody behind it, and a module is asked of it as of any other.
+    const asked = { target: "body", victim: rec.pid, kind: this.world.reg.ids[rec.kind]!, team: rec.team, byPid: 0, byTeam: 0, item: "", type: "fall", zone: 0, scale: 1 };
+    if (this.bus.n[DAMAGE] !== 0 && this.bus.before(DAMAGE, asked) !== "") return;
+    const scale = Number(asked.scale);
+    this.add(rec, V_HEALTH, -(speed - safe) * LANDING_DAMAGE * (scale >= 0 ? scale : 1), CAUSE_FALL);
   }
 
   /** Call when a record is deleted. */

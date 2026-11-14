@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../../server/settings/config.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
-import { CMD_RESPAWN, REJECT_DENIED, REJECT_NAME, RESULT_DENIED, SESSION_ALIVE, SESSION_DEAD, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
+import { CMD_LEARN, CMD_RESPAWN, CMD_SPEND, REJECT_DENIED, REJECT_NAME, RESULT_DENIED, RESULT_OK, SESSION_ALIVE, SESSION_DEAD, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
+import { BTN_PRIMARY } from "../../shared/sim/character.ts";
+import { STAT_NAMES } from "../../shared/sim/genome.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { flatGround } from "../fixtures/arena.ts";
+import { takeInHand } from "../fixtures/gather.ts";
 import type { ModuleDef } from "../../server/api/module.ts";
 import { EVENTS, eventFaults, eventIndex } from "../../server/events/catalog.ts";
 import { EVENTS_PAGE, eventsPage } from "../../tools/events.ts";
@@ -327,4 +332,142 @@ test("what a module refuses does not happen, and what it changes is what happens
   bob.command(CMD_RESPAWN, (w) => w.u8(0));
   h.run(800);
   expect(bob.sessionState).toBe(SESSION_ALIVE);
+});
+
+/** Two survivors with cheats, a metre apart on level ground, facing each other. */
+function duel(modules: ModuleDef[]) {
+  const h = new Harness({}, 1, 60, { modules, dev: true, ...quiet });
+  const [ada, bob] = [h.join("ada"), h.join("bob")];
+  h.run(600);
+  h.say(ada, "enablecheats");
+  h.say(bob, "enablecheats");
+  const g = flatGround(h, 24, 40);
+  h.say(ada, `tp ${(g.x + 12).toFixed(3)} ${(g.z + 2).toFixed(3)}`);
+  h.say(bob, `tp ${(g.x + 12).toFixed(3)} ${(g.z + 3.1).toFixed(3)}`);
+  h.pilots[0]!.yaw = 0;
+  h.pilots[1]!.yaw = Math.PI;
+  h.run(300);
+  const rec = (s: typeof ada) => h.host.records.byPid.get(h.client(s)!.pid)!;
+  const health = (s: typeof ada): number => h.host.survival.value(rec(s), V_HEALTH);
+  /** Ada throws punches at Bob for `ms`. */
+  const punch = (ms: number): void => {
+    h.pilots[0]!.buttons |= BTN_PRIMARY;
+    h.run(ms);
+    h.pilots[0]!.buttons &= ~BTN_PRIMARY;
+    h.run(400);
+  };
+  return { h, ada, bob, rec, health, punch };
+}
+
+test("a module hears each blow, each death and what a body earns, and may scale a blow, stop it, and change what is earned", () => {
+  const wired = wiredOf("damage", "damaged", "death", "body", "projectile", "xp", "level", "stat", "engram");
+  expect(wired).toEqual(["damage", "damaged", "death", "death.cache", "body.out", "projectile.hit", "xp.gain", "level.up", "stat.spend", "engram.learn"]);
+  const all = listener("all", wired);
+  const { h, ada, bob, rec, health, punch } = duel([all.def]);
+  let rule: (e: Parameters<NonNullable<typeof all.heard.each>>[0]) => void = () => {};
+  all.heard.each = (e) => rule(e);
+  const said = (name: string): Record<string, unknown>[] => all.heard.lines.filter((l) => l.startsWith(`${name}: `)).map((l) => JSON.parse(l.slice(name.length + 2)));
+  const [adaPid, bobPid] = [rec(ada).pid, rec(bob).pid];
+
+  // A punch lands whole.
+  punch(600);
+  const blows = said("damaged");
+  expect(blows.length).toBeGreaterThan(0);
+  expect(blows[0]).toMatchObject({ target: "body", victim: bobPid, kind: "core:survivor", byPid: adaPid, item: "", type: "melee", killed: false });
+  expect(said("damage")[0]).toMatchObject({ target: "body", victim: bobPid, byPid: adaPid, type: "melee", scale: 1 });
+  const whole = blows[0]!.taken as number;
+  expect(whole).toBeGreaterThan(1);
+  expect(Math.abs((blows[blows.length - 1]!.left as number) - health(bob))).toBeLessThan(1);
+  expect(blows[0]!.left).toBe(100 - whole);
+
+  // A module halves every blow, and then stops them all.
+  rule = (e) => {
+    if (e.name === "damage") e.data.scale = 0.5;
+  };
+  const n = said("damaged").length;
+  punch(600);
+  expect(said("damaged")[n]!.taken as number).toBeCloseTo(whole / 2, 1);
+  rule = (e) => {
+    if (e.name === "damage") e.refuse("this is a safe zone");
+  };
+  const before = health(bob);
+  const told = said("damaged").length;
+  punch(900);
+  expect(health(bob)).toBeGreaterThanOrEqual(before);
+  expect(said("damaged").slice(told).every((d) => d.taken === 0)).toBe(true);
+
+  // A fall is a blow with nobody behind it.
+  rule = () => {};
+  h.host.survival.landed(rec(ada), 16);
+  expect(said("damage").pop()).toMatchObject({ victim: adaPid, byPid: 0, type: "fall" });
+  expect([health(ada) < 100, rec(ada).dead]).toEqual([true, false]);
+
+  // Experience may be changed as it is earned, a level gained is told, and a point or an engram may be refused.
+  rule = (e) => {
+    if (e.name === "xp.gain" && e.data.source === "given") e.data.amount = Number(e.data.amount) * 2;
+  };
+  h.say(ada, "addxp 60");
+  // The module was asked about 60, and doubled it.
+  expect(said("xp.gain").pop()).toEqual({ pid: adaPid, source: "given", amount: 60 });
+  expect(rec(ada).xp).toBe(120);
+  const up = said("level.up").pop()!;
+  expect([up.pid, up.from, (up.to as number) > (up.from as number)]).toEqual([adaPid, 1, true]);
+  const codes: number[] = [];
+  ada.onResult = (_seq, code) => void codes.push(code);
+  rule = (e) => {
+    if (e.name === "stat.spend" || e.name === "engram.learn") e.refuse("not during the event");
+  };
+  const spear = h.reg.index.get("core:engram-spear")!;
+  ada.command(CMD_SPEND, (w) => w.u8(STAT_NAMES.indexOf("health")));
+  ada.command(CMD_LEARN, (w) => w.u16(spear));
+  h.run(400);
+  expect([codes, rec(ada).engrams.includes(spear)]).toEqual([[RESULT_DENIED, RESULT_DENIED], false]);
+  expect([said("stat.spend").pop(), said("engram.learn").pop()]).toEqual([{ pid: adaPid, stat: "health" }, { pid: adaPid, engram: "core:engram-spear" }]);
+  rule = () => {};
+  codes.length = 0;
+  ada.command(CMD_SPEND, (w) => w.u8(STAT_NAMES.indexOf("health")));
+  ada.command(CMD_LEARN, (w) => w.u16(spear));
+  h.run(400);
+  expect([codes, rec(ada).engrams.includes(spear)]).toEqual([[RESULT_OK, RESULT_OK], true]);
+
+  // Bob carries stone and has little health left. Ada's punch kills him. A module has him keep what he carried.
+  h.say(bob, "give stone 9");
+  h.say(bob, `hurt ${(health(bob) - 2).toFixed(1)}`);
+  rule = (e) => {
+    if (e.name === "death.cache") e.data.keep = true;
+  };
+  const xpBefore = rec(ada).xp;
+  punch(900);
+  expect(rec(bob).dead).toBe(true);
+  expect(said("death").pop()).toMatchObject({ victim: bobPid, kind: "core:survivor", cause: "killed", killer: adaPid, rider: 0, credit: adaPid, item: "" });
+  expect(said("damaged").pop()).toMatchObject({ victim: bobPid, killed: true, left: 0 });
+  expect(said("death.cache").pop()).toEqual({ pid: bobPid, keep: false });
+  expect(rec(bob).inv!.total(h.reg.index.get("core:stone")!)).toBe(9);
+  expect(said("xp.gain").pop()).toMatchObject({ pid: adaPid, source: "kill" });
+  expect(rec(ada).xp).toBeGreaterThan(xpBefore);
+
+  // Ada is knocked out.
+  h.say(ada, "hurt 0 100000");
+  h.run(300);
+  expect(said("body.out").pop()).toEqual({ pid: adaPid, out: true });
+  // Every event of these groups but an arrow's was heard. The arrow is in the next test.
+  expect(names(all.heard.lines)).toEqual(wired.filter((w) => w !== "projectile.hit").sort());
+});
+
+test("an arrow that strikes is told of, with who loosed it, what it was and whom it struck", () => {
+  const all = listener("all", ["projectile.hit", "damaged"]);
+  const { h, ada, bob, rec } = duel([all.def]);
+  // Three metres apart, so the arrow flies before it lands.
+  const e = h.world.ents;
+  h.say(bob, `tp ${e.x[h.ent(ada)]!.toFixed(3)} ${(e.z[h.ent(ada)]! + 3).toFixed(3)}`);
+  h.say(ada, "kit bow");
+  takeInHand(h, ada, h.reg.index.get("core:bow")!);
+  h.pilots[0]!.buttons |= BTN_PRIMARY;
+  h.run(1500);
+  h.pilots[0]!.buttons &= ~BTN_PRIMARY;
+  h.run(600);
+  const struck = all.heard.lines.filter((l) => l.startsWith("projectile.hit"));
+  expect(struck).toEqual([`projectile.hit: {"byPid":${rec(ada).pid},"ammo":"core:arrow_stone","target":${rec(bob).pid}}`]);
+  const blow = JSON.parse(all.heard.lines.find((l) => l.startsWith("damaged"))!.slice(9));
+  expect(blow).toMatchObject({ victim: rec(bob).pid, byPid: rec(ada).pid, item: "core:bow", type: "pierce" });
 });

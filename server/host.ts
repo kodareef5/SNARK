@@ -54,7 +54,7 @@ import { difficultyOf, tuningOf, wildLevel } from "./settings/tune.ts";
 import { deriveRegistry } from "../shared/content/tuning.ts";
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
-import { DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
+import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createProvingWorld, type ServerWorld } from "./world.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
@@ -224,6 +224,8 @@ const SESSION_PRESENCE = event("session.presence");
 const SESSION_LEAVE = event("session.leave");
 const SESSION_SPAWN = event("session.spawn");
 const SESSION_RESPAWN = event("session.respawn");
+const DEATH = event("death");
+const BODY_OUT = event("body.out");
 
 function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): Host {
   // The config files are the truth at every start (D88). No rule is read from the save.
@@ -281,6 +283,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const deadlines = new DeadlineHeap();
   const survival = new Survival(world, records, deadlines);
   survival.rules = rules;
+  survival.bus = bus;
   const items = new Items(world, records);
   if (persistence) {
     items.restore(loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null));
@@ -304,9 +307,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     if (e >= 0 && persistence) persistence.attach(records.byPid.get(world.ents.pid[e]!)!, e);
     return e;
   };
-  const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules });
+  const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules, bus });
   const progression = new Progression(world, records, items, deadlines);
   progression.rules = rules;
+  progression.bus = bus;
   const harvest = world.nodeField ? new Harvest(world, game, records, items, progression, deadlines, (opts.seed ?? 1) + 31) : null;
   if (harvest) {
     harvest.rules = rules;
@@ -320,7 +324,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     persistence.sidecar("settings_at", at);
     settingsAt = at;
   }
-  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest }, (opts.seed ?? 1) + 53);
+  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest, bus }, (opts.seed ?? 1) + 53);
   creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
   tribes.rules = rules;
@@ -381,13 +385,20 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   };
   tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
-  const projectiles = new Projectiles({ world, game, records, items, combat }, (opts.seed ?? 1) + 97);
+  const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   combat.onThrow = (c, rec, item, quality) => projectiles.lob(c, rec, item, quality);
   // The killer is credited before death.die, which may delete the record.
   survival.onDeath = (rec, cause, by) => {
     // Removing the body touches its vitals again. It must die only once.
     if (rec.dead) return;
+    if (bus.n[DEATH] !== 0) {
+      // The killer is whoever struck last, or gave the buff that did it. A kill by a ridden creature is credited to its rider.
+      const killer = by !== 0 ? records.byPid.get(by) : undefined;
+      const rider = killer ? (combat.riderOf?.(killer) ?? null) : null;
+      const struck = combat.blow.victim === rec.pid;
+      bus.after(DEATH, { victim: rec.pid, kind: reg.ids[rec.kind]!, cause: CAUSE_WORDS[cause] ?? "", killer: killer ? killer.pid : 0, rider: rider ? rider.pid : 0, credit: !killer ? 0 : killer.kind === survivor ? killer.pid : rider ? rider.pid : 0, team: rec.team, item: struck && combat.blow.item !== 0 ? reg.ids[combat.blow.item]! : "", far: struck ? combat.blow.far : 0 });
+    }
     combat.killed(rec, by);
     buffs.died(rec);
     death.die(rec, cause);
@@ -398,6 +409,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const fedDef = reg.defs[fed];
   const fedRate = fedDef?.type === "buff" ? (fedDef.health ?? 0) : 0;
   survival.onOut = (rec, out) => {
+    bus.after(BODY_OUT, { pid: rec.pid, out });
     refreshBody(rec);
     taming.out(rec, out);
   };
@@ -723,7 +735,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       // A module may refuse the place, or make the survivor wait: `wait` is seconds, and more than none refuses for now.
       const asked = { pid: c.pid, bed: p.bed, wait: p.bed >= 0 ? Math.max(0, Math.ceil(((fixtures.find(p.bed)?.readyAt ?? 0) - world.tick) / TICK_RATE)) : 0 };
       if (bus.before(SESSION_RESPAWN, asked) !== "") return RESULT_DENIED;
-      if (asked.wait > 0 && p.bed < 0) return RESULT_WAIT;
+      if (asked.wait > 0) return RESULT_WAIT;
       if (p.bed < 0) return death.respawn(c, p.x, p.z, p.yaw);
       // The bed must still stand and still belong to its tribe.
       const bed = fixtures.find(p.bed);

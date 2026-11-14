@@ -72,17 +72,17 @@ ev("chat.say", "before", "pid channel text!", "the chat send, and the chat callb
 ev("chat.said", "after", "pid channel text heard", "the per-recipient delivery, as a count", "server/chat.ts", "wired", "Something was said, and how many heard it.");
 ev("name.set", "before", "what text!", "name filters", "server/game.ts", "wired", "A survivor, a tribe or a creature is about to be named.");
 
-ev("damage", "before", "target victim kind team byPid byTeam item type zone scale!", "three take-damage hooks and the tribe-war question", "server/combat.ts", "stub", "A blow is about to land on a body or a structure. A scale of 0 stops it.", true);
-ev("damaged", "after", "target victim kind team byPid byTeam item type zone taken blocked killed left", "", "server/combat.ts", "stub", "A blow landed.", true);
-ev("death", "after", "victim cause killer rider credit team item far", "the player's and the creature's death", "server/host.ts", "stub", "A body died. `credit` is the survivor to reward: the killer, or the rider of the killer.");
-ev("death.cache", "before", "pid keep!", "the death inventory", "server/death.ts", "stub", "What the dead carried is about to be left in a cache.");
-ev("body.out", "after", "pid out", "", "server/host.ts", "stub", "A body was knocked out, or woke.");
-ev("projectile.hit", "after", "byPid ammo target", "the projectile's impact", "server/projectiles.ts", "stub", "Something loosed or thrown struck.");
+ev("damage", "before", "target victim kind team byPid byTeam item type zone scale!", "three take-damage hooks and the tribe-war question", "server/combat.ts", "wired", "A blow is about to land on a body or a structure. A scale of 0 stops it.", true);
+ev("damaged", "after", "target victim kind team byPid byTeam item type zone taken blocked killed left", "", "server/combat.ts", "wired", "A blow landed.", true);
+ev("death", "after", "victim cause killer rider credit team item far", "the player's and the creature's death", "server/host.ts", "wired", "A body died. `credit` is the survivor to reward: the killer, or the rider of the killer.");
+ev("death.cache", "before", "pid keep!", "the death inventory", "server/death.ts", "wired", "What the dead carried is about to be left in a cache.");
+ev("body.out", "after", "pid out", "", "server/host.ts", "wired", "A body was knocked out, or woke.");
+ev("projectile.hit", "after", "byPid ammo target", "the projectile's impact", "server/projectiles.ts", "wired", "Something loosed or thrown struck.");
 
-ev("xp.gain", "before", "pid source amount!", "the add-experience call", "server/progression.ts", "stub", "A body is about to gain experience.");
-ev("level.up", "after", "pid from to", "the level-up call", "server/progression.ts", "stub", "A body gained a level.");
-ev("stat.spend", "before", "pid stat", "the level-up request", "server/progression.ts", "stub", "A point is about to be put into a stat.");
-ev("engram.learn", "before", "pid engram", "the engram-points request", "server/progression.ts", "stub", "An engram is about to be learned.");
+ev("xp.gain", "before", "pid source amount!", "the add-experience call", "server/progression.ts", "wired", "A body is about to gain experience.");
+ev("level.up", "after", "pid from to", "the level-up call", "server/progression.ts", "wired", "A body gained a level.");
+ev("stat.spend", "before", "pid stat", "the level-up request", "server/progression.ts", "wired", "A point is about to be put into a stat.");
+ev("engram.learn", "before", "pid engram", "the engram-points request", "server/progression.ts", "wired", "An engram is about to be learned.");
 
 ev("creature.spawn", "before", "kind why level! colours!", "the creature's begin play", "server/creatures.ts", "stub", "A creature is about to enter the world.");
 ev("tame.allow", "before", "pid kind level byPid team how", "the allow-taming question, and tame limits", "server/taming.ts", "stub", "A creature is about to become somebody's.");

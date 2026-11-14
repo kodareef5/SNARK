@@ -15,6 +15,7 @@ import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
+import { event, type Bus } from "./events/bus.ts";
 
 /** One more than this in flight and the oldest is dropped. */
 export const MAX_FLYING = 4096;
@@ -42,7 +43,10 @@ export interface ProjectilesContext {
   readonly records: Records;
   readonly items: Items;
   readonly combat: Combat;
+  readonly bus: Bus;
 }
+
+const PROJECTILE_HIT = event("projectile.hit");
 
 interface Flying extends Flight {
   gravity: number;
@@ -287,6 +291,7 @@ export class Projectiles {
     const src = this.bring(by, weapon, quality, ammo, draw, ox, oz);
     this.struck++;
     this.ended(x, y, z, target);
+    this.ctx.bus.after(PROJECTILE_HIT, { byPid: by ? by.pid : 0, ammo: this.ctx.world.reg.ids[ammo]!, target: this.ctx.world.ents.pid[target]! });
     this.ctx.combat.land(src, target, zone, x, y, z, Math.sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy) + (z - oz) * (z - oz)));
   }
 
