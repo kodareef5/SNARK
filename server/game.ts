@@ -1,9 +1,5 @@
-// The authoritative game loop: accepts connections, consumes one input per
-// player per tick, steps the world, and replicates what each client may know.
-//
-// It has no socket, no clock and no file of its own. A transport listener and
-// calls to `tick()` come from outside, so tests drive a whole server in memory
-// and server/main.ts wires the same class to Bun.
+// The authoritative game loop. It owns no socket or clock. The transport and the calls to
+// tick() come from outside, so tests run a whole server in memory.
 
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { TAU, detCos, detSin } from "../shared/math/scalar.ts";
@@ -62,24 +58,20 @@ import type { ChunkTable } from "../shared/world/structures.ts";
 import type { ServerWorld } from "./world.ts";
 
 export interface GameOptions {
-  /** Ticks between snapshots to each client. */
+  /** In ticks. */
   snapshotEvery: number;
   /** Byte budget for the deferrable part of one snapshot. */
   snapshotBytes: number;
-  /** Entity interest radius in chunks. */
+  /** Interest radii, in chunks. */
   entityRadius: number;
-  /** Structure interest radius in chunks. */
   structRadius: number;
-  /** Structure slots sent to one client per tick. */
   chunkSlotsPerTick: number;
   maxClients: number;
-  /** Ticks a body stays in the world after its connection closes. Leaving does not dodge what is about to happen to it. */
+  /** A body stays this many ticks after its connection closes, so logging out does not dodge a fight. */
   lingerTicks: number;
-  /** Who may spectate: nobody, sessions that have enabled cheats, or anyone (including at login). */
   spectators: "off" | "admin" | "anyone";
-  /** Asked of everyone who joins; "" asks nothing. */
+  /** "" for none. */
   password: string;
-  /** Seconds a client shows the message of the day for. */
   motdSeconds: number;
 }
 
@@ -96,47 +88,42 @@ const DEFAULTS: GameOptions = {
   motdSeconds: 20,
 };
 
-/** Whether two texts are the same, in a time that does not say how much of one was right. */
+/** Constant-time, so timing does not leak how much of a password matched. */
 function sameText(a: string, b: string): boolean {
   let diff = a.length ^ b.length;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i % (b.length || 1));
   return diff === 0;
 }
 
-/** Unreliable messages accepted from one client per tick before the rest are dropped. */
+/** Unreliable messages from one client per tick. The rest are dropped. */
 const MAX_PACKETS_PER_TICK = 8;
-/** Reliable messages per tick. They are never dropped silently; more than this is abuse. */
+/** Reliable messages are never dropped, so more than this per tick is a strike. */
 const MAX_RELIABLE_PER_TICK = 32;
 /** Malformed messages tolerated before disconnecting. */
 const MAX_STRIKES = 8;
-/** Connections that may be waiting to say hello, and how long each may take. */
+/** Connections waiting to say hello, and the ticks each may take. */
 const MAX_PENDING = 64;
 const HELLO_TICKS = 150;
-/** Commands a client may have waiting, and how many run per tick. */
 const COMMAND_QUEUE = 16;
 const COMMANDS_PER_TICK = 4;
 const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
-/** How far above the ground a new spectator starts. */
+/** Metres. */
 const SPECTATOR_LIFT = 1.6;
 
-/** What a body's action step said happened on the tick just stepped (`Client.did`). */
+/** Bits of Client.did, set by the action step on the tick just stepped. */
 export const DID_STRIKE = 1;
-/** What a session drives (a mount) bit: its jaws landed this tick. */
+/** The mount it drives landed a bite. */
 export const DID_BITE = 8;
 export const DID_FIRE = 2;
 export const DID_RELOAD = 4;
 
-/** Runs one command. Read every argument, check `r.overflow`, then act. Returns a RESULT code. */
+/** Read every argument and check r.overflow before acting. Returns a RESULT code. */
 export type CommandHandler = (c: Client, r: BitReader) => number;
 
-/**
- * One survivor's session. It outlives a connection by `lingerTicks`, and a new
- * connection under the same name and key takes it over, body and all.
- */
+/** One survivor's session. It outlives its connection by lingerTicks, and a reconnect with the same name and key takes it over. */
 export class Client {
   /** Slot in `GameServer.clients`, or -1 until its hello is accepted. */
   id: number;
-  /** Tick by which a new connection must have said hello. */
   helloBy = 0;
   conn: Connection;
   active = false;
@@ -145,31 +132,24 @@ export class Client {
   lingerUntil = 0;
   name = "";
   key: Uint8Array = new Uint8Array(KEY_BYTES);
-  /** Persistent id of the survivor's record, set by the host. 0 for a session that never had a body. */
+  /** Survivor record id, set by the host. 0 until the session has had a body. */
   pid = 0;
   state = SESSION_ALIVE;
   /** Cheats enabled. Belongs to the connection, never saved. */
   admin = false;
-  /** The tick its inputs last changed, or it last sent a command: for putting off those who do nothing. */
+  /** Tick of its last input change or command, for the idle kick. */
   activeAt = 0;
   cheatAttempts = 0;
   /** Entity index of the visible body, or -1 (spectating, dead). */
   ent = -1;
   /** Species whose movement parameters step the body. */
   kind = 0;
-  /**
-   * The entity this session's inputs drive in place of its own body (a
-   * creature it rides), or -1; and that entity's generation, so that one that
-   * has gone is noticed.
-   */
+  /** The entity its inputs drive in place of its own body (a mount), or -1. driveGen notices one that has gone. */
   drive = -1;
   driveGen = 0;
-  /**
-   * The session's body after the latest tick. With an entity it is a copy of
-   * the entity's columns; without one it is the only copy, stepped in private.
-   */
+  /** With an entity, a copy of its columns after the latest tick. Without one, the only copy. */
   readonly body = new Body();
-  /** Chunk the body is in: the centre of this session's interest. */
+  /** Centre of this session's interest. */
   chunk = 0;
   readonly inputs = new InputBuffer(INPUT_WINDOW);
   heldX = 0;
@@ -177,13 +157,12 @@ export class Client {
   heldYaw = 0;
   heldPitch = 0;
   heldButtons = 0;
-  /** Buttons that went down on the tick just stepped. */
+  /** Buttons that went down this tick. */
   pressed = 0;
-  /** What the body's action step said happened on the tick just stepped (DID_ bits), and how far a shot was drawn. */
+  /** DID_ bits for this tick, and how far a shot was drawn. */
   did = 0;
   drawn = 0;
   private before = 0;
-  /** Newest input tick received. */
   newestInput = 0;
   /** Newest snapshot the client says it decoded. */
   ackTick = 0;
@@ -199,50 +178,42 @@ export class Client {
   syncCursor = 0;
   syncFrom = 0;
   syncTarget = 0;
-  /** Removed rows of the chunk being synced are sent as the removals they went in, not one by one. */
+  /** Removed rows of the chunk being synced go as grouped removals, not row by row. */
   syncByRemoval = false;
   rotate = 0;
   strikes = 0;
   packets = 0;
   reliable = 0;
-  /** Sequence number of the last command accepted. */
   cmdSeq = 0;
   readonly queue: Uint8Array[] = [];
   /** The look this connection brought or chose in the creator, for a survivor that has none yet. */
   look: Uint8Array | null = null;
-  /** Tick from which the next console line is accepted. */
   textReadyAt = 0;
-  /** The session component (state, role, handle, day offset) must be sent. */
+  /** OWN_SESSION must be sent. */
   ownDirty = false;
-  /** Versions of owner-private state this connection has been sent; -1 means nothing yet. */
+  /** Each sent field is the version of owner-private state this connection last got. -1 means nothing yet. */
   sentVitals = -1;
   sentInv = -1;
   sentMarkers = -1;
   sentRespawn = false;
-  /** What was last sent of the creature it is looking into, as one number to compare, and when. */
+  /** What was last sent of the creature it has open, packed into one number, and when. */
   sentSubject = -1;
   sentSubjectAt = 0;
-  /** The places this session was told it may return to life at, in the order told: where, facing which way, and for a bed its ref (else -1). */
+  /** Respawn choices in the order sent. bed is a structure ref, or -1. */
   readonly respawnAt: { x: number; y: number; z: number; yaw: number; bed: number }[] = [];
-  /** The look this connection has been told is its own (by reference), or null. */
   sentLook: Uint8Array | null = null;
-  /** The hotbar slot this connection has been told is in its hands; -2 for not told yet. */
   sentHeld = -2;
-  /** The version of what is acting on its body that this connection has been sent; -1 for not yet. */
   sentBuffs = -1;
-  /** The version of the server's rules this connection has been told; -1 for not yet. */
   sentRules = -1;
-  /** The version of the tribes this connection has been told; and the tick an invitation it was shown runs out, or 0. */
+  /** inviteUntil is the tick the invitation it was shown expires, or 0. */
   sentTribe = -1;
   inviteUntil = 0;
-  /** The voice token this connection has been sent (by reference), or null. */
   sentVoice: Uint8Array | null = null;
-  /** Persistent id of the container this session has open, or 0; and what of it has been sent. */
+  /** Record id of the container it has open, or 0. */
   open = 0;
   sentOpen = 0;
   sentOpenVersion = -1;
 
-  /** Note which buttons went down this tick. */
   edges(): void {
     this.pressed = this.heldButtons & ~this.before;
     this.before = this.heldButtons;
@@ -299,9 +270,9 @@ export class GameServer {
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
   /** A session became active (it has a body or a spectator's focus). */
   onEnter: ((c: Client) => void) | null = null;
-  /** A session is ending. Called before its body, if any, is removed. */
+  /** Called before the session's body, if any, is removed. */
   onExit: ((c: Client) => void) | null = null;
-  /** Called when a session's connection goes while its body stays, and when a returning connection takes that body up again. */
+  /** The connection dropped while the body lingers, or a reconnect took the body over. */
   onPresence: ((c: Client) => void) | null = null;
   /** An entity was created for the session: at login, on respawn, or when it stops spectating. */
   onBody: ((c: Client) => void) | null = null;
@@ -309,25 +280,21 @@ export class GameServer {
   onBodyGone: ((c: Client) => void) | null = null;
   /** Called once per tick after bodies move and commands run, before replication. */
   onStep: ((tick: number) => void) | null = null;
-  /** Called for each connected session just before its snapshot: the moment to send owner-private state. */
+  /** Called for each connected session just before its snapshot. */
   onReplicate: ((c: Client) => void) | null = null;
-  /** A session's body touched down at this many metres per second. */
+  /** speed is in metres per second. */
   onLand: ((c: Client, speed: number) => void) | null = null;
-  /** Whether the survivor of this name has yet to be given a look. Without this hook nobody is sent to the creator. */
+  /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
-  /** Where a returning survivor was last seen, or null for a new one. `dead` means it joins with no body, to choose where to respawn. */
+  /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
   savedPosition: ((name: string) => { x: number; y: number; z: number; yaw: number; dead?: boolean } | null) | null = null;
 
   private readonly handlers: (CommandHandler | null)[] = new Array(256).fill(null);
-  /**
-   * Connections that have not said hello yet. They hold no slot: a slot is
-   * taken only once a hello is accepted, so a returning survivor can reclaim
-   * its lingering session even when every slot is in use.
-   */
+  /** Connections that have not said hello hold no slot, so a returning survivor can reclaim its lingering session on a full server. */
   private readonly pending = new Set<Client>();
   private readonly survivor: number;
   private readonly w = new BitWriter(16384);
-  /** A welcome carries the server's tuning, which may be long: a writer of its own, with room for it. */
+  /** Sized for the tuning string a welcome carries. */
   private readonly welcomeW: BitWriter;
   private readonly r = new BitReader();
   private readonly cur = new EntityView();
@@ -351,19 +318,17 @@ export class GameServer {
     listener.onConnection = (conn) => this.accept(conn);
   }
 
-  /** Connected sessions. A body lingering after a disconnect is not counted. */
+  /** Lingering bodies are not counted. */
   get playerCount(): number {
     let n = 0;
     for (const c of this.clients) if (c?.active && !c.closed) n++;
     return n;
   }
 
-  /** Register the handler for a command op. */
   handle(op: number, fn: CommandHandler): void {
     this.handlers[op] = fn;
   }
 
-  /** Advance the world by one fixed step and replicate. */
   tick(): void {
     const world = this.world;
     const ents = world.ents;
@@ -376,11 +341,10 @@ export class GameServer {
       if (!c.active) continue;
       const inputs = c.inputs;
       if (c.closed) {
-        // Nobody is steering: the body stands, falls, or sinks on its own.
         c.heldX = c.heldZ = c.heldButtons = 0;
       } else if (inputs.has(T)) {
         const i = T & inputs.mask;
-        // Anything other than what it was already doing is the session doing something: it is not idle.
+        // Any change of input counts as activity.
         if (c.heldX !== inputs.moveX[i] || c.heldZ !== inputs.moveZ[i] || c.heldYaw !== inputs.yaw[i] || c.heldPitch !== inputs.pitch[i] || c.heldButtons !== inputs.buttons[i]) c.activeAt = T;
         c.heldX = inputs.moveX[i]!;
         c.heldZ = inputs.moveZ[i]!;
@@ -391,7 +355,7 @@ export class GameServer {
       c.edges();
       c.did = 0;
       const b = c.body;
-      // The body its inputs drive: its own, or something it has been put in charge of, for as long as that is there.
+      // Let go of a mount that died or was replaced.
       if (c.drive >= 0 && ((ents.flags[c.drive]! & F_ALIVE) === 0 || ents.gen[c.drive] !== c.driveGen)) this.release(c);
       const driving = c.drive >= 0;
       const e = driving ? c.drive : c.ent;
@@ -399,12 +363,12 @@ export class GameServer {
         ents.loadBody(e, b);
         stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[b.kind]!, TICK_DT);
         if (!driving) {
-          // What it does with what it holds. What a swing or a shot lands on is decided once every body has moved.
+          // Hits are resolved later, once every body has moved.
           stepAction(b, c.heldButtons, c.pressed, world.reg.weapon[b.held] ?? FISTS);
           c.did = (actionOut.strike ? DID_STRIKE : 0) | (actionOut.fire ? DID_FIRE : 0) | (actionOut.reloaded ? DID_RELOAD : 0);
           c.drawn = actionOut.draw;
         } else {
-          // What it drives has jaws: the primary button is its bite, through the step every blow goes through.
+          // A mount's bite goes through the same action step as any blow.
           const jaws = world.reg.weapon[b.kind];
           if (jaws) {
             stepAction(b, c.heldButtons, c.pressed, jaws);
@@ -427,7 +391,7 @@ export class GameServer {
     for (const c of this.pending) if (T >= c.helloBy) this.reject(c, REJECT_MALFORMED);
 
     this.onStep?.(T);
-    // Everything has moved: this is the world as snapshots of this tick will show it.
+    // History records the world as this tick's snapshots show it.
     world.history.record(T);
 
     const snap = T % this.opts.snapshotEvery === 0;
@@ -446,7 +410,6 @@ export class GameServer {
     }
   }
 
-  /** Disconnect a client, telling it why. */
   reject(c: Client, reason: number): void {
     const w = this.w;
     w.reset();
@@ -456,7 +419,7 @@ export class GameServer {
     c.conn.close();
   }
 
-  /** Send text to a client, one message per line. */
+  /** One message per line. */
   sendText(c: Client, channel: number, text: string): void {
     if (c.closed) return;
     const w = this.w;
@@ -470,7 +433,7 @@ export class GameServer {
     }
   }
 
-  /** Start an OWN message for `component`; write its fields to the returned writer, then call `endOwn`. */
+  /** Start an OWN message. Write its fields to the returned writer, then call endOwn. */
   beginOwn(component: number): BitWriter {
     const w = this.w;
     w.reset();
@@ -491,16 +454,11 @@ export class GameServer {
     return w;
   }
 
-  /** Every client must be sent its session component again (the day offset changed). */
   markAllOwn(): void {
     for (const c of this.clients) if (c?.active) c.ownDirty = true;
   }
 
-  /**
-   * Turn spectating on or off. A spectator's body is private: stepped from the
-   * same inputs by the same function, but never in the entity store, so nobody
-   * sees it and it touches nothing. Returns false if there is no room to return.
-   */
+  /** A spectator's body is private: stepped by the same function, but never in the entity store. Returns false if there is no room to return. */
   setSpectating(c: Client, on: boolean): boolean {
     if (on === (c.state === SESSION_SPECTATING)) return true;
     if (on) {
@@ -511,18 +469,13 @@ export class GameServer {
     return true;
   }
 
-  /** The session's body dies: it is removed, and the session waits, unmoving, where it fell. */
   kill(c: Client): void {
     this.dropBody(c);
     this.makeDead(c);
     c.ownDirty = true;
   }
 
-  /**
-   * Put a session's inputs in charge of entity `e` in place of its own body.
-   * Its own body stays where it is, unstepped, until `release`. False if the
-   * session has no body, already drives something, or `e` cannot be driven.
-   */
+  /** Put a session's inputs in charge of entity `e`. Its own body stays, unstepped, until `release`. */
   take(c: Client, e: number): boolean {
     const ents = this.world.ents;
     if (c.ent < 0 || c.drive >= 0 || e === c.ent || (ents.flags[e]! & (F_ALIVE | F_PLAYER | F_PROP)) !== F_ALIVE || ents.driven[e] !== 0) return false;
@@ -533,7 +486,6 @@ export class GameServer {
     return true;
   }
 
-  /** Hand what a session drives back to itself; the session's inputs go to its own body again. */
   release(c: Client): void {
     const ents = this.world.ents;
     if (c.drive < 0) return;
@@ -541,7 +493,7 @@ export class GameServer {
     c.drive = -1;
   }
 
-  /** Give a session that is in the creator its body, with the look it chose. False if it is not creating or there is no room. */
+  /** False if the session is not in the creator or there is no room. */
   create(c: Client, look: Uint8Array): boolean {
     if (c.state !== SESSION_CREATING) return false;
     c.look = look;
@@ -550,8 +502,7 @@ export class GameServer {
     return true;
   }
 
-  /** Bring a dead session back to life at a place (or near it, if the spot is taken). */
-  /** Give a dead session a body again at (x, z), on the ground unless a height is given (a bed on an upper floor). */
+  /** `y` defaults to the ground. A bed on an upper floor passes its own. */
   revive(c: Client, x: number, z: number, yaw: number, y = this.world.hf.heightAt(x, z)): boolean {
     if (c.state !== SESSION_DEAD || !this.spawnBody(c, { x, y, z, yaw })) return false;
     c.ownDirty = true;
@@ -575,11 +526,7 @@ export class GameServer {
     c.state = SESSION_SPECTATING;
   }
 
-  /**
-   * Create the session's entity at `at`, or where its survivor was last seen,
-   * or near the spawn point; on the first free spot around that place if the
-   * place itself is taken.
-   */
+  /** Spawns at `at`, else where the survivor was last seen, else the spawn point. If that spot is taken, the first free one around it. */
   private spawnBody(c: Client, at?: { x: number; y: number; z: number; yaw: number }): boolean {
     const world = this.world;
     const kind = this.survivor;
@@ -635,7 +582,7 @@ export class GameServer {
   }
 
   private accept(conn: Connection): void {
-    // As many may be on their way in as the server can hold: a full house arriving at once is not an attack.
+    // A full server reconnecting at once is not an attack.
     if (this.pending.size >= Math.max(MAX_PENDING, this.opts.maxClients)) {
       const w = this.w;
       w.reset();
@@ -656,12 +603,11 @@ export class GameServer {
     conn.onClose = () => this.remove(c, conn);
   }
 
-  /** The connection closed. A living body stays for a while; anything else leaves now. */
+  /** The connection closed. A living body lingers, anything else leaves now. */
   private remove(c: Client, conn: Connection): void {
     if (this.pending.delete(c)) return;
     if (this.clients[c.id] !== c || c.conn !== conn || c.closed) return;
     if (c.active && c.ent >= 0 && this.opts.lingerTicks > 0) {
-      // Whatever it was driving is let go; its own body is what stays.
       this.release(c);
       c.closed = true;
       c.lingerUntil = this.world.tick + this.opts.lingerTicks;
@@ -714,17 +660,15 @@ export class GameServer {
     const newest = readInputs(r, c.inputs, this.world.tick, ack, behind);
     if (newest === 0) return false;
     if (newest <= this.world.tick) this.stats.lateInputs++;
-    // Remember the newest tick named even when it is too far ahead to buffer:
-    // the margin sent back is what tells a client its clock has run away. It
-    // only moves forward, except by a whole window at once, which is a client
-    // that restarted its clock rather than a packet out of order.
+    // Track the newest tick even when it is too far ahead to buffer, because the margin sent back tells a
+    // client its clock has run away. It moves backward only by a whole window, which is a restarted clock.
     if (newest > c.newestInput || newest < c.newestInput - INPUT_WINDOW) c.newestInput = newest;
     // An ack can only name a snapshot that was sent, and only move forward.
     if (ack > c.ackTick && ack <= c.lastSnapshot) c.ackTick = ack;
     return true;
   }
 
-  /** Queue a command. The sequence must be exactly one more than the last; a gap means a broken client. */
+  /** A gap in the sequence means a broken client. */
   private command(c: Client, r: BitReader, data: Uint8Array): boolean {
     const seq = r.u16();
     r.u8();
@@ -751,7 +695,7 @@ export class GameServer {
     }
   }
 
-  /** Tell a session something a command's answer would, when no command of its asked: a result with no sequence number. */
+  /** A result with no sequence number, for news no command asked for. */
   notify(c: Client, code: number): void {
     this.result(c, 0, code);
   }
@@ -767,7 +711,7 @@ export class GameServer {
 
   private hello(c: Client, r: BitReader): boolean {
     const version = r.u16();
-    // Another version lays the rest out its own way: nothing more of it is read.
+    // Another version lays the rest out differently, so nothing more is read.
     if (!r.overflow && version !== PROTOCOL_VERSION) return this.refuse(c, REJECT_VERSION);
     const contentHash = r.u32();
     const clipHash = r.u32();
@@ -784,15 +728,13 @@ export class GameServer {
     if (r.overflow) return false;
     if (look && !validLook(look)) return this.refuse(c, REJECT_MALFORMED);
     const world = this.world;
-    // The same definitions and the same clips: a body must be posed alike on both sides. The definitions as they were
-    // written: what this server's settings make of them the client is told as it is welcomed, and makes of them itself.
+    // The client hashes content as written. The welcome tells it this server's tuning, and it derives the rest.
     if (contentHash !== world.reg.baseHash || clipHash !== world.anim.set.hash) return this.refuse(c, REJECT_CONTENT);
-    // The server's password, asked of everyone who joins: of one coming back to a body that is waiting, too.
+    // A reconnect to a lingering body is asked too.
     if (this.opts.password !== "" && !sameText(password, this.opts.password)) return this.refuse(c, REJECT_PASSWORD);
     if (!NAME.test(name)) return this.refuse(c, REJECT_NAME);
     if (this.authorize && !this.authorize(name, key)) return this.refuse(c, REJECT_DENIED);
-    // One body per survivor. A second login is refused unless the first
-    // connection is gone, in which case this one takes over its body.
+    // One body per survivor. A second login is refused unless the first connection is gone, and then it takes over the body.
     for (const other of this.clients) {
       if (!other?.active || other.name !== name) continue;
       if (!other.closed) return this.refuse(c, REJECT_NAME);
@@ -824,14 +766,14 @@ export class GameServer {
     } else {
       const saved = this.savedPosition?.(name);
       if (saved?.dead) {
-        // It died before it left: it returns with no body, to choose where to respawn.
+        // It died before it left, so it joins with no body and chooses where to respawn.
         c.body.x = saved.x;
         c.body.y = saved.y;
         c.body.z = saved.z;
         this.makeDead(c);
         c.chunk = chunkAt(world.dims, saved.x, saved.z);
       } else if (!look && this.needsLook?.(name)) {
-        // A new survivor that did not bring a look: it waits at the spawn point, bodiless, in the creator.
+        // A new survivor without a look waits in the creator, bodiless.
         const b = c.body;
         b.x = world.spawn.x;
         b.z = world.spawn.z;
@@ -868,7 +810,7 @@ export class GameServer {
     if (c.ent >= 0) ents.loadBody(c.ent, c.body);
     writeBody(w, c.body);
     w.u16(c.heldYaw);
-    // Content as this server has it, and how to make it of content as it was written.
+    // The tuned content's hash, and the tuning that derives it from content as written.
     w.u32(world.reg.hash);
     w.string(world.reg.tuning);
     w.f64(world.clock.cycle);
@@ -911,13 +853,11 @@ export class GameServer {
     const world = this.world;
     const ents = world.ents;
     const dims = world.dims;
-    // Its own body is not in its own view: the client draws that from its prediction. While it drives
-    // something else, both that and its own body are, as anyone else's would be.
+    // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
     const e = c.drive >= 0 ? -1 : c.ent;
 
-    // Entities in the chunks around the session's focus, nearest chunks first, in three classes: other
-    // players; then whatever is moving or doing something; then what stands idle, and things. When there
-    // are more than a view holds, it fills in that order, so a crowd of idle creatures never hides a player.
+    // The view fills in three classes: players, then anything moving or acting, then idle entities and props.
+    // A crowd of idle creatures never hides a player.
     const ccx = chunkCx(dims, c.chunk);
     const ccz = chunkCz(dims, c.chunk);
     const ids = this.ids;
@@ -962,16 +902,15 @@ export class GameServer {
     w.bits(S_SNAPSHOT, 4);
     w.u32(T);
     w.u8(base ? age : 0);
-    // Before the first input arrives there is no margin to report. Saying so
-    // matters: "0 - T" would tell a client joining a long-running world that
-    // it is hopelessly late, and it would jump out of the input window.
+    // Before the first input there is no margin. Sending 0 - T would tell a client joining a
+    // long-running world that it is hopelessly late.
     let margin = c.newestInput - T;
     if (c.newestInput === 0) margin = MARGIN_UNKNOWN;
     else if (margin < -127) margin = -127;
     else if (margin > 127) margin = 127;
     w.sbits(margin, 8);
     w.bits(c.state, 2);
-    // What the body that follows is: its own (0), or the entity it drives, plus one.
+    // 0 for its own body, else the index of the entity it drives plus one.
     w.varint(c.drive + 1);
     writeBody(w, c.body);
     c.rotate = writeViewDelta(w, base, cur, next, this.opts.snapshotBytes * 8 - w.pos, c.rotate);
@@ -979,7 +918,7 @@ export class GameServer {
     c.conn.send(CH_UNRELIABLE, w.bytes());
   }
 
-  /** Bring the client's structure tables up to date, nearest chunk first, within a per-tick budget. */
+  /** Nearest chunk first, within the per-tick slot budget. */
   private syncChunks(c: Client, T: number): void {
     const world = this.world;
     const dims = world.dims;
@@ -1017,18 +956,17 @@ export class GameServer {
     }
   }
 
-  /** Send slots changed since the client's version. Returns the budget left; 0 if the chunk is unfinished. */
+  /** Returns the budget left, or 0 if the chunk is unfinished. */
   private sendChunk(c: Client, chunk: number, t: ChunkTable, budget: number): number {
     if (c.syncChunk !== chunk) {
       c.syncChunk = chunk;
       c.syncCursor = 0;
       c.syncFrom = c.known[chunk]!;
       c.syncTarget = t.version;
-      // If the chunk still remembers every removal since what this client has, it is told of those whole.
-      // A client that has nothing of the chunk has nothing to remove.
+      // A chunk that remembers every removal since this client's version sends those whole.
       c.syncByRemoval = c.syncFrom > 0 && c.syncFrom >= t.goneFloor;
     } else if (c.syncByRemoval && c.syncFrom < t.goneFloor) {
-      // One of those removals has been forgotten since: begin again, row by row.
+      // One of those removals has been forgotten since. Start again, row by row.
       c.syncByRemoval = false;
       c.syncCursor = 0;
     }
@@ -1062,7 +1000,7 @@ export class GameServer {
     }
     const final = s >= t.high;
     const rows = count;
-    // With the last of the rows: what went, as the removals it went in. A wing of a building is a few runs of slots.
+    // Removals go with the last rows, each as runs of slots.
     let removals = 0;
     const at = w.pos;
     w.u8(0);
@@ -1070,7 +1008,7 @@ export class GameServer {
       const T = this.world.tick;
       for (const g of t.gone) {
         if (g.version <= c.syncFrom || g.version > c.syncTarget) continue;
-        // Why it went is news only for a moment; after that it is simply gone.
+        // The cause is news only briefly. After that the rows are just gone.
         const cause = T - g.stamp <= REMOVAL_NEWS_TICKS ? g.cause : GONE_TAKEN;
         w.varint(c.syncTarget - g.version);
         w.bits(cause, 2);
@@ -1080,7 +1018,7 @@ export class GameServer {
           w.f32(g.z);
           w.u32(g.stamp);
         }
-        // Each run from where the one before ended: slots that went together are mostly near each other.
+        // Each run is coded from where the one before ended.
         w.varint(g.runs.length / 2);
         let last = 0;
         for (let k = 0; k < g.runs.length; k += 2) {

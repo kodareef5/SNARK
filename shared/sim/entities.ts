@@ -1,9 +1,5 @@
-// Dynamic entities: players, creatures, projectiles. Things that move.
-//
-// Struct-of-arrays with generational handles. No per-entity objects, so the
-// tick allocates nothing and iterates memory in order. Each entity is linked
-// into the list of the chunk it stands in; interest, dormancy and broad-phase
-// queries all walk those lists.
+// Struct-of-arrays store for everything that moves. There are no per-entity objects, so the tick
+// allocates nothing. Each entity is linked into the list of the chunk it stands in.
 
 import { chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import { HANDLE_GEN_MASK, HANDLE_INDEX_MASK, NULL_HANDLE, handleGen, handleIndex, makeHandle } from "../ids.ts";
@@ -13,7 +9,7 @@ import { MODE_WALK, STAMINA_UNITS, type Body } from "./character.ts";
 
 const posed = new AnimState();
 
-/** What `EntityStore.gear` holds: the item in hand, then the piece worn in each of the five armor slots. */
+/** Indices into EntityStore.gear: the item in hand, then one per armor slot. */
 export const GEAR_HELD = 0;
 export const GEAR_WORN = 1;
 export const GEAR_COUNT = 6;
@@ -33,7 +29,6 @@ export class EntityStore {
 
   readonly gen: Uint16Array;
   readonly flags: Uint8Array;
-  /** Content index of the species. */
   readonly kind: Uint16Array;
   readonly x: Float32Array;
   readonly y: Float32Array;
@@ -45,14 +40,11 @@ export class EntityStore {
   readonly yaw: Uint16Array;
   /** Persistent id, or 0 for entities that are never saved. */
   readonly pid: Float64Array;
-  /** Where it looks, in the units of an input's pitch: 16384 is straight up. */
+  /** In input pitch units: 16384 is straight up. */
   readonly pitch: Int16Array;
-  /**
-   * What its pose is made from, packed as shared/net/view.ts sends it. Written
-   * by whoever moves the body; read by replication and by the hit test.
-   */
+  /** The pose, packed as shared/net/view.ts sends it. Whoever moves the body writes it. */
   readonly anim: Uint32Array;
-  /** The rest of the predicted body state; see `Body` in character.ts. */
+  /** The rest of the predicted state. See `Body` in character.ts. */
   readonly mode: Uint8Array;
   readonly stance: Uint8Array;
   readonly stamina: Int32Array;
@@ -60,39 +52,30 @@ export class EntityStore {
   readonly speedQ: Uint16Array;
   readonly swimQ: Uint16Array;
   readonly mflags: Uint8Array;
-  /** What it does with what it holds (shared/sim/weapon.ts): the act, its ticks, rounds loaded, and what a reload would bring that to. */
+  /** Action state (shared/sim/weapon.ts): the act, its ticks, rounds loaded, and what a reload would bring that to. */
   readonly act: Uint8Array;
   readonly actTicks: Uint8Array;
   readonly rounds: Uint8Array;
   readonly reloadTo: Uint8Array;
-  /** How it carries what it holds (HOLD_*), for its pose. Set with its gear. */
+  /** HOLD_*, for the pose. Set with its gear. */
   readonly hold: Uint8Array;
-  /** 1 while a session's inputs drive it in place of its own behaviour (a mount). */
+  /** 1 while a session's inputs drive it (a mount). */
   readonly driven: Uint8Array;
   /**
-   * More of what others are told when it enters their view, each 0 for none:
-   * the team that owns it; the entity it sits on, plus one; and for the young
-   * the ticks its growing takes and the tick it ends. Changed only through the setters,
-   * so `rev` follows.
+   * Sent when it enters a view, 0 for none: the owning team, the entity it sits on plus one, and for the
+   * young the ticks its growing takes and the tick it ends. Set only through the setters, so `rev` follows.
    */
   readonly team: Uint32Array;
   readonly seat: Uint32Array;
   readonly span: Uint32Array;
   readonly grown: Uint32Array;
-  /**
-   * What others are told about a body when it enters their view: level, six
-   * region colours, a name. `rev` changes whenever any of it does.
-   */
+  /** Also sent when it enters a view. `rev` changes whenever any of it does. */
   readonly level: Uint16Array;
   readonly colors: Uint8Array;
   readonly name: string[];
-  /** A survivor's look (shared/anim/look.ts), or null: most entities have none. */
+  /** A survivor's look (shared/anim/look.ts). */
   readonly look: (Uint8Array | null)[];
-  /**
-   * What it holds and wears, as content indices: GEAR_HELD, then one per armor
-   * slot. Null for an entity that carries no equipment. Replaced, never changed
-   * in place.
-   */
+  /** Content indices: GEAR_HELD, then one per armor slot. Replaced, never changed in place. */
   readonly gear: (Uint16Array | null)[];
   readonly rev: Uint8Array;
 
@@ -157,7 +140,7 @@ export class EntityStore {
     this.freeCount = cap;
   }
 
-  /** Create an entity. Returns its index, or -1 when the store is full. */
+  /** Returns the index, or -1 when the store is full. */
   create(kind: number, x: number, y: number, z: number, flags: number): number {
     if (this.freeCount === 0) return -1;
     const i = this.freeRing[this.freeRead]!;
@@ -203,7 +186,7 @@ export class EntityStore {
     return i;
   }
 
-  /** Set what others see of an entity. If anything changed, clients that already see it are sent it again. */
+  /** The setters bump `rev` only on a change, and clients that already see the entity are then sent it again. */
   setLook(i: number, level: number, colors: ArrayLike<number> | null, name: string): void {
     if (level > 65535) level = 65535;
     // 24 characters is at most 72 bytes, which is what a snapshot will carry.
@@ -217,23 +200,22 @@ export class EntityStore {
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
-  /** Say which team owns an entity (0 for none). Clients that see it are told if that changed. */
   setTeam(i: number, team: number): void {
     if (this.team[i] === team) return;
     this.team[i] = team;
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
-  /** Say what an entity sits on: another entity's index, or -1 for nothing. */
+  /** `mount` is an entity index, or -1. */
   setSeat(i: number, mount: number): void {
     if (this.seat[i] === mount + 1) return;
     this.seat[i] = mount + 1;
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
-  /** Say how many ticks a young entity's growing takes and the tick it will be grown (both 0 for one that is grown). */
+  /** Both 0 for one that is grown. */
   setYoung(i: number, span: number, grown: number): void {
-    // Each is 32 bits here and on the wire: growing made slow enough to pass that is shown as the longest there is.
+    // Both are 32 bits here and on the wire.
     if (span > 0xffffffff) span = 0xffffffff;
     if (grown > 0xffffffff) grown = 0xffffffff;
     if (this.span[i] === span && this.grown[i] === grown) return;
@@ -242,13 +224,11 @@ export class EntityStore {
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
-  /** Give an entity a look, or take it away. Clients that already see it are sent it again. */
   setBodyLook(i: number, look: Uint8Array | null): void {
     this.look[i] = look;
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
-  /** Say what an entity holds and wears (GEAR_COUNT content indices). Clients that see it are told only if it changed. */
   setGear(i: number, gear: ArrayLike<number>): void {
     const old = this.gear[i];
     let same = old !== null && old !== undefined;
@@ -258,11 +238,7 @@ export class EntityStore {
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
-  /**
-   * Bring `anim[i]` up to date with how the entity moves, where it looks and
-   * what it is doing at `tick`. Whoever changes its velocity, facing, pitch,
-   * mode, stance or act calls this.
-   */
+  /** Brings `anim[i]` up to date. Call it after changing velocity, facing, pitch, mode, stance or act. */
   pose(i: number, tick = 0): void {
     posed.mode = this.mode[i]!;
     posed.grounded = (this.flags[i]! & F_GROUNDED) !== 0;
@@ -272,7 +248,6 @@ export class EntityStore {
     this.anim[i] = posed.pack();
   }
 
-  /** Copy an entity's predicted state into `b`. */
   loadBody(i: number, b: Body): void {
     b.x = this.x[i]!;
     b.y = this.y[i]!;
@@ -297,7 +272,7 @@ export class EntityStore {
     b.reloadTo = this.reloadTo[i]!;
   }
 
-  /** Write back what a step may change. Returns true if the entity changed chunk. */
+  /** Returns true if the entity changed chunk. */
   storeBody(i: number, b: Body): boolean {
     this.vx[i] = b.vx;
     this.vy[i] = b.vy;
@@ -338,7 +313,7 @@ export class EntityStore {
     return i;
   }
 
-  /** Move an entity, keeping its chunk link current. Returns true if it changed chunk. */
+  /** Returns true if it changed chunk. */
   setPosition(i: number, x: number, y: number, z: number): boolean {
     this.x[i] = x;
     this.y[i] = y;
