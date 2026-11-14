@@ -1,14 +1,17 @@
-// What the client knows of every asset without its bytes: its levels, its size, what it hangs on. Today this is read
-// from the whole pack. When assets stream it is read from a manifest, and nothing that uses the table changes.
+// What the client knows of every asset without its bytes: its levels, its size, what it hangs on. Meshes are read from
+// the manifest, and rigs and clips from the boot pack, which is whole at start.
 
 import type { Slot } from "../../../shared/content/classes.ts";
-import { lodVertices, type Pack } from "../../../shared/pack/pack.ts";
+import type { Manifest } from "../../../shared/pack/manifest.ts";
+import type { Pack } from "../../../shared/pack/pack.ts";
 
 export class AssetTable {
-  /** Meshes. A mesh is known by its index here, which is its index in the pack. */
+  /** Meshes. A mesh is known by its index here, which is its index in the manifest. */
   readonly count: number;
   /** Triangles of each level of each mesh, finest first. */
   readonly tris: readonly (readonly number[])[];
+  /** How far, in metres, each level's surface lies from the finest level's (see PackLod). */
+  readonly error: readonly (readonly number[])[];
   /** Radius, in metres, of a sphere about the mesh's origin that holds it. */
   readonly radius: Float32Array;
   /** The skeleton each mesh follows, or "". */
@@ -21,18 +24,18 @@ export class AssetTable {
   private readonly rigs: ReadonlySet<string>;
   private readonly clips: ReadonlyMap<string, number>;
 
-  constructor(pack: Pack) {
-    const meshes = pack.header.meshes;
+  constructor(manifest: Manifest, boot: Pack) {
+    const meshes = manifest.meshes;
     this.count = meshes.length;
-    this.index = pack.meshIndex;
-    this.tris = meshes.map((m) => m.lods.map((l) => l.indexCount / 3));
+    this.index = new Map(meshes.map((m, i) => [m.id, i]));
+    this.tris = meshes.map((m) => m.levels.map((l) => l.tris));
+    this.error = meshes.map((m) => m.levels.map((l) => l.error));
     this.radius = Float32Array.from(meshes, (m) => Math.hypot(m.half[0], m.half[1], m.half[2]) + Math.hypot(m.center[0], m.center[1], m.center[2]));
     this.skeleton = meshes.map((m) => m.skeleton ?? "");
     this.rig = Int16Array.from(meshes, (m) => m.rig ?? -1);
-    // Every vertex of a one-bone mesh names the same bone, so the first vertex says which.
-    this.bone = Uint8Array.from(meshes, (m) => (m.skeleton !== undefined && m.lods[0]!.vertexCount > 0 ? lodVertices(pack, m.lods[0]!)[7]! : 0));
-    this.rigs = new Set(pack.header.rigs.map((r) => r.id));
-    this.clips = pack.clips.index;
+    this.bone = Uint8Array.from(meshes, (m) => m.bone ?? 0);
+    this.rigs = new Set(boot.header.rigs.map((r) => r.id));
+    this.clips = boot.clips.index;
   }
 
   /** The index of the mesh with this id, or -1. */

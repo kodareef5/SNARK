@@ -4,7 +4,7 @@
 import { NEAR_BODY } from "../../client/core/render/camera.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SKINNED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
-import { INSTANCE_BYTES, VERTEX_BYTES, lodIndices, lodVertices, type Pack } from "../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, VERTEX_BYTES, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 
@@ -17,7 +17,7 @@ interface DecodedLod {
   positions: Float32Array;
   colors: Uint8Array;
   bones: Uint8Array;
-  indices: Uint16Array;
+  indices: Uint32Array;
 }
 
 export class Rasterizer {
@@ -205,11 +205,7 @@ export class Rasterizer {
       colors[v] = verts[v * VERTEX_BYTES + 6]!;
       bones[v] = verts[v * VERTEX_BYTES + 7]!;
     }
-    const idx = lodIndices(this.pack, m.lods[level]!);
-    const iview = new DataView(idx.buffer, idx.byteOffset, idx.byteLength);
-    const indices = new Uint16Array(m.lods[level]!.indexCount);
-    for (let i = 0; i < indices.length; i++) indices[i] = iview.getUint16(i * 2, true);
-    lod = { positions, colors, bones, indices };
+    lod = { positions, colors, bones, indices: readIndices(this.pack, m.lods[level]!) };
     this.lods.set(key, lod);
     return lod;
   }

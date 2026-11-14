@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
-import { VERTEX_BYTES, lodIndices, lodVertices, parsePack } from "../../shared/pack/pack.ts";
+import { AssetTable } from "../../client/core/assets/table.ts";
+import { describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
+import { VERTEX_BYTES, lodIndices, lodVertices, parsePack, readIndices } from "../../shared/pack/pack.ts";
 import { HUMAN, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
-import { MISSING_MESH, buildCorePack } from "../../tools/pack/build.ts";
+import { MISSING_MESH, buildCorePack, coreClips } from "../../tools/pack/build.ts";
+import { surfaceError } from "../../tools/pack/error.ts";
 import { importGlb } from "../../tools/pack/glb.ts";
+import { manifestOf, partHash } from "../../tools/pack/manifest.ts";
+import { buildPack, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
 import { sampleGlb } from "../fixtures/glb.ts";
 
 test("a glTF export becomes a pack mesh with levels of detail, colour regions and a collider", () => {
@@ -114,4 +119,112 @@ test("the pack carries bodies cut into slots, each vertex on one bone, and the c
   broken.set(new TextEncoder().encode(header), 12);
   broken.set(pack.blob, 12 + header.length);
   expect(() => parsePack(broken)).toThrow(/clip/);
+});
+
+/** A square of `n` by `n` cells, two metres across, lying flat at height `y`. */
+function plate(n: number, y: number): SourceLod {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) positions.push((i / n) * 2 - 1, y, (j / n) * 2 - 1);
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const a = j * (n + 1) + i;
+      indices.push(a, a + n + 1, a + 1, a + 1, a + n + 1, a + n + 2);
+    }
+  }
+  return { positions: Float32Array.from(positions), colors: new Uint8Array(positions.length / 3), indices: Uint32Array.from(indices) };
+}
+
+test("a level is one run of bytes, and says how wide its indices are and how far it lies from the finest", () => {
+  expect(surfaceError(plate(4, 0), plate(1, 0.25))).toBeCloseTo(0.25, 6);
+  expect(surfaceError(plate(4, 0), plate(1, 0))).toBeCloseTo(0, 6);
+  // One stray triangle in a hundred does not speak for the mesh.
+  const stray = plate(8, 0);
+  stray.positions[1] = 3;
+  expect(surfaceError(plate(8, 0), stray)).toBeLessThan(0.5);
+
+  const wide = plate(256, 0);
+  const pack = parsePack(buildPack([{ id: "t:plate", lods: [plate(4, 0), plate(2, 0.25), { ...plate(1, 0.25), error: 0.5 }] }, { id: "t:wide", lods: [wide] }], defaultPalette()));
+  const [small, big] = [pack.header.meshes[pack.meshIndex.get("t:plate")!]!, pack.header.meshes[pack.meshIndex.get("t:wide")!]!];
+  // Measured where it was not given, and kept where it was.
+  expect(small.lods.map((l) => [l.indexBytes, l.error])).toEqual([[2, 0], [2, 0.25], [2, 0.5]]);
+  for (const l of [...small.lods, ...big.lods]) expect(l.vertexOffset).toBe(l.indexOffset + ((l.indexCount * l.indexBytes + 3) & ~3));
+  // 257 by 257 corners are more than sixteen bits count.
+  expect([big.lods[0]!.vertexCount, big.lods[0]!.indexBytes, lodIndices(pack, big.lods[0]!).length]).toEqual([66049, 4, 256 * 256 * 6 * 4]);
+  expect(readIndices(pack, big.lods[0]!)).toEqual(wide.indices);
+  const back = unpackMeshes(pack);
+  expect(back.map((m) => m.lods.map((l) => l.error))).toEqual([[undefined, 0.25, 0.5], [undefined]]);
+  expect(back[1]!.lods[0]!.indices).toEqual(wide.indices);
+});
+
+/** The same file as the version before wrote its header. */
+function asVersion2(file: Uint8Array): Uint8Array {
+  const length = new DataView(file.buffer, file.byteOffset).getUint32(8, true);
+  const header = JSON.parse(new TextDecoder().decode(file.subarray(12, 12 + length)));
+  for (const m of header.meshes) {
+    for (const l of m.lods) {
+      delete l.indexBytes;
+      delete l.error;
+    }
+  }
+  const out = file.slice();
+  out.set(new TextEncoder().encode(JSON.stringify(header).padEnd(length, " ")), 12);
+  new DataView(out.buffer).setUint16(4, 2, true);
+  return out;
+}
+
+test("a version 2 pack is still read, and the clips hash the same with or without meshes", () => {
+  const file = buildCorePack();
+  const [now, old] = [parsePack(file), parsePack(asVersion2(file))];
+  const body = old.header.meshes[old.meshIndex.get("core:human_f/torso")!]!;
+  expect(body.lods.map((l) => [l.indexBytes, l.error])).toEqual([[2, NaN], [2, NaN], [2, NaN]]);
+  expect(readIndices(old, body.lods[1]!)).toEqual(readIndices(now, now.header.meshes[now.meshIndex.get("core:human_f/torso")!]!.lods[1]!));
+  expect(unpackMeshes(old).every((m) => m.lods.every((l) => l.error === undefined))).toBe(true);
+  expect(old.clips.hash).toBe(now.clips.hash);
+  // The handshake hashes the clips alone, so a pack split into files answers as the whole one does.
+  expect(parsePack(buildPack([], defaultPalette(), coreClips())).clips.hash).toBe(now.clips.hash);
+  // Every body's levels lie further from the finest as they get coarser, and none by more than a hand's width.
+  for (const m of now.header.meshes.filter((m) => m.lods.length === 3)) {
+    const [fine, mid, far] = m.lods.map((l) => l.error) as [number, number, number];
+    expect([m.id, fine === 0 && mid > 0 && far > mid && far < 0.1]).toEqual([m.id, true]);
+  }
+});
+
+test("the manifest lists every level with the bytes that hold it, and reads back as it was written", () => {
+  const file = buildCorePack();
+  const pack = parsePack(file);
+  const manifest = manifestOf("core.snpk", file);
+  const text = JSON.stringify(manifest);
+  expect(parseManifest(text)).toEqual(manifest);
+  expect([manifest.files, manifest.boot, manifest.clipHash, manifest.meshes.length]).toEqual([[{ name: "core.snpk", bytes: file.length, role: "boot" }], 0, pack.clips.hash, pack.header.meshes.length]);
+  let levels = 0;
+  for (const m of manifest.meshes) {
+    for (const level of m.levels) {
+      const part = level.parts[0]!;
+      expect(part.hash).toMatch(/^[0-9a-f]{16}$/);
+      expect(part.hash).toBe(partHash(file.subarray(level.at, level.at + part.bytes)));
+      // The run is the indices and then the vertices.
+      expect(new DataView(file.buffer, file.byteOffset + level.at).getUint16(0, true)).toBeLessThan(level.verts);
+      levels++;
+    }
+  }
+  expect(levels).toBe(77 + 40 * 3);
+
+  // What the client knows of the meshes comes out the same from the file as from the pack it describes.
+  const [a, b] = [new AssetTable(parseManifest(text), pack), new AssetTable(describePack(pack, { name: "", bytes: file.length }), pack)];
+  expect([a.count, a.tris, a.error, [...a.radius], a.skeleton, [...a.rig], [...a.bone]]).toEqual([b.count, b.tris, b.error, [...b.radius], b.skeleton, [...b.rig], [...b.bone]]);
+  expect(a.tris[a.find("core:human_m/torso")]).toEqual([1150, 392, 108]);
+  expect(a.has("clip", "human/walk") && a.has("rig", "human_f") && !a.has("mesh", "core:nothing")).toBe(true);
+
+  const bad = (change: (m: Manifest) => void): (() => unknown) => {
+    const m = JSON.parse(text) as Manifest;
+    change(m);
+    return () => parseManifest(JSON.stringify(m));
+  };
+  expect(bad((m) => (m.version = 9))).toThrow(/version/);
+  expect(bad((m) => (m.boot = 3))).toThrow(/boot/);
+  expect(bad((m) => (m.meshes[1]!.id = m.meshes[0]!.id))).toThrow(/twice/);
+  expect(bad((m) => (m.meshes[0]!.levels[0]!.at = file.length))).toThrow(/outside/);
+  expect(bad((m) => (m.meshes[0]!.levels[0]!.verts += 1))).toThrow(/size/);
+  expect(bad((m) => (m.meshes[0]!.levels = []))).toThrow(/no level/);
 });

@@ -1,8 +1,9 @@
-// Builds client/dist: the bundled shell, the voice worker and worklets, the page and the core asset pack.
+// Builds client/dist: the bundled shell, the voice worker and worklets, the page, the core asset pack and its manifest.
 
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { buildCorePack } from "./pack/build.ts";
+import { manifestOf } from "./pack/manifest.ts";
 
 export async function buildClient(): Promise<{ jsBytes: number; packBytes: number }> {
   const root = resolve(import.meta.dir, "..");
@@ -15,6 +16,7 @@ export async function buildClient(): Promise<{ jsBytes: number; packBytes: numbe
   copyFileSync(join(root, "client/index.html"), join(dist, "index.html"));
   const pack = buildCorePack();
   writeFileSync(join(dist, "assets/core.snpk"), pack);
+  writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(manifestOf("core.snpk", pack)));
   return { jsBytes: result.outputs.find((o) => o.path.endsWith("main.js"))!.size, packBytes: pack.length };
 }
 

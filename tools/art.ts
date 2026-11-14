@@ -1,17 +1,17 @@
 // Converts third-party art in assets/raw into what the pack build reads in assets/source. Run `bun run art` when
 // the raw files or the conversion change, and commit the output. Building the game does not need it.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { BODY_SCALES, HAIR_STYLES, BEARD_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_MAIN, REGION_SECOND, REGION_SKIN, REGION_TRIM, SEX_IDS } from "../shared/anim/look.ts";
-import type { PackRig } from "../shared/pack/pack.ts";
+import { parsePack, type PackRig } from "../shared/pack/pack.ts";
 import { defaultPalette } from "../shared/pack/palette.ts";
 import { convertHumanClips, type ClipSpec } from "./pack/anim.ts";
 import { readGltf, type Gltf } from "./pack/gltf.ts";
 import { readPng } from "./pack/png-read.ts";
 import { convertBody, type ColorRule, type MaterialRule } from "./pack/skin.ts";
-import { buildPack, type SourceMesh } from "./pack/write.ts";
+import { buildPack, unpackMeshes, type SourceMesh } from "./pack/write.ts";
 import { existsSync } from "node:fs";
 import type { Clip } from "../shared/anim/clip.ts";
 import { ZONE_ARM_L, ZONE_ARM_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../shared/anim/human.ts";
@@ -245,7 +245,17 @@ function convertCreatures(dir: string): { meshes: SourceMesh[]; rigs: PackRig[];
   return out;
 }
 
-if (import.meta.main && process.argv.includes("--creatures")) {
+if (import.meta.main && process.argv.includes("--repack")) {
+  // The files again in today's pack format, made from themselves: no raw art and no Blender. How far each level lies
+  // from the finest is measured afresh.
+  for (const file of [HUMAN_CLIPS_FILE, HUMAN_BODIES_FILE, CREATURES_FILE]) {
+    const pack = parsePack(new Uint8Array(readFileSync(file)));
+    const meshes = unpackMeshes(pack).map((m) => ({ ...m, lods: m.lods.map(({ error: _, ...lod }) => lod) }));
+    const again = buildPack(meshes, defaultPalette(), pack.clips.clips, pack.header.rigs);
+    writeFileSync(file, again);
+    console.log(`${file}\n${again.length} bytes`);
+  }
+} else if (import.meta.main && process.argv.includes("--creatures")) {
   const dir = mkdtempSync(join(tmpdir(), "snark-art-"));
   const made = convertCreatures(dir);
   const pack = buildPack(made.meshes, defaultPalette(), made.clips, made.rigs);

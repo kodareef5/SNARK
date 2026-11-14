@@ -1,7 +1,8 @@
 // Builds pack files from meshes in authoring form.
 
 import type { Clip } from "../../shared/anim/clip.ts";
-import { CLIP_ROOT_BYTES, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, lodIndices, lodVertices, type Pack, type PackHeader, type PackLod, type PackMesh, type PackRig } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, lodVertices, readIndices, type Pack, type PackHeader, type PackMesh, type PackRig } from "../../shared/pack/pack.ts";
+import { surfaceError } from "./error.ts";
 
 /** One level of detail before quantization. */
 export interface SourceLod {
@@ -12,6 +13,8 @@ export interface SourceLod {
   indices: Uint32Array;
   /** The bone each vertex follows, in a mesh with a skeleton. */
   bones?: Uint8Array;
+  /** How far, in metres, its surface lies from the finest level's, where what made it knows. Measured where it is not given. */
+  error?: number;
 }
 
 export interface SourceMesh {
@@ -62,7 +65,6 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
     }
     for (const lod of mesh.lods) {
       const n = lod.positions.length / 3;
-      if (n > 65535) throw new Error(`${mesh.id}: a level of detail has ${n} vertices; the limit is 65535`);
       const verts = new Uint8Array(n * VERTEX_BYTES);
       const view = new DataView(verts.buffer);
       for (let v = 0; v < n; v++) {
@@ -74,11 +76,14 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
         if (lod.bones) verts[v * VERTEX_BYTES + 7] = lod.bones[v]!;
       }
       if (mesh.skeleton && !lod.bones) throw new Error(`${mesh.id}: a mesh with a skeleton needs a bone for every vertex`);
-      const idx = new Uint8Array(lod.indices.length * 2);
+      const indexBytes = n > 65535 ? 4 : 2;
+      const idx = new Uint8Array(lod.indices.length * indexBytes);
       const iview = new DataView(idx.buffer);
-      lod.indices.forEach((i, k) => iview.setUint16(k * 2, i, true));
-      const packed: PackLod = { vertexOffset: append(verts), vertexCount: n, indexOffset: append(idx), indexCount: lod.indices.length };
-      out.lods.push(packed);
+      lod.indices.forEach((i, k) => (indexBytes === 4 ? iview.setUint32(k * 4, i, true) : iview.setUint16(k * 2, i, true)));
+      const error = lod === mesh.lods[0] ? 0 : Math.round((lod.error ?? surfaceError(mesh.lods[0]!, lod)) * 1e5) / 1e5;
+      // Indices and then vertices, so the level is one run of bytes.
+      const indexOffset = append(idx);
+      out.lods.push({ vertexOffset: append(verts), vertexCount: n, indexOffset, indexCount: lod.indices.length, indexBytes, error });
     }
     header.meshes.push(out);
   }
@@ -121,7 +126,7 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
 /** The meshes of a pack back in authoring form, to put them into another pack. */
 export function unpackMeshes(pack: Pack): SourceMesh[] {
   return pack.header.meshes.map((m) => {
-    const lods = m.lods.map((lod): SourceLod => {
+    const lods = m.lods.map((lod, level): SourceLod => {
       const verts = lodVertices(pack, lod);
       const view = new DataView(verts.buffer, verts.byteOffset, verts.byteLength);
       const positions = new Float32Array(lod.vertexCount * 3);
@@ -132,11 +137,10 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
         colors[v] = verts[v * VERTEX_BYTES + 6]!;
         bones[v] = verts[v * VERTEX_BYTES + 7]!;
       }
-      const idx = lodIndices(pack, lod);
-      const iv = new DataView(idx.buffer, idx.byteOffset, idx.byteLength);
-      const indices = new Uint32Array(lod.indexCount);
-      for (let i = 0; i < indices.length; i++) indices[i] = iv.getUint16(i * 2, true);
-      return m.skeleton ? { positions, colors, indices, bones } : { positions, colors, indices };
+      const out: SourceLod = { positions, colors, indices: readIndices(pack, lod) };
+      if (m.skeleton) out.bones = bones;
+      if (level > 0 && !Number.isNaN(lod.error)) out.error = lod.error;
+      return out;
     });
     const out: SourceMesh = { id: m.id, lods };
     if (m.collider) out.collider = m.collider;
