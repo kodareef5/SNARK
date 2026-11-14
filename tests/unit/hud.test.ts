@@ -49,7 +49,7 @@ test("HUD coordinates, compass and minimap markers follow the map convention", (
   const mine = h.host.spawnCreature("core:dummy", ents.x[h.ent(a)]! - 6, ents.z[h.ent(a)]! + 6, 1);
   const rec = (s: typeof a) => h.host.records.byPid.get(h.client(s)!.pid)!;
   h.host.taming.give(h.host.records.byPid.get(ents.pid[mine]!)!, rec(a), 0, "forced");
-  h.host.tactical.opts.players = "view";
+  expect(h.host.setSetting("MapPlayers", "view")).toBe("");
   expect(kinds()).toEqual(["self", "tame", "player", "creature"]);
   h.host.tribes.create(rec(a), "Night Shift");
   h.host.tribes.invite(rec(a), rec(b), true);

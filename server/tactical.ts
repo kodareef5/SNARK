@@ -12,20 +12,11 @@ import type { MapExtent } from "../shared/world/coords.ts";
 import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, writeCells, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
+import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 
-export interface TacticalOptions {
-  /**
-   * Metres. Another tribe's structures show on a survivor's map once it has been this near them, and stay there after it
-   * leaves. Its own tribe's show anywhere. 0 shows only its own tribe's.
-   */
-  tacticalRadius: number;
-  /** Whether survivors of other tribes are marked on a map: never, those in view, or all of them wherever they are. */
-  players: "off" | "view" | "all";
-}
-
-const DEFAULTS: TacticalOptions = { tacticalRadius: 512, players: "off" };
-const PLAYERS = { off: PLAYERS_OFF, view: PLAYERS_VIEW, all: PLAYERS_ALL };
+/** The words of the MapPlayers rule. Any other word is off. */
+const PLAYERS: Record<string, number> = { off: PLAYERS_OFF, view: PLAYERS_VIEW, all: PLAYERS_ALL };
 
 /** Ticks between two bakes of one chunk, the most chunks baked in a tick, and the most waiting chunks looked at in one. */
 const BAKE_EVERY = 5 * TICK_RATE;
@@ -96,15 +87,19 @@ class TeamMarks {
 }
 
 export class Tactical {
-  readonly opts: TacticalOptions;
-  /** Chunks baked, S_TACTICAL messages and bytes sent, and S_MARKS messages and bytes sent. */
-  readonly stats = { bakes: 0, cells: 0, cellBytes: 0, marks: 0, markBytes: 0 };
+  /**
+   * Chunks baked, S_TACTICAL messages and bytes sent, S_MARKS messages and bytes sent, and the marks left out of those
+   * messages because a tribe had more than one holds.
+   */
+  readonly stats = { bakes: 0, cells: 0, cellBytes: 0, marks: 0, markBytes: 0, marksLeftOut: 0 };
   /** Per chunk, or null for one that has never held a structure. */
   readonly summaries: (Summary | null)[];
 
   private readonly world: ServerWorld;
   private readonly game: GameServer;
   private readonly records: Records;
+  /** TacticalRadius and MapPlayers are read where they are used, so a change takes effect within a second. */
+  private readonly rules: Rules;
   private readonly shapes: PieceShapes;
   private readonly held: (Held | null)[];
   /** Per chunk: the table version last looked at, the tick of its last bake, and whether it waits in `queue`. */
@@ -132,11 +127,11 @@ export class Tactical {
   private far = new Float64Array(0);
   private sorted = new Float64Array(0);
 
-  constructor(world: ServerWorld, game: GameServer, records: Records, opts: Partial<TacticalOptions> = {}) {
+  constructor(world: ServerWorld, game: GameServer, records: Records, rules: Rules) {
     this.world = world;
     this.game = game;
     this.records = records;
-    this.opts = { ...DEFAULTS, ...opts };
+    this.rules = rules;
     const reg = world.reg;
     this.shapes = { halfX: reg.halfX, halfY: reg.halfY, halfZ: reg.halfZ, tint: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0)) };
     const chunks = chunkCount(world.dims);
@@ -250,7 +245,7 @@ export class Tactical {
     // Cells of the size that suits the window of the zoom it shows.
     const level = levelFor(Math.max(this.world.hf.sizeX, this.world.hf.sizeZ) / (1 << h.zoom));
     let budget = CELL_BYTES;
-    const R = this.opts.tacticalRadius;
+    const R = this.rules.num("TacticalRadius");
     if (R > 0) {
       if (this.ringFor !== R) {
         this.ring = nearestFirst(Math.ceil(R / CHUNK_SIZE) + 1);
@@ -322,6 +317,11 @@ export class Tactical {
     }
   }
 
+  /** The MapPlayers rule as a PLAYERS_ value. */
+  private players(): number {
+    return PLAYERS[this.rules.text("MapPlayers").toLowerCase()] ?? PLAYERS_OFF;
+  }
+
   /** Makes this second's marks for every tribe with a session. */
   private mark(): void {
     const ents = this.world.ents;
@@ -344,7 +344,7 @@ export class Tactical {
       this.selfAt[c.id] = m.n;
       m.add(MARK_MATE, ents.x[c.ent]!, ents.z[c.ent]!, ents.yaw[c.ent]!);
     }
-    const everyone = this.opts.players === "all";
+    const everyone = this.players() === PLAYERS_ALL;
     for (const [team, m] of this.marksOf) {
       const tames = this.tames.get(team);
       for (let i = 0; tames && i < tames.length; i++) {
@@ -366,16 +366,19 @@ export class Tactical {
     const m = this.marksOf.get(this.teamOf[c.id]!);
     let self = this.selfAt[c.id]!;
     let count = m ? m.n : 0;
+    let leftOut = 0;
     if (m && count > MAX_MARKS) {
-      // More than a message holds, so this reader gets the nearest to it, written for it alone.
+      // More than a message holds, so this reader gets the nearest to it, written for it alone. The rest are counted.
       this.nearest(m, self, c.body, this.world.hf);
+      leftOut = count - MAX_MARKS - (self < 0 ? 0 : 1);
       count = MAX_MARKS;
       self = -1;
     }
-    const players = PLAYERS[this.opts.players];
+    const players = this.players();
     const head = (self < 0 ? 255 : self) | (h.zoom << 8) | (players << 10) | (count << 12);
     const key = m ? m.key : 0;
     if (key === h.marksKey && head === h.marksHead && T - h.marksAt < MARKS_REPEAT) return;
+    this.stats.marksLeftOut += leftOut;
     const w = this.game.begin(S_MARKS);
     writeMarksHead(w, head & 255, h.zoom, players, count);
     // The head ends on a byte, so the tribe's marks follow as they were written.

@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 518 of them: 117 take effect,
+is listed here, 520 of them: 119 take effect,
 207 wait for a feature that is not built yet, and 194 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -99,6 +99,8 @@ may change a setting without a restart.
 | `HeadMultipliers` | True | Where a hit lands matters: a head counts for more. Off, every part counts once. *Ours. ARK has no key; this is its behaviour.* | yes |
 | `SelfDamageMultiplier` | 1 | What a survivor's own blast does to them. *Ours. ARK has no key; 1 is its behaviour.* | yes |
 | `FullFriendlyFire` | False | Members of a tribe can hurt each other, their tames and what they built with anything, not only with blasts. *Ours. ARK has no key; off is its behaviour as far as the research could tell.* | yes |
+| `TacticalRadius` | 512 | Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's. *Ours. ARK's map shows no structures.* | yes |
+| `MapPlayers` | `off` | Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked. *Ours. ARK marks nobody. Any other word is off.* | yes |
 
 ### Game.ini `[/script/shootergame.shootergamemode]`
 

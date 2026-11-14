@@ -145,6 +145,8 @@ export class HudModel {
   out = false;
   /** The most important first: the reader, mates, tames, deaths, other survivors, then creatures in view. */
   readonly markers: Marker[] = [];
+  /** How many more the last update had than a map shows. They were the least important. */
+  unmarked = 0;
   private readonly pool: Marker[] = [];
   /** The map's pictures and where they look. Null until the app has the world, and then both screens show the whole map. */
   chart: Chart | null = null;
@@ -185,7 +187,10 @@ export class HudModel {
   /** Adds a marker at (x, z), unless the map has all it shows. */
   mark(kind: MarkerKind, hf: Heightfield, x: number, z: number): void {
     const n = this.markers.length;
-    if (n >= MAX_MARKERS) return;
+    if (n >= MAX_MARKERS) {
+      this.unmarked++;
+      return;
+    }
     const m = (this.pool[n] ??= { kind, u: 0, v: 0 });
     m.kind = kind;
     m.u = lonOf(hf, x) / 100;
@@ -270,6 +275,7 @@ function fillMarkers(model: HudModel, session: ClientSession, remote: RemoteSamp
   const team = session.tribe.team;
   const marks = session.tactical.marks;
   model.markers.length = 0;
+  model.unmarked = 0;
   // A server rule can hide the reader's own position.
   if (session.mapLocation) model.mark("self", hf, session.own.x, session.own.z);
   markView(model, hf, remote, team, true, true, "mate");

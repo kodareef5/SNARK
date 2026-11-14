@@ -23,8 +23,8 @@ const SAMPLES = ((DIMS.chunksX * 64) / TERRAIN_CELL + 1) * ((DIMS.chunksZ * 64) 
 const WIDE = writeMap({ id: "test:wide", dims: DIMS, minY: -32, stepY: 1 / 256, seaLevel: -Infinity, heights: new Uint16Array(SAMPLES).fill(32 * 256), tint: new Uint8Array(SAMPLES).fill(1), statics: [], nodes: [], spawns: [{ name: "West", x: 100, z: 100, yaw: 0 }] });
 
 /** A server on that map, and what the tests do to it. */
-function wide(tactical: { tacticalRadius?: number } = {}) {
-  const h = new Harness({}, 1, 60, { map: WIDE, tactical });
+function wide() {
+  const h = new Harness({}, 1, 60, { map: WIDE });
   const world = h.world;
   const hf = world.hf;
   const join = (name: string): ClientSession => h.join(name);
@@ -87,7 +87,7 @@ test("a tribe's base 600 m off is on its map within ten seconds with no chunk se
 });
 
 test("another tribe's base shows once a survivor has been within the radius, stays as it was seen, and with a radius of 0 never shows", () => {
-  const { h, world, join, hut, k, put } = wide();
+  const { h, world, join, hut, k, teamOf, put } = wide();
   const a = join("ada");
   h.run(500);
   hut(770, 96, 999);
@@ -111,15 +111,14 @@ test("another tribe's base shows once a survivor has been within the radius, sta
   h.run(3000);
   expect(t.cellAt(810, 70)).not.toBe(0);
 
-  // A server with a radius of 0 shows a tribe only what is its own, even where another's stands in the same chunk.
-  const own = wide({ tacticalRadius: 0 });
-  const b = own.join("bo");
-  own.h.run(500);
+  // The operator turns the radius to 0. A newcomer is then shown only what is its own tribe's, even where another's stands in the same chunk.
+  expect(h.host.setSetting("TacticalRadius", "0")).toBe("");
+  const b = join("bo");
+  h.run(500);
   b.command(CMD_MAP_ZOOM, (w) => w.bits(3, 2));
-  own.hut(104, 104, 999);
-  own.hut(112, 104, own.teamOf(b));
-  own.h.run(3000);
-  expect(b.tactical.teamAt(114, 106)).toBe(own.teamOf(b));
+  hut(112, 104, teamOf(b));
+  h.run(3000);
+  expect(b.tactical.teamAt(114, 106)).toBe(teamOf(b));
   expect(b.tactical.cellAt(106, 106)).toBe(0);
 });
 
@@ -203,12 +202,12 @@ test("a mate two kilometres off and its tame are marked, a stranger is not unles
   expect(stats.markBytes - bytes).toBeLessThanOrEqual(2 * (17 + 17 + 8));
 
   // With the rule at "all" strangers are marked wherever they are, and the client is told which rule holds.
-  h.host.tactical.opts.players = "all";
+  expect(h.host.setSetting("MapPlayers", "all")).toBe("");
   h.run(1500);
   expect(marks.players).toBe(PLAYERS_ALL);
   expect(seen().filter((m) => m.kind === MARK_OTHER)).toEqual([{ kind: MARK_OTHER, x: 130, z: 130, self: false }]);
   expect(seen(c.tactical.marks).filter((m) => m.kind === MARK_OTHER).length).toBe(2);
-  h.host.tactical.opts.players = "view";
+  expect(h.host.setSetting("MapPlayers", "view")).toBe("");
   h.run(1500);
   expect(marks.players).toBe(PLAYERS_VIEW);
   expect(seen().some((m) => m.kind === MARK_OTHER)).toBe(false);
@@ -228,6 +227,8 @@ test("a tribe with more marks than a message holds sends each member the 255 nea
     const at = world.ents.x[h.ent(s)]!;
     for (let i = 0; i < 200; i++) world.ents.setTeam(h.host.spawnCreature("core:dummy", at - 40 + (i % 20) * 4, 140 + Math.floor(i / 20) * 4, 1), teamOf(a));
   }
+  // And twenty wild ones by the first.
+  for (let i = 0; i < 20; i++) h.host.spawnCreature("core:dummy", 60 + i * 3, 60, 1);
   h.run(1500);
   for (const s of [a, b]) {
     const m = s.tactical.marks;
@@ -237,6 +238,14 @@ test("a tribe with more marks than a message holds sends each member the 255 nea
     for (let i = 0; i < m.count; i++) if (Math.abs(m.x[i]! - s.own.x) < 100) near++;
     expect(near).toBe(200);
   }
+  // Nothing is left out unsaid: the server counts the marks a message had no room for, and a map the markers past its 256.
+  // Those are the least important, here the wild creatures.
+  expect(h.host.tactical.stats.marksLeftOut).toBeGreaterThanOrEqual(2 * 146);
+  const hud = new HudModel();
+  const remote = new RemoteSample();
+  a.sampleRemote(remote);
+  updateHud(hud, a, remote, 60);
+  expect([hud.markers.length, hud.unmarked, hud.markers.some((m) => m.kind === "creature")]).toEqual([256, 20, false]);
 });
 
 test("the minimap is a window on one zoom around its reader, and the map screen moves and zooms over all four with the same coordinates as the readout", () => {
