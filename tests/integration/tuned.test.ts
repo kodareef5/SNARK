@@ -187,7 +187,7 @@ test("engrams and levels are the server's: its level table and the tames', the m
   h.say(ada, "addxp 1000");
   expect([shown(), me.xp, prog.most(me)]).toEqual([[3, 65539, 45], 45, 45]);
   // The second LevelExperienceRampOverrides line is the tames' table: level 2 at 100, level 3 at 300, and no more.
-  const tame = h.host.records.byPid.get(h.world.ents.pid[h.host.spawnCreature("core:parasaur", h.world.ents.x[h.ent(ada)]! + 6, h.world.ents.z[h.ent(ada)]! + 6, 1)]!)!;
+  const tame = h.host.records.byPid.get(((e: number) => h.world.ents.pid[e]!)(h.host.spawnCreature("core:parasaur", h.world.ents.x[h.ent(ada)]! + 6, h.world.ents.z[h.ent(ada)]! + 6, 1)))!;
   h.host.taming.give(tame, me, 1);
   expect([prog.level(tame), prog.addXp(tame, 99), prog.level(tame), prog.addXp(tame, 1), prog.level(tame), prog.addXp(tame, 5000), prog.level(tame), tame.xp, prog.statPoints(tame)]).toEqual([1, 99, 1, 1, 2, 200, 3, 300, 2]);
 
@@ -196,7 +196,7 @@ test("engrams and levels are the server's: its level table and the tames', the m
   const p = one.h.host.progression;
   expect([p.levelOf(5), p.levelOf(5, true), p.levelOf(10), p.most(one.me)]).toEqual([1, 2, 2, 30]);
   const capped = served([], ["OverrideMaxExperiencePointsDino=150"]);
-  const pet = capped.h.host.records.byPid.get(capped.h.world.ents.pid[capped.h.host.spawnCreature("core:parasaur", capped.at.x + 6, capped.at.z + 6, 1)]!)!;
+  const pet = capped.h.host.records.byPid.get(((e: number) => capped.h.world.ents.pid[e]!)(capped.h.host.spawnCreature("core:parasaur", capped.at.x + 6, capped.at.z + 6, 1)))!;
   capped.h.host.taming.give(pet, capped.me, 1);
   expect([capped.h.host.progression.addXp(pet, 5000), pet.xp, capped.h.host.progression.most(pet), capped.h.host.progression.most(capped.me) > 150]).toEqual([150, 150, 150, true]);
   // At ARK's defaults experience stops at the last level of content's table.

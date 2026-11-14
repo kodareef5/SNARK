@@ -65,8 +65,8 @@ test("hunger runs on the world clock with no per-tick work, and starvation fires
   const c = h.host.creatures;
   const sv = h.host.survival;
   const food = (rec: EntityRecord) => sv.value(rec, V_FOOD);
-  const a = h.host.records.byPid.get(h.world.ents.pid[h.host.spawnCreature("core:grazer", 100, 100, 1)]!)!;
-  const b = h.host.records.byPid.get(h.world.ents.pid[h.host.spawnCreature("core:grazer", 104, 100, 1)]!)!;
+  const a = h.host.records.byPid.get(((e: number) => h.world.ents.pid[e]!)(h.host.spawnCreature("core:grazer", 100, 100, 1)))!;
+  const b = h.host.records.byPid.get(((e: number) => h.world.ents.pid[e]!)(h.host.spawnCreature("core:grazer", 104, 100, 1)))!;
   const born = h.world.tick;
   const due = a.vitals!.zeroTick(V_FOOD);
   expect(due - born).toBe(700); // 10 points at 60 per 4200-tick hour

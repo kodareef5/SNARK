@@ -181,7 +181,8 @@ async function checkTests(): Promise<void> {
   const hasTests = walk(join(ROOT, "tests")).some((f) => f.endsWith(".test.ts"));
   if (!hasTests) return;
   // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
-  const r = await run(["bun", "test", "--parallel"], true);
+  // A busy machine can make a one-second test take five, so a test is called hung at 20 s. The whole check keeps its budget.
+  const r = await run(["bun", "test", "--parallel", "--timeout", "20000"], true);
   if (!r.ok) fail(`tests failed:\n${r.out.trim()}`);
   else console.log("  " + (r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim()).join(", ")));
 }
