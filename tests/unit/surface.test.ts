@@ -1,8 +1,10 @@
-// A mesh drawn with materials, from its source through the pack writer.
+// A mesh drawn with materials, from its source through the pack writer and the split.
 import { expect, test } from "bun:test";
-import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, parsePack, type Pack, type PackLod, type PackMaterial } from "../../shared/pack/pack.ts";
+import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
+import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, parsePack, type Pack, type PackLod, type PackMaterial } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Rng } from "../../shared/rng.ts";
+import { manifestOf, partHash } from "../../tools/pack/manifest.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { stressMeshes } from "../../tools/pack/stress.ts";
 import { decodeSkin, decodeSurface, encodeSkin, encodeSurface, fourHeaviest, spanOf, tangentsOf } from "../../tools/pack/surface.ts";
@@ -219,4 +221,56 @@ test("a pack keeps one material and one texture of each id, and refuses a source
     ["may be with 1 to 3", { ...patch({}, { indices: Uint32Array.from([0, 1, 2, 0, 2, 3, 0, 1, 3, 1, 2, 3]), sections: Uint8Array.of(0, 1, 2, 3) }), materials: [0, 1, 2, 3].map((k) => ({ ...skin, base: -1, id: `t:m${k}` })) }],
   ];
   for (const [reason, mesh] of refused) expect(() => buildPack([tubeMesh(), mesh], defaultPalette(), [], [TUBE_RIG])).toThrow(reason);
+});
+
+test("a split keeps the boot file flat: a surface and a skin are parts of their own, in the mesh file", () => {
+  const whole = tubePack();
+  const { files, manifest } = splitPack(whole, "tube");
+  const listed = manifestOf("tube.snpk", whole);
+  expect(parseManifest(JSON.stringify(manifest))).toEqual(manifest);
+  expect(parseManifest(JSON.stringify(listed))).toEqual(listed);
+  const [boot, rest] = files.map((f) => parsePack(f.bytes));
+  const tube = manifest.meshes[0]!;
+  expect([tube.flat, manifest.materials, manifest.textures]).toEqual([2, parsePack(whole).header.materials, parsePack(whole).header.textures!.map((t) => ({ ...t, in: {} }))]);
+  // The finest level is large, so all of it is in the mesh file. The middle one is small, so its first part is in the
+  // boot file and the rest is not. The coarsest is flat.
+  expect(tube.levels.map((l) => [l.file, l.parts.length, l.surface?.file])).toEqual([[1, 3, undefined], [0, 3, 1], [0, 1, undefined]]);
+  expect(tube.levels.map((l) => l.sections)).toEqual(listed.meshes[0]!.levels.map((l) => l.sections));
+  tube.levels.forEach((level, l) => {
+    // Every part is where the manifest says, and is the bytes the whole pack had.
+    let at = level.at;
+    level.parts.forEach((part, k) => {
+      if (k === 1 && level.surface) at = level.surface.at;
+      const file = files[k > 0 && level.surface ? level.surface.file : level.file]!.bytes;
+      expect([partHash(file.subarray(at, at + part.bytes)), part.bytes]).toEqual([part.hash, listed.meshes[0]!.levels[l]!.parts[k]!.bytes]);
+      expect(part.hash).toBe(listed.meshes[0]!.levels[l]!.parts[k]!.hash);
+      at += part.bytes;
+    });
+  });
+  // The boot file is a pack of flat levels and nothing else of the meshes: the palette, two first parts and the clip.
+  const flat = boot!.header.meshes[0]!;
+  expect([flat.flat, boot!.header.materials, flat.lods.map((l) => [l.vertexCount, l.surfaceOffset, l.skinOffset, l.sections])]).toEqual([undefined, undefined, [[90, undefined, undefined, undefined], [30, undefined, undefined, undefined]]]);
+  expect(boot!.blob.length).toBe(1024 + tube.levels[1]!.parts[0]!.bytes + tube.levels[2]!.parts[0]!.bytes + 2 * 2 * 6 + 2 * 12);
+  expect([boot!.header.rigs, boot!.clips.hash]).toEqual([[TUBE_RIG], parsePack(whole).clips.hash]);
+  // The mesh file is a pack too: the finest level whole, with the materials its sections name.
+  const fine = rest!.header.meshes[0]!;
+  const from = parsePack(whole);
+  expect([fine.flat, fine.lods.length, rest!.header.materials]).toEqual([1, 1, manifest.materials]);
+  expect([lodSurface(rest!, fine.lods[0]!), lodSkin(rest!, fine.lods[0]!)]).toEqual([lodSurface(from, from.header.meshes[0]!.lods[0]!), lodSkin(from, from.header.meshes[0]!.lods[0]!)]);
+
+  const spoiled: [string, (m: Manifest) => void][] = [
+    ["the surface of a level", (m) => (m.meshes[0]!.levels[1]!.surface!.at = files[1]!.bytes.length - 8)],
+    ["the surface of a level", (m) => (m.meshes[0]!.levels[1]!.surface!.file = 5)],
+    ["lies outside its file", (m) => (m.meshes[0]!.levels[1]!.at = files[0]!.bytes.length - 8)],
+  ];
+  for (const [reason, change] of spoiled) {
+    const m = JSON.parse(JSON.stringify(manifest)) as Manifest;
+    change(m);
+    expect(() => parseManifest(JSON.stringify(m))).toThrow(reason);
+  }
+
+  // A mesh whose only level has a surface, as a wall has: the boot file still draws it, flat.
+  const wall = splitPack(buildPack([{ ...tubeMesh(), lods: [tubeMesh().lods[1]!], flat: 1 }], defaultPalette(), [], [TUBE_RIG]), "wall");
+  expect(parseManifest(JSON.stringify(wall.manifest)).meshes[0]!.levels.map((l) => [l.file, l.parts.length, l.surface?.file])).toEqual([[0, 3, 1]]);
+  expect(parsePack(wall.files[0]!.bytes).header.meshes[0]!.lods[0]!.surfaceOffset).toBeUndefined();
 });
