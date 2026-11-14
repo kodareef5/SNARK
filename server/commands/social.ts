@@ -3,6 +3,7 @@
 import type { Console, ConsoleCommand } from "../console.ts";
 import type { Client } from "../game.ts";
 import type { Host } from "../host.ts";
+import { NAME_UNCLEAR, meant } from "../names.ts";
 import type { EntityRecord } from "../records.ts";
 import { INVITE_RANGE } from "../tribes.ts";
 
@@ -12,10 +13,11 @@ function survivorOf(host: Host, c: Client | null): EntityRecord | null {
   return c ? (host.records.byPid.get(c.pid) ?? null) : null;
 }
 
-function sessionNamed(host: Host, name: string): Client | null {
-  const wanted = name.toLowerCase();
-  for (const c of host.game.clients) if (c?.active && !c.closed && c.name.toLowerCase() === wanted) return c;
-  return null;
+/** The session a typed name means (server/names.ts), null if none does, or NAME_UNCLEAR. */
+function sessionNamed(host: Host, name: string): Client | null | typeof NAME_UNCLEAR {
+  const here = host.game.clients.filter((c): c is Client => !!c?.active && !c.closed);
+  const which = meant(here.map((c) => c.name), name);
+  return which === NAME_UNCLEAR ? NAME_UNCLEAR : (here[which] ?? null);
 }
 
 const MAX_MUTED = 100;
@@ -55,6 +57,7 @@ export function addSocialCommands(con: Console): void {
           }
           case "invite": {
             const to = sessionNamed(host, rest);
+            if (to === NAME_UNCLEAR) return `more than one survivor here could be "${rest}"; give the name exactly`;
             const target = survivorOf(host, to);
             if (!to || !target || to.ent < 0) return `nobody called "${rest}" is here`;
             const c = ctx.client;
@@ -96,11 +99,15 @@ export function addSocialCommands(con: Console): void {
           const all = chat.mutedBy(c.name);
           return all.length === 0 ? "You have muted nobody." : `Muted: ${all.join(", ")}`;
         }
-        if (name.toLowerCase() === c.name.toLowerCase()) return "That is you.";
         // A survivor's name, and a list of bounded length: each entry is kept for as long as the server runs.
         if (!/^[A-Za-z0-9 _-]{1,24}$/.test(name)) return "That is not a survivor's name.";
+        // Whoever here the name means is muted by their own name. A name nobody here has is kept as it was typed.
+        const here = sessionNamed(ctx.host, name);
+        if (here === NAME_UNCLEAR) return `more than one survivor here could be "${name}"; give the name exactly`;
+        const who = here ? here.name : name;
+        if (who === c.name) return "That is you.";
         if (chat.mutedBy(c.name).length >= MAX_MUTED) return `You have muted ${MAX_MUTED} survivors. Unmute one first.`;
-        return chat.mute(c.name, name, true) ? `You will not hear ${name}.` : `${name} is muted already.`;
+        return chat.mute(c.name, who, true) ? `You will not hear ${name}.` : `${name} is muted already.`;
       },
     },
     {
@@ -112,7 +119,10 @@ export function addSocialCommands(con: Console): void {
         const c = ctx.client;
         if (!c) return "this command needs a session";
         const name = args.join(" ");
-        return ctx.host.chat.mute(c.name, name, false) ? `You will hear ${name} again.` : `${name} was not muted.`;
+        const all = ctx.host.chat.mutedBy(c.name);
+        const which = meant(all, name);
+        if (which === NAME_UNCLEAR) return `more than one survivor you have muted could be "${name}"; give the name exactly`;
+        return which >= 0 && ctx.host.chat.mute(c.name, all[which]!, false) ? `You will hear ${name} again.` : `${name} was not muted.`;
       },
     },
   ];

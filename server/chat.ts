@@ -35,9 +35,9 @@ export function cleanChat(text: string): string {
 export class Chat {
   /** Counts one per listener a line reaches. */
   delivered = 0;
-  /** Muted names by listener name. Both are lower case. */
+  /** Muted names by listener name. Both are exact: a name in other capitals is another survivor's (server/names.ts). */
   private readonly mutes = new Map<string, Set<string>>();
-  /** By speaker name, lower case: the lines it may still say at once, and the tick that count was true at. */
+  /** By speaker name, exact: the lines it may still say at once, and the tick that count was true at. */
   private readonly allowance = new Map<string, { lines: number; at: number }>();
 
   private readonly ctx: ChatContext;
@@ -46,30 +46,28 @@ export class Chat {
     this.ctx = ctx;
   }
 
-  /** Names, in any case. */
+  /** Names, exactly. */
   muted(listener: string, speaker: string): boolean {
-    return this.mutes.get(listener.toLowerCase())?.has(speaker.toLowerCase()) ?? false;
+    return this.mutes.get(listener)?.has(speaker) ?? false;
   }
 
   /** Mutes text and voice. False if nothing changed. */
   mute(listener: string, speaker: string, on: boolean): boolean {
-    const key = listener.toLowerCase();
-    const who = speaker.toLowerCase();
-    let set = this.mutes.get(key);
+    let set = this.mutes.get(listener);
     if (on) {
-      if (!set) this.mutes.set(key, (set = new Set()));
-      if (set.has(who)) return false;
-      set.add(who);
+      if (!set) this.mutes.set(listener, (set = new Set()));
+      if (set.has(speaker)) return false;
+      set.add(speaker);
       return true;
     }
-    if (!set?.delete(who)) return false;
-    if (set.size === 0) this.mutes.delete(key);
+    if (!set?.delete(speaker)) return false;
+    if (set.size === 0) this.mutes.delete(listener);
     return true;
   }
 
   /** Everyone `listener` has muted. */
   mutedBy(listener: string): string[] {
-    return [...(this.mutes.get(listener.toLowerCase()) ?? [])];
+    return [...(this.mutes.get(listener) ?? [])];
   }
 
   /** Returns a RESULT code. A refusal also tells the speaker why. */
@@ -89,9 +87,8 @@ export class Chat {
     if (channel === TEXT_TRIBE && !tribe) return refuse(RESULT_DENIED, "You are not in a tribe.");
 
     const now = game.world.tick;
-    const key = c.name.toLowerCase();
-    let a = this.allowance.get(key);
-    if (!a) this.allowance.set(key, (a = { lines: BURST, at: now }));
+    let a = this.allowance.get(c.name);
+    if (!a) this.allowance.set(c.name, (a = { lines: BURST, at: now }));
     const earned = Math.floor((now - a.at) / EARN_TICKS);
     if (earned > 0) {
       a.lines = Math.min(BURST, a.lines + earned);
