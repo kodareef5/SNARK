@@ -153,9 +153,8 @@ test("operator: a server started from the 50x folder says what it applied, and a
   h.run(500);
   expect([joined.state, h.host.rules.num("TamingSpeedMultiplier"), arks.report.refused]).toEqual(["active", 3, []]);
   const theirs = formatReport(arks.report, arks.rules);
-  expect(theirs[0]).toBe("settings: 2 applied, 8 not yet effective, 1 of no meaning here, 1 unknown, 0 refused");
+  expect(theirs[0]).toBe("settings: 3 applied, 7 not yet effective, 1 of no meaning here, 1 unknown, 0 refused");
   expect(theirs.filter((l) => l.startsWith("  not yet   ")).map((l) => [l.slice(12).split("  ")[0], l.includes("): waits for: ")])).toEqual([
-    ["DinoCountMultiplier", true],
     ["PreventOfflinePvP", true],
     ["RCONEnabled", true],
     ["RCONPort", true],
@@ -164,7 +163,7 @@ test("operator: a server started from the 50x folder says what it applied, and a
     ["bDisableStructurePlacementCollision", true],
     ["CropGrowthSpeedMultiplier", true],
   ]);
-  expect(theirs).toContain("  not yet   DinoCountMultiplier  (GameUserSettings.ini:3): waits for: wild creatures that spawn and respawn by region");
+  expect(theirs).toContain("  not yet   PreventOfflinePvP  (GameUserSettings.ini:4): waits for: offline protection, pvp timers, and hardcore");
   expect(theirs.filter((l) => l.startsWith("  unknown   ") || l.startsWith("  no use    ")).map((l) => l.replace(/^\s+(unknown|no use)\s+(\S+).*$/, "$1 $2"))).toEqual(["no use ActiveMods", "unknown SomeModsOwnKey"]);
   const folders = readdirSync(CONFIG, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
   expect(folders.sort()).toEqual(["boosted-10x", "boosted-50x", "dev", "official"]);

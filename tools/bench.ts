@@ -43,6 +43,7 @@ import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
 import { benchAgent } from "./bench/agent.ts";
 import { benchCollide } from "./bench/collide.ts";
 import { benchHunt } from "./bench/hunt.ts";
+import { benchSpawn } from "./bench/spawn.ts";
 import { benchLatency } from "./bench/latency.ts";
 import { benchPoses } from "./bench/poses.ts";
 import { benchRagdoll } from "./bench/ragdoll.ts";
@@ -1182,6 +1183,7 @@ section("Asset library (headless): 64 rocks of five levels and a 263,169-vertex 
 benchAgent(section, record);
 benchCollide(section, record);
 benchHunt(section, record);
+benchSpawn(section, record);
 benchLatency(section, record);
 benchPoses(section, record);
 benchRagdoll(section, record);

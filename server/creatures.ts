@@ -85,7 +85,7 @@ export class Creatures {
     if (!capsuleFree(world, x, y, z, p.radius, p.height)) return -1;
     let colours = "";
     if (this.bus.n[CREATURE_SPAWN] !== 0) {
-      const asked = { kind: world.reg.ids[kind]!, why, level, colours };
+      const asked = { kind: world.reg.ids[kind]!, why, x, z, level, colours };
       if (this.bus.before(CREATURE_SPAWN, asked) !== "") return -1;
       if (Number(asked.level) >= 1) level = Math.floor(Number(asked.level));
       colours = String(asked.colours);
