@@ -13,6 +13,8 @@ export default {
     { name: "crest", material: "Red", sample: 8 },
   ],
   clips: dinoClips("Parasaurolophus"),
-  // The walk has no stride: its feet speed up while they are down, so they slide a third of a metre at any stride.
-  gaits: { run: { stride: 6.83 } },
+  gaits: {
+    walk: { stride: 3.55, stated: "its feet speed up while they are down, so they slide a third of a metre at any stride; this is the stride they slide least at" },
+    run: { stride: 6.83 },
+  },
 } satisfies CreatureAsset;

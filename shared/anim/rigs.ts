@@ -3,6 +3,7 @@
 
 import type { PackRig } from "../pack/pack.ts";
 import { Pose, type Clip, type ClipSet } from "./clip.ts";
+import { footRadius, footStart, gaitClip, type GaitClip } from "./gait.ts";
 import type { Socket } from "./human.ts";
 import { Solved, type Skeleton } from "./skeleton.ts";
 
@@ -22,9 +23,18 @@ export interface Rig extends Skeleton {
   /** In metres. Roughly, no part of it in any pose is farther than `reach` from the ground point it stands on. `mid` is the height of its middle. */
   readonly reach: number;
   readonly mid: number;
+  /** Its walk and run as gaits, where its asset gives them a stride, null where not. */
+  readonly walkGait: GaitClip | null;
+  readonly runGait: GaitClip | null;
+  /** Every moving clip it has, slowest first, when all of them have a stride and so blend in step. Otherwise empty. */
+  readonly gaits: readonly GaitClip[];
+  /** How far its feet stand from where it turns, in metres. */
+  readonly turn: number;
   /** Scratch for posing it. */
   readonly a: Pose;
   readonly b: Pose;
+  readonly c: Pose;
+  readonly w: Float64Array;
   readonly solved: Solved;
 }
 
@@ -64,20 +74,25 @@ export function buildRig(r: PackRig, clips: ClipSet): Rig | null {
   };
   const sockets = new Map<string, Socket>();
   for (const s of r.sockets ?? []) if (s.bone >= 0 && s.bone < bones) sockets.set(s.name, { bone: s.bone, x: s.x, y: s.y, z: s.z });
+  const skeleton: Skeleton = { id: r.id, bones, names: r.names, parent: Int8Array.from(r.parent), rest, zoneBones: bones, zone, capA, capB, capR };
+  const feet = (r.feet ?? []).filter((b) => b >= 0 && b < bones);
+  const a = new Pose(bones);
+  const solved = new Solved(bones);
+  const gait = (name: string): GaitClip | null => {
+    const c = clip(name);
+    const stride = r.strides?.[name];
+    return c && c.loop && stride !== undefined && stride > 0 ? gaitClip(c, stride, feet.length > 0 ? footStart(skeleton, c, feet[0]!, a, solved) : 0) : null;
+  };
+  const walk = clip("walk");
+  const run = clip("run");
+  const walkGait = gait("walk");
+  const runGait = gait("run");
+  const moving = [walk ? walkGait : undefined, run ? runGait : undefined].filter((g) => g !== undefined);
   return {
-    id: r.id,
-    bones,
-    names: r.names,
-    parent: Int8Array.from(r.parent),
-    rest,
-    zoneBones: bones,
-    zone,
-    capA,
-    capB,
-    capR,
+    ...skeleton,
     idle: clip("idle"),
-    walk: clip("walk"),
-    run: clip("run"),
+    walk,
+    run,
     attack: clip("attack"),
     jump: clip("jump"),
     death: clip("death"),
@@ -85,11 +100,18 @@ export function buildRig(r: PackRig, clips: ClipSet): Rig | null {
     // Half as far again as the rest pose reaches, plus the widest capsule radius, covers a swung limb or a lowered head.
     reach: Math.max(far, top) * 1.5 + wide,
     mid: top / 2,
-    a: new Pose(bones),
+    walkGait,
+    runGait,
+    gaits: moving.length > 0 && moving.every((g) => g !== null) ? (moving as GaitClip[]).sort((p, q) => p.speed - q.speed) : [],
+    turn: footRadius(skeleton, feet),
+    a,
     b: new Pose(bones),
-    solved: new Solved(bones),
+    c: new Pose(bones),
+    w: new Float64Array(2),
+    solved,
   };
 }
+
 
 export function buildRigs(rigs: readonly PackRig[], clips: ClipSet): Map<string, Rig> {
   const out = new Map<string, Rig>();

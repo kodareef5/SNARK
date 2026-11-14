@@ -6,9 +6,10 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { Pose } from "../../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
-import { HumanAnim, humanPose, type AnimState } from "../../../shared/anim/pose.ts";
+import { HumanAnim, advanceHuman, humanPose, type AnimState } from "../../../shared/anim/pose.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
-import { creaturePose } from "../../../shared/anim/creature.ts";
+import { advanceCreature, creaturePose } from "../../../shared/anim/creature.ts";
+import { Gait } from "../../../shared/anim/gait.ts";
 import { buildRigs, type Rig } from "../../../shared/anim/rigs.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
@@ -66,6 +67,14 @@ interface BodyKind {
 
 export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number) => void;
 
+/** A body's gait, and the frame it was last drawn in. */
+class Stride extends Gait {
+  seen = 0;
+}
+
+/** Frames a body may go undrawn before its gait is forgotten. */
+const FORGET_GAIT = 600;
+
 export class Characters {
   readonly anim: HumanAnim;
   /** Bodies posed this frame. */
@@ -100,6 +109,15 @@ export class Characters {
   private readonly assets: Assets;
   /** The level each body was last drawn at, by its id. */
   private readonly last = new Map<number, number>();
+  /** Each body's gait, by its id, so its legs go by the ground it covers (shared/anim/gait.ts). */
+  private readonly gaits = new Map<number, Stride>();
+  private frame = 0;
+  /**
+   * The id of the creature last drawn of each mesh and body clock (bodySeed), for seat(), which is not told whose seat it
+   * is. The packet is the same one every frame, and holds the camera by the time seat() is asked.
+   */
+  private readonly bySeed = new Map<number, number>();
+  private packet: FramePacket | null = null;
 
   constructor(reg: Registry, pack: Pack, assets: Assets) {
     const { table, bind } = assets;
@@ -161,6 +179,14 @@ export class Characters {
     });
   }
 
+  /** The gait of the body with this id, kept from frame to frame. */
+  private gaitOf(id: number): Stride {
+    let g = this.gaits.get(id);
+    if (!g) this.gaits.set(id, (g = new Stride()));
+    g.seen = this.frame;
+    return g;
+  }
+
   /** Whether content of this kind is drawn here rather than as a rigid mesh. */
   has(kind: number): boolean {
     return this.kinds[kind] != null || this.creatures[kind] != null;
@@ -186,7 +212,13 @@ export class Characters {
     const c = this.creatures[kind];
     const socket = c?.rig.sockets.get("seat");
     if (!c || !socket) return false;
-    creaturePose(c.rig, st, tick, c.runAt, c.rig.a);
+    // The mount's legs are where they will be drawn: its gait, found by its mesh and clock, if that body was drawn here.
+    const id = this.bySeed.get(c.mesh * 1024 + st.seed);
+    let g = id === undefined ? undefined : this.gaits.get(id);
+    const p = this.packet;
+    if (g && p && Math.abs(g.x - x - p.camX) < 3 && Math.abs(g.z - z - p.camZ) < 3) advanceCreature(c.rig, g, st, tick, c.runAt, x + p.camX, z + p.camZ, yaw, 1);
+    else g = undefined;
+    creaturePose(c.rig, st, tick, c.runAt, c.rig.a, g ?? null);
     solve(c.rig, c.rig.a, c.rig.solved);
     boneToModel(c.rig.solved, socket.bone, socket.x, socket.y, socket.z, out);
     const s = Math.sin(yaw);
@@ -204,11 +236,21 @@ export class Characters {
     if (first < 0) return false;
     if (rigid) writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size);
     else {
-      creaturePose(rig, st, tick, c.runAt, rig.a);
+      this.packet = p;
+      const g = this.gaitOf(id);
+      advanceCreature(rig, g, st, tick, c.runAt, x + p.camX, z + p.camZ, yaw, size);
+      this.bySeed.set(c.mesh * 1024 + st.seed, id);
+      creaturePose(rig, st, tick, c.runAt, rig.a, g);
       solve(rig, rig.a, rig.solved);
       writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
       this.posed++;
     }
+    this.queueCreature(c, first, x, y, z, colors, colorAt, id, size, rigid);
+    return true;
+  }
+
+  /** Queues a creature's mesh on the bones from `first`, at the level its distance and size call for. */
+  private queueCreature(c: Creature, first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean): void {
     const n = this.count++;
     // A young one is the same mesh drawn smaller, and so are its errors.
     const far = Math.sqrt(x * x + y * y + z * z) / size;
@@ -221,7 +263,6 @@ export class Characters {
     this.id[n] = id;
     this.near[n] = 0;
     this.offset.fill(0, n * 3, n * 3 + 3);
-    return true;
   }
 
   /** Takes `bones` bones for a body of `parts` meshes and returns the first, or counts the body as dropped and returns -1. */
@@ -240,6 +281,8 @@ export class Characters {
     this.posed = 0;
     // Ids of bodies long gone would otherwise be kept for good.
     if (this.last.size > 4096) this.last.clear();
+    if (++this.frame % FORGET_GAIT === 0) for (const [id, g] of this.gaits) if (this.frame - g.seen > FORGET_GAIT) this.gaits.delete(id);
+    if (this.bySeed.size > 4096) this.bySeed.clear();
   }
 
   private levelOf(id: number, errors: readonly number[], distance: number): number {
@@ -268,7 +311,10 @@ export class Characters {
     if (view) lookColors(view, this.lookColor);
     if (rigid) writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, 1);
     else {
-      humanPose(this.anim, st, tick, this.pose);
+      this.packet = p;
+      const g = this.gaitOf(id);
+      advanceHuman(this.anim, g, st, tick, x + p.camX, z + p.camZ, yaw);
+      humanPose(this.anim, st, tick, this.pose, g);
       let scales: Float32Array | null = null;
       if (view) {
         scales = this.scales;

@@ -140,6 +140,9 @@ export interface PackRig {
   parent?: number[];
   caps?: number[];
   sockets?: { name: string; bone: number; x: number; y: number; z: number }[];
+  /** The bones it stands on, and the metres one turn of each gait clip carries it, by the clip's name. */
+  feet?: number[];
+  strides?: Record<string, number>;
 }
 
 export interface PackClip {

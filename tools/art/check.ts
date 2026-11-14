@@ -456,8 +456,12 @@ function checkCreature(asset: Asset, spec: CreatureAsset, pack: Pack, meshes: So
       continue;
     }
     report.gaits.push(gait);
+    const stated = spec.gaits[c.name]?.stated;
     for (const foot of gait.feet) {
-      if (foot.slide > SLIDE_SHARE * given) faults.push(`clip "${c.name}": ${foot.bone} slides ${(foot.slide * 100).toFixed(1)} cm while planted at a stride of ${given} m (it holds best at ${gait.measured.toFixed(2)} m)`);
+      if (foot.slide <= SLIDE_SHARE * given) continue;
+      const says = `clip "${c.name}": ${foot.bone} slides ${(foot.slide * 100).toFixed(1)} cm while planted at a stride of ${given} m (it holds best at ${gait.measured.toFixed(2)} m)`;
+      if (stated) notes.push(`${says}. The stride is stated: ${stated}`);
+      else faults.push(says);
     }
   }
   for (const bone of spec.feet) if (!rig.names.includes(bone)) faults.push(`foot "${bone}" is not a bone of the rig`);

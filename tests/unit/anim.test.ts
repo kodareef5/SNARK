@@ -4,7 +4,9 @@ import {
   B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_LEG_L, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_ARM_L, B_UPPER_ARM_R,
   HUMAN, HUMAN_BONES, SOCKET_EYE, ZONE_ARM_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_TORSO,
 } from "../../shared/anim/human.ts";
-import { AnimState, HumanAnim, humanPose } from "../../shared/anim/pose.ts";
+import { gaitShares } from "../../shared/anim/gait.ts";
+import { AnimState, HumanAnim, SPEED_STEP, humanPose } from "../../shared/anim/pose.ts";
+import { TICK_RATE } from "../../shared/coords.ts";
 import { STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
 import { Solved, boneToModel, rayCapsule, rayZones, solve, zoneHit } from "../../shared/anim/skeleton.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -123,9 +125,16 @@ test("a pose depends only on its inputs, and bodies with different seeds are out
   expect([...c.pos]).toEqual([...a.pos]);
 });
 
+/** Ticks one turn of the gaits takes at `speed` steps: the blended stride over the speed. */
+function cycleOf(speed: number): number {
+  const v = speed * SPEED_STEP;
+  return (TICK_RATE * gaitShares(coreAnim().standing, v, true, new Float64Array(3))) / v;
+}
+
 test("gaits stride in step: left foot ahead at the start of every cycle, right foot half a cycle later", () => {
   const st = new AnimState();
-  for (const [speed, cycle] of [[3, 32], [7, 22], [12, 18]] as const) {
+  for (const speed of [3, 7, 12]) {
+    const cycle = cycleOf(speed);
     st.speed = speed;
     const start = solved(st, 0);
     const half = solved(st, cycle / 2);
@@ -134,7 +143,7 @@ test("gaits stride in step: left foot ahead at the start of every cycle, right f
     const again = solved(st, cycle);
     for (let k = 0; k < again.pos.length; k++) expect(again.pos[k]!).toBeCloseTo(start.pos[k]!, 5);
     let low = Infinity;
-    for (let t = 0; t < cycle; t++) low = Math.min(low, y(solved(st, t), B_FOOT_L));
+    for (let t = 0; t < cycle; t += 0.5) low = Math.min(low, y(solved(st, t), B_FOOT_L));
     expect(Math.abs(low - HUMAN.rest[B_FOOT_L * 3 + 1]!)).toBeLessThan(0.08);
   }
 });
@@ -148,10 +157,11 @@ test("moving sideways turns the hips toward the way it goes and leaves the head 
     return [...forward];
   };
   // Averaged over a cycle, so the swing of the gait cancels.
+  const cycle = cycleOf(7);
   const mean = (dir: number, bone: number): number[] => {
     st.dir = dir;
     const sum = [0, 0, 0];
-    for (let t = 0; t < 22; t++) hips(solved(st, t), bone).forEach((v, k) => (sum[k]! += v / 22));
+    for (let k = 0; k < 32; k++) hips(solved(st, (k * cycle) / 32), bone).forEach((v, a) => (sum[a]! += v / 32));
     return sum;
   };
   expect(mean(0, B_HIPS)[2]!).toBeGreaterThan(0.9);
@@ -164,7 +174,7 @@ test("moving sideways turns the hips toward the way it goes and leaves the head 
   st.dir = 8;
   const back = solved(st, 3);
   st.dir = 0;
-  const fore = solved(st, 22 - 3);
+  const fore = solved(st, cycle - 3);
   for (let k = 0; k < back.pos.length; k++) expect(back.pos[k]!).toBeCloseTo(fore.pos[k]!, 5);
 });
 

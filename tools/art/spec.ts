@@ -137,8 +137,17 @@ export interface CreatureClip {
 }
 
 export interface GaitSpec {
-  /** Metres the body travels in one turn of the clip. The clip is played by distance over this, so planted feet hold. */
+  /**
+   * Metres the body travels in one turn of the clip. The clip is played by distance over this, so planted feet hold, and
+   * plays at its own rate at this over its length. Measured where the clip allows: `--check` prints the stride its feet
+   * hold best at.
+   */
   readonly stride: number;
+  /**
+   * Why the stride is stated and not measured, for a clip whose feet slide however it is played or that has no feet on
+   * the ground (a swim). `--check` then notes how far they slide and does not count it a fault.
+   */
+  readonly stated?: string;
 }
 
 /** One rigid body of the ragdoll: a bone, with the hit capsule that bone carries. A bone that is not listed stays rigid with its nearest listed parent. */
@@ -150,6 +159,7 @@ export interface RagdollBody {
   readonly swing?: number;
   readonly twist?: number;
 }
+
 
 export interface CreatureAsset {
   readonly kind: "creature";

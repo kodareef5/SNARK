@@ -1,11 +1,15 @@
 // humanPose is a pure function of the replicated AnimState and the tick, so the server's hit test and every client's
-// drawing get the same pose. The lower body follows the direction of travel and the upper body follows the look.
+// drawing get the same pose. The lower body follows the direction of travel and the upper body follows the look. A client
+// may also give it a Gait, which puts the legs where the ground the body covered says (shared/anim/gait.ts).
 
 import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatAxis, quatMul, quatRotate } from "../math/quat.ts";
 import { Pose, blendPose, sampleClip, type Clip, type ClipSet } from "./clip.ts";
-import { B_CHEST, B_FINGERS_L, B_HEAD, B_HIPS, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, HUMAN, HUMAN_BONES } from "./human.ts";
+import { footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type GaitClip } from "./gait.ts";
+import { B_CHEST, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, HUMAN, HUMAN_BONES } from "./human.ts";
+import { Solved } from "./skeleton.ts";
 
+import { TICK_RATE } from "../coords.ts";
 import { MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
 import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
 
@@ -109,6 +113,13 @@ export class HumanAnim {
   readonly gunLowered: Clip | null;
   readonly pistolAimed: Clip | null;
   readonly pistolLowered: Clip | null;
+  /** The gaits of each way of moving, slowest first: on foot, crouched, prone and swimming. */
+  readonly standing: readonly GaitClip[];
+  readonly crouching: readonly GaitClip[];
+  readonly crawling: readonly GaitClip[];
+  readonly swimming: readonly GaitClip[];
+  /** Shares of the gaits, as gaitShares fills them. */
+  readonly w = new Float64Array(3);
 
   constructor(set: ClipSet) {
     this.set = set;
@@ -138,21 +149,41 @@ export class HumanAnim {
     this.gunLowered = find("human/gun_lowered");
     this.pistolAimed = find("human/pistol_aimed");
     this.pistolLowered = find("human/pistol_lowered");
+    const scratch = new Pose(HUMAN_BONES);
+    const solved = new Solved(HUMAN_BONES);
+    const gaits = (...list: [Clip | null, number][]): GaitClip[] =>
+      list.flatMap(([clip, stride]) => (clip ? [gaitClip(clip, stride, footStart(HUMAN, clip, B_FOOT_L, scratch, solved))] : [])).sort((p, q) => p.speed - q.speed);
+    this.standing = gaits([this.walk, WALK_STRIDE], [this.jog, JOG_STRIDE], [this.sprint, SPRINT_STRIDE]);
+    this.crouching = gaits([this.crouchWalk, CROUCH_STRIDE]);
+    // A crawl drags its feet and a swimmer has no ground, so their strides are the speed each plays at its own rate.
+    this.crawling = gaits([this.proneCrawl, this.proneCrawl ? (PRONE_SPEED * this.proneCrawl.frames) / TICK_RATE : 0]);
+    this.swimming = gaits([this.swim, this.swim ? (SWIM_SPEED * this.swim.frames) / TICK_RATE : 0]);
+  }
+
+  /** The gaits that move a body in this state. */
+  gaitsOf(st: AnimState): readonly GaitClip[] {
+    if (st.mode === MODE_SWIM) return this.swimming;
+    if (!st.grounded) return NO_GAITS;
+    return st.stance === STANCE_PRONE ? this.crawling : st.stance === STANCE_CROUCH ? this.crouching : this.standing;
   }
 }
 
-/** The speed at which each gait plays unblended, in metres per second, and the ticks one cycle takes. */
-const WALK_SPEED = 1.8;
-const JOG_SPEED = 4.2;
-const SPRINT_SPEED = 7.2;
-const WALK_TICKS = 32;
-const JOG_TICKS = 22;
-const SPRINT_TICKS = 18;
-const CROUCH_SPEED = 1.5;
-const CROUCH_TICKS = 34;
+const NO_GAITS: readonly GaitClip[] = [];
+
+/**
+ * Metres one turn of each clip carries the body, measured from the clips: how fast the planted foot goes back
+ * (tests/unit/gait.test.ts). Each plays alone at its stride over its length, the walk at 0.9 m/s, the jog at 5.9 and the
+ * sprint at 8.9, and they blend in step between.
+ */
+const WALK_STRIDE = 1.2;
+const JOG_STRIDE = 5.47;
+const SPRINT_STRIDE = 5.94;
+const CROUCH_STRIDE = 1.27;
+/** The speeds at which a crawl and a swim play at their own rate. */
 const PRONE_SPEED = 0.6;
-const PRONE_TICKS = 40;
 const SWIM_SPEED = 2.4;
+/** Metres the feet stand from the upright axis, for stepping while turning on the spot. */
+const FOOT_RADIUS = 0.12;
 /** Swim clips put the water's surface at the origin. It is SWIM_FLOAT of a 1.8 m body above a swimmer's feet. */
 const SWIM_LIFT = 1.35;
 /** A swimmer pitches about this height, where its body lies when level. */
@@ -183,15 +214,25 @@ const b = new Pose(HUMAN_BONES);
 const q = new Float64Array(4);
 const v = new Float64Array(3);
 
-/** Plays the clip stretched to `cycle` ticks per loop, backward when `reverse`. */
-function gait(clip: Clip | null, cycle: number, tick: number, reverse: boolean, out: Pose): void {
-  if (!clip) {
-    out.rest();
-    return;
-  }
-  let phase = tick / cycle;
-  phase -= Math.floor(phase);
-  sampleClip(clip, (reverse ? 1 - phase : phase) * clip.frames, out);
+/**
+ * Moves a body's gait on to where it is drawn at `tick`, (x, z) facing `yaw` radians. A body seen for the first time starts
+ * at the phase the server poses it at.
+ */
+export function advanceHuman(anim: HumanAnim, g: Gait, st: AnimState, tick: number, x: number, z: number, yaw: number): void {
+  const gaits = anim.gaitsOf(st);
+  const metres = g.track(x, z, yaw, tick, st.speed * SPEED_STEP, FOOT_RADIUS, 1);
+  const stride = gaitShares(gaits, g.speed, true, anim.w);
+  if (metres < 0) g.phase = tickPhase(tick + st.seed, g.speed, stride);
+  else g.step(metres, stride);
+}
+
+/** Plays the gaits at `speed` over the idle, in step at `phase`, or at the phase the tick gives where that is NaN. Returns their share. */
+function locomote(anim: HumanAnim, idle: Clip | null, gaits: readonly GaitClip[], t: number, speed: number, phase: number, reverse: boolean, out: Pose): number {
+  const stride = gaitShares(gaits, speed, true, anim.w);
+  let total = 0;
+  for (let i = 0; i < gaits.length; i++) total += anim.w[i]!;
+  if (total < 1) loop(idle, t, out);
+  return playGaits(gaits, anim.w, phase === phase ? phase : tickPhase(t, speed, stride), reverse, out, a, b);
 }
 
 /** Plays the clip at one frame per tick. */
@@ -207,10 +248,11 @@ function turn(pose: Pose, bone: number, ax: number, ay: number, az: number, angl
   quatMul(pose.rot, bone * 4, q, 0, pose.rot, bone * 4);
 }
 
-/** `tick` may fall between ticks, for drawing. */
-export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pose): void {
+/** `tick` may fall between ticks, for drawing. With `gait` the legs are where that says, and without it where the tick puts them. */
+export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null = null): void {
   const t = tick + st.seed;
-  const speed = st.speed * SPEED_STEP;
+  const speed = gait ? gait.speed : st.speed * SPEED_STEP;
+  const phase = gait ? gait.phase : Number.NaN;
   // Travelling backward plays the gait in reverse with the hips turned the other way.
   let twist = st.dir <= DIR_STEPS / 2 ? st.dir : st.dir - DIR_STEPS;
   const reverse = twist > DIR_STEPS / 4 || twist < -DIR_STEPS / 4;
@@ -221,10 +263,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   let spineShare = PITCH_SPINE;
 
   if (st.mode === MODE_SWIM) {
-    loop(anim.swimIdle, t, a);
-    loop(anim.swim, t, b);
-    const k = clamp(speed / SWIM_SPEED, 0, 1);
-    blendPose(out, a, b, k);
+    const k = locomote(anim, anim.swimIdle, anim.swimming, t, speed, phase, false, out);
     out.root[1]! += SWIM_LIFT;
     // A swimmer's whole body tips toward its look, more the faster it goes.
     bodyPitch = pitch * k;
@@ -233,31 +272,15 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     loop(anim.fall, t, out);
     twistAngle = 0;
   } else if (st.stance === STANCE_PRONE) {
-    loop(anim.proneIdle, t, a);
-    gait(anim.proneCrawl, PRONE_TICKS, t, reverse, b);
-    blendPose(out, a, b, clamp(speed / PRONE_SPEED, 0, 1));
+    locomote(anim, anim.proneIdle, anim.crawling, t, speed, phase, reverse, out);
     // A prone body turns as one piece, and only the neck and head follow the look.
     twistAngle = 0;
     spineShare = 0;
   } else if (st.stance === STANCE_CROUCH) {
-    loop(anim.crouchIdle, t, a);
-    gait(anim.crouchWalk, CROUCH_TICKS, t, reverse, b);
-    blendPose(out, a, b, clamp(speed / CROUCH_SPEED, 0, 1));
-  } else if (speed <= 0) {
-    loop(anim.idle, t, out);
-    twistAngle = 0;
-  } else if (speed < WALK_SPEED) {
-    loop(anim.idle, t, a);
-    gait(anim.walk, WALK_TICKS, t, reverse, b);
-    blendPose(out, a, b, speed / WALK_SPEED);
-  } else if (speed < JOG_SPEED) {
-    gait(anim.walk, WALK_TICKS, t, reverse, a);
-    gait(anim.jog, JOG_TICKS, t, reverse, b);
-    blendPose(out, a, b, (speed - WALK_SPEED) / (JOG_SPEED - WALK_SPEED));
+    locomote(anim, anim.crouchIdle, anim.crouching, t, speed, phase, reverse, out);
   } else {
-    gait(anim.jog, JOG_TICKS, t, reverse, a);
-    gait(anim.sprint, SPRINT_TICKS, t, reverse, b);
-    blendPose(out, a, b, clamp((speed - JOG_SPEED) / (SPRINT_SPEED - JOG_SPEED), 0, 1));
+    locomote(anim, anim.idle, anim.standing, t, speed, phase, reverse, out);
+    if (speed <= 0) twistAngle = 0;
   }
 
   const act = st.action & 7;
