@@ -90,7 +90,7 @@ export function addCoreCommands(con: Console): void {
         if (c.admin) return "cheats are already enabled";
         const password = ctx.host.adminPassword;
         if (password === null && !ctx.host.dev) return "cheats are disabled on this server";
-        const guesses = ctx.host.game.guesses;
+        const guesses = ctx.host.game.cheatGuesses;
         const who = c.conn.address ?? c.name;
         const tick = ctx.host.world.tick;
         const wait = guesses.wait(who, tick);

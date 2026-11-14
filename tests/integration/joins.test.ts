@@ -33,3 +33,18 @@ test("a survivor back on a new connection takes its body over, though the old co
   h.run(500);
   expect([again.state, third.state, third.sessionState, h.server.playerCount]).toEqual(["closed", "active", SESSION_DEAD, 1]);
 });
+
+test("joining with the right password does not forgive wrong guesses at the admin password", () => {
+  const h = new Harness({ password: "door" }, 1, 60, { adminPassword: "hunter2" });
+  const guess = (word: string): string => {
+    const eve = h.join("eve", {}, { password: "door" });
+    h.run(300);
+    const said = h.say(eve, `enablecheats ${word}`)[0]!;
+    eve.close();
+    h.run(100);
+    return said;
+  };
+  // Each guess comes on a new connection. The third starts a wait that the right password must sit out too.
+  expect([guess("a"), guess("b"), guess("c")]).toEqual(["wrong password", "wrong password", "wrong password"]);
+  expect(guess("hunter2")).toBe("too many wrong passwords: wait 30 s");
+});

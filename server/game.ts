@@ -313,8 +313,10 @@ export class GameServer {
   readonly clients: (Client | null)[];
   /** New survivor names made from each address in the last hour. */
   private readonly newNames = new Map<string, { n: number; since: number }>();
-  /** Wrong passwords, for joining and for cheats, by the address they came from. */
+  /** Wrong join passwords, by the address they came from. */
   readonly guesses = new Guesses();
+  /** Wrong cheat passwords, counted apart: joining with the right password must not forgive them. */
+  readonly cheatGuesses = new Guesses();
   /** `overflows` counts snapshots and chunk messages that outgrew the writer and were not sent. */
   readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0, overflows: 0 };
   /** May this device key use this name? Called before anything is created. */
