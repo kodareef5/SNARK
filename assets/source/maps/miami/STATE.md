@@ -1,13 +1,16 @@
 # Miami production state
 
-**Complete and accepted.** Run: 2026-11-14, 17:28–19:38 UTC, approximately 2 h 10 min.
+**Round two complete.** 2026-11-14, 19:40–20:40 UTC. All final tiles and saved production inputs are in place; no generation, finishing or measurement process remains running.
 
-- Accepted: all 85 finished 1,024² RGB tiles under tiles/z0 through tiles/z3; 85 independently generated original paintings and their used prompts/context crops; original style sheet; full-resolution final masters.
-- Accepted: exact 8,128 m square and corners in map.json; source manifests and attribution; height, validity, water, roads, buildings, land cover, succession, flooding, bridge gaps, wrecks and canopy layers. Canonical 8,192² water/road/building/canopy masks preserve detail too fine for 2 m samples.
-- Verified: final visible water, road and building masks have IoU 1.000 and zero boundary error against native vector references at all zooms. Fine canonical masks match exactly. All tiles reconstruct their masters with zero changed pixels. Adjacent-zoom broad-colour mean errors are 0.978, 0.849 and 0.829 / 255.
-- Verified: 85 tile/original/prompt sets, required PNG dimensions and bit depths; SHA-256 inventory in checks/delivery_audit.json; canopy-source provenance; Python syntax. Offline viewer JavaScript syntax checked; automated browser launch was unavailable.
-- Visually reviewed: whole map at all scales, complete close-scale contact sheet, native downtown/island/port/beach/mangrove cases and joined-corner crops. No visible joins, lettering, borders or compass in final tiles.
-- Limits: the 2 m companions quantize very thin geometry. Use the fine masks or vectors for future world feature placement. Height gaps use explicit −1 m convention, not bathymetry. Source uncertainty and artistic compromises are detailed in REPORT.md. FEMA delivery attribution must accompany redistribution.
-- Next handoff: consume the accepted layers and tiles in the game's later world-building/map-screen work. No painting or finishing work remains in this task. Reproduction commands are in tools/mapart/README.md.
+- 85 final RGB PNG tiles, each 1,024², in the original z0/z1/z2/z3 filenames. Whole-map entry: [tiles/z0/0_0.png](tiles/z0/0_0.png).
+- 21 replacement originals at z0–z2, plus retained supplementary overview/correction inputs. All 64 z3 original paintings are byte-identical to round one. Exact prompts are kept beside the originals.
+- Far views generalize into districts and landmark pictures. Close views keep native footprints and rooms. Ivory paper, variable shore ink, flood/reclamation, port trusses, hotel galleries and scale-legible wreck symbols are finished across continuous canvases before cutting.
+- 85 formats pass; all tile sets reconstruct their masters with zero error. All 140 joins measured and worst cases inspected. Broad adjacent-zoom RGB differences are 0.802, 1.440, 1.028 /255. Raw maximum join ratio is 1.568 at a real building wall coinciding with the cut; this is above round one's reported 1.29 and is explicitly explained, not hidden, in the report. No visible tile-shaped discontinuity was found.
+- Reproduction check: both far canvases rebuilt identically from originals; three close registrations recomputed without caches with zero differences; full colour balance/export rerun with identical hashes for all 85 tiles.
+- Base layers/vectors unchanged (21 artifacts checked). Engine conversion verified and documented in [base/VALUES.md](base/VALUES.md): x=4064−E, z=4064+N. Keep PNGs north-up; do not mirror them before the importer. No engine map file built.
+- Final whole-map comparison made beside Harper's Sea of Thieves commission, Blaeu's Amsterdam and Baynes's Middle-earth. Assessment and remaining artistic weaknesses are in [REPORT.md](REPORT.md); foreign artwork was never passed to image generation.
+- Measurements, production log, reproduction checks and hashes are kept under reports/. Downloads, references, review pictures and warped/continuous masters remain ignored and regenerable.
+- Current export pipeline: reference.py → round2_restore.py → round2.py finish 0,1,2,3 → round2_balance.py → round2_measure.py → audit.py. The complete commands are in tools/mapart/README.md. Do not run the old finish.py entry point for round-two exports.
+- Work is confined to assets/source/maps/miami/ and tools/mapart/. No git write command was run.
 
-Historical checks/partial_z*.png and SIFT experiments are development diagnostics, not delivery tiles. All repository changes stay under assets/source/maps/miami and tools/mapart. Raw downloads and the tool virtual environment are ignored. No git write commands. Engine and build untouched.
+[Full report](REPORT.md) · [Production log](reports/round2-production-log.md) · [Export measurements](reports/round2-measurements.json) · [Reproduction result](reports/round2-reproduction.json)
