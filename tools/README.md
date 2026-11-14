@@ -15,6 +15,7 @@ from here.
 | `simhash.ts` | `bun tools/simhash.ts`, `node tools/simhash.ts` | Four hashes of fixed scenarios (movement, human pose, snapping, creature pose), for comparing engines |
 | `art.ts`, `blender/` | `bun run art`, `bun run art -- --creatures` | Converts third-party models in `assets/raw` into what the pack build reads in `assets/source`. Needs Blender; building the game does not |
 | `fit-zones.ts` | `bun tools/fit-zones.ts` | Fits the hit capsules to the modelled bodies and measures the match |
+| `map.ts`, `map/` | `bun tools/map.ts build <folder> <out.snmap>`, and `unpack`, `proving`, `info` | Builds a map file from a folder of plain layers, turns one back into its folder, writes the proving ground as a file, and says what a file holds. The folder's layout is in the tool's header and in [maps as files](../planning/reference/maps.md) |
 | `settings.ts` | `bun run settings` | Writes `planning/reference/settings.md` from the catalogue of server settings; a test fails if the page is stale |
 
 `check.ts` holds the allow-list of development packages, the zone import table,

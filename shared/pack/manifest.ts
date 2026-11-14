@@ -34,6 +34,8 @@ export interface ManifestLevel {
   error: number;
   /** The first part is the indices and the vertices. A level drawn with materials has a second, its surface, and may have a third, its skin. */
   parts: ManifestPart[];
+  /** Where the parts after the first are, when they do not follow it: the boot file holds first parts only. */
+  surface?: { file: number; at: number };
   /** See PackLod. The materials are indices into the manifest's. */
   sections?: number[];
 }
@@ -131,7 +133,8 @@ export function parseManifest(text: string): Manifest {
     }
   }
   for (const mat of materials) {
-    for (const t of [mat.base, mat.normal, mat.mro, mat.mask]) if (!(t >= -1 && t < textures.length)) throw new Error(`manifest: material ${mat.id} names a texture that is not there`);
+    mat.mask2 ??= -1;
+    for (const t of [mat.base, mat.normal, mat.mro, mat.mask, mat.mask2]) if (!(t >= -1 && t < textures.length)) throw new Error(`manifest: material ${mat.id} names a texture that is not there`);
   }
   const seen = new Set<string>();
   for (const mesh of m.meshes) {
@@ -144,7 +147,9 @@ export function parseManifest(text: string): Manifest {
       const file = m.files[level.file];
       const parts = Array.isArray(level.parts) ? level.parts : [];
       const bytes = parts.reduce((sum, p) => sum + p.bytes, 0);
-      if (!file || parts.length === 0 || !(level.at >= 0) || !(level.at + bytes <= file.bytes)) throw new Error(`manifest: a level of ${mesh.id} lies outside its file`);
+      const first = level.surface ? (parts[0]?.bytes ?? 0) : bytes;
+      if (!file || parts.length === 0 || !(level.at >= 0) || !(level.at + first <= file.bytes)) throw new Error(`manifest: a level of ${mesh.id} lies outside its file`);
+      if (level.surface && !(level.surface.at >= 0 && level.surface.at + bytes - first <= (m.files[level.surface.file]?.bytes ?? -1))) throw new Error(`manifest: the surface of a level of ${mesh.id} lies outside its file`);
       if ((level.index !== 2 && level.index !== 4) || !(level.error >= 0)) throw new Error(`manifest: a level of ${mesh.id} is not described`);
       const sizes = [pad4(level.tris * 3 * level.index) + level.verts * VERTEX_BYTES, level.verts * SURFACE_BYTES, level.verts * SKIN_BYTES];
       if (parts.length > 3 || parts.some((p, k) => p.bytes !== sizes[k])) throw new Error(`manifest: a level of ${mesh.id} is not the size its counts give`);
