@@ -22,7 +22,7 @@ import os
 import canopy
 import heads as hd
 from kit import UP, Mesh, add, cross, dot, horizontal, interp, length, lerp, mix, mul, rng_for, rotate, smooth, sub, tube, unit
-from layout import HEAD_CELLS, SPANS, head_cell, leaf_cell, picture_dir, under_cell
+from layout import HEAD_CELLS, LEAVES, SPANS, head_cell, leaf_cell, picture_dir, under_cell
 
 LEVELS = 5
 
@@ -833,10 +833,10 @@ LEAVES_UP = 0.5
 # A head is lit as leaves are, from above more than from the side: its own normals are pressed toward its axis by this.
 LEAFY = 0.55
 HEAD_LEVELS = {
-    0: {"own": 0.62, "rings": 0, "inner": 1, "core": 0.55, "dim": 0.55, "jag": 1.8, "puff": 1.0, "sprays": 18, "loose": 0.7, "low": -0.9, "spray": 1.18, "cut": 0.58, "coarse": False},
-    1: {"own": 0.62, "rings": 1, "inner": 2, "core": 0.55, "dim": 0.5, "jag": 1.8, "puff": 1.0, "sprays": 12, "loose": 0.5, "low": -0.9, "spray": 1.2, "cut": 0.58, "coarse": True},
-    2: {"own": 0.62, "rings": 2, "inner": 4, "core": 0.7, "dim": 0.15, "jag": 1.0, "puff": 1.15, "sprays": 6, "loose": 0.0, "low": -0.5, "spray": 1.1, "cut": 0.5, "coarse": True},
-    3: {"own": 0.62, "rings": 4, "inner": 4, "core": 0.8, "dim": 0.0, "jag": 1.0, "puff": 1.25, "sprays": 4, "loose": 0.0, "low": -0.3, "spray": 1.05, "cut": 0.45, "coarse": True},
+    0: {"own": 0.62, "rings": 0, "inner": 1, "core": 0.55, "dim": 0.55, "jag": 1.8, "puff": 1.0, "sprays": 18, "loose": 0.7, "largest": 1.5, "more": 1.8, "low": -0.9, "spray": 1.18, "cut": 0.58, "coarse": False},
+    1: {"own": 0.62, "rings": 1, "inner": 2, "core": 0.55, "dim": 0.5, "jag": 1.8, "puff": 1.0, "sprays": 12, "loose": 0.5, "largest": 1.5, "more": 1.8, "low": -0.9, "spray": 1.2, "cut": 0.58, "coarse": True},
+    2: {"own": 0.62, "rings": 2, "inner": 4, "core": 0.7, "dim": 0.15, "jag": 1.0, "puff": 1.15, "sprays": 6, "loose": 0.0, "largest": 2.2, "more": 1.0, "low": -0.5, "spray": 1.1, "cut": 0.5, "coarse": True},
+    3: {"own": 0.62, "rings": 4, "inner": 4, "core": 0.8, "dim": 0.0, "jag": 1.0, "puff": 1.25, "sprays": 4, "loose": 0.0, "largest": 2.8, "more": 1.0, "low": -0.3, "spray": 1.05, "cut": 0.45, "coarse": True},
 }
 
 
@@ -862,7 +862,10 @@ def sprays(m, c, at, atlas, lit, rng, share=1.0):
     """The cut-out sprays of a head, `share` of the level's count, radiating from its core all round as the twigs' ends
     of a clump of leaves do, the lower ones drooping, each lit as the head is where it leaves it: from any side the
     head's outline is leaves, and a spray seen end on, in front of the core or behind it, costs little."""
-    want = at["sprays"] * share
+    # A spray is never drawn much larger than its leaves were painted, so a large head has more of them, not larger.
+    cluster = LEAVES[atlas]["cluster"]
+    longest = cluster * at["largest"]
+    want = at["sprays"] * share * min(at["more"], max(0.6, (c.r * at["spray"] / longest) ** 2))
     count = int(want) + (rng.random() < want - int(want))
     golden = math.pi * (3 - math.sqrt(5))
     turn = rng.uniform(0, 2 * math.pi)
@@ -880,7 +883,7 @@ def sprays(m, c, at, atlas, lit, rng, share=1.0):
         along = unit(add(add(mul(radial, 0.6), mul(c.own(theta, phi), 0.4)), (0.0, -0.25 * smooth((theta - 1.2) / 1.2), 0.0)))
         aside = unit(cross(along, UP)) if abs(along[1]) < 0.95 else c.e1
         along = unit(rotate(rotate(along, aside, rng.uniform(-0.4, 0.4)), unit(cross(along, aside)), rng.uniform(-0.4, 0.4)))
-        s = c.r * at["spray"] * (0.62 + 0.76 * rng.random() ** 1.6)
+        s = min(longest, c.r * at["spray"]) * (0.62 + 0.76 * rng.random() ** 1.6)
         cut = at["cut"] * rng.uniform(0.85, 1.2)
         root = sub(at_surface, mul(along, s * 0.04))
         flat = sub(c.axis, mul(along, dot(c.axis, along)))
@@ -894,7 +897,7 @@ def sprays(m, c, at, atlas, lit, rng, share=1.0):
     for _ in range(int(want) + (rng.random() < want - int(want))):
         theta, phi = math.acos(rng.uniform(-0.2, 0.9)), rng.uniform(0, 2 * math.pi)
         out = unit(sub(c.point(theta, phi), c.centre))
-        s = c.r * rng.uniform(0.42, 0.62)
+        s = min(cluster, c.r * rng.uniform(0.42, 0.62))
         root = add(c.point(theta, phi), mul(out, c.r * rng.uniform(0.05, 0.3)))
         along = unit(add(out, (rng.uniform(-0.4, 0.4), rng.uniform(-0.2, 0.3), rng.uniform(-0.4, 0.4))))
         flat = sub(UP, mul(along, dot(UP, along)))

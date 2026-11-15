@@ -47,7 +47,7 @@ SPECS = {s["name"]: s for s in MANGROVES}
 # How far apart the heads of leaves stand over the crown (heads.py), each 1.1 to 1.7 m across; on the coarser levels
 # they are gathered into so many against the finest's count, or so many in all; and the share of each level's sprays
 # a head carries, a mangrove's shore being a band of them.
-SPACING = 1.45
+SPACING = 1.15
 GATHERED = {2: 0.5, 3: 12, 4: 7}
 SPRAYS = 0.6
 
