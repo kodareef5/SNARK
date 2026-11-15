@@ -22,7 +22,6 @@ export const FEATURES = {
   stations: "Crafting stations: what is made where, and how fast",
   cosmetics: "Skins, dyes, costumes and shields",
   bosses: "Bosses, artifacts and what a boss unlocks",
-  eggs: "Eggs as items that are carried, kept and eaten",
   points: "A points ledger: a shop, kits and rewards",
 } as const;
 export type Feature = keyof typeof FEATURES;

@@ -185,8 +185,8 @@ function gathering() {
   baby.rec.grown = h.world.tick + 95000;
   h.world.ents.setYoung(baby.e, baby.rec.span, baby.rec.grown);
   h.host.refreshBody(baby.rec);
-  const f = tame(h, recOf(ada), at.x - 3, at.z + 12, true);
-  const m = tame(h, recOf(ada), at.x + 3, at.z + 12, false);
+  const f = tame(h, recOf(ada), at.x - 1, at.z + 12, true);
+  const m = tame(h, recOf(ada), at.x + 1, at.z + 12, false);
   f.rec.mating = m.rec.mating = true;
   const sam = h.join("sam", {}, { spectate: true });
   h.run(1500);
@@ -317,8 +317,8 @@ test("a whole client draws the mark over the dodo it looks at from the overhead 
   expect(f.find(KEY_OVER_BAR + 4)!.text).toBe("torpor");
 
   // A pair beside it: a heart over each, filled to the pair's step.
-  const a = tame(h, me, at.x - 1.5, at.z + 4, true);
-  const b = tame(h, me, at.x + 1.5, at.z + 4, false);
+  const a = tame(h, me, at.x - 1.2, at.z + 4, true);
+  const b = tame(h, me, at.x + 1.2, at.z + 4, false);
   a.rec.mating = b.rec.mating = true;
   run(1500);
   const hearts: number[] = [];

@@ -354,9 +354,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // here stands within 152 m, and with the band past the near field it is this again. It was 4087841682 until the common
   // tree grew at 0.85 to 1.15 of its models, not 0.4 to 0.75, and the 300 frames took two draws more: the sizes alone give
   // it, and its four young variants and the elders' boxes alone leave it as it was. It was 3734161494 until the pack held
-  // three meshes more, the wooden club, the slingshot and its stone, after all the others: the draws, the triangles and
-  // the uploads are as they were, and without the meshes it is that again.
-  expect(hash).toBe(2299377612);
+  // four meshes more, numbered after or among the others: the wooden club, the slingshot and its stone (2299377612 with
+  // those alone) and the grey box of feces lying (3294409758 with that alone). The draws, the triangles and the uploads
+  // are as they were.
+  expect(hash).toBe(4244515908);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

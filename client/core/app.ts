@@ -12,7 +12,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_PASSWORD, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_PASSWORD, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -148,6 +148,9 @@ export class App {
   private useKept = false;
   /** Frames left of the synthetic use press that follows a tap. */
   private usePulse = 0;
+  /** Entity index of the egg under the crosshair, or -1. eggKept: the use key went down on one, and took it with CMD_TAKE. */
+  private eggAimed = -1;
+  private eggKept = false;
 
   voice: VoicePort | null = null;
   talking = false;
@@ -221,6 +224,12 @@ export class App {
       return true;
     }
     if (code === "ShiftLeft" || code === "ShiftRight") this.shift = down;
+    // The use key on an egg takes it up with a command of its own, and the body does not get the press.
+    if (code === "KeyE" && (this.eggKept || (down && !repeat && this.eggAimed >= 0))) {
+      if (!this.eggKept) this.session.command(CMD_TAKE, (w) => w.u32(this.eggAimed >>> 0));
+      this.eggKept = down;
+      return true;
+    }
     // Holding the use key on a structure opens its menu, so there the body gets the press only on release, as a short pulse.
     if (code === "KeyE") {
       if (down && !repeat) {
@@ -353,7 +362,7 @@ export class App {
     let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, NAME_RANGE) === HIT_NONE ? NAME_RANGE : rayHit.t;
     let hit = -1;
     for (let i = 0; i < r.count; i++) {
-      // What is in someone's arms is no mark: the server takes nothing held for what the use key or a blow is aimed at.
+      // What is in someone's arms is no mark for the use key, a blow or a whistle.
       if ((r.cue[i]! & CUE_HELD) !== 0) continue;
       const size = this.sizeOf(i);
       const rad = this.reg.bodyRadius[r.kind[i]!]! * size;
@@ -404,7 +413,7 @@ export class App {
     const node = struck === HIT_NODE ? rayHit.ref : -1;
     let hit = -1;
     for (let i = 0; i < r.count; i++) {
-      // What is in someone's arms is no mark: the server takes nothing held for what the use key or a blow is aimed at.
+      // What is in someone's arms is no mark for the use key, a blow or a whistle.
       if ((r.cue[i]! & CUE_HELD) !== 0) continue;
       const size = this.sizeOf(i);
       const rad = this.reg.bodyRadius[r.kind[i]!]! * size;
@@ -416,8 +425,13 @@ export class App {
     }
     if (hit >= 0) {
       if ((r.flags[hit]! & VIEW_FLAG_PROP) !== 0) {
-        // On a prop, a nonzero grown tick marks an egg.
-        if (r.grown[hit] !== 0) return `${r.name[hit]}  hatches in ${waitWords(Math.max(0, Math.ceil((r.grown[hit]! - s.serverTick) / TICK_RATE)))}`;
+        // On a prop, a nonzero grown tick marks a fertilised egg. An egg that is an item is taken up.
+        const left = waitWords(Math.max(0, Math.ceil((r.grown[hit]! - s.serverTick) / TICK_RATE)));
+        if (this.reg.propItem[r.kind[hit]!] !== 0) {
+          this.eggAimed = r.id[hit]!;
+          return `E  take ${r.name[hit]}${r.grown[hit] !== 0 ? `  ${left} to hatch` : ""}`;
+        }
+        if (r.grown[hit] !== 0) return `${r.name[hit]}  hatches in ${left}`;
         return `E  ${s.open ? "close" : "open"} ${r.name[hit]}`;
       }
       if (r.team[hit] === 0 && r.grown[hit] !== 0) {
@@ -683,6 +697,7 @@ export class App {
       c.release();
     }
     const whom = alive ? this.who(world, eyeNow) : ((this.lookedAt = this.target = -1), "");
+    this.eggAimed = -1;
     hud.prompt = !alive ? "" : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);

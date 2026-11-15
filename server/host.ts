@@ -411,8 +411,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   taming.onMate = (rec, what) => breeding.order(rec, what);
   const corpses = new Corpses({ world, game, records, items, deadlines, rules }, (opts.seed ?? 1) + 103);
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
-  const feces = new Feces({ world, records, items, deadlines, rules }, (opts.seed ?? 1) + 107);
-  const eggs = new Eggs({ world, game, records, items });
+  const eggs = new Eggs({ world, game, records, items, rules, deadlines, creatures, breeding, place: (rec) => death.place(rec) });
+  const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
   const hurt = new Hurt({ world, records, survival });
   taming.bred = (rec) => breeding.subject(rec);
@@ -621,6 +621,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     stations.resume();
     taming.resume();
     breeding.resume();
+    eggs.resume();
     // Last, because a buff's change refreshes its body, and that settles what the body carries.
     for (const rec of records.byPid.values()) buffs.restore(rec, persistence!.store.unrated.has(rec.pid));
   } else {
@@ -907,7 +908,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       inHand.set(rec.pid, -2);
       refreshBody(rec);
     },
-    drop: (rec, slot, n) => death.drop(rec, slot, n),
+    // An egg is set down as an egg where it lies.
+    drop: (rec, slot, n) => eggs.put(rec, slot, n) ?? death.drop(rec, slot, n),
   };
   const tactical = new Tactical(world, game, records, rules);
   game.onReplicate = (c) => {
