@@ -23,6 +23,7 @@
 | `views.test.ts` | What artists look at: a snapshot on a graphics tier with textures, the textures kept between runs, and a sheet with materials |
 | `hud.test.ts`, `ui.test.ts` | The HUD model, the minimap, the self-check logic; every screen laid out at four window shapes |
 | `tactical.test.ts`, `map.test.ts` | Latitude and longitude; a chunk's structures baked to cells against brute force, and on the wire; marks; the map's tiles and its four zooms lining up |
+| `contracts.test.ts` | What the creature packages build on: the cue word's lasting states, hurt stages, the new codes, columns that change nothing until used, the dodo's numbers, its egg item and the tames' levels ready to join |
 
 Assert observable outcomes. Prefer a property over many seeded inputs to a few
 hand-picked cases when the rule is an invariant.

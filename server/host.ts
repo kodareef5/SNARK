@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TEXT, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -15,6 +15,12 @@ import { Fixtures } from "./fixtures.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
+import { Carry } from "./carry.ts";
+import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
+import { Eggs } from "./eggs.ts";
+import { DEADLINE_FECES, Feces } from "./feces.ts";
+import { Hurt } from "./hurt.ts";
+import { Overhead } from "./overhead.ts";
 import { growthStep, youngShare } from "../shared/sim/breeding.ts";
 import { creatureAnims } from "../shared/anim/creature.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
@@ -161,6 +167,13 @@ export interface Host {
   readonly riding: Riding;
   readonly breeding: Breeding;
   readonly tactical: Tactical;
+  /** The creature packages' modules, each still doing nothing. */
+  readonly corpses: Corpses;
+  readonly carry: Carry;
+  readonly feces: Feces;
+  readonly eggs: Eggs;
+  readonly overhead: Overhead;
+  readonly hurt: Hurt;
   /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
   readonly spawner: Spawner | null;
   /** The list settings that name classes, as tables, and the names this build lacks. */
@@ -392,6 +405,12 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   death.offMount = (c) => riding.dismount(c);
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
+  const corpses = new Corpses({ world, game, records, items, deadlines, rules }, (opts.seed ?? 1) + 103);
+  const carry = new Carry({ world, game, records, items, survival, creatures });
+  const feces = new Feces({ world, records, items, deadlines, rules }, (opts.seed ?? 1) + 107);
+  const eggs = new Eggs({ world, game, records, items });
+  const overhead = new Overhead({ world, records, breeding });
+  const hurt = new Hurt({ world, records, survival });
   taming.bred = (rec) => breeding.subject(rec);
   death.onRide = (c, e) => {
     const rec = records.byPid.get(world.ents.pid[e]!);
@@ -406,7 +425,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const e = records.entOf.get(mount.pid);
     return e === undefined ? null : riding.riderOf(e);
   };
-  combat.onHarm = (victim, points) => taming.harmed(victim, points);
+  combat.onHarm = (victim, points) => {
+    taming.harmed(victim, points);
+    hurt.harmed(victim, points);
+  };
   const chat = new Chat({ game, records, rules, tribes, bus });
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
@@ -452,6 +474,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     if (taker) taming.meal(taker);
     buffs.died(rec);
     spawner?.left(rec);
+    corpses.fell(rec, cause, by);
     death.die(rec, cause);
   };
   // Unconsciousness, an injury and any buff change how a body moves.
@@ -728,10 +751,13 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       else if (kind === DEADLINE_TAME) taming.due(pid, stamp);
       else if (kind === DEADLINE_BREED) breeding.due(pid, stamp);
       else if (kind === DEADLINE_SPAWN) spawner?.due(pid, stamp);
+      else if (kind === DEADLINE_CORPSE) corpses.due(pid, stamp);
+      else if (kind === DEADLINE_FECES) feces.due(pid, stamp);
     });
     death.step();
     // Riders move with their mounts before combat aims at either.
     riding.step();
+    carry.step(tick);
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat.step();
     projectiles.step();
@@ -740,6 +766,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     build.step();
     taming.step();
     breeding.step(tick);
+    feces.step(tick);
+    overhead.step(tick);
+    corpses.step(tick);
+    hurt.step(tick);
     voice.step(tick);
     // A full entity store is logged when it first refuses, and then at most once a minute.
     if (world.ents.refused !== refusedTold && tick >= refusedNext) {
@@ -967,6 +997,12 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     riding,
     breeding,
     tactical,
+    corpses,
+    carry,
+    feces,
+    eggs,
+    overhead,
+    hurt,
     spawner,
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
@@ -1015,6 +1051,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   game.handle(CMD_ORDER, (c, r) => taming.order(c, r));
   game.handle(CMD_OPEN, (c, r) => taming.open(c, r));
   game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
+  game.handle(CMD_CARRY, (c, r) => carry.command(c, r));
+  game.handle(CMD_TAKE, (c, r) => eggs.take(c, r));
   game.handle(CMD_CHAT, (c, r) => {
     const channel = r.bits(3);
     const words = r.string(MAX_CHAT_BYTES);

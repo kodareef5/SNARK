@@ -66,7 +66,7 @@ export class Breeding {
   private readonly ctx: BreedingContext;
   private readonly rng: Rng;
   /** Pairs by the female's pid: the male's pid, the ticks the mating takes, and the tick it finishes. */
-  private readonly pairs = new Map<number, { male: number; span: number; due: number }>();
+  readonly pairs = new Map<number, { male: number; span: number; due: number }>();
   private readonly grew: [number, number] = [0, 0];
   /** Scratch for one pass: the willing awake females and males as entity indices, and the pids of females whose pair stands. */
   private readonly females: number[] = [];

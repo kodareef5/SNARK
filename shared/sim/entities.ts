@@ -22,6 +22,11 @@ export const F_AWAKE = 4;
 export const F_PLAYER = 8;
 /** A thing that stands where it is put: never stepped, never woken. */
 export const F_PROP = 16;
+/**
+ * Held in a survivor's arms or carried by a creature: the creature tick does not step it, and whoever holds it moves it.
+ * Server only; clients see CUE_HELD (shared/anim/pose.ts).
+ */
+export const F_HELD = 32;
 
 /** The most slots a store can have: what a handle's index can name. */
 export const ENTITY_LIMIT = HANDLE_INDEX_MASK + 1;
