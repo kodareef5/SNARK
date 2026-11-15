@@ -6,6 +6,8 @@ export interface Way {
   id: number; kind: "road_bridge" | "rail_bridge" | "pier" | "breakwater" | "bridge_outline";
   name: string | null; class: string | null; lanes: number | null; layer: number | null;
   width_m: number | null; closed: boolean; length_m: number; points: Point[];
+  /** OpenStreetMap's bridge:structure, where it is mapped. */
+  structure?: string | null;
 }
 export interface Path { way: Way; points: Point[]; width: number; outline: boolean; }
 export const readWays = (source: string): Way[] => {

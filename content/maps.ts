@@ -5,4 +5,5 @@ import type { Def } from "../shared/content/defs.ts";
 export const MAPS: readonly Def[] = [
   { type: "map", id: "core:miami", label: "Miami", chunks: [127, 127], seaLevel: 0 },
   { type: "map", id: "core:tampa", label: "Tampa", chunks: [127, 127], seaLevel: 0 },
+  { type: "map", id: "core:san-francisco", label: "San Francisco", chunks: [127, 127], seaLevel: 0 },
 ];
