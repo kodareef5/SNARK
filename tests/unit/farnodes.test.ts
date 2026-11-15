@@ -388,13 +388,14 @@ test("tiles go on the card again after a lost context, tiles past reach are let 
   const p = w.frame();
   const tiles = [...w.card.keys()].filter((b) => b >= FAR_NODE_BUFFERS).sort();
   const bytes = [...w.card].filter(([b]) => b >= FAR_NODE_BUFFERS).reduce((n, [, held]) => n + held.data.length, 0);
-  // The tiles, and the atlas of every standing node's mesh, a row of 193 texels of four floats each.
-  expect([p.uploads.length, p.atlasRows, w.scene.nodesFar!.bytes]).toEqual([0, 0, bytes + 16 * 193 * 16]);
+  // The tiles, and the atlas of every standing node's mesh, a row of 193 texels of four floats each: 20 rows, 16 until the
+  // oil rock's, crystal's, obsidian rock's and clam's grey boxes (content/items/nodes.ts); without them it is 16 again.
+  expect([p.uploads.length, p.atlasRows, w.scene.nodesFar!.bytes]).toEqual([0, 0, bytes + 20 * 193 * 16]);
   w.scene.resetUploads();
   const again = w.frame();
   expect(again.uploads.filter((u) => u.buffer >= FAR_NODE_BUFFERS).map((u) => u.buffer).sort()).toEqual(tiles);
   // With the atlas and the pulled draws' three levels.
-  expect([again.atlasRows, again.assetUploads.filter((u) => u.slot >= PULL_SLOTS && u.slot < PULL_SLOTS + 3).map((u) => u.indexCount)]).toEqual([16, [48, 96, 192]]);
+  expect([again.atlasRows, again.assetUploads.filter((u) => u.slot >= PULL_SLOTS && u.slot < PULL_SLOTS + 3).map((u) => u.indexCount)]).toEqual([20, [48, 96, 192]]);
   // Trees reach 300 m: the tiles more than a tile past that are let go, and the rest kept as they are.
   w.scene.assets.tier = { ...tierOf("medium"), reach: { bases: 2048, city: 2048, trees: 300, rocks: 0, bushes: 0 } };
   expect(w.frame().uploads.length).toBe(0);

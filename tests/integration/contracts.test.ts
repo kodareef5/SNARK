@@ -113,7 +113,9 @@ test("a creature in its own flight is saved flying and loads in the air, and a s
     copyFileSync(join(import.meta.dir, "../fixtures/saves/before-flyers.db"), old);
     const [ada, mount, bo] = [1099511627777, 1099511627778, 1099511627779];
     expect([ada, mount, bo].map((id) => format(old, id))).toEqual([5, 5, 5]);
-    const loaded = createHost(reg, { dbPath: old });
+    // It was made on the proving ground before the ground listed its resource nodes (shared/world/proving.ts), so on other
+    // bytes of the same map; what it holds is what is read here, so it is loaded as an operator would, told to go on.
+    const loaded = createHost(reg, { dbPath: old, allowMapMismatch: true });
     const rec = (id: number) => loaded.records.byPid.get(id)!;
     expect(loaded.persistence!.store.missingContent).toEqual([]);
     expect([rec(ada).held, rec(ada).inv!.total(reg.index.get("core:stone")!), rec(ada).flying]).toEqual([2, 40, false]);

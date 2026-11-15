@@ -366,6 +366,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       positive(d, "hits", d.hits, MAX_NODE_HITS);
       positive(d, "respawnHours", d.respawnHours, 1e6);
       for (const y of d.yields) if (!(y.min >= 0 && y.max >= y.min)) errors.push(`${d.id}: a yield's range must be 0 <= min <= max`);
+      if (d.sea !== undefined && d.sea !== "under" && d.sea !== "either") errors.push(`${d.id}: its sea is "under" or "either", not "${d.sea}"`);
       const largest = d.size?.[1] ?? 1;
       if (!(d.half[1] * 2 * largest <= MAX_NODE_HEIGHT && Math.max(d.half[0], d.half[2]) * largest <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: its box reaches further than ${MAX_STRUCTURE_HALF} m sideways or ${MAX_NODE_HEIGHT} m up from its origin at its largest size`);
       const shaped = (what: string, s: NodeShape): void => {

@@ -2,6 +2,7 @@ import type { Def } from "../../shared/content/defs.ts";
 import { AMMO } from "./ammo.ts";
 import { CONSUMABLES } from "./consumables.ts";
 import { EXPLOSIVES } from "./explosives.ts";
+import { NODE_RESOURCES_UNTIL_S0, RESOURCE_NODES } from "./nodes.ts";
 import { STATIONS } from "./stations.ts";
 import { WEAPONS } from "./weapons.ts";
 
@@ -9,4 +10,4 @@ import { WEAPONS } from "./weapons.ts";
 // category, each owned by one task. A new category adds its file here and nothing else, so tasks built side by side meet
 // only on this list.
 
-export const ITEMS: readonly Def[] = [...CONSUMABLES, ...STATIONS, ...WEAPONS, ...AMMO, ...EXPLOSIVES];
+export const ITEMS: readonly Def[] = [...CONSUMABLES, ...STATIONS, ...WEAPONS, ...AMMO, ...EXPLOSIVES, ...NODE_RESOURCES_UNTIL_S0, ...RESOURCE_NODES];

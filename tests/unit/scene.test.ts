@@ -400,7 +400,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 3260333166 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
   // It was 3479987675 until the pteranodon's grey box (content/creatures/pteranodon.ts) took a mesh number; without the
   // pteranodon and its beach entry it is that again.
-  expect(hash).toBe(1901866876);
+  // It was 1901866876 until the oil rock's, crystal's, obsidian rock's and clam's grey boxes (content/items/nodes.ts) took
+  // mesh numbers (the eleven the proving ground lists do not move it); without those four kinds it is that again.
+  expect(hash).toBe(2385450423);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

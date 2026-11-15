@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 41 classes: 28 built, 5 partly built, and 8 stubs that
-wait for a feature. The core pack holds 610 definitions, and 87 renames of ids
+wait for a feature. The core pack holds 618 definitions, and 87 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -29,7 +29,7 @@ share a `tag`.
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
 | `item` | PrimalItem | a group |  |  |  |
-| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `fuel`, `spoilHours`, `spoilsInto`, `youngFor`, `ammo` | 12 |
+| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `fuel`, `spoilHours`, `spoilsInto`, `youngFor`, `ammo` | 16 |
 | `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose`, `use` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel`, `youngFor`, `use` | 9 |
 | `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `tool`, `ammo` | 15 |
 | `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 8 |
@@ -197,7 +197,7 @@ ARK's names: `takes` is the structure settings' damage by type; `decayDays` is D
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `node` | a foliage type and its harvest component | built | `mesh`, `color`, `half`, `hits`, `respawnHours`, `yields`, `xp` | `top`, `soft`, `material`, `variants`, `size`, `depleted`, `footing` | 14 |
+| `node` | a foliage type and its harvest component | built | `mesh`, `color`, `half`, `hits`, `respawnHours`, `yields`, `xp` | `top`, `soft`, `material`, `variants`, `size`, `depleted`, `footing`, `sea` | 18 |
 
 - **`node`** on shelf `nodes`. A tree, a rock, a bush: harvested, used up, and grown back. Each node is one of its variants, turned and sized by its place.
 
@@ -349,7 +349,7 @@ built.
 
 ## The core pack by class
 
-**`item/resource`** (12): paste, sparkpowder, fiber, stone, wood, thatch, flint, hide, chitin, ore, ingot, gunpowder.
+**`item/resource`** (16): paste, sparkpowder, oil, crystal, obsidian, silica_pearls, fiber, stone, wood, thatch, flint, hide, chitin, ore, ingot, gunpowder.
 
 **`item/consumable`** (9): narcoberry, meat_prime, meat_prime_cooked, waterskin, spoiled_meat, berry, meat, meat_cooked, narcotic.
 
@@ -393,7 +393,7 @@ built.
 
 **`material`** (4): mat_thatch, mat_wood, mat_stone, mat_metal.
 
-**`node`** (14): tree, palm, fig, oak, banyan, mangrove, rock, rubble, metal_rock, bush, palmetto, fern, seagrape, creeper.
+**`node`** (18): oil_rock, crystal_rock, obsidian_rock, clam, tree, palm, fig, oak, banyan, mangrove, rock, rubble, metal_rock, bush, palmetto, fern, seagrape, creeper.
 
 **`prop/container`** (4): corpse, feces, cache, bag.
 
