@@ -34,7 +34,7 @@ for (let i = 0; i < map.spawns.length; i++) {
     h.say(s, "suicide", 500);
     if (state() !== SESSION_DEAD) throw new Error("the survivor did not die");
     h.run(12000);
-    s.command(CMD_RESPAWN, (w) => w.u8(i));
+    s.command(CMD_RESPAWN, (w) => (w.u8(i), w.u8(s.placesList)));
     h.run(1500);
     if (state() !== SESSION_ALIVE) throw new Error(`no respawn at ${p.name}`);
   }

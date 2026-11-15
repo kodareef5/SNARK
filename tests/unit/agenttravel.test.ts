@@ -36,6 +36,6 @@ test("the agent finds the nearest obelisk terminal it has been sent, and stands 
 });
 
 test("an arrival rises at the place it names, else at its tribe's first bed that is ready, else at the first spawn point", () => {
-  const places = [{ name: "Plaza", wait: 0 }, { name: "Slopes", wait: 0 }, { name: "Bed", wait: 12 }, { name: "Shack", wait: 0 }];
-  expect([riseAt(places, 2), riseAt(places, 2, " slopes "), riseAt(places, 2, "nowhere"), riseAt(places.slice(0, 3), 2)]).toEqual([3, 1, -1, 0]);
+  const places = [{ name: "Plaza", kind: 0, readyAt: 0 }, { name: "Slopes", kind: 0, readyAt: 0 }, { name: "Bed", kind: 9, readyAt: 1200 }, { name: "Shack", kind: 9, readyAt: 0 }];
+  expect([riseAt(places, 1000), riseAt(places, 1000, " slopes "), riseAt(places, 1000, "nowhere"), riseAt(places.slice(0, 3), 1000), riseAt(places, 1200)]).toEqual([3, 1, -1, 0, 2]);
 });

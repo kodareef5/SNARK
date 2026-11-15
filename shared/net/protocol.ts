@@ -38,9 +38,10 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 15;
+/** 15: beds, the choosing list numbered with why a survivor chooses, and naming and travelling from a bed. 16: the flyers'. */
+export const PROTOCOL_VERSION = 16;
 
-// Protocol 15: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
+// Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
 // flight layout of a pose's motion bits and CUE_TAKEOFF and CUE_ROLL (shared/anim/pose.ts), and the two flight counters
 // at the end of writeBody.
@@ -140,7 +141,7 @@ export const CMD_USE = 3;
 
 /** Closes the open container. No arguments. */
 export const CMD_CLOSE = 4;
-/** Index u8 into the places OWN_RESPAWN listed. */
+/** Index u8 into the places OWN_RESPAWN listed, then that list's number u8. A place from a list since replaced is STALE. */
 export const CMD_RESPAWN = 5;
 
 /** Stat u8. It gets one level-up point. */
@@ -174,7 +175,10 @@ export const CMD_CHAT = 17;
  * the position out again itself.
  */
 export const CMD_PLACE = 18;
-/** Structure ref u32, then a STRUCT_ action u8 (shared/world/upkeep.ts). STRUCT_PIN and STRUCT_USE add a PIN u16: 0 to 9999, or 0xffff for none. */
+/**
+ * Structure ref u32, then a STRUCT_ action u8 (shared/world/upkeep.ts). STRUCT_PIN and STRUCT_USE add a PIN u16: 0 to 9999, or
+ * 0xffff for none. STRUCT_NAME adds a name string.
+ */
 export const CMD_STRUCT = 19;
 /**
  * Orders a tribe creature: entity index u32 or ORDER_ALL, then order u8. The order is an ORDER_ value, ORDER_STANCE plus a
@@ -303,8 +307,16 @@ export const SLOT_ON = 2;
 export const OWN_OPEN = 4;
 /** count u8, then per marker: kind u8, x f32, y f32, z f32, tick u32. Oldest first. */
 export const OWN_MARKERS = 5;
-/** count u8, then per place: name string, x f32, z f32, wait u16 (seconds until a bed is ready, 0 for a spawn point). */
+/**
+ * The places a survivor without a body may rise at, sent whenever they change while it chooses: why it chooses (CHOOSE_), the
+ * list's number u8 (CMD_RESPAWN names it), count u8, then per place: the bed's structure kind u16 (0 for one of the map's spawn
+ * points), name string, x f32, z f32, and the tick it is ready from u32 (0 for now).
+ */
 export const OWN_RESPAWN = 6;
+/** Why a survivor has no body and chooses where to rise: it died, it arrived from another server, it travels from a bed. */
+export const CHOOSE_DIED = 0;
+export const CHOOSE_ARRIVED = 1;
+export const CHOOSE_TRAVEL = 2;
 
 /**
  * experience u32, level u16, unspent stat points u16, unspent engram points varint, learned engrams (count varint, content
@@ -477,7 +489,7 @@ export class InputBuffer {
 /**
  * 380 bits: position and velocity exactly, then the rest of the predicted state. Protocol 13 added the aim's bloom and the
  * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them), and the flyers'
- * contracts (protocol 15) the flight counters.
+ * contracts (protocol 16) the flight counters.
  */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);

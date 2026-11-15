@@ -162,7 +162,7 @@ export function travel(s: Server, session: ClientSession, to: number, at = termi
 /** A survivor that arrived chooses the `index`th place of its spawn screen and rises there. */
 export function rise(s: Server, session: ClientSession, index = 0): void {
   s.h.run(200);
-  session.command(CMD_RESPAWN, (w) => w.u8(index));
+  session.command(CMD_RESPAWN, (w) => (w.u8(index), w.u8(session.placesList)));
   s.h.run(300);
 }
 

@@ -80,11 +80,11 @@ export function nearestTerminal(structs: StructureStore, reg: Registry, x: numbe
 }
 
 /**
- * Which of the spawn screen's places to rise at: the one named `want`, or the first of the tribe's beds that is ready, else the
- * first place. `spawns` names the map's spawn points, which come first; the places after them are beds. -1 for a name not there.
+ * Which of the spawn screen's places to rise at: the one named `want`, or the first of the tribe's beds that is ready at `tick`,
+ * else the first place. A bed is a place of a kind; a spawn point is of none. -1 for a name not there.
  */
-export function riseAt(places: readonly { name: string; wait: number }[], spawns: number, want = ""): number {
+export function riseAt(places: readonly { name: string; kind: number; readyAt: number }[], tick: number, want = ""): number {
   if (want !== "") return places.findIndex((p) => p.name.toLowerCase() === want.trim().toLowerCase());
-  const bed = places.findIndex((p, i) => i >= spawns && p.wait === 0);
+  const bed = places.findIndex((p) => p.kind !== 0 && p.readyAt <= tick);
   return bed >= 0 ? bed : 0;
 }

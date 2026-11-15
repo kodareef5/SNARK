@@ -1,6 +1,7 @@
 // Works out each frame where the building piece in hand would go (shared/world/snap.ts) and whether it may,
 // so a ghost can show it. The server checks all of it again when asked.
 
+import type { StructureDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
@@ -109,7 +110,8 @@ export class Builder {
       if (!poseAt(structs, reg, aim.target, kind, this.socket, this.turn, this.pose)) problem = RESULT_NO_SNAP;
       else if (t.owner[aim.target & 0xffff] !== session.tribe.team || session.tribe.team === 0) problem = RESULT_NOT_YOURS;
     } else {
-      if (!aim.ground || !freePose((x, z) => world.hf.heightAt(x, z), reg, kind, aim.px, aim.pz, this.freeYaw, this.lift, this.pose)) problem = RESULT_NO_SNAP;
+      // A bed is set only on a floor.
+      if (!aim.ground || (reg.defs[kind] as StructureDef).floor === true || !freePose((x, z) => world.hf.heightAt(x, z), reg, kind, aim.px, aim.pz, this.freeYaw, this.lift, this.pose)) problem = RESULT_NO_SNAP;
     }
     const p = this.pose;
     if (problem === 0) {
