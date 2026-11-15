@@ -81,22 +81,29 @@ function renderer(room = 300) {
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
-/**
- * A whole client on the harness with a probe on it, run until the probe says it is done, or `ms` of virtual time.
- * `tamper` may change a frame's packet before the probe sees it.
- */
-async function run(probe: DeviceProbe, h: Harness, app: App, gpu: RendererLike, ms = 30000, each?: (now: number) => void, tamper?: (p: FramePacket) => void): Promise<void> {
+interface Driven {
+  /** After each frame the probe saw. */
+  each?: (now: number) => void;
+  /** May change a frame's packet before the probe sees it. */
+  tamper?: (p: FramePacket) => void;
+  /** The page's clock from the harness's, for a test that stalls it. */
+  clock?: (now: number) => number;
+}
+
+/** A whole client on the harness with a probe on it, run until the probe says it is done, or `ms` of virtual time. */
+async function run(probe: DeviceProbe, h: Harness, app: App, gpu: RendererLike, ms = 30000, o: Driven = {}): Promise<void> {
   for (let t = 0; t < ms && !probe.report.done; t += 100) {
-    h.run(100, (now) => {
-      const p = app.frame(now, 390, 844);
+    h.run(100, (harness) => {
+      const now = o.clock?.(harness) ?? harness;
+      const p = app.frame(harness, 390, 844);
       if (!p) return;
       // As the page sizes its canvas, from the tier in use.
       const most = app.scene!.assets.tier.pixelRatio;
       const ratio = most > 0 ? Math.min(3, most) : 3;
       [gpu.gl.drawingBufferWidth, gpu.gl.drawingBufferHeight] = [Math.floor(390 * ratio), Math.floor(844 * ratio)];
-      tamper?.(p);
+      o.tamper?.(p);
       probe.frame(now, p, now - 1, now - 0.5);
-      each?.(now);
+      o.each?.(now);
     });
     await settle();
   }
@@ -125,7 +132,7 @@ test("a page shows which device it is on and the tests, starts nothing until one
   const { r: gpu } = renderer();
   probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
   const yaw = new Map<string, number>();
-  await run(probe, h, app, gpu, 60000, () => yaw.set(probe.report.stage, app.controls.yaw));
+  await run(probe, h, app, gpu, 60000, { each: () => yaw.set(probe.report.stage, app.controls.yaw) });
   const r = probe.report;
   expect([r.mode, r.done, r.errors, r.reloadedDuring]).toEqual(["quick", true, [], null]);
   expect(r.phases.map((p) => `${p.tier} ${p.scene}`)).toEqual(["lowpoly plain", "lowpoly stress", "lowpoly crowd", "medium plain", "medium stress", "medium crowd", "high plain", "high stress", "high crowd"]);
@@ -182,6 +189,38 @@ test("the ladder climbs until a rung breaks, asks the server for the base, and e
   expect(table.some((line) => line.startsWith("broke     medium bodies 25: frames 16.7 ms"))).toBe(true);
 });
 
+test("the soak counts a long frame while the page is shown as a stall, and leaves out only the time the page was hidden", async () => {
+  const { h, pack, app, expected } = client();
+  let offset = 0;
+  const { b } = browser({ clock: () => h.now + offset, expected, mode: "soak" });
+  const probe = new DeviceProbe(TOKEN, b, { ...TIMING, soakMs: 8000 });
+  await probe.before();
+  const { r: gpu } = renderer();
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
+  let frames = 0;
+  const each = (): void => {
+    if (probe.report.stage !== "soak") return;
+    // Hidden for 5 s, then shown; later a stall of 2.5 s with the page shown all the while.
+    if (++frames === 120) {
+      probe.visible(false);
+      offset += 5000;
+      probe.visible(true);
+    }
+    if (frames === 240) offset += 2500;
+  };
+  await run(probe, h, app, gpu, 60000, { each, clock: (now) => now + offset });
+  const s = probe.report.soak!;
+  expect([probe.report.done, probe.report.errors, s.hidden, s.hiddenMs, s.minutes.length]).toEqual([true, [], 1, 5000, 1]);
+  const m = s.minutes[0]!;
+  expect(m.frameMs.worst).toBeGreaterThanOrEqual(2500);
+  expect(m.frameMs.worst).toBeLessThan(3000);
+  expect(m.long).toBe(1);
+  // The stall took its share of the soak's 8 s, so fewer frames were drawn in it; the hidden 5 s took none.
+  expect(m.frames).toBeGreaterThan((8000 - 2600) / 16.7 - 2);
+  expect(m.frames).toBeLessThan((8000 - 2400) / 16.7 + 2);
+  expect(deviceTable(probe.report).some((line) => /^1 +\d+ +16\.7 +16\.7 +16\.7 +25\d\d\.\d +[\d.]+ +[\d.]+ +1 +0$/.test(line))).toBe(true);
+});
+
 test("a rung that did not draw all it was given, or never settled, is invalid: neither held nor broke, and not counted as held", async () => {
   const { h, pack, app, expected } = client();
   // A display the harness keeps up with, so every rung would hold on its frames alone.
@@ -191,7 +230,7 @@ test("a rung that did not draw all it was given, or never settled, is invalid: n
   const card = renderer(300);
   probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, card.r);
   // Ten draws skipped and ten things dropped every frame, as an outside review did.
-  await run(probe, h, app, card.r, 60000, undefined, (p) => void ((p.skipped += 10), (p.dropped += 10)));
+  await run(probe, h, app, card.r, 60000, { tamper: (p) => void ((p.skipped += 10), (p.dropped += 10)) });
   const r = probe.report;
   expect([r.done, r.errors]).toEqual([true, []]);
   const rungs = r.ladder!.rungs;

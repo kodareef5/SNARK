@@ -62,6 +62,8 @@ const STALL_MS = 15000;
 /** A rung holds the display's rate when its median frame is within this share of the display's, and its 95th within the next. */
 const HOLD_MEDIAN = 1.12;
 const HOLD_P95 = 1.5;
+/** A frame this many display intervals or longer is long: the screen missed two or more. */
+export const LONG = 3;
 /** Texture memory taken a frame, in megabytes, so that frames keep coming while it grows. */
 const MEMORY_STEP = 16;
 
@@ -154,7 +156,8 @@ export interface SoakReport {
   load: { bodies: number; pieces: number; near: number; far: number; stress: boolean };
   from: string;
   minutesWanted: number;
-  minutes: { minute: number; frames: number; frameMs: Spread; buildMs: number; drawMs: number; missed: number }[];
+  /** Each minute's frames, with `long` the frames of LONG display intervals or more while the page was shown. */
+  minutes: { minute: number; frames: number; frameMs: Spread; long: number; buildMs: number; drawMs: number; missed: number }[];
   /** Times the page was hidden, and how long in all. The soak's clock stops while it is. */
   hidden: number;
   hiddenMs: number;
@@ -516,6 +519,8 @@ export class DeviceRun {
   private readonly soakFrom: { load: Omit<Load, "tier" | "yaw">; from: string };
   private soakMs = 0;
   private hiddenAt = -1;
+  /** From the page being hidden until the first frame after it is shown again: the soak's clock leaves that time out. */
+  private away = false;
 
   /** `skipLoad` for a test begun on a page whose game is loaded already. `held` is a ladder's rungs from before, for the soak. */
   constructor(report: DeviceReport, side: DeviceSide, mode: Mode, timing: Timing = TIMING, skipLoad = false, held: readonly RungReport[] | null = null) {
@@ -566,6 +571,7 @@ export class DeviceRun {
     const s = this.side.app.session;
     this.hiddenBase = { snapshots: s.stats.snapshots, latest: s.latestSnapshot };
     this.hiddenAt = this.side.now();
+    this.away = true;
     this.report.hidden.push(this.report.stage);
     if (this.stage === "steps") this.show();
   }
@@ -842,8 +848,13 @@ export class DeviceRun {
       this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
       return false;
     }
-    // A gap of a second or more is the page coming back from hidden, which the soak's clock leaves out.
-    if (gap <= 0 || gap >= 1000) return false;
+    if (gap <= 0) return false;
+    // The page's own events say when it was hidden: any frame then, and the first after, is left out. A long frame
+    // while it was shown is a stall, and counts.
+    if (this.away) {
+      if (this.hiddenAt < 0) this.away = false;
+      return false;
+    }
     this.soakMs += gap;
     this.side.app.controls.yaw = ((this.soakMs / 60000) * 2 * Math.PI) % (2 * Math.PI);
     const s = this.samples;
@@ -852,7 +863,8 @@ export class DeviceRun {
     s.draw.push(drawMs);
     const minute = report.minutes.length;
     if (this.soakMs < (minute + 1) * 60000 && this.soakMs < this.timing.soakMs) return false;
-    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase) });
+    const long = s.frame.filter((g) => g >= this.side.display * LONG).length;
+    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase) });
     for (const list of Object.values(s)) list.length = 0;
     this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
     if (this.soakMs >= this.timing.soakMs) this.end();

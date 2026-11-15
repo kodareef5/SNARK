@@ -2,7 +2,7 @@
 // owner taps, and the report as lines of plain text, which the page shows and tools/device.ts prints.
 
 import type { Axis, DeviceReport, GpuInfo, Mode, PhaseReport } from "./device.ts";
-import { AXES, MODES, RUNGS, formatsOf } from "./device.ts";
+import { AXES, LONG, MODES, RUNGS, formatsOf } from "./device.ts";
 
 const yes = (b: unknown): string => (b ? "yes" : "no");
 const mb = (bytes: number): string => (bytes / 1048576).toFixed(1);
@@ -104,8 +104,10 @@ function soakLines(r: DeviceReport): string[] {
   const s = r.soak!;
   const l = s.load;
   const out = [`soak      ${s.tier}: ${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near, ${l.far} far${l.stress ? ", the stress meshes" : ""}, turning once a minute (${s.from}); ${s.minutes.length} of ${s.minutesWanted} minutes`];
-  out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "miss"], [6, 7, 7, 7, 7, 7, 6, 6, 5]));
-  for (const m of s.minutes) out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.missed)], [6, 7, 7, 7, 7, 7, 6, 6, 5]));
+  const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5];
+  out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "long", "miss"], widths));
+  for (const m of s.minutes) out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.long ?? "?"), String(m.missed)], widths));
+  out.push(`long: frames of ${LONG} display intervals or more while the page was shown; time it was hidden is left out, a stall is not`);
   const [first, final] = [s.minutes[0], s.minutes.at(-1)];
   if (first && final && final !== first) out.push(`warming   minute ${final.minute} against minute 1: frames ${final.frameMs.median} against ${first.frameMs.median} ms, 95th ${final.frameMs.p95} against ${first.frameMs.p95}, our code ${final.buildMs} against ${first.buildMs} ms`);
   out.push(`screen    ${s.hidden === 0 ? "never hidden" : `hidden ${s.hidden} times, ${secs(s.hiddenMs)} s in all; the soak's clock stopped while it was and went on after`}; wake lock ${r.wakeLock}`);
