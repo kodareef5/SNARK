@@ -362,11 +362,16 @@ const ALL: readonly Def[] = [
   { type: "prop", class: "container", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // Holds items dropped on the ground.
   { type: "prop", class: "container", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
-  { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8, damage: "fire" },
+  // A flame arrow's burn: "approximately 22 damage per second to players" for 8 seconds (ark.wiki.gg, Flame Arrow,
+  // 2026-11-15), as fire, so a body takes its own share of it. ARK's grows with the creature's size (DEV28).
+  { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -22, damage: "fire" },
   { type: "buff", id: "core:tranquilized", label: "Tranquilized", color: 9, seconds: 5, again: "stack" },
   // A narcotic at work. Doses run one after another.
   { type: "buff", id: "core:drugged", label: "Drugged", color: 9, seconds: 8 },
-  { type: "buff", id: "core:stunned", label: "Stunned", color: 6, seconds: 3, root: true },
+  // A shock dart's stun holds a survivor where it stands for 2 seconds ("Decreased the stun on humans from shocking tranq
+  // darts from 5 seconds to 2 seconds", patch 265.0, ark.wiki.gg, Shocking Tranquilizer Dart, 2026-11-15). A creature is
+  // not stunned: "It can also stop the player from moving."
+  { type: "buff", id: "core:stunned", label: "Stunned", color: 6, seconds: 2, root: true, only: ["core:survivor"] },
   { type: "buff", id: "core:injured", label: "Injured", color: 8, speed: 0.8 },
   // What a meal mends comes at this rate. A piece of cooked meat is 8 health over five seconds.
   { type: "buff", id: "core:fed", label: "Fed", color: 12, seconds: 5, health: 1.6, good: true },

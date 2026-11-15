@@ -5,6 +5,7 @@ import { expect, test } from "bun:test";
 import { Items } from "../../server/items.ts";
 import { Records } from "../../server/records.ts";
 import type { ServerWorld } from "../../server/world.ts";
+import type { BuffDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { DAMAGE_TYPES } from "../../shared/sim/damage.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -27,6 +28,17 @@ test("raw and cooked prime meat spoil into spoiled meat, in 280 s and 46 minutes
   expect([reg.spoilsInto[at("meat_prime")], reg.spoilsInto[at("meat_prime_cooked")]]).toEqual([at("spoiled_meat"), at("spoiled_meat")]);
   // Every meat spoils into it (Spoilage: "All forms of Meat spoil and become Spoiled Meat").
   expect([reg.spoilsInto[at("meat")], reg.spoilsInto[at("meat_cooked")]]).toEqual([at("spoiled_meat"), at("spoiled_meat")]);
+});
+
+test("a flame arrow burns for 22 a second for 8 seconds, as fire (Flame Arrow)", () => {
+  expect(reg.defs[at("burning")]).toMatchObject({ seconds: 8, health: -22, damage: "fire" });
+  expect(reg.ammoBuff[at("arrow_flame")]).toBe(at("burning"));
+});
+
+test("a shock dart stuns a survivor for 2 seconds and no creature (Shocking Tranquilizer Dart, patch 265.0)", () => {
+  expect(reg.defs[at("stunned")]).toMatchObject({ seconds: 2, root: true, only: ["core:survivor"] });
+  expect((reg.defs[at("stunned")] as BuffDef).survivorSeconds).toBeUndefined();
+  expect(reg.ammoBuff[at("dart_shock")]).toBe(at("stunned"));
 });
 
 test("a shock dart keeps 4 hours and then is a tranquilizer dart, one at a time, through the ledger (Shocking Tranquilizer Dart)", () => {
