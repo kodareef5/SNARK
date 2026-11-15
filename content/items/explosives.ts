@@ -15,7 +15,7 @@ export const EXPLOSIVES: readonly Def[] = [
   { type: "item", class: "weapon", id: id("grenade"), stack: 10, weight: 0.5, color: 7, weapon: { kind: "thrown", damage: 788, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" } },
 
   // From the same infobox on 2026-11-15: requiredlevel 38, engrampoints 20, the ingredients and the Crafting XP shown (its
-  // craftingxp 11.4 times the global 4 of patches 253.0 and 313.5). Its 4 oil wait for oil (DEV134); it is made at the smithy,
-  // not built (DEV130); the page gives no craftingtime (DEV129). The level, points and oil were in its revision of 2018 too.
+  // craftingxp 11.4 times the global 4 of patches 253.0 and 313.5). Its 4 oil wait for oil (DEV137); it is made at the smithy,
+  // not built (DEV133); the page gives no craftingtime (DEV132). The level, points and oil were in its revision of 2018 too.
   ...making("grenade", "Grenade", 38, 20, 1, 8, [["fiber", 15], ["stone", 20], ["gunpowder", 30], ["hide", 5], ["ingot", 2]], 45.6),
 ];

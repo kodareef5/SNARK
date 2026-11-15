@@ -4,7 +4,9 @@
 import { TAU } from "../shared/math/scalar.ts";
 import { EVENT_BLAST, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
-import { stanceEye } from "../shared/sim/character.ts";
+import { aimSeed, aimShot, scopeFitted, shotAim, shotDir } from "../shared/sim/aim.ts";
+import { Body, stanceEye } from "../shared/sim/character.ts";
+import { FISTS } from "../shared/sim/weapon.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { QUALITY_MUL } from "../shared/sim/items.ts";
 import { FLIGHT_TICKS, HITSCAN_RANGE, WATER_SPEED, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../shared/sim/projectiles.ts";
@@ -104,6 +106,7 @@ export class Projectiles {
   private readonly liveKind: number;
   private readonly rng: Rng;
   private readonly dir = [0, 0, 0];
+  private readonly body = new Body();
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
 
   constructor(ctx: ProjectilesContext, seed: number) {
@@ -142,7 +145,7 @@ export class Projectiles {
     const e = c.ent;
     if (e < 0 || ammo === 0) return;
     const d = this.dir;
-    this.aim(c, weapon, 0, d);
+    this.aim(c, rec, weapon, 0, d);
     const ox = ents.x[e]!;
     const oy = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!);
     const oz = ents.z[e]!;
@@ -153,12 +156,23 @@ export class Projectiles {
   }
 
   /**
-   * The direction ray `k` of a shot from `weapon` leaves `c`'s body in, into `out`. A shot is one ray, along the look; the
-   * cone and the kick (W1) and the rays of a shot of many (W3) are to come here.
+   * The direction ray `k` of a shot from `weapon` leaves `c`'s body in, into `out`: the look as the input gave it, with the
+   * body's kick and, through a scope, its sway, within the weapon's cone, at the place the seed of the body's handle and
+   * this tick gives (shared/sim/aim.ts). The body is as this tick's step left it, as the shooter's client predicted it, so
+   * its own tracer is this ray. The rays of a shot of many (W3) are more `k`.
    */
-  private aim(c: Client, _weapon: number, _k: number, out: number[]): void {
-    const ents = this.ctx.world.ents;
-    lookDirection(ents.yaw[c.ent]!, ents.pitch[c.ent]!, out);
+  private aim(c: Client, rec: EntityRecord, weapon: number, k: number, out: number[]): void {
+    const { world, items } = this.ctx;
+    const ents = world.ents;
+    const reg = world.reg;
+    const e = c.ent;
+    const b = this.body;
+    ents.loadBody(e, b);
+    const inv = items.inv(rec);
+    const slot = inv.hotbar >= 0 && rec.held >= 0 ? inv.hotbar + rec.held : -1;
+    const handle = ents.handleOf(e);
+    aimShot(b, c.heldButtons, reg.weapon[weapon] ?? FISTS, reg.tamedMove[b.kind]!, ents.yaw[e]!, ents.pitch[e]!, scopeFitted(reg, inv, slot), handle, world.tick);
+    shotDir(aimSeed(handle, world.tick), k, shotAim.yaw, shotAim.pitch, shotAim.cone, out);
   }
 
   /** A round with no speed is not flown. It is one piece along `d` from the origin, tested at the shooter's view tick. */

@@ -55,17 +55,18 @@ export interface WeaponParams {
   /** A bow's or gun's blow with the melee button: its whole swing and the tick of it that lands. */
   readonly meleeTicks?: number;
   readonly meleeStrikeTick?: number;
-  // Stubs of the same plan, compiled from the weapon's facet and read by nothing yet; the project named builds each.
+  // The aim of the same plan, M1 and M2 (W1, shared/sim/aim.ts). Each is absent where the facet does not say.
   /**
-   * W1: the cone a shot leaves within, half angles in degrees (M1): from the hip and aimed at rest, what full speed adds,
-   * what each shot adds (bloom), and how much it narrows back a tick.
+   * The cone a shot leaves within, half angles in degrees: from the hip and aimed at rest, what full speed adds, what each
+   * shot adds (bloom), how much it narrows back a tick, and how far the aim sways through a scope, standing.
    */
   readonly coneHip?: number;
   readonly coneAim?: number;
   readonly coneMove?: number;
   readonly coneBloom?: number;
   readonly coneRecover?: number;
-  /** W1: degrees of pitch a shot kicks the aim up, and how much of it comes back a tick (M2). */
+  readonly coneSway?: number;
+  /** Degrees of pitch a shot kicks the aim up, and how much of it comes back a tick. */
   readonly recoilKick?: number;
   readonly recoilRecover?: number;
 }

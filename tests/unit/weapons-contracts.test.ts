@@ -82,8 +82,9 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
 });
 
 test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud class wait, as the plan has them", () => {
-  // W2 built auto, reloadEach and melee (M4): their pins are in the test below and tests/unit/weapon.test.ts.
-  expect(FIELDS.item.weapon!.stubs).toEqual({ spread: "polish", recoil: "polish", structures: "polish", cloud: "polish" });
+  // W2 built auto, reloadEach and melee (M4), and W1 spread and recoil (M1, M2): their pins are in the test below,
+  // tests/unit/weapon.test.ts and tests/unit/aim.test.ts.
+  expect(FIELDS.item.weapon!.stubs).toEqual({ structures: "polish", cloud: "polish" });
   expect(FIELDS.item.ammo!.stubs).toEqual({ pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" });
   expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual(["polish", "polish", "polish"]);
   expect(classRow("prop/cloud")).toMatchObject({ status: "stub", waits: "polish", parent: "prop" });
@@ -94,12 +95,11 @@ test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud cl
 });
 
 test("every weapon and round today compiles as it did: no stub in its timings, and each stub column at what it means now", () => {
-  const stubKeys = ["coneHip", "coneAim", "coneMove", "coneBloom", "coneRecover", "recoilKick", "recoilRecover"];
   // W2's: the four ranged weapons strike with ARK's blow (Base Damage); none fires automatically or loads a round at a time.
   const blows = new Set(["core:bow", "core:crossbow", "core:rifle", "core:pistol"]);
   for (let i = 1; i < reg.defs.length; i++) {
     const w = reg.weapon[i];
-    if (w) expect([reg.ids[i], stubKeys.filter((k) => k in w), "auto" in w || "reloadEach" in w]).toEqual([reg.ids[i], [], false]);
+    if (w) expect([reg.ids[i], "auto" in w || "reloadEach" in w]).toEqual([reg.ids[i], false]);
     const blow = blows.has(reg.ids[i]!);
     if (w) expect([reg.ids[i], w.meleeTicks, w.meleeStrikeTick]).toEqual(blow ? [reg.ids[i], 15, 5] : [reg.ids[i], undefined, undefined]);
     expect([reg.ids[i], reg.blowDamage[i], Math.round(reg.blowTorpor[i]! * 100) / 100, Math.round(reg.blowReach[i]! * 100) / 100]).toEqual(blow ? [reg.ids[i], 10, 1.4, 2.6] : [reg.ids[i], 0, 0, 0]);
