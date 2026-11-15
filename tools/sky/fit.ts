@@ -174,9 +174,16 @@ function simplex(f: (x: number[]) => number, x0: number[], step: number, rounds:
   return pts[vals.indexOf(Math.min(...vals))]!;
 }
 
-/** Fits the grades of `names` to the painted points, noon first. Returns the grades, every key's in place. */
-export function fit(paint: Record<string, Record<string, number[]>>, names: readonly string[]): Grade[] {
-  const grades = GRADES.map((g) => ({ ...g }));
+type Paint = Record<string, Record<string, number[]>>;
+
+/**
+ * Fits the grades of `names` to the painted points, noon first, aiming the sky points at `aim` (the paint unless
+ * told otherwise), from `grades` and the numbers each key was last fitted with in `from`. Returns the grades, every
+ * key's in place, each fitted key's numbers, and what the builder makes of each at its own height.
+ */
+export function fit(paint: Paint, names: readonly string[], aim: Paint = paint, grades: Grade[] = GRADES.map((g) => ({ ...g })), from: Record<string, number[]> = {}): { grades: Grade[]; numbers: Record<string, number[]>; made: Paint } {
+  const numbers: Record<string, number[]> = { ...from };
+  const made: Paint = {};
   const b = new SkyBuilder(undefined, grades);
   const base = basePoints();
   const order = [...names].sort((a, c) => (a === "noon" ? -1 : c === "noon" ? 1 : 0));
@@ -184,7 +191,7 @@ export function fit(paint: Record<string, Record<string, number[]>>, names: read
     const key = base.find((k) => k.name === name)!;
     const at = grades.findIndex((g) => g.name === name);
     const height = grades[at]!.height;
-    const target = paint[name]!;
+    const target = { ...paint[name]!, ...Object.fromEntries(SKY_POINTS.map((p) => [p, aim[name]![p]!])) };
     const light = name !== "noon";
     const cost = (x: number[]): number => {
       grades[at] = gradeOf(grades[at]!, x, light);
@@ -197,14 +204,14 @@ export function fit(paint: Record<string, Record<string, number[]>>, names: read
       for (let i = 0; i < x.length; i++) sum += (i < 7 ? 2 : 8) * x[i]! * x[i]!;
       return sum;
     };
-    const start = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    const best = simplex(cost, start, 0.3, 700);
+    const best = simplex(cost, from[name] ?? [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], from[name] ? 0.05 : 0.3, 700);
     cost(best);
-    const m = model(b, key, grades[at]!, height);
+    numbers[name] = best;
+    const m = (made[name] = model(b, key, grades[at]!, height));
     console.log(`${name.padEnd(9)} fitted at ${height.toFixed(2)} degrees: ${[...SKY_POINTS, ...CARDS].map((p) => `${p} ${apart(m[p]!, target[p]!).toFixed(1)}`).join(", ")}`);
     if (process.argv.includes("--verbose")) for (const p of [...SKY_POINTS, ...CARDS]) console.log(`    ${p.padEnd(7)} key ${target[p]!.map(Math.round).join(",")}  table ${m[p]!.map(Math.round).join(",")}`);
   }
-  return grades;
+  return { grades, numbers, made };
 }
 
 const r = (v: number): string => String(+v.toFixed(3));
@@ -222,6 +229,33 @@ if (import.meta.main) {
   const painted = JSON.parse(readFileSync(resolve(file), "utf8")).keys as Record<string, { points: Record<string, number[]> }>;
   const paint = Object.fromEntries(Object.entries(painted).map(([n, k]) => [n, k.points]));
   const names = KEYS.map((k) => k.name).filter((n) => paint[n] && (!only || only.includes(n)));
-  const grades = fit(paint, names);
+  // Fitted at each key's own height, then seen through the table as the game samples it, between slices. A key with a
+  // point further than 5.8 from it there is fitted once more, from where it was, aiming past the key by as much as
+  // the table moved that point from what the fit made.
+  let { grades, numbers, made } = fit(paint, names);
+  const report = (seen: Paint): string[] =>
+    names.filter((name) => {
+      const parts = SKY_POINTS.map((p) => apart(seen[name]![p]!, paint[name]![p]!));
+      console.log(`  ${name.padEnd(9)} through the table: ${SKY_POINTS.map((p, i) => `${p} ${parts[i]!.toFixed(1)}`).join(", ")}`);
+      return Math.max(...parts) > 5.8;
+    });
+  const seen = throughTable(grades, names);
+  const again = report(seen);
+  if (again.length > 0) {
+    console.log(`fitting ${again.join(", ")} again, aiming past the keys by what the table took away`);
+    const aim: Paint = JSON.parse(JSON.stringify(paint));
+    for (const name of again) for (const p of SKY_POINTS) aim[name]![p] = paint[name]![p]!.map((v, k) => Math.max(0, Math.min(255, v + made[name]![p]![k]! - seen[name]![p]![k]!)));
+    ({ grades, numbers, made } = fit(paint, again, aim, grades, numbers));
+    report(throughTable(grades, names));
+  }
   console.log(gradesText(grades));
+}
+
+/** The table the grades make, and the dome there at every key's points as the game shows it. */
+export function throughTable(grades: readonly Grade[], names: readonly string[]): Paint {
+  const { table, lights } = new SkyBuilder(undefined, grades).build();
+  const sky: Sky = { table, lights };
+  const out: Paint = {};
+  for (const key of basePoints()) if (names.includes(key.name)) out[key.name] = tableAt(sky, key);
+  return out;
 }
