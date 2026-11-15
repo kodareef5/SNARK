@@ -57,7 +57,7 @@ const HEAD_LEVEL = 0.6;
 const ROLL_TICKS = 30;
 /** Ticks over which a flyer's landing comes in from its flight, its legs swinging forward to the ground. */
 const LAND_FADE = 2 * FADE;
-/** Seconds over which a client's drawing of a flyer comes most of the way to the hover and fast shares its speed says. */
+/** Seconds over which a client's drawing of a flyer comes most of the way to the shares and roll its state says. */
 const SHARE_EASE = 0.15;
 const single: GaitClip[] = [];
 const q = new Float64Array(4);
@@ -137,8 +137,9 @@ export class CreatureAnim {
   readonly fastAt: number;
   /** Where its body turns about in flight, in its model space: the middle of its joints at rest. */
   readonly pivot: Float64Array;
-  /** The bone of its `head` socket, which it keeps nearer level in a bank, or -1; and its neck and head: that bone, those below it, and those above it up to where the body branches. */
+  /** The bone of its `head` socket, which it keeps nearer level in a bank, or -1. */
   readonly head: number;
+  /** Its neck and head: that bone, those below it, and those above it up to where the body branches. */
   readonly neck: Uint8Array;
 
   constructor(rig: Rig, runAt: number, swimSpeed: number) {
