@@ -50,11 +50,16 @@ def main():
     for rel, r in recipes.items():
         if a.only and rel not in a.only:
             continue
-        jobs.append({"slot": r["slot"], "model": r["model"], "prompt_id": r["prompt_id"], "prompt": r["prompt"],
-                     "negative": r["negative_prompt"], "seconds": r["seconds"], "seed": r["seed"],
-                     "settings": r["settings"], "out": str(out / rel)})
-        if r["revision"] != models.MODELS[r["model"]]["revision"]:
-            print(f"warning: {rel} was made with {r['revision']}, tools/sound pins {models.MODELS[r['model']]['revision']}")
+        back = r.get("backend", "mlx")
+        if back != models.backend():
+            print(f"skipped    {rel}  (made on {back}; this machine runs {models.backend()})")
+            continue
+        jobs.append({"slot": r["slot"], "model": r["model"], "backend": back, "prompt_id": r["prompt_id"],
+                     "prompt": r["prompt"], "negative": r["negative_prompt"], "seconds": r["seconds"],
+                     "seed": r["seed"], "settings": r["settings"], "out": str(out / rel)})
+        pinned = models.spec(r["model"], back)["revision"]
+        if r["revision"] != pinned:
+            print(f"warning: {rel} was made with {r['revision']}, tools/sound pins {pinned}")
     models.WORK.mkdir(parents=True, exist_ok=True)
     generate.run_jobs(jobs)
     bad = 0

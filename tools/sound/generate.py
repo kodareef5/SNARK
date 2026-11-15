@@ -3,15 +3,17 @@
     tools/sound/.venv/bin/python tools/sound/generate.py <brief.json> [--slot S] [--model M] [--prompt ID] [--force]
 
 Each prompt entry in the brief makes `takes` files per model, seeds `seed`, `seed+1`, ...
-Takes land in tools/sound/.work/<asset>/takes/<slot>/<model>-<seed>.wav with a .json recipe
-beside each. Existing takes are kept unless --force. Every model run holds the shared render
-lock (lockf on /tmp/snark-render.lock), a few takes at a time.
+Takes land in tools/sound/.work/<asset>/takes/<slot>/<model>-<seed>.wav (<model>-pt-<seed>.wav from
+the torch backend) with a .json recipe beside each. Existing takes are kept unless --force. Every
+model run holds the shared render lock (/tmp/snark-render.lock: lockf on a Mac, flock on Linux), a
+few takes at a time, and on Linux waits until the machine has the memory free that the model needs.
 """
 
 import argparse
 import datetime
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -23,9 +25,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import models  # noqa: E402
 
-LOCK = ["lockf", "-t", "7200", "/tmp/snark-render.lock"]
-TIME = ["/usr/bin/time", "-l"]
-CHUNK = {"stable": 40, "moss": 4}
+MAC = sys.platform == "darwin"
+LOCK = ["lockf", "-t", "7200", "/tmp/snark-render.lock"] if MAC else ["flock", "-w", "7200", "/tmp/snark-render.lock"]
+TIME = ["/usr/bin/time", "-l" if MAC else "-v"]
+CHUNK = {("stable", "mlx"): 40, ("moss", "mlx"): 4, ("moss", "torch"): 32}
 
 
 def load_brief(path):
@@ -39,11 +42,16 @@ def work_dir(brief):
     return models.WORK / brief["asset"]
 
 
-def take_path(brief, slot, model, seed):
-    return work_dir(brief) / "takes" / slot / f"{model}-{seed:04d}.wav"
+def take_stem(model, back, seed):
+    return f"{model}-{seed:04d}" if back == "mlx" else f"{model}-pt-{seed:04d}"
 
 
-def jobs_for(brief, slots=None, model_filter=None, prompt_ids=None):
+def take_path(brief, slot, model, seed, back="mlx"):
+    return work_dir(brief) / "takes" / slot / f"{take_stem(model, back, seed)}.wav"
+
+
+def jobs_for(brief, slots=None, model_filter=None, prompt_ids=None, back="mlx"):
+    """A brief's settings and take counts for a model are under its name for MLX and <model>-pt for torch."""
     jobs = []
     seen = set()
     for slot, spec in brief["slots"].items():
@@ -55,9 +63,12 @@ def jobs_for(brief, slots=None, model_filter=None, prompt_ids=None):
             for model in p.get("models", list(models.MODELS)):
                 if model_filter and model != model_filter:
                     continue
-                settings = dict(models.MODELS[model]["defaults"])
-                settings.update(p.get("settings", {}).get(model, {}))
-                for k in range(p.get("takes_" + model, p["takes"])):
+                settings = dict(models.spec(model, back)["defaults"])
+                settings.update(p.get("settings", {}).get(model if back == "mlx" else model + "-pt", {}))
+                count = p.get("takes_" + model, p["takes"])
+                if back != "mlx":
+                    count = p.get(f"takes_{model}-pt", count)
+                for k in range(count):
                     seed = p["seed"] + k
                     key = (slot, model, seed)
                     if key in seen:
@@ -67,13 +78,14 @@ def jobs_for(brief, slots=None, model_filter=None, prompt_ids=None):
                     jobs.append({
                         "slot": slot,
                         "model": model,
+                        "backend": back,
                         "prompt_id": p["id"],
                         "prompt": text,
                         "negative": p.get("negative_" + model, p.get("negative", "")),
                         "seconds": p.get("seconds_" + model, p["seconds"]),
                         "seed": seed,
                         "settings": settings,
-                        "out": str(take_path(brief, slot, model, seed)),
+                        "out": str(take_path(brief, slot, model, seed, back)),
                     })
     return jobs
 
@@ -94,9 +106,11 @@ def moss_notes(settings):
 
 
 def recipe(job, extra):
-    m = models.MODELS[job["model"]]
+    back = job.get("backend", "mlx")
+    m = models.spec(job["model"], back)
     r = {
         "model": job["model"],
+        **({} if back == "mlx" else {"backend": back}),
         "model_name": m["name"],
         "repo": m["repo"],
         "revision": m["revision"],
@@ -115,7 +129,7 @@ def recipe(job, extra):
     }
     if "upstream" in m:
         r["upstream"] = m["upstream"]
-    if job["model"] == "moss":
+    if job["model"] == "moss" and back == "mlx":
         r.update(moss_notes(job["settings"]))
     r.update(extra)
     r["sha256"] = sha256(job["out"])
@@ -281,37 +295,201 @@ def run_moss(jobs):
     return stage
 
 
+def run_moss_torch(jobs):
+    """Upstream MOSS-SoundEffect v2.0 in three stages: text encoder, DiT, VAE, one resident at a time.
+
+    Same code and maths as MossSoundEffectPipeline.__call__: bf16 autocast throughout, prompt +
+    " duration: N.Ns", noise from a CPU generator over the full 30 s latent, upstream's compiled
+    model_fn_wan_video with CFG in fp32 and its FlowMatchScheduler, the full latent decoded under
+    fp32 autocast and cut to the asked seconds. Staging, not offload: the process peaks at 7.2 GB
+    of memory (17 GB holding every model) and nothing crosses the bus per take. On an RTX 4070
+    Laptop (8 GB): GPU peak 5.8 GB, a take in 32 s after a first that compiles (about 100 s).
+    The compiled DiT's sums vary a little between processes (max sample difference about 0.02).
+    """
+    import gc
+    import json as _json
+
+    import torch
+    import soundfile as sf
+    from safetensors.torch import load_file
+
+    sys.path.insert(0, str(models.fetch_moss_code()))
+    from moss_soundeffect_v2.diffsynth.models.dac_vae import DAC
+    from moss_soundeffect_v2.diffsynth.models.qwen3_text_encoder import Qwen3TextEncoder
+    from moss_soundeffect_v2.diffsynth.models.wan_audio_dit import WanAudioModel
+    from moss_soundeffect_v2.diffsynth.pipelines.wan_audio import _convert_hf_dit_state_dict, model_fn_wan_video
+    from moss_soundeffect_v2.diffsynth.prompters.wan_prompter import WanPrompter
+    from moss_soundeffect_v2.diffsynth.schedulers.flow_match import FlowMatchScheduler
+
+    root = models.weights_dir("moss", "torch")
+    index = _json.loads((root / "model_index.json").read_text())
+    sched_cfg = _json.loads((root / "scheduler" / "scheduler_config.json").read_text())
+    dit_cfg = _json.loads((root / "transformer" / "config.json").read_text())
+    rate, cuda, bf16 = int(index["sample_rate"]), "cuda", torch.bfloat16
+    stage = {}
+
+    def free():
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def mark(name, t0):
+        stage[name] = {"seconds": round(time.time() - t0, 1),
+                       "gpu_peak_gb": round(torch.cuda.max_memory_allocated() / 1e9, 2)}
+        torch.cuda.reset_peak_memory_stats()
+        print(f"moss-pt {name} {stage[name]}", flush=True)
+
+    def sent(job):
+        return f"{job['prompt'].strip()} duration: {round(float(job['seconds']), 1):.1f}s"
+
+    runtime = {"torch": torch.__version__, "cuda": torch.version.cuda, "device": torch.cuda.get_device_name(0),
+               "compiled": os.environ.get("TORCHDYNAMO_DISABLE") != "1"}
+    with torch.no_grad(), torch.autocast("cuda", dtype=bf16):
+        t0 = time.time()
+        enc = Qwen3TextEncoder(str(root / "text_encoder"), torch_dtype=bf16).to(cuda)
+        prompter = WanPrompter(tokenizer_path=str(root / "tokenizer"))
+        prompter.fetch_models(enc)
+        ctx = {}
+        for job in jobs:
+            for key in ((sent(job), True), (job["negative"], False)):
+                if key not in ctx:
+                    ctx[key] = prompter.encode_prompt(key[0], positive=key[1], device=cuda).cpu()
+        del enc, prompter
+        free()
+        mark("text", t0)
+
+        t0 = time.time()
+        sd = _convert_hf_dit_state_dict(load_file(str(root / "transformer" / "diffusion_pytorch_model.safetensors")))
+        with torch.device(cuda):
+            dit = WanAudioModel(in_dim=dit_cfg["in_dim"], out_dim=dit_cfg["out_dim"], text_dim=dit_cfg["text_dim"],
+                                freq_dim=dit_cfg["freq_dim"], eps=dit_cfg["eps"], patch_size=tuple(dit_cfg["patch_size"]),
+                                has_image_input=dit_cfg["has_image_input"], dim=dit_cfg["dim"],
+                                ffn_dim=dit_cfg["ffn_dim"], num_heads=dit_cfg["num_heads"],
+                                num_layers=dit_cfg["num_layers"], vae_type=dit_cfg.get("vae_type", "dac"))
+        res = dit.load_state_dict(sd)
+        if res.missing_keys or res.unexpected_keys:
+            raise SystemExit(f"DiT weights: missing {res.missing_keys[:3]}, unexpected {res.unexpected_keys[:3]}")
+        del sd
+        dit.eval()
+        free()
+        latents = {}
+        for job in jobs:
+            s = job["settings"]
+            t1 = time.time()
+            sched = FlowMatchScheduler(shift=sched_cfg.get("shift", 5.0), sigma_min=0.0, extra_one_step=True)
+            sched.set_timesteps(s["steps"], denoising_strength=1.0, shift=s["sigma_shift"])
+            hop = 960
+            frames = (rate * int(s["max_seconds"])) // hop
+            gen = torch.Generator("cpu").manual_seed(int(job["seed"]))
+            x = torch.randn((1, dit_cfg["in_dim"], frames), generator=gen, device="cpu", dtype=torch.float32)
+            x = x.to(dtype=bf16, device=cuda)
+            posi, nega = ctx[(sent(job), True)].to(cuda), ctx[(job["negative"], False)].to(cuda)
+            for i, ts in enumerate(sched.timesteps):
+                ts = ts.unsqueeze(0).to(device=cuda)
+                torch.compiler.cudagraph_mark_step_begin()
+                v = model_fn_wan_video(dit=dit, latents=x, timestep=ts, context=posi)
+                if s["cfg"] != 1.0:
+                    v = v.clone()
+                    vn = model_fn_wan_video(dit=dit, latents=x, timestep=ts, context=nega)
+                    v = vn.float() + s["cfg"] * (v.float() - vn.float())
+                x = sched.step(v, sched.timesteps[i], x)
+            latents[job["out"]] = x.clone().cpu()
+            job["_sample_seconds"] = round(time.time() - t1, 1)
+            print(f"moss-pt sampled {Path(job['out']).name} {job['_sample_seconds']}s", flush=True)
+        del dit, x, v
+        torch.compiler.reset()
+        free()
+        mark("dit", t0)
+
+        t0 = time.time()
+        vae = DAC.load(str(root / "vae" / "vae_128d_48k.pth")).to(cuda)
+        if vae.hop_length != hop:
+            raise SystemExit(f"VAE hop {vae.hop_length}, sampling assumed {hop}")
+        for job in jobs:
+            out = Path(job["out"])
+            out.parent.mkdir(parents=True, exist_ok=True)
+            seconds = round(float(job["seconds"]), 1)
+            with torch.autocast("cuda", dtype=torch.float32):
+                audio = vae.decode(latents.pop(job["out"]).to(cuda))
+            wav = audio[0, :, : int(rate * seconds)].float().cpu().numpy().T
+            del audio
+            sf.write(str(out), wav, rate, subtype="FLOAT")
+            extra = {"writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+                     "prompt_sent": sent(job), "pipeline": "tools/sound/generate.py run_moss_torch",
+                     "sample_seconds": job["_sample_seconds"], "runtime": runtime}
+            out.with_suffix(".json").write_text(json.dumps(recipe(job, extra), indent=2) + "\n")
+            print(f"moss-pt {job['slot']} {out.name}", flush=True)
+        del vae
+        free()
+        mark("vae", t0)
+    return stage
+
+
 def rusage(text):
-    """The peaks /usr/bin/time -l printed: resident set and physical footprint (Metal buffers included)."""
+    """The peaks /usr/bin/time printed: on a Mac (-l) resident set and physical footprint (Metal buffers
+    included), on Linux (-v) the resident set."""
     out = {}
     for key, name in (("max_rss_gb", "maximum resident set size"), ("peak_footprint_gb", "peak memory footprint")):
         m = re.search(r"(\d+)\s+" + name, text)
         if m:
             out[key] = round(int(m.group(1)) / 1e9, 2)
+    m = re.search(r"Maximum resident set size \(kbytes\): (\d+)", text)
+    if m:
+        out["max_rss_gb"] = round(int(m.group(1)) * 1024 / 1e9, 2)
     return out
+
+
+def mem_available_gb():
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) / 1e6
+    except OSError:
+        return None
+    return None
+
+
+def wait_for_memory(need_gb, model):
+    """Linux shares this machine with other heavy jobs: start only with the memory free, so nothing swaps."""
+    for _ in range(60):
+        have = mem_available_gb()
+        if have is None or have >= need_gb:
+            return
+        print(f"{model}: {have:.0f} GB free, {need_gb} GB wanted; waiting", flush=True)
+        time.sleep(30)
+    raise SystemExit(f"{model}: {need_gb} GB of memory never came free in 30 minutes")
 
 
 def worker(jobfile):
     jobs = json.loads(Path(jobfile).read_text())
-    by = {"stable": run_stable, "moss": run_moss}
-    stages = by[jobs[0]["model"]](jobs)
+    by = {("stable", "mlx"): run_stable, ("moss", "mlx"): run_moss, ("moss", "torch"): run_moss_torch}
+    stages = by[(jobs[0]["model"], jobs[0].get("backend", "mlx"))](jobs)
     if stages:
         Path(jobfile).with_suffix(".stages").write_text(json.dumps(stages))
 
 
 def run_jobs(jobs):
-    """Run jobs in chunks, each chunk one worker process holding the render lock, measured by time -l."""
-    for model in models.MODELS:
-        mine = [j for j in jobs if j["model"] == model]
-        for i in range(0, len(mine), CHUNK[model]):
-            chunk = mine[i:i + CHUNK[model]]
+    """Run jobs in chunks, each chunk one worker process holding the render lock, measured by time."""
+    # /tmp is RAM on Linux: keep the compiler's cache and scratch on disk, and its workers few.
+    env = dict(os.environ)
+    env.setdefault("TORCHINDUCTOR_COMPILE_THREADS", "4")
+    env.setdefault("TORCHINDUCTOR_CACHE_DIR", str(models.WORK / "inductor"))
+    env.setdefault("TRITON_CACHE_DIR", str(models.WORK / "triton"))
+    env.setdefault("TMPDIR", str(models.WORK / "tmp"))
+    os.makedirs(env["TMPDIR"], exist_ok=True)
+    for model, back in CHUNK:
+        mine = [j for j in jobs if j["model"] == model and j.get("backend", "mlx") == back]
+        n = CHUNK[(model, back)]
+        for i in range(0, len(mine), n):
+            chunk = mine[i:i + n]
             with tempfile.NamedTemporaryFile("w", suffix=".json", dir=models.WORK, delete=False) as f:
                 json.dump(chunk, f)
             jobfile = Path(f.name)
             try:
+                if back == "torch":
+                    wait_for_memory(models.spec(model, back)["memory_gb"], model)
                 t = time.time()
                 res = subprocess.run(LOCK + TIME + [sys.executable, str(Path(__file__).resolve()), "--worker", f.name],
-                                     stderr=subprocess.PIPE, text=True)
+                                     stderr=subprocess.PIPE, text=True, env=env)
                 peaks = rusage(res.stderr)
                 if res.returncode != 0:
                     print(res.stderr[-3000:], file=sys.stderr)
@@ -341,7 +519,10 @@ def main():
     if a.worker:
         return worker(a.worker)
     brief = load_brief(a.brief)
-    jobs = jobs_for(brief, a.slot, a.model, a.prompt)
+    back = models.backend()
+    if back == "torch" and a.model != "moss":
+        raise SystemExit("on the torch backend only moss is ported: pass --model moss")
+    jobs = jobs_for(brief, a.slot, a.model, a.prompt, back)
     if not a.force:
         jobs = [j for j in jobs if not Path(j["out"]).exists()]
     print(f"{len(jobs)} takes to make", flush=True)

@@ -1,6 +1,12 @@
-"""The two sound models, pinned: where the code and weights come from, and their defaults."""
+"""The two sound models, pinned: where the code and weights come from, and their defaults.
+
+Two backends: "mlx" on a Mac (the MLX ports) and "torch" elsewhere (the upstream PyTorch code on
+CUDA). SOUND_BACKEND=mlx|torch chooses one by hand. A model's torch backend, where it has one, is
+its "torch" entry; a take made by it is named <model>-pt-<seed> so it never meets an MLX take.
+"""
 
 import hashlib
+import os
 import sys
 import tarfile
 import urllib.request
@@ -11,6 +17,8 @@ WORK = HERE / ".work"
 SRC = WORK / "src"
 
 STABLE_COMMIT = "790793b89ddceea612be9ce42ff6830d18f6fa57"
+MOSS_TTS_COMMIT = "934d6826b084c46a0d033402174d5f8ac4ed2519"
+MOSS_TTS_SHA256 = "1f89f0aa244feff7855b0e33dd36d5b7cf0c62c12713bdfa1b343075846672f3"
 
 MODELS = {
     "stable": {
@@ -69,20 +77,73 @@ MODELS = {
         "rate": 48000,
         "defaults": {"steps": 100, "cfg": 4.0, "sigma_shift": 5.0, "max_seconds": 30, "dtype": "bf16",
                      "dit": "int4", "decode_margin": 1.0},
+        "torch": {
+            "name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+            "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+            "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+            "files": None,
+            "code": {
+                "repo": "github.com/OpenMOSS/MOSS-TTS",
+                "commit": MOSS_TTS_COMMIT,
+                "path": "moss_soundeffect_v2",
+                "package": "moss-soundeffect-v2 0.1.0",
+                "licence": "Apache-2.0",
+            },
+            # MossSoundEffectPipeline as shipped: DiT weights fp32 under bf16 autocast, compiled with
+            # Triton CUDA graphs, noise from a CPU generator over the full 30 s latent, CFG in fp32,
+            # the full 30 s decoded in fp32 and cut to the asked seconds. Only the staging differs:
+            # the pipeline's own CPU offload keeps one of text encoder, DiT and VAE on the GPU.
+            "defaults": {"steps": 100, "cfg": 4.0, "sigma_shift": 5.0, "max_seconds": 30},
+            "memory_gb": 10,
+        },
     },
 }
 
 
-def stable_root():
-    return SRC / f"stable-audio-3-{STABLE_COMMIT}" / "optimized" / "mlx"
+def backend():
+    b = os.environ.get("SOUND_BACKEND") or ("mlx" if sys.platform == "darwin" else "torch")
+    if b not in ("mlx", "torch"):
+        raise SystemExit(f"SOUND_BACKEND={b}: mlx or torch")
+    return b
 
 
-def weights_dir(model):
+def spec(model, back="mlx"):
+    """What made a take: the model's own entry for MLX, its "torch" entry (with the shared licence) for torch."""
+    m = MODELS[model]
+    if back == "mlx":
+        return m
+    if "torch" not in m:
+        raise SystemExit(f"{model} has no {back} backend in tools/sound yet")
+    return {**m["torch"], "licence": m["licence"], "rate": m["rate"]}
+
+
+def weights_dir(model, back="mlx"):
     from huggingface_hub import snapshot_download
 
-    m = MODELS[model]
+    m = spec(model, back)
     kw = {"allow_patterns": m["files"]} if m["files"] else {}
     return Path(snapshot_download(m["repo"], revision=m["revision"], **kw))
+
+
+def fetch_moss_code():
+    """The pinned MOSS-TTS source; its root goes on sys.path so moss_soundeffect_v2 imports."""
+    root = SRC / f"MOSS-TTS-{MOSS_TTS_COMMIT}"
+    if root.exists():
+        return root
+    SRC.mkdir(parents=True, exist_ok=True)
+    tgz = SRC / f"moss-tts-{MOSS_TTS_COMMIT}.tar.gz"
+    if not tgz.exists():
+        urllib.request.urlretrieve(f"https://codeload.github.com/OpenMOSS/MOSS-TTS/tar.gz/{MOSS_TTS_COMMIT}", tgz)
+    got = hashlib.sha256(tgz.read_bytes()).hexdigest()
+    if got != MOSS_TTS_SHA256:
+        raise SystemExit(f"{tgz.name}: sha256 {got}, pinned {MOSS_TTS_SHA256}")
+    with tarfile.open(tgz) as t:
+        t.extractall(SRC, filter="data")
+    return root
+
+
+def stable_root():
+    return SRC / f"stable-audio-3-{STABLE_COMMIT}" / "optimized" / "mlx"
 
 
 def moss_int4_dit():
@@ -123,6 +184,10 @@ def link_stable_weights():
 
 
 def main():
+    if backend() == "torch":
+        print("moss code", fetch_moss_code())
+        print("moss weights", weights_dir("moss", "torch"))
+        return
     link_stable_weights()
     print("stable weights", weights_dir("stable"))
     print("moss weights", weights_dir("moss"))

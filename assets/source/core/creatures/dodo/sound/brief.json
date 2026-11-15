@@ -276,7 +276,8 @@
           "seed": 501,
           "takes": 2,
           "seconds": 8,
-          "text": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry."
+          "text": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry.",
+          "takes_moss-pt": 4
         },
         {
           "id": "hen-pain",
@@ -355,7 +356,8 @@
           "seed": 501,
           "takes": 1,
           "seconds": 6,
-          "text": "A big bird slowly pecks at the ground a few times: single sharp beak knocks into dry earth, with pauses in between. Close-miked, dry."
+          "text": "A big bird slowly pecks at the ground a few times: single sharp beak knocks into dry earth, with pauses in between. Close-miked, dry.",
+          "takes_moss-pt": 4
         },
         {
           "id": "wood-m",
@@ -365,7 +367,8 @@
           "seed": 601,
           "takes": 0,
           "seconds": 6,
-          "text": "A heavy bird jabs its beak against a wooden stick a few times, slowly: short hollow knocks with pauses in between. Close-up, dry, no room sound."
+          "text": "A heavy bird jabs its beak against a wooden stick a few times, slowly: short hollow knocks with pauses in between. Close-up, dry, no room sound.",
+          "takes_moss-pt": 4
         },
         {
           "id": "board",
@@ -434,7 +437,8 @@
           "seed": 501,
           "takes": 1,
           "seconds": 8,
-          "text": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry."
+          "text": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry.",
+          "takes_moss-pt": 4
         },
         {
           "id": "drop",
@@ -493,7 +497,8 @@
           "seconds": 6,
           "seconds_moss": 8,
           "text": "Slow footsteps of a heavy goose waddling across short grass: soft padded thuds with a light grass swish, well spaced. Close-miked, dry outdoors.",
-          "text_stable": "TrackType: SFX, foley, slow footsteps of a heavy goose waddling across short grass: soft padded thuds with a light grass swish, well spaced. Close-miked, dry outdoors."
+          "text_stable": "TrackType: SFX, foley, slow footsteps of a heavy goose waddling across short grass: soft padded thuds with a light grass swish, well spaced. Close-miked, dry outdoors.",
+          "takes_moss-pt": 4
         },
         {
           "id": "toes",
@@ -522,7 +527,8 @@
           "seconds": 6,
           "seconds_moss": 8,
           "text": "Slow footsteps of a heavy goose waddling on dry beach sand: soft crunchy padded steps, well spaced. Close-miked, dry, no waves.",
-          "text_stable": "TrackType: SFX, foley, slow footsteps of a heavy goose waddling on dry beach sand: soft crunchy padded steps, well spaced. Close-miked, dry, no waves."
+          "text_stable": "TrackType: SFX, foley, slow footsteps of a heavy goose waddling on dry beach sand: soft crunchy padded steps, well spaced. Close-miked, dry, no waves.",
+          "takes_moss-pt": 4
         },
         {
           "id": "toes",
@@ -551,7 +557,8 @@
           "seconds": 6,
           "seconds_moss": 8,
           "text": "Slow footsteps of a heavy bird walking on flat stone: soft padded taps with a faint click of claws, well spaced. Close-miked, dry outdoors.",
-          "text_stable": "TrackType: SFX, foley, slow footsteps of a heavy bird walking on flat stone: soft padded taps with a faint click of claws, well spaced. Close-miked, dry outdoors."
+          "text_stable": "TrackType: SFX, foley, slow footsteps of a heavy bird walking on flat stone: soft padded taps with a faint click of claws, well spaced. Close-miked, dry outdoors.",
+          "takes_moss-pt": 4
         },
         {
           "id": "toes",
