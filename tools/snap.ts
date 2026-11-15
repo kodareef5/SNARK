@@ -894,8 +894,10 @@ if (import.meta.main) {
   }
   if (args.includes("--fight")) {
     // A survivor faces a dummy in flak six metres off. --fight takes "punch" or "club" (up close, as the blow lands), "bow" or
-    // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air) or "rifle" (the round's tracer).
+    // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air), "rifle" (the round's tracer) or
+    // "flare" (the flare gun's flare two seconds up, the view raised to it).
     const what = arg("fight") ?? "bow";
+    const flare = what === "flare";
     const close = what === "punch" || what === "club";
     const sling = what === "slingshot" || what === "slung";
     const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
@@ -910,10 +912,10 @@ if (import.meta.main) {
       for (const part of ["hat", "shirt", "gloves", "pants", "boots"]) dress(hh.host, drec, hh.reg.index.get(`core:flak_${part}`)!);
       hh.host.refreshBody(drec);
       const k = (name: string): number => hh.reg.index.get(`core:${name}`)!;
-      const weapon = what === "rifle" ? "rifle" : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : "bow";
+      const weapon = what === "rifle" ? "rifle" : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : flare ? "flare_gun" : "bow";
       if (weapon !== "") {
         hh.host.items.mint(rec, k(weapon), 1);
-        if (weapon !== "club") hh.host.items.mint(rec, k(weapon === "rifle" ? "round_rifle" : sling ? "stone" : "arrow_stone"), 20);
+        if (weapon !== "club" && !flare) hh.host.items.mint(rec, k(weapon === "rifle" ? "round_rifle" : sling ? "stone" : "arrow_stone"), 20);
         run(200);
         const inv = s.inventory!;
         const from = inv.item.indexOf(k(weapon));
@@ -924,10 +926,15 @@ if (import.meta.main) {
       }
       app.view.thirdPerson = args.includes("--third");
       app.controls.yaw = args.includes("--third") ? 0.5 : 0;
-      app.controls.pitch = close ? 0.02 : -0.02;
+      app.controls.pitch = close ? 0.02 : flare ? 0.9 : -0.02;
       run(200);
       app.controls.mouseButton(0, true);
       if (close) run(260);
+      else if (flare) {
+        run(1000 / 10);
+        app.controls.mouseButton(0, false);
+        run(2000);
+      }
       else if (what === "rifle") run(1000 / 60);
       else {
         run(1400);
