@@ -13,13 +13,14 @@ import { depthCheck } from "./probe-lit/depth.ts";
 import { farCheck } from "./probe-lit/far.ts";
 import { litCheck } from "./probe-lit/lit.ts";
 import { seamsCheck } from "./probe-lit/seams.ts";
+import { shadowCheck } from "./probe-lit/shadow.ts";
 import { topFirst, type Device, type LitCheck, type Readback, type Shot } from "./probe-lit/shot.ts";
 import { terrainCheck } from "./probe-lit/terrain.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, terrainCheck, seamsCheck, farCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, terrainCheck, seamsCheck, farCheck, shadowCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");
@@ -80,12 +81,19 @@ try {
     const pack = await packOf(s.pack);
     const canvas = document.createElement("canvas");
     [canvas.width, canvas.height] = [s.width, s.height];
-    const r = new GlRenderer(canvas, pack, await groundOf(s.ground), describePack(pack, { name: "", bytes: pack.blobAt + pack.blob.length }));
+    const manifest = s.manifest ? await get("/manifest/" + s.key) : describePack(pack, { name: "", bytes: pack.blobAt + pack.blob.length });
+    const r = new GlRenderer(canvas, pack, await groundOf(s.ground), manifest);
     const gl = r.gl;
     if (!told) {
       told = true;
       const size = gl.getFramebufferAttachmentParameter(gl.FRAMEBUFFER, gl.DEPTH, gl.FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE);
-      await post("/device", JSON.stringify({ renderer: r.rendererName, depthBits: gl.getParameter(gl.DEPTH_BITS), depthSize: size, antialias: gl.getContextAttributes().antialias, samples: gl.getParameter(gl.SAMPLES) }));
+      await post("/device", JSON.stringify({ renderer: r.rendererName, depthBits: gl.getParameter(gl.DEPTH_BITS), depthSize: size, antialias: gl.getContextAttributes().antialias, samples: gl.getParameter(gl.SAMPLES), shadowLookup: r.shadowLookup }));
+    }
+    // A shot may have the renderer take compared lookups as another device gives them: its programs are made again.
+    if (s.lookup) {
+      r.shadowLookup = s.lookup;
+      r.programs.clear();
+      r.current = null;
     }
     const frames = await get("/shot/" + s.key);
     const blob = await bytes("/shot/" + s.key + ".bin");
@@ -122,7 +130,7 @@ export async function litProbe(chrome: string): Promise<boolean> {
   const shots: Shot[] = [];
   for (const check of CHECKS) {
     const t0 = performance.now();
-    const made = check.shots();
+    const made = await check.shots();
     shots.push(...made);
     console.log(`  ${check.name}: ${made.length} shots, ${made.reduce((n, s) => n + s.frames.length, 0)} frames, built in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
   }
@@ -145,13 +153,14 @@ export async function litProbe(chrome: string): Promise<boolean> {
       const shot = shots.find((s) => s.key === id);
       if (path === "/") return new Response(PAGE, { headers: { "content-type": "text/html" } });
       if (served.has(path)) return new Response(served.get(path)!, { headers: { "content-type": "text/javascript" } });
-      if (path === "/shots") return Response.json(shots.map((s) => ({ key: s.key, width: s.width, height: s.height, read: s.read, loseAt: s.loseAt, pack: packs.indexOf(s.pack), ground: grounds.indexOf(s.ground) })));
+      if (path === "/shots") return Response.json(shots.map((s) => ({ key: s.key, width: s.width, height: s.height, read: s.read, loseAt: s.loseAt, lookup: s.lookup, manifest: s.manifest !== null, pack: packs.indexOf(s.pack), ground: grounds.indexOf(s.ground) })));
       if (kind === "pack") return new Response(packs[Number(id)]);
       if (kind === "ground") {
         const hf = grounds[Number(id)]!;
         return name.endsWith(".bin") ? new Response(groundBytes(hf)) : Response.json({ dims: hf.dims, cell: hf.cell, minY: hf.minY, stepY: hf.stepY, n: hf.nx * hf.nz });
       }
       if (kind === "shot" && shot) return name.endsWith(".bin") ? new Response(shot.bytes()) : Response.json(shot.frames);
+      if (kind === "manifest" && shot) return Response.json(shot.manifest);
       if (kind === "pixels" && shot) pixels.set(`${shot.key}/${frame}`, topFirst(body!, shot.width, shot.height));
       else if (kind === "device") device = JSON.parse(new TextDecoder().decode(body!)) as Device;
       else if (kind === "report") finish(JSON.parse(new TextDecoder().decode(body!)) as { errors: string[] });
@@ -172,7 +181,7 @@ export async function litProbe(chrome: string): Promise<boolean> {
     return false;
   }
   const d = device as Device;
-  console.log(`renderer: ${d.renderer}; a depth buffer of ${d.depthBits} bits (its attachment says ${d.depthSize}); antialias ${d.antialias}, ${d.samples} samples`);
+  console.log(`renderer: ${d.renderer}; a depth buffer of ${d.depthBits} bits (its attachment says ${d.depthSize}); antialias ${d.antialias}, ${d.samples} samples; compared lookups ${d.shadowLookup}`);
   for (const e of report.errors) console.log(`page error: ${e}`);
   let ok = report.errors.length === 0;
   const back: Readback = { pixels: (key, frame) => pixels.get(`${key}/${frame}`) ?? null, device: d };
