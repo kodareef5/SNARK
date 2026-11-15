@@ -113,11 +113,13 @@ export class Gait {
   spin = 0;
   turned = 0;
   /**
-   * A flyer's shares of its hover and of its fast flapping, and its roll into a turn (shared/anim/creature.ts), eased so a
-   * step of the speed or bank it is sent is not a jump in how it is drawn. NaN while it does not fly.
+   * A flyer's shares of its hover, its fast flapping, its glide and its dive, and its roll into a turn
+   * (shared/anim/creature.ts), eased so a step of what it is sent is not a jump in how it is drawn. NaN while it does not fly.
    */
   hover = Number.NaN;
   fast = Number.NaN;
+  glide = Number.NaN;
+  dive = Number.NaN;
   roll = Number.NaN;
 
   /**

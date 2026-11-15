@@ -43,15 +43,16 @@ const DEGREE = PI / 180;
 const GLIDE_FROM = 3 * DEGREE;
 const GLIDE_TO = 20 * DEGREE;
 const DIVE_FROM = 30 * DEGREE;
-const DIVE_TO = 55 * DEGREE;
+const DIVE_TO = 60 * DEGREE;
 /** Going down without looking down it sinks on its wings as it hovers, up to SINK_MOST metres a second, and none from SINK_NONE. */
 const SINK_MOST = 12;
 const SINK_NONE = 16;
 /** The most its body pitches up and down with its look. */
 const PITCH_UP = 60 * DEGREE;
 const PITCH_DOWN = 80 * DEGREE;
-/** The most its body rolls into a turn, at its greatest bank. */
+/** The most its body rolls into a turn, at its greatest bank, and the share of that its head rolls back, as a bird's keeps level. */
 const BANK_MOST = 60 * DEGREE;
+const HEAD_LEVEL = 0.6;
 /** A barrel roll without a clip of its own: one turn over this many ticks. */
 const ROLL_TICKS = 30;
 /** Ticks over which a flyer's landing comes in from its flight, its legs swinging forward to the ground. */
@@ -136,6 +137,8 @@ export class CreatureAnim {
   readonly fastAt: number;
   /** Where its body turns about in flight, in its model space: the middle of its joints at rest. */
   readonly pivot: Float64Array;
+  /** The bone of its `head` socket, which it keeps nearer level in a bank, or -1. */
+  readonly head: number;
 
   constructor(rig: Rig, runAt: number, swimSpeed: number) {
     this.rig = rig;
@@ -215,6 +218,7 @@ export class CreatureAnim {
     };
     this.flyAt = speedOf(this.fly, "fly", FLY_AT);
     this.fastAt = Math.max(this.flyAt + 1, speedOf(this.flyFast, "fly_fast", FAST_AT));
+    this.head = rig.sockets.get("head")?.bone ?? -1;
     this.pivot = new Float64Array(3);
     for (let b = 0; b < rig.bones; b++) {
       this.pivot[1]! += rig.rest[b * 3 + 1]! / rig.bones;
@@ -412,22 +416,18 @@ export function advanceCreature(a: CreatureAnim, g: Gait, st: AnimState, tick: n
   if (metres < 0) g.phase = tickPhase(tick + st.seed, g.speed, creatureStride(a, st, g.speed));
   else g.step(metres, creatureStride(a, st, g.speed));
   if (!aloft(a, st)) {
-    g.hover = g.fast = g.roll = Number.NaN;
+    g.hover = g.fast = g.glide = g.dive = g.roll = Number.NaN;
     return;
   }
-  // A flyer's hover, fast flapping and roll come to what its state says over SHARE_EASE, so a step of its speed or bank is no jump.
+  // A flyer's shares and roll come to what its state says over SHARE_EASE, so a step of what it is sent is no jump.
   airShares(a, st, st.speed * FLY_SPEED_STEP);
   const roll = bankRoll(st);
   const seconds = (tick - was) / TICK_RATE;
-  if (metres < 0 || !(g.hover >= 0) || !(seconds > 0)) {
-    g.hover = shares.hover;
-    g.fast = shares.fast;
-    g.roll = roll;
-    return;
-  }
-  const k = seconds / (SHARE_EASE + seconds);
+  const k = metres < 0 || !(g.hover >= 0) || !(seconds > 0) ? 1 : seconds / (SHARE_EASE + seconds);
   g.hover = eased(g.hover, shares.hover, k);
   g.fast = eased(g.fast, shares.fast, k);
+  g.glide = eased(g.glide, shares.gliding, k);
+  g.dive = eased(g.dive, shares.diving, k);
   g.roll = eased(g.roll, roll, k);
 }
 
@@ -443,7 +443,7 @@ function bankRoll(st: AnimState): number {
 /** `from` moved by `k` of the way to `to`, and at it once within a hundredth, so a client settles on what the server poses. */
 function eased(from: number, to: number, k: number): number {
   const d = to - from;
-  return d < 0.01 && d > -0.01 ? to : from + d * k;
+  return k >= 1 || (d < 0.01 && d > -0.01) ? to : from + d * k;
 }
 
 /** Its idle, and now and then one of its idles in place of it, chosen by the tick `t` (seed added) and its seed. */
@@ -556,18 +556,19 @@ function airShares(a: CreatureAnim, st: AnimState, speed: number): void {
 function flight(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null, speed: number): void {
   const t = tick + st.seed;
   airShares(a, st, speed);
-  const hover = gait && gait.hover >= 0 ? gait.hover : shares.hover;
-  const fast = gait && gait.fast >= 0 ? gait.fast : shares.fast;
+  const drawn = gait !== null && gait.hover >= 0;
+  const hover = drawn ? gait.hover : shares.hover;
   const spread = 1 - hover;
   const look = (st.pitch / PITCH_STEPS) * (PI / 2);
   const u = beatAt(a, st, tick);
   let held = mix(a, a.fly, u * (a.fly?.frames ?? 0), 1, out, false);
-  held = mix(a, a.flyFast, t, fast, out, held);
+  held = mix(a, a.flyFast, t, drawn ? gait.fast : shares.fast, out, held);
   held = mix(a, a.hover, u * (a.hover?.frames ?? 0), hover, out, held);
-  held = mix(a, a.glide, t, shares.gliding * spread, out, held);
-  held = mix(a, a.dive, t, shares.diving * spread, out, held);
+  held = mix(a, a.glide, t, (drawn ? gait.glide : shares.gliding) * spread, out, held);
+  held = mix(a, a.dive, t, (drawn ? gait.dive : shares.diving) * spread, out, held);
   if (!held) mix(a, a.fly ?? a.hover, u * (a.fly ?? a.hover)!.frames, 1, out, false);
-  let roll = (gait && gait.roll === gait.roll ? gait.roll : bankRoll(st)) * spread;
+  const bank = (drawn ? gait.roll : bankRoll(st)) * spread;
+  let roll = bank;
   if (st.cue === CUE_ROLL) {
     const s = since(tick, st.cueStart);
     if (a.roll) oneShot(a.rig, a.roll, s, out, null);
@@ -576,6 +577,11 @@ function flight(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait: G
   }
   const pitch = look > PITCH_UP ? PITCH_UP : look < -PITCH_DOWN ? -PITCH_DOWN : look;
   turnBody(a, out, pitch * spread, roll);
+  // It holds its head nearer level than its body in a bank, rolled back about its own length.
+  if (a.head >= 0 && bank !== 0) {
+    quatAxis(q, 0, 0, 0, 1, -HEAD_LEVEL * bank);
+    quatMul(out.rot, a.head * 4, out.rot, a.head * 4, q, 0);
+  }
 }
 
 /** Turns its whole body about its pivot, pitched up by `pitch` and rolled to its right about its own length by `roll`, in radians. */
@@ -666,10 +672,9 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
   } else if (!st.held) {
     if (aloft(a, st)) {
       if (st.cue === CUE_TAKEOFF && a.takeOff) {
-        // From where it stood, up into its flight.
-        const s = since(tick, st.cueStart);
-        if (s < FADE) idleAt(a, st.seed, tick + st.seed, rig.e);
-        oneShot(rig, a.takeOff, s, out, rig.e);
+        // From the crouch it stands in, up into its flight. It begins where it stood and holds the ground as the step lifts
+        // it, so it comes in at once: a fade would float its planted hands and feet up with the body.
+        oneShot(rig, a.takeOff, since(tick, st.cueStart), out, null, 0);
       }
       biteAloft(a, st, tick, out);
     } else if (!strike(a, st, tick, out)) {

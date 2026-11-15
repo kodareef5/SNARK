@@ -275,11 +275,11 @@ test("a barrel roll turns it over once about its own length and back", () => {
   fromPivot(rolled(8).pos).forEach((d, b) => expect(d).toBeCloseTo(fromPivot(level.pos)[b]!, 4));
 });
 
-test("a take-off starts as it stood and ends at the top of its hover's stroke, its beat coming to its clock with no bone turning faster than the clips turn it", () => {
+test("a take-off starts on the crouch it stood in and ends at the top of its hover's stroke, its beat coming to its clock with no bone turning faster than the clips turn it", () => {
   const start = T - 5;
   const standing = state(() => {}, false);
   const off = state((s) => ((s.cue = CUE_TAKEOFF), (s.cueStart = start & 255)));
-  expect(posed(flyer, off, start).rot).toEqual(posed(flyer, standing, start).rot);
+  expect(posed(flyer, off, start).rot).toEqual(frameOf("take_off", 0));
   const end = flyer.takeOff!.frames - 1;
   expect(posed(flyer, off, start + end).rot).toEqual(frameOf("take_off", end));
   // A beat later it hovers as any flyer at no speed does.
