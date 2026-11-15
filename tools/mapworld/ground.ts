@@ -60,6 +60,8 @@ export interface World {
   readonly spawns: readonly { name: string; at: [number, number]; face: [number, number]; ground: "sand" | "open" }[];
   /** Where survivors leave for another server: each obelisk near a place, its terminal turned toward another (places.ts). */
   readonly obelisks?: readonly { name: string; at: [number, number]; face: [number, number] }[];
+  /** Metres round a spawn point with no beach region in reach within which the jungle's regions take the beach's table. */
+  readonly easyAroundSpawns?: number;
   /** Whether each footprint is raised into a heap of rubble (heaps.ts), the stand-in for block ruins. On unless false. */
   readonly heaps?: boolean;
   readonly containerHeaps?: boolean;

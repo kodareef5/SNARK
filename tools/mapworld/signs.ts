@@ -33,9 +33,15 @@ export function makeSigns(site: Site, accept: (m: Mason) => boolean): SignRecord
     const letters = [...sign.inscription.replace(/ /g, "")];
     if (Math.abs(sign.height_m / LETTER_HEIGHT - 1) > SCALE_SLACK) { record.status = `mapped ${sign.height_m} m tall; the letters stand ${LETTER_HEIGHT} m`; continue; }
     const line = sign.points.map(([e, n]) => site.toEngine(e, n) as Point);
-    const [a, b] = [line[0]!, line.at(-1)!];
+    let [a, b] = [line[0]!, line.at(-1)!];
     const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (length < 0.5) { record.status = "a line too short to read along"; continue; }
+    // A letter's face is its +z side, (sin yaw, cos yaw) on the map. On a slope it faces down it, toward whoever reads it,
+    // whichever way the line was drawn; on the level it reads from the line's first point.
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as const;
+    const fall = (sx: number, sz: number): number => site.groundAt(mid[0] - sx * 8, mid[1] - sz * 8) - site.groundAt(mid[0] + sx * 8, mid[1] + sz * 8);
+    const yaw0 = Math.atan2(-(b[1] - a[1]), b[0] - a[0]);
+    if (fall(Math.sin(yaw0), Math.cos(yaw0)) < -0.5) [a, b] = [b, a];
     const ax = (b[0] - a[0]) / length; const az = (b[1] - a[1]) / length;
     const yaw = (((Math.atan2(-az, ax) * 180) / Math.PI) % 360 + 360) % 360;
     // The word is centred on the line, its letters at their own widths and the spare length shared between them.

@@ -12,7 +12,9 @@ interface Modifier { match: string; accent?: RuinFinish; finish?: RuinFinish; fe
 export interface Form { plan?: string; marker?: string; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
 export interface Assembly { role: string; clearance?: string; parts: [RuinShape, number, number, number, RuinFinish | "finish", number?][]; }
 interface Choice { id: string; when: { kind?: string[]; recipe?: string[]; district?: string[]; name?: string; areaAbove?: number; areaBelow?: number; heightAbove?: number; heightBelow?: number; waterBelow?: number; waterAbove?: number; builtBefore?: number; neighboursAbove?: number; trades?: string[] }; form?: string; finish?: RuinFinish; collapse?: string[]; }
-export interface Composition { operations: { op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; form?: Form; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number }[]; }
+export interface Composition { operations: ({ op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal" | "ring" | "dome"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; form?: Form; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number } & Round)[]; }
+/** A ring of pieces round a centre, or a dome of such rings: in the footprint's metres, from the ground's height. */
+export interface Round { at?: [number, number]; radius?: number; heights?: number[]; y?: number; drum?: number; shape?: RuinShape; arc?: [number, number]; }
 export interface Vocabulary {
   interiors: Record<string, { divider: RuinShape | null; back: RuinShape | null; parts: Assembly["parts"] }>;
   damage: Record<string, { radius: number; retain: number; layers: number }>;

@@ -87,8 +87,11 @@ export function makeRuins(site: Site): StaticPiece[] {
   const infrastructureCount = pieces.length;
   const corridors = corridorIndex(bridges.corridors);
   const planAccess = accessPlanner(site, pieces);
+  const keptAsGround: { part: number; name: string }[] = [];
   for (const p of planned) {
     const { f, rule } = p;
+    // A named place whose footprint is its ground, as a hillside's seats are, is neither built on nor levelled.
+    if (p.named?.layout === "ground") { keptAsGround.push({ part: f.building.id, name: p.named.name }); continue; }
     const original = p.frame;
     const samples = tilesOf(original, 4).map((t) => { const [x, z] = worldPoint(original, t.u, t.v); return site.groundAt(x, z); }).sort((a, b) => a - b);
     const base = Math.max(.5, Math.round((samples[Math.floor(samples.length / 2)] ?? site.groundAt(original.x, original.z)) * 16) / 16);
@@ -213,7 +216,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   put("signs.json", signs);
   put("buildings.json", records);
   put("generation.json", { version: v.version, seed: v.seed, labelsFingerprint: data.fingerprint, staticFingerprint: digest(pieces),
-    blocks: pieces.length, buildings: records.length, footprints: site.footprints.length, rejected, kinds: usedKinds, topChunks,
+    blocks: pieces.length, buildings: records.length, footprints: site.footprints.length, rejected, keptAsGround, kinds: usedKinds, topChunks,
     clearance, streets, byForm: tally(records.map((r) => r.form)), byCollapse: tally(records.map((r) => r.collapse)), roomRoutes: records.reduce((n, r) => n + r.rooms.length, 0),
     piecesByKind: Object.fromEntries([...new Set(records.map((r) => r.kind))].sort().map((kind) => { const rows = records.filter((r) => r.kind === kind); return [kind, { buildings: rows.length, pieces: rows.reduce((n, r) => n + r.blocks, 0), max: Math.max(...rows.map((r) => r.blocks)) }]; })),
     byRecipe: tally(records.map((r) => r.recipe)), byDistrict: tally(records.map((r) => r.district)),

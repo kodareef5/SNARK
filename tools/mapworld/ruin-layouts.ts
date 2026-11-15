@@ -1,7 +1,7 @@
 import { hash3 } from "./raster.ts";
-import { RUIN_SHAPES } from "../../content/ruins.ts";
+import { RUIN_SHAPES, type RuinFinish } from "../../content/ruins.ts";
 import { inside, Mason, SIDES, tileKey, tilesOf, type Tile } from "./ruin-geometry.ts";
-import type { Composition, Rule, Vocabulary } from "./ruin-vocabulary.ts";
+import type { Composition, Round, Rule, Vocabulary } from "./ruin-vocabulary.ts";
 
 export interface LayoutOptions { seed: number; playable: number; detail: number; coreU?: number; }
 const has = (tiles: Set<string>, t: Tile, dx: number, dz: number): boolean => tiles.has(tileKey(t.i + dx, t.j + dz));
@@ -341,6 +341,20 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
   }
 }
 
+/** Pieces round a circle at one height, each turned along it and as many as its length allows; one at the middle when the circle is smaller than a piece. */
+function ring(m: Mason, op: Round, radius: number, y: number, finish: RuinFinish): void {
+  const shape = op.shape ?? "crown"; const [cu, cv] = op.at ?? [0, 0]; const [from, to] = op.arc ?? [0, 360];
+  const along = RUIN_SHAPES[shape][0];
+  if (radius < along / 2) { m.put(shape, cu, y, cv, finish); return; }
+  const whole = to - from >= 360;
+  const count = Math.max(whole ? 3 : 2, Math.round((radius * (to - from) * Math.PI) / 180 / along));
+  for (let k = 0; k < count; k++) {
+    const a = from + (to - from) * (whole ? k / count : k / (count - 1));
+    const rad = (a * Math.PI) / 180;
+    m.put(shape, cu + radius * Math.cos(rad), y, cv + radius * Math.sin(rad), finish, -(a + 90));
+  }
+}
+
 function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, composition: Composition): void {
   const inRect = (t: Tile, rect: number[]): boolean => t.u >= rect[0]! && t.v >= rect[1]! && t.u <= rect[2]! && t.v <= rect[3]!;
   for (const op of composition.operations) {
@@ -358,6 +372,19 @@ function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, compo
         for (let y = 0; y < rule.height; y += 16) m.put("fin16", t.u - 4, y + 8, t.v + (op.rear ? 4 : -4), op.finish ?? rule.finish);
         m.put("trim8", t.u, rule.height, t.v + (op.rear ? 4 : -4), op.finish ?? rule.finish);
       }
+    }
+    if (op.op === "ring") for (const y of op.heights ?? []) ring(m, op, op.radius ?? 8, y, op.finish ?? rule.finish);
+    if (op.op === "dome") {
+      // A drum up to the springing, then courses a block high as far in as the hemisphere's radius at their middle, each
+      // filled inward to where the course above it reaches, so the dome is closed from above.
+      const r = op.radius ?? 8; const shape = op.shape ?? "crown"; const [along, h] = RUIN_SHAPES[shape]; const spring = op.y ?? rule.height;
+      for (let y = spring - (op.drum ?? 0); y < spring - .01; y += h) ring(m, op, r, y + h / 2, op.finish ?? rule.finish);
+      const radii: number[] = [];
+      for (let k = 0; k * h < r; k++) radii.push(Math.sqrt(Math.max(0, r * r - ((k + .5) * h) ** 2)));
+      radii.forEach((outer, k) => {
+        const inner = radii[k + 1] ?? -along;
+        for (let rho = outer; rho > inner + along / 4; rho -= along) ring(m, op, Math.max(0, rho), spring + (k + .5) * h, op.finish ?? rule.finish);
+      });
     }
     if (op.op === "portal") for (let i = m.pieces.length - 1; i >= 0; i--) {
       const p = m.pieces[i]!; const u = (p.x - m.frame.x) * m.frame.c - (p.z - m.frame.z) * m.frame.s;
