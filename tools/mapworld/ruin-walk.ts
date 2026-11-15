@@ -1,3 +1,5 @@
+import { reportPaths } from "./report-path.ts";
+const paths = reportPaths();
 // Authoritative capsule movement through stairs from the actual packed city, including rotated and damaged shells.
 import { readFileSync, writeFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -9,8 +11,8 @@ import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import type { RuinRecord } from "./ruins.ts";
 
-const folder = "assets/source/maps/miami/reports/ruins2";
-const map = parseMap(new Uint8Array(readFileSync(process.argv.slice(2).find((a) => !a.startsWith("--")) ?? "var/maps/miami.snmap")));
+const folder = paths.folder;
+const map = parseMap(new Uint8Array(readFileSync(paths.mapFile)));
 const compiled = compileContent(CORE_CONTENT);
 if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
 const reg = compiled.registry;

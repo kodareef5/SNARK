@@ -49,7 +49,7 @@ export interface StaticLayer {
 
 export const STATIC_LAYERS: readonly StaticLayer[] = [RUINS];
 
-export function siteOf(world: World, ground: Ground, size: number, source = "assets/source/maps/miami"): Site {
+export function siteOf(world: World, ground: Ground, size: number, source: string): Site {
   const n = ground.n;
   const half = size / 2;
   const at = (c: number, r: number): number => ground.height[Math.min(n - 1, Math.max(0, r)) * n + Math.min(n - 1, Math.max(0, c))]!;

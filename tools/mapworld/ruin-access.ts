@@ -1,4 +1,4 @@
-import { RUIN_SHAPES, type RuinShape } from "../../content/miami-ruins.ts";
+import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { S } from "./ground.ts";
 import type { Mason } from "./ruin-geometry.ts";
 import type { Site, StaticPiece } from "./statics.ts";

@@ -22,6 +22,7 @@ import { encodePng } from "../snap/png.ts";
 
 interface View {
   name: string;
+  isolate?: { first: number; count: number; x: number; y: number; z: number; yaw: number };
   spawn?: string;
   x?: number;
   z?: number;
@@ -45,13 +46,24 @@ const views = (JSON.parse(readFileSync(list, "utf8")) as View[]).filter((v) => o
 const files = await gameFiles(resolve(SOURCE));
 mkdirSync(folder, { recursive: true });
 let farCells: FarStore | null = null;
+let previousIsolated = false;
+const stageX = map.dims.chunksX * 32; const stageZ = map.dims.chunksZ * 32;
+const flatHeights = new Uint16Array(map.heights.length).fill(Math.round((2 - map.minY) / map.stepY));
+const flatTint = new Uint8Array(map.tint.length).fill(100);
 const rendered: { name: string; frames: number; milliseconds: number; eye: number[]; draws: number; dropped: number; casterDropped: number }[] = [];
 const small: { w: number; h: number; rgba: Uint8Array }[] = [];
 for (const v of views) {
   Bun.gc(true);
   const t0 = performance.now();
   const [w, h] = v.size ?? [1280, 720];
-  const view = provingView(w, h, {}, files, map);
+  let activeMap = map;
+  if (v.isolate) {
+    const i = v.isolate; const a = i.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+    activeMap = { ...map, heights: flatHeights, tint: flatTint, nodes: [], statics: map.statics.slice(i.first, i.first + i.count).map((p) => ({ ...p, x: stageX + (p.x - i.x) * c - (p.z - i.z) * s, z: stageZ + (p.x - i.x) * s + (p.z - i.z) * c, y: p.y - i.y + 2, yaw: (p.yaw - Math.round(i.yaw * 65536 / 360) + 65536) & 65535 })) };
+  }
+  if (v.isolate || previousIsolated) farCells = null;
+  previousIsolated = !!v.isolate;
+  const view = provingView(w, h, {}, files, activeMap);
   // Supply the same far-cell stream and complete near chunks as a stationary live client.
   // The generic snap harness holds the entire map as near rows, overflowing its draw list on a city.
   if (!farCells) {

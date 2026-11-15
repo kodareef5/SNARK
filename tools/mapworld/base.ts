@@ -8,6 +8,7 @@ import { TransverseMercator } from "./geo.ts";
 import { readFloatTiff, type FloatRaster } from "./tiff.ts";
 
 export interface MapInfo {
+  readonly bathymetry?: string;
   readonly size_m: number;
   readonly chunks: number;
   readonly grid_samples: number;
@@ -47,7 +48,7 @@ export class Base {
 
   /** The coastal elevation model resampled to each sample, bilinearly, in NAVD88 metres. */
   bathymetry(): Float32Array {
-    const tif = readFloatTiff(new Uint8Array(readFileSync(join(this.folder, "base", "bathymetry", "miami-navd88.tif"))));
+    const tif = readFloatTiff(new Uint8Array(readFileSync(join(this.folder, "base", this.info.bathymetry ?? "bathymetry/navd88.tif"))));
     const n = this.n;
     const out = new Float32Array(n * n);
     // Longitude and latitude are found every 64 m and taken between: the projection bends far less than a sample over that.

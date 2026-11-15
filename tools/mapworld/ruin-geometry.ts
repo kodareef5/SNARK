@@ -1,4 +1,4 @@
-import { RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/miami-ruins.ts";
+import { RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import type { Footprint, Site, StaticPiece } from "./statics.ts";
 
 export type Point = readonly [number, number];
@@ -59,6 +59,8 @@ export class Mason {
   readonly routes: { x: number; y: number; z: number; yaw: number; floors: number }[] = [];
   readonly entries: { x: number; y: number; z: number; yaw: number; coreX: number; coreZ: number }[] = [];
   readonly escapes: { points: { x: number; y: number; z: number }[] }[] = [];
+  readonly rooms: { kind: string; points: { x: number; y: number; z: number }[] }[] = [];
+  readonly falls: { mode: string; u: number; v: number }[] = [];
   readonly wings: { tiles: number; height: number; u: number; v: number }[] = [];
   readonly frame: Frame;
   readonly base: number;
@@ -113,4 +115,56 @@ export function pieceRadius(p: StaticPiece): number {
   const name = p.kind.split("_")[1] as RuinShape;
   const shape = RUIN_SHAPES[name];
   return shape ? Math.hypot(shape[0], shape[2]) / 2 : 0;
+}
+
+export function compactWalls(m: Mason): void {
+  const candidates = new Map<string, number>(); const removed = new Set<number>();
+  const output = m.pieces;
+  for (let i = 0; i < output.length; i++) {
+    const p = output[i]!;
+    const shape = p.kind.split("_")[1]; if (shape !== "zpanel8" && shape !== "zshaft8") continue;
+    const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+    const u = p.x * c - p.z * s; const v = p.x * s + p.z * c;
+    const key = (at: number): string => `${p.kind},${p.y.toFixed(3)},${p.yaw.toFixed(3)},${at.toFixed(3)},${v.toFixed(3)}`;
+    const previous = candidates.get(key(u - 8)) ?? candidates.get(key(u + 8));
+    if (previous !== undefined && !removed.has(previous)) {
+      const q = output[previous]!;
+      output[i] = { ...p, kind: p.kind.replace(shape, shape === "zpanel8" ? "zpanel16" : "zshaft16"), x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
+      removed.add(previous);
+    } else candidates.set(key(u), i);
+  }
+  if (removed.size) { const kept = output.filter((_, i) => !removed.has(i)); output.length = 0; for (const p of kept) output.push(p); }
+}
+
+export function reserveRoutes(m: Mason): number {
+  const paths = [...m.rooms.filter((r) => r.kind !== "rubble"), ...m.escapes].map((r) => r.points);
+  for (const r of m.routes) {
+    const a = r.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+    const point = (u: number, y: number, v: number): { x: number; y: number; z: number } => ({ x: r.x + u * c + v * s, y: r.y + y, z: r.z - u * s + v * c });
+    for (let f = 0; f < r.floors; f++) {
+      const dir = f % 2 === 0 ? 1 : -1; const u = f % 2 === 0 ? -1.5 : 1.5;
+      paths.push([point(u, f * 4, -dir * 3.25), point(u, (f + 1) * 4, dir * 3.25), point(-u, (f + 1) * 4, dir * 3.25)]);
+    }
+    const dir = r.floors % 2 === 0 ? -1 : 1;
+    paths.push([point(dir * 1.5, r.floors * 4, dir * 3.25), point(dir * 1.5, r.floors * 4, dir * 5.5)]);
+  }
+  const removable = new Set(["fin4", "fin8", "fin16", "crown", "zcore", "zroof8", "zroof16"]);
+  const before = m.pieces.length;
+  const kept = m.pieces.filter((p) => {
+    const name = p.kind.split("_")[1] as RuinShape; if (!removable.has(name)) return true;
+    const [w, h, d] = RUIN_SHAPES[name]; const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+    for (const points of paths) for (let i = 1; i < points.length; i++) {
+      const from = points[i - 1]!; const to = points[i]!; const length = Math.hypot(to.x - from.x, to.z - from.z);
+      if (Math.min(from.y, to.y) + .4 >= p.y + h / 2 || Math.max(from.y, to.y) + 2.2 <= p.y - h / 2) continue;
+      if (Math.min(from.x, to.x) - w - d > p.x || Math.max(from.x, to.x) + w + d < p.x || Math.min(from.z, to.z) - w - d > p.z || Math.max(from.z, to.z) + w + d < p.z) continue;
+      for (let n = 0; n <= Math.ceil(length * 2); n++) {
+        const t = n / Math.max(1, Math.ceil(length * 2)); const y = from.y + (to.y - from.y) * t;
+        if (p.y + h / 2 <= y + .4 || p.y - h / 2 >= y + 2.2) continue;
+        const dx = from.x + (to.x - from.x) * t - p.x; const dz = from.z + (to.z - from.z) * t - p.z;
+        if (Math.abs(dx * c - dz * s) < w / 2 + .5 && Math.abs(dx * s + dz * c) < d / 2 + .5) return false;
+      }
+    }
+    return true;
+  });
+  m.pieces.length = 0; for (const p of kept) m.pieces.push(p); return before - kept.length;
 }

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { RuinFinish } from "../../content/miami-ruins.ts";
+import type { RuinFinish, RuinShape } from "../../content/ruins.ts";
 import type { Footprint } from "./statics.ts";
 import type { Facts } from "./labels.ts";
 import { rand3 } from "./raster.ts";
@@ -9,7 +9,15 @@ export interface Recipe {
   bay: number; height: number; retain: number; holes: number; wall: number; accent: RuinFinish; feature: string; play: string;
 }
 interface Modifier { match: string; accent?: RuinFinish; finish?: RuinFinish; feature?: string; retain?: number; holes?: number; meaning: string; }
+export interface Form { plan?: string; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
+export interface Assembly { role: string; clearance?: string; parts: [RuinShape, number, number, number, RuinFinish | "finish", number?][]; }
+interface Choice { id: string; when: { kind?: string[]; recipe?: string[]; district?: string[]; heightAbove?: number; heightBelow?: number; waterBelow?: number; waterAbove?: number; builtBefore?: number; neighboursAbove?: number; trades?: string[] }; form?: string; collapse?: string[]; }
+export interface Composition { operations: { op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number }[]; }
 export interface Vocabulary {
+  damage: Record<string, { radius: number; retain: number; layers: number }>;
+  compositions: Record<string, Composition>;
+  forms: Record<string, Form>; choices: Choice[]; assemblies: Record<string, Assembly>;
+  street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[] };
   version: number; seed: number; budgets: { maxChunk: number; maxCity: number; maxPlayableFloors: number; maxHeight: number };
   categories: Record<string, string>; recipes: Record<string, Recipe>;
   styles: Modifier[]; periods: Modifier[]; materials: Modifier[]; character: Modifier[];
@@ -18,12 +26,15 @@ export interface Vocabulary {
 }
 export interface Rule {
   recipe: string; height: number; finish: RuinFinish; feature: string; holes: number; wall: number; bay: number;
+  compositions?: Record<string, Composition>;
+  damage?: { radius: number; retain: number; layers: number };
+  form?: Form; formName?: string; collapse?: string; assemblies?: Record<string, Assembly>;
   infill?: RuinFinish;
   matched: string[]; provisional: boolean;
 }
 export const vocabulary = (source: string): Vocabulary => JSON.parse(readFileSync(join(source, "ruins/vocabulary.json"), "utf8")) as Vocabulary;
 
-export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts): Rule {
+export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { water: Infinity, neighbours: 0 }): Rule {
   const d = v.districts[f.district?.name ?? ""] ?? v.districts.default!;
   const random = rand3(f.building.id, v.seed, 1);
   let name = v.categories[facts.kind] ?? "fabric";
@@ -52,6 +63,18 @@ export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts): Rule {
   if (style) apply(style, `style: ${style.match}`);
   if (!style && d.lowRiseFeature && facts.height <= (d.lowRiseBelow ?? 24)) feature = d.lowRiseFeature;
   const height = name === "park" ? 0 : Math.min(v.budgets.maxHeight, Math.max(4, Math.floor(facts.height * retain / 4) * 4));
-  return { recipe: name, height, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
+  let formName = "fabric"; let collapse = "shear";
+  for (const choice of v.choices ?? []) {
+    const w = choice.when;
+    if (w.kind && !w.kind.includes(facts.kind) || w.recipe && !w.recipe.includes(name) || w.district && !w.district.includes(f.district?.name ?? "")) continue;
+    if (w.heightAbove !== undefined && facts.height <= w.heightAbove || w.heightBelow !== undefined && facts.height > w.heightBelow) continue;
+    if (w.waterBelow !== undefined && context.water >= w.waterBelow || w.waterAbove !== undefined && context.water <= w.waterAbove) continue;
+    if (w.builtBefore !== undefined && (!p?.built || p.built >= w.builtBefore) || w.neighboursAbove !== undefined && context.neighbours <= w.neighboursAbove) continue;
+    if (w.trades && !w.trades.some((trade) => Object.keys(facts.label.uses ?? {}).some((use) => use.includes(trade)))) continue;
+    if (choice.form) formName = choice.form;
+    if (choice.collapse) collapse = choice.collapse[Math.floor(rand3(f.building.id, v.seed, 91) * choice.collapse.length)]!;
+    matched.push(choice.id);
+  }
+  return { recipe: name, height, formName, form: v.forms?.[formName], collapse, damage: v.damage?.[collapse], assemblies: v.assemblies, compositions: v.compositions, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
     provisional: facts.kindFrom !== "label" || !["osm", "usa_structures", "reviewed_source"].includes(facts.heightFrom) || !!p?.estimated?.length };
 }
