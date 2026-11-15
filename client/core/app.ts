@@ -564,7 +564,7 @@ export class App {
 
   /**
    * The riding camera of a creature of `kind`, entity `id`: how far above its origin its rider's head is, from its saddle's
-   * steering seat, and its boom, as long as the creature is big (its rig's reach, else its body) and 1.5 m more.
+   * steering seat, and its boom: 1.5 m and 1.2 times as big as the creature is (its rig's reach, else its body).
    */
   private mountView(kind: number, id: number): { up: number; boom: number } {
     const r = this.remote;
@@ -572,7 +572,7 @@ export class App {
     for (let i = 0; i < r.count; i++) if (r.id[i] === id) saddle = r.gear[i * GEAR_COUNT + GEAR_WORN]!;
     const seat = this.reg.saddleSeats[saddle]?.find((s) => s.driver);
     const size = Math.max(this.scene?.characters.reach(kind) ?? 0, this.reg.bodyHeight[kind]!, 2 * this.reg.bodyRadius[kind]!);
-    return { up: seat ? seat.anchor[1] + 0.75 : this.reg.bodyHeight[kind]! + 0.5, boom: 1.5 + size };
+    return { up: seat ? seat.anchor[1] + 0.75 : this.reg.bodyHeight[kind]! + 0.5, boom: 1.5 + 1.2 * size };
   }
 
   /** Labels what the use button would act on, with the same ray the server casts. The server's answer is the one that counts. */

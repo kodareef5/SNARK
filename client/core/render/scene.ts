@@ -1436,9 +1436,11 @@ export class Scene {
       const lies = this.dropped.item(remote.kind[i]!, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[remote.kind[i]!]!;
       const r = this.radiusOfMesh[mesh]!;
-      const x = remote.x[i]! - cam.x;
-      const y = remote.y[i]! - cam.y;
-      const z = remote.z[i]! - cam.z;
+      // The mount the viewer rides is where its prediction has it, as its rider is drawn on it (bodies()).
+      const mine = this.own !== null && remote.id[i] === this.skip;
+      const x = (mine ? this.own!.x : remote.x[i]!) - cam.x;
+      const y = (mine ? this.own!.y : remote.y[i]!) - cam.y;
+      const z = (mine ? this.own!.z : remote.z[i]!) - cam.z;
       // Culled entries are left out of the counts. The second pass repeats the test.
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       this.tally(cam, mesh, x, y, z);
@@ -1452,12 +1454,13 @@ export class Scene {
       const lies = this.dropped.item(kind, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!;
       const r = this.radiusOfMesh[mesh]!;
-      const x = remote.x[i]! - cam.x;
-      const y = remote.y[i]! - cam.y;
-      const z = remote.z[i]! - cam.z;
+      const mine = this.own !== null && remote.id[i] === this.skip;
+      const x = (mine ? this.own!.x : remote.x[i]!) - cam.x;
+      const y = (mine ? this.own!.y : remote.y[i]!) - cam.y;
+      const z = (mine ? this.own!.z : remote.z[i]!) - cam.z;
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       const at = this.cursor[mesh]!++;
-      const yaw = Math.round((remote.yaw[i]! / (2 * Math.PI)) * 65536) & 0xffff;
+      const yaw = Math.round(((mine ? this.own!.yaw : remote.yaw[i]!) / (2 * Math.PI)) * 65536) & 0xffff;
       if (lies !== 0) this.transient.set(at, x, y, z, this.dropped.yaw(remote.id[i]!, yaw), this.dropped.colorOf(lies));
       else this.transient.set(at, x, y, z, yaw, this.colorOfKind[kind]!);
       this.transient.regions(at, remote.colors, i * 6);
