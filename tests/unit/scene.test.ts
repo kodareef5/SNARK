@@ -422,7 +422,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   const saddled = lowPoly(true);
   expect(saddled.log).toEqual(log);
   expect([saddled.draws - draws, saddled.rigid - rigid, saddled.uploads - uploads, saddled.texLedger, saddled.worn[0] ?? 0, saddled.worn[1]]).toEqual([273, 97, 1, 0, 0, 273]);
-  expect(saddled.hash).toBe(1277817829);
+  // It was 1277817829 until the road pieces' grey boxes, as the pin above.
+  expect(saddled.hash).toBe(741933028);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

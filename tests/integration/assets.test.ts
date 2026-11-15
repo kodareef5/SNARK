@@ -132,5 +132,6 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // without it, and the saddle, the scene gives the hash above.
   const saddled = frames(true);
   expect([...saddled.drawn].filter((id) => !drawn.has(id))).toEqual([WORN]);
-  expect(saddled.hash).toBe("bf22a69");
+  // It was bf22a69 until the road pieces' grey boxes, as the pin above.
+  expect(saddled.hash).toBe("5057ef0d");
 });
