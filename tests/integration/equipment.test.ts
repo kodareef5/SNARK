@@ -251,19 +251,19 @@ test("a weapon is set to its ammunition, loaded, fired empty, fitted and strippe
   expect(items.audit()).toEqual([]);
 
   // With a full bag, an unload or a detach has nowhere to put the item.
-  items.load(rec, rifle, id("dart_tranq"), 1);
+  items.load(rec, rifle, id("round_rifle"), 1);
   send(CMD_ATTACH, (w) => (w.varint(rifle), w.varint(inv().item.indexOf(id("scope")))));
   items.mint(rec, id("waterskin"), 60);
   expect(inv().free()).toBe(-1);
-  items.burnItem(rec, id("dart_tranq"), inv().total(id("dart_tranq"))); // no stack of darts left to top up
+  items.burnItem(rec, id("round_rifle"), inv().total(id("round_rifle"))); // no stack of rounds left to top up
   items.mint(rec, id("waterskin"), 5);
   expect(send(CMD_UNLOAD, (w) => w.u8(rifle))).toBe(RESULT_FULL);
   expect(send(CMD_DETACH, (w) => w.u8(rifle))).toBe(RESULT_FULL);
   expect([inv().loaded[rifle], inv().attach[rifle]]).toEqual([1, id("scope")]);
-  // Burning the rifle burns its loaded dart and its scope through the ledger.
-  const dartsBurned = items.burned[id("dart_tranq")]!;
+  // Burning the rifle burns its loaded round and its scope through the ledger.
+  const roundsBurned = items.burned[id("round_rifle")]!;
   expect(items.burn(rec, rifle, 1)).toBe(true);
-  expect([items.burned[id("dart_tranq")]! - dartsBurned, items.burned[id("scope")], total("scope")]).toEqual([1, 1, 0]);
+  expect([items.burned[id("round_rifle")]! - roundsBurned, items.burned[id("scope")], total("scope")]).toEqual([1, 1, 0]);
   expect(items.audit()).toEqual([]);
 });
 

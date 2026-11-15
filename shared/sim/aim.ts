@@ -154,13 +154,16 @@ export function sway(w: WeaponParams, stance: number, handle: number, t: number)
 }
 
 /**
- * Whether the weapon in `slot` of `inv` looks through a scope: one is fitted (W7 adds that it is switched on). The server
- * reads its own books and the client its copy of them, which the server sends.
+ * Whether the weapon in `slot` of `inv` looks through a scope or a holo-scope: one is fitted. A sight needs no switching on
+ * (only a flashlight and a laser are switched, FLAG_ON), so this is all W7 adds to W1's sway. The holo-scope "will always
+ * have weapon sway" (Holo-Scope Attachment); here it sways as much as its weapon does (`spread.sway`). The server reads its
+ * own books and the client its copy of them, which the server sends.
  */
 export function scopeFitted(reg: Registry, inv: Inventory | null, slot: number): boolean {
   if (!inv || slot < 0) return false;
   const fitted = inv.attach[slot]!;
-  return fitted !== 0 && (reg.defs[fitted] as ItemDef | null)?.attachment === "scope";
+  const kind = fitted !== 0 ? (reg.defs[fitted] as ItemDef | null)?.attachment : undefined;
+  return kind === "scope" || kind === "holo";
 }
 
 /** Where a shot is pointed and how wide its cone is, from the last call of `aimShot`. Yaw and pitch in wire units. */

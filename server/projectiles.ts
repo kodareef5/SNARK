@@ -69,6 +69,8 @@ interface Flying extends Flight {
   /** `wet` means its weapon works under water. `under` means it is under water now. */
   wet: boolean;
   under: boolean;
+  /** Its weapon had a silencer: a survivor it hits is not shown its side. */
+  silenced: boolean;
 }
 
 interface Thrown extends Flight {
@@ -151,8 +153,20 @@ export class Projectiles {
     const oz = ents.z[e]!;
     const view = combat.viewTick(c);
     this.fired++;
-    if (reg.ammoSpeed[ammo]! <= 0) this.ray(c, rec, weapon, quality, ammo, ox, oy, oz, d, view);
-    else this.flight(c, rec, weapon, quality, ammo, draw, ox, oy, oz, d, view);
+    const silenced = this.silenced(rec);
+    if (reg.ammoSpeed[ammo]! <= 0) this.ray(c, rec, weapon, quality, ammo, ox, oy, oz, d, view, silenced);
+    else this.flight(c, rec, weapon, quality, ammo, draw, ox, oy, oz, d, view, silenced);
+  }
+
+  /**
+   * Whether the weapon in `rec`'s hand has a silencer, which needs no switching on: others are told the shot is silenced and
+   * draw no flash, and a survivor it hits is not shown its side. Creatures still hear it (Silencer Attachment), and it is
+   * told to as many clients as any shot (HEARD): how far the quiet shot carries is on no page (DEV132).
+   */
+  private silenced(rec: EntityRecord): boolean {
+    const items = this.ctx.items;
+    const inv = items.inv(rec);
+    return inv.hotbar >= 0 && rec.held >= 0 && items.attachmentOf(inv, inv.hotbar + rec.held) === "silencer";
   }
 
   /**
@@ -176,7 +190,7 @@ export class Projectiles {
   }
 
   /** A round with no speed is not flown. It is one piece along `d` from the origin, tested at the shooter's view tick. */
-  private ray(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, ox: number, oy: number, oz: number, d: readonly number[], view: number): void {
+  private ray(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, ox: number, oy: number, oz: number, d: readonly number[], view: number, silenced: boolean): void {
     const { world, combat } = this.ctx;
     const e = c.ent;
     const sea = world.hf.seaLevel;
@@ -199,8 +213,8 @@ export class Projectiles {
     const x = ox + d[0]! * t;
     const y = oy + d[1]! * t;
     const z = oz + d[2]! * t;
-    this.tell(c, ox, oy, oz, ammo, false, x, y, z, 0);
-    if (target >= 0) this.hit(rec, weapon, quality, ammo, 1, ox, oy, oz, target, combat.zone, x, y, z);
+    this.tell(c, ox, oy, oz, ammo, false, x, y, z, 0, 1, 0, silenced);
+    if (target >= 0) this.hit(rec, weapon, quality, ammo, 1, ox, oy, oz, target, combat.zone, x, y, z, silenced);
     else {
       this.ended(x, y, z, on);
       if (built >= 0) combat.hitStructure(this.bring(rec, weapon, quality, ammo, 1, ox, oz), built, x, y, z);
@@ -208,7 +222,7 @@ export class Projectiles {
   }
 
   /** A round that flies leaves along `d`, and is flown from the view tick up to now before it joins the others. */
-  private flight(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number, ox: number, oy: number, oz: number, d: readonly number[], view: number): void {
+  private flight(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number, ox: number, oy: number, oz: number, d: readonly number[], view: number, silenced: boolean): void {
     const world = this.ctx.world;
     const reg = world.reg;
     const now = world.tick;
@@ -218,11 +232,11 @@ export class Projectiles {
     const f: Flying = {
       x: ox, y: oy, z: oz, vx: d[0]! * speed, vy: d[1]! * speed, vz: d[2]! * speed,
       gravity: reg.ammoGravity[ammo]!, ammo, weapon, quality, draw, by: rec.pid, self: c.ent, ox, oy, oz,
-      until: now + FLIGHT_TICKS, flown: now, wet, under: oy < sea,
+      until: now + FLIGHT_TICKS, flown: now, wet, under: oy < sea, silenced,
     };
     // Nearby clients get its launch state and fly their own copy from there.
     const back = now - view;
-    this.tell(c, ox, oy, oz, ammo, true, f.vx, f.vy, f.vz, Math.round(back));
+    this.tell(c, ox, oy, oz, ammo, true, f.vx, f.vy, f.vz, Math.round(back), 1, 0, silenced);
     // Fly it from the view tick to now, one tick's piece at a time, each against the bodies of that tick,
     // then the leftover part of a tick.
     const whole = Math.floor(back);
@@ -299,7 +313,7 @@ export class Projectiles {
     const target = combat.castBodies(shooter, x, y, z, dx, dy, dz, length, 0, t, (share * length) / piece.length);
     if (target >= 0) {
       const at = combat.t;
-      this.hit(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oy, f.oz, target, combat.zone, x + dx * at, y + dy * at, z + dz * at);
+      this.hit(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oy, f.oz, target, combat.zone, x + dx * at, y + dy * at, z + dz * at, f.silenced);
       return false;
     }
     if (ends) {
@@ -323,8 +337,9 @@ export class Projectiles {
     return f.x >= 0 && f.z >= 0 && f.x <= world.hf.sizeX && f.z <= world.hf.sizeZ && f.y > -1000;
   }
 
-  private hit(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oy: number, oz: number, target: number, zone: number, x: number, y: number, z: number): void {
+  private hit(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oy: number, oz: number, target: number, zone: number, x: number, y: number, z: number, silenced = false): void {
     const src = this.bring(by, weapon, quality, ammo, draw, ox, oz);
+    src.silenced = silenced;
     this.struck++;
     this.ended(x, y, z, target);
     this.ctx.bus.after(PROJECTILE_HIT, { byPid: by ? by.pid : 0, ammo: this.ctx.world.reg.ids[ammo]!, target: this.ctx.world.ents.pid[target]! });
@@ -348,6 +363,7 @@ export class Projectiles {
     src.torporOver = reg.ammoTorporOver[ammo]!;
     src.torporSeconds = reg.ammoTorporSeconds[ammo]!;
     src.buff = reg.ammoBuff[ammo]!;
+    src.silenced = false;
     return src;
   }
 
@@ -429,6 +445,7 @@ export class Projectiles {
     src.attack = 1;
     src.torporInstant = src.torporOver = src.torporSeconds = 0;
     src.buff = 0;
+    src.silenced = false;
     const radius = reg.blast[g.item]!;
     this.bursts++;
     this.ended(g.x, g.y, g.z, -1);
@@ -505,8 +522,8 @@ export class Projectiles {
 
   /**
    * Sends the shot to every nearby client but the shooter. `a`, `b`, `c` are its velocity if it flies,
-   * else where it ended. `back` is how many ticks ago it left. A shot is one ray from no seed and is never silenced until
-   * W3 and W7 of planning/reference/weapons-plan.md pass the others.
+   * else where it ended. `back` is how many ticks ago it left. A shot is one ray from no seed until W3 of
+   * planning/reference/weapons-plan.md passes the others; `silenced` is its weapon's silencer, and others draw no flash.
    */
   private tell(shooter: Client, ox: number, oy: number, oz: number, ammo: number, flies: boolean, a: number, b: number, c: number, back: number, rays = 1, seed = 0, silenced = false): void {
     const game = this.ctx.game;

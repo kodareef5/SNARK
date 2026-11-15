@@ -72,7 +72,7 @@ import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
-import { ARMOR_SLOTS } from "../shared/sim/items.ts";
+import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 
 export interface HostOptions {
@@ -985,6 +985,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       gear[GEAR_HELD] = item;
       for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
       ents.setGear(e, gear);
+      // Only the thing in hand has its attachment on, and taking another in hand switches it off: "it does require you to
+      // press N each time you switch" (Flashlight Attachment). Others see a laser on (weapons-plan.md, M10).
+      const before = inHand.get(rec.pid);
+      items.switchOff(rec, before === undefined || before === slot ? slot : -1);
+      ents.setOn(e, slot >= 0 && (inv.flags[slot]! & FLAG_ON) !== 0 && items.attachmentOf(inv, slot) === "laser");
       // A worn-out weapon counts as holding no rounds and takes none.
       const params = reg.weapon[item] ?? FISTS;
       const works = slot >= 0 && params.clip > 0 && inv.dur[slot]! > 0;

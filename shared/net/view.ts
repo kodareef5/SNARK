@@ -11,8 +11,9 @@
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
 //             [motion? 1][12] [look? 1][6] [action? 1][14 [cues? 1][31]]: the action is sent again with a change of cues
 //
-// `on` is whether the held item's attachment is switched on (protocol 13; always 0 until W7 of
-// planning/reference/weapons-plan.md, and read past).
+// `on` is whether the held item's laser is switched on (protocol 13; planning/reference/weapons-plan.md, M10), so others
+// draw its dot. A flashlight's on is not sent: nothing draws it until there are local lights (D436), and drawing it will
+// need the attachment's kind on the wire, which one bit cannot say beside the laser's.
 //
 // Appearance is sent only on create. A change bumps the entity's revision, and the next delta then sends a create for it again.
 // Only a remove is sent whatever it costs. Every other op waits its turn when a snapshot is full.
@@ -59,6 +60,8 @@ export interface Looks {
   readonly name: string[];
   readonly look: (Uint8Array | null)[];
   readonly gear: (Uint16Array | null)[];
+  /** The gear's "on" bit: 1 while the laser in hand is switched on. Absent, 0. */
+  readonly on?: Uint8Array;
   readonly team: Uint32Array;
   readonly seat: Uint32Array;
   readonly span: Uint32Array;
@@ -180,6 +183,8 @@ export class EntityView extends SentView {
   readonly look: (Uint8Array | null)[] = new Array<Uint8Array | null>(VIEW_START).fill(null);
   /** GEAR_COUNT content indices, shared by reference. */
   readonly gear: (Uint16Array | null)[] = new Array<Uint16Array | null>(VIEW_START).fill(null);
+  /** 1 while the laser in hand is on (EntityStore.on). */
+  on = new Uint8Array(VIEW_START);
   /** As in `EntityStore`, each 0 for none. */
   team = new Uint32Array(VIEW_START);
   seat = new Uint32Array(VIEW_START);
@@ -196,6 +201,7 @@ export class EntityView extends SentView {
       this.look.push(null);
       this.gear.push(null);
     }
+    this.on = wider(this.on, cap);
     this.team = wider(this.team, cap);
     this.seat = wider(this.seat, cap);
     this.span = wider(this.span, cap);
@@ -213,7 +219,7 @@ export class EntityView extends SentView {
   }
 
   /** For the entry just pushed. Reads six bytes of `colors` from `at`. */
-  appear(rev: number, level: number, colors: Uint8Array, at: number, name: string, look: Uint8Array | null, gear: Uint16Array | null): void {
+  appear(rev: number, level: number, colors: Uint8Array, at: number, name: string, look: Uint8Array | null, gear: Uint16Array | null, on = 0): void {
     const n = this.count - 1;
     this.rev[n] = rev;
     this.level[n] = level;
@@ -221,12 +227,13 @@ export class EntityView extends SentView {
     this.name[n] = name;
     this.look[n] = look;
     this.gear[n] = gear;
+    this.on[n] = gear ? on : 0;
     this.team[n] = this.seat[n] = this.span[n] = this.grown[n] = 0;
   }
 
   override copyFrom(o: EntityView, i: number): boolean {
     if (!super.copyFrom(o, i)) return false;
-    this.appear(o.rev[i]!, o.level[i]!, o.colors, i * 6, o.name[i]!, o.look[i]!, o.gear[i]!);
+    this.appear(o.rev[i]!, o.level[i]!, o.colors, i * 6, o.name[i]!, o.look[i]!, o.gear[i]!, o.on[i]!);
     this.belong(o.team[i]!, o.seat[i]!, o.span[i]!, o.grown[i]!);
     return true;
   }
@@ -750,7 +757,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       w.bool(gear !== null);
       if (gear) {
         for (let q = 0; q < GEAR_COUNT; q++) w.u16(gear[q]!);
-        w.bool(false);
+        w.bool((looks.on?.[id] ?? 0) !== 0);
       }
       // Team, seat and growth are each sent only when set.
       w.bool(looks.team[id] !== 0);
@@ -891,10 +898,11 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
         for (let q = 0; q < LOOK_BYTES; q++) look[q] = r.u8();
       }
       let gear: Uint16Array | null = null;
+      let on = 0;
       if (r.bool()) {
         gear = new Uint16Array(GEAR_COUNT);
         for (let q = 0; q < GEAR_COUNT; q++) gear[q] = r.u16();
-        r.bool();
+        on = r.bool() ? 1 : 0;
       }
       const team = r.bool() ? r.varint() : 0;
       const seat = r.bool() ? r.varint() : 0;
@@ -903,7 +911,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const grown = young ? r.u32() : 0;
       if (present) i++;
       if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim, 0, cue)) return false;
-      next.appear(rev, level, scratchColors, 0, name, look, gear);
+      next.appear(rev, level, scratchColors, 0, name, look, gear, on);
       next.belong(team, seat, span, grown);
       if (drawn) drawn.copyFrom(next, next.count - 1);
     } else if (op === OP_UPDATE) {
@@ -935,7 +943,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
         if (r.bool()) cue = r.bits(CUE_BITS);
       }
       if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0, 0, cue)) return false;
-      next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!);
+      next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!, base!.on[i]!);
       next.belong(base!.team[i]!, base!.seat[i]!, base!.span[i]!, base!.grown[i]!);
       if (drawn) drawn.copyFrom(next, next.count - 1);
       i++;

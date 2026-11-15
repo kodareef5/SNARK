@@ -17,6 +17,7 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import * as P from "../../shared/net/protocol.ts";
 import { Body } from "../../shared/sim/character.ts";
 import { EntityStore } from "../../shared/sim/entities.ts";
+import { FLAG_BLUEPRINT, FLAG_ON } from "../../shared/sim/items.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
 const root = join(import.meta.dir, "../..");
@@ -26,8 +27,8 @@ test("protocol 13 is the weapons program's, and it took no command, own componen
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([30, 16, 7, 10]);
-  // FLAG_ON of the plan, for W7: the next slot flag after the blueprint's.
-  expect([P.SLOT_BLUEPRINT, P.SLOT_ON]).toEqual([1, 2]);
+  // FLAG_ON, W7's: the next slot flag after the blueprint's, the same bit on the slot and on the wire.
+  expect([P.SLOT_BLUEPRINT, P.SLOT_ON, FLAG_BLUEPRINT, FLAG_ON]).toEqual([1, 2, 1, 2]);
   const store = readFileSync(join(root, "server/persist/store.ts"), "utf8");
   expect(Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))).toBe(22);
   // DEADLINE_ 14 is W5's if a cloud's end needs one; 12 and 13 stay the item program's, unused.
@@ -88,7 +89,8 @@ test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud cl
   expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual(["polish", "polish", "polish"]);
   expect(classRow("prop/cloud")).toMatchObject({ status: "stub", waits: "polish", parent: "prop" });
   expect(CLASSES.filter((r) => r.id === "prop/cloud").length).toBe(1);
-  // The holo-scope is an attachment kind no item is yet.
+  // The holo-scope is an attachment kind no item is yet: W7 built its view (tests/integration/attachments.test.ts), and its
+  // item waits for the fabricator's wave.
   expect(defFaults({ type: "item", class: "attachment", id: "test:holo", stack: 1, attachment: "holo" })).toEqual([]);
   expect(CORE_CONTENT.some((d) => d.type === "item" && d.attachment === "holo")).toBe(false);
 });
