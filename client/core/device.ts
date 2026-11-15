@@ -751,6 +751,10 @@ export interface OrderJudged {
   predicted: number;
   saved: number;
   saving: number;
+  /** One standard error of the measured difference and of the prediction, and whether the rung was timed and counted. */
+  measuredError: number;
+  predictedError: number;
+  priced: boolean;
 }
 
 /**
@@ -764,7 +768,7 @@ export interface OrderJudged {
 export function orderVerdict(rung: OrderRung, count: LayerCount | undefined): OrderJudged {
   const of = (o: Cutouts, small = false): OrderTime | undefined => rung.orders.find((x) => x.order === o && x.small === small);
   const [last, made, first, bare, firstQ, bareQ] = [of("last"), of("made"), of("first"), of("none"), of("first", true), of("none", true)];
-  const none = (line: string): OrderJudged => ({ line, skipped: null, judged: false, cost: 0, fragments: 0, measured: 0, predicted: 0, saved: 0, saving: 0 });
+  const none = (line: string): OrderJudged => ({ line, skipped: null, judged: false, cost: 0, fragments: 0, measured: 0, predicted: 0, saved: 0, saving: 0, measuredError: 0, predictedError: 0, priced: false });
   if (rung.invalid) return none(`not judged: invalid, ${rung.invalid}`);
   if (!last || !made || !first || !bare || !firstQ || !bareQ) return none("not judged: an order was not drawn");
   if (rung.mat === 0) return none("not judged: nothing was drawn with its materials, so nothing was cut out");
@@ -790,14 +794,20 @@ export function orderVerdict(rung: OrderRung, count: LayerCount | undefined): Or
   const ms = (x: number): string => `${x >= 0 ? "+" : ""}${x.toFixed(2)}`;
   const mp = pixels(first.canvas) / 1e6;
   const line = `drawn first the cut-outs cost ${ms(cost)} ms over none and ${ms(costQ)} at ${Math.round(q * 100)}% of the pixels, so ${ms(fragments)} shading them, ${(layer / mp).toFixed(3)} ms a counted layer a megapixel; first against last ${ms(measured)} +-${measuredError.toFixed(2)} ms read back, ${ms(predicted)} +-${predictedError.toFixed(2)} predicted if hidden pixels are skipped${predicted >= 0.01 ? ` (${Math.round(share * 100)}%)` : ""}; made against last ${ms(saved)}, ${ms(saving)} predicted: ${word}`;
-  return { line, skipped, judged: !too, cost, fragments, measured, predicted, saved, saving };
+  return { line, skipped, judged: !too, cost, fragments, measured, predicted, saved, saving, measuredError, predictedError, priced: true };
 }
 
 /** The tree order's verdict in a line, from the rung that predicts the most: whether the GPU skipped the hidden cut-out pixels. */
 export function treesVerdict(t: TreesReport): string {
   const judged = t.rungs.map((g) => ({ g, v: orderVerdict(g, t.counts.find((c) => c.wood === g.wood && c.tier === g.tier)) }));
   const best = judged.filter((x) => x.v.judged).sort((a, b) => b.v.predicted - a.v.predicted)[0];
-  if (!best) return `not judged: ${t.counted || judged.map((x) => `${x.g.wood} ${x.g.tier} ${x.v.line.replace(/^not judged: |^.*: (?=too small)/, "")}`).join("; ") || "no rung ran"}`;
+  // With none judged, the rung whose cut-outs cost most to shade says how small the difference is.
+  const most = judged.filter((x) => x.v.priced).sort((a, b) => b.v.fragments - a.v.fragments)[0];
+  if (!best && most) {
+    const { g, v } = most;
+    return `too small to tell: ${g.wood === "elder" ? "the elder oaks'" : "the young wood's"} cut-outs on ${g.tier} cost ${v.cost.toFixed(1)} ms drawn first, ${v.fragments.toFixed(1)} of it shading them; drawn last they took ${v.measured.toFixed(1)} +-${v.measuredError.toFixed(1)} ms less, where skipping what an opaque surface drawn before hides would save ${v.predicted.toFixed(1)} +-${v.predictedError.toFixed(1)}`;
+  }
+  if (!best) return `not judged: ${t.counted || judged.map((x) => `${x.g.wood} ${x.g.tier} ${x.v.line.replace(/^not judged: /, "")}`).join("; ") || "no rung ran"}`;
   const { g, v } = best;
   const where = `${g.wood === "elder" ? "the elder oaks'" : "the young wood's"} cut-outs on ${g.tier}`;
   const word = v.skipped === true ? "skipped" : v.skipped === false ? "not skipped" : "partly skipped";

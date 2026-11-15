@@ -255,7 +255,7 @@ test("the tree order prices a counted cut-out layer by its shading alone, and ju
   const t: TreesReport = { view: [390, 844, 70], surface: { name: "surface", per: "megapixel", timer: null, slope: 0.85, error: 0.02, k: 64, note: "" }, counts: [elders, { wood: "young", tier: "medium", cut: 1.5, front: 0.34, old: 0.5, first: 1.5 }], counted: "", rungs: [young, rung(times)], verdict: "" };
   t.verdict = treesVerdict(t);
   expect(t.verdict).toBe("skipped: the elder oaks' cut-outs on medium cost 12.0 ms drawn first, 10.0 of it shading them; drawn last they took 11.0 ms less, where the counts predict 9.9 ms less if the GPU skips what an opaque surface drawn before hides; drawn last saves 1.0 ms of 0.8 predicted against the order they were made in");
-  expect(treesVerdict({ ...t, rungs: [young] })).toBe("not judged: young medium too small to tell beside 3 standard errors, 0.23 ms");
+  expect(treesVerdict({ ...t, rungs: [young] })).toBe("too small to tell: the young wood's cut-outs on medium cost 0.3 ms drawn first, 0.3 of it shading them; drawn last they took 0.3 +-0.0 ms less, where skipping what an opaque surface drawn before hides would save 0.2 +-0.1");
   expect(treesVerdict({ ...t, counts: [], counted: "the server did not answer" })).toBe("not judged: the server did not answer");
   const r = newReport("0123456789abcdef", "trees");
   r.trees = t;
