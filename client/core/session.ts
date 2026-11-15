@@ -44,6 +44,7 @@ import {
   OWN_PROGRESSION,
   OWN_RESPAWN,
   CHOOSE_DIED,
+  SESSION_DEAD,
   OWN_SESSION,
   OWN_SLOTS,
   OWN_VITALS,
@@ -815,6 +816,8 @@ export class ClientSession {
       const dayOffset = r.u32();
       if (r.overflow) return;
       this.sessionState = state;
+      // A survivor with a body has no places to choose among. The list of the next spell without one follows this message.
+      if (state !== SESSION_DEAD) this.respawnPoints.length = 0;
       this.admin = admin;
       this.ownHandle = handle;
       this.dayOffset = dayOffset;

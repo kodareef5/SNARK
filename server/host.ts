@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -452,7 +452,29 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   fixtures.rules = rules;
   fixtures.index();
   const stations = new Stations(world, records, items, fixtures, deadlines);
-  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, light: (ref) => stations.toggle(ref), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  const beds = new Beds({
+    world, game, records, tribes, fixtures, rules, bus,
+    // A death refills the survivor. One that arrives or travels comes as it left.
+    rise: (c, p, why) => {
+      const at = Number.isNaN(p.y) ? undefined : p.y;
+      if (why === CHOOSE_DIED) return death.respawn(c, p.x, p.z, p.yaw, at);
+      const rec = records.byPid.get(c.pid);
+      if (!rec) return RESULT_INVALID;
+      rec.dead = false;
+      if (!game.revive(c, p.x, p.z, p.yaw, at)) {
+        rec.dead = true;
+        return RESULT_INVALID;
+      }
+      records.dirty.add(rec.pid);
+      return RESULT_OK;
+    },
+    mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+    drop: (rec, x, y, z) => void death.dropAll(rec, x, y, z),
+  });
+  if (persistence && !loaded!.fresh) beds.restore(persistence.store.meta("beds"));
+  persistence?.sidecar("beds", beds.saved);
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  build.onPlaced = (by, ref) => beds.placed(by, ref);
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   death.keepsBuilt = (c, ref) => build.keeps(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
@@ -505,6 +527,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     buffs.died(rec);
     spawner?.left(rec);
     corpses.fell(rec, cause, by);
+    if (rec.kind === survivor) beds.died(rec, by !== 0 ? (records.byPid.get(by)?.team ?? 0) : 0);
     death.die(rec, cause);
   };
   // Unconsciousness, an injury and any buff change how a body moves.
@@ -748,6 +771,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     focus.set(c.id, c.chunk);
     moved(-1, c.chunk);
     c.entered = true;
+    // One that joins with no body chooses where to rise, for the reason it left its body.
+    if (c.state === SESSION_DEAD) c.why = beds.whyOf(c.pid);
     // One still making its survivor is told of when it has made it.
     if (c.pid !== 0) joined(c);
     // Tribe member lists show who is online.
@@ -884,7 +909,6 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const rec = records.byPid.get(c.pid);
     if (rec) survival.landed(rec, speed);
   };
-  const beds = new Beds({ world, records, tribes, fixtures, bus, rise: (c, p) => death.respawn(c, p.x, p.z, p.yaw, Number.isNaN(p.y) ? undefined : p.y) });
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, tribes, voice,
     use: new Use({ world, game, records, items, survival, buffs }),

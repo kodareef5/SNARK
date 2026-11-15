@@ -208,6 +208,29 @@ export class Death {
   }
 
   /**
+   * Leaves everything `rec` carries, worn things too, in one bag at a point: what a survivor that travels from a bed drops
+   * there. The bag takes the inventory object, so nothing is copied. Null if it carried nothing.
+   */
+  dropAll(rec: EntityRecord, x: number, y: number, z: number): EntityRecord | null {
+    const { records, items } = this.ctx;
+    const inv = items.inv(rec);
+    if (inv.used() === 0) return null;
+    const bag = records.create(this.bag, "bag");
+    bag.inv = inv;
+    rec.inv = null;
+    rec.held = -1;
+    bag.x = x;
+    bag.y = y;
+    bag.z = z;
+    bag.expiresAt = this.ctx.world.tick + this.lifetime(this.bag);
+    this.lie(rec.pid, bag);
+    records.dirty.add(bag.pid);
+    records.dirty.add(rec.pid);
+    this.place(bag);
+    return bag;
+  }
+
+  /**
    * Mints `n` of `item` into a bag at the feet of `rec`, whose harvest gave more than it could hold: the bag it last left
    * there while that has room, else new ones. Returns how many went in.
    */

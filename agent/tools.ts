@@ -4,12 +4,14 @@
 import { RemoteSample, type ClientSession, type TextLine } from "../client/core/session.ts";
 import type { ItemDef, PropDef } from "../shared/content/defs.ts";
 import { find } from "../shared/content/find.ts";
-import { TICK_RATE } from "../shared/coords.ts";
-import { BOX_OPEN, BOX_SELF, CARRY_DROP, CARRY_PICK_UP, CARRY_THROW, CMD_CARRY, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_ORDER, CMD_TAKE, CMD_USE, MAX_CHAT_CHARS, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_WANDER, ORDER_YOURS, RESULT_BUSY, RESULT_OK, SESSION_ALIVE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
+import { STRUCT_UNITS, TICK_RATE, YAW_UNITS } from "../shared/coords.ts";
+import { BOX_OPEN, BOX_SELF, CARRY_DROP, CARRY_PICK_UP, CARRY_THROW, CHOOSE_ARRIVED, CHOOSE_DIED, CHOOSE_TRAVEL, CMD_CARRY, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_ORDER, CMD_PLACE, CMD_RESPAWN, CMD_SELECT, CMD_TAKE, CMD_USE, MAX_CHAT_CHARS, MAX_NAME_BYTES, SESSION_DEAD, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_WANDER, ORDER_YOURS, RESULT_BUSY, RESULT_OK, SESSION_ALIVE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
 import { STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { Inventory } from "../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../shared/sim/vitals.ts";
-import { NO_PIN } from "../shared/world/upkeep.ts";
+import { NO_PIN, STRUCT_NAME, STRUCT_TRAVEL } from "../shared/world/upkeep.ts";
+import { ON_TOP, ROLE_THING } from "../shared/world/snap.ts";
+import { Found } from "../shared/world/structures.ts";
 import { Commands, resultWords } from "./commands.ts";
 import { Controller, type Target } from "./controller.ts";
 import type { Answer, ToolDef, ToolHost } from "./mcp.ts";
@@ -32,6 +34,10 @@ const ORDERS: Record<string, number> = { stay: ORDER_STAY, follow: ORDER_FOLLOW,
 const ANSWER_MS = 3000;
 const CHANNELS: Record<string, number> = { global: TEXT_GLOBAL, local: TEXT_LOCAL, tribe: TEXT_TRIBE };
 const CHANNEL_WORDS: Record<number, string> = { [TEXT_GLOBAL]: "global", [TEXT_LOCAL]: "local", [TEXT_TRIBE]: "tribe", [TEXT_NOTICE]: "notice" };
+/** A place command's target for open ground, as server/build.ts reads it. */
+const OPEN_GROUND = 0xffffffff;
+/** Why a survivor without a body chooses, in words. */
+const CHOOSE_WORDS: Record<number, string> = { [CHOOSE_DIED]: "died", [CHOOSE_ARRIVED]: "arrived", [CHOOSE_TRAVEL]: "travelling from a bed" };
 
 const wait = { type: "number", description: "Seconds to wait for it to finish before answering running, 0 to 50." };
 const thing = { type: "string", description: "An id from observe." };
@@ -48,6 +54,9 @@ const DEFS: ToolDef[] = [
   { name: "craft", description: "Make an item you know the engram for, from what you carry.", inputSchema: { type: "object", properties: { recipe: { type: "string", description: "The item, such as hatchet." }, count: { type: "integer", description: "1 to 100. Default 1." }, learn: { type: "boolean", description: "Spend engram points to learn it first if you do not know it." }, wait_s: { ...wait, description: `${wait.description} Default 20.` } }, required: ["recipe"] } },
   { name: "eat", description: "Eat or drink something you carry.", inputSchema: { type: "object", properties: { item: { type: "string", description: "Left out: the first thing you carry that can be eaten." } } } },
   { name: "say", description: "Say a line of chat. Five at once, then one every two seconds.", inputSchema: { type: "object", properties: { channel: { type: "string", enum: ["global", "local", "tribe"], description: "Everyone, those within 60 m, or your tribe." }, text: { type: "string", description: `At most ${MAX_CHAT_CHARS} characters.` } }, required: ["channel", "text"] } },
+  { name: "place", description: "Set down a thing built that stands by itself, such as a bed, a sleeping bag, a box or a campfire, from what you carry: on the ground at x and z, or on a floor or foundation of your tribe's given by its id. You walk near it first. The answer gives the new thing's id.", inputSchema: { type: "object", properties: { item: { type: "string", description: "What you carry to set down, such as simple bed." }, x: { type: "number" }, z: { type: "number" }, on: { type: "string", description: "A floor or foundation of your tribe's to set it on. Without x and z, its middle." }, facing: { type: "number", description: "Degrees, 0 to 360. Default 0." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["item"] } },
+  { name: "bed", description: "Walk to a bed or sleeping bag of your tribe and name it (as your tribe sees it when choosing where to rise), or travel from it to another of your tribe's beds: you leave your body there and choose where to rise with rise.", inputSchema: { type: "object", properties: { id: thing, do: { type: "string", enum: ["name", "travel"] }, name: { type: "string", description: `For name: at most ${MAX_NAME_BYTES} letters.` }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["id", "do"] } },
+  { name: "rise", description: "While you have no body, after a death or travelling from a bed: rise at one of the places status lists under choosing, by its number or its name. A place that still waits refuses until it is ready.", inputSchema: { type: "object", properties: { place: { description: "A number or a name from status's choosing.", oneOf: [{ type: "integer" }, { type: "string" }] } }, required: ["place"] } },
   { name: "status", description: "How you are and how the running task is doing: place, vitals, what you carry, the box you have open, what you are making, and chat heard since you last asked.", inputSchema: { type: "object", properties: { wait_s: { ...wait, description: "Seconds to wait for the running task to end before answering, 0 to 50. Default 0." } } } },
   { name: "cancel", description: "Stop the running task where it is.", inputSchema: { type: "object", properties: {} } },
   { name: "console", description: "Type a line at the server's console, as a player does with the backquote key. Most commands need admin rights.", inputSchema: { type: "object", properties: { line: { type: "string" } }, required: ["line"] } },
@@ -108,6 +117,7 @@ export class Agent implements ToolHost {
   private heardTo = 0;
   /** The calls not yet answered. They are answered when the session closes, so none is left waiting on a server that has gone. */
   private readonly pending = new Set<(a: Answer) => void>();
+  private readonly found = new Found();
 
   constructor(session: ClientSession, opts: AgentOptions = {}) {
     this.session = session;
@@ -132,6 +142,9 @@ export class Agent implements ToolHost {
       craft: (a) => this.craft(a),
       eat: (a) => this.eat(a),
       say: (a) => this.say(a),
+      place: (a) => this.put(a),
+      bed: (a) => this.bed(a),
+      rise: (a) => this.rise(a),
       status: (a) => this.status(a),
       cancel: () => ({ state: "done", cancelled: this.controller.cancel() }),
       console: (a) => this.typed(a),
@@ -425,11 +438,126 @@ export class Agent implements ToolHost {
     return {
       ...task,
       self: this.self(),
+      ...(s.sessionState === SESSION_DEAD ? { choosing: this.choosing() } : {}),
       ...(inv ? { inventory: this.slots(inv), hotbar_slots: [inv.hotbar, inv.hotbar + 9] } : {}),
       ...(s.open ? { box: this.box() } : {}),
       ...(jobs.length > 0 ? { making: jobs } : {}),
       heard: this.heard(),
     };
+  }
+
+  /** While it has no body: why, and every place it may rise at as [number, name, what it is, x, z, seconds it still waits]. */
+  private choosing(): Record<string, unknown> {
+    const s = this.session;
+    const places = s.respawnPoints.map((p, i) => [i, p.name, p.kind === 0 ? "spawn point" : this.nameOf(p.kind), round1(p.x), round1(p.z), p.readyAt > s.serverTick ? Math.ceil((p.readyAt - s.serverTick) / TICK_RATE) : 0]);
+    return { why: CHOOSE_WORDS[s.choosing] ?? "died", places };
+  }
+
+  /** Rises at a place `status` lists under choosing, by its number or its name. */
+  private async rise(a: Record<string, unknown>): Promise<Answer> {
+    const s = this.session;
+    if (s.sessionState !== SESSION_DEAD) return refused("you have a body: rise is for choosing where to come back, after a death or while travelling from a bed");
+    const points = s.respawnPoints;
+    if (points.length === 0) return refused("the places to rise at have not come yet: ask again in a moment");
+    const want = a.place;
+    const i = typeof want === "number" ? want : typeof want === "string" ? points.findIndex((p) => p.name.toLowerCase() === want.trim().toLowerCase()) : -1;
+    if (!Number.isInteger(i) || i < 0 || i >= points.length) throw new Bad("place must be a number or a name that status lists under choosing");
+    const list = s.placesList;
+    const seq = this.commands.send(CMD_RESPAWN, (w) => (w.u8(i), w.u8(list)));
+    const code = seq === 0 ? 0 : await this.result(seq);
+    if (code !== RESULT_OK) return this.outcome(seq, code, {});
+    // The body comes with the next snapshot.
+    await this.until(() => (s.sessionState === SESSION_ALIVE ? true : null));
+    return { state: "done", rose_at: points[i]?.name ?? "", self: this.self() };
+  }
+
+  /**
+   * Sets down a thing built that stands by itself (a bed, a sleeping bag, a box, a campfire) from what is carried: on the
+   * ground at x and z, or on a floor of the tribe's. It walks near, takes the item in hand from the hotbar, and places it as
+   * the build button does.
+   */
+  private async put(a: Record<string, unknown>): Promise<Answer> {
+    const s = this.session;
+    const reg = s.registry;
+    const world = s.world!;
+    const item = this.item(text(a, "item"));
+    const forms = reg.places[item];
+    if (!forms || forms.length === 0) throw new Bad(`${this.nameOf(item)} is not something built`);
+    const kind = forms[0]!;
+    if (reg.role[kind] !== ROLE_THING) throw new Bad(`${this.nameOf(item)} joins other pieces, and only a thing that stands by itself can be placed with this`);
+    const floor = a.on === undefined ? null : this.target({ id: a.on });
+    if (floor && floor.ref < 0) throw new Bad(`${floor.id} is not something built`);
+    const x = floor && a.x === undefined ? floor.x : amount(a, "x", 0, world.hf.sizeX, 0);
+    const z = floor && a.z === undefined ? floor.z : amount(a, "z", 0, world.hf.sizeZ, 0);
+    const yaw = Math.round((amount(a, "facing", 0, 360, 0) / 360) * YAW_UNITS) & (YAW_UNITS - 1);
+    if (this.controller.busy) throw new Bad(`${this.controller.busy} is still running: cancel it, or wait for it with status`);
+    const inv = s.inventory;
+    if (!inv || inv.total(item) === 0) return refused(`you carry no ${this.nameOf(item)}`);
+    // Near enough that the place is in reach of the eye, and not on it.
+    const g = this.controller.place(x, z);
+    if (Math.hypot(s.own.x - x, s.own.z - z) > 4) {
+      this.controller.walkTo(this.now, g, 2.5);
+      const walked = await this.finish(amount(a, "wait_s", 0, 50, 25));
+      if (walked.state !== "done") return walked;
+    }
+    // Into the hotbar, and into the hands.
+    let slot = inv.item.indexOf(item);
+    if (slot < inv.hotbar || slot >= inv.hotbar + 10) {
+      let to = -1;
+      for (let k = 9; k >= 0; k--) if (inv.item[inv.hotbar + k] === 0) to = inv.hotbar + k;
+      if (to < 0) return refused("the hotbar is full: move something out of it first");
+      const from = slot;
+      const seq = this.commands.send(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.varint(from), w.bits(BOX_SELF, 1), w.varint(to), w.u16(0), w.u16(item)));
+      const code = seq === 0 ? 0 : await this.result(seq);
+      if (code !== RESULT_OK) return this.outcome(seq, code, {});
+      slot = to;
+    }
+    const held = slot - inv.hotbar;
+    const chose = this.commands.send(CMD_SELECT, (w) => w.u8(held));
+    const picked = chose === 0 ? 0 : await this.result(chose);
+    if (picked !== RESULT_OK) return this.outcome(chose, picked, {});
+    const before = new Set(this.builtNear(kind, x, z));
+    const seq = this.commands.send(CMD_PLACE, (w) => {
+      w.u8(0);
+      w.u32(floor ? floor.ref : OPEN_GROUND);
+      if (floor) w.u8(ON_TOP);
+      w.sbits(Math.round(x * STRUCT_UNITS), 32);
+      w.sbits(Math.round(z * STRUCT_UNITS), 32);
+      w.u16(yaw);
+      if (!floor) w.sbits(0, 8);
+      w.u8(0);
+    });
+    const code = seq === 0 ? 0 : await this.result(seq);
+    if (code !== RESULT_OK) return this.outcome(seq, code, {});
+    // The new row comes with the chunk's next news.
+    const ref = await this.until((now) => this.builtNear(kind, x, z).find((r) => !before.has(r)) ?? (now > this.now + ANSWER_MS ? -1 : null));
+    return ref >= 0 ? { state: "done", placed: this.nameOf(kind), id: `s${ref}` } : { state: "done", placed: this.nameOf(kind) };
+  }
+
+  /** Refs of the things of `kind` standing within a metre of (x, z), as this client has them. */
+  private builtNear(kind: number, x: number, z: number): number[] {
+    const structs = this.session.world!.structs;
+    const out: number[] = [];
+    const n = structs.query(x - 1, z - 1, x + 1, z + 1, this.found);
+    for (let i = 0; i < n; i++) {
+      const ref = this.found.refs[i]!;
+      const t = structs.chunks[Math.floor(ref / 65536)]!;
+      if (t.kind[ref & 0xffff] === kind && Math.hypot(t.x[ref & 0xffff]! - x, t.z[ref & 0xffff]! - z) < 1) out.push(ref);
+    }
+    return out;
+  }
+
+  /** Walks to a bed of the tribe and names it, or travels from it to another. */
+  private bed(a: Record<string, unknown>): Promise<Answer> {
+    const reg = this.session.registry;
+    const what = text(a, "do");
+    if (what !== "name" && what !== "travel") throw new Bad("do is name or travel");
+    const words = what === "name" ? text(a, "name") : "";
+    if (words.length > MAX_NAME_BYTES) throw new Bad(`a name is at most ${MAX_NAME_BYTES} letters`);
+    const target = this.target(a);
+    if (target.ref < 0 || reg.isBed[target.kind] !== 1) throw new Bad(`${target.id} is not a bed`);
+    this.controller.act(this.now, target, what === "name" ? STRUCT_NAME : STRUCT_TRAVEL, words);
+    return this.finish(amount(a, "wait_s", 0, 50, 25));
   }
 
   private async say(a: Record<string, unknown>): Promise<Answer> {

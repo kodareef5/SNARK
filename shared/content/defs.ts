@@ -191,6 +191,14 @@ export interface StructureDef extends Named {
   readonly lit?: boolean;
   /** Its tribe may respawn at it. */
   readonly bed?: boolean;
+  /** A bed's seconds, after a survivor rises at it, before anyone may again. */
+  readonly wait?: number;
+  /** A sleeping bag: only the survivor who set it down may rise at it, and it is gone once one has. */
+  readonly once?: boolean;
+  /** It is set only on a foundation or a ceiling, never on open ground. */
+  readonly floor?: boolean;
+  /** Where a survivor rises from a bed, from its middle and turned with it. On top of it unless given. */
+  readonly rise?: readonly [number, number, number];
 }
 
 /** Multiplier on each type of damage a structure of this material takes. A type not given does no damage. */

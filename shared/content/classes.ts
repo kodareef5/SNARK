@@ -172,6 +172,10 @@ const STRUCTURE = {
   lights: f("text", "", { refs: { "": "structure" } }),
   lit: f("switch"),
   bed: f("switch"),
+  wait: f("number"),
+  once: f("switch"),
+  floor: f("switch"),
+  rise: f("vec3"),
 } satisfies Fields<StructureDef>;
 
 const NODE = {
@@ -409,7 +413,7 @@ row("structure", "structure", STRUCTURE, { abstract: true, ark: "APrimalStructur
 row("structure/piece", "structure", STRUCTURE, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up." });
 row("structure/container", "structure", STRUCTURE, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." });
 row("structure/station", "structure", STRUCTURE, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it: fuel burns and food cooks, and an item whose craft names it in `at` is made from what lies in it. How fast it makes things waits." });
-row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it." });
+row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." });
 row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material"], slots: { mesh: mesh("must", "{mesh}", "box") }, doc: "Part of a map: set there with the world and joined to nothing." });
 row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." });
 row("shape", "shape", SHAPE, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway", "hulls"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." });

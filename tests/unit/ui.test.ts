@@ -7,7 +7,8 @@ import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL,
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
-import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_RESPAWN_BUTTON, KEY_RESPAWN_PAGE, KEY_RESPAWN_PANEL } from "../../client/core/ui/screens.ts";
+import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN } from "../../client/core/ui/screens.ts";
+import { KEY_CHOOSE_MAP, KEY_CHOOSE_PAGE, KEY_CHOOSE_PANEL, KEY_CHOOSE_PIN, KEY_CHOOSE_RISE, KEY_CHOOSE_ROW, KEY_CHOOSE_TITLE } from "../../client/core/ui/choosing.ts";
 import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder } from "../../client/core/ui/character.ts";
 import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
@@ -16,7 +17,7 @@ import { KEY_OPEN_LEVEL, KEY_OPEN_MATE, KEY_OPEN_ORDER, KEY_OPEN_PAGE, KEY_OPEN_
 import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
 import { CMD_FEED, CMD_NAME, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, MAX_NAME_BYTES, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
+import { CHOOSE_DIED, CHOOSE_TRAVEL, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, MAX_NAME_BYTES, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -427,18 +428,24 @@ test("the inventory screen turns clicks into commands and never changes anything
   expect(ui.wantsPointerLock).toBe(true);
 });
 
-test("the respawn and map screens fit every window shape, and a click on a place asks to return there", () => {
+test("the choosing and map screens fit every window shape, and a place picked in the list or on the map is the one asked for", () => {
   const world = flatWorld(8);
   for (const [name, aspect] of ASPECTS) {
     for (const dead of [true, false]) {
       const { session, sent } = fakeSession(new Inventory(40));
       Object.assign(session, {
         sessionState: dead ? SESSION_DEAD : SESSION_ALIVE,
-        respawnPoints: [{ name: "Plaza", x: 1, z: 1 }, { name: "a place with a long name", x: 2, z: 2 }, { name: "Poolside", x: 3, z: 3 }],
+        choosing: CHOOSE_TRAVEL,
+        placesList: 7,
+        respawnPoints: [
+          { kind: 0, name: "Plaza", x: 100, z: 100, readyAt: 0 },
+          { kind: 1, name: "a place with a long name", x: 300, z: 200, readyAt: 2000 },
+          { kind: 1, name: "Poolside", x: 400, z: 400, readyAt: 0 },
+        ],
         markers: [1, 2, 3, 4, 5].map((i) => ({ kind: MARKER_DEATH, x: i * 100, y: 0, z: 511 - i * 90, tick: 100 * i })),
         world,
         own: { x: 256, y: 0, z: 256 },
-        serverTick: 99999,
+        serverTick: 1000,
       });
       const ui = new Ui();
       ui.registry = reg;
@@ -452,25 +459,35 @@ test("the respawn and map screens fit every window shape, and a click on a place
         expect(n.y, where).toBeGreaterThanOrEqual(-0.01);
         expect(n.x + n.w, where).toBeLessThanOrEqual(f.width + 0.01);
         expect(n.y + n.h, where).toBeLessThanOrEqual(f.height + 0.01);
-        if (n.kind === K_TEXT && n.key >= KEY_RESPAWN_PANEL) expect(textWidth(n.text, n.style), where).toBeLessThanOrEqual(n.w + 0.01);
+        if (n.kind === K_TEXT && n.key >= KEY_CHOOSE_PANEL) expect(textWidth(n.text, n.style), where).toBeLessThanOrEqual(n.w + 0.01);
         for (let j = i + 1; j < f.count; j++) if (n.interactive && f.nodes[j]!.interactive) expect(overlaps(f, i, j), where).toBe(false);
       }
       expect(ui.wantsPointerLock).toBe(false);
       if (dead) {
-        // The map does not open over the respawn choice.
-        expect(f.find(KEY_RESPAWN_BUTTON + 2)!.text).toBe("Poolside");
-        expect(f.find(KEY_MAP_IMAGE)).toBeNull();
-        ui.pointer(0, KEY_RESPAWN_BUTTON + 1, 0, 0, 0, session);
-        ui.pointer(0, KEY_RESPAWN_BUTTON + 7, 0, 0, 0, session); // not a button
-        expect(sent.map((c) => [c.op, c.bytes[0]])).toEqual([[CMD_RESPAWN, 1]]);
+        // The map does not open over the choice. Each place is listed with what it still waits, and pinned on the map.
+        expect([f.find(KEY_CHOOSE_TITLE)!.text, f.find(KEY_CHOOSE_ROW + 1)!.text, f.find(KEY_CHOOSE_ROW + 2)!.text]).toEqual(["Travel to", "a place with a long name  (0:34)", "Poolside"]);
+        expect([f.find(KEY_MAP_IMAGE), f.find(KEY_CHOOSE_PIN + 2) !== null]).toEqual([null, true]);
+        // A row picks a place, and the button asks for it, in the list it was picked from.
+        ui.pointer(0, KEY_CHOOSE_ROW + 1, 0, 0, 0, session);
+        ui.pointer(0, KEY_CHOOSE_ROW + 7, 0, 0, 0, session); // not a place
+        expect(sent).toEqual([]);
+        ui.pointer(0, KEY_CHOOSE_RISE, 0, 0, 0, session);
+        // A click on the map picks the place pinned nearest it.
+        ui.build(aspect, fullHud(), session);
+        const pin = f.find(KEY_CHOOSE_PIN + 2)!;
+        ui.pointer(0, KEY_CHOOSE_MAP, pin.x + pin.w / 2 + 2, pin.y + pin.h / 2 - 1, 0, session);
+        ui.build(aspect, fullHud(), session);
+        expect(f.find(KEY_CHOOSE_ROW + 2)!.text).toBe("> Poolside");
+        ui.pointer(0, KEY_CHOOSE_RISE, 0, 0, 0, session);
+        expect(sent.map((c) => [c.op, c.bytes[0], c.bytes[1]])).toEqual([[CMD_RESPAWN, 1, 7], [CMD_RESPAWN, 2, 7]]);
       } else {
         // The map has the picture, a pin for each death and one for the survivor, and a line for each death.
-        expect(f.find(KEY_RESPAWN_PANEL)).toBeNull();
+        expect(f.find(KEY_CHOOSE_PANEL)).toBeNull();
         expect(f.find(KEY_MAP_IMAGE)!.w).toBe(f.find(KEY_MAP_IMAGE)!.h);
         expect(f.find(KEY_MAP_PIN + 4)).not.toBeNull();
         expect(f.find(KEY_MAP_PIN + 16)).not.toBeNull();
         expect(f.find(KEY_MAP_LINE + 4)!.text).toMatch(/^died  \d+\.\d lat  \d+\.\d lon  \d+ min ago$/);
-        ui.pointer(0, KEY_RESPAWN_BUTTON, 0, 0, 0, session);
+        ui.pointer(0, KEY_CHOOSE_ROW, 0, 0, 0, session);
         expect(sent.length).toBe(0);
         expect(ui.key("Escape", true, false, session)).toBe(true);
         expect(ui.map).toBe(false);
@@ -479,45 +496,49 @@ test("the respawn and map screens fit every window shape, and a click on a place
   }
 });
 
-test("with more places to return to life at than fit the window, the list is paged, and every place can be chosen", () => {
+test("with more places to rise at than fit the window, the list is paged, and every place can be picked and asked for", () => {
   for (const [name, aspect] of ASPECTS) {
     const { session, sent } = fakeSession(new Inventory(40));
-    const places = Array.from({ length: 43 }, (_, i) => ({ name: i < 3 ? `spawn ${i}` : `bed at ${i * 10}, ${i * 7}`, x: i, z: i, wait: i === 20 ? 250 : 0 }));
-    Object.assign(session, { sessionState: SESSION_DEAD, respawnPoints: places, markers: [], world: flatWorld(2), own: { x: 1, y: 0, z: 1 } });
+    const places = Array.from({ length: 43 }, (_, i) => ({ kind: i < 3 ? 0 : 1, name: i < 3 ? `spawn ${i}` : `bed ${i}`, x: i, z: i, readyAt: i === 20 ? 6000 : 0 }));
+    Object.assign(session, { sessionState: SESSION_DEAD, choosing: CHOOSE_DIED, placesList: 3, respawnPoints: places, markers: [], world: flatWorld(2), own: { x: 1, y: 0, z: 1 } });
     const ui = new Ui();
     ui.registry = reg;
     const f = ui.frame;
     const chosen: number[] = [];
     for (let page = 0; page < 20; page++) {
       ui.build(aspect, fullHud(), session);
+      expect(f.find(KEY_CHOOSE_TITLE)!.text).toBe("Return to life at");
       for (let i = 0; i < f.count; i++) {
         const n = f.nodes[i]!;
         const where = `${name} page ${page} key=${n.key}`;
-        if (n.key < KEY_RESPAWN_PANEL || n.key >= KEY_MAP_IMAGE - 1) continue;
+        if (n.key < KEY_CHOOSE_PANEL || n.key >= KEY_MAP_IMAGE - 1) continue;
         expect(n.y, where).toBeGreaterThanOrEqual(-0.01);
         expect(n.y + n.h, where).toBeLessThanOrEqual(f.height + 0.01);
         expect(n.x + n.w, where).toBeLessThanOrEqual(f.width + 0.01);
         if (n.kind === K_TEXT) expect(textWidth(n.text, n.style), where).toBeLessThanOrEqual(n.w + 0.01);
-        // Each place's button is pressed as it is shown.
-        const place = places.findIndex((p) => n.text === p.name || n.text === `${p.name}  (in ${p.wait} s)`);
-        if (n.interactive && place >= 0) {
-          ui.pointer(0, n.key, 0, 0, 0, session);
-          chosen.push(place);
-        }
       }
-      if (f.find(KEY_RESPAWN_PAGE + 1) === null) break;
-      const before = f.find(KEY_RESPAWN_PAGE + 2)!.text;
-      ui.pointer(0, KEY_RESPAWN_PAGE + 1, 0, 0, 0, session);
+      // Each place's row is pressed as it is shown, and the button asks for it.
+      for (let row = 0; row < 10; row++) {
+        const b = f.find(KEY_CHOOSE_ROW + row);
+        if (!b?.interactive) continue;
+        const place = places.findIndex((p) => b.text === p.name || b.text.startsWith(`${p.name}  (`));
+        ui.pointer(0, b.key, 0, 0, 0, session);
+        ui.pointer(0, KEY_CHOOSE_RISE, 0, 0, 0, session);
+        chosen.push(place);
+      }
+      if (f.find(KEY_CHOOSE_PAGE + 1) === null) break;
+      const before = f.find(KEY_CHOOSE_PAGE + 2)!.text;
+      ui.pointer(0, KEY_CHOOSE_PAGE + 1, 0, 0, 0, session);
       ui.build(aspect, fullHud(), session);
       // The last page's next button goes nowhere.
-      if (f.find(KEY_RESPAWN_PAGE + 2)!.text === before) break;
+      if (f.find(KEY_CHOOSE_PAGE + 2)!.text === before) break;
     }
     expect(chosen).toEqual(places.map((_, i) => i));
-    expect(sent.map((c) => [c.op, c.bytes[0]])).toEqual(places.map((_, i) => [CMD_RESPAWN, i]));
-    // Back to the first page, where the first button is the first place again.
-    for (let i = 0; i < 20; i++) ui.pointer(0, KEY_RESPAWN_PAGE, 0, 0, 0, session);
+    expect(sent.map((c) => [c.op, c.bytes[0], c.bytes[1]])).toEqual(places.map((_, i) => [CMD_RESPAWN, i, 3]));
+    // Back to the first page, where the first row is the first place again.
+    for (let i = 0; i < 20; i++) ui.pointer(0, KEY_CHOOSE_PAGE, 0, 0, 0, session);
     ui.build(aspect, fullHud(), session);
-    expect([f.find(KEY_RESPAWN_BUTTON)!.text, f.find(KEY_RESPAWN_PAGE + 2)!.text.startsWith("page 1 of ")]).toEqual(["spawn 0", true]);
+    expect([f.find(KEY_CHOOSE_ROW)!.text, f.find(KEY_CHOOSE_PAGE + 2)!.text.startsWith("page 1 of ")]).toEqual(["spawn 0", true]);
   }
 });
 

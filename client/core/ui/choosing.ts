@@ -66,7 +66,7 @@ export class ChoosingScreen {
     const labelH = lineHeight(S_LABEL);
     const rowH = 30;
     const pad = 12;
-    const listW = 260;
+    const listW = 290;
     const listH = titleH + 8 + ROWS * (rowH + 4) + (rowH + 4) + labelH + 8 + rowH;
     // The map beside the list where the window is wide enough, else above it.
     const wide = f.width >= listW + 220 + pad * 3 + 16;
@@ -129,7 +129,7 @@ export class ChoosingScreen {
     ly += rowH + 4;
     const p = points[this.picked];
     const wait = p ? waitText(p.readyAt, tick) : "";
-    const note = !p ? "Pick a place on the map or in the list" : hf ? `${latLonText(latOf(hf, p.z), lonOf(hf, p.x))}${wait !== "" ? `, ready in ${wait}` : ""}` : wait;
+    const note = !p ? "Pick a place in the list or on the map" : hf ? `${latLonText(latOf(hf, p.z), lonOf(hf, p.x))}${wait !== "" ? `, ready in ${wait}` : ""}` : wait;
     f.text(KEY_CHOOSE_NOTE, lx, ly, lw, S_LABEL, note);
     ly += labelH + 8;
     const go = f.add(KEY_CHOOSE_RISE, K_BUTTON, lx, ly, lw, rowH, S_BUTTON);

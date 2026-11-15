@@ -1,15 +1,14 @@
-// A campfire that burns and cooks unobserved, a bed its tribe respawns at, and a mortar and pestle things are made at.
+// A campfire that burns and cooks unobserved, and a mortar and pestle things are made at. Beds are in beds.test.ts.
 
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as joinPath } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
-import { BED_WAIT_TICKS } from "../../server/host.ts";
 import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_CRAFT_AT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_RESPAWN, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, RESULT_WAIT, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_CRAFT_AT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { ON_TOP } from "../../shared/world/snap.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { KEY_STATION_JOB, KEY_STATION_RECIPE, StationPanel, stationRecipes } from "../../client/core/ui/station.ts";
@@ -156,94 +155,6 @@ for (const how of ["demolished", "destroyed"] as const) test(`a ${how} fire spil
     }
   }
   expect(results).toEqual([[8, 1, 2], [8, 1, 2]]);
-});
-
-test("every bed of the tribe is offered to its dead, thirty as surely as two, and the last of them is one to rise at", () => {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const ada = h.join("ada");
-  h.run(500);
-  h.say(ada, "enablecheats");
-  const g = flatGround(h, 70, 10);
-  const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
-  const bed = id("bed");
-  const refs = Array.from({ length: 30 }, (_, k) => h.world.structs.add(bed, g.x + 3 + k * 2.2, g.y + reg.halfY[bed]!, g.z + 5, 0, me.team, 100));
-  for (const ref of refs) h.host.fixtures.ensure(ref);
-  h.say(ada, "suicide");
-  h.run(300);
-  const spawns = h.world.spawns.length;
-  expect([ada.sessionState, ada.respawnPoints.length]).toEqual([SESSION_DEAD, spawns + 30]);
-  expect(ada.respawnPoints.slice(0, spawns).map((p) => p.name)).toEqual(h.world.spawns.map((p) => p.name));
-  let code = -1;
-  ada.onResult = (seq, c) => void (seq !== 0 && (code = c));
-  ada.command(CMD_RESPAWN, (w: BitWriter) => (w.u8(spawns + 29), w.u8(ada.placesList)));
-  h.run(500);
-  expect([code, ada.sessionState, Math.abs(ada.own.x - (g.x + 3 + 29 * 2.2)) < 0.5]).toEqual([RESULT_OK, SESSION_ALIVE, true]);
-});
-
-test("a bed is where its tribe returns to life: listed for them and nobody else, used once in five minutes, and stood on wherever it is", () => {
-  const made = builder(["ada", "bob"]);
-  const { h, at, join } = made;
-  const [ada, bob] = made.sessions as [ClientSession, ClientSession];
-  const low = setDown(made, ada, "piece_bed", at.x - 3, at.z + 3);
-  ada.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
-  h.run(100);
-  ada.command(CMD_PLACE, (w: BitWriter) => (w.u8(0), w.u32(NO_TARGET), w.sbits(Math.round(at.x * U), 32), w.sbits(Math.round((at.z + 6) * U), 32), w.u16(0), w.sbits(0, 8), w.u8(0)));
-  h.run(200);
-  const f = h.host.build.last;
-  const wall = join(ada, "wall", f, 2).ref;
-  const floor = join(ada, "ceiling", wall, 1).ref;
-  const t = h.world.structs.chunks[Math.floor(floor / 65536)]!;
-  const high = setDown(made, ada, "piece_bed", t.x[floor & 0xffff]!, t.z[floor & 0xffff]!, floor);
-  expect([kindAt(h, low), kindAt(h, high), h.host.fixtures.count]).toEqual([id("bed"), id("bed"), 2]);
-  const top = h.world.structs.chunks[Math.floor(high / 65536)]!.y[high & 0xffff]! + 0.25;
-  expect(top - at.y).toBeGreaterThan(3);
-
-  const respawn = (s: ClientSession, index: number): number => {
-    let code = -1;
-    s.onResult = (seq, c) => void (seq !== 0 && (code = c));
-    s.command(CMD_RESPAWN, (w: BitWriter) => (w.u8(index), w.u8(s.placesList)));
-    h.run(300);
-    return code;
-  };
-  // Beds are listed after the world's spawn points, for their tribe only.
-  h.say(ada, "suicide");
-  h.say(bob, "suicide");
-  h.run(300);
-  expect([ada.sessionState, bob.sessionState]).toEqual([SESSION_DEAD, SESSION_DEAD]);
-  const spawns = h.world.spawns.length;
-  expect(bob.respawnPoints.length).toBe(spawns);
-  expect(ada.respawnPoints.slice(spawns).map((p) => [p.name.startsWith("bed at "), p.wait])).toEqual([[true, 0], [true, 0]]);
-  const upstairs = ada.respawnPoints.findIndex((p, i) => i >= spawns && Math.abs(p.x - t.x[floor & 0xffff]!) < 0.01);
-  const ground = ada.respawnPoints.findIndex((p, i) => i >= spawns && i !== upstairs);
-  expect([respawn(bob, spawns), respawn(bob, 0), bob.sessionState]).toEqual([RESULT_INVALID, RESULT_OK, SESSION_ALIVE]);
-  expect(respawn(ada, upstairs)).toBe(RESULT_OK);
-  h.run(500);
-  expect([ada.sessionState, Math.abs(ada.own.x - t.x[floor & 0xffff]!) < 0.5]).toEqual([SESSION_ALIVE, true]);
-  expect(Math.abs(ada.own.y - top)).toBeLessThan(0.1);
-  // A used bed has a five minute wait. The other bed has none.
-  h.say(ada, "suicide");
-  h.run(300);
-  const wait = ada.respawnPoints[upstairs]!.wait;
-  expect([wait > 280 && wait <= 300, ada.respawnPoints[ground]!.wait]).toEqual([true, 0]);
-  expect([respawn(ada, upstairs), ada.sessionState]).toEqual([RESULT_WAIT, SESSION_DEAD]);
-  expect([respawn(ada, ground), ada.sessionState]).toEqual([RESULT_OK, SESSION_ALIVE]);
-  expect(Math.hypot(ada.own.x - (at.x - 3), ada.own.z - (at.z + 3))).toBeLessThan(0.5);
-  // readyAt is moved up so the test need not run five minutes.
-  h.say(ada, "suicide");
-  h.run(300);
-  expect(respawn(ada, ground)).toBe(RESULT_WAIT);
-  const state = h.host.fixtures.find(high)!;
-  state.readyAt = h.world.tick + 30;
-  expect(BED_WAIT_TICKS).toBe(300 * TICK_RATE);
-  h.run(1200);
-  expect([respawn(ada, upstairs), ada.sessionState]).toEqual([RESULT_OK, SESSION_ALIVE]);
-  h.say(ada, "suicide");
-  h.run(300);
-  h.world.structs.damage(low, 1e9, h.world.tick);
-  h.run(200);
-  expect([respawn(ada, ground), h.host.fixtures.count]).toEqual([RESULT_INVALID, 1]);
-  expect(respawn(ada, 0)).toBe(RESULT_OK);
-  expect(h.host.items.audit()).toEqual([]);
 });
 
 test("sparkpowder is made only at a mortar and pestle, from what lies in it and into it, for a survivor who knows its engram, who gets the experience; the queue goes on across a restart and is lost with the mortar", () => {

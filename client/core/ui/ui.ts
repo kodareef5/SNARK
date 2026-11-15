@@ -15,7 +15,7 @@ import { buildMap } from "./screens.ts";
 import { ChoosingScreen } from "./choosing.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsClick } from "./settings.ts";
-import { StructMenu } from "./structure.ts";
+import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 
@@ -47,7 +47,7 @@ export class Ui {
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    return this.console.open || this.chat.open || this.naming.open;
+    return this.console.open || this.chat.open || this.naming.open || this.structure.naming;
   }
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
@@ -61,6 +61,7 @@ export class Ui {
     const chat = this.chat;
     // The name prompt has the keyboard until it is answered.
     if (this.naming.open && !con.open) return this.naming.key(code, down, repeat, session);
+    if (this.structure.naming && !con.open) return this.structure.key(code, down, repeat, session);
     if (chat.open && !con.open) {
       // The chat box has the keyboard. It handles Enter, Escape and Tab, and every other key is typing.
       if (code !== "Enter" && code !== "NumpadEnter" && code !== "Escape" && code !== "Tab") return false;
@@ -151,6 +152,7 @@ export class Ui {
 
   input(key: number, value: string): void {
     if (key === KEY_NAME_INPUT) this.naming.edit(value);
+    else if (key === KEY_STRUCT_NAME_INPUT) this.structure.edit(value);
     else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
   }

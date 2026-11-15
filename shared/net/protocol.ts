@@ -139,7 +139,10 @@ export const CMD_CHAT = 17;
  * the position out again itself.
  */
 export const CMD_PLACE = 18;
-/** Structure ref u32, then a STRUCT_ action u8 (shared/world/upkeep.ts). STRUCT_PIN and STRUCT_USE add a PIN u16: 0 to 9999, or 0xffff for none. */
+/**
+ * Structure ref u32, then a STRUCT_ action u8 (shared/world/upkeep.ts). STRUCT_PIN and STRUCT_USE add a PIN u16: 0 to 9999, or
+ * 0xffff for none. STRUCT_NAME adds a name string.
+ */
 export const CMD_STRUCT = 19;
 /**
  * Orders a tribe creature: entity index u32 or ORDER_ALL, then order u8. The order is an ORDER_ value, ORDER_STANCE plus a
