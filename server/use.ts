@@ -101,7 +101,7 @@ export class Use {
 
   /**
    * ARK's drink from water (patch 187.0): E with nothing else to use, standing or swimming in water, the sea or a lake, is a
-   * drink of DRINK water (DEV170). False out of water, where E does nothing.
+   * drink of DRINK water (DEV174). False out of water, where E does nothing.
    */
   drink(c: Client): boolean {
     const { world, records, survival } = this.ctx;
