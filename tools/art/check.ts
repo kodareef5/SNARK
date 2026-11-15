@@ -148,19 +148,24 @@ export function bothWays(lod: SourceLod): number[] {
 /** Counts what is wrong with the surface of one level. Points at one place are one point, whatever colour or bone they carry. */
 export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "openEdges" | "holes" | "flipped" | "insideOut" | "crowded" | "collapsed"> {
   const p = lod.positions;
-  const ids = new Map<string, number>();
+  // Points by x, then y, then z. A map counts 0 and -0 as one number, as their text is one.
+  const ids = new Map<number, Map<number, Map<number, number>>>();
   const at: number[] = [];
-  const point = lod.indices.length === 0 ? [] : Array.from({ length: p.length / 3 }, (_, v) => {
-    const key = `${p[v * 3]},${p[v * 3 + 1]},${p[v * 3 + 2]}`;
-    let id = ids.get(key);
+  const point = new Int32Array(lod.indices.length === 0 ? 0 : p.length / 3);
+  let n = 0;
+  for (let v = 0; v < point.length; v++) {
+    const x = p[v * 3]!, y = p[v * 3 + 1]!, z = p[v * 3 + 2]!;
+    let ys = ids.get(x);
+    if (!ys) ids.set(x, (ys = new Map()));
+    let zs = ys.get(y);
+    if (!zs) ys.set(y, (zs = new Map()));
+    let id = zs.get(z);
     if (id === undefined) {
-      id = ids.size;
-      ids.set(key, id);
-      at.push(p[v * 3]!, p[v * 3 + 1]!, p[v * 3 + 2]!);
+      zs.set(z, (id = n++));
+      at.push(x, y, z);
     }
-    return id;
-  });
-  const n = ids.size;
+    point[v] = id;
+  }
   const group = Array.from({ length: n }, (_, i) => i);
   const find = (i: number): number => {
     while (group[i] !== i) i = group[i] = group[group[i]!]!;
@@ -168,10 +173,16 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
   };
   // Per edge between two points, the triangles that run along it each way.
   const edges = new Map<number, [number, number]>();
+  const along = (u: number, v: number): void => {
+    const key = u < v ? u * n + v : v * n + u;
+    const e = edges.get(key);
+    if (e) e[u < v ? 0 : 1]++;
+    else edges.set(key, u < v ? [1, 0] : [0, 1]);
+  };
   const faces: number[] = [];
   let collapsed = 0;
   for (let t = 0; t + 2 < lod.indices.length; t += 3) {
-    const [a, b, c] = [point[lod.indices[t]!]!, point[lod.indices[t + 1]!]!, point[lod.indices[t + 2]!]!];
+    const a = point[lod.indices[t]!]!, b = point[lod.indices[t + 1]!]!, c = point[lod.indices[t + 2]!]!;
     if (a === b || b === c || a === c) {
       collapsed++;
       continue;
@@ -179,12 +190,9 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
     faces.push(a, b, c);
     group[find(a)] = find(b);
     group[find(b)] = find(c);
-    for (const [u, v] of [[a, b], [b, c], [c, a]] as const) {
-      const key = u < v ? u * n + v : v * n + u;
-      const e = edges.get(key) ?? [0, 0];
-      e[u < v ? 0 : 1]++;
-      edges.set(key, e);
-    }
+    along(a, b);
+    along(b, c);
+    along(c, a);
   }
   let openEdges = 0;
   let flipped = 0;
@@ -196,7 +204,8 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
   };
   const onRim = new Set<number>();
   for (const [key, [fore, back]] of edges) {
-    const [u, v] = [Math.floor(key / n), key % n];
+    const u = Math.floor(key / n);
+    const v = key % n;
     if (fore + back === 1) {
       openEdges++;
       rim[rimOf(u)] = rimOf(v);
@@ -222,15 +231,18 @@ export function measureSurface(lod: SourceLod): Pick<LevelFacts, "parts" | "open
   }
   let insideOut = 0;
   for (const part of parts.values()) {
-    const mid = part.sum.map((s) => s / part.count);
+    const mx = part.sum[0] / part.count, my = part.sum[1] / part.count, mz = part.sum[2] / part.count;
     let volume = 0;
     let area = 0;
     for (const f of part.faces) {
-      const [a, b, c] = [0, 1, 2].map((k) => [0, 1, 2].map((x) => at[faces[f + k]! * 3 + x]! - mid[x]!)) as [number[], number[], number[]];
-      const cx = b[1]! * c[2]! - b[2]! * c[1]!, cy = b[2]! * c[0]! - b[0]! * c[2]!, cz = b[0]! * c[1]! - b[1]! * c[0]!;
-      volume += (a[0]! * cx + a[1]! * cy + a[2]! * cz) / 6;
-      const ux = b[0]! - a[0]!, uy = b[1]! - a[1]!, uz = b[2]! - a[2]!;
-      const vx = c[0]! - a[0]!, vy = c[1]! - a[1]!, vz = c[2]! - a[2]!;
+      const i = faces[f]! * 3, j = faces[f + 1]! * 3, k = faces[f + 2]! * 3;
+      const a0 = at[i]! - mx, a1 = at[i + 1]! - my, a2 = at[i + 2]! - mz;
+      const b0 = at[j]! - mx, b1 = at[j + 1]! - my, b2 = at[j + 2]! - mz;
+      const c0 = at[k]! - mx, c1 = at[k + 1]! - my, c2 = at[k + 2]! - mz;
+      const cx = b1 * c2 - b2 * c1, cy = b2 * c0 - b0 * c2, cz = b0 * c1 - b1 * c0;
+      volume += (a0 * cx + a1 * cy + a2 * cz) / 6;
+      const ux = b0 - a0, uy = b1 - a1, uz = b2 - a2;
+      const vx = c0 - a0, vy = c1 - a1, vz = c2 - a2;
       area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
     }
     if (-volume > 0.002 * area ** 1.5) insideOut++;
