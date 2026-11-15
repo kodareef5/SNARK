@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 39 classes: 25 built, 4 partly built, and 10 stubs that
-wait for a feature. The core pack holds 259 definitions, and 77 renames of ids
+wait for a feature. The core pack holds 260 definitions, and 77 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -194,7 +194,7 @@ ARK's names: `takes` is the structure settings' damage by type; `decayDays` is D
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `node` | a foliage type and its harvest component | built | `mesh`, `color`, `half`, `hits`, `respawnHours`, `yields`, `xp` | `top`, `soft`, `material`, `variants`, `size`, `depleted` | 13 |
+| `node` | a foliage type and its harvest component | built | `mesh`, `color`, `half`, `hits`, `respawnHours`, `yields`, `xp` | `top`, `soft`, `material`, `variants`, `size`, `depleted`, `footing` | 14 |
 
 - **`node`** on shelf `nodes`. A tree, a rock, a bush: harvested, used up, and grown back. Each node is one of its variants, turned and sized by its place.
 
@@ -204,7 +204,7 @@ Asset slots:
 
 ARK's names: `hits` is MaxHarvestHealth; `respawnHours` is the replenish timing; `yields` is the harvest component's item entries; `variants` is the foliage type's meshes; `size` is the foliage type's scale range; `depleted` is what a depleted foliage instance leaves.
 
-What names what: `yields[].item` names a `item`.
+What names what: `yields[].item` names a `item`; `footing.else` names a `node`.
 
 Packs may add to: `yields`.
 
@@ -376,7 +376,7 @@ built.
 
 **`material`** (4): mat_thatch, mat_wood, mat_stone, mat_metal.
 
-**`node`** (13): tree, palm, fig, banyan, mangrove, rock, rubble, metal_rock, bush, palmetto, fern, seagrape, creeper.
+**`node`** (14): tree, palm, fig, oak, banyan, mangrove, rock, rubble, metal_rock, bush, palmetto, fern, seagrape, creeper.
 
 **`prop/container`** (2): cache, bag.
 

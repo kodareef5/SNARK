@@ -285,6 +285,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (v.depleted) shaped("a variant's depleted form", v.depleted);
       }
       if (d.depleted) shaped("its depleted form", d.depleted);
+      if (d.footing !== undefined && !(d.footing.reach > 0 && d.footing.reach <= MAX_STRUCTURE_HALF && d.footing.fall >= 0 && d.footing.fall <= MAX_NODE_HEIGHT)) errors.push(`${d.id}: footing reaches more than 0 and at most ${MAX_STRUCTURE_HALF} m, and allows a fall of 0 to ${MAX_NODE_HEIGHT} m`);
       if (d.size !== undefined && !(d.size.length === 2 && d.size[0] >= 0.25 && d.size[1] >= d.size[0] && d.size[1] <= MOST_NODE_SIZE)) errors.push(`${d.id}: size is [least, most], from 0.25 to ${MOST_NODE_SIZE}`);
     } else if (d.type === "engram") {
       positive(d, "level", d.level, 1000);

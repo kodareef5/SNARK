@@ -84,8 +84,8 @@ test("a node drawn far stands where the near store puts it, with the same mesh, 
 });
 
 test("a wood looks the same whichever store draws it: the camera still, the near field moved by a chunk", () => {
-  // Low poly draws no rocks or bushes far, so its wood is of trees.
-  for (const [tier, kinds] of [["medium", ["core:tree", "core:tree", "core:rock", "core:bush"]], ["lowpoly", ["core:tree"]]] as const) {
+  // Low poly draws no rocks or bushes far, so its wood is of trees: elder oaks, whose far ones are large enough to count.
+  for (const [tier, kinds] of [["medium", ["core:oak", "core:oak", "core:rock", "core:bush"]], ["lowpoly", ["core:oak"]]] as const) {
     const w = nodeWorld({ chunksX: 16, chunksZ: 8, kinds, tier: tierOf(tier), seed: 5, width: 200, height: 112 });
     const z = 4 * CHUNK_SIZE + 10;
     w.scene.nodesFar!.makes = Infinity;
