@@ -98,7 +98,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 | --- | --- | --- | --- | --- | --- | --- |
 | `name.set` | before | `what`, `text` | `text` | name filters | `server/game.ts` | wired |
 
-- **`name.set`.** A survivor, a tribe or a creature is about to be named.
+- **`name.set`.** A survivor, a tribe, a creature or a bed is about to be named.
 
 ## Combat
 

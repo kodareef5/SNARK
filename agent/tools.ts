@@ -22,7 +22,8 @@ export const INSTRUCTIONS =
   "You play one survivor in SNARK, a survival game, through these tools. You can do what a player can and no more. " +
   "Positions are x and z in metres: north is +z and east is -x. Things have ids: n12.3 is a tree, rock or bush, s65539 is something built, e7 is a creature, a player, a dead creature, an egg or a bag. " +
   "Every answer has a state: done, running (still going; ask status), blocked (it stopped short, and reason says why), danger (it stopped because you are in danger) or refused (nothing was done). " +
-  "walk_to, harvest, attack, open and pick_up take time and only one of them runs at once. An answer lists dangers while there are any: a hunter near, health falling, breath running out.";
+  "walk_to, harvest, attack, open, pick_up, place and bed take time and only one of them runs at once. An answer lists dangers while there are any: a hunter near, health falling, breath running out. " +
+  "With no body, after a death or travelling from a bed, status lists under choosing where you may rise, and rise takes you there.";
 
 /** Chat lines a survivor may say at once, and the milliseconds that earn another, as server/chat.ts counts them. */
 const CHAT_BURST = 5;
