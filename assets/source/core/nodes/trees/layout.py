@@ -69,6 +69,33 @@ def crown_mass(name):
     return (name, rects, width)
 
 
+# A crown's clusters of leaves (clusters.py) wear cells of its crown picture (cells.py). A cell is a cluster seen from
+# above, unrolled: its top in the middle, the arc from there to its rim running out to CELL_RIM of the cell's half-width,
+# and its underside beyond that to CELL_EDGE, mirrored. Each of the four variants has its own rim, a ring of scallops
+# where its outer sprays reach out: how many, the turn of the first in degrees, and how far each reaches against the
+# others. A crown picture holds the variants across in rows by tier: the outer clusters in sun, the middle, the inner
+# and lower in shade; and the crown's core, the dark mass behind them, in a tiling rectangle of shade leaves.
+CELL_RIM = 0.94
+CELL_EDGE = 0.97
+SCALLOPS = [
+    (6, 12.0, (1.0, 0.82, 1.12, 0.9, 1.06, 0.86)),
+    (5, 47.0, (1.1, 0.88, 1.0, 1.14, 0.84)),
+    (7, 3.0, (0.92, 1.08, 0.86, 1.12, 0.95, 1.04, 0.9)),
+    (6, 31.0, (1.08, 0.9, 0.84, 1.1, 1.0, 0.94)),
+]
+CROWN_CELLS = {
+    "oak_crown": {"cell": 0.25, "rows": (0.0, 0.25, 0.5), "core": (0.0, 0.75, 0.5, 1.0), "bowl": (0.5, 0.75, 1.0, 1.0), "core_metres": 4.8},
+}
+
+
+def crown_cell(name, tier, variant):
+    """The rectangle of a crown picture that a cluster of `tier` and `variant` wears."""
+    got = CROWN_CELLS[name]
+    s = got["cell"]
+    v0 = got["rows"][tier]
+    return (variant * s, v0, (variant + 1) * s, v0 + s)
+
+
 def leaf_cell(k):
     """Cluster cell k: 0 and 1 across the top row of the top left quarter, 2 and 3 across its second row."""
     i, j = k % 2, k // 2

@@ -77,5 +77,5 @@ export default {
     mangrove_crown: picture("mangrove_crown"),
     mangrove_leaves: picture("mangrove_leaves", { cutout: true }),
   }).filter(([name]) => ONLY.length === 0 || ONLY.some((k) => USES[k]!.includes(name)))),
-  budgets: { triangles: [60000, 16000, 3000, 1000, 400, 16], texture: { top: 2048, megabytes: 240 } },
+  budgets: { triangles: [150000, 50000, 16000, 1200, 400, 16], texture: { top: 2048, megabytes: 240 } },
 } satisfies PiecesAsset;

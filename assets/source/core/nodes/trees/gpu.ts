@@ -56,6 +56,18 @@ const VIEWS: Record<string, View> = {
   f2: { trees: [["core:fig_2", 0, 40, 40]], up: 1.7, pitch: 14 },
   b1: { trees: [["core:banyan_1", 0, 46, 10]], up: 1.7, pitch: 10 },
   y2: { trees: [["core:tree_2", 0, 22, 40]], up: 1.7, pitch: 15 },
+  // The elder oak and a young tree from 20, 40 and 80 m, and looking up into each from under its limbs.
+  o2_20: { trees: [["core:oak_2", 0, 20, 40]], up: 1.7, pitch: 24 },
+  o2_40: { trees: [["core:oak_2", 0, 40, 40]], up: 1.7, pitch: 12 },
+  o2_80: { trees: [["core:oak_2", 0, 80, 40]], up: 1.7, pitch: 6 },
+  y2_20: { trees: [["core:tree_2", 0, 20, 40]], up: 1.7, pitch: 16 },
+  y2_12: { trees: [["core:tree_2", 0, 12, 40]], up: 1.7, pitch: 30 },
+  y2_40: { trees: [["core:tree_2", 0, 40, 40]], up: 1.7, pitch: 8 },
+  y2_80: { trees: [["core:tree_2", 0, 80, 40]], up: 1.7, pitch: 4 },
+  o2_120: { trees: [["core:oak_2", 0, 120, 40]], up: 1.7, pitch: 4 },
+  y2_120: { trees: [["core:tree_2", 0, 120, 40]], up: 1.7, pitch: 3 },
+  y2_under: { trees: [["core:tree_2", 0.8, 3.5, 40]], up: 1.7, pitch: 50 },
+  o2_under: { trees: [["core:oak_2", 1.6, 5, 40]], up: 1.7, pitch: 40 },
 };
 const chosen = arg("views", Object.keys(VIEWS).join(",")).split(",");
 
