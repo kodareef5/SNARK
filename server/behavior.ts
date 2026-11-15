@@ -12,7 +12,7 @@ import { DMG_MELEE } from "../shared/sim/damage.ts";
 import { BTN_BRAKE, BTN_JUMP, BTN_PRIMARY, BTN_SPRINT, MF_OUT, MODE_FLY, MODE_FLYER, MODE_SWIM, MODE_WALK, stanceEye, type MoveParams } from "../shared/sim/character.ts";
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_HELD, F_PLAYER, wider } from "../shared/sim/entities.ts";
 import { ACT_NONE } from "../shared/sim/weapon.ts";
-import { groundUnder } from "../shared/world/collide.ts";
+import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
 import { GROUND_FREE, PATH_FOUND, PATH_LEG, PATH_NONE, PATH_REACH, PATH_SHORT, PathFinder, groundAt, shapeStamp } from "../shared/world/path.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../shared/world/ray.ts";
 import { BodyGrid } from "./bodies.ts";
@@ -103,6 +103,12 @@ const CRUISE_HIGH = 40;
 /** Seconds it stays up before it looks for a place to land, and rests there: ARK's "frequent pit stops", by the mind's clock. */
 const ALOFT_SECONDS = [60, 150] as const;
 const REST_SECONDS = [20, 60] as const;
+/** Metres round a place to land that must be standing ground too. */
+const MARGIN = 0.5;
+/** Metres between the places a resting flyer's stroll is tested under open sky. */
+const STROLL_STEP = 1.5;
+/** Metres over the ground that a column's test begins, clear of the ground's own skin. */
+const LIFTED = 0.05;
 /** Metres from its home that it lands, places it tries a think, and the open sky it wants over one. */
 const LAND_RANGE = 60;
 const LAND_TRIES = 6;
@@ -141,10 +147,10 @@ const STALL_METRES = 1.5;
 const ASIDE_TICKS = (3 * TICK_RATE) / 2;
 const ASIDE = [0.6, -0.6, 1.2, -1.2, 1.9, -1.9] as const;
 const ASIDE_PITCH = 0.2;
-/** Metres over its head that a flyer looks for a roof, and that it looks for a way out when hemmed in, at these pitches. */
+/** Metres over its head that a flyer looks for a roof, and the ways, distances and pitches it tries for a way out when hemmed in. */
 const ROOF = 8;
-const ESCAPE = 40;
 const ESCAPE_WAYS = 16;
+const ESCAPE_STEPS = [1.5, 4, 10, 25, 40] as const;
 const ESCAPE_PITCHES = [0, CLIMB_MAX, STRAIGHT_UP, -0.4] as const;
 const ESCAPE_ROOFED = [0, -0.4] as const;
 /** It counts a stall when it has come no metre nearer where it goes in STALE_TICKS, the goal moving no more than STALE_MOVED. */
@@ -222,17 +228,11 @@ class Skyline {
 }
 
 /**
- * Whether nothing built or growing stands over (x, y, z) for OPEN_SKY metres, at the middle and the edge of a body of radius
- * `r`: where a flyer may come down, and may be put down, since one under a roof cannot take off.
+ * Whether a body of radius `r` standing at (x, y, z) has nothing built or growing over it for OPEN_SKY metres, by one capsule
+ * that tall: where a flyer may come down, and may be put down, since one under a roof cannot take off.
  */
 export function openSky(world: ServerWorld, r: number, x: number, y: number, z: number): boolean {
-  for (let k = 0; k < 5; k++) {
-    const ox = k === 1 ? r : k === 2 ? -r : 0;
-    const oz = k === 3 ? r : k === 4 ? -r : 0;
-    const hit = castWorld(world, x + ox, y + OPEN_SKY, z + oz, 0, -1, 0, OPEN_SKY + 2);
-    if (hit === HIT_STRUCTURE || hit === HIT_NODE) return false;
-  }
-  return true;
+  return capsuleFree(world, x, y + LIFTED, z, r, OPEN_SKY);
 }
 
 /** What a flyer's mind keeps beyond a walker's. */
@@ -1104,7 +1104,8 @@ export class Behavior {
 
   /**
    * At rest on the ground it mostly stands, now and then walking a few steps: only where it could have landed, the way there
-   * dry and clear, so it does not wade in, walk in under a roof or press between trunks.
+   * standing ground, dry and under open sky every STROLL_STEP metres, so it does not wade in, walk off a cliff or onto a slide,
+   * or in under a roof, eaves or trunks.
    */
   private stroll(e: number, tick: number): void {
     if (tick < this.until[e]!) return;
@@ -1118,10 +1119,13 @@ export class Behavior {
     const far = (p.walkSpeed * ticks) / TICK_RATE;
     const [x, z] = [ents.x[e]!, ents.z[e]!];
     const [s, c] = [Math.sin(a), Math.cos(a)];
-    const my = ents.y[e]! + p.height * 0.5;
-    const clear = (side: number): boolean => this.clear(x + c * side, my, z - s * side, a, 0, far + p.radius);
-    const way = walks && hf.heightAt(x + s * (far / 2), z + c * (far / 2)) > hf.seaLevel + DRY && clear(0) && clear(p.radius) && clear(-p.radius);
-    this.move[e] = way && this.landable(p, x + s * far, z + c * far) ? 127 : 0;
+    let way = walks && hf.heightAt(x + s * (far / 2), z + c * (far / 2)) > hf.seaLevel + DRY && this.landable(p, x + s * far, z + c * far);
+    for (let d = STROLL_STEP; way && d < far; d += STROLL_STEP) {
+      const [px, pz] = [x + s * d, z + c * d];
+      const py = groundUnder(hf, px, pz, p.radius);
+      way = py > hf.seaLevel + DRY && groundAt(this.world, p, px, pz) === GROUND_FREE && openSky(this.world, p.radius, px, py, pz);
+    }
+    this.move[e] = way ? 127 : 0;
     this.look[e] = look;
     this.pitch[e] = 0;
     this.buttons[e] = 0;
@@ -1180,16 +1184,19 @@ export class Behavior {
   }
 
   /**
-   * Whether a flyer moving by `p` may land at (x, z): dry ground it can stand on (groundAt, so no slide), clear of nodes nobody
-   * has loaded, with nothing built or growing over it at its middle or edge for OPEN_SKY metres. So it comes down on the
-   * ground, where a survivor can reach it to tame it, and not on a roof or in a tree.
+   * Whether a flyer moving by `p` may land at (x, z): dry ground it can stand on (groundAt, so no slide) there and MARGIN
+   * round it, clear of nodes nobody has loaded, with open sky over it. So it comes down on the ground, where a survivor can
+   * reach it to tame it, and not on a roof or in a tree.
    */
   private landable(p: MoveParams, x: number, z: number): boolean {
     const world = this.world;
     const hf = world.hf;
     if (x < EDGE || z < EDGE || x > hf.sizeX - EDGE || z > hf.sizeZ - EDGE) return false;
     const y = groundUnder(hf, x, z, p.radius);
-    return y >= hf.seaLevel + DRY && groundAt(world, p, x, z) === GROUND_FREE && !world.unloaded?.meets(x, y, z, p.radius, p.height + p.stepUp) && openSky(world, p.radius, x, y, z);
+    if (y < hf.seaLevel + DRY || world.unloaded?.meets(x, y, z, p.radius, p.height + p.stepUp) || !openSky(world, p.radius, x, y, z)) return false;
+    // Standing ground there and MARGIN round it, so that coming down a hair off it does not set it on a slide.
+    for (let k = 0; k < 5; k++) if (groundAt(world, p, x + (k === 1 ? MARGIN : k === 2 ? -MARGIN : 0), z + (k === 3 ? MARGIN : k === 4 ? -MARGIN : 0)) !== GROUND_FREE) return false;
+    return true;
   }
 
   /** Makes the land nearest `e` its home, looking ring by ring out to the last of SHORE_RINGS. False if there is none in reach. */
@@ -1369,12 +1376,12 @@ export class Behavior {
       f.stalls++;
       this.stalled++;
       f.lift = Math.min(LIFT_MOST, f.lift + LIFT);
-      this.steerOut(f, tick, x, my, z, yaw, roofed, 2 * ASIDE_TICKS);
+      this.steerOut(f, p, tick, x, y, z, yaw, roofed, 2 * ASIDE_TICKS);
       yaw = f.dyaw;
       pitch = f.dpitch;
     } else if (roofed && !aside) {
       // Roofed, between a tower's floors, in a hall or under a canopy: it makes for the widest way out, no higher.
-      this.steerOut(f, tick, x, my, z, yaw + Math.PI, true, ASIDE_TICKS);
+      this.steerOut(f, p, tick, x, y, z, yaw + Math.PI, true, ASIDE_TICKS);
       yaw = f.dyaw;
       pitch = f.dpitch;
     } else if (look > STOOP_SHORT && blocked(yaw, pitch)) {
@@ -1389,7 +1396,7 @@ export class Behavior {
       }
       if (yaw === was && !roofed && !blocked(was, CLIMB_MAX)) pitch = CLIMB_MAX;
       else if (yaw === was) {
-        this.steerOut(f, tick, x, my, z, was, roofed, ASIDE_TICKS);
+        this.steerOut(f, p, tick, x, y, z, was, roofed, ASIDE_TICKS);
         yaw = f.dyaw;
         pitch = f.dpitch;
       }
@@ -1407,9 +1414,9 @@ export class Behavior {
     this.buttons[e] = BTN_JUMP | (sprint && !careful ? BTN_SPRINT : 0) | (careful && moving > CAREFUL_SPEED + 1 ? BTN_BRAKE : 0);
   }
 
-  /** It steers for `ticks` along the way out `escape` finds from (x, y, z), carefully. */
-  private steerOut(f: Flight, tick: number, x: number, y: number, z: number, yaw: number, roofed: boolean, ticks: number): void {
-    this.escape(x, y, z, yaw, roofed);
+  /** It steers for `ticks` along the way out `escape` finds for `p` from (x, y, z), carefully. */
+  private steerOut(f: Flight, p: MoveParams, tick: number, x: number, y: number, z: number, yaw: number, roofed: boolean, ticks: number): void {
+    this.escape(p, x, y, z, yaw, roofed);
     f.dyaw = escaped.yaw;
     f.dpitch = escaped.pitch;
     f.aside = tick + ticks;
@@ -1441,15 +1448,10 @@ export class Behavior {
     return f.floor;
   }
 
-  /** Whether nothing built or growing stands under a flyer at (x, y, z) between it and the ground, at its middle or its edge. */
+  /** Whether a flyer at (x, y, z) would come straight down to the ground: one capsule from the ground to its top is free. */
   private clearBelow(p: MoveParams, x: number, y: number, z: number): boolean {
-    for (let k = 0; k < 5; k++) {
-      const ox = k === 1 ? p.radius : k === 2 ? -p.radius : 0;
-      const oz = k === 3 ? p.radius : k === 4 ? -p.radius : 0;
-      const hit = castWorld(this.world, x + ox, y, z + oz, 0, -1, 0, y - groundUnder(this.world.hf, x + ox, z + oz, 0) + 1);
-      if (hit === HIT_STRUCTURE || hit === HIT_NODE) return false;
-    }
-    return true;
+    const ground = groundUnder(this.world.hf, x, z, p.radius) + LIFTED;
+    return capsuleFree(this.world, x, ground, z, p.radius, Math.max(p.height, y + p.height - ground));
   }
 
   /** Whether nothing of the world lies within `len` metres of (x, y, z) along `yaw` and `pitch`, in radians. */
@@ -1459,16 +1461,21 @@ export class Behavior {
   }
 
   /**
-   * The way out for a flyer at (x, y, z) hemmed in or getting nowhere, into `escaped`: of ESCAPE_WAYS ways round from behind it,
-   * level, steeply up and nearly straight up (not when roofed) and down, the one clear furthest, up to ESCAPE metres.
+   * The way out for a flyer of `p` at (x, y, z), its feet's height, hemmed in or getting nowhere, into `escaped`: of
+   * ESCAPE_WAYS ways round from behind it, level, steeply up and nearly straight up (not when roofed) and down, the one its
+   * body goes furthest along, by its capsule set at ESCAPE_STEPS along each, so it does not try a gap it cannot fit.
    */
-  private escape(x: number, y: number, z: number, yaw: number, roofed: boolean): void {
+  private escape(p: MoveParams, x: number, y: number, z: number, yaw: number, roofed: boolean): void {
     let best = -1;
     for (let k = 0; k < ESCAPE_WAYS; k++) {
       const a = yaw + Math.PI + (k % 2 === 0 ? k / 2 : -(k + 1) / 2) * ((Math.PI * 2) / ESCAPE_WAYS);
       for (const pitch of roofed ? ESCAPE_ROOFED : ESCAPE_PITCHES) {
         const cp = Math.cos(pitch);
-        const free = castWorld(this.world, x, y, z, Math.sin(a) * cp, Math.sin(pitch), Math.cos(a) * cp, ESCAPE) === HIT_NONE ? ESCAPE : rayHit.t;
+        let free = 0;
+        for (const d of ESCAPE_STEPS) {
+          if (!capsuleFree(this.world, x + Math.sin(a) * cp * d, y + Math.sin(pitch) * d, z + Math.cos(a) * cp * d, p.radius, p.height)) break;
+          free = d;
+        }
         if (free <= best) continue;
         best = free;
         escaped.yaw = a;
@@ -1476,6 +1483,7 @@ export class Behavior {
       }
     }
   }
+
 
   /** Goes after its leader and stops a few steps short, running when far behind. With no leader, or no way to it, it stands. */
   private go(e: number, tick: number, turn: boolean): void {
