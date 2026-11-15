@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
@@ -27,6 +27,8 @@ import { GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT, KEY_BYTES } from "../shared/net/protocol.ts";
 import { dress } from "../server/commands/combat.ts";
 import { Inventory } from "../shared/sim/items.ts";
+import { stationRecipes } from "../client/core/ui/station.ts";
+import { TICK_RATE } from "../shared/coords.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
@@ -1309,6 +1311,28 @@ if (import.meta.main) {
       ui.inventory.open = true;
       ui.inventory.held = 1;
       ui.inventory.hover = 2;
+    }
+    const stationId = arg("station");
+    if (stationId !== undefined) {
+      // --station ID: a station of that structure kind open beside the bag (its panel, planning/reference/stations-plan.md,
+      // S4), holding three units' ingredients of each thing it makes and every engram known. A lit kind burns for 15 minutes.
+      const kind = view.reg.index.get(stationId);
+      if (kind === undefined || view.reg.defs[kind]?.type !== "structure") throw new Error(`--station: ${stationId} is not a structure`);
+      session ??= standIn("");
+      session.inventory ??= new Inventory(40);
+      const slots = new Inventory(Math.max(1, view.reg.structSlots[kind]!));
+      let free = 0;
+      for (const item of stationRecipes(view.reg, kind)) {
+        const needs = view.reg.recipeOf[item]!;
+        for (let k = 0; k + 1 < needs.length && free < slots.cap; k += 2) if (slots.total(needs[k]!) === 0) slots.set(free++, needs[k]!, Math.min(view.reg.stack[needs[k]!]!, needs[k + 1]! * 3), 0, 0, 0);
+      }
+      session.open = { name: stationId.slice(stationId.indexOf(":") + 1).replace(/_/g, " "), inventory: slots };
+      session.station = { kind, ref: 0, out: view.reg.burning[kind] === 1 ? session.serverTick + 900 * TICK_RATE : 0, lanes: [], jobs: [] };
+      session.progress.engrams.push(...view.reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : [])));
+      session.progress.level = 100;
+      ui.registry = view.reg;
+      ui.palette = view.pack.palette;
+      ui.inventory.open = true;
     }
     if (args.includes("--chat")) {
       // Lines on each channel, and the chat box open on the tribe channel with a line being typed.
