@@ -15,7 +15,7 @@ import { FLAG_BLUEPRINT, QUALITY_NAMES, blueprintCost, type Inventory } from "..
 import { STRUCT_LIGHT } from "../../../shared/world/upkeep.ts";
 import type { ClientSession } from "../session.ts";
 import { itemLabel } from "./inventory.ts";
-import { K_BUTTON, K_PANEL, columns, lineHeight, type UiFrame } from "./nodes.ts";
+import { K_BUTTON, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_STATION_PANEL = 2600;
@@ -223,14 +223,11 @@ export class StationPanel {
     const rows = all.slice(this.page * perPage, (this.page + 1) * perPage);
     const h = headH + (all.length === 0 ? lh : rowH * rows.length) + (this.pages > 1 ? pagerH : 0) + PAD;
     const y0 = Math.max(4, Math.min(top, f.height - 4 - h));
-    // A line too long for its place ends in "..", so a list cut short reads as cut.
-    const cut = (text: string, width: number): string => {
-      const cols = columns(width, S_LABEL);
-      return text.length <= cols ? text : `${text.slice(0, Math.max(0, cols - 2)).trimEnd()}..`;
-    };
+    // A line too long for its place ends in an ellipsis, so a list cut short reads as cut.
+    const cut = (text: string, width: number): string => fitText(text, width, S_LABEL);
     f.add(KEY_STATION_PANEL, K_PANEL, x, y0, pw, h, S_PANEL);
     const backW = this.alone ? 72 : 0;
-    f.text(KEY_STATION_TITLE, x + PAD, y0 + PAD, inner - backW, S_TITLE, "Crafting".slice(0, columns(inner - backW, S_TITLE)));
+    f.text(KEY_STATION_TITLE, x + PAD, y0 + PAD, inner - backW, S_TITLE, fitText("Crafting", inner - backW, S_TITLE));
     if (this.alone) {
       const back = f.add(KEY_STATION_SLOTS, K_BUTTON, x + pw - PAD - backW, y0 + PAD, backW, BUTTON_H, S_BUTTON);
       back.text = "Slots";

@@ -1,51 +1,79 @@
 import { SETTING_ROWS, type Settings } from "../settings.ts";
-import { K_BAR, K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BUTTON, S_LABEL, S_PANEL, S_STAMINA, S_TITLE } from "./style.ts";
+import { K_PANEL, fitText, type UiFrame } from "./nodes.ts";
+import { glass } from "./skin.ts";
+import { slider } from "./slider.ts";
+import { KEY_MENU_BACK, menuBackdrop, smallButton } from "./menu.ts";
+import { S_MENU_HEADING, S_MENU_NOTE, S_ICE, S_LABEL, S_HUD_HIT, S_HUD_COUNT } from "./style.ts";
 
 export const KEY_SETTINGS_PANEL = 2300;
 export const KEY_SETTINGS_TITLE = 2301;
-/** Per row: its label, its value, its "-" button, its "+" button. */
 export const KEY_SETTINGS_ROW = 2310;
-const ROW = 30;
-const PAD = 14;
-const BUTTON = 30;
-
-/** The microphone row: its label, then a bar of its level now. */
 export const KEY_SETTINGS_MIC = 2390;
+export const KEY_SETTINGS_TAB = 2270;
+export const KEY_SETTINGS_SLIDER = 5900;
+export const SETTING_GROUPS = [
+  { name: "Display", rows: [11, 12, 2, 0] },
+  { name: "Audio", rows: [5, 6, 7, 8, 9, 3, 4] },
+  { name: "Input", rows: [1] },
+  { name: "Interface", rows: [14, 15, 16, 13, 10] },
+] as const;
+const TOGGLES = new Set([0,4,12,14,15,16]);
 
-export function buildSettings(f: UiFrame, s: Settings, micLevel = 0): void {
-  const w = Math.min(f.width - 16, 420);
-  const titleH = lineHeight(S_TITLE);
-  const h = PAD * 2 + titleH + 8 + (SETTING_ROWS.length + 1) * ROW;
-  const x = Math.round((f.width - w) / 2);
-  const y = Math.round((f.height - h) / 2);
-  f.add(KEY_SETTINGS_PANEL, K_PANEL, x, y, w, h, S_PANEL);
-  f.text(KEY_SETTINGS_TITLE, x + PAD, y + PAD, w - PAD * 2, S_TITLE, "Settings");
-  const valueW = 110;
-  SETTING_ROWS.forEach((row, i) => {
-    const ry = y + PAD + titleH + 8 + i * ROW;
-    const key = KEY_SETTINGS_ROW + i * 4;
-    const right = x + w - PAD;
-    f.text(key, x + PAD, ry + 5, w - PAD * 2 - valueW - BUTTON * 2 - 16, S_LABEL, row.label);
-    f.text(key + 1, right - BUTTON * 2 - 8 - valueW, ry + 5, valueW, S_LABEL, row.value(s));
-    for (const [n, label] of [[2, "-"], [3, "+"]] as const) {
-      const b = f.add(key + n, K_BUTTON, right - (n === 2 ? BUTTON * 2 + 4 : BUTTON), ry, BUTTON, ROW - 6, S_BUTTON);
-      b.text = label;
-      b.interactive = true;
+export function buildSettings(f: UiFrame, s: Settings, micLevel = 0, focus = 0): void {
+  menuBackdrop(f);
+  const w = Math.min(f.width-32,780), h = 560, x = Math.round((f.width-w)/2), y = 80, narrow = w<580;
+  const right=x+w-24, inner=w-48;
+  f.add(KEY_SETTINGS_PANEL,K_PANEL,x,y,w,h,S_HUD_HIT);
+  glass(f,KEY_SETTINGS_PANEL,x,y,w,h);
+  f.text(KEY_SETTINGS_TITLE,x+24,y+20,w-140,S_MENU_HEADING,"Settings");
+  smallButton(f,KEY_MENU_BACK,right-56,y+16,56,36,"Back","Back",focus===KEY_MENU_BACK);
+  const tabW=inner/SETTING_GROUPS.length;
+  SETTING_GROUPS.forEach((group,i)=>smallButton(f,KEY_SETTINGS_TAB+i,x+24+i*tabW,y+66,tabW-8,34,group.name,group.name,s.tab===i));
+  const group=SETTING_GROUPS[s.tab]??SETTING_GROUPS[0];
+  group.rows.forEach((i,rowAt)=>{
+    const row=SETTING_ROWS[i]!, ry=y+112+rowAt*52, key=KEY_SETTINGS_ROW+i*4;
+    f.text(key,x+24,ry+5,narrow?inner-112:196,S_MENU_NOTE,fitText(row.label,narrow?inner-112:196,S_MENU_NOTE));
+    const valueX = narrow ? right-106 : right-186;
+    f.text(key+1,valueX,ry+5,106,S_HUD_COUNT,fitText(row.value(s),106,S_HUD_COUNT));
+    const controlsY=narrow?ry+22:ry-3;
+    if(row.range) {
+      const r=row.range, sx=narrow?x+16:x+224, sw=narrow?inner-64:w-442;
+      slider(f,KEY_SETTINGS_SLIDER+i,sx,controlsY,sw,30,(r.get(s)-r.min)/(r.max-r.min),r.step/(r.max-r.min),row.label,row.value(s));
+      for(let k=0;k<2;k++)smallButton(f,key+2+k,right-68+k*36,controlsY,32,30,k?"+":"−",`${k?"Increase":"Decrease"} ${row.label}`,focus===key+2+k);
+    } else if(TOGGLES.has(i)) {
+      // The complete value is a button. Its underline reads as an action, not a fake slider track.
+      smallButton(f,key+3,valueX,ry,106,30,"",`Change ${row.label}: ${row.value(s)}`,focus===key+3);
+      f.add(60000+key,K_PANEL,valueX+8,ry+28,90,1,S_ICE).alpha=.4;
+    } else if(i===10) {
+      smallButton(f,key+3,narrow?x+24:right-76,narrow?ry+22:ry-3,76,30,"Download","Download all assets",focus===key+3);
+    } else {
+      for(let k=0;k<2;k++)smallButton(f,key+2+k,right-68+k*36,controlsY,32,30,k?"›":"‹",`${k?"Next":"Previous"} ${row.label}`,focus===key+2+k);
     }
   });
-  // The bar spans 60 dB. Quiet speech fills about half of it. It is empty until the talk key has asked for the microphone.
-  const my = y + PAD + titleH + 8 + SETTING_ROWS.length * ROW;
-  f.text(KEY_SETTINGS_MIC, x + PAD, my + 5, 120, S_LABEL, "Microphone");
-  const bar = f.add(KEY_SETTINGS_MIC + 1, K_BAR, x + PAD + 130, my + 9, w - PAD * 2 - 130, 8, S_STAMINA);
-  const db = micLevel > 0 ? 20 * Math.log10(micLevel) : -60;
-  bar.value = db <= -60 ? 0 : db >= 0 ? 1 : 1 + db / 60;
+  if(s.tab===1) {
+    f.text(KEY_SETTINGS_MIC,x+24,y+h-44,140,S_LABEL,"Microphone input");
+    const level=Math.max(0,Math.min(1,1+(micLevel>0?20*Math.log10(micLevel):-60)/60));
+    for(let i=0;i<16;i++)f.add(KEY_SETTINGS_MIC+1+i,K_PANEL,x+174+i*(inner-150)/16,y+h-43,(inner-150)/16-3,12,S_ICE).alpha=i/16<level?.8:.12;
+  }
+  if(s.tab===2)f.text(KEY_SETTINGS_MIC+20,x+24,y+192,inner,S_MENU_NOTE,fitText("Select and drag a slider. Arrow keys make precise adjustments.",inner,S_MENU_NOTE));
 }
 
-/** Returns true if the key was one of this screen's buttons. */
+export function settingsValue(key: number, value: number, s: Settings): boolean {
+  const row=SETTING_ROWS[key-KEY_SETTINGS_SLIDER], r=row?.range;
+  if(!r || !Number.isFinite(value))return false;
+  r.set(s,r.min+Math.max(0,Math.min(1,value))*(r.max-r.min)); s.changed(); return true;
+}
+
 export function settingsClick(key: number, s: Settings): boolean {
-  const k = key - KEY_SETTINGS_ROW;
-  if (k < 0 || k >= SETTING_ROWS.length * 4 || k % 4 < 2) return false;
-  SETTING_ROWS[k >> 2]!.step(s, k % 4 === 2 ? -1 : 1);
-  return true;
+  if(key>=KEY_SETTINGS_TAB && key<KEY_SETTINGS_TAB+SETTING_GROUPS.length){s.tab=key-KEY_SETTINGS_TAB;return true;}
+  const k=key-KEY_SETTINGS_ROW;
+  if(k<0 || k>=SETTING_ROWS.length*4 || k%4<2)return false;
+  SETTING_ROWS[k>>2]!.step(s,k%4===2?-1:1); s.changed(); return true;
+}
+
+/** Horizontal navigation changes the value in that direction, regardless of which arrow has focus. */
+export function settingsAdjust(key:number,by:number,s:Settings):boolean {
+  const k=key-KEY_SETTINGS_ROW;
+  if(k<0 || k>=SETTING_ROWS.length*4 || k%4<2 || k>>2===10)return false;
+  SETTING_ROWS[k>>2]!.step(s,by); s.changed(); return true;
 }

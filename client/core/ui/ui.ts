@@ -9,12 +9,15 @@ import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_TAG } from "./chat.ts";
 import { CreatorScreen } from "./creator.ts";
 import { buildCombat } from "./combat.ts";
 import { buildHud, chatBand } from "./hud.ts";
+import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls-help.ts";
+import { CONTROL_GROUPS } from "./controls-guide.ts";
+import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS } from "./menu.ts";
 import { InventoryScreen } from "./inventory.ts";
-import { UiFrame } from "./nodes.ts";
+import { K_SLIDER, UiFrame } from "./nodes.ts";
 import { buildMap } from "./screens.ts";
 import { ChoosingScreen, KEY_CHOOSE_FILTER } from "./choosing.ts";
 import { Settings } from "../settings.ts";
-import { buildSettings, settingsClick } from "./settings.ts";
+import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
 import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import { TravelScreen } from "./travel.ts";
@@ -43,6 +46,16 @@ export class Ui {
   map = false;
   character = false;
   options = false;
+  menu = false;
+  help = false;
+  helpDevice = 0;
+  helpGroup = 0;
+  inputDevice = 0;
+  inspect = false;
+  reconnectRequested = false;
+  menuFocus = KEY_MENU_RESUME;
+  private focusNext = 0;
+  private menuShift = false;
   readonly settings = new Settings();
   /** The session has no body and chooses where to rise, so the mouse is free. */
   private dead = false;
@@ -54,18 +67,62 @@ export class Ui {
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    return this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
+    return this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
   }
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
-    return !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open;
+    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open;
+  }
+
+  openMenu(): void {
+    this.menu = true;
+    this.menuShift = false;
+    this.inspect = false;
+    this.help = this.options = false;
+    this.focusTo(KEY_MENU_RESUME);
+  }
+
+  private focusTo(key: number): void { this.menuFocus = this.focusNext = key; }
+
+  private moveFocus(by: number): void {
+    const keys = this.frame.nodes.slice(0, this.frame.count).filter((n) => n.interactive).map((n) => n.key);
+    const at = keys.indexOf(this.menuFocus);
+    if (keys.length) this.focusTo(keys[at < 0 ? (by > 0 ? 0 : keys.length - 1) : (at + by + keys.length) % keys.length]!);
+  }
+
+  navigate(direction: number): number {
+    if (direction) this.moveFocus(direction);
+    if (!this.frame.find(this.menuFocus)?.interactive) this.moveFocus(1);
+    return this.menuFocus;
+  }
+
+  adjustFocused(by: number, end = false): boolean {
+    if(this.console.open || this.chat.open || (!this.menu && !this.creating))return false;
+    const n=this.frame.find(this.menuFocus);
+    if(n?.kind===K_SLIDER) { this.input(n.key,String(end?(by>0?1:0):n.value+by*n.step)); return true; }
+    return !end && this.options && settingsAdjust(this.menuFocus,by,this.settings);
   }
 
   /** Returns true if the interface used the key. The shell must then suppress the browser's own handling. */
   key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
+    if(down && ["ArrowLeft","ArrowRight","Home","End"].includes(code) && this.adjustFocused(code==="ArrowLeft"||code==="Home"?-1:1,code==="Home"||code==="End"))return true;
+    if (this.menu) {
+      if (code === "ShiftLeft" || code === "ShiftRight") this.menuShift = down;
+      if (code === "Escape" && down && !repeat) {
+        if (this.options || this.help) { this.options = this.help = false; this.focusTo(KEY_MENU_RESUME); }
+        else this.menu = false;
+      }
+      if (down && (code === "Tab" || code === "ArrowDown" || code === "ArrowUp")) this.moveFocus(code === "ArrowUp" || (code === "Tab" && this.menuShift) ? -1 : 1);
+      if (down && !repeat && (code === "Enter" || code === "Space" || code === "NumpadEnter")) this.pointer(0, this.menuFocus, 0, 0, 0, session);
+      return true;
+    }
     const con = this.console;
     const chat = this.chat;
+    if(this.creating && !con.open) {
+      if(code==="ShiftLeft" || code==="ShiftRight")this.menuShift=down;
+      if(code==="Tab") { if(down)this.moveFocus(this.menuShift?-1:1); return true; }
+    }
     // The name prompt has the keyboard until it is answered.
     if (this.naming.open && !con.open) return this.naming.key(code, down, repeat, session);
     if (this.structure.naming && !con.open) return this.structure.key(code, down, repeat, session);
@@ -85,6 +142,9 @@ export class Ui {
       return true;
     }
     if (!con.open) {
+      if (code === "KeyH" && (this.inspect || this.wantsPointerLock)) { this.inspect = down; return true; }
+      if (code === "Escape" && this.inspect) { if (down && !repeat) this.inspect = false; return true; }
+      if (code === "KeyL" && (this.inspect || this.wantsPointerLock)) { if (down && !repeat) { this.settings.minimap = !this.settings.minimap; this.settings.changed(); } return true; }
       // The structure menu takes its digits and Escape. Opening any other screen closes it.
       if (this.structure.key(code, down, repeat, session)) return true;
       // Chat does not open while the session is in the creator.
@@ -107,10 +167,16 @@ export class Ui {
           this.map = map;
           this.character = character;
           this.options = options;
+          this.inspect = false;
+          if (options) { this.menu = true; this.focusTo(KEY_MENU_BACK); }
           this.travel.open = false;
           if (inventory) this.inventory.open = true;
           else this.inventory.close(session);
         }
+        return true;
+      }
+      if (code === "Escape") {
+        if (down && !repeat) this.openMenu();
         return true;
       }
       return false;
@@ -148,13 +214,34 @@ export class Ui {
 
   /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. */
   pointer(kind: number, key: number, x: number, y: number, button: number, session: ClientSession | null): void {
+    if(this.frame.find(key)?.kind===K_SLIDER) { if(kind===0 && button===0)this.focusTo(key); return; }
+    if (this.menu) {
+      if (kind === 2 && this.frame.find(key)?.interactive) this.menuFocus = key;
+      if (kind === 0 && button === 0) {
+        if(this.frame.find(key)?.interactive)this.focusTo(key);
+        if (key === KEY_MENU_RESUME) { if (session?.state === "closed") this.reconnectRequested = true; else this.menu = false; }
+        else if (key === KEY_MENU_SETTINGS) { this.options = true; this.focusTo(KEY_MENU_BACK); }
+        else if (key === KEY_MENU_CONTROLS) { this.help = true; this.helpDevice = this.inputDevice; this.focusTo(KEY_MENU_BACK); }
+        else if (key === KEY_MENU_BACK) { this.options = this.help = false; this.focusTo(KEY_MENU_RESUME); }
+        else if (key === KEY_MENU_LEAVE) { session?.close(); this.focusTo(KEY_MENU_RESUME); }
+        else if (this.help && (key === KEY_CONTROLS_DEVICE || key === KEY_CONTROLS_DEVICE + 1)) this.helpDevice = key - KEY_CONTROLS_DEVICE;
+        else if (this.help && key >= KEY_CONTROL_GROUP && key < KEY_CONTROL_GROUP + CONTROL_GROUPS.length) this.helpGroup=key-KEY_CONTROL_GROUP;
+        else if (this.help && key === KEY_CONTROL_GLYPHS) { this.settings.padGlyphs=1-this.settings.padGlyphs; this.settings.changed(); }
+        else if (this.options) settingsClick(key, this.settings);
+      }
+      return;
+    }
+    if (kind === 0 && key === KEY_MENU_OPEN) {
+      this.openMenu();
+      return;
+    }
     if (!session || this.console.open) return;
     if (kind === 0 && key === KEY_CHAT_TAG) {
       this.chat.cycle(session);
       return;
     }
     if (this.creating) {
-      this.creator.pointer(kind, key, x, session);
+      this.creator.pointer(kind, key, session);
       return;
     }
     if (kind === 0 && key !== 0) this.hear?.("click");
@@ -167,6 +254,13 @@ export class Ui {
   }
 
   input(key: number, value: string): void {
+    const n=this.frame.find(key);
+    if(n?.kind===K_SLIDER) {
+      if(value.trim()==="" || !Number.isFinite(Number(value)))return;
+      const v=Math.max(0,Math.min(1,Math.round(Number(value)/n.step)*n.step));
+      if(this.options?settingsValue(key,v,this.settings):this.creating && this.creator.value(key,v))n.value=v;
+      return;
+    }
     if (key === KEY_NAME_INPUT) this.naming.edit(value);
     else if (key === KEY_STRUCT_NAME_INPUT) this.structure.edit(value);
     else if (key === KEY_CHOOSE_FILTER) this.choosing.edit(value);
@@ -178,21 +272,21 @@ export class Ui {
     const f = this.frame;
     f.begin(aspect);
     this.creating = session?.sessionState === SESSION_CREATING;
+    this.dead = session?.sessionState === SESSION_DEAD;
     // A survivor still in the creator has no vitals, no position and nothing to aim at.
-    if (!this.creating) {
+    if (session) this.chat.absorb(session);
+    if (!this.creating && !this.menu) {
       // Marks over creatures are under the rest of the HUD.
       buildOverhead(f, hud.overhead);
-      buildHud(f, hud);
+      buildHud(f, hud, this.settings, (this.wantsPointerLock || this.inspect) && !session?.open, this.inspect);
       buildCombat(f, hud.combat);
       // Chat is built over the HUD and under every screen.
       if (session) {
-        this.chat.absorb(session);
         const band = chatBand(f, hud);
         this.chat.build(f, band.top, band.bottom, session.serverTick);
       }
-    } else this.chat.close();
+    } else if (this.creating) this.chat.close();
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
-    this.dead = session?.sessionState === SESSION_DEAD;
     if (this.dead || this.creating) this.structure.close();
     // The filter is for one spell of choosing.
     if (!this.dead && (this.choosing.filtering || this.choosing.filter !== "")) {
@@ -200,7 +294,12 @@ export class Ui {
       this.choosing.edit("");
     }
     if (!this.console.open && !this.chat.open) {
-      if (this.creating && session) this.creator.build(f, this.palette, session.name);
+      if (this.menu) {
+        if (this.options) {
+          buildSettings(f, this.settings, hud.micLevel, this.menuFocus);
+        } else if (this.help) buildControls(f, this.helpDevice, this.menuFocus, this.helpGroup, this.settings.padGlyphs);
+        else buildMenu(f, hud, session?.state === "active", this.menuFocus);
+      } else if (this.creating && session) this.creator.build(f, this.palette, session.name);
       else if (this.dead && session) this.choosing.build(f, session, hud);
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
@@ -214,9 +313,10 @@ export class Ui {
     // The name prompt goes over every other screen, but under the console.
     if (session && this.registry && !this.creating) {
       this.naming.absorb(session);
-      if (!this.console.open) this.naming.build(f, session, this.registry);
+      if (!this.console.open && !this.menu) this.naming.build(f, session, this.registry);
     }
     if (session) this.console.absorb(session);
     this.console.build(f);
+    if (this.focusNext) { const node = f.find(this.focusNext); if (node) node.focus = true; this.focusNext = 0; }
   }
 }
