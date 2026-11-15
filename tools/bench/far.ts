@@ -21,9 +21,11 @@ import { writeMap } from "../../shared/world/mapfile.ts";
 import { Summary, FAR_RADIUS, bakeChunk, pieceShapes } from "../../shared/world/tactical.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FAR_SLOTS, farPart } from "../../client/core/render/far.ts";
+import { FAR_NODE_BUFFERS, farNodeOf } from "../../client/core/render/farnodes.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { castle, farWorld } from "../../tests/fixtures/farworld.ts";
+import { nodeWorld } from "../../tests/fixtures/nodeworld.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
 import { buildCorePack } from "../pack/build.ts";
 
@@ -116,6 +118,128 @@ export function benchFar(host: Host, run: Run, section: (title: string) => void,
   game.spendChunkWindow = spend;
   benchFarJoins(section, record);
   benchFarBlocks(section, record);
+  benchFarNodes(section, record);
+}
+
+/**
+ * Far trees, rocks and bushes (D259): the 8 km map of hills, 160 slots a chunk of trees, rocks and bushes 3 to 2 to 1,
+ * from its middle at 1,080 rows across 102 degrees. Making tiles, each tier's draws and triangles, and the frame build
+ * of a walk across chunk borders.
+ */
+export function benchFarNodes(section: (title: string) => void, record: Record): void {
+  section("Far nodes: the 8 km map's wood, 160 slots a chunk, from its middle");
+  const ground = (x: number, z: number): number => 40 + 30 * Math.sin(x / 400) * Math.cos(z / 350) + 8 * Math.sin(x / 53) * Math.sin(z / 61);
+  const w = nodeWorld({ chunksX: 128, chunksZ: 128, ground, kinds: ["core:tree", "core:tree", "core:tree", "core:rock", "core:rock", "core:bush"], perChunk: 160, width: 16, height: 9, pack: parsePack(buildCorePack()) });
+  w.scene.viewHeight = 1080;
+  w.cam.fovY = (70 * Math.PI) / 180;
+  w.cam.aspect = 16 / 9;
+  const far = w.scene.nodesFar!;
+  const makes = far.makes;
+  const hook = w.scene as unknown as { farNodes: (cam: unknown) => void };
+  const inner = hook.farNodes;
+  let spent = 0;
+  hook.farNodes = function (this: unknown, cam: unknown): void {
+    const t = performance.now();
+    inner.call(this, cam);
+    spent += performance.now() - t;
+  };
+  const mid = 4096 + 10;
+  /** Stands the body and the camera at (x, z), looking along +x, and builds a frame: its packet, ms, and the far nodes' share. */
+  const at = (x: number, z: number, yaw = Math.PI / 2): { p: FramePacket; ms: number; far: number } => {
+    w.stand(x, z);
+    w.look(x, w.hf.heightAt(x, z) + 1.7, z, yaw, 0);
+    spent = 0;
+    const t = performance.now();
+    const p = w.frame();
+    return { p, ms: performance.now() - t, far: spent };
+  };
+  const nodeDraws = (p: FramePacket): number[] => [...Array(p.drawCount).keys()].filter((d) => p.drawBuffer[d]! >= FAR_NODE_BUFFERS && p.drawBuffer[d]! < FAR_NODE_BUFFERS * 2);
+  const tris = w.scene.assets.table.tris;
+  const triangles = (p: FramePacket): number => nodeDraws(p).reduce((n, d) => n + tris[p.drawMesh[d]!]![p.drawLod[d]!]! * p.drawInstances[d]!, 0);
+  /** Triangles of the far nodes drawn that stand in view and within their kind's reach: what the plan's rows count. */
+  const inView = (p: FramePacket): number => {
+    let n = 0;
+    const runs = new Set<string>();
+    for (const d of nodeDraws(p)) {
+      const run = `${p.drawBuffer[d]}/${p.drawFirst[d]}`;
+      if (runs.has(run)) continue;
+      runs.add(run);
+      const { data, slots } = w.card.get(p.drawBuffer[d]!)!;
+      const f32 = new Float32Array(data.buffer);
+      for (let i = p.drawFirst[d]!; i < p.drawFirst[d]! + p.drawInstances[d]!; i++) {
+        const [x, y, z] = [0, 1, 2].map((a) => f32[i * 5 + a]! + p.drawOffset[d * 3 + a]!);
+        const [chunk, slot] = farNodeOf(w.dims, p.drawBuffer[d]!, slots[i]!);
+        if (Math.hypot(x!, y!, z!) < far.reachOf(w.field.kindAt(chunk, slot)) && w.cam.boxVisible(x!, y!, z!, x!, y!, z!)) n += tris[p.drawMesh[d]!]![p.drawLod[d]!]!;
+      }
+    }
+    return n;
+  };
+  const kinds = ["core:tree", "core:rock", "core:bush"].map(w.kind);
+  for (const name of ["lowpoly", "medium", "high", "ultra"]) {
+    w.scene.assets.tier = tierOf(name);
+    // Made from nothing, a few a frame, nearest first; then a turn of the camera.
+    w.scene.resetUploads();
+    (far as unknown as { tiles: Map<number, unknown> }).tiles.clear();
+    let frames = 0;
+    const making: number[] = [];
+    for (; frames === 0 || far.pending > 0; frames++) {
+      const f = at(mid, mid);
+      making.push(f.far);
+    }
+    const draws: number[] = [];
+    const sent: number[] = [];
+    const seen: number[] = [];
+    const builds: number[] = [];
+    for (let k = 0; k < 36; k++) {
+      const f = at(mid, mid, (k / 36) * Math.PI * 2);
+      draws.push(nodeDraws(f.p).length);
+      sent.push(triangles(f.p));
+      if (k % 6 === 0) seen.push(inView(f.p));
+      builds.push(f.far);
+    }
+    const reach = kinds.map((k) => far.reachOf(k).toFixed(0)).join(", ");
+    record(`${name}: reach of trees, rocks, bushes`, far.reachOf(kinds[0]!), `m (${reach} m)`);
+    record(`${name}: frames until every tile is made, and the worst frame's ms of it`, frames, `frames, ${Math.max(...making).toFixed(2)} ms`);
+    record(`${name}: far node draws a frame, mean and most`, mean(draws), `(${Math.max(...draws)})`);
+    record(`${name}: far node triangles sent a frame, mean and most`, mean(sent), `(${Math.max(...sent)})`);
+    record(`${name}: of them in view and in reach, as the plan's row counts, mean and most`, mean(seen), `(${Math.max(...seen)})`, { lowpoly: 39e3, medium: 315e3, high: 0.9e6, ultra: 2.0e6 }[name]);
+    record(`${name}: far nodes' share of the frame build, median and worst`, median(builds), `ms, ${Math.max(...builds).toFixed(3)} ms`);
+    record(`${name}: tiles held, and their bytes`, (far as unknown as { tiles: Map<number, unknown> }).tiles.size, `tiles, ${(far.bytes / 1048576).toFixed(1)} MB`);
+  }
+  // A tile made from nothing: one chunk's nodes changing hands remakes its tile; here every chunk of it is new.
+  w.scene.assets.tier = tierOf("medium");
+  const t = performance.now();
+  (far as unknown as { tiles: Map<number, unknown> }).tiles.clear();
+  far.makes = Infinity;
+  at(mid, mid);
+  const all = (far as unknown as { tiles: Map<number, unknown> }).tiles.size;
+  record("medium: a tile made from nothing, mean of every tile in reach", (performance.now() - t) / all, `ms (${all} tiles)`);
+  far.makes = makes;
+  // A walk at 6 m a frame across 2 km, the near field following, once to warm and once measured: the frames that cross
+  // a chunk border, where the tiles the near field touched are made again in that frame. The test card keeps no copies.
+  w.holdCard = false;
+  for (const name of ["lowpoly", "medium", "ultra"]) {
+    w.scene.assets.tier = tierOf(name);
+    const crossing: number[] = [];
+    const share: number[] = [];
+    const other: number[] = [];
+    for (let round = 0; round < 2; round++) {
+      far.makes = Infinity;
+      at(mid - 1000, mid + 20);
+      far.makes = makes;
+      [crossing.length, share.length, other.length] = [0, 0, 0];
+      for (let x = mid - 1000; x <= mid + 1000; x += 6) {
+        const f = at(x, mid + 20);
+        if (Math.floor(x / 64) !== Math.floor((x - 6) / 64)) {
+          crossing.push(f.ms);
+          share.push(f.far);
+        } else other.push(f.ms);
+      }
+    }
+    record(`${name}: a walk, frame build crossing a chunk border, median and worst`, median(crossing), `ms, ${Math.max(...crossing).toFixed(2)} ms`);
+    record(`${name}: the far nodes' share of it, worst and median`, Math.max(...share), `ms, ${median(share).toFixed(2)} ms`, 2);
+    record(`${name}: a walk, frame build not crossing, median`, median(other), "ms");
+  }
 }
 
 /**
@@ -391,8 +515,9 @@ class Bot {
 /** A row as tools/bench.ts prints it, for running this file alone. */
 const printed: Record = (name, value, unit, budget = null) => console.log(`  ${name.padEnd(58)} ${value.toFixed(value < 10 ? 3 : 1).padStart(12)} ${unit}${budget === null ? "" : value <= budget ? `  ok (budget ${budget})` : `  MISS (budget ${budget})`}`);
 
-// With --blocks, the far blocks' rows alone, which need no server.
+// With --blocks or --nodes, the far blocks' or the far nodes' rows alone, which need no server.
 if (import.meta.main && process.argv.includes("--blocks")) benchFarBlocks((title) => console.log(`\n${title}`), printed);
+else if (import.meta.main && process.argv.includes("--nodes")) benchFarNodes((title) => console.log(`\n${title}`), printed);
 else if (import.meta.main) {
   // The benchmark's map: 8 km of hills with 250 bases of 2,000 pieces, 40 survivors at one and 60 in pairs at 30 others.
   const reg = contentFor(compileContent(CORE_CONTENT).registry!, new Rules());

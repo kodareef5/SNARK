@@ -27,6 +27,7 @@ export interface Material {
 export function materialsOf(asset: Asset): Material[] {
   const spec = asset.spec;
   if (spec.kind === "sky") return [{ name: "sky", id: `${asset.id}/sky`, spec: { base: spec.moon, regions: { mask: spec.low, mask2: spec.high }, data: true }, dir: asset.dir }];
+  if (spec.kind === "water") return [{ name: "waves", id: `${asset.id}/waves`, spec: { regions: { mask: spec.long, mask2: spec.short }, data: true }, dir: asset.dir }];
   if (spec.kind !== "creature" && spec.kind !== "pieces") return [];
   return Object.entries(spec.materials ?? {}).map(([name, m]) => ({ name, id: m.id ?? `${asset.id}/${name}`, spec: m, dir: m.dir ?? asset.dir }));
 }

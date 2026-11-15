@@ -89,6 +89,7 @@ import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 import { CMD_FAR, RESULT_BUSY, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
+import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
 
 export interface SessionOptions {
@@ -268,7 +269,7 @@ export class ClientSession {
   /** Reject reason from the server, or a negative local reason. */
   closeReason = 0;
 
-  world: (CollisionWorld & { dims: MapDims; far: FarSource }) | null = null;
+  world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
@@ -344,6 +345,8 @@ export class ClientSession {
   nodeField: NodeField | null = null;
   private nodeChunk = -1;
   private readonly nodeGone = new Map<number, number[]>();
+  /** Chunks the node field took or let go of, or whose used-up nodes were told, for the far nodes. */
+  private nodeChanges: NodeChanges | null = null;
   /** Bodies the server said died, by id, and the ids one snapshot said so of. */
   private readonly died = new Map<number, number>();
   private readonly dying: number[] = [];
@@ -749,6 +752,7 @@ export class ClientSession {
     this.nodeGone.set(chunk, gone);
     for (const i of before) if (!gone.includes(i)) field.set(chunk, i, true);
     for (const i of gone) if (!before.includes(i)) field.set(chunk, i, false);
+    this.nodeChanges?.touch(chunk);
   }
 
   private recenterNodes(): void {
@@ -760,6 +764,7 @@ export class ClientSession {
     const gone = (c: number, i: number): boolean => this.nodeGone.get(c)?.includes(i) ?? false;
     field.retain(chunk, NODE_RADIUS, 1, gone);
     if (this.nodeChunk >= 0) field.retain(this.nodeChunk, NODE_RADIUS, -1, gone);
+    this.nodeChanges?.moved(this.nodeChunk, chunk, NODE_RADIUS);
     this.nodeChunk = chunk;
   }
 
@@ -1025,7 +1030,10 @@ export class ClientSession {
     this.nodeField = source ? new NodeField(dims, reg, source) : null;
     this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
     const far: FarSource = { cells: this.far, complete: (chunk) => this.whole[chunk] === 1 };
-    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...(this.nodeField ? { nodes: this.nodeField.store } : {}) };
+    const field = this.nodeField;
+    this.nodeChanges = field ? new NodeChanges(dims) : null;
+    const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
+    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes };
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);

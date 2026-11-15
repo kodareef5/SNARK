@@ -24,13 +24,15 @@ import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { FarNodes, type FarNodeSource } from "./farnodes.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
+import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
 
 export interface RenderWorld {
   readonly dims: MapDims;
@@ -40,6 +42,8 @@ export interface RenderWorld {
   readonly nodes?: StructureStore;
   /** Other bases past the near rows, drawn as blocks (far.ts). */
   readonly far?: FarSource;
+  /** Trees, rocks and bushes past the near node field (farnodes.ts). */
+  readonly farNodes?: FarNodeSource;
 }
 
 /** The viewer's own body, which is not among the remote entities. */
@@ -208,8 +212,9 @@ export class Scene {
   private readonly transientF32: Float32Array;
   private readonly transientU16: Uint16Array;
   private readonly waterMesh: number;
-  /** The material whose pictures the dome draws, or -1 where the pack has none. */
+  /** The materials whose pictures the dome and the sea draw, or -1 where the pack has none. */
   private readonly skyMaterial: number;
+  private readonly waterMaterial: number;
   private readonly beamMesh: number;
   /** Places to mark with a beam, x, y, z each. The app sets them before build(). */
   readonly beams: number[] = [];
@@ -233,6 +238,8 @@ export class Scene {
   private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, NEAR);
   /** Bases drawn as blocks where the near store does not hold their chunks whole, given a far source and the far mesh. */
   private readonly far: FarBlocks | null;
+  /** Nodes past the near node field, given a source of them. */
+  readonly nodesFar: FarNodes | null;
   /** Sun shadows: the cascades fitted this frame. */
   readonly cascades = new Cascades();
   /** Whether anything casts this frame, how far the true sun climbs (its unit vector's y), and frames fitted, for a cascade drawn every other frame. */
@@ -346,9 +353,12 @@ export class Scene {
     const far = table.find(FAR_MESH);
     const shown = (k: number): number => (this.meshOfKind[k] === missing ? -1 : this.meshOfKind[k]!);
     this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown)) : null;
+    const looks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris };
+    this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
     this.skyMaterial = table.materials.findIndex((m) => m.id === SKY_MATERIAL);
+    this.waterMaterial = table.materials.findIndex((m) => m.id === WATER_MATERIAL);
     for (let k = 0; k < 3; k++) {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
@@ -361,6 +371,7 @@ export class Scene {
     this.assets.residency.reset();
     this.terrain.reset();
     this.far?.reset();
+    this.nodesFar?.reset();
     this.cascades.clear();
   }
 
@@ -407,6 +418,7 @@ export class Scene {
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
     if (this.far) this.farBlocks(cam);
+    if (this.nodesFar) this.farNodes(cam);
     if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
@@ -617,6 +629,24 @@ export class Scene {
     p.drawCount = d + 1;
     this.doubled += copies - 1;
     p.triangles += triangles * copies;
+  };
+
+  /** Trees, rocks and bushes past the near node field, each kind to its reach at its last level, faded over the last of it. */
+  private farNodes(cam: Camera): void {
+    const p = this.packet;
+    p.frame[FRAME.fade] = this.assets.tier.fade;
+    this.nodesFar!.update(p, this.assets.residency, cam.x, cam.z, this.assets.tier);
+    this.nodesFar!.draw(cam, this.drawFarNodes);
+  }
+
+  /** A run of far nodes at its mesh's last level, which the boot pack holds. */
+  private readonly drawFarNodes = (mesh: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, fade: number, distance: number): void => {
+    const p = this.packet;
+    const from = p.drawCount;
+    const last = this.assets.table.error[mesh]!.length - 1;
+    this.assets.want(mesh, last, distance / this.reachOfMesh[mesh]!);
+    this.draw(mesh, last, buffer, first, count, ox, oy, oz, DRAW_SIZED, passes);
+    p.drawFade.fill(fade, from, p.drawCount);
   };
 
   private bodies(cam: Camera, remote: RemoteSample | null): void {
@@ -833,20 +863,28 @@ export class Scene {
     p.transientCount = first + n;
   }
 
-  /** Tiles of one flat mesh over the map, drawn last because they are see-through. */
+  /**
+   * Tiles of one flat mesh over the map, drawn last because they are see-through. On a lit tier the sea seen from above
+   * runs on past the map to the end of the view, and is drawn with its waves and its depth (water.ts); seen from under
+   * it, or in a plain sky, it is as it always was.
+   */
   private water(cam: Camera, sea: number): void {
     const p = this.packet;
     const hf = this.world.hf;
     const first = p.transientCount;
     let n = 0;
     const half = WATER_TILE / 2;
+    const lit = p.lit && !this.plainSky && cam.y >= sea;
+    const r = Math.ceil(this.viewDistance / WATER_TILE);
+    const [cx, cz] = [Math.floor(cam.x / WATER_TILE), Math.floor(cam.z / WATER_TILE)];
+    const [ix0, iz0, ix1, iz1] = lit ? [cx - r, cz - r, cx + r, cz + r] : [0, 0, Math.ceil(hf.sizeX / WATER_TILE) - 1, Math.ceil(hf.sizeZ / WATER_TILE) - 1];
     // The box round every tile drawn, for its depth ranges.
     let x0 = Infinity;
     let z0 = Infinity;
     let x1 = -Infinity;
     let z1 = -Infinity;
-    for (let tz = 0; tz * WATER_TILE < hf.sizeZ; tz++) {
-      for (let tx = 0; tx * WATER_TILE < hf.sizeX; tx++) {
+    for (let tz = iz0; tz <= iz1; tz++) {
+      for (let tx = ix0; tx <= ix1; tx++) {
         const x = tx * WATER_TILE + half - cam.x;
         const z = tz * WATER_TILE + half - cam.z;
         const y = sea - cam.y;
@@ -862,8 +900,13 @@ export class Scene {
       }
     }
     if (n === 0) return;
-    this.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, DRAW_BLEND, cam.passes(x0, sea - cam.y - 0.1, z0, x1, sea - cam.y + 0.1, z1));
+    const d = p.drawCount;
+    this.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, lit ? DRAW_BLEND | DRAW_WATER : DRAW_BLEND, cam.passes(x0, sea - cam.y - 0.1, z0, x1, sea - cam.y + 0.1, z1));
     p.transientCount = first + n;
+    if (!lit || p.drawCount === d) return;
+    p.drawMaterial[d] = this.waterMaterial;
+    seaFrame(p.frame, hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000);
+    if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
   }
 
   /**

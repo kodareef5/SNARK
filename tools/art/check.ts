@@ -554,7 +554,7 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
       if (mesh) report.meshes.push(measureMesh(mesh, pack, spec.budgets.triangles, report.faults, undefined, piece.errors));
       else report.faults.push(`${piece.id}: not in the pack`);
     }
-  } else if (spec.kind !== "sky") {
+  } else if (spec.kind !== "sky" && spec.kind !== "water") {
     // Bodies are cut by slot, so every mesh ends at a cut. Their surfaces are counted and not judged.
     for (const mesh of meshes) report.meshes.push(measureMesh(mesh, pack, [], []));
     for (const clip of pack.clips.clips) report.clips.push({ name: clip.id, frames: clip.frames, seconds: clip.frames / TICK_RATE, loop: clip.loop, step: 0, still: 0 });

@@ -2,8 +2,9 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { expect, test } from "bun:test";
 import { Found } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, FramePacket, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_WATER, FramePacket, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
+import { sunDirection } from "../../client/core/render/sky.ts";
 import { lit, shown } from "../../client/core/render/surface.ts";
 import { NODE_BUFFERS, bodySeed, type OwnBody } from "../../client/core/render/scene.ts";
 import { Viewpoint } from "../../client/core/viewpoint.ts";
@@ -101,10 +102,11 @@ test("nothing behind the camera or beyond the view distance is submitted", () =>
   const view = provingView(W, H);
   view.cam.yaw = Math.PI; // facing south, away from every structure
   const south = view.render();
-  // No structure is drawn. What is left is the nodes to the south, with the water surface last.
+  // No structure is drawn. What is left is the nodes to the south, with the water surface last, drawn on this lit tier
+  // as the sea seen from above.
   expect(south.drawCount).toBeGreaterThan(1);
   for (let d = 0; d < south.drawCount - 1; d++) expect(south.drawBuffer[d]!).toBeGreaterThanOrEqual(NODE_BUFFERS);
-  expect(south.drawFlags[south.drawCount - 1]).toBe(DRAW_BLEND);
+  expect(south.drawFlags[south.drawCount - 1]).toBe(DRAW_BLEND | DRAW_WATER);
   expect(south.tileCount).toBeGreaterThan(0);
 
   view.cam.yaw = 0;
@@ -168,7 +170,7 @@ test("water lies over the pool, tints what is under it, and changes the view fro
   const wet = rgb(at(0.5, 0.5));
   expect(wet[2]! - wet[0]!).toBeGreaterThan(40);
   expect(view.raster.pickKind[at(0.5, 0.5)]).toBe(PICK_TERRAIN);
-  expect(above.drawFlags[above.drawCount - 1]).toBe(DRAW_BLEND);
+  expect(above.drawFlags[above.drawCount - 1]).toBe(DRAW_BLEND | DRAW_WATER);
   // Nothing else is see-through. Nodes are drawn at their sizes.
   for (let d = 0; d < above.drawCount - 1; d++) expect(above.drawFlags[d]! & ~DRAW_SIZED).toBe(0);
   expect(above.fogEnd).toBe(4000);
@@ -189,7 +191,11 @@ test("the hour moves the sun and dims the world at night; noon is what every oth
     view.scene.hour = hour;
     const p = view.render();
     const o = (Math.floor(0.9 * H) * W + Math.floor(0.5 * W)) * 4; // plaza at the bottom of the frame
-    return { light: p.light, sunY: p.sun[1]!, sunX: p.sun[0]!, sky: p.sky[2]!, ground: view.raster.color[o]! };
+    // Low poly's sun lies round the sky where the lit tiers' does: its bearing from north toward east, in degrees.
+    const lit = [0, 0, 0];
+    sunDirection(hour, lit);
+    const bearing = (x: number, z: number): number => (Math.atan2(-x, z) * 180) / Math.PI;
+    return { light: p.light, sunY: p.sun[1]!, sunX: p.sun[0]!, sky: p.sky[2]!, ground: view.raster.color[o]!, off: Math.abs(bearing(p.sun[0]!, p.sun[2]!) - bearing(lit[0]!, lit[2]!)) };
   };
   const noon = at(12);
   const morning = at(8);
@@ -197,8 +203,10 @@ test("the hour moves the sun and dims the world at night; noon is what every oth
   const midnight = at(0);
   expect(noon.light).toBe(1);
   expect(noon.sunY).toBeGreaterThan(0.9);
-  expect(morning.sunX).toBeGreaterThan(0.2);
-  expect(evening.sunX).toBeLessThan(-0.2);
+  // It rises in the east (-X) and sets in the west, as on the lit tiers.
+  expect(morning.sunX).toBeLessThan(-0.2);
+  expect(evening.sunX).toBeGreaterThan(0.2);
+  expect([noon.off, morning.off, evening.off].every((d) => d < 0.01)).toBe(true);
   expect(morning.sunY).toBeCloseTo(evening.sunY, 5);
   // Night has 0.3 of the light and is still lit from above.
   expect(midnight.light).toBeCloseTo(0.3, 5);

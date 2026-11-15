@@ -86,6 +86,10 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // ranges (D252), which orders the draws by step and lists one across the split twice; with the split at 0 it is that again.
   // It was f589aaf4 until medium listed sun shadow casters (D267), and is that again with medium's shadows off. With them on
   // every frame's draws, triangles and tiles in view are what they were; the tiles only shadows need are counted, and a
-  // body's instances are ordered by the cascades they cast into.
-  expect(hash.toString(16)).toBe("38466578");
+  // body's instances are ordered by the cascades they cast into. It was 38466578 until two changes that each, alone, was
+  // shown to leave the rest of these frames as they were: medium drew the proving ground's trees, rocks and bushes past
+  // the near node field (D259; alone 2138be4c, and 38466578 again with medium's node reaches at 0), and medium drew the
+  // sea seen from above with WATER, past the map to the end of the view (D270; alone 60ea88d4, and 38466578 again with a
+  // plain sky, which draws the sea as it was). Together they give this.
+  expect(hash.toString(16)).toBe("5a53ee48");
 });
