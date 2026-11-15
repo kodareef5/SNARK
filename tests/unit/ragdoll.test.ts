@@ -3,9 +3,12 @@
 // falling again when the floor it lies on is taken away, the same every time. A client draws one only where the server
 // said the body died.
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Pose, sampleClip } from "../../shared/anim/clip.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
-import { buildRigs, type Rig } from "../../shared/anim/rigs.ts";
+import { buildRig, buildRigs, type Rig } from "../../shared/anim/rigs.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -13,10 +16,14 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import type { CreatureAsset } from "../../tools/art/spec.ts";
+import { convertCreature } from "../../tools/pack/creature.ts";
+import { readGltf } from "../../tools/pack/gltf.ts";
 import { provingView } from "../../tools/snap.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { strider } from "../fixtures/strider.ts";
+import { TUBE, tubeGlb } from "../fixtures/textured.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
 const rigs = buildRigs(corePack().header.rigs, corePack().clips);
@@ -99,6 +106,30 @@ test("a creature dropped on a slope rests within 3 s, with no joint past its lim
   }
 });
 
+test("the dodo comes to rest on the slope and on a floor from every one of 32 yaws, well inside the 3 s", () => {
+  // Its round trunk once crawled over onto its side for seconds, a few tenths inside the limit at the six yaws above and
+  // past it at others. Every yaw rests within 2 s, and nine in ten within 1 s.
+  const rig = rigs.get("core:dodo")!;
+  const slope = world(0.35);
+  const flat = world(0);
+  const ceiling = reg.index.get("core:ceiling_wood")!;
+  for (const dx of [-1.5, 1.5]) for (const dz of [-1.5, 1.5]) flat.structs.add(ceiling, 60 + dx, 2.5, 64 + dz, 0, 0, 1);
+  for (const [w, y, size] of [[slope, slope.hf.heightAt(60, 64), 1], [flat, 2.5 + reg.halfY[ceiling]!, 0.8]] as const) {
+    const times: number[] = [];
+    for (let k = 0; k < 32; k++) {
+      const yaw = (k * Math.PI) / 16;
+      const d = drop(rig, 60, y, 64, yaw, size);
+      const at = rest(d, w, 2);
+      expect([yaw, at > 0, past(d) < 1 * DEG, d.deepest(w) < 0.01]).toEqual([yaw, true, true, true]);
+      const x = Float64Array.from(d.x);
+      for (let f = 0; f < 60; f++) d.step(w, STEP);
+      expect(Array.from(d.x)).toEqual(Array.from(x));
+      times.push(at);
+    }
+    expect(times.filter((t) => t > 1).length).toBeLessThanOrEqual(3);
+  }
+});
+
 test("a ragdoll on a floor rests on it, falls again when the floor is taken away, and rests on the ground", () => {
   const w = world(0);
   const ceiling = reg.index.get("core:ceiling_wood")!;
@@ -114,6 +145,51 @@ test("a ragdoll on a floor rests on it, falls again when the floor is taken away
     expect(d.step(w, STEP)).toBe(true);
     expect([id, rest(d, w, 4) > 0, d.deepest(w) < 0.01, d.x[1]! < 1]).toEqual([id, true, true, true]);
     refs.splice(0, 4, ...[-1.5, 1.5].flatMap((dx) => [-1.5, 1.5].map((dz) => w.structs.add(ceiling, 60 + dx, floor, 64 + dz, 0, 0, 1))));
+  }
+});
+
+test("a body whose weight lies outside where it touches tips over at once, and one balanced within it stays", () => {
+  // A capsule laid on flat ground tilted onto one end, its middle 0.29 m or 0.06 m beside where that end touches.
+  const tip = (half: number, radius: number): [number, number] => {
+    const rig = buildRig({ id: "t:rod", skeleton: "t:rod", rest: [0, 0, 0], names: ["rod"], parent: [-1], caps: [0, 1, -half, 0, 0, half, 0, 0, radius], ragdoll: { limp: 0, bodies: [{ bone: 0, mass: 1, swing: 0, twist: 0 }] } }, { clips: [], index: new Map(), hash: 0 })!;
+    const w = world(0);
+    const pose = new Solved(1);
+    pose.rot.set([0, 0, Math.sin(0.15), Math.cos(0.15)]);
+    const d = new Ragdoll(rig, rig.ragdoll!);
+    d.start(pose, pose, 60, w.hf.heightAt(60, 64) + radius + half * Math.sin(0.3), 64, 0, 1);
+    const at = rest(d, w, 3);
+    return [at, (2 * Math.asin(Math.abs(d.q[2]!))) / DEG];
+  };
+  const [fell, flat] = tip(0.3, 0.1);
+  expect(fell).toBeLessThan(1);
+  expect(flat).toBeLessThan(1);
+  const [held, tilted] = tip(0.06, 0.15);
+  expect(held).toBeLessThan(0.6);
+  expect(tilted).toBeGreaterThan(15);
+});
+
+test("a hit capsule, and so a ragdoll's body, fits the body and not its loose cards, unless cards are all its zone has", () => {
+  // The tube's upper bone holds the quarter above its middle in one material and its top quarter in the other.
+  const dir = mkdtempSync(join(tmpdir(), "snark-ragdoll-"));
+  try {
+    const glb = join(dir, "tube.glb");
+    writeFileSync(glb, tubeGlb());
+    const top = (cards: readonly string[]): number => {
+      const spec: CreatureAsset = {
+        kind: "creature", source: { scripts: [] }, scale: 1, skeleton: { id: "tube", root: "lower" }, sockets: [], clips: [], feet: [], gaits: {}, regions: [],
+        zones: [{ zone: "torso", on: "upper", covers: ["upper"] }],
+        materials: { hide: { base: "tex/base.png", cutout: cards.includes("hide") }, horn: { base: "tex/base.png", cutout: cards.includes("horn") } },
+        budgets: { triangles: [512] },
+      };
+      const caps = convertCreature(readGltf(glb), TUBE, spec).rig.caps!;
+      // Its highest point above the upper bone's joint, halfway up the tube.
+      return Math.max(caps[3]!, caps[6]!) + caps[8]!;
+    };
+    expect(top([])).toBeGreaterThan(0.9);
+    expect(top(["horn"])).toBeLessThan(0.65);
+    expect(top(["hide", "horn"])).toBeCloseTo(top([]), 6);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
