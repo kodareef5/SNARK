@@ -5,15 +5,16 @@
 //
 //   bun assets/source/core/nodes/rocks/review.ts --view field --dist 400 --tier medium --out artifacts/rocks/field-400.png
 //
-// --view: field (the boulder field), scree (the slope), foot (one limestone on dark grass a few metres off, --kinds and
-// --turn to choose it). --dist: metres from the camera to the patches' middle. --tier: lowpoly, medium, high, ultra.
-// --hour of the day, 10 by default. --up: the camera's height over the ground, 1.7 by default. --size WxH. --zoom N
-// writes beside the picture its middle third enlarged N times.
+// --view: field (the boulder field), scree (the slope), foot (one stone on dark grass --dist metres off, --kinds and
+// --turn to choose it), lineup (every stone in a row --gap metres apart, and behind it the row turned a third of the way
+// round). --dist: metres from the camera to the patches' middle. --tier: lowpoly, medium, high, ultra. --hour of the
+// day, 10 by default. --up: the camera's height over the ground, 1.7 by default. --size WxH. --zoom N writes beside the
+// picture its middle third, or --crop X,Y,W,H of it, enlarged N times. --grass N: the ground's palette colour.
 //
 // --only near draws every stone with the near store at its own levels (the near field the whole map, the band past
 // it); --only far draws every one with the far store at its last level (the band at 1 to 2 m). --compare draws both and
-// says, stone by stone, how much its pixels and their mean colour change from the one to the other, which is what a
-// player sees change as a stone passes the band. --band FROM,TO and --chunks N move the tier's.
+// says, patch by patch, how their pixels and colours differ, which is what a player sees change as a stone passes the
+// band. --band FROM,TO and --chunks N move the tier's.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
