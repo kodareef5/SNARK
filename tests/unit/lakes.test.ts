@@ -14,7 +14,6 @@ import { flatWorld, sealedRoom, wrap, type TestWorld } from "../fixtures/world.t
 const FWD = 127;
 const NORTH = 0;
 const SOUTH = 32768;
-const EAST = 49152; // facing -X
 const WEST = 16384; // facing +X
 const DOWN = -12000;
 const UP = 12000;
