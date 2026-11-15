@@ -114,7 +114,7 @@ export const FRAME = {
   /** fMoon and fMoonColor: the way to the moon and its light. */
   moon: 8,
   moonColor: 12,
-  /** fSkyAbove and fSkyBelow: the sky's light on a surface facing up and on one facing down. */
+  /** fSkyAbove and fSkyBelow: the sky's light on a surface facing up and on one facing down, the ground's sent back. */
   skyAbove: 16,
   /** fSkyScale, fSkyAbove's fourth: the light one unit of the sky table stands for (sky.ts). */
   skyScale: 19,
@@ -151,13 +151,22 @@ export const FRAME = {
   spheres: 56,
   /** fCascades: each cascade's matrix, from camera-relative space to its clip space, as `viewProj` is for the view. */
   cascades: 72,
+  /**
+   * fSkySide, fSkySun and fSkyAlong: the sky's light on a face turned sideways beyond what fSkyAbove and fSkyBelow mixed
+   * give it, and on a face turned round from the sun's side, as the cosine of that way round and as its square
+   * (surface.ts `skyLight`).
+   */
+  skySide: 136,
+  skySun: 140,
+  skyAlong: 144,
 } as const;
-export const FRAME_FLOATS = FRAME.cascades + MAX_CASCADES * 16;
+export const FRAME_FLOATS = FRAME.skyAlong + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
+  highp vec4 fSkySide, fSkySun, fSkyAlong;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

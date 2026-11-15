@@ -37,6 +37,7 @@ export function evenSky(frame: Float32Array, sun: ArrayLike<number>): void {
   const sky = shaded / (albedo + skyShare(DIELECTRIC, 1, 1));
   const light = (srgbToLinear((AMBIENT + DIFFUSE) * grey) - shaded) / (albedo + DIELECTRIC / 4);
   frame.fill(0, 0, FRAME.ends);
+  frame.fill(0, FRAME.skySide);
   for (let k = 0; k < 3; k++) {
     frame[FRAME.sun + k] = sun[k]!;
     frame[FRAME.moon + k] = -sun[k]!;

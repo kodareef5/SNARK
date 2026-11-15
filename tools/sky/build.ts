@@ -11,7 +11,7 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { CARD, LIGHT_FLOATS, MOON_RADIUS, SKY_SIZE, SKY_SLICES, SUN_TOP, aroundCoord, aroundOf, cardExposure, cardTakes, decodeTexel, discUp, elevationOf, encodeTexel, hourOfSun, luminance, skyFrame, sliceCoord, sliceHeight, slotHeight, sunHeight, texelAt, upCoord } from "../../client/core/render/sky.ts";
-import { srgbToLinear } from "../../client/core/render/surface.ts";
+import { skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
 import { encodePng } from "../snap/png.ts";
 import { Atmosphere, EARTH, type Air } from "./atmosphere.ts";
 import { EVENING, GRADES, MORNING, bracket, carried, gradeAt, type Grade } from "./grade.ts";
@@ -25,8 +25,13 @@ import { fill, keySkies, untone, type KeySky } from "./keys.ts";
 export const AIR: Air = { ...EARTH, mieScatter: EARTH.mieScatter * 5, mieExtinct: EARTH.mieExtinct * 5 };
 /** The full moon's light against the sun's. */
 export const MOON = 2.5e-6;
-/** The share of light the ground sends back up, onto surfaces facing down. */
-export const GROUND = 0.2;
+/** The share of the light on it the ground sends back, and what stands on it: grass, sand and pale stone. */
+export const GROUND = 0.3;
+/**
+ * The share of what a face on land sees above the horizon that is open sky. The rest is the land about it and what
+ * stands on it, hills, trees, rocks and walls, which send back the ground's light.
+ */
+export const OPEN = 0.6;
 /** What a grey 128 card standing in the shade at noon shows, as light: 70 of 255 (D155). Sunlit and head on, it shows 128. */
 export const SHADED = srgbToLinear(70 / 255);
 /** Degrees under the horizon at which the afterglow is at its full share, and by which it is gone. */
@@ -34,7 +39,7 @@ const GLOW_FULL = 6;
 const GLOW_GONE = 12;
 /** Degrees up from which the white balance is whole. */
 const BALANCE_FULL = 15;
-/** Rings and steps round of the half sky the light of the sky above is summed over. */
+/** Rings and steps round of the half sky the sky's light is summed over. */
 const RINGS = 32;
 const ROUND = 32;
 const TEXELS = SKY_SIZE * SKY_SIZE;
@@ -60,19 +65,45 @@ function lookup(field: Float64Array, elevation: number, around: number, out: num
   }
 }
 
+/** The light of one sun height, as the frame block's lanes take it (surface.ts `skyLight`). */
 export interface Light {
   sun: Rgb;
   moon: Rgb;
+  /** The sky's on a face up and on one facing down, the ground's, and the frame block's fSkySide, fSkySun and fSkyAlong. */
   above: Rgb;
   below: Rgb;
+  side: Rgb;
+  sunward: Rgb;
+  along: Rgb;
 }
 
 export interface Slice {
   /** SKY_SIZE squared texels, RGBA, laid out as one z of `texelAt`. */
   bytes: Uint8Array;
-  /** LIGHT_FLOATS: the sun's, the moon's, the sky's above and below in the table's units, then the light a unit stands for. */
+  /** LIGHT_FLOATS: the sun's, the moon's and the sky's (`Light`) in the table's units, then the light a unit stands for. */
   lights: number[];
   exposure: number;
+}
+
+/** The physical sky summed over the half sky above for a face up and for upright faces round from the sun. */
+interface SkySums {
+  up: Rgb;
+  ring: Rgb[];
+}
+
+/** Degrees round from the sun of the upright faces the light on a face turned sideways is fitted to; the other half mirrors them. */
+const RING = [0, 45, 90, 135, 180];
+
+/** A frame block holding `l`, the sun due +X, for evaluating surface.ts `skyLight` as the lit programs do. */
+export function lightFrame(l: Light): Float32Array {
+  const f = new Float32Array(FRAME_FLOATS);
+  f[FRAME.moon] = -1;
+  f.set(l.above, FRAME.skyAbove);
+  f.set(l.below, FRAME.skyBelow);
+  f.set(l.side, FRAME.skySide);
+  f.set(l.sunward, FRAME.skySun);
+  f.set(l.along, FRAME.skyAlong);
+  return f;
 }
 
 /** A direction at `elevation` degrees, `around` degrees round from +X toward +Z. */
@@ -91,6 +122,7 @@ export class SkyBuilder {
   /** What the card's exposure is at noon, which every exposure is divided by. */
   private noon = 1;
   private readonly skies = new Map<number, Float64Array>();
+  private readonly sums = new Map<number, SkySums>();
   /** Each key by name, and its clear sky as the game is to show it, light before the tone curve: per texel of its slice, three powers of e. */
   private readonly keys = new Map<string, KeySky>();
   private readonly painted = new Map<string, Float64Array>();
@@ -250,36 +282,76 @@ export class SkyBuilder {
   }
 
   /**
-   * The light of one sun height as a frame block takes it, white-balanced. The sky's above is the dome over the upper
-   * half, each direction by how squarely it falls on a surface facing up: its colour the dome's as it is shown, its
-   * strength the physical sky's, so a key that paints the dome brighter makes it brighter against the land and does
-   * not light the land more. A surface facing down sees the ground, which sends back GROUND of all the light on it.
+   * The physical sky over the upper half summed for a face up and for upright faces RING degrees round from the sun,
+   * each direction by its solid angle and how squarely it falls on the face, before any scale. Made once a height.
    */
-  light(height: number, evening: boolean, g: Grade = gradeAt(height, this.path(evening))): Light {
+  private skySums(height: number): SkySums {
+    const made = this.sums.get(height);
+    if (made) return made;
     const s = this.skyFor(height);
-    const above: Rgb = [0, 0, 0];
-    let plain = 0;
-    let i = 0;
-    for (let r = 0; r < RINGS; r++) {
+    const up: Rgb = [0, 0, 0];
+    const ring: Rgb[] = RING.map(() => [0, 0, 0]);
+    const faces = RING.map((a) => [Math.cos(a * DEG), Math.sin(a * DEG)]);
+    for (let r = 0, i = 0; r < RINGS; r++) {
       const e = ((r + 0.5) / RINGS) * 90;
-      // A cell is a ring's height by its share of half the circle, and the other half mirrors it.
-      const w = 2 * Math.sin(e * DEG) * Math.cos(e * DEG) * (Math.PI / 2 / RINGS) * (Math.PI / ROUND);
+      const ce = Math.cos(e * DEG), se = Math.sin(e * DEG);
+      // A cell's solid angle: a ring's height by its share of half the circle. The other half mirrors it.
+      const cell = ce * (Math.PI / 2 / RINGS) * (Math.PI / ROUND);
       for (let q = 0; q < ROUND; q++, i += 6) {
-        plain += luminance(s.subarray(i, i + 3)) * w;
-        this.shown(height, evening, e, ((q + 0.5) / ROUND) * 180, this.c);
-        for (let k = 0; k < 3; k++) above[k] += this.c[k]! * w;
+        const a = ((q + 0.5) / ROUND) * Math.PI;
+        const x = ce * Math.cos(a), z = ce * Math.sin(a);
+        for (let k = 0; k < 3; k++) up[k] += s[i + k]! * 2 * se * cell;
+        faces.forEach(([fx, fz], n) => {
+          const w = (Math.max(0, fx! * x + fz! * z) + Math.max(0, fx! * x - fz! * z)) * cell;
+          for (let k = 0; k < 3; k++) ring[n]![k]! += s[i + k]! * w;
+        });
       }
     }
-    const strength = (plain / Math.max(luminance(above), 1e-30)) * this.sky * g.sky;
+    const sums = { up, ring };
+    this.sums.set(height, sums);
+    return sums;
+  }
+
+  /**
+   * The light of one sun height as a frame block takes it, white-balanced and tinted by the grade. The open sky's on a
+   * face up is the physical sky over the upper half, each direction by how squarely it falls on the face. Its colour is
+   * the physical sky's and not the dome's, as the keys have it: they paint the dome bluer than the shade it lights,
+   * cool grey at noon, and blue on the far side at golden hour under a rose dome there. The ground sends back GROUND
+   * of all the light on it, onto a face turned down, and from what stands about a face turned up, which sees OPEN of
+   * the open sky. An upright face sees more of the bright low sky, and more on the sun's side than the far one: the
+   * sky on upright faces round the sun is fitted with a part even round it, one that goes as the cosine of the way
+   * round from the sun and one as the cosine of twice that, which holds a glow low on the sun's side as narrow as the
+   * twilight's without darkening the far side.
+   */
+  light(height: number, evening: boolean, g: Grade = gradeAt(height, this.path(evening))): Light {
+    const sums = this.skySums(height);
     const balance = this.balanceAt(height);
-    for (let k = 0; k < 3; k++) above[k] *= strength * balance[k]!;
-    const glow = this.afterglow(height, evening, g, above, balance);
-    const sun = this.sunlight(height, g, false, balance).map((v, k) => v + glow[k]!) as Rgb;
+    const scale = (c: Rgb): Rgb => c.map((v, k) => v * this.sky * g.sky[k]! * balance[k]!) as Rgb;
+    const open = scale(sums.up);
+    const ring = sums.ring.map(scale);
     const moon = this.sunlight(-height, g, true, balance);
     const up = Math.max(0, Math.sin(slotHeight(height) * DEG));
     const down = Math.max(0, -Math.sin(height * DEG));
-    const below = [0, 1, 2].map((k) => GROUND * (sun[k]! * up + moon[k]! * down + above[k]!)) as Rgb;
-    return { sun, moon, above, below };
+    // The ground is lit by the sky as any face up is, part of it the ground's own light sent back; the afterglow is
+    // as strong as a share of that light on a face up without it.
+    const ground = (sun: Rgb): { below: Rgb; above: Rgb } => {
+      const below = [0, 1, 2].map((k) => (GROUND * (sun[k]! * up + moon[k]! * down + OPEN * open[k]!)) / (1 - GROUND * (1 - OPEN))) as Rgb;
+      return { below, above: [0, 1, 2].map((k) => OPEN * open[k]! + (1 - OPEN) * below[k]!) as Rgb };
+    };
+    const lit = this.sunlight(height, g, false, balance);
+    const glow = this.afterglow(height, evening, g, ground(lit).above, balance);
+    const sun = lit.map((v, k) => v + glow[k]!) as Rgb;
+    const { below, above } = ground(sun);
+    // The ring at 0, 45, 90, 135 and 180 degrees, mirrored, as a mean and its first two cosines. Upright, a face turned
+    // round from the sun by a gets the mean and the cosines' share; turned up or down, the cosine of twice a, the square
+    // of the way round less the square across it, shrinks with the side's share, and so with fSkySide.
+    const [h0, h45, h90, h135, h180] = ring as [Rgb, Rgb, Rgb, Rgb, Rgb];
+    const mean = [0, 1, 2].map((k) => (h0[k]! + 2 * (h45[k]! + h90[k]! + h135[k]!) + h180[k]!) / 8);
+    const twice = [0, 1, 2].map((k) => (h0[k]! - 2 * h90[k]! + h180[k]!) / 4);
+    const side = mean.map((v, k) => OPEN * (v - open[k]! / 2 - twice[k]!)) as Rgb;
+    const sunward = [0, 1, 2].map((k) => (OPEN * (h0[k]! - h180[k]! + Math.SQRT2 * (h45[k]! - h135[k]!))) / 4) as Rgb;
+    const along = twice.map((v) => 2 * OPEN * v) as Rgb;
+    return { sun, moon, above, below, side, sunward, along };
   }
 
   /**
@@ -291,30 +363,28 @@ export class SkyBuilder {
   anchor(): void {
     const g = gradeAt(NOON, this.path(false));
     this.balance.fill(1);
-    const s = Math.sin(NOON * DEG);
-    const l = [Math.cos(NOON * DEG), s, 0];
+    const l = [Math.cos(NOON * DEG), Math.sin(NOON * DEG), 0];
     // Head on, and in the shade: the card upright, facing away from the sun.
-    const head = cardTakes(l, l, l);
-    const shade = cardTakes([-1, 0, 0], [-1, 0, 0], l);
-    const facing = 0.5 + 0.5 * s;
-    const k1 = (1 - facing) * GROUND;
+    const head = { n: l, takes: cardTakes(l, l, l) };
+    const shade = { n: [-1, 0, 0], takes: cardTakes([-1, 0, 0], [-1, 0, 0], l) };
+    const on = (light: Light, card: typeof head): number[] => {
+      const sky = [0, 0, 0];
+      skyLight(sky, lightFrame(light), card.n);
+      return [0, 1, 2].map((k) => light.sun[k]! * card.takes.light + sky[k]! * card.takes.sky);
+    };
     for (let pass = 0; pass < 8; pass++) {
-      this.sun = 1;
-      this.sky = 1;
-      const one = this.light(NOON, false, g);
-      const A = luminance(one.above);
-      const S = luminance(one.sun);
-      // The sky on a surface is above and below mixed by its normal's height, below being GROUND (sun s + above).
-      // In the shade: shade.sky (above + below) / 2 = lin(70). Head on: head.light sun + head.sky (facing above +
-      // (1 - facing) below) = lin(128). Two equations in the scales of the sun and of the sky's light.
-      const a1 = (shade.sky * A * (1 + GROUND)) / 2, b1 = (shade.sky * GROUND * S * s) / 2;
-      const a2 = head.sky * A * (facing + k1), b2 = S * (head.light + head.sky * k1 * s);
+      // The light is the sun's scale times the light of the sun alone and the sky's times the sky's alone: two
+      // equations in the two, in the shade lin(70) and head on lin(128).
+      [this.sun, this.sky] = [1, 0];
+      const bySun = this.light(NOON, false, g);
+      [this.sun, this.sky] = [0, 1];
+      const bySky = this.light(NOON, false, g);
+      const [a1, b1, a2, b2] = [luminance(on(bySky, shade)), luminance(on(bySun, shade)), luminance(on(bySky, head)), luminance(on(bySun, head))];
       this.sun = (CARD - (a2 * SHADED) / a1) / (b2 - (a2 * b1) / a1);
       this.sky = (SHADED - b1 * this.sun) / a1;
-      const lit = this.light(NOON, false, g);
-      const on = [0, 1, 2].map((k) => lit.sun[k]! * head.light + (facing * lit.above[k]! + (1 - facing) * lit.below[k]!) * head.sky);
-      const y = luminance(on);
-      for (let k = 0; k < 3; k++) this.balance[k]! *= y / on[k]!;
+      const lit = on(this.light(NOON, false, g), head);
+      const y = luminance(lit);
+      for (let k = 0; k < 3; k++) this.balance[k]! *= y / lit[k]!;
     }
     this.noon = this.cardExposure(NOON, this.light(NOON, false, g));
   }
@@ -324,7 +394,7 @@ export class SkyBuilder {
     const { height, evening } = sliceHeight(z);
     const l = this.light(height, evening);
     const exposure = this.cardExposure(height, l) / this.noon;
-    return { lights: [...l.sun, ...l.moon, ...l.above, ...l.below].map((v) => v * exposure).concat(1 / exposure), exposure };
+    return { lights: [...l.sun, ...l.moon, ...l.above, ...l.below, ...l.side, ...l.sunward, ...l.along].map((v) => v * exposure).concat(1 / exposure), exposure };
   }
 
   /** Slice `z` of the table: its texels, its light and its exposure. */

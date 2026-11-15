@@ -4,9 +4,9 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { SKY_SIZE, SKY_SLICES, aroundOf, cardTakes, decodeTexel, domeLight, elevationOf, encodeTexel, flatCard, hourOfSun, luminance, sampleSky, shownSky, skyFrame, sliceHeight, sunDirection, sunHeight, sunTravel, texelAt, theSky, trueSun } from "../../client/core/render/sky.ts";
-import { linearToSrgb } from "../../client/core/render/surface.ts";
+import { linearToSrgb, skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
 import { SkyBuilder } from "../../tools/sky/build.ts";
-import { apart, basePoints, cardColours, domeApart, keyCards } from "../../tools/sky/fit.ts";
+import { apart, basePoints, cardColours, domeApart, hueApart, keyCards } from "../../tools/sky/fit.ts";
 import { sceneWorld } from "../fixtures/sceneworld.ts";
 
 const sky = theSky();
@@ -223,7 +223,8 @@ test("through twilight the sun's slot carries the afterglow from 2 degrees up to
   expect(dusk[F.casting]).toBe(0);
   // The glow is the dome's colour low toward the sun: warm.
   expect(dusk[F.sunColor]!).toBeGreaterThan(dusk[F.sunColor + 2]!);
-  const late = frameAt(hourOfSun(-13, true));
+  const past = Math.max(...Array.from({ length: SKY_SIZE }, (_, z) => sliceHeight(z).height).filter((h) => h < -12));
+  const late = frameAt(hourOfSun(past - 0.5, true));
   expect(lum(late, F.sunColor)).toBeLessThan(0.01 * lum(late, F.skyAbove));
   // By day the slot is the sun itself.
   const day = frameAt(10);
@@ -264,13 +265,14 @@ test("at noon a grey card sunlit and seen head on shows 128, and one in its own 
   const v = (at: number): number[] => [f[at]!, f[at + 1]!, f[at + 2]!];
   const l = v(F.sun);
   const head = cardTakes(l, l, l);
-  const up = 0.5 + 0.5 * l[1]!;
-  const sun = v(F.sunColor), above = v(F.skyAbove), below = v(F.skyBelow);
-  const on = [0, 1, 2].map((k) => sun[k]! * head.light + (above[k]! * up + below[k]! * (1 - up)) * head.sky);
+  const sun = v(F.sunColor), sky = [0, 0, 0];
+  skyLight(sky, f, l);
+  const on = [0, 1, 2].map((k) => sun[k]! * head.light + sky[k]! * head.sky);
   for (const c of on) expect(255 * linearToSrgb(c * f[F.exposure]!)).toBeCloseTo(128, 1);
   const n = [-l[0]!, 0, -l[2]!].map((x, _, a) => x / Math.hypot(a[0]!, a[2]!));
   const shade = cardTakes(n, n, l);
-  const shaded = [0, 1, 2].map((k) => ((above[k]! + below[k]!) / 2) * shade.sky * f[F.exposure]!);
+  skyLight(sky, f, n);
+  const shaded = sky.map((c) => c * shade.sky * f[F.exposure]!);
   expect(255 * linearToSrgb(luminance(shaded))).toBeCloseTo(70, 0);
 });
 
@@ -292,4 +294,23 @@ test("twilight is over by the table's slice past 18 degrees down: from 20 down t
 test("as the sun goes down the white balance goes with it: at dusk a grey card in its own shade is lit the colour of the sky shown, as the dusk key has it", () => {
   const dusk = basePoints().find((k) => k.name === "dusk")!;
   expect(apart(cardColours(sky, dusk.hour, false).shaded, keyCards().dusk!.shaded!)).toBeLessThan(2);
+});
+
+test("shade is the colour the keys paint it: a grey card face up in full shadow has its key's shaded card's hue, cool grey at noon, and at golden hour and sunset a card in its own shade is blue", () => {
+  const cards = keyCards();
+  for (const key of basePoints()) expect(hueApart(cardColours(sky, key.hour, key.lightBy === "moon").under, cards[key.name]!.shaded!)).toBeLessThan(2.5);
+  // The key's noon shade is blue over red 1.3 on screen; the sky's light alone made it 2.
+  const noon = cardColours(sky, 12, false).under;
+  expect(noon[2]! / noon[0]!).toBeLessThan(1.45);
+  for (const name of ["golden", "sunset"]) {
+    const { shaded, lit } = cardColours(sky, basePoints().find((k) => k.name === name)!.hour, false);
+    expect([shaded[2]! > shaded[0]!, lit[0]! > lit[2]!]).toEqual([true, true]);
+  }
+});
+
+test("at golden hour, just past where low poly's light leaps, a grey card face up in the open shows low poly's card", () => {
+  const golden = basePoints().find((k) => k.name === "golden")!;
+  const up = cardColours(sky, golden.hour, false).up;
+  const shows = 255 * linearToSrgb(luminance(up.map((c) => srgbToLinear(c / 255))));
+  expect(Math.abs(shows - flatCard(golden.hour))).toBeLessThan(1.5);
 });

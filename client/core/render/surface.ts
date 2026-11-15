@@ -124,6 +124,21 @@ export function skyOn(out: Out, frame: Numbers, up: number): void {
 }
 
 /**
+ * The sky's light on land, on a surface whose normal is `n`: `skyOn`'s, and on a face turned sideways more, from the
+ * bright low sky (fSkySide), most when upright; and round from the sun's side, by how far the face is turned toward
+ * the sun's way round (fSkySun) and by the square of that (fSkyAlong), which together hold a glow low on the sun's
+ * side and a darker far side.
+ */
+export function skyLight(out: Out, frame: Numbers, n: Numbers): void {
+  const y = n[1]!;
+  const side = 1 - y * y;
+  const sx = -frame[FRAME.moon]!, sz = -frame[FRAME.moon + 2]!;
+  const toward = (n[0]! * sx + n[2]! * sz) / Math.sqrt(Math.max(sx * sx + sz * sz, 1e-12));
+  skyOn(out, frame, y);
+  for (let c = 0; c < 3; c++) out[c]! += frame[FRAME.skySide + c]! * side + (frame[FRAME.skySun + c]! + frame[FRAME.skyAlong + c]! * toward) * toward;
+}
+
+/**
  * Adds one light's share: the frame block's direction at `way` and colour at `colour`, `shade` of it reaching the
  * surface. Lambert and a GGX highlight as wide as the roughness squared, shadowed by Smith's term and edged by Schlick's.
  */
@@ -151,7 +166,7 @@ const sky = new Float64Array(3);
 /**
  * The light a pixel sends to the eye, from the frame block `frame`. `mro` is occlusion, roughness and metalness, `n`
  * the normal, `v` the way to the eye, and `mirror` the sky's light from where the eye's ray is reflected to. The sun
- * and the moon each light by `direct`. The sky lights from all round as `skyOn` has it, less where the surface is
+ * and the moon each light by `direct`. The sky lights from all round as `skyLight` has it, less where the surface is
  * occluded: the colour under the highlight, and the highlight itself, which shows `mirror` where the surface is smooth
  * and turns to the same light as the colour's as it roughens. `shade` is how much of the sun reaches the pixel, which
  * only the GPU's shadow maps know (shadowtext.ts), so the rasterizer leaves it 1.
@@ -161,7 +176,7 @@ export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numb
   const metal = mro[2]!;
   const a = rough * rough;
   const nv = Math.min(Math.max(n[0]! * v[0]! + n[1]! * v[1]! + n[2]! * v[2]!, 0.001), 1);
-  skyOn(sky, frame, n[1]!);
+  skyLight(sky, frame, n);
   skyParts(rough, nv);
   for (let c = 0; c < 3; c++) {
     const f0 = DIELECTRIC + (albedo[c]! - DIELECTRIC) * metal;
@@ -278,7 +293,7 @@ void main() {
 
 /**
  * The light's GLSL, which LIT, SURFACE and the dome share: the frame block, the fog's two uniforms, and the twins of
- * `skyShare`, `skyOn`, `direct`, `lit`, `tone` and `shown`. `shown` takes where the point is from the eye, and the air
+ * `skyShare`, `skyOn`, `skyLight`, `direct`, `lit`, `tone` and `shown`. `shown` takes where the point is from the eye, and the air
  * between (atmosphere.ts `hazed`, which a program defines after this) above water; under water, today's fog. What
  * lights includes SHADOW_GLSL after it, for `lit`'s shade.
  */
@@ -292,6 +307,11 @@ vec3 skyShare(vec3 f0, float rough, float nv) {
 }
 vec3 skyOn(float up) {
   return mix(fSkyBelow.rgb, fSkyAbove.rgb, 0.5 + 0.5 * up);
+}
+vec3 skyLight(vec3 n) {
+  vec2 s = -fMoon.xz;
+  float toward = dot(n.xz, s) * inversesqrt(max(dot(s, s), 1e-12));
+  return skyOn(n.y) + fSkySide.rgb * (1.0 - n.y * n.y) + (fSkySun.rgb + fSkyAlong.rgb * toward) * toward;
 }
 vec3 direct(vec3 l, vec3 colour, vec3 albedo, float metal, float a2, vec3 n, vec3 v, float nv) {
   float nl = max(dot(n, l), 0.0);
@@ -308,7 +328,7 @@ vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored, float shade) {
   float rough = max(mro.g, ${f(SMOOTHEST)});
   float a = rough * rough;
   float nv = clamp(dot(n, v), 0.001, 1.0);
-  vec3 sky = skyOn(n.y);
+  vec3 sky = skyLight(n);
   vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, mro.b);
   vec3 light = mro.r * (sky * albedo * (1.0 - mro.b) + skyShare(f0, rough, nv) * mix(mirrored, sky, a));
   return light + direct(fSun.xyz, fSunColor.rgb, albedo, mro.b, a * a, n, v, nv) * shade + direct(fMoon.xyz, fMoonColor.rgb, albedo, mro.b, a * a, n, v, nv);
