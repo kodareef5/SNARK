@@ -99,54 +99,54 @@ const plant = (name: string, color: number, hits: number, half: NodeDef["half"],
 // each of the others.
 const PALMS: NodeVariant[] = [
   { mesh: "core:palm_1", weight: 3, boxes: [{ at: [0.01, 0.99, 0.01], half: [0.26, 1.21, 0.26] }, { at: [0.03, 3, 0.02], half: [0.24, 0.8, 0.24] }, { at: [0.05, 4.6, 0.03], half: [0.26, 0.8, 0.26] }, { at: [0.07, 6.2, 0.05], half: [0.26, 0.8, 0.26] }, { at: [0.09, 7.8, 0.08], half: [0.25, 0.8, 0.25] }, { at: [0.12, 9.4, 0.11], half: [0.23, 0.8, 0.23] }, { at: [0.15, 11, 0.14], half: [0.21, 0.8, 0.21] }, { at: [0.18, 12.6, 0.18], half: [0.19, 0.8, 0.2] }, { at: [0.21, 14.1, 0.22], half: [0.18, 0.7, 0.18] }],
-    depleted: { mesh: "core:palm_1_depleted", boxes: [{ at: [0, 0.22, 0], half: [0.26, 0.44, 0.26] }] } },
+    depleted: { mesh: "core:palm_1_depleted", boxes: [{ at: [0, 0.085, 0], half: [0.26, 0.305, 0.26] }] } },
   { mesh: "core:palm_2", weight: 2, boxes: [{ at: [-0.04, 0.96, 0.05], half: [0.28, 1.24, 0.29] }, { at: [-0.12, 2.99, 0.15], half: [0.26, 0.8, 0.27] }, { at: [-0.2, 4.59, 0.26], half: [0.27, 0.8, 0.29] }, { at: [-0.29, 6.18, 0.39], half: [0.28, 0.8, 0.3] }, { at: [-0.38, 7.77, 0.52], half: [0.25, 0.8, 0.27] }, { at: [-0.47, 9.36, 0.66], half: [0.22, 0.8, 0.25] }, { at: [-0.54, 10.96, 0.79], half: [0.2, 0.8, 0.23] }, { at: [-0.6, 12.2, 0.9], half: [0.16, 0.45, 0.18] }],
-    depleted: { mesh: "core:palm_2_depleted", boxes: [{ at: [0, 0.23, 0], half: [0.24, 0.43, 0.24] }] } },
+    depleted: { mesh: "core:palm_2_depleted", boxes: [{ at: [0, 0.095, 0], half: [0.24, 0.295, 0.24] }] } },
   { mesh: "core:palm_3", weight: 2, boxes: [{ at: [-0.01, 1.02, -0.02], half: [0.18, 1.18, 0.19] }, { at: [-0.03, 3, -0.07], half: [0.17, 0.8, 0.19] }, { at: [-0.04, 4.6, -0.12], half: [0.16, 0.8, 0.19] }, { at: [-0.04, 6.1, -0.19], half: [0.14, 0.7, 0.17] }],
-    depleted: { mesh: "core:palm_3_depleted", boxes: [{ at: [0, 0.26, 0], half: [0.17, 0.4, 0.17] }] } },
+    depleted: { mesh: "core:palm_3_depleted", boxes: [{ at: [0, 0.125, 0], half: [0.17, 0.265, 0.17] }] } },
   { mesh: "core:palm_4", weight: 3, boxes: [{ at: [0.09, 0.85, 0.14], half: [0.39, 1.31, 0.44] }, { at: [0.37, 2.9, 0.55], half: [0.33, 0.73, 0.42] }, { at: [0.77, 4.32, 1.15], half: [0.35, 0.7, 0.47] }, { at: [1.18, 5.72, 1.82], half: [0.35, 0.69, 0.48] }, { at: [1.58, 7.12, 2.47], half: [0.34, 0.71, 0.45] }, { at: [1.96, 8.57, 3.02], half: [0.31, 0.74, 0.37] }, { at: [2.28, 10.08, 3.43], half: [0.27, 0.77, 0.29] }, { at: [2.52, 11.44, 3.67], half: [0.21, 0.59, 0.2] }],
-    depleted: { mesh: "core:palm_4_depleted", boxes: [{ at: [0, 0.15, 0], half: [0.3, 0.41, 0.3] }] } },
+    depleted: { mesh: "core:palm_4_depleted", boxes: [{ at: [0, 0.065, 0], half: [0.3, 0.325, 0.3] }] } },
   { mesh: "core:palm_5", weight: 2, boxes: [{ at: [-0.16, 0.88, -0.01], half: [0.44, 1.28, 0.29] }, { at: [-0.56, 2.92, -0.06], half: [0.37, 0.75, 0.17] }, { at: [-0.86, 4.47, -0.14], half: [0.2, 0.8, 0.18] }, { at: [-0.98, 6.06, -0.23], half: [0.17, 0.8, 0.17] }, { at: [-1.06, 7.66, -0.31], half: [0.16, 0.8, 0.16] }, { at: [-1.13, 9.15, -0.37], half: [0.15, 0.7, 0.14] }],
-    depleted: { mesh: "core:palm_5_depleted", boxes: [{ at: [0, 0.16, 0], half: [0.28, 0.4, 0.28] }] } },
+    depleted: { mesh: "core:palm_5_depleted", boxes: [{ at: [0, 0.075, 0], half: [0.28, 0.315, 0.28] }] } },
   { mesh: "core:palm_6", weight: 2, boxes: [{ at: [0.03, 0.87, -0.15], half: [0.37, 1.31, 0.48] }, { at: [0.12, 2.93, -0.55], half: [0.21, 0.76, 0.41] }, { at: [0.23, 4.43, -1.1], half: [0.21, 0.74, 0.46] }, { at: [0.3, 5.94, -1.6], half: [0.16, 0.78, 0.34] }, { at: [0.26, 7.51, -1.79], half: [0.2, 0.79, 0.18] }, { at: [0.12, 9.09, -1.62], half: [0.22, 0.78, 0.28] }, { at: [-0.02, 10.66, -1.37], half: [0.19, 0.79, 0.25] }, { at: [-0.08, 12.25, -1.19], half: [0.14, 0.8, 0.19] }, { at: [-0.08, 13.35, -1.15], half: [0.14, 0.3, 0.13] }],
-    depleted: { mesh: "core:palm_6_depleted", boxes: [{ at: [0, 0.14, 0], half: [0.33, 0.42, 0.33] }] } },
+    depleted: { mesh: "core:palm_6_depleted", boxes: [{ at: [0, 0.055, 0], half: [0.33, 0.335, 0.33] }] } },
 ];
 const YOUNG: NodeVariant[] = [
   { mesh: "core:tree_1", weight: 3, boxes: [{ at: [0.06, 1.47, 0.05], half: [0.25, 1.73, 0.24] }],
-    depleted: { mesh: "core:tree_1_depleted", boxes: [{ at: [0, 0.22, 0], half: [0.2, 0.38, 0.2] }] } },
+    depleted: { mesh: "core:tree_1_depleted", boxes: [{ at: [0, 0.115, 0], half: [0.2, 0.275, 0.2] }] } },
   { mesh: "core:tree_2", weight: 3, boxes: [{ at: [-0.06, 1.67, -0.02], half: [0.28, 1.93, 0.25] }],
-    depleted: { mesh: "core:tree_2_depleted", boxes: [{ at: [0, 0.2, 0], half: [0.23, 0.4, 0.23] }] } },
+    depleted: { mesh: "core:tree_2_depleted", boxes: [{ at: [0, 0.095, 0], half: [0.23, 0.295, 0.23] }] } },
   { mesh: "core:tree_3", weight: 2, boxes: [{ at: [0.05, 1.37, -0.09], half: [0.33, 1.73, 0.37] }],
-    depleted: { mesh: "core:tree_3_depleted", boxes: [{ at: [0, 0.18, 0], half: [0.29, 0.42, 0.29] }] } },
+    depleted: { mesh: "core:tree_3_depleted", boxes: [{ at: [0, 0.075, 0], half: [0.29, 0.315, 0.29] }] } },
   { mesh: "core:tree_4", weight: 2, boxes: [{ at: [-0.18, 1.4, 0.31], half: [0.39, 2, 0.53] }],
-    depleted: { mesh: "core:tree_4_depleted", boxes: [{ at: [0, 0.21, 0], half: [0.22, 0.39, 0.22] }] } },
+    depleted: { mesh: "core:tree_4_depleted", boxes: [{ at: [0, 0.105, 0], half: [0.22, 0.285, 0.22] }] } },
 ];
 const PRINTED_OAKS: NodeVariant[] = [
   { mesh: "core:oak_1", weight: 3, boxes: [{ at: [0, 0.96, 0], half: [0.79, 1.64, 0.79] }, { at: [-0.83, 2.77, -0.51], half: [0.41, 0.51, 0.41] }, { at: [-1.61, 2.89, -0.97], half: [0.65, 0.49, 0.54] }, { at: [0.78, 2.61, 0.45], half: [0.61, 0.61, 0.5] }, { at: [1.79, 2.87, 0.67], half: [0.63, 0.47, 0.39] }, { at: [-0.44, 2.7, 0.73], half: [0.42, 0.54, 0.49] }, { at: [-0.85, 3.28, 1.57], half: [0.46, 0.6, 0.66] }, { at: [0.32, 2.63, -0.89], half: [0.36, 0.45, 0.36] }, { at: [0.54, 2.94, -1.52], half: [0.42, 0.53, 0.55] }],
-    depleted: { mesh: "core:oak_1_depleted", boxes: [{ at: [0, -0, 0], half: [0.83, 0.7, 0.83] }] } },
+    depleted: { mesh: "core:oak_1_depleted", boxes: [{ at: [0, -0.165, 0], half: [0.83, 0.535, 0.83] }] } },
   { mesh: "core:oak_2", weight: 2, boxes: [{ at: [0, 0.95, 0], half: [1.05, 1.85, 1.05] }, { at: [1.41, 3.12, 0.7], half: [0.82, 0.72, 0.67] }, { at: [-1.69, 3.06, 0.3], half: [0.85, 0.68, 0.56] }, { at: [0.03, 3.48, 0.88], half: [0.43, 0.53, 0.43] }, { at: [0.07, 4.16, 1.74], half: [0.43, 0.83, 0.84] }, { at: [-0.37, 3.14, -0.77], half: [0.45, 0.57, 0.45] }, { at: [-0.76, 3.53, -1.54], half: [0.57, 0.67, 0.69] }, { at: [0.52, 3.78, -0.77], half: [0.37, 0.46, 0.37] }, { at: [0.79, 4.46, -1.41], half: [0.49, 0.77, 0.68] }],
-    depleted: { mesh: "core:oak_2_depleted", boxes: [{ at: [0, -0.12, 0], half: [1.1, 0.82, 1.1] }] } },
+    depleted: { mesh: "core:oak_2_depleted", boxes: [{ at: [0, -0.285, 0], half: [1.1, 0.655, 1.1] }] } },
   { mesh: "core:oak_3", weight: 2, boxes: [{ at: [0, 0.92, 0], half: [0.89, 1.68, 0.89] }, { at: [1.15, 2.88, 1.17], half: [0.7, 0.61, 0.7] }, { at: [-0.73, 2.93, -0.88], half: [0.39, 0.49, 0.39] }, { at: [-1.21, 3.24, -1.47], half: [0.54, 0.57, 0.57] }, { at: [0.41, 2.82, -1.05], half: [0.38, 0.47, 0.38] }, { at: [0.64, 3.07, -1.76], half: [0.44, 0.53, 0.6] }, { at: [0.85, 3.42, -0.2], half: [0.47, 0.59, 0.37] }, { at: [1.56, 4.44, -0.61], half: [0.64, 0.88, 0.56] }],
-    depleted: { mesh: "core:oak_3_depleted", boxes: [{ at: [0, -0.05, 0], half: [0.94, 0.75, 0.94] }] } },
+    depleted: { mesh: "core:oak_3_depleted", boxes: [{ at: [0, -0.215, 0], half: [0.94, 0.585, 0.94] }] } },
 ];
 // The maker's boxes up each great limb start 2 m up the model, 1.69 m at an elder's least size: they would hold a survivor,
 // and a parasaur almost anywhere, short of the trunk. Until they clear the tallest mount, an elder is its trunk alone.
 const OAKS = PRINTED_OAKS.map((v): NodeVariant => ({ ...v, boxes: v.boxes!.slice(0, 1) }));
 const FIGS: NodeVariant[] = [
   { mesh: "core:fig_1", weight: 2, boxes: [{ at: [0, 1.48, 0], half: [0.76, 2.12, 0.76] }],
-    depleted: { mesh: "core:fig_1_depleted", boxes: [{ at: [0, 0.13, 0], half: [0.76, 0.77, 0.76] }] } },
+    depleted: { mesh: "core:fig_1_depleted", boxes: [{ at: [0, -0.14, 0], half: [0.76, 0.5, 0.76] }] } },
   { mesh: "core:fig_2", weight: 3, boxes: [{ at: [0, 1.62, 0], half: [0.9, 2.38, 0.9] }],
-    depleted: { mesh: "core:fig_2_depleted", boxes: [{ at: [0, 0.07, 0], half: [0.9, 0.83, 0.9] }] } },
+    depleted: { mesh: "core:fig_2_depleted", boxes: [{ at: [0, -0.2, 0], half: [0.9, 0.56, 0.9] }] } },
   { mesh: "core:fig_3", weight: 2, boxes: [{ at: [0, 1.42, 0], half: [0.66, 1.98, 0.66] }],
-    depleted: { mesh: "core:fig_3_depleted", boxes: [{ at: [0, 0.17, 0], half: [0.66, 0.73, 0.66] }] } },
+    depleted: { mesh: "core:fig_3_depleted", boxes: [{ at: [0, -0.1, 0], half: [0.66, 0.46, 0.66] }] } },
 ];
 const BANYANS: NodeVariant[] = [
   { mesh: "core:banyan_1", weight: 3, boxes: [{ at: [0, 1.82, 0], half: [1.14, 2.78, 1.14] }, { at: [-9, 0.23, -0], half: [0.39, 5.87, 0.39] }, { at: [-3.68, 0.85, -3.68], half: [0.22, 4.15, 0.22] }, { at: [-6.47, 0.48, -2.68], half: [0.3, 4.92, 0.3] }, { at: [1.72, 0.97, -4.16], half: [0.19, 3.83, 0.19] }, { at: [4.81, 0.5, -4.81], half: [0.25, 4.8, 0.25] }, { at: [7.39, 0.32, -3.06], half: [0.33, 5.38, 0.33] }, { at: [8.78, 0.16, 3.64], half: [0.36, 6.14, 0.36] }, { at: [-2.49, 1.14, 6.01], half: [0.28, 5.26, 0.28] }, { at: [2.6, 1.17, 6.28], half: [0.23, 5.43, 0.23] }],
-    depleted: { mesh: "core:banyan_1_depleted", boxes: [{ at: [0, -0.21, 0], half: [1.2, 0.81, 1.2] }, { at: [-9, -2.58, -0], half: [0.42, 3.08, 0.42] }, { at: [-3.68, -1.41, -3.68], half: [0.24, 1.91, 0.24] }, { at: [-6.47, -1.98, -2.68], half: [0.33, 2.48, 0.33] }, { at: [1.72, -1.18, -4.16], half: [0.21, 1.68, 0.21] }, { at: [4.81, -1.91, -4.81], half: [0.27, 2.41, 0.27] }, { at: [7.39, -2.29, -3.06], half: [0.36, 2.79, 0.36] }, { at: [8.78, -2.75, 3.64], half: [0.39, 3.25, 0.39] }, { at: [-2.49, -1.82, 6.01], half: [0.3, 2.32, 0.3] }, { at: [2.6, -1.89, 6.28], half: [0.25, 2.39, 0.25] }] } },
+    depleted: { mesh: "core:banyan_1_depleted", boxes: [{ at: [0, -0.315, 0], half: [1.2, 0.705, 1.2] }, { at: [-9, -2.635, -0], half: [0.42, 3.025, 0.42] }, { at: [-3.68, -1.465, -3.68], half: [0.24, 1.855, 0.24] }, { at: [-6.47, -2.035, -2.68], half: [0.33, 2.425, 0.33] }, { at: [1.72, -1.235, -4.16], half: [0.21, 1.625, 0.21] }, { at: [4.81, -1.965, -4.81], half: [0.27, 2.355, 0.27] }, { at: [7.39, -2.345, -3.06], half: [0.36, 2.735, 0.36] }, { at: [8.78, -2.805, 3.64], half: [0.39, 3.195, 0.39] }, { at: [-2.49, -1.875, 6.01], half: [0.3, 2.265, 0.3] }, { at: [2.6, -1.945, 6.28], half: [0.25, 2.335, 0.25] }] } },
   { mesh: "core:banyan_2", weight: 2, boxes: [{ at: [0, 1.7, 0], half: [0.95, 2.5, 0.95] }, { at: [-2.96, 1.3, -1.22], half: [0.23, 3.4, 0.23] }, { at: [3.14, 1.36, -1.3], half: [0.19, 3.54, 0.19] }, { at: [3.7, 1.43, 1.53], half: [0.17, 3.97, 0.17] }],
-    depleted: { mesh: "core:banyan_2_depleted", boxes: [{ at: [0, -0.12, 0], half: [1, 0.72, 1] }, { at: [-2.96, -0.81, -1.22], half: [0.25, 1.31, 0.25] }, { at: [3.14, -0.85, -1.3], half: [0.21, 1.35, 0.21] }, { at: [3.7, -1.02, 1.53], half: [0.18, 1.52, 0.18] }] } },
+    depleted: { mesh: "core:banyan_2_depleted", boxes: [{ at: [0, -0.225, 0], half: [1, 0.615, 1] }, { at: [-2.96, -0.865, -1.22], half: [0.25, 1.255, 0.25] }, { at: [3.14, -0.905, -1.3], half: [0.21, 1.295, 0.21] }, { at: [3.7, -1.075, 1.53], half: [0.18, 1.465, 0.18] }] } },
   { mesh: "core:banyan_3", weight: 1, boxes: [{ at: [0, 2, 0], half: [1.19, 3, 1.19] }, { at: [-7.85, 0.3, 3.25], half: [0.39, 5.7, 0.39] }, { at: [-3.39, 0.97, -3.39], half: [0.22, 4.03, 0.22] }, { at: [-6.47, 0.43, -2.68], half: [0.3, 4.87, 0.3] }, { at: [0, 1.77, 5.5], half: [0.25, 5.23, 0.25] }, { at: [4.8, 1.51, 0], half: [0.33, 4.59, 0.33] }, { at: [8, 0.89, 0], half: [0.36, 5.91, 0.36] }, { at: [10.16, 0.28, -4.21], half: [0.19, 7.02, 0.19] }],
-    depleted: { mesh: "core:banyan_3_depleted", boxes: [{ at: [0, -0.23, 0], half: [1.25, 0.83, 1.25] }, { at: [-7.85, -2.46, 3.25], half: [0.42, 2.96, 0.42] }, { at: [-3.39, -1.29, -3.39], half: [0.24, 1.79, 0.24] }, { at: [-6.47, -1.98, -2.68], half: [0.33, 2.48, 0.33] }, { at: [0, -1.48, 5.5], half: [0.27, 1.98, 0.27] }, { at: [4.8, -1.3, 0], half: [0.36, 1.8, 0.36] }, { at: [8, -2.27, 0], half: [0.39, 2.77, 0.39] }, { at: [10.16, -3.13, -4.21], half: [0.21, 3.63, 0.21] }] } },
+    depleted: { mesh: "core:banyan_3_depleted", boxes: [{ at: [0, -0.335, 0], half: [1.25, 0.725, 1.25] }, { at: [-7.85, -2.515, 3.25], half: [0.42, 2.905, 0.42] }, { at: [-3.39, -1.345, -3.39], half: [0.24, 1.735, 0.24] }, { at: [-6.47, -2.035, -2.68], half: [0.33, 2.425, 0.33] }, { at: [0, -1.535, 5.5], half: [0.27, 1.925, 0.27] }, { at: [4.8, -1.355, 0], half: [0.36, 1.745, 0.36] }, { at: [8, -2.325, 0], half: [0.39, 2.715, 0.39] }, { at: [10.16, -3.185, -4.21], half: [0.21, 3.575, 0.21] }] } },
 ];
 const MANGROVES: NodeVariant[] = [
   { mesh: "core:mangrove_1", weight: 2, boxes: [{ at: [0, 0.09, 0], half: [0.97, 0.91, 0.97] }, { at: [0.04, 1.52, 0.09], half: [0.23, 0.52, 0.22] }],
