@@ -14,21 +14,26 @@
 // --front: the camera with the sun behind it. --alone: no trees but the ones placed by hand. --dense: every slot of a
 // grove planted. --levels: print which level of each mesh is drawn.
 //
-// --far: the near field holds the chunks within 3 of the camera's, as a session's does, and the far layer draws the rest
-// at each mesh's last level (always so in the wood). --reach M: the far layer draws the trees to M metres whatever their
-// triangles, to judge a last level where the tier's reach does not take it.
+// --far: the near field holds the chunks within the tier's count of the camera's, as a session's does, and the far layer
+// draws the rest at each mesh's last level (always so in the wood); in the wood --body M holds them round where a body
+// M metres short of the hill's foot stands instead, to see a chunk change hands with the camera still. --reach M: the
+// far layer draws the trees to M metres whatever their triangles, to judge a last level where the tier's reach does not
+// take it. --band FROM,TO: the tier's hand-over band moved (client/core/render/hand.ts); one past the near field, such as
+// 10000,10001, draws as the game did before the band, the near store to its edge. --chunks N: the near field holds N
+// chunks round the body's, not the tier's count.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { TIERS, tierOf } from "../../../../../client/core/assets/tiers.ts";
 import { Camera } from "../../../../../client/core/render/camera.ts";
-import { FAMILY_TRIANGLES, FAR_NODE_BUFFERS, NodeChanges } from "../../../../../client/core/render/farnodes.ts";
-import { Scene } from "../../../../../client/core/render/scene.ts";
+import { FAMILY_TRIANGLES, FAR_NODE_BUFFERS, NodeChanges, farNodeOf } from "../../../../../client/core/render/farnodes.ts";
+import { ATLAS_REGION } from "../../../../../client/core/render/packet.ts";
+import { NODE_BUFFERS, Scene } from "../../../../../client/core/render/scene.ts";
 import { RemoteSample } from "../../../../../client/core/session.ts";
 import { CORE_CONTENT } from "../../../../../content/core.ts";
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, type MapDims } from "../../../../../shared/coords.ts";
 import { compileContent } from "../../../../../shared/content/registry.ts";
-import { parsePack } from "../../../../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, parsePack } from "../../../../../shared/pack/pack.ts";
 import { Heightfield } from "../../../../../shared/world/heightfield.ts";
 import { NodeField, formOf, nodeForms, type NodeSource } from "../../../../../shared/world/nodes.ts";
 import { StructureStore } from "../../../../../shared/world/structures.ts";
@@ -198,9 +203,9 @@ const port = new FakeNet(files.files, {});
 const pack = parsePack(files.files[0]!);
 const structs = new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
 const nodes = new NodeField(DIMS, reg, source);
-// The near field: the whole map, or with the far layer the chunks within 3 of the camera's, as a session holds them.
-const HELD = 3;
-const camChunk = chunkAt(DIMS, CAMERA.x, CAMERA.z);
+// The near field: the whole map, or with the far layer the chunks round the body, as a session holds them.
+const HELD = Number(arg("chunks", String(tierOf(tierName).nodes.chunks)));
+const camChunk = chunkAt(DIMS, wood ? FOOT - Number(arg("body", String(OFF))) : CAMERA.x, CAMERA.z);
 if (far) nodes.retain(camChunk, HELD, 1, () => false);
 else nodes.retain(12 * DIMS.chunksX + 12, 24, 1, () => false);
 const farNodes = far ? { nodes: source, held: (c: number) => nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(DIMS) } : undefined;
@@ -209,7 +214,8 @@ const REACH = Number(arg("reach", "0"));
 if (REACH > 0) (FAMILY_TRIANGLES as number[])[0] = Infinity;
 const scene = new Scene({ dims: DIMS, hf, structs, nodes: nodes.store, farNodes }, reg, pack, { manifest: files.manifest, port });
 const tier = tierOf(tierName);
-scene.assets.tier = REACH > 0 ? { ...tier, reach: { ...tier.reach, trees: REACH } } : tier;
+const handBand = args.includes("--band") ? (arg("band", "").split(",").map(Number) as [number, number]) : tier.nodes.band;
+scene.assets.tier = { ...tier, reach: REACH > 0 ? { ...tier.reach, trees: REACH } : tier.reach, nodes: { chunks: HELD, band: handBand } };
 if (scene.nodesFar) scene.nodesFar.makes = Infinity;
 scene.viewHeight = H;
 const cam = new Camera();
@@ -238,6 +244,15 @@ else if (wood) {
 } else throw new Error("--view takes near, trunk, mid, lineup, slope, grove, hill, above or wood");
 const raster = new Rasterizer(W, H, pack, hf, files.manifest);
 const remote = new RemoteSample();
+// What the frames put in the nodes' buffers, to count what their draws hold.
+const card = new Map<number, { data: Uint8Array; slots: Uint16Array }>();
+const build = scene.build.bind(scene);
+scene.build = (c, r) => {
+  const built = build(c, r);
+  for (const u of built.uploads) if (u.buffer >= NODE_BUFFERS) card.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
+  for (const id of built.drops) card.delete(id);
+  return built;
+};
 const proving = { reg, hf, structs, nodes, pack, scene, cam, remote, raster, port, render: () => scene.build(cam, remote) } as unknown as ProvingView;
 const frames = settle(proving, 20000);
 const p = scene.packet;
@@ -266,12 +281,41 @@ if (far) {
     n++;
   }
   console.log(`far pixels ${n}, mean colour ${sum.map((s) => (s / Math.max(n, 1)).toFixed(1)).join(", ")}`);
-  let [draws, tris] = [0, 0];
+  // The nodes' draws, near and far: how many, the triangles they send, and those of nodes in view that a draw keeps any
+  // of, a far one only to its kind's reach. A far draw holds rows of every mesh, each instance its mesh's last level.
+  const [from, to] = scene.assets.tier.nodes.band;
   const table = scene.assets.table.tris;
+  const spot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  const count = { near: [0, 0, 0], far: [0, 0, 0] };
+  const runs = new Set<string>();
   for (let d = 0; d < p.drawCount; d++) {
-    if (p.drawBuffer[d]! < FAR_NODE_BUFFERS || p.drawBuffer[d]! >= FAR_NODE_BUFFERS * 2) continue;
-    draws++;
-    tris += table[p.drawMesh[d]!]![p.drawLod[d]!]! * p.drawInstances[d]!;
+    const buffer = p.drawBuffer[d]!;
+    const isFar = buffer >= FAR_NODE_BUFFERS && buffer < FAR_NODE_BUFFERS * 2;
+    if (!isFar && (buffer < NODE_BUFFERS || buffer >= NODE_BUFFERS * 2)) continue;
+    const c = isFar ? count.far : count.near;
+    c[0]!++;
+    // A level of several materials is a draw of each, of the same instances.
+    const run = `${buffer}/${p.drawFirst[d]}/${p.drawInstances[d]}/${p.drawLod[d]}`;
+    if (runs.has(`${run}/${p.drawPass[d]}`)) continue;
+    const again = runs.has(run);
+    runs.add(`${run}/${p.drawPass[d]}`).add(run);
+    const { data, slots } = card.get(buffer)!;
+    const f32 = new Float32Array(data.buffer, data.byteOffset, data.length / 4);
+    const hand = p.drawHand[d]!;
+    for (let i = p.drawFirst[d]!; i < p.drawFirst[d]! + p.drawInstances[d]!; i++) {
+      const each = isFar ? table[scene.nodesFar!.meshOfRow(data[i * INSTANCE_BYTES + 14 + ATLAS_REGION]!)]!.at(-1)! : table[p.drawMesh[d]!]![p.drawLod[d]!]!;
+      c[1]! += each;
+      if (again) continue;
+      const [x, y, z] = [f32[i * 5]! + p.drawOffset[d * 3]!, f32[i * 5 + 1]! + p.drawOffset[d * 3 + 1]!, f32[i * 5 + 2]! + p.drawOffset[d * 3 + 2]!];
+      const dist = Math.hypot(x, y, z);
+      if (hand !== 0 && (hand > 0 ? dist >= to : dist <= from)) continue;
+      if (isFar) {
+        const [chunk, slot] = farNodeOf(DIMS, buffer, slots[i]!);
+        source.at(chunk, slot, spot);
+        if (dist >= scene.nodesFar!.reachOf(spot.kind)) continue;
+      }
+      if (cam.boxVisible(x - 1, y, z - 1, x + 1, y + 10, z + 1)) c[2]! += each;
+    }
   }
-  console.log(`far draws ${draws}, far triangles ${tris}`);
+  console.log(`node draws near ${count.near[0]}, far ${count.far[0]}; triangles sent near ${count.near[1]}, far ${count.far[1]}; in view near ${count.near[2]}, far ${count.far[2]}`);
 }
