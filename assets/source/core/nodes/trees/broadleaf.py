@@ -756,14 +756,14 @@ def sprays(m, c, at, atlas, lit, rng, share=1.0):
         card(m, atlas, rng.choice(TOP + RIM), add(root, mul(along, s * 0.5)), along, normal, s, lambda x, own=own: lit(x, own), coarse=at["coarse"])
 
 
-def head_crown(m, heads, lod, rng, atlas, material, shade, share=1.0):
+def head_crown(m, heads, lod, rng, atlas, material, shade, share=1.0, solid=1.0):
     """A crown on the levels with pictures: its heads of leaves (heads.py), each wearing its cell of `material`, the
     inner ones more coarsely, the outer ones as cores with sprays of cut-out leaves from `atlas` radiating from them,
-    `share` of the level's count."""
+    `share` of the level's count; a closed roof or dome draws its cores `solid` times fuller."""
     at = HEAD_LEVELS[lod]
     lit_for = head_light(shade, at["own"])
     for c in heads:
-        c.core, c.jag, c.puff = (1.0 if c.inner else at["core"]), at["jag"], at["puff"]
+        c.core, c.jag, c.puff = (1.0 if c.inner else min(1.0, at["core"] * solid)), at["jag"], at["puff"]
         lit = lit_for(c)
         # Where sprays carry a head's light, its core is the clump's inside, in the shade of its own leaves.
         dim = 0.0 if c.inner else at["dim"]

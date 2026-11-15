@@ -257,7 +257,7 @@ def fig(name, lod):
     if stub is not None and lod <= 3:
         bl.bark_tube(m, bl.coarser(stub, {0: 5, 1: 3, 2: 2, 3: 1}[lod]), order_sides[0], BARK, STEM, caps=(True, True))
     if lod <= 3:
-        bl.head_crown(m, heads, lod, rng, ATLAS, CROWN, shade)
+        bl.head_crown(m, heads, lod, rng, ATLAS, CROWN, shade, solid=1.2)
         if lod <= 1:
             curtains(m, spec["name"], limbs, lobes, lod, count=(14, 18), reach=(2.0, 5.0))
     else:

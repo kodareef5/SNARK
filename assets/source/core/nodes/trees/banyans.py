@@ -282,7 +282,7 @@ def banyan(name, lod):
     if spec.get("car") and lod <= 2:
         car(m, lod)
     if lod <= 3:
-        bl.head_crown(m, heads, lod, rng, ATLAS, figs.CROWN, shade, SPRAYS)
+        bl.head_crown(m, heads, lod, rng, ATLAS, figs.CROWN, shade, SPRAYS, solid=1.35)
         if lod <= 1:
             figs.curtains(m, spec["name"], beams, lobes, lod, count=spec["curtains"], reach=(2.0, 5.0))
     else:
