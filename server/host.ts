@@ -403,19 +403,24 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     if (e >= 0 && persistence) persistence.attach(records.byPid.get(world.ents.pid[e]!)!, e);
     return e;
   };
-  const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0): number => {
+  const parkVehicle = (id: string, x: number, z: number, ownerTeam: number, yaw: number, why: string): number => {
     const kind = reg.index.get(id);
     if (kind === undefined || !reg.vehicle[kind] || !Number.isSafeInteger(ownerTeam) || ownerTeam < 0 || !Number.isFinite(yaw)) return -1;
-    const e = spawnCreature(id, x, z, 1, "admin");
+    const e = creatures.spawn(kind, x, z, 1, why);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
     rec.team = ownerTeam; rec.yaw = Math.round(yaw / (2 * Math.PI) * 65536) & 65535;
-    world.ents.yaw[e] = rec.yaw; world.ents.vehicleYaw[e] = Math.fround(yaw);
+    world.ents.yaw[e] = rec.yaw;
+    // Registered once turned, so the parked state it saves at once has its yaw.
+    urban.register(e);
+    world.ents.vehicleYaw[e] = Math.fround(yaw);
+    if (persistence) persistence.attach(rec, e);
     records.dirty.add(rec.pid);
     items.inv(rec);
     refreshBody(rec);
     return e;
   };
+  const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0): number => parkVehicle(id, x, z, ownerTeam, yaw, "admin");
   const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules, bus });
   const progression = new Progression(world, records, items, deadlines);
   progression.rules = rules;
@@ -456,7 +461,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       tribes,
       game,
       bus,
-      mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+      mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : urban.riding(c) ? "get out of the vehicle first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
       suspend: (rec, off) => survival.suspend(rec, off),
       adopt: (rec) => {
         survival.restore(rec, false);
@@ -561,7 +566,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       records.dirty.add(rec.pid);
       return RESULT_OK;
     },
-    mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+    mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : urban.riding(c) ? "get out of the vehicle first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
     drop: (rec, x, y, z) => void death.dropAll(rec, x, y, z),
   });
   if (persistence && !loaded!.fresh) beds.restore(persistence.store.meta("beds"));
@@ -785,6 +790,12 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     // The herd starts in the map's first spawn zone and the hunters in its last.
     scatter(world.zones[0], opts.startingSpecies ?? "core:grazer", opts.startingCreatures ?? 0);
     scatter(world.zones[world.zones.length - 1], "core:raptor", opts.startingHunters ?? 0);
+    // The map's parked vehicles, owned by nobody. From here on the save keeps them, as it keeps any record.
+    const missed = new Map<string, number>();
+    for (const v of parsed?.vehicles ?? []) {
+      if (parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild") < 0) missed.set(v.kind, (missed.get(v.kind) ?? 0) + 1);
+    }
+    if (missed.size > 0) say(`not parked, for want of the content or of room: ${[...missed].map(([id, n]) => `${n} of the map's ${id}`).join(", ")}`);
   }
   if (spawner) {
     const fresh = !loaded || loaded.fresh;
@@ -847,12 +858,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     }
     refreshBody(rec);
     survival.suspend(rec, false);
+    // A save from a server that stopped without standing its drivers down has them inside their cars.
+    urban.settle(c.ent);
     bus.after(SESSION_SPAWN, { pid: rec.pid, first, why: first ? "made" : c.entered ? "respawned" : "returned" });
     // A session that was in the creator has its survivor only now.
     if (c.entered) joined(c);
   };
   game.onBodyGone = (c) => {
     carry.release(c.pid);
+    // Seats are not saved: a survivor in a car is saved standing beside it.
+    urban.standDown(c.pid);
     // Out of the world, a survivor neither eats nor drowns.
     const gone = records.byPid.get(c.pid);
     if (gone) survival.suspend(gone, true);
@@ -1114,6 +1129,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
         if (session) session.did = 0;
       }
       inHand.set(rec.pid, slot);
+    } else if (rec.saddle !== 0 || world.ents.gear[e]) {
+      // A creature's gear names the saddle it wears, which every client draws on it (D491).
+      gear.fill(0);
+      gear[GEAR_WORN] = rec.saddle;
+      world.ents.setGear(e, gear);
     }
   }
   const gear = new Uint16Array(GEAR_COUNT);
@@ -1222,8 +1242,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       bus.after(SERVER_STOP, { why: "stopped" });
       bus.flush();
       if (!persistence) return;
-      // A creature in someone's arms is saved standing where it is set down, not where the arms had it.
+      // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
+      // sits in a car.
       carry.releaseAll();
+      urban.standDownAll();
       // Every body that can have moved is saved where it stands.
       for (let r = 0; r < world.history.rows; r++) {
         const pid = world.ents.pid[world.history.tracked(r)]!;

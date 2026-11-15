@@ -6,7 +6,7 @@ import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCount, chunkCx, chunkCz } from "..
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { MapZone } from "../../shared/content/defs.ts";
-import type { MapData, MapSpawn, MapStatic, NodeLayer as Layer } from "../../shared/world/mapfile.ts";
+import type { MapData, MapSpawn, MapStatic, MapVehicle, NodeLayer as Layer } from "../../shared/world/mapfile.ts";
 import { readGrey, writeGrey } from "./png.ts";
 
 /** A listed node's place in its chunk is a u16 of this many steps a metre. */
@@ -21,6 +21,7 @@ interface Place {
 type Piece = Place & { kind: string; y: number };
 type Node = Place & { kind: string };
 type Spawn = Place & { name: string };
+type Vehicle = Place & { kind: string };
 type Zone = { kinds: Record<string, number>; bare?: number };
 type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>; allow?: string } | { seed: number; perChunk: number; zones: Zone[]; zone: string } | { list: Node[] };
 type Region = { spawns: string; count: number; x: number; z: number; radius?: number; half?: [number, number] };
@@ -98,6 +99,7 @@ export function readLayers(folder: string): MapData {
     };
   });
   const regions = json<Region[]>("regions.json");
+  const vehicles = json<Vehicle[]>("vehicles.json");
 
   return {
     id: about.id,
@@ -111,6 +113,7 @@ export function readLayers(folder: string): MapData {
     nodes,
     spawns: need(json<Spawn[]>("spawns.json"), "spawns.json").map((s): MapSpawn => ({ name: s.name, x: s.x, z: s.z, yaw: toYaw(s.yaw) })),
     ...(regions ? { regions: regions.map((r): MapZone => ({ kind: "spawn", spawns: r.spawns, count: r.count, at: [r.x, r.z], ...(r.half ? { half: r.half } : { radius: r.radius ?? 0 }) })) } : {}),
+    ...(vehicles ? { vehicles: vehicles.map((v): MapVehicle => ({ kind: v.kind, x: v.x, z: v.z, yaw: toYaw(v.yaw) })) } : {}),
   };
 }
 
@@ -129,6 +132,7 @@ export function writeLayers(map: MapData, folder: string): void {
   put("tint.png", writeGrey(nx, nz, map.tint.slice().reverse(), defaultPalette()));
   if (map.statics.length > 0) put("statics.json", lines([...map.statics].map((s): Piece => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toDegrees(s.yaw) }))));
   put("spawns.json", lines(map.spawns.map((s): Spawn => ({ name: s.name, x: s.x, z: s.z, yaw: toDegrees(s.yaw) }))));
+  if (map.vehicles && map.vehicles.length > 0) put("vehicles.json", lines(map.vehicles.map((v): Vehicle => ({ kind: v.kind, x: v.x, z: v.z, yaw: toDegrees(v.yaw) }))));
   if (map.regions && map.regions.length > 0) put("regions.json", lines(map.regions.map((r): Region => ({ spawns: r.spawns!, count: r.count!, x: r.at[0], z: r.at[1], ...(r.half ? { half: [r.half[0], r.half[1]] } : { radius: r.radius! }) }))));
   if (map.nodes.length === 0) return;
   const layers = map.nodes.map((layer, i): NodeLayer => {

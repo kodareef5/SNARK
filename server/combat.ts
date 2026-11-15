@@ -7,6 +7,8 @@ import { AnimState, bodySeed } from "../shared/anim/pose.ts";
 import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
+import { rayVehicle } from "../shared/sim/vehicle-frame.ts";
+import { TAU } from "../shared/math/scalar.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
@@ -423,6 +425,9 @@ export class Combat {
     this.sweep = sweep;
     this.span = maxT;
     // Gather every body whose bounding sphere could touch the ray. A body judged in the past may have moved since, so the search is padded.
+    // The vehicle the caster sits in is not in its way, as a mount is not in its rider's.
+    const parent = self >= 0 ? ents.seat[self]! - 1 : -1;
+    const carrier = parent >= 0 && ents.seatSlot[self] !== 0 && ents.seatGen[self] === ents.gen[parent] && reg.vehicle[ents.kind[parent]!] ? parent : -1;
     let n = 0;
     const near = this.near;
     const nearT = this.nearT;
@@ -446,14 +451,15 @@ export class Combat {
         const fz = mz - dz * along;
         if (fx * fx + fz * fz > (CHUNK_REACH + pad) * (CHUNK_REACH + pad)) continue;
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
-          if (i === self || i === this.spare || (ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE) continue;
+          if (i === self || i === this.spare || i === carrier || (ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE) continue;
           const kind = ents.kind[i]!;
           // A sphere that holds the body in any pose. A larger box gets a larger sphere.
           const h = reg.bodyHeight[kind]!;
           const rig = this.anims[kind]?.rig;
-          const r = (rig ? rig.reach : Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!)) + slack;
+          const car = reg.vehicle[kind]?.spec;
+          const r = (car ? Math.hypot(car.halfWidth, car.halfLength, h * 0.5) : rig ? rig.reach : Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!)) + slack;
           const px = ents.x[i]! - ox;
-          const py = ents.y[i]! + (this.human[kind] ? BODY_REACH_Y : rig ? rig.mid : h * 0.5) - oy;
+          const py = ents.y[i]! + (this.human[kind] ? BODY_REACH_Y : rig && !car ? rig.mid : h * 0.5) - oy;
           const pz = ents.z[i]! - oz;
           const t = px * dx + py * dy + pz * dz;
           if (t < -r || t > maxT + r || px * px + py * py + pz * pz - t * t > r * r) continue;
@@ -589,7 +595,7 @@ export class Combat {
           this.zone = zone;
           best = i;
         }
-      } else if (this.anims[kind]) {
+      } else if (this.anims[kind] && !reg.vehicle[kind]) {
         st.unpack(past.anim, past.cue);
         st.seed = bodySeed(i);
         // A young creature is its kind's shape scaled down about its position. The ray is scaled up about that
@@ -602,6 +608,15 @@ export class Combat {
         if (zone !== ZONE_NONE && zoneHit.t * size < reach) {
           this.t = zoneHit.t * size * scale;
           this.zone = zone;
+          best = i;
+        }
+      } else if (reg.vehicle[kind]) {
+        // A vehicle is met by its mechanical hull up to its belt line, whatever its art, turned as it was.
+        const def = reg.vehicle[kind]!;
+        const t = rayVehicle(def, past.x, past.y, past.z, (past.yaw * TAU) / 65536, rx, ry, rz, ux, uy, uz, def.beltline);
+        if (t < reach) {
+          this.t = t * scale;
+          this.zone = ZONE_TORSO;
           best = i;
         }
       } else {

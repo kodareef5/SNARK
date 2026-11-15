@@ -34,9 +34,10 @@ export interface SelfcheckObservations {
   voice: { played: number; odd: number; errors: number; heard: readonly string[] };
   driveCheck: boolean;
   drive: VehicleSelfcheck["data"] | undefined;
-  audio: object;
   restored: number;
   misplaced: number;
+  /** The loudest the world's sound got, when the page has sound. */
+  sound: { peak: number } | null;
   cache: AssetPort["cache"];
   userAgent: string;
   width: number;
@@ -67,17 +68,18 @@ export function selfcheckReport(app: App, pack: Pack, manifest: Manifest, hf: He
     const vehicles = drawn.filter(id => id.startsWith("core:compact"));
     const humans = drawn.filter(id => id.startsWith("core:human"));
     const seats = Array.from(app.remote.seatSlot.subarray(0, app.remote.count)).filter(slot => slot > 0);
-    const driving = drive ? { ...drive, ownKind: reg.ids[session.own.kind], audio: { ...o.audio }, ok: !drive.timedOut && drive.maxSpeed > 3 && drive.hud && session.driving >= 0 } : null;
+    const driving = drive ? { ...drive, ownKind: reg.ids[session.own.kind], ok: !drive.timedOut && drive.maxSpeed > 3 && drive.hud && session.driving >= 0 } : null;
     return { vehicles, humans, seats, ownKind: reg.ids[session.own.kind], ...(driving ? { driving } : {}), ok: vehicles.length > 0 && humans.length > 0 && seats.length > 0 && renderer.errors === 0 && (!driving || driving.ok) };
   })() : null;
   return {
     // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-    ok: (driveCheck || voiceListen || probes.every((p) => p.ok)) && (!urban || urban.ok) && misplaced === 0 && heard && restored === (o.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
+    ok: (driveCheck || voiceListen || probes.every((p) => p.ok)) && (!urban || urban.ok) && misplaced === 0 && heard && restored === (o.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level) && (!app.sounds?.library.index.has("core:dodo/sound/call") || (o.sound?.peak ?? 0) > 0.001),
     ...(urban ? { urban } : {}),
     rocks: rocks.map((m) => [m.level, m.drawn]),
     restored,
     assets: { ...app.scene?.assets.residency.stats, kept: o.cache },
     ...(voiced ? { voice: o.voice } : {}),
+    ...(app.sounds ? { sound: { line: app.sounds.line(), peak: o.sound?.peak ?? 0 } } : {}),
     userAgent: o.userAgent,
     renderer: renderer.rendererName,
     textures: { format: renderer.format, takes: renderer.formats, errors: renderer.errors },

@@ -5,8 +5,8 @@ import { crafting } from "../craft.ts";
 // on the Pteranodon page and its items' pages, in metres and seconds. What it does in ARK, and where each number is from,
 // is assets/source/core/creatures/pteranodon/ref/FUNCTIONS.md; a number with no source there says it was chosen. The art
 // replaces its mesh under the same id, which is this definition's (PA5 of planning/reference/flyers-plan.md): nothing here
-// depends on how it looks. Its flight, grab, egg rule, rider's weight and damage rules are read by nothing until the
-// plan's packages build them.
+// depends on how it looks. Its grab, egg rule, rider's weight and damage rules are read by nothing until the plan's
+// packages build them; its flight is the step's (shared/sim/character.ts).
 
 /** The egg in the hand, ARK's Pteranodon Egg: a small egg of 7 that spoils in 8 hours and lies 30 minutes, eaten as 35 food and 35 health (its 35 stamina has no field). */
 export const PTERANODON_EGG: ItemDef = {
@@ -38,8 +38,8 @@ export const PTERANODON: readonly Def[] = [
     radius: 0.75,
     height: 1.9,
     eyeHeight: 1.8,
-    // 260 units a second on all fours, with no run on the ground, and 300 swimming. It never jumps in ARK; jump will take it
-    // off (FL1), and until then this is a hop no mind asks for.
+    // 260 units a second on all fours, with no run on the ground, and 300 swimming. It never jumps in ARK: its jump held takes
+    // it off, and a flyer's step never hops, so jumpSpeed is read by nothing.
     walkSpeed: 2.6,
     sprintMul: 1,
     swimSpeed: 3,

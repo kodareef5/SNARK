@@ -2,6 +2,7 @@
 // Occupancy grants control; this module does not grant ownership or spend inventory items.
 import { TICK_DT } from "../coords.ts";
 import { clamp, detAtan2, detCos, detSin, TAU } from "../math/scalar.ts";
+import { validateSeats, type Seat } from "./seats.ts";
 import { DEFAULT_DRIVETRAIN, stepDrivetrain, validateDrivetrainSpec, vehicleMass, type VehicleDrivetrainSpec, type VehicleDrivetrainState } from "./vehicle-drivetrain.ts";
 
 export interface VehicleSpec {
@@ -46,18 +47,60 @@ export interface VehicleSpec {
   readonly dragScale?: number;
 }
 
-export interface VehicleSeat {
-  readonly id: string;
-  readonly driver?: boolean;
-  readonly anchor: readonly [number, number, number];
-  readonly entry: readonly [number, number, number];
+/** A vehicle's seats are seats like any host's (shared/sim/seats.ts), in its chassis frame. */
+export type VehicleSeat = Seat;
+
+/** A hinged part of the rig. `open` is radians about `axis` (in the bone's frame) when it is fully open. */
+export interface VehicleDoor {
+  readonly bone: string;
+  readonly axis: readonly [number, number, number];
+  readonly open: number;
+  /** Ticks it takes to swing fully open, and to swing shut. */
+  readonly openTicks: number;
+  readonly closeTicks: number;
 }
 
-/** Resolved mechanical data. Art and motion may be replaced without changing these seat names. */
+/** A wheel bone rolls about the chassis X axis with the wheel angle; one that steers turns about Y first. */
+export interface VehicleWheel {
+  readonly bone: string;
+  readonly steers?: boolean;
+}
+
+/** At most this many doors a vehicle: their open fractions travel in four bits each (shared/sim/vehicle-body.ts). */
+export const MAX_VEHICLE_DOORS = 4;
+
+/** One kind of vehicle: its mechanics, its seats and the parts of its rig that move. Content, never code, says each. */
 export interface VehicleDefinition {
   readonly id: string;
   readonly spec: VehicleSpec;
   readonly seats: readonly VehicleSeat[];
+  readonly doors: readonly VehicleDoor[];
+  readonly wheels: readonly VehicleWheel[];
+  /** The bone the driver's hands turn, about `axis`, `ratio` times the road wheels' steering angle. */
+  readonly steeringWheel?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
+  /** Ticks a door action takes: getting in, getting out, pulling a driver out. */
+  readonly actionTicks: number;
+  /** Metres up from the ground to where the body shell ends and the open cabin begins: a shot above it reaches whoever sits inside. */
+  readonly beltline: number;
+}
+
+/** Content checks beyond the spec's, so a definition that compiles always registers and draws. Throws on the first fault. */
+export function validateVehicleDefinition(d: VehicleDefinition): void {
+  validateVehicleSpec(d.spec);
+  const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  const bone = (n: unknown): boolean => typeof n === "string" && n.length > 0 && n.length <= 64;
+  if (!Array.isArray(d.doors) || d.doors.length > MAX_VEHICLE_DOORS) throw new Error("a vehicle has at most 4 doors");
+  if (!Array.isArray(d.wheels) || d.wheels.length > 16 || !d.wheels.every((w) => bone(w.bone))) throw new Error("invalid vehicle wheels");
+  for (const door of d.doors) {
+    if (!bone(door.bone) || !vec(door.axis) || !Number.isFinite(door.open) || Math.abs(door.open) > Math.PI ||
+      !Number.isInteger(door.openTicks) || door.openTicks < 1 || door.openTicks > 255 ||
+      !Number.isInteger(door.closeTicks) || door.closeTicks < 1 || door.closeTicks > 255) throw new Error("invalid vehicle door");
+  }
+  const s = d.steeringWheel;
+  if (s !== undefined && (!bone(s.bone) || !vec(s.axis) || !Number.isFinite(s.ratio) || Math.abs(s.ratio) > 50)) throw new Error("invalid steering wheel");
+  if (!Number.isInteger(d.actionTicks) || d.actionTicks < 1 || d.actionTicks > 300) throw new Error("invalid vehicle action ticks");
+  if (!Number.isFinite(d.beltline) || d.beltline <= d.spec.clearance || d.beltline > d.spec.height) throw new Error("invalid vehicle belt line");
+  validateSeats(d.seats, d.doors.length, "vehicle");
 }
 
 /** Physical surface values, independent of terrain palette or art material names. */

@@ -6,13 +6,13 @@ import { defaultLook, lookScales, LOOK_SEX, SEX_IDS } from '../shared/anim/look.
 import type { PackRig } from '../shared/pack/pack.ts';
 import { createMountMotion, mountOrigin, mountPose } from '../shared/anim/mount.ts';
 import { Solved, solve } from '../shared/anim/skeleton.ts';
-import { TICK_DT } from '../shared/coords.ts';
+import { CHUNK_SIZE, TICK_DT } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
 import { detAtan2, detCos, detSin, TAU } from '../shared/math/scalar.ts';
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
 import { BTN_JUMP, Body, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from '../shared/sim/character.ts';
 import { F_ALIVE, F_GROUNDED, F_PLAYER } from '../shared/sim/entities.ts';
-import { stepVehicleBody, packVehicleDoors, unpackVehicleDoorLeft, unpackVehicleDoorRight } from '../shared/sim/vehicle-body.ts';
+import { stepVehicleBody, vehicleDoor, withVehicleDoor } from '../shared/sim/vehicle-body.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import type { VehicleDefinition, VehicleState } from '../shared/sim/vehicle.ts';
 import { capsuleFree, groundUnder } from '../shared/world/collide.ts';
@@ -42,7 +42,6 @@ interface HostSeat { entity: number; handle: number; definition: VehicleDefiniti
 interface Scope { epoch: number; request: number; connection: Connection | null }
 interface Point { x: number; y: number; z: number }
 export interface UrbanIncident { action: number; tick: number; offender: number; victim: number; vehicle: number }
-const ACTION_TICKS = 18;
 /** Seat tables are pruned as hosts disappear and actors go idle; these only bound a pathological world. */
 const MAX_HOSTS = 1 << 16;
 const MAX_ACTORS = 1 << 16;
@@ -50,8 +49,15 @@ const MAX_ACTORS = 1 << 16;
 const VEHICLE_COMPONENT = 0x757262;
 /** One preserved unreadable component, bounded by the record codec's ordinary part limit. */
 const VEHICLE_QUARANTINE = 0x757263;
+/**
+ * The saved component, little-endian: version u8 (4), these fields as f32 in this order, then whether it stands on its
+ * wheels u8. Versions 1 to 3 held the first 6, 13 and 16 and are read. A field added goes at the end, after the wheels
+ * byte, as version 5, and restoreSaved gives an older component that field's parked default.
+ */
 const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz", "vehicleGear", "vehicleRpm", "vehicleShiftTime", "vehiclePayloadMass"] as const;
 const PLAIN = defaultLook();
+/** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
+const REST_TICKS = 30;
 
 export class Urban {
   readonly occupancy: Occupancy;
@@ -62,6 +68,13 @@ export class Urban {
   private readonly hosts = new Map<number, HostSeat>();
   private readonly scopes = new Map<number, Scope>();
   private readonly preserveComponent = new Set<number>();
+  /** The entities sessions drive this tick. */
+  private readonly drivers = new Set<number>();
+  /** The bytes a car's mechanical component would be saved as, made again each tick without allocating. */
+  private readonly saving = new Uint8Array(2 + VEHICLE_FIELDS.length * 4);
+  private readonly savingView = new DataView(this.saving.buffer);
+  /** Per host this tick, a bit for each door someone is getting in or out by. */
+  private readonly opening = new Map<number, number>();
   private epochs = 0;
   private readonly body = new Body();
   private readonly pose = new Pose(HUMAN_BONES);
@@ -69,9 +82,18 @@ export class Urban {
   private readonly motion = createMountMotion();
   private readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly rests = new Map<string, Float32Array>();
+  /** The farthest any body or vehicle reaches from its origin across the ground, for finding what is near a point. */
+  private readonly reach: number;
 
   constructor(ctx: UrbanContext) {
     this.ctx = ctx;
+    const reg = ctx.world.reg;
+    let reach = 0;
+    for (let k = 0; k < reg.defs.length; k++) {
+      const v = reg.vehicle[k];
+      reach = Math.max(reach, reg.bodyRadius[k] ?? 0, v ? Math.hypot(v.spec.halfWidth, v.spec.halfLength) : 0);
+    }
+    this.reach = reach;
     for (const rig of ctx.rigs) if (rig.rest.length === HUMAN_BONES * 3) this.rests.set(rig.id, Float32Array.from(rig.rest));
     this.occupancy = new Occupancy({
       actor: pid => {
@@ -242,6 +264,77 @@ export class Urban {
     ents.stance[e] = STANCE_CROUCH;
   }
 
+  /** Stands a body that was in a vehicle, or is inside its hull, where it can stand beside it: by the doors first, then
+   * anywhere round the hull, each reached from the hull's middle through nothing but the vehicle itself. False when
+   * there is nowhere; the body then stays crouched where it is. */
+  private standBeside(e: number, host: HostSeat): boolean {
+    const { world } = this.ctx, ents = world.ents, actor = ents.pid[e]!, p = world.reg.move[ents.kind[e]!]!;
+    const state = this.state(host.entity), spec = host.definition.spec, out = [0, 0, 0];
+    const ground = (x: number, z: number): number => Math.max(state.y - state.rideOffset, groundUnder(world.hf, x, z, p.radius));
+    vehiclePoint(state, [0, 0, 0], out);
+    const from = { x: out[0]!, y: ground(out[0]!, out[2]!), z: out[2]! };
+    const spots: [number, number][] = [];
+    for (const seat of host.definition.seats) {
+      const side = seat.entry[0] >= 0 ? 1 : -1, x = side * Math.max(Math.abs(seat.entry[0]), spec.halfWidth + p.radius + 0.08);
+      spots.push([x, seat.entry[2]], [x + side * 1.1, seat.entry[2]]);
+    }
+    // Then round the hull: its sides, its ends and its corners, just clear of it.
+    const w = spec.halfWidth + p.radius + 0.1, l = spec.halfLength + p.radius + 0.1;
+    for (const [x, z] of [[w, 0], [-w, 0], [0, l], [0, -l], [w, l], [-w, l], [w, -l], [-w, -l], [w, l / 2], [-w, l / 2], [w, -l / 2], [-w, -l / 2]] as const) spots.push([x, z]);
+    for (const [x, z] of spots) {
+      vehiclePoint(state, [x, 0, z], out);
+      const point = { x: out[0]!, y: ground(out[0]!, out[2]!), z: out[2]! };
+      for (const stance of [STANCE_STAND, STANCE_CROUCH, STANCE_PRONE]) {
+        const height = stanceHeight(p, stance);
+        if (!this.free(point, actor, [actor], 0, height) || !this.corridor(from, point, actor, [actor], ents.pid[host.entity]!, height)) continue;
+        ents.setPosition(e, point.x, point.y, point.z);
+        ents.stance[e] = stance;
+        return true;
+      }
+    }
+    ents.stance[e] = STANCE_CROUCH;
+    return false;
+  }
+
+  /** Seats are not saved. Before a seated body leaves the world, and for everyone as the server stops, its seat is freed
+   * and it is stood beside its vehicle, so a save never keeps a body where a seat had it. */
+  standDown(pid: number): void {
+    const { world, records } = this.ctx, ents = world.ents, place = this.occupancy.seatOf(pid);
+    const host = place ? this.hosts.get(place.host) : undefined, e = this.entity(pid);
+    for (const effect of this.occupancy.remove(pid, world.tick)) this.apply(effect);
+    if (!host || e < 0 || makeHandle(host.entity, ents.gen[host.entity]!) !== host.handle) return;
+    this.standBeside(e, host);
+    ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
+    ents.pose(e, world.tick);
+    records.dirty.add(pid);
+  }
+
+  standDownAll(): void {
+    for (const pid of [...this.scopes.keys()]) if (this.occupancy.seatOf(pid)) this.standDown(pid);
+  }
+
+  /** A body coming into the world inside a vehicle's hull, saved so by a server that stopped without standing it down, is
+   * stood beside the vehicle. */
+  settle(e: number): void {
+    const { world, records } = this.ctx, ents = world.ents, p = world.reg.move[ents.kind[e]!];
+    if (!p || this.occupancy.seatOf(ents.pid[e]!)) return;
+    const pad = p.radius + this.reach;
+    const x0 = Math.max(0, Math.floor((ents.x[e]! - pad) / CHUNK_SIZE)), x1 = Math.min(world.dims.chunksX - 1, Math.floor((ents.x[e]! + pad) / CHUNK_SIZE));
+    const z0 = Math.max(0, Math.floor((ents.z[e]! - pad) / CHUNK_SIZE)), z1 = Math.min(world.dims.chunksZ - 1, Math.floor((ents.z[e]! + pad) / CHUNK_SIZE));
+    for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) for (let car = ents.chunkHead[cz * world.dims.chunksX + cx]!; car >= 0; car = ents.next[car]!) {
+      const host = this.hosts.get(ents.pid[car]!);
+      if (!host || host.entity !== car || car === e) continue;
+      const spec = host.definition.spec, a = ents.vehicleYaw[car]!, dx = ents.x[e]! - ents.x[car]!, dz = ents.z[e]! - ents.z[car]!;
+      const x = Math.abs(Math.cos(a) * dx - Math.sin(a) * dz) - spec.halfWidth, z = Math.abs(Math.sin(a) * dx + Math.cos(a) * dz) - spec.halfLength;
+      const outside = Math.max(0, x) ** 2 + Math.max(0, z) ** 2 >= p.radius * p.radius;
+      if (outside || ents.y[e]! >= ents.y[car]! + spec.height || ents.y[e]! + p.height <= ents.y[car]! - spec.height) continue;
+      this.standBeside(e, host);
+      ents.pose(e, world.tick);
+      records.dirty.add(ents.pid[e]!);
+      return;
+    }
+  }
+
   /** Curb mass is content; cargo and the mass/possessions of every committed occupant are authority data. */
   payloadMass(e: number): number {
     const { world, records, items } = this.ctx, ents = world.ents;
@@ -326,7 +419,6 @@ export class Urban {
     for (const [pid, host] of this.hosts) {
       // Destroyed, removed or recycled: nobody may stay seated in a slot that is no longer this car.
       if (this.entity(pid) !== host.entity || makeHandle(host.entity, ents.gen[host.entity]!) !== host.handle) { this.evict(pid); continue; }
-      if (ents.driven[host.entity] === 2) ents.driven[host.entity] = 0;
     }
     for (const [pid] of this.scopes) {
       const rec = this.ctx.records.byPid.get(pid), e = this.entity(pid);
@@ -334,7 +426,12 @@ export class Urban {
         for (const effect of this.occupancy.invalidateActor(pid, world.tick)) this.apply(effect);
         continue;
       }
-      if (rec.out) for (const effect of this.occupancy.cancel(pid, world.tick, 'unconscious')) this.apply(effect);
+      // One knocked out falls from a seat as a rider falls from a mount: it lies beside the car (server/riding.ts).
+      if (rec.out) {
+        for (const effect of this.occupancy.cancel(pid, world.tick, 'unconscious')) this.apply(effect);
+        if (this.occupancy.seatOf(pid)) this.standDown(pid);
+        continue;
+      }
       const c = this.client(pid);
       if (c) this.scope(pid);
       const place = this.occupancy.seatOf(pid);
@@ -382,29 +479,36 @@ export class Urban {
         if (!this.occupancy.seatOf(pid)) ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
       } else if (ents.driven[e] === 3) ents.driven[e] = 0;
     }
+    this.opening.clear();
+    for (const actor of this.scopes.keys()) {
+      const action = this.occupancy.pending(actor), host = action ? this.hosts.get(action.host) : undefined;
+      const door = host?.definition.seats.find(seat => seat.id === action!.seat)?.door;
+      if (door !== undefined) this.opening.set(action!.host, (this.opening.get(action!.host) ?? 0) | (1 << door));
+    }
+    this.drivers.clear();
+    for (const c of game.clients) if (c?.active && c.drive >= 0) this.drivers.add(c.drive);
     for (const [pid, host] of this.hosts) {
       const e = this.entity(pid);
       if (e !== host.entity || makeHandle(e, ents.gen[e]!) !== host.handle) continue;
-      const client = game.clients.find(c => c?.active && c.drive === e);
-      if (!client) {
+      // A car nobody drives stops on its handbrake, and once at rest is looked at again only once a REST_TICKS, each on
+      // its own tick of them, to see whether the ground under it went.
+      const driven = this.drivers.has(e);
+      if (!driven && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
         stepVehicleBody(world, this.body, 0, 0, BTN_JUMP, host.definition, TICK_DT);
         ents.storeBody(e, this.body);
         ents.pose(e, world.tick);
-        ents.driven[e] = 2; // Reserved only between ticks; beforeStep clears this before game.take.
-      }
+      } else if (!driven && ents.vehicleDoors[e] === 0 && !this.opening.has(pid) && !this.occupied(pid, host)) continue;
       this.note(host);
       this.save(e);
-      let left = false, right = false;
-      for (const actor of this.scopes.keys()) {
-        const action = this.occupancy.pending(actor);
-        if (action?.host !== pid) continue;
-        const entry = host.definition.seats.find(seat => seat.id === action.seat)?.entry;
-        if (entry && entry[0] >= 0) left = true; else if (entry) right = true;
-      }
-      const doors = ents.vehicleDoors[e]!;
-      const moveDoor = (v: number, opened: boolean): number => opened ? Math.min(1, v + 1 / 6) : Math.max(0, v - 1 / 10);
-      ents.vehicleDoors[e] = packVehicleDoors(moveDoor(unpackVehicleDoorLeft(doors), left), moveDoor(unpackVehicleDoorRight(doors), right));
+      // A seat's door swings open while someone is getting in or out by it, and shut after.
+      const opening = this.opening.get(pid) ?? 0;
+      let doors = ents.vehicleDoors[e]!;
+      host.definition.doors.forEach((door, d) => {
+        const was = vehicleDoor(doors, d);
+        doors = withVehicleDoor(doors, d, (opening & (1 << d)) !== 0 ? Math.min(1, was + 1 / door.openTicks) : Math.max(0, was - 1 / door.closeTicks));
+      });
+      ents.vehicleDoors[e] = doors;
       for (let slot = 0; slot < host.definition.seats.length; slot++) {
         const seat = host.definition.seats[slot]!, actor = this.occupancy.occupant(pid, seat.id);
         const ae = this.entity(actor);
@@ -437,7 +541,8 @@ export class Urban {
   }
   private begin(actor: number, host: number, seat: string, kind: 'enter' | 'exit' | 'carjack'): number {
     const scope = this.scope(actor);
-    const result = this.occupancy.begin({ actor, actorEpoch: scope.epoch, requestId: scope.request++, host, seat, kind }, this.ctx.world.tick, ACTION_TICKS);
+    const ticks = this.hosts.get(host)?.definition.actionTicks ?? 1;
+    const result = this.occupancy.begin({ actor, actorEpoch: scope.epoch, requestId: scope.request++, host, seat, kind }, this.ctx.world.tick, ticks);
     if (result.ok) return RESULT_OK;
     if (result.reason === 'too-far') return RESULT_FAR;
     if (result.reason === 'not-yours') return RESULT_NOT_YOURS;
@@ -451,12 +556,16 @@ export class Urban {
       vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[e]!, pitchRate: ents.vehiclePitchRate[e]!, rollRate: ents.vehicleRollRate[e]!, groundPitch: ents.vehicleGroundPitch[e]!, groundRoll: ents.vehicleGroundRoll[e]!, rideOffset: ents.vehicleRideOffset[e]!, rideVelocity: ents.vehicleRideVelocity[e]!, steering: ents.steering[e]!, wheelAngle: ents.wheelAngle[e]!, fuel: ents.fuel[e]!, gear: ents.vehicleGear[e]!, engineRpm: ents.vehicleRpm[e]!, shiftTime: ents.vehicleShiftTime[e]!, payloadMass: ents.vehiclePayloadMass[e]! };
   }
   private free(p: Point, actor: number, ignored: readonly number[], ignoredHost = 0, height?: number): boolean {
-    const { world } = this.ctx, ents = world.ents;
+    const { world, records } = this.ctx, ents = world.ents;
     const ae = this.entity(actor), move = ae >= 0 ? world.reg.move[ents.kind[ae]!] : null;
     if (!move || !capsuleFree(world, p.x, p.y, p.z, move.radius, height ?? move.height)) return false;
-    // Seat corridors may cross their own chassis, never another live body or car.
-    for (const [pid, e] of this.ctx.records.entOf) {
-      if (ignored.includes(pid) || pid === ignoredHost || (ents.flags[e]! & F_ALIVE) === 0) continue;
+    // Seat corridors may cross their own chassis, never another live body or car: those in the chunks within reach.
+    const pad = move.radius + this.reach;
+    const x0 = Math.max(0, Math.floor((p.x - pad) / CHUNK_SIZE)), x1 = Math.min(world.dims.chunksX - 1, Math.floor((p.x + pad) / CHUNK_SIZE));
+    const z0 = Math.max(0, Math.floor((p.z - pad) / CHUNK_SIZE)), z1 = Math.min(world.dims.chunksZ - 1, Math.floor((p.z + pad) / CHUNK_SIZE));
+    for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
+      const pid = ents.pid[e]!;
+      if (pid === 0 || records.entOf.get(pid) !== e || ignored.includes(pid) || pid === ignoredHost || (ents.flags[e]! & F_ALIVE) === 0) continue;
       if (p.y >= ents.y[e]! + world.reg.bodyHeight[ents.kind[e]!]! || p.y + (height ?? move.height) <= ents.y[e]!) continue;
       const vehicle = world.reg.vehicle[ents.kind[e]!];
       const dx = p.x - ents.x[e]!, dz = p.z - ents.z[e]!;
@@ -500,7 +609,8 @@ export class Urban {
     const entry = { x: out[0]!, y: Math.max(state.y, groundUnder(world.hf, out[0]!, out[2]!, move.radius)), z: out[2]! };
     const ignored = action.victim ? [action.actor, action.victim] : [action.actor];
     const start = { x: ents.x[ae]!, y: action.kind === 'exit' ? entry.y : ents.y[ae]!, z: ents.z[ae]! };
-    if (action.kind !== 'exit' && Math.hypot(start.x - entry.x, start.z - entry.z) > 2) return { ok: false, reason: 'too-far' };
+    // Within reach of the door: 2 m across the ground, and no more than a step above or below it.
+    if (action.kind !== 'exit' && (Math.hypot(start.x - entry.x, start.z - entry.z) > 2 || Math.abs(start.y - entry.y) > 1.2)) return { ok: false, reason: 'too-far' };
     if (!this.free(entry, action.actor, ignored)) return { ok: false, reason: 'door-blocked' };
     if (!this.corridor(start, entry, action.actor, ignored, action.kind === 'exit' ? action.host : 0)) return { ok: false, reason: 'corridor-blocked' };
     vehiclePoint(state, seat.anchor, out);
@@ -572,20 +682,34 @@ export class Urban {
     const { world, records } = this.ctx, ents = world.ents;
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec || this.preserveComponent.has(rec.pid)) return;
-    const bytes = new Uint8Array(2 + VEHICLE_FIELDS.length * 4), view = new DataView(bytes.buffer);
+    const bytes = this.saving, view = this.savingView;
     bytes[0] = 4;
-    const values = VEHICLE_FIELDS.map(field => ents[field][e]!);
-    for (let i = 0; i < values.length; i++) view.setFloat32(1 + i * 4, values[i]!, true);
+    for (let i = 0; i < VEHICLE_FIELDS.length; i++) view.setFloat32(1 + i * 4, ents[VEHICLE_FIELDS[i]!][e]!, true);
     bytes[bytes.length - 1] = (ents.flags[e]! & F_GROUNDED) !== 0 ? 1 : 0;
     const old = rec.extra.get(VEHICLE_COMPONENT);
     if (old?.length === bytes.length && bytes.every((v, i) => old[i] === v)) return;
-    rec.extra.set(VEHICLE_COMPONENT, bytes); records.dirty.add(rec.pid);
+    rec.extra.set(VEHICLE_COMPONENT, bytes.slice()); records.dirty.add(rec.pid);
   }
+
+  /** A car on its wheels that has stopped: no speed, and its springs and turn as good as settled. */
+  private resting(e: number): boolean {
+    const ents = this.ctx.world.ents, still = (n: number): boolean => Math.abs(n) < 1e-3;
+    return (ents.flags[e]! & F_GROUNDED) !== 0 && ents.vx[e] === 0 && ents.vz[e] === 0 && still(ents.vy[e]!) &&
+      still(ents.vehicleYawRate[e]!) && still(ents.vehiclePitchRate[e]!) && still(ents.vehicleRollRate[e]!) && still(ents.vehicleRideVelocity[e]!);
+  }
+
+  /** Whether anyone sits in the vehicle: an asleep car with nobody in it and its doors shut has nothing to do this tick. */
+  private occupied(pid: number, host: HostSeat): boolean {
+    for (const seat of host.definition.seats) if (this.occupancy.occupant(pid, seat.id) !== 0) return true;
+    return false;
+  }
+
   private pin(actor: number, vehicle: number, anchor: readonly [number, number, number], driver: boolean): void {
     const { world } = this.ctx, ents = world.ents;
     const state = this.state(vehicle), seat = [0, 0, 0], rotation = [0, 0, 0, 1], origin = [0, 0, 0];
     vehiclePoint(state, anchor, seat); vehicleRotation(state, rotation);
-    mountPose(this.motion, { role: driver ? 'drive' : 'passenger', tick: world.tick, startTick: 0, durationTicks: 1, steering: state.steering }, this.pose);
+    const spec = world.reg.vehicle[ents.kind[vehicle]!]!.spec;
+    mountPose(this.motion, { role: driver ? 'drive' : 'passenger', tick: world.tick, startTick: 0, durationTicks: 1, steering: state.steering / spec.maxSteer }, this.pose);
     const look = ents.look[actor] ?? this.ctx.records.byPid.get(ents.pid[actor]!)?.look ?? PLAIN;
     const definition = world.reg.defs[ents.kind[actor]!];
     const mesh = definition?.type === 'species' ? definition.mesh.replace(/^[^:]*:/, '') : 'human';

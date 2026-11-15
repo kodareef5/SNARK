@@ -16,7 +16,7 @@ import { TERMINALS } from "./terminals.ts";
 import { SPAWNS } from "./spawns.ts";
 import { ROADS } from "./vehicles/roads.ts";
 import { COMPACT_SPECIES } from "./vehicles/compact.ts";
-import { CIVILIAN } from "./creatures/civilian.ts";
+import { CIVILIAN } from "./civilians.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
 const id = (name: string): string => `core:${name}`;

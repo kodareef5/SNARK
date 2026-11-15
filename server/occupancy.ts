@@ -1,3 +1,5 @@
+import { MAX_SEATS, SEAT_ID } from '../shared/sim/seats.ts';
+
 /** Server-owned seat transitions. Persistent IDs are independent of entity slots.
  * Callers apply returned effects synchronously before publishing the tick. Authority
  * callbacks must be pure; they own permissions, door corridors and safe landings.
@@ -99,13 +101,13 @@ export class Occupancy {
   /** Definitions are registered once. Recycled runtime hosts must be removed first. */
   addHost(pid: number, hostHandle: number, seats: readonly OccupancySeat[]): void {
     if (!positive(pid) || !handle(hostHandle) || this.hosts.has(pid) ||
-      this.hosts.size >= this.limits.maxHosts || seats.length < 1 || seats.length > 16) {
+      this.hosts.size >= this.limits.maxHosts || seats.length < 1 || seats.length > MAX_SEATS) {
       throw new Error('Invalid or duplicate occupancy host');
     }
     const states = new Map<string, SeatState>();
     let drivers = 0;
     for (const seat of seats) {
-      if (!/^[a-z][a-z0-9_]{0,47}$/.test(seat.id) || states.has(seat.id)) throw new Error('Invalid seat name');
+      if (!SEAT_ID.test(seat.id) || states.has(seat.id)) throw new Error('Invalid seat name');
       if (seat.driver && ++drivers > 1) throw new Error('Multiple driver seats');
       states.set(seat.id, { driver: !!seat.driver, actor: 0, actorHandle: 0, revision: 0, claim: 0 });
     }
@@ -243,6 +245,17 @@ export class Occupancy {
     const place = this.places.get(actor);
     const state = this.authority.actor(actor);
     if (!place || state?.alive) return effects;
+    return [...effects, this.unseat(actor, place, now)];
+  }
+
+  /** The actor leaves its seat now, alive or not, because its body is leaving the world: the caller stands it somewhere. */
+  remove(actor: number, now = this.tick): OccupancyEffect[] {
+    const effects = this.cancel(actor, now, 'actor-removed');
+    const place = this.places.get(actor);
+    return place ? [...effects, this.unseat(actor, place, now)] : effects;
+  }
+
+  private unseat(actor: number, place: Place, now: number): OccupancyEffect {
     const host = this.hosts.get(place.host)!;
     const seat = host.seats.get(place.seat)!;
     const actorHandle = seat.actorHandle;
@@ -251,9 +264,8 @@ export class Occupancy {
     seat.revision++;
     this.places.delete(actor);
     if (seat.driver) host.controlRevision++;
-    effects.push({ type: 'detach', actor, actorHandle, host: place.host,
-      hostHandle: host.handle, seat: place.seat, tick: now, control: this.control(place.host)! });
-    return effects;
+    return { type: 'detach', actor, actorHandle, host: place.host,
+      hostHandle: host.handle, seat: place.seat, tick: now, control: this.control(place.host)! };
   }
 
   /** Occupied hosts must survive as disabled wrecks until validated exits/deaths resolve. */
@@ -377,12 +389,14 @@ export class Occupancy {
     if (seat.actor !== expected) return 'occupant-changed';
     const hostState = this.authority.host(action.host);
     if (!hostState?.ready || hostState.handle !== action.hostHandle || !handle(hostState.handle)) return 'host-invalid';
-    if (!Number.isFinite(hostState.speed) || Math.abs(hostState.speed) > this.limits.maxInteractionSpeed) return 'host-moving';
+    // Nobody gets into a moving vehicle or pulls its driver out, but anyone may get out of one, as a rider may always get off.
+    if (action.kind !== 'exit' && (!Number.isFinite(hostState.speed) || Math.abs(hostState.speed) > this.limits.maxInteractionSpeed)) return 'host-moving';
     const actor = this.authority.actor(action.actor);
     if (!actor?.alive || !actor.ready || actor.handle !== action.actorHandle || !handle(actor.handle)) return 'actor-invalid';
     if (action.victim) {
       const victim = this.authority.actor(action.victim);
-      if (!victim?.alive || !victim.ready || victim.handle !== action.victimHandle || !handle(victim.handle)) return 'victim-invalid';
+      // A driver who cannot act (tangled) can still be pulled out; one who cannot act is no shield for the car.
+      if (!victim?.alive || victim.handle !== action.victimHandle || !handle(victim.handle)) return 'victim-invalid';
     }
     return null;
   }

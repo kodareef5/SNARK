@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_SPRINT, Body, MODE_FLY, MODE_GHOST, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye, stanceHeight, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { AnimState } from "../../shared/anim/pose.ts";
+import { WORLD_MAX_Y } from "../../shared/coords.ts";
+import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_ROLL, BTN_SPRINT, Body, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLY, MODE_FLYER, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye, stanceHeight, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
 import { SKIN, capsuleFree } from "../../shared/world/collide.ts";
 import { SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0 } from "../../shared/world/proving.ts";
 import { slopeKind } from "../../content/slopes.ts";
@@ -380,4 +382,324 @@ test("a ghost or a flyer holding sprint starts at five times its speed, gains 15
     stepBody(w, b, 0, FWD, 0, 0, BTN_SPRINT, p, TICK_DT);
     expect([mode, speed()]).toEqual([mode, expect.closeTo(60, 3)]);
   }
+});
+
+// A creature's own flight (planning/reference/flyers-plan.md, FL1) at ARK's 1x numbers for the pteranodon
+// (assets/source/core/creatures/pteranodon/ref/FUNCTIONS.md, sections 3 and 4).
+
+const PTERA = "core:pteranodon";
+/** A pitch straight up. */
+const UP = 16384;
+
+function ptera(w: TestWorld, tamed = false): MoveParams {
+  return (tamed ? w.reg.tamedMove : w.reg.move)[w.kind(PTERA)]!;
+}
+
+/** A pteranodon of level 1 standing at (x, z), its stamina full. */
+function flyerAt(w: TestWorld, x: number, z: number): Body {
+  const b = bodyAt(w, x, z);
+  b.kind = w.kind(PTERA);
+  b.staminaMax = 150;
+  b.stamina = 150 * STAMINA_UNITS;
+  return b;
+}
+
+/** One already hovering `up` metres over the ground at (x, z). */
+function hovering(w: TestWorld, x: number, z: number, up: number): Body {
+  const b = flyerAt(w, x, z);
+  b.y += up;
+  b.grounded = false;
+  b.mode = MODE_FLYER;
+  return b;
+}
+
+const speedOf = (b: Body): number => Math.hypot(b.vx, b.vy, b.vz);
+
+test("a pteranodon takes off on its jump held and hovers a few feet up; winded, too heavy, rooted or out it does not, and it never hops", () => {
+  const w = flatWorld();
+  const p = ptera(w);
+  const b = flyerAt(w, 64, 64);
+  let took = 0;
+  let top = 0;
+  for (let i = 0; i < 90; i++) {
+    stepBody(w, b, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+    if (stepOut.tookOff) took++;
+    top = Math.max(top, b.y);
+  }
+  expect([took, b.mode, b.grounded]).toEqual([1, MODE_FLYER, false]);
+  // It rises about 1.5 m and hangs there still: "launch and hover a few feet above ground".
+  expect([top > 1.2, top < 1.6, b.y, speedOf(b)]).toEqual([true, true, top, 0]);
+  for (const flags of [MF_WINDED, MF_NO_JUMP | MF_ROOTED | MF_NO_SPRINT, MF_ROOTED | MF_NO_SPRINT, MF_OUT]) {
+    const g = flyerAt(w, 64, 64);
+    g.mflags = flags;
+    // Set down spent, it waits for any stamina.
+    if (flags === MF_WINDED) [g.stamina, g.regenWait] = [0, 300];
+    let high = 0;
+    for (let i = 0; i < 60; i++) {
+      stepBody(w, g, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+      high = Math.max(high, g.y);
+    }
+    expect([flags, g.mode, high]).toEqual([flags, MODE_WALK, 0]);
+  }
+  // Falling, as when a bola lets go of it in the air, it flies on from its fall, slowing it at its acceleration.
+  const f = flyerAt(w, 64, 64);
+  [f.y, f.vy, f.grounded] = [40, -20, false];
+  stepBody(w, f, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+  expect([stepOut.tookOff, f.mode, f.vy]).toEqual([true, MODE_FLYER, expect.closeTo(-20 + 12 / 30, 5)]);
+});
+
+test("it flies where it looks at 6 m/s, sprints at 16.5 wild and 18.975 tamed, climbs and dives by the look alone, and with no way forward slows to a hover", () => {
+  const w = flatWorld(16);
+  for (const [tamed, sprint] of [[false, 16.5], [true, 18.975]] as const) {
+    const p = ptera(w, tamed);
+    const b = hovering(w, 512, 100, 40);
+    for (let i = 0; i < 60; i++) stepBody(w, b, 0, FWD, NORTH, 0, BTN_JUMP, p, TICK_DT);
+    expect([speedOf(b), b.vx, b.vy]).toEqual([expect.closeTo(6, 4), 0, 0]);
+    for (let i = 0; i < 60; i++) stepBody(w, b, 0, FWD, NORTH, 0, BTN_JUMP | BTN_SPRINT, p, TICK_DT);
+    expect(speedOf(b)).toBeCloseTo(sprint, 3);
+    // Looking 30 degrees up it climbs at 30 degrees, and looking 30 degrees down it dives so: there is no climb key.
+    for (const pitch of [UP / 3, -UP / 3]) {
+      for (let i = 0; i < 60; i++) stepBody(w, b, 0, FWD, NORTH, pitch, BTN_JUMP | BTN_SPRINT, p, TICK_DT);
+      expect([Math.asin(b.vy / speedOf(b)) * (180 / Math.PI), speedOf(b)]).toEqual([expect.closeTo((pitch / UP) * 90, 3), expect.closeTo(sprint, 3)]);
+    }
+    // Let go of forward, it comes to a halt in the air at its acceleration, 12 m/s a second, and stays where it stopped.
+    let still = -1;
+    for (let i = 0; i < 90; i++) {
+      stepBody(w, b, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+      if (still < 0 && speedOf(b) === 0) still = i + 1;
+    }
+    const y = b.y;
+    for (let i = 0; i < 90; i++) stepBody(w, b, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+    expect([still, b.y, b.mode]).toEqual([Math.ceil((sprint / 12) * 30), y, MODE_FLYER]);
+  }
+});
+
+test("in the air it turns at 120 degrees a second, its way lagging its facing so that it banks, and the brake stops it in a third of a second", () => {
+  const w = flatWorld(16);
+  const p = ptera(w);
+  const b = hovering(w, 512, 100, 40);
+  for (let i = 0; i < 90; i++) stepBody(w, b, 0, FWD, NORTH, 0, BTN_JUMP | BTN_SPRINT, p, TICK_DT);
+  // 120 degrees a second is 728 of 65,536 a tick.
+  expect(p.flyTurnRate).toBe(728);
+  const st = new AnimState();
+  st.mode = MODE_FLYER;
+  const bank = (): number => {
+    st.setMotion(b.vx, b.vz, (b.yaw * 2 * Math.PI) / 65536, 0, b.vy);
+    return st.bank;
+  };
+  expect(bank()).toBe(0);
+  let most = 0;
+  for (let i = 0; i < 15; i++) {
+    stepBody(w, b, 0, FWD, UP, 0, BTN_JUMP | BTN_SPRINT, p, TICK_DT);
+    most = Math.max(most, bank());
+  }
+  expect(b.yaw).toBe(15 * 728);
+  // Turning left, it faces left of where it goes, and so banks left.
+  expect(most).toBeGreaterThan(2);
+  for (let i = 0; i < 60; i++) stepBody(w, b, 0, FWD, UP, 0, BTN_JUMP | BTN_SPRINT, p, TICK_DT);
+  let stopped = -1;
+  for (let i = 0; i < 30 && stopped < 0; i++) {
+    stepBody(w, b, 0, FWD, UP, 0, BTN_JUMP | BTN_SPRINT | BTN_BRAKE, p, TICK_DT);
+    if (speedOf(b) === 0) stopped = i + 1;
+  }
+  expect([stopped > 0, stopped <= 10, b.mode]).toEqual([true, true, MODE_FLYER]);
+});
+
+test("flying costs 0.33 a second and sprinting 6, so 150 is gone in 25 s of sprinting; none comes back in the air, and on the ground none for 10 s after it sets down", () => {
+  const w = flatWorld(16);
+  const p = ptera(w);
+  const b = hovering(w, 512, 100, 3);
+  const full = 150 * STAMINA_UNITS;
+  for (let i = 0; i < 300; i++) stepBody(w, b, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+  expect(full - b.stamina).toBe(300 * 11);
+  b.stamina = full;
+  let ticks = 0;
+  while (b.stamina > 0 && ticks < 2000) {
+    stepBody(w, b, 0, FWD, NORTH, 0, BTN_JUMP | BTN_SPRINT, p, TICK_DT);
+    ticks++;
+  }
+  expect([ticks, ticks / 30, b.mflags & MF_WINDED]).toEqual([750, 25, MF_WINDED]);
+  // At none it is put down, sprint and jump held, and lands under it unhurt.
+  let set = -1;
+  for (let i = 0; i < 300 && b.mode === MODE_FLYER; i++) {
+    stepBody(w, b, 0, FWD, NORTH, 0, BTN_JUMP | BTN_SPRINT, p, TICK_DT);
+    expect(stepOut.landSpeed).toBe(0);
+    if (stepOut.setDown) set = i;
+  }
+  expect([set >= 0, b.mode, b.grounded, b.y, b.regenWait]).toEqual([true, MODE_WALK, true, 0, 300]);
+  // Standing, it gets nothing back for 300 ticks, then its regeneration, 8 a second.
+  const back: number[] = [];
+  for (let i = 0; i < 302; i++) {
+    stepBody(w, b, 0, 0, NORTH, 0, 0, p, TICK_DT);
+    back.push(b.stamina);
+  }
+  expect([back[299], back[300], back[301], p.staminaRegen]).toEqual([0, 267, 534, 267]);
+  // Winded, it may not take off again until a quarter is back.
+  for (let i = 0; i < 30; i++) stepBody(w, b, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+  expect([b.mode, b.mflags & MF_WINDED]).toEqual([MODE_WALK, MF_WINDED]);
+});
+
+test("let go of its jump, spent or too heavy, it goes down to the ground under it and sets down unhurt; knocked out or caught by a bola, it falls and lands hard", () => {
+  const w = flatWorld(16);
+  const p = ptera(w);
+  const cases = [
+    ["let go of its jump", 0, 0],
+    ["spent", MF_WINDED, BTN_JUMP],
+    ["too heavy", MF_ROOTED | MF_NO_SPRINT | MF_NO_JUMP, BTN_JUMP],
+    ["knocked out", MF_OUT, BTN_JUMP],
+    ["caught by a bola", MF_ROOTED | MF_NO_SPRINT, BTN_JUMP],
+  ] as const;
+  const seen = cases.map(([name, flags, buttons]) => {
+    const b = hovering(w, 512, 512, 30);
+    for (let i = 0; i < 30; i++) stepBody(w, b, 0, FWD, NORTH, 0, BTN_JUMP | BTN_SPRINT, p, TICK_DT);
+    b.mflags = flags;
+    if (flags === MF_WINDED) b.stamina = 0;
+    let hard = 0;
+    let soft = 0;
+    let t = 0;
+    for (; t < 600 && !b.grounded; t++) {
+      stepBody(w, b, 0, FWD, NORTH, 0, buttons, p, TICK_DT);
+      hard = Math.max(hard, stepOut.landSpeed);
+      if (stepOut.setDown) soft++;
+    }
+    return [name, b.mode, b.grounded, b.y, soft, Math.round(hard), t < 150];
+  });
+  // Falling 30 m at our gravity of 20 lands at 34.6 m/s, well past the 16 a creature takes unhurt (D385).
+  expect(seen).toEqual([
+    ["let go of its jump", MODE_WALK, true, 0, 1, 0, true],
+    ["spent", MODE_WALK, true, 0, 1, 0, true],
+    ["too heavy", MODE_WALK, true, 0, 1, 0, true],
+    ["knocked out", MODE_WALK, true, 0, 0, 35, true],
+    ["caught by a bola", MODE_WALK, true, 0, 0, 35, true],
+  ]);
+});
+
+test("it never goes under water: it skims the surface, sets down on it to float, does not dive there, and takes off from it", () => {
+  const w = flatWorld(16);
+  w.hf.seaLevel = 6;
+  const p = ptera(w);
+  const b = hovering(w, 512, 100, 20);
+  let low = Infinity;
+  for (let i = 0; i < 120; i++) {
+    stepBody(w, b, 0, FWD, NORTH, -UP, BTN_JUMP | BTN_SPRINT, p, TICK_DT);
+    low = Math.min(low, b.y);
+  }
+  expect([low, b.mode]).toEqual([6, MODE_FLYER]);
+  // Going down, it settles into the water to its float line, three quarters under, and floats there.
+  const float = Math.fround(6 - p.height * 0.75);
+  let set = 0;
+  for (let i = 0; i < 30; i++) {
+    stepBody(w, b, 0, 0, NORTH, 0, 0, p, TICK_DT);
+    if (stepOut.setDown) set++;
+  }
+  expect([set, b.mode, b.y]).toEqual([1, MODE_SWIM, float]);
+  // Afloat, looking down and swimming forward, it does not dive.
+  low = Infinity;
+  for (let i = 0; i < 240; i++) {
+    stepBody(w, b, 0, FWD, NORTH, -UP, 0, p, TICK_DT);
+    low = Math.min(low, b.y);
+  }
+  expect([b.mode, low, b.y]).toEqual([MODE_SWIM, float, float]);
+  let took = 0;
+  for (let i = 0; i < 60; i++) {
+    stepBody(w, b, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+    if (stepOut.tookOff) took++;
+  }
+  expect([took, b.mode, b.y > 6.5]).toEqual([1, MODE_FLYER, true]);
+});
+
+test("the barrel roll: crouch in the air bursts 10 m/s along its look for 90 stamina, 7 s apart, not encumbered and not on the ground", () => {
+  const w = flatWorld(16);
+  const p = ptera(w);
+  const b = hovering(w, 512, 100, 20);
+  const rolls: number[] = [];
+  for (let i = 0; i < 421; i++) {
+    // Full each tick, since 150 pays for one roll.
+    const before = (b.stamina = 150 * STAMINA_UNITS);
+    stepBody(w, b, 0, 0, NORTH, 0, BTN_JUMP | BTN_ROLL, p, TICK_DT);
+    if (stepOut.rolled) {
+      rolls.push(i);
+      expect([before - b.stamina, b.rollWait, speedOf(b), b.vz]).toEqual([90 * STAMINA_UNITS + 11, 210, expect.closeTo(10, 5), expect.closeTo(10, 5)]);
+    }
+  }
+  expect(rolls).toEqual([0, 210, 420]);
+  // The burst is spent at its acceleration and it hovers again.
+  for (let i = 0; i < 30; i++) stepBody(w, b, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+  expect(speedOf(b)).toBe(0);
+  // Encumbered (MF_NO_SPRINT from 85% of its weight), short of 90, or on the ground, it does not roll.
+  for (const [flags, stamina, up] of [[MF_NO_SPRINT, 150, 20], [0, 89, 20], [0, 150, 0]] as const) {
+    const c = up > 0 ? hovering(w, 512, 100, up) : flyerAt(w, 512, 100);
+    c.mflags = flags;
+    c.stamina = stamina * STAMINA_UNITS;
+    let rolled = false;
+    for (let i = 0; i < 30; i++) {
+      stepBody(w, c, 0, 0, NORTH, 0, (up > 0 ? BTN_JUMP : 0) | BTN_ROLL, p, TICK_DT);
+      rolled ||= stepOut.rolled;
+    }
+    expect([flags, stamina, up, rolled, c.stance]).toEqual([flags, stamina, up, false, STANCE_STAND]);
+  }
+});
+
+test("flying, it keeps the capsule it walks with: 1.5 m wide, it does not pass a doorway a survivor walks through", () => {
+  const w = flatWorld();
+  const p = ptera(w);
+  const door = w.kind("core:doorframe_wood");
+  w.structs.add(door, 64, w.reg.halfY[door]!, 30, 0, 0, 1);
+  const b = hovering(w, 64, 24, 0.2);
+  for (let i = 0; i < 120; i++) stepBody(w, b, 0, FWD, NORTH, 0, BTN_JUMP, p, TICK_DT);
+  // Held where its round sides meet the posts, short of the frame's middle.
+  expect([b.mode, b.z < 29.7, b.vz, capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)]).toEqual([MODE_FLYER, true, 0, true]);
+  const s = bodyAt(w, 64, 24);
+  run(w, s, 120, 0, FWD, NORTH);
+  expect(s.z).toBeGreaterThan(32);
+});
+
+test("at the world's top it climbs no higher", () => {
+  const w = flatWorld(16);
+  const p = ptera(w);
+  const b = hovering(w, 512, 100, WORLD_MAX_Y - 10);
+  for (let i = 0; i < 120; i++) stepBody(w, b, 0, FWD, NORTH, UP, BTN_JUMP | BTN_SPRINT, p, TICK_DT);
+  expect([b.y, b.vy, b.mode]).toEqual([WORLD_MAX_Y, 0, MODE_FLYER]);
+});
+
+test("fuzz: pteranodons flying, landing, rolling and falling over the proving ground and its pool are always in free space and never under water while they fly", () => {
+  const w = provingWorld();
+  const sea = w.hf.seaLevel;
+  const afloat = sea - ptera(w).height * 0.75;
+  const did = { aloft: 0, tookOff: 0, setDown: 0, rolled: 0, fell: 0 };
+  for (const [tamed, seed] of [[false, 31], [true, 32], [false, 33], [true, 34]] as const) {
+    const p = ptera(w, tamed);
+    const rng = new Rng(seed);
+    for (const [sx, sz] of [[256, 240], [285, 280], [172, 256], [300, 258], [220, 286], [252, 305]] as const) {
+      const b = flyerAt(w, sx, sz);
+      let [moveZ, yaw, pitch, buttons] = [FWD, rng.int(65536), 0, BTN_JUMP];
+      for (let i = 0; i < 3000; i++) {
+        if (rng.int(20) === 0) {
+          moveZ = rng.int(255) - 127;
+          yaw = rng.int(65536);
+          pitch = rng.int(2 * UP + 1) - UP;
+          // Mostly held up; now and then let down, sprinting, braking or rolling.
+          buttons = (rng.int(5) === 0 ? 0 : BTN_JUMP) | (rng.int(2) === 0 ? BTN_SPRINT : 0) | (rng.int(8) === 0 ? BTN_BRAKE : 0) | (rng.int(8) === 0 ? BTN_ROLL : 0);
+          // Now and then out cold, caught or too heavy for a while, as the server sets them.
+          const r = rng.int(40);
+          b.mflags = (b.mflags & MF_WINDED) | (r === 0 ? MF_OUT : r === 1 ? MF_ROOTED | MF_NO_SPRINT : r === 2 ? MF_ROOTED | MF_NO_SPRINT | MF_NO_JUMP : 0);
+          if (rng.int(30) === 0) b.stamina = 150 * STAMINA_UNITS;
+        }
+        const [px, py, pz] = [b.x, b.y, b.z];
+        stepBody(w, b, 0, moveZ, yaw, pitch, buttons, p, TICK_DT);
+        if (!capsuleFree(w, b.x, b.y, b.z, p.radius, stanceHeight(p, b.stance))) throw new Error(`in solid at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
+        // Flying, it may come no lower over deep water than the float line it settles to.
+        if (b.mode === MODE_FLYER && py >= afloat && b.y < afloat - 1e-4 && sea - w.hf.heightAt(b.x, b.z) > p.height) throw new Error(`under water at tick ${i}, seed ${seed}`);
+        // Sprinting at 19 m/s with a 10 m/s burst is under a metre a tick; falling at 60 is two.
+        if (Math.hypot(b.x - px, b.z - pz) > 1.05 || Math.abs(b.y - py) > 2.05) throw new Error(`too far in a tick at ${i}, seed ${seed}`);
+        if (b.mode === MODE_FLYER) did.aloft++;
+        if (stepOut.tookOff) did.tookOff++;
+        if (stepOut.setDown) did.setDown++;
+        if (stepOut.rolled) did.rolled++;
+        if (stepOut.landSpeed > 16) did.fell++;
+      }
+    }
+  }
+  // Most of 72,000 ticks aloft, with hundreds of take-offs and landings, a hundred rolls and some falls.
+  expect([did.aloft > 50000, did.tookOff > 300, did.setDown > 200, did.rolled > 50, did.fell > 0]).toEqual([true, true, true, true, true]);
 });

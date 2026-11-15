@@ -19,7 +19,7 @@ import { mannequinMeshes } from "../pack/mannequin.ts";
 import { splitPack } from "../pack/split.ts";
 import { rgbaTexture, writeTextureFile } from "../pack/texture.ts";
 import { weaponMeshes } from "../pack/weapons.ts";
-import { buildPack } from "../pack/write.ts";
+import { buildPack, type SourceMesh } from "../pack/write.ts";
 
 export const SNAP_CACHE = resolve(import.meta.dir, "../../.cache/snap");
 
@@ -90,12 +90,12 @@ export async function namedTextures(source: string = SOURCE): Promise<Map<string
   return out;
 }
 
-/** The core pack as `buildCorePack` makes it, from the packs under `source`. */
-export function corePack(source: string = SOURCE): Uint8Array {
-  if (resolve(source) === resolve(SOURCE)) return buildCorePack();
+/** The core pack as `buildCorePack` makes it, from the packs under `source`, with `extra` meshes besides. */
+export function corePack(source: string = SOURCE, extra: SourceMesh[] = []): Uint8Array {
+  if (resolve(source) === resolve(SOURCE)) return buildCorePack(extra);
   const art = readPacks(source);
   const made = [...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes()];
-  return buildPack(withArt(made, art.meshes), defaultPalette(), [...art.clips, ...authoredClips()], art.rigs, art.details);
+  return buildPack([...withArt(made, art.meshes), ...extra], defaultPalette(), [...art.clips, ...authoredClips()], art.rigs, art.details);
 }
 
 export interface GameFiles {
@@ -124,10 +124,13 @@ export function splitWithTextures(whole: Uint8Array, texture: (t: ManifestTextur
   return { files: files.map((f) => f.bytes), manifest };
 }
 
-/** The core pack of the asset folders under `source`, split as a build splits it, with the rgba variant of its textures. */
-export async function gameFiles(source: string = SOURCE, cache: string | null = SNAP_CACHE): Promise<GameFiles> {
+/**
+ * The core pack of the asset folders under `source`, split as a build splits it, with the rgba variant of its textures.
+ * `extra` meshes, drawn flat, are put in with the rest: a test's code-made saddles.
+ */
+export async function gameFiles(source: string = SOURCE, cache: string | null = SNAP_CACHE, extra: SourceMesh[] = []): Promise<GameFiles> {
   const named = await namedTextures(source);
-  return splitWithTextures(corePack(source), (t) => {
+  return splitWithTextures(corePack(source, extra), (t) => {
     const n = named.get(t.id);
     if (!n) throw new Error(`texture ${t.id} is named by a mesh, and no asset under ${source} has its pictures`);
     return rgbaOf(n.material, t.role, t.top, cache);

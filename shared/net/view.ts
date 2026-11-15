@@ -8,10 +8,13 @@
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], then its appearance:
 //             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16, on 1],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
-//     Vehicle creates include [vehicle? 1][pose u32, wheel u16, ride u32, doors u16, drive u32]; updates carry the same payload after [changed? 1].
-//     A present seat includes its slot u8 and parent generation12, preventing attachment to a recycled entity.
+//             then [vehicle? 1][its parts], the parts a vehicle's: pose 32, wheel 16, ride 32, doors 32, drive 32
+//             (shared/sim/vehicle-body.ts packs each). A seat is the entity, its slot u8 and the entity's generation 12, so
+//             nothing is drawn on a recycled one.
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
 //             [motion? 1][12] [look? 1][6] [action? 1][14 [cues? 1][31]]: the action is sent again with a change of cues
+//             [vehicle? 1][[part? 1][its bits] for each of the five parts]: only the parts that changed. A new part goes
+//             last, in VEHICLE_PART_BITS, the SentView columns and vehicleParts, and takes a protocol version.
 //
 // `on` is whether the held item's laser is switched on (protocol 13; planning/reference/weapons-plan.md, M10), so others
 // draw its dot. A flashlight's on is not sent: nothing draws it until there are local lights (D436), and drawing it will
@@ -49,6 +52,51 @@ const OP_REMOVE = 2;
 const OP_DIED = 3;
 
 const ANIM_BITS = ANIM_MOTION_BITS + ANIM_LOOK_BITS + ANIM_ACTION_BITS;
+/** A vehicle's parts in a view entry, in their order on the wire: pose, wheel, ride, doors, drive. */
+const VEHICLE_PART_BITS = [32, 16, 32, 32, 32] as const;
+/** A create's vehicle: every part, each with its bit. */
+const VEHICLE_BITS = VEHICLE_PART_BITS.reduce((a, b) => a + b + 1, 0);
+const partsA = new Uint32Array(VEHICLE_PART_BITS.length);
+const partsB = new Uint32Array(VEHICLE_PART_BITS.length);
+const scratchParts: [number, number, number, number, number] = [0, 0, 0, 0, 0];
+
+function vehicleParts(v: SentView, i: number, out: Uint32Array | number[]): void {
+  out[0] = v.vehiclePose[i]!;
+  out[1] = v.vehicleWheel[i]!;
+  out[2] = v.vehicleRide[i]!;
+  out[3] = v.vehicleDoors[i]!;
+  out[4] = v.vehicleDrive[i]!;
+}
+
+/** The bits an update's vehicle takes after its own bit: 0 when no part changed. */
+function vehicleChange(base: SentView, i: number, cur: SentView, j: number): number {
+  vehicleParts(base, i, partsA);
+  vehicleParts(cur, j, partsB);
+  let bits = 0;
+  let any = false;
+  for (let p = 0; p < VEHICLE_PART_BITS.length; p++) {
+    bits += 1;
+    if (partsA[p] !== partsB[p]) { bits += VEHICLE_PART_BITS[p]!; any = true; }
+  }
+  return any ? bits : 0;
+}
+
+/** Each part with its bit, the part only where it differs from the base's (always, without a base). */
+function writeVehicleParts(w: BitWriter, base: SentView | null, i: number, cur: SentView, j: number): void {
+  if (base) vehicleParts(base, i, partsA);
+  vehicleParts(cur, j, partsB);
+  for (let p = 0; p < VEHICLE_PART_BITS.length; p++) {
+    const sent = !base || partsA[p] !== partsB[p];
+    w.bool(sent);
+    if (sent) w.bits(partsB[p]!, VEHICLE_PART_BITS[p]!);
+  }
+}
+
+function readVehicleParts(r: BitReader, base: SentView | null, i: number, out: number[]): void {
+  if (base) vehicleParts(base, i, out);
+  else out.fill(0);
+  for (let p = 0; p < VEHICLE_PART_BITS.length; p++) if (r.bool()) out[p] = r.bits(VEHICLE_PART_BITS[p]!) >>> 0;
+}
 const LOOK_MASK = (1 << ANIM_LOOK_BITS) - 1;
 const CREATE_BITS = 1 + 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 1 + 4 + 16 + 4 + 48 + 3;
 /** In bytes. */
@@ -134,7 +182,7 @@ export class SentView {
   vehiclePose = new Uint32Array(VIEW_START);
   vehicleWheel = new Uint16Array(VIEW_START);
   vehicleRide = new Uint32Array(VIEW_START);
-  vehicleDoors = new Uint16Array(VIEW_START);
+  vehicleDoors = new Uint32Array(VIEW_START);
   vehicleDrive = new Uint32Array(VIEW_START);
   /** Appearance revision, 4 bits. A change makes the next delta send a create. */
   rev = new Uint8Array(VIEW_START);
@@ -629,7 +677,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       opKind[n] = K_CREATE;
       opCur[n] = j;
       opId[n] = cid;
-      bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? 128 : 0);
+      bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
       last = cid + 1;
     } else {
       opBase[n] = i;
@@ -637,7 +685,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
         // Deferred, it leaves the client the entry it has.
         opKind[n] = K_REPLACE;
-        bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? 128 : 0);
+        bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
         last = cid + 1;
       } else {
         const dx = cur.qx[j]! - base!.qx[i]!;
@@ -646,8 +694,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         const moved = dx !== 0 || dy !== 0 || dz !== 0;
         const changed = cur.anim[j]! ^ base!.anim[i]!;
         const cued = cur.cue[j] !== base!.cue[i];
-        const vehicleChanged = cur.vehiclePose[j] !== base!.vehiclePose[i] || cur.vehicleWheel[j] !== base!.vehicleWheel[i] || cur.vehicleRide[j] !== base!.vehicleRide[i] || cur.vehicleDoors[j] !== base!.vehicleDoors[i] || cur.vehicleDrive[j] !== base!.vehicleDrive[i];
-        if (!moved && changed === 0 && !cued && !vehicleChanged && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
+        const vehicleBits = vehicleChange(base!, i, cur, j);
+        if (!moved && changed === 0 && !cued && vehicleBits === 0 && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
           if (th < 0) {
             opKind[n] = K_KEEP;
             i++;
@@ -668,8 +716,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         }
         opKind[n] = K_UPDATE;
         // The id gap, the op, and one bit for each of the seven parts that may follow.
-        bits = varintBits(cid + 1 - last) + 2 + 7;
-        if (vehicleChanged) bits += 128;
+        bits = varintBits(cid + 1 - last) + 2 + 7 + vehicleBits;
         if (moved) bits += dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127 ? 25 : 65;
         if (base!.yaw[i] !== cur.yaw[j]) bits += 10;
         if (base!.flags[i] !== cur.flags[j]) bits += 4;
@@ -768,7 +815,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       w.bool(cur.cue[ci] !== 0);
       if (cur.cue[ci] !== 0) w.bits(cur.cue[ci]!, CUE_BITS);
       w.bool(cur.vehiclePose[ci] !== 0);
-      if (cur.vehiclePose[ci] !== 0) { w.u32(cur.vehiclePose[ci]!); w.u16(cur.vehicleWheel[ci]!); w.u32(cur.vehicleRide[ci]!); w.u16(cur.vehicleDoors[ci]!); w.u32(cur.vehicleDrive[ci]!); }
+      if (cur.vehiclePose[ci] !== 0) writeVehicleParts(w, null, 0, cur, ci);
       w.bits(cur.rev[ci]!, 4);
       w.varint(looks.level[id]!);
       const c0 = id * 6;
@@ -847,9 +894,9 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         w.bool(cued);
         if (cued) w.bits(cur.cue[ci]!, CUE_BITS);
       }
-      const vehicleChanged = cur.vehiclePose[ci] !== base!.vehiclePose[bi] || cur.vehicleWheel[ci] !== base!.vehicleWheel[bi] || cur.vehicleRide[ci] !== base!.vehicleRide[bi] || cur.vehicleDoors[ci] !== base!.vehicleDoors[bi] || cur.vehicleDrive[ci] !== base!.vehicleDrive[bi];
+      const vehicleChanged = vehicleChange(base!, bi, cur, ci) !== 0;
       w.bool(vehicleChanged);
-      if (vehicleChanged) { w.u32(cur.vehiclePose[ci]!); w.u16(cur.vehicleWheel[ci]!); w.u32(cur.vehicleRide[ci]!); w.u16(cur.vehicleDoors[ci]!); w.u32(cur.vehicleDrive[ci]!); }
+      if (vehicleChanged) writeVehicleParts(w, base!, bi, cur, ci);
       next.copyFrom(cur, ci);
     }
   }
@@ -919,12 +966,10 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const flags = r.bits(4);
       const anim = r.bits(ANIM_BITS);
       const cue = r.bool() ? r.bits(CUE_BITS) : 0;
-      const vehicle = r.bool();
-      const vehiclePose = vehicle ? r.u32() : 0;
-      const vehicleWheel = vehicle ? r.u16() : 0;
-      const vehicleRide = vehicle ? r.u32() : 0;
-      const vehicleDoors = vehicle ? r.u16() : 0;
-      const vehicleDrive = vehicle ? r.u32() : 0;
+      const parts = scratchParts;
+      if (r.bool()) readVehicleParts(r, null, 0, parts);
+      else parts.fill(0);
+      const [vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive] = parts;
       const rev = r.bits(4);
       const level = r.varint();
       if (r.bool()) for (let q = 0; q < 6; q++) scratchColors[q] = r.u8();
@@ -982,12 +1027,10 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
         anim = (anim & ((1 << ANIM_ACTION_SHIFT) - 1)) | (r.bits(ANIM_ACTION_BITS) << ANIM_ACTION_SHIFT);
         if (r.bool()) cue = r.bits(CUE_BITS);
       }
-      const vehicleChanged = r.bool();
-      const vehiclePose = vehicleChanged ? r.u32() : base!.vehiclePose[i]!;
-      const vehicleWheel = vehicleChanged ? r.u16() : base!.vehicleWheel[i]!;
-      const vehicleRide = vehicleChanged ? r.u32() : base!.vehicleRide[i]!;
-      const vehicleDoors = vehicleChanged ? r.u16() : base!.vehicleDoors[i]!;
-      const vehicleDrive = vehicleChanged ? r.u32() : base!.vehicleDrive[i]!;
+      const parts = scratchParts;
+      if (r.bool()) readVehicleParts(r, base!, i, parts);
+      else vehicleParts(base!, i, parts);
+      const [vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive] = parts;
       if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0, 0, cue, vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive)) return false;
       next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!, base!.on[i]!);
       next.belong(base!.team[i]!, base!.seat[i]!, base!.span[i]!, base!.grown[i]!, base!.seatSlot[i]!, base!.seatGen[i]!);

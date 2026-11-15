@@ -233,12 +233,15 @@ export interface StructureDef extends Named {
   readonly type: "structure";
   readonly class: "piece" | "container" | "station" | "bed" | "static" | "defence";
   readonly id: string;
-  /** "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. */
+  /**
+   * "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. A mesh of
+   * the pack with a shape is drawn at the shape's origin and walked as its boxes, so its origin may be on the ground under it.
+   */
   readonly mesh: string;
   readonly color: number;
   /** Half extents in metres of the box that holds all of it, centred on the structure's position. Without a shape, this box is its collider. */
   readonly half: readonly [number, number, number];
-  /** A shape id, if it is more than one box. `half` must equal the box that holds the shape. */
+  /** A shape id, if it is more than one box or not centred on its origin. `half` must equal the box that holds the shape. */
   readonly shape?: string;
   readonly hp: number;
   /** A material id. The material says what each type of damage does to it. Omitted, nothing harms it. */

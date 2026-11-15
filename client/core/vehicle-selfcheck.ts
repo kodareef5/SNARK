@@ -1,5 +1,6 @@
 // An optional, bounded native-game exercise used by the existing browser self-check, never ordinary play.
 import type { App } from "./app.ts";
+import { vehicleDoor } from "../../shared/sim/vehicle-body.ts";
 import { KEY_VEHICLE } from "./ui/hud.ts";
 
 export class VehicleSelfcheck {
@@ -69,6 +70,6 @@ export class VehicleSelfcheck {
   }
 
   observe(app: App): void {
-    for (let i = 0; i < app.remote.count; i++) if (app.remote.id[i] === this.data.target) this.data.maxDoor = Math.max(this.data.maxDoor, app.remote.vehicleDoorLeft[i]!, app.remote.vehicleDoorRight[i]!);
+    for (let i = 0; i < app.remote.count; i++) if (app.remote.id[i] === this.data.target) this.data.maxDoor = Math.max(this.data.maxDoor, vehicleDoor(app.remote.vehicleDoors[i]!, 0), vehicleDoor(app.remote.vehicleDoors[i]!, 1));
   }
 }

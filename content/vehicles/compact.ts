@@ -25,12 +25,26 @@ export const ASPHALT: VehicleSurface = { id: "asphalt", grip: 7, rolling: 0.15, 
 export const GRAVEL: VehicleSurface = { id: "gravel", grip: 3.5, rolling: 0.5, drag: 0.018 };
 export const MUD: VehicleSurface = { id: "mud", grip: 1.8, rolling: 1.1, drag: 0.035 };
 
+// Doors, wheels and the steering wheel name the rig's bones; each seat's anchor is its rig socket's point
+// (assets/source/core/vehicles/compact/ref/DESIGN.md), and the anchor is what server and client both use.
 export const COMPACT_VEHICLE: VehicleDefinition = {
   id: "core:compact", spec: COMPACT,
   seats: [
-    { id: "driver", driver: true, anchor: [0.42, 0.59, 0.12], entry: [1.25, 0, 0.12] },
-    { id: "passenger", anchor: [-0.42, 0.59, 0.12], entry: [-1.25, 0, 0.12] },
+    { id: "driver", driver: true, anchor: [0.42, 0.59, 0.12], entry: [1.25, 0, 0.12], door: 0 },
+    { id: "passenger", anchor: [-0.42, 0.59, 0.12], entry: [-1.25, 0, 0.12], door: 1 },
   ],
+  doors: [
+    { bone: "door_left", axis: [0, 1, 0], open: -1.1, openTicks: 6, closeTicks: 10 },
+    { bone: "door_right", axis: [0, 1, 0], open: 1.1, openTicks: 6, closeTicks: 10 },
+  ],
+  wheels: [
+    { bone: "wheel_front_left", steers: true }, { bone: "wheel_front_right", steers: true },
+    { bone: "wheel_rear_left" }, { bone: "wheel_rear_right" },
+  ],
+  steeringWheel: { bone: "steering_wheel", axis: [0, 0, 1], ratio: -4.5 },
+  actionTicks: 18,
+  // The door sills: the side windows are down and the screens open in the middle (DESIGN.md).
+  beltline: 0.95,
 };
 
 /** Uses normal entity health, cargo and ownership; the vehicle controller supplies all movement. */

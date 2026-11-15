@@ -37,12 +37,16 @@ export const MODE_GHOST = 3;
 /** Flight as a ghost's, but meeting the ground, pieces and nodes. Set only by the server (admins). */
 export const MODE_FLY = 4;
 /**
- * A creature's own flight, with the flyers' contracts (planning/reference/flyers-plan.md): stepped by its species' numbers
- * (the `fly` fields of MoveParams), not the admin's. Nothing sets it until FL1 builds the step; 6 and 7 are free.
+ * A creature's own flight (planning/reference/flyers-plan.md), stepped by its species' numbers (the `fly` fields of
+ * MoveParams), not the admin's. A flyer is in the air while its jump is held: the client turns Space into a toggle, as it
+ * does the stance keys, and a mind holds jump to stay up. 6 and 7 are free.
  */
 export const MODE_FLYER = 5;
 /** The most ticks either flight counter of a body holds (Body.regenWait, Body.rollWait): 10 bits on the wire, 34 s. */
 export const FLIGHT_TICKS_MAX = 1023;
+/** In the air a flyer's prone key is its brake, and its crouch key its barrel roll (ARK's X and C). */
+export const BTN_BRAKE = BTN_PRONE;
+export const BTN_ROLL = BTN_CROUCH;
 
 /** Stamina is stored in thousandths of a point, so it steps in exact integers. */
 export const STAMINA_UNITS = 1000;
@@ -70,8 +74,12 @@ const WATER_DRAG = 0.85;
 
 /** Set by the last stepBody call. */
 export const stepOut = {
-  /** Downward speed at which an airborne body touched down this tick, or 0. */
+  /** Downward speed at which an airborne body touched down this tick, or 0. A flyer setting down from flight has 0. */
   landSpeed: 0,
+  /** A flyer took off this tick, set down from flight on the ground or water unhurt, or began a barrel roll. */
+  tookOff: false,
+  setDown: false,
+  rolled: false,
 };
 
 export interface MoveParams {
@@ -113,7 +121,7 @@ export interface MoveParams {
   /** False for a body that moves only the way it faces. */
   readonly strafe: boolean;
   // A creature's own flight (MODE_FLYER), from SpeciesDef.fly. For a body that does not fly, `flies` is false and every
-  // number is 0. Read by nothing until FL1 of planning/reference/flyers-plan.md builds the step.
+  // number is 0.
   readonly flies: boolean;
   /** Metres per second flying, and the sprint as a multiple of it (a tame's own in its tamedMove). */
   readonly flySpeed: number;
@@ -206,10 +214,9 @@ export class Body {
   bloom = 0;
   kick = 0;
   /**
-   * Flight state, with the flyers' contracts (planning/reference/flyers-plan.md), stepped by FL1: the ticks before stamina
-   * may come back (a flyer gets none in the air, and none on the ground for MoveParams.regenWaitTicks after it flew), and
-   * the ticks before it may roll again. Each counts down to 0, which a body that never flew has, and holds at most FLIGHT_TICKS_MAX. Not
-   * saved: both run out within seconds.
+   * Flight state (planning/reference/flyers-plan.md): the ticks before stamina may come back, held full in the air and
+   * counted down on the ground and in water after it lands, and the ticks before it may roll again. Each is 0 for a body
+   * that never flew and at most FLIGHT_TICKS_MAX. Not saved: both run out within seconds.
    */
   regenWait = 0;
   rollWait = 0;
@@ -340,6 +347,14 @@ const GHOST_SPEED = 12;
 const GHOST_SPRINT = 5;
 const GHOST_RAMP = 150;
 const GHOST_MAX = 600;
+/**
+ * A creature's flight, where ARK gives no number (planning/quality/deviations.md): a take-off rises this many metres before it
+ * hovers ("a few feet above ground"); going down to land, by choice or spent, it descends at DESCENT times its flying speed;
+ * the brake stops it at BRAKE metres per second squared, a sprint in a third of a second.
+ */
+const TAKEOFF_RISE = 1.5;
+const DESCENT = 2;
+const BRAKE = 60;
 const found = new Found();
 
 /**
@@ -348,18 +363,22 @@ const found = new Found();
  */
 export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   stepOut.landSpeed = 0;
+  stepOut.tookOff = false;
+  stepOut.setDown = false;
+  stepOut.rolled = false;
   if (b.mode === MODE_NONE) {
     b.vx = 0;
     b.vy = 0;
     b.vz = 0;
     return;
   }
-  // The facing follows the look, at once or at turnRate. The body then moves the way it faces.
-  if (p.turnRate <= 0 || b.mode === MODE_GHOST || b.mode === MODE_FLY) b.yaw = yaw & 0xffff;
+  // The facing follows the look, at once or at turnRate, or in its own flight at flyTurnRate. The body then moves the way it faces.
+  const rate = b.mode === MODE_FLYER ? p.flyTurnRate : p.turnRate;
+  if (rate <= 0 || b.mode === MODE_GHOST || b.mode === MODE_FLY) b.yaw = yaw & 0xffff;
   else {
     let turn = ((yaw - b.yaw + 32768) & 0xffff) - 32768;
-    if (turn > p.turnRate) turn = p.turnRate;
-    else if (turn < -p.turnRate) turn = -p.turnRate;
+    if (turn > rate) turn = rate;
+    else if (turn < -rate) turn = -rate;
     b.yaw = (b.yaw + turn) & 0xffff;
   }
   yaw = b.yaw;
@@ -371,6 +390,13 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   if (b.mode === MODE_FLY) {
     stepFly(w, b, moveX, moveZ, yaw, pitch, buttons, p, dt);
     return;
+  }
+  if (p.flies || b.mode === MODE_FLYER) {
+    buttons = takeWing(w, b, buttons, p);
+    if (b.mode === MODE_FLYER) {
+      stepFlyer(w, b, moveZ, yaw, pitch, buttons, p, dt);
+      return;
+    }
   }
   if (b.mode === MODE_SWIM) {
     stepSwim(w, b, moveX, moveZ, yaw, pitch, buttons, p, dt);
@@ -705,13 +731,16 @@ function canSprint(b: Body, buttons: number): boolean {
 function spendStamina(b: Body, p: MoveParams, sprint: boolean, walk = 0): number {
   const cap = b.staminaMax * STAMINA_UNITS;
   let stamina = b.stamina > cap ? cap : b.stamina;
+  // A flyer gets none back until its wait after flying is over, counted on the ground and in water.
+  const waits = b.regenWait > 0;
+  if (waits && (b.grounded || b.mode === MODE_SWIM)) b.regenWait--;
   if (sprint || walk > 0) {
     stamina -= sprint ? p.staminaSprint : walk;
     if (stamina <= 0) {
       stamina = 0;
       b.mflags |= MF_WINDED;
     }
-  } else {
+  } else if (!waits) {
     stamina += p.staminaRegen;
     if (stamina > cap) stamina = cap;
     if ((b.mflags & MF_WINDED) !== 0 && stamina * 4 >= cap) b.mflags &= ~MF_WINDED;
@@ -937,15 +966,133 @@ function flight(b: Body, moveX: number, moveZ: number, yaw: number, pitch: numbe
   flown[2] = dz * speed;
 }
 
-/**
- * Flies as a ghost does, with no gravity, but meets the ground, pieces and nodes as a swimmer does, half a radius at a time
- * however fast, so it crosses nothing. It stands while it flies.
- */
+/** Flies as a ghost does, with no gravity, but meets the ground, pieces and nodes (flyThrough). It stands while it flies. */
 function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   flight(b, moveX, moveZ, yaw, pitch, buttons, dt);
-  let vx = flown[0]!;
-  let vy = flown[1]!;
-  let vz = flown[2]!;
+  flyThrough(w, b, flown[0]!, flown[1]!, flown[2]!, p, dt, -Infinity);
+  b.grounded = false;
+  b.stance = STANCE_STAND;
+}
+
+/**
+ * Before a flyer's step, its roll's clock runs, and it takes off or falls. Its jump held on the ground, in water or falling,
+ * it takes off unless winded, too heavy (MF_NO_JUMP), rooted or out, from the ground rising TAKEOFF_RISE to a hover. Knocked
+ * out or caught by a bola in the air, it stops flying and falls as a walker does; too heavy and so rooted by its load, it is
+ * put down by its flight as one spent is. Returns the buttons its walking or swimming step takes: it never hops, has no low
+ * stance, and floats.
+ */
+function takeWing(w: CollisionWorld, b: Body, buttons: number, p: MoveParams): number {
+  if (b.rollWait > 0) b.rollWait--;
+  const flags = b.mflags;
+  if (b.mode === MODE_FLYER) {
+    if (!p.flies || (flags & MF_OUT) !== 0 || (flags & (MF_ROOTED | MF_NO_JUMP)) === MF_ROOTED) b.mode = MODE_WALK;
+  } else if ((buttons & BTN_JUMP) !== 0 && (b.mode === MODE_WALK || b.mode === MODE_SWIM) && b.stance === STANCE_STAND && (flags & (MF_NO_JUMP | MF_ROOTED | MF_OUT | MF_WINDED)) === 0) {
+    // From the ground it springs up, and from the water clear of the surface first. Falling, it flies on from its fall.
+    const sea = w.hf.seaLevel;
+    const rise = TAKEOFF_RISE + (b.mode === MODE_SWIM && b.y < sea ? sea - b.y : 0);
+    if (b.grounded || b.mode === MODE_SWIM) b.vy = Math.fround(Math.sqrt(2 * p.accelFly * rise));
+    b.mode = MODE_FLYER;
+    b.grounded = false;
+    stepOut.tookOff = true;
+    return buttons;
+  }
+  if (b.mode === MODE_FLYER) return buttons;
+  return (buttons & ~(BTN_JUMP | BTN_CROUCH | BTN_PRONE)) | (b.mode === MODE_SWIM ? BTN_JUMP : 0);
+}
+
+/**
+ * A creature's own flight: along its look, pitch included, at its flying speed or its sprint's, its velocity moving toward
+ * the one it wishes at accelFly, so it carries speed and lags its facing through a turn. With no way forward it slows to a
+ * hover, and the brake stops it. Flying, hovering and sprinting cost stamina and none comes back. Let go of its jump, spent
+ * or too heavy, it goes down to the ground or the water under it and sets down there unhurt.
+ */
+function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
+  const flags = b.mflags;
+  const down = (buttons & BTN_JUMP) === 0 || (flags & (MF_WINDED | MF_NO_JUMP)) !== 0;
+  const brake = !down && (buttons & BTN_BRAKE) !== 0;
+  // It goes forward only; held back, it hovers. Rooted, it goes nowhere.
+  const mz = down || brake || moveZ <= 0 || (flags & MF_ROOTED) !== 0 ? 0 : moveZ >= 127 ? 1 : moveZ / 127;
+  const sprint = mz > 0 && canSprint(b, buttons);
+  const cap = b.staminaMax * STAMINA_UNITS;
+  let stamina = (b.stamina > cap ? cap : b.stamina) - (sprint ? p.staminaFlySprint : p.staminaFly);
+  // The barrel roll, rollTicks apart, not encumbered (ASE 203.1): a burst of speed along its look.
+  const roll = !down && (buttons & BTN_ROLL) !== 0 && b.rollWait === 0 && (flags & MF_NO_SPRINT) === 0 && stamina >= p.staminaRoll;
+  if (roll) {
+    stamina -= p.staminaRoll;
+    b.rollWait = p.rollTicks;
+    stepOut.rolled = true;
+  }
+  if (stamina <= 0) {
+    stamina = 0;
+    b.mflags |= MF_WINDED;
+  }
+  b.stamina = stamina;
+  b.regenWait = p.regenWaitTicks;
+
+  const a = yaw * YAW_TO_RAD;
+  const s = detSin(a);
+  const c = detCos(a);
+  const e = pitch * YAW_TO_RAD;
+  const sp = detSin(e);
+  const cp = detCos(e);
+  let wx = 0;
+  let wy = 0;
+  let wz = 0;
+  if (down) wy = -DESCENT * p.flySpeed;
+  else if (mz > 0) {
+    const speed = p.flySpeed * (b.speedQ / 1000) * (sprint ? p.flySprintMul : 1) * mz;
+    wx = s * cp * speed;
+    wy = sp * speed;
+    wz = c * cp * speed;
+  }
+  let dvx = wx - b.vx;
+  let dvy = wy - b.vy;
+  let dvz = wz - b.vz;
+  const maxDv = (brake ? BRAKE : p.accelFly) * dt;
+  const dv2 = dvx * dvx + dvy * dvy + dvz * dvz;
+  if (dv2 > maxDv * maxDv) {
+    const k = maxDv / Math.sqrt(dv2);
+    dvx *= k;
+    dvy *= k;
+    dvz *= k;
+  }
+  let vx = b.vx + dvx;
+  let vy = b.vy + dvy;
+  let vz = b.vz + dvz;
+  if (roll) {
+    vx += s * cp * p.rollBurst;
+    vy += sp * p.rollBurst;
+    vz += c * cp * p.rollBurst;
+  }
+  // Flyers do not go under water (ARK's Flying page): it skims the surface, and going down it settles to its float line.
+  const hf = w.hf;
+  const afloat = hf.seaLevel - p.height * SWIM_FLOAT;
+  flyThrough(w, b, vx, vy, vz, p, dt, down ? afloat : hf.seaLevel);
+  b.grounded = false;
+  b.stance = STANCE_STAND;
+  if (b.y >= WORLD_MAX_Y && b.vy > 0) b.vy = 0;
+  if (!down || b.vy > 0) return;
+  // Going down, it sets down on what it can stand on, as a walker comes to rest, or afloat on water deep enough to swim in.
+  const under = groundUnder(hf, b.x, b.z, p.radius);
+  const on = b.y - under <= GROUND_PROBE ? b.y : restingAt(w, b.x, b.y, b.z, p.radius, p.height, GROUND_PROBE, p.slopeCos);
+  if (!Number.isNaN(on)) {
+    b.y = Math.fround(on);
+    b.vy = 0;
+    b.grounded = true;
+    b.mode = MODE_WALK;
+    stepOut.setDown = true;
+  } else if (b.y <= afloat + GROUND_PROBE && hf.seaLevel - under > p.height * SWIM_ENTER) {
+    b.mode = MODE_SWIM;
+    stepOut.setDown = true;
+  }
+}
+
+/**
+ * Moves a body by (vx, vy, vz) for dt with no gravity, meeting the ground, pieces and nodes as a swimmer does, half a radius at
+ * a time however fast, so it crosses nothing; over the ground it skims up a small rise. Over water deep enough to swim in it
+ * goes no lower than `floor`, though it may rise from under it: -Infinity for the admin's fly. Stores its position and velocity.
+ */
+function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: number, p: MoveParams, dt: number, floor: number): void {
   const hf = w.hf;
   const r = p.radius;
   const height = p.height;
@@ -960,6 +1107,8 @@ function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: 
   const maxZ = hf.sizeZ - r;
   const maxSide2 = r * r;
   const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
+  const sea = hf.seaLevel;
+  const deep = height * SWIM_ENTER;
   let x = b.x;
   let y = b.y;
   let z = b.z;
@@ -971,6 +1120,7 @@ function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: 
     else if (nx > maxX) nx = maxX;
     if (nz < r) nz = r;
     else if (nz > maxZ) nz = maxZ;
+    // The world's top is the ceiling (ARK has one; its height is not published).
     if (ny > WORLD_MAX_Y) ny = WORLD_MAX_Y;
     // Over the ground it skims up a small rise, else along one axis, else stays.
     let h = groundUnder(hf, nx, nz, r);
@@ -996,6 +1146,10 @@ function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: 
         ny = h;
         if (vy < 0) vy = 0;
       }
+    }
+    if (ny < floor && ny < y && sea - h > deep) {
+      ny = y < floor ? y : floor;
+      if (vy < 0) vy = 0;
     }
     for (let iter = 0; iter < RESOLVE_ITERATIONS; iter++) {
       let moved = false;
@@ -1036,8 +1190,6 @@ function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: 
   b.vx = Math.fround(vx);
   b.vy = Math.fround(vy);
   b.vz = Math.fround(vz);
-  b.grounded = false;
-  b.stance = STANCE_STAND;
 }
 
 /** No collision. Bounded to the map's box. */

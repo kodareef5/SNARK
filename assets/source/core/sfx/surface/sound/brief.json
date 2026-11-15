@@ -1,0 +1,648 @@
+{
+  "asset": "core/sfx/surface",
+  "review": "../ref/sound",
+  "about": "What any body sounds like on any ground, and any blow on any material. Every owner without its own falls back here.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "step/grass": {
+      "kind": "step",
+      "range": 25,
+      "level": -26,
+      "vary": 1.0,
+      "want": "single footfalls of a person on grass",
+      "prompts": [
+        {
+          "id": "p1010",
+          "models": [
+            "moss"
+          ],
+          "seed": 1010,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on short dry grass and soft earth: soft padded thuds with a light swish, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "land/grass": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.8,
+      "want": "a body landing from a jump on grass",
+      "prompts": [
+        {
+          "id": "p1020",
+          "models": [
+            "moss"
+          ],
+          "seed": 1020,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on short dry grass and soft earth, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step/sand": {
+      "kind": "step",
+      "range": 25,
+      "level": -26,
+      "vary": 1.0,
+      "want": "single footfalls of a person on sand",
+      "prompts": [
+        {
+          "id": "p1030",
+          "models": [
+            "moss"
+          ],
+          "seed": 1030,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on dry beach sand: soft crunchy squeaking steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "land/sand": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.8,
+      "want": "a body landing from a jump on sand",
+      "prompts": [
+        {
+          "id": "p1040",
+          "models": [
+            "moss"
+          ],
+          "seed": 1040,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on dry beach sand, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step/stone": {
+      "kind": "step",
+      "range": 25,
+      "level": -26,
+      "vary": 1.0,
+      "want": "single footfalls of a person on stone",
+      "prompts": [
+        {
+          "id": "p1050",
+          "models": [
+            "moss"
+          ],
+          "seed": 1050,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on flat stone paving: firm taps with a faint gritty scuff, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "land/stone": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.8,
+      "want": "a body landing from a jump on stone",
+      "prompts": [
+        {
+          "id": "p1060",
+          "models": [
+            "moss"
+          ],
+          "seed": 1060,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on flat stone paving, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step/dirt": {
+      "kind": "step",
+      "range": 25,
+      "level": -26,
+      "vary": 1.0,
+      "want": "single footfalls of a person on dirt",
+      "prompts": [
+        {
+          "id": "p1070",
+          "models": [
+            "moss"
+          ],
+          "seed": 1070,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on packed dirt path: dull soft thuds with a little grit, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "land/dirt": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.8,
+      "want": "a body landing from a jump on dirt",
+      "prompts": [
+        {
+          "id": "p1080",
+          "models": [
+            "moss"
+          ],
+          "seed": 1080,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on packed dirt path, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step/wood": {
+      "kind": "step",
+      "range": 25,
+      "level": -26,
+      "vary": 1.0,
+      "want": "single footfalls of a person on wood",
+      "prompts": [
+        {
+          "id": "p1090",
+          "models": [
+            "moss"
+          ],
+          "seed": 1090,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on a hollow wooden plank floor: knocking wooden steps with a faint creak, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "land/wood": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.8,
+      "want": "a body landing from a jump on wood",
+      "prompts": [
+        {
+          "id": "p1100",
+          "models": [
+            "moss"
+          ],
+          "seed": 1100,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on a hollow wooden plank floor, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step/metal": {
+      "kind": "step",
+      "range": 25,
+      "level": -26,
+      "vary": 1.0,
+      "want": "single footfalls of a person on metal",
+      "prompts": [
+        {
+          "id": "p1110",
+          "models": [
+            "moss"
+          ],
+          "seed": 1110,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on a metal plate floor: ringing clanky metallic steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "land/metal": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.8,
+      "want": "a body landing from a jump on metal",
+      "prompts": [
+        {
+          "id": "p1120",
+          "models": [
+            "moss"
+          ],
+          "seed": 1120,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on a metal plate floor, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step/thatch": {
+      "kind": "step",
+      "range": 25,
+      "level": -26,
+      "vary": 1.0,
+      "want": "single footfalls of a person on thatch",
+      "prompts": [
+        {
+          "id": "p1130",
+          "models": [
+            "moss"
+          ],
+          "seed": 1130,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on a floor of dry straw and reeds: crackly rustling steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "land/thatch": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.8,
+      "want": "a body landing from a jump on thatch",
+      "prompts": [
+        {
+          "id": "p1140",
+          "models": [
+            "moss"
+          ],
+          "seed": 1140,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on a floor of dry straw and reeds, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step/water": {
+      "kind": "step",
+      "range": 25,
+      "level": -26,
+      "vary": 1.0,
+      "want": "single footfalls of a person on water",
+      "prompts": [
+        {
+          "id": "p1150",
+          "models": [
+            "moss"
+          ],
+          "seed": 1150,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on ankle-deep shallow water: splashy sloshing steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "land/water": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.8,
+      "want": "a body landing from a jump on water",
+      "prompts": [
+        {
+          "id": "p1160",
+          "models": [
+            "moss"
+          ],
+          "seed": 1160,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on ankle-deep shallow water, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step/snow": {
+      "kind": "step",
+      "range": 25,
+      "level": -26,
+      "vary": 1.0,
+      "want": "single footfalls of a person on snow",
+      "prompts": [
+        {
+          "id": "p1170",
+          "models": [
+            "moss"
+          ],
+          "seed": 1170,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on fresh deep snow: crunchy compressing steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "land/snow": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.8,
+      "want": "a body landing from a jump on snow",
+      "prompts": [
+        {
+          "id": "p1180",
+          "models": [
+            "moss"
+          ],
+          "seed": 1180,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on fresh deep snow, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/flesh": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on flesh",
+      "prompts": [
+        {
+          "id": "p1190",
+          "models": [
+            "moss"
+          ],
+          "seed": 1190,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: a heavy blow lands on a side of meat: wet meaty smacks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/hide": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on hide",
+      "prompts": [
+        {
+          "id": "p1200",
+          "models": [
+            "moss"
+          ],
+          "seed": 1200,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: a stick strikes a thick leather hide: dull leathery slaps, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/chitin": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on chitin",
+      "prompts": [
+        {
+          "id": "p1210",
+          "models": [
+            "moss"
+          ],
+          "seed": 1210,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: a blow strikes a hard insect shell: sharp hollow cracking clicks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/wood": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on wood",
+      "prompts": [
+        {
+          "id": "p1220",
+          "models": [
+            "moss"
+          ],
+          "seed": 1220,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: an axe chops into a tree trunk: solid woody thunks with chips, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/stone": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on stone",
+      "prompts": [
+        {
+          "id": "p1230",
+          "models": [
+            "moss"
+          ],
+          "seed": 1230,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: a pickaxe strikes a rock: sharp stony clacks with grit, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/metal": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on metal",
+      "prompts": [
+        {
+          "id": "p1240",
+          "models": [
+            "moss"
+          ],
+          "seed": 1240,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: a hammer strikes a steel plate: bright clanging metal hits, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/thatch": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on thatch",
+      "prompts": [
+        {
+          "id": "p1250",
+          "models": [
+            "moss"
+          ],
+          "seed": 1250,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: a stick beats a bundle of dry straw: crunchy rustling thwacks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/foliage": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on foliage",
+      "prompts": [
+        {
+          "id": "p1260",
+          "models": [
+            "moss"
+          ],
+          "seed": 1260,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: a stick swats leafy bushes: leafy whooshing rustles, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/water": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on water",
+      "prompts": [
+        {
+          "id": "p1270",
+          "models": [
+            "moss"
+          ],
+          "seed": 1270,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: a stick slaps the surface of water: sharp splashing slaps, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/dirt": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on dirt",
+      "prompts": [
+        {
+          "id": "p1280",
+          "models": [
+            "moss"
+          ],
+          "seed": 1280,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: a shovel strikes packed earth: dull earthy thuds with falling soil, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "impact/glass": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 1.0,
+      "want": "a blow on glass",
+      "prompts": [
+        {
+          "id": "p1290",
+          "models": [
+            "moss"
+          ],
+          "seed": 1290,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Five separate hits: a stick knocks on thick glass: hard glassy knocks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drag/grass": {
+      "kind": "step",
+      "range": 20,
+      "level": -26,
+      "vary": 0.5,
+      "want": "a body dragged over grass",
+      "prompts": [
+        {
+          "id": "p1300",
+          "models": [
+            "moss"
+          ],
+          "seed": 1300,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy sack is dragged a short way across short dry grass and soft earth three times, scraping and sliding, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drag/sand": {
+      "kind": "step",
+      "range": 20,
+      "level": -26,
+      "vary": 0.5,
+      "want": "a body dragged over sand",
+      "prompts": [
+        {
+          "id": "p1310",
+          "models": [
+            "moss"
+          ],
+          "seed": 1310,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy sack is dragged a short way across dry beach sand three times, scraping and sliding, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "drag/stone": {
+      "kind": "step",
+      "range": 20,
+      "level": -26,
+      "vary": 0.5,
+      "want": "a body dragged over stone",
+      "prompts": [
+        {
+          "id": "p1320",
+          "models": [
+            "moss"
+          ],
+          "seed": 1320,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy sack is dragged a short way across flat stone paving three times, scraping and sliding, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}
