@@ -24,17 +24,17 @@ Angeles's from its own (round four with slides). Las Vegas's are round four with
 
 | | Miami | Tampa | San Francisco | Los Angeles | Las Vegas |
 |---|---|---|---|---|---|
-| Map file | 76.9 MB, 15.3 MB gzipped | 91.3 MB, 21.5 MB | 104.1 MB, 28.1 MB | 99.1 MB, 37.0 MB | 84.4 MB, 24.2 MB |
+| Map file | 76.9 MB, 15.3 MB gzipped | 91.3 MB, 21.5 MB | 104.1 MB, 28.1 MB | 99.1 MB, 37.0 MB | 86.2 MB at 2,000 a chunk (84.4 MB, 24.2 MB gzipped, at 999) |
 | Build | 9.7 s, 3.9 GB peak | 12.7 s, 4.8 GB | 62 to 140 s; 5.0 to 7.8 GB | 113 to 158 s; 7.1 to 7.8 GB | 88 to 136 s; 4.8 to 7.3 GB peak |
 | Footprints | 11,919 | 31,688 | 44,269 | 53,967 | 25,802: 23,969 from USA Structures as they are, 474 split into 1,335 OpenStreetMap buildings and 57 remainders, 28 resorts cut into 101 building parts and 47 podiums, and 293 buildings it lacks added |
 | Labelled with a kind and a height | 76% | 90% | 84% | 96% | 90% (a kind 97%, a height 91%) |
-| Blocks; buildings built | 1,188,264; 11,845 | 2,091,633; 31,542 | 2,889,065; 43,654 | 2,729,433; 53,112 | 1,971,692; 25,590 of 25,808 parts (147 over budget or bounds, 71 too small for a tile; 28 at reduced detail, 13 of them cut to 8 m) |
-| Busiest chunk (cap) | 1,000 | 939 | 1,000 | 987 of 999 | 999 of 999, by the Strat; the next 997 by the stadium and 996 at Excalibur |
+| Blocks; buildings built | 1,188,264; 11,845 | 2,091,633; 31,542 | 2,889,065; 43,654 | 2,729,433; 53,112 | 2,082,056; 25,594 of 25,808 parts at 2,000 a chunk and eight playable floors (143 over budget or bounds, 71 too small for a tile). At 999 and four floors: 1,971,692; 25,590 (147 and 71; 28 at reduced detail, 13 of them cut to 8 m) |
+| Busiest chunk (cap) | 1,000 | 939 | 1,000 | 987 of 999 | 1,991 of 2,000; the next 1,962 and 1,947 (at 999: 999 by the Strat, 997 by the stadium, 996 at Excalibur) |
 | Mapped ways built | 809 of 809 | 590 of 591 | 1,281 and the Golden Gate | 217 of 217; the sign's 9 letters | 661 of 661 (575 road bridges, 82 rail, the monorail's among them); no lettered sign; the Welcome sign's board; 8 named places in 7 compositions |
 | Ground | | -16 to 24 m | -110.7 to 173.9 m | 46.4 to 553.6 m | 586.2 to 713.1 m NAVD88; 501 bodies of water from 591.1 to 697.8 m |
 | Land; walkable | 30.1 km²; 99.9% at 50° | 54.4 km²; 99.9% at 50° | 40.4 km²; 98.71% at 44.8° | 66.1 km²; 98.03% at 44.8° | 65.7 km²; 99.84% at 44.8° |
 | Resource nodes; spawn regions | 121,892; 333 | 245,853; 282 | 145,083; 281 | 823,370; 382 | 214,751 listed; 155 (472 creatures after 391 s of the bench) |
-| Walks | | | at 44.8°: spawns 10/10 ... | spawns 10/10, obelisks 3/3, approaches 41,205/4 ... | spawns 10/10, obelisks 3/3, bridges 663/6, approaches 33,616/12, stairs 5,750/11, escapes 3,451/2, rooms 19,683/3 |
+| Walks | | | at 44.8°: spawns 10/10 ... | spawns 10/10, obelisks 3/3, approaches 41,205/4 ... | spawns 10/10, obelisks 3/3, bridges 663/6, approaches 33,556/9, stairs 5,779/11, escapes 3,466/2, rooms 20,780/3 (at 999: approaches 33,616/12, stairs 5,750/11, escapes 3,451/2, rooms 19,683/3) |
 | Server | | host 0.8 s, 1.0 GB | 1.2 GB | 1.3 GB; 1.1 GB listening | bench host 1.8 s, 1.4 GB; listening on 8795 at 0.96 GB |
 
 Figures are `passed/failed`. The failures are the generator's, listed in `reports/ruins4/*-walk.log`.
@@ -150,7 +150,8 @@ drank 10 water standing in the lake.
 ## Asks, with what was measured
 
 - **The chunk cap with district-sized footprints.** 147 footprints refused and 13 cut to 8 m along the Strip at four
-  playable floors; the busiest chunks stand at 999, 997 and 996.
+  playable floors; the busiest chunks stood at 999, 997 and 996. Answered: every city's budget is 2,000 a chunk (D566),
+  and the Strip is back to eight playable floors, its busiest chunk at 1,991.
 - **A desert creature table.** Desert regions take the jungle's, as Los Angeles's chaparral does.
 - **Spawn points that see the pieces**: `placeSpawns` places on a surface inside a ruin's walls (finding 13).
 - **A desert flora, kind by kind, for the art team:** creosote bush (open, 1 to 3 m, olive, the commonest plant of the

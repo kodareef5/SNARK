@@ -15,7 +15,7 @@ const dir = join(tree, "core/creatures/pteranodon");
 rmSync(tree, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 writeFileSync(join(dir, "asset.ts"), `export { default } from ${JSON.stringify(join(here, "asset.ts"))};\n`);
-for (const script of ["rig.py", "clips_move.py"]) symlinkSync(join(scripts, script), join(dir, script));
+for (const script of ["rig.py", "clips_move.py", "clips_act.py"]) symlinkSync(join(scripts, script), join(dir, script));
 // Conversion writes no pack it refuses. What the check after it finds of the block-out's own surface is the art's to
 // mend (on 2026-11-15, one part inside out at every level) and is printed, not held against the fixture.
 await main(["core:pteranodon", "--source", tree]);

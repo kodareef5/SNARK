@@ -1,0 +1,10 @@
+Third look at the pteranodon's action clips, after your second review (ref/clips_act/artist_review_2.md in this folder; the first brief, artist_review_1_brief.md, says who the animal is, how the game plays these and how the sheets are laid out). You passed the roll, the call and the flinch on the ground; these are the rest, changed against your points. Same block-out and views, posed exactly as the game's engine poses them. Do not change any file; write only your answer.
+
+1. `attack.png` (ground bite): the head is now loaded low and back, at about the height it strikes at (frames 3 to 5), so the thrust over 6 to 8 runs level along the beak's line; frame 9 is already drawing back (the neck shortening, the body still forward); 10 to 12 withdraw along the line, then lift and settle.
+2. `attack_air_fly.png`, `attack_air_hover.png`: the same: loaded back at the strike's height, a level thrust, frame 9 already withdrawing.
+3. `carry_fly_in_place.png` (the clips laid as the engine has been asked to lay them): the carrying feet now hold still against the hanging point the load is hung from, and grip closer round it: the feet turned in toward each other and the curled toe tips wrapping over the top of the load.
+4. `startled.png`: the body stays up while the hands reach for the ground (12 to 15, the wings finishing their fold), then comes down heavily: the hands land, the shoulders and chest sink past the crouch through 16 to 20, the head following late, before it rises into the crouch it must end on.
+5. `flinch_fly.png`: the left wing's finger now sweeps back at the knuckle through 2 to 4, shortening that wing's silhouette, while the right reaches forward.
+6. `carried.png`: hanging limp, the wings now fall from the shoulders in an arch, the tips hanging well below, the left lower than the right; still two attempts, the second weaker.
+
+For each sheet: does it now read as it should and reach the bar you would hold it to? If not, the one or two things still wrong, by frame. Say plainly which can be left alone. Short.

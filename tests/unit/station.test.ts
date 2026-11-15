@@ -98,16 +98,26 @@ const PIECE_TICKS: Record<string, number> = { wood: 900, thatch: 225, sparkpowde
 
 /**
  * A forge of plain counts: `pieces` the fuel in burn order, `have` what else lies in it, `room` the most of each item it can
- * hold (unlimited where not given). Wood leaves charcoal. It cooks nothing.
+ * hold (unlimited where not given), and `room.all` the most of everything together. `spoil` lists one item of `have` going
+ * bad at a tick, and gone. Wood leaves charcoal. It cooks nothing.
  */
-function forge(pieces: string[], have: Record<string, number>, recipes: Recipe[], room: Record<string, number> = {}) {
+function forge(pieces: string[], have: Record<string, number>, recipes: Recipe[], room: Record<string, number> = {}, spoil: [string, number][] = []) {
   const events: string[] = [];
-  const state = { pieces: [...pieces], have: { ...have } as Record<string, number>, room: { ...room } as Record<string, number> };
+  const state = { pieces: [...pieces], have: { ...have } as Record<string, number>, room: { ...room } as Record<string, number>, spoil: [...spoil].sort((a, b) => a[1] - b[1]) };
   const count = (i: string): number => state.have[i] ?? 0;
-  const fits = (i: string, n: number): boolean => count(i) + n <= (state.room[i] ?? Infinity);
+  const held = (): number => Object.values(state.have).reduce((a, b) => a + b, 0);
+  const fits = (i: string, n: number): boolean => count(i) + n <= (state.room[i] ?? Infinity) && held() + n <= (state.room.all ?? Infinity);
   let fed = 0;
   const h: Hearth = {
-    settle: () => {},
+    settle: (t) => {
+      while (state.spoil.length > 0 && state.spoil[0]![1] <= t) {
+        const [i, at] = state.spoil.shift()!;
+        if (count(i) === 0) continue;
+        state.have[i] = count(i) - 1;
+        events.push(`${i} spoiled@${at}`);
+      }
+    },
+    spoils: () => state.spoil[0]?.[1] ?? 0,
     feed: () => {
       const p = state.pieces.shift();
       fed = p === undefined ? 0 : PIECES.indexOf(p);
@@ -192,19 +202,47 @@ test("each recipe has its own lane and both run at once; ore taken out mid-unit 
   expect([burn({ at: 0, fuel: 0, cook: 0 }, spark.h, 9999), spark.events.filter((e) => e.startsWith("charcoal")), spark.state.have.ingot]).toEqual([2025, [], 3]);
 });
 
-test("looked at every tick or once at the end, a forge comes to the same, lanes, charcoal and all", () => {
+test("a full forge whose berry spoils mid-piece makes its waiting ingot at that tick, read once or every tick: 3 ingots, where read once it made 1", () => {
+  // Room for 7 things, 6 ore and a berry in it: the first ingot is done at 600 with no room and waits. The berry spoils at
+  // 700, which frees room: the ingot is made then, and the lane runs on to 1,300 and 1,900, before the fuel ends at 2,025.
+  const run = (often: boolean) => {
+    const f = forge(["sparkpowder", "thatch"], { ore: 6, berry: 1 }, [INGOT], { all: 7 }, [["berry", 700]]);
+    const fire: Fire = { at: 0, fuel: 0, cook: 0 };
+    let out = -1;
+    for (let t = often ? 0 : 5000; out < 0 && t <= 5000; t++) out = burn(fire, f.h, t);
+    return { out, events: f.events, have: f.state.have, fire };
+  };
+  const once = run(false);
+  expect([once.out, once.events, once.have]).toEqual([2025, ["berry spoiled@700", "ingot@700", "ingot@1300", "ingot@1900"], { ore: 0, berry: 0, ingot: 3 }]);
+  expect(run(true)).toEqual(once);
+  // An ingredient that spoils mid-unit stops its lane at that tick, and one put back after starts it again from nothing.
+  const f = forge(["sparkpowder"], { ore: 2 }, [INGOT], {}, [["ore", 300]]);
+  const fire: Fire = { at: 0, fuel: 0, cook: 0 };
+  burn(fire, f.h, 400);
+  expect(fire.lanes).toEqual([{ item: 100, ticks: 0 }]);
+  f.state.have.ore = 2;
+  burn(fire, f.h, 1000);
+  expect([f.events, fire.lanes]).toEqual([["ore spoiled@300", "ingot@1000"], [{ item: 100, ticks: 0 }]]);
+});
+
+test("looked at every tick or once at the end, a forge comes to the same, lanes, charcoal, spoiling and all", () => {
   const rng = new Rng(17);
   const kinds = ["wood", "thatch", "sparkpowder"];
+  const spoiling = ["berry", "berry", "ore", "oil", "hide"];
   for (let round = 0; round < 200; round++) {
     const pieces = Array.from({ length: rng.int(5) }, () => kinds[rng.int(3)]!);
-    const have = { ore: rng.int(12), oil: rng.int(20), hide: rng.int(16) };
+    const have = { ore: rng.int(12), oil: rng.int(20), hide: rng.int(16), berry: rng.int(4) };
     const room: Record<string, number> = rng.int(3) === 0 ? { ingot: rng.int(4), gasoline: 5 * rng.int(3), charcoal: rng.int(2) } : {};
+    // A full forge now and then, so what spoils frees room for what waits.
+    if (rng.int(3) === 0) room.all = Object.values(have).reduce((a, b) => a + b, 0) + rng.int(3);
+    // Items going bad at their ticks: a berry taking up room, or an ingredient a lane needs.
+    const spoil = Array.from({ length: rng.int(6) }, () => [spoiling[rng.int(spoiling.length)]!, 1 + rng.int(6000)] as [string, number]);
     const recipes = rng.int(2) === 0 ? [INGOT, GASOLINE] : [GASOLINE, INGOT];
     const end = 1 + rng.int(8000);
-    const once = forge(pieces, have, recipes, room);
+    const once = forge(pieces, have, recipes, room, spoil);
     const f1: Fire = { at: 0, fuel: 0, cook: 0 };
     const out1 = burn(f1, once.h, end);
-    const often = forge(pieces, have, recipes, room);
+    const often = forge(pieces, have, recipes, room, spoil);
     const f2: Fire = { at: 0, fuel: 0, cook: 0 };
     let out2 = -1;
     for (let t = 0; out2 < 0 && t <= end; t += t < 700 ? 1 : 1 + rng.int(400)) out2 = burn(f2, often.h, Math.min(t, end));
