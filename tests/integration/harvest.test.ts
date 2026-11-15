@@ -15,6 +15,9 @@ import { coreRegistry } from "../fixtures/world.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import type { NodeDef } from "../../shared/content/defs.ts";
 import { loadConfig } from "../../server/settings/config.ts";
+import { NODES_TOLD } from "../../server/harvest.ts";
+import { TIERS } from "../../client/core/assets/tiers.ts";
+import { chunkCx } from "../../shared/coords.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-harvest-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -99,6 +102,49 @@ test("a tree is gathered by hand until it is used up, leaves its stump for every
   expect([table().kind[tree!.index], harvest.field.standing(tree!.chunk, tree!.index)]).toEqual([tree!.form, h.reg.index.get("core:tree")!]);
   expect(table().hp[tree!.index]).toBe(12);
   expect(s.world!.nodes!.chunks[tree!.chunk]!.kind[tree!.index]).toBe(table().kind[tree!.index]!);
+});
+
+test("a tree used up and grown back is told past the largest near field a tier holds: to watchers 4 and 5 chunks off, and to one who joins 5 off after", () => {
+  const { h, s, pilot, harvest } = setup();
+  expect(NODES_TOLD).toBeGreaterThan(Math.max(...TIERS.map((t) => t.nodes.chunks)));
+  // A tree in the map's first column of chunks, and land east of it as far as the map's 8 chunks go.
+  const tree = nodesOf(h, "core:tree", 0, 224).find((t) => chunkCx(h.world.dims, t.chunk) === 0 && standFacing(h, s, pilot, t))!;
+  const kind = h.reg.index.get("core:tree")!;
+  const stump = harvest.field.forms.left[tree.form]!;
+  // Each watcher's near field holds as many chunks round its own as it stands off, as high's and ultra's do.
+  const watch = (name: string, chunks: number): ClientSession => {
+    const w = h.join(name);
+    w.holdNodes(chunks);
+    h.run(500);
+    h.say(w, "enablecheats");
+    h.say(w, `tp ${chunks * 64 + 2} ${tree.z.toFixed(2)}`);
+    return w;
+  };
+  const watchers = [watch("bo", 4), watch("cy", 5)];
+  const seen = (w: ClientSession) => [w.nodeField!.standing(tree.chunk, tree.index), w.world!.nodes!.chunks[tree.chunk]!.kind[tree.index]];
+  expect(watchers.map((w) => chunkCx(h.world.dims, h.client(w)!.chunk))).toEqual([4, 5]);
+  expect(watchers.map(seen)).toEqual([[kind, tree.form], [kind, tree.form]]);
+
+  // Ada, standing by it, uses it up and goes.
+  while (harvest.field.standing(tree.chunk, tree.index) !== 0) harvest.strike(h.client(s)!, tree.chunk, tree.index);
+  h.say(s, "tp 256 256");
+  expect(watchers.map(seen)).toEqual([[0, stump], [0, stump]]);
+
+  // One who joins 5 chunks off is told at once.
+  const saved = h.server.savedPosition;
+  h.server.savedPosition = (name) => (name === "dee" ? { x: 5 * 64 + 10, y: h.world.hf.heightAt(5 * 64 + 10, tree.z), z: tree.z, yaw: 0 } : (saved?.(name) ?? null));
+  const dee = h.join("dee");
+  dee.holdNodes(5);
+  h.run(500);
+  watchers.push(dee);
+  expect(watchers.map(seen)).toEqual([[0, stump], [0, stump], [0, stump]]);
+
+  // Nobody is near it, so it grows back when its time is up, and all three are told.
+  const due = harvest.regrowsAt(tree.chunk, tree.index);
+  while (h.world.tick < due + 30) h.server.tick();
+  h.run(300);
+  expect(harvest.goneCount).toBe(0);
+  expect(watchers.map(seen)).toEqual([[kind, tree.form], [kind, tree.form], [kind, tree.form]]);
 });
 
 test("a pick gets three times the stone and flint besides, wears with each hit, and breaks; a bush is picked, not struck", () => {
