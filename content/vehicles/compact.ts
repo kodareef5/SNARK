@@ -55,5 +55,12 @@ export const COMPACT_SPECIES: SpeciesDef = {
   walkSpeed:.01, sprintMul:1, jumpSpeed:.01, still:true,
   mass:1100, slots:24, keeps:1, fists:0,
   stats:{health:[800,0,0],stamina:[40,0,0],weight:[400,0,0]},
+  // Its paint, seats and wheels take colour as a creature's regions take dye (the asset paints regions 0 to 2).
+  regions: [
+    { name: "Paint", colors: [232, 90, 230, 233, 22, 29, 41, 136, 124, 28, 213, 226].map((c) => [c, 1] as const) },
+    { name: "Upholstery", colors: [220, 230, 97, 22, 103].map((c) => [c, 1] as const) },
+    { name: "Wheels", colors: [91, 84, 230, 232, 166].map((c) => [c, 1] as const) },
+    null, null, null,
+  ],
   vehicle:COMPACT_VEHICLE,
 };
