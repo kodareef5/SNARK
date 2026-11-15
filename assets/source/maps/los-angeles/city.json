@@ -1,0 +1,104 @@
+{
+  "name": "los-angeles",
+  "label": "Los Angeles",
+  "centre": [-118.325, 34.1055],
+  "size_m": 8128,
+  "chunk_m": 64,
+  "spacing_m": 2,
+  "height_zero_m": 0,
+  "tiger": {
+    "year": 2025,
+    "counties": ["06037"],
+    "layers": ["roads", "areawater"],
+    "source": "Census TIGER/Line 2025, Los Angeles County, CA",
+    "licence": "https://creativecommons.org/publicdomain/zero/1.0/ (catalog.data.gov); \"These products are free to use in a product or publication, however acknowledgement must be given to the U.S. Census Bureau as the source.\""
+  },
+  "dem": {
+    "kind": "tnm",
+    "project": "CA_LosAngeles_B23",
+    "dataset": "Original Product Resolution (OPR) Digital Elevation Model (DEM)",
+    "z_to_m": 1,
+    "source": "USGS 3DEP Original Product Resolution DEM, CA_LosAngeles_B23 (published 2025-06-13)",
+    "licence": "USGS public domain. Access constraints: \"None.\" Credit: \"Acknowledgement of the USGS 3D Elevation Program would be appreciated in products derived from these data.\""
+  },
+  "nlcd": {
+    "url": "https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/ows",
+    "coverage": "NLCD_2021_Land_Cover_L48",
+    "file": "nlcd2021.tif",
+    "source": "USGS / MRLC NLCD 2021 Land Cover (CONUS)",
+    "licence": "Public domain (USGS)"
+  },
+  "footprints": {
+    "service": "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/USA_Structures_View/FeatureServer/0",
+    "source": "FEMA / ORNL USA Structures",
+    "licence": "CC BY 4.0, as the Esri-hosted delivery item declares; a U.S. government work per catalog.data.gov. Attribution: Oak Ridge National Laboratory (ORNL); Federal Emergency Management Agency (FEMA) Geospatial Response Office.",
+    "split_by_osm": true,
+    "split_cover": 0.6,
+    "split_remainder_m2": 2000
+  },
+  "osm": {
+    "servers": ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"],
+    "source": "OpenStreetMap contributors, through the Overpass API",
+    "licence": "Open Database License (ODbL) 1.0, (c) OpenStreetMap contributors"
+  },
+  "roads": {
+    "widths_m": {"S1100": 22, "S1200": 14, "S1400": 8, "S1630": 7, "S1640": 5, "S1710": 3, "S1720": 3, "S1740": 4},
+    "other_width_m": 6,
+    "tunnel_name": "tunl"
+  },
+  "succession": {
+    "sand_ribbon": null,
+    "flood_below_navd88_m": null,
+    "flood_within_m": 300
+  },
+  "canopy": {
+    "rule": "succession",
+    "share_of_vegetation": 0.59,
+    "share_of_open": 0.15,
+    "seed": 7
+  },
+  "world": {
+    "sea": false,
+    "seaNavd88": 0.79,
+    "sea_source": "No sea in the frame; heights are over mean sea level at NOAA CO-OPS station 9410840 Santa Monica, 16 km south-west, 1983-2001 epoch: 1.594 m above station datum, NAVD88 at 0.802",
+    "minY": 0,
+    "report": "ruins3",
+    "places": [
+      {"name": "Griffith Park", "at": [-118.3000, 34.1250], "why": "a city park of 17 km2 with the Observatory and the Greek Theatre in it, mapped as a park, not a neighbourhood"},
+      {"name": "West Hollywood", "at": [-118.3617, 34.0900], "why": "a city of its own, which OpenStreetMap tags place=city, so the quarter-and-neighbourhood seeds leave it to Fairfax"}
+    ],
+    "drop": ["Los Feliz Neighborhood Council District", "Melrose Hill Historic Preservation Overlay Zone"],
+    "styles": {
+      "Hollywood": "deco", "Yucca Corridor": "concrete", "Universal City": "concrete",
+      "Hollywood Hills": "terracotta", "Beachwood Canyon": "terracotta", "Hollywood Dell": "terracotta", "Whitley Heights Historic District": "terracotta",
+      "Los Feliz": "terracotta", "Hancock Park": "terracotta", "Windsor Square": "terracotta", "Larchmont": "terracotta", "Wilton Historic District": "terracotta"
+    },
+    "obelisks": [
+      {"name": "Griffith Observatory", "at": [-118.3012, 34.1192], "face": [-118.3004, 34.1182]},
+      {"name": "Hollywood and Highland", "at": [-118.3388, 34.1017], "face": [-118.3410, 34.1020]},
+      {"name": "Lake Hollywood Park", "at": [-118.3262, 34.1265], "face": [-118.3217, 34.1341]}
+    ],
+    "spawn_places": [
+      {"name": "Hollywood/Highland", "face": [-118.3410, 34.1020]},
+      {"name": "Lake Hollywood Park", "face": [-118.3217, 34.1341]},
+      {"name": "Astronomers' Monument", "face": [-118.3004, 34.1182]},
+      {"name": "Hollywood Bowl Overlook", "face": [-118.3391, 34.1122]},
+      {"name": "Runyon Canyon", "at": [-118.3497, 34.1065], "face": [-118.3500, 34.1120]},
+      {"name": "Barnsdall Art Park", "face": [-118.2942, 34.1007]},
+      {"name": "Pan Pacific Park", "face": [-118.3400, 34.1100]},
+      {"name": "Paramount Pictures Studio Tour", "face": [-118.31765, 34.0844]},
+      {"name": "Universal CityWalk Hollywood", "face": [-118.3300, 34.1300]},
+      {"name": "Dante's View", "face": [-118.3300, 34.1000]}
+    ]
+  },
+  "ruins": {
+    "rules_from": "miami",
+    "blocks_per_footprint": 130
+  },
+  "future": {
+    "spans_why": "None: no bridge in the frame crosses water",
+    "spans": [],
+    "wrecks_why": "None: no water in the frame holds a hull",
+    "wrecks": []
+  }
+}

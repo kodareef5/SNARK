@@ -69,7 +69,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   rmSync(layers, { recursive: true, force: true });
   mkdirSync(layers, { recursive: true });
   const put = (file: string, data: string | Uint8Array): void => writeFileSync(join(layers, file), data);
-  put("map.json", `${JSON.stringify({ id: world.id, chunks: [chunks, chunks], minY: world.minY, stepY: world.stepY, seaLevel: 0 }, null, 2)}\n`);
+  put("map.json", `${JSON.stringify({ id: world.id, chunks: [chunks, chunks], minY: world.minY, stepY: world.stepY, seaLevel: world.sea === false ? null : 0 }, null, 2)}\n`);
   const heights = new Uint8Array(n * n * 2);
   const view = new DataView(heights.buffer);
   let deepest = Infinity;
