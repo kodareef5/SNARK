@@ -10,8 +10,8 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 41 classes: 27 built, 5 partly built, and 9 stubs that
-wait for a feature. The core pack holds 400 definitions, and 81 renames of ids
+There are 41 classes: 28 built, 5 partly built, and 8 stubs that
+wait for a feature. The core pack holds 412 definitions, and 85 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -31,8 +31,8 @@ share a `tag`.
 | `item` | PrimalItem | a group |  |  |  |
 | `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `fuel`, `spoilHours`, `spoilsInto`, `youngFor`, `ammo` | 12 |
 | `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose`, `use` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel`, `youngFor`, `use` | 9 |
-| `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `tool`, `ammo` | 12 |
-| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 7 |
+| `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `tool`, `ammo` | 15 |
+| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 8 |
 | `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 4 |
 | `item/equipment` | item type Equipment | a group |  |  |  |
 | `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 20 |
@@ -92,7 +92,7 @@ Packs may add to: `weapon`, `places`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 79 |
+| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 83 |
 
 - **`engram`** on shelf `engrams`. Learned with points at a level, for good. Its one item can then be made.
 
@@ -219,14 +219,14 @@ Packs may add to: `yields`.
 | `prop/container` | a death cache, a dropped bag | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 4 |
 | `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 3 |
 | `prop/egg` | a laid or dropped egg, fertilised or not | built | `mesh`, `color`, `radius`, `height` | `size`, `item`, `fertile` | 3 |
-| `prop/cloud` | the gas and smoke actors of grenades | stub: polish | `mesh`, `color`, `radius`, `height` |  | 0 |
+| `prop/cloud` | the gas and smoke actors of grenades | built | `mesh`, `color`, `radius`, `height` |  | 2 |
 | `prop/crate` | SupplyCrate_ | stub: loot | `mesh`, `color`, `radius`, `height` | `slots` | 0 |
 
 - **`prop`** on shelf `props`. Stands in the world and neither moves nor lives.
 - **`prop/container`** on shelf `props/containers`. Holds what was dropped or left by the dead.
 - **`prop/projectile`** on shelf `props/projectiles`. Something loosed or thrown, where it lies. How it flies is on the ammunition.
 - **`prop/egg`** on shelf `props/eggs`. An egg where it lies: taken up as its item, and hatching where it lies if fertilised.
-- **`prop/cloud`** on shelf `props/clouds`. Smoke or gas that stays where a grenade burst, as far as its radius, for its grenade's seconds, giving its buff to the bodies inside it (planning/reference/weapons-plan.md, W5).
+- **`prop/cloud`** on shelf `props/clouds`. Smoke or gas that stays where a grenade burst, as far as its radius and as high as its height, for its grenade's seconds, giving its buff to the survivors inside it every half second (server/clouds.ts). It has no body, and is drawn as puffs over that reach (client/core/render/clouds.ts); its mesh is not drawn.
 - **`prop/crate`** on shelf `props/crates`. Comes down with loot and goes when it is emptied.
 
 Asset slots:
@@ -245,7 +245,7 @@ What names what: `item` names a `item/egg`; `fertile` names a `item/egg`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `buff` | Buff_ | built | `label`, `color` | `seconds`, `again`, `health`, `torpor`, `damage`, `speed`, `dealt`, `taken`, `root`, `immune`, `good`, `only`, `survivorSeconds`, `after` | 10 |
+| `buff` | Buff_ | built | `label`, `color` | `seconds`, `again`, `health`, `torpor`, `damage`, `speed`, `dealt`, `taken`, `root`, `immune`, `good`, `only`, `survivorSeconds`, `after` | 11 |
 
 - **`buff`** on shelf `buffs`. Acts on a body for a time.
 
@@ -299,7 +299,7 @@ Packs may add to: `entries`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 1 |
+| `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 2 |
 
 - **`map`** on shelf `maps`. A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. A spawn zone with a spawns definition is kept stocked from it; one without is where a test's starting creatures are put.
 
@@ -325,7 +325,7 @@ Packs may add to: `buffs`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `rename` | a redirect for a class that was renamed | built | `to` |  | 81 |
+| `rename` | a redirect for a class that was renamed | built | `to` |  | 85 |
 
 - **`rename`** on shelf `renames`. An id that is no longer defined, and what it is called now. Saves and settings that use it still read.
 
@@ -339,7 +339,7 @@ built.
 
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
 - **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot` (partly built), `species.loot`.
-- **Small behaviours of things already built.** `prop/cloud`, `damage` (partly built), `game`, `item.weapon.cloud`, `item.ammo.pellets`, `item.ammo.falloff`, `item.description`, `item.folder`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
+- **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
 - **Maps as content: a map, its zones and what lives in them.** `map` (partly built), `engram.group`, `map.label`, `map.game`.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built).
 - **Skins, dyes, costumes and shields.** `item/shield`, `item/costume`, `item/skin`, `item/dye`.
@@ -351,9 +351,9 @@ built.
 
 **`item/consumable`** (9): narcoberry, meat_prime, meat_prime_cooked, waterskin, spoiled_meat, berry, meat, meat_cooked, narcotic.
 
-**`item/weapon`** (12): club, slingshot, bow, crossbow, rifle, pistol, flare_gun, grenade, bola, pick, hatchet, spear.
+**`item/weapon`** (15): club, slingshot, bow, crossbow, rifle, pistol, shotgun, flare_gun, grenade, bola, grenade_smoke, grenade_poison, pick, hatchet, spear.
 
-**`item/ammo`** (7): arrow_stone, arrow_tranq, arrow_flame, round_rifle, round_pistol, dart_tranq, dart_shock.
+**`item/ammo`** (8): arrow_stone, arrow_tranq, arrow_flame, round_rifle, round_pistol, round_shotgun, dart_tranq, dart_shock.
 
 **`item/attachment`** (4): scope, silencer, flashlight, laser.
 
@@ -367,7 +367,7 @@ built.
 
 **`item/feces`** (4): feces_small, feces_medium, feces_large, feces_massive.
 
-**`engram`** (79): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_raptor, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-flare_gun, engram-bow, engram-crossbow, engram-pistol, engram-rifle, engram-arrow_stone, engram-arrow_tranq, engram-flashlight, engram-scope, engram-arrow_flame, engram-round_pistol, engram-round_rifle, engram-silencer, engram-laser, engram-dart_tranq, engram-dart_shock, engram-grenade, engram-bola, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-ingot, engram-gunpowder, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
+**`engram`** (83): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_raptor, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-bow, engram-crossbow, engram-pistol, engram-rifle, engram-shotgun, engram-flare_gun, engram-arrow_stone, engram-arrow_tranq, engram-arrow_flame, engram-round_pistol, engram-round_rifle, engram-round_shotgun, engram-dart_tranq, engram-dart_shock, engram-scope, engram-silencer, engram-flashlight, engram-laser, engram-grenade, engram-bola, engram-grenade_smoke, engram-grenade_poison, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-ingot, engram-gunpowder, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
 
 **`levels`** (1): levels.
 
@@ -399,10 +399,12 @@ built.
 
 **`prop/egg`** (3): egg_dodo, egg_parasaur, egg_raptor.
 
-**`buff`** (10): mending, entangled, entangle_spent, burning, tranquilized, drugged, stunned, injured, fed, god.
+**`prop/cloud`** (2): cloud_smoke, cloud_poison.
+
+**`buff`** (11): mending, entangled, entangle_spent, poisoned, burning, tranquilized, drugged, stunned, injured, fed, god.
 
 **`spawns`** (4): spawns_beach, spawns_jungle, spawns_proving_herd, spawns_proving_hunters.
 
-**`map`** (1): miami.
+**`map`** (2): miami, tampa.
 
-**`rename`** (81): 77 of `make-<item>`, the recipe id an item had before recipes were folded into items; and engram-cloth, engram-hide, engram-chitin, engram-flak.
+**`rename`** (85): 81 of `make-<item>`, the recipe id an item had before recipes were folded into items; and engram-cloth, engram-hide, engram-chitin, engram-flak.

@@ -17,6 +17,7 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import * as P from "../../shared/net/protocol.ts";
 import { Body } from "../../shared/sim/character.ts";
 import { EntityStore } from "../../shared/sim/entities.ts";
+import { FLAG_BLUEPRINT, FLAG_ON } from "../../shared/sim/items.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
 const root = join(import.meta.dir, "../..");
@@ -26,8 +27,8 @@ test("protocol 13 is the weapons program's, and it took no command, own componen
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([30, 16, 7, 10]);
-  // FLAG_ON of the plan, for W7: the next slot flag after the blueprint's.
-  expect([P.SLOT_BLUEPRINT, P.SLOT_ON]).toEqual([1, 2]);
+  // FLAG_ON, W7's: the next slot flag after the blueprint's, the same bit on the slot and on the wire.
+  expect([P.SLOT_BLUEPRINT, P.SLOT_ON, FLAG_BLUEPRINT, FLAG_ON]).toEqual([1, 2, 1, 2]);
   const store = readFileSync(join(root, "server/persist/store.ts"), "utf8");
   expect(Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))).toBe(22);
   // DEADLINE_ 14 is W5's if a cloud's end needs one; 12 and 13 stay the item program's, unused.
@@ -65,36 +66,37 @@ test("a body's bloom and kick travel with it, and every body today has none", ()
 
 test("the ranged gear lives in content/items, each piece once, and is in the core pack", () => {
   const ids = (defs: readonly Def[]): string[] => defs.filter((d) => d.type === "item").map((d) => d.id.slice(5));
-  expect(ids(WEAPONS)).toEqual(["bow", "crossbow", "rifle", "pistol", "flare_gun"]);
-  expect(ids(AMMO)).toEqual(["arrow_stone", "arrow_tranq", "arrow_flame", "round_rifle", "round_pistol", "dart_tranq", "dart_shock", "scope", "silencer", "flashlight", "laser"]);
-  // W4 added the bola, with its two buffs and its engram (tests/integration/bola.test.ts).
-  expect(ids(EXPLOSIVES)).toEqual(["grenade", "bola"]);
-  expect(EXPLOSIVES.filter((d) => d.type === "buff").map((d) => d.id)).toEqual(["core:entangled", "core:entangle_spent"]);
+  expect(ids(WEAPONS)).toEqual(["bow", "crossbow", "rifle", "pistol", "shotgun", "flare_gun"]);
+  expect(ids(AMMO)).toEqual(["arrow_stone", "arrow_tranq", "arrow_flame", "round_rifle", "round_pistol", "round_shotgun", "dart_tranq", "dart_shock", "scope", "silencer", "flashlight", "laser"]);
+  // W4 added the bola, with its two buffs and its engram (tests/integration/bola.test.ts); W5 the smoke and poison grenades,
+  // the poison's buff and their engrams (tests/integration/clouds.test.ts).
+  expect(ids(EXPLOSIVES)).toEqual(["grenade", "bola", "grenade_smoke", "grenade_poison"]);
+  expect(EXPLOSIVES.filter((d) => d.type === "buff").map((d) => d.id)).toEqual(["core:entangled", "core:entangle_spent", "core:poisoned"]);
   const all = new Set(CORE_CONTENT.map((d) => `${d.type} ${d.id}`));
   for (const d of [...WEAPONS, ...AMMO, ...EXPLOSIVES]) {
     expect(ITEMS.includes(d)).toBe(true);
     expect(all.has(`${d.type} ${d.id}`)).toBe(true);
     expect(CORE_CONTENT.filter((o) => o.type === d.type && o.id === d.id).length).toBe(1);
   }
-  // Each moved item brought its engram and the rename of its old recipe id, and is made as before.
-  // W6 added the flare gun, with its flare's prop and its engram.
-  expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(18);
+  // Each moved item brought its engram (W3 added the shotgun's and its shell's, W5 the two grenades', W6 the flare gun's) and the rename of its old recipe id, and is made as before.
+  expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(22);
   const pistol = CORE_CONTENT.find((d) => d.id === "core:pistol" && d.type === "item")!;
-  expect(pistol).toMatchObject({ weight: 3, weapon: { clip: 6, reload: 2.2, interval: 0.35, uses: 60 }, craft: { seconds: 12, xp: 11, needs: [{ item: "core:ingot", count: 60 }, { item: "core:wood", count: 5 }, { item: "core:hide", count: 15 }] } });
+  // W8 brought its numbers to the wiki's since (tests/unit/ark-weapons.test.ts).
+  expect(pistol).toMatchObject({ weight: 5, weapon: { clip: 6, reload: 3.33, interval: 1 / 2.1, uses: 300 }, craft: { seconds: 12, xp: 100.8, needs: [{ item: "core:ingot", count: 60 }, { item: "core:wood", count: 5 }, { item: "core:hide", count: 15 }] } });
 });
 
-test("the weapon and ammo facets' stubs and the cloud class wait, as the plan has them", () => {
+test("the weapon and ammo facets' stubs wait, as the plan has them", () => {
   // W2 built auto, reloadEach and melee (M4), and W1 spread and recoil (M1, M2): their pins are in the test below,
-  // tests/unit/weapon.test.ts and tests/unit/aim.test.ts.
+  // tests/unit/weapon.test.ts and tests/unit/aim.test.ts; W3 pellets and falloff (M3), pinned in tests/integration/pellets.test.ts; W5 the cloud and its class (M7), in tests/integration/clouds.test.ts.
   // W6 built structures, blast, pierce and light (M8, M12, the flare): their pins are below and in
-  // tests/integration/explosive-rounds.test.ts.
-  expect(FIELDS.item.weapon!.stubs).toEqual({ cloud: "polish" });
-  expect(FIELDS.item.ammo!.stubs).toEqual({ pellets: "polish", falloff: "polish" });
+  // tests/integration/explosive-rounds.test.ts. No stub is left in either facet.
+  expect([FIELDS.item.weapon!.stubs, FIELDS.item.ammo!.stubs]).toEqual([undefined, undefined]);
   // W4 built the bola's buff fields (M6): their pins are in tests/integration/bola.test.ts.
   expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual([undefined, undefined, undefined]);
-  expect(classRow("prop/cloud")).toMatchObject({ status: "stub", waits: "polish", parent: "prop" });
+  expect(classRow("prop/cloud")).toMatchObject({ status: "built", parent: "prop" });
   expect(CLASSES.filter((r) => r.id === "prop/cloud").length).toBe(1);
-  // The holo-scope is an attachment kind no item is yet.
+  // The holo-scope is an attachment kind no item is yet: W7 built its view (tests/integration/attachments.test.ts), and its
+  // item waits for the fabricator's wave.
   expect(defFaults({ type: "item", class: "attachment", id: "test:holo", stack: 1, attachment: "holo" })).toEqual([]);
   expect(CORE_CONTENT.some((d) => d.type === "item" && d.attachment === "holo")).toBe(false);
 });
@@ -104,27 +106,34 @@ const LIGHTS: Readonly<Record<string, readonly [number, number]>> = { "core:flar
 
 test("every weapon and round today compiles as it did: no stub in its timings, and each stub column at what it means now", () => {
   // W2's: the four ranged weapons strike with ARK's blow (Base Damage); none fires automatically or loads a round at a time.
-  const blows = new Set(["core:bow", "core:crossbow", "core:rifle", "core:pistol"]);
+  const blows = new Set(["core:bow", "core:crossbow", "core:rifle", "core:pistol", "core:shotgun"]);
+  // W3's: only the shotgun's shell is shot, and falls off.
+  const shot = new Set(["core:round_shotgun"]);
   for (let i = 1; i < reg.defs.length; i++) {
     const w = reg.weapon[i];
     if (w) expect([reg.ids[i], "auto" in w || "reloadEach" in w]).toEqual([reg.ids[i], false]);
     const blow = blows.has(reg.ids[i]!);
     if (w) expect([reg.ids[i], w.meleeTicks, w.meleeStrikeTick]).toEqual(blow ? [reg.ids[i], 15, 5] : [reg.ids[i], undefined, undefined]);
     expect([reg.ids[i], reg.blowDamage[i], Math.round(reg.blowTorpor[i]! * 100) / 100, Math.round(reg.blowReach[i]! * 100) / 100]).toEqual(blow ? [reg.ids[i], 10, 1.4, 2.6] : [reg.ids[i], 0, 0, 0]);
+    // W5's: the smoke grenade bursts into 40 s of smoke and the poison grenade into 20 s of gas that poisons.
+    const cloud = ({ "core:grenade_smoke": ["core:cloud_smoke", 1200, ""], "core:grenade_poison": ["core:cloud_poison", 600, "core:poisoned"] } as Record<string, [string, number, string]>)[reg.ids[i]!];
     // W6's: only the grenade has a structure factor (788 / 175, D435), and only the flare gun's flare a light.
-    expect([reg.ids[i], reg.structureMul[i], reg.cloudProp[i], reg.cloudTicks[i], reg.cloudBuff[i]]).toEqual([reg.ids[i], reg.ids[i] === "core:grenade" ? 788 / 175 : 1, 0, 0, 0]);
+    expect([reg.ids[i], reg.structureMul[i], reg.cloudProp[i] ? reg.ids[reg.cloudProp[i]!] : "", reg.cloudTicks[i], reg.cloudBuff[i] ? reg.ids[reg.cloudBuff[i]!] : ""]).toEqual([reg.ids[i], reg.ids[i] === "core:grenade" ? 788 / 175 : 1, ...(cloud ?? ["", 0, ""])]);
+    expect([reg.ids[i], reg.ammoPellets[i], reg.weaponPellets[i], reg.ammoFalloffFull[i], reg.ammoFalloffNone[i]]).toEqual(shot.has(reg.ids[i]!) ? [reg.ids[i], 10, 0, 10, 40] : [reg.ids[i], 1, 0, 0, 0]);
     const light = LIGHTS[reg.ids[i]!] ?? [0, 0];
-    expect([reg.ids[i], reg.ammoPellets[i], reg.ammoFalloffFull[i], reg.ammoFalloffNone[i], reg.ammoBlast[i], reg.ammoPierce[i], reg.ammoLight[i], reg.ammoLightColor[i]]).toEqual([reg.ids[i], 1, 0, 0, 0, 0, ...light]);
+    expect([reg.ids[i], reg.ammoBlast[i], reg.ammoPierce[i], reg.ammoLight[i], reg.ammoLightColor[i]]).toEqual([reg.ids[i], 0, 0, ...light]);
   }
 });
 
 
 // A pack that declares every stub of the plan, as its projects will.
 const GUN: ItemDef = { id: "arms:gun", type: "item", class: "weapon", stack: 1, weapon: { kind: "gun", ammo: ["arms:shell"], clip: 2, reload: 3.33, interval: 0.35, uses: 300, hold: "rifle", auto: true, reloadEach: true, melee: { damage: 10, torpor: 1.4 }, spread: { hip: 4, aim: 1, move: 3, bloom: 0.5, recover: 6 }, recoil: { kick: 2, recover: 9 }, structures: 2 } };
-const SHELL: ItemDef = { id: "arms:shell", type: "item", class: "ammo", stack: 100, ammo: { damage: 64, type: "bullet", pellets: 10, falloff: { full: 5, none: 30 }, blast: 7.5, pierce: 0.4, speed: 300, light: { reach: 40, color: 3 } } };
+const SHELL: ItemDef = { id: "arms:shell", type: "item", class: "ammo", stack: 100, ammo: { damage: 64, type: "bullet", pellets: 10, falloff: { full: 5, none: 30 }, blast: 7.5, pierce: 0.4 } };
+// A round that carries a light flies (W6): the flare.
+const FLARE: ItemDef = { id: "arms:flare", type: "item", class: "ammo", stack: 10, ammo: { damage: 0, type: "fire", speed: 40, light: { reach: 40, color: 3 } } };
 const SMOKE: ItemDef = { id: "arms:smoke", type: "item", class: "weapon", stack: 10, weapon: { kind: "thrown", damage: 1, type: "explosive", speed: 18, fuse: 5, blast: 1, uses: 1, hold: "tool", cloud: { prop: "arms:cloud", seconds: 40, buff: "arms:choking" } } };
 const CHOKING: BuffDef = { id: "arms:choking", type: "buff", label: "Choking", color: 9, seconds: 30, root: true, only: ["core:dodo"], survivorSeconds: 25, after: "arms:spent" };
-const ARMS: readonly Def[] = [GUN, SHELL, SMOKE, CHOKING, { id: "arms:cloud", type: "prop", class: "cloud", mesh: "box", color: 2, radius: 4.5, height: 3 }, { id: "arms:spent", type: "buff", label: "Spent", color: 9, seconds: 10 }];
+const ARMS: readonly Def[] = [GUN, SHELL, FLARE, SMOKE, CHOKING, { id: "arms:cloud", type: "prop", class: "cloud", mesh: "box", color: 2, radius: 4.5, height: 3 }, { id: "arms:spent", type: "buff", label: "Spent", color: 9, seconds: 10 }];
 const pack = (defs: readonly Def[]): ContentPack => ({ name: "arms", requires: ["core"], defs: defs as unknown as ContentPack["defs"] });
 
 test("every stub compiles into its column or timing, read by nothing, and what it names is checked", () => {
@@ -137,11 +146,12 @@ test("every stub compiles into its column or timing, read by nothing, and what i
   const near = (vs: readonly number[]): number[] => vs.map((v) => Math.round(v * 100) / 100);
   expect(near([r.blowDamage[gun]!, r.blowTorpor[gun]!, r.blowReach[gun]!, r.structureMul[gun]!])).toEqual([10, 1.4, 2.6, 2]);
   const shell = at("arms:shell");
-  expect(near([r.ammoPellets[shell]!, r.ammoFalloffFull[shell]!, r.ammoFalloffNone[shell]!, r.ammoBlast[shell]!, r.ammoPierce[shell]!, r.ammoLight[shell]!, r.ammoLightColor[shell]!])).toEqual([10, 5, 30, 7.5, 0.4, 40, 3]);
+  expect(near([r.ammoPellets[shell]!, r.ammoFalloffFull[shell]!, r.ammoFalloffNone[shell]!, r.ammoBlast[shell]!, r.ammoPierce[shell]!, r.ammoLight[at("arms:flare")]!, r.ammoLightColor[at("arms:flare")]!])).toEqual([10, 5, 30, 7.5, 0.4, 40, 3]);
   const smoke = at("arms:smoke");
   expect([r.cloudProp[smoke], r.cloudTicks[smoke], r.cloudBuff[smoke]]).toEqual([at("arms:cloud"), 1200, at("arms:choking")]);
 
   const bad = (to: Def): string[] => compilePacks([CORE_PACK, pack(ARMS.map((d) => (d.id === to.id ? to : d)))]).errors;
+  expect(bad({ ...FLARE, ammo: { ...FLARE.ammo!, speed: undefined } })).toEqual(["arms:flare: a round that carries a light flies, at its ammo.speed"]);
   expect(bad({ ...SHELL, ammo: { ...SHELL.ammo!, pellets: 0, pierce: 2 } })).toEqual(["arms:shell: ammo.pellets must be a whole number from 1 to 255", "arms:shell: ammo.pierce must be from 0 to 1"]);
   expect(bad({ ...SHELL, ammo: { ...SHELL.ammo!, falloff: { full: 30, none: 5 } } })).toEqual(["arms:shell: ammo.falloff is full from 0 metres or more, and none further than that"]);
   expect(bad({ ...GUN, weapon: { ...GUN.weapon!, spread: { hip: 120, aim: 1 } } })).toEqual(["arms:gun: weapon.spread is in degrees from 0 to 90"]);

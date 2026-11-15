@@ -48,6 +48,7 @@ import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
+import { Clouds } from "./clouds.ts";
 import type { ModuleDef } from "./api/module.ts";
 import { Bus, event } from "./events/bus.ts";
 import { Modules } from "./events/modules.ts";
@@ -73,7 +74,7 @@ import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
-import { ARMOR_SLOTS } from "../shared/sim/items.ts";
+import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 
 export interface HostOptions {
@@ -195,6 +196,8 @@ export interface Host {
   /** The setting values a loaded save's timers were computed under. Null for a new world. */
   readonly loadedUnder: Record<string, number> | null;
   readonly projectiles: Projectiles;
+  /** Smoke and gas where grenades went off (W5). */
+  readonly clouds: Clouds;
   readonly progression: Progression;
   /** Null for a world whose map has no resource nodes. */
   readonly harvest: Harvest | null;
@@ -479,6 +482,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
   combat.onThrow = (c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality));
+  const clouds = new Clouds({ world, records, buffs, rules });
+  projectiles.onCloud = (item, x, y, z, by) => clouds.make(item, x, y, z, by);
   // The killer is credited before death.die, which may delete the record.
   const dying = new Set<number>();
   survival.onDeath = (rec, cause, by) => {
@@ -810,6 +815,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat.step();
     projectiles.step();
+    clouds.step();
     creatures.step(tick);
     spawner?.step(tick);
     build.step();
@@ -993,6 +999,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       gear[GEAR_HELD] = item;
       for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
       ents.setGear(e, gear);
+      // Only the thing in hand has its attachment on, and taking another in hand switches it off: "it does require you to
+      // press N each time you switch" (Flashlight Attachment). Others see a laser on (weapons-plan.md, M10).
+      const before = inHand.get(rec.pid);
+      items.switchOff(rec, before === undefined || before === slot ? slot : -1);
+      ents.setOn(e, slot >= 0 && (inv.flags[slot]! & FLAG_ON) !== 0 && items.attachmentOf(inv, slot) === "laser");
       // A worn-out weapon counts as holding no rounds and takes none.
       const params = reg.weapon[item] ?? FISTS;
       const works = slot >= 0 && params.clip > 0 && inv.dur[slot]! > 0;
@@ -1091,6 +1102,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     readLive,
     loadedUnder,
     projectiles,
+    clouds,
     progression,
     harvest,
     deadlines,

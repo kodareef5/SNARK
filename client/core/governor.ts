@@ -1,5 +1,5 @@
 // The governor keeps the frame steady under the tier the player chose, on a phone that warms or on any machine that
-// meets a scene heavier than it can draw, by the least visible step first. It is told each frame's interval, our code's
+// meets a scene heavier than it can draw, taking from what matters least in a fight first. It is told each frame's interval, our code's
 // time, the GPU's time where the browser times it, whether the frame took uploads and how much the frame asked of the
 // card; the app draws the tier it returns, and the shell only passes it the numbers.
 //
@@ -58,26 +58,39 @@ const LIGHT_WAIT_MS = 10000;
 const PROBATION_MS = 60000;
 /** What a draw asks of a phone's card in triangles, for a frame's work: the iPhone's ladder broke near 1,000 draws more or 2 M triangles more (D349). */
 export const DRAW_TRIANGLES = 2000;
+/** A leaves step is passed by where the triangles crowns near could still give were under this share of a frame's work. */
+const CROWNS = 0.1;
 
 /** What a step changes. Steps add up: a level is every step before it. */
 interface Knobs {
+  leaves?: number;
   everyOther?: boolean;
   ratio?: number;
   shadowReach?: number;
   farReach?: number;
   fewerCascades?: number;
   noShadows?: boolean;
+  details?: number;
+  bodies?: number;
 }
 
-/** The steps, the least visible first (planning/reference/round8-lighting-design.md section 6, and the pass timers' rows). */
+/**
+ * The steps, in the frame's order (render/budget.ts) from its foot: leaves and far trees first, then shadows, then
+ * pixels, then what a fight shows, and bodies' own levels last of all. A leaves step lowers the frame's triangles, which
+ * crowns near give up; it is passed by where crowns near could give little (CROWNS).
+ */
 export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] = [
+  { name: "leaves: the frame's triangles to 75%", knobs: { leaves: 0.75 } },
+  { name: "far trees, rocks and bushes to 70% as far", knobs: { farReach: 0.7 } },
+  { name: "leaves: the frame's triangles to 50%", knobs: { leaves: 0.5 } },
   { name: "the farther cascade every other frame", knobs: { everyOther: true } },
   { name: "shadows to 60% as far", knobs: { shadowReach: 0.6 } },
-  { name: "85% of the pixels a side", knobs: { ratio: 0.85 } },
-  { name: "far trees, rocks and bushes to 70% as far", knobs: { farReach: 0.7 } },
   { name: "one cascade fewer", knobs: { fewerCascades: 1 } },
-  { name: "70% of the pixels a side", knobs: { ratio: 0.7 } },
   { name: "no sun shadows", knobs: { noShadows: true } },
+  { name: "85% of the pixels a side", knobs: { ratio: 0.85 } },
+  { name: "70% of the pixels a side", knobs: { ratio: 0.7 } },
+  { name: "small details: half the pool, of each burst and of the fill", knobs: { details: 0.5 } },
+  { name: "bodies a level coarser", knobs: { bodies: 2 } },
 ];
 
 /** `base` with `knobs`, for a screen of `dpr` device pixels a CSS pixel. */
@@ -90,23 +103,29 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     pixelRatio: knobs.ratio && ratio > 1 ? Math.max(1, Math.round(ratio * knobs.ratio * 100) / 100) : base.pixelRatio,
     reach: { ...base.reach, trees: base.reach.trees * far, rocks: base.reach.rocks * far, bushes: base.reach.bushes * far },
     shadows: s.cascades === 0 || !base.lit ? s : { ...s, everyOther: s.everyOther || (knobs.everyOther === true && s.cascades > 1), distance: s.distance * (knobs.shadowReach ?? 1), cascades: knobs.noShadows ? 0 : Math.max(1, s.cascades - (knobs.fewerCascades ?? 0)) },
+    budget: { ...base.budget, triangles: base.budget.triangles * (knobs.leaves ?? 1) },
+    details: knobs.details ? { ...base.details, pool: Math.round(base.details.pool * knobs.details), share: base.details.share * knobs.details, fill: base.details.fill * knobs.details } : base.details,
+    bodyError: base.bodyError * (knobs.bodies ?? 1),
   };
 }
 
 const same = (a: Tier, b: Tier): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-/** A tier's levels: the tier, then each step that changes something on it, with its name. One list a tier and screen. */
-const ladders = new Map<Tier, Map<number, { name: string; tier: Tier }[]>>();
-export function ladder(base: Tier, dpr: number): readonly { name: string; tier: Tier }[] {
+/**
+ * A tier's levels: the tier, then each step that changes something on it, with its name and whether it is a leaves
+ * step. One list a tier and screen.
+ */
+const ladders = new Map<Tier, Map<number, { name: string; tier: Tier; leaves: boolean }[]>>();
+export function ladder(base: Tier, dpr: number): readonly { name: string; tier: Tier; leaves: boolean }[] {
   const mine = ladders.get(base) ?? ladders.set(base, new Map()).get(base)!;
   let out = mine.get(dpr);
   if (out) return out;
-  out = [{ name: "the tier", tier: base }];
+  out = [{ name: "the tier", tier: base, leaves: false }];
   let knobs: Knobs = {};
   for (const step of STEPS) {
     knobs = { ...knobs, ...step.knobs };
     const tier = governed(base, knobs, dpr);
-    if (!same(tier, out.at(-1)!.tier)) out.push({ name: step.name, tier });
+    if (!same(tier, out.at(-1)!.tier)) out.push({ name: step.name, tier, leaves: step.knobs.leaves !== undefined });
   }
   mine.set(dpr, out);
   return out;
@@ -160,6 +179,9 @@ export class Governor {
   private readonly gpu: number[] = [];
   private sorted: number[] = [];
   private work = 0;
+  /** The most triangles crowns near could still give in a frame of the window, and the last window's share of its work. */
+  private crowns = 0;
+  private crownShare = 0;
   private counted = 0;
   private misses = 0;
   private steadySince = 0;
@@ -208,9 +230,10 @@ export class Governor {
 
   /**
    * A frame drawn at `now`, `interval` ms after the one before, our code's `ours` ms of it, `busy` if it took asset
-   * uploads, and `work` what it asked of the card (triangles and DRAW_TRIANGLES a draw).
+   * uploads, `work` what it asked of the card (triangles and DRAW_TRIANGLES a draw), and `crowns` the triangles crowns
+   * near took that they could still give (render/budget.ts).
    */
-  frame(now: number, interval: number, ours: number, busy: boolean, work: number): void {
+  frame(now: number, interval: number, ours: number, busy: boolean, work: number, crowns = 0): void {
     if (this.held !== null || this.base === null) return;
     if (interval > STALL_MS) return this.pause(now, SETTLE_MS);
     if (now < this.quietUntil) return;
@@ -220,6 +243,7 @@ export class Governor {
       this.intervals.push(interval);
       this.ours.push(ours);
       this.work = Math.max(this.work, work);
+      this.crowns = Math.max(this.crowns, crowns);
     }
     if (now - this.windowAt >= WINDOW_MS) this.window(now);
   }
@@ -232,6 +256,7 @@ export class Governor {
     const gpu = known ? middleMean(this.gpu) : null;
     const ours = middleMean(this.ours);
     const work = this.work;
+    if (this.work > 0) this.crownShare = this.crowns / this.work;
     this.clear();
     if (!usable) return;
     [this.frameMs, this.gpuMs] = [frame, gpu];
@@ -255,6 +280,8 @@ export class Governor {
         this.rest = Math.min(this.rest * 2, REST_MOST);
         return;
       }
+      // The levels passed on the way bought nothing, and a lighter scene goes back up through them as through this one.
+      for (let l = from + 1; l < this.level; l++) [this.kept[l], this.workAt[l]] = [1, work];
       this.kept[this.level] = load / before;
       this.workAt[this.level] = work;
     }
@@ -298,9 +325,10 @@ export class Governor {
     }
   }
 
-  /** The next level down that is not passed over, or -1. */
+  /** The next level down that is not passed over, nor a leaves step where crowns near could give little, or -1. */
   private below(now: number): number {
-    for (let to = this.level + 1; to <= this.top; to++) if ((this.passed[to] ?? 0) <= now) return to;
+    const levels = ladder(this.base!, this.dpr);
+    for (let to = this.level + 1; to <= this.top; to++) if ((this.passed[to] ?? 0) <= now && (!levels[to]!.leaves || this.crownShare >= CROWNS)) return to;
     return -1;
   }
 
@@ -327,6 +355,6 @@ export class Governor {
     this.windowAt = -1;
     this.intervals.length = this.ours.length = this.gpu.length = 0;
     this.counted = 0;
-    this.work = 0;
+    this.work = this.crowns = 0;
   }
 }

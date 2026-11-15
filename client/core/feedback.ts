@@ -78,8 +78,11 @@ export class Feedback {
         if (this.numbers.length >= MAX_NUMBERS) this.numbers.shift();
         this.numbers.push({ x: ev.x, y: ev.y, z: ev.z, text: String(ev.damage), kind: ev.kill ? NUMBER_KILL : ev.zone === ZONE_HEAD ? NUMBER_HEAD : NUMBER_BODY, born: nowMs });
       } else if (ev.kind === EVENT_HURT || ev.kind === EVENT_DEATH) {
-        if (this.hurts.length >= MAX_HURTS) this.hurts.shift();
-        this.hurts.push({ bearing: (ev.bearing / 256) * TAU, born: nowMs });
+        // A silenced shot reddens the screen but shows no side (Silencer Attachment).
+        if (ev.side) {
+          if (this.hurts.length >= MAX_HURTS) this.hurts.shift();
+          this.hurts.push({ bearing: (ev.bearing / 256) * TAU, born: nowMs });
+        }
         const left = this.blood * Math.max(0, 1 - (nowMs - this.bloodAt) / BLOOD_MS);
         this.blood = Math.min(1, left + ev.damage / BLOOD_FULL);
         this.bloodAt = nowMs;

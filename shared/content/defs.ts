@@ -236,8 +236,11 @@ export interface ItemDef extends Named {
   readonly ammo?: AmmoFacet;
   readonly wear?: WearFacet;
   /**
-   * A weapon lists the attachment items it takes in `fits`. "holo" is the holo-scope, a stub: no item is one until W7 of
-   * planning/reference/weapons-plan.md builds its view.
+   * A weapon lists the attachment items it takes in `fits`. What each does (planning/reference/weapons-plan.md, M10): a
+   * scope zooms about 3 times with a reticle and sways the weapons that sway; a holo-scope zooms about 1.25 times with a
+   * night tint and a crosshair coloured by what it is on (its view is built; no item is one until the fabricator's wave);
+   * a silencer hides the shot's flash and, from a survivor it hits, its side; a light and a laser are switched on and off
+   * (FLAG_ON), the laser drawing a dot where the weapon points and the light waiting for local lights (D436).
    */
   readonly attachment?: "scope" | "silencer" | "light" | "laser" | "holo";
   /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
@@ -367,8 +370,11 @@ export interface WeaponFacet {
    * damage to what is built beside its damage to bodies (Table of explosives): the grenade's 175 is 788 to wood, about 4.5.
    */
   readonly structures?: number;
-  // Stubs of the same plan: declared, checked and compiled, and read by nothing until the project named builds them
-  // (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
+  /**
+   * A gun's rays a shot, in place of its round's `ammo.pellets` (W3): ARK's pump-action fires the same shells as the
+   * double-barrel, 14 pellets to its 10 (Pump-Action Shotgun). Omitted, a shot sends its round's.
+   */
+  readonly pellets?: number;
   /**
    * W5: thrown, it bursts into a cloud: the prop/cloud it makes, the seconds the cloud lasts, and the buff it gives the bodies
    * inside it (none for smoke). The cloud reaches as far as its prop's radius.
@@ -389,10 +395,19 @@ export interface AmmoFacet {
   /** Chance, 0 to 1, that a spent one can be picked up again. */
   readonly recover?: number;
   readonly mesh?: string;
-  // Stubs of planning/reference/weapons-plan.md, as the weapon facet's are. Omitted, a round does what all do today.
-  /** W3: rays one round sends, each tested and landed alone, as a shotgun's pellets. 1 where not given. */
+  /**
+   * A weapon loaded with it takes no attachment: loading it puts the one fitted in the bag, and nothing is fitted while it
+   * is loaded. ARK's darts: loaded with them the Longneck "cannot use any attachments" (Longneck Rifle).
+   */
+  readonly bare?: boolean;
+  // Shot (planning/reference/weapons-plan.md, M3, built by W3). Omitted, a round is one ray and keeps its damage at any range.
+  /**
+   * Rays one round with no speed sends, each inside its gun's cone and tested and landed alone, as a shotgun's pellets
+   * ("Each pellet fired from a Shotgun has an individual collision check", Shotgun). The round's damage is a pellet's.
+   * 1 where not given; a gun's `weapon.pellets` takes its place.
+   */
   readonly pellets?: number;
-  /** W3: its damage falls from all of it at `full` metres to none at `none`. Omitted, it does not fall off. */
+  /** Its damage falls evenly from all of it at `full` metres to none at `none` (shared/sim/damage.ts `falloff`). */
   readonly falloff?: { readonly full: number; readonly none: number };
   // Built by W6 (M8, M12, and the flare of M9).
   /**

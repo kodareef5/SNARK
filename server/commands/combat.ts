@@ -15,8 +15,10 @@ const KITS: Readonly<Record<string, readonly (readonly [string, number])[]>> = {
   crossbow: [["crossbow", 1], ["arrow_stone", 40]],
   rifle: [["rifle", 1], ["round_rifle", 30], ["dart_tranq", 20], ["scope", 1]],
   pistol: [["pistol", 1], ["round_pistol", 60]],
+  shotgun: [["shotgun", 1], ["round_shotgun", 40]],
   grenades: [["grenade", 10]],
   bola: [["bola", 10]],
+  clouds: [["grenade_smoke", 10], ["grenade_poison", 10]],
   flare: [["flare_gun", 3]],
 };
 const TIERS: readonly string[] = ["cloth", "hide", "chitin", "flak"];

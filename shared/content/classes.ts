@@ -87,9 +87,8 @@ const ITEM = {
   weapon: f("facet", "WeaponTemplate", {
     refs: { "ammo[]": "item", "fits[]": "item/attachment", "cloud.prop": "prop/cloud", "cloud.buff": "buff" },
     open: true,
-    stubs: { cloud: "polish" },
   }),
-  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { pellets: "polish", falloff: "polish" } }),
+  ammo: f("facet", "", { refs: { buff: "buff" } }),
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
@@ -423,7 +422,7 @@ row("prop", "prop", PROP, { abstract: true, ark: "an actor that is not alive", s
 row("prop/container", "prop", PROP, { parent: "prop", ark: "a death cache, a dropped bag", shelf: "props/containers", must: [...PROP_BODY, "slots"], slots: PROP_SLOTS, doc: "Holds what was dropped or left by the dead." });
 row("prop/projectile", "prop", PROP, { parent: "prop", ark: "a projectile actor", status: "partial", shelf: "props/projectiles", must: PROP_BODY, may: ["pitched"], slots: PROP_SLOTS, doc: "Something loosed or thrown, where it lies. How it flies is on the ammunition." });
 row("prop/egg", "prop", PROP, { parent: "prop", ark: "a laid or dropped egg, fertilised or not", shelf: "props/eggs", must: PROP_BODY, may: ["size", "item", "fertile"], slots: PROP_SLOTS, doc: "An egg where it lies: taken up as its item, and hatching where it lies if fertilised." });
-row("prop/cloud", "prop", PROP, { parent: "prop", ark: "the gas and smoke actors of grenades", status: "stub", waits: "polish", shelf: "props/clouds", must: PROP_BODY, slots: PROP_SLOTS, doc: "Smoke or gas that stays where a grenade burst, as far as its radius, for its grenade's seconds, giving its buff to the bodies inside it (planning/reference/weapons-plan.md, W5)." });
+row("prop/cloud", "prop", PROP, { parent: "prop", ark: "the gas and smoke actors of grenades", shelf: "props/clouds", must: PROP_BODY, slots: PROP_SLOTS, doc: "Smoke or gas that stays where a grenade burst, as far as its radius and as high as its height, for its grenade's seconds, giving its buff to the survivors inside it every half second (server/clouds.ts). It has no body, and is drawn as puffs over that reach (client/core/render/clouds.ts); its mesh is not drawn." });
 row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", status: "stub", waits: "loot", shelf: "props/crates", must: PROP_BODY, may: ["slots"], slots: PROP_SLOTS, doc: "Comes down with loot and goes when it is emptied." });
 
 row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "damage", "speed", "dealt", "taken", "root", "immune", "good", "only", "survivorSeconds", "after"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });
