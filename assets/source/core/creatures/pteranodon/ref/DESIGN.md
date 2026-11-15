@@ -166,9 +166,11 @@ Positions at rest; `asset.ts` gives each as its offset from its bone's joint (`r
 in the chest's frame, with the bone lengths of `shared/anim/human.ts`: hips 0.10 above the seat, the body leaning 6
 degrees forward of the chest's up, thighs forward and down either side of the base of the neck, knees 0.34 ahead of the
 hips and 0.26 out, lower legs hanging in front of the wing roots to the foot rests, palms on the grips. The rider's
-frame is the chest bone's: in the glide the rider leans a little into the wind; on the ground, where the chest tilts
-back about 12 degrees, the rider sits upright. The seat is 0.20 behind the shoulder joints, over the wing roots; the
-knees are 0.14 ahead of them.
+frame is the chest bone's, which is the seat socket's whole frame the engine draws a rider in (`shared/anim/seat.ts`,
+D498): in the glide the rider leans a little into the wind; on the ground, where the chest tilts back about 12 degrees,
+the rider sits upright. The rider's origin hangs `SEAT_DROP` (0.55 m) below `seat`, so the seated pose puts the human's
+hips joint 0.65 m above its origin. The seat is 0.20 behind the shoulder joints, over the wing roots; the knees are 0.14
+ahead of them.
 
 `check_clip` warns when any of the block-out reaches more than 2 cm into the rider in a clip the animal is ridden in.
 Measured on the block-out (`ref/blockout/checks.json`): the head turned 80 degrees either way, lowered, biting, or
@@ -219,8 +221,9 @@ only light and dark: the fuzz, the horn's grain, the membrane's veins, the under
 | `pteranodon_saddle` | opaque, one-sided | 1,024 base and normal; packed and masks at 512 | the saddle, a worn mesh of its own |
 
 Measured with the engine's own `textureBytes`: the animal's two materials take 48.0 MB in the rgba variant and 29.3 MB
-in bc and astc (`rig.py`: `TEXTURE_MEGABYTES` 48); the saddle's 12.0 and 3.7. The membrane takes its own 2,048 because
-it is most of the animal's area and is seen from the saddle at a metre.
+in bc and astc; the saddle's 12.0 and 3.7. A worn mesh's maps count in the body's budget (`tools/art/spec.ts`:
+`WornSpec`), so the asset's is 60 MB (`rig.py`: `TEXTURE_MEGABYTES`). The membrane takes its own 2,048 because it is
+most of the animal's area and is seen from the saddle at a metre.
 
 ## Budgets
 

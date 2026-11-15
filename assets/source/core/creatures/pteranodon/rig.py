@@ -82,7 +82,8 @@ SADDLE_MATERIALS = {
     # The saddle's hide, plaited fibre, bent wood and chitin, on one layout.
     "pteranodon_saddle": {"size": 1024, "two_sided": False, "cutout": False},
 }
-TEXTURE_MEGABYTES = 48  # the animal; the saddle, a worn mesh, has its own 12
+# The animal's 48 and the worn saddle's 12: a worn mesh's maps count in the body's budget (tools/art/spec.ts: WornSpec).
+TEXTURE_MEGABYTES = 60
 
 # The six colour regions, by index, under ARK's names and in its order. Where each lies is in ref/DESIGN.md. They are
 # painted in each material's region map in these colours (tools/art/spec.ts); black is never dyed: eyes, claws, the
@@ -168,7 +169,9 @@ SOCKETS = {
 }
 
 # The seated rider, as the human seated pose must put the survivor (FL2's clip), relative to `seat` in the animal's
-# rest frame: the joints of shared/anim/human.ts, its bone lengths kept. The rider's frame is the chest bone's. The
+# rest frame: the joints of shared/anim/human.ts, its bone lengths kept. The rider's frame is the chest bone's, the
+# seat socket's (shared/anim/seat.ts), and the rider's origin hangs SEAT_DROP (0.55) below `seat`, so the seated pose
+# puts the human's hips joint 0.65 above its origin. The
 # rider leans 6 degrees forward of the chest's up, a little into the wind in the glide; on the ground, where the
 # chest tilts back about 12 degrees, the rider sits about upright. Thighs run forward and down either side of the
 # base of the neck, lower legs hang in front of the wing roots, hands on the grips. RIDER_CAPSULES is the space the
