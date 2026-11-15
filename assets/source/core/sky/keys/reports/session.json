@@ -1,0 +1,10 @@
+{
+  "started_utc": "2026-11-14T23:27:34Z",
+  "method": "built-in image_gen plus local Python grading and sampling",
+  "source_reference": "../../structures/stone/ref/renders/house_hero.jpg",
+  "generation_calls_completed": 3,
+  "finished_utc": "2026-11-14T23:46:10+00:00",
+  "elapsed_seconds": 1117,
+  "local_grading_review_passes": 4,
+  "verification": "PASS"
+}

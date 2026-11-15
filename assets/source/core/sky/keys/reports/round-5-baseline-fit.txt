@@ -1,0 +1,72 @@
+noon      fitted at 66.73 degrees: zenith 6.6, high 1.1, toward 3.5, away 2.3, lit 3.7, shaded 1.8, up 1.9
+    zenith  key 78,144,222  table 124,143,191
+    high    key 60,130,215  table 51,134,218
+    toward  key 211,230,237  table 188,228,252
+    away    key 184,216,236  table 171,220,250
+    lit     key 108,104,93  table 94,96,98
+    shaded  key 54,71,95  table 58,71,85
+    up      key 127,123,114  table 124,126,127
+dawn      fitted at 2.00 degrees: zenith 3.5, high 2.0, toward 1.1, away 3.9, lit 5.6, shaded 3.5, up 2.4
+    zenith  key 108,155,214  table 123,145,195
+    high    key 174,204,237  table 172,198,244
+    toward  key 248,223,202  table 254,225,201
+    away    key 231,215,215  table 227,218,190
+    lit     key 138,105,83  table 141,85,48
+    shaded  key 31,43,63  table 43,44,47
+    up      key 52,59,73  table 61,59,61
+morning   fitted at 15.00 degrees: zenith 5.5, high 5.7, toward 2.8, away 1.5, lit 4.2, shaded 5.8, up 1.9
+    zenith  key 90,155,230  table 73,137,233
+    high    key 75,145,225  table 100,160,248
+    toward  key 235,229,211  table 254,231,207
+    away    key 181,216,229  table 180,219,240
+    lit     key 157,142,117  table 148,129,96
+    shaded  key 54,71,94  table 49,56,69
+    up      key 95,91,82  table 94,92,94
+afternoon fitted at 35.00 degrees: zenith 3.1, high 2.5, toward 6.3, away 1.4, lit 4.8, shaded 4.9, up 0.9
+    zenith  key 100,155,218  table 102,143,211
+    high    key 85,145,210  table 103,149,217
+    toward  key 240,225,199  table 228,242,247
+    away    key 183,213,229  table 175,212,236
+    lit     key 149,132,109  table 134,118,100
+    shaded  key 53,71,96  table 61,63,67
+    up      key 119,110,97  table 121,111,103
+golden    fitted at 8.00 degrees: zenith 1.8, high 2.1, toward 3.5, away 3.5, lit 1.1, shaded 4.6, up 5.8
+    zenith  key 89,116,160  table 91,109,156
+    high    key 139,155,189  table 132,153,200
+    toward  key 249,187,115  table 253,193,146
+    away    key 206,184,180  table 204,187,158
+    lit     key 157,112,65  table 155,112,74
+    shaded  key 40,55,81  table 54,51,56
+    up      key 76,62,46  table 88,75,74
+sunset    fitted at 0.00 degrees: zenith 1.0, high 1.5, toward 2.1, away 3.2, lit 9.5, shaded 3.8, up 2.1
+    zenith  key 64,73,110  table 70,73,109
+    high    key 124,116,149  table 117,117,157
+    toward  key 239,150,110  table 234,155,128
+    away    key 167,133,154  table 176,129,133
+    lit     key 100,60,45  table 71,37,43
+    shaded  key 23,32,51  table 40,36,43
+    up      key 58,45,45  table 53,48,57
+dusk      fitted at -8.00 degrees: zenith 1.4, high 5.8, toward 6.2, away 1.8, lit 10.4, shaded 1.4, up 1.7
+    zenith  key 49,66,124  table 54,64,129
+    high    key 72,97,159  table 63,77,148
+    toward  key 228,154,110  table 253,171,124
+    away    key 131,118,154  table 137,121,148
+    lit     key 53,50,65  table 27,25,42
+    shaded  key 19,26,43  table 27,25,42
+    up      key 31,35,49  table 36,34,55
+night     fitted at -66.73 degrees: zenith 3.6, high 5.0, toward 0.6, away 0.5, lit 2.6, shaded 1.4, up 0.8
+    zenith  key 20,36,68  table 29,46,76
+    high    key 36,59,99  table 26,45,86
+    toward  key 62,91,131  table 61,93,134
+    away    key 60,90,130  table 59,91,133
+    lit     key 26,32,42  table 24,25,33
+    shaded  key 13,21,35  table 13,18,29
+    up      key 30,36,47  table 34,36,45
+  { name: "night", height: -66.73, tint: [0.575, 1.755, 3.431], saturation: 0.725, horizon: 0.203, farHorizon: 0.253, glow: 0, moonGlow: -0.693, sun: [0.761, 0.728, 1.001], sky: 1.14 },
+  { name: "dusk", height: -8, tint: [1.803, 2.103, 1.491], saturation: 1.61, horizon: -1.099, farHorizon: -0.378, glow: -0.693, moonGlow: 0, sun: [1.338, 1.009, 0.999], sky: 0.657 },
+  { name: "sunset", height: 0, tint: [0.793, 0.873, 1.337], saturation: 0.769, horizon: -0.807, farHorizon: 0.102, glow: -0.245, moonGlow: 0, sun: [3.999, 1.161, 1.728], sky: 0.5 },
+  { name: "dawn", height: 2, tint: [2.156, 3.074, 4], saturation: 0.708, horizon: -0.235, farHorizon: -0.921, glow: -0.693, moonGlow: 0, sun: [1.406, 1.763, 0.838], sky: 0.5 },
+  { name: "golden", height: 8, tint: [2.083, 1.592, 1.464], saturation: 1.285, horizon: -1.099, farHorizon: -1.064, glow: -0.693, moonGlow: 0, sun: [1.159, 1.054, 0.831], sky: 0.585 },
+  { name: "morning", height: 15, tint: [2.099, 2.051, 2.239], saturation: 1.565, horizon: -1.099, farHorizon: -1.099, glow: 0.8, moonGlow: 0, sun: [1.005, 1.116, 0.826], sky: 0.543 },
+  { name: "afternoon", height: 35, tint: [1.992, 1.919, 1.874], saturation: 1.104, horizon: -1.099, farHorizon: -0.871, glow: 0.914, moonGlow: 0, sun: [1.071, 1, 0.947], sky: 0.677 },
+  { name: "noon", height: 66.73, tint: [1.564, 1.347, 1.156], saturation: 2, horizon: 0.915, farHorizon: 0.297, glow: -0.181, moonGlow: 0, sun: [1, 1, 1], sky: 1 },

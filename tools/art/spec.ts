@@ -30,9 +30,12 @@ export type ZoneSpec =
       readonly zone: ZoneName;
       /** The bone that carries the capsule. A bone carries one. */
       readonly on: string;
-      /** The capsule runs along the line between these two joints of the model, kept or dropped. */
-      readonly from: string;
-      readonly to: string;
+      /**
+       * The capsule runs along the line between these two joints of the model, kept or dropped. Without them it runs
+       * along the longest axis of the vertices it covers, through their middle: for a body no two joints lie along.
+       */
+      readonly from?: string;
+      readonly to?: string;
       /** The bones whose vertices it is fitted to. */
       readonly covers: readonly string[];
     }

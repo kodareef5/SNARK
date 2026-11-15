@@ -1,0 +1,15 @@
+{
+  "recordedStartUTC": "2026-11-14T23:47:38+00:00",
+  "reportWrittenUTC": "2026-11-15T00:11:10.804750+00:00",
+  "elapsedSeconds": 1413,
+  "imageToolCalls": 8,
+  "imageGenerationPasses": 1,
+  "completedAssemblyReviewPasses": 3,
+  "generationBatchWallSeconds": [
+    20.6,
+    52.9,
+    44.4,
+    64.5
+  ],
+  "note": "One early assembly stopped on a NumPy float/integer cast and was corrected before the first completed eight-key pass. Source-fit and candidate-palette searches preceded assembly."
+}
