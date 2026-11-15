@@ -165,7 +165,7 @@ test("observe shows the house with its doorway, the pool and the slopes, and lis
   for (const [id, x, z, far] of trees) {
     const [chunk, slot] = id.slice(1).split(".").map(Number);
     const t = p.h.world.nodeField!.store.chunks[chunk!]!;
-    expect([t.kind[slot!], Math.round(t.x[slot!]!), Math.round(t.z[slot!]!)]).toEqual([p.id("tree"), x, z]);
+    expect([p.h.world.nodeField!.standing(chunk!, slot!), Math.round(t.x[slot!]!), Math.round(t.z[slot!]!)]).toEqual([p.id("tree"), x, z]);
     expect(letterAt(woods, t.x[slot!]!, t.z[slot!]!)).toBe("T");
     expect(far).toBe(Math.round(Math.hypot(t.x[slot!]! - 256, t.z[slot!]! - 150)));
   }

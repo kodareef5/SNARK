@@ -2,7 +2,7 @@
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { NEAR_BODY } from "../../client/core/render/camera.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER, type TextureUpload } from "../../client/core/render/packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, SIZE_REGION, TILE_QUADS, TRANSIENT_BUFFER, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
@@ -11,6 +11,7 @@ import { INSTANCE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, lodVertices, readInd
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { TEXTURE_ROLES, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { SIZE_UNITS } from "../../shared/world/nodes.ts";
 import { decodeSkin, decodeSurface } from "../pack/surface.ts";
 
 export const PICK_SKY = 0;
@@ -297,6 +298,7 @@ export class Rasterizer {
     const out = this.scratch;
     const skinned = (p.drawFlags[d]! & DRAW_SKINNED) !== 0;
     const one = (p.drawFlags[d]! & DRAW_ONE_BONE) !== 0;
+    const sized = (p.drawFlags[d]! & DRAW_SIZED) !== 0;
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0;
     const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
@@ -320,11 +322,12 @@ export class Rasterizer {
         const ix = view.getFloat32(at, true) + ox;
         const iy = view.getFloat32(at + 4, true) + oy;
         const iz = view.getFloat32(at + 8, true) + oz;
+        const k = sized ? data[at + 14 + SIZE_REGION]! / SIZE_UNITS : 1;
         for (let v = 0; v < n; v++) {
-          const lx = lod.positions[v * 3]!;
-          const lz = lod.positions[v * 3 + 2]!;
+          const lx = lod.positions[v * 3]! * k;
+          const lz = lod.positions[v * 3 + 2]! * k;
           out[v * 3] = c * lx + s * lz + ix;
-          out[v * 3 + 1] = lod.positions[v * 3 + 1]! + iy;
+          out[v * 3 + 1] = lod.positions[v * 3 + 1]! * k + iy;
           out[v * 3 + 2] = -s * lx + c * lz + iz;
         }
       }
@@ -423,6 +426,8 @@ export class Rasterizer {
       const at = inst * INSTANCE_BYTES;
       this.pose(p, d, lod, surface, view, at);
       regionDyes(this.dyes, this.pack.palette, data, at + 14, material.grey);
+      // A sized instance's last region is its size, and dyes nothing.
+      if ((flags & DRAW_SIZED) !== 0) this.dyes.fill(1, SIZE_REGION * 3, SIZE_REGION * 3 + 3);
       const kind = transient ? PICK_ENTITY : PICK_STRUCTURE;
       const id = transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
       for (let t = p.drawFirstIndex[d]!; t < end; t += 3) {
@@ -447,7 +452,8 @@ export class Rasterizer {
     const mode = skinMode(p.drawFlags[d]!, skin !== undefined);
     const first = view.getUint16(at + 12, true);
     let px = view.getFloat32(at, true), py = view.getFloat32(at + 4, true), pz = view.getFloat32(at + 8, true);
-    if (mode === 0) {
+    const k = mode === -1 ? view.getUint8(at + 14 + SIZE_REGION) / SIZE_UNITS : 1;
+    if (mode <= 0) {
       const yaw = (first / 65536) * Math.PI * 2;
       const sin = Math.sin(yaw);
       const cos = Math.cos(yaw);
@@ -466,7 +472,7 @@ export class Rasterizer {
         const b = (first + (mode === 2 ? 0 : lod.bones[v]!)) * BONE_FLOATS;
         for (let i = 0; i < BONE_FLOATS; i++) m[i] = p.bones[b + i]!;
       }
-      const lx = positions[v * 3]! + px, ly = positions[v * 3 + 1]! + py, lz = positions[v * 3 + 2]! + pz;
+      const lx = positions[v * 3]! * k + px, ly = positions[v * 3 + 1]! * k + py, lz = positions[v * 3 + 2]! * k + pz;
       out[v * 3] = m[0]! * lx + m[1]! * ly + m[2]! * lz + m[3]!;
       out[v * 3 + 1] = m[4]! * lx + m[5]! * ly + m[6]! * lz + m[7]!;
       out[v * 3 + 2] = m[8]! * lx + m[9]! * ly + m[10]! * lz + m[11]!;

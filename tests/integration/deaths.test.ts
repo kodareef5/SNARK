@@ -15,7 +15,9 @@ test("a body that dies is told to every client as dead, and one that leaves the 
   const ents = h.world.ents;
   const [x, z] = [ents.x[h.ent(ada)]!, ents.z[h.ent(ada)]!];
   const near = h.host.spawnCreature("core:raptor", x + 8, z, 1);
-  const far = h.host.spawnCreature("core:parasaur", x + 150, z, 1);
+  // 150 m off, where the woods leave it room.
+  let far = -1;
+  for (let dz = 0; far < 0 && dz < 20; dz += 2) far = h.host.spawnCreature("core:parasaur", x + 150, z + dz, 1);
   const leaves = h.host.spawnCreature("core:raptor", x - 10, z + 12, 1);
   for (const e of [near, far, leaves]) h.host.creatures.mind.stay(e, h.world.tick + 30000);
   h.run(2000);

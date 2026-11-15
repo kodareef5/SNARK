@@ -59,4 +59,8 @@ export function hullHash(): string {
   return scenarios.hullHash(core());
 }
 
-if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash());
+export function nodeHash(): string {
+  return scenarios.nodeHash(core());
+}
+
+if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash());

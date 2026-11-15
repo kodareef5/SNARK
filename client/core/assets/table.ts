@@ -20,6 +20,10 @@ export class AssetTable {
   readonly materials: readonly PackMaterial[];
   /** Radius, in metres, of a sphere about the mesh's origin that holds it. */
   readonly radius: Float32Array;
+  /** How far, in metres, the mesh reaches from its origin sideways at any turn, and its lowest and highest points. */
+  readonly side: Float32Array;
+  readonly low: Float32Array;
+  readonly high: Float32Array;
   /** The skeleton each mesh follows, or "". */
   readonly skeleton: readonly string[];
   /** Index into the pack's rigs of the body a mesh was made on, or -1. */
@@ -40,6 +44,9 @@ export class AssetTable {
     this.flat = Uint8Array.from(meshes, (m) => m.flat ?? 0);
     this.materials = manifest.materials ?? [];
     this.radius = Float32Array.from(meshes, (m) => Math.hypot(m.half[0], m.half[1], m.half[2]) + Math.hypot(m.center[0], m.center[1], m.center[2]));
+    this.side = Float32Array.from(meshes, (m) => Math.hypot(Math.abs(m.center[0]) + m.half[0], Math.abs(m.center[2]) + m.half[2]));
+    this.low = Float32Array.from(meshes, (m) => m.center[1] - m.half[1]);
+    this.high = Float32Array.from(meshes, (m) => m.center[1] + m.half[1]);
     this.skeleton = meshes.map((m) => m.skeleton ?? "");
     this.rig = Int16Array.from(meshes, (m) => m.rig ?? -1);
     this.bone = Uint8Array.from(meshes, (m) => m.bone ?? 0);

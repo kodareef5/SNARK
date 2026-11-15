@@ -173,10 +173,13 @@ export class Controller {
       const chunk = Number(node[1]);
       const slot = Number(node[2]);
       const t = world.nodes?.chunks[chunk];
-      if (!t) return `${id} is too far away to see`;
-      const kind = slot < t.high ? t.kind[slot]! : 0;
+      const field = s.nodeField;
+      if (!t || !field) return `${id} is too far away to see`;
+      const kind = slot < t.high ? field.standing(chunk, slot) : 0;
       if (kind === 0) return `${id} is used up, or was never there`;
-      return { ...blank, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, half: Math.max(reg.halfX[kind]!, reg.halfZ[kind]!), up: reg.halfY[kind]!, down: reg.halfY[kind]!, kind, chunk, slot };
+      // A node stands on its origin, and its boxes reach up from it.
+      const form = t.kind[slot]!;
+      return { ...blank, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, half: Math.max(field.forms.halfX[form]!, field.forms.halfZ[form]!), up: field.forms.halfY[form]!, down: 0, kind, chunk, slot };
     }
     const built = /^s(\d+)$/.exec(id);
     if (built) {
@@ -647,8 +650,7 @@ export class Controller {
     const s = this.session;
     const g = t.target;
     const inv = s.inventory;
-    const table = s.world!.nodes?.chunks[g.chunk];
-    if (!table || table.kind[g.slot] === 0) return this.end({ state: "done", node: "gone" });
+    if ((s.nodeField?.standing(g.chunk, g.slot) ?? 0) === 0) return this.end({ state: "done", node: "gone" });
     if (t.count > 0 && (inv?.total(t.item) ?? 0) - (this.had.get(t.item) ?? 0) >= t.count) return this.end({ state: "done", node: "standing" });
     if (now - t.since > HARVEST_MS) return this.end({ state: "blocked", reason: "a minute has passed" });
     let carried = 0;

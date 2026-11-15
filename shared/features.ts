@@ -10,7 +10,6 @@ export const FEATURES = {
   offline: "Offline protection, PvP timers, and hardcore",
   tribes: "Tribes in depth: alliances, the log, wars, merges, cooldowns",
   dinoHarvest: "Creatures that harvest, and raid creatures",
-  regrowth: "Nodes that do not grow back near what is built",
   farming: "Farming, irrigation, and upkeep of the body",
   loot: "Loot: supply crates, fishing, quality, item stat clamps, custom recipes",
   passiveXp: "Experience over time, from notes and events, and by what was killed",
