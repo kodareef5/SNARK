@@ -96,7 +96,16 @@ export function makeRuins(site: Site): StaticPiece[] {
   for (const p of planned) {
     const { f, rule } = p;
     // A named place whose footprint is its ground, as a hillside's seats are, is neither built on nor levelled.
-    if (p.named?.layout === "ground") { keptAsGround.push({ part: f.building.id, name: p.named.name }); continue; }
+    if (p.named?.layout === "ground") {
+      keptAsGround.push({ part: f.building.id, name: p.named.name });
+      // Only low growth on it, as on the ground round a low building.
+      const side = (site.ground.n - 1) / 2; const fr = p.frame;
+      for (let row = 0; row < side; row++) for (let col = 0; col < side; col++) {
+        const dx = size - col * 4 - fr.x; const dz = size - row * 4 - fr.z;
+        if (Math.abs(dx * fr.c - dz * fr.s) <= fr.width / 2 && Math.abs(dx * fr.s + dz * fr.c) <= fr.depth / 2) site.lowPlants[row * side + col] = 1;
+      }
+      continue;
+    }
     const original = p.frame;
     const samples = tilesOf(original, 4).map((t) => { const [x, z] = worldPoint(original, t.u, t.v); return site.groundAt(x, z); }).sort((a, b) => a - b);
     const base = Math.max(.5, Math.round((samples[Math.floor(samples.length / 2)] ?? site.groundAt(original.x, original.z)) * 16) / 16);

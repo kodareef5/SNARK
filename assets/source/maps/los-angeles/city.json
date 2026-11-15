@@ -53,8 +53,9 @@
   },
   "canopy": {
     "rule": "succession",
-    "share_of_vegetation": 0.59,
-    "share_of_open": 0.15,
+    "share_of_vegetation": 0.25,
+    "share_of_open": 0.08,
+    "why": "Miami's shares (0.59 and 0.15) grow a forest over the chaparral, the parks and the cemeteries; Los Angeles's tree canopy is about a fifth of the city, and chaparral in a climate of summer drought and fire stays shrubland",
     "seed": 7
   },
   "world": {
