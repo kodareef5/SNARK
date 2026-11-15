@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { DRAW_BLEND, DRAW_WATER, FRAME, FRAME_FLOATS, SOURCE_WINDOW } from "../../client/core/render/packet.ts";
 import { domeLight, hourOfSun, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
+import { tone } from "../../client/core/render/surface.ts";
 import { COARSE, groundSize } from "../../client/core/render/terrain.ts";
 import { BREEZE, RMS_SLOPE, SLOPE_MOST, SQUARE_MOST, WATER_MATERIAL, seaDepth, seaFrame, seaPixel, waveStrength } from "../../client/core/render/water.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -62,11 +63,11 @@ test("the sea's depth is the map's own where the window round the camera holds i
   expect(seaDepth(f, hf, size, Int32Array.of(-1, 0, 0, -1, 0, 0, 0, 0), 312.7, 0)).toBeCloseTo(-coarse(612.7, 300), 2);
 });
 
-test("the frame block holds the waves' place in double precision, the ground's samples, sea level, and a breeze by day that is calm with the sun low", () => {
+test("the frame block holds the waves' and the swell's place in double precision, the ground's samples, sea level, and a breeze by day that is calm with the sun low", () => {
   const hf = seaFloor();
   const f = frameAt(12);
   seaFrame(f, hf, groundSize(hf), Int32Array.of(0, 32, 32, -1, 0, 0, 0, 0), 123456.789, 98765.4321, 86400 * 30);
-  for (let k = 0; k < 4; k++) expect(f[FRAME.waves + k]! >= 0 && f[FRAME.waves + k]! < 1).toBe(true);
+  for (const at of [FRAME.waves, FRAME.waves + 1, FRAME.waves + 2, FRAME.waves + 3, FRAME.swell, FRAME.swell + 1]) expect(f[at]! >= 0 && f[at]! < 1).toBe(true);
   expect([f[FRAME.ground], f[FRAME.ground + 2], f[FRAME.sea], f[FRAME.sea + 1], f[FRAME.sea + 2]]).toEqual([Math.fround(123456.789 / 2 - 32), Math.fround(123456.789 / 8), 64 * 64, 1 / 64, 0.5]);
   expect(f[FRAME.sea + 3]).toBeCloseTo(BREEZE.breeze, 5);
   expect([waveStrength(-20), waveStrength(BREEZE.calm), waveStrength(BREEZE.blown), waveStrength(66)]).toEqual([1, 1, BREEZE.breeze, BREEZE.breeze]);
@@ -104,7 +105,7 @@ test("a calm sea mirrors the sky table, most of it at a grazing angle and SEA_F0
   expect([two! < 0.85, two! > 0.5, shore! < 0.15, dry]).toEqual([true, true, true, 0]);
 });
 
-test("the sun's glint is where the sun is and as strong as its disc is up: a bright path toward a low sun, none at dusk under the twilight's held light, and none away from it", () => {
+test("the sun's glint is where the sun is and as strong as its disc is up: a bright path toward a low sun, held under the tone curve's white, none at dusk under the twilight's held light, and none away from it", () => {
   const glare = (hour: number, toward: boolean): number => {
     const f = frameAt(hour);
     const sun = [0, 0, 0];
@@ -116,7 +117,11 @@ test("the sun's glint is where the sun is and as strong as its disc is up: a bri
     return Math.max(...lit.light) * f[FRAME.exposure]!;
   };
   const golden = hourOfSun(8, true);
-  expect(glare(golden, true)).toBeGreaterThan(2);
+  expect(glare(golden, true)).toBeGreaterThan(1.2);
+  // Shown, its brightest channel stays under white: GLINT_MOST of glint over the glow mirrored round the sun.
+  const toned = [0, 0, 0];
+  tone(toned, [glare(golden, true), 0, 0]);
+  expect(toned[0]! * 255).toBeLessThan(251);
   expect(glare(golden, false)).toBeLessThan(0.5);
   expect(glare(hourOfSun(-8, true), true)).toBeLessThan(0.5);
 });

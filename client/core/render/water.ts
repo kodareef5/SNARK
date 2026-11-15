@@ -61,6 +61,15 @@ export interface WaveLayer {
 export const LONG: WaveLayer = { span: 61, turn: 0.35, speed: 1.1, gain: 0.6 };
 export const SHORT: WaveLayer = { span: 7.3, turn: -0.62, speed: 0.45, gain: 0.55 };
 /**
+ * The swell: the long waves' picture again, eight times as large and turned another way, which carries SWELL_SHARE of
+ * the slope the two pictures lose to distance, so the far sea is as rough as it was and its glint breaks up as near.
+ * Near, where nothing is lost, it carries nothing.
+ */
+export const SWELL: WaveLayer = { span: 488, turn: 1.27, speed: 3.2, gain: 1 };
+export const SWELL_SHARE = 0.65;
+/** The brightest a glint is shown, after exposure: under where the tone curve whitens it, so it reads as bright water. */
+export const GLINT_MOST = 1.6;
+/**
  * How strong the waves are by the sun's height, as the keys paint them and a tropical sea breeze blows: calm while the
  * sun is under `calm` degrees, at dawn, dusk and night, so the sea mirrors the glow low on the sky and the sun's path is
  * narrow; a light breeze `breeze` times as strong once it is over `blown`, so the sea by day mirrors higher, bluer sky.
@@ -108,6 +117,7 @@ export function waveStrength(height: number): number {
 export function seaFrame(frame: Float32Array, hf: Heightfield, size: GroundSize, window: Int32Array, x: number, z: number, seconds: number): void {
   over(LONG, x, z, seconds, frame, FRAME.waves);
   over(SHORT, x, z, seconds, frame, FRAME.waves + 2);
+  over(SWELL, x, z, seconds, frame, FRAME.swell);
   const cell = size.cell;
   frame[FRAME.ground] = window[0]! >= 0 ? x / cell[SOURCE_WINDOW]! - window[1]! : -1e6;
   frame[FRAME.ground + 1] = window[0]! >= 0 ? z / cell[SOURCE_WINDOW]! - window[2]! : -1e6;
@@ -228,6 +238,8 @@ export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec,
   const lights = Float64Array.of(sun[0]!, sun[1]!, sun[2]!, 0, ...[0, 1, 2].map((k) => frame[FRAME.sunColor + k]! * frame[FRAME.casting]! * shade));
   glint(shine, lights, 0, 4, a2, n, v, nv);
   glint(shine, frame, FRAME.moon, FRAME.moonColor, a2, n, v, nv);
+  const most = Math.max(...shine) * frame[FRAME.exposure]!;
+  if (most > GLINT_MOST) for (let k = 0; k < 3; k++) shine[k] = (shine[k]! * GLINT_MOST) / most;
   const d = Math.max(depth, 0);
   const up = Math.abs(v[1]!);
   const steep = Math.sqrt(1 - (1 - up * up) / (BEND * BEND));
@@ -337,9 +349,14 @@ void main() {
     vec2 rel = vRel.xz;
     vec4 wl = texture(uWaveLong, ${tiles(LONG, "fWaves.xy")}), ws = texture(uWaveShort, ${tiles(SHORT, "fWaves.zw")});
     vec2 sa = fSea.w * ${slopes(LONG, "wl")}, sb = fSea.w * ${slopes(SHORT, "ws")};
-    vec2 s = sa + sb;
-    n = normalize(vec3(-s.x, 1.0, -s.y));
     spread = max(wl.z * ${g(SQUARE_MOST * LONG.gain * LONG.gain)} * fSea.w * fSea.w - dot(sa, sa), 0.0) + max(ws.z * ${g(SQUARE_MOST * SHORT.gain * SHORT.gain)} * fSea.w * fSea.w - dot(sb, sb), 0.0);
+    // The swell takes its share of what is lost, as far as it is drawn itself.
+    vec4 ww = texture(uWaveLong, ${tiles(SWELL, "fSwell.xy")});
+    vec2 sw = ${slopes(SWELL, "ww")};
+    float swell = ${g(SWELL_SHARE / (RMS_SLOPE * RMS_SLOPE))} * spread;
+    spread = spread * ${g(1 - SWELL_SHARE)} + swell * max(ww.z * ${g(SQUARE_MOST)} - dot(sw, sw), 0.0);
+    vec2 s = sa + sb + sqrt(swell) * sw;
+    n = normalize(vec3(-s.x, 1.0, -s.y));
   }
   float nv = clamp(dot(n, v), 0.001, 1.0);
   float a2 = ${g(Math.pow(SEA_ROUGH, 4) + DISC * DISC)} + spread;
@@ -351,9 +368,10 @@ void main() {
   float f = ${g(SEA_F0)} + ${g(1 - SEA_F0)} * pow(1.0 - clamp(mv, 0.0, 1.0), 5.0);
   float a = min(sqrt(a2), 1.0);
   vec3 mirror = f * mix(skyFrom(reflect(-v, m)), skyOn(m.y), a);
-  // The sun's glint where the sun is, as much as its disc is up and as it is not in shadow; the moon's.
+  // The sun's glint where the sun is, as much as its disc is up and as it is not in shadow; the moon's; neither past GLINT_MOST.
   float shade = sunShadow(vRel, vec3(0.0, 1.0, 0.0));
   vec3 shine = glint(fTrueSun, fSunColor.rgb * (fSun.w * shade), a2, n, v, nv) + glint(fMoon.xyz, fMoonColor.rgb, a2, n, v, nv);
+  shine *= min(1.0, ${g(GLINT_MOST)} / max(max(shine.r, max(shine.g, shine.b)) * fSunColor.w, 1e-6));
   float up = abs(v.y);
   float through = exp(-${g(CLEAR)} * depth * (1.0 + 1.0 / sqrt(1.0 - (1.0 - up * up) / ${g(BEND * BEND)})));
   vec3 lit = skyOn(1.0) + fSunColor.rgb * (max(fSun.y, 0.0) * shade) + fMoonColor.rgb * max(fMoon.y, 0.0);

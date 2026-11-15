@@ -145,15 +145,17 @@ export const FRAME = {
   ground: 44,
   /** fSea: sea level in the heights' units over the lowest, metres a unit, samples a metre in the window (a COARSE-th of that in the whole map's pair), and how strong the waves are. */
   sea: 48,
+  /** fSwell: where the camera is over the swell's tile (water.ts SWELL), wind and all, as a share of it along its axes. */
+  swell: 52,
   /** fSpheres: each cascade's sphere round its slice of the view, its camera-relative centre and radius. A pixel takes the finest that holds it. */
-  spheres: 52,
+  spheres: 56,
   /** fCascades: each cascade's matrix, from camera-relative space to its clip space, as `viewProj` is for the view. */
-  cascades: 68,
+  cascades: 72,
 } as const;
 export const FRAME_FLOATS = FRAME.cascades + MAX_CASCADES * 16;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
-  highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea;
+  highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
 };
