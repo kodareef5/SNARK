@@ -28,6 +28,7 @@ import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_SI
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
+import { shadowBytes } from "./shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 
@@ -360,6 +361,7 @@ export class Scene {
     this.assets.residency.reset();
     this.terrain.reset();
     this.far?.reset();
+    this.cascades.clear();
   }
 
   build(cam: Camera, remote: RemoteSample | null): FramePacket {
@@ -430,6 +432,7 @@ export class Scene {
     const p = this.packet;
     const c = this.cascades;
     const setup = p.tier.shadows;
+    this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(setup) : 0);
     this.casting = false;
     this.characters.shadows = null;
     if (!p.lit || setup.cascades <= 0 || p.frame[FRAME.casting]! <= 0) {

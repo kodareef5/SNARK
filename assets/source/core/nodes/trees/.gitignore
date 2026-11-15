@@ -1,0 +1,36 @@
+# Kept out of the repository; what the scripts make again, and rounds that were sent back.
+
+# artist's full transcripts. Its briefs and last messages are kept.
+artist-transcript*.txt
+**/artist-transcript*.txt
+
+# What each material's build_material.py and check_material.py write again: check pictures, assembled masters,
+# layouts of the composed pieces, numeric caches.
+tex/*/checks/
+tex/*/source/composed_master*.png
+tex/*/source/composition.json
+tex/*/source/*_ids.png
+tex/*/source/overlap_count.png
+tex/*/source/**/composed_master*.png
+tex/*/source/**/composition.json
+tex/*/source/**/surface_*.png
+tex/*/source/periodic_master.png
+tex/oak_bark/source/*_mask.png
+tex/fig_bark/source/*_mask.png
+tex/oak_bark/source/plate_shoulders.png
+tex/fig_bark/source/fold_crowns.png
+tex/*/source/**/rectified_tissue.png
+tex/*/source/**/tissue_exposure.png
+*.npz
+__pycache__/
+
+# Pictures and scripts of rounds that were sent back, which the final layers are not built from.
+tex/*/source/round*/
+tex/*/source/iterations/
+
+# Stand-in pictures used while the real ones were painted.
+tex/_placeholder/
+
+# Every painting the concept rounds made; the chosen ones are the pictures beside DESIGN.md.
+ref/concept/*/source/*.png
+tex/*/source/assembled_*.png

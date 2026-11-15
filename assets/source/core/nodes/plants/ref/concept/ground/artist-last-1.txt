@@ -1,0 +1,3 @@
+Completed all 10 requested PNGs at 1536 × 1024, the built-in tool’s returned native resolution. Reviewed 14 generations; four rejected versions are preserved in `round1/`.
+
+Saved [construction notes](NOTES.md) and [every exact prompt](prompts.md) alongside the images. No outside image references were used.

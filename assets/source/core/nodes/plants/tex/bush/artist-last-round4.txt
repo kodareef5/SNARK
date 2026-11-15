@@ -1,0 +1,3 @@
+Ripe berries now use neutral grey 82–86, with darker calyx dots and matching edge padding. Unripe fruit, twins, geometry and all other layers remain unchanged.
+
+Rebuilt all five layers; `check_atlas.py` passes with 267 protected hashes matching. Updated [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/bush/REPORT.md) with the changes and the explanation that dye previews appear darker because they omit the game’s scaling.

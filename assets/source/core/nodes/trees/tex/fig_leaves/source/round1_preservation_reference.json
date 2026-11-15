@@ -1,0 +1,89 @@
+{
+  "description": "Round 1 accepted mass and roots. SHA256 of decoded contiguous pixel bytes; 16-bit height encoded little-endian. Captured before round-2 edits.",
+  "regions": {
+    "dense_roots": {
+      "box": [
+        1024,
+        0,
+        1536,
+        1024
+      ],
+      "sha256": {
+        "base": "d712687ae921ccbb07b6206e6703e3e17c3adbc36e5edf1dc34002a09e772a78",
+        "height": "6b5a36edbe496e90b119e9a81937fea66c6b0f07870674c4970f7ed094d28ebb",
+        "normal": "b01caca93332441ec98a676bb3e86469aba9b5317b81ec54271fc7729cbbc142",
+        "orm": "bd747fc856a98e0201ee1066685f7e0775aa871f874fed71dbcbc7580249e43e"
+      }
+    },
+    "sparse_roots": {
+      "box": [
+        1536,
+        0,
+        2048,
+        1024
+      ],
+      "sha256": {
+        "base": "6776187d575a221102b9a09a4668a86766063f985ad6e4def0f90e27e69c7248",
+        "height": "f017ba22efb8173b1bde65035a07bd310056774a8322d910dcca28155d37b40e",
+        "normal": "ed467aadd1d293cec14ec80888aa400bc230b3f4f5e91a9ca3279ffc5e1f901c",
+        "orm": "de13a65576dbedc0fa3437a9e90bf00de9d22c6f90f6c404921c82cd2452b8b7"
+      }
+    },
+    "mass": {
+      "box": [
+        0,
+        1024,
+        2048,
+        2048
+      ],
+      "sha256": {
+        "base": "eb7d29bc46b403328f6d2ff20441ccdf49b113a9084d77f9b3769c794d29aeba",
+        "height": "c914f6fd2b8351b6cadc42af9ac73bd805d82b3317fbcfa46de6f46c72eb3b07",
+        "normal": "096d479d217986681fcc899513547dad48d30fbadfece02605a1a0a2fcb1c85f",
+        "orm": "e679c46bd355d9e84f49750bb766a7e702072a73280faaad8a7a19fca148032f"
+      }
+    }
+  },
+  "cluster_baseline": [
+    {
+      "cell": 0,
+      "occupied_cell_fraction": 0.2781944274902344,
+      "alpha_bounds_px": [
+        81,
+        118,
+        422,
+        512
+      ]
+    },
+    {
+      "cell": 1,
+      "occupied_cell_fraction": 0.2662811279296875,
+      "alpha_bounds_px": [
+        78,
+        131,
+        420,
+        512
+      ]
+    },
+    {
+      "cell": 2,
+      "occupied_cell_fraction": 0.2828865051269531,
+      "alpha_bounds_px": [
+        78,
+        124,
+        430,
+        512
+      ]
+    },
+    {
+      "cell": 3,
+      "occupied_cell_fraction": 0.18585205078125,
+      "alpha_bounds_px": [
+        117,
+        124,
+        344,
+        512
+      ]
+    }
+  ]
+}

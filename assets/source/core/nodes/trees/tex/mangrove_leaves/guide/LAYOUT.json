@@ -1,0 +1,99 @@
+{
+  "picture": 2048,
+  "cells": [
+    {
+      "cell": 0,
+      "what": "cluster",
+      "box": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "metres_across": 0.8,
+      "twig_enters": [
+        256,
+        512
+      ]
+    },
+    {
+      "cell": 1,
+      "what": "cluster",
+      "box": [
+        512,
+        0,
+        1024,
+        512
+      ],
+      "metres_across": 0.8,
+      "twig_enters": [
+        768,
+        512
+      ]
+    },
+    {
+      "cell": 2,
+      "what": "cluster",
+      "box": [
+        0,
+        512,
+        512,
+        1024
+      ],
+      "metres_across": 0.8,
+      "twig_enters": [
+        256,
+        1024
+      ]
+    },
+    {
+      "cell": 3,
+      "what": "cluster",
+      "box": [
+        512,
+        512,
+        1024,
+        1024
+      ],
+      "metres_across": 0.8,
+      "twig_enters": [
+        768,
+        1024
+      ]
+    },
+    {
+      "what": "spray, twig enters bottom middle",
+      "box": [
+        1024,
+        0,
+        1536,
+        1024
+      ],
+      "metres_across": 0.45,
+      "metres_down": 0.9
+    },
+    {
+      "what": "spray, twig enters bottom middle",
+      "box": [
+        1536,
+        0,
+        2048,
+        1024
+      ],
+      "metres_across": 0.45,
+      "metres_down": 0.9
+    },
+    {
+      "what": "mass",
+      "box": [
+        0,
+        1024,
+        2048,
+        2048
+      ],
+      "metres_across": 4.0,
+      "metres_down": 2.0
+    }
+  ],
+  "margin_px": 12
+}

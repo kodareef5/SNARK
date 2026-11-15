@@ -1,0 +1,9 @@
+**Berry bush — hold.** The sprays now read as attached, and the lit red fruit is clearer. I would still require two changes before shipping beside the accepted three:
+
+1. **Break up the exposed foliage planes.** In `game_bush_four_sides.png`, especially the lower views, long edge-on sprays make blades and flattened red streaks across the crown. Shorten the most exposed cards, vary their tilt, and overlap their roots with neighbouring foliage. Keep small projecting tips, but remove the broad planar crossings visible through the centre.
+2. **Finish the fruit read on low and for near-black.** `game_bush_lowpoly.png` still shows pointed diamonds; the colour row repeats those angular marks at 7 m. Reallocate detail into fewer, rounder, unobscured bunches. Near-black remains weak against the foliage in both colour rows: broaden the paler upper bloom on the principal berries so their shape survives at that distance; retain dark undersides.
+
+**Creeper — hold.** The separate leaves, hanging growth and exposed stone are substantial improvements. The remaining problems are:
+
+1. **Recess and interrupt the visible shell.** The large left specimen in `game_row_creeper.png` still exposes broad, smooth, nearly black faces beneath the leaves; the nearest creeper in `game_patch.png` retains that solid core. Pull those faces farther behind the foliage and below the stone, particularly at the shoulders and lower rim. Make several clear gaps between hanging leaf groups, revealing stone or space, rather than covering the same continuous surface with more leaves.
+2. **Carry that broken drape into low.** Its large overlapping panels still form a skirt, while the ground runners become long flat blades (`game_patch_lowpoly.png`). Narrow and stagger the hanging panels, preserve gaps between groups, and spend some of the runner geometry on small offset leaves along a thinner stem. Keep within the existing budget.

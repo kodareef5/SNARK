@@ -1,0 +1,15 @@
+{
+  "tool": "built-in image_gen",
+  "sources": {
+    "mangrove_a": {
+      "folder": "mangrove_bark",
+      "prompt": "Use case: photorealistic-natural. Asset type: original physically based game material source painting, not a scene. Generate one square image filled edge-to-edge with a perfectly frontal, flat, orthographic bark surface. Red mangrove upper trunk bark. Grey-brown #8A8371 smoothish skin with many interrupted fine shallow VERTICAL fissures and tiny scattered short horizontal lenticel pores. Irregular small pale dry patches #A99C83 and fine aged creases #655F50. View covers 0.9 metres wide by 1.1 metres high. Fine vertically elongated low-relief texture, restrained mottling, natural botanical detail. No deep coarse oak plates, no peeling birch, no knots, no wet base gradient. Matte diffuse-only neutral illumination, no sunlight, specular highlights, shadows, vignette, or ambient shading. Crisp botanical microdetail, natural irregularity, restrained low-contrast albedo. Do not show a cylinder or whole tree. No environment, foliage, ground, text, frames, or labels. Never imitate an existing game's texture. Uniform material distribution suitable for seamless quilting.",
+      "generated_path": "/home/user/.codex/generated_images/01a1dc68-34dd-7342-8351-dea3d435fea6/exec-11e8713f-967b-4695-a82e-6207c01a78f6.png"
+    },
+    "mangrove_b": {
+      "folder": "mangrove_bark",
+      "prompt": "Use case: photorealistic-natural. Asset type: original physically based game material source painting, not a scene. Generate one square image filled edge-to-edge with a perfectly frontal, flat, orthographic bark surface. Red mangrove upper trunk bark. Grey-brown #8A8371 smoothish skin with many interrupted fine shallow VERTICAL fissures and tiny scattered short horizontal lenticel pores. Irregular small pale dry patches #A99C83 and fine aged creases #655F50. View covers 0.9 metres wide by 1.1 metres high. Fine vertically elongated low-relief texture, restrained mottling, natural botanical detail. No deep coarse oak plates, no peeling birch, no knots, no wet base gradient. Matte diffuse-only neutral illumination, no sunlight, specular highlights, shadows, vignette, or ambient shading. Crisp botanical microdetail, natural irregularity, restrained low-contrast albedo. Do not show a cylinder or whole tree. No environment, foliage, ground, text, frames, or labels. Never imitate an existing game's texture. Uniform material distribution suitable for seamless quilting. This is an independent second sample for a larger composite: give it different natural markings and a different irregular arrangement of all features. Keep the same colour distribution and physical feature size. Keep contrast particularly restrained, and do not cluster the pale flecks into a recognisable landmark.",
+      "generated_path": "/home/user/.codex/generated_images/01a1dc68-34dd-7342-8351-dea3d435fea6/exec-fcb91e53-6593-44a8-9b81-79f977437ad7.png"
+    }
+  }
+}

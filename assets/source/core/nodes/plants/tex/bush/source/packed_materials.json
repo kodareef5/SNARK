@@ -1,0 +1,21 @@
+{
+  "roughness": {
+    "leaf_face": 0.91,
+    "inner_leaf_face": 0.92,
+    "leaf_grain_strength": 0.06,
+    "berry_face": 0.64,
+    "berry_catchlight": 0.35,
+    "unripe_berry_face": 0.66,
+    "berry_edge_strength": 0.04
+  },
+  "occlusion": {
+    "minimum": 0.55,
+    "crown_depth_strength": 0.25,
+    "foot_strength": 0.27,
+    "overlap_strength": 0.55,
+    "junction_strength": 0.18,
+    "bunch_attachment_strength": 0.16,
+    "berry_neighbour_strength": 0.16,
+    "berry_contact_strength": 0.28
+  }
+}

@@ -1,0 +1,5 @@
+The stalk now fills all 64 pixels opaquely, with fibres, inset tooth marks, surface-only relief, and seamless 1.0 m repeat.
+
+All four layers rebuilt; every check passed, including the isolated rebuild. All pixels outside the stalk and the layout remain identical.
+
+Updated [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/palmetto/REPORT.md). [Before/after preview](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/palmetto/checks/stalk_detail.png).

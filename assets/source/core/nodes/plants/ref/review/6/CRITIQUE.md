@@ -1,0 +1,9 @@
+**Berry bush — hold.** The round fruit on low is sufficient, and `game_bush_black.png` gives the dark berries readable bloom and volume. The foliage still needs two fixes before I would ship it beside the accepted three:
+
+1. **Remove the remaining blade-like crossings.** `game_bush_four_sides.png` still shows long, thin foliage planes through the crown; the upright strip at the front-right of `game_bush_black.png` is particularly clear. Shorten or fold those exposed sprays and overlap their bases with neighbouring foliage. Check all four views: the outward-facing rule has not eliminated the visible card edges.
+2. **Reconnect the isolated sprays.** The lower-left view has a detached-looking spray to the right; the rightmost bush in `game_row_bush.png` has one to its left. Move these inward until their foliage overlaps the crown or their supporting twig reads clearly. Keep the useful gaps between branches.
+
+**Creeper — hold.** More exposed stone and the thin, leafy ground runners are improvements. Two things still prevent it sitting comfortably beside the accepted plants:
+
+1. **Break the dark base.** In `game_row_creeper.png`, both large specimens retain broad, nearly black lower faces, and the nearest creeper in `game_patch.png` still reads as a solid mound. Let readable stone continue through several gaps down to the foot; recess any shell bridging those gaps and confine the deepest stone shading to leaf contact and crevices. More leaves over this base will not resolve its continuous outline.
+2. **Finish the hanging growth on low.** `game_row_creeper_lowpoly.png` still has long, broad, straight-ended panels forming a skirt. Narrow and shorten the conspicuous front panels, stagger their ends, and preserve openings that reveal stone or space. Keep the new runner treatment; that part is working.

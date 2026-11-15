@@ -1,0 +1,92 @@
+{
+  "name": "fig_bark",
+  "version": 2,
+  "seed": 14112658,
+  "resolution": [
+    2048,
+    2048
+  ],
+  "width_m": 1.6,
+  "height_m": 2,
+  "height_range_mm": 18,
+  "wrap_x": true,
+  "wrap_y": true,
+  "image_top": "farther from ground; +tangent Y",
+  "normal_convention": "OpenGL (+X right, +Y image-up, +Z outward)",
+  "normal_strength": 1,
+  "height_encoding": "unsigned 16-bit; 0=0 mm, 65535=18 mm; white high",
+  "base_color_space": "sRGB",
+  "data_color_space": "linear; disable sRGB decoding",
+  "orm_channels": [
+    "ambient occlusion",
+    "roughness",
+    "metalness = 0"
+  ],
+  "palette": {
+    "main": "#96968A",
+    "pale": "#BEB9A5",
+    "aged": "#6E7770",
+    "film": "#59634A",
+    "damp": "#5F6255",
+    "lichen": "#B8B8A5"
+  },
+  "sources": [
+    "source/fig_skin_a.png",
+    "source/fig_skin_b.png",
+    "source/fig_skin_c.png",
+    "source/fig_skin_d.png"
+  ],
+  "base_mean_target": [
+    150,
+    150,
+    138
+  ],
+  "base_ceiling": [
+    190,
+    185,
+    165
+  ],
+  "roughness_range": [
+    0.8,
+    0.92
+  ],
+  "occlusion_range": [
+    0.6,
+    1
+  ],
+  "build": "python3 build_material.py",
+  "check": "python3 check_material.py --rebuild",
+  "preview": {
+    "cylinder_diameters_m": [
+      1.8,
+      0.4
+    ],
+    "distances_to_front_surface_m": [
+      3,
+      10,
+      30
+    ],
+    "horizontal_fov_degrees": 60,
+    "viewport": [
+      1920,
+      1080
+    ],
+    "sun_elevation_degrees": 18,
+    "sun_azimuths_from_camera_degrees": [
+      0,
+      75
+    ],
+    "sky_irradiance_rgb": [
+      0.3,
+      0.31,
+      0.33
+    ],
+    "sun_irradiance_rgb": [
+      0.7,
+      0.69,
+      0.67
+    ],
+    "cast_shadows": false,
+    "bounced_light": false
+  }
+}

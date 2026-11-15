@@ -1,0 +1,7 @@
+Replaced `dead1` with `bunch1`–`bunch3`, containing 18, 14 and 10 berries. Updated layout, manifests and `REPORT.md`; preserved the built-in imagegen originals and prompts in `source/`.
+
+All five layers rebuilt. `check_atlas.py` passes: **273 protected hashes match, with zero pixel changes outside the replacement rectangle**.
+
+[Lighting preview](checks/round5_bunches.png) · [Report](REPORT.md)
+
+The pre-existing `sprites.json` hash mismatch is documented; that file remains unchanged.

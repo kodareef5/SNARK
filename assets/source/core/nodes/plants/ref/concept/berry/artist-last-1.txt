@@ -1,0 +1,5 @@
+Delivered all 12 final PNGs in this folder, with six rejected versions preserved in `round1/`.
+
+Selected **A — Forkleaf** for its rounded silhouette, exposed berries, and buildable twig sprays. Selection notes are in [DIRECTIONS.md](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/ref/concept/berry/DIRECTIONS.md); all 18 exact prompts are in [prompts.md](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/ref/concept/berry/prompts.md).
+
+Generated with the built-in image tool and saved at full returned resolution.

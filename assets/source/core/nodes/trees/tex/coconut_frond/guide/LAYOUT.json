@@ -1,0 +1,31 @@
+{
+  "picture": 2048,
+  "slots": [
+    {
+      "slot": 0,
+      "x0": 0,
+      "x1": 682,
+      "midrib_x": 341.0
+    },
+    {
+      "slot": 1,
+      "x0": 682,
+      "x1": 1365,
+      "midrib_x": 1023.5
+    },
+    {
+      "slot": 2,
+      "x0": 1365,
+      "x1": 2048,
+      "midrib_x": 1706.5
+    }
+  ],
+  "frond_length_m": 5.0,
+  "slot_half_width_m": 0.95,
+  "bare_stalk_m": 0.85,
+  "pixels_per_metre_along": 409.6,
+  "pixels_per_metre_across": 359.29824561403507,
+  "foot": "bottom row",
+  "tip": "top row",
+  "margin_px": 12
+}

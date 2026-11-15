@@ -1,0 +1,7 @@
+{
+  "prompt": "Use case: precise-object-edit. Input image 1 is our own palm construction board. Make ONE anatomical correction: reshape the TWO detached fronds labelled \"ROYAL FROND — TOP / 3.6 m\" and \"COCONUT FROND — TOP / 4.6 m\", in middle row first and third columns.\nTheir current tips are round and blunt. Give each a long elegant progressively tapered distal third, terminating in a sharp fine rachis point. Leaflets on both sides must become steadily shorter over the final 35 percent of the frond, ending with a long thin center point. Widest leaflet span is around 40 percent along the frond, not at its tip. Keep the bare basal petiole at about 15 percent of total length. Show regularly alternating pairs of narrow leaflets on both sides, coconut leaflets a little longer and flatter, royal narrower with subtle grouped angles. Entire specimens remain within their existing cells, same total lengths and label positions.\nPreserve ALL other nine studies, every label, white/cream sheet background, dimensions, composition, illumination and detailed painted material rendering exactly. Do not change side-view arches, root studies, crownshaft, coconut below-view, dead frond or bark studies. Highest native landscape PNG.",
+  "referenced_image_paths": [
+    "/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/ref/concept/palms/source/palm_parts_v01.png"
+  ],
+  "transparent_background": false
+}

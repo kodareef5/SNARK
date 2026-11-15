@@ -1,0 +1,7 @@
+Replaced all four 2048×2048 maps. Base mean is **(150, 150, 138)**; height range is **18 mm**.
+
+Seam checks, normal validation, 18 lighting views, and byte-identical rebuilds passed. Full-size imagegen sources and prompts are preserved; unused first-set sources are removed.
+
+[Layer preview](checks/layers.jpg) · [Full report](REPORT.md)
+
+Actual game UVs and texture compression remain unverified.

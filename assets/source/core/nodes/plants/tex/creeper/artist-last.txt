@@ -1,0 +1,5 @@
+Created all requested files: 12 cutouts, the seamless 512-pixel mat band, four aligned layers, sources, scripts, and checks.
+
+Atlas validation passed; rebuilding reproduces identical files.
+
+[Preview](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/creeper/checks/base_dark_2048.png) · [Report](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/creeper/REPORT.md)

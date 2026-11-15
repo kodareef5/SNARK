@@ -1,0 +1,7 @@
+Completed all four 2048×2048 maps, full-size sources, rebuild scripts, checks, and cleanup of superseded assets.
+
+**Height range: 8 mm. All 73 checks pass; the rebuild is byte-identical.**
+
+[Layer preview](/home/user/dev/SNARK/.claude/worktrees/agent-a84518807920d9470/assets/source/core/nodes/trees/tex/oak_leaves/checks/layers.jpg) · [Report](/home/user/dev/SNARK/.claude/worktrees/agent-a84518807920d9470/assets/source/core/nodes/trees/tex/oak_leaves/REPORT.md)
+
+The 30 m diagnostic reads as solid foliage. Validation in the rebuilt game crown remains outstanding.

@@ -1,0 +1,5 @@
+Updated the sun, shade, and interior pigments to the requested means, with deeper pooled occlusion down to 0.35. Shapes, alpha, heights, normals, roughness, layout, and strips remain unchanged.
+
+All **226 checks pass**, and the independent rebuild reproduces all four maps byte for byte. Superseded outputs were replaced in place.
+
+[Report](REPORT.md) · [30 m comparison under both lights](checks/purpose_30m_concept_metric.png)

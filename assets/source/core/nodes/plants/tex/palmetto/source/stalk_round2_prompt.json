@@ -1,0 +1,9 @@
+{
+  "tool": "built-in image_gen",
+  "name": "stalk_surface_v2",
+  "prompt": "Use case: precise-object-edit. Asset type: saw palmetto petiole UNWRAPPED SURFACE TEXTURE for a game atlas. Input image: the earlier narrow petiole cutout, provided only to preserve its botanical material character. Replace its cutout presentation completely: paint the entire rectangular canvas edge-to-edge as the flat unrolled skin of this stalk. NO empty background, NO transparency, NO stalk silhouette, NO cylinder, NO margins. Photorealistic flat botanical albedo scan, pale yellow-green with fine irregular continuous LENGTHWISE vertical fibres; subtle pale straw-green pigment down the middle and slightly darker muted olive pigment toward both sides, symmetric and soft, never a specular highlight. A very few small weathered warm brown scuffs. Near each side place a vertical row of about 20 SMALL SHARP dark olive-brown tooth-shaped triangular marks, entirely painted ON the surface, each inset about 6 percent of the image width from the edge. Alternating slightly irregular spacing. Each mark only about 5 percent of canvas width and 0.5 percent canvas height, no projecting geometry, no white teeth, no shadows. The material continues beyond all four edges, opaque on every pixel. Portrait canvas filled entirely with this single continuous material. Intended final UV swatch is very tall and narrow, 64 x 2048, wrapping a 15 mm diameter tube, 1 metre vertical repeat; fibres run bottom to top with matching appearance at top and bottom. Flat unlit natural surface colour, no directional lighting, no cast shadows, no highlights, no ridged trunk bark, no leaf blades, no labels, no text, no border.",
+  "transparent_background": false,
+  "input_image": "stalk_original.png",
+  "output_path": "/home/user/.codex/generated_images/01a1dc79-85a0-7f01-8b82-44a15dc82ea4/exec-d0d80807-1328-48b7-ad2d-5f8f802ae9d0.png",
+  "selected_source": "stalk_surface_v2_original.png"
+}

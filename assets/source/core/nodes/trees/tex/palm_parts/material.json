@@ -1,0 +1,218 @@
+{
+  "size": [
+    2048,
+    2048
+  ],
+  "height_range_mm": 16.0,
+  "seed": 284710,
+  "guard_pixels": 4,
+  "normal_convention": "OpenGL +Y image-up",
+  "nut_rows_local": [
+    0,
+    171,
+    341,
+    512
+  ],
+  "patches": {
+    "crownshaft": {
+      "rect": [
+        0,
+        0,
+        1024,
+        1024
+      ],
+      "coverage_m": [
+        1.1,
+        1.9
+      ],
+      "wrap_u": true,
+      "height_min_max_mm": [
+        7.452000058442355,
+        10.238569130643816
+      ],
+      "roughness_min_max": [
+        0.2788088917732239,
+        0.7380000352859497
+      ]
+    },
+    "sheath": {
+      "rect": [
+        1024,
+        0,
+        2048,
+        1024
+      ],
+      "coverage_m": [
+        1.2,
+        0.75
+      ],
+      "wrap_u": true,
+      "height_min_max_mm": [
+        5.626873016357422,
+        10.312482833862305
+      ],
+      "roughness_min_max": [
+        0.7166056036949158,
+        0.8849520683288574
+      ]
+    },
+    "cut": {
+      "rect": [
+        0,
+        1024,
+        1024,
+        2048
+      ],
+      "coverage_m": [
+        0.6875,
+        0.6875
+      ],
+      "wrap_u": false,
+      "height_min_max_mm": [
+        5.275958217680454,
+        12.135724537074566
+      ],
+      "roughness_min_max": [
+        0.825453519821167,
+        0.8849283456802368
+      ]
+    },
+    "nut_green": {
+      "rect": [
+        1024,
+        1024,
+        1536,
+        1195
+      ],
+      "coverage_m": [
+        0.65,
+        0.32
+      ],
+      "wrap_u": true,
+      "height_min_max_mm": [
+        7.695047855377197,
+        8.306036949157715
+      ],
+      "roughness_min_max": [
+        0.4432503283023834,
+        0.5128867626190186
+      ]
+    },
+    "nut_yellow": {
+      "rect": [
+        1024,
+        1195,
+        1536,
+        1365
+      ],
+      "coverage_m": [
+        0.65,
+        0.32
+      ],
+      "wrap_u": true,
+      "height_min_max_mm": [
+        7.675755500793457,
+        8.2846097946167
+      ],
+      "roughness_min_max": [
+        0.44512808322906494,
+        0.5194784998893738
+      ]
+    },
+    "nut_brown": {
+      "rect": [
+        1024,
+        1365,
+        1536,
+        1536
+      ],
+      "coverage_m": [
+        0.65,
+        0.32
+      ],
+      "wrap_u": true,
+      "height_min_max_mm": [
+        7.250198841094971,
+        8.76977825164795
+      ],
+      "roughness_min_max": [
+        0.8330000042915344,
+        0.8809999823570251
+      ]
+    },
+    "root": {
+      "rect": [
+        1536,
+        1024,
+        2048,
+        1536
+      ],
+      "coverage_m": [
+        0.01884955592153876,
+        0.18
+      ],
+      "wrap_u": true,
+      "height_min_max_mm": [
+        7.9701032638549805,
+        8.082189559936523
+      ],
+      "roughness_min_max": [
+        0.8229999998956918,
+        0.8930000001043081
+      ]
+    },
+    "stalk": {
+      "rect": [
+        1024,
+        1536,
+        2048,
+        2048
+      ],
+      "coverage_m": [
+        0.047123889803846894,
+        0.45
+      ],
+      "wrap_u": true,
+      "height_min_max_mm": [
+        7.943284511566162,
+        8.05781364440918
+      ],
+      "roughness_min_max": [
+        0.8240000009536743,
+        0.8600000143051147
+      ]
+    }
+  },
+  "source_files": {
+    "source/generated_crownshaft.png": "0cde9f4aeca63b6e6791216396bcc31121f7da48c27919c356ec87144b056a99",
+    "source/generated_crownshaft_round2.png": "d8ff6148528f9ece68ee0d5e2d721c4a8b5ddacf21d6698153b2023b0cc2c9dd",
+    "source/generated_cut.png": "5a4c0edf3bc1d0ea57d8b3faa199af8b0b3efdd820bb15d07ef0006373e3df27",
+    "source/generated_details.png": "8cf5b3ff4f2b27dd3b776ff8593c84c2dd64ebfc079cda4f18d916f1c5717fee",
+    "source/generated_root_round2.png": "71d6993217181e1be6c2d9df525bf6b0dd03d27a502300b48b343a9da88aee91",
+    "source/generated_sheath.png": "fed887fef03d4a20cb6df5fffc49af6cef18284d21431f9cf1b1102cb06becdb",
+    "source/sRGB.icc": "168b497e5d4e698ff3a60798b4d24bc7e8d74ef64ceca74cdf1f3f0b74b38bf0"
+  },
+  "scale_notes": {
+    "crownshaft": "Brief: 1.10 m around, 1.90 m long",
+    "sheath": "Brief: 1.20 m around, 0.75 m long",
+    "cut": "Assumed 0.55 m outer disc diameter in 0.6875 m square; 25 mm grey bark rim",
+    "nuts": "Assumed 0.65 m equatorial circumference and 0.32 m pole-to-tip surface length per band",
+    "root": "Representative 6 mm diameter root, 180 mm visible length (allowed diameters 2\u201310 mm)",
+    "stalk": "Representative 15 mm diameter stalk, 450 mm visible length"
+  },
+  "revision": {
+    "round": 2,
+    "changed_regions": [
+      "crownshaft",
+      "root"
+    ],
+    "baseline": "source/round1",
+    "crownshaft_lip_plus_shoulder_peak_mm": [
+      1.4,
+      1.7
+    ],
+    "crownshaft_streak_relief_mm_peak_to_peak": 1.32,
+    "root_mid_srgb": "#78674A",
+    "note": "Living crownshaft roughness 0.25\u20130.35; original dry tan/grey foot collar retained."
+  }
+}

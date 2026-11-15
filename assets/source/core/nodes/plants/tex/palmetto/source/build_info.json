@@ -1,0 +1,248 @@
+{
+  "python": "3.9.6",
+  "height_range_mm": 16.0,
+  "normal_convention": "OpenGL +X right +Y up, central finite differences from delivered u16 height",
+  "column_texel_height_m": {
+    "stalk": 0.00048828125,
+    "bark": 0.000390625
+  },
+  "column_texel_width_m": {
+    "stalk": 0.0007363107781851077,
+    "bark": 0.0009090909090909091
+  },
+  "texel_width_m": 0.0009090909090909091,
+  "normal_transparent_rgb": [
+    128,
+    128,
+    255
+  ],
+  "elements": {
+    "fan1": {
+      "source_bbox": [
+        160,
+        117,
+        1509,
+        845
+      ],
+      "placed_bbox": [
+        50,
+        53,
+        886,
+        504
+      ],
+      "width_m": 0.76,
+      "height_m": 0.41,
+      "source_anchor": [
+        828.045,
+        843.136
+      ]
+    },
+    "fan2": {
+      "source_bbox": [
+        99,
+        38,
+        1581,
+        901
+      ],
+      "placed_bbox": [
+        995,
+        24,
+        1819,
+        504
+      ],
+      "width_m": 0.749091,
+      "height_m": 0.436364,
+      "source_anchor": [
+        812.773,
+        899.202
+      ]
+    },
+    "fan3": {
+      "source_bbox": [
+        109,
+        61,
+        1573,
+        884
+      ],
+      "placed_bbox": [
+        71,
+        564,
+        903,
+        1032
+      ],
+      "width_m": 0.756364,
+      "height_m": 0.425455,
+      "source_anchor": [
+        800.529,
+        882.74
+      ]
+    },
+    "fan4": {
+      "source_bbox": [
+        107,
+        52,
+        1558,
+        893
+      ],
+      "placed_bbox": [
+        992,
+        557,
+        1812,
+        1032
+      ],
+      "width_m": 0.745455,
+      "height_m": 0.431818,
+      "source_anchor": [
+        814.805,
+        890.749
+      ]
+    },
+    "fan5": {
+      "source_bbox": [
+        65,
+        40,
+        1599,
+        893
+      ],
+      "placed_bbox": [
+        84,
+        1080,
+        875,
+        1520
+      ],
+      "width_m": 0.719091,
+      "height_m": 0.4,
+      "source_anchor": [
+        801.682,
+        885.245
+      ]
+    },
+    "fan6": {
+      "source_bbox": [
+        37,
+        31,
+        1637,
+        923
+      ],
+      "placed_bbox": [
+        995,
+        1080,
+        1784,
+        1520
+      ],
+      "width_m": 0.717273,
+      "height_m": 0.4,
+      "source_anchor": [
+        841.827,
+        920.973
+      ]
+    },
+    "deadfan1": {
+      "source_bbox": [
+        84,
+        40,
+        1591,
+        901
+      ],
+      "placed_bbox": [
+        54,
+        1578,
+        834,
+        2024
+      ],
+      "width_m": 0.709091,
+      "height_m": 0.405455,
+      "source_anchor": [
+        814.315,
+        899.763
+      ]
+    },
+    "deadfan2": {
+      "source_bbox": [
+        39,
+        23,
+        1639,
+        913
+      ],
+      "placed_bbox": [
+        896,
+        1582,
+        1691,
+        2024
+      ],
+      "width_m": 0.722727,
+      "height_m": 0.401818,
+      "source_anchor": [
+        844.031,
+        910.547
+      ]
+    },
+    "spear1": {
+      "source_bbox": [
+        397,
+        24,
+        487,
+        1753
+      ],
+      "placed_bbox": [
+        1781,
+        1568,
+        1805,
+        2024
+      ],
+      "width_m": 0.021818,
+      "height_m": 0.414545,
+      "source_anchor": [
+        438.708,
+        1749.208
+      ]
+    },
+    "stalk": {
+      "source_bbox": [
+        0,
+        0,
+        1199,
+        1312
+      ],
+      "surface_width_px": 64,
+      "tube_diameter_m": 0.015,
+      "surface_circumference_m": 0.047123889803846894,
+      "height_model": "0.30 mm datum + fine fibres + shallow tooth marks; no tube roundness",
+      "tooth_bands_px": [
+        [
+          3,
+          10
+        ],
+        [
+          54,
+          61
+        ]
+      ]
+    },
+    "bark": {
+      "source_bbox": [
+        412,
+        0,
+        611,
+        1536
+      ]
+    }
+  },
+  "source_sha256": {
+    "bark_original.png": "a497430a3b6001d968bb7df338d56c4ae2e0fbb48029aa39171d60d937941d6c",
+    "deadfan1_original.png": "80720bc834e539d486258af6244634bcf05d6802ed99300e6c2ece50037319ae",
+    "deadfan2_original.png": "cd48ac019aee5252872be67cc03843025175d6315c1261ec64bb8484bf20fc00",
+    "fan1_original.png": "65ceb2450903d4e9c0910e5aff0d1846bd28786629e93c7efdd6ef053dfc0c2d",
+    "fan1_v2_original.png": "076109162d04cd7142d83b2a24345f6e2592c482e4617c80dee979b329cdf6f3",
+    "fan2_original.png": "9ba0adfe5d148e18216079ab741f35652cbfe104e97792310de9a22d4bd3a1f3",
+    "fan3_original.png": "48db392cee8ecdab93de2e640d8e6724ea473f6d6484588b7c49c27ac1c9f4af",
+    "fan4_original.png": "95b03228b0928ee6b7c34617ee96d5a0e1af689120425d5a8b7cea570f63cb45",
+    "fan5_original.png": "ff9ec6e6e81de56805a65c523f8d24007d1bb4a14842cf12fc70d10f5d471208",
+    "fan6_original.png": "9e323a7540981472e674ed633ba1396940b9be68d83f746ca5886f99483badeb",
+    "spear1_original.png": "3a3fa81f065e564287ce527ff76fc68955d1193c0acceefcefd2459a5bbfc56e",
+    "stalk_original.png": "bff0d817363037b340329b712f98b269f3d62eb3f31e3d4977c1ab963dc170ca",
+    "stalk_surface_v2_original.png": "23db8bd7a4c1f3aadaf2963f3e6b3573fd04d9095e9048b3f0e91a5a0352aa3d"
+  },
+  "selected_fresh_source": "fan1_v2_original.png",
+  "rejected_source": "fan1_original.png: edge clearance and fresh fan framing improved by v2"
+}

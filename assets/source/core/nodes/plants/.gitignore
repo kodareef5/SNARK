@@ -1,0 +1,28 @@
+# Kept out of the repository.
+
+# artist's full transcripts. Its briefs and last messages are kept.
+**/artist-transcript*.txt
+
+# What each atlas's build_atlas.py and check_atlas.py make again.
+tex/*/checks/
+tex/*/source/elements/
+tex/*/source/prepared/
+
+# Rounds that were sent back, which the final layers are not built from.
+tex/*/source/round1/
+tex/*/source/superseded/
+ref/concept/*/round1/
+
+# The full paintings of the berry bush directions not chosen; small copies are kept beside DIRECTIONS.md.
+ref/concept/berry/direction_b.png
+ref/concept/berry/direction_b_far.png
+ref/concept/berry/direction_c.png
+ref/concept/berry/direction_c_far.png
+
+__pycache__/
+
+# Generated sources not chosen: the atlases name the ones they are built from.
+tex/palmetto/source/fan1_original.png
+tex/palmetto/source/stalk_original.png
+tex/palmetto/source/stalk_round1_*.png
+tex/seagrape/source/fruit[123]_original.png

@@ -1,0 +1,8 @@
+**Berry bush — hold.** The fruit reads well, including the dark berries, and the formerly detached tips are no longer the main problem. Two foliage issues still keep it below the accepted three:
+
+1. **Break up the remaining blades across the crown.** The lower-left view in `game_bush_four_sides.png` still has long, thin foliage strips crossing its lower half. These read as exposed planes rather than leafy branches. Shorten or fold those sprays and overlap their bases; edge-on sprays need to resolve into individual leaves, not long slashes through the face.
+2. **Reduce the largest crown openings.** The hole right of centre in `game_bush_black.png`, also evident in the upper two rotation views, exposes a framework of bare spokes. The shell reads as a leafy ring around an empty middle. Bring the outer groups inward and stagger short inner sprays behind these windows, retaining smaller, irregular branch gaps. Check low too: the same hollow structure survives there.
+
+**Creeper — medium passes; hold overall for low.** The exposed stone now continues to the foot, and the medium patch reads as vines over rock. The dark-base objection is resolved.
+
+1. **Finish breaking up the broad strips on low.** `game_row_creeper_lowpoly.png` still has large, straight-ended panels descending across the fronts, especially on the right-hand heap. The fine runners improve the fringe, but those panels still dominate it. Shorten and divide the remaining broad hanging sprays into thin stems with small, separated leaves and staggered ends. Preserve the stone openings already gained. That is the remaining creeper blocker.

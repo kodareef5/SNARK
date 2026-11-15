@@ -1,0 +1,3 @@
+Updated leaf roughness to **0.890196–0.937255**, with mean **0.911454**. Small variations remain; berries, catchlights, stalks, stems, bark, and every other channel/layer are unchanged.
+
+Rebuilt successfully. `check_atlas.py` passed with no errors; all 100 clean-rebuild files match. Added the results to [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/bush/REPORT.md).

@@ -1,0 +1,7 @@
+Broadened all **535 ripe berry caps**, peaking at **159–164**. Only region-0 RGB changed; catchlights, calyx dots, lower halves and every other layer remain unchanged.
+
+Build and checks passed; all **100 generated files** reproduced exactly. `REPORT.md` is updated.
+
+[Six dyes at full and quarter size](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/bush/checks/berry_dyes_distance.png) · [Report](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/bush/REPORT.md)
+
+The quarter-size view is the requested ~7 m proxy.

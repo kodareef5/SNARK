@@ -1,0 +1,11 @@
+Rebuilt all five layers and passed `check_atlas.py`.
+
+New means:
+
+- Berry roughness: **0.662**
+- Leaf roughness: **0.733**
+- Occlusion: **0.792**
+
+Only the packed atlas changed. Base colour, regions, height, normals and layout remain byte-identical; twins and stem/bark roughness are preserved.
+
+Added changes, measurements and validation to [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/bush/REPORT.md).

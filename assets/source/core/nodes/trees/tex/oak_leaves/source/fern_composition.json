@@ -1,0 +1,202 @@
+{
+  "card_height_mm": 1000,
+  "blades": [
+    {
+      "id": 31000,
+      "base": [
+        249.48382194149644,
+        812.0327455413759
+      ],
+      "length_px": 610.0,
+      "blade_length_mm": 595.703125,
+      "frond_length_mm": 805.6640625,
+      "angle_degrees": -91,
+      "width_px": 122.64823147875411,
+      "source": 1
+    },
+    {
+      "id": 31001,
+      "base": [
+        218.14782907191008,
+        850.4441442609153
+      ],
+      "length_px": 573.8,
+      "blade_length_mm": 560.3515625,
+      "frond_length_mm": 737.3046875,
+      "angle_degrees": -103,
+      "width_px": 124.7143881759265,
+      "source": 0
+    },
+    {
+      "id": 31002,
+      "base": [
+        297.19328616828994,
+        859.1498717140789
+      ],
+      "length_px": 543.4,
+      "blade_length_mm": 530.6640625,
+      "frond_length_mm": 698.2421875,
+      "angle_degrees": -78,
+      "width_px": 121.98085060808835,
+      "source": 0
+    },
+    {
+      "id": 31003,
+      "base": [
+        198.6774806978397,
+        882.3593186875812
+      ],
+      "length_px": 494.0,
+      "blade_length_mm": 482.421875,
+      "frond_length_mm": 634.765625,
+      "angle_degrees": -112,
+      "width_px": 110.64016490544225,
+      "source": 0
+    },
+    {
+      "id": 31004,
+      "base": [
+        295.8194997698133,
+        880.1115894840777
+      ],
+      "length_px": 486.4,
+      "blade_length_mm": 475.0,
+      "frond_length_mm": 625.0,
+      "angle_degrees": -73,
+      "width_px": 104.20170363241998,
+      "source": 1
+    },
+    {
+      "id": 31005,
+      "base": [
+        237.34759733775493,
+        880.5001880177408
+      ],
+      "length_px": 467.4,
+      "blade_length_mm": 456.4453125,
+      "frond_length_mm": 600.5859375,
+      "angle_degrees": -97,
+      "width_px": 103.04860475763232,
+      "source": 2
+    },
+    {
+      "id": 31006,
+      "base": [
+        278.6832548327094,
+        886.4554649275888
+      ],
+      "length_px": 448.4,
+      "blade_length_mm": 437.890625,
+      "frond_length_mm": 576.171875,
+      "angle_degrees": -83,
+      "width_px": 94.67390399882953,
+      "source": 0
+    },
+    {
+      "id": 31007,
+      "base": [
+        211.25289495875978,
+        901.5267906787761
+      ],
+      "length_px": 425.6,
+      "blade_length_mm": 415.625,
+      "frond_length_mm": 546.875,
+      "angle_degrees": -111,
+      "width_px": 89.73091610986911,
+      "source": 3
+    },
+    {
+      "id": 31008,
+      "base": [
+        294.655686748711,
+        906.3434674910894
+      ],
+      "length_px": 406.6,
+      "blade_length_mm": 397.0703125,
+      "frond_length_mm": 522.4609375,
+      "angle_degrees": -70,
+      "width_px": 90.75127304601314,
+      "source": 0
+    },
+    {
+      "id": 31009,
+      "base": [
+        212.77821518527506,
+        912.8732180445816
+      ],
+      "length_px": 380.0,
+      "blade_length_mm": 371.09375,
+      "frond_length_mm": 488.28125,
+      "angle_degrees": -108,
+      "width_px": 76.80126393972922,
+      "source": 0
+    },
+    {
+      "id": 31010,
+      "base": [
+        290.64763369899566,
+        919.1288235273696
+      ],
+      "length_px": 357.2,
+      "blade_length_mm": 348.828125,
+      "frond_length_mm": 458.984375,
+      "angle_degrees": -73,
+      "width_px": 74.08850850900808,
+      "source": 3
+    },
+    {
+      "id": 31011,
+      "base": [
+        252.98646536951014,
+        921.4643286667834
+      ],
+      "length_px": 334.4,
+      "blade_length_mm": 326.5625,
+      "frond_length_mm": 429.6875,
+      "angle_degrees": -88,
+      "width_px": 71.56352684186635,
+      "source": 2
+    },
+    {
+      "id": 31012,
+      "base": [
+        224.04670773850916,
+        929.4569148917703
+      ],
+      "length_px": 323.0,
+      "blade_length_mm": 315.4296875,
+      "frond_length_mm": 415.0390625,
+      "angle_degrees": -107,
+      "width_px": 65.63795333936298,
+      "source": 0
+    },
+    {
+      "id": 31013,
+      "base": [
+        285.7834488618016,
+        935.7651087106282
+      ],
+      "length_px": 311.6,
+      "blade_length_mm": 304.296875,
+      "frond_length_mm": 400.390625,
+      "angle_degrees": -68,
+      "width_px": 71.17342363688077,
+      "source": 3
+    },
+    {
+      "id": 31014,
+      "base": [
+        208.70255146149287,
+        939.637218699721
+      ],
+      "length_px": 307.8,
+      "blade_length_mm": 300.5859375,
+      "frond_length_mm": 395.5078125,
+      "angle_degrees": -116,
+      "width_px": 72.02806890729259,
+      "source": 0
+    }
+  ],
+  "interpretation": "Round 2: 30\u201360 cm leafy blades. Petioles bring the upright silhouette to about 0.8 m; complete lengths are recorded separately.",
+  "nonzero_alpha_outside_allowed_before_finalization": 0
+}

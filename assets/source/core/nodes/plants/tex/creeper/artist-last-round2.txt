@@ -1,0 +1,3 @@
+Added the opaque 600×600 `rubble` patch and rebuilt all four layers. `check_atlas.py` passes; existing plants and mat are pixel-identical.
+
+Updated [REPORT.md](REPORT.md). Built-in imagegen [source](source/rubble_original.png) and [prompt](source/prompts.json) are saved locally.

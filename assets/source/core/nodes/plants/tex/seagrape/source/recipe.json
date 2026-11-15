@@ -1,0 +1,29 @@
+{
+  "scale_px_per_m": 1300,
+  "height_range_mm": 20,
+  "margin_px": 34,
+  "alpha_source_threshold": 150,
+  "bark_metres": 0.7,
+  "packed_material": {
+    "leaf_ao_depth": 0.30,
+    "vein_threshold": 0.28,
+    "vein_min_pixels": 16,
+    "vein_hollow_width_px": 16
+  },
+  "elements": [
+    {"name":"leaf1", "xy":[24,24], "width_m":0.245, "roughness":0.68, "shape":"dome", "description":"Mature olive, pale veins"},
+    {"name":"leaf2", "xy":[500,24], "width_m":0.235, "roughness":0.66, "shape":"cup", "description":"Mature deep green, broad kidney shape"},
+    {"name":"leaf3", "xy":[976,24], "width_m":0.25, "roughness":0.69, "shape":"dome", "description":"Mature mottled green, pink veins"},
+    {"name":"leaf4", "xy":[1530,24], "width_m":0.15, "roughness":0.65, "shape":"dome", "description":"Small young yellow-green"},
+    {"name":"leaf5", "xy":[24,550], "width_m":0.24, "roughness":0.68, "shape":"cup", "description":"Green, strong red veins"},
+    {"name":"leaf6", "xy":[500,550], "width_m":0.23, "roughness":0.71, "shape":"dome", "description":"Old orange with green remnants"},
+    {"name":"leaf7", "xy":[976,550], "width_m":0.225, "roughness":0.72, "shape":"dome", "description":"Old brick red and amber"},
+    {"name":"leaf8", "xy":[1470,550], "width_m":0.24, "roughness":0.70, "shape":"cup", "description":"Yellowing, green interveinal patches"},
+    {"name":"leaf9", "xy":[24,1090], "width_m":0.245, "roughness":0.69, "shape":"dome", "description":"Mature green, four insect holes"},
+    {"name":"leaf10", "xy":[500,1090], "width_m":0.24, "roughness":0.68, "shape":"dome", "description":"Mature green, torn right edge"},
+    {"name":"fruit1", "xy":[190,1635], "length_m":0.25, "roughness":0.62, "source":"fruit1_v2", "description":"Green fruit, hanging"},
+    {"name":"fruit2", "xy":[670,1635], "length_m":0.25, "roughness":0.60, "source":"fruit2_v2", "description":"Mixed ripening fruit, hanging"},
+    {"name":"fruit3", "xy":[1620,1490], "length_m":0.25, "roughness":0.58, "source":"fruit3_v2", "description":"Mostly purple fruit, hanging"},
+    {"name":"twig1", "xy":[1060,1190], "length_m":0.42, "roughness":0.66, "description":"Crooked pale grey twig with seven young leaves"}
+  ]
+}

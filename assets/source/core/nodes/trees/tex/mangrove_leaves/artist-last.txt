@@ -1,0 +1,7 @@
+Replaced the set with four aligned 2048 × 2048 maps, retained sources, rebuild scripts and previews. Removed unused first-set files.
+
+**118 checks pass; all four maps rebuild byte-for-byte. Height range: 160 mm.**
+
+[Report](REPORT.md) · [Layer preview](checks/layers.jpg) · [20 m comparison](checks/purpose_20m_both_lights_enlarged.png)
+
+The billow previews are diagnostic renders; in-game integration remains unverified.

@@ -1,0 +1,6 @@
+{
+  "name": "mangrove_bark", "seed": 51761, "source_prefix": "mangrove",
+  "width_m": 1.6, "height_m": 2.0, "height_range_mm": 4.0,
+  "wrap_x": true, "wrap_y": true,
+  "palette": {"main":"#8A8371", "pale":"#A99C83", "aged":"#655F50"}
+}

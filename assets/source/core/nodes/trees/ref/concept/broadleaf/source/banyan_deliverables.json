@@ -1,0 +1,52 @@
+[
+  {
+    "file": "banyan_lineup.png",
+    "width": 2172,
+    "height": 724,
+    "bytes": 2406810,
+    "sha256": "2e411d118bf19ee41071767401fd7d133afdf4bd13486de73d27854281055ea2",
+    "crc_valid": true,
+    "idat_valid": true,
+    "version": "banyan_lineup_v4"
+  },
+  {
+    "file": "banyan_hall.png",
+    "width": 1672,
+    "height": 941,
+    "bytes": 3092189,
+    "sha256": "5682d34e16c1aaa265fe648fa67d5caee8c4b8c9c0a9f9c434d7a858d5be06ff",
+    "crc_valid": true,
+    "idat_valid": true,
+    "version": "banyan_hall_v1"
+  },
+  {
+    "file": "banyan_far.png",
+    "width": 1672,
+    "height": 941,
+    "bytes": 2466904,
+    "sha256": "686a8992a64401a08533fb000ee565b1c54a676d397654e62cc2d5743a788dc8",
+    "crc_valid": true,
+    "idat_valid": true,
+    "version": "banyan_far_v1"
+  },
+  {
+    "file": "banyan_far_flat.png",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1556128,
+    "sha256": "9c7f4470d97e678b17b3591ab8464d27cce8e75f615ba6f24f48c0d04b7f2958",
+    "crc_valid": true,
+    "idat_valid": true,
+    "version": "banyan_far_flat_v1"
+  },
+  {
+    "file": "banyan_stump.png",
+    "width": 1672,
+    "height": 941,
+    "bytes": 2686271,
+    "sha256": "06674009e3578d7b360d18cd6113301845ee3b3758138e2a3cb40d7b0c0f58e5",
+    "crc_valid": true,
+    "idat_valid": true,
+    "version": "banyan_stump_v2"
+  }
+]
