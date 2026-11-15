@@ -38,6 +38,7 @@ const map = parseMap(new Uint8Array(readFileSync(path)));
 const views = (JSON.parse(readFileSync(list, "utf8")) as View[]).filter((v) => only === undefined || v.name === only);
 const files = await gameFiles(resolve(SOURCE));
 mkdirSync(folder, { recursive: true });
+const small: { w: number; h: number; rgba: Uint8Array }[] = [];
 for (const v of views) {
   const t0 = performance.now();
   const [w, h] = v.size ?? [1280, 720];
@@ -65,5 +66,34 @@ for (const v of views) {
   const frames = settle(view);
   const out = join(folder, `${v.name}.png`);
   writeFileSync(out, encodePng(w, h, view.raster.color));
+  // A quarter of it, for the contact sheet of every view.
+  const half = new Uint8Array((w >> 1) * (h >> 1) * 4);
+  for (let y = 0; y < h >> 1; y++) {
+    for (let x = 0; x < w >> 1; x++) {
+      for (let k = 0; k < 4; k++) {
+        const at = (yy: number, xx: number): number => view.raster.color[(yy * w + xx) * 4 + k]!;
+        half[(y * (w >> 1) + x) * 4 + k] = (at(2 * y, 2 * x) + at(2 * y, 2 * x + 1) + at(2 * y + 1, 2 * x) + at(2 * y + 1, 2 * x + 1)) >> 2;
+      }
+    }
+  }
+  small.push({ w: w >> 1, h: h >> 1, rgba: half });
   console.log(`${out}  ${frames} frames, ${(performance.now() - t0).toFixed(0)} ms, eye ${cam.x.toFixed(0)}, ${cam.y.toFixed(1)}, ${cam.z.toFixed(0)}`);
+}
+// Every view at half size, three across, in the order listed.
+if (small.length > 1) {
+  const cw = Math.max(...small.map((s) => s.w));
+  const across = 3;
+  const rows = Math.ceil(small.length / across);
+  // Each row as tall as its tallest view.
+  const top = [0];
+  for (let r = 0; r < rows; r++) top.push(top[r]! + Math.max(...small.slice(r * across, (r + 1) * across).map((s) => s.h)));
+  const W = cw * across;
+  const H = top[rows]!;
+  const sheet = new Uint8Array(W * H * 4);
+  small.forEach((s, k) => {
+    const [ox, oy] = [(k % across) * cw, top[Math.floor(k / across)]!];
+    for (let y = 0; y < s.h; y++) sheet.set(s.rgba.subarray(y * s.w * 4, (y + 1) * s.w * 4), ((oy + y) * W + ox) * 4);
+  });
+  writeFileSync(join(folder, "sheet.png"), encodePng(W, H, sheet));
+  console.log(join(folder, "sheet.png"));
 }

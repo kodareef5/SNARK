@@ -27,6 +27,9 @@ export interface Building {
   readonly perimeter: number;
   readonly e: number;
   readonly n: number;
+  /** What USA Structures says of it, where it says (base/buildings_attributes.json): its height in metres and its use. */
+  readonly height: number | null;
+  readonly use: string | null;
 }
 
 export interface Ruin {
@@ -72,7 +75,7 @@ const area = (ring: readonly (readonly number[])[]): number => {
 };
 
 /** The buildings of a GeoJSON collection in metres, each polygon of a multipolygon its own. */
-export function readBuildings(geojson: { features: { geometry: { type: string; coordinates: unknown }; properties: { id: number } }[] }): Building[] {
+export function readBuildings(geojson: { features: { geometry: { type: string; coordinates: unknown }; properties: { id: number } }[] }, about: ReadonlyMap<number, { height: number | null; use: string | null }> = new Map()): Building[] {
   const out: Building[] = [];
   for (const f of geojson.features) {
     const polys = (f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates) as number[][][][];
@@ -88,7 +91,8 @@ export function readBuildings(geojson: { features: { geometry: { type: string; c
         ce += outer[i]![0]!;
         cn += outer[i]![1]!;
       }
-      out.push({ id: f.properties.id * 4 + k, rings, area: a, perimeter: p, e: ce / (outer.length - 1), n: cn / (outer.length - 1) });
+      const known = about.get(f.properties.id);
+      out.push({ id: f.properties.id * 4 + k, rings, area: a, perimeter: p, e: ce / (outer.length - 1), n: cn / (outer.length - 1), height: known?.height ?? null, use: known?.use ?? null });
     });
   }
   return out;
@@ -96,6 +100,8 @@ export function readBuildings(geojson: { features: { geometry: { type: string; c
 
 /** Storeys a building is taken to have had: a house or a block from its footprint, and a tower where the district builds tall. */
 function storeysOf(b: Building, tall: number): number {
+  // Its surveyed height where there is one, at 3.3 m a storey; else a guess from its footprint and its district.
+  if (b.height !== null && b.height > 0) return Math.max(1, b.height / 3.3);
   const low = Math.min(4.5, Math.max(1, 1 + Math.log2(Math.max(60, b.area) / 110)));
   const u = rand3(b.id, 11, 0);
   const fits = Math.min(1, Math.max(0, (b.area - 250) / 1000)) * (b.area < 12000 ? 1 : 0.3);

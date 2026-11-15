@@ -251,7 +251,10 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   });
 
   // The ruins.
-  const buildings = readBuildings(JSON.parse(readFileSync(join(base.folder, "base", "buildings.geojson"), "utf8")));
+  const facts = JSON.parse(readFileSync(join(base.folder, "base", "buildings_attributes.json"), "utf8")) as { fields: string[]; rows: (number | string | null)[][] };
+  const [idAt, heightAt, useAt] = ["OBJECTID", "HEIGHT", "OCC_CLS"].map((f) => facts.fields.indexOf(f)) as [number, number, number];
+  const about = new Map(facts.rows.map((r) => [r[idAt] as number, { height: (r[heightAt] as number | null) ?? null, use: (r[useAt] as string | null) ?? null }]));
+  const buildings = readBuildings(JSON.parse(readFileSync(join(base.folder, "base", "buildings.geojson"), "utf8")), about);
   const road = new Uint8Array(N);
   for (let i = 0; i < N; i++) road[i] = roads[i] === 1 || roads[i] === 2 ? 1 : 0;
   const heaps = makeHeaps({
