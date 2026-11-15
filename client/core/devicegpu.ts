@@ -7,8 +7,10 @@
 // Each question has a deadline and says "did not finish" past it, and a lost context ends them, naming the one it hit.
 
 import { FAR_FROM } from "./render/camera.ts";
-import { FLAT_FRAGMENT } from "./render/glsl.ts";
+import { FLAT_FRAGMENT, LIT_FRAGMENT } from "./render/glsl.ts";
 import { FRAME_FLOATS } from "./render/packet.ts";
+import { UNIT } from "./render/programs.ts";
+import { SKY_GLSL, SKY_SIZE, skyFrame, theSky } from "./render/sky.ts";
 import { surfaceFragment } from "./render/surface.ts";
 import type { TextureFormat } from "../../shared/pack/texture.ts";
 
@@ -34,6 +36,10 @@ export interface Gl2 {
   useProgram(program: Obj): void;
   deleteProgram(program: Obj): void;
   getUniformLocation(program: Obj, name: string): Obj;
+  getUniformBlockIndex(program: Obj, name: string): number;
+  uniformBlockBinding(program: Obj, block: number, binding: number): void;
+  bindBufferBase(target: number, index: number, buffer: Obj): void;
+  getIndexedParameter(name: number, index: number): unknown;
   uniform1i(at: Obj, x: number): void;
   uniform1f(at: Obj, x: number): void;
   uniform2f(at: Obj, x: number, y: number): void;
@@ -105,7 +111,7 @@ export const GL = {
   ASTC_4X4: 0x93b0, BPTC: 0x8e8c,
   TEXTURE_MIN_FILTER: 0x2801, TEXTURE_MAG_FILTER: 0x2800, TEXTURE_WRAP_S: 0x2802, TEXTURE_WRAP_T: 0x2803, TEXTURE_WRAP_R: 0x8072, NEAREST: 0x2600, LINEAR: 0x2601, LINEAR_MIPMAP_LINEAR: 0x2703, CLAMP_TO_EDGE: 0x812f,
   TEXTURE_COMPARE_MODE: 0x884c, TEXTURE_COMPARE_FUNC: 0x884d, COMPARE_REF_TO_TEXTURE: 0x884e, NONE: 0, LEQUAL: 0x0203, LESS: 0x0201,
-  ARRAY_BUFFER: 0x8892, ELEMENT_ARRAY_BUFFER: 0x8893, STATIC_DRAW: 0x88e4,
+  ARRAY_BUFFER: 0x8892, ELEMENT_ARRAY_BUFFER: 0x8893, UNIFORM_BUFFER: 0x8a11, UNIFORM_BUFFER_BINDING: 0x8a28, INVALID_INDEX: 0xffffffff, STATIC_DRAW: 0x88e4,
   COLOR_BUFFER_BIT: 0x4000, DEPTH_BUFFER_BIT: 0x0100,
   DEPTH_TEST: 0x0b71, BLEND: 0x0be2, CULL_FACE: 0x0b44, SCISSOR_TEST: 0x0c11, POLYGON_OFFSET_FILL: 0x8037, SAMPLE_ALPHA_TO_COVERAGE: 0x809e,
   SRC_ALPHA: 0x0302, ONE_MINUS_SRC_ALPHA: 0x0303, ONE: 1, FUNC_ADD: 0x8006, MIN: 0x8007,
@@ -116,6 +122,8 @@ export const GL = {
   TIME_ELAPSED: 0x88bf, GPU_DISJOINT: 0x8fbb, QUERY_RESULT: 0x8866, QUERY_RESULT_AVAILABLE: 0x8867,
 } as const;
 
+/** The uniform buffer binding the probe reads a frame block from: the renderer's is 0. */
+export const PROBE_BLOCK = 1;
 /** Units the probe may bind its own textures on. The renderer's own on 0 to 3 are never touched, and these are put back. */
 export const PROBE_UNITS: readonly number[] = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 const CAPS = [GL.DEPTH_TEST, GL.BLEND, GL.CULL_FACE, GL.SCISSOR_TEST, GL.POLYGON_OFFSET_FILL, GL.SAMPLE_ALPHA_TO_COVERAGE];
@@ -134,6 +142,7 @@ export function saveState(gl: Gl2, targets = 3): () => void {
   });
   const caps = CAPS.map((c) => gl.isEnabled(c));
   const [program, vao, array, draw, read, rb] = [GL.CURRENT_PROGRAM, GL.VERTEX_ARRAY_BINDING, GL.ARRAY_BUFFER_BINDING, GL.DRAW_FRAMEBUFFER_BINDING, GL.READ_FRAMEBUFFER_BINDING, GL.RENDERBUFFER_BINDING].map(p);
+  const [block, uniforms] = [gl.getIndexedParameter(GL.UNIFORM_BUFFER_BINDING, PROBE_BLOCK), p(GL.UNIFORM_BUFFER_BINDING)];
   const view = p(GL.VIEWPORT) as ArrayLike<number>;
   const box = p(GL.SCISSOR_BOX) as ArrayLike<number>;
   const range = p(GL.DEPTH_RANGE) as ArrayLike<number>;
@@ -150,6 +159,9 @@ export function saveState(gl: Gl2, targets = 3): () => void {
     gl.useProgram(program);
     gl.bindVertexArray(vao);
     gl.bindBuffer(GL.ARRAY_BUFFER, array);
+    // Binding a range sets the general binding too, so it goes first.
+    gl.bindBufferBase(GL.UNIFORM_BUFFER, PROBE_BLOCK, block);
+    gl.bindBuffer(GL.UNIFORM_BUFFER, uniforms);
     gl.bindFramebuffer(GL.DRAW_FRAMEBUFFER, draw);
     gl.bindFramebuffer(GL.READ_FRAMEBUFFER, read);
     gl.bindRenderbuffer(GL.RENDERBUFFER, rb);
@@ -328,6 +340,17 @@ void main() {
   vec2 c = corner();
   gl_Position = uM * vec4(c * 4000.0, -uZ, 1.0);
 }`;
+/** What FLAT's and LIT's fragments take from their vertices, on a wall 12 m off filling the target. */
+const FLAT_VERTEX = `#version 300 es
+${FULL_SCREEN}
+out vec3 vRel;
+flat out vec3 vColor;
+void main() {
+  vec2 c = corner();
+  vRel = vec3(c * 8.0, -12.0);
+  vColor = vec3(0.6, 0.55, 0.5);
+  gl_Position = vec4(c, 0.0, 1.0);
+}`;
 const COLOUR_FRAGMENT = `#version 300 es
 precision highp float;
 uniform vec3 uColour;
@@ -422,6 +445,7 @@ export class GpuQuestions {
       }
     }
     this.addPass("flat", "megapixel", () => this.flatPass());
+    this.addPass("lit", "megapixel", () => this.litPass());
     this.addPass("surface", "megapixel", () => this.surfacePass());
     for (const taps of [1, 4, 9]) this.addPass(`${taps} ${taps === 1 ? "tap" : "taps"}`, "megapixel", () => this.tapsPass(taps));
     const draw: PassTime = { name: "draw", per: "draw", timer: null, slope: null, error: null, k: 0, note: "did not finish" };
@@ -1060,16 +1084,7 @@ void main() {}`);
   /** FLAT as low poly draws, on a wall 12 m off. */
   private flatPass(): { bind(): void; draw(): void; scale: number } {
     const gl = this.gl;
-    const prog = this.program(`#version 300 es
-${FULL_SCREEN}
-out vec3 vRel;
-flat out vec3 vColor;
-void main() {
-  vec2 c = corner();
-  vRel = vec3(c * 8.0, -12.0);
-  vColor = vec3(0.6, 0.55, 0.5);
-  gl_Position = vec4(c, 0.0, 1.0);
-}`, FLAT_FRAGMENT);
+    const prog = this.program(FLAT_VERTEX, FLAT_FRAGMENT);
     const at = (n: string): Obj => gl.getUniformLocation(prog, n);
     return this.fullScreen(prog, () => {
       gl.uniform3f(at("uSun"), 0.3, 0.8, 0.52);
@@ -1082,7 +1097,59 @@ void main() {
     });
   }
 
-  /** SURFACE with its five maps 512 square, mipmapped, a texel a pixel, on its own units 4 to 8. */
+  /** LIT, as a lit tier draws flat, on the same wall under noon's frame block. */
+  private litPass(): { bind(): void; draw(): void; scale: number } {
+    const gl = this.gl;
+    const prog = this.program(FLAT_VERTEX, LIT_FRAGMENT);
+    const frame = this.frameBlock(prog);
+    const at = (n: string): Obj => gl.getUniformLocation(prog, n);
+    return this.fullScreen(prog, () => {
+      frame();
+      gl.uniform3f(at("uSky"), 0.6, 0.75, 0.9);
+      gl.uniform3f(at("uCamMod"), 3.5, 1.6, 7.25);
+      gl.uniform2f(at("uFog"), 300, 600);
+      gl.uniform1f(at("uSolid"), 1);
+      gl.uniform1f(at("uAlpha"), 0.5);
+    });
+  }
+
+  private frameBuffer: Obj = null;
+  private skyTable: Obj = null;
+
+  /**
+   * Noon's frame block on the probe's binding, for a lit program: a function that binds it, which bind() calls. The
+   * buffer is made once.
+   */
+  private frameBlock(prog: Obj): () => void {
+    const gl = this.gl;
+    const block = gl.getUniformBlockIndex(prog, "Frame");
+    if (block === GL.INVALID_INDEX) throw new Error("a lit program without its frame block");
+    gl.uniformBlockBinding(prog, block, PROBE_BLOCK);
+    if (!this.frameBuffer) {
+      const frame = new Float32Array(FRAME_FLOATS);
+      skyFrame(12, theSky(), frame);
+      this.frameBuffer = this.keep("buffer", gl.createBuffer());
+      gl.bindBuffer(GL.UNIFORM_BUFFER, this.frameBuffer);
+      gl.bufferData(GL.UNIFORM_BUFFER, frame, GL.STATIC_DRAW);
+    }
+    return () => gl.bindBufferBase(GL.UNIFORM_BUFFER, PROBE_BLOCK, this.frameBuffer);
+  }
+
+  /** The sky table, 32 a side, as the renderer makes it, on its unit. */
+  private table(): Obj {
+    if (this.skyTable) return this.skyTable;
+    const gl = this.gl;
+    const t = (this.skyTable = this.keep("texture", this.create()));
+    gl.activeTexture(GL.TEXTURE0 + UNIT.sky);
+    gl.bindTexture(GL.TEXTURE_3D, t);
+    gl.texStorage3D(GL.TEXTURE_3D, 1, GL.RGBA8, SKY_SIZE, SKY_SIZE, SKY_SIZE);
+    gl.texSubImage3D(GL.TEXTURE_3D, 0, 0, 0, 0, SKY_SIZE, SKY_SIZE, SKY_SIZE, GL.RGBA, GL.UNSIGNED_BYTE, theSky().table);
+    for (const name of [GL.TEXTURE_MIN_FILTER, GL.TEXTURE_MAG_FILTER]) gl.texParameteri(GL.TEXTURE_3D, name, GL.LINEAR);
+    for (const name of [GL.TEXTURE_WRAP_S, GL.TEXTURE_WRAP_T, GL.TEXTURE_WRAP_R]) gl.texParameteri(GL.TEXTURE_3D, name, GL.CLAMP_TO_EDGE);
+    return t;
+  }
+
+  /** SURFACE with its five maps 512 square, mipmapped, a texel a pixel, on units 4 to 8, the sky table and noon's frame block. */
   private surfacePass(): { bind(): void; draw(): void; scale: number } {
     const gl = this.gl;
     const [w, h] = this.report.screen;
@@ -1102,7 +1169,9 @@ void main() {
   vDye = mat3(1.0);
   vDye2 = mat3(1.0);
   gl_Position = vec4(c, 0.0, 1.0);
-}`, surfaceFragment(this.variant));
+}`, surfaceFragment(this.variant, SKY_GLSL));
+    const frame = this.frameBlock(prog);
+    const table = this.table();
     const maps = [0, 1, 2, 3, 4].map((r) => {
       const t = this.texture(r === 0 ? GL.SRGB8_ALPHA8 : GL.RGBA8, 512, 512, GL.LINEAR_MIPMAP_LINEAR, 10);
       const data = new Uint8Array(512 * 512 * 4);
@@ -1118,13 +1187,14 @@ void main() {
         gl.bindTexture(GL.TEXTURE_2D, t);
       });
       ["uBase", "uNormal", "uMro", "uMask", "uMask2"].forEach((n, r) => gl.uniform1i(at(n), 4 + r));
+      gl.activeTexture(GL.TEXTURE0 + UNIT.sky);
+      gl.bindTexture(GL.TEXTURE_3D, table);
+      gl.uniform1i(at("uSkyTable"), UNIT.sky);
+      frame();
       gl.uniform2f(at("uSize"), w!, h!);
-      gl.uniform3f(at("uSun"), 0.3, 0.8, 0.52);
       gl.uniform3f(at("uSky"), 0.6, 0.75, 0.9);
-      gl.uniform3f(at("uSkyLight"), 0.3, 0.45, 0.7);
       gl.uniform3f(at("uTint"), 1, 1, 1);
       gl.uniform2f(at("uFog"), 300, 600);
-      gl.uniform1f(at("uLight"), 1);
       gl.uniform1f(at("uCutoff"), 0);
     });
   }

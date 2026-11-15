@@ -405,7 +405,7 @@ function stock(s: Subject, view: ModelView): void {
   });
 }
 
-type Shot = Pick<ModelShot, "level" | "around" | "above"> & Partial<Pick<ModelShot, "colors" | "centre" | "radius" | "textured">>;
+type Shot = Pick<ModelShot, "level" | "around" | "above"> & Partial<Pick<ModelShot, "colors" | "centre" | "radius" | "textured" | "lit">>;
 
 /** A picture's width over its height. Every row of pictures is cut to it, near enough. */
 const SHAPE = 4 / 3;
@@ -685,10 +685,10 @@ function startsOf(s: Subject, tier: (typeof TIERS)[number]): Start[] {
 }
 
 /** A level drawn `tall` pixels high in a picture BOX pixels square, as a screen shows it. */
-function seen(s: Subject, level: number, tall: number, textured: boolean): Canvas {
+function seen(s: Subject, level: number, tall: number, textured: boolean, lit = true): Canvas {
   const view = viewOf(s, BOX, BOX);
   // The ball that makes the mesh stand `tall` pixels in a picture BOX pixels high.
-  shoot(s, view, { level, around: CLIP_AROUND, above: CLIP_ABOVE, radius: ((BOX / 2) * Math.cos(view.cam.fovY / 2) * s.half[1] * 2) / tall, textured });
+  shoot(s, view, { level, around: CLIP_AROUND, above: CLIP_ABOVE, radius: ((BOX / 2) * Math.cos(view.cam.fovY / 2) * s.half[1] * 2) / tall, textured, lit });
   const out = new Canvas(BOX, BOX);
   out.shrink(view.raster.color, view.raster.width, view.raster.height, SMOOTH, 0, 0);
   return out;
@@ -736,7 +736,7 @@ function asSeen(page: Page, s: Subject): void {
           canvas.text(`level ${level}: ${level <= tier.finest ? "drawn from 0 m" : "never drawn"}`, x, y + 2, FAINT);
           return;
         }
-        const small = seen(s, st.level, st.tall, st.textured);
+        const small = seen(s, st.level, st.tall, st.textured, tier.lit);
         canvas.put(small, x, y + 20);
         const times = magnify(canvas, s, small, st.tall, x + BOX + GAP, y + 20);
         canvas.text(`level ${st.level} from ${st.distance.toFixed(0)} m, ${st.tall.toFixed(0)} px`, x, y + 2, INK);

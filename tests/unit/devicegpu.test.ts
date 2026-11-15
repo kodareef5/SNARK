@@ -49,6 +49,22 @@ test("the seam's view is the game camera's, and a turn counts pixels in neither 
   expect(seamCount(px, 2, 4)).toEqual({ gaps: 2, crossing: 2 });
 });
 
+test("the fake context draws nothing for a program whose frame block has no buffer, as WebGL does", () => {
+  const gl = fakeGl({ drawn: () => void drawn++ });
+  let drawn = 0;
+  const lit = gl.createProgram();
+  const shader = gl.createShader(GL.FRAGMENT_SHADER);
+  gl.shaderSource(shader, "layout(std140) uniform Frame { vec4 fSun; };");
+  gl.attachShader(lit, shader);
+  gl.useProgram(lit);
+  gl.drawArrays(GL.TRIANGLES, 0, 3);
+  gl.uniformBlockBinding(lit, gl.getUniformBlockIndex(lit, "Frame"), 1);
+  gl.drawArrays(GL.TRIANGLES, 0, 3);
+  gl.bindBufferBase(GL.UNIFORM_BUFFER, 1, gl.createBuffer());
+  gl.drawArrays(GL.TRIANGLES, 0, 3);
+  expect([gl.invalid, drawn]).toEqual([["a draw by a program whose frame block has no buffer or binding", "a draw by a program whose frame block has no buffer on binding 1"], 1]);
+});
+
 test("what the probe changes of a context is put back as it was", () => {
   const gl = fakeGl();
   gl.activeTexture(GL.TEXTURE0 + 3);
@@ -84,9 +100,8 @@ function timedCard(timer = false) {
   let clock = 0;
   let timing = { begun: 0, ms: 0 };
   const gl = fakeGl({
+    drawn: (elements) => void (clock += elements ? 0.2 : 0.01),
     with: {
-      drawElements: () => void (clock += 0.2),
-      drawArrays: () => void (clock += 0.01),
       getExtension: (name: string) => (timer && name === "EXT_disjoint_timer_query_webgl2" ? { TIME_ELAPSED_EXT: GL.TIME_ELAPSED } : null),
       createQuery: () => ({ begun: 0, ms: 0 }),
       beginQuery: (_: number, q: typeof timing) => void ((timing = q).begun = clock),
@@ -125,6 +140,8 @@ test("every question is answered, a pass's cost is the slope of time against pas
   expect(per("depth skinned 2048").slope).toBe(0.199);
   expect(per("flat")).toMatchObject({ slope: 0.03, timer: 0.03, k: 512 });
   expect(per("9 taps").slope).toBe(0.03);
+  // LIT and SURFACE read noon's frame block: every draw of theirs had its buffer, or the fake would have drawn nothing.
+  expect([per("lit").slope, per("surface").slope, card.gl.invalid]).toEqual([0.03, 0.03, []]);
   // A draw's 0.01 ms on the clock: 1,000 of them are enough to time.
   expect(per("draw")).toMatchObject({ slope: 10, error: 0, k: 1000 });
   // Only the probe's own units were bound on.
@@ -136,7 +153,7 @@ test("a question past its deadline says it did not finish, and a lost context na
   const late = new GpuQuestions(slow.gl, () => slow.gl.createTexture(), slow.now, "bc", [390, 844], PLAN);
   ask(late, () => slow.tick(4000));
   expect([late.report.depthRange, late.report.seam]).toEqual(["neither (read 128,128,128)", "did not finish"]);
-  expect(late.report.passes.map((p) => p.note)).toEqual(Array(10).fill("did not finish"));
+  expect(late.report.passes.map((p) => p.note)).toEqual(Array(11).fill("did not finish"));
 
   const card = timedCard();
   const q = new GpuQuestions(card.gl, () => card.gl.createTexture(), card.now, "rgba", [390, 844], PLAN);
@@ -149,7 +166,7 @@ test("a question past its deadline says it did not finish, and a lost context na
   const r = q.report;
   expect(r.lostDuring).toBe("depth rigid 1024");
   expect(r.passes[0]!.note).toBe("lost the context");
-  expect(r.passes.slice(1).map((p) => p.note)).toEqual(Array(9).fill("not asked: the context was lost during depth rigid 1024"));
+  expect(r.passes.slice(1).map((p) => p.note)).toEqual(Array(10).fill("not asked: the context was lost during depth rigid 1024"));
 
   // Lost in the middle of a question's step: what it read is not its answer.
   const dying: ReturnType<typeof fakeGl> = fakeGl({ read: () => dying.lose() });

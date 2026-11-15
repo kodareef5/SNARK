@@ -212,7 +212,7 @@ function judgeCards(cards: Card[], got: Uint8Array): { ok: boolean; lines: strin
 
 /** A frame as the page rebuilds it: its numbers, its arrays as far as they are used, and its uploads, with where their bytes are. */
 interface Frame {
-  scalars: Record<string, number>;
+  scalars: Record<string, number | boolean>;
   arrays: [string, number, number][];
   uploads: number[][];
   drops: number[];
@@ -241,9 +241,9 @@ function packFrame(p: FramePacket, out: Bytes): Frame {
   put("tilePass", p.tileCount);
   put("transient", p.transientCount * INSTANCE_BYTES);
   put("bones", p.boneCount * BONE_FLOATS);
-  const { camX, camY, camZ, light, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount, skyAt } = p;
+  const { camX, camY, camZ, light, lit, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount, skyAt } = p;
   return {
-    scalars: { camX, camY, camZ, light, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount, skyAt },
+    scalars: { camX, camY, camZ, light, lit, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount, skyAt },
     arrays,
     uploads: p.uploads.map((u) => [u.buffer, ...ref(u.data)]),
     drops: [...p.drops],
@@ -377,7 +377,7 @@ function house(manifest: Manifest, files: Uint8Array[], format: TextureFormat, t
   return { width, height, loseAt, frames, bytes: out.join(), raster, draws: p!.drawCount, textured, flat, cut, both };
 }
 
-interface Spread {
+export interface Spread {
   points: number;
   mean: number;
   p95: number;
@@ -385,7 +385,7 @@ interface Spread {
   worst: number;
 }
 
-function spread(values: number[]): Spread {
+export function spread(values: number[]): Spread {
   const sorted = [...values].sort((a, b) => a - b);
   const at = (q: number): number => sorted[Math.floor((sorted.length - 1) * q)] ?? 0;
   return { points: sorted.length, mean: sorted.reduce((s, v) => s + v, 0) / Math.max(1, sorted.length), p95: at(0.95), p99: at(0.99), worst: at(1) };

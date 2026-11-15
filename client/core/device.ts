@@ -683,7 +683,7 @@ export class DeviceRun {
   /** The self-check's probes that are on this screen, read off the picture of the default tier once it has settled. A narrow screen leaves the slope out. */
   private probes(read: (sx: number, sy: number) => [number, number, number]): boolean {
     const { app, reg, pack, hf } = this.side;
-    const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true).filter((p) => p.sx >= 0 && p.sx < 1 && p.sy >= 0 && p.sy < 1);
+    const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true, app.scene!.packet).filter((p) => p.sx >= 0 && p.sx < 1 && p.sy >= 0 && p.sy < 1);
     this.report.probes = shown.map((p) => {
       const got = read(p.sx, p.sy);
       return { name: p.name, ok: probePasses(p, got[0], got[1], got[2]), expected: p.rgb, got };

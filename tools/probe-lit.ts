@@ -10,12 +10,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { depthCheck } from "./probe-lit/depth.ts";
+import { litCheck } from "./probe-lit/lit.ts";
 import { topFirst, type Device, type LitCheck, type Readback, type Shot } from "./probe-lit/shot.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");

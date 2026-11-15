@@ -57,9 +57,8 @@ function renderer(room = 300) {
   let [tiles, error, spent] = [0, 0, 0];
   const gl = fakeGl({
     params: { 0x0d33: 2048 },
+    drawn: () => void (spent += 0.1),
     with: {
-      drawArrays: () => void (spent += 0.1),
-      drawElements: () => void (spent += 0.1),
       getSupportedExtensions: () => ["WEBGL_compressed_texture_astc"],
       deleteTexture: () => void tiles--,
       texStorage2D: () => void (++tiles > room && (error = 0x0505)),
@@ -159,6 +158,7 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect(page.text).toContain("Done.</b> Sent.");
   expect(page.text).toContain("tiers run lowpoly, medium, high");
   expect(lacking(r).filter((line) => !line.startsWith("probe "))).toEqual(["tier ultra did not run every scene"]);
+  expect(card.gl.invalid).toEqual([]);
 
   // Another test on the same page begins at once, with the game as it is, under a run of its own.
   probe.start("soak");

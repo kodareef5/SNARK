@@ -125,8 +125,9 @@ test("the sheet of a creature with pictures draws it with its materials beside i
   };
   // Each side with its materials is lit apart from the same side flat.
   for (const c of of("materials").filter((c) => c.level === 0)) expect(differ(c, of("shaded").find((f) => f.around === c.around && f.level === 0)!)).toBeGreaterThan(200);
-  // The loud dyes show magenta on the coat and lime on the legs, which the asset's own colours never are.
-  const share = (cells: SheetCell[], near: number[]): number => cells.flatMap(pixels).filter((p) => p.every((v, k) => Math.abs(v - near[k]!) < 70)).length;
+  // The loud dyes show magenta on the coat and lime on the legs, which the asset's own colours never are. Within 60 a
+  // channel: lit as the lit tiers light it, a tan of its own (199, 150, 112) is 69 from lime each way.
+  const share = (cells: SheetCell[], near: number[]): number => cells.flatMap(pixels).filter((p) => p.every((v, k) => Math.abs(v - near[k]!) < 60)).length;
   const [own, loud] = [of("regions").filter((c) => c.dye === "asset"), of("regions").filter((c) => c.dye === "loud")];
   expect([share(loud, [218, 43, 218]) > 500, share(loud, [130, 218, 43]) > 50, share(own, [218, 43, 218]), share(own, [130, 218, 43])]).toEqual([true, true, 0, 0]);
   // The checker puts saturated squares and near-white ones on it.

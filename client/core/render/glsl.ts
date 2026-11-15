@@ -1,10 +1,12 @@
 // The shader text of the flat renderer: palette colours, one bone a vertex, the face normal for light. It is the text
 // low poly has always been drawn with, and a test pins its hash so that it stays so. A WebGL2 shell compiles it as is.
+// The lit tiers draw the same vertices with LIT, which lights them as surface.ts does.
 
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { BONES_PER_ROW } from "./packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
+import { LIGHT } from "./surface.ts";
 
 const f = (n: number): string => n.toFixed(4);
 
@@ -31,6 +33,34 @@ void main() {
   }
   float fog = clamp((d - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
   o = vec4(mix(vColor * light * shade, uSky, fog * fog), uAlpha);
+}`;
+
+/**
+ * LIT, what the lit tiers draw flat with in FLAT's place, from FLAT's vertex texts: its normal and checker, the checker
+ * darkening the palette colour as FLAT's does, then lit as SURFACE lights a fully rough surface that is not metal.
+ */
+export const LIT_FRAGMENT = `#version 300 es
+precision highp float;
+in vec3 vRel;
+flat in vec3 vColor;
+uniform vec3 uCamMod;
+uniform float uSolid, uAlpha;
+out vec4 o;
+${LIGHT}void main() {
+  vec3 n = normalize(cross(dFdx(vRel), dFdy(vRel)));
+  vec3 w = vRel + uCamMod - n * ${f(CHECK_INSET)};
+  if (uSolid < 0.5) w.y = 0.0;
+  float d = length(vRel);
+  float shade = 1.0;
+  vec3 a = floor(w);
+  vec3 b = floor(w / ${f(CHECK_COARSE_SIZE)});
+  if (uSolid < 1.5) {
+    if (mod(a.x + a.y + a.z, 2.0) > 0.5) shade -= ${f(1 - CHECK_FINE)} * max(0.0, 1.0 - d / ${f(CHECK_FINE_FADE)});
+    if (mod(b.x + b.y + b.z, 2.0) > 0.5) shade -= ${f(1 - CHECK_COARSE)} * max(0.0, 1.0 - d / ${f(CHECK_COARSE_FADE)});
+  }
+  vec3 c = vColor * shade;
+  vec3 albedo = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+  o = vec4(shown(lit(albedo, vec3(1.0, 1.0, 0.0), n, -vRel / d, vec3(0.0)), d), uAlpha);
 }`;
 
 export const FLAT_MESH_VERTEX = `#version 300 es
@@ -103,5 +133,8 @@ void dropNearer() {
 }
 `;
 
-/** FLAT's fragment text with SEE_THROUGH_SPLIT, which a tier with a split draws flat with until it has programs of its own. */
+/** FLAT's fragment text with SEE_THROUGH_SPLIT, for a tier with a split that is not lit. */
 export const FLAT_SPLIT_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main() {\n", `out vec4 o;\n${SEE_THROUGH_SPLIT}void main() {\n  dropNearer();\n`);
+
+/** LIT's fragment text with SEE_THROUGH_SPLIT, which the lit tiers draw see-through flat draws with. */
+export const LIT_SPLIT_FRAGMENT = LIT_FRAGMENT.replace("void main() {\n", `${SEE_THROUGH_SPLIT}void main() {\n  dropNearer();\n`);
