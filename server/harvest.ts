@@ -57,6 +57,8 @@ export class Harvest {
   readonly dirty = new Set<number>();
   readonly tag = TAG_NODES;
   hits = 0;
+  /** Bytes of used-up slots sent, to every client. */
+  told = 0;
 
   private readonly world: ServerWorld;
   private readonly game: GameServer;
@@ -324,6 +326,7 @@ export class Harvest {
         w.pos = at;
         w.u16(n);
         w.pos = end;
+        this.told += w.byteLength;
         this.game.endOwn(c);
         c.nodesKnown[chunk] = this.version[chunk]!;
       }

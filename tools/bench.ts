@@ -13,6 +13,8 @@ import { AnimState, HumanAnim } from "../shared/anim/pose.ts";
 import { ACT_NONE, ACT_SWING } from "../shared/sim/weapon.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { contentFor, createHost, type Host } from "../server/host.ts";
+import type { Client } from "../server/game.ts";
+import { NODES_TOLD } from "../server/harvest.ts";
 import { loadConfig, loadConfigFolder } from "../server/settings/config.ts";
 import { Rules } from "../server/settings/rules.ts";
 import { WorldStore } from "../server/persist/store.ts";
@@ -359,6 +361,7 @@ section("Everyone working: 100 players striking nodes and moving items");
   const botOf = new Map(bots.map((b) => [b.end.peer as unknown, b]));
   commitTimes.length = 0;
   const hitsBefore = harvest.hits;
+  const [toldBefore, goneBefore] = [harvest.told, harvest.goneCount];
   const commandsBefore = host.game.stats.commands;
   const work: number[] = [];
   for (let i = 0; i < TICKS; i++) {
@@ -390,6 +393,27 @@ section("Everyone working: 100 players striking nodes and moving items");
   // Owner state costs bytes only when it changes. The allowance for a busy survivor is 0.3 KB/s.
   record("of which added by working (inventory, experience, nodes)", (mean(atBase) - mean(spread)) / 1024, "KB/s", 0.3);
   record("nodes used up", harvest.goneCount, "");
+  record(`used-up nodes told within ${NODES_TOLD} chunks, per client`, (harvest.told - toldBefore) / seconds / host.game.playerCount, "B/s");
+  record("and per node used up, to everyone told", (harvest.told - toldBefore) / (harvest.goneCount - goneBefore), "B");
+  // What a player joining at the fight would be told, sent to a client that is not there.
+  const at = chunkAt(DIMS, centers[0]![0], centers[0]![1]);
+  const joinedAt = harvest.told;
+  harvest.sync({ chunk: at, nodesKnown: new Uint32Array(DIMS.chunksX * DIMS.chunksZ), conn: { send: () => {} } } as unknown as Client);
+  record("told a player joining at the fight", harvest.told - joinedAt, "B");
+  // Every node round it used up: a message a chunk, of 9 bytes and one a used-up node.
+  const spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  let most = 0;
+  for (let dz = -NODES_TOLD; dz <= NODES_TOLD; dz++) {
+    for (let dx = -NODES_TOLD; dx <= NODES_TOLD; dx++) {
+      const chunk = at + dz * DIMS.chunksX + dx;
+      most += 9;
+      for (let i = 0; i < nodeSource.perChunk; i++) {
+        nodeSource.at(chunk, i, spot);
+        if (spot.kind !== 0) most++;
+      }
+    }
+  }
+  record("and the most it could be, every node round it used up", most / 1024, "KB");
   const wrong = host.items.audit();
   record("items the ledger cannot account for", wrong.length, "", 0);
 }
