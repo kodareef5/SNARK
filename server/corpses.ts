@@ -3,19 +3,25 @@
 // harvest damage gives one of its drops, picked by weight, and a tool favours the drop its kind of work favours. A young
 // body gives prime meat in place of raw meat. What does not fit the harvester is left in a bag at its feet. Its ragdoll is
 // worked out here as each client works it out (shared/anim/corpse.ts), so a blow lands on the body as it is drawn.
+//
+// One that died in the air or in the water falls or sinks first, as its kind's capsule with nothing steering it, until
+// that rests on the ground, on something built or on the bottom. In water it weighs and slows as a ragdoll does there, so
+// it sinks. It lies, and its ragdoll is laid, only where it came to rest.
 
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, hurtStage } from "../shared/anim/pose.ts";
-import { Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
+import { FALLING, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
+import { DAMP, SINKS, WATER_DAMP } from "../shared/anim/ragdoll.ts";
 import { Solved, rayZones, zoneHit } from "../shared/anim/skeleton.ts";
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
-import { TICK_RATE } from "../shared/coords.ts";
+import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { detCos, detSin } from "../shared/math/scalar.ts";
 import { Rng } from "../shared/rng.ts";
 import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
-import { MF_OUT } from "../shared/sim/character.ts";
-import { F_PROP } from "../shared/sim/entities.ts";
+import { Body as Mover, MF_OUT, MF_ROOTED, MODE_WALK, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
+import { F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
+import { groundUnder, restingAt, type CollisionWorld } from "../shared/world/collide.ts";
 import { rayBox } from "../shared/world/ray.ts";
 import type { Death } from "./death.ts";
 import { event } from "./events/bus.ts";
@@ -41,6 +47,15 @@ const XP = 1;
 const SHAKE_TICKS = TICK_RATE;
 /** Metres a ray is searched for bodies beyond its length, for one that rolled from where it fell. */
 const PAD = 4;
+/**
+ * Ticks a body falls or sinks at most before it lies wherever it is. A fall from the top of the world to its floor at the
+ * step's terminal speed takes 68 s; in five minutes a body sinks about 160 m, at 0.55 m/s.
+ */
+export const DROP_TICKS = 5 * 60 * TICK_RATE;
+/** Metres under a body within which the ground, or something it could stand on, holds it where it is: the step's own probe. */
+const PROBE = 0.02;
+/** Of its speed, what a body sinking keeps each tick, as a ragdoll's bodies under water do. */
+const WET_KEEP = 1 - (DAMP + WATER_DAMP) * TICK_DT;
 
 const HARVEST = event("harvest");
 
@@ -75,16 +90,20 @@ export interface Body {
   /** The tick of its next deadline. */
   next: number;
   stage: number;
-  readonly x: number;
-  readonly y: number;
-  readonly z: number;
+  /** Where it lies, as the wire has it, or while it falls where it is now. */
+  x: number;
+  y: number;
+  z: number;
   /** Radians. */
   readonly yaw: number;
-  /** Its ragdoll, null for a kind without one, and its pose as the model's about (x, y, z). */
+  /** Its ragdoll, null for a kind without one or while it falls, and its pose as the model's about (x, y, z). */
   fall: Fall | null;
   readonly pose: Solved | null;
   /** In the list of bodies stepped each tick. */
   moving: boolean;
+  /** While it falls or sinks to where it will lie: its capsule, and the ticks it has fallen. */
+  drop: Mover | null;
+  dropped: number;
 }
 
 /** What one blow gave, for tests and the console. */
@@ -102,8 +121,14 @@ export class Corpses {
   /** By record id, and by entity. */
   readonly bodies = new Map<number, Body>();
   private readonly byEnt = new Map<number, Body>();
-  /** Bodies still falling. */
+  /** Bodies whose ragdolls are still moving. */
   private readonly moving: Body[] = [];
+  /** Bodies falling or sinking to where they will lie. */
+  private readonly dropping: Body[] = [];
+  /** Loaded from a save, to be asked once the world is whole whether anything holds them up. */
+  private readonly loaded: Body[] = [];
+  /** By kind, what a body sinks by in water: its kind's capsule, weighing a quarter. */
+  private readonly sunk: (MoveParams | undefined)[] = [];
   /** Made by `fell`, waiting for the creature's entity to go. */
   private readonly laid = new Map<number, Body>();
   /** Blows that landed on a body, and the last one's yield. */
@@ -174,8 +199,15 @@ export class Corpses {
     // Survival clears rec.out as health runs out, so the body asks what the entity still shows.
     const out = rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0;
     const b = this.make(body, rec.kind, max, max, young, size, out, life);
+    // Off the ground with nothing under it, it falls on as it was going.
+    if ((ents.flags[e]! & F_GROUNDED) === 0 && !this.held(b)) this.fallFrom(b, ents.vx[e]!, ents.vy[e]!, ents.vz[e]!, ents.yaw[e]!);
     this.save(b);
     this.laid.set(rec.pid, b);
+  }
+
+  /** How many bodies are falling or sinking now. */
+  get falling(): number {
+    return this.dropping.length;
   }
 
   /** Death took the creature `pid`'s entity away: its body takes its place. */
@@ -200,6 +232,8 @@ export class Corpses {
     rec.yaw &= 0xffc0;
     const b = this.make(rec, s.species, s.max, s.left, s.young, corpseSize(s.span), s.out, s.life);
     this.place(b);
+    // A body saved while it fell lies where it was in the air until it is found to hang there, when the world is whole.
+    this.loaded.push(b);
   }
 
   private make(rec: EntityRecord, kind: number, max: number, left: number, young: boolean, size: number, out: boolean, life: number): Body {
@@ -207,18 +241,45 @@ export class Corpses {
     const b: Body = {
       rec, kind, e: -1, max, left, young, size, out, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
-      fall: null, pose: anim?.rig.ragdoll ? new Solved(anim.rig.bones) : null, moving: false,
+      fall: null, pose: anim?.rig.ragdoll ? new Solved(anim.rig.bones) : null, moving: false, drop: null, dropped: 0,
     };
     this.bodies.set(rec.pid, b);
     return b;
   }
 
-  /** Gives a body its entity, its fall and its deadline. Its time runs whether or not the store has room for it. */
+  /** Whether the ground, or something its kind's capsule could stand on, holds a body up where it is. */
+  private held(b: Body): boolean {
+    const world = this.ctx.world;
+    const p = world.reg.move[b.kind]!;
+    return rests(world, b.x, b.y, b.z, p);
+  }
+
+  /** Sets body `b` falling from where it is, at the velocity given, facing `yaw` in 65536ths of a turn. */
+  private fallFrom(b: Body, vx: number, vy: number, vz: number, yaw: number): void {
+    const m = new Mover();
+    m.kind = b.kind;
+    m.x = b.x;
+    m.y = b.y;
+    m.z = b.z;
+    m.vx = vx;
+    m.vy = vy;
+    m.vz = vz;
+    m.yaw = yaw;
+    b.drop = m;
+    b.dropped = 0;
+    b.fall = null;
+  }
+
+  /**
+   * Gives a body its entity, its deadline, and its fall to where it will lie or, lying, its ragdoll. Its time runs and it
+   * falls whether or not the store has room for it.
+   */
   private place(b: Body): void {
     const { world, records } = this.ctx;
     const ents = world.ents;
     const rec = b.rec;
     this.schedule(b);
+    if (b.drop) this.dropping.push(b);
     const e = ents.create(b.kind, b.x, b.y, b.z, F_PROP);
     if (e < 0) return;
     b.e = e;
@@ -229,12 +290,69 @@ export class Corpses {
     records.entOf.set(rec.pid, e);
     this.byEnt.set(e, b);
     this.cue(b);
-    const anim = world.anims[b.kind];
+    if (b.drop) ents.anim[e] = FALLING;
+    else this.lay(b);
+  }
+
+  /** Lays a body's ragdoll where it lies. */
+  private lay(b: Body): void {
+    const anim = this.ctx.world.anims[b.kind];
     const r = anim && b.pose ? layCorpse(anim, b.out, b.x, b.y, b.z, b.yaw, b.size, b.pose) : null;
     if (r) {
       b.fall = new Fall(r);
       this.wake(b);
     }
+  }
+
+  /**
+   * One tick of a body's fall: its kind's capsule as the step moves a creature with nothing steering it and no way to jump,
+   * in water weighing a quarter and slowed as a ragdoll's bodies are, so that it sinks. It lies where something holds it
+   * up, where it can go no further, or after DROP_TICKS.
+   */
+  private fall(b: Body): void {
+    const world = this.ctx.world;
+    const m = b.drop!;
+    const p = world.reg.move[b.kind]!;
+    const wet = m.y + p.height * 0.5 < world.hf.seaLevel;
+    if (wet) {
+      m.vx = Math.fround(m.vx * WET_KEEP);
+      m.vy = Math.fround(m.vy * WET_KEEP);
+      m.vz = Math.fround(m.vz * WET_KEEP);
+    }
+    // Each tick it is a walker in the air, whatever the step made it the tick before.
+    m.mode = MODE_WALK;
+    m.stance = STANCE_STAND;
+    m.grounded = false;
+    m.mflags = MF_ROOTED;
+    const [x, y, z] = [m.x, m.y, m.z];
+    stepBody(world, m, 0, 0, m.yaw, 0, 0, wet ? (this.sunk[b.kind] ??= { ...p, gravity: p.gravity * SINKS }) : p, TICK_DT);
+    b.dropped++;
+    const stuck = m.x === x && m.y === y && m.z === z;
+    if (!stuck && !(m.vy <= 0 && rests(world, m.x, m.y, m.z, p)) && b.dropped < DROP_TICKS) {
+      b.x = m.x;
+      b.y = m.y;
+      b.z = m.z;
+      if (b.e >= 0) world.ents.setPosition(b.e, m.x, m.y, m.z);
+      return;
+    }
+    this.land(b);
+  }
+
+  /** A body that fell comes to rest: where it lies is what the wire carries, and its ragdoll is laid there. */
+  private land(b: Body): void {
+    const m = b.drop!;
+    const rec = b.rec;
+    b.drop = null;
+    b.x = rec.x = wireX(m.x);
+    b.y = rec.y = wireY(m.y);
+    b.z = rec.z = wireX(m.z);
+    const ents = this.ctx.world.ents;
+    if (b.e >= 0) {
+      ents.setPosition(b.e, b.x, b.y, b.z);
+      ents.anim[b.e] = 0;
+    }
+    this.save(b);
+    this.lay(b);
   }
 
   private wake(b: Body): void {
@@ -296,11 +414,29 @@ export class Corpses {
   step(tick: number): void {
     for (const pid of [...this.laid.keys()]) this.raise(pid);
     const world = this.ctx.world;
+    for (const b of this.loaded) {
+      if (this.bodies.get(b.rec.pid) !== b || this.held(b)) continue;
+      this.fallFrom(b, 0, 0, 0, b.rec.yaw);
+      this.dropping.push(b);
+      if (b.e >= 0) world.ents.anim[b.e] = FALLING;
+    }
+    this.loaded.length = 0;
+    const dropping = this.dropping;
+    let still = 0;
+    for (const b of dropping) {
+      if (!b.drop || this.bodies.get(b.rec.pid) !== b) continue;
+      this.fall(b);
+      if (b.drop) dropping[still++] = b;
+    }
+    dropping.length = still;
     const moving = this.moving;
     let kept = 0;
     for (const b of moving) {
       const fall = b.fall;
-      if (!fall || this.bodies.get(b.rec.pid) !== b) continue;
+      if (!fall || this.bodies.get(b.rec.pid) !== b) {
+        b.moving = false;
+        continue;
+      }
       if (fall.tick(world)) fall.ragdoll.pose(b.pose!);
       if (!fall.still) moving[kept++] = b;
       else b.moving = false;
@@ -510,4 +646,9 @@ export class Corpses {
     if (rec.inv) this.ctx.items.burnAll(rec);
     this.ctx.records.delete(rec.pid);
   }
+}
+
+/** Whether the ground, or something a capsule of `p` could stand on, is within PROBE under it at (x, y, z). */
+function rests(w: CollisionWorld, x: number, y: number, z: number, p: MoveParams): boolean {
+  return y - groundUnder(w.hf, x, z, p.radius) <= PROBE || !Number.isNaN(restingAt(w, x, y, z, p.radius, p.height, PROBE, p.slopeCos));
 }
