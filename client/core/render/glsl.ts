@@ -89,3 +89,17 @@ void main() {
   vRel = p;
   gl_Position = uViewProj * vec4(p, 1.0);
 }`;
+
+/**
+ * Every see-through program of a lit tier includes this and calls dropNearer() first. A see-through draw across the
+ * split is drawn in both depth ranges; in the far one `uFrom` is the split, and a fragment nearer than that, which the
+ * near range drew, is dropped, so no band of it is blended twice. Everywhere else `uFrom` is 0.
+ */
+export const SEE_THROUGH_SPLIT = `uniform float uFrom;
+void dropNearer() {
+  if (1.0 / gl_FragCoord.w < uFrom) discard;
+}
+`;
+
+/** FLAT's fragment text with SEE_THROUGH_SPLIT, which a tier with a split draws flat with until it has programs of its own. */
+export const FLAT_SPLIT_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main() {\n", `out vec4 o;\n${SEE_THROUGH_SPLIT}void main() {\n  dropNearer();\n`);

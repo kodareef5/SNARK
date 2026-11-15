@@ -1,8 +1,8 @@
 // Software rasterizer that executes a frame packet on the CPU, so rendering can be looked at and tested without a browser.
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
-import { NEAR_BODY } from "../../client/core/render/camera.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER, type TextureUpload } from "../../client/core/render/packet.ts";
+import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
@@ -143,7 +143,13 @@ export class Rasterizer {
   readonly width: number;
   readonly height: number;
   readonly color: Uint8ClampedArray;
+  /**
+   * What each pixel keeps of depth: depth after the projection, put into the step's part of the buffer as the shell's
+   * depth range puts it, from -1 to 1 with one range, -1 to 0 for the near and 0 to 1 for the far.
+   */
   readonly depth: Float32Array;
+  /** 24 keeps depth as a graphics card's buffer of that many bits does, in whole steps from 0 to 2^24 - 1. 0 keeps it as it comes. */
+  depthBits = 0;
   /** PICK_* per pixel. */
   readonly pickKind: Uint8Array;
   /** Structure ref (chunk * 65536 + slot) or entity slot index. */
@@ -161,16 +167,26 @@ export class Rasterizer {
   /** Given a manifest: the surfaces uploaded, by the slot of their level, each with its own slot. */
   private readonly surfaces = new Map<number, { slot: number; surface: DecodedSurface }>();
   private packet!: FramePacket;
-  /** The matrix and near distance in use: the packet's main pass or its near pass. */
+  /**
+   * The step being drawn (packet.ts): its matrix, the view depths it clips to, how its depth goes into the buffer, and
+   * the view depth nearer than which its see-through pixels are left to the near range.
+   */
   private matrix!: Float32Array;
   private nearClip = 0.05;
+  private farClip = Infinity;
+  private depthScale = 1;
+  private depthShift = 0;
+  private depthSteps = 0;
+  private from = 0;
   /** Triangles are drawn without the checker. */
   private plain = false;
   /** What `pickBone` gets for the triangle being drawn. */
   private bone = 0;
   private scratch = new Float32Array(3 * 1024);
-  // Clip scratch: up to 4 vertices of (camera-relative x, y, z, screen x, y, 1/w, NDC depth).
-  private readonly poly = new Float64Array(4 * 7);
+  // Clip scratch: a triangle, then up to 5 vertices of (camera-relative x, y, z, screen x, y, 1/w, NDC depth), and room between clips.
+  private readonly tri = new Float64Array(3 * 7);
+  private readonly poly = new Float64Array(5 * 7);
+  private readonly cutScratch = new Float64Array(5 * (CARRIED + 4));
   private readonly textures = new Map<number, Texture>();
   /** Textures being made: their pictures as bytes, and how many bytes are still to come. */
   private readonly making = new Map<number, { role: TextureRole; top: number; pictures: Uint8Array[]; left: number }>();
@@ -181,7 +197,7 @@ export class Rasterizer {
   private readonly sky = new Float64Array(3);
   // A textured triangle's corners, and its clip scratch: per vertex what it carries, then screen x, y, 1/w and NDC depth.
   private readonly corners = new Float64Array(3 * CARRIED);
-  private readonly wide = new Float64Array(4 * (CARRIED + 4));
+  private readonly wide = new Float64Array(5 * (CARRIED + 4));
 
   constructor(width: number, height: number, pack: Pack, hf: Heightfield, manifest: Manifest | null = null) {
     this.width = width;
@@ -230,28 +246,86 @@ export class Rasterizer {
     this.pickBone.fill(0);
     this.trianglesDrawn = 0;
 
-    this.matrix = packet.viewProj;
-    this.nearClip = 0.05;
+    this.depthSteps = (2 ** this.depthBits - 1) / 2;
     this.plain = false;
     this.bone = 0;
-    this.terrain(packet);
+    let step = -1;
     for (let d = 0; d < packet.drawCount; d++) {
-      // The viewer's own body draws over everything so far, with its own near plane.
-      if ((packet.drawFlags[d]! & DRAW_NEAR) !== 0 && this.matrix !== packet.nearViewProj) {
-        this.matrix = packet.nearViewProj;
-        this.nearClip = NEAR_BODY;
-        this.depth.fill(Infinity);
-      }
+      const s = stepOf(packet, d);
+      while (step < s) this.step(packet, ++step);
       this.draw(packet, d);
     }
+    while (step < STEP_FAR_SEE) this.step(packet, ++step);
   }
 
-  private terrain(p: FramePacket): void {
+  /**
+   * Begins a step of the frame as the shell does: its matrix, the view depths it clips to (from 0.05 m on the near side,
+   * nearer than the camera's own plane, as the rasterizer always has), its part of the depth buffer, and in an opaque
+   * step the terrain tiles in its range. The viewer's own body draws over everything so far, with its own near plane.
+   */
+  private step(p: FramePacket, s: number): void {
+    const split = p.split > 0 && s !== STEP_BODY;
+    const far = s === STEP_FAR || s === STEP_FAR_SEE;
+    this.matrix = s === STEP_BODY ? p.nearViewProj : far ? p.farViewProj : p.viewProj;
+    this.nearClip = s === STEP_BODY ? NEAR_BODY : far ? p.split * FAR_FROM : 0.05;
+    this.farClip = split && !far ? p.split : Infinity;
+    this.depthScale = split ? 0.5 : 1;
+    this.depthShift = split ? (far ? 0.5 : -0.5) : 0;
+    this.from = s === STEP_FAR_SEE ? p.split : 0;
+    if (s === STEP_BODY) this.depth.fill(Infinity);
+    if (s <= STEP_FAR) this.terrain(p, s);
+  }
+
+  /** What a pixel at depth `z` after the projection keeps (`depth`). */
+  private stored(z: number): number {
+    const d = z * this.depthScale + this.depthShift;
+    return this.depthBits > 0 ? Math.round((d + 1) * this.depthSteps) : d;
+  }
+
+  /**
+   * Clips a polygon of `count` corners, `stride` numbers apart in `src` and each a camera-relative position first, to the
+   * step's view depths. The first `carried` numbers of a corner are carried to where an edge is cut. Writes the corners
+   * left `outStride` apart to `out` and returns how many there are.
+   */
+  private clip(src: Float64Array, count: number, stride: number, carried: number, out: Float64Array, outStride: number): number {
+    const n = this.cut(src, count, stride, carried, out, outStride, this.nearClip, 1);
+    if (this.farClip === Infinity || n < 3) return n;
+    const spare = this.cutScratch;
+    spare.set(out.subarray(0, n * outStride));
+    return this.cut(spare, n, outStride, carried, out, outStride, this.farClip, -1);
+  }
+
+  /** One plane of `clip`: keeps what lies past view depth `plane` when `side` is 1, and what lies short of it when -1. */
+  private cut(src: Float64Array, count: number, stride: number, carried: number, out: Float64Array, outStride: number, plane: number, side: number): number {
+    const m = this.matrix;
+    let n = 0;
+    for (let i = 0; i < count; i++) {
+      const a = i * stride;
+      const b = ((i + 1) % count) * stride;
+      const w0 = m[3]! * src[a]! + m[7]! * src[a + 1]! + m[11]! * src[a + 2]!;
+      const w1 = m[3]! * src[b]! + m[7]! * src[b + 1]! + m[11]! * src[b + 2]!;
+      const in0 = (w0 - plane) * side > 0;
+      if (in0) {
+        for (let k = 0; k < carried; k++) out[n * outStride + k] = src[a + k]!;
+        n++;
+      }
+      if (in0 !== (w1 - plane) * side > 0) {
+        const t = (plane - w0) / (w1 - w0);
+        for (let k = 0; k < carried; k++) out[n * outStride + k] = src[a + k]! + (src[b + k]! - src[a + k]!) * t;
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /** The terrain tiles in depth range `range`. */
+  private terrain(p: FramePacket, range: number): void {
     const hf = this.hf;
     const row = TILE_QUADS + 1;
     const pos = new Float32Array(row * row * 3);
     const tint = new Uint8Array(row * row);
     for (let t = 0; t < p.tileCount; t++) {
+      if ((p.tilePass[t]! & (1 << range)) === 0) continue;
       const stride = p.tiles[t * 4 + 3]!;
       const i0 = p.tileOrigin[t * 2]!;
       const j0 = p.tileOrigin[t * 2 + 1]!;
@@ -497,32 +571,12 @@ export class Rasterizer {
     ny /= nl;
     nz /= nl;
 
-    // Clip against the near plane (w > near), producing 3 or 4 vertices.
+    // Clip to the step's view depths, producing up to 5 vertices.
     const m = this.matrix;
-    const near = this.nearClip;
     const poly = this.poly;
-    let count = 0;
-    const src = [ax, ay, az, bx, by, bz, cx, cy, cz];
-    for (let i = 0; i < 3; i++) {
-      const j = (i + 1) % 3;
-      const x0 = src[i * 3]!, y0 = src[i * 3 + 1]!, z0 = src[i * 3 + 2]!;
-      const x1 = src[j * 3]!, y1 = src[j * 3 + 1]!, z1 = src[j * 3 + 2]!;
-      const w0 = m[3]! * x0 + m[7]! * y0 + m[11]! * z0;
-      const w1 = m[3]! * x1 + m[7]! * y1 + m[11]! * z1;
-      if (w0 > near) {
-        poly[count * 7] = x0;
-        poly[count * 7 + 1] = y0;
-        poly[count * 7 + 2] = z0;
-        count++;
-      }
-      if (w0 > near !== w1 > near) {
-        const t = (near - w0) / (w1 - w0);
-        poly[count * 7] = x0 + (x1 - x0) * t;
-        poly[count * 7 + 1] = y0 + (y1 - y0) * t;
-        poly[count * 7 + 2] = z0 + (z1 - z0) * t;
-        count++;
-      }
-    }
+    const tri = this.tri;
+    [tri[0], tri[1], tri[2], tri[7], tri[8], tri[9], tri[14], tri[15], tri[16]] = [ax, ay, az, bx, by, bz, cx, cy, cz];
+    const count = this.clip(tri, 3, 7, 3, poly, 7);
     if (count < 3) return;
     const W = this.width;
     const H = this.height;
@@ -568,18 +622,20 @@ export class Rasterizer {
           const e1 = ((x2 - fx) * (y0 - fy) - (x0 - fx) * (y2 - fy)) * inv;
           const e2 = 1 - e0 - e1;
           if (e0 < 0 || e1 < 0 || e2 < 0) continue;
-          const z = e0 * poly[v0 + 6]! + e1 * poly[v1 + 6]! + e2 * poly[v2 + 6]!;
+          const z = this.stored(e0 * poly[v0 + 6]! + e1 * poly[v1 + 6]! + e2 * poly[v2 + 6]!);
           const at = py * W + px;
           if (z >= this.depth[at]!) continue;
+          // Perspective-correct position for the checker and fog. `qs` is the view depth.
+          const q0 = e0 * poly[v0 + 5]!, q1 = e1 * poly[v1 + 5]!, q2 = e2 * poly[v2 + 5]!;
+          const qs = 1 / (q0 + q1 + q2);
+          // In the far range a see-through pixel the near range drew is dropped, as SEE_THROUGH_SPLIT drops it.
+          if (blend && qs < this.from) continue;
           if (!blend) {
             this.depth[at] = z;
             this.pickKind[at] = pickKind;
             this.pickId[at] = pickId;
             this.pickBone[at] = this.bone;
           }
-          // Perspective-correct position for the checker and fog.
-          const q0 = e0 * poly[v0 + 5]!, q1 = e1 * poly[v1 + 5]!, q2 = e2 * poly[v2 + 5]!;
-          const qs = 1 / (q0 + q1 + q2);
           const rx = (q0 * poly[v0]! + q1 * poly[v1]! + q2 * poly[v2]!) * qs;
           const ry = (q0 * poly[v0 + 1]! + q1 * poly[v1 + 1]! + q2 * poly[v2 + 1]!) * qs;
           const rz = (q0 * poly[v0 + 2]! + q1 * poly[v1 + 2]! + q2 * poly[v2 + 2]!) * qs;
@@ -638,26 +694,11 @@ export class Rasterizer {
       src[o + 11] = s.tangents[v * 4 + 3]!;
     });
 
-    // Clip against the near plane as `triangle` does, with everything a corner carries.
+    // Clip as `triangle` does, with everything a corner carries.
     const m = this.matrix;
-    const near = this.nearClip;
     const poly = this.wide;
     const stride = CARRIED + 4;
-    let count = 0;
-    for (let i = 0; i < 3; i++) {
-      const a = i * CARRIED, b = ((i + 1) % 3) * CARRIED;
-      const w0 = m[3]! * src[a]! + m[7]! * src[a + 1]! + m[11]! * src[a + 2]!;
-      const w1 = m[3]! * src[b]! + m[7]! * src[b + 1]! + m[11]! * src[b + 2]!;
-      if (w0 > near) {
-        for (let k = 0; k < CARRIED; k++) poly[count * stride + k] = src[a + k]!;
-        count++;
-      }
-      if (w0 > near !== w1 > near) {
-        const t = (near - w0) / (w1 - w0);
-        for (let k = 0; k < CARRIED; k++) poly[count * stride + k] = src[a + k]! + (src[b + k]! - src[a + k]!) * t;
-        count++;
-      }
-    }
+    const count = this.clip(src, 3, CARRIED, CARRIED, poly, stride);
     if (count < 3) return;
     const W = this.width;
     const H = this.height;
@@ -696,7 +737,7 @@ export class Rasterizer {
           const e1 = ((x2 - fx) * (y0 - fy) - (x0 - fx) * (y2 - fy)) * inv;
           const e2 = 1 - e0 - e1;
           if (e0 < 0 || e1 < 0 || e2 < 0) continue;
-          const z = e0 * poly[v0 + CARRIED + 3]! + e1 * poly[v1 + CARRIED + 3]! + e2 * poly[v2 + CARRIED + 3]!;
+          const z = this.stored(e0 * poly[v0 + CARRIED + 3]! + e1 * poly[v1 + CARRIED + 3]! + e2 * poly[v2 + CARRIED + 3]!);
           const at = py * W + px;
           if (z >= this.depth[at]!) continue;
           const q0 = e0 * i0, q1 = e1 * i1, q2 = e2 * i2;
