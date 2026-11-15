@@ -322,6 +322,8 @@ test("the terrain flight is offered only by its own server's link, flies the cam
   await run(probe, h, app, card.r, 30000, { each: () => void (among = Math.max(among, app.session.far.chunks.size - sent)) });
   const s = probe.report.soak!;
   expect([probe.report.done, s.wood, s.load.bodies, s.minutes.length, among, app.session.far.chunks.size === sent]).toEqual([true, true, 0, 1, 58, true]);
+  // The picture probes look at the proving ground, so a soak through the wood lacks none.
+  expect(lacking(probe.report, "soak")).not.toContain("no probes");
   expect(deviceTable(probe.report).some((line) => line.startsWith("soak      high: turning once a minute (the terrain map's wood and 480 far base chunks round its middle"))).toBe(true);
 });
 

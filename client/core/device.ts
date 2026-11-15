@@ -797,8 +797,8 @@ export class DeviceRun {
     load.diskBytes = r.stats.cached;
     load.failed = this.failures();
     load.cache = r.cache?.mode ?? "none";
-    // The probes look at the proving ground, which the terrain flight's map is not.
-    this.stage = this.mode === "terrain" ? "hashes" : "probes";
+    // The probes look at the proving ground, which the terrain server's map is not.
+    this.stage = this.side.terrainMap ? "hashes" : "probes";
     this.report.stage = this.stage;
     return true;
   }

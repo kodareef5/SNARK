@@ -172,8 +172,8 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   if (!r.done) out.push("it never finished");
   if (r.reloadedDuring) out.push(`the page was reloaded during ${r.reloadedDuring}`);
   for (const e of r.errors) out.push(`error: ${e}`);
-  // The picture probes look at the proving ground, which the terrain flight's map is not.
-  for (const [part, value] of [["device", r.device], ["gpu", r.gpu], ["load", r.load], ["link", r.link.httpMs], ["probes", mode === "terrain" || r.probes], ["hashes", r.hashes]] as const) if (!value) out.push(`no ${part}`);
+  // The picture probes look at the proving ground, which the terrain server's map is not.
+  for (const [part, value] of [["device", r.device], ["gpu", r.gpu], ["load", r.load], ["link", r.link.httpMs], ["probes", mode === "terrain" || r.soak?.wood || r.probes], ["hashes", r.hashes]] as const) if (!value) out.push(`no ${part}`);
   for (const p of r.probes ?? []) if (!p.ok) out.push(`probe ${p.name} is wrong`);
   for (const h of r.hashes ?? []) if (h.got !== h.want) out.push(`hash ${h.name} differs from the server's`);
   if (r.link.missed > 0) out.push(`${r.link.missed} snapshots missed on this machine's own link`);
