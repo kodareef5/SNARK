@@ -52,12 +52,11 @@ raptors that will come for you.
 | R | Reload |
 | G | Let a drawn bow down without loosing. With a melee weapon in hand, swing it |
 | V | Look from behind the body, or from its eyes |
-| E | Pick a bush, open a cache or a box, open a door, get on a saddled creature of your tribe and off it, take a young creature that is nobody's, look into one that is unconscious or yours. Held on something built: what can be done to it |
+| E | At an obelisk's terminal, the other servers of the cluster to travel to with all you carry ([server/README.md](server/README.md)). Pick a bush, open a cache or a box, open a door, get on a saddled creature of your tribe and off it, take a young creature that is nobody's, look into one that is unconscious or yours. Held on something built: what can be done to it |
 | F | Look into the creature you ride or look at: follow or stay, its stance, its saddle, whether it may mate, its levels |
 | T, Y, J, U | Whistle the creature looked at to follow, to stay; all of them to follow, to stay |
 | Building piece in hand | Left button sets it down where it is shown. E turns it, Q takes the next nearest place (held: open ground), R changes a wall to a doorframe or a windowframe, arrow keys raise and lower a foundation |
 | I, P, M, O | Inventory, character (stats, engrams, crafting), map, settings (among them voice volume, and whether B is held or switches the microphone) |
-| L | The other servers of the cluster: choose one to travel there with all you carry ([server/README.md](server/README.md)) |
 | B | Hold to talk to those near; with Alt a whisper, with Shift a yell. The first press asks for the microphone |
 | Enter, Insert, / | Chat: to everyone, to those within 60 m, to your tribe. Tab changes channel, Enter says the line |
 | Backquote or Tab | Console. `help` lists commands; `tribe` founds and runs a tribe; `mute <name>` stops you hearing someone |

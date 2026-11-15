@@ -71,12 +71,16 @@ bun server/main.ts --dev --host 0.0.0.0 --map var/maps/tampa.snmap --port 8799 -
 The saves are beside each other, so both servers share the folder `var/cluster/clusters/florida`; `-ClusterDirOverride=<folder>`
 puts it anywhere else on this machine. A new save takes the lowest world id the cluster has not given out; two saves made
 outside a cluster are both world 1, so only one of them can join. Open `http://localhost:8798` (from a phone,
-`http://<this machine's address>:8798`), press L for the travel list and choose Tampa: the page goes to port 8799 and the
-survivor arrives at its spawn point. L there and Miami bring it back to where it stood. `travel` in the console lists and
-leaves the same way. A survivor whose page closed on the way, or that was turned away, is back on the server it left as soon
-as its owner joins there, and by itself after ten minutes. Reached through tunnels, give each server
-`--public-url https://<its own tunnel's host>`, and a page that came by one goes by the other's. An operator's `cluster`
-lists the cluster and who is away, and `cluster audit` says whether every item of it is accounted for.
+`http://<this machine's address>:8798`) and walk to an obelisk, which stands 90 m tall; at the terminal at its foot press E
+for the travel list and choose Tampa. The page goes to port 8799 and shows the spawn screen: choose a spawn point, or a bed
+your tribe has there, and you rise there with all you carried. An obelisk's terminal there and Miami bring you back, to a
+spawn point or your bed. A survivor whose page closed on the way, or that was turned away, is back on the server it left as
+soon as its owner joins there, and by itself after ten minutes. Reached through tunnels, give each server
+`--public-url https://<its own tunnel's host>`, and a page that came by one goes by the other's. An operator's cheats, which
+need `enablecheats` again after every arrival since an arrival is a new session: `travel [server]` lists the cluster's servers
+or sends the survivor from where it stands, `cluster` lists the cluster and who is away, and `cluster audit` says whether every
+item of it is accounted for. Now and then, `bun run cluster-trip` plays a survivor there and back through the game's agent on
+two throwaway servers, or with `-- --url ws://localhost:8798/ws --to Tampa` on running ones.
 
 See [authority](../planning/architecture/authority.md),
 [scheduling](../planning/architecture/scheduling.md), and
