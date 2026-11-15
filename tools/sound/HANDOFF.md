@@ -111,9 +111,18 @@ The machine has an RTX 4070 Laptop GPU with 8 GB, not 12 GB, and 62 GB of memory
   Hugging Face token has no access until the owner accepts their terms. Stable's PyTorch package pins torch 2.7.1,
   transformers 5.8 or newer and numpy 2.2 or newer. MOSS's pins conflict with those, so Stable needs its own venv
   (`.venv-stable`, already git-ignored).
-- `accept.py` writes `sounds.json` and `recipes.json` only for the slots in the picks, and deletes accepted takes no
-  pick names. The Mac's picks file did not travel, so a picks file for new takes must first list every take now in
-  `sounds.json`.
+- The owner listened to the CUDA candidates and liked them. Eighteen events from them are accepted. The picks were
+  measured, not hand-picked: one event per file first, loudest first, within a length for the kind of sound. Files
+  flagged with a noisy floor were skipped, and so were impacts over a steady tone. The picks file is
+  `tools/sound/.work/core/creatures/dodo/picks-pt.json` (not committed). The dodo now has 67 takes: call 12, and
+  every other sound 8, except sand steps at 7. Three of the four sand candidates had a noisy floor.
+- Accepted takes are stored as cuts (`tools/sound/cut.py`): the event plus 50 ms each side, as mono 24-bit PCM at the
+  model's rate. This is the same mono the build makes. From 16-bit sources the build reads exactly the same samples
+  (checked on all 49 older takes); from float it is within 2^-24. The recipe keeps the source's sha256 and the
+  cut in frames. `remake.py` remakes each source once, cuts it and compares. Takes went from 19.3 MB (32 whole files)
+  to 7.9 MB (67 cuts). The game's pack holds 51.2 s in 1.62 MB.
+- `accept.py` now adds picks to the takes already accepted (`--replace` starts a slot afresh), and `--compact` cuts
+  any take still stored whole.
 
 ## What the new machine changes (the plan written on the Mac)
 
