@@ -78,14 +78,17 @@ async function boot(): Promise<void> {
   const skin = installSkin(app.ui.frame), skinImage = new Image();
   skinImage.src = SKIN_URL;
   void skinImage.decode().then(() => { skin.url = SKIN_URL; }).catch(() => {});
-  try { app.ui.settings.restoreInterface(localStorage.getItem("snark.interface")); } catch {}
-  addEventListener("pagehide", () => { try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {} });
+  // A measurement run neither reads nor writes the player's saved interface preferences.
+  const measured = selfcheck || bench !== null || device !== null;
+  const save = (): void => { if (!measured) try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {} };
+  if (!measured) try { app.ui.settings.restoreInterface(localStorage.getItem("snark.interface")); } catch {}
+  addEventListener("pagehide", save);
   app.stress = params.has("stress");
   app.debug = app.stress || params.has("debug");
   app.steer = driveCheck || !selfcheck && !device;
   app.plainSky = selfcheck;
   [app.ui.settings.touchFirst, app.dpr] = [matchMedia("(pointer: coarse)").matches, devicePixelRatio];
-  app.address((name) => params.get(name), selfcheck || bench !== null || device !== null);
+  app.address((name) => params.get(name), measured);
   app.page = {
     origin: location.origin,
     protocol: location.protocol,
@@ -146,7 +149,7 @@ async function boot(): Promise<void> {
     drivingCheck?.observe(app);
     if (savedRevision !== app.ui.settings.revision && now - savedAt > 250) {
       savedRevision = app.ui.settings.revision; savedAt = now;
-      try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {}
+      save();
     }
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
