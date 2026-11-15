@@ -93,6 +93,12 @@ export interface MaterialSpec {
   readonly regions?: string | { readonly mask: string; readonly mask2?: string };
   /** Kept for the record. `--check` holds the normal map against it. */
   readonly height?: string;
+  /**
+   * Layers over the base colour on the same layout: wounds that show as a creature is hurt, and the wear of its corpse
+   * as it decays. Not read yet.
+   */
+  readonly hurt?: string;
+  readonly decay?: string;
   /** The same pictures at a smaller size, where the set was made small first. `--check` holds each large one, shrunk, against its small one. */
   readonly small?: { readonly base?: string; readonly normal?: string };
   readonly twoSided?: boolean;

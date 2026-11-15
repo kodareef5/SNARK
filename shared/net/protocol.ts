@@ -37,7 +37,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -154,6 +154,10 @@ export const ORDER_UNSADDLE = 5;
 /** Allow or forbid mating. A creature mates only with one of its species and tribe that is also allowed. */
 export const ORDER_MATE = 6;
 export const ORDER_UNMATE = 7;
+/** Protocol 11. It wanders about where it is, as a wild one does. */
+export const ORDER_WANDER = 8;
+/** Protocol 11. Followed by the target's entity index u32: it goes for that body. A whistle may give it. */
+export const ORDER_ATTACK = 9;
 export const ORDER_LEVEL = 16;
 /** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE or ORDER_LEVEL. */
 export const ORDER_ALL = 0xffffffff;
@@ -174,6 +178,16 @@ export const CMD_VIEW = 24;
 export const CMD_MAP_ZOOM = 25;
 /** Metres u16: how far off the client wants far cells (S_FAR). The server holds it to FarRadius and reads it once a second. 0, or never asking, is none. */
 export const CMD_FAR = 26;
+/**
+ * Protocol 11. A creature in a survivor's arms: a CARRY_ action u8, and for CARRY_PICK_UP the creature's entity index u32.
+ * Dropping and throwing name nothing: the throw goes where the body looks.
+ */
+export const CMD_CARRY = 27;
+export const CARRY_PICK_UP = 0;
+export const CARRY_DROP = 1;
+export const CARRY_THROW = 2;
+/** Protocol 11. Takes into the bag what lies in the world at an entity index u32: an egg. */
+export const CMD_TAKE = 28;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;

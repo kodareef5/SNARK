@@ -7,7 +7,7 @@ import { Body, MF_OUT, MODE_SWIM, stepBody, stepOut } from "../shared/sim/charac
 import { ACT_NONE, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { Behavior, MIND_FLEE } from "./behavior.ts";
 import type { GameServer } from "./game.ts";
-import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP, wider } from "../shared/sim/entities.ts";
+import { F_ALIVE, F_AWAKE, F_GROUNDED, F_HELD, F_PLAYER, F_PROP, wider } from "../shared/sim/entities.ts";
 import { rollWild } from "../shared/sim/genome.ts";
 import { Rng } from "../shared/rng.ts";
 import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
@@ -227,8 +227,8 @@ export class Creatures {
     let stepped = 0;
     for (this.cursor = this.awakeCount - 1; this.cursor >= 0; this.cursor--) {
       const e = this.awake[this.cursor]!;
-      // A driven creature is stepped with its session's body, not here.
-      if (ents.driven[e] !== 0) continue;
+      // A driven creature is stepped with its session's body, and a held one moves with whoever holds it.
+      if (ents.driven[e] !== 0 || (ents.flags[e]! & F_HELD) !== 0) continue;
       const kind = ents.kind[e]!;
       // Once a second, an owned creature with no leader checks whether the entity its record says to follow is back in the world.
       if (ents.team[e] !== 0 && mind.leader[e]! < 0 && (tick + e) % 30 === 0) this.relink(e);

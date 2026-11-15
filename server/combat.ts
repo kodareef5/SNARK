@@ -242,7 +242,8 @@ export class Combat {
     src.quality = inv && item !== 0 ? (QUALITY_MUL[inv.quality[slot]!] ?? 1) : 1;
     src.draw = 1;
     src.attack = statOf(reg.defs[kind] as SpeciesDef, rec.genome, STAT_MELEE, 1);
-    src.torporInstant = src.torporOver = src.torporSeconds = 0;
+    src.torporInstant = reg.meleeTorpor[item !== 0 ? item : kind]!;
+    src.torporOver = src.torporSeconds = 0;
     src.buff = 0;
     const wears = item !== 0 && reg.uses[item]! > 0;
     if (target >= 0) {
