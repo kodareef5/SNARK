@@ -17,7 +17,7 @@ import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_HELD, CUE_OUT, STAGE_WORST } from "../..
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, type BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CARRY_PICK_UP, CARRY_THROW, CMD_CARRY, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_MATE, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_USE, MF_OUT, MF_ROOTED, MODE_SWIM, MODE_WALK } from "../../shared/sim/character.ts";
+import { BTN_USE, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_SWIM, MODE_WALK } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -596,14 +596,17 @@ test("killing the process at any moment of a harvest loses nothing: each body's 
 });
 
 // Bodies from the sky (planning/reference/flyers-plan.md, FL7): the pteranodon stand-in and a body with bones, killed,
-// knocked out or bola'd 100 m up. Nothing flies yet, so each is put there and let go.
+// knocked out or bola'd 100 m up. Each is put there, the pteranodon in its own flight, and let go.
 
-/** Puts entity `e` `high` metres over the ground under it, or over the water, still and off the ground. Returns the ground's height. */
+/**
+ * Puts entity `e` `high` metres over the ground under it, or over the water, still and off the ground: a flyer flying, any
+ * other body falling. Returns the ground's height.
+ */
 function aloft(h: Harness, e: number, high: number): number {
   const ents = h.world.ents;
   const ground = h.world.hf.heightAt(ents.x[e]!, ents.z[e]!);
   ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
-  ents.mode[e] = MODE_WALK;
+  ents.mode[e] = h.reg.flies[ents.kind[e]!] ? MODE_FLYER : MODE_WALK;
   ents.setPosition(e, ents.x[e]!, Math.max(ground, h.world.hf.seaLevel) + high, ents.z[e]!);
   ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
   return ground;
