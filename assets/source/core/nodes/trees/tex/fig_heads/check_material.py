@@ -420,8 +420,18 @@ def audit(base,normal,height,orm):
         check(name+' format',im.mode==mode and chunks['IHDR'][8]==depth and chunks['IHDR'][9]==ctype,im.mode)
         check(name+' colour space',('sRGB' in chunks)==(name=='base'))
     check('metal zero',int(orm[...,2].max())==0)
-    check('pigment ceilings',np.all(base.max((0,1))<=np.array([160,165,80])),base.max((0,1)).tolist())
-    targets=[(96,112,58)]*2+[(74,92,52)]*2+[(56,74,46)]*2+[(78,90,64),(36,50,36)]
+    check('pigment ceilings',np.all(base.max((0,1))<=np.array([168,172,70])),base.max((0,1)).tolist())
+    targets=[(108,122,50)]*2+[(82,100,44)]*2+[(60,78,40)]*2+[(80,92,54),(34,48,28)]
+    # Round two is strictly a pigment revision. Hash whole PNGs, including
+    # metadata, and the exact generated inputs and periodic seam paths.
+    frozen=json.loads((ROOT/'source/round1_structure.json').read_text())
+    for path,expected in frozen['files'].items():
+        actual=hashlib.sha256((ROOT/path).read_bytes()).hexdigest()
+        check(path+' unchanged from round one',actual==expected,actual)
+    layout=json.loads((ROOT/'source/layout.json').read_text())
+    layout.pop('targets')
+    for region in layout['regions']:region.pop('mean_rgb')
+    check('layout and physical scale unchanged from round one',layout==frozen['layout_without_colour'])
     yy,xx=np.mgrid[:512,:512];rr=np.hypot(xx-255.5,yy-255.5)/RADIUS
     inner=rr<=1
     for i in range(8):

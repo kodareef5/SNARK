@@ -18,7 +18,11 @@ N = 512
 RADIUS = .94 * 256
 HEIGHT_MM = 240.0
 PITCH_MM = 2200.0 / RADIUS
-TARGETS = [(96,112,58),(74,92,52),(56,74,46),(78,90,64),(36,50,36)]
+# Round two compensates for the game's blue skylight through pigment alone.
+TARGETS = [(108,122,50),(82,100,44),(60,78,40),(80,92,54),(34,48,28)]
+# Keep the reviewed round-one tonal mapping fixed, including its automatic
+# underside slope. Recolour its output rather than changing face/gap contrast.
+TONE_TARGETS = [(96,112,58),(74,92,52),(56,74,46),(78,90,64),(36,50,36)]
 LUMA = np.array([.2126,.7152,.0722])
 
 
@@ -114,8 +118,7 @@ def head_colour(q, macro, radius, mask, target, group):
     changes pigment, never resolution or blur.
     """
     low=np.array([13.,22.,15.])
-    # Habitat pigment ceilings keep shade leaves cool and the interior dim;
-    # achieving the same mean alone would allow too many sun-coloured faces.
+    # Fixed round-one tonal ceilings; round-two pigment is applied afterward.
     high=np.array([(160,165,80),(143,155,80),(118,137,80),
                    (126,140,80),(74,92,65)][group],float)
     edge=np.clip((radius-.88)/.12,0,1)
@@ -143,6 +146,30 @@ def head_colour(q, macro, radius, mask, target, group):
     return np.stack([red,green,blue],-1)
 
 
+def warm_colour(rgb, mask, target):
+    """Translate pigment channels while preserving the reviewed value pattern.
+
+    Only the brightest four code values roll smoothly toward the young-growth
+    ceiling. The mapping is pointwise and strictly monotonic: no resampling,
+    blur, clipping of broad faces, new lighting or changes to foliage geometry.
+    """
+    out=np.empty_like(rgb)
+    for c,ceiling in enumerate((168.,172.,70.)):
+        knee=ceiling-4.
+        def shifted(offset):
+            v=rgb[...,c]+offset
+            return np.where(v<=knee,v,
+                ceiling-4*np.exp(np.minimum((knee-v)/4,0)))
+        lower,upper=-32.,32.
+        for _ in range(45):
+            offset=(lower+upper)/2
+            v=shifted(offset)
+            if v[mask].mean()<target[c]:lower=offset
+            else:upper=offset
+        out[...,c]=v
+    return out
+
+
 def material(raw, group, periodic=False):
     h,w=raw.shape[:2]
     y,x=np.mgrid[:h,:w]
@@ -167,7 +194,7 @@ def material(raw, group, periodic=False):
     hue=raw/np.maximum(np.sum(raw*LUMA,axis=-1),8)[...,None]
     hue-=np.mean(hue[mask],axis=0)
     hue=np.clip(hue,-.22,.22)*13
-    target=np.array(TARGETS[group],float)
+    target=np.array(TONE_TARGETS[group],float)
     rgb=target+detail[...,None]*[1,.94,.55]+hue
     if not periodic:
         rgb=head_colour(q,macro,radius,mask,target,group)
@@ -175,6 +202,7 @@ def material(raw, group, periodic=False):
     else:
         # Interior uses the same monotonic palette mapping without radial falloff.
         rgb=head_colour(q,macro,np.zeros_like(radius),mask,target,group)
+    rgb=warm_colour(rgb,mask,TARGETS[group])
     roughbase=[.32,.39,.48,.76,.72][group]
     rough=roughbase+.065*np.tanh(-blade)+.055*np.maximum(0,-macro)
     rough=np.clip(rough,.24,.90)

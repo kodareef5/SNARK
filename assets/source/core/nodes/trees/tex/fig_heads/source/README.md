@@ -9,7 +9,10 @@ The three `*_generated.png` files are unmodified selected outputs from the built
 - `*_prompt.txt` and `*_scale_revision_prompt.txt`: exact prompts submitted to built-in imagegen.
 - [layout.json](layout.json): output cell locations, physical pitches, height encoding, means and removed directional components.
 - [interior_quilt.json](interior_quilt.json): deterministic minimum-error seam paths used for the repeat tile.
+- [round1_structure.json](round1_structure.json): frozen round-one hashes for height, normal, ORM, the generated originals and seam paths, plus the layout without colour fields. The checker enforces these during the round-two palette revision.
 
 The build reads only the three selected generated originals. The checker also reads the existing fig cards and named concepts from sibling project folders, without changing them. The material builder and diagnostic renderer adapt the reviewed oak round-2 code; their complete local versions are provided here and do not import or execute sibling scripts.
+
+Round two changes only the builder's pigment transfer, using the means and young-growth ceiling in `../BRIEF_ROUND2.md`. It retains the exact round-one tonal mapping before recolouring, so neither generated artwork nor any relief, surface or layout input is revised. The source prompts describe the original generation, not the final recoloured palette.
 
 All authored project files are in `fig_heads/`. The image tool also retains its automatically managed original outputs in its own cache; those files were only read when copying the selected originals here.

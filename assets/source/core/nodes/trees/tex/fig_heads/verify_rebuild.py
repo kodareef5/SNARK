@@ -16,7 +16,9 @@ def digest(path):
 def main():
     maps=[ROOT/f'fig_heads_{name}.png' for name in ['base','normal','height','orm']]
     before={p.name:digest(p) for p in maps}
-    inputs=list((ROOT/'source').glob('*_generated.png'))+[ROOT/'build_material.py',ROOT/'check_material.py',ROOT/'BRIEF.md']
+    inputs=list((ROOT/'source').glob('*_generated.png'))+[ROOT/name for name in
+        ['build_material.py','check_material.py','verify_rebuild.py','requirements.txt',
+         'BRIEF.md','BRIEF_ROUND2.md','source/round1_structure.json']]
     original={p.relative_to(ROOT).as_posix():digest(p) for p in inputs}
     logs=[];codes=[]
     for name in ['build_material.py','check_material.py']:
