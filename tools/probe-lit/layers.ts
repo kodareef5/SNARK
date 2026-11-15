@@ -62,8 +62,8 @@ export const layersCheck: LitCheck = {
     const pixel: number[] = [];
     const mean: number[] = [];
     let layered = 0;
-    for (let y = NEAR + 2; y < H - NEAR - 2; y += 2) {
-      for (let x = NEAR + 2; x < W - NEAR - 2; x += 2) {
+    for (let y = NEAR + 2; y < H - NEAR - 2; y++) {
+      for (let x = NEAR + 2; x < W - NEAR - 2; x++) {
         const i = y * W + x;
         if (!one(i)) continue;
         if (m.layered[pickDraw[i]!]! > 0) layered++;
