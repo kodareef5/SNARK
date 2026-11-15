@@ -47,7 +47,7 @@ function rest(w: TestWorld, p: MoveParams, x: number, z: number, from = 12): num
   while (hi > ground && capsuleFree(w, x, hi - 0.01, z, p.radius, p.height)) hi -= 0.01;
   if (hi <= ground) return ground;
   let lo = hi - 0.01;
-  for (let k = 0; k < 40; k++) {
+  for (let k = 0; k < 24; k++) {
     const mid = (lo + hi) / 2;
     if (capsuleFree(w, x, mid, z, p.radius, p.height)) hi = mid;
     else lo = mid;
@@ -98,7 +98,7 @@ function walk(w: TestWorld, p: MoveParams, b: Body, deg: number, speed: { move: 
     if (!capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`in a piece at ${b.x}, ${b.y}, ${b.z}`);
     if (!b.grounded) out.air++;
     // Down a slope a body may hover by as much as it does over the ground, GROUND_PROBE, and rest() finds it sunk by SKIN.
-    const gap = b.y - rest(w, p, b.x, b.z, b.y + 0.5);
+    const gap = b.y - rest(w, p, b.x, b.z, b.y + 0.05);
     if (gap > 0.02 + 2 * SKIN) out.high++;
     out.gap = Math.max(out.gap, gap);
     if (t >= 30 && Math.hypot(b.x - x0, b.z - z0) < pace * 0.5) out.slow++;
