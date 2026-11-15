@@ -1,0 +1,3 @@
+Created all five sets: 25 aligned 2048px maps, preserved imagegen originals/prompts, and rebuild/check scripts.
+
+All five pass the independent measurements; game previews reviewed. Source-resolution limits and remaining caveats are documented in [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/studies/skin/REPORT.md).

@@ -1,0 +1,246 @@
+{
+  "title": "Pteranodon: feet, claws, eye and mouth",
+  "resolution": 2048,
+  "region_encoding": {
+    "0": [
+      255,
+      0,
+      0
+    ],
+    "2": [
+      0,
+      0,
+      255
+    ],
+    "undyed": [
+      0,
+      0,
+      0
+    ]
+  },
+  "source_method": "Built-in imagegen; five original sources plus round-1 eye-surround edits; untouched originals retained in source/",
+  "height_note": "height_mm is the physical range represented by black-to-white; it need not all be occupied",
+  "sets": {
+    "skin": {
+      "span_m": 0.2,
+      "tiles": true,
+      "cutout": false,
+      "height_mm": 0.22,
+      "regions": [
+        2
+      ],
+      "form": "tube",
+      "radius": 0.012,
+      "taper": 0.6,
+      "length": 0.3,
+      "dyed": true,
+      "size_px": 2048,
+      "normal_convention": "OpenGL, +Y towards image top",
+      "source": "source/skin_original.png",
+      "parameters": {
+        "sets": "skin,scutes,claw,eye,mouth",
+        "skin_scale": 1,
+        "scutes_scale": 1,
+        "mouth_scale": 1,
+        "direction_deg": 0,
+        "eye_mm": 18,
+        "claw_mm": 45
+      },
+      "sha256_source": "ee74cc5e3d2824684ef1d979617ad356323200fada47970538416615e290c71c",
+      "animal_texels_per_m": 2400,
+      "detail_direction": "isotropic"
+    },
+    "scutes": {
+      "span_m": 0.2,
+      "tiles": true,
+      "cutout": false,
+      "height_mm": 0.32,
+      "regions": [
+        2
+      ],
+      "form": "tube",
+      "radius": 0.012,
+      "taper": 0.6,
+      "length": 0.3,
+      "dyed": true,
+      "size_px": 2048,
+      "normal_convention": "OpenGL, +Y towards image top",
+      "source": "source/scutes_original.png",
+      "parameters": {
+        "sets": "scutes",
+        "skin_scale": 1,
+        "scutes_scale": 1,
+        "mouth_scale": 1,
+        "direction_deg": 0,
+        "eye_mm": 18,
+        "claw_mm": 45,
+        "panel_turns": 0
+      },
+      "sha256_source": "69d7bd74a186791f78281039979e18180ecbacee2f8b5d9ba3d8ed474545d5c8",
+      "animal_texels_per_m": 2400,
+      "detail_direction": "toe/ridges left to right; scutes cross top to bottom"
+    },
+    "claw": {
+      "span_m": 0.06,
+      "tiles": false,
+      "cutout": false,
+      "height_mm": 0.1,
+      "regions": [],
+      "form": "none",
+      "dyed": false,
+      "curve_mm": 45,
+      "elements": [
+        {
+          "name": "claw_side",
+          "box": [
+            175,
+            490,
+            1500,
+            1420
+          ],
+          "root": [
+            310,
+            710
+          ],
+          "tip": [
+            1372,
+            1385
+          ],
+          "centerline": [
+            [
+              310,
+              710
+            ],
+            [
+              640,
+              646
+            ],
+            [
+              992,
+              713
+            ],
+            [
+              1267,
+              923
+            ],
+            [
+              1401,
+              1189
+            ],
+            [
+              1372,
+              1385
+            ]
+          ]
+        }
+      ],
+      "size_px": 2048,
+      "normal_convention": "OpenGL, +Y towards image top",
+      "source": "source/claw_original.png",
+      "parameters": {
+        "sets": "claw",
+        "skin_scale": 1,
+        "scutes_scale": 1,
+        "mouth_scale": 1,
+        "direction_deg": 0,
+        "eye_mm": 18,
+        "claw_mm": 45,
+        "panel_turns": 0
+      },
+      "sha256_source": "58839da7f0bc0db8fdb30b0827044e62b9f8cc75bbc1d521d807d7552f07b4e5",
+      "animal_texels_per_m": 2400,
+      "detail_direction": "root left, tip right"
+    },
+    "eye": {
+      "span_m": 0.05,
+      "tiles": false,
+      "cutout": false,
+      "height_mm": 1.5,
+      "regions": [
+        0
+      ],
+      "form": "none",
+      "dyed": true,
+      "eye_mm": 18,
+      "revision": "round 1 feedback: narrow bare lid, horizontal face fuzz, soft upper brow",
+      "bare_lid_mm": {
+        "full_skin": 1.1900000000000002,
+        "full_fuzz": 2.06
+      },
+      "fuzz_filament_mm": [
+        2,
+        4
+      ],
+      "brow_peak_mm": 0.38,
+      "surround_source": "source/eye_surround_round1.png",
+      "sha256_surround_source": "1da2b5ae3556690421116efc80daf290bdedf88e95559eb55a7c32eefce96601",
+      "surround_registration": {
+        "source_center_px": [
+          621.4382006173556,
+          625.1002042379372
+        ],
+        "source_px_per_output_px": 0.6116851781553867
+      },
+      "elements": [
+        {
+          "name": "eye_and_lid",
+          "box": [
+            575,
+            555,
+            1472,
+            1472
+          ],
+          "center": [
+            1024,
+            1024
+          ]
+        }
+      ],
+      "size_px": 2048,
+      "normal_convention": "OpenGL, +Y towards image top",
+      "source": "source/eye_original.png",
+      "parameters": {
+        "sets": "eye",
+        "skin_scale": 1,
+        "scutes_scale": 1,
+        "mouth_scale": 1,
+        "direction_deg": 0,
+        "eye_mm": 18,
+        "eye_lid_mm": 1.35,
+        "eye_brow_mm": 0.38,
+        "claw_mm": 45,
+        "panel_turns": 0
+      },
+      "sha256_source": "e2944e44b42f39cda207ab2d4996547cb83121fd88994d112680a1ac8eece627",
+      "animal_texels_per_m": 2400,
+      "detail_direction": "face fuzz left to right, beak to nape; brow above the eye"
+    },
+    "mouth": {
+      "span_m": 0.2,
+      "tiles": true,
+      "cutout": false,
+      "height_mm": 0.1,
+      "regions": [],
+      "form": "tube",
+      "radius": 0.02,
+      "flat": 0.5,
+      "length": 0.6,
+      "dyed": false,
+      "size_px": 2048,
+      "normal_convention": "OpenGL, +Y towards image top",
+      "source": "source/mouth_original.png",
+      "parameters": {
+        "sets": "scutes,mouth",
+        "skin_scale": 1,
+        "scutes_scale": 1,
+        "mouth_scale": 1,
+        "direction_deg": 0,
+        "eye_mm": 18,
+        "claw_mm": 45
+      },
+      "sha256_source": "01b7747e5347b8514ddb0dbbc3e89b5745b740ad3afa35920b1aa775f576b84d",
+      "animal_texels_per_m": 2400,
+      "detail_direction": "toe/ridges left to right; scutes cross top to bottom"
+    }
+  }
+}
