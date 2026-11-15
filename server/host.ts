@@ -304,6 +304,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   if (clusterId !== "" && !store) throw new Error(`-clusterid=${clusterId}: a server of a cluster needs a save, so give it --db`);
   const cluster = store && clusterId !== "" ? Cluster.open(clusterRoot(rules, store.path, clusterId), clusterId, store) : null;
   if (cluster) opened.push({ close: () => cluster.stop() });
+  // Alone, it would let a name be taken whose survivor is away, and never see it come back.
+  const member = store?.meta("cluster") ?? null;
+  if (!cluster && member !== null) throw new Error(`this save is in the cluster ${member}: start it with -clusterid=${member} and the folder it used, so that what left it can come back`);
   const records = new Records(opts.worldId ?? cluster?.world ?? (store && !store.fresh ? Number(store.meta("world_id") ?? 1) : 1));
   const say = opts.log ?? ((line: string) => console.log(line));
   // Carries events to modules. Made before the systems, so that each can raise its own.

@@ -1,5 +1,5 @@
 // Message layouts live here and nowhere else. Every message starts with its type, and each type has a fixed channel. A client's
-// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 14 to 255 are free.
+// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 15 to 255 are free.
 //
 //   client -> server
 //     HELLO     reliable     version u16, content hash u32 (of the definitions as written, untuned), clip hash u32,
@@ -28,6 +28,7 @@
 //     OWN       reliable     component u8, then that component's fields
 //     NODES     reliable     chunk u16, version u32, count u8, used-up slots (u8 each)
 //     EVENT     reliable     kind u8, then that kind's fields (see EVENT_*)
+//     TRAVEL    reliable     travel ticket (32 bytes), destination's world id u16; the connection then closes
 //
 // The server never trusts a position or a target. Neither INPUT nor COMMAND has room for a coordinate of the client's own
 // body or the identity of something to hit. Commands are applied at most once and never resent after a reconnect. The
@@ -37,7 +38,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 13;
+export const PROTOCOL_VERSION = 14;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -74,7 +75,7 @@ export const S_MARKS = 12;
  */
 export const S_FAR = 13;
 /**
- * Protocol 13. The survivor has left for another server of the cluster: the travel ticket (TICKET_BYTES) and the destination's
+ * Protocol 14. The survivor has left for another server of the cluster: the travel ticket (TICKET_BYTES) and the destination's
  * world id u16. The page takes the ticket to the destination, whose HELLO carries it, and the server closes this connection.
  */
 export const S_TRAVEL = 14;
@@ -89,7 +90,7 @@ export const REJECT_DENIED = 6;
 export const REJECT_KICKED = 7;
 export const REJECT_PASSWORD = 8;
 /**
- * Protocol 13. A travel ticket, or a survivor that is away on another server, was turned away. A string says why: the ticket
+ * Protocol 14. A travel ticket, or a survivor that is away on another server, was turned away. A string says why: the ticket
  * was used, has expired, is for another name, or its survivor went back; this server will not take the survivor; or it is away.
  */
 export const REJECT_TRAVEL = 9;
@@ -99,7 +100,7 @@ export const MAX_TUNING_BYTES = 1 << 20;
 export const HELLO_SPECTATE = 1;
 /** A look follows the key. A new survivor gets it at once and skips the creator. */
 export const HELLO_LOOK = 2;
-/** Protocol 13. A travel ticket follows the look: the survivor arrives from another server of the cluster (S_TRAVEL). */
+/** Protocol 14. A travel ticket follows the look: the survivor arrives from another server of the cluster (S_TRAVEL). */
 export const HELLO_TICKET = 4;
 export const KEY_BYTES = 16;
 /** A transfer's id (16 bytes), then the secret that lets one browser take it (16 bytes). */
@@ -219,7 +220,7 @@ export const CMD_CRAFT_AT = 29;
  */
 export const CMD_CRAFT_BLUEPRINT = 30;
 /**
- * Protocol 13. The survivor leaves for another server of the cluster: its world id u16. Refused (DENIED, with a notice that
+ * Protocol 14. The survivor leaves for another server of the cluster: its world id u16. Refused (DENIED, with a notice that
  * says why) where it may not go; on success the answer is S_TRAVEL, once its leaving is saved.
  */
 export const CMD_TRAVEL = 31;

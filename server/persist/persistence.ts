@@ -5,7 +5,7 @@
 import { resolve } from "node:path";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
-import type { EntityRecord, Records } from "../records.ts";
+import { TEAM_RANGE, type EntityRecord, type Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
 import type { BackupReport } from "./backup.ts";
 import { inlineKeeper, type Keeper } from "./keeper.ts";
@@ -146,7 +146,8 @@ export class Persistence {
       world.tick = Number(store.meta("tick") ?? 0);
       world.dayOffset = Number(store.meta("day_offset") ?? 0);
       this.records.nextSeq = Number(store.meta("next_seq") ?? 1);
-      this.records.nextTeam = Number(store.meta("next_team") ?? 1);
+      // A save from before teams had worlds numbered them with its records, so its new ones start past every record it made.
+      this.records.nextTeam = Number(store.meta("next_team") ?? Math.max(1, this.records.nextSeq - this.records.worldId * TEAM_RANGE));
     }
     const structures = store.fresh ? world.structs.count : store.loadChunks(world.structs);
     // A fresh save keeps the structures the world was created with, so the first commit writes them all.
@@ -423,7 +424,8 @@ export class Persistence {
     for (const cb of callbacks) cb();
   }
 
-  private capture(rec: EntityRecord, ent: number): void {
+  /** The record takes the entity's position, if the entity lives. */
+  capture(rec: EntityRecord, ent: number): void {
     const ents = this.world.ents;
     if ((ents.flags[ent]! & F_ALIVE) === 0) return;
     rec.x = ents.x[ent]!;

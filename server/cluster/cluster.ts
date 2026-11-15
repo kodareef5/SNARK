@@ -5,7 +5,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { pidSeq, pidWorld } from "../../shared/ids.ts";
-import { TICKET_BYTES } from "../../shared/net/protocol.ts";
+import { SESSION_ALIVE, TICKET_BYTES } from "../../shared/net/protocol.ts";
 import { event, type Bus } from "../events/bus.ts";
 import type { Client, GameServer } from "../game.ts";
 import type { Items } from "../items.ts";
@@ -24,6 +24,8 @@ import { PARCEL_FORMAT, hex, openParcel, parcelRecords, sealParcel, sha256, unhe
 export const TICKET_SECONDS = 600;
 /** Ticks between a server's news of itself in the folder, and its looks at what it sent that has not been taken. */
 const ANNOUNCE_TICKS = 5 * TICK_RATE;
+/** The key a file is taken for when the survivor in it had none. */
+const NO_KEY = "0".repeat(32);
 
 const TRANSFER_OUT_EVENT = event("transfer.out");
 const TRANSFER_IN_EVENT = event("transfer.in");
@@ -109,19 +111,26 @@ export class Cluster {
   /**
    * Joins the cluster in folder `root` with a save, and says which world id the save's records are numbered under. A save made
    * before has one already (1 if it was made outside any cluster); a new save takes the lowest no save of the cluster has had.
-   * Throws if another save of the cluster has the save's id, or the server for it is running.
+   * Throws if another save of the cluster has the save's id, or the server for it is running, or the save was in a cluster
+   * other than this one or in a folder that does not know it: what left it would be lost (ARK's uploads that vanish when two
+   * servers' folders differ). The save keeps the cluster's id from here on.
    */
   static open(root: string, id: string, store: WorldStore): Cluster {
     const folder = new ClusterFolder(root);
     const blank = (world: number): Announcement => ({ world, saveId: store.saveId, save: store.path, name: "", map: "", port: 0, url: "", players: 0, max: 0, content: 0, survivors: false, items: false, at: 0 });
-    if (!store.fresh) {
-      const world = Number(store.meta("world_id") ?? 1);
-      const had = folder.announcement(world);
+    const was = store.meta("cluster");
+    if (was !== null && String(was) !== id) throw new Error(`this save is in the cluster ${was}, not ${id}: start it with -clusterid=${was}`);
+    const own = folder.announcements().find((a) => a.saveId === store.saveId);
+    if (!store.fresh || own) {
+      const world = own?.world ?? Number(store.meta("world_id") ?? 1);
+      const had = own ?? folder.announcement(world);
       if (had && had.saveId !== store.saveId) {
         throw new Error(`world ${world} of the cluster in ${root} is the save ${had.save}${had.map ? ` (${had.map})` : ""}, and this save's records are numbered as world ${world} too, so two things would share an id: start this save outside the cluster, or give the cluster a new save for this map`);
       }
+      if (!had && was !== null) throw new Error(`this save is world ${world} of the cluster ${id}, and the folder ${root} does not know it, so what left this world is not there: start it with the folder it used (-ClusterDirOverride)`);
       const lock = folder.hold(world);
       if (!had) folder.announce(blank(world), true);
+      store.setMeta("cluster", id);
       return new Cluster(folder, id, world, lock, store, !had);
     }
     for (let world = 1; world <= MAX_TEAM_WORLD; world++) {
@@ -138,6 +147,7 @@ export class Cluster {
         continue;
       }
       folder.announce(blank(world), true);
+      store.setMeta("cluster", id);
       return new Cluster(folder, id, world, lock, store, true);
     }
     throw new Error(`the cluster in ${root} has no world id left for a new save`);
@@ -246,7 +256,8 @@ export class Cluster {
     const ctx = this.ctx!;
     const { records, items, rules, reg, persistence, tribes } = ctx;
     const rec = records.byPid.get(c.pid);
-    if (!rec || c.ent < 0 || rec.dead) return "only a survivor in the world can travel";
+    if (!rec || c.ent < 0 || c.state !== SESSION_ALIVE || rec.dead) return "only a survivor in the world can travel";
+    if (persistence.failing) return "this server cannot save just now, so nobody may leave it";
     const dest = this.folder.announcement(to);
     if (to === this.world) return "you are on that server";
     if (!dest || dest.at <= this.now() - LIVE_MS) return `${dest?.name || `world ${to}`} is not running`;
@@ -290,8 +301,9 @@ export class Cluster {
       seq: records.nextSeq,
       teams: records.nextTeam,
     };
-    // Its clock stops as it leaves, as any survivor's does out of the world.
+    // Its clock stops as it leaves, as any survivor's does out of the world, and it goes from where it stands.
     ctx.suspend(rec, true);
+    persistence.capture(rec, c.ent);
     try {
       this.folder.seal(id, this.world, sealParcel(reg, head, recs));
     } catch (err) {
@@ -377,21 +389,20 @@ export class Cluster {
     const parcel = this.read(place);
     if (!parcel) return `${name}'s file in the cluster's folder is damaged: ask an operator`;
     if (parcel.head.key === "" || hex(hashKey(key)) !== parcel.head.key) return `${name} is travelling to ${this.serverName(a.to)}`;
-    return this.takeBack(place, parcel, false) ? "" : `${name} is on ${this.serverName(a.to)}: travel back from there`;
+    return this.takeBack(parcel, false) ? "" : `${name} is on ${this.serverName(a.to)}: travel back from there`;
   }
 
-  /** Takes a sealed transfer that left from here back. False if another server took it first. */
-  private takeBack(place: ParcelPlace, parcel: Parcel, loading: boolean): boolean {
+  /** Takes a sealed transfer that left from here back. False if another server took it first, or this build cannot read it. */
+  private takeBack(parcel: Parcel, loading: boolean): boolean {
     const head = parcel.head;
-    if (!this.folder.take(head.id, head.from, this.world, head.key || "0".repeat(32))) return false;
     let recs: EntityRecord[];
     try {
       recs = parcelRecords(this.ctx!.reg, parcel);
     } catch (err) {
-      this.folder.untake({ ...place, by: this.world, key: head.key, file: `${head.id}-${head.from}.at-${this.world}-${head.key}` });
-      this.ctx!.say(`${head.name} came back and cannot be read: ${err instanceof Error ? err.message : String(err)}; its file is sealed again for an operator`);
+      this.ctx!.say(`${head.name} cannot come back: ${err instanceof Error ? err.message : String(err)}; its file stays sealed for an operator`);
       return false;
     }
+    if (!this.folder.take(head.id, head.from, this.world, head.key || NO_KEY)) return false;
     this.takeIn(parcel, recs, head.key ? unhex(head.key) : new Uint8Array(0), loading);
     return true;
   }
@@ -411,7 +422,7 @@ export class Cluster {
       }
       const parcel = this.read(place);
       if (!parcel || parcel.head.expires === 0 || now < parcel.head.expires) continue;
-      if (this.takeBack(place, parcel, loading)) this.ctx!.say(`${name}'s ticket to ${this.serverName(a.to)} ran out unused, so ${name} is back here`);
+      if (this.takeBack(parcel, loading)) this.ctx!.say(`${name}'s ticket to ${this.serverName(a.to)} ran out unused, so ${name} is back here`);
     }
   }
 
@@ -562,7 +573,7 @@ export class Cluster {
         records.delete(r.pid);
       }
     }
-    this.takeIn(parcel, recs, unhex(place.key), true);
+    this.takeIn(parcel, recs, place.key === NO_KEY ? new Uint8Array(0) : unhex(place.key), true);
     this.recovered.push(`${head.name} came from ${this.serverName(head.from)} by transfer ${head.id}, which this save did not know: taken in again`);
   }
 

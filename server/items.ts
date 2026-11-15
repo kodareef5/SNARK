@@ -24,8 +24,8 @@ export class Items {
   readonly minted: Float64Array;
   readonly burned: Float64Array;
   /**
-   * Of what was minted, what came from another server of the cluster, and of what was burned, what left for one (`receive`,
-   * `send`). Every server's counts and the transfers in its cluster's folder balance between them (server/cluster/audit.ts).
+   * Of what was minted, what came from another server of the cluster, and of what was burned, what left for one (`cameIn`,
+   * `sentAway`). Every server's counts and the transfers in its cluster's folder balance between them (server/cluster/audit.ts).
    */
   readonly received: Float64Array;
   readonly sent: Float64Array;
@@ -76,15 +76,6 @@ export class Items {
       if (inv.attach[s] !== 0) into.set(inv.attach[s]!, (into.get(inv.attach[s]!) ?? 0) + 1);
     }
     return into;
-  }
-
-  /**
-   * The record is leaving for another server with all it holds, settled to this tick: that is burned, as sent. The caller
-   * takes the record out of the world. Nothing it held is eaten or lost, so what a slot stands for goes with it.
-   */
-  send(rec: EntityRecord): void {
-    if (rec.inv) this.inv(rec);
-    this.sentAway(this.held(rec));
   }
 
   /** The record came from another server with what it holds, which the caller has put in the world: that is minted, as received. */

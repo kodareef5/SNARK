@@ -13,7 +13,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_PASSWORD, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -52,6 +52,8 @@ import { IMAGE_MAP, IMAGE_MINIMAP } from "./ui/hud.ts";
 import { CANVAS_HEIGHT } from "./ui/nodes.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
+import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
+import { arrivalAddress, joinAddress, serverAddress, type Page } from "./travel.ts";
 
 /** Metres. Matches the server's REACH. */
 const REACH = 3.5;
@@ -136,6 +138,13 @@ export class App {
   }
 
   readonly builder = new Builder();
+  /** The page, for travel between the servers of a cluster. The shell sets it; without one nobody travels. */
+  page: Page | null = null;
+  /** The page is on its way to another server, or has said it arrived. */
+  private leaving = false;
+  private arrived = false;
+  /** The travel list was opened for a survivor turned away. */
+  private turnedAway = false;
   /** Time of the last frame. */
   private nowMs = 0;
   /** Entity index of the tribe's creature under the crosshair, or -1. */
@@ -512,6 +521,43 @@ export class App {
     this.ui.chat.print(TEXT_NOTICE, `The graphics card keeps running out of memory, so the graphics setting is now ${this.ui.settings.tier}.`, this.session.serverTick);
   }
 
+  /**
+   * Asks for the cluster's servers while the travel list is open, and goes where a ticket or a choice says: with a ticket to
+   * the server the survivor left for, without one to a server chosen once this one closed. A survivor turned away sees the list.
+   */
+  private travel(nowMs: number): void {
+    const { page, session } = this;
+    const t = this.ui.travel;
+    if (!page || this.leaving) return;
+    if (session.state === "active" && !this.arrived) {
+      this.arrived = true;
+      page.arrived();
+    }
+    if (session.state === "closed" && session.closeReason === REJECT_TRAVEL && !this.turnedAway) {
+      this.turnedAway = t.open = true;
+      t.askedAt = -Infinity;
+    }
+    const trip = session.travelled;
+    if ((t.open || trip) && nowMs - t.askedAt >= TRAVEL_REFRESH_MS) {
+      t.askedAt = nowMs;
+      page.cluster().then(
+        (list) => {
+          t.list = list;
+          t.note = "";
+        },
+        () => {
+          t.note = "this server did not say which servers are in its cluster";
+        },
+      );
+    }
+    const list = t.list;
+    if (!list) return;
+    const to = trip ? list.servers.find((s) => s.world === trip.world) : t.goTo;
+    if (!to) return;
+    this.leaving = true;
+    page.go(trip ? arrivalAddress(serverAddress(list, to, page), session.name, trip.ticket) : joinAddress(serverAddress(list, to, page), session.name));
+  }
+
   /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
   frame(nowMs: number, width: number, height: number): FramePacket | null {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
@@ -524,9 +570,10 @@ export class App {
     const c = this.controls;
     this.nowMs = nowMs;
 
+    this.travel(nowMs);
     if (session.state === "closed") {
       // Only the reasons a player can act on are spelled out.
-      hud.status = session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
+      hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
       return null;
     }

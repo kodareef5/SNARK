@@ -158,7 +158,10 @@ export class WorldStore {
       const current = Number(this.meta("schema_version") ?? 0);
       // Every commit writes the tick. A file with tables and no tick is a first start that stopped before its first commit.
       this.fresh = this.meta("tick") === null;
-      this.saveId = String(this.meta("save_id") ?? "") || [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      // Kept from the first open, so a first start that stopped before its first commit is the same save the next time.
+      const named = this.meta("save_id");
+      this.saveId = typeof named === "string" && named !== "" ? named : [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      if (named !== this.saveId) db.query("INSERT OR REPLACE INTO meta (key, value) VALUES ('save_id', ?)").run(this.saveId);
       if (current > SCHEMA_VERSION) throw new Error(`save has schema ${current}; this build understands up to ${SCHEMA_VERSION}`);
       if (current < SCHEMA_VERSION) {
         // The save as it was, kept beside it before its form changes. An older copy of the same form is left alone.
