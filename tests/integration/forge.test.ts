@@ -10,8 +10,9 @@ import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { CMD_CRAFT, CMD_CRAFT_AT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
+import { CMD_CRAFT, CMD_CRAFT_AT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { NO_PIN, STRUCT_LIGHT, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -169,6 +170,30 @@ test("a forge whose foot is below the sea is not lit, though a campfire there is
     expect([h.host.stations.toggle(wet), h.host.stations.toggle(fire), h.host.stations.toggle(ref)]).toEqual([RESULT_DENIED, RESULT_OK, RESULT_OK]);
     expect([h.host.fixtures.ensure(wet).kind, h.host.fixtures.ensure(wet).fire, rec.kind]).toEqual([FORGE, null, LIT]);
     void s;
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+test("a blueprint of sparkpowder in a forge is no fuel: lit with one ahead of wood, the wood burns, and the blueprint is left; of what a forge refines, none can be a blueprint", () => {
+  const { h, ref, rec } = smithy();
+  try {
+    const items = h.host.items;
+    const spark = id("sparkpowder");
+    // The forge's ore, oil and hide are gathered, not made, and what it refines is fired: none is ever a blueprint.
+    expect([spark, id("ore"), id("oil"), id("hide"), id("ingot"), id("gasoline")].map((i) => reg.blueprints[i])).toEqual([1, 0, 0, 0, 0, 0]);
+    expect(items.mint(rec, spark, 1, 0, 0, -1, "", FLAG_BLUEPRINT)).toBe(1);
+    expect(h.host.stations.toggle(ref)).toBe(RESULT_SHORT);
+    items.mint(rec, id("wood"), 1);
+    items.mint(rec, id("ore"), 4);
+    expect([rec.inv!.item[0], rec.inv!.flags[0]]).toEqual([spark, FLAG_BLUEPRINT]);
+    expect(h.host.stations.toggle(ref)).toBe(RESULT_OK);
+    const lit = rec.fire!.at;
+    expect([rec.fire!.piece, rec.fire!.out, rec.inv!.total(id("wood"))]).toEqual([id("wood"), lit + 30 * SECOND, 0]);
+    h.run(32000);
+    // Out when the wood is, with an ingot made and a charcoal left; the blueprint is where it was.
+    expect([rec.kind, rec.fire, rec.inv!.total(id("ingot")), rec.inv!.total(id("charcoal")), rec.inv!.item[0], rec.inv!.flags[0]]).toEqual([FORGE, null, 1, 1, spark, FLAG_BLUEPRINT]);
+    expect(items.audit()).toEqual([]);
   } finally {
     h.host.shutdown();
   }

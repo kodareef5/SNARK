@@ -117,9 +117,10 @@ export class Stations {
     const reg = world.reg;
     this.fuelTicks = reg.fuelTicks;
     this.stationFuel = reg.stationFuel;
+    // A blueprint is never burnt or cooked (D417): the first slot is the first of the items themselves.
     const first = (of: Uint16Array | Uint32Array): number => {
       const inv = this.rec!.inv!;
-      for (let s = 0; s < inv.bag; s++) if (inv.count[s]! > 0 && of[inv.item[s]!] !== 0) return s;
+      for (let s = 0; s < inv.bag; s++) if (inv.count[s]! > 0 && of[inv.item[s]!] !== 0 && (inv.flags[s]! & FLAG_BLUEPRINT) === 0) return s;
       return -1;
     };
     let fed = 0;
@@ -220,12 +221,12 @@ export class Stations {
     return this.stationFuel[rec.kind] ?? this.fuelTicks;
   }
 
-  /** Ticks of fuel in the fire's inventory, not counting the piece now burning. */
+  /** Ticks of fuel in the fire's inventory, not counting the piece now burning nor a blueprint, which is never burnt. */
   private pile(rec: EntityRecord): number {
     const inv = rec.inv;
     const fuel = this.fuelOf(rec);
     let ticks = 0;
-    for (let s = 0; inv && s < inv.bag; s++) ticks += inv.count[s]! * fuel[inv.item[s]!]!;
+    for (let s = 0; inv && s < inv.bag; s++) if ((inv.flags[s]! & FLAG_BLUEPRINT) === 0) ticks += inv.count[s]! * fuel[inv.item[s]!]!;
     return ticks;
   }
 

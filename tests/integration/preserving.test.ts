@@ -15,6 +15,7 @@ import type { ItemDef } from "../../shared/content/defs.ts";
 import { compilePacks } from "../../shared/content/packs.ts";
 import { CORE_PACK } from "../../content/core.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_STRUCT, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_USE } from "../../shared/world/upkeep.ts";
@@ -340,6 +341,41 @@ for (const how of ["demolished", "destroyed"] as const) test(`a lit bin ${how} l
     h.world.tick = at;
     expect(h.host.items.inv(cache).total(MEAT)).toBe(2);
     expect(h.host.items.audit()).toEqual([]);
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+test("a blueprint of sparkpowder is never the bin's fuel nor its jerky's: lit with one ahead of real sparkpowder, the real one burns and the blueprint stays", () => {
+  const w = arena();
+  const { h } = w;
+  try {
+    const items = h.host.items;
+    expect(reg.blueprints[SPARK]).toBe(1);
+    // A blueprint alone is no fuel: the bin will not light.
+    const alone = w.bin(-2);
+    expect(items.mint(alone.rec, SPARK, 1, 0, 0, -1, "", FLAG_BLUEPRINT)).toBe(1);
+    expect(h.host.stations.toggle(alone.ref)).toBe(RESULT_SHORT);
+    expect([kindOf(h, alone.ref), alone.rec.inv!.item[0], alone.rec.inv!.flags[0]]).toEqual([BIN, SPARK, FLAG_BLUEPRINT]);
+
+    // The blueprint lies in the first slot, three real sparkpowder after it, with what jerky needs but the third
+    // sparkpowder: the blueprint does not make up the count.
+    const { ref, rec } = w.bin(2);
+    items.mint(rec, SPARK, 1, 0, 0, -1, "", FLAG_BLUEPRINT);
+    items.mint(rec, SPARK, 3);
+    items.mint(rec, COOKED, 1);
+    items.mint(rec, id("oil"), 1);
+    expect([rec.inv!.item[0], rec.inv!.flags[0], rec.inv!.item[1], rec.inv!.count[1]]).toEqual([SPARK, FLAG_BLUEPRINT, SPARK, 3]);
+    expect(h.host.stations.toggle(ref)).toBe(RESULT_OK);
+    const lit = rec.fire!.at;
+    // One real one burns; two are left, which with the blueprint are not the three jerky takes, so no lane is under way.
+    expect([rec.inv!.total(SPARK), rec.inv!.item[0], rec.inv!.flags[0], rec.fire!.out]).toEqual([2, SPARK, FLAG_BLUEPRINT, lit + 3 * PIECE]);
+    expect(rec.fire!.lanes!.map((l) => l.ticks)).toEqual([0, 0]);
+    // Burnt out at its tick, all three real ones gone, the blueprint still in its slot and no jerky made.
+    h.world.tick = lit + 3 * PIECE + 10;
+    items.inv(rec);
+    expect([kindOf(h, ref), rec.fire, rec.inv!.total(SPARK), rec.inv!.item[0], rec.inv!.flags[0], rec.inv!.total(id("jerky"))]).toEqual([BIN, null, 0, SPARK, FLAG_BLUEPRINT, 0]);
+    expect(items.audit()).toEqual([]);
   } finally {
     h.host.shutdown();
   }
