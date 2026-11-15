@@ -12,13 +12,17 @@ import { NodeField, nodeForms, scatterNodes } from "../../shared/world/nodes.ts"
 import { StructureStore } from "../../shared/world/structures.ts";
 import { buildPack } from "../../tools/pack/write.ts";
 import { variantMeshes, variantRegistry } from "../fixtures/nodes.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import type { NodeDef } from "../../shared/content/defs.ts";
+import { compileContent } from "../../shared/content/registry.ts";
+import { VARIANT_NODES } from "../../shared/sim/scenarios.ts";
 
 /**
  * The stand-in palms, their finest level made heavy (each triangle 300 times over) and a second as they are, which states an
  * error, standing in every slot of 3 by 3 chunks, seen from the middle of a cell of the middle chunk.
  */
-function wood() {
-  const reg = variantRegistry();
+function wood(sapling = false) {
+  const reg = sapling ? saplings() : variantRegistry();
   const forms = nodeForms(reg);
   const meshes = variantMeshes().map((m) => {
     const lod = m.lods[0]!;
@@ -30,7 +34,9 @@ function wood() {
   const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, 0);
   const palm = reg.index.get("test:palm")!;
-  const field = new NodeField(dims, reg, scatterNodes(dims, hf, 8, 128, forms, () => [palm]));
+  // With saplings, they fill the middle chunk and palms the rest.
+  const small = reg.index.get("test:sapling") ?? palm;
+  const field = new NodeField(dims, reg, scatterNodes(dims, hf, 8, 128, forms, (x, z) => (Math.floor(x / CHUNK_SIZE) === 1 && Math.floor(z / CHUNK_SIZE) === 1 ? [small] : [palm])));
   field.retain(4, 1, 1, () => false);
   const scene = new Scene({ dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), nodes: field.store }, reg, pack);
   scene.assets.tier = tierOf("medium");
@@ -38,6 +44,14 @@ function wood() {
   const cam = new Camera();
   [cam.x, cam.y, cam.z, cam.aspect] = [CHUNK_SIZE + 8, 1.6, CHUNK_SIZE + 8, 16 / 9];
   return { scene, cam, field };
+}
+
+/** The stand-in palm's meshes grown as a second kind, a quarter of the size the palm grows to and less. */
+function saplings() {
+  const palm = VARIANT_NODES.find((d) => d.id === "test:palm") as NodeDef;
+  const { registry, errors } = compileContent([...CORE_CONTENT, ...VARIANT_NODES, { ...palm, id: "test:sapling", size: [0.25, 0.25] }]);
+  if (!registry) throw new Error(errors.join("\n"));
+  return registry;
 }
 
 /** Per node of the middle chunk drawn in `p`: how far its cell's nearest point is, and the level it was drawn at. */
@@ -84,4 +98,20 @@ test("in the chunk a player stands in, nodes near him are drawn finest and those
   const whole = drawn(w.scene.build(w.cam, null), w);
   expect(whole.length).toBeGreaterThan(10);
   expect(whole.every((n) => n.level === 0)).toBe(true);
+});
+
+test("two kinds grown as one mesh are each drawn at the level its own largest size asks for", () => {
+  // Saplings of the palms' meshes, at a quarter of the size, fill the chunk the camera stands in. Palms elsewhere grow to 1.7,
+  // whose level 1 is first drawn 24 m off; a sapling's is 4 m off.
+  const w = wood(true);
+  const seen: { far: number; level: number }[] = [];
+  for (let k = 0; k < 8; k++) {
+    w.cam.yaw = (k * Math.PI) / 4;
+    for (const t of w.field.store.chunks) if (t) t.shape++;
+    seen.push(...drawn(w.scene.build(w.cam, null), w));
+  }
+  // Drawn as palms they would all be level 0. A few join a run of the cell the camera stands in, drawn one level finer.
+  const between = seen.filter((n) => n.far > 6 && n.far < 20);
+  expect(between.length).toBeGreaterThan(10);
+  expect(between.filter((n) => n.level === 1).length).toBeGreaterThan(between.length * 0.9);
 });

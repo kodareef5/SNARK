@@ -352,6 +352,12 @@ export interface NodeDef extends Named {
   readonly size?: readonly [number, number];
   /** What stands where a node was from when it is used up until it grows back. Without it, nothing does. */
   readonly depleted?: NodeShape;
+  /**
+   * How far its footing spreads from its origin, in metres at its largest size, and how far the ground may fall away
+   * under it below the ground at the origin. A scattered slot whose ground falls further grows the kind `else` names in
+   * its place, as it is, or nothing.
+   */
+  readonly footing?: { readonly reach: number; readonly fall: number; readonly else?: string };
 }
 
 export interface EngramDef extends Named {

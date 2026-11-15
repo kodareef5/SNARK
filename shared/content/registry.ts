@@ -22,6 +22,8 @@ export const MAX_SHAPE_BOXES = 16;
 /** The most a node kind may be drawn at, as a multiple of its modelled size, and the most variants it may have. */
 export const MOST_NODE_SIZE = 3.9;
 export const MAX_NODE_VARIANTS = 64;
+/** Metres a node's boxes may reach up from its origin at its largest size, as a tall palm's trunk does. Sideways, a structure's half. */
+export const MAX_NODE_HEIGHT = 32;
 
 const ID = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_\/-]*$/;
 const ALIAS = /^[A-Za-z0-9_.-]+$/;
@@ -265,14 +267,14 @@ export function compileContent(all: readonly Def[]): CompileResult {
       positive(d, "respawnHours", d.respawnHours, 1e6);
       for (const y of d.yields) if (!(y.min >= 0 && y.max >= y.min)) errors.push(`${d.id}: a yield's range must be 0 <= min <= max`);
       const largest = d.size?.[1] ?? 1;
-      if (!(d.half[1] * 2 * largest <= MAX_STRUCTURE_HALF && Math.max(d.half[0], d.half[2]) * largest <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: its box reaches further than ${MAX_STRUCTURE_HALF} m from its origin at its largest size`);
+      if (!(d.half[1] * 2 * largest <= MAX_NODE_HEIGHT && Math.max(d.half[0], d.half[2]) * largest <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: its box reaches further than ${MAX_STRUCTURE_HALF} m sideways or ${MAX_NODE_HEIGHT} m up from its origin at its largest size`);
       const shaped = (what: string, s: NodeShape): void => {
         if (typeof s.mesh !== "string" || s.mesh.length === 0) errors.push(`${d.id}: ${what} names its mesh`);
         if (s.boxes !== undefined && !(Array.isArray(s.boxes) && s.boxes.length <= MAX_SHAPE_BOXES)) errors.push(`${d.id}: ${what} has at most ${MAX_SHAPE_BOXES} boxes`);
         for (const b of s.boxes ?? []) {
           for (let a = 0; a < 3; a++) {
             positive(d, `a box's half[${a}]`, b.half?.[a]!, MAX_STRUCTURE_HALF);
-            if (!((Math.abs(b.at?.[a]!) + b.half?.[a]!) * largest <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: a box of ${what} reaches further than ${MAX_STRUCTURE_HALF} m from its origin at the kind's largest size`);
+            if (!((Math.abs(b.at?.[a]!) + b.half?.[a]!) * largest <= (a === 1 ? MAX_NODE_HEIGHT : MAX_STRUCTURE_HALF))) errors.push(`${d.id}: a box of ${what} reaches further than ${MAX_STRUCTURE_HALF} m sideways or ${MAX_NODE_HEIGHT} m up from its origin at the kind's largest size`);
           }
         }
       };
@@ -283,6 +285,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (v.depleted) shaped("a variant's depleted form", v.depleted);
       }
       if (d.depleted) shaped("its depleted form", d.depleted);
+      if (d.footing !== undefined && !(d.footing.reach > 0 && d.footing.reach <= MAX_STRUCTURE_HALF && d.footing.fall >= 0 && d.footing.fall <= MAX_NODE_HEIGHT)) errors.push(`${d.id}: footing reaches more than 0 and at most ${MAX_STRUCTURE_HALF} m, and allows a fall of 0 to ${MAX_NODE_HEIGHT} m`);
       if (d.size !== undefined && !(d.size.length === 2 && d.size[0] >= 0.25 && d.size[1] >= d.size[0] && d.size[1] <= MOST_NODE_SIZE)) errors.push(`${d.id}: size is [least, most], from 0.25 to ${MOST_NODE_SIZE}`);
     } else if (d.type === "engram") {
       positive(d, "level", d.level, 1000);

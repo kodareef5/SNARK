@@ -39,7 +39,8 @@ With `--ui`: `--console "text"` types a console line, `--inventory` opens the
 inventory, `--chat` opens the chat box. `--face degrees` turns a line-up.
 `--house` takes a tier (`thatch`, `wood`, `stone`, `metal`), and with
 `--falling ms` shows the house that long after a corner foundation went.
-`--build --menu` shows the menu for a built piece.
+`--build --menu` shows the menu for a built piece. `--used x,z` uses up the
+node standing nearest that place, so its stump or stripped bush is drawn.
 
 `probe` options: `--bench` also flies the camera for 900 frames and reports
 frame times, `--no-voice` leaves out the voice loop, and `--voice` opens a

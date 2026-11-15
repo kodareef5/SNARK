@@ -1,6 +1,6 @@
 // Colours are palette indices. See shared/pack/palette.ts.
 
-import type { Def, NodeDef } from "../shared/content/defs.ts";
+import type { Def, NodeDef, NodeVariant } from "../shared/content/defs.ts";
 import { BUILDING_CONTENT } from "./building.ts";
 import { crafted, crafting } from "./craft.ts";
 import { CREATURES } from "./creatures/index.ts";
@@ -90,28 +90,112 @@ const ARMOR_MAKING: Readonly<Record<string, { level: number; cost: number; needs
 const REGROW = minutes(60);
 const TREE_YIELDS: NodeDef["yields"] = [{ item: "core:thatch", min: 2, max: 4 }, { item: "core:wood", min: 0, max: 1 }, { item: "core:wood", min: 1, max: 2, tool: true }];
 const ROCK_YIELDS: NodeDef["yields"] = [{ item: "core:stone", min: 1, max: 2 }, { item: "core:flint", min: 1, max: 2, tool: true }];
-const tree = (name: string, hits: number, half: NodeDef["half"], top: NonNullable<NodeDef["top"]>, size: NodeDef["size"]): NodeDef => ({ type: "node", id: id(name), mesh: "box", color: 3, half, top, hits, respawnHours: REGROW, material: "wood", yields: TREE_YIELDS, xp: 1, size });
+const tree = (name: string, hits: number, half: NodeDef["half"], top: NonNullable<NodeDef["top"]>, size: NodeDef["size"], variants: NodeVariant[]): NodeDef => ({ type: "node", id: id(name), mesh: "box", color: 3, half, top, hits, respawnHours: REGROW, material: "wood", yields: TREE_YIELDS, xp: 1, size, variants });
+const plant = (name: string, color: number, hits: number, half: NodeDef["half"], yields: NodeDef["yields"], size: NodeDef["size"], variants: NodeVariant[]): NodeDef => ({ type: "node", id: id(name), mesh: "box", color, half, soft: true, hits, respawnHours: REGROW, yields, xp: 0.5, size, variants });
+
+// What each kind grows as, with what is left of it used up, as the art's makers print them: `python3
+// assets/source/core/nodes/trees/content.py` and `bun assets/source/core/nodes/plants/facts.ts`. A plant's first
+// individual is the grown one, and grows twice as often as each of the others.
+const PALMS: NodeVariant[] = [
+  { mesh: "core:palm_1", weight: 3, boxes: [{ at: [0.01, 0.99, 0.01], half: [0.26, 1.21, 0.26] }, { at: [0.03, 3, 0.02], half: [0.24, 0.8, 0.24] }, { at: [0.05, 4.6, 0.03], half: [0.26, 0.8, 0.26] }, { at: [0.07, 6.2, 0.05], half: [0.26, 0.8, 0.26] }, { at: [0.09, 7.8, 0.08], half: [0.25, 0.8, 0.25] }, { at: [0.12, 9.4, 0.11], half: [0.23, 0.8, 0.23] }, { at: [0.15, 11, 0.14], half: [0.21, 0.8, 0.21] }, { at: [0.18, 12.6, 0.18], half: [0.19, 0.8, 0.2] }, { at: [0.21, 14.1, 0.22], half: [0.18, 0.7, 0.18] }],
+    depleted: { mesh: "core:palm_1_depleted", boxes: [{ at: [0, 0.22, 0], half: [0.26, 0.44, 0.26] }] } },
+  { mesh: "core:palm_2", weight: 2, boxes: [{ at: [-0.04, 0.96, 0.05], half: [0.28, 1.24, 0.29] }, { at: [-0.12, 2.99, 0.15], half: [0.26, 0.8, 0.27] }, { at: [-0.2, 4.59, 0.26], half: [0.27, 0.8, 0.29] }, { at: [-0.29, 6.18, 0.39], half: [0.28, 0.8, 0.3] }, { at: [-0.38, 7.77, 0.52], half: [0.25, 0.8, 0.27] }, { at: [-0.47, 9.36, 0.66], half: [0.22, 0.8, 0.25] }, { at: [-0.54, 10.96, 0.79], half: [0.2, 0.8, 0.23] }, { at: [-0.6, 12.2, 0.9], half: [0.16, 0.45, 0.18] }],
+    depleted: { mesh: "core:palm_2_depleted", boxes: [{ at: [0, 0.23, 0], half: [0.24, 0.43, 0.24] }] } },
+  { mesh: "core:palm_3", weight: 2, boxes: [{ at: [-0.01, 1.02, -0.02], half: [0.18, 1.18, 0.19] }, { at: [-0.03, 3, -0.07], half: [0.17, 0.8, 0.19] }, { at: [-0.04, 4.6, -0.12], half: [0.16, 0.8, 0.19] }, { at: [-0.04, 6.1, -0.19], half: [0.14, 0.7, 0.17] }],
+    depleted: { mesh: "core:palm_3_depleted", boxes: [{ at: [0, 0.26, 0], half: [0.17, 0.4, 0.17] }] } },
+  { mesh: "core:palm_4", weight: 3, boxes: [{ at: [0.09, 0.85, 0.14], half: [0.39, 1.31, 0.44] }, { at: [0.37, 2.9, 0.55], half: [0.33, 0.73, 0.42] }, { at: [0.77, 4.32, 1.15], half: [0.35, 0.7, 0.47] }, { at: [1.18, 5.72, 1.82], half: [0.35, 0.69, 0.48] }, { at: [1.58, 7.12, 2.47], half: [0.34, 0.71, 0.45] }, { at: [1.96, 8.57, 3.02], half: [0.31, 0.74, 0.37] }, { at: [2.28, 10.08, 3.43], half: [0.27, 0.77, 0.29] }, { at: [2.52, 11.44, 3.67], half: [0.21, 0.59, 0.2] }],
+    depleted: { mesh: "core:palm_4_depleted", boxes: [{ at: [0, 0.15, 0], half: [0.3, 0.41, 0.3] }] } },
+  { mesh: "core:palm_5", weight: 2, boxes: [{ at: [-0.16, 0.88, -0.01], half: [0.44, 1.28, 0.29] }, { at: [-0.56, 2.92, -0.06], half: [0.37, 0.75, 0.17] }, { at: [-0.86, 4.47, -0.14], half: [0.2, 0.8, 0.18] }, { at: [-0.98, 6.06, -0.23], half: [0.17, 0.8, 0.17] }, { at: [-1.06, 7.66, -0.31], half: [0.16, 0.8, 0.16] }, { at: [-1.13, 9.15, -0.37], half: [0.15, 0.7, 0.14] }],
+    depleted: { mesh: "core:palm_5_depleted", boxes: [{ at: [0, 0.16, 0], half: [0.28, 0.4, 0.28] }] } },
+  { mesh: "core:palm_6", weight: 2, boxes: [{ at: [0.03, 0.87, -0.15], half: [0.37, 1.31, 0.48] }, { at: [0.12, 2.93, -0.55], half: [0.21, 0.76, 0.41] }, { at: [0.23, 4.43, -1.1], half: [0.21, 0.74, 0.46] }, { at: [0.3, 5.94, -1.6], half: [0.16, 0.78, 0.34] }, { at: [0.26, 7.51, -1.79], half: [0.2, 0.79, 0.18] }, { at: [0.12, 9.09, -1.62], half: [0.22, 0.78, 0.28] }, { at: [-0.02, 10.66, -1.37], half: [0.19, 0.79, 0.25] }, { at: [-0.08, 12.25, -1.19], half: [0.14, 0.8, 0.19] }, { at: [-0.08, 13.35, -1.15], half: [0.14, 0.3, 0.13] }],
+    depleted: { mesh: "core:palm_6_depleted", boxes: [{ at: [0, 0.14, 0], half: [0.33, 0.42, 0.33] }] } },
+];
+const OAKS: NodeVariant[] = [
+  { mesh: "core:tree_1", weight: 3, boxes: [{ at: [0, 0.66, 0], half: [0.79, 1.34, 0.79] }],
+    depleted: { mesh: "core:tree_1_depleted", boxes: [{ at: [0, -0, 0], half: [0.83, 0.7, 0.83] }] } },
+  { mesh: "core:tree_2", weight: 2, boxes: [{ at: [0, 0.8, 0], half: [1.05, 1.7, 1.05] }],
+    depleted: { mesh: "core:tree_2_depleted", boxes: [{ at: [0, -0.12, 0], half: [1.1, 0.82, 1.1] }] } },
+  { mesh: "core:tree_3", weight: 2, boxes: [{ at: [0, 0.72, 0], half: [0.89, 1.48, 0.89] }],
+    depleted: { mesh: "core:tree_3_depleted", boxes: [{ at: [0, -0.05, 0], half: [0.94, 0.75, 0.94] }] } },
+];
+const FIGS: NodeVariant[] = [
+  { mesh: "core:fig_1", weight: 2, boxes: [{ at: [0, 1.48, 0], half: [0.76, 2.12, 0.76] }],
+    depleted: { mesh: "core:fig_1_depleted", boxes: [{ at: [0, 0.13, 0], half: [0.76, 0.77, 0.76] }] } },
+  { mesh: "core:fig_2", weight: 3, boxes: [{ at: [0, 1.62, 0], half: [0.9, 2.38, 0.9] }],
+    depleted: { mesh: "core:fig_2_depleted", boxes: [{ at: [0, 0.07, 0], half: [0.9, 0.83, 0.9] }] } },
+  { mesh: "core:fig_3", weight: 2, boxes: [{ at: [0, 1.42, 0], half: [0.66, 1.98, 0.66] }],
+    depleted: { mesh: "core:fig_3_depleted", boxes: [{ at: [0, 0.17, 0], half: [0.66, 0.73, 0.66] }] } },
+];
+const BANYANS: NodeVariant[] = [
+  { mesh: "core:banyan_1", weight: 3, boxes: [{ at: [0, 1.82, 0], half: [1.14, 2.78, 1.14] }, { at: [-9, 0.23, -0], half: [0.39, 5.87, 0.39] }, { at: [-3.68, 0.85, -3.68], half: [0.22, 4.15, 0.22] }, { at: [-6.47, 0.48, -2.68], half: [0.3, 4.92, 0.3] }, { at: [1.72, 0.97, -4.16], half: [0.19, 3.83, 0.19] }, { at: [4.81, 0.5, -4.81], half: [0.25, 4.8, 0.25] }, { at: [7.39, 0.32, -3.06], half: [0.33, 5.38, 0.33] }, { at: [8.78, 0.16, 3.64], half: [0.36, 6.14, 0.36] }, { at: [-2.49, 1.14, 6.01], half: [0.28, 5.26, 0.28] }, { at: [2.6, 1.17, 6.28], half: [0.23, 5.43, 0.23] }],
+    depleted: { mesh: "core:banyan_1_depleted", boxes: [{ at: [0, -0.21, 0], half: [1.2, 0.81, 1.2] }, { at: [-9, -2.58, -0], half: [0.42, 3.08, 0.42] }, { at: [-3.68, -1.41, -3.68], half: [0.24, 1.91, 0.24] }, { at: [-6.47, -1.98, -2.68], half: [0.33, 2.48, 0.33] }, { at: [1.72, -1.18, -4.16], half: [0.21, 1.68, 0.21] }, { at: [4.81, -1.91, -4.81], half: [0.27, 2.41, 0.27] }, { at: [7.39, -2.29, -3.06], half: [0.36, 2.79, 0.36] }, { at: [8.78, -2.75, 3.64], half: [0.39, 3.25, 0.39] }, { at: [-2.49, -1.82, 6.01], half: [0.3, 2.32, 0.3] }, { at: [2.6, -1.89, 6.28], half: [0.25, 2.39, 0.25] }] } },
+  { mesh: "core:banyan_2", weight: 2, boxes: [{ at: [0, 1.7, 0], half: [0.95, 2.5, 0.95] }, { at: [-2.96, 1.3, -1.22], half: [0.23, 3.4, 0.23] }, { at: [3.14, 1.36, -1.3], half: [0.19, 3.54, 0.19] }, { at: [3.7, 1.43, 1.53], half: [0.17, 3.97, 0.17] }],
+    depleted: { mesh: "core:banyan_2_depleted", boxes: [{ at: [0, -0.12, 0], half: [1, 0.72, 1] }, { at: [-2.96, -0.81, -1.22], half: [0.25, 1.31, 0.25] }, { at: [3.14, -0.85, -1.3], half: [0.21, 1.35, 0.21] }, { at: [3.7, -1.02, 1.53], half: [0.18, 1.52, 0.18] }] } },
+  { mesh: "core:banyan_3", weight: 1, boxes: [{ at: [0, 2, 0], half: [1.19, 3, 1.19] }, { at: [-7.85, 0.3, 3.25], half: [0.39, 5.7, 0.39] }, { at: [-3.39, 0.97, -3.39], half: [0.22, 4.03, 0.22] }, { at: [-6.47, 0.43, -2.68], half: [0.3, 4.87, 0.3] }, { at: [0, 1.77, 5.5], half: [0.25, 5.23, 0.25] }, { at: [4.8, 1.51, 0], half: [0.33, 4.59, 0.33] }, { at: [8, 0.89, 0], half: [0.36, 5.91, 0.36] }, { at: [10.16, 0.28, -4.21], half: [0.19, 7.02, 0.19] }],
+    depleted: { mesh: "core:banyan_3_depleted", boxes: [{ at: [0, -0.23, 0], half: [1.25, 0.83, 1.25] }, { at: [-7.85, -2.46, 3.25], half: [0.42, 2.96, 0.42] }, { at: [-3.39, -1.29, -3.39], half: [0.24, 1.79, 0.24] }, { at: [-6.47, -1.98, -2.68], half: [0.33, 2.48, 0.33] }, { at: [0, -1.48, 5.5], half: [0.27, 1.98, 0.27] }, { at: [4.8, -1.3, 0], half: [0.36, 1.8, 0.36] }, { at: [8, -2.27, 0], half: [0.39, 2.77, 0.39] }, { at: [10.16, -3.13, -4.21], half: [0.21, 3.63, 0.21] }] } },
+];
+const MANGROVES: NodeVariant[] = [
+  { mesh: "core:mangrove_1", weight: 2, boxes: [{ at: [0, 0.09, 0], half: [0.97, 0.91, 0.97] }, { at: [0.04, 1.52, 0.09], half: [0.23, 0.52, 0.22] }],
+    depleted: { mesh: "core:mangrove_1_depleted", boxes: [{ at: [0, 0.09, 0], half: [0.97, 0.91, 0.97] }] } },
+  { mesh: "core:mangrove_2", weight: 3, boxes: [{ at: [0, 0.01, 0], half: [1.15, 0.99, 1.15] }, { at: [-0.12, 1.66, -0], half: [0.32, 0.66, 0.3] }],
+    depleted: { mesh: "core:mangrove_2_depleted", boxes: [{ at: [0, 0.01, 0], half: [1.15, 0.99, 1.15] }] } },
+  { mesh: "core:mangrove_3", weight: 3, boxes: [{ at: [0, -0.03, 0], half: [1.24, 1.03, 1.24] }, { at: [-0.21, 1.71, -0.18], half: [0.45, 0.71, 0.41] }],
+    depleted: { mesh: "core:mangrove_3_depleted", boxes: [{ at: [0, -0.03, 0], half: [1.24, 1.03, 1.24] }] } },
+  { mesh: "core:mangrove_4", weight: 2, boxes: [{ at: [0, -0.06, 0], half: [1.33, 1.06, 1.33] }, { at: [0.19, 1.83, -0.06], half: [0.47, 0.83, 0.44] }],
+    depleted: { mesh: "core:mangrove_4_depleted", boxes: [{ at: [0, -0.06, 0], half: [1.33, 1.06, 1.33] }] } },
+];
+const BUSHES: NodeVariant[] = [
+  { mesh: "core:bush_1", weight: 2, boxes: [{ at: [0.02, 0.49, 0.02], half: [0.5, 0.49, 0.46] }], depleted: { mesh: "core:bush_1_depleted", boxes: [{ at: [0.01, 0.48, -0.02], half: [0.46, 0.48, 0.43] }] } },
+  { mesh: "core:bush_2", boxes: [{ at: [0.03, 0.38, -0.02], half: [0.35, 0.38, 0.34] }], depleted: { mesh: "core:bush_2_depleted", boxes: [{ at: [0.01, 0.36, -0.02], half: [0.33, 0.36, 0.31] }] } },
+  { mesh: "core:bush_3", boxes: [{ at: [0.08, 0.51, 0.05], half: [0.58, 0.51, 0.5] }], depleted: { mesh: "core:bush_3_depleted", boxes: [{ at: [0.11, 0.48, 0.07], half: [0.56, 0.48, 0.46] }] } },
+  { mesh: "core:bush_4", boxes: [{ at: [0.02, 0.57, 0.01], half: [0.43, 0.57, 0.37] }], depleted: { mesh: "core:bush_4_depleted", boxes: [{ at: [0.01, 0.55, 0.01], half: [0.4, 0.55, 0.37] }] } },
+];
+const CREEPERS: NodeVariant[] = [
+  { mesh: "core:creeper_1", weight: 2, boxes: [{ at: [0.05, 0.46, -0.01], half: [0.92, 0.46, 0.59] }], depleted: { mesh: "core:creeper_1_depleted", boxes: [{ at: [0.02, 0.36, -0.05], half: [0.67, 0.36, 0.51] }] } },
+  { mesh: "core:creeper_2", boxes: [{ at: [0.09, 0.28, 0.06], half: [0.52, 0.28, 0.5] }], depleted: { mesh: "core:creeper_2_depleted", boxes: [{ at: [0.11, 0.22, 0.03], half: [0.31, 0.22, 0.37] }] } },
+  { mesh: "core:creeper_3", boxes: [{ at: [0.01, 0.62, -0.03], half: [1.1, 0.62, 0.61] }], depleted: { mesh: "core:creeper_3_depleted", boxes: [{ at: [0.03, 0.5, -0.03], half: [0.77, 0.5, 0.47] }] } },
+];
+const FERNS: NodeVariant[] = [
+  { mesh: "core:fern_1", weight: 2, boxes: [{ at: [0.07, 0.21, 0.08], half: [0.39, 0.21, 0.39] }], depleted: { mesh: "core:fern_1_depleted", boxes: [{ at: [0.04, 0.11, 0.1], half: [0.11, 0.11, 0.2] }] } },
+  { mesh: "core:fern_2", boxes: [{ at: [0.01, 0.15, 0.02], half: [0.26, 0.15, 0.31] }], depleted: { mesh: "core:fern_2_depleted", boxes: [{ at: [-0.24, 0.11, 0.09], half: [0.3, 0.11, 0.16] }] } },
+  { mesh: "core:fern_3", boxes: [{ at: [-0.03, 0.25, 0.01], half: [0.51, 0.25, 0.49] }], depleted: { mesh: "core:fern_3_depleted", boxes: [{ at: [-0.03, 0.16, 0.07], half: [0.28, 0.16, 0.3] }] } },
+  { mesh: "core:fern_4", boxes: [{ at: [-0.02, 0.19, -0.03], half: [0.36, 0.19, 0.39] }], depleted: { mesh: "core:fern_4_depleted", boxes: [{ at: [-0.05, 0.1, -0.06], half: [0.26, 0.1, 0.11] }] } },
+];
+const PALMETTOS: NodeVariant[] = [
+  { mesh: "core:palmetto_1", weight: 2, boxes: [{ at: [0.03, 0.41, 0.01], half: [0.42, 0.41, 0.39] }], depleted: { mesh: "core:palmetto_1_depleted", boxes: [{ at: [-0.34, 0.17, -0.13], half: [0.55, 0.17, 0.4] }] } },
+  { mesh: "core:palmetto_2", boxes: [{ at: [0.13, 0.23, -0.09], half: [0.31, 0.23, 0.32] }], depleted: { mesh: "core:palmetto_2_depleted", boxes: [{ at: [-0.07, 0.14, -0.1], half: [0.38, 0.14, 0.39] }] } },
+  { mesh: "core:palmetto_3", boxes: [{ at: [-0.11, 0.37, 0.07], half: [0.6, 0.37, 0.37] }], depleted: { mesh: "core:palmetto_3_depleted", boxes: [{ at: [0.23, 0.19, 0.21], half: [0.75, 0.19, 0.48] }] } },
+];
+const SEAGRAPES: NodeVariant[] = [
+  { mesh: "core:seagrape_1", weight: 2, boxes: [{ at: [-0.21, 0.57, -0.22], half: [0.95, 0.57, 1.04] }], depleted: { mesh: "core:seagrape_1_depleted", boxes: [{ at: [-0.23, 0.56, -0.17], half: [0.84, 0.56, 0.9] }] } },
+  { mesh: "core:seagrape_2", boxes: [{ at: [-0.23, 0.43, 0], half: [0.44, 0.43, 0.96] }], depleted: { mesh: "core:seagrape_2_depleted", boxes: [{ at: [-0.27, 0.35, -0.04], half: [0.3, 0.35, 0.81] }] } },
+  { mesh: "core:seagrape_3", boxes: [{ at: [-0.13, 0.79, 0.13], half: [1.31, 0.79, 1.55] }], depleted: { mesh: "core:seagrape_3_depleted", boxes: [{ at: [-0.2, 0.64, 0.04], half: [1.1, 0.64, 1.19] }] } },
+];
 const NODES: NodeDef[] = [
-  // Hardwood hammock trees.
-  tree("tree", 12, [0.3, 2, 0.3], { half: [1.4, 1.6, 1.4], color: 7 }, [0.8, 1.25]),
-  tree("palm", 10, [0.2, 3.5, 0.2], { half: [1.6, 0.5, 1.6], color: 17 }, [0.8, 1.25]),
-  // Strangler figs and banyans are the big trees, and take the most blows.
-  tree("fig", 20, [0.5, 2.5, 0.5], { half: [3.2, 2, 3.2], color: 16 }, [0.85, 1.2]),
-  tree("banyan", 30, [1, 3, 1], { half: [5, 2.5, 5], color: 7 }, [0.9, 1.2]),
-  tree("mangrove", 8, [0.25, 1.4, 0.25], { half: [1.8, 1, 1.8], color: 12 }, [0.75, 1.2]),
+  // Hardwood hammock trees: the common harvest tree is a young live oak, 11 to 24 m across. The full-grown ones are their
+  // own kind, a giant here and there among the figs and banyans.
+  tree("tree", 12, [0.3, 2, 0.3], { half: [1.4, 1.6, 1.4], color: 7 }, [0.4, 0.75], OAKS),
+  tree("palm", 10, [0.2, 3.5, 0.2], { half: [1.6, 0.5, 1.6], color: 17 }, [0.85, 1.15], PALMS),
+  // Strangler figs, banyans and the elder oaks are the big trees, and take the most blows.
+  tree("fig", 20, [0.5, 2.5, 0.5], { half: [3.2, 2, 3.2], color: 16 }, [1, 1.25], FIGS),
+  tree("oak", 20, [0.3, 2, 0.3], { half: [1.4, 1.6, 1.4], color: 7 }, [0.85, 1.2], OAKS),
+  // A banyan's outer trunks stand as far as 12 m out, each buried six tenths of how far it stands. Where the ground falls
+  // away under them further than that, a strangler fig grows in its place.
+  { ...tree("banyan", 30, [1, 3, 1], { half: [5, 2.5, 5], color: 7 }, [0.9, 1.15], BANYANS), footing: { reach: 12, fall: 7.2, else: "core:fig" } },
+  tree("mangrove", 8, [0.25, 1.4, 0.25], { half: [1.8, 1, 1.8], color: 12 }, [0.8, 1.2], MANGROVES),
   // Limestone boulders. Only these hold a little ore, as the rocks always have here.
   { type: "node", id: id("rock"), mesh: "box", color: 15, half: [0.9, 0.6, 0.8], hits: 10, respawnHours: REGROW, material: "stone", yields: [...ROCK_YIELDS, { item: "core:ore", min: 0, max: 1, tool: true }], xp: 1, size: [0.6, 1.5] },
   { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: REGROW, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.6, 1.4] },
   // A metal rock, darker and veined, which a player learns to spot. It is harder than limestone, and a pick gets its ore.
   { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }], xp: 1, size: [0.7, 1.4] },
-  // Berry bushes.
-  { type: "node", id: id("bush"), mesh: "box", color: 16, half: [0.5, 0.4, 0.5], soft: true, hits: 4, respawnHours: REGROW, yields: [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }], xp: 0.5, size: [0.75, 1.25] },
+  // Berry bushes, their berries red.
+  plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }], [0.8, 1.2], BUSHES),
   // Saw palmetto bears a few berries. A fern bears none.
-  { type: "node", id: id("palmetto"), mesh: "box", color: 17, half: [0.7, 0.5, 0.7], soft: true, hits: 4, respawnHours: REGROW, yields: [{ item: "core:fiber", min: 3, max: 6 }, { item: "core:berry", min: 1, max: 3 }], xp: 0.5, size: [0.7, 1.3] },
-  { type: "node", id: id("fern"), mesh: "box", color: 7, half: [0.45, 0.35, 0.45], soft: true, hits: 3, respawnHours: REGROW, yields: [{ item: "core:fiber", min: 3, max: 6 }], xp: 0.5, size: [0.7, 1.3] },
+  plant("palmetto", 17, 4, [0.7, 0.5, 0.7], [{ item: "core:fiber", min: 3, max: 6 }, { item: "core:berry", min: 1, max: 3 }], [0.75, 1.25], PALMETTOS),
+  plant("fern", 7, 3, [0.45, 0.35, 0.45], [{ item: "core:fiber", min: 3, max: 6 }], [0.75, 1.3], FERNS),
   // Sea grape is a berry bush of the shore. Creeper, a mass of vine, gives fibre and nothing else.
-  { type: "node", id: id("seagrape"), mesh: "box", color: 12, half: [0.9, 0.8, 0.9], soft: true, hits: 4, respawnHours: REGROW, yields: [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 4 }], xp: 0.5, size: [0.75, 1.3] },
-  { type: "node", id: id("creeper"), mesh: "box", color: 16, half: [0.8, 0.6, 0.5], soft: true, hits: 3, respawnHours: REGROW, yields: [{ item: "core:fiber", min: 4, max: 8 }], xp: 0.5, size: [0.7, 1.4] },
+  plant("seagrape", 12, 4, [0.9, 0.8, 0.9], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 4 }], [0.8, 1.2], SEAGRAPES),
+  plant("creeper", 16, 3, [0.8, 0.6, 0.5], [{ item: "core:fiber", min: 4, max: 8 }], [0.8, 1.25], CREEPERS),
 ];
 
 /** Levels are the reference game's. */

@@ -144,7 +144,7 @@ test("nothing is put down within 40 m of a tribe's creature, nor within 60 m of 
 
 test("nothing is put down inside a node nobody has loaded, nor in what is left of one used up, but where one used up left nothing", () => {
   // Rocks, trees and banyans thick on the ground, and nobody near, so no chunk's nodes are loaded.
-  const thick = writeMap(flatMap(4, { nodes: [{ seed: 5, perChunk: 256, kinds: [["core:rock", 1], ["core:tree", 1], ["core:banyan", 1]], allowCell: 0, allow: null }], regions: [{ kind: "spawn", spawns: "core:spawns_proving_herd", count: 30, at: [128, 128], radius: 100 }] }));
+  const thick = writeMap(flatMap(4, { nodes: [{ seed: 5, perChunk: 96, kinds: [["core:rock", 1], ["core:tree", 1], ["core:banyan", 1]], allowCell: 0, allow: null }], regions: [{ kind: "spawn", spawns: "core:spawns_proving_herd", count: 30, at: [128, 128], radius: 100 }] }));
   const host = createHost(reg, { wild: true, map: thick });
   ticks(host, 120);
   const field = host.world.nodeField!;
@@ -203,7 +203,8 @@ test("a save made before the spawner keeps its herd, counted for the region it s
   expect([herd!.count, beach!.count, hunters!.count]).toEqual([30, 0, 0]);
   ticks(host, 30);
   expect(host.spawner!.made).toBe(0);
-  ticks(host, CHECK_SECONDS * TICK_RATE);
+  // Two checks each, as one may find every place its group would stand taken: the beach's first, by a live oak's trunk.
+  ticks(host, 2 * CHECK_SECONDS * TICK_RATE);
   expect([herd!.count, beach!.count > 0, hunters!.count > 0]).toEqual([30, true, true]);
   host.shutdown();
   // And one made before content was realigned loads with the spawner on.

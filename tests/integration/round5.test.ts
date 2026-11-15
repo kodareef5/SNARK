@@ -65,10 +65,10 @@ test("operator: a server started from the 50x folder says what it applied, and a
   // The same twelve blows make the same draws, so thatch and experience scale by exactly fifty.
   const fell = (m: Camp) => {
     const tree = nodesOf(m.h, "core:tree", 256, 256).find((t) => standFacing(m.h, m.ada, m.h.pilots[0]!, t))!;
-    const table = m.h.host.harvest!.field.store.chunks[tree.chunk]!;
+    const field = m.h.host.harvest!.field;
     const xp = m.me.xp;
     let blows = 0;
-    while (table.kind[tree.index] !== 0 && blows < 100) {
+    while (field.standing(tree.chunk, tree.index) !== 0 && blows < 100) {
       m.h.host.harvest!.strike(m.h.client(m.ada)!, tree.chunk, tree.index);
       blows++;
     }

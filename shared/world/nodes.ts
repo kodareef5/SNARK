@@ -61,6 +61,10 @@ export interface NodeForms {
   readonly steps: Uint8Array;
   /** Per content index of a node, the running sums of its variants' weights. */
   readonly sums: readonly (Uint16Array | null)[];
+  /** Per content index: how far its footing reaches and the fall it allows, in metres (0 for none), and what grows instead. */
+  readonly footReach: Float32Array;
+  readonly footFall: Float32Array;
+  readonly footElse: Uint16Array;
 }
 
 export function mix(a: number, b: number, c: number): number {
@@ -91,6 +95,9 @@ function buildForms(reg: Registry): NodeForms {
   const first = new Uint32Array(n);
   const steps = new Uint8Array(n);
   const sums: (Uint16Array | null)[] = new Array(n).fill(null);
+  const footReach = new Float32Array(n);
+  const footFall = new Float32Array(n);
+  const footElse = new Uint16Array(n);
   const kind = [0];
   const variant = [0];
   const size = [0];
@@ -116,6 +123,11 @@ function buildForms(reg: Registry): NodeForms {
   for (let k = 1; k < n; k++) {
     const d = reg.defs[k];
     if (d?.type !== "node") continue;
+    if (d.footing) {
+      footReach[k] = d.footing.reach;
+      footFall[k] = d.footing.fall;
+      footElse[k] = d.footing.else === undefined ? 0 : (reg.index.get(d.footing.else) ?? 0);
+    }
     const variants = d.variants ?? [{ mesh: "" }];
     const [lo, hi] = d.size ?? [1, 1];
     const s = lo === hi ? 1 : SIZE_STEPS;
@@ -164,6 +176,9 @@ function buildForms(reg: Registry): NodeForms {
     first,
     steps,
     sums,
+    footReach,
+    footFall,
+    footElse,
   };
 }
 
@@ -180,8 +195,32 @@ export function nodeForms(reg: Registry): NodeForms {
  * Scatters nodes by a hash. `kindsAt` gives the content indices that may grow at a place, repeated for weight, with 0 for
  * bare ground, or null where nothing grows. A slot is also empty where the ground is lower than 0.3 m above sea level or too
  * steep. A node's kind and turn come from one hash of its slot, as they always have, and its variant and size from a third.
+ * A kind with a footing grows only where the ground under it falls no further than it allows, and elsewhere what it says.
  */
 export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: (x: number, z: number) => readonly number[] | null): NodeSource {
+  // A footing is judged in the heightfield's own whole numbers, so every engine judges it alike: the height samples as far
+  // out as it reaches, along the axes and the diagonals, against the sample nearest the origin, in steps of height.
+  const count = forms.footReach.length;
+  const ring = new Int32Array(count);
+  const slant = new Int32Array(count);
+  const fall = new Int32Array(count);
+  for (let k = 0; k < count; k++) {
+    if (!(forms.footReach[k]! > 0)) continue;
+    ring[k] = Math.ceil(forms.footReach[k]! / hf.cell);
+    // A diagonal sample as far out: ring / sqrt(2), rounded.
+    slant[k] = Math.floor((ring[k]! * 181 + 128) / 256);
+    fall[k] = Math.floor(forms.footFall[k]! / hf.stepY);
+  }
+  // A place is a whole number of 65536ths of a chunk, and samples are `per` of them apart.
+  const per = (hf.cell * 65536) / CHUNK_SIZE;
+  const height = (i: number, j: number): number => hf.heights[Math.min(hf.nz - 1, Math.max(0, j)) * hf.nx + Math.min(hf.nx - 1, Math.max(0, i))]!;
+  const fits = (kind: number, ux: number, uz: number): boolean => {
+    const i = Math.floor((ux + per / 2) / per);
+    const j = Math.floor((uz + per / 2) / per);
+    const low = height(i, j) - fall[kind]!;
+    const [r, d] = [ring[kind]!, slant[kind]!];
+    return height(i + r, j) >= low && height(i - r, j) >= low && height(i, j + r) >= low && height(i, j - r) >= low && height(i + d, j + d) >= low && height(i + d, j - d) >= low && height(i - d, j + d) >= low && height(i - d, j - d) >= low;
+  };
   return {
     perChunk,
     at(chunk, index, out) {
@@ -190,11 +229,12 @@ export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perCh
       const g = mix(h, index, chunk);
       const x = (chunkCx(dims, chunk) + (h & 0xffff) / 65536) * CHUNK_SIZE;
       const z = (chunkCz(dims, chunk) + (h >>> 16) / 65536) * CHUNK_SIZE;
-      const kinds = kindsAt(x, z);
-      if (kinds === null || kinds.length === 0) return;
+      const grows = kindsAt(x, z);
+      if (grows === null || grows.length === 0) return;
       const y = hf.heightAt(x, z);
       if (y < hf.seaLevel + 0.3 || hf.slopeCosAt(x, z) < 0.85) return;
-      const kind = kinds[g % kinds.length]!;
+      let kind = grows[g % grows.length]!;
+      if (kind !== 0 && ring[kind]! > 0 && !fits(kind, chunkCx(dims, chunk) * 65536 + (h & 0xffff), chunkCz(dims, chunk) * 65536 + (h >>> 16))) kind = forms.footElse[kind]!;
       if (kind === 0) return;
       out.kind = kind;
       out.form = formOf(forms, kind, mix(g, chunk, seed));

@@ -468,6 +468,8 @@ export const VARIANT_NODES: readonly Def[] = [
     yields: STAND_IN_YIELD,
     xp: 1,
     size: [0.5, 2.5],
+    // Where the ground falls away under it, a shrub grows in its slot.
+    footing: { reach: 3, fall: 0.5, else: "test:shrub" },
     variants: [
       { mesh: "test:boulder_1", boxes: [{ at: [0, 0.5, 0], half: [1.2, 0.5, 0.7] }, { at: [0.4, 1.3, 0], half: [0.6, 0.3, 0.5] }] },
       { mesh: "test:boulder_2", boxes: [{ at: [0.2, 0.8, -0.3], half: [0.9, 0.8, 1.1] }] },
@@ -477,8 +479,8 @@ export const VARIANT_NODES: readonly Def[] = [
 ];
 
 /**
- * With the definitions of `base` and VARIANT_NODES: those kinds scattered over the proving ground, each node's kind, form (its
- * variant and size), place and turn hashed; then a seventh of them used up, and bodies walking among the rest and the stumps
+ * With the definitions of `base` and VARIANT_NODES: those kinds scattered over the proving ground, each node's kind (a boulder
+ * where its footing holds, else a shrub), form (its variant and size), place and turn hashed; then a seventh of them used up, and bodies walking among the rest and the stumps
  * and casting rays at them. Equal on both engines means every client grows the same forest the server does and meets it alike.
  */
 export function nodeHash(base: Registry): string {

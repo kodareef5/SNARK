@@ -330,7 +330,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   const post = scene.assets.residency.slot(w.mesh(TUBE), 0);
   expect(w.port.log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   // The far wood is about two draws a frame more, and the palm's level one upload more.
-  expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([8145, 767, 21, 0]);
+  expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([8143, 767, 21, 0]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
@@ -341,8 +341,11 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // model, so that its grey box left this pack. It was 946480213 until low poly's sun stood where the lit tiers' does
   // and the far wood was drawn (D260): the sun alone gives 1662333099, and less the far wood's draws, buffers and the
   // palm's level, every frame is as with the sun alone but for the first frame's level uploads, where the tree's comes
-  // first, since the far wood draws it before the near store does.
-  expect(hash).toBe(133088346);
+  // first, since the far wood draws it before the near store does. It was 133088346 until the trees grew at the art's sizes:
+  // the palm from 0.85 to 1.15 of its model, not 0.8 to 1.25 (with the tree at 0.85 to 1.2 as well, 1199806411); the elder
+  // oak a kind of its own, whose grey box numbers the meshes after it on (3610121629); and the common tree a young oak from
+  // 0.4 to 0.75, at which the far wood is two draws fewer over the 300 frames.
+  expect(hash).toBe(3057706620);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
