@@ -247,7 +247,12 @@ export interface ItemDef extends Named {
   readonly folder?: string;
   /** The item a spoiled one becomes, one for one, as ARK's meat becomes spoiled meat (server/items.ts). Omitted, it is gone. */
   readonly spoilsInto?: string;
-  /** It may be found as a blueprint: a copy that crafts it a limited number of times. */
+  /**
+   * Whether it may be a blueprint: a slot flagged FLAG_BLUEPRINT (shared/sim/items.ts) that crafts it at the blueprint's
+   * quality, from the blueprint's own ingredients, with no engram and at any level, as often as wanted, and is never used up
+   * (ark.wiki.gg Blueprint, 2026-11-15: unlimited uses, except ARK's fishing rod and Tek blueprints, 3 each). Omitted, an
+   * item that is crafted may be one; false keeps it from ever being one; only an item with `craft` may be.
+   */
   readonly blueprint?: boolean;
   /** What using one does beyond what eating gives (planning/reference/items-plan.md, task C). */
   readonly use?: UseFacet;
@@ -516,13 +521,19 @@ export interface LootEntry {
   readonly weight?: number;
   readonly min: number;
   readonly max: number;
-  /** Lowest and highest quality, as multiples of primitive. */
+  /**
+   * Lowest and highest quality as ARK's item rating (MinQuality, MaxQuality): the tier is the highest whose threshold the
+   * rating drawn reaches (QUALITY_RATING, shared/sim/items.ts). Omitted, primitive.
+   */
   readonly quality?: readonly [number, number];
-  /** Chance, 0 to 1, that it comes as a blueprint. */
+  /** Chance, 0 to 1, that it comes as a single blueprint, for an item that may be one (ChanceToBeBlueprintOverride). */
   readonly blueprint?: number;
 }
 
-/** Sets of items to draw from: what a crate holds, what a body leaves. A stub until loot is built. */
+/**
+ * Sets of items to draw from: what a crate holds, what a body leaves (shared/sim/loot.ts rolls one, and the console's `loot`
+ * mints a roll). Nothing in the world opens one yet: crates and fishing wait for map zones.
+ */
 export interface LootDef extends Named {
   readonly type: "loot";
   readonly id: string;
