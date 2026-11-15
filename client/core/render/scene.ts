@@ -22,12 +22,13 @@ import type { Falling } from "../rubble.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
-import { Characters, showMaterials } from "./characters.ts";
+import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
-import { SKY_SIZE, flatLight, skyFrame, theSky } from "./sky.ts";
-import { TerrainLod } from "./terrain.ts";
+import { Cascades, MAX_REACH, reach } from "./shadow.ts";
+import { SKY_SIZE, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
+import { TerrainLod, type CastTest } from "./terrain.ts";
 
 export interface RenderWorld {
   readonly dims: MapDims;
@@ -88,6 +89,8 @@ const HIDDEN = 0xffff;
 const FLAT: readonly number[] = [-1, 0, 0];
 const NEAR = 1 << PASS_NEAR;
 const FAR = 1 << PASS_FAR;
+/** What of a draw's flags a caster keeps: how its vertices are placed. */
+const CAST_FLAGS = DRAW_SKINNED | DRAW_ONE_BONE | DRAW_SIZED;
 
 /** A mesh stood somewhere by itself, with no entity or structure behind it. `level` is the level it was last drawn at, or -1. */
 export interface Thing {
@@ -224,6 +227,58 @@ export class Scene {
   private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, NEAR);
   /** Bases drawn as blocks where the near store does not hold their chunks whole, given a far source and the far mesh. */
   private readonly far: FarBlocks | null;
+  /** Sun shadows: the cascades fitted this frame. */
+  readonly cascades = new Cascades();
+  /** Whether anything casts this frame, how far the true sun climbs (its unit vector's y), and frames fitted, for a cascade drawn every other frame. */
+  private casting = false;
+  private sunY = 1;
+  private fitted = 0;
+  /** The lowest a receiver in any cascade's sphere can be. A caster's shadow reaches as far as its top stands over this. */
+  private floor = 0;
+  /** Metres from the camera past which nothing casts into a cascade: as far as a cascade's cube reaches, and MAX_REACH on. */
+  private castRange = 0;
+  private readonly sunAt = new Float64Array(3);
+  private readonly pairs = new Uint8Array(MAX_CASCADES * 2);
+  /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
+  private readonly unseenFrom = new Uint16Array(MAX_VIEW);
+  private readonly unseenAt = new Float64Array(MAX_VIEW * 4);
+  /** The camera of the frame being built. */
+  private camera: Camera | null = null;
+  /**
+   * The cascades something in a camera-relative box casts into: those it can shade, its shadow reaching as far along the
+   * light as its top stands over the floor, while that shadow can fall in view.
+   */
+  private readonly castBox: CastTest = (minX, minY, minZ, maxX, maxY, maxZ) => {
+    const [dx, dy, dz] = [Math.max(minX, -maxX, 0), Math.max(minY, -maxY, 0), Math.max(minZ, -maxZ, 0)];
+    if (dx * dx + dy * dy + dz * dz > this.castRange * this.castRange) return 0;
+    const stretch = this.stretch(minX, minZ, maxX, maxZ, maxY);
+    return this.inView(minX, minY, minZ, maxX, maxY, maxZ, stretch) ? this.cascades.mask(minX, minY, minZ, maxX, maxY, maxZ, Infinity, stretch) : 0;
+  };
+  private readonly bodyShadows: BodyShadows = {
+    body: (x, y, z, r) => {
+      if (Math.hypot(x, y, z) - r > this.castRange) return 0;
+      const stretch = this.stretch(x - r, z - r, x + r, z + r, y + r);
+      return this.inView(x - r, y - r, z - r, x + r, y + r, z + r, stretch) ? this.cascades.sphereMask(x, y, z, r, stretch) : 0;
+    },
+    mesh: (mesh) => this.cascades.fits(this.radiusOfMesh[mesh]!),
+  };
+  /**
+   * The characters' casters: in each cascade the coarsest held level within its texel, but none finer than the held
+   * level nearest the one the view draws.
+   */
+  private readonly castBody: CastFn = (mesh, lod, first, count, flags, cascades) => {
+    const view = this.assets.heldLevel(mesh, lod);
+    if (view < 0) return;
+    const out = this.pairs;
+    const n = this.cascades.entries(cascades, this.assets.table.error[mesh]!, this.assets.held(mesh), out);
+    let left = cascades;
+    for (let e = 0; e < n; e++) {
+      if (out[e * 2]! <= view) continue;
+      this.cast(mesh, out[e * 2]!, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, out[e * 2 + 1]!);
+      left &= ~out[e * 2 + 1]!;
+    }
+    if (left !== 0) this.cast(mesh, view, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, left);
+  };
   /** Linear RGB of the open sky and of deep water. */
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
@@ -320,6 +375,7 @@ export class Scene {
     p.light = flatLight(this.hour, p.sun);
     // Lit tiers take their light from the sky table.
     if (p.tier.lit) skyFrame(this.hour, theSky(), p.frame);
+    this.fit(cam);
 
     // Under water the view is short and the fog is the water's colour, dimmed.
     const sea = this.world.hf.seaLevel;
@@ -334,10 +390,11 @@ export class Scene {
       p.fogEnd = this.viewDistance;
     }
 
-    this.terrain.select(cam, p, this.viewDistance, this.assets.residency);
+    this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.castBox : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
     if (this.far) this.farBlocks(cam);
+    if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
     if (remote) this.entities(cam, remote);
@@ -348,10 +405,123 @@ export class Scene {
     if (this.things.length > 0) this.showThings(cam);
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
     // The viewer's own body goes over everything else, water included.
-    this.characters.flush(p, this.transient, true, this.drawBody);
+    this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
     this.order();
     this.assets.end(p, this.now);
     return p;
+  }
+
+  /**
+   * Fits the shadow cascades to the view, for the sun where it is (sky.ts `trueSun`) while it casts at all, and finds
+   * the floor: the ground under each cascade's sphere, but no lower than the sphere reaches.
+   */
+  private fit(cam: Camera): void {
+    const p = this.packet;
+    const c = this.cascades;
+    const setup = p.tier.shadows;
+    this.casting = false;
+    this.characters.shadows = null;
+    if (!p.lit || setup.cascades <= 0 || p.frame[FRAME.casting]! <= 0) {
+      c.clear();
+      return;
+    }
+    trueSun(p.frame, this.sunAt);
+    this.camera = cam;
+    c.fit(cam, this.sunAt[0]!, this.sunAt[1]!, this.sunAt[2]!, setup, this.fitted++);
+    p.cascadeCount = c.count;
+    p.cascadesDrawn = c.drawn;
+    c.write(p.cascades, p.spheres);
+    if (c.drawn === 0) return;
+    let floor = Infinity;
+    let range = 0;
+    for (let i = 0; i < c.count; i++) {
+      const [x, y, z, r] = [c.sphere[i * 4]!, c.sphere[i * 4 + 1]!, c.sphere[i * 4 + 2]!, c.sphere[i * 4 + 3]!];
+      floor = Math.min(floor, Math.max(cam.y + y - r, this.terrain.lowest(cam.x + x - r, cam.z + z - r, cam.x + x + r, cam.z + z + r)));
+      // The cube is snapped less than a texel from the sphere's middle.
+      range = Math.max(range, Math.hypot(x, y, z) + (c.half[i]! + c.texel[i]!) * Math.sqrt(3));
+    }
+    this.floor = floor;
+    this.castRange = range + MAX_REACH;
+    this.sunY = this.sunAt[1]!;
+    this.casting = true;
+    this.characters.shadows = this.bodyShadows;
+  }
+
+  /**
+   * How far along the light the shadow of a camera-relative box whose top is `top` can reach: as far as the top stands
+   * over the floor, or over the lowest ground where a shadow that long could fall, whichever is the shorter.
+   */
+  private stretch(minX: number, minZ: number, maxX: number, maxZ: number, top: number): number {
+    const p = this.packet;
+    const most = reach(top + p.camY - this.floor, this.sunY);
+    const [sx, sz] = [-this.sunAt[0]! * most, -this.sunAt[2]! * most];
+    const low = this.terrain.lowest(p.camX + Math.min(minX, minX + sx), p.camZ + Math.min(minZ, minZ + sz), p.camX + Math.max(maxX, maxX + sx), p.camZ + Math.max(maxZ, maxZ + sz));
+    return low > this.floor ? reach(top + p.camY - low, this.sunY) : most;
+  }
+
+  /** Whether the shadow of a camera-relative box, swept `stretch` metres away from the sun, can fall in view. */
+  private inView(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, stretch: number): boolean {
+    const [sx, sy, sz] = [-this.sunAt[0]! * stretch, -this.sunAt[1]! * stretch, -this.sunAt[2]! * stretch];
+    return this.camera!.boxVisible(Math.min(minX, minX + sx), Math.min(minY, minY + sy), Math.min(minZ, minZ + sz), Math.max(maxX, maxX + sx), Math.max(maxY, maxY + sy), Math.max(maxZ, maxZ + sz));
+  }
+
+  /** Puts the meshes of a chunk whose box casts into `casts` in the caster list, each at the coarsest level held within a cascade's texel. */
+  private castChunk(b: ChunkBatch, id: number, ox: number, oy: number, oz: number, casts: number, sized: boolean): void {
+    const c = this.cascades;
+    const out = this.pairs;
+    for (let r = 0; r < b.ranges.length; r += 3) {
+      const mesh = b.ranges[r]!;
+      // A node is drawn up to its kind's largest size, which scales its radius and errors.
+      const scale = sized ? this.reachOfMesh[mesh]! : 1;
+      const mask = casts & c.fits(this.radiusOfMesh[mesh]! * scale);
+      if (mask === 0) continue;
+      const n = c.entries(mask, this.assets.table.error[mesh]!, this.assets.held(mesh), out, scale);
+      for (let e = 0; e < n; e++) this.cast(mesh, out[e * 2]!, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, sized ? DRAW_SIZED : 0, out[e * 2 + 1]!);
+    }
+  }
+
+  /**
+   * Puts `count` instances of a held level into the caster list for `cascades`. A level with cut-out or two-sided
+   * sections is a caster for each section, cut out where the card holds what that reads; any other is its whole level.
+   */
+  private cast(mesh: number, level: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, cascades: number): void {
+    if (level < 0) return;
+    const runs = this.assets.table.sections[mesh]![level] ?? FLAT;
+    let split = false;
+    for (let k = 0; k < runs.length; k += 3) split ||= runs[k]! >= 0 && (this.materialFlags[runs[k]!]! & (DRAW_CUTOUT | DRAW_TWO_SIDED)) !== 0;
+    const cutouts = split && this.assets.heldCutouts(mesh, level);
+    this.assets.keep(mesh, level, cutouts);
+    const slot = this.assets.residency.slot(mesh, level);
+    flags &= CAST_FLAGS;
+    if (!split) return this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags, 0, 0, 0, cascades);
+    for (let k = 0; k < runs.length; k += 3) {
+      const m = this.materialFlags[runs[k]!]! & (cutouts ? DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT : DRAW_TEXTURED | DRAW_TWO_SIDED);
+      this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags | m, runs[k]!, runs[k + 1]!, runs[k + 2]!, cascades);
+    }
+  }
+
+  private caster(mesh: number, level: number, slot: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, material: number, firstIndex: number, indexCount: number, cascades: number): void {
+    const p = this.packet;
+    const n = p.casterCount;
+    if (n === MAX_CASTERS) {
+      p.casterDropped++;
+      return;
+    }
+    p.casterMesh[n] = mesh;
+    p.casterLod[n] = level;
+    p.casterSlot[n] = slot;
+    p.casterBuffer[n] = buffer;
+    p.casterFirst[n] = first;
+    p.casterInstances[n] = count;
+    p.casterOffset[n * 3] = ox;
+    p.casterOffset[n * 3 + 1] = oy;
+    p.casterOffset[n * 3 + 2] = oz;
+    p.casterFlags[n] = flags;
+    p.casterMaterial[n] = material;
+    p.casterFirstIndex[n] = firstIndex;
+    p.casterIndexCount[n] = indexCount;
+    p.casterCascades[n] = cascades;
+    p.casterCount = n + 1;
   }
 
   /**
@@ -441,6 +611,7 @@ export class Scene {
     const st = this.state;
     const own = this.own;
     ch.begin();
+    let unseen = 0;
     if (remote) {
       // First which bodies are in view and where, then which of them the frame has the bones to pose.
       const from = this.bodyFrom;
@@ -480,7 +651,15 @@ export class Scene {
           }
         }
         const r = ch.reach(kind);
-        if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, y + (r > 2.2 ? r : 2.2), z + r)) continue;
+        if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, y + (r > 2.2 ? r : 2.2), z + r)) {
+          // Out of view, a body whose shadow may fall in it is posed after those in view, while bones are left.
+          if (this.casting && this.bodyShadows.body(x, y, z, r) !== 0) {
+            this.unseenFrom[unseen] = i;
+            this.unseenAt.set([x, y, z, yaw], unseen * 4);
+            unseen++;
+          }
+          continue;
+        }
         from[n] = i;
         place[n * 4] = x;
         place[n * 4 + 1] = y;
@@ -509,15 +688,7 @@ export class Scene {
         }
         for (; k < n; k++) rigid[order[k]! % MAX_VIEW] = 1;
       }
-      for (let k = 0; k < n; k++) {
-        const i = from[k]!;
-        const kind = remote.kind[i]!;
-        st.unpack(remote.anim[i]!, remote.cue[i]!);
-        st.seed = bodySeed(remote.id[i]!);
-        const look = remote.hasLook[i] !== 0 ? remote.look : null;
-        const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
-        ch.add(p, kind, place[k * 4]!, place[k * 4 + 1]!, place[k * 4 + 2]!, place[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size, rigid[k] !== 0);
-      }
+      for (let k = 0; k < n; k++) this.addRemote(remote, from[k]!, place, k, rigid[k] !== 0, false);
       // Pitched props, such as an arrow where it landed.
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
@@ -536,9 +707,42 @@ export class Scene {
     // Then the shots in the air.
     this.shots?.draw(ch, p, cam, this.shotTick);
     if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson);
+    if (remote && unseen > 0) this.poseUnseen(remote, unseen);
     const from = p.drawCount;
-    ch.flush(p, this.transient, false, this.drawBody);
+    ch.flush(p, this.transient, false, this.drawBody, this.casting ? this.castBody : null);
     if (cam.split > 0) this.bodyPasses(cam, from);
+  }
+
+  /** Poses remote entity `i` at the place `at` holds at `k` (x, y, z camera-relative, and yaw), for the view or, `unseen`, for its shadow alone. */
+  private addRemote(remote: RemoteSample, i: number, at: Float64Array, k: number, rigid: boolean, unseen: boolean): void {
+    const st = this.state;
+    const kind = remote.kind[i]!;
+    st.unpack(remote.anim[i]!, remote.cue[i]!);
+    st.seed = bodySeed(remote.id[i]!);
+    const look = remote.hasLook[i] !== 0 ? remote.look : null;
+    const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
+    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size, rigid, unseen);
+  }
+
+  /**
+   * Poses the bodies out of view whose shadows may fall in it, nearest first, by the same call as a body in view, so a
+   * shadow matches its body when it walks in. They take the tier's bones those in view leave, and stand rigid when one
+   * bone is all that is left.
+   */
+  private poseUnseen(remote: RemoteSample, count: number): void {
+    const p = this.packet;
+    const place = this.unseenAt;
+    const order = this.bodyOrder;
+    for (let k = 0; k < count; k++) order[k] = Math.min(Math.floor(Math.hypot(place[k * 4]!, place[k * 4 + 1]!, place[k * 4 + 2]!) * 256), 0xfffff) * MAX_VIEW + k;
+    sortU32(order, count);
+    const limit = Math.min(this.assets.tier.bones, MAX_BONES);
+    for (let o = 0; o < count; o++) {
+      const k = order[o]! % MAX_VIEW;
+      const i = this.unseenFrom[k]!;
+      const rigid = p.boneCount + this.characters.bones(remote.kind[i]!) > limit;
+      if (rigid && p.boneCount >= limit) break;
+      this.addRemote(remote, i, place, k, rigid, true);
+    }
   }
 
   private showFalling(cam: Camera, f: Falling): void {
@@ -687,27 +891,31 @@ export class Scene {
       const bx = batch.maxX - cam.x;
       const by = batch.maxY - cam.y;
       const bz = batch.maxZ - cam.z;
-      if (!cam.boxVisible(ax, ay, az, bx, by, bz)) continue;
       const dx = ax > 0 ? ax : bx < 0 ? -bx : 0;
       const dy = ay > 0 ? ay : by < 0 ? -by : 0;
       const dz = az > 0 ? az : bz < 0 ? -bz : 0;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (dist > this.viewDistance || dist > this.structureDistance) continue;
+      const seen = cam.boxVisible(ax, ay, az, bx, by, bz) && dist <= this.viewDistance && dist <= this.structureDistance;
+      // A chunk out of view may still cast into it.
+      const casts = this.casting ? this.castBox(ax, ay, az, bx, by, bz) : 0;
+      if (!seen && casts === 0) continue;
       if (!batch.uploaded) {
         p.uploads.push({ buffer: id, data: batch.data, slots: batch.slots });
         batch.uploaded = true;
       }
-      const passes = cam.passes(ax, ay, az, bx, by, bz);
-      if (batch.cells > 1) {
-        this.nodeRanges(cam, batch, id, dist, x0, z0, passes);
-        continue;
+      if (seen) {
+        const passes = cam.passes(ax, ay, az, bx, by, bz);
+        if (batch.cells > 1) this.nodeRanges(cam, batch, id, dist, x0, z0, passes);
+        else {
+          for (let r = 0; r < batch.ranges.length; r += 3) {
+            const mesh = batch.ranges[r]!;
+            const lod = (batch.level[r / 3] = this.assets.choose(this.assets.table.error[mesh]!, dist, batch.level[r / 3]!));
+            this.assets.wantTextured(mesh, lod, dist);
+            this.draw(mesh, lod, id, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z, 0, passes);
+          }
+        }
       }
-      for (let r = 0; r < batch.ranges.length; r += 3) {
-        const mesh = batch.ranges[r]!;
-        const lod = (batch.level[r / 3] = this.assets.choose(this.assets.table.error[mesh]!, dist, batch.level[r / 3]!));
-        this.assets.wantTextured(mesh, lod, dist);
-        this.draw(mesh, lod, id, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z, 0, passes);
-      }
+      if (casts !== 0) this.castChunk(batch, id, x0 - cam.x, -cam.y, z0 - cam.z, casts, sizeOf !== null);
     }
   }
 

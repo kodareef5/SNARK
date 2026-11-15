@@ -7,7 +7,7 @@
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { Camera } from "./camera.ts";
-import { MAX_TILES, SOURCE_MAP, SOURCE_WINDOW, TILE_QUADS, type FramePacket } from "./packet.ts";
+import { MAX_TILES, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TILE_QUADS, type FramePacket } from "./packet.ts";
 
 /** The whole map's pair takes every fourth sample: 1,025 a side on an 8 km map. */
 export const COARSE = 4;
@@ -26,6 +26,9 @@ export interface GroundBudget {
   spend(bytes: number): void;
   reserve(name: string, bytes: number): void;
 }
+
+/** The shadow cascades, a bit each, that ground in a camera-relative box casts into (render/shadow.ts). */
+export type CastTest = (minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number) => number;
 
 /** Each source's pictures, SOURCE_MAP's then SOURCE_WINDOW's: samples across and down, and metres between samples. */
 export interface GroundSize {
@@ -142,10 +145,42 @@ export class TerrainLod {
     this.drawn = this.fill = -1;
   }
 
-  /** The tiles to draw, and the window's work this frame. Without a budget a window is filled whole in the frame it is wanted. */
-  select(cam: Camera, packet: FramePacket, viewDistance: number, budget?: GroundBudget): void {
+  /**
+   * The tiles to draw, and the window's work this frame. Without a budget a window is filled whole in the frame it is
+   * wanted. With `casts`, each tile is marked with the shadow cascades it casts into.
+   */
+  select(cam: Camera, packet: FramePacket, viewDistance: number, budget?: GroundBudget, casts?: CastTest): void {
     this.follow(cam, packet, budget);
     this.coarser = 0;
+    this.walk(cam, packet, viewDistance, casts ?? null, false);
+  }
+
+  /**
+   * After `select`, the tiles out of view that cast into a shadow cascade, which no depth range draws. They are chosen as
+   * the view chooses tiles, by distance and the window, so the ground casts as it is drawn. False if the list filled.
+   */
+  casters(cam: Camera, packet: FramePacket, viewDistance: number, casts: CastTest): boolean {
+    return this.walk(cam, packet, viewDistance, casts, true);
+  }
+
+  /** A bound under the ground in a rectangle of the world: the lowest of the nodes it touches, at the finest level where they are at most three a side. */
+  lowest(x0: number, z0: number, x1: number, z1: number): number {
+    let level = 0;
+    while (level < this.levels - 1 && (CHUNK_SIZE << level) * 2 < Math.max(x1 - x0, z1 - z0)) level++;
+    const size = CHUNK_SIZE << level;
+    const w = this.width[level]!;
+    const d = this.minY[level]!.length / w;
+    const at = (v: number, n: number): number => Math.max(0, Math.min(n - 1, Math.floor(v / size)));
+    let low = Infinity;
+    for (let j = at(z0, d); j <= at(z1, d); j++) for (let i = at(x0, w); i <= at(x1, w); i++) low = Math.min(low, this.minY[level]![j * w + i]!);
+    return low;
+  }
+
+  /**
+   * Walks the quadtree. For the view, the tiles in view, marked with the cascades `casts` finds; for `shadows`, those out
+   * of view that cast. Returns false if the list filled.
+   */
+  private walk(cam: Camera, packet: FramePacket, viewDistance: number, casts: CastTest | null, shadows: boolean): boolean {
     const hf = this.hf;
     const top = this.levels - 1;
     const stack = this.stack;
@@ -170,13 +205,18 @@ export class TerrainLod {
       const z0 = tz * size - cam.z;
       const y0 = this.minY[level]![tz * w + tx]! - cam.y;
       const y1 = this.maxY[level]![tz * w + tx]! - cam.y;
-      if (!cam.boxVisible(x0, y0, z0, x0 + size, y1, z0 + size)) continue;
+      const stride = (size / hf.cell / TILE_QUADS) | 0;
+      // A tile's skirt hangs two quads under its lowest sample.
+      const skirt = y0 - 2 * stride * hf.cell;
+      const seen = cam.boxVisible(x0, y0, z0, x0 + size, y1, z0 + size);
+      // For shadows a node is walked while it may cast, since its children's boxes lie within its own.
+      let bits = shadows ? casts!(x0, skirt, z0, x0 + size, y1, z0 + size) : 0;
+      if (shadows ? bits === 0 : !seen) continue;
       const dx = x0 > 0 ? x0 : x0 + size < 0 ? -(x0 + size) : 0;
       const dz = z0 > 0 ? z0 : z0 + size < 0 ? -(z0 + size) : 0;
       const dy = y0 > 0 ? y0 : y1 < 0 ? -y1 : 0;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (dist > viewDistance) continue;
-      const stride = (size / hf.cell / TILE_QUADS) | 0;
       const i0 = Math.round((tx * size) / hf.cell);
       const j0 = Math.round((tz * size) / hf.cell);
       // Children finer than the whole map's pair read the window, so a node outside it is drawn as it is.
@@ -189,10 +229,13 @@ export class TerrainLod {
           }
           continue;
         }
-        this.coarser++;
+        if (!shadows) this.coarser++;
       }
+      // The view's walk listed this tile.
+      if (shadows && seen) continue;
+      if (!shadows && casts) bits = casts(x0, skirt, z0, x0 + size, y1, z0 + size);
       const n = packet.tileCount;
-      if (n === MAX_TILES) return;
+      if (n === MAX_TILES) return false;
       packet.tiles[n * 4] = x0;
       packet.tiles[n * 4 + 1] = z0;
       packet.tiles[n * 4 + 2] = stride * hf.cell;
@@ -205,11 +248,11 @@ export class TerrainLod {
       src[n * 4 + 1] = coarse ? j0 / COARSE : j0 - this.drawnJ;
       src[n * 4 + 2] = coarse ? stride / COARSE : stride;
       src[n * 4 + 3] = coarse ? SOURCE_MAP : SOURCE_WINDOW;
-      // Its skirt hangs two quads under its lowest sample.
-      packet.tilePass[n] = cam.passes(x0, y0 - 2 * stride * hf.cell, z0, x0 + size, y1, z0 + size);
+      packet.tilePass[n] = (seen ? cam.passes(x0, skirt, z0, x0 + size, y1, z0 + size) : 0) | (bits * TILE_CASTS);
       packet.tileCount = n + 1;
-      packet.triangles += TILE_QUADS * TILE_QUADS * 2;
+      if (seen) packet.triangles += TILE_QUADS * TILE_QUADS * 2;
     }
+    return true;
   }
 
   /** Whether a node's samples, as far as the map has them, lie inside the window drawn. */

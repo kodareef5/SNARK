@@ -70,6 +70,21 @@ interface BodyKind {
 }
 
 export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number) => void;
+/** Puts instances into the shadow caster list for `cascades`, a bit each. `lod` is the level the view would draw them at. */
+export type CastFn = (mesh: number, lod: number, first: number, count: number, flags: number, cascades: number) => void;
+
+/** What a body's shadow takes, while the sun casts: the cascades a body within `radius` of a camera-relative point can shade, and those a mesh is large enough for. */
+export interface BodyShadows {
+  body(x: number, y: number, z: number, radius: number): number;
+  mesh(mesh: number): number;
+}
+
+/** An instance drawn in the view, one of the viewer's own body drawn over everything, and one that only casts a shadow. */
+const SEEN = 0;
+const OWN = 1;
+const CASTS = 2;
+/** Cascade masks an instance may have: a bit each for up to four. */
+const MASKS = 16;
 
 /** A body's gait, and the frame it was last drawn in. */
 class Stride extends Gait {
@@ -83,6 +98,8 @@ export class Characters {
   readonly anim: HumanAnim;
   /** Bodies posed this frame. */
   posed = 0;
+  /** Set while the sun casts. Null leaves every body out of the shadows. */
+  shadows: BodyShadows | null = null;
   private readonly kinds: (BodyKind | null)[];
   /** Per content index. Set for a species with a non-human skeleton whose rig and mesh are in the pack. */
   private readonly creatures: (Creature | null)[];
@@ -105,11 +122,17 @@ export class Characters {
   private readonly region0 = new Uint8Array(MAX_SKINNED);
   private readonly colors = new Uint8Array(MAX_SKINNED * 6);
   private readonly id = new Uint32Array(MAX_SKINNED);
+  /** SEEN, OWN or CASTS. */
   private readonly near = new Uint8Array(MAX_SKINNED);
+  /** The shadow cascades each instance casts into, a bit each. */
+  private readonly mask = new Uint8Array(MAX_SKINNED);
   /** Added to each vertex before its bone is applied. The rest position of the bone a held item hangs on, or zero for a body mesh. */
   private readonly offset = new Float32Array(MAX_SKINNED * 3);
   private readonly counts: Uint32Array;
   private readonly cursor: Uint32Array;
+  /** Per key and cascade mask, while casting: how many instances, and where the next goes. A key's instances are ordered by mask. */
+  private readonly maskCounts: Uint32Array;
+  private readonly maskCursor: Uint32Array;
   private readonly assets: Assets;
   /** The level each body was last drawn at, by its id. */
   private readonly last = new Map<number, number>();
@@ -132,6 +155,8 @@ export class Characters {
     this.levels = table.error.reduce((most, e) => Math.max(most, e.length), 1);
     this.counts = new Uint32Array(table.count * this.levels * 2);
     this.cursor = new Uint32Array(table.count * this.levels * 2);
+    this.maskCounts = new Uint32Array(this.counts.length * MASKS);
+    this.maskCursor = new Uint32Array(this.counts.length * MASKS);
     /** Only a mesh on the human skeleton is drawn as part of a body. */
     const human = (mesh: number): number => (mesh >= 0 && table.skeleton[mesh] === HUMAN.id ? mesh : -1);
     const sets: string[] = [];
@@ -238,9 +263,9 @@ export class Characters {
     return true;
   }
 
-  private addCreature(p: FramePacket, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean): boolean {
+  private addCreature(p: FramePacket, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean, unseen: boolean): boolean {
     const rig = c.anim.rig;
-    const first = this.room(p, rigid ? 1 : rig.bones, 1);
+    const first = this.room(p, rigid ? 1 : rig.bones, 1, !unseen);
     if (first < 0) return false;
     if (rigid) writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size);
     else {
@@ -253,23 +278,25 @@ export class Characters {
       writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
       this.posed++;
     }
-    this.queueCreature(c, first, x, y, z, colors, colorAt, id, size, rigid);
+    this.queueCreature(c, first, x, y, z, colors, colorAt, id, size, rigid, unseen);
     return true;
   }
 
-  /** Queues a creature's mesh on the bones from `first`, at the level its distance and size call for. */
-  private queueCreature(c: Creature, first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean): void {
+  /** Queues a creature's mesh on the bones from `first`, at the level its distance and size call for. One `unseen` only casts, and asks for nothing. */
+  private queueCreature(c: Creature, first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean, unseen: boolean): void {
     const n = this.count++;
     // A young one is the same mesh drawn smaller, and so are its errors.
     const far = Math.sqrt(x * x + y * y + z * z) / size;
     const lod = this.levelOf(id, c.error, far);
-    this.assets.wantTextured(c.mesh, lod, far);
+    if (!unseen) this.assets.wantTextured(c.mesh, lod, far);
     this.key[n] = (c.mesh * this.levels + lod) * 2 + (rigid ? 1 : 0);
     this.firstBone[n] = first;
     this.region0[n] = c.color;
     for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
     this.id[n] = id;
-    this.near[n] = 0;
+    this.near[n] = unseen ? CASTS : SEEN;
+    const s = this.shadows;
+    this.mask[n] = s ? s.body(x, y, z, c.anim.rig.reach * size) & s.mesh(c.mesh) : 0;
     this.offset.fill(0, n * 3, n * 3 + 3);
   }
 
@@ -290,15 +317,15 @@ export class Characters {
       const first = this.room(p, c.anim.rig.bones, 1);
       if (first < 0) return;
       writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
-      this.queueCreature(c, first, x, y, z, d.colors, 0, d.id, d.size, false);
+      this.queueCreature(c, first, x, y, z, d.colors, 0, d.id, d.size, false, false);
     }
   }
 
-  /** Takes `bones` bones for a body of `parts` meshes and returns the first, or counts the body as dropped and returns -1. */
-  private room(p: FramePacket, bones: number, parts: number): number {
+  /** Takes `bones` bones for a body of `parts` meshes and returns the first, or returns -1, counting the body as dropped if `counted`. */
+  private room(p: FramePacket, bones: number, parts: number, counted = true): number {
     const first = p.boneCount;
     if (first + bones > MAX_BONES || this.count + parts > MAX_SKINNED) {
-      p.dropped++;
+      if (counted) p.dropped++;
       return -1;
     }
     p.boneCount = first + bones;
@@ -325,14 +352,16 @@ export class Characters {
    * 28-byte look at `lookAt`, or is null for a body drawn in the six colour regions of `colors` at `colorAt`. `gear` is
    * laid out as EntityStore.gear, at `gearAt`, or is null. `own` draws it in the near pass. `headless` leaves out the head
    * and what is on it. `size` scales a creature, below 1 for a young one. `rigid` leaves it in its rest pose on one bone, for
-   * a frame without the bones to pose it. Returns false when the frame has no room left even for that, and counts it dropped.
+   * a frame without the bones to pose it. `unseen` poses it as a body in view is posed, for its shadow alone: none of it is
+   * drawn in the view and it asks for nothing. Returns false when the frame has no room left even for that, and counts a
+   * body in view dropped. While the sun casts, what `headless` leaves out still casts.
    */
-  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1, rigid = false): boolean {
+  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1, rigid = false, unseen = false): boolean {
     const creature = this.creatures[kind];
-    if (creature) return this.addCreature(p, creature, x, y, z, yaw, st, tick, colors, colorAt, id, size, rigid);
+    if (creature) return this.addCreature(p, creature, x, y, z, yaw, st, tick, colors, colorAt, id, size, rigid, unseen);
     const k = this.kinds[kind];
     if (!k) return false;
-    const first = this.room(p, rigid ? 1 : HUMAN_BONES, PARTS);
+    const first = this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
     if (first < 0) return false;
     // A modelled body without a look gets the plain one, so its regions have colours.
     const view = look ? look.subarray(lookAt) : k.sets.length > 1 ? PLAIN : null;
@@ -358,15 +387,18 @@ export class Characters {
     // The viewer's own body is as fine as the tier draws anything.
     const far = own ? 0 : Math.sqrt(x * x + y * y + z * z);
     const lod = own ? this.assets.choose(set.error, 0, -1) : this.levelOf(id, set.error, far);
-    const queue = (m: number, tint: Uint8Array | null, tintAt: number, bone: number): void => {
+    const s = this.shadows;
+    const casts = s ? s.body(x, y, z, BODY_RADIUS) : 0;
+    const queue = (m: number, tint: Uint8Array | null, tintAt: number, bone: number, only: boolean): void => {
       const n = this.count++;
-      this.assets.wantTextured(m, lod, far);
+      if (!only) this.assets.wantTextured(m, lod, far);
       this.key[n] = (m * this.levels + lod) * 2 + (rigid ? 1 : 0);
       this.firstBone[n] = first;
       this.region0[n] = k.color;
       for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = tint ? tint[tintAt + q]! : 0;
       this.id[n] = id;
-      this.near[n] = own ? 1 : 0;
+      this.near[n] = only ? CASTS : own ? OWN : SEEN;
+      this.mask[n] = casts === 0 ? 0 : casts & s!.mesh(m);
       // A held item is modelled around its grip, so it is offset to where its bone rests on this body.
       for (let a = 0; a < 3; a++) this.offset[n * 3 + a] = bone < 0 ? 0 : set.rest[bone * 3 + a]!;
     };
@@ -377,29 +409,30 @@ export class Characters {
       const worn = gear ? this.worn[gear[gearAt + GEAR_WORN + slot]!] : null;
       const piece = worn && worn.slot === slot ? (set.armor[worn.set]?.[slot] ?? -1) : -1;
       const hidden = headless && slot === SLOT_HEAD;
-      if (piece >= 0 && !hidden) {
+      if (hidden && casts === 0) continue;
+      if (piece >= 0) {
         // The piece uses its own three colours, and the body's colours for the other regions.
         const c = this.wornColor;
         c.set(view ? this.lookColor : colors.subarray(colorAt, colorAt + 6));
         c[REGION_MAIN - REGION_BASE] = worn!.colors[0];
         c[REGION_SECOND - REGION_BASE] = worn!.colors[1];
         c[REGION_TRIM - REGION_BASE] = worn!.colors[2];
-        queue(piece, c, 0, -1);
+        queue(piece, c, 0, -1, unseen || hidden);
         if (slot === SLOT_HEAD) covered = true;
       }
       // A worn piece replaces the body part under it, except on the head, where it goes over.
       const body = set.slots[slot]!;
-      if (body >= 0 && !hidden && (piece < 0 || slot === SLOT_HEAD)) queue(body, tint, tintAt, -1);
+      if (body >= 0 && (piece < 0 || slot === SLOT_HEAD)) queue(body, tint, tintAt, -1, unseen || hidden);
     }
-    if (view && !headless) {
+    if (view && (!headless || casts !== 0)) {
       // A piece worn on the head hides hair but not a beard.
       const hair = covered ? -1 : (set.hair[view[LOOK_HAIR]!] ?? -1);
-      if (hair >= 0) queue(hair, tint, tintAt, -1);
+      if (hair >= 0) queue(hair, tint, tintAt, -1, unseen || headless);
       const beard = set.beard[view[LOOK_BEARD]!] ?? -1;
-      if (beard >= 0) queue(beard, tint, tintAt, -1);
+      if (beard >= 0) queue(beard, tint, tintAt, -1, unseen || headless);
     }
     const inHand = gear ? this.held[gear[gearAt + GEAR_HELD]!] : null;
-    if (inHand) queue(inHand.mesh, tint, tintAt, inHand.bone);
+    if (inHand) queue(inHand.mesh, tint, tintAt, inHand.bone, unseen);
     return true;
   }
 
@@ -447,33 +480,56 @@ export class Characters {
     this.region0[n] = 0;
     this.colors.fill(0, n * 6, n * 6 + 6);
     this.id[n] = 0;
-    this.near[n] = 0;
+    this.near[n] = SEEN;
+    this.mask[n] = 0;
     this.offset.fill(0, n * 3, n * 3 + 3);
     return true;
   }
 
-  /** Writes the viewer's own body when `own`, and every other body otherwise. */
-  flush(p: FramePacket, writer: InstanceWriter, own: boolean, draw: DrawFn): void {
-    const want = own ? 1 : 0;
+  /**
+   * Writes the viewer's own body when `own`, and every other body otherwise. With `cast`, the instances of a draw are
+   * ordered by the cascades they cast into, each run of them a caster; and after the viewer's own body come the
+   * instances that only cast, which no draw takes.
+   */
+  flush(p: FramePacket, writer: InstanceWriter, own: boolean, draw: DrawFn, cast: CastFn | null = null): void {
+    this.group(p, writer, own ? OWN : SEEN, draw, cast, DRAW_SKINNED | DRAW_PLAIN | (own ? DRAW_NEAR : 0));
+    if (own && cast) this.group(p, writer, CASTS, null, cast, DRAW_SKINNED | DRAW_PLAIN);
+  }
+
+  /** Writes the instances queued as `want`, a draw for each key unless `draw` is null. */
+  private group(p: FramePacket, writer: InstanceWriter, want: number, draw: DrawFn | null, cast: CastFn | null, flags: number): void {
     const counts = this.counts.fill(0);
+    const byMask = cast ? this.maskCounts : null;
     let any = 0;
     for (let i = 0; i < this.count; i++) {
       if (this.near[i] !== want) continue;
       counts[this.key[i]!]!++;
+      if (byMask) byMask[this.key[i]! * MASKS + this.mask[i]!]!++;
       any++;
     }
     if (any === 0) return;
     let total = p.transientCount;
-    const flags = DRAW_SKINNED | DRAW_PLAIN | (own ? DRAW_NEAR : 0);
     for (let k = 0; k < counts.length; k++) {
       this.cursor[k] = total;
+      if (counts[k] === 0) continue;
+      const [mesh, lod] = [Math.floor(k / (this.levels * 2)), (k >> 1) % this.levels];
       // An odd key is the bodies on one bone, which are a draw of their own.
-      if (counts[k]! > 0) draw(Math.floor(k / (this.levels * 2)), (k >> 1) % this.levels, total, counts[k]!, (k & 1) !== 0 ? flags | DRAW_ONE_BONE : flags);
+      const f = (k & 1) !== 0 ? flags | DRAW_ONE_BONE : flags;
+      draw?.(mesh, lod, total, counts[k]!, f);
+      if (byMask) {
+        for (let m = 0, at = total; m < MASKS; m++) {
+          const n = byMask[k * MASKS + m]!;
+          this.maskCursor[k * MASKS + m] = at;
+          if (n > 0 && m > 0) cast!(mesh, lod, at, n, f, m);
+          byMask[k * MASKS + m] = 0;
+          at += n;
+        }
+      }
       total += counts[k]!;
     }
     for (let i = 0; i < this.count; i++) {
       if (this.near[i] !== want) continue;
-      const at = this.cursor[this.key[i]!]!++;
+      const at = byMask ? this.maskCursor[this.key[i]! * MASKS + this.mask[i]!]!++ : this.cursor[this.key[i]!]!++;
       writer.setSkinned(at, this.firstBone[i]!, this.region0[i]!, this.offset[i * 3]!, this.offset[i * 3 + 1]!, this.offset[i * 3 + 2]!);
       writer.regions(at, this.colors, i * 6);
       p.transientIds[at] = this.id[i]!;
