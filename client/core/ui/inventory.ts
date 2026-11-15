@@ -351,6 +351,9 @@ export class InventoryScreen {
         if (inv.ammo[shown] !== 0) info += `  ${inv.loaded[shown]} ${itemLabel(reg, inv.ammo[shown]!)}`;
         if (inv.attach[shown] !== 0) info += `  + ${itemLabel(reg, inv.attach[shown]!)}`;
       }
+      // A vessel holds its water as its durability (server/use.ts).
+      const holds = (reg.defs[item] as ItemDef | null)?.use?.holds;
+      if (holds) info += `  water ${inv.dur[shown]}/${holds.water}`;
     }
     f.text(KEY_INV_INFO, x0 + PAD, y + ownH - PAD - infoH, w - PAD * 2, S_LABEL, info.slice(0, Math.floor((w - PAD * 2) / 7.2)));
   }

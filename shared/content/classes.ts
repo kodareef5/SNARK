@@ -89,9 +89,9 @@ const ITEM = {
   craft: f("facet", "BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP", { refs: { "needs[].item": "item", at: "structure/station" } }),
   description: stub("polish", "text", "ItemDescription"),
   folder: stub("polish", "text", "DefaultFolderPaths"),
-  spoilsInto: stub("polish", "text", "SpoilingItem", { refs: { "": "item" } }),
+  spoilsInto: f("text", "SpoilingItem", { refs: { "": "item" } }),
   blueprint: stub("loot", "switch", "it may drop as a blueprint"),
-  use: stub("polish", "facet", "UseItemAddCharacterStatusValues and the buffs a consumable gives", { refs: { "buffs[]": "buff" } }),
+  use: f("facet", "UseItemAddCharacterStatusValues and the buffs a consumable gives", { refs: { "buffs[]": "buff" } }),
 } satisfies Fields<ItemDef>;
 
 const SPECIES = {

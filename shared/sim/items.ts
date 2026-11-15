@@ -200,16 +200,17 @@ export class Inventory {
 
   /**
    * Applies spoilage up to `now`. Each stack loses one item per interval since its top item went bad, and `lost` gets what
-   * disappeared, with the record a one of a kind stood for. One call gives exactly what a call every tick would.
+   * disappeared, with the record a one of a kind stood for and the tick the first of them went bad, from which what it
+   * spoils into starts its own clock (server/items.ts). One call gives exactly what a call every tick would.
    */
-  settle(now: number, t: ItemTable, lost: (item: number, n: number, ref: number) => void): void {
+  settle(now: number, t: ItemTable, lost: (item: number, n: number, ref: number, at: number) => void): void {
     for (let s = 0; s < this.cap; s++) {
       const at = this.spoilAt[s]!;
       if (at === 0 || at > now || this.item[s] === 0) continue;
       const item = this.item[s]!;
       const interval = Math.round(t.spoilTicks[item]! * this.keep) || 1;
       const gone = Math.min(this.count[s]!, 1 + Math.floor((now - at) / interval));
-      lost(item, gone, this.refOf(s));
+      lost(item, gone, this.refOf(s), at);
       if (gone === this.count[s]) this.set(s, 0, 0, 0, 0, 0);
       else {
         this.count[s] = this.count[s]! - gone;

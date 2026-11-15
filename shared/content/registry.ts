@@ -152,6 +152,8 @@ export interface Registry {
   readonly fuelTicks: Uint32Array;
   readonly cooksInto: Uint16Array;
   readonly cookTicks: Uint32Array;
+  /** Per item: what it becomes when it spoils (ItemDef.spoilsInto), or 0 for nothing. */
+  readonly spoilsInto: Uint16Array;
   /** Per item that can be made: the ingredients as pairs of item and count, and how many one crafting makes. Null for everything else. */
   readonly recipeOf: readonly (Uint16Array | null)[];
   readonly recipeMakes: Uint16Array;
@@ -197,6 +199,9 @@ const MAX_ACT_TICKS = 250;
 export const MAX_BURN_SECONDS = 30 * 86400;
 /** The longest an item may keep before it spoils, in game hours. The spoil clock holds this with room to spare. */
 export const MAX_SPOIL_HOURS = 1e6;
+/** The stats a use may change at once, and the ones it may change over time, which buffs carry (server/use.ts). */
+export const USE_AT_ONCE: readonly string[] = ["health", "stamina", "oxygen", "food", "water", "torpidity"];
+export const USE_OVER_TIME: readonly string[] = ["health", "torpidity"];
 export const MAX_NODE_HITS = 10000;
 export const MAX_LEVELS = 10000;
 /** Stamina per second of sprinting, per second of rest, and per jump, where a species does not say. */
@@ -411,6 +416,21 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (!(d.wear.armor >= 0)) errors.push(`${d.id}: wear.armor must not be negative`);
         positive(d, "wear.uses", d.wear.uses, 60000);
       }
+      if (d.spoilsInto !== undefined && (d.spoilsInto === d.id || d.spoilHours === undefined)) errors.push(`${d.id}: spoilsInto names another item, and only something that spoils has it`);
+      // What using one does (server/use.ts). Over time only health and torpor, which buffs carry; the rest at once.
+      const use = d.use;
+      for (const a of use?.adds ?? []) {
+        const timed = a.seconds !== undefined;
+        if (!(timed ? USE_OVER_TIME : USE_AT_ONCE).includes(a.stat)) errors.push(`${d.id}: use.adds may change ${(timed ? USE_OVER_TIME : USE_AT_ONCE).join(", ")}${timed ? " over time" : ""}, not "${a.stat}"`);
+        if (!(Number.isFinite(a.amount) && a.amount !== 0 && (!timed || a.amount > 0))) errors.push(`${d.id}: use.adds amount must be a number other than 0, and above 0 over time`);
+        if (timed) positive(d, "use.adds seconds", a.seconds!, MAX_BURN_SECONDS);
+      }
+      if (use?.holds) {
+        positive(d, "use.holds.water", use.holds.water, 60000);
+        positive(d, "use.holds.each", use.holds.each, use.holds.water);
+        // The water is held as the slot's durability, which one of a kind has.
+        if (d.stack !== 1 || d.eat || d.dose || d.weapon || d.wear || d.tool) errors.push(`${d.id}: a vessel stacks to 1, wears no durability of its own, and is drunk from, not eaten`);
+      }
     }
     if (d.type === "species" || d.type === "structure" || d.type === "prop" || d.type === "node") {
       if (d.mesh.length === 0) errors.push(`${d.id}: mesh is required`);
@@ -519,6 +539,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const fuelTicks = new Uint32Array(n);
   const cooksInto = new Uint16Array(n);
   const cookTicks = new Uint32Array(n);
+  const spoilsInto = new Uint16Array(n);
   const recipeOf: (Uint16Array | null)[] = new Array(n).fill(null);
   const recipeMakes = new Uint16Array(n);
   const craftAt = new Uint16Array(n);
@@ -689,6 +710,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         cooksInto[i] = index.get(d.cooks.into)!;
         cookTicks[i] = Math.max(1, Math.round(d.cooks.seconds * TICK_RATE));
       }
+      if (d.spoilsInto !== undefined) spoilsInto[i] = index.get(d.spoilsInto)!;
     }
     if (d.type === "item" && d.craft) {
       recipeOf[index.get(d.id)!] = Uint16Array.from(d.craft.needs.flatMap((need) => [index.get(need.item)!, need.count]));
@@ -707,7 +729,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, craftAt, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
