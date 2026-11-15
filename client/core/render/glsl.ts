@@ -128,15 +128,16 @@ void main() {
 
 /**
  * Every see-through program of a lit tier includes this and calls dropNearer() first. A see-through draw across the
- * split is drawn in both depth ranges; in the far one `uFrom` is the split, and a fragment nearer than that, which the
- * near range drew, is dropped, so no band of it is blended twice. Everywhere else `uFrom` is 0. The near range is cut
- * at the split sample by sample but a fragment is dropped whole, so a pixel the split crosses is kept in the far range
- * and none of its samples is left undrawn; those between where the far range begins and the split are blended twice.
+ * split is drawn in both depth ranges; in the far one `uFrom` is the split, and a fragment wholly nearer than that,
+ * which the near range drew, is dropped. Everywhere else `uFrom` is 0. The near range is cut at the split sample by
+ * sample but a fragment is dropped whole, so a pixel whose samples reach past the split (half its depth across bounds
+ * where they lie) is kept in the far range, and none of them is left undrawn; its samples between where the far range
+ * begins and the split are blended twice.
  */
 export const SEE_THROUGH_SPLIT = `uniform float uFrom;
 void dropNearer() {
   float z = 1.0 / gl_FragCoord.w;
-  if (z + fwidth(z) < uFrom) discard;
+  if (z + 0.5 * fwidth(z) < uFrom) discard;
 }
 `;
 
