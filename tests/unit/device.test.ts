@@ -226,31 +226,35 @@ test("a tier that has materials and drew none of them is said to lack them, plai
   expect(deviceTable(r)).toContain("materials drawn on medium: the renderer made 40 textures; none drawn on high, which have them: a lack, as their textures never arrived or the card refused them");
 });
 
-test("the tree order prices a counted cut-out layer by drawing them first against none, and judges drawn last against drawn first by it", () => {
-  /** A rung whose orders read back in these ms, each order's two windows `apart` ms apart. */
-  const rung = (last: number, made: number, first: number, none: number, apart = 0, invalid = "", mat = 600): OrderRung => ({
+test("the tree order prices a counted cut-out layer by its shading alone, and judges drawn last against drawn first by it", () => {
+  /** A rung whose orders read back in these ms, drawn first and none again at a quarter of the pixels, each order's two windows `apart` ms apart. */
+  const rung = (ms: { last: number; made: number; first: number; none: number; firstQ: number; noneQ: number }, apart = 0, invalid = "", mat = 600): OrderRung => ({
     wood: "elder", tier: "medium", at: [1024, 1024], canvas: [1000, 590], settleMs: 3, settled: true, invalid, calls: 900, tris: 4e6, mat, verdict: "",
-    orders: ([["last", last], ["made", made], ["first", first], ["none", none]] as const).map(([order, ms]): OrderTime => ({ order, frames: 60, frameMs: spread([ms]), meanMs: ms, means: [ms, ms], readMs: ms, reads: [ms - apart / 2, ms + apart / 2], gpuMs: null })),
+    orders: ([["last", ms.last, false], ["made", ms.made, false], ["first", ms.first, false], ["none", ms.none, false], ["first", ms.firstQ, true], ["none", ms.noneQ, true]] as const).map(([order, at, small]): OrderTime => ({ order, small, canvas: small ? [500, 295] : [1000, 590], frames: small ? 0 : 60, frameMs: spread(small ? [] : [at]), meanMs: small ? 0 : at, means: small ? [] : [at, at], readMs: at, reads: [at - apart / 2, at + apart / 2], gpuMs: null })),
   });
   const elders: LayerCount = { wood: "elder", tier: "medium", cut: 23, front: 0.2, old: 2, first: 22.9 };
-  // 12 ms for 22.9 counted layers: 22.7 of them are 11.9 ms, 1.8 are 0.94.
-  const skipped = orderVerdict(rung(18, 19, 29, 17), elders);
-  expect([skipped.skipped, skipped.judged, skipped.cost, Math.round(skipped.predicted * 10) / 10, Math.round(skipped.saving * 100) / 100]).toEqual([true, true, 12, 11.9, 0.94]);
-  expect(skipped.line).toBe("drawn first the cut-outs cost +12.00 ms over none, 0.888 ms a counted layer a megapixel; first against last +11.00 ms read back, +11.90 predicted if hidden pixels are skipped (92%); made against last +1.00, +0.94 predicted: skipped");
-  expect(orderVerdict(rung(30, 30.2, 30.5, 18), elders).skipped).toBe(false);
-  expect(orderVerdict(rung(23, 24, 26, 17), elders).line).toEndWith("partly skipped");
+  // Drawn first, 12 ms over none, and 4.5 at a quarter of the pixels: 10 ms of shading and 2 of the rest. 22.7 of the
+  // 22.9 counted layers are 9.9 ms of it, and 1.8 are 0.79.
+  const times = { last: 18, made: 19, first: 29, none: 17, firstQ: 21.5, noneQ: 17 };
+  const skipped = orderVerdict(rung(times), elders);
+  expect([skipped.skipped, skipped.judged, skipped.cost, skipped.fragments, Math.round(skipped.predicted * 10) / 10, Math.round(skipped.saving * 100) / 100]).toEqual([true, true, 12, 10, 9.9, 0.79]);
+  expect(skipped.line).toBe("drawn first the cut-outs cost +12.00 ms over none and +4.50 at 25% of the pixels, so +10.00 shading them, 0.740 ms a counted layer a megapixel; first against last +11.00 ms read back, +9.91 predicted if hidden pixels are skipped (111%); made against last +1.00, +0.79 predicted: skipped");
+  expect(orderVerdict(rung({ ...times, last: 28.5, made: 28.8 }), elders).skipped).toBe(false);
+  expect(orderVerdict(rung({ ...times, last: 25, made: 26 }), elders).line).toEndWith("partly skipped");
+  // The cut-outs' vertices and tiles alone cost nothing to skip: the same 12 ms, all of it at a quarter of the pixels too.
+  expect(orderVerdict(rung({ ...times, last: 28.8, firstQ: 29, noneQ: 17 }), elders).line).toContain("so +0.00 shading them");
   // Too small beside what the counts predict, or beside how far an order's two windows lie apart.
-  expect(orderVerdict(rung(18, 18, 18.2, 18), { ...elders, first: 1, front: 0.3 }).line).toEndWith("too small to tell, against 0 ms between an order's two windows");
-  expect(orderVerdict(rung(18, 19, 29, 17, 7), elders).judged).toBe(false);
-  expect(orderVerdict(rung(18, 19, 29, 17, 0, "never settled"), elders).line).toBe("not judged: invalid, never settled");
-  expect(orderVerdict(rung(18, 19, 29, 17, 0, "", 0), elders).line).toBe("not judged: nothing was drawn with its materials, so nothing was cut out");
-  expect(orderVerdict(rung(18, 19, 29, 17), undefined).line).toBe("not judged: the server did not count this view");
+  expect(orderVerdict(rung({ ...times, last: 18, first: 18.2, none: 18, firstQ: 18.05, noneQ: 18 }), { ...elders, first: 1, front: 0.3 }).line).toEndWith("too small to tell, against 0 ms between an order's two windows");
+  expect(orderVerdict(rung(times, 7), elders).judged).toBe(false);
+  expect(orderVerdict(rung(times, 0, "never settled"), elders).line).toBe("not judged: invalid, never settled");
+  expect(orderVerdict(rung(times, 0, "", 0), elders).line).toBe("not judged: nothing was drawn with its materials, so nothing was cut out");
+  expect(orderVerdict(rung(times), undefined).line).toBe("not judged: the server did not count this view");
 
   // The line over all is the judged rung that predicts most.
-  const young: OrderRung = { ...rung(17, 17.1, 17.3, 17), wood: "young" };
-  const t: TreesReport = { view: [390, 844, 70], surface: { name: "surface", per: "megapixel", timer: null, slope: 0.85, error: 0.02, k: 64, note: "" }, counts: [elders, { wood: "young", tier: "medium", cut: 1.5, front: 0.34, old: 0.5, first: 1.5 }], counted: "", rungs: [young, rung(18, 19, 29, 17)], verdict: "" };
+  const young: OrderRung = { ...rung({ last: 17, made: 17.1, first: 17.3, none: 17, firstQ: 17.1, noneQ: 17 }), wood: "young" };
+  const t: TreesReport = { view: [390, 844, 70], surface: { name: "surface", per: "megapixel", timer: null, slope: 0.85, error: 0.02, k: 64, note: "" }, counts: [elders, { wood: "young", tier: "medium", cut: 1.5, front: 0.34, old: 0.5, first: 1.5 }], counted: "", rungs: [young, rung(times)], verdict: "" };
   t.verdict = treesVerdict(t);
-  expect(t.verdict).toBe("skipped: the elder oaks' cut-outs on medium cost 12.0 ms drawn first; drawn last they took 11.0 ms less, where the counts predict 11.9 ms less if the GPU skips what an opaque surface drawn before hides; drawn last saves 1.0 ms of 0.9 predicted against the order they were made in");
+  expect(t.verdict).toBe("skipped: the elder oaks' cut-outs on medium cost 12.0 ms drawn first, 10.0 of it shading them; drawn last they took 11.0 ms less, where the counts predict 9.9 ms less if the GPU skips what an opaque surface drawn before hides; drawn last saves 1.0 ms of 0.8 predicted against the order they were made in");
   expect(treesVerdict({ ...t, rungs: [young] })).toBe("not judged: young medium too small to tell, against 0 ms between an order's two windows");
   expect(treesVerdict({ ...t, counts: [], counted: "the server did not answer" })).toBe("not judged: the server did not answer");
   const r = newReport("0123456789abcdef", "trees");
@@ -258,6 +262,7 @@ test("the tree order prices a counted cut-out layer by drawing them first agains
   const table = deviceTable(r);
   expect(table).toContain(`verdict   ${t.verdict}`);
   expect(table.some((line) => /^elder +medium +none +60 +17 /.test(line))).toBe(true);
+  expect(table.some((line) => /^elder +medium +first¼ +0 /.test(line))).toBe(true);
 });
 
 test("the terrain map's wood is the far nodes' bench's but in the elders' stand, whose trees are elder oaks", () => {

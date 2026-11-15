@@ -98,15 +98,22 @@ const EYE_UP = 1.7;
 /**
  * The tree order (trees design, phase 1): on medium and high, each wood by the spot the server stands the body at, the
  * young wood at the map's middle and the elders' stand (devicescene.ts STAND). Each order, and the cut-outs left out,
- * is drawn in a window of a turn twice, in the order of ORDER_WINDOWS so a phone warming over the rung weighs on each
- * alike; then again, each frame read back.
+ * is drawn in a window of a turn twice, in the order of FRAME_WINDOWS so a phone warming over the rung weighs on each
+ * alike; then again in READ_WINDOWS, each frame read back, with drawn first and none again at half the tier's pixel
+ * ratio, a quarter of its pixels, where the cut-outs' fragments cost a quarter as much and the rest of them as much.
  */
 export const TREE_TIERS: readonly string[] = ["medium", "high"];
 export const WOODS = ["young", "elder"] as const;
 export type Wood = (typeof WOODS)[number];
-const ORDER_WINDOWS: readonly Cutouts[] = ["last", "made", "first", "none", "none", "first", "made", "last"];
-/** Frames left out after the order changes, and how long the page waits for the server's counts after its last rung, asking this often. */
+const FRAME_WINDOWS: readonly Cutouts[] = ["last", "made", "first", "none", "none", "first", "made", "last"];
+const READ_WINDOWS: readonly { order: Cutouts; small: boolean }[] = [
+  ...(["last", "made", "first", "none"] as const).map((order) => ({ order, small: false })),
+  ...(["first", "none", "none", "first"] as const).map((order) => ({ order, small: true })),
+  ...(["none", "first", "made", "last"] as const).map((order) => ({ order, small: false })),
+];
+/** Frames left out after the order changes, and after the canvas does; how long the page waits for the server's counts after its last rung, asking this often. */
 const SWITCH_FRAMES = 3;
+const RESIZE_FRAMES = 8;
 const COUNT_WAIT_MS = 300000;
 const COUNT_ASK_MS = 3000;
 /** How near its spot, in metres, the body must be for the rung to begin: within a chunk, so the near store holds the wood round it. */
@@ -350,6 +357,9 @@ export interface LayerAnswer {
 /** One order of the tree order's rung: its frames as the page measures them, and its frames read back. */
 export interface OrderTime {
   order: Cutouts;
+  /** Drawn at a quarter of the pixels, on this canvas, where it is read back alone. */
+  small: boolean;
+  canvas: number[];
   frames: number;
   frameMs: Spread;
   /** The mean between frames, which a GPU-bound device's frames come at: of both its windows, and of each. */
@@ -626,6 +636,8 @@ export interface Load {
   noWood?: boolean;
   /** With noShadows, shadows and none by turns, frame by frame. */
   byTurns?: boolean;
+  /** At half the tier's pixel ratio, a quarter of its pixels. */
+  small?: boolean;
 }
 
 interface Step {
@@ -720,8 +732,12 @@ export interface OrderJudged {
   line: string;
   skipped: boolean | null;
   judged: boolean;
-  /** What the cut-outs cost drawn first against none drawn; drawn first against last, and as made against last: measured and predicted ms. */
+  /**
+   * What the cut-outs cost drawn first against none drawn, and of it their fragments; drawn first against last, and as
+   * made against last: measured and predicted ms.
+   */
   cost: number;
+  fragments: number;
   measured: number;
   predicted: number;
   saved: number;
@@ -730,21 +746,27 @@ export interface OrderJudged {
 
 /**
  * A rung of the tree order judged against the server's count of its view. Drawn first, every cut-out fragment the
- * ground leaves is shaded, and what that costs over drawing none prices a counted layer on this device, in this wood.
- * Drawn last, a GPU that skips what an opaque surface drawn before hides shades only those in front of the nearest one,
- * so at that price the counts say how much less it should take; one that shades them all takes as long. The frames
- * read back say how much less it took.
+ * ground leaves is shaded. What that costs over drawing none, less what it costs at a quarter of the pixels, is what
+ * shading them costs, their vertices and tiles left out, and over the count of them it prices a counted layer on this
+ * device, in this wood. Drawn last, a GPU that skips what an opaque surface drawn before hides shades only those in front
+ * of the nearest one, so at that price the counts say how much less it should take; one that shades them all takes as
+ * long. The frames read back say how much less it took.
  */
 export function orderVerdict(rung: OrderRung, count: LayerCount | undefined): OrderJudged {
-  const of = (o: Cutouts): OrderTime | undefined => rung.orders.find((x) => x.order === o);
-  const [last, made, first, bare] = [of("last"), of("made"), of("first"), of("none")];
-  const none = (line: string): OrderJudged => ({ line, skipped: null, judged: false, cost: 0, measured: 0, predicted: 0, saved: 0, saving: 0 });
+  const of = (o: Cutouts, small = false): OrderTime | undefined => rung.orders.find((x) => x.order === o && x.small === small);
+  const [last, made, first, bare, firstQ, bareQ] = [of("last"), of("made"), of("first"), of("none"), of("first", true), of("none", true)];
+  const none = (line: string): OrderJudged => ({ line, skipped: null, judged: false, cost: 0, fragments: 0, measured: 0, predicted: 0, saved: 0, saving: 0 });
   if (rung.invalid) return none(`not judged: invalid, ${rung.invalid}`);
-  if (!last || !made || !first || !bare) return none("not judged: an order was not drawn");
+  if (!last || !made || !first || !bare || !firstQ || !bareQ) return none("not judged: an order was not drawn");
   if (rung.mat === 0) return none("not judged: nothing was drawn with its materials, so nothing was cut out");
   if (!count || !(count.first > count.front)) return none("not judged: the server did not count this view");
+  const pixels = (c: number[]): number => (c[0] ?? 0) * (c[1] ?? 0);
+  const q = pixels(firstQ.canvas) / Math.max(1, pixels(first.canvas));
+  if (!(q > 0 && q < 0.5)) return none(`not judged: the canvas was not made smaller (${firstQ.canvas.join("x")} against ${first.canvas.join("x")})`);
   const cost = first.readMs - bare.readMs;
-  const layer = Math.max(0, cost) / count.first;
+  const costQ = firstQ.readMs - bareQ.readMs;
+  const fragments = (cost - costQ) / (1 - q);
+  const layer = Math.max(0, fragments) / count.first;
   const [measured, predicted] = [first.readMs - last.readMs, (count.first - count.front) * layer];
   const [saved, saving] = [made.readMs - last.readMs, (count.old - count.front) * layer];
   const noise = Math.max(...rung.orders.map((o) => (o.reads.length === 2 ? Math.abs(o.reads[0]! - o.reads[1]!) : 0)));
@@ -753,9 +775,9 @@ export function orderVerdict(rung: OrderRung, count: LayerCount | undefined): Or
   const skipped = too ? null : share >= SKIPPED ? true : share <= NOT_SKIPPED ? false : null;
   const word = too ? `too small to tell, against ${tenth(noise)} ms between an order's two windows` : skipped === true ? "skipped" : skipped === false ? "not skipped" : "partly skipped";
   const ms = (x: number): string => `${x >= 0 ? "+" : ""}${x.toFixed(2)}`;
-  const mp = (rung.canvas[0]! * rung.canvas[1]!) / 1e6;
-  const line = `drawn first the cut-outs cost ${ms(cost)} ms over none, ${(layer / mp).toFixed(3)} ms a counted layer a megapixel; first against last ${ms(measured)} ms read back, ${ms(predicted)} predicted if hidden pixels are skipped (${Math.round(share * 100)}%); made against last ${ms(saved)}, ${ms(saving)} predicted: ${word}`;
-  return { line, skipped, judged: !too, cost, measured, predicted, saved, saving };
+  const mp = pixels(first.canvas) / 1e6;
+  const line = `drawn first the cut-outs cost ${ms(cost)} ms over none and ${ms(costQ)} at ${Math.round(q * 100)}% of the pixels, so ${ms(fragments)} shading them, ${(layer / mp).toFixed(3)} ms a counted layer a megapixel; first against last ${ms(measured)} ms read back, ${ms(predicted)} predicted if hidden pixels are skipped (${Math.round(share * 100)}%); made against last ${ms(saved)}, ${ms(saving)} predicted: ${word}`;
+  return { line, skipped, judged: !too, cost, fragments, measured, predicted, saved, saving };
 }
 
 /** The tree order's verdict in a line, from the rung that predicts the most: whether the GPU skipped the hidden cut-out pixels. */
@@ -766,7 +788,7 @@ export function treesVerdict(t: TreesReport): string {
   const { g, v } = best;
   const where = `${g.wood === "elder" ? "the elder oaks'" : "the young wood's"} cut-outs on ${g.tier}`;
   const word = v.skipped === true ? "skipped" : v.skipped === false ? "not skipped" : "partly skipped";
-  return `${word}: ${where} cost ${v.cost.toFixed(1)} ms drawn first; drawn last they took ${v.measured.toFixed(1)} ms less, where the counts predict ${v.predicted.toFixed(1)} ms less if the GPU skips what an opaque surface drawn before hides; drawn last saves ${v.saved.toFixed(1)} ms of ${v.saving.toFixed(1)} predicted against the order they were made in`;
+  return `${word}: ${where} cost ${v.cost.toFixed(1)} ms drawn first, ${v.fragments.toFixed(1)} of it shading them; drawn last they took ${v.measured.toFixed(1)} ms less, where the counts predict ${v.predicted.toFixed(1)} ms less if the GPU skips what an opaque surface drawn before hides; drawn last saves ${v.saved.toFixed(1)} ms of ${v.saving.toFixed(1)} predicted against the order they were made in`;
 }
 
 /** Half of what the ladder held on `tier` for each axis, a rung down, or `fallback` where it did not climb. */
@@ -893,7 +915,7 @@ export class DeviceRun {
    * under way and when it began, the frames still to leave out, each window's frame gaps, reads and GPU times, and the
    * server's count and when it was last asked.
    */
-  private trees: { plan: { tier: Tier; wood: number }[]; k: number; at: number[] | null; window: number; windowAt: number; skip: number; gaps: number[][]; reads: number[][]; gpu: number[][]; answer: LayerAnswer | null; askedAt: number; waitFrom: number } | null = null;
+  private trees: { plan: { tier: Tier; wood: number }[]; k: number; at: number[] | null; window: number; windowAt: number; skip: number; gaps: number[][]; reads: number[][]; gpu: number[][]; canvases: number[][]; answer: LayerAnswer | null; askedAt: number; waitFrom: number } | null = null;
   /** The soak's amounts, clock and minute under way. */
   private readonly soakFrom: { load: Omit<Load, "tier" | "yaw">; from: string };
   private soakMs = 0;
@@ -968,7 +990,7 @@ export class DeviceRun {
   /** Whether the frame drawn next is to be read back once it is handed to WebGL: in the tree order's second half. */
   get fencing(): boolean {
     const t = this.trees;
-    return this.stage === "trees" && this.measuring && t !== null && t.k < t.plan.length && t.window >= ORDER_WINDOWS.length;
+    return this.stage === "trees" && this.measuring && t !== null && t.k < t.plan.length && t.window >= FRAME_WINDOWS.length;
   }
 
   /** The page is shown again: the frames' stopping until now does not count. */
@@ -1255,10 +1277,10 @@ export class DeviceRun {
       const t = scene.assets.tier;
       const l = this.drawn;
       this.shadowless = l?.noShadows === true && t.shadows.cascades > 0 && (!l.byTurns || !this.shadowless);
-      const change = (l?.oneRange && t.split > 0 ? 1 : 0) | (this.shadowless ? 2 : 0) | (l?.noWood ? 4 : 0);
+      const change = (l?.oneRange && t.split > 0 ? 1 : 0) | (this.shadowless ? 2 : 0) | (l?.noWood ? 4 : 0) | (l?.small ? 8 : 0);
       if (change !== 0) {
         const mine = copies.get(t) ?? copies.set(t, new Map()).get(t)!;
-        const copy = mine.get(change) ?? { ...t, ...(change & 1 ? { split: 0 } : {}), ...(change & 2 ? { shadows: { ...t.shadows, cascades: 0 } } : {}), ...(change & 4 ? { reach: { ...t.reach, trees: 0, rocks: 0, bushes: 0 } } : {}) };
+        const copy = mine.get(change) ?? { ...t, ...(change & 1 ? { split: 0 } : {}), ...(change & 2 ? { shadows: { ...t.shadows, cascades: 0 } } : {}), ...(change & 4 ? { reach: { ...t.reach, trees: 0, rocks: 0, bushes: 0 } } : {}), ...(change & 8 ? { pixelRatio: (t.pixelRatio > 0 ? t.pixelRatio : this.side.dpr) / 2 } : {}) };
         scene.assets.tier = mine.set(change, copy).get(change)!;
       }
       // The flight moves the camera as it builds; the body stays where the server has it.
@@ -1461,7 +1483,7 @@ export class DeviceRun {
     const view = [Math.round(rows * cam.aspect), Math.round(rows), Math.round((cam.fovY * 180) / Math.PI)];
     const plan = takes(this.side.maxTexture).filter((t) => TREE_TIERS.includes(t.name)).flatMap((tier) => WOODS.map((_, wood) => ({ tier, wood })));
     this.report.trees = { view, surface: this.surface, counts: [], counted: "not counted yet", rungs: [], verdict: "" };
-    this.trees = { plan, k: -1, at: null, window: 0, windowAt: 0, skip: 0, gaps: [], reads: [], gpu: [], answer: null, askedAt: 0, waitFrom: -1 };
+    this.trees = { plan, k: -1, at: null, window: 0, windowAt: 0, skip: 0, gaps: [], reads: [], gpu: [], canvases: [], answer: null, askedAt: 0, waitFrom: -1 };
     this.stage = "trees";
     this.askCount(this.last);
     this.treeRung(0);
@@ -1502,17 +1524,20 @@ export class DeviceRun {
     this.report.stage = `trees ${step.tier.name} ${WOODS[step.wood]}`;
   }
 
-  /** The window `t.window` begins, a turn from heading 0 in its order, once the frames after the change are left out. */
+  /** The window `t.window` begins, a turn from heading 0 in its order and size, once the frames after the change are left out. */
   private treeWindow(now: number): void {
     const t = this.trees!;
     const w = t.window;
-    const order = ORDER_WINDOWS[w % ORDER_WINDOWS.length]!;
+    const read = w - FRAME_WINDOWS.length;
+    const { order, small } = read >= 0 ? READ_WINDOWS[read]! : { order: FRAME_WINDOWS[w]!, small: false };
+    const resized = (this.drawn?.small === true) !== small;
     this.side.app.scene!.cutouts = order;
-    [t.windowAt, t.skip] = [now, SWITCH_FRAMES];
-    if (w >= ORDER_WINDOWS.length) t.reads[w - ORDER_WINDOWS.length] = [];
+    this.drawn = { ...this.step!.load, small };
+    [t.windowAt, t.skip] = [now, resized ? RESIZE_FRAMES : SWITCH_FRAMES];
+    if (read >= 0) [t.reads[read], t.canvases[read]] = [[], []];
     else [t.gaps[w], t.gpu[w]] = [[], []];
     const step = t.plan[t.k]!;
-    this.report.stage = `trees ${step.tier.name} ${WOODS[step.wood]} ${order}${w >= ORDER_WINDOWS.length ? " read back" : ""}`;
+    this.report.stage = `trees ${step.tier.name} ${WOODS[step.wood]} ${order}${small ? " at a quarter of the pixels" : ""}${read >= 0 ? " read back" : ""}`;
   }
 
   /**
@@ -1541,7 +1566,7 @@ export class DeviceRun {
       this.settled = this.still >= STILL;
       for (const list of Object.values(this.samples)) list.length = 0;
       this.dropped = this.skipped = 0;
-      [t.gaps, t.reads, t.gpu, t.window] = [[], [], [], 0];
+      [t.gaps, t.reads, t.gpu, t.canvases, t.window] = [[], [], [], [], 0];
       this.treeWindow(now);
       frames?.take();
       return false;
@@ -1553,14 +1578,16 @@ export class DeviceRun {
       t.windowAt = now;
       return false;
     }
-    if (w >= ORDER_WINDOWS.length) t.reads[w - ORDER_WINDOWS.length]!.push(drawMs);
-    else {
+    if (w >= FRAME_WINDOWS.length) {
+      t.reads[w - FRAME_WINDOWS.length]!.push(drawMs);
+      t.canvases[w - FRAME_WINDOWS.length] = this.canvas;
+    } else {
       t.gaps[w]!.push(gap);
       t.gpu[w]!.push(...timed.map((x) => x.ms));
       this.sample(gap, buildMs, drawMs, drawCalls, p);
     }
     if (now - t.windowAt < this.timing.turnMs) return false;
-    if (++t.window < ORDER_WINDOWS.length * 2) {
+    if (++t.window < FRAME_WINDOWS.length + READ_WINDOWS.length) {
       this.treeWindow(now);
       return false;
     }
@@ -1576,13 +1603,15 @@ export class DeviceRun {
     const phase = this.result();
     const { limit, invalid } = judgeRung(phase, this.side.display);
     const mean = (xs: readonly number[]): number => (xs.length === 0 ? 0 : tenth(xs.reduce((a, b) => a + b, 0) / xs.length));
-    const orders = CUTOUTS.map((order): OrderTime => {
-      const at = ORDER_WINDOWS.flatMap((o, i) => (o === order ? [i] : []));
+    const time = (order: Cutouts, small: boolean): OrderTime => {
+      const at = small ? [] : FRAME_WINDOWS.flatMap((o, i) => (o === order ? [i] : []));
+      const read = READ_WINDOWS.flatMap((x, i) => (x.order === order && x.small === small ? [i] : []));
       const gaps = at.flatMap((i) => t.gaps[i] ?? []);
-      const reads = at.map((i) => t.reads[i] ?? []);
+      const reads = read.map((i) => t.reads[i] ?? []);
       const gpu = at.flatMap((i) => t.gpu[i] ?? []);
-      return { order, frames: gaps.length, frameMs: spread(gaps), meanMs: mean(gaps), means: at.map((i) => mean(t.gaps[i] ?? [])), readMs: spread(reads.flat()).median, reads: reads.map((r) => spread(r).median), gpuMs: gpu.length > 0 ? spread(gpu).median : null };
-    });
+      return { order, small, canvas: small ? (t.canvases[read[0]!] ?? []) : phase.canvas, frames: gaps.length, frameMs: spread(gaps), meanMs: mean(gaps), means: at.map((i) => mean(t.gaps[i] ?? [])), readMs: spread(reads.flat()).median, reads: reads.map((r) => spread(r).median), gpuMs: gpu.length > 0 ? spread(gpu).median : null };
+    };
+    const orders = [...CUTOUTS.map((order) => time(order, false)), time("first", true), time("none", true)];
     this.report.trees!.rungs.push({ wood: WOODS[step.wood], tier: step.tier.name, at: t.at ?? [], canvas: phase.canvas, settleMs: phase.settleMs, settled: phase.settled, invalid: limit === "lost" ? "the graphics context was lost" : invalid, calls: phase.drawCalls, tris: phase.triangles, mat: phase.textured, orders, verdict: "" });
   }
 
