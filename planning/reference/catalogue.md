@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 41 classes: 27 built, 5 partly built, and 9 stubs that
-wait for a feature. The core pack holds 393 definitions, and 79 renames of ids
+wait for a feature. The core pack holds 394 definitions, and 79 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -299,7 +299,7 @@ Packs may add to: `entries`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 1 |
+| `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 2 |
 
 - **`map`** on shelf `maps`. A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. A spawn zone with a spawns definition is kept stocked from it; one without is where a test's starting creatures are put.
 
@@ -403,6 +403,6 @@ built.
 
 **`spawns`** (4): spawns_beach, spawns_jungle, spawns_proving_herd, spawns_proving_hunters.
 
-**`map`** (1): miami.
+**`map`** (2): miami, tampa.
 
 **`rename`** (79): 75 of `make-<item>`, the recipe id an item had before recipes were folded into items; and engram-cloth, engram-hide, engram-chitin, engram-flak.
