@@ -173,30 +173,33 @@ def ride(base, p, extra=None):
 # =====================================================================================================================
 
 def attack(r):
-    """The bite on the ground, its 0.67 s. It draws its head back into a cocked S, the beak tipped down along its
-    aim, and rocks back onto its feet; then it lunges in two frames, pitching forward over its planted hands with the
-    heels rising, the neck shooting out straight and the beak gaping; the beak slams shut on the target, the body sinks
-    on a frame behind; it yanks the head back and up as if tearing, the chest following a beat later, clacks its beak
-    once and settles."""
+    """The bite on the ground, its 0.67 s. It gathers its head back into a cocked S close over the chest, the beak
+    already aimed at the target, and rocks back onto its feet, and holds it loaded a moment; then it thrusts in two
+    frames like a spear, pitching forward over its planted hands with the heels rising, the neck shooting out nearly
+    level and the beak gaping; the beak slams shut on the target as the shoulders sink onto the arms; it draws the
+    closed beak straight back along the line it struck on, and only then lifts the head, which settles a beat after the
+    body."""
     name = "attack"
     n, h = BITE_FRAMES, BITE_HIT
     lean0, ext0 = lean_of(ground(), mv.STANCE_HEAD)
-    dz = Keys([(0, 0.0), (3, -0.035), (5, -0.04), (7, 0.08), (h, 0.12), (h + 1, 0.13), (12, 0.045), (15, -0.012),
-               (17, 0.003), (n - 1, 0.0)])
-    dy = Keys([(0, 0.0), (3, 0.010), (5, 0.012), (7, -0.010), (h, -0.020), (h + 1, -0.026), (12, -0.008),
-               (15, 0.005), (n - 1, 0.0)])
-    pitch = Keys([(0, 0.0), (3, 3.0), (5, 3.5), (7, -3.5), (h, -5.0), (h + 1, -5.5), (12, -1.5), (15, 1.0), (n - 1, 0.0)])
-    chest = Keys([(0, 0.0), (3, 2.0), (5, 2.5), (7, -4.0), (h, -6.0), (h + 1, -6.5), (12, -2.0), (15, 1.2), (n - 1, 0.0)])
-    # The strike is a spear's thrust: the neck shoots out level, the beak in line with it.
-    lean = Keys([(0, lean0), (3, lean0 - 9.0), (5, lean0 - 11.0), (7, 72.0), (h, 84.0), (h + 1, 85.0), (11, 55.0),
-                 (13, lean0 - 3.0), (16, lean0 + 3.0), (n - 1, lean0)])
-    ext = Keys([(0, ext0), (3, 0.905), (5, 0.90), (7, 0.975), (h, 0.99), (h + 1, 0.99), (11, 0.95), (14, 0.94),
-                (n - 1, ext0)])
-    aim = Keys([(0, 0.0), (3, -5.0), (5, -7.0), (7, -10.0), (h, -8.0), (h + 1, -9.0), (11, -6.0), (13, 6.0),
-                (16, -2.0), (n - 1, 0.0)])
-    gape = Keys([(0, 0.0), (3, 0.04), (5, 0.2), (6, 0.6), (7, 0.85), (h, 0.0), (h + 3, 0.0), (h + 4, 0.16), (h + 5, 0.0)])
-    cock = Keys([(0, 0.0), (3, 1.0), (5, 1.0), (7, 0.0), (11, 0.15), (13, 0.45), (16, 0.15), (n - 1, 0.0)])
-    heel = Keys([(0, 0.0), (5, 0.0), (7, 10.0), (h, 16.0), (h + 2, 16.0), (13, 3.0), (n - 1, 0.0)])
+    dz = Keys([(0, 0.0), (3, -0.04), (5, -0.045), (7, 0.10), (h, 0.16), (h + 1, 0.165), (11, 0.10), (14, 0.01),
+               (16, -0.008), (n - 1, 0.0)])
+    dy = Keys([(0, 0.0), (3, 0.012), (5, 0.014), (7, -0.015), (h, -0.035), (h + 1, -0.042), (11, -0.025), (14, 0.0),
+               (16, 0.004), (n - 1, 0.0)])
+    pitch = Keys([(0, 0.0), (3, 3.5), (5, 4.0), (7, -3.5), (h, -5.5), (h + 1, -6.0), (11, -3.5), (14, 0.5), (16, 0.6),
+                  (n - 1, 0.0)])
+    chest = Keys([(0, 0.0), (3, 2.5), (5, 3.0), (7, -4.0), (h, -6.5), (h + 1, -7.0), (11, -4.0), (14, 0.8), (n - 1, 0.0)])
+    # The thrust keeps the head high: the neck leans out to 62 degrees from upright at full stretch while the body
+    # carries it forward, and the head is held level against it, so the beak travels out along its own line.
+    lean = Keys([(0, lean0), (3, lean0 - 15.0), (5, lean0 - 17.0), (7, 52.0), (h, 62.0), (h + 1, 63.0), (10, 52.0),
+                 (12, 32.0), (14, lean0 - 3.0), (16, lean0 + 2.0), (n - 1, lean0)])
+    ext = Keys([(0, ext0), (3, 0.88), (5, 0.875), (7, 0.975), (h, 0.99), (h + 1, 0.99), (10, 0.93), (12, 0.92),
+                (14, 0.945), (n - 1, ext0)])
+    aim = Keys([(0, 0.0), (3, -6.0), (5, -8.0), (7, -7.0), (h, -6.0), (h + 1, -7.0), (10, -5.0), (12, -1.0), (14, 3.0),
+                (16, -1.5), (n - 1, 0.0)])
+    gape = Keys([(0, 0.0), (4, 0.05), (5, 0.25), (6, 0.65), (7, 0.85), (h, 0.0)])
+    cock = Keys([(0, 0.0), (3, 1.0), (5, 1.0), (7, 0.0), (10, 0.3), (12, 0.6), (14, 0.3), (n - 1, 0.0)])
+    heel = Keys([(0, 0.0), (5, 0.0), (7, 10.0), (h, 16.0), (h + 2, 16.0), (12, 6.0), (14, 0.0)])
     lift = Keys([(0, 0.0), (3, 2.0), (5, 2.5), (h, -5.0), (h + 2, -6.0), (13, 2.0), (16, -1.0), (n - 1, 0.0)])
     tail = Keys([(0, 0.0), (3, 4.0), (5, 4.0), (h, -6.0), (12, 3.0), (16, -1.0), (n - 1, 0.0)])
 
@@ -218,31 +221,38 @@ def attack(r):
 
 
 def call(r):
-    """A call, the seabird's croak with its sound: it draws itself up on its arms and swells its chest, raises its head
-    on an upright neck and gapes wide, the folded wing fingers flaring out from the arms; it calls in three pulses, the
-    head jerking a little forward and the beak widening with each; it shuts its beak with two clacks, comes down, shakes
-    its head and settles. The head pitches no more than 15 degrees above the chest, the rider's limit."""
+    """A call, the seabird's croak with its sound: it fills its chest and draws itself up on its arms, raises its head
+    on an upright neck and gapes wide, the folded wing fingers flaring out from the arms; through the call the chest
+    and throat labour in quick pulses under the held gape, the head pressing forward with the strongest three; it shuts
+    its beak first, then lowers its head, lets the breath go so the chest sinks below where it stood, gives its head
+    a shake and settles. The head pitches no more than 15 degrees above the chest, the rider's limit."""
     name = "call"
     n = rig.CLIPS[name]["frames"]
     lean0, ext0 = lean_of(ground(), mv.STANCE_HEAD)
-    up = Keys([(0, 0.0), (5, 0.55), (10, 1.0), (30, 1.0), (36, 0.35), (42, 0.0), (n - 1, 0.0)])
-    gape = Keys([(0, 0.0), (8, 0.0), (10, 0.35), (12, 0.88), (29, 0.82), (31, 0.2), (32, 0.0), (34, 0.14), (35, 0.0),
-                 (37, 0.1), (38, 0.0)])
-    flare = Keys([(0, 0.0), (8, 0.0), (12, 1.0), (28, 0.9), (34, 0.0), (36, -0.25), (39, 0.0)])
-    shake = Keys([(0, 0.0), (39, 0.0), (41, 1.0), (45, 0.6), (48, 0.0)])
+    up = Keys([(0, 0.0), (5, 0.6), (9, 1.0), (30, 1.0), (34, 0.75), (40, 0.15), (44, 0.0)])
+    gape = Keys([(0, 0.0), (8, 0.0), (10, 0.35), (12, 0.88), (29, 0.82), (31, 0.1), (32, 0.0)])
+    # The breath: filled before the call, held through it, and let go after it, the chest sinking below its rest.
+    breath = Keys([(0, 0.0), (7, 1.0), (30, 0.85), (35, 0.3), (40, -0.5), (44, -0.4), (48, 0.0)])
+    effort = Keys([(0, 0.0), (11, 0.0), (13, 1.0), (28, 0.9), (31, 0.0)])
+    flare = Keys([(0, 0.0), (8, 0.0), (12, 1.0), (28, 0.9), (34, 0.0), (37, -0.2), (41, 0.0)])
+    shake = Keys([(0, 0.0), (41, 0.0), (43, 1.0), (46, 0.5), (n - 1, 0.0)])
 
     def at(t):
         u = up(t)
+        b = breath(t)
+        # The labour of the call: a quick shudder of chest and throat, the three strongest pulses carrying the head.
+        e = effort(t)
+        quiver = e * math.sin(2.0 * math.pi * (t - 13.0) / 4.0)
         pulse = bumps(t, (15.0, 21.0, 27.0), 2.5)
         p = ground()
-        from_stance(p, 0.028 * u, -0.015 * u, 3.5 * u, 0.5 * u, 2.5 * u + 0.6 * pulse)
-        mv.breathe(p, u)
+        from_stance(p, 0.025 * u + 0.012 * b, -0.015 * u, 3.0 * u, 0.5 * u, 1.5 * u + 3.0 * b + 0.7 * quiver + 0.6 * pulse)
         braced(p)
-        p["head"] = on_neck(p, lean0 - 15.0 * u - 2.0 * pulse, ext0 + 0.012 * u + 0.006 * pulse)
-        wag = 11.0 * shake(t) * math.sin(2.0 * math.pi * (t - 39.0) / 4.0)
+        p["head"] = on_neck(p, lean0 - 15.0 * u - 2.0 * pulse, ext0 + 0.012 * u + 0.006 * pulse + 0.003 * quiver)
+        wag = 8.0 * shake(t) * math.sin(2.0 * math.pi * (t - 41.0) / 4.0)
         p["head_rot"] = (26.0 * u - 4.0 * pulse, wag, 0.3 * wag)
-        p["neck"] = [(0.0, 0.15 * wag, 0.0)] * 4
-        p["beak"] = gape(t) + 0.08 * pulse
+        p["neck"] = [(1.2 * quiver, 0.15 * wag, 0.0), (1.2 * quiver, 0.15 * wag, 0.0), (-0.8 * quiver, 0.15 * wag, 0.0),
+                     (0.0, 0.15 * wag, 0.0)]
+        p["beak"] = gape(t) + 0.06 * pulse
         fingers(p, 10.0 * flare(t), -3.0 * flare(t))
         p["tail"] = (6.0 * u, 0.0)
         return p
@@ -251,38 +261,44 @@ def call(r):
 
 
 def startled(r):
-    """Taking fright on the ground, a beat late: it rears back onto its feet with the head snapped up and the beak
-    open, the hands jerked off the ground and the wings flung half open in a raised V, as if to go; it holds tense a
-    moment, flicks its head to look at the danger, folds the wings back and drops onto its hands in a crouch, ready to
-    spring into the air. Its hands leave and take the ground as clips_move's stretch has them, through the free arm."""
+    """Taking fright on the ground, a beat late: the head recoils first, snapped up and back with the beak open; a
+    frame behind, it rears back over its feet, the chest swinging up and back over the hips as the hands are jerked off
+    the ground, and the wings are flung half open in a raised V, the left a frame ahead of the right, a reflex; it holds
+    tense a moment, flicks its head to look at the danger, folds the wings back and drops onto its hands, which take its
+    weight: the shoulders sink past the crouch and the head follows down a beat late, then it rises into the crouch it
+    takes off from. Its hands leave and take the ground as clips_move's stretch has them, through the free arm."""
     name = "startled"
     n = rig.CLIPS[name]["frames"]
     lean0, ext0 = lean_of(ground(), mv.STANCE_HEAD)
     # The hands leave the ground from frame 1 and the free arms have them by `free`; they take hold again at `hold` and
     # are on the ground at `down`.
     free, hold, down = 5.0, 15.0, 20.0
-    # It comes down heavily: the body sinks past the crouch as the hands take its weight, and rises back.
-    rear = Keys([(0, 0.0), (1, 0.0), (4, 1.0), (10, 0.86), (hold, 0.3), (down, -0.28), (23, 0.05), (n - 1, 0.0)])
+    recoil = Keys([(0, 0.0), (1, 0.0), (2, 0.7), (3, 1.0), (10, 0.9), (15, 0.45), (20, 0.12), (22, -0.15), (n - 1, 0.0)])
+    # The body follows the head; it comes down heavily, sinking past the crouch as the hands take its weight.
+    rear = Keys([(0, 0.0), (1, 0.0), (2, 0.15), (5, 1.0), (10, 0.88), (hold, 0.3), (down, -0.3), (23, 0.05), (n - 1, 0.0)])
     # The wings open once the hands are off the ground, or the folded skin would swing into it, and fold back over
-    # four frames before the hands come down.
-    fold = Keys([(0, 1.0), (2, 1.0), (7, 0.34), (10, 0.37), (hold - 1, 1.0)])
-    raise_ = Keys([(0, 0.0), (2, 0.0), (7, 30.0), (10, 27.0), (hold - 1, 4.0), (down, 0.0)])
+    # four frames before the hands come down. The right wing is a frame behind the left.
+    fold = {"l": Keys([(0, 1.0), (2, 1.0), (7, 0.34), (10, 0.37), (hold - 1, 1.0)]),
+            "r": Keys([(0, 1.0), (3, 1.0), (8, 0.34), (10, 0.37), (hold - 1, 1.0)])}
+    raise_ = {"l": Keys([(0, 0.0), (2, 0.0), (7, 30.0), (10, 27.0), (hold - 1, 4.0), (down, 0.0)]),
+              "r": Keys([(0, 0.0), (3, 0.0), (8, 30.0), (10, 27.0), (hold - 1, 4.0), (down, 0.0)])}
     look = Keys([(0, 0.0), (6, 0.0), (8, 28.0), (12, 26.0), (15, 0.0)])
-    gasp = Keys([(0, 0.0), (1, 0.0), (3, 0.5), (6, 0.3), (8, 0.0)])
+    gasp = Keys([(0, 0.0), (1, 0.0), (2, 0.5), (5, 0.3), (7, 0.0)])
 
     def at(t):
         k = rear(t)
+        h = recoil(t)
         p = ground()
-        from_stance(p, -0.01 * k, -0.07 * k, 16.0 * k, 1.0 * k, -2.0 * k)
+        from_stance(p, -0.01 * k, -0.11 * k, 21.0 * k, 1.0 * k, -3.0 * k)
         braced(p)
         y = look(t)
         up = max(0.0, k)
-        p["head"] = on_neck(p, lean0 - 16.0 * up, ext0 - 0.01 * up, heading=0.5 * y)
-        p["head_rot"] = (24.0 * up, y, 0.15 * y)
+        p["head"] = on_neck(p, lean0 - 22.0 * h, ext0 - 0.02 * h, heading=0.5 * y)
+        p["head_rot"] = (24.0 * h, y, 0.15 * y)
         p["neck"] = [(0.0, 0.18 * y, 0.0)] * 4
         p["beak"] = gasp(t)
         for s in "lr":
-            p["wing_" + s] = wing(fold=fold(t), flap=raise_(t), sweep=-8.0 * up, curl=-6.0 * up, skip=mv.OPEN)
+            p["wing_" + s] = wing(fold=fold[s](t), flap=raise_[s](t), sweep=-8.0 * up, curl=-6.0 * up, skip=mv.OPEN)
             mv.lift_tuck(p, s)
             planted = (mv.STANCE_HAND[s], (0.0, 0.0, 0.0))
             if t <= free:
@@ -308,22 +324,23 @@ def startled(r):
 # =====================================================================================================================
 
 def attack_air(r):
-    """The bite in flight, on the neck and head alone, laid over whatever the wings and body do. It cocks its head back
-    into an S with the beak aimed down along its line, then strikes forward and down at what is ahead and below, the
-    neck snapping out straight and the beak gaping; the beak shuts on frame 8; it pulls back with a toss of the head and
-    eases out to the line it flies along."""
+    """The bite in flight, on the neck and head alone, laid over whatever the wings and body do. It gathers the neck
+    into a compact S under the head, the beak held on the target, holds it loaded, then thrusts out along the beak's
+    own line, the neck snapping out nearly straight and the beak gaping; the beak shuts on frame 8; it snatches the
+    closed beak back at once, quicker than it struck, and only then eases out to the line it flies along, the big head
+    settling once."""
     name = "attack_air"
     n, h = BITE_FRAMES, BITE_HIT
     rest = air()
     lean0, ext0 = lean_of(rest, mv.REST_HEAD)
-    lean = Keys([(0, lean0), (3, lean0 - 18.0), (5, lean0 - 20.0), (7, 70.0), (h, 80.0), (h + 1, 81.0), (11, 62.0),
-                 (14, lean0 - 4.0), (17, lean0 + 1.0), (n - 1, lean0)])
-    ext = Keys([(0, ext0), (3, 0.865), (5, 0.86), (7, 0.975), (h, 0.99), (h + 1, 0.99), (11, 0.965), (14, 0.94),
-                (17, 0.965), (n - 1, ext0)])
-    aim = Keys([(0, 0.0), (3, -3.0), (5, -5.0), (7, -11.0), (h, -10.0), (h + 1, -11.0), (11, -7.0), (14, 4.0),
-                (17, -1.0), (n - 1, 0.0)])
-    gape = Keys([(0, 0.0), (3, 0.04), (5, 0.2), (6, 0.6), (7, 0.85), (h, 0.0), (h + 4, 0.0), (h + 5, 0.12), (h + 6, 0.0)])
-    cock = Keys([(0, 0.0), (3, 1.0), (5, 1.0), (7, 0.0), (11, 0.1), (14, 0.4), (17, 0.1), (n - 1, 0.0)])
+    lean = Keys([(0, lean0), (3, lean0 - 22.0), (5, lean0 - 24.0), (7, 56.0), (h, 62.0), (h + 1, 63.0), (10, 48.0),
+                 (11, 40.0), (14, lean0 - 3.0), (17, lean0 + 1.0), (n - 1, lean0)])
+    ext = Keys([(0, ext0), (3, 0.85), (5, 0.84), (7, 0.975), (h, 0.99), (h + 1, 0.99), (10, 0.93), (11, 0.91),
+                (14, 0.945), (17, 0.97), (n - 1, ext0)])
+    aim = Keys([(0, 0.0), (3, -5.0), (5, -7.0), (7, -6.0), (h, -6.0), (h + 1, -6.5), (10, -4.0), (11, -2.0), (14, 2.0),
+                (17, -0.8), (n - 1, 0.0)])
+    gape = Keys([(0, 0.0), (4, 0.05), (5, 0.25), (6, 0.65), (7, 0.85), (h, 0.0)])
+    cock = Keys([(0, 0.0), (3, 1.0), (5, 1.0), (7, 0.0), (10, 0.35), (11, 0.45), (14, 0.2), (n - 1, 0.0)])
 
     def at(t):
         p = air()
@@ -338,10 +355,11 @@ def attack_air(r):
 
 def barrel_roll(r):
     """A full roll about its length to its left in a second, the time the engine's burst lasts. From the top of the
-    beat it drives one deep, quick downstroke that lunges it forward, starts to roll as the wings reach the bottom, and
-    rolls right round on wings held spread and flat, the inside wing's leading edge down and the outside's up to drive
-    it and the other way to stop it, the body swinging round the line it flies on as a barrel roll's does, the head
-    leading into the roll and the legs pressed back; it overshoots a little, rights itself, and rows up into the top
+    beat it drives one deep, quick downstroke that lunges it forward; as the wings come down they go uneven, the inside
+    wing flexing at the elbow and wrist and its leading edge turning down while the outside one reaches and turns up,
+    and that starts the roll. It rolls right round on wings held spread and a little flexed, the body swinging round the
+    line it flies on as a barrel roll's does, the head leading into the roll and the legs pressed back; the outside wing
+    flexes and both turn against the roll to arrest it, it overshoots a little, rights itself, and rows up into the top
     of the beat again."""
     name = "barrel_roll"
     n = rig.CLIPS[name]["frames"]
@@ -352,8 +370,13 @@ def barrel_roll(r):
     phase = Keys([(0, 0.0), (6, 0.5), (21, 0.56), (n - 1, 1.0)])
     spread = Keys([(0, 0.0), (4, 0.0), (8, 1.0), (19, 1.0), (23, 0.0)])
     roll = Keys([(0, 0.0), (3, 0.0), (13, 180.0), (22, 360.0), (25, 366.0), (n - 1, 360.0)])
-    # +1 while the roll speeds up, -1 while it slows: the ailerons.
-    drive = Keys([(0, 0.0), (3, 0.0), (6, 1.0), (11, 0.4), (16, -0.8), (21, -0.3), (25, 0.4), (n - 1, 0.0)])
+    # +1 while the roll speeds up, -1 while it slows: the ailerons, starting before the body turns.
+    drive = Keys([(0, 0.0), (1, 0.0), (3, 0.6), (5, 1.0), (9, 0.5), (13, 0.0), (16, -0.4), (19, -1.0), (22, -0.3),
+                  (25, 0.3), (n - 1, 0.0)])
+    # How far each wing flexes at the elbow and wrist: the inside one to start the roll, both through its fastest part,
+    # the outside one to stop it.
+    flex = {"l": Keys([(0, 0.0), (2, 0.0), (4, 1.0), (8, 0.55), (17, 0.55), (21, 0.1), (24, 0.0)]),
+            "r": Keys([(0, 0.0), (4, 0.0), (8, 0.55), (16, 0.55), (19, 1.0), (23, 0.0)])}
     lunge = Keys([(0, 0.0), (3, 0.05), (8, 0.13), (18, 0.09), (n - 1, 0.0)])
     nose = Keys([(0, 0.0), (3, -3.0), (7, 2.0), (18, 1.0), (24, -1.0), (n - 1, 0.0)])
     tuck = Keys([(0, 0.0), (4, 1.0), (22, 1.0), (n - 1, 0.0)])
@@ -379,8 +402,13 @@ def barrel_roll(r):
         d = drive(t)
         for s in "lr":
             sign = 1.0 if s == LEFT else -1.0
-            flat = wing(fold=0.05 + (0.04 if s == LEFT else 0.0), flap=-4.0, sweep=-5.0, twist=-7.0 * sign * d, curl=3.0)
-            p["wing_" + s] = mv.mix(base["wing_" + s], flat, k)
+            flat = wing(fold=0.03, flap=-4.0, sweep=-5.0, twist=0.0, curl=3.0)
+            w = mv.mix(base["wing_" + s], flat, k)
+            # The ailerons and the flex are laid on the stroke and the spread wing alike.
+            w["twist"] += -8.0 * sign * d
+            w["fold"] += 0.13 * flex[s](t)
+            w["curl"] += 4.0 * flex[s](t)
+            p["wing_" + s] = w
             p["wing_extra_" + s] = mv.mix(base["wing_extra_" + s], {"forearm": (0.0, 0.0, 0.0)}, k)
             pressed = mv.trailing(p, s, reach=0.975, droop=-9.0, splay=-3.0)
             p["foot_" + s] = p["foot_" + s].lerp(pressed, 0.8 * tuck(t))
@@ -428,17 +456,18 @@ def swung(p, swing, talons):
 
 def grab(r):
     """Taking hold, laid on the legs while the engine fades the carry in under it by its frames (D550), so it starts and
-    ends unturned and adds only what the fade lacks: the legs swing on past the carry as they come, reaching ahead
-    with the toes spread wide, the talons shut with a snap on frame 7, the click a rider hears, and the legs give a
-    little under the weight."""
+    ends unturned and adds only what the fade lacks: one reach, the legs swinging on past the carry as they come, ahead
+    of the load with the toes spread wide, and one closure, as the fade is all but done: the legs come back onto the
+    load and the talons shut on it with a snap on frame 9, the click a rider hears, and give a little under the
+    weight."""
     name = "grab"
     n = rig.CLIPS[name]["frames"]
     held = air()
     carry_legs(held, 0.0)
     shut = held["talons_l"]
-    reach = Keys([(0, 0.0), (3, 14.0), (5, 18.0), (7, 6.0), (9, -4.0), (n - 1, 0.0)])
+    reach = Keys([(0, 0.0), (3, 10.0), (6, 20.0), (8, 10.0), (10, -3.0), (n - 1, 0.0)])
     # How far the talons are shut, all told; the carry's share of it grows with the fade.
-    talons = Keys([(0, 0.0), (3, OPEN_TALONS), (5, OPEN_TALONS), (6, 0.2), (7, shut + 0.12), (9, shut - 0.03), (n - 1, shut)])
+    talons = Keys([(0, 0.0), (3, OPEN_TALONS), (8, OPEN_TALONS), (9, shut + 0.15), (10, shut - 0.03), (n - 1, shut)])
 
     def at(t):
         p = air()
@@ -462,15 +491,15 @@ def carry(r):
 
 
 def release(r):
-    """Letting go, laid on the legs while the engine fades the carry out under it: the talons spring open, the legs
-    kick down off the load and then swing back faster than the fade, and the toes relax as they come to trail."""
+    """Letting go, laid on the legs while the engine fades the carry out under it: the talons spring open in two
+    frames, the unloaded legs recoil a little, and they relax back to trail as the fade takes them."""
     name = "release"
     n = rig.CLIPS[name]["frames"]
     held = air()
     carry_legs(held, 0.0)
     shut = held["talons_l"]
-    kick = Keys([(0, 0.0), (2, 10.0), (5, -8.0), (8, -4.0), (n - 1, 0.0)])
-    talons = Keys([(0, shut), (1, 0.2), (2, OPEN_TALONS), (5, OPEN_TALONS + 0.1), (9, -0.05), (n - 1, 0.0)])
+    kick = Keys([(0, 0.0), (2, 5.0), (5, -4.0), (8, -1.5), (n - 1, 0.0)])
+    talons = Keys([(0, shut), (1, 0.2), (2, OPEN_TALONS), (4, OPEN_TALONS + 0.15), (8, -0.05), (n - 1, 0.0)])
 
     def at(t):
         p = air()
@@ -485,28 +514,32 @@ def release(r):
 # =====================================================================================================================
 
 def flinch(r):
-    """Hurt, on the ground or in the air, laid on whatever it does: the body jerks, the chest rearing and twisting
-    away from the blow, the head snatched in on the neck with the chin tucked and the beak gaping, the wings jerking a
-    frame behind, the fingers kicking out; it comes back over a third of a second. Nothing from the hips down moves."""
+    """Hurt, on the ground or in the air, laid on whatever it does: in two frames the chest rears back and the head is
+    snatched back with it, the same way, away from the blow, the chin tucked; a frame behind, the wings jerk unevenly,
+    the left finger curling and kicking out from the arm while the right wing reaches forward; it holds the recoil a
+    frame and comes back more slowly than it went, the head settling last. Nothing from the hips down moves."""
     name = "flinch"
     n = rig.CLIPS[name]["frames"]
     rest = air()
     lean0, ext0 = lean_of(rest, mv.REST_HEAD)
-    jerk = Keys([(0, 0.0), (1, 0.55), (2, 1.0), (3, 0.95), (5, 0.62), (8, 0.2), (n - 1, 0.0)])
-    late = Keys([(0, 0.0), (1, 0.0), (2, 0.6), (3, 1.0), (4, 0.9), (6, 0.45), (9, 0.08), (n - 1, 0.0)])
+    jerk = Keys([(0, 0.0), (1, 0.6), (2, 1.0), (3, 1.0), (5, 0.7), (8, 0.3), (n - 1, 0.0)])
+    late = Keys([(0, 0.0), (1, 0.0), (2, 0.6), (3, 1.0), (4, 0.9), (6, 0.4), (9, 0.08), (n - 1, 0.0)])
+    head = Keys([(0, 0.0), (1, 0.5), (2, 1.0), (4, 1.0), (7, 0.55), (10, 0.15), (n - 1, 0.0)])
 
     def at(t):
-        k, w = jerk(t), late(t)
+        k, w, hd = jerk(t), late(t), head(t)
         p = air()
-        p["spine"] = (3.0 * k, -2.0 * k, 1.5 * k)
-        p["chest"] = (4.5 * k, -4.0 * k, -2.5 * k)
-        mv.head_on_chest(p, lean0 - 13.0 * k, ext0 - 0.09 * k, heading=-4.0 * k, pitch=-12.0 * k, yaw=-10.0 * k, roll=8.0 * k)
-        p["neck"] = s_neck(k)
-        p["beak"] = 0.35 * w
+        p["spine"] = (2.5 * k, 0.0, 0.5 * k)
+        p["chest"] = (6.0 * k, -1.5 * k, -1.0 * k)
+        mv.head_on_chest(p, lean0 - 18.0 * hd, ext0 - 0.10 * hd, pitch=-6.0 * hd, yaw=-4.0 * hd, roll=3.0 * hd)
+        p["neck"] = s_neck(hd)
+        p["beak"] = 0.15 * w
         for s in "lr":
-            p["wing_" + s] = wing(flap=4.5 * w, twist=5.0 * w, curl=8.0 * w)
-            p["wing_extra_" + s] = {"wing_1": (0.0, 0.0, -10.0 * w * (1.0 if s == LEFT else 0.8))}
-        p["tail"] = (10.0 * k, -4.0 * k)
+            left = s == LEFT
+            # No fold: laid on the folded wing on the ground, a fold's turns would swing the finger out from the arm.
+            p["wing_" + s] = wing(flap=3.5 * w, sweep=0.0 if left else 3.0 * w, twist=4.0 * w, curl=(10.0 if left else 2.0) * w)
+            p["wing_extra_" + s] = {"wing_1": (0.0, 0.0, -(9.0 if left else 4.0) * w)}
+        p["tail"] = (9.0 * k, 0.0)
         return p
 
     return make(r, name, n, at)
@@ -520,13 +553,17 @@ STRUGGLE = 15.0
 
 
 def carried(r):
-    """Hanging by the back from a big carrier's jaws, two seconds. It hangs nose down, the wings drooping half folded
-    either side and the legs dangling; it cranes round and snaps at its captor, beats its wings unevenly and kicks,
-    the body swinging on the grip a beat behind; tires, lets its head and wings hang again and stares at the ground."""
+    """Hanging by the back from a big carrier's jaws, two seconds. It hangs from the grip, everything else dropping
+    from it: the neck sags from its base and the head hangs nose down, the wings fall from the shoulders with the
+    elbows and wrists hanging under them, the legs dangle. It makes two attempts to get free: a heave of the shoulders,
+    the long wings following a beat later, a kick, the head craning round to snap at its captor; the second weaker than
+    the first and collapsing sooner. Each time the effort goes in turn, the shoulders first, then the outer wings, the
+    head last, and the body swings on the grip a little after."""
     name = "carried"
     n = rig.CLIPS[name]["frames"]
-    effort = Keys([(0, 0.05), (8, 0.05), (14, 1.0), (34, 1.0), (42, 0.1)], period=n)
-    snap = Keys([(0, 0.0), (16, 0.0), (19, 1.0), (21, 0.0), (26, 0.0), (29, 1.0), (31, 0.0)], period=n)
+    effort = Keys([(0, 0.0), (8, 0.0), (12, 1.0), (21, 0.85), (25, 0.05), (31, 0.05), (34, 0.6), (38, 0.45), (40, 0.0)],
+                  period=n)
+    snap = Keys([(0, 0.0), (14, 0.0), (17, 1.0), (19, 0.0), (35, 0.0), (37, 0.7), (39, 0.0)], period=n)
     swing = mv.follow(lambda t: effort(t) * math.sin(2.0 * math.pi * t / STRUGGLE), n, True, 0.9, 0.12)
     peak = max(abs(x) for x in swing) or 1.0
     lean0, ext0 = lean_of(air(), mv.REST_HEAD)
@@ -539,24 +576,26 @@ def carried(r):
     def at(t):
         f = int(round(t)) % n
         e = effort(t)
+        outer = effort(t - 3.0)
+        crane = effort(t - 5.0)
         sw = swing[f] / peak
         p = air()
         p["body_rot"] = (-24.0 + 4.0 * e * math.sin(2.0 * math.pi * t / STRUGGLE + 1.0), 4.0 * sw, 9.0 * sw)
         p["spine"] = (-6.0, 0.0, 2.0 * sw)
         p["chest"] = (-8.0 + 3.0 * e, 0.0, 0.0)
         p["body"] = p["body"] + (CARRY_AT - cp_offset(p))
-        # The head hangs, then cranes round and up to snap at what holds it.
-        crane = e
-        mv.head_on_chest(p, lerp(lean0 + 30.0, lean0 - 20.0, crane), lerp(0.93, 0.9, crane), heading=lerp(0.0, 30.0, crane),
-                         pitch=lerp(-35.0, 25.0, crane), yaw=lerp(0.0, 40.0, crane), roll=lerp(0.0, 15.0, crane))
-        p["neck"] = s_neck(0.5 * crane)
+        # The head hangs from a sagging neck, then cranes round and up to snap at what holds it.
+        mv.head_on_chest(p, lerp(lean0 + 40.0, lean0 - 20.0, crane), 0.9, heading=lerp(0.0, 30.0, crane),
+                         pitch=lerp(-45.0, 25.0, crane), yaw=lerp(0.0, 40.0, crane), roll=lerp(0.0, 15.0, crane))
+        p["neck"] = [(-14.0 * (1.0 - crane), 0.0, 0.0), (-6.0 * (1.0 - crane), 0.0, 0.0)] + s_neck(0.5 * crane)[2:]
         p["beak"] = 0.1 + 0.7 * snap(t)
         for s in "lr":
             lag = 0.0 if s == LEFT else 1.2
             beat_ = e * math.sin(2.0 * math.pi * (t - lag) / STRUGGLE)
-            # Hanging limp the wings fall from the shoulders, half spread, the fingers drooping; struggling they beat.
-            p["wing_" + s] = wing(fold=0.24 - 0.12 * e, flap=-48.0 + 22.0 * e + 26.0 * beat_, sweep=-4.0 + 5.0 * beat_,
-                                  twist=-6.0 + 8.0 * beat_, curl=16.0 - 8.0 * e)
+            # Hanging limp the wings fall from the shoulders, the elbows and wrists hanging under them, the fingers
+            # drooping; struggling the shoulders heave and the outer wing follows.
+            p["wing_" + s] = wing(fold=0.34 - 0.2 * outer, flap=-56.0 + 28.0 * e + 26.0 * beat_, sweep=-4.0 + 5.0 * beat_,
+                                  twist=-6.0 + 8.0 * beat_, curl=22.0 - 14.0 * outer)
             ph = 2.0 * math.pi * (t / STRUGGLE + (0.0 if s == LEFT else 0.5))
             dangle = mv.leg_hanging(p, s, 0.45 - 0.08 * e * (1 + math.cos(ph)) / 2, 0.05 + 0.10 * e * math.sin(ph), 0.04)
             p["foot_" + s] = dangle

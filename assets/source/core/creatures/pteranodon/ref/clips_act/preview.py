@@ -370,7 +370,7 @@ def show(r, rig, step, body, load):
     ridden = rig.CLIPS[clip].get("ridden", False) and base != "carried"
     if body is not None:
         body.hide_render = not ridden
-    held = (clip == "grab" and f >= 7) or clip == "carry" or (clip == "release" and f < 2)
+    held = (clip == "grab" and f >= 9) or clip == "carry" or (clip == "release" and f < 2)
     load.hide_render = not held
     if held:
         load.matrix_world = Matrix.Translation(Vector(rig.to_blender(r.socket("grab"))))
