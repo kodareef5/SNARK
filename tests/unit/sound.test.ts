@@ -7,7 +7,7 @@ import { AnimState, CUE_LAND, CUE_STARTLE, CUE_TORPOR, LAYER_FLINCH, bodySeed } 
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
-import { decodeTake, encodeTake, takeBytes, type ManifestSound } from "../../shared/pack/sound.ts";
+import { CODE_LOSSLESS, decodeTake, encodeTake, takeFits, type ManifestSound } from "../../shared/pack/sound.ts";
 import { ACT_SWING } from "../../shared/sim/weapon.ts";
 import { buildProvingHeightfield, PROVING_POOL } from "../../shared/world/proving.ts";
 import { RemoteSample } from "../../client/core/session.ts";
@@ -19,7 +19,7 @@ import { distanceGain, earAxes, lowpassAt } from "../../client/core/sound/place.
 import { Sounds } from "../../client/core/sound/sounds.ts";
 import { SOUND_SLOT, SplitPort } from "../../client/core/sound/split.ts";
 import { bodyDown, groundPecks, mouthOpens, strikeAt } from "../../client/core/sound/timing.ts";
-import { codingSnr, loudness, prepareTake, readWav, toPcm16, writeWav } from "../../tools/pack/sound.ts";
+import { loudness, prepareTake, readWav, toPcm16, writeWav } from "../../tools/pack/sound.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { builtSounds, chirp } from "../fixtures/sounds.ts";
@@ -30,17 +30,39 @@ const DODO = reg.index.get("core:dodo")!;
 const rig = buildRigs(corePack().header.rigs, corePack().clips).get("core:dodo")!;
 const anim = new CreatureAnim(rig, reg.runAt[DODO]!, reg.move[DODO]?.swimSpeed ?? 0);
 
-test("a take coded as IMA ADPCM comes back within 30 dB of what went in, and a short or broken one is refused", () => {
-  const pcm = toPcm16(chirp(0.5, 32000));
-  const coded = new Uint8Array(takeBytes(pcm.length));
-  expect(encodeTake(pcm, coded)).toBe(coded.length);
-  expect(coded.length).toBe(4 + Math.ceil((pcm.length - 1) / 2));
-  expect(codingSnr(pcm, coded)).toBeGreaterThan(30);
-  const out = new Float32Array(pcm.length);
-  expect(decodeTake(coded.subarray(0, coded.length - 1), pcm.length, out)).toBe(false);
-  const broken = coded.slice();
-  broken[2] = 89;
-  expect(decodeTake(broken, pcm.length, out)).toBe(false);
+/** Takes hard and easy for a coder: a chirp, bursts of noise, silence, a full-scale square, and the shortest there are. */
+function hardTakes(): Int16Array[] {
+  let seed = 3;
+  const noise = new Float32Array(9001);
+  for (let i = 0; i < noise.length; i++) {
+    seed = (seed * 1103515245 + 12345) >>> 0;
+    noise[i] = 0.9 * (seed / 2 ** 31 - 1) * Math.exp(-((i % 4000) / 600));
+  }
+  const square = Int16Array.from({ length: 5000 }, (_, i) => ((i >> 5) & 1 ? 32767 : -32768));
+  return [toPcm16(chirp(0.5, 32000)), toPcm16(noise), new Int16Array(4097), square, Int16Array.from([5]), Int16Array.from([-3, 7]), Int16Array.from([1, -1, 300, -32768, 32767])];
+}
+
+test("the lossless code gives back every sample of hard and easy takes alike, and refuses a stream cut short or of another code", () => {
+  for (const pcm of hardTakes()) {
+    const coded = encodeTake(pcm);
+    expect(coded[0]).toBe(CODE_LOSSLESS);
+    expect(takeFits(pcm.length, coded.length)).toBe(true);
+    const out = new Float32Array(pcm.length);
+    expect(decodeTake(coded, pcm.length, out)).toBe(true);
+    expect(Array.from(out, (v) => Math.round(v * 32768))).toEqual(Array.from(pcm));
+    if (pcm.length > 100) expect(decodeTake(coded.subarray(0, coded.length >> 1), pcm.length, out)).toBe(false);
+    const other = coded.slice();
+    other[0] = 1;
+    expect(decodeTake(other, pcm.length, out)).toBe(false);
+  }
+  // A clean tone takes under a third of the bytes of its 16-bit samples, and silence next to none.
+  const [chirped, , silence] = hardTakes() as [Int16Array, Int16Array, Int16Array];
+  const hum = Int16Array.from({ length: 16000 }, (_, i) => Math.round(9000 * Math.sin((2 * Math.PI * 220 * i) / 32000)));
+  expect(encodeTake(hum).length).toBeLessThan(hum.length * 2 * 0.33);
+  expect(encodeTake(silence).length).toBeLessThan(silence.length / 6);
+  // Low bits every sample leaves zero are not stored: the same take two bits coarser is smaller.
+  const coarse = chirped.map((v) => v & ~3);
+  expect(encodeTake(coarse).length).toBeLessThan(encodeTake(chirped).length - chirped.length / 5);
 });
 
 test("a WAV of 16, 24 or 32 bits, or of floats, reads back; a take is cut, levelled to its sheet and kept under -1 dB", () => {
@@ -105,7 +127,7 @@ test("the build names each sound by its owner and occasion, and a manifest that 
     return JSON.stringify(m);
   };
   expect(() => parseManifest(wrong((s) => (s.file = 0)))).toThrow("holds no sounds");
-  expect(() => parseManifest(wrong((s) => (s.takes[0]!.bytes += 1)))).toThrow("size");
+  expect(() => parseManifest(wrong((s) => (s.takes[0]!.bytes = 4)))).toThrow("size");
   expect(() => parseManifest(wrong((s) => (s.at = built.file.length)))).toThrow("outside");
   expect(() => parseManifest(wrong((s) => (s.id = "dodo call")))).toThrow("named");
 });
@@ -348,6 +370,8 @@ test("a dodo is heard as its state changes: startled, landing, hurt, pecking, kn
   expect(heard).toEqual(["startled"]);
   cue(CUE_LAND);
   expect(heard.slice(1)).toEqual(["land"]);
+  // Once its squawk is over: a cry that weighs less than one still sounding from the same mouth is not heard.
+  for (let k = 0; k < 20; k++) frame();
   st.cue = 0;
   st.layer = LAYER_FLINCH;
   st.layerStart = tick & 255;

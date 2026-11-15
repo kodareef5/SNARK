@@ -1,7 +1,8 @@
 // Builds the sound file (shared/pack/sound.ts) from every asset's cue sheet: `<asset folder>/sound/sounds.json` names its
 // sounds, and for each the takes, as files of the asset's own and the seconds of each file that hold the sound. A take is
 // read from its WAV file, mixed to mono, cut, rid of rumble, brought to the sound's rate, faded at its ends, levelled
-// and coded, all here; nothing outside the repository touches it. What is coded is kept under .cache by what went in.
+// and coded losslessly (shared/pack/rice.ts), all here; nothing outside the repository touches it. What is coded is
+// kept under .cache by what went in.
 //
 // The cue sheet:
 //
@@ -14,7 +15,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { SOUND_HEADER_BYTES, SOUND_MAGIC, SOUND_VERSION, decodeTake, encodeTake, takeBytes, type ManifestSound } from "../../shared/pack/sound.ts";
+import { SOUND_HEADER_BYTES, SOUND_MAGIC, SOUND_VERSION, encodeTake, takeFits, type ManifestSound } from "../../shared/pack/sound.ts";
 import { SOURCE, filesUnder } from "../art/source.ts";
 import { partHash } from "./manifest.ts";
 
@@ -258,20 +259,6 @@ export function toPcm16(x: Float32Array): Int16Array {
   return out;
 }
 
-/** Signal to coding noise of a coded take against what went in, in dB. */
-export function codingSnr(pcm: Int16Array, coded: Uint8Array): number {
-  const back = new Float32Array(pcm.length);
-  decodeTake(coded, pcm.length, back);
-  let s = 0;
-  let e = 0;
-  for (let i = 0; i < pcm.length; i++) {
-    const v = pcm[i]! / 32768;
-    s += v * v;
-    e += (back[i]! - v) ** 2;
-  }
-  return e === 0 ? Infinity : 10 * Math.log10(s / e);
-}
-
 /** A sound sheet found under the asset folders, and the id of the definition that owns its sounds. */
 export interface FoundSheet {
   owner: string;
@@ -298,8 +285,8 @@ export interface SoundReport {
   /** Takes coded anew rather than taken from the cache, and takes whose peak was brought down. */
   made: number;
   limited: string[];
-  /** The worst signal to coding noise of any take, in dB. */
-  worstSnr: number;
+  /** Bytes the takes would be as 16-bit samples, against `bytes`. */
+  raw: number;
 }
 
 const sha = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
@@ -312,7 +299,7 @@ export function buildSounds(file: number, root: string = SOURCE, cache: string |
   const sheets = findSheets(root);
   if (sheets.length === 0) return null;
   const tools = sha(readFileSync(import.meta.path, "utf8") + readFileSync(resolve(import.meta.dir, "../../shared/pack/sound.ts"), "utf8"));
-  const report: SoundReport = { sounds: 0, takes: 0, seconds: 0, bytes: 0, made: 0, limited: [], worstSnr: Infinity };
+  const report: SoundReport = { sounds: 0, takes: 0, seconds: 0, bytes: 0, made: 0, limited: [], raw: 0 };
   const chunks: Uint8Array[] = [];
   let at = SOUND_HEADER_BYTES;
   const sounds: ManifestSound[] = [];
@@ -339,16 +326,14 @@ export function buildSounds(file: number, root: string = SOURCE, cache: string |
           const k = new Uint8Array(readFileSync(kept));
           samples = new DataView(k.buffer, k.byteOffset).getUint32(0, true);
           coded = k.subarray(4);
-          if (coded.length !== takeBytes(samples)) coded = null;
+          if (!takeFits(samples, coded.length)) coded = null;
         }
         if (!coded) {
           const prepared = prepareTake(readWav(wav.bytes), take, { ...cue, rate });
           const pcm = toPcm16(prepared.samples);
           samples = pcm.length;
-          coded = new Uint8Array(takeBytes(samples));
-          encodeTake(pcm, coded);
+          coded = encodeTake(pcm);
           report.made++;
-          report.worstSnr = Math.min(report.worstSnr, codingSnr(pcm, coded));
           if (prepared.limited) report.limited.push(`${id} ${take.file}`);
           if (kept) {
             mkdirSync(dirname(kept), { recursive: true });
@@ -360,6 +345,7 @@ export function buildSounds(file: number, root: string = SOURCE, cache: string |
           }
         }
         entry.takes.push({ samples, bytes: coded.length, hash: partHash(coded), ...(take.from ? { from: take.from } : {}) });
+        report.raw += samples * 2;
         chunks.push(coded);
         at += coded.length;
         report.takes++;

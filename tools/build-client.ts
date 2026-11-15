@@ -67,7 +67,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     manifest.files.push({ name: "core.snsd", role: "sound", bytes: sounds.bytes.length });
     manifest.sounds = sounds.sounds;
     const r = sounds.report;
-    console.log(`sounds       ${r.sounds} with ${r.takes} takes, ${r.seconds.toFixed(1)} s in ${r.bytes} bytes, ${r.made} coded anew${r.made > 0 ? ` (worst ${r.worstSnr.toFixed(1)} dB over the coding)` : ""}${r.limited.length > 0 ? `, ${r.limited.length} brought under -1 dB` : ""}, ${(performance.now() - t0).toFixed(0)} ms`);
+    console.log(`sounds       ${r.sounds} with ${r.takes} takes, ${r.seconds.toFixed(1)} s in ${r.bytes} bytes (${Math.round((100 * r.bytes) / Math.max(1, r.raw))}% of 16-bit), ${r.made} coded anew${r.limited.length > 0 ? `, ${r.limited.length} brought under -1 dB` : ""}, ${(performance.now() - t0).toFixed(0)} ms`);
   }
   files.forEach((f, i) => {
     manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);
