@@ -1,7 +1,7 @@
 import { ACTION_DRAW, ACTION_NONE, MAX_MARKERS, MINIMAP_SIZE, type HudModel, type MarkerKind } from "../hud.ts";
 import { WHOLE_MAP } from "../tactical.ts";
 import { K_BAR, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BUFF, S_DARK, S_TORPOR, S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT, S_SLOT_TEXT, S_STAMINA, S_SWATCH, S_TEXT, S_WATER } from "./style.ts";
+import { S_BUFF, S_DARK, S_TORPOR, S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT, S_SLOT_TEXT, S_STAMINA, S_SWATCH, S_TEXT, S_TITLE, S_WATER } from "./style.ts";
 
 export const KEY_READOUT = 1;
 export const KEY_MINIMAP_FRAME = 10;
@@ -27,6 +27,8 @@ export const KEY_AMMO = 35;
 export const KEY_HOTBAR = 40;
 /** One mark for each marker on the minimap, MAX_MARKERS at most. */
 export const KEY_MARKER = 4000;
+/** Small driving instruments below the minimap, outside the chat and survivor's vitals. */
+export const KEY_VEHICLE = 3500;
 /** Indices of the minimap's picture and the map screen's in the frame's image table. */
 export const IMAGE_MINIMAP = 1;
 export const IMAGE_MAP = 2;
@@ -87,6 +89,17 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.add(KEY_MARKER + shown++, K_PANEL, mapX + u * MINIMAP_SIZE - 2, mapY + v * MINIMAP_SIZE - 2, 4, 4, MARKER_STYLE[k.kind]).tint = MARKER_TINT[k.kind] ?? -1;
   }
   f.text(KEY_CLOCK, mapX, mapY + MINIMAP_SIZE + 4, MINIMAP_SIZE, S_LABEL, m.clock);
+  if (m.vehicle?.active) {
+    const v = m.vehicle, width = 212, x = W - MARGIN - width, y = mapY + MINIMAP_SIZE + 28;
+    f.add(KEY_VEHICLE, K_PANEL, x, y, width, 104, S_FRAME).alpha = .9;
+    f.text(KEY_VEHICLE + 1, x + 10, y + 7, 132, S_TITLE, `${Math.round(v.speed * 3.6).toString().padStart(3, "0")} km/h`);
+    f.text(KEY_VEHICLE + 2, x + 158, y + 8, 44, S_TITLE, v.gear < 0 ? "R" : `D${v.gear}`);
+    f.add(KEY_VEHICLE + 3, K_BAR, x + 10, y + 34, width - 20, 4, S_STAMINA).value = Math.min(1, v.rpm / 6200);
+    f.text(KEY_VEHICLE + 4, x + 10, y + 42, 100, S_LABEL, `${Math.round(v.rpm / 100) * 100} rpm`);
+    f.text(KEY_VEHICLE + 5, x + 118, y + 42, 84, S_LABEL, `Fuel ${Math.round(v.fuel * 100)}%`);
+    f.text(KEY_VEHICLE + 6, x + 10, y + 63, width - 20, S_LABEL, v.handbrake ? "HANDBRAKE" : v.brake > 0 ? "BRAKING" : "W/S drive · A/D steer");
+    f.text(KEY_VEHICLE + 7, x + 10, y + 82, width - 20, S_LABEL, "Space brake · E exit");
+  }
 
   const barW = 150;
   const labelW = 62;

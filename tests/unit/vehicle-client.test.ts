@@ -4,6 +4,9 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { Characters, type VehicleSeatPose } from "../../client/core/render/characters.ts";
 import { BONE_FLOATS, FramePacket, InstanceWriter } from "../../client/core/render/packet.ts";
 import { Viewpoint } from "../../client/core/viewpoint.ts";
+import { HudModel, VehicleTelemetry } from "../../client/core/hud.ts";
+import { buildHud, KEY_VEHICLE } from "../../client/core/ui/hud.ts";
+import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { B_HEAD, B_HIPS, B_PROP_R, B_SPINE, HUMAN, HUMAN_BONES, SLOT_NAMES, SLOT_TORSO } from "../../shared/anim/human.ts";
 import { defaultLook, LOOK_SKIN, LOOK_REGIONS } from "../../shared/anim/look.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
@@ -11,6 +14,7 @@ import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette, SKIN_BASE } from "../../shared/pack/palette.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
+import { Body } from "../../shared/sim/character.ts";
 import { boxMesh, buildPack, type SourceMesh } from "../../tools/pack/write.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
@@ -19,9 +23,9 @@ const rest = Float32Array.from(HUMAN.rest, (n, i) => i % 3 === 1 ? n * 1.13 : n)
 const humanRig: PackRig = { id: "test:proportions", skeleton: HUMAN.id, rest: [...rest] };
 const carRig: PackRig = {
   id: "urban:compact", skeleton: "urban:compact",
-  names: ["chassis", "wheel_front_left", "wheel_front_right", "wheel_rear_left", "wheel_rear_right", "door_left", "door_right"],
-  parent: [-1, 0, 0, 0, 0, 0, 0],
-  rest: [0, 0, 0, .78, .3, 1.25, -.78, .3, 1.25, .78, .3, -1.25, -.78, .3, -1.25, .84, .76, .65, -.84, .76, .65],
+  names: ["chassis", "wheel_front_left", "wheel_front_right", "wheel_rear_left", "wheel_rear_right", "door_left", "door_right", "steering_wheel"],
+  parent: [-1, 0, 0, 0, 0, 0, 0, 0],
+  rest: [0, 0, 0, .78, .3, 1.25, -.78, .3, 1.25, .78, .3, -1.25, -.78, .3, -1.25, .84, .76, .65, -.84, .76, .65, .42, .89, .55],
   sockets: [
     { name: "seat_driver", bone: 0, x: .42, y: .59, z: .12 },
     { name: "seat_front_passenger", bone: 0, x: -.42, y: .59, z: .12 },
@@ -95,9 +99,80 @@ test("native car chassis and both seat sockets share full attitude; steering aff
   characters.add(packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, frame);
   vehiclePoint(frame, [0, 1, 0], expected);
   close(transform(packet, 0, [0, 1, 0]), expected);
-  expect(packet.boneCount).toBe(7);
+  expect(packet.boneCount).toBe(8);
   const front = packet.bones.subarray(BONE_FLOATS, BONE_FLOATS + 3), rear = packet.bones.subarray(3 * BONE_FLOATS, 3 * BONE_FLOATS + 3);
   expect([...front]).not.toEqual([...rear]);
+});
+
+test("suspension holds all wheel hubs on the support plane while chassis, occupants and doors follow the sprung body", () => {
+  const { characters, packet } = fixture(), state = new AnimState(), expected = [0, 0, 0];
+  const frame = { ...seat, pitch: -.12, roll: .18, rideOffset: .09, groundPitch: .08, groundRoll: -.04, grounded: true, doorLeft: 1, doorRight: 1 };
+  characters.add(packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, frame);
+  for (const wheel of [1, 2, 3, 4]) {
+    const pivot = carRig.rest.slice(wheel * 3, wheel * 3 + 3);
+    vehiclePoint({ ...frame, y: frame.y - frame.rideOffset, pitch: frame.groundPitch, roll: frame.groundRoll }, pivot, expected);
+    close(transform(packet, wheel, pivot), expected);
+  }
+  vehiclePoint(frame, [0, 1, 0], expected);
+  close(transform(packet, 0, [0, 1, 0]), expected);
+  // Both door hinges remain attached; their trailing edges swing away from the cabin on the correct sides.
+  for (const door of [5, 6]) {
+    const pivot = carRig.rest.slice(door * 3, door * 3 + 3);
+    vehiclePoint(frame, pivot, expected);
+    close(transform(packet, door, pivot), expected);
+  }
+  const closed = fixture();
+  closed.characters.add(closed.packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, { ...frame, doorLeft: 0, doorRight: 0, steering: 0 });
+  expect(transform(packet, 5, [.84, .76, -.35])).not.toEqual(transform(closed.packet, 5, [.84, .76, -.35]));
+  expect(transform(packet, 7, [.42, 1.05, .55])).not.toEqual(transform(closed.packet, 7, [.42, 1.05, .55]));
+});
+
+test("camera target damping is frame-rate independent and snaps safely across a teleport", () => {
+  const sixty = new Viewpoint(), thirty = new Viewpoint(), a = new Camera(), b = new Camera();
+  for (const [v, c, step] of [[sixty, a, 1000 / 60], [thirty, b, 1000 / 30]] as const) {
+    v.placeVehicle(c, null, 0, 1, 0, 0, 0, 0, 0, step, false);
+    v.placeVehicle(c, null, 1, 1, 0, 0, 0, 0, 0, step, false);
+    expect(c.x).toBeGreaterThan(0);
+    expect(c.x).toBeLessThan(.2);
+    for (let t = step; t < 500 - .1; t += step) v.placeVehicle(c, null, 1, 1, 0, 0, 0, 0, 0, step, false);
+  }
+  close([a.x, a.y, a.z], [b.x, b.y, b.z]);
+  sixty.placeVehicle(a, null, 100, 1, 0, 0, 0, 0, 0, 16, false);
+  expect(a.x).toBe(100);
+});
+
+test("driving telemetry shifts with speed, identifies reverse and braking, and never feeds slip while airborne", () => {
+  const v = new VehicleTelemetry(), b = new Body(), spec = reg.vehicle[compact]!.spec;
+  b.vehicle = b.grounded = true; b.fuel = spec.fuelCapacity;
+  for (let i = 0; i < 500; i++) { b.vz = i * .07; v.update(4, b, 1, false, spec, 16); }
+  expect(v.gear).toBeGreaterThanOrEqual(3);
+  expect(v.rpm).toBeGreaterThan(2000);
+  expect(v.rpm).toBeLessThanOrEqual(6200);
+  v.update(4, b, -1, false, spec, 16);
+  expect(v.brake).toBe(1);
+  b.vz = -3; v.update(4, b, -1, false, spec, 16);
+  expect(v.gear).toBe(-1); expect(v.brake).toBe(0);
+  b.vx = 4; b.vz = 10; v.update(4, b, 1, true, spec, 16);
+  expect(v.slip).toBeGreaterThan(.5);
+  b.grounded = false; v.update(4, b, 1, true, spec, 16);
+  expect(v.slip).toBe(0);
+  b.fuel = 0; v.update(4, b, 1, false, spec, 16);
+  expect(v.load).toBe(0);
+  v.stop(); expect(v.active).toBe(false); expect(v.rpm).toBe(0);
+});
+
+test("driving instruments fit wide and portrait native HUDs without requiring a hotbar", () => {
+  const hud = new HudModel(), f = new UiFrame(), v = new VehicleTelemetry();
+  v.active = true; v.speed = 12; v.gear = 3; v.rpm = 3400; v.fuel = .72;
+  hud.vehicle = v;
+  for (const aspect of [16 / 9, 9 / 16]) {
+    f.begin(aspect); buildHud(f, hud);
+    const gauges = f.nodes.slice(0, f.count).filter(n => n.key >= KEY_VEHICLE && n.key < KEY_VEHICLE + 8);
+    expect(gauges.length).toBe(8);
+    for (const n of gauges) { expect(n.x).toBeGreaterThanOrEqual(0); expect(n.x + n.w).toBeLessThanOrEqual(f.width); expect(n.y + n.h).toBeLessThan(f.height); }
+    expect(gauges.map(n => n.text)).toContain("D3");
+    expect(gauges.map(n => n.text)).toContain("Fuel 72%");
+  }
 });
 
 test("vehicle chase camera keeps mouse look, eases idle heading, and collision pulls it out of a wall", () => {

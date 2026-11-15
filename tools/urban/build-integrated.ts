@@ -2,8 +2,7 @@
 // Only the small boot header/blob and manifest are merged; the usual browser entrypoints are bundled separately.
 import { copyFileSync, linkSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { COMPACT } from "../../assets/source/urban/vehicles/compact/asset.ts";
-import { COPPER_COMPACT, compactMesh, compactRig } from "../../assets/source/urban/vehicles/compact/model.ts";
+import { COMPACT, COPPER_COMPACT, compactMesh, compactRig } from "./source.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack, setTexture, textureOf, type PackHeader } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -55,8 +54,9 @@ function pinCoreAsset(source:string,cache:string,expectedBytes:number):string {
 function compactTextureSources():TextureSource[] {
   const dir=resolve(ROOT,"assets/source/urban/vehicles/compact/tex");
   return ([
-    ["details-base","details-base-64.png","base",64],["details-packed","details-packed-64.png","mro",64],
-    ["paint-base","paint-base-256.png","base",256],["paint-packed","paint-packed.png","mro",256],
+    ["details-base","details-base-512.png","base",512],["details-packed","details-packed-512.png","mro",512],
+    ["paint-base","paint-base-512.png","base",512],["paint-packed","paint-packed-512.png","mro",512],
+    ["upholstery-base","upholstery-base-512.png","base",512],["upholstery-packed","upholstery-packed-512.png","mro",512],
   ]as const).map(([id,path,role,top])=>({id:`${COMPACT.id}/${id}`,role,top,mips:()=>{
     const picture=readPicture(join(dir,path));return role==="base"?baseMips(picture):packedMips(picture);
   }}));
@@ -94,7 +94,7 @@ export async function buildIntegratedAssets(opts:{baseDist?:string;dist?:string;
   if(oldBoot.palette.some((value,index)=>value!==palette[index]))throw new Error("core source palette differs from this checkout");
 
   const added=splitPack(buildPack([compactMesh(),compactMesh(COPPER_COMPACT)],palette,[],[compactRig()]),"urban");
-  // A GPU picks one variant globally. Encode all three for only these four small maps, on one worker.
+  // A GPU picks one variant globally. Encode all three for only these six small maps, on one worker.
   const textures=await buildTextures(added.manifest,compactTextureSources(),"urban",{workers:1});
   const addBoot=parsePack(added.files[0]!.bytes),rigOffset=oldBoot.header.rigs.length;
   const materialOffset=manifest.materials?.length??0,textureOffset=manifest.textures?.length??0;

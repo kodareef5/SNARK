@@ -5,9 +5,14 @@ import type { VehicleDefinition, VehicleSpec, VehicleSurface } from "../../share
 export const COMPACT: VehicleSpec = {
   halfWidth: 0.9, halfLength: 2, height: 1.5, clearance: 0.12,
   wheelbase: 2.5, track: 1.56, wheelRadius: 0.3,
-  acceleration: 5, brake: 10, maxForward: 22, maxReverse: 6,
-  maxSteer: 0.55, steerRate: 1.6, maxRise: 0.25, maxDrop: 0.4,
+  acceleration: 8, brake: 13, maxForward: 34, maxReverse: 6,
+  maxSteer: 0.55, steerRate: 2.4, maxRise: 0.25, maxDrop: 0.4,
   minGroundNormal: 0.85, fuelCapacity: 40, fuelPerSecond: 0.003,
+  // A responsive road coupe: stable rear tires, progressive steering and a short recoverable handbrake flick.
+  frontGrip: 1.2, rearGrip: 1.25, corneringStiffness: 8.5,
+  yawInertia: 1.35, yawDamping: 1.1, steerSpeed: 22, handbrakeGrip: 0.23,
+  suspensionFrequency: 10, suspensionDamping: 0.9, suspensionTravel: 0.19,
+  pitchResponse: 0.0095, rollResponse: 0.014, gravity: 18, airDrag: 0.035, dragScale: 0.5,
 };
 
 export const ASPHALT: VehicleSurface = { id: "urban:asphalt", grip: 7, rolling: 0.15, drag: 0.009 };

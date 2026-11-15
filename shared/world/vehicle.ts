@@ -16,13 +16,18 @@ function overlaps(a: Bounds, b: Bounds): boolean {
 }
 
 function bounds(s: Readonly<VehicleState>, p: VehicleSpec): Bounds {
-  const sn = detSin(s.yaw), cs = detCos(s.yaw), sp = detSin(s.pitch), cp = detCos(s.pitch), sr = detSin(s.roll), cr = detCos(s.roll);
+  // Wheel-plane collision hull: suspension dive and body roll must not turn a flat
+  // road into an obstacle. The roof envelope still includes chassis sway/heave.
+  const pitch = s.grounded ? s.groundPitch : s.pitch, roll = s.grounded ? s.groundRoll : s.roll;
+  const base = s.grounded ? s.y - s.rideOffset : s.y;
+  const extra = s.grounded ? Math.max(0, s.rideOffset) + Math.abs(s.pitch - pitch) * p.halfLength + Math.abs(s.roll - roll) * p.halfWidth : 0;
+  const sn = detSin(s.yaw), cs = detCos(s.yaw), sp = detSin(pitch), cp = detCos(pitch), sr = detSin(roll), cr = detCos(roll);
   const b: Bounds = { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity };
   // Rotate all corners, including the roof's overhang. Attitude is yaw * roll * nose-up pitch.
-  for (const x of [-p.halfWidth, p.halfWidth]) for (const y of [p.clearance, p.height]) for (const z of [-p.halfLength, p.halfLength]) {
+  for (const x of [-p.halfWidth, p.halfWidth]) for (const y of [p.clearance, p.height + extra]) for (const z of [-p.halfLength, p.halfLength]) {
     const py = cp * y + sp * z, pz = cp * z - sp * y;
     const rx = cr * x - sr * py, ry = sr * x + cr * py;
-    const wx = s.x + cs * rx + sn * pz, wy = s.y + ry, wz = s.z + cs * pz - sn * rx;
+    const wx = s.x + cs * rx + sn * pz, wy = base + ry, wz = s.z + cs * pz - sn * rx;
     b.minX = Math.min(b.minX, wx); b.maxX = Math.max(b.maxX, wx);
     b.minY = Math.min(b.minY, wy); b.maxY = Math.max(b.maxY, wy);
     b.minZ = Math.min(b.minZ, wz); b.maxZ = Math.max(b.maxZ, wz);
@@ -30,10 +35,18 @@ function bounds(s: Readonly<VehicleState>, p: VehicleSpec): Bounds {
   return b;
 }
 
-function underside(s: Readonly<VehicleState>, clearance: number, x: number, z: number): number {
-  const sn = detSin(s.yaw), cs = detCos(s.yaw), sp = detSin(s.pitch), cp = detCos(s.pitch), sr = detSin(s.roll), cr = detCos(s.roll);
+function underside(s: Readonly<VehicleState>, p: VehicleSpec, x: number, z: number): number {
+  // While airborne the wheel/base plane catches the landing. Cosmetic nose-down
+  // attitude cannot repeatedly collide a metre above ground and suspend the car.
+  const pitch = s.grounded ? s.groundPitch : 0, roll = s.grounded ? s.groundRoll : 0;
+  const sn = detSin(s.yaw), cs = detCos(s.yaw), sp = detSin(pitch), cp = detCos(pitch), sr = detSin(roll), cr = detCos(roll);
   const nx = -cs * sr * cp - sn * sp, ny = cr * cp, nz = -cs * sp + sn * sr * cp;
-  return s.y + (clearance - nx * (x - s.x) - nz * (z - s.z)) / ny;
+  const dx = x - s.x, dz = z - s.z;
+  // A car's bumpers rise beyond the wheelbase; treating the whole footprint as a
+  // ground-scraping flat plate made ordinary ramp transitions impassable.
+  const beyondAxle = Math.max(0, Math.min(p.halfLength, Math.abs(sn * dx + cs * dz)) - p.wheelbase / 2);
+  const bumperRise = beyondAxle * 0.3;
+  return s.y - (s.grounded ? s.rideOffset : 0) + (p.clearance + bumperRise - nx * dx - nz * dz) / Math.max(0.2, ny);
 }
 
 export class StaticVehicleWorld implements VehicleWorld {
@@ -53,8 +66,13 @@ export class StaticVehicleWorld implements VehicleWorld {
   support(x: number, y: number, z: number, p: VehicleSpec): WheelContact | null {
     const hf = this.world.hf;
     if (x < 0 || z < 0 || x >= hf.sizeX || z >= hf.sizeZ) return null;
-    const above = y + p.maxRise + 0.001;
-    const kind = castWorld(this.supportWorld, x, above, z, 0, -1, 0, p.maxRise + p.maxDrop + 0.002, true);
+    // The caller predicts each wheel's height. Extra upward reach allows initial
+    // contact on a legal slope; downward reach sees a landing before a fast fall
+    // crosses the old maxDrop-sized probe. Neither range authorizes a chassis step.
+    const slopeReach = Math.sqrt(p.wheelbase * p.wheelbase + p.track * p.track) * 0.5 * Math.sqrt(1 / (p.minGroundNormal * p.minGroundNormal) - 1);
+    const rise = p.maxRise + slopeReach;
+    const above = y + rise + 0.001;
+    const kind = castWorld(this.supportWorld, x, above, z, 0, -1, 0, rise + Math.max(4, p.maxDrop) + 0.002, true);
     if (kind === HIT_NONE) return null;
     return { y: above - rayHit.t, normalY: rayHit.ny, surface: this.surfaceAt(kind, rayHit.ref, x, z) };
   }
@@ -65,7 +83,9 @@ export class StaticVehicleWorld implements VehicleWorld {
     turn -= Math.floor((turn + TAU / 2) / TAU) * TAU;
     // Include the corner arc between endpoints, even when translation is zero.
     const radius = Math.sqrt(p.halfWidth * p.halfWidth + p.halfLength * p.halfLength + p.height * p.height);
-    const arc = radius * (Math.abs(turn) + Math.abs(to.pitch - from.pitch) + Math.abs(to.roll - from.roll));
+    const pitchChange = from.grounded === to.grounded ? Math.abs((to.grounded ? to.groundPitch : to.pitch) - (from.grounded ? from.groundPitch : from.pitch)) : 0;
+    const rollChange = from.grounded === to.grounded ? Math.abs((to.grounded ? to.groundRoll : to.roll) - (from.grounded ? from.groundRoll : from.roll)) : 0;
+    const arc = radius * (Math.abs(turn) + pitchChange + rollChange);
     const sweep: Bounds = {
       minX: Math.min(a.minX, b.minX) - arc, maxX: Math.max(a.maxX, b.maxX) + arc,
       minY: Math.min(a.minY, b.minY) - arc, maxY: Math.max(a.maxY, b.maxY) + arc,
@@ -73,13 +93,22 @@ export class StaticVehicleWorld implements VehicleWorld {
     };
     const hf = this.world.hf;
     if (sweep.minX < 0 || sweep.minZ < 0 || sweep.maxX >= hf.sizeX || sweep.maxZ >= hf.sizeZ) return "map-edge";
-    // Compare terrain with the supported underside plane, not the AABB's lowest corner: a smooth slope is drivable.
-    // Every triangle touching the swept rectangle is bounded by these vertices. Boundary triangles remain conservative.
-    const attitudeMargin = arc;
-    for (let z = Math.floor(sweep.minZ / hf.cell); z <= Math.ceil(sweep.maxZ / hf.cell); z++) {
-      for (let x = Math.floor(sweep.minX / hf.cell); x <= Math.ceil(sweep.maxX / hf.cell); x++) {
-        const floor = Math.min(underside(from, p.clearance, x * hf.cell, z * hf.cell), underside(to, p.clearance, x * hf.cell, z * hf.cell)) - attitudeMargin;
-        if (hf.sample(x, z) > floor) return "terrain";
+    // Clip grid samples to the actual swept footprint. The former neighbour-cell
+    // vertices could lie metres beyond the chassis and stop a car beside a slope.
+    // Terrain triangles are linear: rectangle corners, grid crossings and diagonal
+    // crossings cover extrema without a fine unbounded sampling grid.
+    const high = (x: number, z: number): boolean => {
+      const floor = Math.min(underside(from, p, x, z), underside(to, p, x, z));
+      return hf.heightAt(x, z) > floor + 0.01;
+    };
+    for (let gz = Math.floor(sweep.minZ / hf.cell); gz < Math.ceil(sweep.maxZ / hf.cell); gz++) {
+      for (let gx = Math.floor(sweep.minX / hf.cell); gx < Math.ceil(sweep.maxX / hf.cell); gx++) {
+        const x0 = Math.max(sweep.minX, gx * hf.cell), x1 = Math.min(sweep.maxX, (gx + 1) * hf.cell);
+        const z0 = Math.max(sweep.minZ, gz * hf.cell), z1 = Math.min(sweep.maxZ, (gz + 1) * hf.cell);
+        if (high(x0, z0) || high(x1, z0) || high(x0, z1) || high(x1, z1)) return "terrain";
+        const diagonal = (gz - gx) * hf.cell;
+        for (const x of [x0, x1]) { const z = x + diagonal; if (z >= z0 && z <= z1 && high(x, z)) return "terrain"; }
+        for (const z of [z0, z1]) { const x = z - diagonal; if (x >= x0 && x <= x1 && high(x, z)) return "terrain"; }
       }
     }
     const structure = this.obstacle(this.world.structs, sweep);

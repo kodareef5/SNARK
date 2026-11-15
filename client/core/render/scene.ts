@@ -839,7 +839,7 @@ export class Scene {
   }
 
   private remoteVehicle(remote: RemoteSample, i: number): VehicleRenderPose {
-    return { pitch: remote.vehiclePitch[i]!, roll: remote.vehicleRoll[i]!, steering: remote.steering[i]!, wheelAngle: remote.wheelAngle[i]! };
+    return { pitch: remote.vehiclePitch[i]!, roll: remote.vehicleRoll[i]!, steering: remote.steering[i]!, wheelAngle: remote.wheelAngle[i]!, groundPitch: remote.vehicleGroundPitch[i]!, groundRoll: remote.vehicleGroundRoll[i]!, rideOffset: remote.vehicleRideOffset[i]!, grounded: remote.vehicleGrounded[i] !== 0, doorLeft: remote.vehicleDoorLeft[i]!, doorRight: remote.vehicleDoorRight[i]! };
   }
 
   /**

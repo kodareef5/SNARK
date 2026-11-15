@@ -432,7 +432,7 @@ in vec2 vUv;
 flat in mat3 vDye, vDye2;
 uniform sampler2D uBase, uNormal, uMro, uMask, uMask2;
 uniform vec3 uTint;
-uniform float uCutoff;
+uniform float uCutoff, uEmissive;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
 ${LIGHT}${HAND_GLSL}${SHADOW_GLSL}${air}vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
   return base * uTint * (1.0 - dot(mask + mask2, vec3(1.0)) + vDye * mask + vDye2 * mask2);
@@ -454,7 +454,7 @@ void main() {
   vec3 v = -normalize(vRel);
   vec3 n = bumped(bump);
   float shade = sunShadow(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal));
-${layered ? `  vec3 albedo = wounded(${albedo}, mro);\n` : ""}  o = vec4(shown(lit(${layered ? "albedo" : albedo}, mro, n, v, skyFrom(reflect(-v, n)), shade), vRel), cover);
+${layered ? `  vec3 albedo = wounded(${albedo}, mro);\n` : ""}  o = vec4(shown(lit(${layered ? "albedo" : albedo}, mro, n, v, skyFrom(reflect(-v, n)), shade) + ${layered ? "albedo" : albedo} * base.a * uEmissive, vRel), cover);
 }`;
 }
 

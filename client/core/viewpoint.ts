@@ -11,6 +11,7 @@ const SIDE = 0.55;
 const RISE = 0.25;
 /** Gap kept between the camera and the obstacle, so the near plane does not cut into a wall. */
 const CLEAR = 0.3;
+export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: number }
 
 export class Viewpoint {
   thirdPerson = false;
@@ -18,23 +19,40 @@ export class Viewpoint {
   private lastYaw = 0;
   private lastPitch = 0;
   private lookIdle = 0;
+  private vehicleId = -1;
+  private readonly target = new Float64Array(3);
+  private readonly targetVelocity = new Float64Array(3);
+  private boom = 6;
 
   /** A centred chase view. Mouse look wins; only a moving driver's idle view gently follows the car. Returns look yaw. */
-  placeVehicle(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, heading: number, speed: number, dt: number, follow = true): number {
+  placeVehicle(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, heading: number, speed: number, dt: number, follow = true, motion?: VehicleCameraMotion): number {
     const elapsed = Math.max(0, Math.min(100, dt));
-    if (!this.vehicleLook || Math.abs(angle(yaw - this.lastYaw)) > 0.00001 || Math.abs(pitch - this.lastPitch) > 0.00001) this.lookIdle = 0;
+    const reset = !this.vehicleLook || (motion?.id ?? -1) !== this.vehicleId || Math.hypot(ex - this.target[0]!, ey - this.target[1]!, ez - this.target[2]!) > 10;
+    if (reset || Math.abs(angle(yaw - this.lastYaw)) > 0.00001 || Math.abs(pitch - this.lastPitch) > 0.00001) this.lookIdle = 0;
     else this.lookIdle += elapsed;
     if (follow && speed > 1 && this.lookIdle > 1200) yaw += angle(heading - yaw) * (1 - Math.exp(-elapsed / 1800));
     this.lastYaw = yaw;
     this.lastPitch = pitch;
     this.vehicleLook = true;
-    const back = 6 + Math.min(2.5, Math.abs(speed) * 0.07);
+    this.vehicleId = motion?.id ?? -1;
+    const wanted = [ex + Math.max(-1.8, Math.min(1.8, (motion?.vx ?? 0) * .1)), ey + Math.max(-.25, Math.min(.25, (motion?.vy ?? 0) * .035)), ez + Math.max(-1.8, Math.min(1.8, (motion?.vz ?? 0) * .1))];
+    const seconds = elapsed / 1000;
+    for (let i = 0; i < 3; i++) {
+      if (reset) { this.target[i] = wanted[i]!; this.targetVelocity[i] = 0; continue; }
+      // Exact critically damped spring: stable through variable frame times, with softer vertical suspension response.
+      const omega = i === 1 ? 12 : 22, decay = Math.exp(-omega * seconds);
+      const offset = this.target[i]! - wanted[i]!, change = (this.targetVelocity[i]! + omega * offset) * seconds;
+      this.target[i] = wanted[i]! + (offset + change) * decay;
+      this.targetVelocity[i] = (this.targetVelocity[i]! - omega * change) * decay;
+    }
+    const back = 6 + Math.min(2, Math.abs(speed) * .06);
+    this.boom = reset ? back : this.boom + (back - this.boom) * (1 - Math.exp(-seconds * 4));
     const viewPitch = Math.max(-1.35, Math.min(1.15, pitch - 0.12));
     cam.yaw = yaw;
     cam.pitch = viewPitch;
-    const dx = -Math.sin(yaw) * Math.cos(viewPitch) * back;
-    const dy = -Math.sin(viewPitch) * back + 0.65;
-    const dz = -Math.cos(yaw) * Math.cos(viewPitch) * back;
+    const dx = this.target[0]! - ex - Math.sin(yaw) * Math.cos(viewPitch) * this.boom;
+    const dy = this.target[1]! - ey - Math.sin(viewPitch) * this.boom + 0.65;
+    const dz = this.target[2]! - ez - Math.cos(yaw) * Math.cos(viewPitch) * this.boom;
     const length = Math.hypot(dx, dy, dz);
     let reach = length;
     if (world && castWorld(world, ex, ey, ez, dx / length, dy / length, dz / length, length + CLEAR) !== HIT_NONE) reach = Math.max(0, rayHit.t - CLEAR);

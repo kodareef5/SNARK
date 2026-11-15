@@ -10,7 +10,8 @@ import { STAGES, growthStep, maturity, stageOf, youngScale } from "../../shared/
 import { sortU32 } from "../../shared/sort.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
 import { CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
-import { MF_OUT, STAMINA_UNITS } from "../../shared/sim/character.ts";
+import { MF_OUT, STAMINA_UNITS, type Body } from "../../shared/sim/character.ts";
+import type { VehicleSpec } from "../../shared/sim/vehicle.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Camera } from "./render/camera.ts";
@@ -173,7 +174,59 @@ export interface Heads {
   overhead(id: number, out: number[]): boolean;
 }
 
+const VEHICLE_GEARS = [0, 3.1, 2.1, 1.55, 1.2, .95];
+
+/** Presentation-only automatic gearbox and engine readout. Neither gears nor RPM feed back into physics. */
+export class VehicleTelemetry {
+  active = false;
+  id = -1;
+  speed = 0;
+  forward = 0;
+  lateral = 0;
+  throttle = 0;
+  brake = 0;
+  handbrake = false;
+  grounded = true;
+  fuel = 0;
+  gear = 1;
+  rpm = 0;
+  load = 0;
+  slip = 0;
+  private shiftAge = 1000;
+
+  stop(): void { this.active = false; this.id = -1; this.rpm = this.load = this.slip = 0; }
+
+  update(id: number, body: Body, throttle: number, handbrake: boolean, spec: VehicleSpec, dt: number): void {
+    const elapsed = Math.max(0, Math.min(100, dt));
+    const fresh = !this.active || this.id !== id;
+    this.active = true; this.id = id;
+    this.forward = body.vx * Math.sin(body.vehicleYaw) + body.vz * Math.cos(body.vehicleYaw);
+    this.lateral = body.vx * Math.cos(body.vehicleYaw) - body.vz * Math.sin(body.vehicleYaw);
+    this.speed = Math.hypot(body.vx, body.vz);
+    this.throttle = Math.max(-1, Math.min(1, throttle));
+    this.handbrake = handbrake;
+    this.brake = handbrake ? 1 : this.forward * this.throttle < -.2 ? Math.abs(this.throttle) : 0;
+    this.grounded = body.grounded;
+    this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
+    const reverse = this.forward < -.6 || Math.abs(this.forward) < .6 && throttle < 0;
+    if (fresh || reverse || this.gear < 1) { this.gear = reverse ? -1 : 1; this.shiftAge = 1000; }
+    this.shiftAge += elapsed;
+    const wheelRpm = Math.abs(this.forward) / spec.wheelRadius * 60 / (2 * Math.PI);
+    let rpm = wheelRpm * (this.gear < 0 ? 3 : VEHICLE_GEARS[this.gear]!) * 3.8;
+    if (this.gear > 0 && this.shiftAge > 550) {
+      const next = rpm > 4800 && this.gear < 5 ? this.gear + 1 : rpm < 1900 && this.gear > 1 ? this.gear - 1 : this.gear;
+      if (next !== this.gear) { this.gear = next; this.shiftAge = 0; rpm = wheelRpm * VEHICLE_GEARS[next]! * 3.8; }
+    }
+    const shift = this.shiftAge < 160 ? .35 : 1;
+    this.load = this.fuel > 0 ? Math.abs(this.throttle) * (this.brake > 0 ? .25 : 1) * shift : 0;
+    const targetRpm = this.fuel <= 0 ? 0 : Math.min(6200, Math.max(850 + this.load * (this.speed < 1 ? 1350 : 500), rpm));
+    this.rpm = fresh ? targetRpm : this.rpm + (targetRpm - this.rpm) * (1 - Math.exp(-elapsed / 85));
+    this.slip = body.grounded && this.speed > 2 ? Math.max(0, Math.min(1, (Math.abs(this.lateral) - .4) / 4 + (handbrake ? this.speed / 28 : 0))) : 0;
+  }
+}
+
 export class HudModel {
+  vehicle: VehicleTelemetry | null = null;
   /** The microphone's state, or why it is off. "" for nothing. */
   voice = "";
   readonly talkers: string[] = [];

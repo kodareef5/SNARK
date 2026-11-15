@@ -21,7 +21,7 @@ import { structName } from "./ui/structure.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls } from "./controls.ts";
-import { HudModel, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
+import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
 import type { FramePacket } from "./render/packet.ts";
@@ -29,7 +29,7 @@ import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
 import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { Falling } from "./rubble.ts";
-import { BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
@@ -76,6 +76,8 @@ export class App {
   readonly ui = new Ui();
   readonly cam = new Camera();
   readonly hud = new HudModel();
+  /** Read-only to the shell: native sound follows this state and never drives simulation. */
+  readonly vehicleTelemetry = new VehicleTelemetry();
   readonly feedback = new Feedback();
   readonly shots: Shots;
   /** Null until the world arrives. */
@@ -541,8 +543,10 @@ export class App {
     const hud = this.hud;
     const c = this.controls;
     this.nowMs = nowMs;
+    hud.vehicle = null;
 
     if (session.state === "closed") {
+      this.vehicleTelemetry.stop();
       // Only the reasons a player can act on are spelled out.
       hud.status = session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
@@ -554,6 +558,7 @@ export class App {
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
     const world = session.world;
     if (session.state !== "active" || !world) {
+      this.vehicleTelemetry.stop();
       hud.status = "connecting";
       this.ui.build(aspect, hud, session);
       return null;
@@ -595,6 +600,10 @@ export class App {
     const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
     const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
     const car = this.reg.vehicle[session.bodyKind];
+    if (alive && car && session.driving >= 0) {
+      this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, dt);
+      hud.vehicle = this.vehicleTelemetry;
+    } else this.vehicleTelemetry.stop();
     const carYaw = session.ownPrev.vehicleYaw + Math.atan2(Math.sin(session.own.vehicleYaw - session.ownPrev.vehicleYaw), Math.cos(session.own.vehicleYaw - session.ownPrev.vehicleYaw)) * a;
     const passenger = alive && session.own.seatSlot === 2 && session.own.seat > 0;
     // A server rule can forbid third person. A rider still sees its mount from behind.
@@ -603,7 +612,7 @@ export class App {
     const third = this.view.thirdPerson;
     if (!alive) this.view.thirdPerson = false;
     else if (session.driving >= 0) this.view.thirdPerson = true;
-    if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + 1, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt);
+    if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + 1, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving });
     else if (passenger) {
       let px = bx, py = by + eye, pz = bz, heading = c.yaw;
       for (let i = 0; i < this.remote.count; i++) {
@@ -620,13 +629,14 @@ export class App {
     const settings = this.ui.settings;
     const base = (settings.fov * Math.PI) / 180;
     let want = base;
+    if (hud.vehicle) want += Math.min(7 * Math.PI / 180, hud.vehicle.speed / 30 * 7 * Math.PI / 180);
     const aimed = this.reg.weapon[session.own.held];
     if (alive && this.steer && (c.buttons & BTN_SECONDARY) !== 0 && aimed && aimed.clip > 0) {
       const inv = session.inventory;
       const fitted = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.attach[inv.hotbar + session.held]! : 0;
       want = base * ((this.reg.defs[fitted] as ItemDef | null)?.attachment === "scope" ? SCOPE_FOV : AIM_FOV);
     }
-    this.fov += (want - this.fov) * Math.min(1, dt / 70);
+    this.fov += (want - this.fov) * (1 - Math.exp(-Math.max(0, dt) / (hud.vehicle ? 260 : 70)));
     cam.fovY = this.fov;
     c.zoom = (this.fov / base) * settings.sensitivity;
     const body = this.body;
@@ -666,6 +676,10 @@ export class App {
         roll: session.ownPrev.vehicleRoll + (session.own.vehicleRoll - session.ownPrev.vehicleRoll) * a,
         steering: session.ownPrev.steering + (session.own.steering - session.ownPrev.steering) * a,
         wheelAngle: session.ownPrev.wheelAngle + Math.atan2(Math.sin(session.own.wheelAngle - session.ownPrev.wheelAngle), Math.cos(session.own.wheelAngle - session.ownPrev.wheelAngle)) * a,
+        groundPitch: session.ownPrev.vehicleGroundPitch + (session.own.vehicleGroundPitch - session.ownPrev.vehicleGroundPitch) * a,
+        groundRoll: session.ownPrev.vehicleGroundRoll + (session.own.vehicleGroundRoll - session.ownPrev.vehicleGroundRoll) * a,
+        rideOffset: session.ownPrev.vehicleRideOffset + (session.own.vehicleRideOffset - session.ownPrev.vehicleRideOffset) * a,
+        grounded: session.own.grounded,
       };
       body.firstPerson = false;
       body.id = session.driving;
@@ -681,6 +695,7 @@ export class App {
       const r = this.remote;
       for (let i = 0; i < r.count; i++) {
         if (r.id[i] !== session.driving) continue;
+        if (body.vehicle) { body.vehicle.doorLeft = r.vehicleDoorLeft[i]!; body.vehicle.doorRight = r.vehicleDoorRight[i]!; }
         body.generation = r.gen[i]!;
         body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
         body.state.unpackCue(r.cue[i]!);
@@ -718,7 +733,7 @@ export class App {
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
-    if (alive && car) hud.ammo = `${Math.round(Math.hypot(session.own.vx, session.own.vz) * 3.6)} km/h   Fuel ${Math.round(session.own.fuel / car.spec.fuelCapacity * 100)}%   W/S drive   A/D steer   Space brake   E exit`;
+    if (alive && car) hud.ammo = "";
     this.listen(hud);
     const ghost = this.scene.ghost;
     ghost.kind = 0;

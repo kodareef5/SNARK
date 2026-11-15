@@ -72,6 +72,15 @@ export class EntityStore {
   yaw: Uint16Array;
   vehicle: Uint8Array;
   vehicleYaw: Float32Array;
+  vehicleYawRate: Float32Array;
+  vehiclePitchRate: Float32Array;
+  vehicleRollRate: Float32Array;
+  vehicleGroundPitch: Float32Array;
+  vehicleGroundRoll: Float32Array;
+  vehicleRideOffset: Float32Array;
+  vehicleRideVelocity: Float32Array;
+  vehicleDoors: Uint16Array;
+
   vehiclePitch: Float32Array;
   vehicleRoll: Float32Array;
   steering: Float32Array;
@@ -155,6 +164,15 @@ export class EntityStore {
     this.yaw = new Uint16Array(cap);
     this.vehicle = new Uint8Array(cap);
     this.vehicleYaw = new Float32Array(cap);
+    this.vehicleYawRate = new Float32Array(cap);
+    this.vehiclePitchRate = new Float32Array(cap);
+    this.vehicleRollRate = new Float32Array(cap);
+    this.vehicleGroundPitch = new Float32Array(cap);
+    this.vehicleGroundRoll = new Float32Array(cap);
+    this.vehicleRideOffset = new Float32Array(cap);
+    this.vehicleRideVelocity = new Float32Array(cap);
+    this.vehicleDoors = new Uint16Array(cap);
+
     this.vehiclePitch = new Float32Array(cap);
     this.vehicleRoll = new Float32Array(cap);
     this.steering = new Float32Array(cap);
@@ -226,6 +244,15 @@ export class EntityStore {
     this.yaw[i] = 0;
     this.vehicle[i] = 0;
     this.vehicleYaw[i] = 0;
+    this.vehicleYawRate[i] = 0;
+    this.vehiclePitchRate[i] = 0;
+    this.vehicleRollRate[i] = 0;
+    this.vehicleGroundPitch[i] = 0;
+    this.vehicleGroundRoll[i] = 0;
+    this.vehicleRideOffset[i] = 0;
+    this.vehicleRideVelocity[i] = 0;
+    this.vehicleDoors[i] = 0;
+
     this.vehiclePitch[i] = 0;
     this.vehicleRoll[i] = 0;
     this.steering[i] = 0;
@@ -283,6 +310,15 @@ export class EntityStore {
     this.yaw = wider(this.yaw, cap);
     this.vehicle = wider(this.vehicle, cap);
     this.vehicleYaw = wider(this.vehicleYaw, cap);
+    this.vehicleYawRate = wider(this.vehicleYawRate, cap);
+    this.vehiclePitchRate = wider(this.vehiclePitchRate, cap);
+    this.vehicleRollRate = wider(this.vehicleRollRate, cap);
+    this.vehicleGroundPitch = wider(this.vehicleGroundPitch, cap);
+    this.vehicleGroundRoll = wider(this.vehicleGroundRoll, cap);
+    this.vehicleRideOffset = wider(this.vehicleRideOffset, cap);
+    this.vehicleRideVelocity = wider(this.vehicleRideVelocity, cap);
+    this.vehicleDoors = wider(this.vehicleDoors, cap);
+
     this.vehiclePitch = wider(this.vehiclePitch, cap);
     this.vehicleRoll = wider(this.vehicleRoll, cap);
     this.steering = wider(this.steering, cap);
@@ -418,6 +454,14 @@ export class EntityStore {
     b.yaw = this.yaw[i]!;
     b.vehicle = this.vehicle[i] !== 0;
     b.vehicleYaw = this.vehicleYaw[i]!;
+    b.vehicleYawRate = this.vehicleYawRate[i]!;
+    b.vehiclePitchRate = this.vehiclePitchRate[i]!;
+    b.vehicleRollRate = this.vehicleRollRate[i]!;
+    b.vehicleGroundPitch = this.vehicleGroundPitch[i]!;
+    b.vehicleGroundRoll = this.vehicleGroundRoll[i]!;
+    b.vehicleRideOffset = this.vehicleRideOffset[i]!;
+    b.vehicleRideVelocity = this.vehicleRideVelocity[i]!;
+
     b.vehiclePitch = this.vehiclePitch[i]!;
     b.vehicleRoll = this.vehicleRoll[i]!;
     b.steering = this.steering[i]!;
@@ -447,6 +491,14 @@ export class EntityStore {
     this.yaw[i] = b.yaw;
     this.vehicle[i] = b.vehicle ? 1 : 0;
     this.vehicleYaw[i] = b.vehicleYaw;
+    this.vehicleYawRate[i] = b.vehicleYawRate;
+    this.vehiclePitchRate[i] = b.vehiclePitchRate;
+    this.vehicleRollRate[i] = b.vehicleRollRate;
+    this.vehicleGroundPitch[i] = b.vehicleGroundPitch;
+    this.vehicleGroundRoll[i] = b.vehicleGroundRoll;
+    this.vehicleRideOffset[i] = b.vehicleRideOffset;
+    this.vehicleRideVelocity[i] = b.vehicleRideVelocity;
+
     this.vehiclePitch[i] = b.vehiclePitch;
     this.vehicleRoll[i] = b.vehicleRoll;
     this.steering[i] = b.steering;

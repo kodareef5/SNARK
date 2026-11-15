@@ -48,7 +48,11 @@ interface Creature {
   oriented: Solved;
 }
 
-export interface VehicleRenderPose { pitch: number; roll: number; steering: number; wheelAngle: number }
+export interface VehicleRenderPose {
+  pitch: number; roll: number; steering: number; wheelAngle: number;
+  groundPitch?: number; groundRoll?: number; rideOffset?: number; grounded?: boolean;
+  doorLeft?: number; doorRight?: number;
+}
 /** The pelvis target in camera-relative world space; the character's own rest proportions determine its origin. */
 export interface VehicleSeatPose extends VehicleRenderPose { x: number; y: number; z: number; yaw: number; driver: boolean; aimYaw?: number }
 
@@ -131,6 +135,7 @@ export class Characters {
   private readonly mounted = new Solved(HUMAN_BONES);
   private readonly mount = createMountMotion();
   private readonly rotation = new Float64Array(4);
+  private readonly groundRotation = new Float64Array(4);
   private readonly wheel = new Float64Array(4);
   private readonly steer = new Float64Array(4);
   private readonly origin = new Float64Array(3);
@@ -400,6 +405,9 @@ export class Characters {
         rig.a.rest();
         for (let b = 0; b < rig.bones; b++) {
           const name = rig.names[b]!;
+          if (name === "steering_wheel") quatAxis(rig.a.rot, b * 4, 0, 0, 1, -(vehicle?.steering ?? 0) * 4.5);
+          if (name === "door_left") quatAxis(rig.a.rot, b * 4, 0, 1, 0, -(vehicle?.doorLeft ?? 0) * 1.1);
+          if (name === "door_right") quatAxis(rig.a.rot, b * 4, 0, 1, 0, (vehicle?.doorRight ?? 0) * 1.1);
           if (!name.startsWith("wheel_")) continue;
           quatAxis(this.wheel, 0, 1, 0, 0, vehicle?.wheelAngle ?? 0);
           quatAxis(this.steer, 0, 0, 1, 0, name.startsWith("wheel_front_") ? vehicle?.steering ?? 0 : 0);
@@ -415,6 +423,15 @@ export class Characters {
       if (c.vehicle) {
         vehicleRotation({ x, y, z, yaw, pitch: vehicle?.pitch ?? 0, roll: vehicle?.roll ?? 0 }, this.rotation);
         orientSolved(rig.solved, this.rotation, c.oriented);
+        // Wheel contact follows the support plane while the sprung body and its occupants roll, pitch and heave.
+        vehicleRotation({ x, y, z, yaw, pitch: vehicle?.groundPitch ?? vehicle?.pitch ?? 0, roll: vehicle?.groundRoll ?? vehicle?.roll ?? 0 }, this.groundRotation);
+        for (let b = 0; b < rig.bones; b++) if (rig.names[b]!.startsWith("wheel_")) {
+          if (vehicle?.grounded !== false) {
+            quatRotate(this.groundRotation, 0, rig.solved.pos[b * 3]!, rig.solved.pos[b * 3 + 1]!, rig.solved.pos[b * 3 + 2]!, c.oriented.pos, b * 3);
+            c.oriented.pos[b * 3 + 1]! -= vehicle?.rideOffset ?? 0;
+            quatMul(c.oriented.rot, b * 4, this.groundRotation, 0, rig.solved.rot, b * 4);
+          } else c.oriented.pos[b * 3 + 1]! -= 0.045;
+        }
         writeBones(p.bones, first * BONE_FLOATS, c.oriented, rig.rest, null, x, y, z, 0, size);
       } else writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
       this.posed++;

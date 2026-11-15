@@ -8,7 +8,7 @@
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], then its appearance:
 //             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
-//     Vehicle creates include [vehicle? 1][pose u32, wheel u16]; updates include [changed? 1][pose u32, wheel u16].
+//     Vehicle creates include [vehicle? 1][pose u32, wheel u16, ride u32, doors u16]; updates include [changed? 1][pose u32, wheel u16, ride u32, doors u16].
 //     A present seat includes its slot u8 and parent generation12, preventing attachment to a recycled entity.
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
 //             [motion? 1][12] [look? 1][6] [action? 1][14 [cues? 1][31]]: the action is sent again with a change of cues
@@ -127,12 +127,14 @@ export class SentView {
   cue = new Uint32Array(VIEW_START);
   vehiclePose = new Uint32Array(VIEW_START);
   vehicleWheel = new Uint16Array(VIEW_START);
+  vehicleRide = new Uint32Array(VIEW_START);
+  vehicleDoors = new Uint16Array(VIEW_START);
   /** Appearance revision, 4 bits. A change makes the next delta send a create. */
   rev = new Uint8Array(VIEW_START);
   /** Not sent. 1 for an entity whose changes go before the others when a snapshot cannot carry them all: a player, or a mount one drives. */
   urgent = new Uint8Array(VIEW_START);
 
-  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0, cue = 0, vehiclePose = 0, vehicleWheel = 0): boolean {
+  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0, cue = 0, vehiclePose = 0, vehicleWheel = 0, vehicleRide = 0, vehicleDoors = 0): boolean {
     const n = this.count;
     if (n === this.cap && !this.grow()) return false;
     this.id[n] = id;
@@ -147,13 +149,15 @@ export class SentView {
     this.cue[n] = cue;
     this.vehiclePose[n] = vehiclePose;
     this.vehicleWheel[n] = vehicleWheel;
+    this.vehicleRide[n] = vehicleRide;
+    this.vehicleDoors[n] = vehicleDoors;
     this.rev[n] = rev;
     this.count = n + 1;
     return true;
   }
 
   copyFrom(o: SentView, i: number): boolean {
-    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!, o.cue[i]!, o.vehiclePose[i]!, o.vehicleWheel[i]!);
+    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!, o.cue[i]!, o.vehiclePose[i]!, o.vehicleWheel[i]!, o.vehicleRide[i]!, o.vehicleDoors[i]!);
   }
 
   /** Doubles the columns. False when they are at MAX_VIEW. */
@@ -172,6 +176,8 @@ export class SentView {
     this.cue = wider(this.cue, cap);
     this.vehiclePose = wider(this.vehiclePose, cap);
     this.vehicleWheel = wider(this.vehicleWheel, cap);
+    this.vehicleRide = wider(this.vehicleRide, cap);
+    this.vehicleDoors = wider(this.vehicleDoors, cap);
     this.rev = wider(this.rev, cap);
     this.urgent = wider(this.urgent, cap);
     return true;
@@ -493,7 +499,7 @@ function same(ring: ViewRing<SentView>, told: Told, s: number, v: SentView, j: n
   const was = ring.find(told.at[s]!);
   if (!was) return false;
   const i = told.ix[s]!;
-  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.cue[i] === v.cue[j] && was.vehiclePose[i] === v.vehiclePose[j] && was.vehicleWheel[i] === v.vehicleWheel[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j];
+  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.cue[i] === v.cue[j] && was.vehiclePose[i] === v.vehiclePose[j] && was.vehicleWheel[i] === v.vehicleWheel[j] && was.vehicleRide[i] === v.vehicleRide[j] && was.vehicleDoors[i] === v.vehicleDoors[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j];
 }
 
 /**
@@ -610,7 +616,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       opKind[n] = K_CREATE;
       opCur[n] = j;
       opId[n] = cid;
-      bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? 48 : 0);
+      bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? 96 : 0);
       last = cid + 1;
     } else {
       opBase[n] = i;
@@ -618,7 +624,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
         // Deferred, it leaves the client the entry it has.
         opKind[n] = K_REPLACE;
-        bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? 48 : 0);
+        bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? 96 : 0);
         last = cid + 1;
       } else {
         const dx = cur.qx[j]! - base!.qx[i]!;
@@ -627,7 +633,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         const moved = dx !== 0 || dy !== 0 || dz !== 0;
         const changed = cur.anim[j]! ^ base!.anim[i]!;
         const cued = cur.cue[j] !== base!.cue[i];
-        const vehicleChanged = cur.vehiclePose[j] !== base!.vehiclePose[i] || cur.vehicleWheel[j] !== base!.vehicleWheel[i];
+        const vehicleChanged = cur.vehiclePose[j] !== base!.vehiclePose[i] || cur.vehicleWheel[j] !== base!.vehicleWheel[i] || cur.vehicleRide[j] !== base!.vehicleRide[i] || cur.vehicleDoors[j] !== base!.vehicleDoors[i];
         if (!moved && changed === 0 && !cued && !vehicleChanged && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
           if (th < 0) {
             opKind[n] = K_KEEP;
@@ -650,7 +656,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         opKind[n] = K_UPDATE;
         // The id gap, the op, and one bit for each of the seven parts that may follow.
         bits = varintBits(cid + 1 - last) + 2 + 7;
-        if (vehicleChanged) bits += 48;
+        if (vehicleChanged) bits += 96;
         if (moved) bits += dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127 ? 25 : 65;
         if (base!.yaw[i] !== cur.yaw[j]) bits += 10;
         if (base!.flags[i] !== cur.flags[j]) bits += 4;
@@ -749,7 +755,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       w.bool(cur.cue[ci] !== 0);
       if (cur.cue[ci] !== 0) w.bits(cur.cue[ci]!, CUE_BITS);
       w.bool(cur.vehiclePose[ci] !== 0);
-      if (cur.vehiclePose[ci] !== 0) { w.u32(cur.vehiclePose[ci]!); w.u16(cur.vehicleWheel[ci]!); }
+      if (cur.vehiclePose[ci] !== 0) { w.u32(cur.vehiclePose[ci]!); w.u16(cur.vehicleWheel[ci]!); w.u32(cur.vehicleRide[ci]!); w.u16(cur.vehicleDoors[ci]!); }
       w.bits(cur.rev[ci]!, 4);
       w.varint(looks.level[id]!);
       const c0 = id * 6;
@@ -825,9 +831,9 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         w.bool(cued);
         if (cued) w.bits(cur.cue[ci]!, CUE_BITS);
       }
-      const vehicleChanged = cur.vehiclePose[ci] !== base!.vehiclePose[bi] || cur.vehicleWheel[ci] !== base!.vehicleWheel[bi];
+      const vehicleChanged = cur.vehiclePose[ci] !== base!.vehiclePose[bi] || cur.vehicleWheel[ci] !== base!.vehicleWheel[bi] || cur.vehicleRide[ci] !== base!.vehicleRide[bi] || cur.vehicleDoors[ci] !== base!.vehicleDoors[bi];
       w.bool(vehicleChanged);
-      if (vehicleChanged) { w.u32(cur.vehiclePose[ci]!); w.u16(cur.vehicleWheel[ci]!); }
+      if (vehicleChanged) { w.u32(cur.vehiclePose[ci]!); w.u16(cur.vehicleWheel[ci]!); w.u32(cur.vehicleRide[ci]!); w.u16(cur.vehicleDoors[ci]!); }
       next.copyFrom(cur, ci);
     }
   }
@@ -900,6 +906,8 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const vehicle = r.bool();
       const vehiclePose = vehicle ? r.u32() : 0;
       const vehicleWheel = vehicle ? r.u16() : 0;
+      const vehicleRide = vehicle ? r.u32() : 0;
+      const vehicleDoors = vehicle ? r.u16() : 0;
       const rev = r.bits(4);
       const level = r.varint();
       if (r.bool()) for (let q = 0; q < 6; q++) scratchColors[q] = r.u8();
@@ -923,7 +931,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const span = young ? r.u32() : 0;
       const grown = young ? r.u32() : 0;
       if (present) i++;
-      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim, 0, cue, vehiclePose, vehicleWheel)) return false;
+      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim, 0, cue, vehiclePose, vehicleWheel, vehicleRide, vehicleDoors)) return false;
       next.appear(rev, level, scratchColors, 0, name, look, gear);
       next.belong(team, seat, span, grown, seatSlot, seatGen);
       if (drawn) drawn.copyFrom(next, next.count - 1);
@@ -958,7 +966,9 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const vehicleChanged = r.bool();
       const vehiclePose = vehicleChanged ? r.u32() : base!.vehiclePose[i]!;
       const vehicleWheel = vehicleChanged ? r.u16() : base!.vehicleWheel[i]!;
-      if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0, 0, cue, vehiclePose, vehicleWheel)) return false;
+      const vehicleRide = vehicleChanged ? r.u32() : base!.vehicleRide[i]!;
+      const vehicleDoors = vehicleChanged ? r.u16() : base!.vehicleDoors[i]!;
+      if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0, 0, cue, vehiclePose, vehicleWheel, vehicleRide, vehicleDoors)) return false;
       next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!);
       next.belong(base!.team[i]!, base!.seat[i]!, base!.span[i]!, base!.grown[i]!, base!.seatSlot[i]!, base!.seatGen[i]!);
       if (drawn) drawn.copyFrom(next, next.count - 1);

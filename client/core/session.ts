@@ -81,7 +81,7 @@ import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
-import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel } from "../../shared/sim/vehicle-body.ts";
+import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, unpackVehicleDoorLeft, unpackVehicleDoorRight } from "../../shared/sim/vehicle-body.ts";
 import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -161,6 +161,12 @@ export class RemoteSample {
   readonly vehicleRoll = new Float32Array(MAX_VIEW);
   readonly steering = new Float32Array(MAX_VIEW);
   readonly wheelAngle = new Float32Array(MAX_VIEW);
+  readonly vehicleGroundPitch = new Float32Array(MAX_VIEW);
+  readonly vehicleGroundRoll = new Float32Array(MAX_VIEW);
+  readonly vehicleRideOffset = new Float32Array(MAX_VIEW);
+  readonly vehicleGrounded = new Uint8Array(MAX_VIEW);
+  readonly vehicleDoorLeft = new Float32Array(MAX_VIEW);
+  readonly vehicleDoorRight = new Float32Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
   readonly level = new Uint16Array(MAX_VIEW);
   /** Six colour regions per entity. Zero means the species' own colour. */
@@ -617,11 +623,25 @@ export class ClientSession {
       out.vehicleRoll[n] = unpackVehicleRoll(vehiclePose);
       out.steering[n] = unpackVehicleSteering(vehiclePose);
       out.wheelAngle[n] = unpackVehicleWheel(b.vehicleWheel[j]!);
+      const ride = b.vehicleRide[j]!;
+      out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(ride);
+      out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(ride);
+      out.vehicleRideOffset[n] = unpackVehicleRideOffset(ride);
+      out.vehicleGrounded[n] = vehicleRideGrounded(ride) ? 1 : 0;
+      out.vehicleDoorLeft[n] = unpackVehicleDoorLeft(b.vehicleDoors[j]!);
+      out.vehicleDoorRight[n] = unpackVehicleDoorRight(b.vehicleDoors[j]!);
       if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
         const oldPose = a!.vehiclePose[i]!;
         out.vehiclePitch[n] = unpackVehiclePitch(oldPose) + (out.vehiclePitch[n]! - unpackVehiclePitch(oldPose)) * k;
         out.vehicleRoll[n] = unpackVehicleRoll(oldPose) + (out.vehicleRoll[n]! - unpackVehicleRoll(oldPose)) * k;
         out.steering[n] = unpackVehicleSteering(oldPose) + (out.steering[n]! - unpackVehicleSteering(oldPose)) * k;
+        const oldRide = a!.vehicleRide[i]!;
+        out.vehicleGroundPitch[n] = unpackVehicleGroundPitch(oldRide) + (out.vehicleGroundPitch[n]! - unpackVehicleGroundPitch(oldRide)) * k;
+        out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(oldRide) + (out.vehicleGroundRoll[n]! - unpackVehicleGroundRoll(oldRide)) * k;
+        out.vehicleRideOffset[n] = unpackVehicleRideOffset(oldRide) + (out.vehicleRideOffset[n]! - unpackVehicleRideOffset(oldRide)) * k;
+        out.vehicleGrounded[n] = vehicleRideGrounded(k < .5 ? oldRide : ride) ? 1 : 0;
+        out.vehicleDoorLeft[n] = unpackVehicleDoorLeft(a!.vehicleDoors[i]!) + (out.vehicleDoorLeft[n]! - unpackVehicleDoorLeft(a!.vehicleDoors[i]!)) * k;
+        out.vehicleDoorRight[n] = unpackVehicleDoorRight(a!.vehicleDoors[i]!) + (out.vehicleDoorRight[n]! - unpackVehicleDoorRight(a!.vehicleDoors[i]!)) * k;
         const oldWheel = unpackVehicleWheel(a!.vehicleWheel[i]!);
         let wheelTurn = out.wheelAngle[n]! - oldWheel;
         wheelTurn -= Math.floor((wheelTurn + TAU / 2) / TAU) * TAU;

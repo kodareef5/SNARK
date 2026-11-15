@@ -22,6 +22,23 @@ export interface VehicleSpec {
   readonly minGroundNormal: number;
   readonly fuelCapacity: number;
   readonly fuelPerSecond: number;
+  /** Tire and chassis tuning; omitted values use the deterministic arcade defaults. */
+  readonly frontGrip?: number;
+  readonly rearGrip?: number;
+  readonly corneringStiffness?: number;
+  readonly yawInertia?: number;
+  readonly yawDamping?: number;
+  readonly steerSpeed?: number;
+  readonly handbrakeGrip?: number;
+  readonly suspensionFrequency?: number;
+  readonly suspensionDamping?: number;
+  readonly suspensionTravel?: number;
+  readonly pitchResponse?: number;
+  readonly rollResponse?: number;
+  readonly gravity?: number;
+  readonly airDrag?: number;
+  /** Multiplier on the surface speed-squared resistance (body/tire drag). */
+  readonly dragScale?: number;
 }
 
 export interface VehicleSeat {
@@ -61,7 +78,17 @@ export interface VehicleState {
   pitch: number;
   roll: number;
   vx: number;
+  vy: number;
   vz: number;
+  grounded: boolean;
+  yawRate: number;
+  pitchRate: number;
+  rollRate: number;
+  groundPitch: number;
+  groundRoll: number;
+  /** y already includes this displacement above the wheel-support plane. */
+  rideOffset: number;
+  rideVelocity: number;
   steering: number;
   wheelAngle: number;
   fuel: number;
@@ -89,107 +116,228 @@ export interface VehicleStep {
 }
 
 export function validateVehicleSpec(s: VehicleSpec): void {
-  for (const v of Object.values(s)) if (!Number.isFinite(v) || v <= 0) throw new Error("invalid vehicle specification");
-  if (s.clearance >= s.height || s.track > 2 * s.halfWidth || s.wheelbase > 2 * s.halfLength || s.maxSteer >= 1.2 || s.minGroundNormal > 1) {
-    throw new Error("inconsistent vehicle geometry or steering limits");
-  }
+  const zero = new Set(["yawDamping", "pitchResponse", "rollResponse", "airDrag", "dragScale"]);
+  for (const [key, value] of Object.entries(s)) if (value !== undefined &&
+    (!Number.isFinite(value) || (zero.has(key) ? value < 0 : value <= 0))) throw new Error("invalid vehicle specification");
+  if (s.clearance >= s.height || s.track > 2 * s.halfWidth || s.wheelbase > 2 * s.halfLength || s.maxSteer >= 1.2 || s.minGroundNormal > 1 ||
+    (s.handbrakeGrip ?? 0.18) > 1 || (s.suspensionDamping ?? 0.85) > 2 || (s.suspensionFrequency ?? 10) > 24 ||
+    (s.suspensionTravel ?? 0.18) > 1) throw new Error("inconsistent vehicle geometry or steering limits");
 }
 
 export function createVehicle(s: VehicleSpec, x: number, y: number, z: number, yaw = 0, fuel = s.fuelCapacity): VehicleState {
   validateVehicleSpec(s);
   if (![x, y, z, yaw, fuel].every(Number.isFinite) || fuel < 0 || fuel > s.fuelCapacity) throw new Error("invalid vehicle state");
-  return { x, y, z, yaw, pitch: 0, roll: 0, vx: 0, vz: 0, steering: 0, wheelAngle: 0, fuel };
+  return { x, y, z, yaw, pitch: 0, roll: 0, vx: 0, vy: 0, vz: 0, grounded: true,
+    yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0,
+    rideOffset: 0, rideVelocity: 0, steering: 0, wheelAngle: 0, fuel };
 }
 
 function approach(n: number, target: number, by: number): number {
   return n < target ? Math.min(n + by, target) : Math.max(n - by, target);
 }
+function command(n: number, lo: number, hi: number): number { return Number.isFinite(n) ? clamp(n, lo, hi) : 0; }
+function tangent(a: number): number { return detSin(a) / Math.max(0.2, detCos(a)); }
+function length2(x: number, z: number): number { return Math.sqrt(x * x + z * z); }
+function length3(x: number, y: number, z: number): number { return Math.sqrt(x * x + y * y + z * z); }
+function square(n: number): number { return n * n; }
+function wrap(a: number): number { return a - Math.floor((a + TAU / 2) / TAU) * TAU; }
 
-function command(n: number, lo: number, hi: number): number {
-  return Number.isFinite(n) ? clamp(n, lo, hi) : 0;
-}
+interface Support { y: number; pitch: number; roll: number; front: VehicleSurface; rear: VehicleSurface }
 
-interface Support {
-  y: number;
-  pitch: number;
-  roll: number;
-  surface: VehicleSurface;
-}
-
-function support(w: VehicleWorld, s: VehicleState, p: VehicleSpec): Support | null {
-  const sn = detSin(s.yaw), cs = detCos(s.yaw);
-  const heights: number[] = [];
-  let surface: VehicleSurface | null = null;
-  // Front left, front right, rear left, rear right. The least grippy contact governs this v1 axle model.
+/** Rays follow the last wheel plane, independently of body dive/roll. Three contacts
+ * can bridge one small pothole; a last supported axle can roll off a ledge before flight.
+ */
+function support(w: VehicleWorld, s: Readonly<VehicleState>, p: VehicleSpec): Support | null {
+  const sn = detSin(s.yaw), cs = detCos(s.yaw), base = s.y - s.rideOffset;
+  const heights = [NaN, NaN, NaN, NaN];
+  let front: VehicleSurface | null = null, rear: VehicleSurface | null = null, count = 0;
   for (let i = 0; i < 4; i++) {
-    const x = (i % 2 === 0 ? 1 : -1) * p.track / 2;
-    const z = (i < 2 ? 1 : -1) * p.wheelbase / 2;
-    const c = w.support(s.x + cs * x + sn * z, s.y, s.z - sn * x + cs * z, p);
-    if (!c || !Number.isFinite(c.y) || !Number.isFinite(c.normalY) || c.normalY < p.minGroundNormal || c.y - s.y > p.maxRise + 0.001 || s.y - c.y > p.maxDrop + 0.001) return null;
-    if (!surface || c.surface.grip < surface.grip) surface = c.surface;
-    heights.push(c.y);
+    const x = (i % 2 === 0 ? 1 : -1) * p.track / 2, z = (i < 2 ? 1 : -1) * p.wheelbase / 2;
+    const expected = base + tangent(s.groundPitch) * z + tangent(s.groundRoll) * x;
+    const c = w.support(s.x + cs * x + sn * z, expected, s.z - sn * x + cs * z, p);
+    if (!c || !Number.isFinite(c.y) || !Number.isFinite(c.normalY) || c.normalY < p.minGroundNormal ||
+      !Number.isFinite(c.surface.grip) || c.surface.grip <= 0 || !Number.isFinite(c.surface.rolling) || c.surface.rolling < 0 ||
+      !Number.isFinite(c.surface.drag) || c.surface.drag < 0) continue;
+    const slopeReach = Math.sqrt(p.wheelbase * p.wheelbase + p.track * p.track) * 0.5 * Math.sqrt(Math.max(0, 1 / (c.normalY * c.normalY) - 1));
+    if (s.grounded && (c.y < expected - p.maxDrop - slopeReach || c.y > expected + p.maxRise + slopeReach)) continue;
+    heights[i] = c.y; count++;
+    if (i < 2) { if (!front || c.surface.grip < front.grip) front = c.surface; }
+    else if (!rear || c.surface.grip < rear.grip) rear = c.surface;
   }
-  const front = (heights[0]! + heights[1]!) / 2;
-  const rear = (heights[2]! + heights[3]!) / 2;
-  const left = (heights[0]! + heights[2]!) / 2;
-  const right = (heights[1]! + heights[3]!) / 2;
-  return { y: (front + rear) / 2, pitch: detAtan2(front - rear, p.wheelbase), roll: detAtan2(left - right, p.track), surface: surface! };
+  if (count < 2) return null;
+  if (count === 2) {
+    // Let the last axle roll off a ledge before gravity drops the chassis through
+    // the platform behind it. Missing wheels extend the previous support plane.
+    if (Number.isFinite(heights[0]) && Number.isFinite(heights[1])) {
+      heights[2] = heights[0]! - tangent(s.groundPitch) * p.wheelbase;
+      heights[3] = heights[1]! - tangent(s.groundPitch) * p.wheelbase;
+      rear = front;
+    } else if (Number.isFinite(heights[2]) && Number.isFinite(heights[3])) {
+      heights[0] = heights[2]! + tangent(s.groundPitch) * p.wheelbase;
+      heights[1] = heights[3]! + tangent(s.groundPitch) * p.wheelbase;
+      front = rear;
+    } else return null;
+  }
+  if (!front || !rear) return null;
+  // A fourth corner of a plane is determined by the other three.
+  for (let i = 0; i < 4; i++) if (!Number.isFinite(heights[i])) heights[i] = heights[i ^ 1]! + heights[i ^ 2]! - heights[i ^ 3]!;
+  const nose = (heights[0]! + heights[1]!) / 2, tail = (heights[2]! + heights[3]!) / 2;
+  const left = (heights[0]! + heights[2]!) / 2, right = (heights[1]! + heights[3]!) / 2;
+  const pitch = detAtan2(nose - tail, p.wheelbase), roll = detAtan2(left - right, p.track);
+  if (detCos(pitch) * detCos(roll) < p.minGroundNormal) return null;
+  // A twisted surface beyond wheel travel cannot support a rigid chassis as one plane.
+  if (Math.abs(heights[0]! + heights[3]! - heights[1]! - heights[2]!) > (p.suspensionTravel ?? 0.18) * 4 + p.maxRise * 2) return null;
+  return { y: (nose + tail) / 2, pitch, roll, front, rear };
 }
 
-/** Four bounded substeps per 30 Hz tick. Unsupported ledges stop the grounded prototype; airborne rigid bodies are a later solver. */
+function attitude(s: VehicleState, pitch: number, roll: number, frequency: number, damping: number, dt: number): void {
+  s.pitchRate += ((pitch - s.pitch) * frequency * frequency - 2 * damping * frequency * s.pitchRate) * dt;
+  s.rollRate += ((roll - s.roll) * frequency * frequency - 2 * damping * frequency * s.rollRate) * dt;
+  s.pitch += s.pitchRate * dt;
+  s.roll += s.rollRate * dt;
+}
+
+/** Four fixed substeps. Tire forces turn velocity and yaw separately: losing rear grip
+ * produces real sideslip, and restoring grip/countersteering recovers it. All persistent
+ * rates and spring state are explicit for prediction, replay and save adapters.
+ */
 export function stepVehicle(s: VehicleState, input: VehicleInput, p: VehicleSpec, w: VehicleWorld): VehicleStep {
-  const result: VehicleStep = { blocked: null, impactSpeed: 0, fuelUsed: 0, surface: "unsupported" };
-  const throttle = command(input.throttle, -1, 1);
-  const steering = command(input.steer, -1, 1) * p.maxSteer;
-  const brake = Math.max(command(input.brake, 0, 1), input.handbrake ? 1 : 0);
-  const dt = TICK_DT / 4;
-  const beforeFuel = s.fuel;
+  const result: VehicleStep = { blocked: null, impactSpeed: 0, fuelUsed: 0, surface: "air" };
+  const throttle = command(input.throttle, -1, 1), steer = command(input.steer, -1, 1), brake = command(input.brake, 0, 1);
+  const dt = TICK_DT / 4, beforeFuel = s.fuel;
+  const frequency = p.suspensionFrequency ?? 10, damping = p.suspensionDamping ?? 0.85, travel = p.suspensionTravel ?? 0.18;
+  const gravity = p.gravity ?? 18, frontLever = p.wheelbase * 0.45, rearLever = p.wheelbase * 0.55;
+  const inertia = (p.wheelbase * p.wheelbase + p.track * p.track) / 12 * (p.yawInertia ?? 1.2);
   for (let i = 0; i < 4; i++) {
+    const prior = { ...s };
     const ground = support(w, s, p);
-    if (!ground) { result.blocked = "unsupported"; result.impactSpeed = Math.sqrt(s.vx * s.vx + s.vz * s.vz); s.vx = s.vz = 0; break; }
-    s.y = ground.y; s.pitch = ground.pitch; s.roll = ground.roll;
-    result.surface = ground.surface.id;
-    const sn = detSin(s.yaw), cs = detCos(s.yaw);
-    let forward = s.vx * sn + s.vz * cs;
-    let lateral = s.vx * cs - s.vz * sn;
-    s.steering = approach(s.steering, steering, p.steerRate * dt);
-    const opposing = throttle * forward < -0.02;
-    const powered = s.fuel > 0 && brake === 0 && !opposing;
-    const demand = powered ? Math.abs(throttle) * p.fuelPerSecond * dt : 0;
-    const spent = Math.min(s.fuel, demand);
-    const thrust = demand > 0 ? throttle * p.acceleration * spent / demand : 0;
-    // Fuel remains simulation state for replay. The host persists the committed state once, never one debit per replay.
-    s.fuel -= spent;
-    forward += thrust * dt;
-    forward = approach(forward, 0, (p.brake * Math.max(brake, opposing ? Math.abs(throttle) : 0) + ground.surface.rolling + ground.surface.drag * forward * forward) * dt);
-    forward = clamp(forward, -p.maxReverse, p.maxForward);
-    lateral = approach(lateral, 0, ground.surface.grip * (input.handbrake ? 0.3 : 1) * dt);
-    // Bicycle steering limited by available lateral acceleration; low-grip roads cannot turn at arbitrary speed.
-    const turn = forward * (detSin(s.steering) / detCos(s.steering)) / p.wheelbase;
-    const limit = ground.surface.grip / Math.max(Math.abs(forward), 0.5);
-    const yawDelta = clamp(turn, -limit, limit) * dt;
-    const next = { ...s };
-    next.yaw = s.yaw + yawDelta;
-    next.yaw -= Math.floor((next.yaw + TAU / 2) / TAU) * TAU;
-    next.vx = sn * forward + cs * lateral;
-    next.vz = cs * forward - sn * lateral;
-    next.x += next.vx * dt;
-    next.z += next.vz * dt;
-    const target = support(w, next, p);
-    let blocked: string | null = target ? null : "unsupported";
-    if (target) {
-      next.y = target.y; next.pitch = target.pitch; next.roll = target.roll;
-      blocked = w.blocked(s, next, p);
+    if (s.grounded && (!ground || ground.y < s.y - s.rideOffset - p.maxDrop)) s.grounded = false;
+    if (s.grounded && ground) {
+      // Establish the physical wheel plane before sweeping from a freshly spawned
+      // or restored car. The body attitude still springs toward it over time.
+      prior.groundPitch = s.groundPitch = ground.pitch;
+      prior.groundRoll = s.groundRoll = ground.roll;
     }
+    const sn = detSin(s.yaw), cs = detCos(s.yaw);
+    const forward = s.vx * sn + s.vz * cs, lateral = s.vx * cs - s.vz * sn;
+    const speed = length2(s.vx, s.vz), steeringLimit = p.maxSteer / (1 + square(Math.abs(forward) / (p.steerSpeed ?? 18)));
+    s.steering = approach(s.steering, steer * steeringLimit, p.steerRate * (steer === 0 ? 1.35 : 1) * dt);
+    let longitudinal = 0, sideways = 0;
+    if (s.grounded && ground) {
+      result.surface = ground.front.grip <= ground.rear.grip ? ground.front.id : ground.rear.id;
+      const grip = (ground.front.grip * (p.frontGrip ?? 1.08) + ground.rear.grip * (p.rearGrip ?? 1.05)) / 2;
+      const rolling = (ground.front.rolling + ground.rear.rolling) / 2;
+      const drag = (ground.front.drag + ground.rear.drag) / 2 * (p.dragScale ?? 1);
+      const opposing = throttle * forward < -0.12;
+      const powered = s.fuel > 0 && brake === 0 && !opposing && !input.handbrake;
+      const demand = powered ? Math.abs(throttle) * p.fuelPerSecond * dt : 0;
+      const spent = Math.min(s.fuel, demand); s.fuel -= spent;
+      const limit = throttle >= 0 ? p.maxForward : p.maxReverse;
+      const fraction = clamp(Math.abs(forward) / limit, 0, 1);
+      const resistance = rolling + drag * forward * forward;
+      const torque = p.acceleration * (throttle < 0 ? 0.65 : 1) * (1 - fraction * fraction) + resistance * fraction;
+      let drive = demand > 0 ? throttle * torque * spent / demand : 0;
+      drive = clamp(drive, -grip * 0.95, grip * 0.95);
+      const pedal = brake * (0.25 + 0.75 * brake);
+      const braking = Math.min(grip * 1.5, p.brake * Math.max(pedal, opposing ? Math.abs(throttle) : 0, input.handbrake ? 0.55 : 0));
+      // Brake and rolling forces stop at zero; no oscillating backwards creep at rest.
+      const slowed = approach(forward, 0, (braking + resistance) * dt);
+      longitudinal = drive + (slowed - forward) / dt;
+      const frontLoad = clamp(0.55 - longitudinal * 0.012, 0.36, 0.7);
+      const frontMax = ground.front.grip * (p.frontGrip ?? 1.08) * frontLoad;
+      const rearMax = ground.rear.grip * (p.rearGrip ?? 1.05) * (1 - frontLoad) * (input.handbrake ? p.handbrakeGrip ?? 0.18 : 1);
+      const frontUse = clamp(Math.abs(drive) * 0.45 / Math.max(frontMax, 0.01) + braking / (grip * 1.7), 0, 0.98);
+      const rearUse = clamp(Math.abs(drive) * 0.55 / Math.max(rearMax, 0.01) + (input.handbrake ? 0 : braking / (grip * 2)), 0, 0.98);
+      const frontBudget = frontMax * Math.sqrt(1 - frontUse * frontUse), rearBudget = rearMax * Math.sqrt(1 - rearUse * rearUse);
+      const stiffness = p.corneringStiffness ?? 7;
+      const frontSlip = lateral + s.yawRate * frontLever - forward * tangent(s.steering);
+      const rearSlip = lateral - s.yawRate * rearLever;
+      const frontForce = clamp(-frontSlip * stiffness * 0.55, -frontBudget, frontBudget);
+      const rearForce = clamp(-rearSlip * stiffness * 0.45, -rearBudget, rearBudget);
+      sideways = frontForce * detCos(s.steering) + rearForce;
+      longitudinal -= frontForce * detSin(s.steering);
+      s.yawRate += ((frontForce * detCos(s.steering) * frontLever - rearForce * rearLever) / inertia - s.yawRate * (p.yawDamping ?? 0.8)) * dt;
+      s.yawRate = clamp(s.yawRate, -3, 3);
+      s.vx += (sn * longitudinal + cs * sideways) * dt;
+      s.vz += (cs * longitudinal - sn * sideways) * dt;
+      // A parked car converges fully to rest, rather than accumulating tire-force rounding noise.
+      if (length2(s.vx, s.vz) < 0.025 && Math.abs(throttle) < 0.01) { s.vx = s.vz = 0; s.yawRate = approach(s.yawRate, 0, dt * 3); }
+    } else {
+      const drag = Math.max(0, 1 - (p.airDrag ?? 0.04) * dt);
+      s.vx *= drag; s.vz *= drag; s.yawRate *= Math.max(0, 1 - dt * 0.35);
+    }
+    const next = { ...s };
+    next.yaw = wrap(s.yaw + s.yawRate * dt);
+    next.x += s.vx * dt; next.z += s.vz * dt;
+    const target = support(w, next, p);
+    const base = prior.y - prior.rideOffset;
+    const rise = target ? target.y - base : 0;
+    const allowedRise = p.maxRise + length2(next.x - prior.x, next.z - prior.z) * Math.sqrt(1 / (p.minGroundNormal * p.minGroundNormal) - 1);
+    let blocked: string | null = s.grounded && target && rise > allowedRise ? "step-too-high" : null;
+    if (s.grounded && target && !blocked && rise >= -p.maxDrop) {
+      const gradeVelocity = speed * Math.sqrt(1 / (p.minGroundNormal * p.minGroundNormal) - 1) + 1;
+      const baseVelocity = clamp((target.y - base) / dt, -gradeVelocity, gradeVelocity);
+      let relative = prior.vy - baseVelocity;
+      relative += (-frequency * frequency * prior.rideOffset - 2 * damping * frequency * relative) * dt;
+      const offset = prior.rideOffset + relative * dt;
+      if (offset > travel && prior.vy > 0.8) {
+        next.grounded = false;
+      } else {
+        next.grounded = true;
+        next.groundPitch = target.pitch; next.groundRoll = target.roll;
+        next.rideOffset = clamp(offset, -Math.min(travel * 0.65, p.clearance * 0.65), travel);
+        next.rideVelocity = next.rideOffset !== offset ? Math.max(0, relative) : relative;
+        next.y = target.y + next.rideOffset;
+        next.vy = baseVelocity + next.rideVelocity;
+        attitude(next, target.pitch + clamp(longitudinal * (p.pitchResponse ?? 0.012), -0.11, 0.11),
+          target.roll - clamp(sideways * (p.rollResponse ?? 0.018), -0.15, 0.15), frequency, damping, dt);
+      }
+    } else next.grounded = false;
+    if (!next.grounded && !blocked) {
+      next.vy = Math.max(-60, prior.vy - gravity * dt);
+      next.y = prior.y + (prior.vy + next.vy) * 0.5 * dt;
+      next.rideOffset = approach(prior.rideOffset, 0, dt * travel * 3); next.rideVelocity = 0;
+      attitude(next, clamp(detAtan2(next.vy, Math.max(speed, 4)), -0.55, 0.55), 0, 1.8, 0.9, dt);
+      if (target && next.y - next.rideOffset <= target.y + 0.015 && prior.y - prior.rideOffset >= target.y - p.maxRise && next.vy <= 1) {
+        result.impactSpeed = Math.max(result.impactSpeed, Math.max(0, -next.vy));
+        next.grounded = true; next.groundPitch = target.pitch; next.groundRoll = target.roll;
+        next.rideOffset = -Math.min(travel * 0.65, p.clearance * 0.65, Math.max(0, -next.vy) * 0.015);
+        next.rideVelocity = Math.max(-3, next.vy * 0.35);
+        next.y = target.y + next.rideOffset; next.vy = next.rideVelocity;
+      }
+    }
+    if (!blocked) blocked = w.blocked(prior, next, p);
     if (blocked) {
       result.blocked ??= blocked;
-      result.impactSpeed = Math.max(result.impactSpeed, Math.sqrt(next.vx * next.vx + next.vz * next.vz));
-      s.vx = s.vz = 0;
-      // Engine and steering clocks still advance for the rest of this tick against a wall.
+      result.impactSpeed = Math.max(result.impactSpeed, length3(s.vx, s.vz, s.vy));
+      s.vx = s.vz = s.yawRate = 0;
+      if (!prior.grounded) {
+        // Preserve the last clear attitude while sliding down a wall. Rejecting the
+        // proposed nose rotation must not also reject gravity forever.
+        const fall = { ...next, x: prior.x, z: prior.z, yaw: prior.yaw, pitch: prior.pitch, roll: prior.roll,
+          pitchRate: 0, rollRate: 0, yawRate: 0, vx: 0, vz: 0, grounded: false, rideOffset: 0, rideVelocity: 0 };
+        fall.vy = Math.max(-60, prior.vy - gravity * dt);
+        fall.y = prior.y + (prior.vy + fall.vy) * 0.5 * dt;
+        const floor = support(w, fall, p);
+        if (floor && fall.y <= floor.y + 0.015 && prior.y >= floor.y - p.maxRise) {
+          fall.grounded = true; fall.groundPitch = floor.pitch; fall.groundRoll = floor.roll;
+          fall.rideOffset = -Math.min(travel * 0.65, p.clearance * 0.65);
+          fall.y = floor.y + fall.rideOffset; fall.vy = 0;
+        }
+        let settled = false;
+        // A grounded hull may be slightly wider than its nose-up airborne pose.
+        // A bounded, swept contact correction makes room to settle; it never crosses a wall.
+        const offsets = fall.grounded ? [[0, 0], [-sn * 0.25, -cs * 0.25], [sn * 0.25, cs * 0.25], [-cs * 0.25, sn * 0.25], [cs * 0.25, -sn * 0.25]] : [[0, 0]];
+        for (const offset of offsets) {
+          fall.x = prior.x + offset[0]!; fall.z = prior.z + offset[1]!;
+          if (w.blocked(prior, fall, p) !== null) continue;
+          Object.assign(s, fall); settled = true; break;
+        }
+        if (!settled) { s.grounded = false; s.vy = fall.vy; }
+      }
       continue;
     }
-    next.wheelAngle = s.wheelAngle + forward * dt / p.wheelRadius;
-    next.wheelAngle -= Math.floor(next.wheelAngle / TAU) * TAU;
+    next.wheelAngle = wrap(s.wheelAngle + forward * dt / p.wheelRadius);
     Object.assign(s, next);
   }
   result.fuelUsed = beforeFuel - s.fuel;

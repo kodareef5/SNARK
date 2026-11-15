@@ -4,8 +4,8 @@ export const COMPACT = {
   envelope: { min: [-0.9, 0, -2], max: [0.9, 1.5, 2] },
   wheelRadius: 0.3,
   wheelWidth: 0.24,
-  bones: ["chassis", "wheel_front_left", "wheel_front_right", "wheel_rear_left", "wheel_rear_right", "door_left", "door_right"],
-  pivots: [[0, 0, 0], [0.78, 0.3, 1.25], [-0.78, 0.3, 1.25], [0.78, 0.3, -1.25], [-0.78, 0.3, -1.25], [0.84, 0.76, 0.65], [-0.84, 0.76, 0.65]],
+  bones: ["chassis", "wheel_front_left", "wheel_front_right", "wheel_rear_left", "wheel_rear_right", "door_left", "door_right", "steering_wheel"],
+  pivots: [[0, 0, 0], [0.78, 0.3, 1.25], [-0.78, 0.3, 1.25], [0.78, 0.3, -1.25], [-0.78, 0.3, -1.25], [0.84, 0.76, 0.65], [-0.84, 0.76, 0.65], [0.42, 0.89, 0.55]],
   anchors: {
     seat_driver: [0.42, 0.59, 0.12],
     seat_front_passenger: [-0.42, 0.59, 0.12],
@@ -19,7 +19,9 @@ export const COMPACT = {
     camera_front_passenger: [-0.42, 1.11, 0.17],
     camera_chase: [0, 1.0, 0],
     steering: [0.42, 0.89, 0.55],
+    exhaust_left: [0.57, 0.255, -1.99],
+    exhaust_right: [-0.57, 0.255, -1.99],
   },
-  textures: { base: "tex/paint.source.png", packed: "tex/paint-packed.png", runtimeTop: 256 },
-  budgets: { triangles: [1600, 1200, 700], bones: 7, materials: 2, textureTop: 256 },
+  textures: { base: "tex/paint.source.png", packed: "tex/paint-packed-512.png", upholstery: "tex/upholstery.source.png", runtimeTop: 512 },
+  budgets: { triangles: [15000, 8000, 2200, 300], bones: 8, materials: 3, textureTop: 512 },
 } as const;

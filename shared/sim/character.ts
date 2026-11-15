@@ -140,6 +140,14 @@ export class Body {
   /** Full wheel-controller state, copied and replayed with the ordinary body. */
   vehicle = false;
   vehicleYaw = 0;
+  vehicleYawRate = 0;
+  vehiclePitchRate = 0;
+  vehicleRollRate = 0;
+  vehicleGroundPitch = 0;
+  vehicleGroundRoll = 0;
+  vehicleRideOffset = 0;
+  vehicleRideVelocity = 0;
+
   vehiclePitch = 0;
   vehicleRoll = 0;
   steering = 0;
@@ -178,6 +186,14 @@ export class Body {
     this.yaw = o.yaw;
     this.vehicle = o.vehicle;
     this.vehicleYaw = o.vehicleYaw;
+    this.vehicleYawRate = o.vehicleYawRate;
+    this.vehiclePitchRate = o.vehiclePitchRate;
+    this.vehicleRollRate = o.vehicleRollRate;
+    this.vehicleGroundPitch = o.vehicleGroundPitch;
+    this.vehicleGroundRoll = o.vehicleGroundRoll;
+    this.vehicleRideOffset = o.vehicleRideOffset;
+    this.vehicleRideVelocity = o.vehicleRideVelocity;
+
     this.vehiclePitch = o.vehiclePitch;
     this.vehicleRoll = o.vehicleRoll;
     this.steering = o.steering;
@@ -213,6 +229,14 @@ export class Body {
       this.yaw === o.yaw &&
       this.vehicle === o.vehicle &&
       this.vehicleYaw === o.vehicleYaw &&
+      this.vehicleYawRate === o.vehicleYawRate &&
+      this.vehiclePitchRate === o.vehiclePitchRate &&
+      this.vehicleRollRate === o.vehicleRollRate &&
+      this.vehicleGroundPitch === o.vehicleGroundPitch &&
+      this.vehicleGroundRoll === o.vehicleGroundRoll &&
+      this.vehicleRideOffset === o.vehicleRideOffset &&
+      this.vehicleRideVelocity === o.vehicleRideVelocity &&
+
       this.vehiclePitch === o.vehiclePitch &&
       this.vehicleRoll === o.vehicleRoll &&
       this.steering === o.steering &&

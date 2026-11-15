@@ -22,9 +22,12 @@ import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
 import { VoiceIo } from "../voice/voice.ts";
 import { UiView } from "./ui.ts";
+import { VehicleAudio } from "./vehicle-audio.ts";
+import { VehicleSelfcheck } from "../core/vehicle-selfcheck.ts";
 
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
+const driveCheck = selfcheck && params.has("urbanDrive");
 /** A measurement run. The camera flies itself and the page reports frame times and the GPU's by pass. */
 const bench = params.has("bench") ? new BenchRun() : null;
 /** A device probe (tools/device.ts). The page measures itself and reports. */
@@ -65,7 +68,7 @@ async function boot(): Promise<void> {
   const app = new App(session, reg, pack, { manifest, port });
   app.stress = params.has("stress");
   app.debug = app.stress || params.has("debug");
-  app.steer = !selfcheck && !device;
+  app.steer = driveCheck || !selfcheck && !device;
   app.plainSky = selfcheck;
   [app.ui.settings.touchFirst, app.dpr] = [matchMedia("(pointer: coarse)").matches, devicePixelRatio];
   app.address((name) => params.get(name), selfcheck || bench !== null || device !== null);
@@ -75,9 +78,12 @@ async function boot(): Promise<void> {
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
   const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`);
+  const vehicleAudio = new VehicleAudio();
   app.voice = voice;
-  addEventListener("pointerdown", () => voice.unlock());
-  addEventListener("keydown", () => voice.unlock());
+  addEventListener("pointerdown", () => { voice.unlock(); vehicleAudio.unlock(); });
+  addEventListener("keydown", () => { voice.unlock(); vehicleAudio.unlock(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) vehicleAudio.mute(); });
+  addEventListener("pagehide", () => vehicleAudio.dispose());
   /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */
   const voiceCheck = selfcheck && params.get("voice") === "1";
   /** With ?voice=listen it only listens to another page, and reports whose voice it played. */
@@ -85,6 +91,8 @@ async function boot(): Promise<void> {
   voice.loop = voiceCheck;
   let frames = 0;
   const times: number[] = [];
+  const drivingCheck = driveCheck ? new VehicleSelfcheck() : null;
+  const drive = drivingCheck?.data;
 
   let restored = 0;
   let keptBefore = 0;
@@ -106,10 +114,13 @@ async function boot(): Promise<void> {
     const cssHeight = canvas.clientHeight;
     const t0 = performance.now();
     if (bench) app.autopilot(bench.since(now));
+    drivingCheck?.step(app, now);
     voice.sync(session.voice);
     if (voiceCheck && voice.report.status === "listening") voice.talk(true);
     if (app.scene) app.scene.assets.format = renderer.format;
     const packet = app.frame(now, cssWidth, cssHeight);
+    vehicleAudio.update(app.vehicleTelemetry, !document.hidden && session.state === "active");
+    drivingCheck?.observe(app);
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
     const built = performance.now();
@@ -145,7 +156,7 @@ async function boot(): Promise<void> {
     // Parts are written to disk a little after they arrive. The report waits until that has been still for half a second.
     still = port.cache.used === keptBefore ? still + 1 : 0;
     keptBefore = port.cache.used;
-    if (selfcheck && frames >= 0 && ++frames >= 90 && still >= 30 && (!voiced || voice.report.played >= 50 || frames >= 690)) {
+    if (selfcheck && frames >= 0 && ++frames >= 90 && still >= 30 && (!drive || drive.finished) && (!voiced || voice.report.played >= 50 || frames >= 690)) {
       frames = -1;
       const heard = !voiced || (voice.report.played >= 50 && voice.report.odd === 0 && voice.report.errors === 0 && (!voiceListen || voice.report.heard.length > 0));
       // In the stress scene three rocks hang in the sky, each drawn at another level, and a level is all one colour.
@@ -163,11 +174,12 @@ async function boot(): Promise<void> {
         const vehicles = drawn.filter(id => id.startsWith("urban:compact"));
         const humans = drawn.filter(id => id.startsWith("core:human"));
         const seats = Array.from(app.remote.seatSlot.subarray(0, app.remote.count)).filter(slot => slot > 0);
-        return { vehicles, humans, seats, ownKind: reg.ids[session.own.kind], ok: vehicles.length > 0 && humans.length > 0 && seats.length > 0 && renderer.errors === 0 };
+        const driving = drive ? { ...drive, ownKind: reg.ids[session.own.kind], audio: { ...vehicleAudio.report }, ok: !drive.timedOut && drive.maxSpeed > 3 && drive.hud && session.driving >= 0 } : null;
+        return { vehicles, humans, seats, ownKind: reg.ids[session.own.kind], ...(driving ? { driving } : {}), ok: vehicles.length > 0 && humans.length > 0 && seats.length > 0 && renderer.errors === 0 && (!driving || driving.ok) };
       })() : null;
       const report = {
         // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-        ok: (voiceListen || probes.every((p) => p.ok)) && (!urban || urban.ok) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
+        ok: (driveCheck || voiceListen || probes.every((p) => p.ok)) && (!urban || urban.ok) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
         ...(urban ? { urban } : {}),
         rocks: rocks.map((m) => [m.level, m.drawn]),
         restored,

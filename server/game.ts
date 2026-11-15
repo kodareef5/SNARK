@@ -56,9 +56,9 @@ import {
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { BTN_JUMP, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
-import { stepVehicleBody, packVehiclePose, quantVehicleWheel } from "../shared/sim/vehicle-body.ts";
+import { stepVehicleBody, packVehiclePose, quantVehicleWheel, packVehicleRide } from "../shared/sim/vehicle-body.ts";
 import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
-import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
+import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
@@ -1152,7 +1152,7 @@ export class GameServer {
     for (let k = 0; k < n; k++) {
       const i = Math.floor(ids[k]! / MAX_VIEW);
       rank[k] = ids[k]! % MAX_VIEW;
-      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!, ents.vehicle[i] ? packVehiclePose(ents.vehiclePitch[i]!, ents.vehicleRoll[i]!, ents.steering[i]!) : 0, ents.vehicle[i] ? quantVehicleWheel(ents.wheelAngle[i]!) : 0);
+      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!, ents.vehicle[i] ? packVehiclePose(ents.vehiclePitch[i]!, ents.vehicleRoll[i]!, ents.steering[i]!) : 0, ents.vehicle[i] ? quantVehicleWheel(ents.wheelAngle[i]!) : 0, ents.vehicle[i] ? packVehicleRide(ents.vehicleGroundPitch[i]!, ents.vehicleGroundRoll[i]!, ents.vehicleRideOffset[i]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0, ents.vehicleDoors[i]!);
       cur.urgent[k] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
     }
     this.aroundTick[chunk] = T;
