@@ -222,6 +222,20 @@ test("the rasterizer's light is fogged under water only: above it, the air is th
   p.frame[FRAME.eyeHeight] = -1;
   shown(out, [0.2, 0.2, 0.2], 1000, p);
   expect(out).toEqual([0, 0, 1]);
+  // So a probe that holds the GPU to the rasterizer draws a plain sky: past 12 m the haze lifts a dark leaf by whole levels.
+  const leaf = [0.012, 0.02, 0.008];
+  const lift = (dist: number, plain: boolean): number => {
+    const f = frameAt(12, 2, plain);
+    const [sun, air, clear] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    trueSun(f, sun);
+    hazed(air, leaf, [0, dist * 0.4, -dist * Math.sqrt(0.84)], f, sky.table, sun);
+    p.frame.set(f);
+    shown(clear, leaf, dist, p);
+    shown(out, air, dist, p);
+    return Math.max(...out.map((v, k) => (v - clear[k]!) * 255));
+  };
+  expect([lift(10, false), lift(20, true)]).toEqual([0, 0]);
+  expect(lift(20, false)).toBeGreaterThan(4);
 });
 
 test("on a lit tier the scene fills the air and asks for the sky's pictures each frame; plain, or on low poly, it does neither", () => {
