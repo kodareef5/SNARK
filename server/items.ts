@@ -1,5 +1,6 @@
-// The only code that edits inventories. Items enter only through `mint` and leave only through `burn` (spoilage is a burn), so
-// stacks sum to minted minus burned for every item. An edit marks each record it touches in one tick, so a move lands in one commit.
+// The only code that edits inventories. Items enter only through `mint` and leave only through `burn` (spoilage is a burn, and
+// what spoils into something mints it), so stacks sum to minted minus burned for every item. An edit marks each record it
+// touches in one tick, so a move lands in one commit.
 
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
@@ -13,6 +14,8 @@ import { NO_BUS, event, type Bus } from "./events/bus.ts";
 const DEFAULT_SLOTS = 40;
 
 const ITEM_GAIN = event("item.gain");
+/** Settle passes for forms that spoil into forms: meat into spoiled meat, which spoils away, takes two. */
+const MAX_SPOIL_CHAIN = 4;
 
 export class Items {
   /** The registry, except while a save made under other tuning is brought up to date. */
@@ -24,11 +27,17 @@ export class Items {
   private readonly reg: Registry;
   private readonly records: Records;
   private readonly world: ServerWorld;
-  private readonly spoiled = (item: number, n: number, ref: number): void => {
+  private readonly spoiled = (item: number, n: number, ref: number, at: number): void => {
     this.burned[item] = this.burned[item]! + n;
     this.dirty = true;
     if (ref !== 0) this.onRefGone?.(ref);
+    if (this.reg.spoilsInto[item] !== 0) this.turned.push(item, n, at);
   };
+  /**
+   * What spoiled into something in the settles under way, three numbers each: the item, how many, the tick the first went
+   * bad. A settle works on the entries it pushed, so one begun inside another (by onRefGone) leaves the outer one's alone.
+   */
+  private readonly turned: number[] = [];
   /** A one of a kind (Inventory.ref) was burned, eaten or spoiled, so the record it stood for goes too (server/eggs.ts). */
   onRefGone: ((ref: number) => void) | null = null;
 
@@ -71,10 +80,33 @@ export class Items {
     inv.keep = this.reg.keeps[rec.kind]!;
     // A burning fire is worked out first, so cooking happens before the leftovers spoil.
     if (rec.fire && this.onFire) this.onFire(rec);
-    const before = inv.version;
-    inv.settle(this.world.tick, this.table, this.spoiled);
-    if (inv.version !== before) this.changed(rec);
+    this.settle(rec, inv, this.world.tick, this.table);
     return inv;
+  }
+
+  /**
+   * Applies spoilage to `inv`, the inventory of `rec`, up to tick `now`. What spoiled is burned, and what it spoils into
+   * (ItemDef.spoilsInto, ARK's SpoilingItem) is minted into the bag, one for one, with its own clock started at the tick the
+   * first went bad, so it spoils in turn as it would have from then. What finds no room in the bag is lost. The new form
+   * joins a stack of its kind as moved food does, as old as its oldest part.
+   */
+  private settle(rec: EntityRecord, inv: Inventory, now: number, table: ItemTable): void {
+    const before = inv.version;
+    const start = this.turned.length;
+    for (let pass = 0; pass < MAX_SPOIL_CHAIN; pass++) {
+      inv.settle(now, table, this.spoiled);
+      if (this.turned.length === start) break;
+      for (let k = start; k < this.turned.length; k += 3) {
+        const into = this.reg.spoilsInto[this.turned[k]!]!;
+        const n = this.turned[k + 1]!;
+        const spoil = table.spoilTicks[into]!;
+        const clock = spoil === 0 ? 0 : Math.min(0xffffffff, this.turned[k + 2]! + Math.round(spoil * inv.keep));
+        const made = n - inv.add(into, n, 0, this.maxDur(into, 0), now, table, clock);
+        if (made > 0) this.minted[into] = this.minted[into]! + made;
+      }
+      this.turned.length = start;
+    }
+    if (inv.version !== before) this.changed(rec);
   }
 
   /** Uses a new item of this quality has. 0 for items that do not wear. */
@@ -100,7 +132,7 @@ export class Items {
       if (!inv) continue;
       inv.keep = this.reg.keeps[rec.kind]!;
       const before = inv.version;
-      inv.settle(tick, old, this.spoiled);
+      this.settle(rec, inv, tick, old);
       for (let s = 0; s < inv.cap; s++) {
         const at = inv.spoilAt[s]!;
         if (at <= tick || inv.item[s] === 0) continue;
@@ -117,9 +149,7 @@ export class Items {
     const inv = rec.inv;
     if (!inv) return;
     inv.keep = this.reg.keeps[rec.kind]!;
-    const before = inv.version;
-    inv.settle(at, this.table, this.spoiled);
-    if (inv.version !== before) this.changed(rec);
+    this.settle(rec, inv, at, this.table);
   }
 
   /**
@@ -255,6 +285,13 @@ export class Items {
     inv.setDur(slot, left > 0 ? left : 0);
     this.changed(rec);
     return inv.dur[slot]!;
+  }
+
+  /** Sets what the slot holds as its durability: the water in a vessel (server/use.ts), from 0 to 65535. Mints and burns nothing. */
+  setDur(rec: EntityRecord, slot: number, dur: number): void {
+    const inv = this.inv(rec);
+    inv.setDur(slot, dur < 0 ? 0 : dur > 65535 ? 65535 : Math.round(dur));
+    this.changed(rec);
   }
 
   /** Restores all uses. The caller takes the cost. */

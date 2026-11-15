@@ -240,10 +240,13 @@ export class InventoryScreen {
         const item = inv.item[s]!;
         if (item === 0) continue;
         const def = reg.defs[item] as ItemDef | null;
-        const swatch = f.add(key + 1, K_PANEL, x + 4, yy + 4, CELL - 8, CELL - 20, S_SWATCH);
-        const c = (def?.color ?? 15) * 4;
-        if (palette) swatch.tint = (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!;
-        swatch.text = itemLabel(reg, item).slice(0, 4);
+        // The item's picture fills the slot where it has one. Else its colour and the first letters of its name stand in.
+        if (!f.picture(key + 1, x + 2, yy + 2, CELL - 4, CELL - 4, S_SLOT_TEXT, reg.ids[item]!)) {
+          const swatch = f.add(key + 1, K_PANEL, x + 4, yy + 4, CELL - 8, CELL - 20, S_SWATCH);
+          const c = (def?.color ?? 15) * 4;
+          if (palette) swatch.tint = (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!;
+          swatch.text = itemLabel(reg, item).slice(0, 4);
+        }
         // A stack shows its count. A weapon shows its loaded rounds.
         const number = inv.count[s]! > 1 ? String(inv.count[s]) : def?.weapon?.ammo ? String(inv.loaded[s]) : "";
         f.text(key + 2, x + 2, yy + CELL - lineHeight(S_SLOT_TEXT), CELL - 4, S_SLOT_TEXT, number);
@@ -348,6 +351,9 @@ export class InventoryScreen {
         if (inv.ammo[shown] !== 0) info += `  ${inv.loaded[shown]} ${itemLabel(reg, inv.ammo[shown]!)}`;
         if (inv.attach[shown] !== 0) info += `  + ${itemLabel(reg, inv.attach[shown]!)}`;
       }
+      // A vessel holds its water as its durability (server/use.ts).
+      const holds = (reg.defs[item] as ItemDef | null)?.use?.holds;
+      if (holds) info += `  water ${inv.dur[shown]}/${holds.water}`;
     }
     f.text(KEY_INV_INFO, x0 + PAD, y + ownH - PAD - infoH, w - PAD * 2, S_LABEL, info.slice(0, Math.floor((w - PAD * 2) / 7.2)));
   }

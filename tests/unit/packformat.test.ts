@@ -93,7 +93,7 @@ test("the manifest lists a level's surface and skin as parts of their own, and w
     ["lies outside its file", (m) => (m.textures![1]!.in.bc!.at += 4)],
     ["does not hold bc", (m) => (m.textures![0]!.in.bc!.file = 2)],
     ["a texture that is not there", (m) => (m.materials![0]!.normal = 5)],
-    ["is not supported", (m) => (m.version = 4)],
+    ["is not supported", (m) => (m.version = 5)],
   ];
   for (const [reason, change] of spoiled) {
     const m = JSON.parse(text) as Manifest;

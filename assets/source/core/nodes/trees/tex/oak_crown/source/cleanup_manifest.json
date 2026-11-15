@@ -1,0 +1,92 @@
+{
+  "replaced_maps": {
+    "oak_crown_base.png": "c015186f8202ef772c267bd289eb63d4585422ed7c8caa5b1b9efab50d34c15a",
+    "oak_crown_height.png": "73d59916e07a4a9c578edd95d7e8c88114758ff27f624cf72eada00843a2d3e6",
+    "oak_crown_normal.png": "0c67de7c9b4326a7f338fb556bf16d92d6c460af72ac16a92a15f3e12f7a0a49",
+    "oak_crown_orm.png": "3d3168961f5c52de4d9910478fb90bbdce721afb36fbf5f522f1f29c53782bb8"
+  },
+  "removed_working_previews": [
+    {
+      "path": "checks/source_leaf_scale.png",
+      "sha256": "7c9d94f1e298b5c256c796c524a172d85a1608e13bae8a355db439af5c2bd460"
+    },
+    {
+      "path": "checks/sun_head.png",
+      "sha256": "dbd97414dbce841348c6b550cd6927e4b3cf7ac0f9d48def3db23e47ec78fad1"
+    },
+    {
+      "path": "checks/underside.png",
+      "sha256": "e41ffd4f155834a96d825435961e80afd9814d370c52b622eb68d63c8652d2f5"
+    },
+    {
+      "path": "checks/working_compare.png",
+      "sha256": "69681a68d1e1769e8b96c8cfbb945bd43a23e21956318920ab5735121506a923"
+    }
+  ],
+  "round2": {
+    "removed": [
+      {
+        "path": "source/top_heads_prompt.txt",
+        "sha256": "dbbbec595946c879990eb219f161f6196abd8d7e571f6a9d8f4af76a977a6b5a"
+      },
+      {
+        "path": "source/top_heads_revision_prompt.txt",
+        "sha256": "bf175cc374f99b99b3b20232c6d8c502e02679369328348d5bb2b8c881abf7d9"
+      },
+      {
+        "path": "source/undersides_prompt.txt",
+        "sha256": "8923c0bb54be9547dec052fdd5cc637d2e8e1c8378304738e9beb7fe9dce7eba"
+      },
+      {
+        "path": "source/undersides_revision_prompt.txt",
+        "sha256": "6a1539502983016a556808a0b10dafa6f947dafb820f39130b0085af04eaa8fb"
+      },
+      {
+        "path": "checks/scale_working.png",
+        "sha256": "d09f650a4ecd73bdfc232ee4ecb96df6ba7b673dd4f60dfecc0da5987218c66b"
+      }
+    ],
+    "replaced_in_place": [
+      "oak_crown_base.png",
+      "oak_crown_normal.png",
+      "oak_crown_height.png",
+      "oak_crown_orm.png",
+      "source/top_heads_generated.png",
+      "source/undersides_generated.png",
+      "REPORT.md",
+      "checks/* existing diagnostic outputs"
+    ],
+    "baseline": "round2_baseline.json",
+    "preserved": "all four interior rectangles, interior source, supplied feedback and briefs"
+  },
+  "round3": {
+    "removed": [
+      {
+        "path": ".round3_work/round2_base.png",
+        "sha256": "985078d67a3da85cbbc49be6445e5dfbcc3f500d6049e14e7c8e567aaa0e890a"
+      },
+      {
+        "path": "artist-last.txt",
+        "sha256": "67cf2856f0f76416bc6329521940adfb7a1ae40ad49f1caa339ac4a58b66d842"
+      },
+      {
+        "path": "artist-last-round2.txt",
+        "sha256": "6e7a2637bd401a9160fcbdb2a7aae13808be75debd1b6167203d8125565103fa"
+      }
+    ],
+    "replaced_in_place": [
+      "oak_crown_base.png",
+      "REPORT.md",
+      "source/layout.json",
+      "build_material.py",
+      "check_material.py",
+      "checks/* current diagnostic outputs"
+    ],
+    "added": [
+      "source/round3_baseline.json",
+      "checks/round3_colour_comparison.png"
+    ],
+    "baseline": "round3_baseline.json",
+    "preserved": "Height, normal and ORM files byte-identical; base rows 3 and 4 pixel-identical; deep folds with round-2 luminance <=45 pixel-identical; layout geometry, relief and generated originals unchanged."
+  }
+}

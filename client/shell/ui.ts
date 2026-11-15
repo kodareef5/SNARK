@@ -23,6 +23,8 @@ interface Bound {
   text: string;
   value: number;
   version: number;
+  /** For a picture in a file: the background that shows the part of it drawn. */
+  src: string;
   interactive: boolean;
   tint: number;
   alpha: number;
@@ -83,6 +85,7 @@ export class UiView {
       if (rescaled || b.style !== n.style || b.tint !== n.tint) {
         b.style = n.style;
         b.tint = n.tint;
+        b.src = "";
         const st = STYLES[n.style]!;
         s.background = n.tint >= 0 ? rgb(n.tint) : (st.fill & 255) === 0 ? "none" : rgba(st.fill);
         s.color = rgb(st.ink);
@@ -108,7 +111,15 @@ export class UiView {
       }
       if (n.kind === K_IMAGE) {
         const image = f.images[n.image];
-        if (image && b.version !== image.version) {
+        // A picture in a file is the background, the part shown scaled to fill the node. The browser fetches the file once.
+        const [w, h] = [n.sw || image?.width || 1, n.sh || image?.height || 1];
+        const src = image?.url ? `url("${image.url}") ${(n.sx / Math.max(1, image.width - w)) * 100}% ${(n.sy / Math.max(1, image.height - h)) * 100}% / ${(image.width / w) * 100}% ${(image.height / h) * 100}% no-repeat` : "";
+        if (src !== "" && b.src !== src) {
+          b.src = src;
+          s.background = src;
+          s.imageRendering = "auto";
+        }
+        if (image && !image.url && b.version !== image.version) {
           b.version = image.version;
           const canvas = b.el as HTMLCanvasElement;
           canvas.width = image.width;
@@ -161,7 +172,7 @@ export class UiView {
     el.dataset.k = String(n.key);
     el.style.pointerEvents = "none";
     this.root.append(el);
-    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", value: NaN, version: 0, interactive: false, tint: -2, alpha: 1, order: -1, seen: 0 };
+    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", value: NaN, version: 0, src: "", interactive: false, tint: -2, alpha: 1, order: -1, seen: 0 };
     this.bound.set(n.key, b);
     return b;
   }

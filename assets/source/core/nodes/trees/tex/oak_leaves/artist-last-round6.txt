@@ -1,0 +1,9 @@
+Round 6 is complete.
+
+- Sun cells average **150/152/76**; shade cells **96/108/64**.
+- Fresh tips reach **185/182/92**, with internal value structure preserved.
+- Alpha, mass, strips, height, normals and ORM remain byte-identical.
+
+All **249 checks pass**, and the independent rebuild reproduces all four PNGs exactly. Superseded outputs were replaced.
+
+[Report](/home/user/dev/SNARK/.claude/worktrees/agent-aaafd0cc34ffdc1a7/assets/source/core/nodes/trees/tex/oak_leaves/REPORT.md) · [Preview](/home/user/dev/SNARK/.claude/worktrees/agent-aaafd0cc34ffdc1a7/assets/source/core/nodes/trees/tex/oak_leaves/checks/clusters.png)
