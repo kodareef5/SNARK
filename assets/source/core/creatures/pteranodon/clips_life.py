@@ -8,14 +8,19 @@ breath and twitches on top, then the ground: the body rests on it, the head lies
 along it bone by bone.
 
 Out cold it sprawls on its belly, the wings spread loose on the ground, the neck laid forward along it and the head on
-its cheek with the crest lying flat (LIE). Dead it lies rolled onto its side, the neck flung back (DEAD). In the air,
-limp, the wind of the fall pushes the wings up into a V and trails the head (FALLING).
+its cheek with the crest lying flat (LIE). Dead it sprawls rolled a little onto its right side, the left wing swept
+back, the head flung out to its left with the beak gaping (DEAD). Limp in the air it falls shaped as it will lie, the
+wings lifted a little by the wind of the fall (FALLING).
+
+Near the ground the wings open and fold the way clips_move.py opens and folds them, through a raised V, and only with
+the body off the ground: folded, the skin hangs below the body (rig.py: FOLD), so a folded wing on a body lying flat
+would hang it into the ground. Measured on model.py's mesh with ref/clips_life/preview.py --measure.
 """
 
 import math
 
 import bpy
-from mathutils import Matrix, Quaternion, Vector
+from mathutils import Quaternion, Vector
 
 import rig
 
@@ -112,21 +117,6 @@ class Keys:
         return (2 * s3 - 3 * s2 + 1) * v0 + (s3 - 2 * s2 + s) * h * m0 + (-2 * s3 + 3 * s2) * v1 + (s3 - s2) * h * m1
 
 
-def spring(xs, hz, damping=0.4, loop=False):
-    """A damped spring chasing xs, one value a frame: what lags and swings on behind."""
-    w, sub = 2.0 * math.pi * hz / rig.FPS, 8
-    y, v, n = xs[0], 0.0, len(xs)
-    for lap in range(3 if loop else 1):
-        out = []
-        for i in range(n):
-            out.append(y)
-            x0, x1 = xs[i], xs[(i + 1) % n if loop else min(i + 1, n - 1)]
-            for k in range(sub):
-                v += (w * w * (x0 + (x1 - x0) * k / sub - y) - 2.0 * damping * w * v) / sub
-                y += v / sub
-    return out
-
-
 # =====================================================================================================================
 # Poses
 # =====================================================================================================================
@@ -192,13 +182,6 @@ def mix_part(out, a, b, part, s):
             out.reach[x] = (ha[0].lerp(hb[0], s), slerp(ha[1], hb[1], s))
         else:
             out.reach[x] = ha or hb
-
-
-def mix(a, b, s):
-    out = a.copy()
-    for part in PARTS:
-        mix_part(out, a, b, part, s)
-    return out
 
 
 def along(poses, at):
@@ -338,9 +321,6 @@ def _weighted(points, bones):
 B = rig.BODY
 BODY_POINTS = _weighted(_rings(B["path"], list(zip(B["half_width"], B["half_top"], B["half_bottom"]))),
                         ["pelvis", "spine", "chest"])
-N = rig.NECK
-NECK_POINTS = _weighted(_rings(N["path"], [(w, d, d) for w, d in zip(N["half_width"], N["half_depth"])]),
-                        ["chest"] + NECK)
 H, C, JW = rig.HEAD, rig.CREST, rig.JAW
 HEAD_POINTS = ([(v, "skull") for v in _rings(H["path"], list(zip(H["half_width"], H["half_top"], H["half_bottom"])), 8, 1)]
                + [(v, "skull") for v in _rings(C["path"], [(t, d, d) for t, d in zip(C["half_thickness"], C["half_depth"])], 6, 1)]

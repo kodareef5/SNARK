@@ -111,6 +111,7 @@ def stage(rig):
         "tamer": camera(rig, "g_tamer", (2.2, 1.65, 3.6), (0, 0.25, -0.25), lens=24),
         "small": camera(rig, "g_small", (14.0, 10.0, 16.0), (0, 0.4, -0.3), lens=55),
         "film": camera(rig, "g_film", (2.6, 1.9, 4.2), (0, 0.35, -0.3), lens=22),
+        "close": camera(rig, "g_close", (1.5, 1.0, 2.6), (0, 0.35, 0.3), lens=30),
     }
     air = {
         "side": camera(rig, "a_side", (14, 0.8, -0.3), (0, 0.8, -0.3), ortho=4.6),
@@ -154,8 +155,30 @@ def save_jpeg(rows_px, path):
     bpy.data.images.remove(img)
 
 
+# Clips drawn from another action than their own: torpor_eat as the engine plays it, over torpor_idle.
+SHOWN = {}
+
+
+def over_idle(rig):
+    """torpor_eat as a layer over torpor_idle, each bone of the layer turned by the eat clip's turn on top of the
+    idle's, as shared/anim/creature.ts layers it. For the pictures only."""
+    import clips_life as cl
+    idle, eat = cl.torpor_idle(), cl.torpor_eat()
+    with rig.Clip(cl.R, "torpor_eat_over_idle", len(eat)) as c:
+        for f, e in enumerate(eat):
+            p = idle[f].copy()
+            for b in rig.CLIPS["torpor_eat"]["layer"]:
+                p.turn[b] = p.turn[b] @ e.turn[b]
+            cl.key(c, f, p)
+    SHOWN["torpor_eat"] = "torpor_eat_over_idle"
+
+
+def action_of(clip):
+    return bpy.data.actions[SHOWN.get(clip, clip)]
+
+
 def frames_of(rig, clip):
-    spec, last = rig.CLIPS[clip], int(bpy.data.actions[clip].frame_range[1])
+    spec, last = rig.CLIPS[clip], int(action_of(clip).frame_range[1])
     every = 1 if last <= 20 else (2 if last <= 40 else (3 if last <= 75 else 15))
     frames = list(range(0, last if spec["loop"] else last + 1, every))
     if not spec["loop"] and frames[-1] != last:
@@ -165,7 +188,7 @@ def frames_of(rig, clip):
 
 def play(r, clip):
     r.rest()
-    action = bpy.data.actions[clip]
+    action = action_of(clip)
     r.obj.animation_data.action = action
     if action.slots:
         r.obj.animation_data.action_slot = action.slots[0]
@@ -311,7 +334,7 @@ def measure(r, rig, clip):
     sets = face_sets(obj)
     play(r, clip)
     rows = {}
-    last = int(bpy.data.actions[clip].frame_range[1])
+    last = int(action_of(clip).frame_range[1])
     for f in sorted(set(list(range(0, last + 1, 3)) + [last])):
         bpy.context.scene.frame_set(f)
         rows[f] = measure_frame(obj, sets)
@@ -324,6 +347,7 @@ def main():
     opts = args()
     run_scripts(opts.get("model"))
     import rig
+    over_idle(rig)
 
     r = rig.find()
     out = os.path.abspath(opts.get("out", HERE))
@@ -352,7 +376,7 @@ def main():
             play(r, clip)
             cams = air if clip in AIR else ground
             lines.hide_render = clip in AIR
-            last = int(bpy.data.actions[clip].frame_range[1])
+            last = int(action_of(clip).frame_range[1])
             frames = list(range(0, last + 1, int(every[0]) if every else 2))
             cells = [render(cams[view], (480, 360), os.path.join(tmp, "v.png"), SKY if view == "below" else BACKGROUND)[::-1]
                      for f in frames if bpy.context.scene.frame_set(f) is None]
