@@ -78,20 +78,20 @@ test("a tranquilizer dart takes a rifle round; both darts take 1 s, give 0.2 exp
   expect([carried("dart_tranq"), carried("dart_shock"), reg.damage[at("dart_tranq")], reg.damage[at("dart_shock")]]).toEqual([[0.2, 100], [0.2, 100], 26, 26]);
   expect([reg.ammoTorpor[at("dart_tranq")], reg.ammoTorporOver[at("dart_tranq")], reg.ammoTorpor[at("dart_shock")], reg.ammoTorporOver[at("dart_shock")]]).toEqual([6, 2.5, 12, 5]);
   expect([made("dart_tranq"), engram("dart_tranq")]).toEqual([{ needs: "3 narcotic, 2 ingot, 1 round_rifle", seconds: 1, xp: 0.2, count: 1, at: "core:smithy" }, [62, 30]]);
-  // DEV139: ARK's is 3 bio toxin, 2 ingots and a tranquilizer dart, at the fabricator.
-  expect([made("dart_shock"), engram("dart_shock")]).toEqual([{ needs: "6 narcotic, 4 ingot, 4 gunpowder", seconds: 1, xp: 0.2, count: 1, at: "hand" }, [96, 30]]);
+  // At the fabricator since S6. DEV139: ARK's is 3 bio toxin, 2 ingots and a tranquilizer dart.
+  expect([made("dart_shock"), engram("dart_shock")]).toEqual([{ needs: "6 narcotic, 4 ingot, 4 gunpowder", seconds: 1, xp: 0.2, count: 1, at: "core:fabricator" }, [96, 30]]);
 });
 
 test("attachments weigh 0.1, at ARK's levels and experience; the flashlight's 52 and the laser's 59 are Evolved's (Scope, Silencer, Flashlight and Laser Attachment)", () => {
   expect(["scope", "silencer", "flashlight", "laser"].map(carried)).toEqual([[0.1, 1], [0.1, 1], [0.1, 1], [0.1, 1]]);
   expect(["scope", "silencer", "flashlight", "laser"].map(engram)).toEqual([[35, 13], [41, 13], [52, 18], [59, 24]]);
-  // The scope's page gives 10 s; the others' give none (DEV135). The scope and silencer are made at the smithy of ARK's
-  // ingredients since S6; the flashlight and laser stand in for crystal and electronics in the hand (DEV140).
+  // The scope's page gives 10 s; the others' give none (DEV135). The scope and silencer are made at the smithy and the flashlight
+  // and laser at the fabricator, of ARK's ingredients since S6.
   expect(["scope", "silencer", "flashlight", "laser"].map(made)).toEqual([
     { needs: "40 ingot, 20 crystal, 5 stone", seconds: 10, xp: 196, count: 1, at: "core:smithy" },
     { needs: "50 ingot, 5 oil, 20 chitin, 10 hide", seconds: 6, xp: 196, count: 1, at: "core:smithy" },
-    { needs: "20 ingot, 10 stone", seconds: 6, xp: 304, count: 1, at: "hand" },
-    { needs: "50 ingot, 40 stone", seconds: 6, xp: 544, count: 1, at: "hand" },
+    { needs: "40 ingot, 40 crystal, 10 electronics", seconds: 6, xp: 304, count: 1, at: "core:fabricator" },
+    { needs: "50 ingot, 60 crystal, 40 electronics", seconds: 6, xp: 544, count: 1, at: "core:fabricator" },
   ]);
 });
 

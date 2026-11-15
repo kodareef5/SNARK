@@ -51,9 +51,9 @@ export const AMMO: readonly Def[] = [
 
   // Rounds and darts, from their infoboxes on 2026-11-15: requiredlevel, engrampoints, ingredients, craftingNr (two rounds a
   // crafting), craftingtime where given and the Crafting XP shown. The rounds and the tranquilizer dart are made at the
-  // smithy, as ARK makes them (each infobox's craftedin; moved from the hand by stations S6). The rifle round's page gives
-  // no craftingtime (DEV135). The shocking dart's 3 bio toxin, 2 ingots and a tranquilizer dart wait for bio toxin, which
-  // comes from a creature: its recipe is still ours (DEV139).
+  // smithy and the shocking dart at the fabricator, as ARK makes them (each infobox's craftedin; moved from the hand by
+  // stations S6). The rifle round's page gives no craftingtime (DEV135). The shocking dart's 3 bio toxin, 2 ingots and a
+  // tranquilizer dart wait for bio toxin, which comes from a creature: its recipe is still ours (DEV139).
   ...making("round_pistol", "Pistol round", 34, 6, 2, 1, [["ingot", 1], ["gunpowder", 6]], 1.6, "smithy"),
   ...making("round_rifle", "Rifle round", 35, 6, 2, 2, [["ingot", 2], ["gunpowder", 12]], 3.2, "smithy"),
   // The shotgun shell (W3): level 39, 6 points, 3 simple bullets (our pistol round), an ingot and 3 gunpowder, craftingxp 0.3
@@ -61,17 +61,17 @@ export const AMMO: readonly Def[] = [
   // crafting. It gives no craftingtime: ours is the rifle round's (DEV135).
   ...making("round_shotgun", "Shotgun shell", 39, 6, 2, 2, [["round_pistol", 3], ["ingot", 1], ["gunpowder", 3]], 1.2, "smithy"),
   ...making("dart_tranq", "Tranquilizer dart", 62, 30, 1, 1, [["narcotic", 3], ["ingot", 2], ["round_rifle", 1]], 0.2, "smithy"),
-  ...making("dart_shock", "Shock dart", 96, 30, 1, 1, [["narcotic", 6], ["ingot", 4], ["gunpowder", 4]], 0.2),
+  ...making("dart_shock", "Shock dart", 96, 30, 1, 1, [["narcotic", 6], ["ingot", 4], ["gunpowder", 4]], 0.2, "fabricator"),
 
   // Attachments, from their infoboxes on 2026-11-15: requiredlevel, engrampoints, ingredients, craftingtime where given (the
   // scope's 10 s; the others' pages give none, DEV135) and the Crafting XP shown. The flashlight's and laser's level 52 and 59
   // are Evolved's: the pages' revisions of 2018, five years before Ascended, give the same. The scope and silencer are made
-  // at the smithy, as ARK makes them (stations S6), of ARK's ingredients now that crystal and oil exist: the scope 40
-  // ingots, 20 crystal and 5 stone; the silencer 50 ingots, 5 oil, 20 chitin (or keratin or shell fragments, not ours) and
-  // 10 hide. ARK makes the flashlight and laser at the fabricator; they are made in the hand of ingots and stone until they
-  // move there (DEV136, DEV140).
+  // at the smithy and the flashlight and laser at the fabricator, as ARK makes them (stations S6), of ARK's ingredients now
+  // that crystal, oil and electronics exist (DEV140 removed): the scope 40 ingots, 20 crystal and 5 stone; the silencer 50
+  // ingots, 5 oil, 20 chitin (or keratin or shell fragments, not ours) and 10 hide; the flashlight 40 ingots, 40 crystal and
+  // 10 electronics; the laser 50 ingots, 60 crystal and 40 electronics.
   ...making("scope", "Scope attachment", 35, 13, 1, 10, [["ingot", 40], ["crystal", 20], ["stone", 5]], 196, "smithy"),
   ...making("silencer", "Silencer attachment", 41, 13, 1, 6, [["ingot", 50], ["oil", 5], ["chitin", 20], ["hide", 10]], 196, "smithy"),
-  ...making("flashlight", "Flashlight attachment", 52, 18, 1, 6, [["ingot", 20], ["stone", 10]], 304),
-  ...making("laser", "Laser attachment", 59, 24, 1, 6, [["ingot", 50], ["stone", 40]], 544),
+  ...making("flashlight", "Flashlight attachment", 52, 18, 1, 6, [["ingot", 40], ["crystal", 40], ["electronics", 10]], 304, "fabricator"),
+  ...making("laser", "Laser attachment", 59, 24, 1, 6, [["ingot", 50], ["crystal", 60], ["electronics", 40]], 544, "fabricator"),
 ];

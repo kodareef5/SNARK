@@ -71,11 +71,13 @@ export const EXPLOSIVES: readonly Def[] = [
   // metal ingot, 18 sparkpowder, 12 gunpowder, 5 crystal, 20 fiber and 5 flint, after the smoke grenade and the tripwire
   // narcotic trap. Its torpor, harm, time and reach are on no page (217.2 made it last 15% longer, 218.3 gave 25% more
   // torpor and 20% more reach): 25 torpor a second and no harm, 20 s, 6 m and 4 m high, chosen (DEV144). The gas mask that
-  // stops it (Gas Mask) is not built. The fabricator is not built, so it is made in the hand; charcoal and crystal wait for their items (DEV143).
+  // stops it (Gas Mask) is not built. It is made at the fabricator of the page's eight ingredients, charcoal and crystal now
+  // items (stations S6); the tripwire narcotic trap its engram also needs is not built (DEV143). No page gives its making
+  // time: the grenade's 8 s.
   { type: "item", class: "weapon", id: id("grenade_poison"), label: "poison grenade", stack: 10, weight: 1.5, color: 17, weapon: { kind: "thrown", speed: 18, fuse: 2.5, uses: 1, mesh: id("grenade"), hold: "tool", cloud: { prop: id("cloud_poison"), seconds: 20, buff: id("poisoned") } } },
   { type: "prop", class: "cloud", id: id("cloud_poison"), mesh: "box", color: 17, radius: 6, height: 4 },
   // Given for a little over half a second at a time by the cloud a survivor stands in (server/clouds.ts CLOUD_HOLD).
   { type: "buff", id: id("poisoned"), label: "Poisoned", color: 17, seconds: 0.7, torpor: 25 },
-  crafting(id("grenade_poison"), { needs: needs([["narcotic", 10], ["ingot", 5], ["sparkpowder", 18], ["gunpowder", 12], ["fiber", 20], ["flint", 5]]), seconds: 8, xp: 33 }),
+  crafting(id("grenade_poison"), { needs: needs([["narcotic", 10], ["charcoal", 14], ["ingot", 5], ["sparkpowder", 18], ["gunpowder", 12], ["crystal", 5], ["fiber", 20], ["flint", 5]]), seconds: 8, xp: 33, at: id("fabricator") }),
   { type: "engram", id: id("engram-grenade_poison"), label: "Poison grenade", level: 40, cost: 18, item: id("grenade_poison"), requires: [id("engram-grenade_smoke")] },
 ];

@@ -91,7 +91,7 @@ test("each of the mortar's moved recipes is refused in the hand and made at the 
   makesEach("mortar", Object.keys(MORTAR));
 });
 
-// The smithy's: the guns and their rounds, the grenade, the tranquilizer dart, the scope and the silencer (DEV136); chitin
+// The smithy's: the guns and their rounds, the grenade, the tranquilizer dart, the scope and the silencer (DEV136, removed); chitin
 // and flak armor; the metal building pieces. Its own numbers are S2's (tests/integration/fabricator.test.ts).
 const SMITHY: Readonly<Record<string, Made>> = {
   // Crossbow, Simple Pistol, Longneck Rifle, Shotgun: no page gives a crafting time (DEV135).
@@ -99,7 +99,7 @@ const SMITHY: Readonly<Record<string, Made>> = {
   pistol: ["smithy", "60 ingot, 5 wood, 15 hide", 12, 100.8, 1, 34, 15],
   rifle: ["smithy", "95 ingot, 20 wood, 25 hide", 15, 330, 1, 35, 18],
   shotgun: ["smithy", "80 ingot, 20 wood, 25 hide", 15, 423.2, 1, 39, 18],
-  // Grenade: its 4 oil now that oil exists (DEV140's part closed); no crafting time (DEV135).
+  // Grenade: its 4 oil now that oil exists (DEV140, removed); no crafting time (DEV135).
   grenade: ["smithy", "15 fiber, 20 stone, 30 gunpowder, 5 hide, 2 ingot, 4 oil", 8, 45.6, 1, 38, 20],
   // Simple Bullet (1 s), Simple Rifle Ammo and Simple Shotgun Ammo (no crafting time, DEV135), two a crafting.
   round_pistol: ["smithy", "1 ingot, 6 gunpowder", 1, 1.6, 2, 34, 6],
@@ -107,7 +107,7 @@ const SMITHY: Readonly<Record<string, Made>> = {
   round_shotgun: ["smithy", "3 round_pistol, 1 ingot, 3 gunpowder", 2, 1.2, 2, 39, 6],
   // Tranquilizer Dart.
   dart_tranq: ["smithy", "3 narcotic, 2 ingot, 1 round_rifle", 1, 0.2, 1, 62, 30],
-  // Scope Attachment: its 20 crystal and 5 stone, no longer 20 stone; Silencer Attachment: its 5 oil (DEV140's parts closed).
+  // Scope Attachment: its 20 crystal and 5 stone, no longer 20 stone; Silencer Attachment: its 5 oil (DEV140, removed).
   scope: ["smithy", "40 ingot, 20 crystal, 5 stone", 10, 196, 1, 35, 13],
   silencer: ["smithy", "50 ingot, 5 oil, 20 chitin, 10 hide", 6, 196, 1, 41, 13],
   // Chitin Helmet, Chestpiece, Gauntlets, Leggings, Boots: level 37, each piece's points and craftingxp; 5 s ours (DEV135).
@@ -145,4 +145,30 @@ test("the smithy makes the guns, rounds, grenade, tranquilizer dart, scope and s
 
 test("each of the smithy's moved recipes is refused in the hand and made at the smithy, from its slots into them", () => {
   makesEach("smithy", Object.keys(SMITHY));
+});
+
+// The fabricator's (DEV136, removed). Its own numbers are S2's (tests/integration/fabricator.test.ts).
+const FABRICATOR: Readonly<Record<string, Made>> = {
+  // Shocking Tranquilizer Dart: ARK's is 3 bio toxin, 2 ingots and a tranquilizer dart; bio toxin does not exist (DEV139).
+  dart_shock: ["fabricator", "6 narcotic, 4 ingot, 4 gunpowder", 1, 0.2, 1, 96, 30],
+  // Flashlight Attachment and Laser Attachment: their crystal and electronics (DEV140, removed); no crafting time (DEV135).
+  flashlight: ["fabricator", "40 ingot, 40 crystal, 10 electronics", 6, 304, 1, 52, 18],
+  laser: ["fabricator", "50 ingot, 60 crystal, 40 electronics", 6, 544, 1, 59, 24],
+  // Poison Grenade: its 14 charcoal and 5 crystal; no crafting time, the grenade's 8 s (DEV143).
+  grenade_poison: ["fabricator", "10 narcotic, 14 charcoal, 5 ingot, 18 sparkpowder, 12 gunpowder, 5 crystal, 20 fiber, 5 flint", 8, 33, 1, 40, 18],
+  // Vault: craftingxp 82; no crafting time (DEV135); its 70 oil and 90 polymer wait for the structure menu (DEV174).
+  piece_vault: ["fabricator", "500 ingot, 100 paste", 5, 328, 1, 75, 30],
+};
+
+test("the fabricator makes the shock dart, the flashlight and laser, the poison grenade and the vault, at ARK's numbers (Fabricator, and each page)", () => {
+  for (const name of Object.keys(FABRICATOR)) expect([name, made(name)]).toEqual([name, FABRICATOR[name]!]);
+  // What it makes, lit or out, is these and S2's polymer and electronics.
+  const makes = (kind: string): string[] => stationRecipes(reg, at(kind)).map((k) => reg.ids[k]!.slice(5)).sort();
+  expect([makes("fabricator"), makes("fabricator_lit")]).toEqual([[...Object.keys(FABRICATOR), "electronics", "polymer"].sort(), [...Object.keys(FABRICATOR), "electronics", "polymer"].sort()]);
+  // The vault weighs 20 and stacks to 1 (Vault).
+  expect([item("piece_vault").weight, item("piece_vault").stack]).toEqual([20, 1]);
+});
+
+test("each of the fabricator's moved recipes is refused in the hand and made at a lit fabricator, from its slots into them", () => {
+  makesEach("fabricator", Object.keys(FABRICATOR), ["gasoline", 1]);
 });
