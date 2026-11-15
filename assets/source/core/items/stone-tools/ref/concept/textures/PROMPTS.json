@@ -1,0 +1,7 @@
+{
+  "tool": "built-in image_gen",
+  "calls": 1,
+  "asset": "wood_albedo.png",
+  "purpose": "Fine stripped-wood surface texture only; all tool geometry and orthographic renders are authored in Blender.",
+  "prompt": "Use case: stylized-concept. Asset type: physically plausible albedo texture for original hand-crafted primitive tool wooden branches. Generate one square, perfectly flat unlit texture image of stripped branch wood, macro surface filling the entire canvas. The fibres and fine grain run vertically throughout. Warm muted honey tan approximately #A4784C and subtly paler rubbed wood #B88C5C. Narrow organic darker grain streaks, extremely fine shallow fibres, a few fine healed grain swirls, natural restrained irregularity. Matte, sophisticated, realistic natural surface detail for chunky low-poly forms. Do not show an object, edges, bark, knots as large circular motifs, cord, stone, a scene, perspective, illumination gradients, cast shadow, highlights, text, borders, labels, grid, logo or watermark. This is an evenly exposed base-color surface texture, not a photograph of a tool. The surface should read pale natural raw wood, subdued rather than orange, with fine grain and no broad stripes."
+}

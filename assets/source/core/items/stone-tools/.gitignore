@@ -1,0 +1,27 @@
+# Beyond assets/source/.gitignore: what the scripts here make again.
+# The image model's run logs; its briefs, reports and last messages are kept.
+artist-transcript*.txt
+# Fields the material scripts write into source/ from their own construction (wood keeps generated_wood.png, the one
+# picture the image model made for the materials).
+tex/wood/source/cleaned_source.png
+tex/wood/source/quilted_pigment.png
+tex/lashing/source/*.png
+tex/stone/source/*.png
+# The binding and the stone are used at 1,024 (asset.ts); their 2,048 sets are rebuilt byte for byte by
+# build_material.py, and the flint's roughness as made is kept beside the tuned map only on disk (tune_flint.py).
+tex/lashing/lashing_*[a-z].png
+tex/stone/stone_*[a-z].png
+tex/stone/flint_*[a-z].png
+tex/stone/flint_orm_made*.png
+# Blender's backup copies of the concept's masters.
+*.blend1
+# The concept's second round is kept (its folder name would match round[0-9]*/ in assets/source/.gitignore), less what
+# its scripts render again from the masters: raw renders, guides, the copied texture and the hero scene.
+!ref/concept/round2/
+ref/concept/renders/
+ref/concept/round2/renders/
+ref/concept/round2/guides/
+ref/concept/round2/textures/
+ref/concept/round2/source/hero_scene.blend
+ref/concept/round2/source/paint_guide_scene.blend
+ref/concept/source/hero_scene.blend
