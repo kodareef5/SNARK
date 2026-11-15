@@ -7,7 +7,7 @@ import { TICK_RATE } from "../../../shared/coords.ts";
 import { CMD_CRAFT_AT } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
 import { itemLabel } from "./inventory.ts";
-import { K_BUTTON, K_PANEL, columns, lineHeight, type UiFrame } from "./nodes.ts";
+import { K_BUTTON, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_STATION_PANEL = 2600;
@@ -49,7 +49,7 @@ export class StationPanel {
     const jobs = station.jobs.slice(0, MAX_JOB_LINES);
     const h = PAD * 2 + titleH + lh * Math.max(1, jobs.length) + 6 + ROW * recipes.length;
     f.add(KEY_STATION_PANEL, K_PANEL, x, top, pw, h, S_PANEL);
-    f.text(KEY_STATION_TITLE, x + PAD, top + PAD, inner, S_TITLE, "Crafting".slice(0, columns(inner, S_TITLE)));
+    f.text(KEY_STATION_TITLE, x + PAD, top + PAD, inner, S_TITLE, "Crafting");
     let y = top + PAD + titleH;
     if (jobs.length === 0) {
       f.text(KEY_STATION_JOB, x + PAD, y, inner, S_LABEL, "nothing being made");
@@ -59,18 +59,17 @@ export class StationPanel {
       // The first job's unit under way shows its seconds to go.
       const wait = n === 0 && job.doneAt > 0 ? `, ${Math.max(0, Math.ceil((job.doneAt - session.serverTick) / TICK_RATE))} s` : "";
       const line = `${n === 0 ? "making" : "then"} ${itemLabel(reg, job.item)} x${job.left}${wait}`;
-      f.text(KEY_STATION_JOB + n, x + PAD, y, inner, S_LABEL, line.slice(0, columns(inner, S_LABEL)));
+      f.text(KEY_STATION_JOB + n, x + PAD, y, inner, S_LABEL, fitText(line, inner, S_LABEL));
       y += lh;
     });
     y += 6;
     const known = new Set(session.progress.engrams.map((e) => (reg.defs[e] as EngramDef).item));
-    const cols = columns(inner - BUTTON - 8, S_LABEL);
     recipes.forEach((k, n) => {
       const def = reg.defs[k] as ItemDef;
       const makes = def.craft!.count ?? 1;
       const needs = def.craft!.needs.map((need) => `${need.count} ${itemLabel(reg, reg.index.get(need.item)!)}`).join(", ");
       const text = `${itemLabel(reg, k)}${makes > 1 ? ` x${makes}` : ""}: ${needs}`;
-      f.text(KEY_STATION_RECIPE + n * 2, x + PAD, y + 2, inner - BUTTON - 8, S_LABEL, text.slice(0, cols));
+      f.text(KEY_STATION_RECIPE + n * 2, x + PAD, y + 2, inner - BUTTON - 8, S_LABEL, fitText(text, inner - BUTTON - 8, S_LABEL));
       if (known.has(def.id)) {
         const b = f.add(KEY_STATION_RECIPE + n * 2 + 1, K_BUTTON, x + pw - PAD - BUTTON, y + 1, BUTTON, ROW - 3, S_BUTTON);
         b.text = "make";

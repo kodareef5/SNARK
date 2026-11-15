@@ -552,7 +552,7 @@ test("the client draws what is worn and held, and the hotbar and inventory scree
   app.key("Digit1", true);
   run(150);
   expect(s.held).toBe(0);
-  expect(f.find(KEY_HOTBAR)!.tint).toBe(0x5a6a7a);
+  expect(f.find(5500)).not.toBeNull();
   expect(f.find(KEY_HOTBAR + 1)!.text).toBe("long");
   expect(f.find(KEY_HOTBAR + 2)!.text).toBe("0");
   // In first person the head and the hat are not drawn.

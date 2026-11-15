@@ -2,6 +2,7 @@
 // in core, so it can be tested in Bun without a browser. A node's key stays the same from frame to frame.
 
 import { STYLES, LINE_HEIGHT, CHAR_ADVANCE } from "./style.ts";
+import { FONT_ADVANCES, FONT_UNITS } from "./font-metrics.ts";
 
 /** A filled rectangle. */
 export const K_PANEL = 0;
@@ -31,6 +32,8 @@ export interface UiNode {
   /** Index into STYLES. */
   style: number;
   text: string;
+  /** Accessible name and hover detail, without permanent HUD text. */
+  label: string;
   value: number;
   /** Index into the frame's image table, for K_IMAGE. */
   image: number;
@@ -87,7 +90,7 @@ export class UiFrame {
   add(key: number, kind: number, x: number, y: number, w: number, h: number, style: number): UiNode {
     let n = this.nodes[this.count];
     if (!n) {
-      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", value: 0, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1 };
+      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", label: "", value: 0, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1 };
       this.nodes.push(n);
     }
     this.count++;
@@ -99,6 +102,7 @@ export class UiFrame {
     n.h = h;
     n.style = style;
     n.text = "";
+    n.label = "";
     n.value = 0;
     n.image = 0;
     n.sx = n.sy = n.sw = n.sh = 0;
@@ -138,14 +142,54 @@ export function lineHeight(style: number): number {
   return Math.ceil(STYLES[style]!.font * LINE_HEIGHT);
 }
 
-/** The interface uses one monospace face, so this is exact enough to lay out by. */
+/** Advance with kerning disabled, matching the bundled face in the shell. */
+export function glyphAdvance(code: number, style: number): number {
+  const s = STYLES[style]!;
+  return s.font * (s.sans ? (FONT_ADVANCES[code] ?? FONT_UNITS) / FONT_UNITS : CHAR_ADVANCE);
+}
+
 export function textWidth(text: string, style: number): number {
-  return text.length * STYLES[style]!.font * CHAR_ADVANCE;
+  let width = 0;
+  for (const c of text) width += glyphAdvance(c.codePointAt(0)!, style);
+  return width;
 }
 
 /** Characters that fit in `width`. */
 export function columns(width: number, style: number): number {
-  return Math.max(1, Math.floor(width / (STYLES[style]!.font * CHAR_ADVANCE)));
+  const s = STYLES[style]!;
+  return Math.max(1, Math.floor(width / (s.font * (s.sans ? .92 : CHAR_ADVANCE))));
+}
+
+/** Fits live labels by measured advance instead of cutting a surrogate or assuming equal-width letters. */
+export function fitText(text: string, width: number, style: number): string {
+  if (textWidth(text, style) <= width) return text;
+  let out = "", used = 0;
+  if (width < textWidth("…", style)) return "";
+  const end = "…", room = Math.max(0, width - textWidth(end, style));
+  for (const c of text) {
+    const next = glyphAdvance(c.codePointAt(0)!, style);
+    if (used + next > room) break;
+    out += c; used += next;
+  }
+  return out + end;
+}
+
+/** Word wrapping with the face's actual advances, retaining complete Unicode characters. */
+export function wrapText(text: string, width: number, style: number, out: string[]): void {
+  let rest = text;
+  while (textWidth(rest, style) > width) {
+    let cut = 0, used = 0;
+    for (const c of rest) {
+      const next = glyphAdvance(c.codePointAt(0)!, style);
+      if (cut && used + next > width) break;
+      used += next; cut += c.length;
+    }
+    const space = rest.lastIndexOf(" ", cut);
+    if (space > 0) cut = space;
+    out.push(rest.slice(0, cut));
+    rest = rest.slice(rest[cut] === " " ? cut + 1 : cut);
+  }
+  out.push(rest);
 }
 
 /** Appends rows of at most `cols` characters to `out`, breaking at spaces where it can. */

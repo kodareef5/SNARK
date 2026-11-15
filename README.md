@@ -57,10 +57,17 @@ raptors that will come for you.
 | T, Y, J, U | Whistle the creature looked at to follow, to stay; all of them to follow, to stay |
 | Building piece in hand | Left button sets it down where it is shown. E turns it, Q takes the next nearest place (held: open ground), R changes a wall to a doorframe or a windowframe, arrow keys raise and lower a foundation |
 | I, P, M, O | Inventory, character (stats, engrams, crafting), map, settings (among them voice volume, and whether B is held or switches the microphone) |
+| H (hold), L, Minus / Equal | Inspect HUD values and map controls; toggle minimap; zoom minimap (or the full map when open) |
 | B | Hold to talk to those near; with Alt a whisper, with Shift a yell. The first press asks for the microphone |
 | Enter, Insert, / | Chat: to everyone, to those within 60 m, to your tribe. Tab changes channel, Enter says the line |
 | Backquote or Tab | Console. `help` lists commands; `tribe` founds and runs a tribe; `mute <name>` stops you hearing someone |
-| Escape | Close a screen |
+| Escape | Close one screen, or open the glass menu; Settings, Controls, connection ping and Leave are here |
+
+Interface preferences are kept in this browser. The play HUD hides diagnostic
+text by default; enable it under Settings → Interface. Controls shows keyboard
+and controller diagrams. Standard-mapped gamepads have basic movement, combat
+and menu navigation; touch gameplay and broader controller contexts remain
+planned. See the [HUD review](planning/reference/ui-hud-review.md).
 
 Under `bun run dev` cheats need no password, so the server answers this machine
 only (`bun run dev -- --host 0.0.0.0` lets the network in): type `enablecheats`, then try

@@ -26,6 +26,7 @@ import { VoiceIo } from "../voice/voice.ts";
 import { SoundIo } from "../sound/sound.ts";
 import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
+import { installSkin, SKIN_URL } from "../core/ui/skin.ts";
 
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
@@ -71,6 +72,11 @@ async function boot(): Promise<void> {
     city: (content) => new CityStatics(map.dims, map.statics, content),
   });
   const app = new App(session, reg, pack, { manifest, port });
+  const skin = installSkin(app.ui.frame), skinImage = new Image();
+  skinImage.src = SKIN_URL;
+  void skinImage.decode().then(() => { skin.url = SKIN_URL; }).catch(() => {});
+  try { app.ui.settings.restoreInterface(localStorage.getItem("snark.interface")); } catch {}
+  addEventListener("pagehide", () => { try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {} });
   app.stress = params.has("stress");
   app.debug = app.stress || params.has("debug");
   app.steer = !selfcheck && !device;
@@ -82,6 +88,7 @@ async function boot(): Promise<void> {
     protocol: location.protocol,
     hostname: location.hostname,
     go: (url) => location.assign(url),
+    reload: () => location.reload(),
     arrived: () => arrival && history.replaceState(null, "", location.pathname + location.search),
     cluster: async () => (await fetchJson(fetch, "cluster.json")) as ClusterList,
   };
@@ -119,16 +126,23 @@ async function boot(): Promise<void> {
   const loser = params.has("lose") ? renderer.gl.getExtension("WEBGL_lose_context") : null;
   device?.attach({ app, pack, reg, hf }, renderer);
 
+  let savedRevision = app.ui.settings.revision, savedAt = 0;
   const frame = (now: number): void => {
     requestAnimationFrame(frame);
     const cssWidth = canvas.clientWidth;
     const cssHeight = canvas.clientHeight;
     const t0 = performance.now();
+    app.gamepads(document.hasFocus() ? navigator.getGamepads?.() ?? [] : [], now);
+    if (!app.ui.wantsPointerLock && document.pointerLockElement) document.exitPointerLock();
     if (bench) app.autopilot(bench.since(now));
     voice.sync(session.voice);
     if (voiceCheck && voice.report.status === "listening") voice.talk(true);
     if (app.scene) app.scene.assets.format = renderer.format;
     const packet = app.frame(now, cssWidth, cssHeight);
+    if (savedRevision !== app.ui.settings.revision && now - savedAt > 250) {
+      savedRevision = app.ui.settings.revision; savedAt = now;
+      try { localStorage.setItem("snark.interface", app.ui.settings.interfacePreferences()); } catch {}
+    }
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
     const built = performance.now();

@@ -11,13 +11,15 @@ export interface Style {
   readonly align: number;
   /** Dark outline behind the text, for text drawn over the world. */
   readonly shadow: boolean;
+  /** Interface text uses the local face; console output and text entry retain monospace. */
+  readonly sans?: boolean;
 }
 
 /** Advance of one character and height of one line, as multiples of the font size. */
 export const CHAR_ADVANCE = 0.6;
 export const LINE_HEIGHT = 1.35;
 
-const style = (fill: number, ink: number, font = 13, align = 0, shadow = false): Style => ({ fill, ink, font, align, shadow });
+const style = (fill: number, ink: number, font = 13, align = 0, shadow = false): Style => ({ fill, ink, font, align, shadow, sans: true });
 
 export const S_TEXT = 0;
 export const S_LABEL = 1;
@@ -73,14 +75,25 @@ export const S_OVER_OTHER = 43;
 export const S_OVER_TEXT = 44;
 export const S_OVER_TAMING = 45;
 export const S_OVER_PANEL = 46;
+export const S_MENU = 47;
+export const S_MENU_BUTTON = 48;
+export const S_MENU_MAIN = 49;
+export const S_MENU_NOTE = 50;
+export const S_HUD_HIT = 51;
+export const S_HUD_KEY = 52;
+export const S_HUD_COUNT = 53;
+export const S_ICE = 54;
+export const S_MENU_FOCUS = 55;
+export const S_MENU_HEADING = 56;
+export const S_WARNING = 57;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
   /* S_LABEL */ style(0, 0xeeeeee, 12, 0, true),
   /* S_BANNER */ style(0x00000066, 0xffffff, 20, 1, false),
-  /* S_PANEL */ style(0x10141ad9, 0xeeeeee, 13),
-  /* S_INPUT */ style(0x000000cc, 0xffffff, 14),
-  /* S_CONSOLE_TEXT */ style(0, 0xd8e0d8, 14),
+  /* S_PANEL */ style(0x0c2238df, 0xe3f4fc, 13),
+  /* S_INPUT */ { ...style(0x000000cc, 0xffffff, 14), sans: false },
+  /* S_CONSOLE_TEXT */ { ...style(0, 0xd8e0d8, 14), sans: false },
   /* S_CROSS */ style(0xffffffcc, 0xffffff),
   /* S_FRAME */ style(0x00000088, 0xffffff),
   /* S_HEALTH */ style(0x00000066, 0xd84a4a),
@@ -93,10 +106,10 @@ export const STYLES: readonly Style[] = [
   /* S_MARK_CREATURE */ style(0x40aaaaff, 0),
   /* S_MARK_SPAWN */ style(0x60b068ff, 0),
   /* S_MARK_DEATH */ style(0x111111ff, 0),
-  /* S_BUTTON */ style(0x2a3440f0, 0xffffff, 14, 1),
+  /* S_BUTTON */ style(0x284357a8, 0xe3f4fc, 14, 1),
   /* S_TITLE */ style(0, 0xffffff, 18, 0),
-  /* S_SLOT */ style(0x00000088, 0xffffff, 11),
-  /* S_SLOT_HELD */ style(0xe8d24acc, 0x000000, 11),
+  /* S_SLOT */ style(0x102c4288, 0xffffff, 11),
+  /* S_SLOT_HELD */ style(0x549eb477, 0xecfaff, 11),
   /* S_SLOT_TEXT */ style(0, 0xffffff, 11, 2, true),
   /* S_SWATCH */ style(0x808080ff, 0xffffff, 11, 0, true),
   /* S_PROMPT */ style(0, 0xffffff, 13, 1, true),
@@ -114,12 +127,23 @@ export const STYLES: readonly Style[] = [
   /* S_CHAT_LOCAL */ style(0, 0xf0dc96, 13, 0, true),
   /* S_CHAT_TRIBE */ style(0, 0x96e89a, 13, 0, true),
   /* S_CHAT_NOTICE */ style(0, 0xa8c8ec, 13, 0, true),
-  /* S_CHAT_PANEL */ style(0x10141a99, 0xeeeeee, 13),
-  /* S_CHAT_TAG */ style(0x2a3440f0, 0xffffff, 12, 1),
+  /* S_CHAT_PANEL */ style(0x0c223899, 0xe3f4fc, 13),
+  /* S_CHAT_TAG */ style(0x284357a8, 0xe3f4fc, 12, 1),
   /* S_OVER_WILD */ style(0, 0xf4f4f0, 14, 0, true),
   /* S_OVER_TRIBE */ style(0, 0x9ee8a2, 14, 0, true),
   /* S_OVER_OTHER */ style(0, 0xf2a860, 14, 0, true),
   /* S_OVER_TEXT */ style(0, 0xe8e8e4, 12, 0, true),
   /* S_OVER_TAMING */ style(0x00000066, 0x8cd66c),
   /* S_OVER_PANEL */ style(0x0c10168c, 0xeeeeee),
+  /* S_MENU */ style(0x081a2e66, 0xc5e6f0),
+  /* S_MENU_BUTTON */ style(0, 0xa5c4d3, 23),
+  /* S_MENU_MAIN */ style(0, 0xecfaff, 23),
+  /* S_MENU_NOTE */ style(0, 0xa9c9d8, 13),
+  /* S_HUD_HIT */ style(0, 0xb5dbea, 15, 1),
+  /* S_HUD_KEY */ style(0, 0xc0d7e2, 11, 0, true),
+  /* S_HUD_COUNT */ style(0, 0xe8f8ff, 12, 2, true),
+  /* S_ICE */ style(0xa6e3f4dd, 0xa6e3f4),
+  /* S_MENU_FOCUS */ style(0x69b8df18, 0xe9f8ff, 15),
+  /* S_MENU_HEADING */ style(0, 0xe3f4fc, 24),
+  /* S_WARNING */ style(0, 0xf2a477, 13, 1, true),
 ];

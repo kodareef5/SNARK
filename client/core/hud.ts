@@ -214,6 +214,7 @@ export class HudModel {
   private readonly pool: Marker[] = [];
   /** The map's pictures and where they look. Null until the app has the world, and then both screens show the whole map. */
   chart: Chart | null = null;
+  minimapVisible = true;
   /** Screen pixels to a unit of the interface, so the map's pictures are made at the size they are shown. */
   scale = 1;
   /** Counts updates. `mapSeen` is the update during which the map screen was last built. */
@@ -397,10 +398,10 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   const chart = model.chart;
   if (chart) {
     chart.tiles.step();
-    chart.drawMini(session.tactical, session.tribe.team, model.lon / 100, model.lat / 100, Math.max(64, Math.min(512, Math.round(MINIMAP_SIZE * scale))), session.mapLocation);
+    if (model.minimapVisible) chart.drawMini(session.tactical, session.tribe.team, model.lon / 100, model.lat / 100, Math.max(64, Math.min(512, Math.round(MINIMAP_SIZE * scale))), session.mapLocation);
     // The server sends structure cells at the size that suits the finest zoom on show. Its marks say which zoom it holds, so a
     // request that was lost or refused is made again.
-    const want = Math.max(chart.mini.view.zoom, model.mapSeen === model.frames - 1 ? chart.fullZoom : 0);
+    const want = Math.max(model.minimapVisible ? chart.mini.view.zoom : 0, model.mapSeen === model.frames - 1 ? chart.fullZoom : 0);
     if (want !== session.tactical.marks.zoom && session.simTick - model.zoomAsked >= 45 && session.command(CMD_MAP_ZOOM, (w) => w.bits(want, 2)) !== 0) model.zoomAsked = session.simTick;
   }
   model.vitals[1]!.fraction = b.staminaMax > 0 ? b.stamina / (b.staminaMax * STAMINA_UNITS) : 0;

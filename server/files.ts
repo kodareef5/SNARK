@@ -3,7 +3,7 @@
 
 import { join, normalize } from "node:path";
 
-const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json" };
+const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json", png: "image/png", ttf: "font/ttf", txt: "text/plain; charset=utf-8" };
 /** Sixteen hex digits in a name are the start of the SHA-256 of the file. */
 const HASHED = /\.[0-9a-f]{16}\./;
 

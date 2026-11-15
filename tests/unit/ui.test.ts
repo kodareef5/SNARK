@@ -113,6 +113,7 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       for (let i = 0; i < 30; i++) ui.chat.print(TEXT_NOTICE + (i % 4), `ada: ${"W".repeat(i * 5)} and so on`, 1000);
       if (chatOpen) ui.chat.begin(TEXT_TRIBE, null);
       ui.chat.edit("y".repeat(300));
+      ui.settings.diagnostics = true;
       const hud = fullHud();
       hud.prompt = "E  open ada's cache";
       hud.ammo = "stone arrow  1 / 1   (24 more)";
@@ -183,7 +184,8 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       expect(markers.length).toBe(256);
       const own = f.nodes[markers[255]!]!;
       const map = f.find(KEY_MINIMAP)!;
-      expect([own.x + 2, own.y + 2]).toEqual([map.x + map.w, map.y + map.h]);
+      // The complete marker remains inside the map at its far boundary.
+      expect([own.x + own.w, own.y + own.h]).toEqual([map.x + map.w, map.y + map.h]);
     }
   }
 });
@@ -256,7 +258,7 @@ test("console keys: one press toggles once, the open console owns the keyboard, 
   ui.build(16 / 9, new HudModel(), null);
   const rows = (): string[] => {
     const out: string[] = [];
-    for (let i = 0; i < ui.frame.count; i++) if (ui.frame.nodes[i]!.key >= KEY_CONSOLE_ROW) out.push(ui.frame.nodes[i]!.text);
+    for (let i = 0; i < ui.frame.count; i++) if (ui.frame.nodes[i]!.key >= KEY_CONSOLE_ROW && ui.frame.nodes[i]!.key < KEY_CONSOLE_ROW + 60) out.push(ui.frame.nodes[i]!.text);
     return out;
   };
   const shown = rows().length;

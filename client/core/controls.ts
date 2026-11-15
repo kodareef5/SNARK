@@ -31,7 +31,11 @@ export class Controls {
   wing = false;
   private flyer = false;
   private readonly held = new Set<string>();
+  private readonly padHeld = new Set<string>();
   private mouse = 0;
+  private padMouse = 0;
+  private analogX = 0;
+  private analogZ = 0;
   /** BTN_CROUCH, BTN_PRONE or 0. The bit is sent every tick while the stance is wanted. */
   private stance = 0;
 
@@ -55,29 +59,31 @@ export class Controls {
   }
 
   /** Returns true if the key is bound. */
-  key(code: string, down: boolean): boolean {
+  key(code: string, down: boolean, source = 0): boolean {
+    const held = source === 1 ? this.padHeld : this.held;
     const stance = this.flyer ? undefined : STANCE_KEYS[code];
     if (stance !== undefined) {
       // The held set swallows key repeats, so holding the key toggles once.
-      if (down && !this.held.has(code)) this.stance = this.stance === stance ? 0 : stance;
+      if (down && !held.has(code)) this.stance = this.stance === stance ? 0 : stance;
     } else if (this.flyer && code === "Space") {
-      if (down && !this.held.has(code)) this.wing = !this.wing;
+      if (down && !held.has(code)) this.wing = !this.wing;
     } else if (!MOVE_KEYS.has(code) && (this.flyer ? FLYER_BINDINGS : BINDINGS)[code] === undefined) return false;
-    if (down) this.held.add(code);
-    else this.held.delete(code);
+    if (down) held.add(code);
+    else held.delete(code);
     // From a stance, jump stands the body up and is not sent as a jump. Sprint stands a crouched body up.
     if (down && this.stance !== 0 && (code === "Space" || (code === "ShiftLeft" && this.stance === BTN_CROUCH))) {
       this.stance = 0;
-      if (code === "Space") this.held.delete(code);
+      if (code === "Space") held.delete(code);
     }
     this.refresh();
     return true;
   }
 
-  mouseButton(button: number, down: boolean): void {
+  mouseButton(button: number, down: boolean, source = 0): void {
     const bit = MOUSE[button] ?? 0;
     if (bit === 0) return;
-    this.mouse = down ? this.mouse | bit : this.mouse & ~bit;
+    if (source === 1) this.padMouse = down ? this.padMouse | bit : this.padMouse & ~bit;
+    else this.mouse = down ? this.mouse | bit : this.mouse & ~bit;
     this.refresh();
   }
 
@@ -91,17 +97,26 @@ export class Controls {
 
   release(): void {
     this.held.clear();
+    this.padHeld.clear();
     this.mouse = 0;
+    this.padMouse = this.analogX = this.analogZ = 0;
+    this.refresh();
+  }
+
+  padMove(x: number, z: number): void {
+    this.analogX = Number.isFinite(x) ? Math.max(-1, Math.min(1,x)) : 0;
+    this.analogZ = Number.isFinite(z) ? Math.max(-1, Math.min(1,z)) : 0;
     this.refresh();
   }
 
   private refresh(): void {
     const k = this.held;
-    this.moveX = (k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0);
-    this.moveZ = (k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0);
-    let buttons = this.mouse | this.stance | (this.wing ? BTN_JUMP : 0);
+    this.moveX = Math.max(-1,Math.min(1,(k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0) + this.analogX));
+    this.moveZ = Math.max(-1,Math.min(1,(k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0) + this.analogZ));
+    let buttons = this.mouse | this.padMouse | this.stance | (this.wing ? BTN_JUMP : 0);
     const bindings = this.flyer ? FLYER_BINDINGS : BINDINGS;
     for (const code of k) buttons |= bindings[code] ?? 0;
+    for (const code of this.padHeld) buttons |= bindings[code] ?? 0;
     this.buttons = buttons;
   }
 }

@@ -1,7 +1,7 @@
 // Everything here is drawn from CombatModel (client/core/feedback.ts).
 
 import { NUMBER_HEAD, NUMBER_KILL, type CombatModel } from "../feedback.ts";
-import { K_PANEL, columns, lineHeight, type UiFrame } from "./nodes.ts";
+import { K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BLOOD, S_DAMAGE, S_DAMAGE_HEAD, S_DAMAGE_KILL, S_HIT, S_HIT_KILL, S_NOTICE } from "./style.ts";
 
 /** Four strokes about the crosshair. */
@@ -68,6 +68,6 @@ export function buildCombat(f: UiFrame, m: CombatModel): void {
 
   if (m.noticeAlpha > 0 && m.notice !== "") {
     const w = Math.min(W - 24, 620);
-    f.text(KEY_NOTICE, cx - w / 2, cy + 70, w, S_NOTICE, m.notice.slice(0, columns(w, S_NOTICE))).alpha = m.noticeAlpha;
+    f.text(KEY_NOTICE, cx - w / 2, cy + 70, w, S_NOTICE, fitText(m.notice, w, S_NOTICE)).alpha = m.noticeAlpha;
   }
 }

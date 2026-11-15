@@ -1,4 +1,4 @@
-// Player settings. They change nothing on the server and last only while the page is open.
+// Player settings change nothing on the server. The shell persists the small set of interface preferences.
 
 import { TICK_RATE } from "../../shared/coords.ts";
 import { DEFAULT_TIER, offeredTiers, type Tier } from "./assets/tiers.ts";
@@ -37,7 +37,38 @@ export class Settings {
   interfaceVolume = 1;
   /** The talk key toggles the microphone instead of being held. */
   toggleTalk = false;
+  minimap = true;
+  diagnostics = false;
+  vitalLabels = false;
+  minimapZoom = -1;
+  /** Transient screen state; excluded from saved preferences. */
+  tab = 0;
+  revision = 0;
+
+  changed(): void { this.revision++; }
+
+  interfacePreferences(): string {
+    const saved: Record<string, unknown> = { version: 1, tier: this.tier, snapshotBytes: this.snapshotBytes };
+    for (const key of SAVED_FLAGS) saved[key] = this[key];
+    for (const [key] of SAVED_NUMBERS) saved[key] = this[key];
+    return JSON.stringify(saved);
+  }
+
+  restoreInterface(text: string | null): void {
+    try {
+      const saved = JSON.parse(text ?? "{}");
+      if (!saved || Array.isArray(saved) || (saved.version !== undefined && saved.version !== 1)) return;
+      for (const key of SAVED_FLAGS) if (typeof saved[key] === "boolean") this[key] = saved[key];
+      for (const [key, lo, hi] of SAVED_NUMBERS) if (Number.isFinite(saved[key])) this[key] = Math.max(lo, Math.min(hi, saved[key]));
+      this.minimapZoom = Math.round(this.minimapZoom);
+      if (["lowpoly", "medium", "high", "ultra"].includes(saved.tier)) this.tier = saved.tier;
+      if (SNAPSHOT_BYTES.includes(saved.snapshotBytes)) this.snapshotBytes = saved.snapshotBytes;
+    } catch {}
+  }
 }
+
+const SAVED_FLAGS = ["minimap", "diagnostics", "vitalLabels", "damageNumbers", "toggleTalk", "steady"] as const;
+const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3]] as const;
 
 export const VOLUME_MAX = 2;
 
@@ -81,6 +112,9 @@ export const SETTING_ROWS: readonly SettingRow[] = [
     } },
   { label: "Steady frame", value: (s) => (s.steady ? "automatic" : "off"), step: (s) => void (s.steady = !s.steady) },
   { label: "Connection", value: (s) => `${Math.round((s.snapshotBytes * TICK_RATE) / 1000)} KB/s`, step: (s, by) => void (s.snapshotBytes = SNAPSHOT_BYTES[clamp(SNAPSHOT_BYTES.indexOf(s.snapshotBytes) + by, 0, SNAPSHOT_BYTES.length - 1)]!) },
+  { label: "Minimap", value: (s) => s.minimap ? "on" : "off", step: (s) => void (s.minimap = !s.minimap) },
+  { label: "Status labels", value: (s) => s.vitalLabels ? "on" : "off", step: (s) => void (s.vitalLabels = !s.vitalLabels) },
+  { label: "Diagnostics", value: (s) => s.diagnostics ? "on" : "off", step: (s) => void (s.diagnostics = !s.diagnostics) },
 ];
 
 const megabytes = (bytes: number): string => (bytes >= 1048576 * 10 ? `${Math.round(bytes / 1048576)} MB` : `${(bytes / 1048576).toFixed(1)} MB`);
