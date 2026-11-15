@@ -814,10 +814,11 @@ def torpor_in():
     sigh = Keys([(0, 0.0), (49, 0.0), (53, 1.0), (59, 0.0)])
 
     # The folded wings stay folded while the arms give, then the long fingers fall open last, along the fold.
-    tracks = {s: {"fold": Keys([(0, 1.0), (26 + d, 1.0), (30 + d, 0.92), (36 + d, 0.55), (42 + d, 0.3), (47 + d, 0.12)]),
-                  "flap": Keys([(0, 0.0), (22 + d, 0.0), (29 + d, -30.0), (35 + d, -24.0), (41 + d, -14.0), (47 + d, -10.0)])}
-              for s, d in (("r", 0), ("l", 2))}
-    into = lambda f: {"r": smooth((f - 42.0) / 8.0), "l": smooth((f - 45.0) / 8.0)}
+    tracks = {"r": {"fold": Keys([(0, 1.0), (26, 1.0), (30, 0.92), (35, 0.5), (39, 0.18, -0.03), (42, 0.07), (45, 0.13), (49, 0.12)]),
+                    "flap": Keys([(0, 0.0), (22, 0.0), (29, -30.0), (34, -24.0), (39, -9.0), (42, -14.0), (47, -10.0)])},
+              "l": {"fold": Keys([(0, 1.0), (28, 1.0), (32, 0.9), (38, 0.55), (44, 0.2, -0.03), (47, 0.09), (51, 0.14), (54, 0.12)]),
+                    "flap": Keys([(0, 0.0), (24, 0.0), (31, -28.0), (37, -24.0), (44, -8.0), (48, -15.0), (54, -10.0)])}}
+    into = lambda f: {"r": smooth((f - 44.0) / 7.0), "l": smooth((f - 50.0) / 7.0)}
 
     def extra(f, p):
         folding(p, f, tracks, LIE, into)
@@ -934,9 +935,9 @@ def torpor_eat():
 def torpor_out():
     """It comes round: the head stirs and lifts off the ground with the shoulders, wobbles, and all of it drops back;
     it lifts again and holds. Breast still down, it draws the right arm in and plants the hand, then the left, the
-    long fingers folding back along the ground; it gathers its feet under it and pushes up, the right side first,
-    sinking back once; up on its hands it folds the fingers home, catches its balance, shakes its head and shrugs the
-    folded wings, and it is itself."""
+    long fingers folding back along the ground, and gathers its feet under it; only with both hands still on the
+    ground does it push, the right side first, the elbows opening under it, sinking back once; up on its hands it folds
+    the fingers home, catches its balance, shakes its head and shrugs the folded wings, and it is itself."""
     stir = LIE.copy()
     stir.rot("chest", pitch=4.0, roll=2.0)
     stir.turn["pelvis"] = q(pitch=2.0) @ stir.turn["pelvis"]
@@ -945,12 +946,11 @@ def torpor_out():
     # Where each hand is planted while the breast is down, the wing only a third folded so its skin lies out to the
     # side and not under the body; the fold is finished once the body is up.
     hands = {"r": Vector((-0.55, 0.0, 0.45)), "l": Vector((0.55, 0.0, 0.45))}
-    tracks = {s: {"fold": Keys([(0, 0.12), (24 + d, 0.12), (36 + d, 0.38), (50 + d, 0.42), (60 + d, 1.0)]),
-                  "flap": Keys([(0, -10.0), (24 + d, -10.0), (32 + d, 0.0)])}
+    tracks = {s: {"fold": Keys([(0, 0.12), (23 + d, 0.12), (31 + d, 0.38), (50 + d, 0.42), (60 + d, 1.0)]),
+                  "flap": Keys([(0, -10.0), (23 + d, -10.0), (30 + d, 0.0)])}
               for s, d in (("r", 0), ("l", 3))}
-    out_of = lambda f: {"r": 1.0 - smooth((f - 20.0) / 6.0), "l": 1.0 - smooth((f - 23.0) / 6.0)}
-    prep = stir.copy()
-    prep.rot("chest", pitch=3.0)
+    out_of = lambda f: {"r": 1.0 - smooth((f - 19.0) / 6.0), "l": 1.0 - smooth((f - 22.0) / 6.0)}
+    prep = LIE.copy()
     for s in SIDES:
         for n in WING[s]:
             prep.turn[n] = STANCE.turn[n].copy()
@@ -970,19 +970,19 @@ def torpor_out():
 
     poses = [LIE, stir, prep, push, STANCE]
     timing = {
-        "neck": Keys([(0, 0.0), (6, 0.0), (11, 0.9), (14, 0.8), (18, 0.05), (21, 0.0), (27, 1.0), (36, 2.0),
+        "neck": Keys([(0, 0.0), (6, 0.0), (11, 0.9), (14, 0.8), (18, 0.05), (21, 0.0), (27, 1.0), (35, 2.0),
                       (48, 3.0), (58, 4.0)]),
-        "head": Keys([(0, 0.0), (7, 0.0), (12, 0.9), (15, 0.8), (19, 0.05), (22, 0.0), (28, 1.0), (37, 2.0),
+        "head": Keys([(0, 0.0), (7, 0.0), (12, 0.9), (15, 0.8), (19, 0.05), (22, 0.0), (28, 1.0), (36, 2.0),
                       (49, 3.0), (59, 4.0)]),
-        "body": Keys([(0, 0.0), (7, 0.0), (11, 0.8), (14, 0.7), (18, 0.0), (21, 0.0), (27, 1.0), (42, 2.0),
-                      (47, 2.8), (50, 2.55), (54, 3.0), (60, 4.0)]),
+        "body": Keys([(0, 0.0), (7, 0.0), (11, 0.8), (14, 0.7), (18, 0.0), (21, 0.0), (27, 1.0), (33, 2.0),
+                      (41, 2.0), (46, 2.8), (49, 2.55), (53, 3.0), (59, 4.0)]),
         "tail": Keys([(0, 0.0), (28, 1.0), (40, 2.0), (52, 3.0), (62, 4.0)]),
         "arm_r": Keys([(0, 0.0), (22, 1.0), (31, 2.0), (50, 3.0), (57, 4.0)]),
         "arm_l": Keys([(0, 0.0), (24, 1.0), (34, 2.0), (51, 3.0), (58, 4.0)]),
         "finger_r": Keys([(0, 0.0), (24, 1.0), (40, 2.0), (52, 3.0), (60, 4.0)]),
         "finger_l": Keys([(0, 0.0), (26, 1.0), (43, 2.0), (54, 3.0), (62, 4.0)]),
-        "leg_r": Keys([(0, 0.0), (34, 1.0), (44, 2.0), (52, 3.0), (59, 4.0)]),
-        "leg_l": Keys([(0, 0.0), (36, 1.0), (46, 2.0), (54, 3.0), (61, 4.0)]),
+        "leg_r": Keys([(0, 0.0), (30, 1.0), (38, 2.0), (48, 3.0), (57, 4.0)]),
+        "leg_l": Keys([(0, 0.0), (32, 1.0), (40, 2.0), (50, 3.0), (59, 4.0)]),
     }
     wobble = Keys([(0, 0.0), (9, 0.0), (11, 1.0), (13, -0.8), (15, 0.4), (17, 0.0), (55, 0.0), (58, 1.0), (61, -0.7),
                    (64, 0.3), (67, 0.0)])
@@ -998,7 +998,7 @@ def torpor_out():
         p.rot("chest", pitch=1.5 * shrug(f))
         # Each hand is brought in and planted near the shoulder while the breast is down, bears the push, and steps to
         # where the crouch plants it.
-        for s, start in (("r", 39.0), ("l", 42.0)):
+        for s, start in (("r", 30.0), ("l", 33.0)):
             if f < start:
                 p.reach[s], p.hold[s] = None, 0.0
                 continue
@@ -1047,7 +1047,7 @@ def dead():
     settle(p)
     aim_neck(p, (0.50, 0.10, 0.70), Vector((-0.3, 0.6, 1.0)))
     lay_neck(p, skull=q(pitch=-4.0, yaw=84.0, roll=-80.0))
-    p.rot("jaw", pitch=-0.45 * rig.BEAK_OPEN)
+    p.rot("jaw", pitch=-0.12 * rig.BEAK_OPEN)
     return settle(p, 0.0, {"l": 1.0, "r": 1.0})
 
 
@@ -1073,7 +1073,7 @@ def death():
     fail.turn["spine"] = q(pitch=-4.0, roll=-3.0)
     fail.turn["chest"] = q(pitch=-8.0, roll=-5.0)
     aim_neck(fail, (-0.02, 0.92, 0.48), Vector((0.0, 1.0, 0.2)), q(pitch=-6.0, yaw=8.0, roll=-14.0))
-    fail.rot("jaw", pitch=-0.25 * rig.BEAK_OPEN)
+    fail.turn["jaw"] = q(pitch=-0.03 * rig.BEAK_OPEN)
     for s in SIDES:
         for n in PARTS["arm_" + s]:
             fail.turn[n] = slerp(STANCE.turn[n], DEAD.turn[n], 0.35)
@@ -1092,16 +1092,23 @@ def death():
         "leg_r": Keys([(0, 0.0), (3, 1.0), (12, 2.0), (20, 3.0)]),
         "leg_l": Keys([(0, 0.0), (3, 1.0), (13, 2.0), (22, 3.0)]),
     }
-    beak = Keys([(0, 0.0), (19, 0.0), (22, 0.12), (27, 0.2), (32, 0.2)])
+    # The jaw falls open as the head comes down onto its cheek, before LIMP, so the corpse lies gaping.
+    beak = Keys([(0, 0.0), (21, 0.0), (25, 0.33), (28, 0.33)])
     tracks = {"r": {"fold": Keys([(0, 1.0), (6, 1.0), (13, 0.6), (18, 0.3), (22, 0.12)]),
                     "flap": Keys([(0, 0.0), (8, 0.0), (16, -6.0), (22, -12.0)])},
               "l": {"fold": Keys([(0, 1.0), (8, 1.0), (16, 0.6), (23, 0.3), (30, 0.1)]),
                     "flap": Keys([(0, 0.0), (8, 0.0), (14, -20.0), (22, -16.0), (32, -10.0)])}}
     into = lambda f: {"r": smooth((f - 19.0) / 7.0), "l": smooth((f - 26.0) / 8.0)}
     shudder = Keys([(0, 0.0), (36, 0.0), (38, 1.0), (41, -0.5), (44, 0.0)])
+    # The head turns in the world straight from one pose's turn to the next, so its long beak and crest swing round
+    # level as the neck carries it down, never through pointing at the ground.
+    skulls = [fk(x)[0]["skull"] for x in poses]
 
     def extra(f, p):
         folding(p, f, tracks, DEAD, into)
+        x = min(max(timing["head"](f), 0.0), len(poses) - 1.0)
+        i = min(int(x), len(poses) - 2)
+        p.turn["skull"] = fk(p)[0]["neck_4"].inverted() @ slerp(skulls[i], skulls[i + 1], x - i)
         # The left hand skids out from under the jolt; the right lets go as the shoulder drops.
         for s, out in (("l", Vector((0.14, 0.0, 0.04))), ("r", Vector((-0.04, 0.0, 0.02)))):
             if f < 3:
