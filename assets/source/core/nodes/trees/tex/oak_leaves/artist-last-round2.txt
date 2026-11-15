@@ -1,0 +1,5 @@
+Rebuilt all four maps with the new colours, shared rosettes, higher roughness and enlarged fern. **97 checks pass**, and the independent rebuild is byte-identical. Height now encodes **0–32 mm**.
+
+[Updated report](REPORT.md) · [30 m tests under both lights](checks/purpose_30m_both_lights.png)
+
+Sources are retained and superseded files removed. The report documents the fern’s blade/petiole interpretation and remaining card-to-gap contrast; the previews are material diagnostics, not new game captures.

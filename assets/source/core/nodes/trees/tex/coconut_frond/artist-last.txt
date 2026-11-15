@@ -1,0 +1,7 @@
+Completed all four 2048×2048 maps, source artwork, generation prompt, rebuild scripts, checks, and report.
+
+Checks pass: **zero margin spill**, **8 mm height range**, and **0.363° maximum normal error**. At 256 px, coverage remains **79.6% / 79.9% / 54.4%**.
+
+[Layer preview](checks/layers.jpg) · [Full report](REPORT.md)
+
+Engine compression and foliage-shader appearance remain untested.

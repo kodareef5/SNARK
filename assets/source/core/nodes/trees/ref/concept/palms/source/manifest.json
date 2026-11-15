@@ -1,0 +1,183 @@
+{
+  "generator": "built-in image_gen.imagegen",
+  "references": "Only original paintings made in this task; no photographs or external game images.",
+  "finals": {
+    "royal_lineup.png": "source/royal_lineup_v02.png",
+    "coconut_lineup.png": "source/coconut_lineup_v03.png",
+    "palm_parts.png": "source/palm_parts_v02.png",
+    "palm_stumps.png": "source/palm_stumps_v02.png",
+    "grove_near.png": "source/grove_near_v02.png",
+    "grove_far.png": "source/grove_far_v02.png",
+    "grove_far_flat.png": "source/grove_far_flat_v02.png"
+  },
+  "renders": [
+    {
+      "file": "coconut_lineup_v01.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 2634765,
+      "sha256": "1a5473c1434d79f175cd7b60db0d86c4055d407d434c36d077335d9400f51f3c",
+      "request": "coconut_lineup_v01.request.json",
+      "input_images": []
+    },
+    {
+      "file": "coconut_lineup_v02.png",
+      "width": 1671,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 2394249,
+      "sha256": "db2f9d303c067e6fd4275b07ca93956dac2e23c4259481b141750d007dea6551",
+      "request": "coconut_lineup_v02.request.json",
+      "input_images": [
+        "coconut_lineup_v01.png"
+      ]
+    },
+    {
+      "file": "coconut_lineup_v03.png",
+      "width": 1671,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 2328808,
+      "sha256": "94ecea3f7a747c222f53a9871c4ee246a75876ed3dffa87389017ebfe10c2c5b",
+      "request": "coconut_lineup_v03.request.json",
+      "input_images": [
+        "coconut_lineup_v02.png"
+      ]
+    },
+    {
+      "file": "grove_far_flat_v01.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 1749674,
+      "sha256": "a550f401492a6fb0e872eb4a20d73ace2f005f25b61a051510504cfd1eedd5b2",
+      "request": "grove_far_flat_v01.request.json",
+      "input_images": [
+        "grove_far_v02.png"
+      ]
+    },
+    {
+      "file": "grove_far_flat_v02.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 1745147,
+      "sha256": "c516838af9cbb7c58c4fe46bf3e26d5ed25f8c1b09efd74cc08c4bb32464c1d0",
+      "request": "grove_far_flat_v02.request.json",
+      "input_images": [
+        "grove_far_flat_v01.png"
+      ]
+    },
+    {
+      "file": "grove_far_v01.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 3196724,
+      "sha256": "06111e63dc21cb4d9702b620aeb0d67799c9ec5167cd919cfb60cd33a2e160af",
+      "request": "grove_far_v01.request.json",
+      "input_images": []
+    },
+    {
+      "file": "grove_far_v02.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 2740274,
+      "sha256": "4a72fc69932c0d00b3d46b6dca1948dad60f804c70fdd6de0adaf5cd211b6dd0",
+      "request": "grove_far_v02.request.json",
+      "input_images": [
+        "grove_far_v01.png"
+      ]
+    },
+    {
+      "file": "grove_near_v01.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 3552717,
+      "sha256": "c88c4c0c0ee2324f9275956903b817816408d994cd81fe08ba7847b20fa1f74b",
+      "request": "grove_near_v01.request.json",
+      "input_images": []
+    },
+    {
+      "file": "grove_near_v02.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 3352213,
+      "sha256": "be93b586c4c91f1b1186f26e0269159c083e677c33059e9c4afc8d6210c8cd2c",
+      "request": "grove_near_v02.request.json",
+      "input_images": [
+        "grove_near_v01.png"
+      ]
+    },
+    {
+      "file": "palm_parts_v01.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 2916673,
+      "sha256": "81ccce49db472afc86d31c969c76b0e5f032dcad232962c135487fb04d02a351",
+      "request": "palm_parts_v01.request.json",
+      "input_images": []
+    },
+    {
+      "file": "palm_parts_v02.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 2753326,
+      "sha256": "4f12e149f707904b692f368585215da15063a036251b3fc1c284bd7e5e324ff1",
+      "request": "palm_parts_v02.request.json",
+      "input_images": [
+        "palm_parts_v01.png"
+      ]
+    },
+    {
+      "file": "palm_stumps_v01.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 2843612,
+      "sha256": "e44768dd6796c1c8f051bdd33f01d0401dde026881a3a69f7d97244398094f8c",
+      "request": "palm_stumps_v01.request.json",
+      "input_images": []
+    },
+    {
+      "file": "palm_stumps_v02.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 2584998,
+      "sha256": "2d5b75dad21ceecd0ce7d31e0b43b690aec686ae4798aac783880a6fe967deff",
+      "request": "palm_stumps_v02.request.json",
+      "input_images": [
+        "palm_stumps_v01.png"
+      ]
+    },
+    {
+      "file": "royal_lineup_v01.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 2273478,
+      "sha256": "10152989ebdb4615a11b5928a2c8119a1fce8c6adf6cca6966f5308e943e4798",
+      "request": "royal_lineup_v01.request.json",
+      "input_images": []
+    },
+    {
+      "file": "royal_lineup_v02.png",
+      "width": 1672,
+      "height": 941,
+      "mode": "RGB",
+      "bytes": 2084738,
+      "sha256": "f4ccc41c8dc51df1ca5fd0ab9e6d68656a63c3ffc2b682c9086125174f239e7a",
+      "request": "royal_lineup_v02.request.json",
+      "input_images": [
+        "royal_lineup_v01.png"
+      ]
+    }
+  ]
+}

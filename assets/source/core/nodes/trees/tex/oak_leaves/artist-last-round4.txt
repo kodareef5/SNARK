@@ -1,0 +1,5 @@
+Rebuilt all four clusters; outline coverage is **76.8–81.4% across every shrink**. Mass, moss, and fern remain byte-identical across all maps.
+
+All **178 checks** and the repeat rebuild passed. Both-light 30 m diagnostics and `REPORT.md` are updated; superseded outputs were replaced.
+
+[Cluster preview](checks/clusters.png) · [Report](REPORT.md)

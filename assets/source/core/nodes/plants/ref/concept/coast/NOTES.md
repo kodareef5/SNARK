@@ -1,0 +1,17 @@
+# Sea grape and creeper — round 1
+
+## Sea grape
+
+Build from the **five single-leaf elements and one fruit raceme** in `seagrape_parts.png`: young green, mature green, red-veined green, old red-orange, and insect-damaged green. Use short petioles on roughly 5–6 smooth, crooked basal limbs with 10–16 smaller forks; a first-pass mature build can use approximately 100–150 individually placed leaf cards and four fruit clusters. Keep leaves 12–25 cm wide, vary their tilt and size, and preserve the branch windows between unequal fans. The hero targets roughly 1.45 m high by 2.8 m wide. The lineup runs **young, mature, old/sprawling from left to right**: fewer slender forks; fuller offset crown; thicker low limbs, a broken crown gap and a long lateral arm. The immediate read is large round leaves, open grey-brown branches and a low spreading silhouette. Harvesting retains that frame while removing nearly all foliage and fruit. **Weaknesses:** the fans can look flat from other angles, isolated fruit cards need depth, and repeating the same orange or holed leaf will become obvious. Keep most leaves healthy, distribute the five types unevenly, and stagger fans in depth.
+
+## Creeper
+
+Build from the **three leafy sprays and one hanging strand** in `creeper_parts.png`; the lower spray also supplies the small trumpet flower and damaged/yellowing leaves. Each spray has roughly 5–7 main leaves plus growing tips; the long strand has about eight leaves. Drape approximately 24–30 spray instances across three unequal rubble shoulders for the mature 1.0–1.15 m high, 2.3–2.6 m wide mound, with 5–7 hanging strands and four thin ground runners. Use simple curved stems to connect the sprays through visible gaps. The lineup runs **young, mature, old/sprawling from left to right**: roughly 10–14, 24–30 and 34–42 sprays, with progressively longer runners and a sagging open pocket in the old support. The wall version lifts one shoulder to about 1.7 m and follows joints and ledges. Its immediate read is a lumpy leaf blanket with ragged curtains and escaping runners. Harvesting exposes the support and breaks those connections. **Weaknesses:** overlapping cards can become visually solid or reveal planes from above; the internal rubble is prominent when stripped. Preserve dark gaps, turn adjacent sprays differently and keep the support as a few coherent forms. Use the flower-bearing spray sparingly.
+
+## Shared direction and limits
+
+`undergrowth.png` is the placement, lighting and material benchmark: creeper at the limestone wall, fern in its shade, palmetto fans beside the street, sea grape toward the bay, a small-leaved red-berry shrub at the curb, and grasses linking the patches. Keep the narrow broken-street route legible.
+
+Counts and dimensions above are first-pass construction targets, not measured mesh specifications. The parts sheets are opaque grey concept sheets with readable cut-out boundaries; they are not finished alpha/PBR texture sets. Leaf backs, card depth and silhouette stability at 2–100 m still need checking in the eventual 3D build.
+
+All **ten final PNGs are 1672 × 941**, saved exactly as returned by the built-in imagegen tool. Its interface has no explicit size control; every prompt asked for the largest native output, with 3840 × 2160 requested where supported. No images were resampled or edited outside the generator. **Fifteen pictures were generated; five unselected versions are preserved in `round1/`.** Exact prompts, image inputs and selection reasons are in `prompts.md`.

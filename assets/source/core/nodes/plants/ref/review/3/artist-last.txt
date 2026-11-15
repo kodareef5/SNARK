@@ -1,0 +1,3 @@
+Wrote [CRITIQUE.md](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/ref/review/round3/CRITIQUE.md).
+
+Verdict: **hold**. Keep near-black, but improve its fruit readability. Remaining blockers are berry joins and shapes, the creeper shell, and low fern leaflets.

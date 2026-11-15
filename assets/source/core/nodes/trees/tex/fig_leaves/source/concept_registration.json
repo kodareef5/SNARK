@@ -1,0 +1,21 @@
+{
+  "source": "../../ref/concept/broadleaf/fig_lineup.png",
+  "sha256": "e597da7cfe944c5c38e9f766d405a3d43f6229fc790f9afa563b3ddc4c81b0cc",
+  "source_size": [
+    2172,
+    724
+  ],
+  "crop": [
+    925,
+    94,
+    1114,
+    220
+  ],
+  "F02_crown_metres": 24,
+  "F02_crown_pixels_approx": 945,
+  "crop_metres_approx": [
+    4.8,
+    3.2
+  ],
+  "note": "Art-scale registration. A painting has no calibrated camera; the crop is a scale comparison, not an engine photograph."
+}

@@ -1,0 +1,3 @@
+Wrote [CRITIQUE.md](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/ref/review/CRITIQUE.md).
+
+Verdict: hold for another modelling pass. Includes ranked fixes for all five plants, construction targets, harvested-state feedback, berry readability, low-setting assessments, and the three highest-impact changes.

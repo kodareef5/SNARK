@@ -1,0 +1,14 @@
+{
+  "started_utc": "2026-11-14T23:14:48.145226+00:00",
+  "tool": "built-in image_gen",
+  "reference_directory": "../../ref/concept/ground",
+  "reference_images": [
+    "fern.png",
+    "fern_individuals.png",
+    "fern_frond.png",
+    "fern_cut.png"
+  ],
+  "height_range_mm": 12.0,
+  "completed_utc": "2026-11-14T23:30:41.313771+00:00",
+  "elapsed_minutes": 15.89
+}

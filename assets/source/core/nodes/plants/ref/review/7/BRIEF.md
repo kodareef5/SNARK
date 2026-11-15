@@ -1,0 +1,7 @@
+# A seventh look: the berry bush and the creeper
+
+Your sixth critique (`../6/CRITIQUE.md`, pictures in `../6/`) held both on two points each. These are the same views after a pass on just those, drawn the same way (medium lit, low flat; ignore the test ground and sky), plus `game_bush_black.png`.
+
+What changed. The bush is rebuilt round one rule: every spray lies in the crown's shell like a scale, its middle inside the outline, running along it and lifting its tip off, and facing out, so the sprays across the crown face the eye from any side and only those at the edge are seen edge-on, splayed out as the outline's leaves; a spray whose tip stands apart from every other is left out; inner sprays fill behind the shell; fruit on every outward spray above the skirt. The creeper: its dark mass is now only a cap over the top of the stone, inside the stone on the sides, so stone shows between the leaf groups down to the foot, and the stone under the vine is only lightly shaded; on low, the hanging strands, the rim leaves and the leaves low on the heap are each a thin stem with small leaves along it, so the skirt is ragged and shows the stone.
+
+Write `CRITIQUE.md` in this folder, short: does each pass now, as something you would ship beside the accepted three? If not, the few things that must still change, most important first. Do not paint or change anything. Work only in this folder.

@@ -1,0 +1,6 @@
+Completed both 2048×2048 layer sets with full-size sources, exact generation prompts, rebuild scripts, visual checks and reports.
+
+- [Royal report](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/royal_bark/REPORT.md): **2 mm** full height range.
+- [Coconut report](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/coconut_bark/REPORT.md): **5 mm** full height range.
+
+Both rebuild byte-for-byte. Seam checks pass; maximum normal/height disagreement is **0.381°**. The reports document the remaining fixed-tile repetition and engine-validation limits.

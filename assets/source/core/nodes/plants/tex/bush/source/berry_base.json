@@ -1,0 +1,15 @@
+{
+  "ripe_grey": 84,
+  "berry_offsets": [-2, 0, 2],
+  "reference_grey": 200,
+  "bloom": {
+    "body_grey": 80,
+    "strength": 62,
+    "cap_strength": 82,
+    "cap_height_fraction": 0.48,
+    "cap_fade_start_v": -0.55,
+    "cap_width_radii": 1.6,
+    "lower_edge_depth": 20
+  },
+  "catchlight_greys": [242, 234, 234]
+}

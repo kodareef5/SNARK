@@ -2,8 +2,8 @@
 // scrolled pictures of wave slopes (assets/source/core/water). It mirrors the sky table where the eye's ray is
 // reflected to, by Fresnel's term, and glints where it mirrors the sun and the moon. Under that is the water itself:
 // clear in the shallows and the deep blue of open sea, by how deep the water is there, read from the terrain's own
-// heights, and see-through over its last 30 cm at the shore. Then haze, exposure and the tone curve, as
-// everything lit is shown.
+// heights, and see-through over its last 30 cm at the shore. The sun's shadow falls on its glint and on the light in
+// it. Then haze, exposure and the tone curve, as everything lit is shown.
 //
 // The maths is here twice, as GLSL and as functions on numbers, written from the same constants. The rasterizer does
 // not draw it (D264): the twins are what the lit probe holds a GPU's pictures to. Under water, and in a plain sky, the
@@ -13,6 +13,7 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { AIR, hazed } from "./atmosphere.ts";
 import { SEE_THROUGH_SPLIT } from "./glsl.ts";
 import { FRAME, SOURCE_MAP, SOURCE_WINDOW } from "./packet.ts";
+import { SHADOW_GLSL } from "./shadowtext.ts";
 import { domeLight, trueSun } from "./sky.ts";
 import { LIGHT, linearToSrgb, skyOn, tone } from "./surface.ts";
 import { COARSE, type GroundSize } from "./terrain.ts";
@@ -209,9 +210,9 @@ const seen = [0, 0, 0];
 /**
  * The twin of the WATER program for a pixel whose surface normal is `n` (straight up for a calm sea), seen along `v`,
  * the way to the eye, over water `depth` metres deep, its waves' slopes having lost `spread` of their mean square to
- * distance. `table` is the sky table.
+ * distance, `shade` of the sun reaching it. `table` is the sky table.
  */
-export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec, depth: number, spread: number): SeaPixel {
+export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec, depth: number, spread: number, shade = 1): SeaPixel {
   const nv = Math.min(Math.max(n[0]! * v[0]! + n[1]! * v[1]! + n[2]! * v[2]!, 0.001), 1);
   const a2 = Math.pow(SEA_ROUGH, 4) + DISC * DISC + spread;
   facing(seen, n, v, spread);
@@ -224,7 +225,7 @@ export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec,
   const a = Math.min(Math.sqrt(a2), 1);
   for (let k = 0; k < 3; k++) mirror[k] = f * (reflected[k]! * frame[FRAME.skyScale]! * (1 - a) + sky[k]! * a);
   const shine = [0, 0, 0];
-  const lights = Float64Array.of(sun[0]!, sun[1]!, sun[2]!, 0, ...[0, 1, 2].map((k) => frame[FRAME.sunColor + k]! * frame[FRAME.casting]!));
+  const lights = Float64Array.of(sun[0]!, sun[1]!, sun[2]!, 0, ...[0, 1, 2].map((k) => frame[FRAME.sunColor + k]! * frame[FRAME.casting]! * shade));
   glint(shine, lights, 0, 4, a2, n, v, nv);
   glint(shine, frame, FRAME.moon, FRAME.moonColor, a2, n, v, nv);
   const d = Math.max(depth, 0);
@@ -236,7 +237,7 @@ export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec,
   const light = [0, 0, 0];
   let peak = 0;
   for (let k = 0; k < 3; k++) {
-    const lit = sky[k]! + frame[FRAME.sunColor + k]! * Math.max(frame[FRAME.sun + 1]!, 0) + frame[FRAME.moonColor + k]! * Math.max(frame[FRAME.moon + 1]!, 0);
+    const lit = sky[k]! + frame[FRAME.sunColor + k]! * Math.max(frame[FRAME.sun + 1]!, 0) * shade + frame[FRAME.moonColor + k]! * Math.max(frame[FRAME.moon + 1]!, 0);
     const body = (SHALLOW[k]! + (DEEP[k]! - SHALLOW[k]!) * deep) * lit;
     light[k] = mirror[k]! + shine[k]! + (1 - f) * (1 - through) * body;
     peak = Math.max(peak, (mirror[k]! + shine[k]!) * frame[FRAME.exposure]!);
@@ -289,7 +290,7 @@ flat in vec3 vColor;
 uniform highp usampler2D uMapHeight, uWindowHeight;
 uniform sampler2D uWaveLong, uWaveShort;
 out vec4 o;
-${LIGHT}${AIR}${SEE_THROUGH_SPLIT}float floorAt(highp usampler2D h, vec2 at, vec2 last) {
+${LIGHT}${SHADOW_GLSL}${AIR}${SEE_THROUGH_SPLIT}float floorAt(highp usampler2D h, vec2 at, vec2 last) {
   vec2 c = clamp(at, vec2(0.0), last);
   ivec2 k = ivec2(min(floor(c), last - 1.0));
   vec2 f = c - vec2(k);
@@ -350,11 +351,12 @@ void main() {
   float f = ${g(SEA_F0)} + ${g(1 - SEA_F0)} * pow(1.0 - clamp(mv, 0.0, 1.0), 5.0);
   float a = min(sqrt(a2), 1.0);
   vec3 mirror = f * mix(skyFrom(reflect(-v, m)), skyOn(m.y), a);
-  // The sun's glint where the sun is, as much as its disc is up; the moon's.
-  vec3 shine = glint(fTrueSun, fSunColor.rgb * fSun.w, a2, n, v, nv) + glint(fMoon.xyz, fMoonColor.rgb, a2, n, v, nv);
+  // The sun's glint where the sun is, as much as its disc is up and as it is not in shadow; the moon's.
+  float shade = sunShadow(vRel, vec3(0.0, 1.0, 0.0));
+  vec3 shine = glint(fTrueSun, fSunColor.rgb * (fSun.w * shade), a2, n, v, nv) + glint(fMoon.xyz, fMoonColor.rgb, a2, n, v, nv);
   float up = abs(v.y);
   float through = exp(-${g(CLEAR)} * depth * (1.0 + 1.0 / sqrt(1.0 - (1.0 - up * up) / ${g(BEND * BEND)})));
-  vec3 lit = skyOn(1.0) + fSunColor.rgb * max(fSun.y, 0.0) + fMoonColor.rgb * max(fMoon.y, 0.0);
+  vec3 lit = skyOn(1.0) + fSunColor.rgb * (max(fSun.y, 0.0) * shade) + fMoonColor.rgb * max(fMoon.y, 0.0);
   vec3 body = mix(${vec3([...SHALLOW])}, ${vec3([...DEEP])}, 1.0 - exp(-depth / ${g(TURN)})) * lit;
   vec3 light = mirror + shine + (1.0 - f) * (1.0 - through) * body;
   vec3 top = (mirror + shine) * fSunColor.w;

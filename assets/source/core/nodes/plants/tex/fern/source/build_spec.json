@@ -1,0 +1,154 @@
+{
+  "atlas": "fern",
+  "size": 2048,
+  "scale_px_per_m": 1400,
+  "height_range_mm": 12,
+  "edge_bleed_px": 40,
+  "elements": [
+    {
+      "name": "frond1",
+      "rect": [
+        0,
+        0,
+        390,
+        1600
+      ],
+      "length_m": 1.1,
+      "width_m": 0.22,
+      "kind": "green",
+      "roughness": 0.47
+    },
+    {
+      "name": "frond2",
+      "rect": [
+        390,
+        0,
+        780,
+        1428
+      ],
+      "length_m": 0.98,
+      "width_m": 0.23,
+      "kind": "green",
+      "roughness": 0.69
+    },
+    {
+      "name": "frond3",
+      "rect": [
+        780,
+        0,
+        1120,
+        1240
+      ],
+      "length_m": 0.85,
+      "width_m": 0.18,
+      "kind": "green",
+      "roughness": 0.62,
+      "source_file": "frond3_revision_original.png",
+      "matte": "white"
+    },
+    {
+      "name": "frond4",
+      "rect": [
+        1120,
+        0,
+        1490,
+        1160
+      ],
+      "length_m": 0.78,
+      "width_m": 0.2,
+      "kind": "green",
+      "roughness": 0.65
+    },
+    {
+      "name": "frond5",
+      "rect": [
+        1120,
+        1160,
+        1490,
+        2048
+      ],
+      "length_m": 0.55,
+      "width_m": 0.14,
+      "kind": "green",
+      "roughness": 0.55
+    },
+    {
+      "name": "frond6",
+      "rect": [
+        1490,
+        0,
+        1952,
+        890
+      ],
+      "length_m": 0.6,
+      "width_m": 0.26,
+      "kind": "green",
+      "roughness": 0.58
+    },
+    {
+      "name": "deadfrond1",
+      "rect": [
+        1490,
+        890,
+        1952,
+        2048
+      ],
+      "length_m": 0.79,
+      "width_m": 0.18,
+      "kind": "dead",
+      "roughness": 0.91
+    },
+    {
+      "name": "deadfrond2",
+      "rect": [
+        780,
+        1240,
+        1120,
+        2048
+      ],
+      "length_m": 0.54,
+      "width_m": 0.18,
+      "kind": "dead",
+      "roughness": 0.93
+    },
+    {
+      "name": "young1",
+      "rect": [
+        390,
+        1428,
+        780,
+        2048
+      ],
+      "length_m": 0.32,
+      "width_m": 0.075,
+      "kind": "young",
+      "roughness": 0.43
+    },
+    {
+      "name": "young2",
+      "rect": [
+        0,
+        1600,
+        390,
+        2048
+      ],
+      "length_m": 0.23,
+      "width_m": 0.075,
+      "kind": "young",
+      "roughness": 0.45
+    },
+    {
+      "name": "bark",
+      "role": "bark",
+      "rect": [
+        1952,
+        0,
+        2048,
+        2048
+      ],
+      "metres": 0.5,
+      "kind": "bark",
+      "roughness": 0.9
+    }
+  ]
+}

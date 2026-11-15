@@ -1,0 +1,275 @@
+{
+  "removed": [
+    {
+      "path": "fitted.json",
+      "sha256": "82dd952a2d000540a571879b01c6b3d426efb1bba13cd68f25a1755e02d4544e"
+    },
+    {
+      "path": "height_study.py",
+      "sha256": "af96b194712e48f21b512b51684aabe405701e3c185c0b9a0d559749053b06dc"
+    },
+    {
+      "path": "slope_study.py",
+      "sha256": "ac777d29b61338be5cfecae8c604b0f0c029d7d4f9354bd9147372c1ef537d9c"
+    },
+    {
+      "path": "source/generated_fig_leaves.png",
+      "sha256": "3dc61413f66e9dfed56b305c2b58c95c61f7897b8949aa3052ff2b18ce524539"
+    },
+    {
+      "path": "source/generated_round2_sprays.png",
+      "sha256": "9c7bc18fe6ba8711d0fb93d592d3d3143ebbf1d50fa3de24befed781b7b74a2a"
+    },
+    {
+      "path": "source/leaf_support.png",
+      "sha256": "7b076ea416680cf4f7c8a85b26dec34297e44eda0542f908d8fa20e1b32f6c6e"
+    },
+    {
+      "path": "source/rectified_leaf_tissue.png",
+      "sha256": "1c406ccef4fe7a6633ed7c488e9df636bcaaa6c1f524a487fe2a7bc98a8edbd7"
+    },
+    {
+      "path": "source/surface_kind.png",
+      "sha256": "203646b0a18081c53c08f371f9fe65738938850022fb460b45c3bca52ba26c49"
+    },
+    {
+      "path": "source/spray_layout.json",
+      "sha256": "9056e11ca99b54ff0824338d7b1a6fbf1d90d6edb98221c218e434bd2d815cf1"
+    },
+    {
+      "path": "source/generation_prompts.txt",
+      "sha256": "d633f10eba767f4fcd9eae3bbba8a5ffd662badd9023d0ca43b58032abbb4b1b"
+    },
+    {
+      "path": "source/leaves_prompt.txt",
+      "sha256": "11a86ef62d06415f074c9b1fdfffa470d9f21eca257a71abcfc1e872b39ba78e"
+    },
+    {
+      "path": "source/round2_sprays_prompt.txt",
+      "sha256": "dc62ec36b5a9905cd13ce138e771ed2cdfbcd262f0737c93b00b08e664ff9920"
+    },
+    {
+      "path": "source/sRGB.icc",
+      "sha256": "0674393ca2cde4f8cc79200e3b94b042c0e3c537f146fa10df87831b1f290f3d"
+    },
+    {
+      "path": "checks/inspection_0.jpg",
+      "sha256": "26c86891eed65ca3b4126ff685c91304161ffffebad4482d50b612aad8d644b3"
+    },
+    {
+      "path": "checks/inspection_1.jpg",
+      "sha256": "12177f3cd40c19422167d69316bfaab0d4edf3eb945a631139800e536af3b30b"
+    },
+    {
+      "path": "checks/inspection_2.jpg",
+      "sha256": "d7d947fe680873f42fb84a12e2e555c0000777df6392c558df13590219f792da"
+    },
+    {
+      "path": "checks/height_study.jpg",
+      "sha256": "188eff555592d97fefaa4f994bd3a0dc866517074ae193773856d90f8f8169d9"
+    },
+    {
+      "path": "checks/height_blend_study.jpg",
+      "sha256": "04dc98fb1f2a33d3ee71b3f18fea358a427fb6b2161c1648ba7ac113b5f62a17"
+    },
+    {
+      "path": "checks/slope_study.jpg",
+      "sha256": "9a853c7b64ff9f2fdaca2b9a43da9ff648d79b02c0f591835e4c9c8f3c05f43b"
+    },
+    {
+      "path": "checks/slope_candidate_0.npy",
+      "sha256": "35b190d9bae0bdecbaafe958240b355cde0734c0943ed6409492f0d7bde71e48"
+    },
+    {
+      "path": "checks/slope_candidate_6.npy",
+      "sha256": "d7629990ff3807e63aed9cc047a753996879a87598b21a4e18bb077c601adc51"
+    },
+    {
+      "path": "checks/root_taper_review.jpg",
+      "sha256": "0bcc27fb9888860c8f4cd52748a05bb8365707a8acac3f82ef244df7d34315f3"
+    }
+  ],
+  "reused_first_set_inputs": [
+    "source/generated_aerial_roots.png",
+    "source/roots_prompt.txt"
+  ],
+  "replaced_in_place": [
+    "build_material.py",
+    "check_material.py",
+    "verify_rebuild.py",
+    "REPORT.md",
+    "source/README.md",
+    "fig_leaves_base.png",
+    "fig_leaves_height.png",
+    "fig_leaves_normal.png",
+    "fig_leaves_orm.png"
+  ],
+  "preserved_user_files": [
+    "BRIEF.md",
+    "guide/LAYOUT.json",
+    "guide/layout.png",
+    "artist-transcript.txt"
+  ],
+  "note": "Old leaf specimens and spray construction are superseded. The first set root tissue and its exact prompt remain in use. Temporary height studies were integrated into the new builder and removed.",
+  "round2": {
+    "replaced_in_place": [
+      {
+        "path": "build_material.py",
+        "previous_sha256": "6df2302fa0976dd56787f4e2c0f5073af5a09cd9f5747391a704e6891334415f"
+      },
+      {
+        "path": "check_material.py",
+        "previous_sha256": "09c385437ab24b4c5ab3f9bc08583831be06884c92a66bdb8b2e18d19e1fccc8"
+      },
+      {
+        "path": "REPORT.md",
+        "previous_sha256": "8085f8798009869584561ab12e49801e5d0499d91a48831c953549c861dc8066"
+      },
+      {
+        "path": "fig_leaves_base.png",
+        "previous_sha256": "8c3bd0a71a248eee4433e7727532af7173a3a08f0290690346a5583b53111803"
+      },
+      {
+        "path": "fig_leaves_height.png",
+        "previous_sha256": "a50ba1d42207afd47cbb0d6e8e7e23804a5a99dd5b016ae1c215fcab38a521a1"
+      },
+      {
+        "path": "fig_leaves_normal.png",
+        "previous_sha256": "995da7abf7c20b1edf5c71f42e892989ce2887681ab661e26c67db04273cb546"
+      },
+      {
+        "path": "fig_leaves_orm.png",
+        "previous_sha256": "a21dc3021c80174ba64bb3cd9abe6abf599825f63911d6739bbb3d20ba823eed"
+      },
+      {
+        "path": "source/composition.json",
+        "previous_sha256": "c73a0dc43e20f8e5911294d2e194049877a6c190ef8b7129e38bdc452c280422"
+      },
+      {
+        "path": "checks/metrics.json",
+        "previous_sha256": "d061ee86461c3120e59b4fe3325d62356630a6a01c654602bfe1d05057a74a27"
+      }
+    ],
+    "also_regenerated": [
+      "source/composed_master_2048.png",
+      "source/material_ids.png",
+      "source/leaf_ids.png",
+      "checks/*"
+    ],
+    "also_updated": [
+      "verify_rebuild.py",
+      "source/README.md"
+    ],
+    "retained_reused_inputs": [
+      "source/fig_specimens_set2_generated.png",
+      "source/set2_leaves_prompt.txt",
+      "source/generated_aerial_roots.png",
+      "source/roots_prompt.txt",
+      "source/concept_fig_crop.png",
+      "source/concept_registration.json"
+    ],
+    "verification_reference": "source/round1_preservation_reference.json",
+    "preserved_user_files": [
+      "BRIEF.md",
+      "BRIEF_ROUND2.md",
+      "guide/LAYOUT.json",
+      "guide/layout.png",
+      "fitted.json",
+      "artist-last.txt",
+      "artist-transcript.txt",
+      "artist-transcript-round2.txt"
+    ],
+    "note": "The undersized cluster construction and every dependent output were replaced in place. No new generated source or rejected candidate is retained. The mass and both root curtains are byte-identical in all four maps. Temporary candidate and baseline copies were used outside the project for review; only region hashes remain as the verification input."
+  },
+  "round3": {
+    "replaced_in_place": [
+      {
+        "path": "build_material.py",
+        "previous_sha256": "ae9890f583e7a0a7183946fc5b66097b6a9babc47541c25eb07d921700b72d44"
+      },
+      {
+        "path": "check_material.py",
+        "previous_sha256": "cf6db91afd89774fc44d28cacbc2d7c0f5c1d280bfa216c70459ee9b131c3511"
+      },
+      {
+        "path": "verify_rebuild.py",
+        "previous_sha256": "d9a55986cca4bf87020d31901648108d15149a928c1082e31fea7705bfecf337"
+      },
+      {
+        "path": "REPORT.md",
+        "previous_sha256": "469f5704497e0eb896dcabf98dd1946faebf97bdcf5d68c0ffac754ad0c9e66f"
+      },
+      {
+        "path": "source/README.md",
+        "previous_sha256": "ad402ca4f6b0ba6ecb96ede87cc942a40f9ea315385bb0f9f64fff8629398ddc"
+      },
+      {
+        "path": "source/composition.json",
+        "previous_sha256": "ce07f3c2b3860f6490645db2e799675b0e6547994b4559bf4f08cc888f995dc9"
+      },
+      {
+        "path": "source/leaf_ids.png",
+        "previous_sha256": "36f8badf923d71611ec71d7c9d3f0b8a5573b57dcf7a055d3c2716f43b414956"
+      },
+      {
+        "path": "source/material_ids.png",
+        "previous_sha256": "817b559650e8fede6432fbffd7286200d85c6a9e952bf525a1ce8ca304d7e5ac"
+      },
+      {
+        "path": "checks/metrics.json",
+        "previous_sha256": "2b2cd1f8e4004028d36074b661a0850306ddab1a238d5e83f7facbee401836e9"
+      },
+      {
+        "path": "checks/purpose_30m_concept_comparison.png",
+        "previous_sha256": "827a81461bfa3bac4c236ceb95c3e2d9bf2a70bfda97756fba1c834da50ee499"
+      },
+      {
+        "path": "fig_leaves_base.png",
+        "previous_sha256": "76525b322e275b2ff8b1f272e65c1a7e8db874c481ff6e9e68cc4acfb87ce3ed"
+      },
+      {
+        "path": "fig_leaves_height.png",
+        "previous_sha256": "8f491953f802093dc33138156f8dce9a608e7aab3c2b22b2a17a12d9a8f3c8d8"
+      },
+      {
+        "path": "fig_leaves_normal.png",
+        "previous_sha256": "43185f71105fb4200db36e9d258c9a500a4b0a7cad8194b81f6ab2bf69f578b8"
+      },
+      {
+        "path": "fig_leaves_orm.png",
+        "previous_sha256": "4591f08442fe21a824f1b4fce20b7f8427d3853e6483d3c572b43768b7044b37"
+      }
+    ],
+    "verification_reference": "source/round2_preservation_reference.json",
+    "note": "Round-2 palette, mass occlusion, dependent master/reviews/metrics and report replaced in place. No new image input or rejected variant remains in the project. Alpha, leaf geometry, layout, twig colour, roots, height, normals, roughness and card AO are verified against the captured baseline. Only compact preservation hashes remain as comparison inputs.",
+    "also_regenerated": [
+      "source/composed_master_2048.png",
+      "source/composition.json",
+      "checks/*"
+    ],
+    "retained_reused_inputs": [
+      "source/fig_specimens_set2_generated.png",
+      "source/set2_leaves_prompt.txt",
+      "source/generated_aerial_roots.png",
+      "source/roots_prompt.txt",
+      "source/concept_fig_crop.png",
+      "source/concept_registration.json",
+      "source/round1_preservation_reference.json"
+    ],
+    "preserved_user_files": [
+      "BRIEF.md",
+      "BRIEF_ROUND2.md",
+      "BRIEF_ROUND3.md",
+      "guide/LAYOUT.json",
+      "guide/layout.png",
+      "feedback/round2_game_30m.png",
+      "fitted.json",
+      "artist-last.txt",
+      "artist-last-round2.txt",
+      "artist-transcript.txt",
+      "artist-transcript-round2.txt",
+      "artist-transcript-round3.txt"
+    ],
+    "temporary_review_copies_removed": true
+  }
+}

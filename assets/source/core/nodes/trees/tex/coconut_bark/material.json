@@ -1,0 +1,348 @@
+{
+  "name": "coconut_bark",
+  "revision": 2,
+  "size": [
+    2048,
+    2048
+  ],
+  "physical_width_mm": 1100.0,
+  "physical_height_mm": 1600.0,
+  "full_height_range_mm": 16.0,
+  "height_used_mm": [
+    1.1180773973464966,
+    14.038747787475586
+  ],
+  "seed": 80917,
+  "normal_convention": "OpenGL; +X image-right; +Y image-up; +Z outward",
+  "normal_derivative": "central differences of decoded delivered 16-bit height, wrapping both axes",
+  "master_size": [
+    2304,
+    2304
+  ],
+  "source_crops": [
+    {
+      "source": "coconut_a.png",
+      "crop_xy": [
+        54,
+        398
+      ],
+      "master_xy": [
+        0,
+        0
+      ],
+      "flip_x": true,
+      "flip_y": true
+    },
+    {
+      "source": "coconut_b.png",
+      "crop_xy": [
+        39,
+        268
+      ],
+      "master_xy": [
+        768,
+        0
+      ],
+      "flip_x": false,
+      "flip_y": true
+    },
+    {
+      "source": "coconut_a.png",
+      "crop_xy": [
+        28,
+        365
+      ],
+      "master_xy": [
+        1536,
+        0
+      ],
+      "flip_x": false,
+      "flip_y": true
+    },
+    {
+      "source": "coconut_b.png",
+      "crop_xy": [
+        31,
+        213
+      ],
+      "master_xy": [
+        0,
+        768
+      ],
+      "flip_x": false,
+      "flip_y": false
+    },
+    {
+      "source": "coconut_a.png",
+      "crop_xy": [
+        25,
+        154
+      ],
+      "master_xy": [
+        768,
+        768
+      ],
+      "flip_x": true,
+      "flip_y": false
+    },
+    {
+      "source": "coconut_b.png",
+      "crop_xy": [
+        58,
+        80
+      ],
+      "master_xy": [
+        1536,
+        768
+      ],
+      "flip_x": true,
+      "flip_y": false
+    },
+    {
+      "source": "coconut_a.png",
+      "crop_xy": [
+        39,
+        61
+      ],
+      "master_xy": [
+        0,
+        1536
+      ],
+      "flip_x": false,
+      "flip_y": true
+    },
+    {
+      "source": "coconut_b.png",
+      "crop_xy": [
+        22,
+        108
+      ],
+      "master_xy": [
+        768,
+        1536
+      ],
+      "flip_x": false,
+      "flip_y": false
+    },
+    {
+      "source": "coconut_a.png",
+      "crop_xy": [
+        11,
+        207
+      ],
+      "master_xy": [
+        1536,
+        1536
+      ],
+      "flip_x": true,
+      "flip_y": false
+    }
+  ],
+  "rings": [
+    {
+      "center_mm": 31.0,
+      "gap_to_next_mm": 73,
+      "source_width_multiplier": 0.9273666143417358,
+      "peak_rise_parameter_mm": 9.255373306957505,
+      "measured_ring_relief_mm": 9.647903435861,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 104.0,
+      "gap_to_next_mm": 56,
+      "source_width_multiplier": 1.0709985494613647,
+      "peak_rise_parameter_mm": 8.540618785736571,
+      "measured_ring_relief_mm": 8.924871508863456,
+      "visible_fraction": 0.97119140625
+    },
+    {
+      "center_mm": 160.0,
+      "gap_to_next_mm": 61,
+      "source_width_multiplier": 0.9197744131088257,
+      "peak_rise_parameter_mm": 8.754319480737289,
+      "measured_ring_relief_mm": 9.151073781789817,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 221.0,
+      "gap_to_next_mm": 90,
+      "source_width_multiplier": 1.1842827796936035,
+      "peak_rise_parameter_mm": 9.81551684033596,
+      "measured_ring_relief_mm": 9.80610317987623,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 311.0,
+      "gap_to_next_mm": 68,
+      "source_width_multiplier": 1.094696044921875,
+      "peak_rise_parameter_mm": 8.958669441207729,
+      "measured_ring_relief_mm": 9.345042498699852,
+      "visible_fraction": 0.97607421875
+    },
+    {
+      "center_mm": 379.0,
+      "gap_to_next_mm": 83,
+      "source_width_multiplier": 1.1065973043441772,
+      "peak_rise_parameter_mm": 10.72484532434863,
+      "measured_ring_relief_mm": 11.122741609039316,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 462.0,
+      "gap_to_next_mm": 95,
+      "source_width_multiplier": 0.895348846912384,
+      "peak_rise_parameter_mm": 9.218227865080394,
+      "measured_ring_relief_mm": 9.618994966290886,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 557.0,
+      "gap_to_next_mm": 58,
+      "source_width_multiplier": 1.0522620677947998,
+      "peak_rise_parameter_mm": 9.571612388336815,
+      "measured_ring_relief_mm": 9.962533639053726,
+      "visible_fraction": 0.96826171875
+    },
+    {
+      "center_mm": 615.0,
+      "gap_to_next_mm": 76,
+      "source_width_multiplier": 1.1564507484436035,
+      "peak_rise_parameter_mm": 10.286359546585588,
+      "measured_ring_relief_mm": 10.277463281627917,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 691.0,
+      "gap_to_next_mm": 64,
+      "source_width_multiplier": 1.0957121849060059,
+      "peak_rise_parameter_mm": 9.724139492582854,
+      "measured_ring_relief_mm": 10.099631230331338,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 755.0,
+      "gap_to_next_mm": 87,
+      "source_width_multiplier": 1.1096563339233398,
+      "peak_rise_parameter_mm": 9.3857554490986,
+      "measured_ring_relief_mm": 9.754910947548378,
+      "visible_fraction": 0.96728515625
+    },
+    {
+      "center_mm": 842.0,
+      "gap_to_next_mm": 69,
+      "source_width_multiplier": 1.0644241571426392,
+      "peak_rise_parameter_mm": 8.632206847503955,
+      "measured_ring_relief_mm": 9.003198173663323,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 911.0,
+      "gap_to_next_mm": 54,
+      "source_width_multiplier": 0.8999676704406738,
+      "peak_rise_parameter_mm": 11.160600835114778,
+      "measured_ring_relief_mm": 11.535152993572218,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 965.0,
+      "gap_to_next_mm": 79,
+      "source_width_multiplier": 1.0538239479064941,
+      "peak_rise_parameter_mm": 8.808602656387885,
+      "measured_ring_relief_mm": 9.186201105571396,
+      "visible_fraction": 0.96240234375
+    },
+    {
+      "center_mm": 1044.0,
+      "gap_to_next_mm": 93,
+      "source_width_multiplier": 1.0286585092544556,
+      "peak_rise_parameter_mm": 10.793427220010127,
+      "measured_ring_relief_mm": 10.783327038944892,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 1137.0,
+      "gap_to_next_mm": 71,
+      "source_width_multiplier": 0.9507498741149902,
+      "peak_rise_parameter_mm": 10.30583274082273,
+      "measured_ring_relief_mm": 10.701600539405142,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 1208.0,
+      "gap_to_next_mm": 60,
+      "source_width_multiplier": 1.074730396270752,
+      "peak_rise_parameter_mm": 10.747844768483201,
+      "measured_ring_relief_mm": 11.127128112290116,
+      "visible_fraction": 0.97216796875
+    },
+    {
+      "center_mm": 1268.0,
+      "gap_to_next_mm": 85,
+      "source_width_multiplier": 1.0566564798355103,
+      "peak_rise_parameter_mm": 8.953782185361995,
+      "measured_ring_relief_mm": 9.34366412369273,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 1353.0,
+      "gap_to_next_mm": 77,
+      "source_width_multiplier": 1.08957839012146,
+      "peak_rise_parameter_mm": 10.738488351519148,
+      "measured_ring_relief_mm": 11.11357810479218,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 1430.0,
+      "gap_to_next_mm": 66,
+      "source_width_multiplier": 1.1503028869628906,
+      "peak_rise_parameter_mm": 9.064745039444128,
+      "measured_ring_relief_mm": 9.054357330903162,
+      "visible_fraction": 0.9638671875
+    },
+    {
+      "center_mm": 1496.0,
+      "gap_to_next_mm": 82,
+      "source_width_multiplier": 1.0611882209777832,
+      "peak_rise_parameter_mm": 11.353525648410601,
+      "measured_ring_relief_mm": 11.725023543286051,
+      "visible_fraction": 1.0
+    },
+    {
+      "center_mm": 1578.0,
+      "gap_to_next_mm": 53,
+      "source_width_multiplier": 1.126081109046936,
+      "peak_rise_parameter_mm": 9.782265745989159,
+      "measured_ring_relief_mm": 10.158068835798844,
+      "visible_fraction": 1.0
+    }
+  ],
+  "neutral_height_mm": 2.2,
+  "base_ring_colours_srgb255": {
+    "body": [
+      130.0,
+      123.0,
+      105.0
+    ],
+    "lip": [
+      180.0,
+      171.0,
+      149.0
+    ],
+    "recess": [
+      88.0,
+      85.0,
+      74.0
+    ]
+  },
+  "base_contrast": "Pale exposed scar fibre plus dark recessed-tissue pigment, calibrated independently of illumination. No broad directional light or cast shadows; AO is not multiplied into base.",
+  "lichen_coverage_over_025": 0.0008764266967773438,
+  "repeat_note": "Any single fixed UV tile repeats exactly after its specified physical height. Contrast and salience are minimized; true aperiodicity needs engine-side variation.",
+  "source_sha256": {
+    "coconut_a.png": "599b98ea64875b77616f5edddde4ebbfb7d3c3e07a1d436a92f58327059af35d",
+    "coconut_b.png": "323836a8fb84767201c17d96b97219e705f5822a4f40610194b6962ef38449a7",
+    "coconut_rings.png": "1ee06694e9703b10f3f3d94c2089bd8532c2507e0f4caa40e76d8214fcf21e9b",
+    "coconut_rings_v2.png": "ee0cb18ea0bbfe958635ef03007304149fd8d4d38b23dadc039c7d3fb57c0437",
+    "composed_master_2304.png": "51dc385d61ce19655d3b4a4385877d1dc3958b75c4b3cc37b225f40c0a363e18",
+    "ridge_extraction.png": "7350e6c563eae5cc28087997946b6da9266084bf42caa1a90e14ea0985ec0dfc"
+  }
+}

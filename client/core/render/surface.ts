@@ -10,6 +10,7 @@
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { BONES_PER_ROW, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, type FramePacket } from "./packet.ts";
+import { SHADOW_GLSL } from "./shadowtext.ts";
 
 /** What a surface that is not metal reflects head on. */
 export const DIELECTRIC = 0.04;
@@ -123,14 +124,14 @@ export function skyOn(out: Out, frame: Numbers, up: number): void {
 }
 
 /**
- * Adds one light's share: the frame block's direction at `way` and colour at `colour`. Lambert and a GGX highlight as
- * wide as the roughness squared, shadowed by Smith's term and edged by Schlick's.
+ * Adds one light's share: the frame block's direction at `way` and colour at `colour`, `shade` of it reaching the
+ * surface. Lambert and a GGX highlight as wide as the roughness squared, shadowed by Smith's term and edged by Schlick's.
  */
-function direct(out: Out, frame: Numbers, way: number, colour: number, albedo: Numbers, metal: number, a2: number, n: Numbers, v: Numbers, nv: number): void {
+function direct(out: Out, frame: Numbers, way: number, colour: number, albedo: Numbers, metal: number, a2: number, n: Numbers, v: Numbers, nv: number, shade = 1): void {
   const lx = frame[way]!, ly = frame[way + 1]!, lz = frame[way + 2]!;
   const nl = Math.max(n[0]! * lx + n[1]! * ly + n[2]! * lz, 0);
   // What the shader works out and adds as nothing.
-  if (nl === 0 || frame[colour]! + frame[colour + 1]! + frame[colour + 2]! === 0) return;
+  if (nl === 0 || shade === 0 || frame[colour]! + frame[colour + 1]! + frame[colour + 2]! === 0) return;
   const hx = lx + v[0]!, hy = ly + v[1]!, hz = lz + v[2]!;
   const hl = Math.max(Math.hypot(hx, hy, hz), 1e-6);
   const nh = Math.min(Math.max((n[0]! * hx + n[1]! * hy + n[2]! * hz) / hl, 0), 1);
@@ -141,7 +142,7 @@ function direct(out: Out, frame: Numbers, way: number, colour: number, albedo: N
   const edge = Math.pow(1 - vh, 5);
   for (let c = 0; c < 3; c++) {
     const f0 = DIELECTRIC + (albedo[c]! - DIELECTRIC) * metal;
-    out[c]! += frame[colour + c]! * nl * (albedo[c]! * (1 - metal) + gloss * (f0 + (1 - f0) * edge));
+    out[c]! += shade * frame[colour + c]! * nl * (albedo[c]! * (1 - metal) + gloss * (f0 + (1 - f0) * edge));
   }
 }
 
@@ -152,9 +153,10 @@ const sky = new Float64Array(3);
  * the normal, `v` the way to the eye, and `mirror` the sky's light from where the eye's ray is reflected to. The sun
  * and the moon each light by `direct`. The sky lights from all round as `skyOn` has it, less where the surface is
  * occluded: the colour under the highlight, and the highlight itself, which shows `mirror` where the surface is smooth
- * and turns to the same light as the colour's as it roughens.
+ * and turns to the same light as the colour's as it roughens. `shade` is how much of the sun reaches the pixel, which
+ * only the GPU's shadow maps know (shadowtext.ts), so the rasterizer leaves it 1.
  */
-export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numbers, frame: Numbers, mirror: Numbers): void {
+export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numbers, frame: Numbers, mirror: Numbers, shade = 1): void {
   const rough = Math.max(mro[1]!, SMOOTHEST);
   const metal = mro[2]!;
   const a = rough * rough;
@@ -165,7 +167,7 @@ export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numb
     const f0 = DIELECTRIC + (albedo[c]! - DIELECTRIC) * metal;
     out[c] = mro[0]! * (sky[c]! * albedo[c]! * (1 - metal) + (f0 * parts[0]! + (1 - f0) * parts[1]!) * (mirror[c]! * (1 - a) + sky[c]! * a));
   }
-  direct(out, frame, FRAME.sun, FRAME.sunColor, albedo, metal, a * a, n, v, nv);
+  direct(out, frame, FRAME.sun, FRAME.sunColor, albedo, metal, a * a, n, v, nv, shade);
   direct(out, frame, FRAME.moon, FRAME.moonColor, albedo, metal, a * a, n, v, nv);
 }
 
@@ -277,7 +279,8 @@ void main() {
 /**
  * The light's GLSL, which LIT, SURFACE and the dome share: the frame block, the fog's two uniforms, and the twins of
  * `skyShare`, `skyOn`, `direct`, `lit`, `tone` and `shown`. `shown` takes where the point is from the eye, and the air
- * between (atmosphere.ts `hazed`, which a program defines after this) above water; under water, today's fog.
+ * between (atmosphere.ts `hazed`, which a program defines after this) above water; under water, today's fog. What
+ * lights includes SHADOW_GLSL after it, for `lit`'s shade.
  */
 export const LIGHT = `${FRAME_BLOCK}uniform vec3 uSky;
 uniform vec2 uFog;
@@ -301,14 +304,14 @@ vec3 direct(vec3 l, vec3 colour, vec3 albedo, float metal, float a2, vec3 n, vec
   vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, metal);
   return colour * nl * (albedo * (1.0 - metal) + gloss * (f0 + (1.0 - f0) * pow(1.0 - vh, 5.0)));
 }
-vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored) {
+vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored, float shade) {
   float rough = max(mro.g, ${f(SMOOTHEST)});
   float a = rough * rough;
   float nv = clamp(dot(n, v), 0.001, 1.0);
   vec3 sky = skyOn(n.y);
   vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, mro.b);
   vec3 light = mro.r * (sky * albedo * (1.0 - mro.b) + skyShare(f0, rough, nv) * mix(mirrored, sky, a));
-  return light + direct(fSun.xyz, fSunColor.rgb, albedo, mro.b, a * a, n, v, nv) + direct(fMoon.xyz, fMoonColor.rgb, albedo, mro.b, a * a, n, v, nv);
+  return light + direct(fSun.xyz, fSunColor.rgb, albedo, mro.b, a * a, n, v, nv) * shade + direct(fMoon.xyz, fMoonColor.rgb, albedo, mro.b, a * a, n, v, nv);
 }
 vec3 tone(vec3 c) {
   float peak = max(c.r, max(c.g, c.b));
@@ -354,7 +357,8 @@ vec3 skyFrom(vec3 r) {
  * every texture repeats, since a material may run along a mesh more than once. `uCutoff` is the material's for a
  * cut-out draw and 0 for any other. A cut-out draw writes as alpha how much of the pixel lies on the solid side, for
  * alpha to coverage to take as samples. The rasterizer tests each pixel's middle, so the two differ only along a cut.
- * `air` is the sky table's lookup, which smooth surfaces mirror, and the air (atmosphere.ts AIR).
+ * `air` is the sky table's lookup, which smooth surfaces mirror, and the air (atmosphere.ts AIR). The sun's shadow is
+ * looked up off the surface along the mesh's normal, turned to the side seen.
  */
 export function surfaceFragment(format: TextureFormat, air: string): string {
   return `#version 300 es
@@ -368,7 +372,7 @@ uniform sampler2D uBase, uNormal, uMro, uMask, uMask2;
 uniform vec3 uTint;
 uniform float uCutoff;
 out vec4 o;
-${LIGHT}${air}vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
+${LIGHT}${SHADOW_GLSL}${air}vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
   return base * uTint * (1.0 - dot(mask + mask2, vec3(1.0)) + vDye * mask + vDye2 * mask2);
 }
 vec3 bumped(vec2 b) {
@@ -386,6 +390,7 @@ void main() {
   if (cover == 0.0) discard;
   vec3 v = -normalize(vRel);
   vec3 n = bumped(bump);
-  o = vec4(shown(lit(dyed(base.rgb, mask, mask2), mro, n, v, skyFrom(reflect(-v, n))), vRel), cover);
+  float shade = sunShadow(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal));
+  o = vec4(shown(lit(dyed(base.rgb, mask, mask2), mro, n, v, skyFrom(reflect(-v, n)), shade), vRel), cover);
 }`;
 }

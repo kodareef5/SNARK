@@ -1,0 +1,12 @@
+Completed all four 2048×2048 layer sets, with native generated sources, reproducible scripts, visual checks and reports.
+
+| Material report | Full height range |
+|---|---:|
+| [Fig / banyan](fig_bark/REPORT.md) | 2 mm |
+| [Live oak](oak_bark/REPORT.md) | 20 mm |
+| [Mangrove bark](mangrove_bark/REPORT.md) | 4 mm |
+| [Mangrove roots](mangrove_roots/REPORT.md) | 3 mm |
+
+All 16 maps rebuild byte-for-byte. Required edge jumps are within 9% of interior variation; maximum normal/height disagreement is below 0.39°.
+
+The roots’ wet boundary sits approximately 0.18–0.31 m above mud. Built-in image-generation prompts are preserved in each `source/prompts.json`. Validation includes tiled and relit previews; no in-engine test was performed.

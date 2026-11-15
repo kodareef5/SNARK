@@ -1,0 +1,8 @@
+Saved all five PNGs at the image tool’s native resolution:
+
+- [Lineup](banyan_lineup.png) — 2172 × 724
+- [Hall](banyan_hall.png), [distant view](banyan_far.png), [flat-colour view](banyan_far_flat.png), [stump](banyan_stump.png) — 1672 × 941 each
+
+Added the full banyan specifications to [DESIGN.md](DESIGN.md), exact prompts to [prompts.md](prompts.md), and preserved all nine generated versions in `source/`.
+
+Visually reviewed every version and verified file integrity. Used the built-in image tool with only your original artwork as references. No git commands were run.

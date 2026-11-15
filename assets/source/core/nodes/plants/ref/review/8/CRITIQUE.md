@@ -1,0 +1,5 @@
+**Berry bush — medium passes; hold overall for low.** The opening in `game_bush_black.png` now has shaded leaves behind it, and the old blades across the lower half no longer dominate the rotation views. The dark berries still read well. I would ship medium beside the accepted three.
+
+One remaining fix: `game_bush_lowpoly.png` retains the large clear window right of centre and the opening down beside the trunk, essentially the same hollow layout as the seventh view. Stagger inner leaf faces behind those openings on low so they resolve into smaller, irregular branch gaps. The interior coverage gained on medium needs to survive here too.
+
+**Creeper — pass on medium and low.** In `game_row_creeper_lowpoly.png`, the front runs now break into pointed, separated leaves; the trailing stems stay thin, and stone remains visible through the foliage and down to the foot. The angular leaves fit the accepted plants on low, including in `game_patch_lowpoly.png`. Medium retains its pass. I would ship it; no remaining must-fix.

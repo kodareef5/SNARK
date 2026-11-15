@@ -1,0 +1,41 @@
+{
+  "picture": 2048,
+  "discs": {
+    "fig": {
+      "box": [
+        0,
+        0,
+        1024,
+        1024
+      ],
+      "disc_diameter_share": 0.8
+    },
+    "oak": {
+      "box": [
+        1024,
+        0,
+        2048,
+        1024
+      ],
+      "disc_diameter_share": 0.8
+    },
+    "mangrove": {
+      "box": [
+        0,
+        1024,
+        1024,
+        2048
+      ],
+      "disc_diameter_share": 0.8
+    },
+    "banyan": {
+      "box": [
+        1024,
+        1024,
+        2048,
+        2048
+      ],
+      "disc_diameter_share": 0.8
+    }
+  }
+}

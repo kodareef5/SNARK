@@ -1,0 +1,267 @@
+{
+  "round": "Round 4 delivered state captured before round 5 pigment edits",
+  "pixel_hashes": {
+    "base_alpha": "f1e2100789746910d50990ab501bad33c46e96e389b36e4b6436c047b310c4e0",
+    "height": "4b9da2d12e63214d0078de82aae493e249d0ca1cfbb0edde058067973bf2762c",
+    "normal": "bb5bed287706e4dd3ab45a7d3db51551b896fec5e7bb1e9f73864ea170abf27d",
+    "orm_roughness_metalness": "5ab4e0aace4b0243e69f2352ab0cb0a7f8df1008b69336b29195283399bf84a8",
+    "cards_orm": "87becc6e7ded77c6d3f1f8313361a7790ffbc5c78b74ba642a3e73c18be3eb73",
+    "accessories_base": "84a2f95b2d353df8f56b4d6aff5a194e35e0b282d06ad718dcfe8e2b729b1f96",
+    "accessories_height": "d6f1fde6e8b8fadac64e12971fab7d9e1b8ff8092f4419b3482539cc13f462a1",
+    "accessories_normal": "49242122f32369b63372bbb667494fa177172ad5921e6b781724f95bb20655f4",
+    "accessories_orm": "accaac57f3d2b2cc277b716f58962c8f75832d0bb9370a7aeec3ef4a60e938eb",
+    "card_twigs_and_brown_rgb": "9d1bbcaf089d0768cc0eb21251ee7fc6b67167333d1c5f5f66235d177a5c4e2f"
+  },
+  "file_hashes": {
+    "oak_leaves_base.png": "24c38e7a61b24806f37e5ca8138b14fae3203071f6cde884ed4b605d8fd934a2",
+    "oak_leaves_height.png": "7d9f1c23837a9882730ca51cd1288d60703ae0b5e46b45e876ac26b18337f610",
+    "oak_leaves_normal.png": "59a8fa607630e30bd9518ee26117f14754d9a1c0abb7ce3a48f7fbe725769ba9",
+    "oak_leaves_orm.png": "7a017dedb0e5c8b93c7b91c03bba9430a1d956209b811f20565c13fea0424310",
+    "guide/LAYOUT.json": "becb4c4c556037da43a60ffad3c55fea8ddfd20d9fb44b2bd24b4dc570b867e2",
+    "guide/layout.png": "8a5f09d638ceec37bb1fcb688aadb764e0bb1b8d935605dcae17bdd214babbfd",
+    "source/detail_leaf_ids.png": "144e91363dc29048f583c460cbb7067d161592c5c980d765f0c342a585156682",
+    "source/material_ids.png": "f6e7d6069ea9ce54cee4370a74e86ef9361804d4cd95f501c48bab6ccf983e40",
+    "source/fern_composition.json": "ea95b960e1a59c00a09bc5cf2cbba9cbdc3b9dabf962b86b11ecb95faa82ff8e"
+  },
+  "geometry_sha256": "54a0f274646d06d1a4964d707b0cb04a4160e72b4ce6202deab9c78056465c5d",
+  "mass_baseline": {
+    "rgb_mean": [
+      88.00190687179565,
+      98.0386848449707,
+      55.98831653594971
+    ],
+    "ao_below_060_fraction": 0.010000228881835938,
+    "dark_green_below_65_fraction": 0.000591278076171875,
+    "dark_green_below_80_fraction": 0.19238567352294922
+  },
+  "mip_coverage": [
+    [
+      {
+        "shrink": 1,
+        "size_px": [
+          512,
+          512
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7976806913458895,
+        "alpha_vs_fixed_scalloped_outline": 0.9704661774022479,
+        "occupied_cell_fraction": 0.5200729370117188,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 2,
+        "size_px": [
+          256,
+          256
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7986753494467945,
+        "alpha_vs_fixed_scalloped_outline": 0.9716762882341635,
+        "occupied_cell_fraction": 0.520721435546875,
+        "largest_connected_fraction": 0.9999413936587939
+      },
+      {
+        "shrink": 4,
+        "size_px": [
+          128,
+          128
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7998455354478594,
+        "alpha_vs_fixed_scalloped_outline": 0.9730999480364172,
+        "occupied_cell_fraction": 0.521484375,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 8,
+        "size_px": [
+          64,
+          64
+        ],
+        "alpha_vs_fixed_convex_outline": 0.8013433735292225,
+        "alpha_vs_fixed_scalloped_outline": 0.9749222325833019,
+        "occupied_cell_fraction": 0.5224609375,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 16,
+        "size_px": [
+          32,
+          32
+        ],
+        "alpha_vs_fixed_convex_outline": 0.8073347258546746,
+        "alpha_vs_fixed_scalloped_outline": 0.9822113707708406,
+        "occupied_cell_fraction": 0.5263671875,
+        "largest_connected_fraction": 1.0
+      }
+    ],
+    [
+      {
+        "shrink": 1,
+        "size_px": [
+          512,
+          512
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7764352457879148,
+        "alpha_vs_fixed_scalloped_outline": 0.9382230094688272,
+        "occupied_cell_fraction": 0.490997314453125,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 2,
+        "size_px": [
+          256,
+          256
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7770384803315377,
+        "alpha_vs_fixed_scalloped_outline": 0.938951941510493,
+        "occupied_cell_fraction": 0.4913787841796875,
+        "largest_connected_fraction": 0.9998757879700649
+      },
+      {
+        "shrink": 4,
+        "size_px": [
+          128,
+          128
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7773521622942217,
+        "alpha_vs_fixed_scalloped_outline": 0.9393309861721592,
+        "occupied_cell_fraction": 0.4915771484375,
+        "largest_connected_fraction": 0.9991308666501117
+      },
+      {
+        "shrink": 8,
+        "size_px": [
+          64,
+          64
+        ],
+        "alpha_vs_fixed_convex_outline": 0.772912356053157,
+        "alpha_vs_fixed_scalloped_outline": 0.9339660463454992,
+        "occupied_cell_fraction": 0.48876953125,
+        "largest_connected_fraction": 0.995004995004995
+      },
+      {
+        "shrink": 16,
+        "size_px": [
+          32,
+          32
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7736844962689944,
+        "alpha_vs_fixed_scalloped_outline": 0.9348990793588314,
+        "occupied_cell_fraction": 0.4892578125,
+        "largest_connected_fraction": 0.9960079840319361
+      }
+    ],
+    [
+      {
+        "shrink": 1,
+        "size_px": [
+          512,
+          512
+        ],
+        "alpha_vs_fixed_convex_outline": 0.8089424237461865,
+        "alpha_vs_fixed_scalloped_outline": 0.9767629202703791,
+        "occupied_cell_fraction": 0.5087890625,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 2,
+        "size_px": [
+          256,
+          256
+        ],
+        "alpha_vs_fixed_convex_outline": 0.8091122473116323,
+        "alpha_vs_fixed_scalloped_outline": 0.9769679748661653,
+        "occupied_cell_fraction": 0.5088958740234375,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 4,
+        "size_px": [
+          128,
+          128
+        ],
+        "alpha_vs_fixed_convex_outline": 0.810203970232355,
+        "alpha_vs_fixed_scalloped_outline": 0.9782861829819333,
+        "occupied_cell_fraction": 0.50958251953125,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 8,
+        "size_px": [
+          64,
+          64
+        ],
+        "alpha_vs_fixed_convex_outline": 0.8136004415412702,
+        "alpha_vs_fixed_scalloped_outline": 0.9823872748976558,
+        "occupied_cell_fraction": 0.51171875,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 16,
+        "size_px": [
+          32,
+          32
+        ],
+        "alpha_vs_fixed_convex_outline": 0.8058370785494642,
+        "alpha_vs_fixed_scalloped_outline": 0.9730133505188614,
+        "occupied_cell_fraction": 0.5068359375,
+        "largest_connected_fraction": 1.0
+      }
+    ],
+    [
+      {
+        "shrink": 1,
+        "size_px": [
+          512,
+          512
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7688327438100051,
+        "alpha_vs_fixed_scalloped_outline": 0.981993261994811,
+        "occupied_cell_fraction": 0.2902069091796875,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 2,
+        "size_px": [
+          256,
+          256
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7685093481556342,
+        "alpha_vs_fixed_scalloped_outline": 0.9815802042054447,
+        "occupied_cell_fraction": 0.2900848388671875,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 4,
+        "size_px": [
+          128,
+          128
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7688731682668014,
+        "alpha_vs_fixed_scalloped_outline": 0.9820448942184817,
+        "occupied_cell_fraction": 0.29022216796875,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 8,
+        "size_px": [
+          64,
+          64
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7677412834765033,
+        "alpha_vs_fixed_scalloped_outline": 0.9805991919556996,
+        "occupied_cell_fraction": 0.289794921875,
+        "largest_connected_fraction": 1.0
+      },
+      {
+        "shrink": 16,
+        "size_px": [
+          32,
+          32
+        ],
+        "alpha_vs_fixed_convex_outline": 0.7683880747852451,
+        "alpha_vs_fixed_scalloped_outline": 0.9814253075344322,
+        "occupied_cell_fraction": 0.2900390625,
+        "largest_connected_fraction": 1.0
+      }
+    ]
+  ]
+}

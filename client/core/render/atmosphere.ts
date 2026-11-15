@@ -210,8 +210,17 @@ const CLEAR_AIR = 40000;
  * `thin` degrees up to nothing at `lowest`.
  */
 const FAR = { from: 2800, to: 11000, blur: 1.2, wear: 2, thin: 9, lowest: 1.5 };
-/** The high layer's fibres run along this way in its picture, 21.9 degrees above its x; it is read along it either side, once and twice this much of a tile, 300 m. */
-const STREAK = [Math.cos(21.9 * DEG), -Math.sin(21.9 * DEG)].map((c) => (c * 300) / HIGH.span);
+/**
+ * How the high layer is read where it is seen along its fibres, which run `axis` degrees above its picture's x. There
+ * the view draws them shorter than across, so their crossings crowd into rungs; the layer is read drawn out along them
+ * instead, `taps` reads either side `step` metres apart weighted as a bell `spread` metres wide, no sharper than a
+ * texel of 125 m. It is drawn out fully where a step along the fibres looks `full` as long as one across them, and not
+ * at all where it looks as long, so overhead the picture is as it is.
+ */
+const STREAK = { axis: 21.9, taps: 8, step: 150, spread: 500, full: 0.6 };
+const STREAK_STEP = [Math.cos(STREAK.axis * DEG), -Math.sin(STREAK.axis * DEG)].map((c) => (c * STREAK.step) / HIGH.span);
+const bell = Array.from({ length: STREAK.taps + 1 }, (_, k) => Math.exp(-((k * STREAK.step) ** 2) / (2 * STREAK.spread ** 2)));
+const STREAK_W = bell.map((w) => w / (2 * bell.reduce((a, b) => a + b, 0) - bell[0]!));
 
 /**
  * How a cloud is lit, number for number the art director's light.py: light passing through it by its optical depth;
@@ -442,6 +451,12 @@ vec3 cloudLit(float thick, float depth, float relief, float up, vec3 d, vec3 beh
 float worn(vec2 s, float e) {
   return clamp(s.x - e * (1.0 - min(s.y * ${g(BREAK.keep)}, 1.0)), 0.0, 1.0);
 }
+// The picture read drawn out 'along' its fibres either side, at lod 'l'.
+vec2 drawn(sampler2D map, vec2 uv, vec2 along, float l) {
+  vec2 s = ${g(STREAK_W[0]!)} * textureLod(map, uv, l).${read};
+${STREAK_W.slice(1).map((w, k) => `  s += ${g(w)} * (textureLod(map, uv + ${g(k + 1)} * along, l).${read} + textureLod(map, uv - ${g(k + 1)} * along, l).${read});`).join("\n")}
+  return s;
+}
 // One layer at 'shape' (metres up, metres a tile, optical depth, metres its slope is read over), its tile moved by
 // 'at', in front of 'behind': its colour and how much of the sky it hides. A 'heaped' layer's tiles
 // are broken up, and seen low its heaps show their sides.
@@ -455,10 +470,22 @@ vec4 layer(sampler2D map, vec3 d, vec3 behind, vec4 shape, vec2 at, bool heaped)
   // Far heaped cloud is read softer, so distance takes its small scraps first.
   if (heaped) lod += ${g(FAR.blur)} * max(log2(t / ${g(FAR.from)}), 0.0);
   vec2 s = textureLod(map, uv, lod).${read};
-  // Streaks are read drawn out along their wind, so a band seen end on shows no rungs across it.
+  // The slope the light finds is read no sharper than a texel of 125 m.
+  float coarse = max(lod, log2(size) - 8.0);
+  // A streak layer seen along its fibres is read drawn out along them, and so is its slope, so that a band seen end on
+  // shows no rungs across it; only where there is cloud within reach, by the picture's mean over about 3 km.
+  vec2 along = vec2(0.0);
+  float slod = lod;
   if (!heaped) {
-    vec2 along = vec2(${STREAK.map(g).join(", ")});
-    s = 0.3 * s + 0.2 * (textureLod(map, uv + along, lod).${read} + textureLod(map, uv - along, lod).${read}) + 0.15 * (textureLod(map, uv + 2.0 * along, lod).${read} + textureLod(map, uv - 2.0 * along, lod).${read});
+    vec2 fibre = vec2(${g(-Math.cos(STREAK.axis * DEG))}, ${g(-Math.sin(STREAK.axis * DEG))});
+    float a = dot(fibre, d.xz), b = dot(vec2(-fibre.y, fibre.x), d.xz);
+    float looks = sqrt(max(1.0 - a * a, 0.0)) / max(sqrt(max(1.0 - b * b, 0.0)), 1e-3);
+    float drawOut = 1.0 - smoothstep(${g(STREAK.full)}, 1.0, looks);
+    if (drawOut > 0.01 && textureLod(map, uv, log2(size) - 3.5).x > 0.0) {
+      along = drawOut * vec2(${STREAK_STEP.map(g).join(", ")});
+      slod = mix(lod, coarse, drawOut);
+      s = drawn(map, uv, along, slod);
+    }
   }
   mat2 turn = mat2(1.0);
   if (heaped) {
@@ -484,11 +511,17 @@ vec4 layer(sampler2D map, vec3 d, vec3 behind, vec4 shape, vec2 at, bool heaped)
   vec3 way = vWay;
   float side = length(way.xz);
   float relief = 0.0;
-  float coarse = max(lod, log2(size) - 8.0);
   if (side > 0.001) {
-    float here = textureLod(map, uv, coarse).y;
-    float there = textureLod(map, uv + turn * vec2(-way.x, way.z) / side * (shape.w / shape.y), coarse).y;
-    relief = clamp((here - there) * 3.5 * side, -0.7, 0.7) * vRelief;
+    vec2 toward = turn * vec2(-way.x, way.z) / side * (shape.w / shape.y);
+    vec2 here, there;
+    if (along == vec2(0.0)) {
+      here = textureLod(map, uv, coarse).${read};
+      there = textureLod(map, uv + toward, coarse).${read};
+    } else {
+      here = s;
+      there = drawn(map, uv + toward, along, slod);
+    }
+    relief = clamp((here.y - there.y) * 3.5 * side, -0.7, 0.7) * vRelief;
   }
   // Seen low, a heap shows its side: where it thins away from the eye reads as its top, lit from above, and where it
   // thickens away as its base.

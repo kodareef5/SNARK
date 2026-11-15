@@ -1,0 +1,5 @@
+Rebuilt all four clusters: **20–22 px margins**, matching leaf scale, and **77–84% outline coverage at every shrink**.
+
+The mass and both root curtains remain byte-identical across all four maps. **168 checks pass**, and the complete rebuild reproduces every PNG exactly. Both 30 m lighting comparisons were regenerated; superseded work was replaced and temporary files removed.
+
+[Updated report](/home/user/dev/SNARK/.claude/worktrees/agent-a84518807920d9470/assets/source/core/nodes/trees/tex/fig_leaves/REPORT.md) · [Cluster preview](/home/user/dev/SNARK/.claude/worktrees/agent-a84518807920d9470/assets/source/core/nodes/trees/tex/fig_leaves/checks/clusters_review.png)

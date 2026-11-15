@@ -1,0 +1,5 @@
+Completed all four 2048×2048 maps, source images, rebuild scripts, and checks.
+
+[Layer preview](checks/layers.jpg) · [REPORT.md](REPORT.md)
+
+Verified zero alpha outside margins, strong 1/8-scale coverage, a 10 mm height range, and byte-identical rebuilds.

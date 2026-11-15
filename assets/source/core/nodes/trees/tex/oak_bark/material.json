@@ -1,0 +1,26 @@
+{
+  "name": "oak_bark", "version": 2, "seed": 141126,
+  "resolution": [2048, 2048],
+  "width_m": 1.6, "height_m": 2.0, "height_range_mm": 48.0,
+  "wrap_x": true, "wrap_y": true,
+  "image_top": "up the stem; positive tangent Y",
+  "normal_convention": "OpenGL (+X right, +Y image-up, +Z outward)",
+  "normal_strength": 1.0,
+  "height_encoding": "unsigned 16-bit; 0=0 mm, 65535=48 mm",
+  "base_color_space": "sRGB",
+  "data_color_space": "linear; disable sRGB for height, normal, ORM",
+  "orm_channels": ["ambient occlusion", "roughness", "metalness = 0"],
+  "palette": {
+    "main": "#493F34", "face": "#6D5A43", "face_dark": "#5A4A38", "face_light": "#7A6550",
+    "weathered": "#81725A", "fissure": "#2E2A24", "deepest": "#1D1A16", "lichen": "#858876"
+  },
+  "sources": ["source/plate_source_a.png", "source/plate_source_b.png", "source/plate_source_c.png", "source/plate_source_d.png"],
+  "source_method": "Four original built-in image_gen paintings, frozen at native size; periodic minimum-error joins; shared semantic geometry and pigment fields",
+  "checks": "checks/metrics.json", "build": "python3 build_material.py", "check": "python3 check_material.py --rebuild",
+  "preview": {
+    "cylinder_diameter_m": 2.0, "distances_to_front_surface_m": [3.0, 10.0],
+    "horizontal_fov_degrees": 60.0, "viewport": [1920, 1080],
+    "sun_elevation_degrees": 18.0, "sun_azimuths_from_camera_degrees": [-65.0, 65.0],
+    "cast_shadows": false, "bounced_light": false
+  }
+}

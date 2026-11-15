@@ -1,0 +1,7 @@
+Rebuilt all four maps with larger overlapping leaves, independent tilts, pooled depth, and a **160 mm height range**. Preserved colours, roughness, moss, fern, margins, and tiling.
+
+**140 checks pass; all four PNGs rebuild byte-for-byte.** Superseded sources removed.
+
+[Report](REPORT.md) · [Both-light concept comparison](checks/purpose_30m_concept_comparison.png)
+
+The comparison is a material diagnostic, not a new game capture.

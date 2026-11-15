@@ -1,0 +1,175 @@
+{
+  "final_png_count": 5,
+  "generated_version_count": 9,
+  "archived_version_count": 9,
+  "all_27_prompts_preserved_exactly": true,
+  "all_image_inputs_present": true,
+  "finals_match_native_outputs": true,
+  "original_10_final_pngs_unchanged": true,
+  "all_markdown_file_links_resolve": true,
+  "files": [
+    {
+      "file": "source/banyan_stump_v2.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 2686271,
+      "sha256": "06674009e3578d7b360d18cd6113301845ee3b3758138e2a3cb40d7b0c0f58e5",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/banyan_stump_v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 2909535,
+      "sha256": "44da927d2da4522cb322cfb887b940747db19ae622aca2008c9426373de4f3fc",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/banyan_far_flat_v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1556128,
+      "sha256": "9c7f4470d97e678b17b3591ab8464d27cce8e75f615ba6f24f48c0d04b7f2958",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/banyan_hall_v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 3092189,
+      "sha256": "5682d34e16c1aaa265fe648fa67d5caee8c4b8c9c0a9f9c434d7a858d5be06ff",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/banyan_lineup_v3.png",
+      "width": 2172,
+      "height": 724,
+      "bytes": 2412725,
+      "sha256": "2e27c982f635a3336d7ad24b971502e1dfc0d8e639b8fbb59d1b53203483da16",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/banyan_lineup_v2.png",
+      "width": 2172,
+      "height": 724,
+      "bytes": 2538378,
+      "sha256": "79642b47900af3659e1655c44b704ca283f9eae0ea80310337a439695487a503",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/banyan_lineup_v1.png",
+      "width": 2172,
+      "height": 724,
+      "bytes": 2659328,
+      "sha256": "ee7d0c11249bcd34054f323d36e0fe916bea19856ca6eb94462323509c15d5e5",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/banyan_lineup_v4.png",
+      "width": 2172,
+      "height": 724,
+      "bytes": 2406810,
+      "sha256": "2e411d118bf19ee41071767401fd7d133afdf4bd13486de73d27854281055ea2",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/banyan_far_v1.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 2466904,
+      "sha256": "686a8992a64401a08533fb000ee565b1c54a676d397654e62cc2d5743a788dc8",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "banyan_lineup.png",
+      "width": 2172,
+      "height": 724,
+      "bytes": 2406810,
+      "sha256": "2e411d118bf19ee41071767401fd7d133afdf4bd13486de73d27854281055ea2",
+      "crc_valid": true,
+      "idat_valid": true,
+      "version": "banyan_lineup_v4"
+    },
+    {
+      "file": "banyan_hall.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 3092189,
+      "sha256": "5682d34e16c1aaa265fe648fa67d5caee8c4b8c9c0a9f9c434d7a858d5be06ff",
+      "crc_valid": true,
+      "idat_valid": true,
+      "version": "banyan_hall_v1"
+    },
+    {
+      "file": "banyan_far.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 2466904,
+      "sha256": "686a8992a64401a08533fb000ee565b1c54a676d397654e62cc2d5743a788dc8",
+      "crc_valid": true,
+      "idat_valid": true,
+      "version": "banyan_far_v1"
+    },
+    {
+      "file": "banyan_far_flat.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1556128,
+      "sha256": "9c7f4470d97e678b17b3591ab8464d27cce8e75f615ba6f24f48c0d04b7f2958",
+      "crc_valid": true,
+      "idat_valid": true,
+      "version": "banyan_far_flat_v1"
+    },
+    {
+      "file": "banyan_stump.png",
+      "width": 1672,
+      "height": 941,
+      "bytes": 2686271,
+      "sha256": "06674009e3578d7b360d18cd6113301845ee3b3758138e2a3cb40d7b0c0f58e5",
+      "crc_valid": true,
+      "idat_valid": true,
+      "version": "banyan_stump_v2"
+    }
+  ],
+  "ground_plans": [
+    {
+      "individual": "B1",
+      "pillar_count": 9,
+      "minimum_base_edge_gap_m": 2.188,
+      "closest_pair": [
+        "P2",
+        "P3"
+      ],
+      "note": "Written ground plan only; no mesh or runtime collision test."
+    },
+    {
+      "individual": "B2",
+      "pillar_count": 3,
+      "minimum_base_edge_gap_m": 1.54,
+      "closest_pair": [
+        "main",
+        "P1"
+      ],
+      "note": "Written ground plan only; no mesh or runtime collision test."
+    },
+    {
+      "individual": "B3",
+      "pillar_count": 7,
+      "minimum_base_edge_gap_m": 2.275,
+      "closest_pair": [
+        "P5",
+        "P6"
+      ],
+      "note": "Written ground plan only; no mesh or runtime collision test."
+    }
+  ]
+}

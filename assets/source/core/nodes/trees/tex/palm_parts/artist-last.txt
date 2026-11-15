@@ -1,0 +1,5 @@
+Completed all four 2048×2048 maps, full-size sources, build/check scripts, and report in this folder.
+
+**130 checks pass; rebuilds are byte-identical.** Height range: **16 mm**. Mean normal/height error: **0.173°**.
+
+[Layer preview](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/palm_parts/checks/layers.jpg) · [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/palm_parts/REPORT.md)

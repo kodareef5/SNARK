@@ -1,0 +1,5 @@
+Completed all four 2048×2048 maps, full-size sources, scripts and checks.
+
+Height range: **48 mm**. **85 checks passed**, including byte-identical rebuild. Normal/height disagreement averages **0.171°**.
+
+[Layer preview](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/stump_cuts/checks/layers.jpg) · [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/stump_cuts/REPORT.md)

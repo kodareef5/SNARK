@@ -1,0 +1,5 @@
+Updated the sun/shade palettes and deepened the mass hollows to 54.35% coverage. Shapes, alpha, strips, roughness, heights and normals are preserved.
+
+All **151 checks pass**, and all four maps rebuild byte for byte. Superseded previews were removed.
+
+[30 m comparison under both lights](/home/user/dev/SNARK/.claude/worktrees/agent-a84518807920d9470/assets/source/core/nodes/trees/tex/mangrove_leaves/checks/purpose_30m_both_lights_enlarged.png) · [Updated report](/home/user/dev/SNARK/.claude/worktrees/agent-a84518807920d9470/assets/source/core/nodes/trees/tex/mangrove_leaves/REPORT.md)

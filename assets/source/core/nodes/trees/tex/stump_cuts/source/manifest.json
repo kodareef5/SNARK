@@ -1,0 +1,58 @@
+{
+  "generated_fig.png": {
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "6571ba1fcd00f355acc73a1fbbcf71e5b265886c148a8db780db4554260a1b76"
+  },
+  "round2_fig.png": {
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "89be64450db176d62cdcc582d4c9be2b284bd99d5d4201387a06e1748dc012fa"
+  },
+  "generated_oak.png": {
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "7ff9b517fac275593c7520897828d1b95257ad2d3b11622ae6bc092316764a43"
+  },
+  "round2_oak.png": {
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "4928c72cd984c2fbbd40cb29c09bde4748a9042eb9044224534d27047c211228"
+  },
+  "generated_mangrove.png": {
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "9a450464dfd6eaa54bbb28f2e45da3a15172627e09ea72794a9074d737e3509a"
+  },
+  "round2_mangrove.png": {
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "68f264565ced0e2c17851703828ce4dec5b882e62a575ff0cd72722cbb07f023"
+  },
+  "generated_banyan.png": {
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "c47b3d29db83992f5d9503a0307fac0db1f61a2b43a048b39303e62dd85e4a90"
+  },
+  "round2_banyan.png": {
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "0b1ba02553a1d7f6a68350dbfb4e689c24d2bc7d838ed866930b317cfb62b01e"
+  }
+}
