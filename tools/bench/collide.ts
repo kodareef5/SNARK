@@ -5,7 +5,7 @@ import { ruinKind } from "../../content/miami-ruins.ts";
 import { slopeKind } from "../../content/slopes.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
-import { Body, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_BRAKE, BTN_JUMP, BTN_ROLL, BTN_SPRINT, Body, MODE_FLYER, STAMINA_UNITS, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { castWorld, lookDirection } from "../../shared/world/ray.ts";
@@ -68,6 +68,43 @@ function stepping(w: CollisionWorld, moves: MoveParams[], spots: [number, number
   return best(5, ticks, tick) / bodies.length;
 }
 
+/**
+ * Pteranodons in their own flight from `up` metres over the ground, each flying, turning, climbing and diving by its look,
+ * now and then sprinting, braking or rolling, and their jump held so they stay up. Microseconds per body per tick.
+ */
+function flying(w: CollisionWorld, move: MoveParams, kind: number, spots: [number, number][], up: number, ticks: number): number {
+  const rng = new Rng(13);
+  const bodies = spots.map(([x, z]) => {
+    const b = new Body();
+    b.x = x;
+    b.z = z;
+    b.y = w.hf.heightAt(x, z) + up;
+    b.mode = MODE_FLYER;
+    b.kind = kind;
+    b.staminaMax = 150;
+    b.stamina = 150 * STAMINA_UNITS;
+    return b;
+  });
+  const input = bodies.map(() => [127, 0, 0, BTN_JUMP]);
+  const tick = (): void => {
+    for (let i = 0; i < bodies.length; i++) {
+      const inp = input[i]!;
+      const b = bodies[i]!;
+      if (rng.int(20) === 0) {
+        inp[0] = rng.int(4) === 0 ? 0 : 127;
+        inp[1] = rng.int(65536);
+        inp[2] = rng.int(6000) - 3000;
+        inp[3] = BTN_JUMP | (rng.int(3) === 0 ? BTN_SPRINT : 0) | (rng.int(12) === 0 ? BTN_BRAKE : 0) | (rng.int(12) === 0 ? BTN_ROLL : 0);
+        // They never tire, so that every tick is flight.
+        b.stamina = 150 * STAMINA_UNITS;
+      }
+      stepBody(w, b, 0, inp[0]!, inp[1]!, inp[2]!, inp[3]!, move, TICK_DT);
+    }
+  };
+  for (let t = 0; t < 30; t++) tick();
+  return best(5, ticks, tick) / bodies.length;
+}
+
 export function benchCollide(section: Section, record: Row): void {
   section("Collision: a body's step and rays, on rolling ground a kilometre square and in a base of 2,000 pieces");
   const reg = coreRegistry();
@@ -90,6 +127,9 @@ export function benchCollide(section: Section, record: Row): void {
   }
   const inBase: [number, number][] = Array.from({ length: 500 }, () => [cx + rng.range(-24, 24), cz + rng.range(-24, 24)]);
   record("a body's step in that base, 500 bodies", stepping(base, moves, inBase, 100), "us");
+  const ptera = reg.index.get("core:pteranodon")!;
+  record("a flyer's step 20 m over rolling ground, 2,000 pteranodons", flying(open, reg.tamedMove[ptera]!, ptera, spots, 20, 100), "us");
+  record("a flyer's step in and over that base, 500 pteranodons", flying(base, reg.tamedMove[ptera]!, ptera, inBase, 6, 100), "us");
 
   // Shots of 600 m, a little above and below level, from an eye 1.6 m up.
   const d = [0, 0, 0];

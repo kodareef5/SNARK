@@ -5,7 +5,7 @@ import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../share
 import { TAU, detCos, detSin } from "../shared/math/scalar.ts";
 import { MODE_GHOST, stanceHeight } from "../shared/sim/character.ts";
 import { F_ALIVE, F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
-import { PAD, SKIN, capsuleBox, capsuleFree, capsuleKind, groundUnder, push } from "../shared/world/collide.ts";
+import { PAD, SKIN, capsuleBox, capsuleFree, capsuleKind, groundStands, groundUnder, push } from "../shared/world/collide.ts";
 import type { NodeField, NodeSpot } from "../shared/world/nodes.ts";
 import { Found, type StructureStore } from "../shared/world/structures.ts";
 import type { ServerWorld } from "./world.ts";
@@ -115,6 +115,8 @@ const RINGS = [0, 0.05, 0.1, 0.15, 0.25, 0.35, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2,
 const ON_RING = 16;
 /** A body whose feet are within this of the ground under it is on the ground. */
 const ON_GROUND = 0.05;
+/** Added to the distance of a place where a body would slide, farther than any place tried. */
+const SLIDES = 100;
 
 /** What freePlace found. */
 export const freeAt = { x: 0, y: 0, z: 0 };
@@ -125,9 +127,10 @@ const found = new Found();
  * `climb` under the ground nor in a piece built by any team but `team`, so a body inside a piece of another team, or behind
  * one, is not set through it. Places are tried on rings out to 16 m, on the ground for a body on the ground and else at
  * its own height or on the ground above it, first on the side the deepest box it is in would push it out, and the nearest
- * by straight distance is taken. Fills `freeAt` and returns true, or false if there is none.
+ * by straight distance is taken, but a place on ground too steep for `slopeCos`, where it would slide, only if there is no
+ * other. Fills `freeAt` and returns true, or false if there is none.
  */
-export function freePlace(world: ServerWorld, x: number, y: number, z: number, r: number, h: number, team: number, climb: number): boolean {
+export function freePlace(world: ServerWorld, x: number, y: number, z: number, r: number, h: number, team: number, climb: number, slopeCos: number): boolean {
   const hf = world.hf;
   const onGround = y <= groundUnder(hf, x, z, r) + ON_GROUND;
   const from = outward(world, x, y, z, r, h);
@@ -143,7 +146,7 @@ export function freePlace(world: ServerWorld, x: number, y: number, z: number, r
       const pz = z + detCos(a) * ring;
       const ground = groundUnder(hf, px, pz, r);
       const py = onGround || ground > y ? ground : y;
-      const d = Math.hypot(ring, py - y);
+      const d = Math.hypot(ring, py - y) + (py === ground && !groundStands(slopeCos) ? SLIDES : 0);
       if (d >= best || !placeFree(world, px, py, pz, r, h) || !clearWay(world, x, y, z, px, py, pz, r, h, team, climb)) continue;
       best = d;
       freeAt.x = px;
@@ -246,7 +249,7 @@ function free(world: ServerWorld, moved?: (e: number) => void): number {
   let n = 0;
   for (const e of inside) {
     const p = reg.move[ents.kind[e]!]!;
-    if (!freePlace(world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, stanceHeight(p, ents.stance[e]!), ents.team[e]!, p.stepUp)) continue;
+    if (!freePlace(world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, stanceHeight(p, ents.stance[e]!), ents.team[e]!, p.stepUp, p.slopeCos)) continue;
     ents.setPosition(e, freeAt.x, freeAt.y, freeAt.z);
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
     ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;

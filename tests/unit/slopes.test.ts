@@ -257,14 +257,14 @@ test("a body on a face too steep to stand on slides down it as one that falls: n
     const w = world();
     const k = kind("test:long60");
     w.structs.add(k, 64, reg.halfY[k]!, 64, 0, 0, 1);
-    // Set on the face's middle, pressing up it with jump held all the way down.
+    // Set on the face's middle, pressing up it with jump held all the way down. A flyer's jump takes it off, so it walks.
     const b = new Body();
     [b.x, b.z] = [64, 64];
     b.y = rest(w, p, 64, 64) + 0.01;
     let ticks = 0;
     for (let t = 0; t < 300 && b.y > 0.05; t++, ticks++) {
       const was = b.y;
-      stepBody(w, b, 0, 127, 0, 0, BTN_JUMP, p, TICK_DT);
+      stepBody(w, b, 0, 127, 0, 0, p.flies ? 0 : BTN_JUMP, p, TICK_DT);
       if (!capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)) wrong.push(`${id} in the slab at tick ${t}`);
       if (b.grounded && b.y > 0.05) wrong.push(`${id} on its feet ${b.y.toFixed(3)} m up the face at tick ${t}`);
       if (b.y > was || b.vy > 0) wrong.push(`${id} went up the face at tick ${t}`);
