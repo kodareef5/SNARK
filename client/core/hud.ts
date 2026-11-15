@@ -9,7 +9,7 @@ import { MAX_VIEW } from "../../shared/net/view.ts";
 import { STAGES, growthStep, maturity, stageOf, youngScale } from "../../shared/sim/breeding.ts";
 import { sortU32 } from "../../shared/sort.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
-import { CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
+import { CHOOSE_DIED, CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { MF_OUT, STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -241,6 +241,19 @@ export class HudModel {
    * half the field of view), or -1 for nothing held that has one.
    */
   cone = -1;
+  /**
+   * Looking through a scope: its reticle in place of the crosshair (Scope Attachment: "based on the German Post design").
+   * The view of a holo-scope fitted: its crosshair shows even unaimed and even where the rules hide the crosshair
+   * (`holo`), coloured by what it is on (`crossTint`, 0xRRGGBB, or -1 for the crosshair's own colour), and aimed through it
+   * the view takes a green night tint of opacity `tint` (Holo-Scope Attachment).
+   */
+  scope = false;
+  holo = false;
+  crossTint = -1;
+  tint = 0;
+  /** Laser dots on the screen (client/core/render/laser.ts), as fractions of it. Only the first `dotCount` are current. */
+  readonly dots: { u: number; v: number; alpha: number }[] = [];
+  dotCount = 0;
   prompt = "";
   /** Empty for a body that has no hotbar. `held` is the slot in hand, or -1. */
   readonly hotbar: HotbarCell[] = [];
@@ -403,7 +416,7 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   }
   model.out = session.sessionState === SESSION_ALIVE && (b.mflags & MF_OUT) !== 0;
   model.clock = formatHour(hourOfDay(session.latestSnapshot, session.dayOffset, session.clock));
-  model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? "DEAD" : model.out ? "UNCONSCIOUS" : "";
+  model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? (session.choosing === CHOOSE_DIED ? "DEAD" : "") : model.out ? "UNCONSCIOUS" : "";
   model.crosshair = model.banner === "" && session.crosshair;
   if (model.readoutDue(6)) model.formatReadout();
 }

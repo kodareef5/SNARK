@@ -10,12 +10,14 @@ import { CLOSED_BAD_CONTENT, ClientSession } from "../client/core/session.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { compileContent } from "../shared/content/registry.ts";
-import { KEY_BYTES, REJECT_CONTENT, REJECT_DENIED, REJECT_FULL, REJECT_KICKED, REJECT_NAME, REJECT_PASSWORD, REJECT_VERSION } from "../shared/net/protocol.ts";
+import type { ClusterList } from "../client/core/travel.ts";
+import { CMD_RESPAWN, CMD_TRAVEL, KEY_BYTES, SESSION_ALIVE, REJECT_CONTENT, REJECT_DENIED, REJECT_FULL, REJECT_KICKED, REJECT_NAME, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION } from "../shared/net/protocol.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../shared/world/mapfile.ts";
-import { Mcp, type ToolHost } from "./mcp.ts";
+import { Mcp, type Answer, type ToolHost } from "./mcp.ts";
 import { connect } from "./socket.ts";
 import { Agent, INSTRUCTIONS, toolDefs } from "./tools.ts";
+import { TRAVEL_DEFS, nearestTerminal, riseAt, serverNamed, socketOf } from "./travel.ts";
 
 export interface Args {
   url: string;
@@ -94,12 +96,18 @@ async function main(): Promise<void> {
   let down = "still connecting";
   let joining = false;
   let retryAt = 0;
+  /** The server the agent is on or on its way to, which travel changes. */
+  let url = args.url;
+  /** A trip under way: the ticket to say hello with, the server left, and what the one arrived at said if it turned the survivor away. */
+  let trip: { ticket: Uint8Array; from: string; to: string; refused: string } | null = null;
+  /** The cluster as the server last listed it for a trip. */
+  let cluster: ClusterList | null = null;
 
   const enter = async (): Promise<void> => {
     joining = true;
     try {
       const get = async (file: string): Promise<Response> => {
-        const res = await fetch(fileUrl(args.url, file));
+        const res = await fetch(fileUrl(url, file));
         if (!res.ok) throw new Error(`asked for ${file} and got ${res.status}`);
         return res;
       };
@@ -109,18 +117,20 @@ async function main(): Promise<void> {
       const named = (await (await get("map.json")).json()) as { file: string };
       const map = parseMap(new Uint8Array(await (await get(named.file)).arrayBuffer()));
       const hf = mapHeightfield(map);
-      const session = new ClientSession(connect(args.url), {
+      const ticket = trip && trip.refused === "" ? trip.ticket : null;
+      const session = new ClientSession(connect(url), {
         name: args.name,
         key,
         registry: reg,
         clipHash,
         look: defaultLook(),
         password: process.env.SNARK_PASSWORD ?? "",
+        ...(ticket ? { ticket } : {}),
         resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
         nodes: (ground, content) => mapNodes(map, ground, content),
       });
       agent = new Agent(session, { console: args.console });
-      console.error(`joining ${args.url} as ${args.name}`);
+      console.error(`joining ${url} as ${args.name}${ticket ? " with a travel ticket" : ""}`);
     } catch (err) {
       down = `the server cannot be reached: ${err instanceof Error ? err.message : String(err)}`;
       console.error(down);
@@ -136,18 +146,114 @@ async function main(): Promise<void> {
       return;
     }
     agent.tick(now);
+    // The server let the survivor leave: the same agent says hello at the other with the ticket.
+    const left = agent.session.travelled;
+    const to = left && cluster?.servers.find((s) => s.world === left.world);
+    if (left && cluster && to && !trip) {
+      trip = { ticket: left.ticket, from: url, to: to.name, refused: "" };
+      url = socketOf(url, cluster, to);
+      down = `travelling to ${to.name}`;
+      agent = null;
+      retryAt = 0;
+      return;
+    }
     if (agent.session.state !== "closed") return;
     const reason = agent.session.closeReason;
-    down = `not connected: ${CLOSED[reason] ?? `reason ${reason}`}`;
+    // Turned away where it arrived: the survivor is given back by the server it left, so the agent goes back there.
+    if (trip && trip.refused === "" && reason === REJECT_TRAVEL) {
+      trip.refused = agent.session.closeText || "the server turned the survivor away";
+      url = trip.from;
+      agent = null;
+      retryAt = 0;
+      return;
+    }
+    down = reason === REJECT_TRAVEL ? `turned away: ${agent.session.closeText}` : `not connected: ${CLOSED[reason] ?? `reason ${reason}`}`;
     console.error(down);
     agent = null;
     // A dropped link or a full server may mend. The other reasons will be the same next time.
     retryAt = reason === -1 || reason === REJECT_FULL ? now + RETRY_MS : Infinity;
   }, 1000 / 60);
 
+  const refused = (reason: string): Answer => ({ state: "refused", reason });
+  const listed = async (): Promise<ClusterList | string> => {
+    try {
+      const list = (await (await fetch(fileUrl(url, "cluster.json"))).json()) as ClusterList;
+      return list.world === 0 ? "this server is in no cluster" : list;
+    } catch (err) {
+      return `this server did not say which servers are in its cluster: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  };
+  const servers = async (): Promise<Answer> => {
+    const list = await listed();
+    if (typeof list === "string") return refused(list);
+    return { state: "done", here: list.name, world: list.world, servers: list.servers.map((s) => ({ name: s.name, world: s.world, map: s.map, players: s.players, max: s.max, ...(s.why === "" ? {} : { cannot_go: s.why }) })) };
+  };
+  /**
+   * Walks to the nearest obelisk's terminal, asks there to leave for a server, then waits to arrive on it and rises where it
+   * chose, or to be given back where it left from.
+   */
+  const travel = async (a: Record<string, unknown>): Promise<Answer> => {
+    const leaving = agent;
+    if (!leaving || leaving.session.state !== "active") return refused(down);
+    const list = await listed();
+    if (typeof list === "string") return refused(list);
+    const to = serverNamed(list, typeof a.to === "string" ? a.to : "");
+    if (!to) return refused(`to must name a server of the cluster: ${list.servers.map((s) => s.name).join(", ") || "there is no other running"}`);
+    if (to.why !== "") return refused(to.why);
+    const me = leaving.session;
+    const at = me.world ? nearestTerminal(me.world.structs, me.registry, me.own.x, me.own.z) : null;
+    if (!at) return refused("no obelisk's terminal is in sight: walk toward an obelisk, which stands taller than anything near it");
+    // A walk answers within 50 s at most and goes on after, so a longer one is waited for here.
+    if (Math.hypot(me.own.x - at.x, me.own.z - at.z) > 1.5) await leaving.call("walk_to", { x: at.x, z: at.z, wait_s: 50 });
+    for (let i = 0; i < 200 && Math.hypot(me.own.x - at.x, me.own.z - at.z) > 1.5 && agent === leaving; i++) await Bun.sleep(500);
+    if (Math.hypot(me.own.x - at.x, me.own.z - at.z) > 3) return { ...((await leaving.call("status", {})) ?? {}), state: "blocked", reason: "could not reach the obelisk's terminal" };
+    cluster = list;
+    trip = null;
+    const want = typeof a.rise_at === "string" ? a.rise_at : "";
+    /** The trip as the loop above has it by now. */
+    const under = (): typeof trip => trip;
+    leaving.session.command(CMD_TRAVEL, (w) => {
+      w.u16(to.world);
+      w.u32(at.ref >>> 0);
+    });
+    const asked = performance.now();
+    for (;;) {
+      await Bun.sleep(100);
+      const waited = performance.now() - asked;
+      const going = under();
+      if (!going) {
+        // No ticket: the server refuses with a notice, which status has among what was heard.
+        if (waited > 10_000) return { ...((await leaving.call("status", {})) ?? {}), state: "blocked", reason: `${list.name} did not let the survivor leave` };
+        continue;
+      }
+      if (agent && agent !== leaving && agent.session.state === "active") {
+        const here = agent;
+        // An arrival is shown the spawn screen and rises where it chooses, as a player picks a place on it.
+        let rose = "";
+        for (let i = 0; i < 50 && going.refused === "" && here.session.sessionState !== SESSION_ALIVE && here.session.respawnPoints.length === 0; i++) await Bun.sleep(100);
+        if (going.refused === "" && here.session.arriving) {
+          const places = here.session.respawnPoints;
+          const tick = here.session.serverTick;
+          const named = riseAt(places, tick, want);
+          const index = named >= 0 ? named : riseAt(places, tick);
+          rose = places[index]?.name ?? "";
+          const list = here.session.placesList;
+          here.session.command(CMD_RESPAWN, (w) => (w.u8(index), w.u8(list)));
+          for (let i = 0; i < 50 && here.session.sessionState !== SESSION_ALIVE; i++) await Bun.sleep(100);
+        }
+        // What it carries is told just after the welcome; the answer waits for it, a few seconds at most.
+        for (let i = 0; i < 30 && !here.session.inventory; i++) await Bun.sleep(100);
+        const turned = going.refused;
+        trip = null;
+        const now = (await here.call("status", {})) ?? {};
+        return turned === "" ? { ...now, state: "done", left: list.name, arrived: to.name, map: to.map, rose_at: rose } : { ...now, state: "blocked", reason: `${to.name} turned the survivor away: ${turned}`, back_on: list.name };
+      }
+      if (waited > 120_000) return { state: "blocked", reason: `left ${list.name} and has not arrived: ${down}` };
+    }
+  };
   const host: ToolHost = {
-    list: () => toolDefs(args.console),
-    call: (name, a) => (agent ? agent.call(name, a) : toolDefs(args.console).some((d) => d.name === name) ? Promise.resolve({ state: "refused", reason: down }) : null),
+    list: () => [...toolDefs(args.console), ...TRAVEL_DEFS],
+    call: (name, a) => (name === "servers" ? servers() : name === "travel" ? travel(a) : agent ? agent.call(name, a) : toolDefs(args.console).some((d) => d.name === name) ? Promise.resolve(refused(down)) : null),
   };
   const mcp = new Mcp(host, "snark", INSTRUCTIONS);
   const lines = createInterface({ input: process.stdin });

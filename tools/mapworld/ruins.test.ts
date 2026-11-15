@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TICK_DT } from "../../shared/coords.ts";
@@ -10,12 +10,13 @@ import { stack, tower } from "./ruin-layouts.ts";
 import { vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
 
+const source = process.env.MAPWORLD_TEST_SOURCE ?? readdirSync("assets/source/maps").map((name) => `assets/source/maps/${name}`).find((path) => existsSync(`${path}/ruins/vocabulary.json`))!;
 const rule: Rule = { recipe: "tower", height: 24, finish: "concrete", feature: "frame", holes: .35, wall: .35, bay: 8, matched: [], provisional: true };
 const frame = (degrees: number): Frame => ({ x: 128, z: 128, yaw: degrees, c: Math.cos(degrees * Math.PI / 180), s: Math.sin(degrees * Math.PI / 180), width: 40, depth: 40, rings: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]] });
 
 test("every survey category has a recipe and the block library compiles", async () => {
-  const v = vocabulary("assets/source/maps/miami");
-  const schema = await Bun.file("assets/source/maps/miami/blocks/schema.json").json();
+  const v = vocabulary(source);
+  const schema = await Bun.file(`${source}/blocks/schema.json`).json();
   for (const name of schema.properties.places.items.properties.category.enum as string[]) expect(v.recipes[v.categories[name]!]).toBeDefined();
   expect(flatWorld().reg.index.has("core:zruin_step_concrete")).toBe(true);
 });
@@ -83,9 +84,9 @@ test("an absent or partly written survey is usable and diagnosed", () => {
 test("direct measured height wins over levels and research, missing values use only original neighbours", async () => {
   const { resolveLabels } = await import("./labels.ts");
   const { ruleFor } = await import("./ruin-vocabulary.ts");
-  const v = vocabulary("assets/source/maps/miami");
+  const v = vocabulary(source);
   const label = { name: null, also: [], kind: "hotel", height_m: 12, height_from: "osm", levels: 50, address: null, use: "", primary_use: "", uses: {}, area_m2: 500, e: 0, n: 0 };
-  const fake = (id: number) => ({ building: { id: id * 4, area: 500 }, district: { name: "South Beach", style: "deco" } }) as import("./statics.ts").Footprint;
+  const fake = (id: number) => ({ building: { id: id * 4, area: 500 }, district: { name: "Test Coast", style: "deco" } }) as import("./statics.ts").Footprint;
   const data: import("./labels.ts").LabelData = { labels: { 1: label, 2: { ...label, kind: null, height_m: null, height_from: null, levels: null, e: 50 } }, places: [], research: new Map(), researchFrom: new Map(), enrichment: [], fingerprint: "test" };
   const fs = resolveLabels(new Map([[1, fake(1)], [2, fake(2)]]), data, v);
   expect(fs.get(1)!.height).toBe(12);
@@ -98,19 +99,18 @@ test("direct measured height wins over levels and research, missing values use o
 
 test("direct label names are the only legacy survey match key", async () => {
   const { readLabels } = await import("./labels.ts");
-  const data = readLabels("assets/source/maps/miami");
+  const data = readLabels(source);
   for (const m of data.enrichment.filter((m) => m.status === "name matched")) {
     const l = data.labels[m.ids[0]!]!;
     const normalize = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, "");
     expect([l.name, ...l.also].filter((s) => s !== null).map(normalize)).toContain(normalize(m.name));
   }
-  expect(data.labels[26221546]!.height_m).toBe(265);
-  expect(data.labels[27554969]!.name).toBe("SLS South Beach");
+  expect(Object.values(data.labels).some((l) => !!l.height_m && !!l.name)).toBe(true);
 });
 
 test("a Deco treatment cannot turn a labelled low hotel into a speculative tower", async () => {
   const { layout } = await import("./ruin-layouts.ts");
-  const { RUIN_SHAPES } = await import("../../content/miami-ruins.ts");
+  const { RUIN_SHAPES } = await import("../../content/ruins.ts");
   for (const height of [4, 8, 12]) {
     const m = new Mason(frame(0), 0);
     layout(m, { ...rule, recipe: "hotel", feature: "deco", height }, { seed: 45, playable: 3, detail: 0 });
@@ -148,4 +148,61 @@ test("mapped water on both sides removes a wide earth bridge bank but keeps its 
   expect(height[50 * n + 50]).toBe(-3);
   expect(water[50 * n + 50]).toBe(1);
   expect(height[50 * n + 10]).toBe(2);
+});
+
+test("every assembly refers to an available box and every choice resolves a form and damage rule", () => {
+  const v = vocabulary(source); const reg = flatWorld().reg;
+  for (const a of Object.values(v.assemblies)) for (const [shape, x, y, z, finish, yaw] of a.parts) {
+    expect(reg.index.has(`core:zruin_${shape}_${finish === "finish" ? "concrete" : finish}`)).toBe(true);
+    expect([x, y, z, yaw ?? 0].every(Number.isFinite)).toBe(true);
+  }
+  for (const c of v.choices) {
+    if (c.form) expect(v.forms[c.form]).toBeDefined();
+    for (const mode of c.collapse ?? []) expect(v.damage[mode]).toBeDefined();
+  }
+});
+
+test("a neighbouring facade yields to a room route while its floor and stair support survive", async () => {
+  const { clearCirculation } = await import("./ruin-clearance.ts");
+  const pieces = [
+    { kind: "core:zruin_zpanel8_concrete", x: 128, y: 2, z: 128, yaw: 0 },
+    { kind: "core:zruin_floor8_concrete", x: 128, y: -.2, z: 128, yaw: 0 },
+    { kind: "core:zruin_step_concrete", x: 128, y: .2, z: 128, yaw: 0 },
+  ];
+  const records = [{ firstPiece: 0, blocks: 3, approaches: [], escapes: [], rooms: [{ kind: "rooms", points: [{ x: 128, y: 0, z: 124 }, { x: 128, y: 0, z: 132 }] }] }] as unknown as import("./ruins.ts").RuinRecord[];
+  expect(clearCirculation(pieces, records, 0)).toEqual({ "core:zruin_zpanel8_concrete": 1 });
+  expect(pieces.map((p) => p.kind)).toEqual(["core:zruin_floor8_concrete", "core:zruin_step_concrete"]);
+  expect(records[0]!.blocks).toBe(2);
+});
+
+test("wide school and ward plans leave courts, have several entrances, and reproduce exactly", async () => {
+  const { layout } = await import("./ruin-layouts.ts"); const v = vocabulary(source);
+  for (const form of ["school", "hospital"]) {
+    const f = frame(23); f.width = 64; f.depth = 48; f.rings = [[[-32, -24], [32, -24], [32, 24], [-32, 24]]];
+    const a = new Mason(f, 0); const b = new Mason(f, 0);
+    const r = { ...rule, recipe: form, height: 12, form: v.forms[form], assemblies: v.assemblies };
+    layout(a, r, { seed: 17, playable: 3, detail: 0 }); layout(b, r, { seed: 17, playable: 3, detail: 0 });
+    expect(a.pieces).toEqual(b.pieces); expect(a.wings.length).toBe(3);
+    expect(a.entries.length).toBeGreaterThanOrEqual(4);
+    expect(a.wings.reduce((n, w) => n + w.tiles, 0)).toBeLessThan(48);
+  }
+});
+
+test("large ward campuses keep their footprint fabric instead of selecting only bounding-box edges", async () => {
+  const { layout } = await import("./ruin-layouts.ts"); const v = vocabulary(source);
+  const f = frame(0); f.width = 200; f.depth = 200; f.rings = [[[-100, -100], [100, -100], [100, 100], [-100, 100]]];
+  const m = new Mason(f, 0);
+  layout(m, { ...rule, recipe: "hospital", height: 12, form: v.forms.hospital }, { seed: 51, playable: 3, detail: 0 });
+  expect(m.wings.reduce((n, w) => n + w.tiles, 0)).toBeGreaterThan(tilesOf(f, 8).length * .75);
+  expect(m.routes.length).toBeGreaterThan(4);
+});
+
+test("a crowded tower fallback keeps a reachable stump when its footprint centre is empty", () => {
+  const f = frame(0); f.width = 160; f.depth = 48; f.rings = [[[-80, -24], [-24, -24], [-24, 24], [-80, 24]]];
+  const m = new Mason(f, 0); const tiles = tilesOf(f, 8);
+  tower(m, tiles, { ...rule, height: 8 }, { seed: 17, playable: 1, detail: 3 });
+  expect(m.routes.length).toBe(1);
+  expect(m.entries.length).toBe(2);
+  expect(m.pieces.length).toBeLessThan(150);
+  expect(m.routes[0]!.x).toBeLessThan(104);
 });

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
 import { SWING_TICKS } from "../../shared/sim/weapon.ts";
-import { WorldStore } from "../../server/persist/store.ts";
+import { SCHEMA_VERSION, WorldStore } from "../../server/persist/store.ts";
 import { CMD_CRAFT, CMD_LEARN, CMD_REPAIR, CMD_SPEND, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { BTN_USE } from "../../shared/sim/character.ts";
 import { STAT_NAMES } from "../../shared/sim/genome.ts";
@@ -256,7 +256,7 @@ test("touched nodes are saved and nothing else about nodes is; a save from befor
   store.db.exec("UPDATE meta SET value = 1 WHERE key = 'schema_version'");
   store.close();
   const old = new Harness({}, 1, 30, { dbPath: db, dev: true, config: FAST });
-  expect(Number(old.host.persistence!.store.meta("schema_version"))).toBe(2);
+  expect(Number(old.host.persistence!.store.meta("schema_version"))).toBe(SCHEMA_VERSION);
   expect(old.host.harvest!.goneCount).toBe(0); // the table is there and empty, so every node stands
   old.host.shutdown();
 

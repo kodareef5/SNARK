@@ -13,7 +13,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_PASSWORD, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -36,7 +36,9 @@ import { KICK_UNIT, scopeFitted, shotCone, sway, swayOut } from "../../shared/si
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
-import { ARMOR_SLOTS } from "../../shared/sim/items.ts";
+import { ARMOR_SLOTS, FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
+import type { ItemDef } from "../../shared/content/defs.ts";
+import { Lasers, daylight } from "./render/laser.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
 import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
@@ -53,6 +55,9 @@ import { IMAGE_MAP, IMAGE_MINIMAP } from "./ui/hud.ts";
 import { CANVAS_HEIGHT } from "./ui/nodes.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
+import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
+import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
+import { arrivalAddress, joinAddress, serverAddress, type Page } from "./travel.ts";
 
 /** Metres. Matches the server's REACH. */
 const REACH = 3.5;
@@ -65,10 +70,33 @@ const VIEW_FLAG_PROP = 8;
 /** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
 const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
 
-/** Initial vertical field of view, in radians. AIM_FOV and SCOPE_FOV multiply the player's setting while aiming. */
+/** Initial vertical field of view, in radians. AIM_FOV multiplies the player's setting while aiming. */
 const BASE_FOV = 1.2217;
 const AIM_FOV = 0.79;
-const SCOPE_FOV = 0.25;
+/**
+ * How many times a sight magnifies, aimed through it: the scope "zooms by about 3x" (Scope Attachment), the holo-scope "a
+ * slight zoom (around 1.25x)" (Holo-Scope Attachment). The holo-scope tints the view green, "similar to a nightvision mode",
+ * this much.
+ */
+export const SCOPE_ZOOM = 3;
+export const HOLO_ZOOM = 1.25;
+const HOLO_TINT = 0.22;
+/** Metres a holo-scope's crosshair finds what it is on, and its colours (Holo-Scope Attachment). */
+const HOLO_REACH = 300;
+const HOLO_FRIEND = 0x48e05a;
+const HOLO_FOE = 0xff3a30;
+const HOLO_OTHER = 0xf2d23a;
+
+/** The vertical field of view that magnifies `base` (radians) `zoom` times: the tangent of its half is the zoom's share. */
+export function zoomed(base: number, zoom: number): number {
+  return 2 * Math.atan(Math.tan(base / 2) / zoom);
+}
+
+/** The kind of attachment (ItemDef.attachment) on the weapon in `slot` of `inv`, or "". */
+function attachmentKind(reg: Registry, inv: Inventory | null, slot: number): string {
+  const fitted = inv && slot >= 0 ? inv.attach[slot]! : 0;
+  return fitted === 0 ? "" : ((reg.defs[fitted] as ItemDef | null)?.attachment ?? "");
+}
 /** Radians in a unit of yaw or pitch on the wire (65536 to a turn). */
 const UNIT_RADIANS = TAU / 65536;
 
@@ -79,6 +107,11 @@ export class App {
   readonly cam = new Camera();
   readonly hud = new HudModel();
   readonly feedback = new Feedback();
+  /** Laser dots this frame (client/core/render/laser.ts). */
+  readonly lasers = new Lasers();
+  /** The frame's view and eye, and whether its own laser is on, for the sights. */
+  private readonly sightAt = { yaw: 0, pitch: 0, laser: false, x: 0, y: 0, z: 0 };
+  private readonly spot = [0, 0, 0];
   readonly shots: Shots;
   /** Null until the world arrives. */
   falling: Falling | null = null;
@@ -139,6 +172,13 @@ export class App {
   }
 
   readonly builder = new Builder();
+  /** The page, for travel between the servers of a cluster. The shell sets it; without one nobody travels. */
+  page: Page | null = null;
+  /** The page is on its way to another server, or has said it arrived. */
+  private leaving = false;
+  private arrived = false;
+  /** The travel list was opened for a survivor turned away. */
+  private turnedAway = false;
   /** Time of the last frame. */
   private nowMs = 0;
   /** Entity index of the tribe's creature under the crosshair, or -1. */
@@ -156,6 +196,8 @@ export class App {
   private usePulse = 0;
   /** Entity index of the egg under the crosshair, or -1. eggKept: the use key went down on one, and took it with CMD_TAKE. */
   private eggAimed = -1;
+  /** The obelisk terminal under the crosshair within reach, or -1. */
+  private terminalAimed = -1;
   private eggKept = false;
 
   voice: VoicePort | null = null;
@@ -234,6 +276,11 @@ export class App {
     if (code === "KeyE" && (this.eggKept || (down && !repeat && this.eggAimed >= 0))) {
       if (!this.eggKept) this.session.command(CMD_TAKE, (w) => w.u32(this.eggAimed >>> 0));
       this.eggKept = down;
+      return true;
+    }
+    // The use key at an obelisk's terminal opens the list of servers to travel to.
+    if (code === "KeyE" && down && !repeat && this.terminalAimed >= 0) {
+      this.ui.travel.openAt(this.terminalAimed);
       return true;
     }
     // Holding the use key on a structure opens its menu, so there the body gets the press only on release, as a short pulse.
@@ -386,16 +433,85 @@ export class App {
     return `${r.name[hit]}${mine ? " (tribe)" : ""}  level ${r.level[hit]}`;
   }
 
+  /**
+   * The laser dots on the screen, its own and those of bodies whose laser is on, each where the world or a body first meets
+   * its beam and only where the camera sees that spot; and the holo-scope's crosshair colour (weapons-plan.md, M10).
+   */
+  private fillSights(world: CollisionWorld, alive: boolean): void {
+    const { hud, cam, session, lasers, sightAt: at } = this;
+    const r = this.remote;
+    const d = this.aim;
+    const day = daylight(hourOfDay(session.serverTick, session.dayOffset, session.clock));
+    lookDirection((at.yaw / TAU) * 65536, (at.pitch / (PI / 2)) * 16384, d);
+    lasers.clear();
+    if (at.laser) lasers.cast(this.reg, world, r, at.x, at.y, at.z, d[0]!, d[1]!, d[2]!, day, 0, session.driving);
+    lasers.remotes(this.reg, world, r, day);
+    const s = this.spot;
+    let n = 0;
+    for (let i = 0; i < lasers.count; i++) {
+      const dot = lasers.dots[i]!;
+      const dx = dot.x - cam.x;
+      const dy = dot.y - cam.y;
+      const dz = dot.z - cam.z;
+      const far = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      // A dot behind something the camera sees first is not drawn.
+      if (far > 0.05 && castWorld(world, cam.x, cam.y, cam.z, dx / far, dy / far, dz / far, far - 0.05) !== HIT_NONE) continue;
+      if (!cam.project(dot.x, dot.y, dot.z, s)) continue;
+      const out = (hud.dots[n++] ??= { u: 0, v: 0, alpha: 0 });
+      out.u = s[0]!;
+      out.v = s[1]!;
+      out.alpha = dot.alpha;
+    }
+    hud.dotCount = n;
+    hud.crossTint = alive && hud.holo ? this.holoTint(world, d) : -1;
+  }
+
+  /**
+   * What a holo-scope's crosshair is on, as its colour: "a yellow crosshair for wild animals or structures from another
+   * tribe, a red crosshair for untamed animals or players from other tribes and a green one for tamed animals, structures
+   * and players from the same tribe" (Holo-Scope Attachment). The page has wild animals both yellow and red; here wild
+   * creatures and another tribe's structures are yellow, another tribe's survivors and tames red, and the tribe's own green.
+   * -1 for nothing in reach. `d` is the view's way.
+   */
+  private holoTint(world: CollisionWorld, d: readonly number[]): number {
+    const { cam, session, reg } = this;
+    const r = this.remote;
+    const team = session.tribe.team;
+    let t = castWorld(world, cam.x, cam.y, cam.z, d[0]!, d[1]!, d[2]!, HOLO_REACH) === HIT_NONE ? Infinity : rayHit.t;
+    let tint = -1;
+    if (t < Infinity && rayHit.kind === HIT_STRUCTURE) {
+      const ref = rayHit.ref;
+      const owner = world.structs.chunks[Math.floor(ref / 65536)]!.owner[ref & 0xffff]!;
+      if (owner !== 0) tint = team !== 0 && owner === team ? HOLO_FRIEND : HOLO_OTHER;
+    }
+    for (let i = 0; i < r.count; i++) {
+      const kind = r.kind[i]!;
+      const rad = reg.bodyRadius[kind]!;
+      if (reg.move[kind] === null || !(rad > 0) || r.id[i] === session.driving) continue;
+      const hit = rayBox(cam.x, cam.y, cam.z, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + reg.bodyHeight[kind]!, r.z[i]! + rad);
+      if (!(hit > 0 && hit < t)) continue;
+      t = hit;
+      const mine = team !== 0 && r.team[i] === team;
+      tint = mine ? HOLO_FRIEND : r.team[i] === 0 ? HOLO_OTHER : HOLO_FOE;
+    }
+    return tint;
+  }
+
   /** Sets `aimed` to the player-built structure within ACT_REACH, and returns its name and health. */
   private builtAt(world: CollisionWorld, eye: number): string {
     const s = this.session;
     const d = this.aim;
     this.aimed = -1;
+    this.terminalAimed = -1;
     lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
     if (castWorld(world, s.own.x, s.own.y + eye, s.own.z, d[0]!, d[1]!, d[2]!, ACT_REACH) !== HIT_STRUCTURE) return "";
     const ref = rayHit.ref;
     const t = world.structs.chunks[Math.floor(ref / 65536)]!;
     const kind = t.kind[ref & 0xffff]!;
+    if (kind === this.reg.index.get(TRAVEL_TERMINAL)) {
+      this.terminalAimed = ref;
+      return "E travel to another server";
+    }
     // Skip structures nobody built.
     if (this.reg.pieceItem[kind] === 0 || t.owner[ref & 0xffff] === 0) return "";
     this.aimed = ref;
@@ -516,6 +632,44 @@ export class App {
     this.ui.chat.print(TEXT_NOTICE, `The graphics card keeps running out of memory, so the graphics setting is now ${this.ui.settings.tier}.`, this.session.serverTick);
   }
 
+  /**
+   * Asks for the cluster's servers while the travel list is open, and goes where a ticket or a choice says: with a ticket to
+   * the server the survivor left for, without one to a server chosen once this one closed. A survivor turned away, or a
+   * server full, shows the list, and the server it left is on it.
+   */
+  private travel(nowMs: number): void {
+    const { page, session } = this;
+    const t = this.ui.travel;
+    if (!page || this.leaving) return;
+    if (session.state === "active" && !this.arrived) {
+      this.arrived = true;
+      page.arrived();
+    }
+    if (session.state === "closed" && (session.closeReason === REJECT_TRAVEL || session.closeReason === REJECT_FULL) && !this.turnedAway) {
+      this.turnedAway = t.open = true;
+      t.askedAt = -Infinity;
+    }
+    const trip = session.travelled;
+    if ((t.open || trip) && nowMs - t.askedAt >= TRAVEL_REFRESH_MS) {
+      t.askedAt = nowMs;
+      page.cluster().then(
+        (list) => {
+          t.list = list;
+          t.note = "";
+        },
+        () => {
+          t.note = "this server did not say which servers are in its cluster";
+        },
+      );
+    }
+    const list = t.list;
+    if (!list) return;
+    const to = trip ? list.servers.find((s) => s.world === trip.world) : t.goTo;
+    if (!to) return;
+    this.leaving = true;
+    page.go(trip ? arrivalAddress(serverAddress(list, to, page), session.name, trip.ticket) : joinAddress(serverAddress(list, to, page), session.name));
+  }
+
   /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
   frame(nowMs: number, width: number, height: number): FramePacket | null {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
@@ -528,9 +682,10 @@ export class App {
     const c = this.controls;
     this.nowMs = nowMs;
 
+    this.travel(nowMs);
     if (session.state === "closed") {
       // Only the reasons a player can act on are spelled out.
-      hud.status = session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
+      hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
       return null;
     }
@@ -605,10 +760,21 @@ export class App {
     this.view.place(cam, world, bx, by + eye, bz, lookYaw, lookPitch);
     this.view.thirdPerson = third;
     cam.aspect = aspect;
-    // Aiming narrows the view in proportion to the player's setting, more through a scope. The mouse slows to match.
+    // Aiming narrows the view in proportion to the player's setting; through a sight, by its zoom. The mouse slows to match.
     const settings = this.ui.settings;
     const base = (settings.fov * Math.PI) / 180;
-    const want = aiming ? base * (scoped ? SCOPE_FOV : AIM_FOV) : base;
+    const sight = gun && session.driving < 0 ? attachmentKind(this.reg, session.inventory, held) : "";
+    const zoom = sight === "scope" ? SCOPE_ZOOM : sight === "holo" ? HOLO_ZOOM : 0;
+    const want = aiming ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
+    hud.scope = aiming && sight === "scope";
+    hud.holo = alive && sight === "holo";
+    hud.tint = hud.holo && aiming ? HOLO_TINT : 0;
+    this.sightAt.yaw = lookYaw;
+    this.sightAt.pitch = lookPitch;
+    this.sightAt.laser = alive && sight === "laser" && (session.inventory!.flags[held]! & FLAG_ON) !== 0;
+    this.sightAt.x = bx;
+    this.sightAt.y = by + eye;
+    this.sightAt.z = bz;
     this.fov += (want - this.fov) * Math.min(1, dt / 70);
     cam.fovY = this.fov;
     c.zoom = (this.fov / base) * settings.sensitivity;
@@ -691,6 +857,7 @@ export class App {
     this.feedback.absorb(session, this.reg, nowMs);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.damageNumbers && this.ui.settings.damageNumbers, session.hitMarkers);
     fillOverhead(hud.overhead, session, this.remote, cam, this.scene.characters, alive && !hud.out ? eyeNow : -1, c.yaw, c.pitch);
+    this.fillSights(world, alive);
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
@@ -712,7 +879,7 @@ export class App {
     }
     const menu = this.ui.structure;
     menu.tick(nowMs);
-    const built = alive && !b.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = -1), "");
+    const built = alive && !b.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && this.ui.wantsPointerLock) {
       menu.begin(this.aimed);
       this.useDownAt = -1;

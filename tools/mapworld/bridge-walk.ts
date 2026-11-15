@@ -1,3 +1,5 @@
+import { reportPaths } from "./report-path.ts";
+const paths = reportPaths();
 import { readFileSync, writeFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -10,10 +12,8 @@ import type { BridgeRecord, DeckPoint } from "./bridges.ts";
 import { Base } from "./base.ts";
 import { regions } from "./raster.ts";
 
-const map = parseMap(new Uint8Array(readFileSync(process.argv[2] ?? "var/maps/miami.snmap")));
-// The city is the map file's own: core:<name> is built from assets/source/maps/<name>.
-const city = `assets/source/maps/${map.id.split(":")[1]}`;
-const folder = `${city}/reports/ruins2`;
+const folder = paths.folder;
+const map = parseMap(new Uint8Array(readFileSync(paths.mapFile)));
 const reg = compileContent(CORE_CONTENT).registry!; const hf = mapHeightfield(map);
 const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts); placeStatics(map, structs, reg);
 const source = mapNodes(map, hf, reg); const nodes = source ? new NodeField(map.dims, reg, source) : null;
@@ -53,7 +53,7 @@ for (const r of records.filter((r) => r.status === "built" && r.kind !== "breakw
     results.push({ id: r.id, name: r.name, type: `swim ${index + 1}`, ok, message: ok ? "" : `stopped ${b.x.toFixed(2)},${b.y.toFixed(2)},${b.z.toFixed(2)} under ${s.x.toFixed(2)},${s.z.toFixed(2)}` });
   }
 }
-const base = new Base(city); const gaps = base.bytes("bridge_gaps");
+const base = new Base(paths.source); const gaps = paths.world.bridgeGapLayer ? base.bytes(paths.world.bridgeGapLayer) : new Uint8Array(base.n * base.n);
 const broken = regions((i) => gaps[i] === 1, base.n, base.n);
 const gapAt = (x: number, z: number): number => broken.label[Math.round((base.info.size_m - z) / 2) * base.n + Math.round((base.info.size_m - x) / 2)] ?? 0;
 const touched = new Set(records.flatMap((r) => r.deck.filter((d) => d.gap).map((d) => gapAt(d.x, d.z))).filter(Boolean));

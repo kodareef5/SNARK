@@ -5,7 +5,7 @@ import { ownIndex, type ClientSession, type RemoteSample } from "../client/core/
 import { CUE_OUT } from "../shared/anim/pose.ts";
 import type { NodeDef } from "../shared/content/defs.ts";
 import { PI, TAU } from "../shared/math/scalar.ts";
-import { BOX_SELF, CHOOSE_DIED, CMD_CLOSE, CMD_MOVE, CMD_SELECT, CMD_STRUCT, RESULT_OK, SESSION_ALIVE, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { BOX_SELF, CHOOSE_ARRIVED, CHOOSE_DIED, CMD_CLOSE, CMD_MOVE, CMD_SELECT, CMD_STRUCT, RESULT_OK, SESSION_ALIVE, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { BTN_JUMP, BTN_PRIMARY, BTN_USE, MF_OUT, MF_ROOTED, MODE_SWIM, stanceEye, type MoveParams } from "../shared/sim/character.ts";
 import { V_HEALTH, V_OXYGEN } from "../shared/sim/vitals.ts";
 import { W_MELEE } from "../shared/sim/weapon.ts";
@@ -414,7 +414,7 @@ export class Controller {
         if (s.choosing === CHOOSE_DIED) {
           this.deaths++;
           fresh.push("you died");
-        }
+        } else if (s.choosing === CHOOSE_ARRIVED) fresh.push("you arrived: choose where to rise");
       }
       this.hunters.clear();
       return fresh;

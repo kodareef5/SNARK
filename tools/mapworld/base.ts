@@ -8,6 +8,7 @@ import { TransverseMercator } from "./geo.ts";
 import { readFloatTiff, type FloatRaster } from "./tiff.ts";
 
 export interface MapInfo {
+  readonly bathymetry?: string;
   readonly size_m: number;
   readonly chunks: number;
   readonly grid_samples: number;
@@ -45,12 +46,13 @@ export class Base {
     return out;
   }
 
-  /** The coastal elevation model, the one GeoTIFF in base/bathymetry, resampled to each sample, bilinearly, in NAVD88 metres. */
+  /** The coastal elevation model map.json names, else the one GeoTIFF in base/bathymetry, resampled to each sample, bilinearly, in NAVD88 metres. */
   bathymetry(): Float32Array {
     const folder = join(this.folder, "base", "bathymetry");
-    const tifs = readdirSync(folder).filter((f) => f.endsWith(".tif"));
-    if (tifs.length !== 1) throw new Error(`${folder} should hold one coastal elevation model, and holds ${tifs.length}`);
-    const tif = readFloatTiff(new Uint8Array(readFileSync(join(folder, tifs[0]!))));
+    const named = this.info.bathymetry;
+    const tifs = named ? [] : readdirSync(folder).filter((f) => f.endsWith(".tif"));
+    if (!named && tifs.length !== 1) throw new Error(`${folder} should hold one coastal elevation model, or map.json name one, and holds ${tifs.length}`);
+    const tif = readFloatTiff(new Uint8Array(readFileSync(named ? join(this.folder, "base", named) : join(folder, tifs[0]!))));
     const n = this.n;
     const out = new Float32Array(n * n);
     // Longitude and latitude are found every 64 m and taken between: the projection bends far less than a sample over that.

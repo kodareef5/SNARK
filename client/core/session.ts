@@ -43,8 +43,8 @@ import {
   OWN_STATION,
   OWN_PROGRESSION,
   OWN_RESPAWN,
+  CHOOSE_ARRIVED,
   CHOOSE_DIED,
-  SESSION_DEAD,
   OWN_SESSION,
   OWN_SLOTS,
   OWN_VITALS,
@@ -52,6 +52,7 @@ import {
   PITCH_LIMIT,
   PROTOCOL_VERSION,
   SESSION_ALIVE,
+  SESSION_DEAD,
   S_CHUNK,
   S_CHUNK_DROP,
   S_EVENT,
@@ -71,7 +72,10 @@ import {
   S_RESULT,
   S_SNAPSHOT,
   S_TEXT,
+  S_TRAVEL,
   S_WELCOME,
+  REJECT_TRAVEL,
+  TICKET_BYTES,
   nextCommandSeq,
   readBody,
   writeCommand,
@@ -113,6 +117,8 @@ export interface SessionOptions {
   clipHash?: number;
   /** A look for a new survivor (shared/anim/look.ts). Without one, a new name waits in the creator for `create`. */
   look?: Uint8Array;
+  /** A travel ticket: the survivor arrives with it from another server of the cluster (S_TRAVEL). */
+  ticket?: Uint8Array;
   /** Returns null if this client does not have the map. */
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
@@ -177,6 +183,8 @@ export class RemoteSample {
   readonly hasLook = new Uint8Array(MAX_VIEW);
   /** GEAR_COUNT content indices each, 0 for nothing. */
   readonly gear = new Uint16Array(MAX_VIEW * GEAR_COUNT);
+  /** 1 while the laser in its hand is on (the gear's "on" bit). */
+  readonly on = new Uint8Array(MAX_VIEW);
   /** Each 0 for none: the owning team, the entity it sits on plus one, the ticks its growing takes, and the tick it will be grown. */
   readonly team = new Uint32Array(MAX_VIEW);
   readonly seat = new Uint32Array(MAX_VIEW);
@@ -237,8 +245,11 @@ export interface CombatEvent {
   kill: boolean;
   /** Armor stopped some of it. */
   blocked: boolean;
-  /** The side harm came from, as a facing in 256ths of a turn. */
+  /** The side harm came from, as a facing in 256ths of a turn, if `side`; a silenced shot's is not told (Silencer Attachment). */
   bearing: number;
+  side: boolean;
+  /** A shot from a weapon with a silencer: no flash is drawn. */
+  silenced: boolean;
   /** Who killed this body, or what this body killed. */
   name: string;
   /** The killing item's content index (0 for bare hands), and the range in metres. For a blast, `far` is its reach. */
@@ -249,13 +260,17 @@ export interface CombatEvent {
   xp: number;
   /**
    * For a shot, (x, y, z) is the origin and `item` the ammunition. If it `flies`, (vx, vy, vz) is its
-   * velocity and `back` the ticks since it left. If not, (vx, vy, vz) is where it ended.
+   * velocity and `back` the ticks since it left. If not, (vx, vy, vz) is where it ended; for a shot of more than one ray
+   * (`rays`, a shotgun's pellets) it is the aim's yaw and pitch in wire units and its cone in degrees, and each ray is
+   * shotDir(`seed`, k, ...) of shared/sim/aim.ts.
    */
   flies: boolean;
   vx: number;
   vy: number;
   vz: number;
   back: number;
+  rays: number;
+  seed: number;
 }
 
 /** A predicted shot of this client's own, from its eye. yaw and pitch are in input units. */
@@ -270,6 +285,8 @@ export interface LocalShot {
   seed: number;
   draw: number;
   ammo: number;
+  /** The weapon's content index: its rays a shot are shotRays of it and the ammunition. */
+  weapon: number;
 }
 
 export interface TextLine {
@@ -281,6 +298,10 @@ export class ClientSession {
   state: "connecting" | "active" | "closed" = "connecting";
   /** Reject reason from the server, or a negative local reason. */
   closeReason = 0;
+  /** What the server said of a REJECT_TRAVEL. */
+  closeText = "";
+  /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
+  travelled: { ticket: Uint8Array; world: number } | null = null;
 
   world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
@@ -308,6 +329,10 @@ export class ClientSession {
   logVersion = 0;
   /** Values at a tick and their rates, as the server last sent them. Evaluate with `vitals.at(i, serverTick)`. */
   readonly vitals = new Vitals();
+  /** It came from another server of the cluster and chooses where to rise, as the server says (CHOOSE_ARRIVED). */
+  get arriving(): boolean {
+    return this.sessionState === SESSION_DEAD && this.choosing === CHOOSE_ARRIVED;
+  }
   hasVitals = false;
   /** Oldest first. Falling.absorb empties it. */
   readonly rubble: Rubble[] = [];
@@ -453,7 +478,7 @@ export class ClientSession {
       }
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "");
+    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -612,6 +637,7 @@ export class ClientSession {
       const gear = b.gear[j]!;
       if (gear) out.gear.set(gear, n * GEAR_COUNT);
       else out.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
+      out.on[n] = b.on[j]!;
       for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
       out.team[n] = b.team[j]!;
       out.seat[n] = b.seat[j]!;
@@ -706,7 +732,7 @@ export class ClientSession {
       const ammo = slot >= 0 ? inv!.ammo[slot]! : 0;
       // It leaves where the server will send it: the look with its kick, sway and cone, from the same body and seed.
       aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]!, inp.pitch[i]!, scopeFitted(this.registry, inv, slot), this.ownHandle, t);
-      if (ammo !== 0 && this.fired.length < 16) this.fired.push({ x: this.own.x, y: this.own.y + stanceEye(this.move!, this.own.stance), z: this.own.z, yaw: shotAim.yaw, pitch: shotAim.pitch, cone: shotAim.cone, seed: aimSeed(this.ownHandle, t), draw: actionOut.draw, ammo });
+      if (ammo !== 0 && this.fired.length < 16) this.fired.push({ x: this.own.x, y: this.own.y + stanceEye(this.move!, this.own.stance), z: this.own.z, yaw: shotAim.yaw, pitch: shotAim.pitch, cone: shotAim.cone, seed: aimSeed(this.ownHandle, t), draw: actionOut.draw, ammo, weapon: inv!.item[slot]! });
     }
     this.bodies[t & (HISTORY - 1)]!.copy(this.own);
     this.bodyTick[t & (HISTORY - 1)] = t;
@@ -764,6 +790,12 @@ export class ClientSession {
     else if (type === S_REJECT) {
       this.state = "closed";
       this.closeReason = r.u8();
+      if (this.closeReason === REJECT_TRAVEL) this.closeText = r.string(MAX_SERVER_TEXT_BYTES);
+    } else if (type === S_TRAVEL) {
+      const ticket = new Uint8Array(TICKET_BYTES);
+      for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
+      const world = r.u16();
+      if (!r.overflow) this.travelled = { ticket, world };
     }
   }
 
@@ -817,7 +849,10 @@ export class ClientSession {
       if (r.overflow) return;
       this.sessionState = state;
       // A survivor with a body has no places to choose among. The list of the next spell without one follows this message.
-      if (state !== SESSION_DEAD) this.respawnPoints.length = 0;
+      if (state !== SESSION_DEAD) {
+        this.respawnPoints.length = 0;
+        this.choosing = CHOOSE_DIED;
+      }
       this.admin = admin;
       this.ownHandle = handle;
       this.dayOffset = dayOffset;
@@ -1005,7 +1040,7 @@ export class ClientSession {
 
   private event(r: BitReader): void {
     const kind = r.u8();
-    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0 };
+    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0 };
     if (kind === EVENT_SHOT) {
       ev.x = r.f32();
       ev.y = r.f32();
@@ -1016,10 +1051,10 @@ export class ClientSession {
       ev.vy = r.f32();
       ev.vz = r.f32();
       if (ev.flies) ev.back = r.u8();
-      // Protocol 13: rays, seed and silenced, read past until shots of many rays and the silencer are built.
-      r.u8();
-      r.u32();
-      r.bool();
+      // Protocol 13: rays and seed (W3), and whether its weapon has a silencer (W7).
+      ev.rays = r.u8();
+      ev.seed = r.u32();
+      ev.silenced = r.bool();
     } else if (kind === EVENT_BLAST) {
       ev.x = r.f32();
       ev.y = r.f32();
@@ -1037,8 +1072,8 @@ export class ClientSession {
       ev.damage = r.u16();
       ev.bearing = r.u8();
       ev.zone = r.bits(4);
-      // Protocol 13: whether the side is shown, read past until a silenced shot can hide it.
-      r.bool();
+      // Protocol 13: whether the side is shown. A silenced shot's is not.
+      ev.side = r.bool();
       if (kind === EVENT_DEATH) {
         ev.kill = true;
         ev.name = r.string(EVENT_NAME_BYTES);

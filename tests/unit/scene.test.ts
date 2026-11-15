@@ -389,8 +389,14 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // those alone) and the grey box of feces lying (3294409758 with that alone). The draws, the triangles and the uploads
   // are as they were. It was 4244515908 until Miami's ruin blocks took mesh numbers of their own, then 1069497684 until
   // the pack held the mortar and pestle's grey box (content/items/stations.ts); without it and sparkpowder it is that again.
-  // It was 543691550 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
-  expect(hash).toBe(2985369810);
+  // It was 543691550 until the pack held the smoke and poison clouds' boxes, which are never drawn (render/clouds.ts draws
+  // a cloud as puffs); without the two grenades, their clouds and the poison's buff (content/items/explosives.ts) it is that again.
+  // It was 828002586 until Miami's third round of ruins added 160 static box definitions, which take mesh numbers before
+  // the grey boxes'; the draws, triangles and uploads are as they were.
+  // It was 3699520576 until the pack held the obelisk's and its terminal's grey boxes (content/terminals.ts); without them,
+  // and the proving ground's obelisk, it is that again.
+  // It was 1227352852 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
+  expect(hash).toBe(3720466032);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

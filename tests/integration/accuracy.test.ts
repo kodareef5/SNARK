@@ -9,7 +9,7 @@ import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { EVENT_HIT, EVENT_SHOT } from "../../shared/net/protocol.ts";
 import { UNITS_PER_DEGREE, shotDir } from "../../shared/sim/aim.ts";
-import { BTN_CROUCH, BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT } from "../../shared/sim/character.ts";
+import { BTN_CROUCH, BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT, stanceEye } from "../../shared/sim/character.ts";
 import { lookDirection } from "../../shared/world/ray.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { takeInHand } from "../fixtures/gather.ts";
@@ -17,7 +17,6 @@ import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const TICK_MS = 1000 / 30;
-const EYE = 1.62;
 const FAR = 20;
 
 interface Told {
@@ -55,6 +54,7 @@ function range(latencyMs: number, loss: number, registry: Registry = coreRegistr
   h.say(eve, `tp ${(at.x - 8).toFixed(3)} ${(at.z - 1).toFixed(3)}`);
   h.run(400);
   const pa = h.pilots[0]!;
+  const survivor = h.reg.move[h.reg.index.get("core:survivor")!]!;
   const dummy = h.host.spawnCreature("core:dummy", at.x, at.z + FAR, 1);
   const drec = h.host.records.byPid.get(h.world.ents.pid[dummy]!)!;
   h.world.ents.yaw[dummy] = drec.yaw = 32768;
@@ -82,7 +82,9 @@ function range(latencyMs: number, loss: number, registry: Registry = coreRegistr
     const dx = at.x - ada.own.x;
     const dz = at.z + FAR - ada.own.z;
     pa.yaw = Math.atan2(dx, dz);
-    pa.pitch = Math.atan2(at.y + 1.25 - (ada.own.y + EYE), Math.hypot(dx, dz));
+    // From the eye of the stance she is in: aimed from a standing eye while prone, a round clips the ground at the dummy's
+    // feet, hitting or passing by the seed's luck.
+    pa.pitch = Math.atan2(at.y + 1.25 - (ada.own.y + stanceEye(survivor, ada.own.stance)), Math.hypot(dx, dz));
   };
   return { h, ada, pa, mine, told, hits, frame, aim };
 }
@@ -140,15 +142,15 @@ test("at 100 ms with loss, a hundred pistol shots at a dummy 20 m off, from the 
     const way = ways[burst % ways.length]!;
     pa.buttons = way;
     pa.moveX = 0;
-    // The stance settles, the bloom closes and the pistol reloads by itself. It is mended, as it lasts 60 shots.
+    // The stance settles, the bloom closes and the pistol reloads by itself, in 3.33 s (Simple Pistol). It is mended anyway.
     h.host.items.mend(rec, slot);
-    h.run(2800, frame);
+    h.run(3800, frame);
     for (let k = 0; k < 6 && n < 100; k++, n++) {
       if (way & (BTN_SPRINT | BTN_CROUCH)) pa.moveX = k % 2 === 0 ? 1 : -1;
       pa.buttons |= BTN_PRIMARY;
       h.run(TICK_MS * 2, frame);
       pa.buttons &= ~BTN_PRIMARY;
-      h.run(TICK_MS * 10, frame);
+      h.run(TICK_MS * 12, frame);
       shotWay.push(way);
       shotInBurst.push(k);
     }
@@ -244,7 +246,8 @@ test("a client that sends a level look while kicked is still shot along the kick
   h.say(ada, "give test_kicker 1");
   h.say(ada, "give round_pistol 30");
   takeInHand(h, ada, h.reg.index.get("core:test_kicker")!);
-  h.run(3000, frame);
+  // It loads in the pistol's 3.33 s (Simple Pistol).
+  h.run(4000, frame);
   for (let k = 0; k < 4; k++) {
     pa.buttons = BTN_PRIMARY;
     h.run(TICK_MS * 2, frame);

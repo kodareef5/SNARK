@@ -1,8 +1,9 @@
 // A playable map from a painted map's base layers: bun tools/mapworld/build.ts [name]
 //
 // Reads assets/source/maps/<name>/base (its VALUES.md says what each layer holds) and world/world.json (the sea, the
-// districts and where survivors arrive), writes the folder of layers tools/map.ts builds from to var/maps/<name>/layers,
-// then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same bytes.
+// districts, where survivors arrive and where obelisks stand), writes the folder of layers tools/map.ts builds from to
+// var/maps/<name>/layers, then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same
+// bytes.
 
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -10,13 +11,14 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { chunkCount } from "../../shared/coords.ts";
 import { mapHeightfield, mapNodes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
 import { readLayers } from "../map/layers.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
 import { makeGround, S, type World } from "./ground.ts";
 import { makeNodes, ZONE_CELL } from "./nodes.ts";
-import { placeRegions, placeSpawns } from "./places.ts";
+import { placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
 import { STATIC_LAYERS, siteOf } from "./statics.ts";
 import { makeTint } from "./tint.ts";
 
@@ -26,6 +28,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const t0 = performance.now();
   const compiled = compileContent(CORE_CONTENT);
   if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
+  const reg = compiled.registry;
   const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}`);
   const source = join(ROOT, "assets/source/maps", name);
   const base = new Base(source);
@@ -42,19 +45,24 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     return [(e + half) / 2, (half - no) / 2];
   };
   const site = siteOf(world, ground, size, source);
-  const statics = STATIC_LAYERS.flatMap((layer) => {
+  const layered = STATIC_LAYERS.flatMap((layer) => {
     const pieces = layer.make(site);
     lap(`${pieces.length} static pieces of ${layer.name}`);
     return pieces;
   });
+  // The obelisks come last, so every other piece keeps its slot in its chunk.
+  const obelisks = placeObelisks(ground, world, toSample, size, staticCover(layered, reg, n, size));
+  const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 })))];
+  lap(`${obelisks.length} obelisks`);
   const tint = makeTint(ground, world);
   lap("colour");
   const spawns = placeSpawns(ground, world, toSample, size);
   const regions = placeRegions(ground, size);
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
-  // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree.
-  const near = spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2] as const);
-  const nodes = makeNodes(ground, world, (col, row) => site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1 || near.some(([c, r]) => (c - col) ** 2 + (r - row) ** 2 < 16), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1);
+  // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
+  // so none stands in it or before its terminal.
+  const clearings = [...spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2, 16] as const), ...obelisks.map((o) => [(size - o.x) / 2, (size - o.z) / 2, 49] as const)];
+  const nodes = makeNodes(ground, world, (col, row) => site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1);
   lap("nodes");
 
   const layers = join(ROOT, "var/maps", name, "layers");
@@ -96,7 +104,6 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
 
   // The numbers: nodes by kind, how much land is walkable, the deepest water and the tallest heap.
   const parsed = parseMap(bytes);
-  const reg = compileContent(CORE_CONTENT).registry!;
   const hf = mapHeightfield(parsed);
   const placed = mapNodes(parsed, hf, reg)!;
   const byKind = new Map<string, number>();
@@ -171,6 +178,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     nodeTotal: [...byKind.values()].reduce((a, b) => a + b, 0),
     zoneCell: ZONE_CELL,
     spawns,
+    obelisks: obelisks.map((o) => ({ ...o, yaw: Math.round((o.yaw * 360) / 65536), ground: Number(site.groundAt(o.x, o.z).toFixed(2)) })),
     regions: { count: regions.length, creaturesAt1x: regions.reduce((a, r) => a + r.count, 0), beach: regions.filter((r) => r.spawns === "core:spawns_beach").reduce((a, r) => a + r.count, 0) },
     surfaceSquareMetres: surfaces,
   };
@@ -180,6 +188,6 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
 }
 
 if (import.meta.main) {
-  const { stats } = buildMap(process.argv[2] ?? "miami");
+  const { stats } = buildMap(process.argv[2] ?? (() => { throw new Error("Map name required"); })());
   console.log(JSON.stringify({ ...stats, spawns: undefined, surfaceSquareMetres: undefined }, null, 2));
 }

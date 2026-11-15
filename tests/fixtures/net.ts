@@ -69,6 +69,8 @@ export interface JoinOptions {
   password?: string;
   /** Defaults to the harness's registry. */
   registry?: Registry;
+  /** A travel ticket another server gave (S_TRAVEL). */
+  ticket?: Uint8Array;
 }
 
 export class Harness {
@@ -129,6 +131,7 @@ export class Harness {
       ...(opts.password !== undefined ? { password: opts.password } : {}),
       clipHash: this.world.anim.set.hash,
       ...(opts.look === null ? {} : { look: opts.look ?? defaultLook() }),
+      ...(opts.ticket ? { ticket: opts.ticket } : {}),
       resolveMap: (id, hash) => (id === this.map.id && hash === this.map.hash ? this.hf : null),
       nodes: (hf, reg) => mapNodes(this.map, hf, reg),
     });

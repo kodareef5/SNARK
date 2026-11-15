@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -10,6 +10,7 @@ import { addCoreCommands } from "./commands/core.ts";
 import { addSocialCommands } from "./commands/social.ts";
 import { addCreatureCommands } from "./commands/creatures.ts";
 import { addSettingsCommands } from "./commands/settings.ts";
+import { addClusterCommands } from "./commands/cluster.ts";
 import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds } from "./beds.ts";
@@ -48,12 +49,13 @@ import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
+import { Clouds } from "./clouds.ts";
 import type { ModuleDef } from "./api/module.ts";
 import { Bus, event } from "./events/bus.ts";
 import { Modules } from "./events/modules.ts";
 import { workerKeeper } from "./persist/keeper.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
-import { Records, type EntityRecord } from "./records.ts";
+import { Records, hashKey, type EntityRecord } from "./records.ts";
 import { Use } from "./use.ts";
 import { Rules, timersOf } from "./settings/rules.ts";
 import { CATALOG, rowOf } from "./settings/catalog.ts";
@@ -73,8 +75,11 @@ import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
-import { ARMOR_SLOTS } from "../shared/sim/items.ts";
+import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
+import { Cluster } from "./cluster/cluster.ts";
+import { restoreObelisks } from "../shared/world/obelisks.ts";
+import { dirname, join, resolve } from "node:path";
 
 export interface HostOptions {
   /** SQLite file. Omit for a world that lives only in memory. */
@@ -133,12 +138,6 @@ export interface HostOptions {
 
 /** Ticks between console lines accepted from one session. */
 const TEXT_INTERVAL = 6;
-/** Bytes of the SHA-256 of a device key that a survivor record keeps. */
-const KEY_HASH_BYTES = 16;
-
-function hashKey(key: Uint8Array): Uint8Array {
-  return new Bun.CryptoHasher("sha256").update(key).digest().slice(0, KEY_HASH_BYTES);
-}
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -182,6 +181,8 @@ export interface Host {
   readonly spawner: Spawner | null;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
+  /** The cluster the server is part of (-clusterid), or null for one alone. */
+  readonly cluster: Cluster | null;
   /** Bodies found inside a node or a piece as their chunk or a node near them loaded, and set free (server/place.ts). */
   readonly settled: { readonly bodies: number };
   /** The list settings that name classes, as tables, and the names this build lacks. */
@@ -197,6 +198,8 @@ export interface Host {
   /** The setting values a loaded save's timers were computed under. Null for a new world. */
   readonly loadedUnder: Record<string, number> | null;
   readonly projectiles: Projectiles;
+  /** Smoke and gas where grenades went off (W5). */
+  readonly clouds: Clouds;
   readonly progression: Progression;
   /** Null for a world whose map has no resource nodes. */
   readonly harvest: Harvest | null;
@@ -234,7 +237,7 @@ export function contentFor(content: Registry, rules: Rules): Registry {
 
 /** A host that fails to start lets go of its save, so the next try can open it. */
 export function createHost(content: Registry, opts: HostOptions = {}): Host {
-  const opened: WorldStore[] = [];
+  const opened: { close(): void }[] = [];
   try {
     return makeHost(content, opts, opened);
   } catch (err) {
@@ -264,7 +267,17 @@ const SESSION_SPAWN = event("session.spawn");
 const DEATH = event("death");
 const BODY_OUT = event("body.out");
 
-function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): Host {
+/**
+ * The folder a server of cluster `id` shares with the others: ARK's -ClusterDirOverride, or where it is not given, `clusters`
+ * beside the save, as ARK's servers of one installation share its Saved/clusters. Both hold a folder for each cluster id.
+ */
+export function clusterRoot(rules: Rules, dbPath: string, id: string): string {
+  if (!/^[A-Za-z0-9_.-]{1,64}$/.test(id) || id.startsWith(".")) throw new Error(`-clusterid=${id}: a cluster id is 1 to 64 letters, digits, dots, dashes and underscores`);
+  const over = rules.flag("ClusterDirOverride");
+  return join(typeof over === "string" && over !== "" ? resolve(over) : join(dirname(resolve(dbPath)), "clusters"), id);
+}
+
+function makeHost(content: Registry, opts: HostOptions, opened: { close(): void }[]): Host {
   // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
   const lists = new Lists(rules, content);
@@ -279,7 +292,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   if (store) opened.push(store);
   // A save supplies its own structures. Only a new world gets the map's.
   const mapFile = opts.world ? null : (opts.map ?? provingFile(reg));
-  const world = opts.world ?? createMapWorld(reg, parseMap(mapFile!), { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
+  const parsed = mapFile ? parseMap(mapFile) : null;
+  const world = opts.world ?? createMapWorld(reg, parsed!, { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
@@ -290,7 +304,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   world.anims = creatureAnims(reg, (d) => world.rigs.get(d.mesh));
   let settingsAt: { dirty: boolean; version: number } | null = null;
   let settingsToldAt = -1;
-  const records = new Records(opts.worldId ?? 1);
+  // A server of a cluster takes its world id there, and the save keeps it: its records are numbered under it for good.
+  const clusterFlag = rules.flag("clusterid");
+  const clusterId = typeof clusterFlag === "string" ? clusterFlag : "";
+  if (clusterId !== "" && !store) throw new Error(`-clusterid=${clusterId}: a server of a cluster needs a save, so give it --db`);
+  const cluster = store && clusterId !== "" ? Cluster.open(clusterRoot(rules, store.path, clusterId), clusterId, store) : null;
+  if (cluster) opened.push({ close: () => cluster.stop() });
+  // Alone, it would let a name be taken whose survivor is away, and never see it come back.
+  const member = store?.meta("cluster") ?? null;
+  if (!cluster && member !== null) throw new Error(`this save is in the cluster ${member}: start it with -clusterid=${member} and the folder it used, so that what left it can come back`);
+  const records = new Records(opts.worldId ?? cluster?.world ?? (store && !store.fresh ? Number(store.meta("world_id") ?? 1) : 1));
   const say = opts.log ?? ((line: string) => console.log(line));
   // Carries events to modules. Made before the systems, so that each can raise its own.
   const bus = new Bus();
@@ -322,6 +345,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   let refusedNext = 0;
   const persistence = store ? new Persistence(world, records, store, { allowMapMismatch: opts.allowMapMismatch ?? false }) : null;
   const loaded = persistence ? persistence.load() : null;
+  if (loaded && !loaded.fresh && parsed) {
+    const set = restoreObelisks(parsed, world.structs, reg);
+    if (set > 0) say(`set down ${set} pieces of the map's obelisks, which this save was made without`);
+  }
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
   const survivorMove = reg.move[survivor]!;
@@ -398,6 +425,34 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   tribes.rules = rules;
   tribes.bus = bus;
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
+  // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
+  cluster?.start(
+    {
+      reg,
+      world,
+      records,
+      items,
+      persistence: persistence!,
+      rules,
+      tribes,
+      game,
+      bus,
+      mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+      suspend: (rec, off) => survival.suspend(rec, off),
+      adopt: (rec) => {
+        survival.restore(rec, false);
+        progression.resume(rec);
+        buffs.restore(rec, false);
+      },
+      forget: (rec) => {
+        buffs.died(rec);
+        survival.forget(rec.pid);
+        inHand.delete(rec.pid);
+      },
+      say,
+    },
+    loaded!.fresh,
+  );
   const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     spawner?.left(rec);
@@ -460,6 +515,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     rise: (c, p, why) => {
       const at = Number.isNaN(p.y) ? undefined : p.y;
       if (why === CHOOSE_DIED) return death.respawn(c, p.x, p.z, p.yaw, at);
+      if (why === CHOOSE_ARRIVED && cluster) return cluster.rise(c, p.x, p.z, p.yaw, at);
       const rec = records.byPid.get(c.pid);
       if (!rec) return RESULT_INVALID;
       rec.dead = false;
@@ -500,6 +556,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
   combat.onThrow = (c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality));
+  const clouds = new Clouds({ world, records, buffs, rules });
+  projectiles.onCloud = (item, x, y, z, by) => clouds.make(item, x, y, z, by);
   // The killer is credited before death.die, which may delete the record.
   const dying = new Set<number>();
   survival.onDeath = (rec, cause, by) => {
@@ -709,7 +767,15 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const rec = recordOf(name);
     return !rec || !rec.keyHash || sameBytes(rec.keyHash, hashKey(key));
   };
-  game.savedPosition = (name) => recordOf(name) ?? null;
+  if (cluster) {
+    game.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
+    game.away = (name, key) => cluster.awayCheck(name, key);
+  }
+  // A survivor that came from another server and has not risen joins as one that died does: with no body, choosing where.
+  game.savedPosition = (name) => {
+    const rec = recordOf(name);
+    return rec && cluster?.arriving.has(rec.pid) ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, dead: true, team: rec.team } : (rec ?? null);
+  };
   game.needsLook = (name) => !recordOf(name)?.look;
   game.onBody = (c) => {
     let rec = recordOf(c.name);
@@ -774,7 +840,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     moved(-1, c.chunk);
     c.entered = true;
     // One that joins with no body chooses where to rise, for the reason it left its body.
-    if (c.state === SESSION_DEAD) c.why = beds.whyOf(c.pid);
+    if (c.state === SESSION_DEAD) c.why = cluster?.arriving.has(c.pid) ? CHOOSE_ARRIVED : beds.whyOf(c.pid);
     // One still making its survivor is told of when it has made it.
     if (c.pid !== 0) joined(c);
     // Tribe member lists show who is online.
@@ -834,6 +900,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat.step();
     projectiles.step();
+    clouds.step();
     creatures.step(tick);
     spawner?.step(tick);
     build.step();
@@ -880,6 +947,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       if (settingsToldAt >= 0) bus.after(SERVER_SETTINGS, { names: "", source: "" });
       settingsToldAt = rules.version;
     }
+    cluster?.step(tick);
     if (persistence && opts.backups && tick % liveEvery === 0) bus.after(SERVER_SAVE, { tick, folder: `${persistence.store.path}.backups` });
     modules.step(tick);
     bus.flush();
@@ -985,6 +1053,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       gear[GEAR_HELD] = item;
       for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
       ents.setGear(e, gear);
+      // Only the thing in hand has its attachment on, and taking another in hand switches it off: "it does require you to
+      // press N each time you switch" (Flashlight Attachment). Others see a laser on (weapons-plan.md, M10).
+      const before = inHand.get(rec.pid);
+      items.switchOff(rec, before === undefined || before === slot ? slot : -1);
+      ents.setOn(e, slot >= 0 && (inv.flags[slot]! & FLAG_ON) !== 0 && items.attachmentOf(inv, slot) === "laser");
       // A worn-out weapon counts as holding no rounds and takes none.
       const params = reg.weapon[item] ?? FISTS;
       const works = slot >= 0 && params.clip > 0 && inv.dur[slot]! > 0;
@@ -1017,6 +1090,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   addSocialCommands(con);
   addCreatureCommands(con);
   addSettingsCommands(con);
+  addClusterCommands(con);
   // After the server's own commands, so a module can take no name of theirs.
   const modules = new Modules(
     {
@@ -1072,6 +1146,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     hurt,
     spawner,
     beds,
+    cluster,
     settled,
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
@@ -1084,6 +1159,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     readLive,
     loadedUnder,
     projectiles,
+    clouds,
     progression,
     harvest,
     deadlines,
@@ -1114,6 +1190,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       }
       persistence.commit(true);
       persistence.close();
+      cluster?.stop();
     },
   };
   game.handle(CMD_PLACE, (c, r) => build.place(c, r));
@@ -1124,6 +1201,17 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
   game.handle(CMD_CARRY, (c, r) => carry.command(c, r));
   game.handle(CMD_TAKE, (c, r) => eggs.take(c, r));
+  game.handle(CMD_TRAVEL, (c, r) => {
+    const to = r.u16();
+    const at = r.u32();
+    if (r.overflow || !cluster) return RESULT_INVALID;
+    // A survivor travels from a terminal it stands at, as ARK's from an obelisk's.
+    if (!cluster.atTerminal(c, at)) return RESULT_FAR;
+    const why = cluster.leave(c, to);
+    if (why === "") return RESULT_OK;
+    game.sendText(c, TEXT_NOTICE, why);
+    return RESULT_DENIED;
+  });
   game.handle(CMD_CHAT, (c, r) => {
     const channel = r.bits(3);
     const words = r.string(MAX_CHAT_BYTES);
