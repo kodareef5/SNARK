@@ -289,6 +289,40 @@ test("walking sloped pieces is predicted exactly: a ramp, a stair flight, the se
   expect([s.own.x, s.own.y, s.own.z]).toEqual([ents.x[e]!, ents.y[e]!, ents.z[e]!]);
 });
 
+test("ground too steep to stand on is predicted exactly: walked into, jumped at, slid down pressing up it and off the rim of the map with no corrections", () => {
+  const { h, s, pilot, ents, e } = admin({ latencyMs: 60 });
+  const p = h.reg.move[ents.kind[e]!]!;
+  // Off the rim it lands hard, and the harm a landing does is the server's, which the client is told of: it is not movement.
+  expect(h.say(s, "god")).toEqual(["god on"]);
+  let inside = 0;
+  let corrections = 0;
+  /**
+   * From (x, z), facing `deg` degrees from north, `ms` of forward with these buttons, jump pressed every half second if asked.
+   * Returns how far it went down.
+   */
+  const leg = (x: number, z: number, deg: number, ms: number, buttons: number, jump = false): number => {
+    expect(h.say(s, `tp ${x} ${z}`)[0]).toContain("at ");
+    h.run(300);
+    const [from, y] = [s.stats.corrections, ents.y[e]!];
+    [pilot.yaw, pilot.moveZ] = [(deg * Math.PI) / 180, 1];
+    for (let t = 0; t < ms; t += 100) {
+      pilot.buttons = buttons | (jump && t % 500 === 0 ? BTN_JUMP : 0);
+      h.run(100, () => void (capsuleFree(h.world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height) || inside++));
+    }
+    [pilot.moveZ, pilot.buttons] = [0, 0];
+    h.run(500);
+    corrections += s.stats.corrections - from;
+    return y - ents.y[e]!;
+  };
+  // Strips 4 and 5 of the proving ground, 50 and 60 degrees: into them and at them from the plaza, straight and slantwise, and
+  // from 4 to 6 m up each, facing the top, from where it slides to the foot. Then the rim of the map, 50 to 58 degrees, from
+  // 40 m up it facing the edge.
+  const drops = [leg(232, 285, 0, 3000, BTN_SPRINT, true), leg(240, 285, 25, 3000, BTN_SPRINT, true), leg(232, 295, 0, 3000, BTN_JUMP), leg(240, 293, -30, 3000, BTN_SPRINT), leg(490, 256, 90, 4000, BTN_SPRINT | BTN_JUMP), leg(256, 22, 180, 4000, 0, true)];
+  expect([inside, corrections]).toEqual([0, 0]);
+  expect(drops.map((d) => (d > 30 ? "off the rim" : d > 3 ? "to the foot" : "on the plaza"))).toEqual(["on the plaza", "on the plaza", "to the foot", "to the foot", "off the rim", "off the rim"]);
+  expect([s.own.x, s.own.y, s.own.z]).toEqual([ents.x[e]!, ents.y[e]!, ents.z[e]!]);
+});
+
 test("a small correction is hidden by an offset that fades; the drawn position never jumps", () => {
   const h = new Harness();
   const s = h.join("ada", { latencyMs: 30 });
