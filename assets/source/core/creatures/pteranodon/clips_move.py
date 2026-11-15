@@ -934,6 +934,296 @@ def walk(r):
     return make(r, name, N, at)
 
 
+def breath(t, period):
+    """0 to 1 and back: a breath in, a slower breath out."""
+    return Keys([(0.0, 0.0), (0.4, 1.0), (1.0, 0.0)], period=1.0)((t % period) / period)
+
+
+def breathe(p, b):
+    """The deep chest swells with breath b (0 to 1), lifting the shoulders a little."""
+    a, y, r3 = p["chest"]
+    p["chest"] = (a + 1.4 * b, y, r3)
+    a, y, r3 = p["spine"]
+    p["spine"] = (a - 0.5 * b, y, r3)
+    p["body"] = p["body"] + Vector((0.0, 0.004 * b, 0.0))
+
+
+def look_head(p, yaw, pitch=0.0, roll=0.0, lean=None, ext=None):
+    """The head turned `yaw` degrees to the left on the neck, the neck carrying a share of the turn, from where the
+    head sits in STANCE (or leaning `lean`, reaching `ext`)."""
+    lean0, ext0 = lean_of(ground(), STANCE_HEAD)
+    p["head"] = on_neck(p, lean0 if lean is None else lean, ext0 if ext is None else ext, heading=0.55 * yaw)
+    p["head_rot"] = (pitch, yaw, roll)
+    p["neck"] = [(0.0, 0.18 * yaw, 0.0)] * 4
+
+
+def idle(r):
+    """Sitting up on its folded wings, breathing slowly, the weight shifting from side to side; it turns its head a
+    little one way, holds, glances the other, clacks its beak once, and settles its folded wings with a shrug."""
+    name = "idle"
+    N = rig.CLIPS[name]["frames"]
+    sway = Keys([(0, 0.0), (30, 1.0), (90, -1.0)], period=N)
+    yaw = Keys([(0, 0.0), (14, 0.0), (26, 16.0), (48, 18.0), (58, 17.0), (66, -9.0), (84, -11.0), (98, 0.0), (119, 0.0)],
+               period=N)
+    tilt = Keys([(0, 0.0), (14, 0.0), (28, 5.0), (50, 4.0), (66, -3.0), (84, -2.0), (98, 0.0)], period=N)
+    nod = Keys([(0, 0.0), (20, 0.0), (26, 2.5), (34, 0.0), (66, 0.0), (70, 3.0), (78, 0.0)], period=N)
+    clack = Keys([(0, 0.0), (86, 0.0), (88, 0.12), (90, 0.0), (92, 0.08), (94, 0.0)], period=N)
+    shrug = Keys([(0, 0.0), (102, 0.0), (106, 1.0), (110, -0.3), (114, 0.1), (118, 0.0)], period=N)
+    lw = lagging(lambda t: 0.6 * shrug(t), N, True, 3.0, 0.3)
+
+    def at(t):
+        f = int(round(t)) % N
+        w = sway(t)
+        p = ground()
+        p["body"] = STANCE_BODY + Vector((0.010 * w, 0.003 * shrug(t), 0.0))
+        p["body_rot"] = (S["body"]["pitch"], 0.6 * w, 1.2 * w)
+        p["spine"] = (S["spine"]["pitch"], 0.0, -0.4 * w)
+        p["chest"] = (S["chest"]["pitch"] + 1.2 * shrug(t), 0.0, -0.6 * w)
+        breathe(p, breath(t, N / 2.0))
+        look_head(p, yaw(t), pitch=nod(t), roll=tilt(t))
+        p["beak"] = clack(t)
+        for s in "lr":
+            # The folded finger lifts off the arm and settles back as the shoulders shrug.
+            p["wing_extra_" + s] = {"wing_1": (0.0, 0.0, -3.0 * shrug(t) - 4.0 * lw[f])}
+        p["tail"] = (1.5 * w, 2.0 * w)
+        return p
+
+    return make(r, name, N, at)
+
+
+def idle_look(r):
+    """Lifts its head and turns the long beak slowly round to its left, holds and looks, then sweeps it across to the
+    right and looks there, and brings it back; the body leans a little into each turn."""
+    name = "idle_look"
+    N = rig.CLIPS[name]["frames"]
+    yaw = Keys([(0, 0.0), (6, 0.0), (22, 62.0), (34, 66.0), (40, 62.0), (56, -60.0), (68, -64.0), (74, -60.0),
+                (86, 0.0), (89, 0.0)])
+    lift = Keys([(0, 0.0), (8, 1.0), (78, 1.0), (89, 0.0)])
+    tilt = Keys([(0, 0.0), (22, 8.0), (40, 8.0), (56, -8.0), (74, -8.0), (86, 0.0)])
+
+    def at(t):
+        y, l = yaw(t), lift(t)
+        p = ground()
+        p["body_rot"] = (S["body"]["pitch"] + 1.5 * l, 0.06 * y, 0.03 * y)
+        p["chest"] = (S["chest"]["pitch"] + 1.0 * l, 0.08 * y, 0.0)
+        breathe(p, breath(t, 45.0) * 0.8)
+        lean0, ext0 = lean_of(ground(), STANCE_HEAD)
+        look_head(p, y, pitch=4.0 * l, roll=tilt(t), lean=lean0 - 6.0 * l, ext=ext0 + 0.01 * l)
+        return p
+
+    return make(r, name, N, at)
+
+
+def idle_stretch(r):
+    """Rocks back onto its feet and lifts its hands, raises the wings half open above its back, shakes them hard so
+    the skin ripples, folds them back and comes down onto its hands again."""
+    name = "idle_stretch"
+    N = rig.CLIPS[name]["frames"]
+    down = 74.0  # the hands are planted again: STANCE, wings folded
+    rock = Keys([(0, 0.0), (6, 0.15), (16, 1.0), (60, 1.0), (down - 4, 0.2), (down, 0.0), (89, 0.0)])
+    fold = Keys([(0, 1.0), (12, 1.0), (24, 0.32), (52, 0.32), (down - 4, 1.0), (89, 1.0)])
+    raise_ = Keys([(0, 0.0), (12, 0.0), (26, 34.0), (50, 32.0), (down - 6, 4.0), (down, 0.0)])
+    shake = Keys([(0, 0.0), (30, 0.0), (33, 1.0), (46, 0.8), (52, 0.0)])
+    settle = Keys([(0, 0.0), (down, 0.0), (down + 4, -1.0), (down + 10, 0.3), (89, 0.0)])
+
+    def at(t):
+        k = rock(t)
+        sh = shake(t) * math.sin(2.0 * math.pi * (t - 30.0) / 5.0)
+        p = ground()
+        p["body"] = STANCE_BODY + Vector((0.0, -0.03 * k + 0.012 * settle(t), -0.06 * k))
+        p["body_rot"] = (S["body"]["pitch"] + 14.0 * k + 1.5 * sh, 0.0, 0.0)
+        p["chest"] = (S["chest"]["pitch"] - 2.0 * k + 1.0 * sh, 0.0, 0.0)
+        lean0, ext0 = lean_of(ground(), STANCE_HEAD)
+        p["neck"] = [(-4.0 * k, 0.0, 0.0)] * 2 + [(4.0 * k, 0.0, 0.0)] * 2
+        look_head(p, 0.0, pitch=-6.0 * k + 2.0 * sh, lean=lean0 + 8.0 * k, ext=ext0 - 0.02 * k)
+        p["beak"] = 0.1 * shake(t)
+        for s in "lr":
+            sign = 1.0 if s == LEFT else -1.0
+            p["wing_" + s] = wing(fold=fold(t), flap=raise_(t) + 9.0 * sh, sweep=-6.0 * k + 3.0 * sh,
+                                  twist=5.0 * sh * sign * 0.0 + 6.0 * sh, curl=-8.0 * k + 10.0 * sh)
+            lift_tuck(p, s)
+            # The hands leave the ground while the body is still in STANCE, and come down when it is again.
+            p["plant_" + s] = 1.0 - smooth(t / 6.0) + smooth((t - (down - 3.0)) / 3.0)
+            if 6.0 <= t <= down - 3.0:
+                p["hand_" + s] = None
+        p["tail"] = (6.0 * k, 0.0)
+        return p
+
+    return make(r, name, N, at)
+
+
+def turn(r):
+    """A quarter turn to its left on the spot. The engine turns the root as a smooth step over the clip; within it
+    the head leads, the body follows, and the hands and feet step round, each planted one held where it is."""
+    name = "turn"
+    N = rig.CLIPS[name]["frames"]
+
+    def pace(t):
+        return 90.0 * smooth(t / (N - 1))
+
+    # Each limb's world angle about the root: (start frame, end frame, from, to) of each step.
+    steps = {"hand_l": [(1, 7, 0.0, 34.0), (9, 15, 34.0, 66.0), (17, 23, 66.0, 90.0)],
+             "hand_r": [(4, 10, 0.0, 34.0), (12, 18, 34.0, 66.0), (17.5, 23, 66.0, 90.0)],
+             "foot_r": [(2, 9, 0.0, 45.0), (12, 19, 45.0, 90.0)],
+             "foot_l": [(6, 13, 0.0, 45.0), (15, 22, 45.0, 90.0)]}
+
+    def stepped(limb, t):
+        turned, lift = 0.0, 0.0
+        for a, b, y0, y1 in steps[limb]:
+            if t >= b:
+                turned = y1
+            elif t > a:
+                s = (t - a) / (b - a)
+                turned, lift = y0 + (y1 - y0) * smooth(s), math.sin(math.pi * s)
+                break
+            else:
+                turned = y0
+                break
+        return turned, lift
+
+    def in_root(v, world_yaw, t):
+        return turned(rot(yaw=world_yaw - pace(t)), v)
+
+    body_world = Keys([(0, 0.0), (3, 0.0), (21, 90.0), (23, 90.0)])
+    head_world = Keys([(0, 0.0), (1, 0.0), (9, 70.0), (14, 92.0), (18, 90.0), (23, 90.0)])
+
+    def at(t):
+        p = ground()
+        bw = body_world(t) - pace(t)
+        hw = head_world(t) - pace(t)
+        p["body"] = turned(rot(yaw=bw), STANCE_BODY)
+        p["body_rot"] = (S["body"]["pitch"], bw, 0.0)
+        look_head(p, hw - bw, roll=0.1 * (hw - bw))
+        p["head_rot"] = (0.0, hw, 0.1 * (hw - bw))
+        for s in "lr":
+            a, lift = stepped("hand_" + s, t)
+            knuckle = in_root(STANCE_HAND[s], a, t) + Vector((0.0, 0.12 * lift, 0.0))
+            p["hand_" + s] = (knuckle, (4.0 * lift, a - pace(t), 0.0))
+            p["elbow_" + s] = in_root(STANCE_ELBOW[s], 0.5 * (a + body_world(t)), t)
+            a, lift = stepped("foot_" + s, t)
+            p["foot_" + s] = in_root(STANCE_FOOT[s], a, t) + Vector((0.0, 0.08 * lift, 0.0))
+            p["foot_rot_" + s] = (STANCE_FOOT_PITCH - 15.0 * lift, a - pace(t), 0.0)
+            p["knee_" + s] = in_root(STANCE_KNEE[s], 0.5 * (a + body_world(t)), t)
+        p["tail"] = (0.0, -0.4 * (hw - bw))
+        return p
+
+    return make(r, name, N, at)
+
+
+# =====================================================================================================================
+# On the water, and falling
+# =====================================================================================================================
+
+# The engine floats a swimmer with three quarters of its capsule's height under water (shared/sim/character.ts,
+# SWIM_FLOAT), and the capsule is as tall as the animal stands: so the surface is here, over the clip's ground.
+WATERLINE = round(0.75 * rig.STANDING_HEIGHT, 3)
+FLOAT_BODY = REST_BODY + Vector((0.0, WATERLINE + 0.05 - REST_BODY.y, 0.0))
+
+
+def afloat(t, n, swell):
+    """Floating: the belly in the water, the wings half spread on the surface, the head up on an upright neck."""
+    p = air()
+    p["body"] = FLOAT_BODY + Vector((0.0, 0.015 * swell, 0.0))
+    p["body_rot"] = (4.0 + 1.5 * swell, 0.0, 0.0)
+    p["neck"] = [(-10.0, 0.0, 0.0), (-6.0, 0.0, 0.0), (8.0, 0.0, 0.0), (10.0, 0.0, 0.0)]
+    for s in "lr":
+        p["wing_" + s] = wing(fold=0.14, flap=4.0, curl=-3.0, twist=-2.0)
+        p["foot_" + s] = hip(p, s) + mx(Vector((0.04, -0.46, 0.12)), s)
+        p["foot_rot_" + s] = (75.0, 0.0, 0.0)
+        p["knee_" + s] = knee_ahead(p, s, p["foot_" + s])
+    return p
+
+
+def swim_idle(r):
+    """Afloat and going nowhere: riding the swell with the wings half spread on the water, the feet paddling slowly
+    underneath, the head up and looking about."""
+    name = "swim_idle"
+    N = rig.CLIPS[name]["frames"]
+    look = Keys([(0, 0.0), (10, 0.0), (18, 28.0), (32, 30.0), (40, 0.0)], period=N)
+
+    def at(t):
+        swell = math.sin(2.0 * math.pi * t / N)
+        p = afloat(t, N, swell)
+        p["body_rot"] = (p["body_rot"][0], 0.0, 1.5 * math.sin(2.0 * math.pi * (t + 10) / N))
+        lean, ext = 26.0, 0.93
+        p["head"] = on_neck(p, lean, ext, heading=0.5 * look(t))
+        p["head_rot"] = (-2.0 - 1.5 * swell, look(t), 0.0)
+        for s in "lr":
+            ph = 2.0 * math.pi * (t / N + (0.0 if s == LEFT else 0.5))
+            p["foot_" + s] = p["foot_" + s] + Vector((0.0, 0.02 * math.sin(ph), 0.06 * math.cos(ph)))
+            p["foot_rot_" + s] = (75.0 - 20.0 * math.sin(ph), 0.0, 0.0)
+            p["talons_" + s] = 0.15 - 0.15 * math.sin(ph)
+            p["wing_" + s]["flap"] += 1.5 * swell
+        p["tail"] = (-4.0, 0.0)
+        return p
+
+    return make(r, name, N, at)
+
+
+def swim(r):
+    """Paddling along at 3 m/s: the half-folded wings row back together on the surface twice a turn, the feet kick in
+    turn, the body surges on each stroke, the head held up."""
+    name = "swim"
+    N = rig.CLIPS[name]["frames"]
+    half = N / 2.0
+    row = Keys([(0.0, 1.0), (0.45, -1.0)], period=1.0)
+
+    def at(t):
+        u = (t % half) / half
+        k = row(u)
+        swell = math.sin(4.0 * math.pi * t / N)
+        p = afloat(t, N, 0.4 * swell)
+        p["body"] = p["body"] + Vector((0.0, 0.01 * k, 0.0))
+        p["body_rot"] = (4.0 - 2.0 * k, 0.0, 0.0)
+        p["head"] = on_neck(p, 30.0, 0.93)
+        p["head_rot"] = (-4.0 + 1.5 * k, 0.0, 0.0)
+        for s in "lr":
+            # Forward and up out of the water, then down and back through it.
+            power = 1.0 if u < 0.45 else 0.0
+            p["wing_" + s] = wing(fold=0.30 - 0.08 * k, flap=6.0 + 8.0 * (1.0 - power) * math.sin(math.pi * (u - 0.45) / 0.55),
+                                  sweep=14.0 * k, twist=-6.0 * power, curl=-4.0)
+            ph = 2.0 * math.pi * (t / N + (0.0 if s == LEFT else 0.5))
+            p["foot_" + s] = p["foot_" + s] + Vector((0.0, 0.03 * math.sin(ph), 0.10 * math.cos(ph)))
+            p["foot_rot_" + s] = (75.0 - 30.0 * math.sin(ph), 0.0, 0.0)
+            p["talons_" + s] = 0.2 - 0.2 * math.sin(ph)
+        p["tail"] = (-4.0, 0.0)
+        return p
+
+    return make(r, name, N, at)
+
+
+def fall(r):
+    """Falling awake, out of control: it tumbles and wobbles, the half-closed wings flailing out of time with each
+    other, the legs kicking, the neck twisting and the beak open."""
+    name = "fall"
+    N = rig.CLIPS[name]["frames"]
+
+    def at(t):
+        a = 2.0 * math.pi * t / N
+        p = air()
+        p["body_rot"] = (12.0 * math.sin(a) + 6.0, 9.0 * math.sin(a + 1.0), 22.0 * math.sin(a + 0.4) + 6.0 * math.sin(2 * a))
+        p["spine"] = (4.0 * math.sin(2 * a), 0.0, 4.0 * math.sin(a + 2.0))
+        for s in "lr":
+            sign = 1.0 if s == LEFT else -1.0
+            off = 0.0 if s == LEFT else 1.7
+            p["wing_" + s] = wing(fold=0.32 + 0.12 * math.sin(a + off), flap=26.0 * math.sin(2 * a + off) + 6.0,
+                                  sweep=10.0 * math.sin(a + off + 1.0), twist=12.0 * math.sin(2 * a + off + 0.5),
+                                  curl=10.0 * math.sin(2 * a + off + 1.2))
+            ph = a + (0.0 if s == LEFT else math.pi)
+            p["foot_" + s] = hip(p, s) + turned(rot(*p["body_rot"]), mx(Vector((0.08, -0.30 + 0.08 * math.sin(ph), -0.30 + 0.14 * math.cos(ph))), s))
+            p["foot_rot_" + s] = (60.0 + 25.0 * math.sin(ph), 0.0, 0.0)
+            p["knee_" + s] = knee_ahead(p, s, p["foot_" + s])
+            p["talons_" + s] = 0.4 + 0.3 * math.sin(ph + 1.0)
+        p["head"] = within_neck(p, on_neck(p, 40.0 + 15.0 * math.sin(a + 2.0), 0.9, heading=25.0 * math.sin(a + 0.8)))
+        p["head_rot"] = (10.0 * math.sin(a + 2.5), 30.0 * math.sin(a + 0.8), -0.6 * p["body_rot"][2])
+        p["neck"] = [(-8.0, 8.0 * math.sin(a + 0.8), 0.0)] * 4
+        p["beak"] = 0.55 + 0.15 * math.sin(2 * a)
+        p["tail"] = (8.0 * math.sin(2 * a), 6.0 * math.sin(a))
+        return p
+
+    return make(r, name, N, at)
+
+
 # =====================================================================================================================
 
 def setup(r):
@@ -947,6 +1237,7 @@ def setup(r):
 if __name__ == "__main__":
     r = rig.find()
     setup(r)
-    for clip in (glide, fly, fly_fast, hover, dive, take_off, land, walk):
+    for clip in (idle, idle_look, idle_stretch, walk, turn, take_off, hover, fly, fly_fast, glide, dive, land,
+                 swim_idle, swim, fall):
         clip(r)
     r.finish("move")
