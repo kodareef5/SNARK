@@ -123,7 +123,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was e8a95911 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
   // It was 949f9aed until the pteranodon's grey box (content/creatures/pteranodon.ts) numbered the meshes after it on;
   // without the pteranodon and its beach entry it is that again.
-  expect(hash).toBe("98e00881");
+  // It was 98e00881 until the three road pieces' grey boxes (content/vehicles/roads.ts) numbered the meshes after them on;
+  // without the roads it is that again.
+  expect(hash).toBe("37a15351");
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:

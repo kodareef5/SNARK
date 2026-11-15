@@ -410,7 +410,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 3260333166 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
   // It was 3479987675 until the pteranodon's grey box (content/creatures/pteranodon.ts) took a mesh number; without the
   // pteranodon and its beach entry it is that again.
-  expect(hash).toBe(1901866876);
+  // It was 1901866876 until the three road pieces' grey boxes (content/vehicles/roads.ts) took mesh numbers; without the
+  // roads it is that again.
+  expect(hash).toBe(3435644643);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
