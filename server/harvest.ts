@@ -34,6 +34,12 @@ const REACH = 3.5;
  */
 const CROWDED = 12;
 const RETRY_TICKS = 30 * TICK_RATE;
+/**
+ * Chunks round a body's within which a client is told which nodes are used up, whatever its tier: the most a tier's near
+ * field holds (ultra's 5, client/core/assets/tiers.ts) and one more, as a client's body crosses into a chunk before the
+ * server's does.
+ */
+export const NODES_TOLD = 6;
 
 interface Touched {
   hits: number;
@@ -292,8 +298,9 @@ export class Harvest {
     }
   }
 
-  /** Sends the used-up slots of each chunk within `radius` whose version the client does not have. */
-  sync(c: Client, radius: number): void {
+  /** Sends the used-up slots of each chunk within NODES_TOLD whose version the client does not have. */
+  sync(c: Client): void {
+    const radius = NODES_TOLD;
     const dims = this.world.dims;
     const cx = chunkCx(dims, c.chunk);
     const cz = chunkCz(dims, c.chunk);

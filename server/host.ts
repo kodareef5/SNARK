@@ -862,7 +862,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const tactical = new Tactical(world, game, records, rules);
   game.onReplicate = (c) => {
     syncOwn(own, c);
-    harvest?.sync(c, game.opts.structRadius);
+    harvest?.sync(c);
     tactical.sync(c);
   };
   progression.onChange = (rec) => refreshBody(rec);
