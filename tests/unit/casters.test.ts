@@ -256,9 +256,9 @@ test("casters ask for nothing, name only what the card holds, and cut out a sect
 test("the siege scene fits the caster list on every lit tier, with none dropped", () => {
   const s = siegeScene(compileContent(CORE_CONTENT).registry!, corePack(), tierOf("medium"));
   const counts: number[] = [];
+  // With the whole pack every level is held from the first frame.
   for (const name of ["medium", "high", "ultra"] as const) {
     s.scene.assets.tier = tierOf(name);
-    s.scene.build(s.cam, s.remote);
     const p = s.scene.build(s.cam, s.remote);
     expect(p.casterDropped).toBe(0);
     expect(p.casterCount).toBeLessThan(MAX_CASTERS);
