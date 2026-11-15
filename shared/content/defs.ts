@@ -3,6 +3,7 @@
 // `type` is a definition's family. A family with several classes also says which: shared/content/classes.ts has what
 // each class must and may declare.
 
+import type { Feature } from "../features.ts";
 import type { StatCurve, StatName } from "../sim/genome.ts";
 import { hullPoint, type HullDef } from "../world/convex.ts";
 
@@ -716,9 +717,11 @@ export interface SpawnsDef extends Named {
     readonly group: readonly string[];
     readonly chances?: readonly number[];
     readonly offsets?: readonly (readonly [number, number])[];
+    /** The feature it waits for: kept with its numbers, and left out of the table until its package takes this away. */
+    readonly waits?: Feature;
   }[];
-  /** The most of a region's creatures that may be of one species, as a share from 0 to 1 of the number it holds. */
-  readonly limits?: readonly { readonly species: string; readonly share: number }[];
+  /** The most of a region's creatures that may be of one species, as a share from 0 to 1 of the number it holds. `waits` as an entry's. */
+  readonly limits?: readonly { readonly species: string; readonly share: number; readonly waits?: Feature }[];
 }
 
 /** A place on a map where something spawns or drops. */

@@ -49,14 +49,18 @@ test("a wild creature is not picked up from out of reach nor ordered, a creature
 
 // The flyers' contracts (planning/reference/flyers-plan.md, FL0) in a running host.
 
-test("the flyers' codes are refused until their packages build them, and the pteranodon stand-in walks the ground as any creature", () => {
+test("the flyers' codes are refused until their packages build them, and the pteranodon stand-in, made by the spawn cheat, walks the ground as any creature", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const ada = h.join("ada");
   h.run(500);
   h.say(ada, "enablecheats");
   const g = flatGround(h, 40, 30);
   h.say(ada, `tp ${(g.x + 20).toFixed(3)} ${(g.z + 6).toFixed(3)}`);
-  const e = h.host.spawnCreature("core:pteranodon", g.x + 20, g.z + 9, 5);
+  h.run(100);
+  const before = new Set(h.host.records.byPid.keys());
+  expect(h.say(ada, "spawn pteranodon 5")[0]).toMatch(/^spawned core:pteranodon/);
+  const rec = [...h.host.records.byPid.values()].find((r) => !before.has(r.pid) && h.reg.ids[r.kind] === "core:pteranodon")!;
+  const e = h.host.records.entOf.get(rec.pid)!;
   expect(e).toBeGreaterThanOrEqual(0);
   const codes: number[] = [];
   ada.onResult = (_seq, code) => codes.push(code);

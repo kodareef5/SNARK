@@ -5,9 +5,13 @@ import { expect, test } from "bun:test";
 import { DOOR_WIDTH } from "../../content/building.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { PTERANODON_EGG, PTERANODON_EGG_FERTILE } from "../../content/creatures/pteranodon.ts";
+import { loadConfig } from "../../server/settings/config.ts";
+import { Lists } from "../../server/settings/lists.ts";
+import { spawnTables } from "../../server/settings/spawns.ts";
 import { torporDrain, torporMax } from "../../server/survival.ts";
 import { defFaults } from "../../shared/content/classes.ts";
 import type { Def, SpeciesDef } from "../../shared/content/defs.ts";
+import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { Genome, statValue } from "../../shared/sim/genome.ts";
@@ -135,10 +139,20 @@ test("its saddle is ARK's: armour 25, weight 20, learned at 38 for 15 points, ma
   expect(def("core:engram-saddle_pteranodon")).toMatchObject({ level: 38, cost: 15, item: "core:saddle_pteranodon" });
 });
 
-test("it lives on the beach as ARK's Ptero (1-2): weight 0.15, one certain and one at a half 2.5 m either side, at most a quarter of the beach", () => {
+test("its beach entry is ARK's Ptero (1-2), weight 0.15, one certain and one at a half 2.5 m either side, at most a quarter of the beach, held back until it flies", () => {
   const beach = def("core:spawns_beach") as Extract<Def, { type: "spawns" }>;
-  expect(beach.entries.find((e) => e.group.includes("core:pteranodon"))).toEqual({ name: "Ptero (1-2)", weight: 0.15, group: ["core:pteranodon", "core:pteranodon"], chances: [1, 0.5], offsets: [[0, 2.5], [0, -2.5]] });
-  expect(beach.limits!.find((l) => l.species === "core:pteranodon")!.share).toBe(0.25);
+  expect(beach.entries.find((e) => e.group.includes("core:pteranodon"))).toEqual({ name: "Ptero (1-2)", weight: 0.15, group: ["core:pteranodon", "core:pteranodon"], chances: [1, 0.5], offsets: [[0, 2.5], [0, -2.5]], waits: "flyers" });
+  expect(beach.limits!.find((l) => l.species === "core:pteranodon")).toEqual({ species: "core:pteranodon", share: 0.25, waits: "flyers" });
+  // The spawner's table leaves both out until FL3 takes the waits away, so no beach has one yet.
+  const { rules } = loadConfig({});
+  const table = spawnTables(reg, rules, new Lists(rules, reg)).tables.get(reg.index.get("core:spawns_beach")!)!;
+  expect([table.entries.some((e) => e.kinds.includes(kind)), table.limits.has(kind), table.entries.length]).toEqual([false, false, 2]);
+  // Without them, it is drawn on the beach as ARK draws it.
+  const open = compileContent(CORE_CONTENT.map((d): Def => (d === beach ? { ...beach, entries: beach.entries.map(({ waits: _, ...e }) => e), limits: beach.limits!.map(({ waits: _, ...l }) => l) } : d))).registry!;
+  const drawn = spawnTables(open, rules, new Lists(rules, open)).tables.get(open.index.get("core:spawns_beach")!)!;
+  expect([drawn.entries.length, drawn.entries[2]!.weight, drawn.limits.get(open.index.get("core:pteranodon")!)]).toEqual([3, 0.15, 0.25]);
+  // A wait names a feature.
+  expect(compileContent(CORE_CONTENT.map((d): Def => (d === beach ? ({ ...beach, entries: [{ ...beach.entries[0]!, waits: "wings" }] } as unknown as Def) : d))).errors).toEqual(['core:spawns_beach: "wings" is not a feature an entry or limit may wait for']);
 });
 
 test("the stand-in: a grey box under the id its art will take, too wide for a doorway, and the rest of its numbers waiting for their packages", () => {

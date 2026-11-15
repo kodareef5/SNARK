@@ -4,6 +4,7 @@
 import { BIRTH_SCALE } from "../sim/breeding.ts";
 import type { TameParams } from "../sim/taming.ts";
 import { TICK_RATE } from "../coords.ts";
+import { FEATURES } from "../features.ts";
 import { hashString } from "../hash.ts";
 import { FLIGHT_TICKS_MAX, STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
 import { COLOR_REGIONS, STAT_NAMES, type ColorSet } from "../sim/genome.ts";
@@ -404,6 +405,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (e.offsets !== undefined && (!Array.isArray(e.offsets) || e.offsets.length !== n || e.offsets.some((o) => !(Math.abs(o[0]) <= 64 && Math.abs(o[1]) <= 64)))) errors.push(`${d.id}: an entry's offsets are one for each of its group, each within 64 m`);
       }
       for (const l of d.limits ?? []) if (!(l.share >= 0 && l.share <= 1)) errors.push(`${d.id}: the limit of ${l.species} must be a share from 0 to 1`);
+      for (const w of [...d.entries, ...(d.limits ?? [])]) if (w.waits !== undefined && !(w.waits in FEATURES)) errors.push(`${d.id}: "${w.waits}" is not a feature an entry or limit may wait for`);
     } else if (d.type === "map") {
       for (const z of d.zones ?? []) {
         if (z.count !== undefined && !(Number.isInteger(z.count) && z.count >= 0 && z.count <= 65535)) errors.push(`${d.id}: a zone holds a whole number of creatures from 0 to 65,535`);
