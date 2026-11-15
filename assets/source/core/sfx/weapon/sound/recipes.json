@@ -150,6 +150,231 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/swing/hands/moss-pt-7260-06965.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "swing/hands",
+      "prompt_id": "v2-7260",
+      "prompt": "Fast punches cut the air: short sharp whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7260,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7260.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Fast punches cut the air: short sharp whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "4e67936e4d442e68739f90a85d8f1d77de1207223f89f658c05e1c804fd644ad",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "984fb03993cf273b70e81528c3b9264df6af12d1fff3ed9d1e74e8f80b63739a",
+      "cut": {
+        "source_file": "moss-pt-7260.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          331920,
+          351120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/swing/hands/moss-pt-7260-06000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "swing/hands",
+      "prompt_id": "v2-7260",
+      "prompt": "Fast punches cut the air: short sharp whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7260,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7260.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Fast punches cut the air: short sharp whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b82d3313760af207d97dae1927c576717a1b48b9bacf525baf533967203e30f4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "984fb03993cf273b70e81528c3b9264df6af12d1fff3ed9d1e74e8f80b63739a",
+      "cut": {
+        "source_file": "moss-pt-7260.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          285600,
+          304080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/swing/hands/moss-pt-7260-00970.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "swing/hands",
+      "prompt_id": "v2-7260",
+      "prompt": "Fast punches cut the air: short sharp whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7260,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7260.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Fast punches cut the air: short sharp whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d1c97db1490169b3d1f51a799eda453b33c1e7de3cea2cde200ac539d6a0bfbc",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "984fb03993cf273b70e81528c3b9264df6af12d1fff3ed9d1e74e8f80b63739a",
+      "cut": {
+        "source_file": "moss-pt-7260.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          44160,
+          62400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/swing/tool/moss-pt-1430-07285.wav": {
       "model": "moss",
       "backend": "torch",
@@ -294,6 +519,231 @@
         "frames": [
           115200,
           129360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/swing/tool/moss-pt-7270-04095.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "swing/tool",
+      "prompt_id": "v2-7270",
+      "prompt": "A small hatchet is swung hard through the air: short swishing whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7270,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7270.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A small hatchet is swung hard through the air: short swishing whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1eb998c11c1d82a27177ea8d8254eddd7817de8c24f5b972a13561ee32ae1996",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a986a1c0af2aba2478456f5f5e80ed027b751d19fd3dd9446ed85dd1e8415991",
+      "cut": {
+        "source_file": "moss-pt-7270.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          194160,
+          209520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/swing/tool/moss-pt-7270-06200.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "swing/tool",
+      "prompt_id": "v2-7270",
+      "prompt": "A small hatchet is swung hard through the air: short swishing whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7270,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7270.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A small hatchet is swung hard through the air: short swishing whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "fada9311530ea7fe89894fe4278d88bc506406991b361bfb78bb2d3fc3f39a2d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a986a1c0af2aba2478456f5f5e80ed027b751d19fd3dd9446ed85dd1e8415991",
+      "cut": {
+        "source_file": "moss-pt-7270.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          295200,
+          310800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/swing/tool/moss-pt-7270-01125.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "swing/tool",
+      "prompt_id": "v2-7270",
+      "prompt": "A small hatchet is swung hard through the air: short swishing whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7270,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7270.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A small hatchet is swung hard through the air: short swishing whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1029c530a49948dc7907859614cf8ab5ae7aee751545ac7cc4bbcc551aecf74d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a986a1c0af2aba2478456f5f5e80ed027b751d19fd3dd9446ed85dd1e8415991",
+      "cut": {
+        "source_file": "moss-pt-7270.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          51600,
+          67200
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
@@ -1050,6 +1500,231 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/release/bow/moss-pt-7280-05645.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "release/bow",
+      "prompt_id": "v2-7280",
+      "prompt": "An arrow is shot from a bow: a sharp string twang and a whoosh, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7280,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7280.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An arrow is shot from a bow: a sharp string twang and a whoosh, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e9e1d937f548911b6825813291810aba9fd49473ca453e663e1bcc32add4ffb4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0e0f29d6c4828dbc8a59d8a82af804bec2ae2622b83681ec50202b0699235a01",
+      "cut": {
+        "source_file": "moss-pt-7280.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          268560,
+          281760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/release/bow/moss-pt-7280-02880.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "release/bow",
+      "prompt_id": "v2-7280",
+      "prompt": "An arrow is shot from a bow: a sharp string twang and a whoosh, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7280,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7280.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An arrow is shot from a bow: a sharp string twang and a whoosh, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "306c222e490ff4729366c150849cb1d134054a3d2220e3d1bfc7376d85f3912d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0e0f29d6c4828dbc8a59d8a82af804bec2ae2622b83681ec50202b0699235a01",
+      "cut": {
+        "source_file": "moss-pt-7280.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          135840,
+          148800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/release/bow/moss-pt-7280-00420.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "release/bow",
+      "prompt_id": "v2-7280",
+      "prompt": "An arrow is shot from a bow: a sharp string twang and a whoosh, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7280,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7280.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An arrow is shot from a bow: a sharp string twang and a whoosh, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2f080a93ee5ca5b991ca34ee0cdb9a60f6c4f0e9e18540efb9e620cddaa2aa4e",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0e0f29d6c4828dbc8a59d8a82af804bec2ae2622b83681ec50202b0699235a01",
+      "cut": {
+        "source_file": "moss-pt-7280.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          17760,
+          30480
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/fire/crossbow/moss-pt-1490-05975.wav": {
       "model": "moss",
       "backend": "torch",
@@ -1650,6 +2325,156 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/fire/rifle/moss-pt-7240-04380.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fire/rifle",
+      "prompt_id": "v2-7240",
+      "prompt": "An old long rifle is fired outdoors: a loud sharp gunshot with a rolling echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7240,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7240.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An old long rifle is fired outdoors: a loud sharp gunshot with a rolling echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2d84046f8e20f7e325e19fff2fba33dff7f58049fb012fe24ee3b7ced8589cda",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6b5ff1d2e7d3328779af7a5810f803dc9a4295eb338057860413a56973f4937c",
+      "cut": {
+        "source_file": "moss-pt-7240.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          207840,
+          268560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fire/rifle/moss-pt-7240-02635.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fire/rifle",
+      "prompt_id": "v2-7240",
+      "prompt": "An old long rifle is fired outdoors: a loud sharp gunshot with a rolling echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7240,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7240.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An old long rifle is fired outdoors: a loud sharp gunshot with a rolling echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "da99368a1f4f997882d29801806d6542f450d857c9a07943b4249bdb507ff07a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6b5ff1d2e7d3328779af7a5810f803dc9a4295eb338057860413a56973f4937c",
+      "cut": {
+        "source_file": "moss-pt-7240.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          124080,
+          140640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/fire/pistol/moss-pt-1521-03975.wav": {
       "model": "moss",
       "backend": "torch",
@@ -1944,6 +2769,231 @@
         "frames": [
           92400,
           121920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fire/pistol/moss-pt-7250-03960.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fire/pistol",
+      "prompt_id": "v2-7250",
+      "prompt": "An old revolver is fired outdoors: a loud sharp crack with a short echo, four separate shots with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7250,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7250.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An old revolver is fired outdoors: a loud sharp crack with a short echo, four separate shots with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "535ed4da2277282cc39eeca313f594061aef5b94d49db94b6936c2b56f82c20b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c0570606af7a044f3303d4f4fc1b079bdd6e8d8fcf81789cc7823ff7ea7267c9",
+      "cut": {
+        "source_file": "moss-pt-7250.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          187680,
+          214560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fire/pistol/moss-pt-7250-00220.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fire/pistol",
+      "prompt_id": "v2-7250",
+      "prompt": "An old revolver is fired outdoors: a loud sharp crack with a short echo, four separate shots with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7250,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7250.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An old revolver is fired outdoors: a loud sharp crack with a short echo, four separate shots with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f16b1c22d5a6df83a45c1e73ff1f7d5f70f0e1056495bcaa2ba1e37a1ed035ee",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c0570606af7a044f3303d4f4fc1b079bdd6e8d8fcf81789cc7823ff7ea7267c9",
+      "cut": {
+        "source_file": "moss-pt-7250.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          8159,
+          34080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fire/pistol/moss-pt-7250-06520.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fire/pistol",
+      "prompt_id": "v2-7250",
+      "prompt": "An old revolver is fired outdoors: a loud sharp crack with a short echo, four separate shots with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7250,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7250.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "An old revolver is fired outdoors: a loud sharp crack with a short echo, four separate shots with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2f0c7bf73cc1327c7f946b612bb968e99bdb88beab7efcdf2da8eb84d8e631f6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c0570606af7a044f3303d4f4fc1b079bdd6e8d8fcf81789cc7823ff7ea7267c9",
+      "cut": {
+        "source_file": "moss-pt-7250.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          310560,
+          343200
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
@@ -3144,6 +4194,231 @@
         "frames": [
           200640,
           295680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/whiz/bullet/moss-pt-7290-04220.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "whiz/bullet",
+      "prompt_id": "v2-7290",
+      "prompt": "Bullets whiz close past the head: sharp supersonic cracks and zips, five separate passes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7290,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7290.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Bullets whiz close past the head: sharp supersonic cracks and zips, five separate passes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b876932d76eff3a3e4f7a467c8f2ea248923355dda720068ae05e1637490124b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1fc293a1a7f732e67b9d0d7f2f0c1e801f33c03633878c2efb81da303c85f344",
+      "cut": {
+        "source_file": "moss-pt-7290.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          200160,
+          230400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/whiz/bullet/moss-pt-7290-06565.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "whiz/bullet",
+      "prompt_id": "v2-7290",
+      "prompt": "Bullets whiz close past the head: sharp supersonic cracks and zips, five separate passes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7290,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7290.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Bullets whiz close past the head: sharp supersonic cracks and zips, five separate passes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f97e956086c2f671ef20540fee93b6e18a1b981ba4135bb98eea9a20e5e8ecef",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1fc293a1a7f732e67b9d0d7f2f0c1e801f33c03633878c2efb81da303c85f344",
+      "cut": {
+        "source_file": "moss-pt-7290.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          312720,
+          346800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/whiz/bullet/moss-pt-7290-00700.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "whiz/bullet",
+      "prompt_id": "v2-7290",
+      "prompt": "Bullets whiz close past the head: sharp supersonic cracks and zips, five separate passes with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7290,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7290.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Bullets whiz close past the head: sharp supersonic cracks and zips, five separate passes with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d03f4042473eb9e52e15763937da2f6a2043a3cbcd8674ea3fbfcc61cca2782d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1fc293a1a7f732e67b9d0d7f2f0c1e801f33c03633878c2efb81da303c85f344",
+      "cut": {
+        "source_file": "moss-pt-7290.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          31199,
+          65040
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
@@ -4719,6 +5994,1206 @@
         "frames": [
           92880,
           120240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fire/shotgun/moss-pt-7300-00985.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fire/shotgun",
+      "prompt_id": "v2-7300",
+      "prompt": "A pump-action shotgun is fired outdoors: a huge booming blast with a short echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7300,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7300.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A pump-action shotgun is fired outdoors: a huge booming blast with a short echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a8ccae63cfcb0db6ab2897ab8f012c38cf55808d47292d811e92ba8165423f31",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "cca0854ca49df7a764ea0111d93923357679aad096665068d1e9cf727b566b51",
+      "cut": {
+        "source_file": "moss-pt-7300.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          44880,
+          92160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fire/shotgun/moss-pt-7301-00320.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fire/shotgun",
+      "prompt_id": "v2-7300",
+      "prompt": "A pump-action shotgun is fired outdoors: a huge booming blast with a short echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7301,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7301.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A pump-action shotgun is fired outdoors: a huge booming blast with a short echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ea78132d0d5882feee228e3d9c810a2a2e049f1f621da997792704ae5e1cc744",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c3654f3879c55065c045542ac60358535f586037f0007599d298990751c77755",
+      "cut": {
+        "source_file": "moss-pt-7301.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          12960,
+          63840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fire/shotgun/moss-pt-7300-03310.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fire/shotgun",
+      "prompt_id": "v2-7300",
+      "prompt": "A pump-action shotgun is fired outdoors: a huge booming blast with a short echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7300,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7300.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A pump-action shotgun is fired outdoors: a huge booming blast with a short echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "18c1be2fd16d7d020fde700e900675d18bc9dbf738666ffe0361c3448735a944",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "cca0854ca49df7a764ea0111d93923357679aad096665068d1e9cf727b566b51",
+      "cut": {
+        "source_file": "moss-pt-7300.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          156480,
+          249264
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fire/shotgun/moss-pt-7301-03835.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fire/shotgun",
+      "prompt_id": "v2-7300",
+      "prompt": "A pump-action shotgun is fired outdoors: a huge booming blast with a short echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7301,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7301.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A pump-action shotgun is fired outdoors: a huge booming blast with a short echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f8ba4e81e13e869a9a8117d914c8b50b2414a60978fb006614b6a1dfab3cbc27",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c3654f3879c55065c045542ac60358535f586037f0007599d298990751c77755",
+      "cut": {
+        "source_file": "moss-pt-7301.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          181680,
+          247440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/reload/shotgun/moss-pt-7310-00595.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "reload/shotgun",
+      "prompt_id": "v2-7310",
+      "prompt": "Shotgun shells are pushed into a tube magazine one by one, then the pump is racked, three separate reloads with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7310,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7310.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Shotgun shells are pushed into a tube magazine one by one, then the pump is racked, three separate reloads with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6f121805a5b58f7088b6fcf92d2fb2b0b5d7653f1b665eadec2fa6b1e86746b7",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "17f8d8ae06a63417ef69a2f3610c622cadfc7ff7417e9f64f25797db0905ffc4",
+      "cut": {
+        "source_file": "moss-pt-7310.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          26159,
+          48480
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/reload/shotgun/moss-pt-7310-02500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "reload/shotgun",
+      "prompt_id": "v2-7310",
+      "prompt": "Shotgun shells are pushed into a tube magazine one by one, then the pump is racked, three separate reloads with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7310,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7310.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Shotgun shells are pushed into a tube magazine one by one, then the pump is racked, three separate reloads with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "72811eafc34c327d3dab344c428f0ded51cb93b91b2627439dcdd81629c352cc",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "17f8d8ae06a63417ef69a2f3610c622cadfc7ff7417e9f64f25797db0905ffc4",
+      "cut": {
+        "source_file": "moss-pt-7310.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          117600,
+          143520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/flare/burn/moss-pt-7340-00500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "flare/burn",
+      "prompt_id": "v2-7340",
+      "prompt": "A road flare burns: a steady fierce sputtering hiss and crackle. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7340,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7340.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A road flare burns: a steady fierce sputtering hiss and crackle. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ef110b7690ae98f2cb4f7f451a8db8580bb9ff6a9e350ce404418a45ae401ec2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "868c5c522bca4a190c0292879ffb7335bc2dea8c6e5f0c0a433a0d6a9997315c",
+      "cut": {
+        "source_file": "moss-pt-7340.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          24000,
+          300000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/throw/bola/moss-pt-7350-04010.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "throw/bola",
+      "prompt_id": "v2-7350",
+      "prompt": "A bola with weighted ropes is whirled overhead and thrown: whooshing spins and a release, four separate throws with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7350,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7350.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A bola with weighted ropes is whirled overhead and thrown: whooshing spins and a release, four separate throws with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7dfb5000bf02e3cfd9deb6904f3d4ac3aec46f93df70750e0d5291b8028051f1",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3c68658d8b65138ec07f474dd4b262ccaa1a19029c5765840f7186c572be87ff",
+      "cut": {
+        "source_file": "moss-pt-7350.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          190080,
+          209520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/throw/bola/moss-pt-7350-06460.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "throw/bola",
+      "prompt_id": "v2-7350",
+      "prompt": "A bola with weighted ropes is whirled overhead and thrown: whooshing spins and a release, four separate throws with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7350,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7350.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A bola with weighted ropes is whirled overhead and thrown: whooshing spins and a release, four separate throws with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ba8e25ccfaf983ab3e174e6a10a681202947625d8fa349f422abe017c7a06d1d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3c68658d8b65138ec07f474dd4b262ccaa1a19029c5765840f7186c572be87ff",
+      "cut": {
+        "source_file": "moss-pt-7350.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          307680,
+          329760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/bola/wrap/moss-pt-7360-05070.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "bola/wrap",
+      "prompt_id": "v2-7360",
+      "prompt": "Weighted ropes wrap tightly around a post: snapping cords and knocking weights, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7360,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7360.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Weighted ropes wrap tightly around a post: snapping cords and knocking weights, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b8279a9ba49a2f61e198cc0423f768613d71d36881ad26398e480862eaf681d2",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7d9bb58fced11c0da1b82b69755fdb5e7b45075321b57a9e19058568d20566e9",
+      "cut": {
+        "source_file": "moss-pt-7360.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          240960,
+          257040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/bola/wrap/moss-pt-7360-00555.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "bola/wrap",
+      "prompt_id": "v2-7360",
+      "prompt": "Weighted ropes wrap tightly around a post: snapping cords and knocking weights, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7360,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7360.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Weighted ropes wrap tightly around a post: snapping cords and knocking weights, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "155bb9930b4ec4e5c191cc4427fde8830d55b6adeaa6f04d78d9ba2ffc4b581d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7d9bb58fced11c0da1b82b69755fdb5e7b45075321b57a9e19058568d20566e9",
+      "cut": {
+        "source_file": "moss-pt-7360.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          24240,
+          39840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/gas/hiss/moss-pt-7370-00500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "gas/hiss",
+      "prompt_id": "v2-7370",
+      "prompt": "A smoke canister vents: a strong steady hissing rush of gas. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7370,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7370.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A smoke canister vents: a strong steady hissing rush of gas. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "dada19243caf0e8f5358ceb0ab5bdf467cc4ca07bdeb2d7aeedc417fa39d4560",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6e9b505cf7d6bc3a92cef66b3365d84f5c1d6c6d900deb36e271bc06cf3cac66",
+      "cut": {
+        "source_file": "moss-pt-7370.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          24000,
+          300000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/shell/eject/moss-pt-7380-05515.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "shell/eject",
+      "prompt_id": "v2-7380",
+      "prompt": "Spent brass shells fall and bounce on a stone floor: small bright tinkles, six separate shells with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7380,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7380.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Spent brass shells fall and bounce on a stone floor: small bright tinkles, six separate shells with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1755065de5a2ccbb3083222e07d8354cefd8bb2febed34946535fa98c11cad1b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "78185b3b7d401c0f58ef1196f828107e4eafdb9118fe94255bf395789565bfa0",
+      "cut": {
+        "source_file": "moss-pt-7380.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          262320,
+          321120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/fire/flare_gun/moss-pt-7330-05100.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "fire/flare",
+      "prompt_id": "v2-7330",
+      "prompt": "A flare gun is fired into the sky: a hollow pop and a rushing fizzing whoosh rising away, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7330,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7330.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A flare gun is fired into the sky: a hollow pop and a rushing fizzing whoosh rising away, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c9d46b6e02adea2637a7b3d6e564be70401be58e5e90210011cb43c8f006c261",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "853c49c8d83d538841a05178b3561157ecf6f39e6a23f892d6d8ad7a312e8021",
+      "cut": {
+        "source_file": "moss-pt-7330.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          242400,
+          301920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/pump/shotgun/moss-pt-7320-00820.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "pump",
+      "prompt_id": "v2-7320",
+      "prompt": "A pump shotgun is racked hard: a sharp metallic chk-chk, five separate pumps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7320,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7320.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A pump shotgun is racked hard: a sharp metallic chk-chk, five separate pumps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9ca8addf2501b5e63851926bb9a30b661e78648557eab02bea93c33e970762f7",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a2bfd275c23f20c9f40c1a36f3cacdc5f8a695a156b55a4a824b297f7c11e228",
+      "cut": {
+        "source_file": "moss-pt-7320.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          36959,
+          58560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/pump/shotgun/moss-pt-7320-05580.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "pump",
+      "prompt_id": "v2-7320",
+      "prompt": "A pump shotgun is racked hard: a sharp metallic chk-chk, five separate pumps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 7320,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-7320.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A pump shotgun is racked hard: a sharp metallic chk-chk, five separate pumps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a068b4bf22cf0d7d7f9327898441663ca0c641f34be751bb155a98ad6c284622",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1030.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a2bfd275c23f20c9f40c1a36f3cacdc5f8a695a156b55a4a824b297f7c11e228",
+      "cut": {
+        "source_file": "moss-pt-7320.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          265440,
+          289200
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",

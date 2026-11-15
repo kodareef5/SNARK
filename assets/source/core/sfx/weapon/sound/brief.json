@@ -782,46 +782,6 @@
         }
       ]
     },
-    "pump": {
-      "kind": "impact",
-      "range": 25,
-      "level": -20,
-      "vary": 0.5,
-      "want": "a shotgun pump racked",
-      "prompts": [
-        {
-          "id": "v2-7320",
-          "models": [
-            "moss"
-          ],
-          "seed": 7320,
-          "takes": 1,
-          "takes_moss-pt": 1,
-          "seconds": 8,
-          "text": "A pump shotgun is racked hard: a sharp metallic chk-chk, five separate pumps with pauses. Close-miked, dry, no music, no voices, quiet background."
-        }
-      ]
-    },
-    "fire/flare": {
-      "kind": "impact",
-      "range": 80,
-      "level": -16,
-      "vary": 0.5,
-      "want": "a flare gun fired",
-      "prompts": [
-        {
-          "id": "v2-7330",
-          "models": [
-            "moss"
-          ],
-          "seed": 7330,
-          "takes": 1,
-          "takes_moss-pt": 1,
-          "seconds": 8,
-          "text": "A flare gun is fired into the sky: a hollow pop and a rushing fizzing whoosh rising away, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
-        }
-      ]
-    },
     "flare/burn": {
       "kind": "impact",
       "range": 30,
@@ -921,6 +881,46 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Spent brass shells fall and bounce on a stone floor: small bright tinkles, six separate shells with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fire/flare_gun": {
+      "kind": "impact",
+      "range": 80,
+      "level": -16,
+      "vary": 0.5,
+      "want": "a flare gun fired",
+      "prompts": [
+        {
+          "id": "v2-7330",
+          "models": [
+            "moss"
+          ],
+          "seed": 7330,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A flare gun is fired into the sky: a hollow pop and a rushing fizzing whoosh rising away, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pump/shotgun": {
+      "kind": "impact",
+      "range": 25,
+      "level": -20,
+      "vary": 0.5,
+      "want": "a shotgun pump racked",
+      "prompts": [
+        {
+          "id": "v2-7320",
+          "models": [
+            "moss"
+          ],
+          "seed": 7320,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A pump shotgun is racked hard: a sharp metallic chk-chk, five separate pumps with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     }

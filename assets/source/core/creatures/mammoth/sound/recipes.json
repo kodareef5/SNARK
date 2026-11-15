@@ -300,6 +300,456 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/call/moss-pt-6850-01560.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6850",
+      "prompt": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6850,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6850.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2d4711ad621f8a0eb85022e6314afc7dc0c927d5fa6cda480a8cd6cd2c506cfb",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "451128a544323524e58e9e5a78ca2c1295ca89c1524069626320ae057fd4b1a6",
+      "cut": {
+        "source_file": "moss-pt-6850.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72480,
+          131040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6851-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6850",
+      "prompt": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6851,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6851.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9ffccee1403c000bcf45af54c52222e0df1d860caed5da378538ce3f00cdc109",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "673c92fc9dff45316f56608acdb89eaa1c5be7dcd2e8938b227510f0f59e4e71",
+      "cut": {
+        "source_file": "moss-pt-6851.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          87360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6850-02980.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6850",
+      "prompt": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6850,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6850.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "feffc2eef001585058fb97223ec1ddca29a52e01eaad5bcb1ff3a34b23b851f1",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "451128a544323524e58e9e5a78ca2c1295ca89c1524069626320ae057fd4b1a6",
+      "cut": {
+        "source_file": "moss-pt-6850.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          140640,
+          190320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6851-05375.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6850",
+      "prompt": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6851,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6851.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6a15400fa117e929318edca1c46565625a5632c89736da56dc1bd4857042e36a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "673c92fc9dff45316f56608acdb89eaa1c5be7dcd2e8938b227510f0f59e4e71",
+      "cut": {
+        "source_file": "moss-pt-6851.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          255600,
+          365040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6850-00165.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6850",
+      "prompt": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6850,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6850.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ec5555fa5b8c23d5532a0f512f1b15a9163b691cc8951100625069da3588f48e",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "451128a544323524e58e9e5a78ca2c1295ca89c1524069626320ae057fd4b1a6",
+      "cut": {
+        "source_file": "moss-pt-6850.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          5520,
+          63840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6851-02710.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6850",
+      "prompt": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6851,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6851.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a72697d5b001f2e746836124da3eaaeaf1e2f83daef482e014f09fd7d92ee516",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "673c92fc9dff45316f56608acdb89eaa1c5be7dcd2e8938b227510f0f59e4e71",
+      "cut": {
+        "source_file": "moss-pt-6851.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          127680,
+          215280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/startled/moss-pt-3510-00000.wav": {
       "model": "moss",
       "backend": "torch",
@@ -375,6 +825,81 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/startled/moss-pt-6860-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6860",
+      "prompt": "A mammoth trumpets a loud blaring alarm through its trunk, three separate trumpets with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6860,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6860.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A mammoth trumpets a loud blaring alarm through its trunk, three separate trumpets with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b8dd109b0125599201a8478121ea7071389df1e6b336923a14d706b1fbc9767e",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.08
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1034.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 20.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e95a224613fc98de6f63b9920212202f32f57168f6b9dcab2a6d5c35e32c0843",
+      "cut": {
+        "source_file": "moss-pt-6860.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          139920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/hurt/moss-pt-3520-00065.wav": {
       "model": "moss",
       "backend": "torch",
@@ -444,6 +969,81 @@
         "frames": [
           720,
           148800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6880-05100.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6880",
+      "prompt": "A mammoth trumpets and bellows in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6880,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6880.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A mammoth trumpets and bellows in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 41.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8be63b1e0e708c3e92755b2ed53c5693f415ba9241380b588c75e510dfb44cdb",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1dcd426c773be7940d1742e67114779ab159b494444dd904878e0dddc0f547d5",
+      "cut": {
+        "source_file": "moss-pt-6880.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          242400,
+          370080
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
@@ -750,6 +1350,456 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/attack/moss-pt-6871-00110.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6870",
+      "prompt": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6871,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6871.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e69a188e1fc776b8879d3a79cb0d8af948050d545191ae1d817e32e85fcf24e7",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "aa2dceff99b3c3f51da1413624421f9c98d66b83515f38fcd6e8ee8e62d6f552",
+      "cut": {
+        "source_file": "moss-pt-6871.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          2880,
+          36960
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6870-03970.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6870",
+      "prompt": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6870,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6870.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3aea3731d0f2f835961d464eacafda32e8aa26bbdafc3b1d25f1c8f4b806abc5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6b68f4b52a89d3af7b30ed08e7f61ccba941f216d9e8330a026da0689b3d8e99",
+      "cut": {
+        "source_file": "moss-pt-6870.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          188160,
+          216000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6871-05700.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6870",
+      "prompt": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6871,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6871.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "66942eac0e0c981de41bbc249642d6bf16f770f7da4793d11fa9c53172951cfe",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "aa2dceff99b3c3f51da1413624421f9c98d66b83515f38fcd6e8ee8e62d6f552",
+      "cut": {
+        "source_file": "moss-pt-6871.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          271200,
+          311520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6870-04970.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6870",
+      "prompt": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6870,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6870.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c017f79146c65b510c78c25b0d90e057e6125fa4f1f65f4ebfcc74da12ba68af",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6b68f4b52a89d3af7b30ed08e7f61ccba941f216d9e8330a026da0689b3d8e99",
+      "cut": {
+        "source_file": "moss-pt-6870.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          236160,
+          263760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6871-01905.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6870",
+      "prompt": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6871,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6871.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "087d44f3d1a45a89a45ac4d3b17c1bc2a5022ca95a40aede4976f55e70e43dda",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "aa2dceff99b3c3f51da1413624421f9c98d66b83515f38fcd6e8ee8e62d6f552",
+      "cut": {
+        "source_file": "moss-pt-6871.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          89040,
+          132720
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-6870-02975.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "v2-6870",
+      "prompt": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6870,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6870.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "55fba986cfa055767abb27b4d534f4e53cae18c66c978baf0e488ed1c88d98a7",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6b68f4b52a89d3af7b30ed08e7f61ccba941f216d9e8330a026da0689b3d8e99",
+      "cut": {
+        "source_file": "moss-pt-6870.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          140400,
+          167280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/step/moss-pt-3550-00017.wav": {
       "model": "moss",
       "backend": "torch",
@@ -819,6 +1869,756 @@
         "frames": [
           0,
           21216
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6891-03987.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6890",
+      "prompt": "Huge heavy footsteps of a giant four-legged animal: deep booming thuds, slow and well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6891,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6891.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Huge heavy footsteps of a giant four-legged animal: deep booming thuds, slow and well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "01687c7680f86949ed8958ceb1d93a521dd1ca1e5754c05588a248f2534c6f4a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1dc09376633be7236524d74bf0975587ccd6dfa73bc8b767bed5c674a5cc64fa",
+      "cut": {
+        "source_file": "moss-pt-6891.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          188976,
+          208224
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-6891-05982.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "v2-6890",
+      "prompt": "Huge heavy footsteps of a giant four-legged animal: deep booming thuds, slow and well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6891,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6891.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Huge heavy footsteps of a giant four-legged animal: deep booming thuds, slow and well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "889f3bbc4a83f21ff44139971a31a5461c5f60893e04cfcce8680ff6723bcb91",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1dc09376633be7236524d74bf0975587ccd6dfa73bc8b767bed5c674a5cc64fa",
+      "cut": {
+        "source_file": "moss-pt-6891.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          284736,
+          301200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6901-05115.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6900",
+      "prompt": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6901,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6901.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8e9ac31cdad302be5affc8a73db0f8bcc8feeec23f4690641474b007ec356cf6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "638814fc92658a3fe34ce5d86deeea97a99b492007a0fcb3c25946389140fd5a",
+      "cut": {
+        "source_file": "moss-pt-6901.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          243120,
+          360240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6900-06695.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6900",
+      "prompt": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6900,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6900.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c304fe23c4158e6ce4c9de8de5c7268e602095b839ebca4ff84fa7f53be8b056",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c47d10dff83482f9ea49830defddfc1cc6f33c126229b88dbecd3cd4e89497fd",
+      "cut": {
+        "source_file": "moss-pt-6900.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          318960,
+          382320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6900-03845.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6900",
+      "prompt": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6900,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6900.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "bc72ef19de9c7cbee3d6da65a43f778a88235d6fd7970e6d4be4129f8ab893cd",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c47d10dff83482f9ea49830defddfc1cc6f33c126229b88dbecd3cd4e89497fd",
+      "cut": {
+        "source_file": "moss-pt-6900.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          182160,
+          296640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6901-00270.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6900",
+      "prompt": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6901,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6901.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "79e67d5466ba262e5c6a78efb2e145464a0f886a2d2ea5eedf10bd2d245f84bc",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "638814fc92658a3fe34ce5d86deeea97a99b492007a0fcb3c25946389140fd5a",
+      "cut": {
+        "source_file": "moss-pt-6901.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          10560,
+          85440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6901-02110.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6900",
+      "prompt": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6901,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6901.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "131ddd6895f70cb62faa47bfb634e01d53da423ccf585081925187c4254454e6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "638814fc92658a3fe34ce5d86deeea97a99b492007a0fcb3c25946389140fd5a",
+      "cut": {
+        "source_file": "moss-pt-6901.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          98880,
+          200400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/chase/moss-pt-6900-00135.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "chase",
+      "prompt_id": "v2-6900",
+      "prompt": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6900,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6900.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth charges: thundering steps, an angry trumpet and heavy snorts, three separate charges with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e92f928b8e93f289b512561a50e960646d6a74bfe2e3d7bfcaac14c893b6334c",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c47d10dff83482f9ea49830defddfc1cc6f33c126229b88dbecd3cd4e89497fd",
+      "cut": {
+        "source_file": "moss-pt-6900.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          4080,
+          139680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/growl/moss-pt-6910-05225.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "growl",
+      "prompt_id": "v2-6910",
+      "prompt": "A woolly mammoth rumbles a deep warning growl through its trunk, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6910,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6910.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth rumbles a deep warning growl through its trunk, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2b0bc96abbdea246fc3885537146d120125af9963fecf713cac0a86ae8f91bf3",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f6448e37dae11222a115b812801f5590a0a75dae413ea35cce140334fd1652c5",
+      "cut": {
+        "source_file": "moss-pt-6910.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          248400,
+          339600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/growl/moss-pt-6910-00155.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "growl",
+      "prompt_id": "v2-6910",
+      "prompt": "A woolly mammoth rumbles a deep warning growl through its trunk, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 6910,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6910.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A woolly mammoth rumbles a deep warning growl through its trunk, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2e20f718e80219b304d6a42e2fbe6fde69faf0642270b07e6d0947c2473975cf",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.7,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1032.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f6448e37dae11222a115b812801f5590a0a75dae413ea35cce140334fd1652c5",
+      "cut": {
+        "source_file": "moss-pt-6910.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          5040,
+          67920
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
