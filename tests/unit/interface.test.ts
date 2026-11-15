@@ -1,16 +1,17 @@
 import { expect, test } from "bun:test";
-import { HudModel } from "../../client/core/hud.ts";
+import { HudModel, VehicleTelemetry } from "../../client/core/hud.ts";
 import { Settings, SETTING_ROWS } from "../../client/core/settings.ts";
 import { KEY_CONTROL_DETAIL, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "../../client/core/ui/controls-help.ts";
 import { KEY_CONTROL_PAD } from "../../client/core/ui/controller.ts";
 import { SETTING_GROUPS } from "../../client/core/ui/settings.ts";
-import { KEY_HOTBAR, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, KEY_READOUT, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { KEY_BUFF, KEY_HOTBAR, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, KEY_READOUT, KEY_VEHICLE, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { KEY_CONTROLS_DEVICE, KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_RESUME, KEY_MENU_SETTINGS } from "../../client/core/ui/menu.ts";
 import { K_IMAGE, K_SLIDER, UiFrame, textWidth, type UiImage } from "../../client/core/ui/nodes.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { filledVital } from "../../client/core/ui/vitals.ts";
 import { IMAGE_SKIN, ICON_SIZE, SKIN_HEIGHT, SKIN_WIDTH } from "../../client/core/ui/skin.ts";
 import { drawUi } from "../../tools/snap/ui.ts";
+import { bindTextInput } from "../../client/core/ui/events.ts";
 
 test("the quiet HUD keeps ten numbered slots fixed when status and contextual vitals change", () => {
   for (const aspect of [9 / 16, 4 / 3, 16 / 9, 32 / 9]) {
@@ -154,6 +155,50 @@ test("sliders accept pointer values, reject invalid input, and support repeated 
   const copy=new Settings();copy.restoreInterface(ui.settings.interfacePreferences());expect(copy.sensitivity).toBe(3);
   ui.console.open=true;expect(ui.adjustFocused(-1)).toBe(false);expect(ui.settings.sensitivity).toBe(3);
   ui.console.open=false;ui.options=ui.menu=false;ui.key("ArrowLeft",true,false,null);expect(ui.settings.sensitivity).toBe(3);
+});
+
+test("a range field's position reaches its slider through the shell's binding as a fraction of the field's maximum", () => {
+  const ui = new Ui(), hud = new HudModel();
+  ui.menu = ui.options = true;
+  ui.settings.tab = 2;
+  ui.build(16 / 9, hud, null);
+  const slider = ui.frame.nodes.slice(0, ui.frame.count).find((n) => n.kind === K_SLIDER)!;
+  const field = { type: "range", max: String(Math.round(1 / slider.step)), value: "0" };
+  const edit = bindTextInput(slider, field, { text: (key, value) => ui.input(key, value) });
+  field.value = field.max;
+  edit();
+  ui.build(16 / 9, hud, null);
+  expect(ui.settings.sensitivity).toBe(3);
+  field.value = String(Number(field.max) / 2);
+  edit();
+  expect(ui.settings.sensitivity).toBe(1.6);
+});
+
+test("the dashboard sits under the minimap, or in its place with the show button beside it, and stays clear of buffs", () => {
+  const v = new VehicleTelemetry();
+  v.active = true; v.speed = 12; v.gear = 3; v.rpm = 3400; v.redline = 6500; v.fuel = .72;
+  for (const [aspect, minimap] of [[16 / 9, true], [16 / 9, false], [9 / 19.5, true], [9 / 19.5, false]] as const) {
+    const ui = new Ui(), hud = new HudModel();
+    hud.vehicle = v;
+    hud.buffs.push(...Array.from({ length: 16 }, () => ({ label: "Buff", seconds: 10, tint: 0x335577 })));
+    ui.settings.minimap = minimap;
+    ui.inspect = true;
+    ui.build(aspect, hud, null);
+    const f = ui.frame, nodes = f.nodes.slice(0, f.count);
+    const dash = nodes.filter((n) => n.key >= KEY_VEHICLE && n.key < KEY_VEHICLE + 8);
+    const top = Math.min(...dash.map((n) => n.y)), bottom = Math.max(...dash.map((n) => n.y + n.h)), left = Math.min(...dash.map((n) => n.x));
+    expect(dash.length).toBe(8);
+    for (const n of dash) {
+      expect(n.x).toBeGreaterThanOrEqual(0);
+      expect(n.x + n.w).toBeLessThanOrEqual(f.width);
+      if (n.text) expect(textWidth(n.text, n.style), n.text).toBeLessThanOrEqual(n.w);
+    }
+    if (minimap) expect(top).toBeGreaterThan(f.find(KEY_MINIMAP)!.y + f.find(KEY_MINIMAP)!.h);
+    else expect(top).toBeLessThan(40);
+    const toggle = f.find(KEY_MINIMAP_TOGGLE)!;
+    expect(toggle.x + toggle.w <= left - 2 || toggle.y + toggle.h <= top || toggle.y >= bottom).toBe(true);
+    for (const n of nodes) if (n.key >= KEY_BUFF && n.key < KEY_BUFF + 16) expect(n.y >= bottom || n.x + n.w <= left, `buff ${n.key}`).toBe(true);
+  }
 });
 
 test("control contexts and symbol preference change the guide and persist only the preference",()=>{
