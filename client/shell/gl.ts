@@ -1,10 +1,12 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
+import { comparedLookup } from "../core/render/shadowfilter.ts";
+import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
 import { NEUTRAL, skinMode } from "../core/render/surface.ts";
 import { SKIRT_BEHIND, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
@@ -56,6 +58,12 @@ export class GlRenderer {
   drawCalls = 0;
   /** Errors other than a want of memory after a frame's uploads. There should be none. */
   errors = 0;
+  /** What compared lookups give on this device (shadowfilter.ts). Where they come back "hard" the shadow lookup filters for itself. */
+  shadowLookup = "";
+  /** The sun's shadow maps: a 16-bit depth layer a cascade, a target on each, and their side. */
+  private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
+  /** The program, level, buffer and first instance the last draw bound, which the next may share. */
+  private readonly held: unknown[] = [];
   /** Each tier's programs by name, as client/core/render/programs.ts lists them, made as a frame of that tier first asks. */
   private readonly programs = new Map<Tier, Map<string, Program>>();
   /** A pixel for each map a material lacks or has not been sent, made the first time a frame draws with materials. */
@@ -124,6 +132,8 @@ export class GlRenderer {
     const has = (...names: string[]): boolean => names.every((n) => gl.getExtension(n) !== null);
     this.formats = [...(has("EXT_texture_compression_bptc", "EXT_texture_compression_rgtc") ? ["bc" as const] : []), ...(has("WEBGL_compressed_texture_astc") ? ["astc" as const] : []), "rgba"];
     this.format = this.formats.find((f) => f === this.forced) ?? this.formats[0]!;
+    this.shadowLookup = comparedLookup(gl);
+    this.shadow = { texture: null, targets: [], size: 0 };
     this.programs.clear();
     this.neutral = [];
     this.current = null;
@@ -297,7 +307,7 @@ export class GlRenderer {
   private program(name: string, tier: Tier): Program {
     const made = this.programs.get(tier) ?? this.programs.set(tier, new Map()).get(tier)!;
     let prog = made.get(name);
-    if (!prog) made.set(name, (prog = this.link(PROGRAMS[name]!(tier, this.format))));
+    if (!prog) made.set(name, (prog = this.link(PROGRAMS[name]!(tier, this.format, this.shadowLookup === "hard"))));
     return prog;
   }
 
@@ -338,17 +348,18 @@ export class GlRenderer {
     gl.uniform3f(prog.uniform("uCamMod"), p.camX % 16, p.camY % 16, p.camZ % 16);
     gl.uniform1f(prog.uniform("uAlpha"), 1);
     gl.uniform1f(prog.uniform("uLight"), p.light);
+    gl.uniform1i(prog.uniform("uCascades"), p.cascadeCount);
     return prog;
   }
 
-  /** A textured draw's material: its tint, grey and cutoff, what its mesh's texture coordinates span, and its maps on their five units. */
-  private material(prog: Program, p: FramePacket, d: number): void {
+  /** Material `m` of a textured draw or caster of `mesh`: its tint, grey and cutoff, what the mesh's texture coordinates span, and its maps on their five units. */
+  private material(prog: Program, m: number, mesh: number, cutout: boolean): void {
     const gl = this.gl;
-    const mat = this.materials[p.drawMaterial[d]!]!;
+    const mat = this.materials[m]!;
     gl.uniform3fv(prog.uniform("uTint"), mat.tint);
     gl.uniform1f(prog.uniform("uGrey"), mat.grey);
-    gl.uniform1f(prog.uniform("uCutoff"), (p.drawFlags[d]! & DRAW_CUTOUT) !== 0 ? mat.cutoff : 0);
-    gl.uniform4fv(prog.uniform("uUv"), this.uv, p.drawMesh[d]! * 4, 4);
+    gl.uniform1f(prog.uniform("uCutoff"), cutout ? mat.cutoff : 0);
+    gl.uniform4fv(prog.uniform("uUv"), this.uv, mesh * 4, 4);
     this.maps(mat);
   }
 
@@ -412,9 +423,6 @@ export class GlRenderer {
       gl.bindTexture(gl.TEXTURE_2D, this.windows[drawn * 2 + k] ?? null);
     }
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
-    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.frame);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
 
@@ -441,18 +449,18 @@ export class GlRenderer {
     }
 
     this.bound.length = 0;
-    // The step being drawn, and the draw whose level and instances are bound. The sections of a level follow one another and share them.
+    this.shadows(p);
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     let step = -1;
-    let held = -1;
     for (let d = 0; d < p.drawCount; d++) {
-      // A step's terrain binds its own vertex array.
       const s = stepOf(p, d);
-      if (step < s) held = -1;
       while (step < s) this.step(p, ++step);
       const flags = p.drawFlags[d]!;
       const textured = (flags & DRAW_TEXTURED) !== 0;
       const lod = this.levels.get(p.drawSlot[d]!);
-      const buffer = p.drawBuffer[d] === TRANSIENT_BUFFER ? this.transient : this.buffers.get(p.drawBuffer[d]!);
+      const buffer = this.instances(p.drawBuffer[d]!);
       if (!lod || !buffer || (textured && !lod.surface)) continue;
       // A see-through draw blends, shows both faces and leaves depth alone. Others may come after it, so every draw says.
       const blend = (flags & DRAW_BLEND) !== 0;
@@ -461,27 +469,13 @@ export class GlRenderer {
       this.set(blend, !blend && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
       gl.uniform1f(prog.uniform("uSkin"), skinMode(flags, textured && lod.skin));
       if (fade > 0) gl.uniform1f(prog.uniform("uFade"), fade);
-      if (textured) this.material(prog, p, d);
+      if (textured) this.material(prog, p.drawMaterial[d]!, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0);
       else {
         gl.uniform1f(prog.uniform("uSolid"), (flags & DRAW_PLAIN) !== 0 ? 2 : 1);
         const alpha = blend ? WATER_ALPHA : 1;
         if (prog.alpha !== alpha) gl.uniform1f(prog.uniform("uAlpha"), (prog.alpha = alpha));
       }
-      if (held < 0 || p.drawSlot[d] !== p.drawSlot[held] || p.drawBuffer[d] !== p.drawBuffer[held] || p.drawFirst[d] !== p.drawFirst[held] || textured !== ((p.drawFlags[held]! & DRAW_TEXTURED) !== 0)) {
-        held = d;
-        const info = this.pack.header.meshes[p.drawMesh[d]!]!;
-        gl.uniform3fv(prog.uniform("uCenter"), info.center);
-        gl.uniform3fv(prog.uniform("uHalf"), info.half);
-        gl.uniform3f(prog.uniform("uOffset"), p.drawOffset[d * 3]!, p.drawOffset[d * 3 + 1]!, p.drawOffset[d * 3 + 2]!);
-        gl.bindVertexArray(lod.vao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        // WebGL2 has no base instance, so the range is selected by offsetting the pointers.
-        const at = p.drawFirst[d]! * INSTANCE_BYTES;
-        gl.vertexAttribPointer(2, 3, gl.FLOAT, false, INSTANCE_BYTES, at);
-        gl.vertexAttribPointer(3, 1, gl.UNSIGNED_SHORT, true, INSTANCE_BYTES, at + 12);
-        gl.vertexAttribIPointer(4, 4, gl.UNSIGNED_BYTE, INSTANCE_BYTES, at + 14);
-        gl.vertexAttribIPointer(5, 2, gl.UNSIGNED_BYTE, INSTANCE_BYTES, at + 18);
-      }
+      this.bind(prog, lod, buffer, p.drawMesh[d]!, p.drawFirst[d]!, p.drawOffset, d);
       if (textured) gl.drawElementsInstanced(gl.TRIANGLES, p.drawIndexCount[d]!, lod.type, p.drawFirstIndex[d]! * lod.indexBytes, p.drawInstances[d]!);
       else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.drawInstances[d]!);
       this.drawCalls++;
@@ -494,6 +488,86 @@ export class GlRenderer {
     gl.bindVertexArray(null);
   }
 
+  /** The buffer of instances a draw or caster names. */
+  private instances(id: number): WebGLBuffer | undefined {
+    return id === TRANSIENT_BUFFER ? this.transient : this.buffers.get(id);
+  }
+
+  /** Binds a level and the instances from `first` of `buffer` for a program, with the offset at `offsets[i * 3]`, unless the last draw did. */
+  private bind(prog: Program, lod: MeshLod, buffer: WebGLBuffer, mesh: number, first: number, offsets: Float32Array, i: number): void {
+    const [gl, h] = [this.gl, this.held];
+    if (h[0] === prog && h[1] === lod && h[2] === buffer && h[3] === first) return;
+    [h[0], h[1], h[2], h[3]] = [prog, lod, buffer, first];
+    const info = this.pack.header.meshes[mesh]!;
+    gl.uniform3fv(prog.uniform("uCenter"), info.center);
+    gl.uniform3fv(prog.uniform("uHalf"), info.half);
+    gl.uniform3f(prog.uniform("uOffset"), offsets[i * 3]!, offsets[i * 3 + 1]!, offsets[i * 3 + 2]!);
+    gl.bindVertexArray(lod.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    // WebGL2 has no base instance, so the range is selected by offsetting the pointers.
+    const at = first * INSTANCE_BYTES;
+    gl.vertexAttribPointer(2, 3, gl.FLOAT, false, INSTANCE_BYTES, at);
+    gl.vertexAttribPointer(3, 1, gl.UNSIGNED_SHORT, true, INSTANCE_BYTES, at + 12);
+    gl.vertexAttribIPointer(4, 4, gl.UNSIGNED_BYTE, INSTANCE_BYTES, at + 14);
+    gl.vertexAttribIPointer(5, 2, gl.UNSIGNED_BYTE, INSTANCE_BYTES, at + 18);
+  }
+
+  /**
+   * The sun's shadow maps, made for the tier and kept bound on their unit, and each cascade the frame draws, from the
+   * sun into its layer: the ground that casts into it, then its casters, back faces only unless a material shows both.
+   */
+  private shadows(p: FramePacket): void {
+    const gl = this.gl;
+    const [map, { cascades, size }] = [this.shadow, p.lit ? p.tier.shadows : { cascades: 0, size: 0 }];
+    if (map.size !== size || map.targets.length !== cascades) {
+      gl.deleteTexture(map.texture);
+      for (const t of map.targets.splice(0)) gl.deleteFramebuffer(t);
+      map.size = size;
+      gl.activeTexture(gl.TEXTURE0 + UNIT.shadow);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, (map.texture = cascades > 0 ? gl.createTexture() : null));
+      if (cascades > 0) {
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT16, size, size, cascades);
+        const filter = this.shadowLookup === "hard" ? gl.NEAREST : gl.LINEAR;
+        for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE], [gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL]] as const) gl.texParameteri(gl.TEXTURE_2D_ARRAY, name, value);
+      }
+      for (let k = 0; k < cascades; k++) {
+        const target = gl.createFramebuffer()!;
+        map.targets.push(target);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target);
+        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, map.texture, 0, k);
+      }
+    }
+    gl.viewport(0, 0, size, size);
+    gl.polygonOffset(...POLYGON_OFFSET);
+    gl.cullFace(gl.FRONT);
+    for (let k = 0; k < p.cascadeCount; k++) {
+      if ((p.cascadesDrawn & (1 << k)) === 0) continue;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, map.targets[k]!);
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+      gl.disable(gl.POLYGON_OFFSET_FILL);
+      this.pass++;
+      this.matrix = p.cascades.subarray(k * 16, k * 16 + 16);
+      this.tiles(p, TILE_CASTS << k, "depthTerrain");
+      for (let e = 0; e < p.casterCount; e++) {
+        const [flags, lod, buffer] = [p.casterFlags[e]!, this.levels.get(p.casterSlot[e]!), this.instances(p.casterBuffer[e]!)];
+        if ((p.casterCascades[e]! & (1 << k)) === 0 || !lod || !buffer) continue;
+        const prog = this.use((flags & DRAW_CUTOUT) !== 0 ? "depthCutout" : "depth", p);
+        this.set(false, (flags & DRAW_TWO_SIDED) === 0, false);
+        if ((flags & DRAW_TWO_SIDED) !== 0) gl.enable(gl.POLYGON_OFFSET_FILL);
+        else gl.disable(gl.POLYGON_OFFSET_FILL);
+        gl.uniform1f(prog.uniform("uSkin"), skinMode(flags, lod.skin));
+        if ((flags & DRAW_CUTOUT) !== 0) this.material(prog, p.casterMaterial[e]!, p.casterMesh[e]!, true);
+        this.bind(prog, lod, buffer, p.casterMesh[e]!, p.casterFirst[e]!, p.casterOffset, e);
+        const run = (flags & DRAW_TEXTURED) !== 0;
+        gl.drawElementsInstanced(gl.TRIANGLES, run ? p.casterIndexCount[e]! : lod.indexCount, lod.type, run ? p.casterFirstIndex[e]! * lod.indexBytes : 0, p.casterInstances[e]!);
+        this.drawCalls++;
+      }
+    }
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.cullFace(gl.BACK);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
   /**
    * Begins a step of the frame (packet.ts): its view-projection and part of the depth buffer, and in an opaque step the
    * terrain tiles in its range. The viewer's body goes over a depth clear, with its own near plane.
@@ -503,6 +577,7 @@ export class GlRenderer {
     const far = s === STEP_FAR || s === STEP_FAR_SEE;
     const half = p.split > 0 && s !== STEP_BODY;
     this.pass++;
+    this.held.length = 0;
     this.matrix = s === STEP_BODY ? p.nearViewProj : far ? p.farViewProj : p.viewProj;
     this.from = s === STEP_FAR_SEE ? p.split : 0;
     gl.depthRange(half && far ? 0.5 : 0, half && !far ? 0.5 : 1);
@@ -521,13 +596,22 @@ export class GlRenderer {
       gl.depthFunc(gl.LESS);
       this.drawCalls++;
     }
-    if (s > STEP_FAR) return;
-    // A draw for the tiles that read each pair of pictures: corner and stride in its samples, and its spacing and size.
+    if (s <= STEP_FAR) this.tiles(p, 1 << s, "terrain");
+  }
+
+  /**
+   * The terrain tiles whose `tilePass` has `bit`, with the program of that name and its twin on the window's units: a
+   * draw for the tiles that read each pair of pictures, with corner and stride in its samples, and spacing and size. The
+   * view draws both faces; a cascade the faces turned from the sun.
+   */
+  private tiles(p: FramePacket, bit: number, name: string): void {
+    const gl = this.gl;
     const [data, g] = [this.tileData, this.ground];
+    this.held.length = 0;
     for (let source = SOURCE_MAP; source <= SOURCE_WINDOW; source++) {
       let n = 0;
       for (let t = 0; t < p.tileCount; t++) {
-        if ((p.tilePass[t]! & (1 << s)) === 0 || p.tileSource[t * 4 + 3] !== source) continue;
+        if ((p.tilePass[t]! & bit) === 0 || p.tileSource[t * 4 + 3] !== source) continue;
         data.set(p.tiles.subarray(t * 4, t * 4 + 3), n * 6);
         data[n * 6 + 3] = p.tileSource[t * 4 + 2]!;
         data[n * 6 + 4] = p.tileSource[t * 4]!;
@@ -535,20 +619,23 @@ export class GlRenderer {
         n++;
       }
       if (n === 0) continue;
-      const prog = this.use(source === SOURCE_MAP ? "terrain" : "terrainWindow", p);
+      const prog = this.use(source === SOURCE_MAP ? name : name + "Window", p);
       gl.uniform1f(prog.uniform("uSolid"), 0);
       gl.uniform4f(prog.uniform("uField"), this.hf.minY, this.hf.stepY, g.cell[source]!, p.camY);
       gl.uniform2f(prog.uniform("uLast"), g.width[source]! - 1, g.height[source]! - 1);
-      this.set(false, false, false);
+      this.set(false, name !== "terrain", false);
       gl.bindVertexArray(this.tileVao);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.tileBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, n * 6), gl.DYNAMIC_DRAW);
       gl.drawElementsInstanced(gl.TRIANGLES, this.tileGround, gl.UNSIGNED_SHORT, 0, n);
+      this.drawCalls++;
+      // The skirts hide gaps between tiles from the view. Cast, they would stand under the ground.
+      if (name !== "terrain") continue;
       gl.enable(gl.POLYGON_OFFSET_FILL);
       gl.polygonOffset(0, SKIRT_BEHIND);
       gl.drawElementsInstanced(gl.TRIANGLES, this.tileIndexCount - this.tileGround, gl.UNSIGNED_SHORT, this.tileGround * 2, n);
       gl.disable(gl.POLYGON_OFFSET_FILL);
-      this.drawCalls += 2;
+      this.drawCalls++;
     }
   }
 

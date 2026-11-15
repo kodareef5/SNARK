@@ -1,0 +1,55 @@
+{
+  "picture": 2048,
+  "regions": {
+    "column": {
+      "box": [
+        0,
+        0,
+        512,
+        2048
+      ],
+      "metres_across": 0.45,
+      "metres_down": 4.5
+    },
+    "pole": {
+      "box": [
+        512,
+        0,
+        1024,
+        2048
+      ],
+      "metres_across": 0.94,
+      "metres_down": 6.0
+    },
+    "post": {
+      "box": [
+        1024,
+        0,
+        1280,
+        2048
+      ],
+      "metres_across": 0.25,
+      "metres_down": 3.5
+    },
+    "sign": {
+      "box": [
+        1280,
+        0,
+        2048,
+        768
+      ],
+      "metres_across": 0.75,
+      "metres_down": 0.45
+    },
+    "car": {
+      "box": [
+        1280,
+        768,
+        2048,
+        2048
+      ],
+      "metres_across": 5.0,
+      "metres_down": 4.0
+    }
+  }
+}

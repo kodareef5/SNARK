@@ -1,0 +1,234 @@
+{
+  "final_png_count": 10,
+  "generated_version_count": 18,
+  "archived_version_count": 18,
+  "all_prompts_preserved": true,
+  "all_edit_inputs_present": true,
+  "finals_match_native_outputs": true,
+  "files": [
+    {
+      "file": "source/hammock_far_v1.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "36772753c7b272264499c4ab3ada79d9af10f33cc8c4287865b89da3bec8cd2a",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/fig_lineup_v1.png",
+      "width": 2172,
+      "height": 724,
+      "sha256": "e375779de32f119e9477baeb0389f38fe2cffe2b25a7761ba23b23029e45706c",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/fig_trunk_v1.png",
+      "width": 1448,
+      "height": 1086,
+      "sha256": "6e48f3fd6fb7c7213413100c886ab511ca0f0501164a5f2beb9de4d79fb82210",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/mangrove_lineup_v1.png",
+      "width": 2172,
+      "height": 724,
+      "sha256": "2fd0d1433b6fb733b1d1f47e29190832b19e717f64116fa3e0559ca6b36565e9",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/oak_lineup_v1.png",
+      "width": 2172,
+      "height": 724,
+      "sha256": "a14acb45ad04c9bdf1e4039926ce82a7cf89b7f860bcb31d5f69c10853897e6f",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/oak_trunk_v1.png",
+      "width": 1448,
+      "height": 1086,
+      "sha256": "8269ee1bba76c26a4513122e893be7a6573be23d950c712ea2855b4fa033f1b5",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/stumps_v1.png",
+      "width": 1774,
+      "height": 887,
+      "sha256": "d1dec8fc0feec269e1765997753498b3a955a043e53dc08167afec2e826645b6",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/hammock_near_v1.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "e05dd5157cbe6ff5141bc59bbd61d59f3d084b0f12116d66e1510cf787896f57",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/leaves_v1.png",
+      "width": 1536,
+      "height": 1024,
+      "sha256": "f5a7dadd5ba94df20e42975d798665f88bfebbea37d6b825fdc79844f1293bdd",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/hammock_far_v2.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "b552770629139c394919375a713cf885ebb1d8f1c23c167c0eaf06910aa70158",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/fig_lineup_v2.png",
+      "width": 2172,
+      "height": 724,
+      "sha256": "ea616ac9763f0c1f7f781f07685080f1334bafa2351905d6137ee0e58fd28e0a",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/fig_lineup_v3.png",
+      "width": 2172,
+      "height": 724,
+      "sha256": "e597da7cfe944c5c38e9f766d405a3d43f6229fc790f9afa563b3ddc4c81b0cc",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/hammock_far_flat_v1.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "c7f71efef7359570ab552edfeb1bede03249044cb1488e9bcd35a89c20074ede",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/oak_lineup_v2.png",
+      "width": 2172,
+      "height": 724,
+      "sha256": "181719fc40d8adbdbc4ff7e745462e6a6ca979f42b3ccf1307aa0e30a63dcd4d",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/hammock_far_flat_v2.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "55418133c7947254d0c446f0c8ff15776eb2c26cee68e0399adc3b8ce44da3c7",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/mangrove_lineup_v2.png",
+      "width": 2172,
+      "height": 724,
+      "sha256": "711d2e8094df451f36c97d4642c8d332973a970e6f74d46484c4d9f45ace50dc",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/leaves_v2.png",
+      "width": 1536,
+      "height": 1024,
+      "sha256": "1d4dfbd8e8552710a2510cb335bbbe18bee6bbe2cb463f472a7afd005c2e00b1",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "source/stumps_v2.png",
+      "width": 1774,
+      "height": 887,
+      "sha256": "56ae7d2d1557699a30ac5bf9edcf0b489b4510f9fa6b9fa6cf3ce78889bd3888",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "fig_lineup.png",
+      "width": 2172,
+      "height": 724,
+      "sha256": "e597da7cfe944c5c38e9f766d405a3d43f6229fc790f9afa563b3ddc4c81b0cc",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "fig_trunk.png",
+      "width": 1448,
+      "height": 1086,
+      "sha256": "6e48f3fd6fb7c7213413100c886ab511ca0f0501164a5f2beb9de4d79fb82210",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "mangrove_lineup.png",
+      "width": 2172,
+      "height": 724,
+      "sha256": "711d2e8094df451f36c97d4642c8d332973a970e6f74d46484c4d9f45ace50dc",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "oak_lineup.png",
+      "width": 2172,
+      "height": 724,
+      "sha256": "181719fc40d8adbdbc4ff7e745462e6a6ca979f42b3ccf1307aa0e30a63dcd4d",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "oak_trunk.png",
+      "width": 1448,
+      "height": 1086,
+      "sha256": "8269ee1bba76c26a4513122e893be7a6573be23d950c712ea2855b4fa033f1b5",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "stumps.png",
+      "width": 1774,
+      "height": 887,
+      "sha256": "56ae7d2d1557699a30ac5bf9edcf0b489b4510f9fa6b9fa6cf3ce78889bd3888",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "hammock_near.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "e05dd5157cbe6ff5141bc59bbd61d59f3d084b0f12116d66e1510cf787896f57",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "hammock_far.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "b552770629139c394919375a713cf885ebb1d8f1c23c167c0eaf06910aa70158",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "hammock_far_flat.png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "55418133c7947254d0c446f0c8ff15776eb2c26cee68e0399adc3b8ce44da3c7",
+      "crc_valid": true,
+      "idat_valid": true
+    },
+    {
+      "file": "leaves.png",
+      "width": 1536,
+      "height": 1024,
+      "sha256": "1d4dfbd8e8552710a2510cb335bbbe18bee6bbe2cb463f472a7afd005c2e00b1",
+      "crc_valid": true,
+      "idat_valid": true
+    }
+  ]
+}

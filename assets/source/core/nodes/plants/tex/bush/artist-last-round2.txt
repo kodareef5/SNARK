@@ -1,0 +1,10 @@
+Round 2 is built; round 1 is archived in `source/round1/`.
+
+- Broad sprays with 66–74% filled outlines.
+- Two to four larger berry bunches per spray.
+- Deep-green foliage with corrected roughness.
+- Exact twins; retained elements unchanged across all five layers.
+
+All atlas checks pass, and rebuilding produces identical files. The new atlas has not been rerendered in-game.
+
+[Preview](checks/round2_comparison.jpg) · [Report](REPORT.md) · [Built-in imagegen prompts](source/prompts.json)

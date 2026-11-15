@@ -3,6 +3,7 @@
 
 import { BONE_FLOATS, MAX_CASTERS, MAX_DRAWS, MAX_TILES, type FramePacket } from "../../client/core/render/packet.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
+import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 
 /** What the page says of the device and its context. */
@@ -13,6 +14,8 @@ export interface Device {
   depthSize: number;
   antialias: boolean;
   samples: number;
+  /** What compared lookups in a 16-bit depth array give: "filtered" or "hard" (client/core/render/shadowfilter.ts). */
+  shadowLookup: string;
 }
 
 /** What a check gets back: the pixels of a frame of a shot that was read, top row first, and the device. */
@@ -24,7 +27,7 @@ export interface Readback {
 export interface LitCheck {
   readonly name: string;
   /** Builds the shots in Bun. Called once, before the page asks for any. */
-  shots(): Shot[];
+  shots(): Shot[] | Promise<Shot[]>;
   /** Whether what came back passes, and lines for the report. */
   judge(back: Readback): { ok: boolean; lines: string[] };
 }
@@ -82,6 +85,12 @@ export class Shot {
   readonly read: number[] = [];
   /** The frame before which the page loses its context and has it back, or -1. */
   loseAt = -1;
+  /** Frames are drawn with the sun's shadows, which only the GPU draws (D203), else with none, as the rasterizer has them. */
+  shadows = false;
+  /** What the renderer takes compared lookups to give, in place of what the device answers: "hard" or "" for the device's. */
+  lookup = "";
+  /** The manifest the pack was split with, for a shot drawn with materials; else the page describes the pack itself. */
+  manifest: Manifest | null = null;
   readonly key: string;
   readonly width: number;
   readonly height: number;
@@ -108,6 +117,7 @@ export class Shot {
         arrays.push([name, out.add(a.subarray(0, n)), n]);
       }
     }
+    if (!this.shadows) scalars.cascadeCount = 0;
     if (read) this.read.push(this.frames.length);
     this.frames.push({
       scalars,

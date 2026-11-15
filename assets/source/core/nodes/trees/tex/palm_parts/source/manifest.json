@@ -1,0 +1,62 @@
+[
+  {
+    "file": "source/generated_crownshaft.png",
+    "size": [
+      953,
+      1651
+    ],
+    "method": "built-in image_gen",
+    "prompt_key": "crownshaft"
+  },
+  {
+    "file": "source/generated_sheath.png",
+    "size": [
+      1254,
+      1254
+    ],
+    "method": "built-in image_gen",
+    "prompt_key": "sheath"
+  },
+  {
+    "file": "source/generated_cut.png",
+    "size": [
+      1254,
+      1254
+    ],
+    "method": "built-in image_gen",
+    "prompt_key": "cut"
+  },
+  {
+    "file": "source/generated_details.png",
+    "size": [
+      1254,
+      1254
+    ],
+    "method": "built-in image_gen",
+    "prompt_key": "details"
+  },
+  {
+    "file": "source/generated_crownshaft_round2.png",
+    "size": [
+      1254,
+      1254
+    ],
+    "method": "built-in image_gen edit",
+    "prompt_file": "source/generation_prompts_round2.json",
+    "prompt_key": "crownshaft",
+    "round": 2,
+    "sha256": "d8ff6148528f9ece68ee0d5e2d721c4a8b5ddacf21d6698153b2023b0cc2c9dd"
+  },
+  {
+    "file": "source/generated_root_round2.png",
+    "size": [
+      1254,
+      1254
+    ],
+    "method": "built-in image_gen edit",
+    "prompt_file": "source/generation_prompts_round2.json",
+    "prompt_key": "root",
+    "round": 2,
+    "sha256": "71d6993217181e1be6c2d9df525bf6b0dd03d27a502300b48b343a9da88aee91"
+  }
+]

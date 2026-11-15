@@ -1,0 +1,7 @@
+{
+  "prompt": "Use case: text-localization. Input image 1 is our own coconut lineup. Correct ONE typographic error ONLY: beside the small human near C2, the measuring bar currently reads \"1.08 m\". Replace that exact text with \"1.8 m\". The full text must be exactly the digit 1, a decimal point, the digit 8, a space, and lowercase m. The person represents an adult of 1.8 meters, and the existing figure size and measuring bar size are correct. Preserve absolutely everything else: all pixels of the four palm forms, trunks, crowns, roots, fruits, sky, ground, labels C1 C2 C3 C4, person scale, layout and light. Do not resize anything and do not change any tree. Highest native PNG, same landscape framing.",
+  "referenced_image_paths": [
+    "/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/ref/concept/palms/source/coconut_lineup_v02.png"
+  ],
+  "transparent_background": false
+}

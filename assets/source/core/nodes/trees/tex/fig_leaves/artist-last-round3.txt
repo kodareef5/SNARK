@@ -1,0 +1,5 @@
+Updated the atlas: sun leaves average **110/122/62**, shade leaves **72/88/58**, and the mass **56/70/44**, with deeper hollows reaching **0.35 AO**.
+
+Geometry, alpha, strips, roughness, heights, and normals remain exact. **All 196 checks pass**, and all four maps rebuild byte-for-byte. Superseded outputs were replaced.
+
+[30 m comparison under both lights](/home/user/dev/SNARK/.claude/worktrees/agent-a84518807920d9470/assets/source/core/nodes/trees/tex/fig_leaves/checks/purpose_30m_concept_comparison.png) · [Updated report](/home/user/dev/SNARK/.claude/worktrees/agent-a84518807920d9470/assets/source/core/nodes/trees/tex/fig_leaves/REPORT.md)

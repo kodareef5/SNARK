@@ -1,0 +1,7 @@
+Replaced all four layers: [base](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/palm_parts/palm_parts_base.png), [height](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/palm_parts/palm_parts_height.png), [normal](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/palm_parts/palm_parts_normal.png), and [ORM](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/palm_parts/palm_parts_orm.png).
+
+Crownshaft now has smooth sheath relief, 11–14% value variation and cooler green below. Roots are dusty grey-brown with darker soil.
+
+All other pixels remain identical. **130 original checks + 39 revision checks pass**, including wrapping and byte-identical rebuilding.
+
+New sources, scripts and built-in imagegen [prompts](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/palm_parts/source/generation_prompts_round2.json) are retained. [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/palm_parts/REPORT.md) documents the changes and previews.

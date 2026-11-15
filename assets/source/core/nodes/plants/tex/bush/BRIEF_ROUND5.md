@@ -1,0 +1,12 @@
+# The berry bush atlas, round 5
+
+A reviewer of the built bush found the red now reads as red, but the fruit still looks stamped onto the leafy sprays: flat clusters lying in the plane of their leaves. The model will now hang a few loose bunches of berries off the most exposed spray tips, two cards crossed so each bunch has a rounded outline from every side. They need pictures of their own.
+
+`dead1` is not used by the model. Replace it, in its rect `[976, 1524, 1170, 2048]`, with three bunches stacked one above another, `bunch1`, `bunch2` and `bunch3`, each about 194 by 174 pixels. Every other element, twin, layer and pixel stays exactly as it is.
+
+- **What**: a bunch as on the concept's twig (`../../ref/concept/berry/twig.png`, top right): a short stalk from which 10 to 18 ripe berries hang on thin pedicels of unequal length, gathered into a compact rounded cluster, seen from the side. Berries 0.8 to 1.2 cm across at the atlas's 1300 pixels a metre, so about 10 to 16 pixels each; the whole bunch about 5 to 8 cm across and 7 to 11 cm from stalk to lowest berry. Make the three different in count and shape: one fuller and rounder, one longer and looser, one smaller with a berry or two half hidden behind the others. Some overlap, so the cluster reads as a solid rounded mass with gaps at its edge, not a scatter of dots.
+- **Berries** painted as round 4 left the others: an unshaded neutral grey base of 82 to 86, a darker calyx dot on the berries turned toward the eye, a little variation between berries. Region 0 covers every berry, nothing else. Their roughness as the other berries (0.62 to 0.70); the normal and height make each berry a sphere, so the game's light gives it a small highlight and a darker underside, which is what keeps near-black and white berries readable as fruit.
+- **Stalk and pedicels** the green-brown of the sprays' fruit stalks, thin, not in region 0. The stalk's top is the element's anchor, at the top centre of its rect; the tip is the lowest point of the bunch.
+- **Alpha**: clean edges, a few pixels of padding, nothing else in the rect.
+
+Add the three to `layout.json` with their anchor, tip and metres, and give each a `berries` entry like the sprays' if the build makes one. Rebuild every layer from `source/` with `build_atlas.py`, make `check_atlas.py` pass (with the protected hashes of everything else unchanged), and add to `REPORT.md` what changed. Keep the generated original and its prompt in `source/` as before.

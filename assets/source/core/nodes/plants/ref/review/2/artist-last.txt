@@ -1,0 +1,3 @@
+Wrote [CRITIQUE.md](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/ref/review/round2/CRITIQUE.md), substantially shorter than the first review.
+
+Verdict: **hold**, with three required fixes, explicit regressions, six-colour assessment, and one low-setting line per plant.

@@ -1,0 +1,6 @@
+{
+  "prompt": "Use case: precise-object-edit. Edit target: the attached transparent older Forkleaf inner branch. Keep the same photorealistic plant species, broad three-fork branch-end silhouette, bottom-centred short woody stem, dark saturated green leaves and a few olive aging leaves. Make the crown just a little less crowded: remove about 5 of the overlapping central leaves to reveal small clean transparent gaps and some woody branch structure, aiming at 68-72 percent of the outline filled by foliage instead of 77 percent. Still a dense leafy mass, not a sparse twig. Keep all remaining leaves intact, layered, smooth elliptical with veins; no holes cut through any individual leaf. Preserve a complete uncut branch and generous transparent border on all sides. Flat diffuse unlit albedo-like botanical photograph, no highlights, no directional shadows, no text, no berries. Genuine transparent background.",
+  "tool": "built-in image_gen",
+  "input": "superseded/inner1_dense_original.png",
+  "output": "inner1_original.png"
+}

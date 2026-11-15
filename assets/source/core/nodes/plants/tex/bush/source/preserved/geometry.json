@@ -1,0 +1,71 @@
+{
+  "fallen1": {
+    "original_rect": [
+      940,
+      1300,
+      1300,
+      1900
+    ],
+    "original_content_box": [
+      80,
+      125,
+      279,
+      567
+    ],
+    "metres": 0.340555,
+    "anchor": [
+      82,
+      441
+    ],
+    "tip": [
+      43,
+      0
+    ]
+  },
+  "stripped1": {
+    "original_rect": [
+      1300,
+      1300,
+      1626,
+      1900
+    ],
+    "original_content_box": [
+      108,
+      193,
+      217,
+      567
+    ],
+    "metres": 0.290254,
+    "anchor": [
+      35,
+      373
+    ],
+    "tip": [
+      92,
+      0
+    ]
+  },
+  "stripped2": {
+    "original_rect": [
+      1626,
+      1300,
+      1952,
+      1900
+    ],
+    "original_content_box": [
+      98,
+      152,
+      228,
+      567
+    ],
+    "metres": 0.320337,
+    "anchor": [
+      57,
+      414
+    ],
+    "tip": [
+      12,
+      0
+    ]
+  }
+}

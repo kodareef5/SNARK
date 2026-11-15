@@ -1,0 +1,5 @@
+Done. Added bloom and tiny white catchlights to ripe berries, preserving calyx dots, unripe fruit, foliage, height and normals.
+
+Removed 163 unused source files; retained all 18 required originals and prompt records. All checks pass, including an exact clean rebuild of 100 generated files.
+
+[Six-dye check picture](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/bush/checks/berry_dyes.png) · [Updated report](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/bush/REPORT.md)

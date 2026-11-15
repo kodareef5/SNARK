@@ -1,0 +1,161 @@
+{
+  "removed_superseded_set1_files": [
+    {
+      "path": "source/rectified_tissue.png",
+      "sha256": "1321b68779a6ca4a0453ad01c7cc03ee79d54c443bae4fb4292313e1339eb3ed"
+    },
+    {
+      "path": "source/overlap.png",
+      "sha256": "b1afecbcd7ac6ca2a99ef41985e63079b46a6b3de76a6dc943c777bcf9b80aeb"
+    },
+    {
+      "path": "source/kind.png",
+      "sha256": "0d8624d000f6bc81366b2ca46ceb76f0f6cfb0070be3332f2124970dae07ec57"
+    },
+    {
+      "path": "source/generation_prompt.txt",
+      "sha256": "a6c2a5e096c4d9b7513b617909ab61185c8e675fe83da8dda1db9f386155a6d8"
+    },
+    {
+      "path": "source/leafmask.png",
+      "sha256": "67e55dd7a5518d2ef75d28705b32e04e7bdbab7f24f69cf63daadccb31e37e09"
+    },
+    {
+      "path": "source/round2_spray_study.png",
+      "sha256": "733e33431592d38ce3fa59f5d40531aa3c58e315c191ff8108db1edb2afedb33"
+    },
+    {
+      "path": "source/leaves_generated.png",
+      "sha256": "0a90a6dc9d5d0235f7acb16643f99808a207ef93146b714de633c4113f1bc651"
+    },
+    {
+      "path": "source/sRGB.icc",
+      "sha256": "8d9aaa6c9243b4b5e52cbd5ad3c6c9ee8751905aaf54a79d34674eefcc3d924b"
+    },
+    {
+      "path": "source/spray_layout.json",
+      "sha256": "d6d406fd829d9d8183e0a932c443226af762e237ae76900643d63047eea30e41"
+    },
+    {
+      "path": "source/ids.png",
+      "sha256": "1f2ce4ec194c018b400407a06883fc6f6a7f104d73fea0abb90ca505e5a627df"
+    },
+    {
+      "path": "source/round2_generation_prompt.txt",
+      "sha256": "f82d8013eb35ef646f0d62437a52b6ed23b8b90ba106dcf836d6330cb70b8610"
+    },
+    {
+      "path": "fitted.json",
+      "sha256": "fa0ff85db6ace2b726396fe745edec063ef38cad9796f453c45ab08ef5cec212"
+    },
+    {
+      "path": "review_round2.py",
+      "sha256": "60aa556d8efa44cf8bc1add939a55d1a2909e8cf31e14f810f454b5b7657d4ed"
+    }
+  ],
+  "replaced": [
+    "build_material.py",
+    "check_material.py",
+    "REPORT.md",
+    "mangrove_leaves_base.png",
+    "mangrove_leaves_height.png",
+    "mangrove_leaves_normal.png",
+    "mangrove_leaves_orm.png"
+  ],
+  "retained_and_updated": [
+    "verify_rebuild.py"
+  ],
+  "retained_reused": [
+    "requirements.txt"
+  ],
+  "preserved_user_files": [
+    "BRIEF.md",
+    "guide/LAYOUT.json",
+    "guide/layout.png",
+    "artist-transcript.txt"
+  ],
+  "round2": {
+    "replaced_in_place": [
+      "build_material.py",
+      "check_material.py",
+      "verify_rebuild.py",
+      "REPORT.md",
+      "mangrove_leaves_base.png",
+      "mangrove_leaves_orm.png",
+      "source/set2/composed_master_2048.png"
+    ],
+    "preserved": [
+      "mangrove_leaves_height.png",
+      "mangrove_leaves_normal.png",
+      "fitted.json",
+      "source/set2/leaves_generated.png",
+      "source/set2/composition.json",
+      "source/set2/surface_ids.png",
+      "source/set2/surface_kind.png",
+      "source/set2/surface_depth.png",
+      "BRIEF.md",
+      "BRIEF_ROUND2.md",
+      "feedback/round1_game_20m.png",
+      "guide/LAYOUT.json",
+      "guide/layout.png"
+    ],
+    "new_support": [
+      "source/set2/round2_preservation.json",
+      "source/set2/tissue_exposure.png"
+    ],
+    "removed_superseded_checks": [
+      {
+        "path": "checks/billow_20m_back.png",
+        "sha256": "39e1a54fa8f8edee7aad3efe2df0ed0d8464e22fad30f81f7ac03b26481709d3"
+      },
+      {
+        "path": "checks/billow_20m_front.png",
+        "sha256": "a7535f5bdfc0daf141eeb4a60aa03ad7fcfc3c1430f483c3f128ef07a42d1bb0"
+      },
+      {
+        "path": "checks/billow_20m_sparse_back.png",
+        "sha256": "f75bbbc3c755aa0de27eb4b1d6b622b7e47dc58f3d0045fdfe8dd66eff37671f"
+      },
+      {
+        "path": "checks/billow_20m_sparse_front.png",
+        "sha256": "8d978e1e68ddfb83cde642da1c3dceeabc8fbd6e7b8eafef290eed1c20035c4c"
+      },
+      {
+        "path": "checks/iterations/contact_revision.png",
+        "sha256": "f37adbefa123787ed713ff3d4326c96386ae2afb6c3603d1c58a788ffbbf1b7c"
+      },
+      {
+        "path": "checks/iterations/first_layers.jpg",
+        "sha256": "3b03b288a52666fefb13eecf7bed20b1fa6cfa2c7aa2a658fa0c2542acc7f2e8"
+      },
+      {
+        "path": "checks/iterations/first_leaf_detail.jpg",
+        "sha256": "89f6cc956fc0db59b8bf5cb2b0154ac50b85224007f82a2d25b72b4360e9e58d"
+      },
+      {
+        "path": "checks/iterations/first_purpose_20m_both_lights_enlarged.png",
+        "sha256": "0e1efd1d49e189426ccff66b6ff3b1fa677d6db07c1d52c4ec110bc39b535f0e"
+      },
+      {
+        "path": "checks/iterations/tile_review.jpg",
+        "sha256": "d1b257c4d5682434ef1ed9ce22c435e1f2a903b39142585d877c7d31ee2f0f32"
+      },
+      {
+        "path": "checks/purpose_20m_both_lights.png",
+        "sha256": "9590d7216b849c5e049abe2848b7b007cf5269b7f283d9b361f5ff6a78e14d22"
+      },
+      {
+        "path": "checks/purpose_20m_both_lights_enlarged.png",
+        "sha256": "e447045c07c235456eab7fd1ba6b91bf7e51fc82ff5370ff3e9ace11bc56a8b8"
+      },
+      {
+        "path": "checks/purpose_20m_sparse.png",
+        "sha256": "b47148e935ce36c317d650ecadae36109039fc9c69234b1b8af2f00d49223133"
+      },
+      {
+        "path": "checks/purpose_20m_sparse_enlarged.png",
+        "sha256": "66073bd5d3e86a18eb795a6553e1054f0cfac1eec9fdcd0fd3661216d8f21ddb"
+      }
+    ]
+  }
+}

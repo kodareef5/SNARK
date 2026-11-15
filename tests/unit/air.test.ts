@@ -204,7 +204,7 @@ test("LIT, SURFACE and the dome read the air; the dome's text is written from th
   const medium = tierOf("medium");
   for (const name of ["flat", "terrain", "seeThrough", "far", "sky"]) expect(PROGRAMS[name]!(medium, "bc").fragment.includes(AIR)).toBe(true);
   expect(PROGRAMS.surface!(medium, "astc").fragment.includes(AIR)).toBe(true);
-  expect(LIT_FRAGMENT.includes("shown(lit(albedo, vec3(1.0, 1.0, 0.0), n, -vRel / d, vec3(0.0)), vRel)")).toBe(true);
+  expect(LIT_FRAGMENT.includes("shown(lit(albedo, vec3(1.0, 1.0, 0.0), n, -vRel / d, vec3(0.0), sunShadow(vRel, n)), vRel)")).toBe(true);
   expect(SKY_FRAGMENT.includes(`* ${Math.cos(BREAK.turn)}`) || SKY_FRAGMENT.includes(String(Math.cos(BREAK.turn)))).toBe(true);
   for (const part of [SKY_FRAGMENT]) expect([part.split("{").length, part.split("(").length]).toEqual([part.split("}").length, part.split(")").length]);
 });

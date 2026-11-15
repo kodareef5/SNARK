@@ -1,0 +1,5 @@
+Saved all 10 requested PNGs in this folder. Generated and reviewed 15 images; the five discarded versions are preserved in `round1/`.
+
+Finals retain the built-in imagegen tool’s native **1672 × 941** output.
+
+[Build notes](./NOTES.md) and [exact prompts](./prompts.md) include construction guidance, weaknesses, and selection decisions.
