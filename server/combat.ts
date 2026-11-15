@@ -101,6 +101,8 @@ export interface Source {
   /** Seconds torporOver is spread over, and a buff the hit gives (a content index, or 0). */
   torporSeconds: number;
   buff: number;
+  /** The share of armor the round goes through, 0 to 1 (weapons-plan.md, M12). Omitted, none. */
+  pierce?: number;
 }
 
 /** One resolved blow, for tests, the console and measurement. */
@@ -255,6 +257,7 @@ export class Combat {
     src.torporInstant = butt ? reg.blowTorpor[item]! : reg.meleeTorpor[item !== 0 ? item : kind]!;
     src.torporOver = src.torporSeconds = 0;
     src.buff = 0;
+    src.pierce = 0;
     const wears = item !== 0 && reg.uses[item]! > 0;
     if (body >= 0) {
       // Harvest damage is the blow's damage as the attacker's melee and the weapon's quality make it, times the server's rule.
@@ -643,6 +646,7 @@ export class Combat {
     hit.resist = buffs.takenOf(victim);
     hit.torporInstant = src.torporInstant;
     hit.torporOver = src.torporOver;
+    hit.pierce = src.pierce ?? 0;
     hit.takes = reg.takes[vkind]?.[hit.type] ?? 1;
     const rules = this.ctx.rules;
     hit.zone = rules.on("HeadMultipliers") ? (reg.zoneMul[vkind]?.[zone] ?? 1) : 1;
@@ -762,6 +766,8 @@ export class Combat {
     hit.draw = src.draw;
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
     hit.takes = takes[src.type]!;
+    // The weapon's own factor against what is built (D435): the grenade's 175 to a body is the Table of explosives' 788 to wood.
+    hit.structures = world.reg.structureMul[src.item] ?? 1;
     // A structure is spared as its owning tribe would be.
     hit.rule = this.spared(src.by, t.owner[slot]!, src.type, false) ? 0 : this.dealt(src.by) * this.ctx.rules.num("StructureResistanceMultiplier");
     const bus = this.ctx.bus;
@@ -798,9 +804,10 @@ export class Combat {
 
   /**
    * Every body within `radius` of (x, y, z) that has a clear line to it, and every structure within `radius`, takes
-   * `src`, in full within a metre and fading to nothing at the edge.
+   * `src`, in full within a metre and fading to nothing at the edge. `direct` is a body a round that went off struck straight
+   * on, which takes the blast in full wherever on it the round met it (weapons-plan.md, M8), or -1.
    */
-  blast(src: Source, x: number, y: number, z: number, radius: number): void {
+  blast(src: Source, x: number, y: number, z: number, radius: number, direct = -1): void {
     const world = this.ctx.world;
     const ents = world.ents;
     const reg = world.reg;
@@ -825,10 +832,10 @@ export class Combat {
           const mz = ents.z[i]! - z;
           // The distance to the body's nearest point, approximated as the distance to its middle less its radius.
           const mid = Math.sqrt(mx * mx + my * my + mz * mz);
-          const far = Math.max(0, mid - reg.bodyRadius[kind]!);
+          const far = i === direct ? 0 : Math.max(0, mid - reg.bodyRadius[kind]!);
           if (far >= radius) continue;
           // World geometry between the two shields the body.
-          if (mid > 0.5 && castWorld(world, x, y + 0.1, z, mx / mid, (my - 0.1) / mid, mz / mid, mid - 0.3) !== HIT_NONE) continue;
+          if (i !== direct && mid > 0.5 && castWorld(world, x, y + 0.1, z, mx / mid, (my - 0.1) / mid, mz / mid, mid - 0.3) !== HIT_NONE) continue;
           found.push(i);
           share.push(fade(far));
         }

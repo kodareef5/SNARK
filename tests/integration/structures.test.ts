@@ -284,9 +284,10 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   const lostFar = full - health(far);
   const lostClad = full - health(clad);
   // Distance runs from the blast to the body's middle, less its girth. At 1.4 m most of the blast lands, at 4.4 m a quarter.
+  // A body takes ARK's 175 (Grenade), and what is built 4.5 times that (D435).
   const reach = (level: number): number => fade(Math.hypot(level, 0.9 - (lie.y + 0.05 - at.y)) - 0.4);
-  expect(lostNear).toBeCloseTo(788 * reach(1.4), -0.5);
-  expect(lostFar).toBeCloseTo(788 * reach(4.4), -0.5);
+  expect(lostNear).toBeCloseTo(175 * reach(1.4), -0.5);
+  expect(lostFar).toBeCloseTo(175 * reach(4.4), -0.5);
   expect(lostFar).toBeLessThan(lostNear * 0.3);
   expect(lostClad).toBeCloseTo(lostNear / 6, -1);
   const cinv = h.host.items.inv(h.host.records.byPid.get(clad.pid)!);

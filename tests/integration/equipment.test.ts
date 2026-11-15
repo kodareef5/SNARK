@@ -101,7 +101,7 @@ test("the content hangs together: every engram can be reached, every thing that 
   const points = levels.type === "levels" ? levels.engramPoints.reduce((a, b) => a + b, 0) : 0;
   expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));
   const weapons = items.filter((d) => d.weapon);
-  expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bola", "bow", "club", "crossbow", "grenade", "hatchet", "pick", "pistol", "rifle", "slingshot", "spear"]);
+  expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bola", "bow", "club", "crossbow", "flare_gun", "grenade", "hatchet", "pick", "pistol", "rifle", "slingshot", "spear"]);
   // Ammunition is made, or gathered as a slingshot's stone is.
   const gathered = new Set(reg.defs.flatMap((d) => (d?.type === "node" ? d.yields.map((y) => y.item) : [])));
   for (const d of weapons) {

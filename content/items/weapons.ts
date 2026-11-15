@@ -39,7 +39,23 @@ export const WEAPONS: readonly Def[] = [
   { type: "item", class: "weapon", id: id("rifle"), stack: 1, weight: 9, label: "long rifle", color: 228, weapon: { kind: "gun", ammo: [id("round_rifle"), id("dart_tranq"), id("dart_shock")], power: 1, reload: 4.5, uses: 70, fits: ATTACHMENTS, melee: BLOW, mesh: id("rifle"), hold: "rifle", ...RIFLE_AIM } },
   { type: "item", class: "weapon", id: id("pistol"), stack: 1, weight: 3, color: 2, weapon: { kind: "gun", ammo: [id("round_pistol")], power: 1, clip: 6, reload: 2.2, interval: 0.35, uses: 60, fits: ATTACHMENTS, melee: BLOW, mesh: id("pistol"), hold: "pistol", ...PISTOL_AIM } },
 
+  // The flare gun (W6; ark.wiki.gg Flare Gun, read 2026-11-15): "only good for one use, breaking after firing a single
+  // flare", which lights "until it hit[s] the ground", best "fired directly above you"; weight 0.5; no harm (its melee is
+  // "akin to punching with your Fists", patch 180.4, so ours strikes with bare hands); made in the inventory in 5 s at level
+  // 15 for 6 points, of 4 wood, 2 fiber, 10 sparkpowder and 2 gunpowder. It is spent as it fires, as a thrown weapon is, and
+  // its flare is its own round (D447), which carries a light and so flies as a prop (core:flare_live, server/projectiles.ts)
+  // that rises, sinks slowly and goes out where it lands. Its speed, the light's reach and colour, the stack of 1 and its
+  // throw's pose in place of a pistol's are ours (DEV134, DEV135). Until rendering has local lights the flare is a bright
+  // mesh (D436): the blast's yellow cube, a metre across, until the art gives it its own.
+  {
+    type: "item", class: "weapon", id: id("flare_gun"), label: "flare gun", stack: 1, weight: 0.5, color: 3,
+    weapon: { kind: "thrown", uses: 1, mesh: id("flare_gun"), hold: "pistol" },
+    ammo: { damage: 0, type: "fire", speed: 40, gravity: 9.81, light: { reach: 40, color: 10 }, mesh: id("blast") },
+  },
+  { type: "prop", class: "projectile", id: id("flare_live"), mesh: id("blast"), color: 10, radius: 0.5, height: 1 },
+
   // Levels are the reference game's.
+  ...making("flare_gun", "Flare gun", 15, 6, 1, 5, [["wood", 4], ["fiber", 2], ["sparkpowder", 10], ["gunpowder", 2]]),
   ...making("bow", "Bow", 10, 11, 1, 6, [["wood", 15], ["fiber", 50]]),
   ...making("crossbow", "Crossbow", 25, 12, 1, 10, [["ingot", 7], ["wood", 10], ["fiber", 35]]),
   ...making("pistol", "Pistol", 34, 15, 1, 12, [["ingot", 60], ["wood", 5], ["hide", 15]]),

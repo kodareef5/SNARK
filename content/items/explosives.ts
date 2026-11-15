@@ -2,14 +2,20 @@ import type { Def } from "../../shared/content/defs.ts";
 import { making } from "../craft.ts";
 
 // The weapons program's thrown things: the explosives, the bola and later the clouds (planning/reference/weapons-plan.md,
-// W4 to W6), with how each is made. The grenade moved here from content/core.ts unchanged by W0: it still does 788 to bodies and structures
-// alike, ARK's figure against wood, until W6 gives it ARK's 175 to bodies and a structure factor of 4.5. Its live prop
-// (core:grenade_live) stays in content/core.ts with the other projectile props.
+// W4 to W6), with how each is made. The grenade moved here from content/core.ts by W0; its live prop (core:grenade_live)
+// stays in content/core.ts with the other projectile props.
 
 const id = (name: string): string => `core:${name}`;
 
 export const EXPLOSIVES: readonly Def[] = [
-  { type: "item", class: "weapon", id: id("grenade"), stack: 10, weight: 1, color: 7, weapon: { kind: "thrown", damage: 788, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" } },
+  // The grenade (W6; ark.wiki.gg Grenade and Table of explosives, read 2026-11-15): "175 (6 meter radius)" to bodies, and 788
+  // to thatch and wood, 1,838 to stone and 237 to metal (patch 257). Our materials' explosive factors were fitted to those
+  // (content/core.ts: wood 1, stone 2.3325, metal 0.3008), so its own factor against what is built is 788 / 175: D435's 4.5
+  // to the point the table gives, so every structure takes what it took when the grenade did 788 to all.
+  {
+    type: "item", class: "weapon", id: id("grenade"), stack: 10, weight: 1, color: 7,
+    weapon: { kind: "thrown", damage: 175, structures: 788 / 175, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" },
+  },
 
   // The level is the reference game's.
   ...making("grenade", "Grenade", 42, 20, 1, 8, [["fiber", 15], ["stone", 20], ["gunpowder", 30], ["hide", 5], ["ingot", 2]]),

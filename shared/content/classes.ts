@@ -87,9 +87,9 @@ const ITEM = {
   weapon: f("facet", "WeaponTemplate", {
     refs: { "ammo[]": "item", "fits[]": "item/attachment", "cloud.prop": "prop/cloud", "cloud.buff": "buff" },
     open: true,
-    stubs: { structures: "polish", cloud: "polish" },
+    stubs: { cloud: "polish" },
   }),
-  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" } }),
+  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { pellets: "polish", falloff: "polish" } }),
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),

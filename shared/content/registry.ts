@@ -191,13 +191,17 @@ export interface Registry {
    */
   readonly decomposeTicks: Uint32Array;
   readonly youngItem: Uint16Array;
-  // The columns of planning/reference/weapons-plan.md. The blow's are read (W2); the rest are compiled and read by nothing until the project named builds them.
+  // The columns of planning/reference/weapons-plan.md. The blow's (W2), the structure factor, blast, pierce and light (W6)
+  // are read; the rest are compiled and read by nothing until the project named builds them.
   /** A bow's or gun's blow (W2): its damage at primitive quality (0 for none), torpor as a multiple of it, and reach in metres. */
   readonly blowDamage: Float32Array;
   readonly blowTorpor: Float32Array;
   readonly blowReach: Float32Array;
-  /** W6, per weapon: what its damage is multiplied by against a structure. 1 for everything. */
-  readonly structureMul: Float32Array;
+  /**
+   * W6, per weapon: what its damage is multiplied by against a structure (1 where the facet does not say). Kept in doubles,
+   * so that the grenade's 788 / 175 gives back the Table of explosives' 788 exactly (D435).
+   */
+  readonly structureMul: Float64Array;
   /** W5, per thrown weapon that bursts into a cloud: the prop/cloud (0 for none), the ticks it lasts, and its buff (0 for none). */
   readonly cloudProp: Uint16Array;
   readonly cloudTicks: Uint32Array;
@@ -206,10 +210,13 @@ export interface Registry {
   readonly ammoPellets: Uint8Array;
   readonly ammoFalloffFull: Float32Array;
   readonly ammoFalloffNone: Float32Array;
-  /** W6, per ammunition: the reach of the blast where it ends (0 for none), and the share of armor it goes through. */
+  /** W6, per ammunition: the reach of the blast where it ends (0 for none), and the share of armor it goes through (both read). */
   readonly ammoBlast: Float32Array;
   readonly ammoPierce: Float32Array;
-  /** M9, per ammunition: the reach of the light it carries (0 for none) and its palette colour. */
+  /**
+   * M9, per ammunition: the reach of the light it carries (0 for none) and its palette colour. A round with a light flies as
+   * a prop that every client draws, until it lands (W6, server/projectiles.ts); the light itself is rendering's (D436).
+   */
   readonly ammoLight: Float32Array;
   readonly ammoLightColor: Uint8Array;
 }
@@ -469,6 +476,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (am?.blast !== undefined) positive(d, "ammo.blast", am.blast, 100);
       if (am?.pierce !== undefined && !(am.pierce >= 0 && am.pierce <= 1)) errors.push(`${d.id}: ammo.pierce must be from 0 to 1`);
       if (am?.light) {
+        // A light is carried by a round that flies, as a prop, until it lands (W6).
+        if (am.speed === undefined) errors.push(`${d.id}: a round that carries a light flies, at its ammo.speed`);
         positive(d, "ammo.light.reach", am.light.reach, 1000);
         if (!paletteIndex(am.light.color)) errors.push(`${d.id}: ammo.light.color must be a palette index`);
       }
@@ -628,7 +637,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const blowDamage = new Float32Array(n);
   const blowTorpor = new Float32Array(n);
   const blowReach = new Float32Array(n);
-  const structureMul = new Float32Array(n).fill(1);
+  const structureMul = new Float64Array(n).fill(1);
   const cloudProp = new Uint16Array(n);
   const cloudTicks = new Uint32Array(n);
   const cloudBuff = new Uint16Array(n);
