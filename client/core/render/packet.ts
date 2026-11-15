@@ -79,7 +79,11 @@ export const SOURCE_WINDOW = 1;
  * and of length 1, colours are linear light, and lengths are metres.
  */
 export const FRAME = {
-  /** fSun: the way to the sun, stepped every 0.05 degrees of its travel, and how strongly it casts, 0 to 1. */
+  /**
+   * fSun: the way the sun's light comes from, stepped every 0.05 degrees of its travel and held 2 degrees up through
+   * twilight, when it carries the afterglow; and how strongly it casts, 0 to 1. Where the sun is, for its disc and for
+   * the sky table, is fTrueSun (sky.ts `trueSun`), the moon's direction turned round.
+   */
   sun: 0,
   casting: 3,
   /** fSunColor: the sun's light at the ground, and the exposure all light is multiplied by. */
@@ -117,6 +121,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp mat4 fCascades[${MAX_CASCADES}];
 };
 #define fSkyScale fSkyAbove.w
+#define fTrueSun (-fMoon.xyz)
 `;
 
 export interface BufferUpload {

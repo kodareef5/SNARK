@@ -2,7 +2,7 @@
 // card as bright as low poly shows it.
 import { expect, test } from "bun:test";
 import { FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { KNEE, cardTakes, SKY_SIZE, aroundOf, domeLight, elevationOf, flatCard, heightOf, hourOfSun, luminance, decodeTexel, encodeTexel, sampleSky, shownSky, skyFrame, sunDirection, sunHeight, sunTravel, texelAt, theSky, tone } from "../../client/core/render/sky.ts";
+import { KNEE, cardTakes, SKY_SIZE, aroundOf, domeLight, elevationOf, flatCard, heightOf, hourOfSun, luminance, decodeTexel, encodeTexel, sampleSky, shownSky, skyFrame, trueSun, sunDirection, sunHeight, sunTravel, texelAt, theSky, tone } from "../../client/core/render/sky.ts";
 import { linearToSrgb } from "../../client/core/render/surface.ts";
 import { SkyBuilder } from "../../tools/sky/build.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
@@ -189,6 +189,31 @@ test("through twilight the sun's slot carries the afterglow from 2 degrees up to
   const s = [0, 0, 0];
   sunDirection(10, s);
   for (let k = 0; k < 3; k++) expect(day[F.sun + k]).toBeCloseTo(s[k]!, 6);
+});
+
+test("at dusk the dome is brightest low toward fTrueSun, 8 degrees down, and read by the held fSun it would be another sky", () => {
+  const f = frameAt(hourOfSun(-8, true));
+  const sun = [0, 0, 0];
+  trueSun(f, sun);
+  expect((Math.asin(sun[1]!) * 180) / Math.PI).toBeCloseTo(-8, 1);
+  let most = -1, at = [0, 0];
+  const c = [0, 0, 0];
+  for (let e = 0; e <= 30; e += 0.5) {
+    for (let a = 0; a < 360; a += 2) {
+      const r = (a * Math.PI) / 180, u = (e * Math.PI) / 180;
+      domeLight(sky.table, sun, [Math.cos(u) * Math.cos(r), Math.sin(u), Math.cos(u) * Math.sin(r)], c);
+      const y = luminance(c);
+      if (y > most) [most, at] = [y, [e, a]];
+    }
+  }
+  const toward = (Math.atan2(sun[2]!, sun[0]!) * 180) / Math.PI;
+  expect(at[0]!).toBeLessThan(5);
+  expect(Math.abs((((at[1]! - toward) % 360) + 540) % 360 - 180)).toBeLessThan(6);
+  const held = [f[F.sun]!, f[F.sun + 1]!, f[F.sun + 2]!];
+  const zenith = [0, 0, 0], wrong = [0, 0, 0];
+  domeLight(sky.table, sun, [0, 1, 0], zenith);
+  domeLight(sky.table, held, [0, 1, 0], wrong);
+  expect(luminance(wrong)).toBeGreaterThan(1.5 * luminance(zenith));
 });
 
 test("at noon a grey card sunlit and seen head on shows 128, and one in its own shade 70 (D155)", () => {

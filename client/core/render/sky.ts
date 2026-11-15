@@ -356,11 +356,18 @@ export function exposureFor(hour: number, lights: Float32Array): number {
   return lightAt(lights, sunHeight(hour)) / lightAt(lights, SUN_TOP);
 }
 
+/** Where the sun is, for a frame block: fTrueSun, the moon's direction turned round. The sun's slot is its light. */
+export function trueSun(frame: Float32Array, out: Float32Array | Float64Array | number[]): void {
+  out[0] = -frame[FRAME.moon]!;
+  out[1] = -frame[FRAME.moon + 1]!;
+  out[2] = -frame[FRAME.moon + 2]!;
+}
+
 /**
  * Fills the sky's part of a frame block for an hour: the sun's slot and the moon's, their light and the sky's,
  * exposure, and the table's scale. The moon stands opposite the sun, so the sun itself, for its disc and for looking
- * the table up, is minus the moon's direction; the sun's slot is the light from the sun's side, held GLOW_HOLD degrees
- * up through twilight, when it carries the afterglow and casts nothing.
+ * the table up, is `trueSun`; the sun's slot is the light from the sun's side, held GLOW_HOLD degrees up through
+ * twilight, when it carries the afterglow and casts nothing.
  */
 export function skyFrame(hour: number, sky: Sky, frame: Float32Array): void {
   const f = FRAME;
