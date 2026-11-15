@@ -329,8 +329,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // and again when the request was lost.
   const post = scene.assets.residency.slot(w.mesh(TUBE), 0);
   expect(w.port.log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
-  // The far wood is about two draws a frame more, and the palm's level one upload more.
-  expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([8143, 767, 21, 0]);
+  // The far wood is about a draw a frame, every mesh of a tile in one, and the pulled draws' three levels are uploads in
+  // place of the palm's last level.
+  expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([7898, 767, 23, 0]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
@@ -346,8 +347,12 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // oak a kind of its own, whose grey box numbers the meshes after it on (3610121629); and the common tree a young oak from
   // 0.4 to 0.75, at which the far wood is two draws fewer over the 300 frames. It was 3057706620 until the limestone grew
   // at 0.8 to 1.25 of its models, not 0.6 to 1.5: the two rocks here are the first of its six at the first and the eleventh
-  // of its sizes, drawn as the kind's grey box in this pack. Its variants and its footing alone leave it as it was.
-  expect(hash).toBe(1700240194);
+  // of its sizes, drawn as the kind's grey box in this pack. Its variants and its footing alone leave it as it was. It was
+  // 1700240194 until far nodes were drawn as rows of an atlas, every mesh of a tile in one draw (DRAW_PULLED), each
+  // instance naming its row: the far wood's draws, its instances' bytes and order, and the levels uploaded moved, the
+  // palm's last level for the pulled draws' three. The hand-over band (hand.ts) alone leaves it as it was: every node
+  // here stands within 152 m, and with the band past the near field it is this again.
+  expect(hash).toBe(4087841682);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

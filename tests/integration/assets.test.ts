@@ -94,6 +94,10 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // of its own, its grey box numbering the meshes after it on and its slots taking some of the proving ground's bare ground
   // (90f764f0 alone), and a banyan whose footing fails grew a strangler fig in its place. It was 6dad72dc until the stone
   // kinds took a footing and 100 of the proving ground's slots grew nothing where the ground falls away under a stone's
-  // base; the stones' sizes and variants alone leave it 6dad72dc, and the footing alone gives this.
-  expect(hash.toString(16)).toBe("62da330");
+  // base; the stones' sizes and variants alone leave it 6dad72dc, and the footing alone gives 62da330. It was 62da330 until
+  // two changes: far nodes were drawn as rows of an atlas, every mesh of a tile in one draw (DRAW_PULLED; alone, with the
+  // hand-over band past the near field, c446a790), and the near store handed its nodes to the far store over a band of
+  // 152 to 184 m (hand.ts), drawing none past it and fading those in it, which the far store draws from the band on to a
+  // reach cut to keep the ring it covers as large (farnodes.ts farReach).
+  expect(hash.toString(16)).toBe("c56e26fc");
 });
