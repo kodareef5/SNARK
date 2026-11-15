@@ -10,8 +10,8 @@ marked "may change". An **after** event says what has happened, in values, and
 is delivered once a tick, before the commit. The module contract is in
 `server/api/module.ts`.
 
-There are 82 events: 63 raised today, 0 with a place in the code and not
-raised yet, and 19 that wait for a feature.
+There are 82 events: 66 raised today, 0 with a place in the code and not
+raised yet, and 16 that wait for a feature.
 
 The ARK column says what a plugin for ARK's unofficial server API hooks for the
 same purpose. ARK has no event API, so plugins hook the game's own functions.
@@ -234,14 +234,14 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `transfer.out` | before | `op`, `pid`, `what` |  | the upload of a character, a creature or items | `server/host.ts` | planned: transfers |
-| `transfer.in` | before | `op`, `what` |  | the download of a creature, the arrival of a player | `server/host.ts` | planned: transfers |
-| `transfer.done` | after | `op`, `what` |  |  | `server/host.ts` | planned: transfers |
+| `transfer.out` | before | `op`, `pid`, `what` |  | the upload of a character, a creature or items | `server/cluster/cluster.ts` | wired |
+| `transfer.in` | before | `op`, `what` |  | the download of a creature, the arrival of a player | `server/cluster/cluster.ts` | wired |
+| `transfer.done` | after | `op`, `what` |  |  | `server/cluster/cluster.ts` | wired |
 | `cluster.message` | after | `from`, `topic`, `body` |  | cross-server chat | `server/host.ts` | planned: transfers |
 
-- **`transfer.out`.** Something is about to leave for another server.
-- **`transfer.in`.** Something is about to arrive from another server.
-- **`transfer.done`.** A transfer finished at both ends.
+- **`transfer.out`.** Something is about to leave for another server: `op` is what it is ("survivor"), `what` its name. Nothing has moved yet.
+- **`transfer.in`.** Something is about to arrive from another server. Refused, it stays sealed for the server it left.
+- **`transfer.done`.** Something arrived from another server and is here.
 - **`cluster.message`.** Another server of the cluster said something.
 
 ## Services
@@ -278,6 +278,6 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 - **Offline protection, PvP timers, and hardcore.** `protect.changed`.
 - **Tribes in depth: alliances, the log, wars, merges, cooldowns.** `tribe.log`, `tribe.rank`, `tribe.war`, `tribe.alliance`.
 - **Flyers.** `carry.allow`.
-- **Transfers between servers.** `transfer.out`, `transfer.in`, `transfer.done`, `cluster.message`.
+- **Transfers between servers.** `cluster.message`.
 - **Operations: RCON, ban and admin lists, exclusive join, logs, filters, the live file by URL.** `server.broadcast`, `perm.changed`, `ban.changed`.
 - **A points ledger: a shop, kits and rewards.** `points.changed`.
