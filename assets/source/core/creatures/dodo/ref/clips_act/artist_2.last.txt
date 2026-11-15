@@ -1,0 +1,13 @@
+Better, but still below the stated bar. The changes improve the poses; weight and recovery remain less convincing.
+
+- **Peck — mostly landed.** Contact at **6–7** and the chest following through are clear. The recovery still reaches an upright pose quickly at **9–10**; the final head settle barely registers. **The new held version exposes the bigger weakness:** from the holder’s view, the skull mostly changes shape through foreshortening, with little unmistakable strike. **One change:** put more forward travel into the upper chest and neck at **5–7**, so the attack survives layering over held while the belly stays supported.
+
+- **Flinch, including over walk — substantially landed.** Delayed recognition remains, the neck bends more broadly, and the wings visibly follow the head. The walk continues underneath. It now reads more like recoil, though the rapid straightening at **7–9** still gives it a shrug-like finish. At **48/20 pixels**, it remains much weaker than peck. **One change:** retain the recoiled head silhouette through **7–8**, then let it recover reluctantly.
+
+- **Held — partly landed.** The lowered chin and longer sideways stare help; the turn looks less concentrated beneath the skull. The belly settlement is subtle. At **72–84**, the tall, erect neck still makes this look more like attentive inspection than nearly dozing. **One change:** let the neck gradually sag during that stare, bringing the head closer to the breast without tipping the beak upward.
+
+- **Carried — the acting landed more than the weight.** Uneven wings and kicks are readable, and the eventual downward stare sells giving up. The belly still appears comparatively fixed beneath the grip, so the struggle feels concentrated in the appendages. **One change:** strengthen the delayed belly swing and let it decay through **66–90**, after the kicking subsides.
+
+- **Torpor eating — only partly landed.** Gape and closure are clearer, and the inert body preserves unconsciousness. But in the low view, the head rises again at **16–18** almost as prominently as at **8**. It still reads as two deliberate head movements, risking “waking to chew.” **One change:** keep the skull nearly settled during **15–18** and make the throat carry the gulp.
+
+No definite new penetration or broken joint stands out. The held peck’s weak attack read is the biggest new issue. These sheets cannot establish playback pops, loop seams, or whether the frame-25 landing bounce feels too rubbery.
