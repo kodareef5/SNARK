@@ -43,7 +43,7 @@ function ground(x: number, z: number): number {
 interface Picture {
   color: Uint8Array;
   kind: Uint8Array;
-  id: Uint32Array;
+  id: Float64Array;
 }
 
 interface Held {

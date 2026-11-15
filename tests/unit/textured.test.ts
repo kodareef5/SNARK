@@ -1,6 +1,6 @@
 // Meshes drawn with materials: the lighting of client/core/render/surface.ts, and the software rasterizer drawing it.
 import { expect, test } from "bun:test";
-import { DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_TWO_SIDED, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
+import { DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_SIZED, DRAW_TWO_SIDED, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { AMBIENT } from "../../client/core/render/shading.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "../../client/core/render/atmosphere.ts";
 import { SKY_GLSL } from "../../client/core/render/sky.ts";
@@ -8,9 +8,10 @@ import { DIELECTRIC, KNEE, NEUTRAL, SMOOTHEST, SURFACE_VERTEX, dyed, lit, linear
 import { buildRig } from "../../shared/anim/rigs.ts";
 import { quatAxis } from "../../shared/math/quat.ts";
 import { describePack } from "../../shared/pack/manifest.ts";
-import { MATERIAL_CUTOUT, parsePack, type Pack } from "../../shared/pack/pack.ts";
+import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Rng } from "../../shared/rng.ts";
+import { SIZE_UNITS } from "../../shared/world/nodes.ts";
 import { packedMips } from "../../tools/pack/image.ts";
 import { buildPack, type SourceMesh } from "../../tools/pack/write.ts";
 import { PICK_ENTITY, PICK_SKY } from "../../tools/snap/raster.ts";
@@ -460,6 +461,68 @@ test("a two-sided material shows its back lit as its other side, and a cut-out o
   // Seen from behind, the opaque half is on the right.
   expect(kinds()).toEqual([PICK_SKY, PICK_ENTITY]);
   expect([back[right * 4], whole[left * 4]]).toEqual([128, 128]);
+});
+
+test("along a cut each pixel is kept or dropped whole by its middle, and the rasterizer says how much of it the GPU's alpha to coverage covers", () => {
+  // The picture's alpha falls from whole to none over four texels, along a slant, so pixels meet the cut at every phase.
+  const pack = packOf(squareMesh("test:leaf", 1, ["base"], { cutoff: 0.5, flags: MATERIAL_CUTOUT }));
+  const base = picture(64, (x, y) => [128, 128, 128, Math.min(Math.max((40 - x - y / 2) * 64, 0), 255)]);
+  const stage = facing(pack, 1, 1.2);
+  const draw = (cut: boolean): void => {
+    stage.begin();
+    stage.textures("test:leaf/", { base });
+    stage.add("test:leaf", 0, { x: 0, y: 0, z: 0 });
+    if (!cut) stage.packet.drawFlags[0]! &= ~DRAW_CUTOUT;
+    stage.render();
+  };
+  draw(true);
+  const { cover, pickKind, pickDraw } = stage.raster;
+  const kept = (i: number): boolean => pickKind[i] === PICK_ENTITY;
+  const part = [...Array(W * H).keys()].filter((i) => cover[i]! < 1);
+  expect(part.length).toBeGreaterThan(20);
+  // Each lies by a pixel that is kept and one that is not, two pixels off at most along its row.
+  const sides = (i: number): boolean[] => [-2, -1, 0, 1, 2].map((dx) => kept(i + dx));
+  expect(part.every((i) => sides(i).includes(true) && sides(i).includes(false))).toBe(true);
+  // Some are the pixels the rasterizer keeps whole, which the GPU blends with what is behind them.
+  expect(part.filter(kept).length).toBeGreaterThan(10);
+  expect([pickDraw[45 * W + 70], pickDraw[45 * W + 110]]).toEqual([0, -1]);
+  // Drawn whole, nothing is cut.
+  draw(false);
+  expect(cover.every((c) => c === 1)).toBe(true);
+});
+
+test("a node drawn at its size and turned is its mesh made at that size: lit, at sizes over and under one, solid and cut out", () => {
+  // A square whose picture runs both ways, whose normals lean, and which a leaf's material cuts in a checker.
+  const maps = {
+    base: picture(64, (x, y) => [40 + x * 3, 200 - y * 2, 120, ((x >> 3) + (y >> 3)) & 1 ? 255 : 40]),
+    normal: picture(64, (x, y) => [128 + Math.round(50 * Math.sin(x / 5)), 128 + Math.round(40 * Math.cos(y / 7)), 255, 255]),
+    mro: plain(255, 120, 0, 255),
+  };
+  const roles = ["base", "normal", "mro"] as const;
+  const [w, h] = [W * 2, H * 2];
+  for (const [units, back] of [[160, 4], [24, 1.2]] as const) {
+    for (const leaf of [{}, { cutoff: 0.5, flags: MATERIAL_CUTOUT | MATERIAL_TWO_SIDED }]) {
+      const pack = packOf(squareMesh("test:node", 1, roles, leaf), squareMesh("test:made", units / SIZE_UNITS, roles, leaf));
+      const stage = new Stage(pack, w, h);
+      [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw] = [0.3, (0.6 * units) / SIZE_UNITS, back, Math.PI];
+      stage.sun = [0.6, 0.5, 0.6];
+      const draw = (id: string, sized: boolean): { color: Uint8ClampedArray; pickKind: Uint8Array; depth: Float32Array } => {
+        stage.begin();
+        stage.textures(`${id}/`, maps);
+        stage.add(id, 0, { x: 0, y: 0, z: 0, yaw: (37 * Math.PI) / 180, flags: sized ? DRAW_SIZED : 0, regions: sized ? [0, 0, 0, 0, 0, units] : [] });
+        const { color, pickKind, depth } = stage.raster;
+        stage.render();
+        return { color: color.slice(), pickKind: pickKind.slice(), depth: depth.slice() };
+      };
+      const [sized, made] = [draw("test:node", true), draw("test:made", false)];
+      const both = [...Array(w * h).keys()].filter((i) => sized.pickKind[i] === PICK_ENTITY && made.pickKind[i] === PICK_ENTITY);
+      expect(both.length).toBeGreaterThan(500);
+      // Where one draws the square and the other does not is only along its edges.
+      expect(sized.pickKind.filter((k, i) => k !== made.pickKind[i]).length).toBeLessThan(both.length / 50);
+      expect(both.reduce((most, i) => Math.max(most, ...[0, 1, 2].map((c) => Math.abs(sized.color[i * 4 + c]! - made.color[i * 4 + c]!))), 0)).toBeLessThanOrEqual(1);
+      expect(both.reduce((most, i) => Math.max(most, Math.abs(sized.depth[i]! - made.depth[i]!)), 0)).toBeLessThan(1e-5);
+    }
+  }
 });
 
 test("a textured draw needs its level's surface, its base colour and its masks on the card, and takes a missing normal or packed map as neutral", () => {

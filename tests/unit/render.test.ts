@@ -2,7 +2,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { expect, test } from "bun:test";
 import { Found } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_WATER, FramePacket, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_WATER, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
 import { sunDirection } from "../../client/core/render/sky.ts";
 import { lit, shown } from "../../client/core/render/surface.ts";
@@ -19,7 +19,10 @@ import { TerrainLod } from "../../client/core/render/terrain.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { PROVING_POOL, PROVING_SEA_LEVEL } from "../../shared/world/proving.ts";
 import { provingView } from "../../tools/snap.ts";
-import { PICK_ENTITY, PICK_SKY, PICK_STRUCTURE, PICK_TERRAIN } from "../../tools/snap/raster.ts";
+import { INSTANCE_BYTES, parsePack } from "../../shared/pack/pack.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
+import { boxMesh, buildPack } from "../../tools/pack/write.ts";
+import { PICK_ENTITY, PICK_SKY, PICK_STRUCTURE, PICK_TERRAIN, Rasterizer } from "../../tools/snap/raster.ts";
 
 const W = 320;
 const H = 180;
@@ -97,6 +100,34 @@ test("instance buffers are uploaded once, again only when their chunk changes, a
   expect(third.drops).toEqual([chunk]);
   expect(third.uploads.length).toBe(0);
   expect(view.raster.pickKind[px]).not.toBe(PICK_STRUCTURE);
+});
+
+test("a node and a piece in one chunk with one slot are told apart under the pixels they cover, by their buffers and slots", () => {
+  const pack = parsePack(buildPack([{ id: "test:box", lods: [boxMesh([0.5, 0.5, 0.5], 15)] }], defaultPalette()));
+  const raster = new Rasterizer(W, H, pack, new Heightfield({ chunksX: 1, chunksZ: 1 }, TERRAIN_CELL, -32, 1 / 256));
+  const cam = new Camera();
+  cam.aspect = W / H;
+  cam.update();
+  const p = new FramePacket();
+  p.beginFrame();
+  p.viewProj.set(cam.viewProj);
+  [p.fogStart, p.fogEnd] = [1e6, 2e6];
+  const [chunk, slot] = [27, 3];
+  // A box of chunk 27's pieces on the left and of its nodes on the right, each the instance in slot 3 of its buffer.
+  [chunk, NODE_BUFFERS + chunk].forEach((buffer, d) => {
+    const data = new Uint8Array(INSTANCE_BYTES);
+    new InstanceWriter(data).set(0, d === 0 ? 1 : -1, 0, 5, 0, 0);
+    p.uploads.push({ buffer, data, slots: Uint16Array.of(slot) });
+    [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [0, 0, 0, buffer, 0, 1, DRAW_PLAIN];
+  });
+  p.drawCount = 2;
+  raster.render(p);
+  const [piece, node] = [H / 2 * W + W / 2 - 20, H / 2 * W + W / 2 + 20];
+  expect([raster.pickKind[piece], raster.pickKind[node]]).toEqual([PICK_STRUCTURE, PICK_STRUCTURE]);
+  expect([raster.pickId[piece], raster.pickId[node]]).toEqual([chunk * 65536 + slot, (NODE_BUFFERS + chunk) * 65536 + slot]);
+  expect([raster.pickDraw[piece], raster.pickDraw[node], raster.pickDraw[0]]).toEqual([0, 1, -1]);
+  // In 32 bits the node's id would be the piece's.
+  expect(((NODE_BUFFERS + chunk) * 65536 + slot) >>> 0).toBe(chunk * 65536 + slot);
 });
 
 test("nothing behind the camera or beyond the view distance is submitted", () => {
