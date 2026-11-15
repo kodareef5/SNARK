@@ -24,7 +24,7 @@ ASTC, 24-bit depth, 16 texture units, no timer queries.
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
 | P2 | `bun tools/bench/corpses.ts`, three runs on a busy machine, ranges | 2026-11-15 | branch `r9/p2-corpses` |
 | P10 | the hurt and decay layers' rows, once each on a busy machine (load 9 to 14) | 2026-11-15 | `r9/p10-layers` |
-| B | `bun tools/bench/budget.ts`, three runs, counts alike | 2026-11-15 | branch `r9/frame-budget` |
+| B | `bun tools/bench/budget.ts`, two runs after merging main, counts alike (load 2.3 on 10 cores) | 2026-11-15 | branch `r9/frame-budget` |
 | Dnnn | the measurement its decision records | | |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports`, named by UTC time | 2026-11-15 | |
 
@@ -284,8 +284,8 @@ triangles. Counts do not vary run to run.
 | The squeeze, mean | 1.22 | 1.29 | 2.88 | 3.00 |
 | Bodies' triangles, whole and as drawn | | 69 k, 69 k | | 69 k, 69 k |
 | Headings whose bodies' levels moved | | 0 of 8 | | 0 of 8 |
-| Draws a heading, whole and as drawn | 496, 484 | 507, 500 | 561, 348 | 584, 358 |
-| Frame build, median | 0.6 to 0.8 ms either way | | | |
+| Draws a heading, whole and as drawn | 496, 481 | 507, 495 | 561, 385 | 580, 394 |
+| Frame build, median | 0.3 to 0.8 ms either way | | | |
 
 The rest of the elder's frame as drawn: ground and far 0.42 M, stones 0.27, trunks 0.25, bushes 0.06. The bench
 counts the young wood at the 2.10 M and the elders at the 5.83 M the iPhone drew (D423).
