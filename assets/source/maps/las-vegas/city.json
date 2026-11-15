@@ -96,7 +96,7 @@
       {"name": "Fountains of Bellagio", "at": [-115.17210, 36.11270], "face": [-115.17411, 36.11281]},
       {"name": "High Roller", "at": [-115.16960, 36.11760], "face": [-115.16816, 36.11756]},
       {"name": "Sphere", "at": [-115.15990, 36.12200], "face": [-115.16207, 36.12124]},
-      {"name": "University of Nevada, Las Vegas", "at": [-115.14856, 36.10707], "face": [-115.1420, 36.1077], "why": "the lawn at the campus's west side: the xeric garden's point fell inside a ruin's walls"},
+      {"name": "University of Nevada, Las Vegas", "at": [-115.14856, 36.10707], "face": [-115.1530, 36.1071], "why": "the lawn at the campus's west side, facing across it: the xeric garden's point fell inside a ruin's walls, and facing the campus it met a wall 10 m off"},
       {"name": "Las Vegas Convention Center", "at": [-115.15600, 36.13300], "face": [-115.1574, 36.1342]},
       {"name": "Chester Stupak Park", "face": [-115.15552, 36.14741]},
       {"name": "Chinatown Plaza", "face": [-115.1720, 36.1200]}
