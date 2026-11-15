@@ -137,8 +137,9 @@ export class CreatureAnim {
   readonly fastAt: number;
   /** Where its body turns about in flight, in its model space: the middle of its joints at rest. */
   readonly pivot: Float64Array;
-  /** The bone of its `head` socket, which it keeps nearer level in a bank, or -1. */
+  /** The bone of its `head` socket, which it keeps nearer level in a bank, or -1; and its neck and head: that bone, those below it, and those above it up to where the body branches. */
   readonly head: number;
+  readonly neck: Uint8Array;
 
   constructor(rig: Rig, runAt: number, swimSpeed: number) {
     this.rig = rig;
@@ -219,6 +220,8 @@ export class CreatureAnim {
     this.flyAt = speedOf(this.fly, "fly", FLY_AT);
     this.fastAt = Math.max(this.flyAt + 1, speedOf(this.flyFast, "fly_fast", FAST_AT));
     this.head = rig.sockets.get("head")?.bone ?? -1;
+    const neck = branchOf(rig, this.head > 0 ? [this.head] : []);
+    this.neck = Uint8Array.from(Array.from(neck).flatMap((on, b) => (on === 1 ? [b] : [])));
     this.pivot = new Float64Array(3);
     for (let b = 0; b < rig.bones; b++) {
       this.pivot[1]! += rig.rest[b * 3 + 1]! / rig.bones;
@@ -237,21 +240,27 @@ function loop(clip: Clip | null): Clip | null {
  * branches, so a hand a flyer stands on takes its fingers and not its wing, chest and neck.
  */
 function legBones(rig: Rig): Uint8Array {
-  const legs = new Uint8Array(rig.bones);
+  const legs = branchOf(rig, rig.feet);
+  legs[0] = 1;
+  return legs;
+}
+
+/** 1 for each of `tips`, the bones below it, and those above it up to where the body branches; never the root. */
+function branchOf(rig: Rig, tips: readonly number[]): Uint8Array {
+  const on = new Uint8Array(rig.bones);
   const children = new Uint8Array(rig.bones);
   for (let b = 1; b < rig.bones; b++) children[rig.parent[b]!]!++;
-  legs[0] = 1;
-  for (const foot of rig.feet) {
-    for (let b = foot; b > 0; b = rig.parent[b]!) {
-      legs[b] = 1;
+  for (const tip of tips) {
+    for (let b = tip; b > 0; b = rig.parent[b]!) {
+      on[b] = 1;
       if (children[rig.parent[b]!]! > 1) break;
     }
   }
   const below = new Uint8Array(rig.bones);
-  for (const foot of rig.feet) below[foot] = 1;
-  // Parents come before their children, so one pass carries a foot down to its toes.
-  for (let b = 1; b < rig.bones; b++) if (below[rig.parent[b]!] === 1) below[b] = legs[b] = 1;
-  return legs;
+  for (const tip of tips) below[tip] = 1;
+  // Parents come before their children, so one pass carries a tip down to its ends.
+  for (let b = 1; b < rig.bones; b++) if (below[rig.parent[b]!] === 1) below[b] = on[b] = 1;
+  return on;
 }
 
 /** The bones `clip` turns away from rest in any frame, leaving out those marked in `legs`. */
@@ -411,18 +420,16 @@ export function creatureStride(a: CreatureAnim, st: AnimState, speed: number): n
  * does not step round with its walk.
  */
 export function advanceCreature(a: CreatureAnim, g: Gait, st: AnimState, tick: number, x: number, z: number, yaw: number, size: number): void {
-  const was = g.tick;
+  const before = g.tick;
   const metres = g.track(x, z, yaw, tick, st.speed * (st.mode === MODE_FLYER ? FLY_SPEED_STEP : SPEED_STEP), a.turn ? 0 : a.rig.turn, size);
   if (metres < 0) g.phase = tickPhase(tick + st.seed, g.speed, creatureStride(a, st, g.speed));
   else g.step(metres, creatureStride(a, st, g.speed));
-  if (!aloft(a, st)) {
-    g.hover = g.fast = g.glide = g.dive = g.roll = Number.NaN;
-    return;
-  }
+  // Out of the air they are kept as it last flew, for a landing to come in from.
+  if (!aloft(a, st)) return;
   // A flyer's shares and roll come to what its state says over SHARE_EASE, so a step of what it is sent is no jump.
   airShares(a, st, st.speed * FLY_SPEED_STEP);
   const roll = bankRoll(st);
-  const seconds = (tick - was) / TICK_RATE;
+  const seconds = (tick - before) / TICK_RATE;
   const k = metres < 0 || !(g.hover >= 0) || !(seconds > 0) ? 1 : seconds / (SHARE_EASE + seconds);
   g.hover = eased(g.hover, shares.hover, k);
   g.fast = eased(g.fast, shares.fast, k);
@@ -601,14 +608,15 @@ const was = new AnimState();
 
 /**
  * A flyer's flight just before it came down or was knocked out, from what it does now: flying level at the speed it
- * still goes over the ground, so one that skimmed in still flaps and one that sank in hovers.
+ * still goes over the ground, so one that skimmed in still flaps and one that sank in hovers. Drawn by a client, it is
+ * flown as its gait last had it.
  */
-function airborne(a: CreatureAnim, st: AnimState, tick: number, out: Pose): void {
+function airborne(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null): void {
   was.mode = MODE_FLYER;
   was.grounded = false;
   was.pitch = st.pitch;
   was.seed = st.seed;
-  flight(a, was, tick, out, null, st.speed * (st.mode === MODE_FLYER ? FLY_SPEED_STEP : SPEED_STEP));
+  flight(a, was, tick, out, gait, st.speed * (st.mode === MODE_FLYER ? FLY_SPEED_STEP : SPEED_STEP));
 }
 
 /** What it does throughout, by the tick: lies knocked out when `lying` (limp while it falls), else flies, floats, falls, or stands and moves. */
@@ -657,7 +665,7 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
     } else if (a.torporFall && !st.grounded && st.mode !== MODE_SWIM) {
       // Knocked out off the ground it goes limp from what it was doing there.
       if (s < FADE) {
-        if (a.flies) airborne(a, st, tick, rig.e);
+        if (a.flies) airborne(a, st, tick, rig.e, gait);
         else steady(a, st, tick, rig.e, gait, false);
         blendPose(out, rig.e, out, smooth(s / FADE));
       }
@@ -673,8 +681,15 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
     if (aloft(a, st)) {
       if (st.cue === CUE_TAKEOFF && a.takeOff) {
         // From the crouch it stands in, up into its flight. It begins where it stood and holds the ground as the step lifts
-        // it, so it comes in at once: a fade would float its planted hands and feet up with the body.
-        oneShot(rig, a.takeOff, since(tick, st.cueStart), out, null, 0);
+        // it, so it comes in at once, as a fade would float its planted hands and feet up with the body; only its neck and
+        // head come round from where its idle had them.
+        const s = since(tick, st.cueStart);
+        oneShot(rig, a.takeOff, s, out, null, 0);
+        if (s < FADE) {
+          idleAt(a, st.seed, tick + st.seed, rig.e);
+          const k = smooth(s / FADE);
+          for (let i = 0; i < a.neck.length; i++) quatNlerp(out.rot, a.neck[i]! * 4, rig.e.rot, a.neck[i]! * 4, out.rot, a.neck[i]! * 4, k);
+        }
       }
       biteAloft(a, st, tick, out);
     } else if (!strike(a, st, tick, out)) {
@@ -683,7 +698,7 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
         // Set down on the water, from the air into floating.
         const s = since(tick, st.cueStart);
         if (s < FADE) {
-          airborne(a, st, tick, rig.e);
+          airborne(a, st, tick, rig.e, gait);
           blendPose(out, rig.e, out, smooth(s / FADE));
         }
       } else if (st.cue === CUE_STARTLE || st.cue === CUE_LAND) {
@@ -693,7 +708,7 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
         const fade = st.cue === CUE_LAND && a.flies ? LAND_FADE : FADE;
         let from: Pose | null = null;
         if (st.cue === CUE_LAND && s < fade) {
-          if (a.flies) airborne(a, st, tick, (from = rig.e));
+          if (a.flies) airborne(a, st, tick, (from = rig.e), gait);
           else if (a.fall) sampleClip(a.fall, tick + st.seed, (from = rig.e));
         }
         if (clip) oneShot(rig, clip, s, out, from, fade);

@@ -234,9 +234,9 @@ test("a flyer hovers at no speed, flaps at its flying speed and fast at its spri
   // Between them it is some of each.
   const slow = posed(flyer, state((s) => (s.speed = 1)), T).rot;
   expect([slow.some((x, k) => x !== hover[k]), slow.some((x, k) => x !== fly[k])]).toEqual([true, true]);
-  // Looking 23 degrees down it glides, and 58 down it dives: every bone but the root, which its look pitches, as the clip has it.
+  // Looking 23 degrees down it glides, and 64 down it dives: every bone but the root, which its look pitches, as the clip has it.
   expect(posed(flyer, state((s) => ((s.speed = 3), (s.pitch = -8))), T).rot.slice(4)).toEqual(frameOf("glide", T + SEED).slice(4));
-  expect(posed(flyer, state((s) => ((s.speed = 3), (s.pitch = -20))), T).rot.slice(4)).toEqual(frameOf("dive", T + SEED).slice(4));
+  expect(posed(flyer, state((s) => ((s.speed = 3), (s.pitch = -22))), T).rot.slice(4)).toEqual(frameOf("dive", T + SEED).slice(4));
   // Going straight down without looking down, as it does to set down, it sinks on its wings as it hovers.
   expect(posed(flyer, state((s) => ((s.speed = 6), (s.climb = CLIMB_DIVE))), T).rot).toEqual(hover);
 });
@@ -279,7 +279,12 @@ test("a take-off starts on the crouch it stood in and ends at the top of its hov
   const start = T - 5;
   const standing = state(() => {}, false);
   const off = state((s) => ((s.cue = CUE_TAKEOFF), (s.cueStart = start & 255)));
-  expect(posed(flyer, off, start).rot).toEqual(frameOf("take_off", 0));
+  // On its first tick its body is the clip's first frame and its neck and head where its idle had them.
+  const first = posed(flyer, off, start).rot;
+  const stood = posed(flyer, standing, start).rot;
+  const crouch = frameOf("take_off", 0);
+  expect(Array.from(flyer.neck, (b) => frig.names[b]).sort()).toEqual(["jaw", "neck_1", "neck_2", "neck_3", "neck_4", "skull"]);
+  first.forEach((x, k) => expect([k, x]).toEqual([k, (flyer.neck.includes(k >> 2) ? stood : crouch)[k]!]));
   const end = flyer.takeOff!.frames - 1;
   expect(posed(flyer, off, start + end).rot).toEqual(frameOf("take_off", end));
   // A beat later it hovers as any flyer at no speed does.
