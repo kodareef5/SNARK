@@ -358,6 +358,8 @@ export class GameServer {
   onBody: ((c: Client) => void) | null = null;
   /** The session's entity is about to be destroyed. */
   onBodyGone: ((c: Client) => void) | null = null;
+  /** Called once per tick before bodies move, to apply changes queued outside the step. */
+  onBeforeStep: (() => void) | null = null;
   /** Called once per tick after bodies move and commands run, before replication. */
   onStep: ((tick: number) => void) | null = null;
   /** Called for each connected session just before its snapshot. */
@@ -433,6 +435,8 @@ export class GameServer {
     const world = this.world;
     const ents = world.ents;
     const T = ++world.tick;
+
+    this.onBeforeStep?.();
 
     for (const c of this.clients) {
       if (!c) continue;

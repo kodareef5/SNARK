@@ -1,14 +1,13 @@
-# The opaque crown materials. Every head of a broadleaf crown is an opaque core wearing its kind's crown skin
-# (tex/crown_skins/, a periodic rectangle twice as wide as it is tall), with only a fringe of cut-out cards round it.
-# A level may be drawn with three materials, so a kind's skin shares its picture with what the kind has besides bark
-# and leaves:
+# The crown pictures the figs' and the mangroves' heads of leaves wear. A level may be drawn with three materials, so a
+# kind's crown picture shares itself with what the kind has besides bark and leaves:
 #
-#   oak_crown       the oak skin, two periods down, so it is square
-#   fig_crown       the fig skin above, and below it what the figs and the banyan swallowed (tex/ruins/), re-laid
-#   mangrove_crown  the mangrove skin above, and below it the prop roots' picture (tex/mangrove_roots/)
+#   fig_crown       the fig's heads of leaves above (tex/fig_heads/, layout.py HEAD_CELLS); below them what the figs and
+#                   the banyan swallowed (tex/ruins/), re-laid
+#   mangrove_crown  the mangrove's heads of leaves above (tex/mangrove_heads/), the prop roots' picture below
+#                   (tex/mangrove_roots/)
 #
-# Each layer is resampled region by region, normals as directions. Until the skins are made, a stand-in is taken from
-# each leaf atlas's mass, lifted to a lit crown's colour. Run with python3 from this folder; writes tex/<name>/.
+# The oak's crown picture (tex/oak_crown/) is all heads and is painted whole. Each layer is resampled region by region,
+# normals as directions. Run with python3 from this folder; writes tex/<name>/.
 
 import os
 import sys
@@ -22,21 +21,6 @@ from layout import RUINS, RUINS_SOURCE  # noqa: E402
 
 TEX = os.path.join(HERE, "tex")
 ROLES = ("base", "normal", "orm", "height")
-# A skin's leaf atlas, for the stand-in, and the colour its mass is lifted to.
-STANDIN = {"oak": ("oak_leaves", (104, 114, 64)), "fig": ("fig_leaves", (92, 104, 58)), "mangrove": ("mangrove_leaves", (84, 104, 56))}
-# Each skin's colours scaled towards its kind's flat crown colours (the LIGHT and MID of oaks.py, figs.py), so a crown
-# keeps its green as it turns flat: the skins came yellower, and the figs' and mangroves' lighter, than those.
-TINT = {"oak": (0.88, 1.0, 1.0), "fig": (0.78, 0.92, 0.95), "mangrove": (0.82, 0.95, 0.95)}
-
-
-def linear(c):
-    c = c / 255.0
-    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
-
-
-def srgb(c):
-    c = np.clip(c, 0, 1)
-    return np.where(c <= 0.0031308, c * 12.92, 1.055 * c ** (1 / 2.4) - 0.055) * 255
 
 
 def read(path, role):
@@ -70,33 +54,6 @@ def write(a, path, role):
         Image.fromarray(np.clip(a.round(), 0, 255).astype(np.uint8)).save(path)
 
 
-def skin(kind, role, light=None):
-    """A kind's skin layer: the made one in tex/crown_skins/, or the stand-in from its leaf atlas's mass. Its base colour
-    as sun leaves (`light` "sun") or shade leaves ("shade"): the made pictures for each where there are, else the skin's
-    own leaves made lighter and warmer, or darker and cooler, by SUN and SHADE."""
-    if light and role == "base":
-        own = os.path.join(TEX, "crown_skins", f"{kind}_skin_{light}_base.png")
-        if os.path.exists(own):
-            return read(own, role)
-        return srgb(linear(skin(kind, role)) * np.array(SUN if light == "sun" else SHADE))
-    made = os.path.join(TEX, "crown_skins", f"{kind}_skin_{role}.png")
-    if os.path.exists(made):
-        return read(made, role)
-    atlas, target = STANDIN[kind]
-    a = read(os.path.join(TEX, atlas, f"{atlas}_{role}.png"), role)
-    a = a[a.shape[0] // 2 :]
-    if role == "base":
-        lin = linear(a)
-        a = srgb(lin * linear(np.array(target, float)) / lin.reshape(-1, 3).mean(0))
-    return a
-
-
-# What the sun leaves and the shade leaves of a skin are against its own leaves, in light: a tree grows its outer
-# leaves smaller, thicker, lighter and yellower, and its inner ones darker and bluer.
-SUN = (1.55, 1.42, 1.0)
-SHADE = (0.72, 0.8, 0.95)
-
-
 def region(a, rect, size):
     u0, v0, u1, v1 = rect
     return a[round(v0 * size) : round(v1 * size), round(u0 * size) : round(u1 * size)]
@@ -105,40 +62,32 @@ def region(a, rect, size):
 def build(name):
     out = os.path.join(TEX, name)
     os.makedirs(out, exist_ok=True)
+    kind = name.split("_")[0]
     for role in ROLES:
-        kind = name.split("_")[0]
-        # The sun leaves over the shade leaves, each the whole skin.
-        top = np.concatenate([skin(kind, role, "sun"), skin(kind, role, "shade")], axis=0)
-        if role == "base":
-            top = top * np.array(TINT[kind], np.float32)
-        side = 1024 if name == "oak_crown" else 2048
-        if role == "orm":
-            side //= 2
-        if name == "oak_crown":
-            pic = resample(top, side, side)
+        top = read(os.path.join(TEX, f"{kind}_heads", f"{kind}_heads_{role}.png"), role)
+        side = 1024 if role == "orm" else 2048
+        pic = np.zeros((side, side) + top.shape[2:], np.float32)
+        pic[: side // 2] = resample(top, side, side // 2)
+        if name == "fig_crown":
+            src = read(os.path.join(TEX, "ruins", f"ruins_{role}.png"), role)
+            n = src.shape[0]
+            # What no region takes is the ruins' mean, so nothing dark bleeds into them as they shrink.
+            pic[side // 2 :] = src.reshape(-1, *src.shape[2:]).mean(0)
+            for key, rect in RUINS.items():
+                u0, v0, u1, v1 = rect
+                w, h = round((u1 - u0) * side), round((v1 - v0) * side)
+                pic[round(v0 * side) : round(v0 * side) + h, round(u0 * side) : round(u0 * side) + w] = resample(region(src, RUINS_SOURCE[key], n), w, h)
         else:
-            pic = np.zeros((side, side) + top.shape[2:], np.float32)
-            pic[: side // 2] = resample(top, side, side // 2)
-            if name == "fig_crown":
-                src = read(os.path.join(TEX, "ruins", f"ruins_{role}.png"), role)
-                n = src.shape[0]
-                # What no region takes is the ruins' mean, so nothing dark bleeds into them as they shrink.
-                pic[side // 2 :] = src.reshape(-1, *src.shape[2:]).mean(0)
-                for key, rect in RUINS.items():
-                    u0, v0, u1, v1 = rect
-                    w, h = round((u1 - u0) * side), round((v1 - v0) * side)
-                    pic[round(v0 * side) : round(v0 * side) + h, round(u0 * side) : round(u0 * side) + w] = resample(region(src, RUINS_SOURCE[key], n), w, h)
-            else:
-                src = read(os.path.join(TEX, "mangrove_roots", f"mangrove_roots_{role}.png"), role)
-                pic[side // 2 :] = resample(src, side, side // 2)
-            if role == "normal":
-                # Where nothing is laid, a flat normal.
-                empty = np.linalg.norm(pic, axis=-1) < 0.5
-                pic[empty] = (0.0, 0.0, 1.0)
+            src = read(os.path.join(TEX, "mangrove_roots", f"mangrove_roots_{role}.png"), role)
+            pic[side // 2 :] = resample(src, side, side // 2)
+        if role == "normal":
+            # Where nothing is laid, a flat normal.
+            empty = np.linalg.norm(pic, axis=-1) < 0.5
+            pic[empty] = (0.0, 0.0, 1.0)
         write(pic, os.path.join(out, f"{name}_{role}.png"), role)
     print(name)
 
 
 if __name__ == "__main__":
-    for name in sys.argv[1:] or ("oak_crown", "fig_crown", "mangrove_crown"):
+    for name in sys.argv[1:] or ("fig_crown", "mangrove_crown"):
         build(name)

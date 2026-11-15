@@ -1,0 +1,1 @@
+The raw built-in image-tool outputs and exact prompts for this round are retained here. The dimensioned drawing guides are in ../guides. Assembly and export scripts are in ../source. The paintings are appearance targets; the revised master and orthographic plates remain the geometry authority.

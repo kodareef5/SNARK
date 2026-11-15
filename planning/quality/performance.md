@@ -303,6 +303,9 @@ Reasoned from the rows, in the order a growing world meets them.
   quick look times `surface layered` beside `surface`. On this Mac the layer adds about 13% to a pixel of SURFACE; at
   the iPhone's 0.85 ms a megapixel that is 0.11 ms for each megapixel of hurt bodies, under 0.1 ms with the whole of
   medium's screen covered.
+- Whether a phone skips the cut-out pixels an opaque surface drawn before them hides (trees design, decision 5):
+  `bun run device -- --tunnel --terrain` and the Tree order, which draws the young wood and the elders' stand with
+  their cut-outs last, as made and first, and judges the read-back times against wood.ts's count of the same view.
 - Real network congestion; WebSocket send cost under load; Firefox.
 
 ## Still moving

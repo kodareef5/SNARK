@@ -22,6 +22,8 @@ export interface BuffOn {
   by: number;
   /** Torpor per second this instance adds on top of its definition's. A dose carries its strength this way. */
   torpor: number;
+  /** Health per second this instance adds on top of its definition's. What an item mends over time is carried this way (server/use.ts). */
+  health: number;
 }
 
 export class Buffs {
@@ -49,9 +51,9 @@ export class Buffs {
 
   /**
    * `by` is the giver's pid. `seconds` overrides the buff's own time, and 0 or less means until taken away.
-   * `torpor` is torpor per second this instance adds. A buff already on is restarted unless it stacks.
+   * `torpor` and `health` are torpor and health per second this instance adds. A buff already on is restarted unless it stacks.
    */
-  give(rec: EntityRecord, buff: number, by = 0, seconds?: number, torpor = 0): boolean {
+  give(rec: EntityRecord, buff: number, by = 0, seconds?: number, torpor = 0, health = 0): boolean {
     const def = this.def(buff);
     if (!def) return false;
     const lasts = seconds ?? def.seconds ?? 0;
@@ -62,9 +64,10 @@ export class Buffs {
       old.until = until;
       old.by = by;
       old.torpor = torpor;
+      old.health = health;
     } else {
       if (on.length >= MAX_BUFFS) on.shift();
-      on.push({ buff, until, by, torpor });
+      on.push({ buff, until, by, torpor, health });
     }
     if (until > 0) this.deadlines.push(until, DEADLINE_BUFF, rec.pid, until);
     this.apply(rec);
@@ -162,7 +165,7 @@ export class Buffs {
       const def = this.def(b.buff);
       if (!def) continue;
       // Harm of a kind is what the body takes of it, as a blow of that kind is: a herbivore burns for three eighths.
-      const h = (def.health ?? 0) * (def.damage !== undefined && (def.health ?? 0) < 0 && takes ? takes[DAMAGE_TYPES.indexOf(def.damage)]! : 1);
+      const h = (def.health ?? 0) * (def.damage !== undefined && (def.health ?? 0) < 0 && takes ? takes[DAMAGE_TYPES.indexOf(def.damage)]! : 1) + b.health;
       health += h;
       torpor += (def.torpor ?? 0) + b.torpor;
       // The giver of a harmful buff gets the kill if the record dies of it.

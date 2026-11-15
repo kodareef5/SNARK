@@ -267,6 +267,33 @@ test("a weapon is set to its ammunition, loaded, fired empty, fitted and strippe
   expect(items.audit()).toEqual([]);
 });
 
+test("loading and fitting keep carried weight, moving gear transfers it, and firing removes only the spent round", () => {
+  const { h, s, rec, send, move, inv, give, items } = setup();
+  const rifle = give("rifle");
+  give("round_rifle");
+  const scope = give("scope");
+  const weight = inv().weight(items.table);
+  expect(weight).toBeCloseTo(9.6);
+  expect(items.load(rec, rifle, id("round_rifle"), 1)).toBe(1);
+  expect(inv().weight(items.table)).toBeCloseTo(weight);
+  expect(send(CMD_ATTACH, (w) => (w.varint(rifle), w.varint(scope)))).toBe(RESULT_OK);
+  expect(inv().weight(items.table)).toBeCloseTo(weight);
+  const held = inv().hotbar;
+  expect(move(rifle, held, id("rifle"))).toBe(RESULT_OK);
+  expect(s.inventory!.weight(items.table)).toBeCloseTo(weight);
+  const other = h.host.records.create(id("cache"));
+  expect(items.move(rec, held, other, 0, 0)).toBe(1);
+  expect([inv().weight(items.table), items.inv(other).weight(items.table)]).toEqual([0, weight]);
+  expect(items.move(other, 0, rec, held, 0)).toBe(1);
+  expect(items.spend(rec, held)).toBe(true);
+  const left = weight - items.table.weight[id("round_rifle")]!;
+  expect(inv().weight(items.table)).toBeCloseTo(left);
+  expect(send(CMD_DETACH, (w) => w.varint(held))).toBe(RESULT_OK);
+  expect(inv().weight(items.table)).toBeCloseTo(left);
+  expect(items.audit()).toEqual([]);
+  h.host.shutdown();
+});
+
 test("what is dropped lies in a bag anyone can open, and is gone, on the books, after two minutes", () => {
   // Two drops from where she stands go into one bag (DEV99).
   const { h, s, rec, send, inv, give, items } = setup();

@@ -163,6 +163,8 @@ export class Build {
   private empty(rec: EntityRecord, x: number, y: number, z: number): void {
     const { game, records, spill } = this.ctx;
     for (const c of game.clients) if (c?.open === rec.pid) c.open = 0;
+    // Finish lazy cooking and spoilage before the cache takes the contents and the station's clock is discarded.
+    if (rec.inv) this.ctx.items.inv(rec);
     if (rec.inv && rec.inv.used() > 0) {
       // The cache takes the same inventory object, so nothing is copied or lost.
       const cache = spill(x, y, z, rec.name);

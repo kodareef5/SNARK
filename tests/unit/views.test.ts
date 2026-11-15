@@ -59,8 +59,9 @@ test("a snapshot on a tier with textures draws the house with its materials once
     expect([frames > 1, p.assetUploads.length + p.texUploads.length, view.scene.assets.residency.flying]).toEqual([true, 0, 0]);
     const draws = [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & DRAW_TEXTURED) !== 0);
     textured[tier] = draws.length;
-    // What is drawn with materials is the building pieces, whose packs have pictures.
-    for (const d of draws) expect(files.manifest.meshes[p.drawMesh[d]!]!.id).toMatch(/_(thatch|wood|stone)$/);
+    // What is drawn with materials is the building pieces, whose packs have pictures, and the broadleaf trees behind the
+    // house, whose crowns keep their pictures to their fourth level.
+    for (const d of draws) expect(files.manifest.meshes[p.drawMesh[d]!]!.id).toMatch(/_(thatch|wood|stone)$|^core:(tree|oak|fig|banyan|mangrove)_\d+$/);
     pictures[tier] = view.raster.color.slice();
   }
   expect(textured.lowpoly).toBe(0);

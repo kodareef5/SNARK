@@ -245,24 +245,35 @@ export interface ItemDef extends Named {
   readonly description?: string;
   /** Where it sits in the inventory and crafting lists: "Structures/Wood". */
   readonly folder?: string;
-  /** The item a spoiled one becomes. */
+  /** The item a spoiled one becomes, one for one, as ARK's meat becomes spoiled meat (server/items.ts). Omitted, it is gone. */
   readonly spoilsInto?: string;
-  /** It may be found as a blueprint: a copy that crafts it a limited number of times. */
+  /**
+   * Whether it may be a blueprint: a slot flagged FLAG_BLUEPRINT (shared/sim/items.ts) that crafts it at the blueprint's
+   * quality, from the blueprint's own ingredients, with no engram and at any level, as often as wanted, and is never used up
+   * (ark.wiki.gg Blueprint, 2026-11-15: unlimited uses, except ARK's fishing rod and Tek blueprints, 3 each). Omitted, an
+   * item that is crafted may be one; false keeps it from ever being one; only an item with `craft` may be.
+   */
   readonly blueprint?: boolean;
   /** What using one does beyond what eating gives (planning/reference/items-plan.md, task C). */
   readonly use?: UseFacet;
 }
 
 /**
- * What using an item does to the body that uses it, as ARK's UseItemAddCharacterStatusValues and the buffs a consumable gives.
- * A stub until task C of planning/reference/items-plan.md builds it.
+ * What using an item does to the body that uses it, as ARK's UseItemAddCharacterStatusValues and the buffs a consumable gives
+ * (server/use.ts). Using one burns it, after what eating it gives, unless it is a vessel, which is kept.
  */
 export interface UseFacet {
-  /** A stat changed by `amount`: at once, or spread over `seconds`. */
+  /**
+   * A stat changed by `amount`: at once (health, stamina, oxygen, food, water, torpidity), or spread over `seconds`
+   * (health and torpidity only, and only adding, carried by a buff as a meal's health and a dose's torpor are).
+   */
   readonly adds?: readonly { readonly stat: StatName; readonly amount: number; readonly seconds?: number }[];
   /** Buffs given on use. */
   readonly buffs?: readonly string[];
-  /** A vessel that holds water: `water` points when full, `each` drunk a use, filled again standing in water. */
+  /**
+   * A vessel that holds water: `water` points when full, `each` drunk a use, filled again by a use while standing in water
+   * and not swimming. It stacks to 1 and holds its water as the slot's durability. Made, it is empty.
+   */
   readonly holds?: { readonly water: number; readonly each: number };
 }
 
@@ -275,8 +286,10 @@ export interface CraftFacet {
   readonly xp: number;
   /** How many one crafting makes. One, where not given. */
   readonly count?: number;
-  // Stubs, read by nothing yet.
-  /** The station it is made at. Omitted, it is made in the hands. */
+  /**
+   * The station it is made at: only there, from what lies in the station, and the product lands there. Omitted, it is made
+   * in the hands from the survivor's own inventory.
+   */
   readonly at?: string;
   /** The level below which it cannot be made, engram or no. */
   readonly level?: number;
@@ -508,13 +521,19 @@ export interface LootEntry {
   readonly weight?: number;
   readonly min: number;
   readonly max: number;
-  /** Lowest and highest quality, as multiples of primitive. */
+  /**
+   * Lowest and highest quality as ARK's item rating (MinQuality, MaxQuality): the tier is the highest whose threshold the
+   * rating drawn reaches (QUALITY_RATING, shared/sim/items.ts). Omitted, primitive.
+   */
   readonly quality?: readonly [number, number];
-  /** Chance, 0 to 1, that it comes as a blueprint. */
+  /** Chance, 0 to 1, that it comes as a single blueprint, for an item that may be one (ChanceToBeBlueprintOverride). */
   readonly blueprint?: number;
 }
 
-/** Sets of items to draw from: what a crate holds, what a body leaves. A stub until loot is built. */
+/**
+ * Sets of items to draw from: what a crate holds, what a body leaves (shared/sim/loot.ts rolls one, and the console's `loot`
+ * mints a roll). Nothing in the world opens one yet: crates and fishing wait for map zones.
+ */
 export interface LootDef extends Named {
   readonly type: "loot";
   readonly id: string;

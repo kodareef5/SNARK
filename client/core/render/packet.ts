@@ -18,8 +18,8 @@ export const MAX_WATER_TILES = 256;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
 /**
- * DRAW_ flags, a bit each of `drawFlags`, which holds 16. Bits 1 to 512 are taken; the next flag takes 1024, then 2048, up
- * to 32768. A blended draw is see-through. It comes after everything opaque, shows both faces and writes no depth.
+ * DRAW_ flags, a bit each of `drawFlags`, which holds 16. Bits 1 to 2048 are taken; the next flag takes 4096, up to
+ * 32768. A blended draw is see-through. It comes after everything opaque, shows both faces and writes no depth.
  */
 export const DRAW_BLEND = 1;
 /**
@@ -90,7 +90,7 @@ export const PASS_FAR = 1;
 /**
  * The steps a frame is drawn in, in this order, which is the order of its draws: near opaque, far opaque, then the
  * dome (at `skyAt`), far see-through, near see-through, and the viewer's body over a depth clear. The opaque steps are
- * numbered as their ranges are.
+ * numbered as their ranges are. In an opaque step the draws with DRAW_CUTOUT come after the rest (scene.ts `cutouts`).
  */
 export const STEP_NEAR = PASS_NEAR;
 export const STEP_FAR = PASS_FAR;

@@ -160,12 +160,12 @@ export class Combat {
   private died = false;
   /**
    * Per session slot, for `lag`: the least age of its newest acknowledged snapshot in the window of ticks that began at
-   * `lagFrom` (-1 before any) and in the window before, and the acknowledgement seen last.
+   * `lagFrom` (-1 before any) and in the window before, belonging to this connection.
    */
   private readonly lagNow: number[] = [];
   private readonly lagWas: number[] = [];
   private readonly lagFrom: number[] = [];
-  private readonly lagAck: number[] = [];
+  private readonly lagConn: (Client["conn"] | undefined)[] = [];
 
   constructor(ctx: CombatContext, seed: number) {
     this.ctx = ctx;
@@ -308,9 +308,11 @@ export class Combat {
    */
   private measure(c: Client, now: number): void {
     const i = c.id;
-    // Nothing is known of a connection until it acknowledges. Fewer acknowledged than before is another connection in this slot.
-    if (this.lagFrom[i] === undefined || c.ackTick === 0 || c.ackTick < this.lagAck[i]!) this.lagFrom[i] = -1;
-    this.lagAck[i] = c.ackTick;
+    // A zero ack requests a whole snapshot, not a fresh latency estimate. Only an actual connection change resets it.
+    if (this.lagConn[i] !== c.conn) {
+      this.lagConn[i] = c.conn;
+      this.lagFrom[i] = -1;
+    }
     if (c.ackTick === 0) return;
     const age = now - c.ackTick;
     if (this.lagFrom[i]! < 0) {
@@ -326,7 +328,7 @@ export class Combat {
   /** The round trip of `c` in ticks, as measured. 0 until it has acknowledged a snapshot. */
   lag(c: Client): number {
     const i = c.id;
-    return (this.lagFrom[i] ?? -1) < 0 ? 0 : Math.min(this.lagNow[i]!, this.lagWas[i]!);
+    return this.lagConn[i] !== c.conn || (this.lagFrom[i] ?? -1) < 0 ? 0 : Math.min(this.lagNow[i]!, this.lagWas[i]!);
   }
 
   /**

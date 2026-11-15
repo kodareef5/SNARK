@@ -1,0 +1,191 @@
+{
+  "description": "Frozen round-one structure before the BRIEF_ROUND2.md palette-only revision. SHA-256 is of entire files.",
+  "files": {
+    "fig_heads_height.png": "026d6270610877fdbcd7e831402526c37439e6a5fa2b96892dc5f35e8fc822a2",
+    "fig_heads_normal.png": "e766a2163fa7c6e5f1aa90b5c528cfa7c10798e5495748730ac47d2d40419db3",
+    "fig_heads_orm.png": "f7dd2cf7b372237816150b505bd830a5bae9ccbe5a0aa98e2d28c06a5bd0a252",
+    "source/interior_quilt.json": "2eea55f7530aab76aa4ff4031882bc1a2ecc3b8500d7638813ac17303173460d",
+    "source/interior_generated.png": "bfb515778ae27970923185b153f6f588b30abd3555be58bd4306206ceadfc385",
+    "source/top_heads_generated.png": "505f0178cbd7ec66293662100fd76faa685a0601f2d1f0bba0027fff194e8799",
+    "source/underside_generated.png": "ae0e83caebe9172c54a37329b9dccf3eb7798d2999da1071e10cd49614f5dcde"
+  },
+  "layout_without_colour": {
+    "size": [
+      2048,
+      1024
+    ],
+    "radius_pixels": 240.64,
+    "disc_surface_radius_mm": 2200,
+    "height_range_mm": [
+      0,
+      240.0
+    ],
+    "leaf_length_mm": [
+      100,
+      140
+    ],
+    "regions": [
+      {
+        "index": 0,
+        "group": "sun",
+        "xywh": [
+          0,
+          0,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 9.142287234042554,
+        "removed_log_luminance_plane": [
+          0.011190413678053901,
+          -0.17526574341563442
+        ],
+        "height_mm": [
+          24.316777294575417,
+          158.7109178301671
+        ]
+      },
+      {
+        "index": 1,
+        "group": "sun",
+        "xywh": [
+          512,
+          0,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 9.142287234042554,
+        "removed_log_luminance_plane": [
+          -0.00862127151611869,
+          -0.0801135424621235
+        ],
+        "height_mm": [
+          26.191805905241473,
+          162.68436713206682
+        ]
+      },
+      {
+        "index": 2,
+        "group": "middle",
+        "xywh": [
+          1024,
+          0,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 9.142287234042554,
+        "removed_log_luminance_plane": [
+          0.08451654742650816,
+          -0.14538996659218134
+        ],
+        "height_mm": [
+          23.983520256351568,
+          155.26848249027236
+        ]
+      },
+      {
+        "index": 3,
+        "group": "middle",
+        "xywh": [
+          1536,
+          0,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 9.142287234042554,
+        "removed_log_luminance_plane": [
+          -0.03477621707754918,
+          -0.1652828598964358
+        ],
+        "height_mm": [
+          26.829022659647517,
+          161.24147402151522
+        ]
+      },
+      {
+        "index": 4,
+        "group": "shade",
+        "xywh": [
+          0,
+          512,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 9.142287234042554,
+        "removed_log_luminance_plane": [
+          0.020060054227073465,
+          -0.1436002461627321
+        ],
+        "height_mm": [
+          24.258182650492103,
+          153.67910276951247
+        ]
+      },
+      {
+        "index": 5,
+        "group": "shade",
+        "xywh": [
+          512,
+          512,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 9.142287234042554,
+        "removed_log_luminance_plane": [
+          -0.03736193927732723,
+          -0.08569951711806424
+        ],
+        "height_mm": [
+          25.71206225680934,
+          159.77294575417716
+        ]
+      },
+      {
+        "index": 6,
+        "group": "underside",
+        "xywh": [
+          1024,
+          512,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 9.142287234042554,
+        "removed_log_luminance_plane": [
+          0.03061157874013337,
+          0.023663733731914386
+        ],
+        "height_mm": [
+          38.42710002288853,
+          145.66628519111924
+        ]
+      },
+      {
+        "index": 7,
+        "group": "interior",
+        "xywh": [
+          1536,
+          512,
+          512,
+          512
+        ],
+        "periodic": true,
+        "pitch_mm": 4.6875,
+        "removed_log_luminance_plane": [
+          0.0,
+          0.0
+        ],
+        "height_mm": [
+          67.80132753490501,
+          95.90112153810941
+        ]
+      }
+    ]
+  },
+  "round1_base_sha256": "7d37aadd7e4e8c636aa242045e52d12bca5e265570ede3c1daf1c47ca6aae248"
+}

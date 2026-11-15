@@ -8,11 +8,10 @@ import math
 import broadleaf as bl
 import far
 from kit import UP, Mesh, add, cross, dot, hash01, horizontal, interp, length, lerp, mix, mul, rng_for, sheet, sub, tube, unit
-from layout import CUTS, FIG_ROOTS, ROOTS_SIZE, RUIN_SIZE, RUINS, crown_mass
+from layout import CUTS, FIG_ROOTS, ROOTS_SIZE, RUIN_SIZE, RUINS
 
 ATLAS = "fig_leaves"
 CROWN = "fig_crown"
-MASS = crown_mass(CROWN)
 BARK = "fig_bark"
 STEM = "f908a80"
 LIGHT, MID, DARK = "f446730", "f3a5625", "f2c3b2b"
@@ -52,6 +51,10 @@ ORDERS = {"orders": [
     {"count": (2, 3), "along": (0.4, 0.9), "turn": (25, 50), "rise": (10, 30), "length": (2.0, 3.4), "girth": (0.5, 0.7), "points": 5, "wander": 0.2, "droop": 5},
 ]}
 SPECS = {f["name"]: f for f in FIGS}
+# How far apart the heads of leaves stand over the crown (heads.py), each 2 to 3 m across, a fig's leaves being large;
+# on the coarser levels they are gathered into so many against the finest's count, or so many in all.
+SPACING = 2.6
+GATHERED = {2: 0.45, 3: 34, 4: 12}
 # Half the width of what each swallows, so a window opens to just inside its face.
 HALF = {"column": 0.225, "pole": 0.15, "sign": 0.04}
 
@@ -229,11 +232,14 @@ def swallowed(m, spec, lod, cut=None):
 def fig(name, lod):
     spec = SPECS[name]
     if lod == far.LEVEL:
-        return far.crown(fig(name, 3), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
-    m = Mesh(lod <= 2)
+        return far.crown(fig(name, 4), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
+    m = Mesh(lod <= 3)
     rng = rng_for(name, "level", lod)
     limbs, stub, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
+    heads, _ = bl.heads_of(name, limbs, lobes, shade, SPACING, roof=True, under=1.15)
+    if lod in (2, 3):
+        heads = bl.gathered(heads, GATHERED[lod], name)
     ribbons = wall(spec)
     sides, rings = {0: (48, 24), 1: (24, 8), 2: (10, 4), 3: (8, 3), 4: (6, 2)}[lod]
     under = buried(ribbons)
@@ -250,12 +256,12 @@ def fig(name, lod):
     bl.wood(m, limbs, order_sides, keep, BARK, STEM, least)
     if stub is not None and lod <= 3:
         bl.bark_tube(m, bl.coarser(stub, {0: 5, 1: 3, 2: 2, 3: 1}[lod]), order_sides[0], BARK, STEM, caps=(True, True))
-    if lod <= 2:
-        bl.crown(m, lobes, lod, rng, ATLAS, 1.2, MASS, shade=shade, grain=1.35)
+    if lod <= 3:
+        bl.head_crown(m, heads, lod, rng, ATLAS, CROWN, shade, solid=1.2)
         if lod <= 1:
             curtains(m, spec["name"], limbs, lobes, lod, count=(14, 18), reach=(2.0, 5.0))
     else:
-        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 14 if lod == 3 else 7)
+        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), GATHERED[lod], name)
     return m
 
 

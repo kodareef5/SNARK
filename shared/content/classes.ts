@@ -89,9 +89,9 @@ const ITEM = {
   craft: f("facet", "BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP", { refs: { "needs[].item": "item", at: "structure/station" } }),
   description: stub("polish", "text", "ItemDescription"),
   folder: stub("polish", "text", "DefaultFolderPaths"),
-  spoilsInto: stub("polish", "text", "SpoilingItem", { refs: { "": "item" } }),
-  blueprint: stub("loot", "switch", "it may drop as a blueprint"),
-  use: stub("polish", "facet", "UseItemAddCharacterStatusValues and the buffs a consumable gives", { refs: { "buffs[]": "buff" } }),
+  spoilsInto: f("text", "SpoilingItem", { refs: { "": "item" } }),
+  blueprint: f("switch", "whether it may be a blueprint (a crafted item may, unless false)"),
+  use: f("facet", "UseItemAddCharacterStatusValues and the buffs a consumable gives", { refs: { "buffs[]": "buff" } }),
 } satisfies Fields<ItemDef>;
 
 const SPECIES = {
@@ -397,7 +397,7 @@ const STRUCTURE_SLOTS = { mesh: mesh("must", "{mesh}", "shape"), destroyed: mesh
 row("structure", "structure", STRUCTURE, { abstract: true, ark: "APrimalStructure", shelf: "structures", doc: "Anything built or standing in the world that is not alive." });
 row("structure/piece", "structure", STRUCTURE, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up." });
 row("structure/container", "structure", STRUCTURE, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." });
-row("structure/station", "structure", STRUCTURE, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. Today that is fuel burning and food cooking." });
+row("structure/station", "structure", STRUCTURE, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it: fuel burns and food cooks, and an item whose craft names it in `at` is made from what lies in it. How fast it makes things waits." });
 row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it." });
 row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material"], slots: { mesh: mesh("must", "{mesh}", "box") }, doc: "Part of a map: set there with the world and joined to nothing." });
 row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." });
@@ -417,7 +417,7 @@ row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", status: "
 row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "damage", "speed", "dealt", "taken", "root", "immune", "good"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });
 
 row("damage", "damage", DAMAGE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", may: ["label", "torpor", "trueShare", "melee"], doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
-row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "stub", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts and qualities, drawn from when something is opened or dies." });
+row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "partial", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts, qualities and blueprint chances. A seeded roll draws from it (shared/sim/loot.ts) and the console's loot mints one; what opens a crate or leaves a body waits for map zones." });
 row("spawns", "spawns", SPAWNS, { ark: "NPCSpawnEntriesContainer", shelf: "spawns", must: ["entries"], may: ["limits"], doc: "Which creatures live in a place, in what share and in what groups. A map's spawn zones name these." });
 row("map", "map", MAP, { ark: "a level and the game data it names", status: "partial", waits: "maps", shelf: "maps", must: ["chunks"], may: ["label", "seaLevel", "game", "zones"], doc: "A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. A spawn zone with a spawns definition is kept stocked from it; one without is where a test's starting creatures are put." });
 row("game", "game", GAME, { ark: "PrimalGameData", status: "stub", waits: "polish", shelf: "game", must: ["survivor", "cache", "bag"], may: ["levels", "buffs"], doc: "What a game names once: the survivor's species, the death cache, the dropped bag, the standing buffs." });

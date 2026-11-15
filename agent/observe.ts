@@ -3,6 +3,7 @@
 
 import { ownIndex, type ClientSession, type RemoteSample } from "../client/core/session.ts";
 import type { NodeDef, PropDef } from "../shared/content/defs.ts";
+import { CUE_DEAD, CUE_HELD, CUE_HURT_SHIFT, CUE_OUT } from "../shared/anim/pose.ts";
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
 import { SKIN, capsuleBox, capsuleFree } from "../shared/world/collide.ts";
 import { GROUND_FREE, GROUND_OFF, GROUND_STEEP, GROUND_WATER, groundAt } from "../shared/world/path.ts";
@@ -126,6 +127,8 @@ export function observe(session: ClientSession, remote: RemoteSample, radius = 3
   const boxes: Thing[] = [];
   const doors: Thing[] = [];
   const creatures: Thing[] = [];
+  const bodies: Thing[] = [];
+  const eggs: Thing[] = [];
   const players: Thing[] = [];
   // Every chunk the picture touches, for what stands in it.
   const dims = world.dims;
@@ -159,14 +162,20 @@ export function observe(session: ClientSession, remote: RemoteSample, radius = 3
     if (id === own || id === session.driving) continue;
     const x = remote.x[i]!;
     const z = remote.z[i]!;
+    const cue = remote.cue[i]!;
     if ((flags & VIEW_PROP) !== 0) {
-      // Of the things that lie about, only those that hold something are worth a letter.
-      if ((reg.defs[kind] as PropDef | null)?.class === "container" && mark(x, z, BOX)) boxes.push(thing(`e${id}`, remote.name[i] || shortName(reg.ids[kind]), x, z));
+      // Of the things that lie about, only those that hold something are worth a letter. A dead creature and an egg are listed.
+      const lying = (reg.defs[kind] as PropDef | null)?.class;
+      if ((cue & CUE_DEAD) !== 0) bodies.push(thing(`e${id}`, `dead ${shortName(reg.ids[kind])}`, x, z));
+      else if (lying === "egg") eggs.push(thing(`e${id}`, shortName(reg.ids[kind]), x, z));
+      else if (lying === "container" && mark(x, z, BOX)) boxes.push(thing(`e${id}`, remote.name[i] || shortName(reg.ids[kind]), x, z));
     } else if ((flags & VIEW_PLAYER) !== 0) {
       if (mark(x, z, PLAYER)) players.push(thing(`e${id}`, remote.name[i]!, x, z));
     } else if (mark(x, z, CREATURE)) {
       const whose = remote.team[i] === 0 ? (reg.temper[kind] === 2 ? "hunts" : "wild") : remote.team[i] === team ? "yours" : "tamed";
-      creatures.push(thing(`e${id}`, shortName(reg.ids[kind]), x, z, `level ${remote.level[i]}`, whose));
+      const hurt = (cue >>> CUE_HURT_SHIFT) & 3;
+      const how = (cue & CUE_OUT) !== 0 ? ["knocked out"] : (cue & CUE_HELD) !== 0 ? ["carried"] : hurt > 0 ? [["", "hurt", "badly hurt", "near death"][hurt]] : [];
+      creatures.push(thing(`e${id}`, shortName(reg.ids[kind]), x, z, `level ${remote.level[i]}`, whose, ...how));
     }
   }
   mark(b.x, b.z, SELF);
@@ -192,7 +201,7 @@ export function observe(session: ClientSession, remote: RemoteSample, radius = 3
     lists: "Nearest first, at most 40 of a kind: id, its name if it has one, x, z, metres away, direction.",
   };
   for (const [name, things] of [...nodes].sort((p, q) => (p[0] < q[0] ? -1 : 1))) out[name] = list(things);
-  for (const [name, things] of [["box", boxes], ["door", doors], ["creature", creatures], ["player", players]] as const) if (things.length > 0) out[name] = list(things);
+  for (const [name, things] of [["box", boxes], ["door", doors], ["creature", creatures], ["body", bodies], ["egg", eggs], ["player", players]] as const) if (things.length > 0) out[name] = list(things);
   return out;
 }
 
