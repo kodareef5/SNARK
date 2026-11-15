@@ -773,7 +773,7 @@ export class App {
     }
     const menu = this.ui.structure;
     menu.tick(nowMs);
-    const built = alive && !b.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = -1), "");
+    const built = alive && !b.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && this.ui.wantsPointerLock) {
       menu.begin(this.aimed);
       this.useDownAt = -1;
