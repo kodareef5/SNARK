@@ -1,9 +1,9 @@
 // The sea on a GPU (D270), a check of tools/probe-lit.ts. The sea is drawn calm, its waves' pictures not sent, and each
 // sea pixel is held to water.ts's twin over what the rasterizer draws under it: a plate of sand 2 m down seen from
 // above; the shore, where the sea is 5 to 15 cm deep and mostly see-through; the open sea at a grazing angle, where it
-// is the sky table mirrored; and the sea across the split between the depth ranges, from 50 m up and from the art
-// director's camera over the proving ground, where a band blended twice or a row left undrawn would show. Each within 5
-// steps at 99 points in 100.
+// is the sky table mirrored; and the sea across the split between the depth ranges, from 50 m up over deep water and
+// over the shallows, and from the art director's camera over the proving ground, where a band blended twice or a row
+// left undrawn would show. Each within 5 steps at 99 points in 100.
 //
 // With PROBE_PICTURES naming a folder it also writes what the shell draws with the waves' and the sky's pictures sent:
 // each mood key's two views from the art director's cameras over the proving ground's rim, a beach of an island from
@@ -184,6 +184,12 @@ export const waterCheck: LitCheck = {
       for (const up of [50, 50.23, 50.47, 50.71]) {
         onBeach(isle, 2.2, 0, up, -0.14);
         prove(p2, isle, `${up} m up across the split, ${name}`, "split");
+      }
+      // From 380 m out at sea, 50 m up, looking in at the beach: the split lies on the shallows, the sand just under them.
+      for (const up of [50, 50.35]) {
+        onBeach(isle, 2.2, -380, up, -0.12);
+        isle.cam.yaw += Math.PI;
+        prove(p2, isle, `the shallows across the split, ${up} m up, ${name}`, "split");
       }
     }
     shots.push(p2);
