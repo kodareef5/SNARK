@@ -27,7 +27,7 @@ import { Corpses, type Corpse } from "../ragdoll.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
-import { seatFrame } from "../../../shared/anim/seat.ts";
+import { anchorFrame, saddleSeat, seatFrame } from "../../../shared/anim/seat.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
@@ -227,8 +227,11 @@ export class Characters {
   private headAt = new Float32Array(3 * 256);
   private readonly socketAt = [0, 0, 0];
 
+  private readonly reg: Registry;
+
   constructor(reg: Registry, pack: Pack, assets: Assets) {
     const { table, bind } = assets;
+    this.reg = reg;
     this.assets = assets;
     this.anim = new HumanAnim(pack.clips);
     this.levels = table.error.reduce((most, e) => Math.max(most, e.length), 1);
@@ -376,11 +379,12 @@ export class Characters {
   }
 
   /**
-   * Writes where a rider sits on a creature of this kind at (x, y, z) facing `yaw` radians, posed as it is drawn: the
-   * rider's origin and the rows of its turn, in the seat socket's whole frame (shared/anim/seat.ts). False for a kind
-   * without a seat. A vehicle's seat `seatSlot` (1 for its first) is its anchor alone, at out[0..2]; its turn is the car's.
+   * Writes where a rider sits in seat `seatSlot` (1 for its first) of the saddle item `saddle` on a creature of this kind
+   * at (x, y, z) facing `yaw` radians, posed as it is drawn: the rider's origin and the rows of its turn, in the seat
+   * socket's whole frame (shared/anim/seat.ts), or at the seat's anchor where the rig has no such socket. False for a kind
+   * without that seat. A vehicle's seat is its anchor alone, at out[0..2]; its turn is the car's.
    */
-  seat(kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, out: Float64Array, seatSlot = 0, vehicle?: VehicleRenderPose): boolean {
+  seat(kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, out: Float64Array, seatSlot = 0, vehicle?: VehicleRenderPose, saddle = 0): boolean {
     const c = this.creatures[kind];
     const rig = c?.anim.rig;
     if (c?.vehicle) {
@@ -392,8 +396,15 @@ export class Characters {
       out[0]! += x; out[1]! += y; out[2]! += z;
       return true;
     }
-    const socket = rig?.sockets.get("seat");
-    if (!c || !rig || !socket) return false;
+    // A body seated with no saddle seat to name (a picture's) sits on the rig's `seat`.
+    const def = saddleSeat(this.reg, saddle, seatSlot);
+    const name = def ? def.socket : "seat";
+    const socket = name !== undefined ? rig?.sockets.get(name) : undefined;
+    if (!c || !rig || !socket) {
+      if (!def) return false;
+      anchorFrame(def.anchor, x, y, z, yaw, out);
+      return true;
+    }
     // The mount's legs are where they will be drawn: its gait, found by its mesh and clock, if that body was drawn here.
     const id = this.bySeed.get(c.mesh * 1024 + st.seed);
     let g = id === undefined ? undefined : this.gaits.get(id);
@@ -684,9 +695,10 @@ export class Characters {
    * a frame without the bones to pose it. `unseen` poses it as a body in view is posed, for its shadow alone: none of it is
    * drawn in the view and it asks for nothing. Returns false when the frame has no room left even for that, and counts a
    * body in view dropped. While the sun casts, what `headless` leaves out still casts. `seat` holds, at `seatAt`, the rows
-   * of the turn of the seat a survivor rides in (seat()), which turns it in place of `yaw`.
+   * of the turn of the saddle seat a survivor rides in (seat()), which turns it in place of `yaw`; it sits astride, its hands
+   * on the grips where it `steers`, else its upper body its own, to look and aim.
    */
-  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1, rigid = false, unseen = false, seat: Float64Array | null = null, seatAt = 0, vehicle?: VehicleRenderPose, vehicleSeat?: VehicleSeatPose): boolean {
+  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1, rigid = false, unseen = false, seat: Float64Array | null = null, seatAt = 0, vehicle?: VehicleRenderPose, vehicleSeat?: VehicleSeatPose, steers = true): boolean {
     const creature = this.creatures[kind];
     if (creature) return this.addCreature(p, kind, creature, x, y, z, yaw, st, tick, colors, colorAt, gear, gearAt, id, size, rigid, unseen, vehicle);
     const k = this.kinds[kind];
@@ -708,6 +720,16 @@ export class Characters {
       advanceHuman(this.anim, g, st, tick, x + p.camX, z + p.camZ, yaw);
       humanPose(this.anim, st, tick, this.pose, g);
       if (vehicleSeat) mountPose(this.mount, { role: vehicleSeat.driver ? "drive" : "passenger", tick, startTick: 0, durationTicks: 1, steering: vehicleSeat.steer, ...(vehicleSeat.driver ? {} : { upper: this.pose }) }, this.pose);
+      else if (seat) {
+        mountPose(this.mount, { role: "ride", tick: 0, startTick: 0, durationTicks: 1, ...(steers ? {} : { upper: this.pose }) }, this.pose);
+        if (!steers) {
+          // A passenger turns at the waist toward where it looks, from the way its seat faces.
+          const facing = Math.atan2(seat[seatAt + 2]!, seat[seatAt + 8]!);
+          const turn = Math.atan2(Math.sin(yaw - facing), Math.cos(yaw - facing));
+          quatAxis(this.steer, 0, 0, 1, 0, Math.max(-1.2, Math.min(1.2, turn)));
+          quatMul(this.pose.rot, B_SPINE * 4, this.steer, 0, this.pose.rot, B_SPINE * 4);
+        }
+      }
       if (vehicleSeat && !vehicleSeat.driver && vehicleSeat.aimYaw !== undefined) {
         const turn = Math.atan2(Math.sin(vehicleSeat.aimYaw - vehicleSeat.yaw), Math.cos(vehicleSeat.aimYaw - vehicleSeat.yaw));
         quatAxis(this.steer, 0, 0, 1, 0, Math.max(-1.2, Math.min(1.2, turn)));
