@@ -358,7 +358,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const spawns = spawnTables(reg, rules, lists);
   // No spawn region here is forced, streamed, put by hand or in water, so each -NoDinosExcept flag is -NoDinos.
   const quiet = ["NoDinos", "NoDinosExceptForcedSpawn", "NoDinosExceptStreamingSpawn", "NoDinosExceptManualSpawn", "NoDinosExceptWaterSpawn"].some((f) => rules.flag(f) === true);
-  const stocked = opts.wild && !quiet ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
+  const stocked = opts.wild && !quiet ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, harvest, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
   const spawner = stocked && stocked.regions.length > 0 ? stocked : null;
   // The save keeps the setting values its timers were computed under, so they can be re-timed under other rules.
   const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at"), persistence.store.meta("rules")) : null;

@@ -4,6 +4,7 @@
 // of the near store built up to 30 m. The scene's own rows come when casters are collected.
 // `bun tools/bench/shadow.ts` runs these alone.
 
+import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Cascades, reach, type ShadowSetup } from "../../client/core/render/shadow.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -12,10 +13,10 @@ type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
 const SETUPS: readonly (readonly [string, ShadowSetup])[] = [
-  ["medium", { cascades: 2, size: 2048, distance: 64, everyOther: false }],
-  ["high", { cascades: 3, size: 2048, distance: 128, everyOther: false }],
-  ["ultra", { cascades: 4, size: 2048, distance: 192, everyOther: false }],
-  ["medium on a phone", { cascades: 2, size: 1024, distance: 48, everyOther: true }],
+  ["medium", tierOf("medium").shadows],
+  ["high", tierOf("high").shadows],
+  ["ultra", tierOf("ultra").shadows],
+  ["medium on a phone", { ...tierOf("medium").shadows, size: 1024, distance: 48, everyOther: true }],
 ];
 const CHUNK = 64;
 const KINDS = 50;

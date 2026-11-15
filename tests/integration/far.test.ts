@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
-import { CMD_FAR, CMD_MAP_ZOOM, S_FAR } from "../../shared/net/protocol.ts";
+import { CMD_FAR, CMD_MAP_ZOOM, CMD_VIEW, S_FAR } from "../../shared/net/protocol.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { FarCells, farTopMetres, readFar } from "../../shared/world/tactical.ts";
@@ -122,6 +122,42 @@ test("far cells stop at the reach asked and at FarRadius, leave out boxes, beds 
   run(b, 2048, 2500);
   expect(stats.far).toBe(sent + 1);
   expect([a.far.chunks.has(chunkAt(DIMS, 1310, 72)), b.far.chunks.size]).toEqual([false, 0]);
+});
+
+test("a view and a reach the server is too busy to take are asked for again a second later, until it takes them", () => {
+  const { h, base } = wide();
+  base(1600, 70, 999);
+  const a = h.join("ada");
+  h.run(1000);
+  const sent = new Map<number, number>();
+  const command = a.command.bind(a);
+  a.command = (op, args) => {
+    const seq = command(op, args);
+    if (seq !== 0) sent.set(op, (sent.get(op) ?? 0) + 1);
+    return seq;
+  };
+  const ask = (): void => {
+    a.view(32, 1100);
+    a.askFar(2048);
+  };
+  // For four seconds a burst of commands each frame keeps the server's queue full, so it refuses both every time.
+  h.run(4000, () => {
+    for (let i = 0; i < 20; i++) a.command(CMD_MAP_ZOOM, (w) => w.bits(0, 2));
+    ask();
+  });
+  const c = h.client(a)!;
+  expect([c.viewCap, a.far.chunks.size]).toEqual([0, 0]);
+  expect([sent.get(CMD_VIEW)!, sent.get(CMD_FAR)!].every((n) => n >= 2 && n <= 5)).toBe(true);
+  // Once the burst ends, both are taken with nobody asking for anything new.
+  const tower = chunkAt(DIMS, 1610, 72);
+  let arrived = -1;
+  const from = h.now;
+  h.run(6000, (now) => {
+    ask();
+    if (arrived < 0 && a.far.chunks.has(tower)) arrived = now - from;
+  });
+  expect(arrived).toBeGreaterThan(0);
+  expect([c.viewCap, c.snapshotBytes]).toEqual([32, 1100]);
 });
 
 test("on one stream as Linux runs it, 400 base chunks in reach hold a join's near chunks back not at all, and freeze no one", () => {

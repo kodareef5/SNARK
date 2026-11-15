@@ -86,7 +86,7 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
-import { CMD_FAR, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { CMD_FAR, RESULT_BUSY, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import { MapStore } from "./tactical.ts";
 
@@ -196,6 +196,8 @@ const SMOOTH_MS = 90;
 const SMOOTH_LIMIT = 3;
 /** Chunks around the body whose nodes stay filled. Collision needs one, drawing wants more. */
 const NODE_RADIUS = 3;
+/** A view or far request the server was too busy to take is sent again this long after. The server reads either once a second. */
+const ASK_AGAIN_MS = 1000;
 const CLOSED_BY_PEER = -1;
 const CLOSED_BAD_MAP = -2;
 /** The content this client derives from the server's tuning does not hash to the server's. */
@@ -398,10 +400,13 @@ export class ClientSession {
   private readonly marginAt = new Uint32Array(128);
   private needFull = true;
   private commandSeq = 0;
-  /** What `view` and `askFar` last asked the server for. */
+  /** What `view` and `askFar` last asked the server for, and the commands that asked. After the server refuses one, neither is sent before `askAt`. */
   private viewCap = 0;
   private viewBytes = 0;
+  private viewSeq = 0;
   private farAsked = -1;
+  private farSeq = 0;
+  private askAt = -Infinity;
 
   constructor(conn: Connection, opts: SessionOptions) {
     this.registry = opts.registry;
@@ -440,18 +445,27 @@ export class ClientSession {
     return seq;
   }
 
-  /** Asks to be shown at most `cap` entities, in snapshots of at most `bytes`. Sent when either changes. The server holds both to its limits. */
+  /**
+   * Asks to be shown at most `cap` entities, in snapshots of at most `bytes`. Sent when either changes, and again when the
+   * server was too busy to take it. The server holds both to its limits.
+   */
   view(cap: number, bytes: number): void {
-    if ((cap === this.viewCap && bytes === this.viewBytes) || this.command(CMD_VIEW, (w) => (w.u16(cap), w.u16(bytes))) === 0) return;
+    if ((cap === this.viewCap && bytes === this.viewBytes) || this.lastNow < this.askAt) return;
+    const seq = this.command(CMD_VIEW, (w) => (w.u16(cap), w.u16(bytes)));
+    if (seq === 0) return;
     this.viewCap = cap;
     this.viewBytes = bytes;
+    this.viewSeq = seq;
   }
 
-  /** Asks for far cells within `metres`. Sent when it changes. The server holds it to its FarRadius. */
+  /** Asks for far cells within `metres`. Sent when it changes, and again when the server was too busy to take it. The server holds it to its FarRadius. */
   askFar(metres: number): void {
     const m = Math.max(0, Math.min(0xffff, Math.round(metres)));
-    if (m === this.farAsked || this.command(CMD_FAR, (w) => w.u16(m)) === 0) return;
+    if (m === this.farAsked || this.lastNow < this.askAt) return;
+    const seq = this.command(CMD_FAR, (w) => w.u16(m));
+    if (seq === 0) return;
     this.farAsked = m;
+    this.farSeq = seq;
   }
 
   create(look: Uint8Array): number {
@@ -690,7 +704,14 @@ export class ClientSession {
     else if (type === S_RESULT) {
       const seq = r.u16();
       const code = r.u8();
-      if (!r.overflow) this.onResult?.(seq, code);
+      if (r.overflow) return;
+      // The newest view or far request, refused, is forgotten so that it is asked again.
+      if (code === RESULT_BUSY && seq !== 0 && (seq === this.viewSeq || seq === this.farSeq)) {
+        if (seq === this.viewSeq) this.viewCap = this.viewBytes = -1;
+        else this.farAsked = -1;
+        this.askAt = this.lastNow + ASK_AGAIN_MS;
+      }
+      this.onResult?.(seq, code);
     } else if (type === S_TEXT) {
       const channel = r.u8();
       const text = r.string(MAX_SERVER_TEXT_BYTES);
