@@ -12,7 +12,7 @@ import { LEVEL_COLOURS, SKY_COLOR } from "../../shared/pack/palette.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
 import { fetchBytes, fetchJson, fetchText } from "../core/fetched.ts";
-import { probePasses, provingProbes, type Probe } from "../core/selfcheck.ts";
+import { heldTo, probePasses, provingProbes, type Probe } from "../core/selfcheck.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
 import { devicePage } from "./device.ts";
@@ -184,7 +184,7 @@ async function boot(): Promise<void> {
       const stressed = rocks.flatMap((m): Probe[] => (app.cam.project(m.x, m.y, m.z, at) ? [{ name: `rock at level ${m.level}`, sx: at[0]!, sy: at[1]!, rgb: [0, 1, 2].map((c) => pack.palette[LEVEL_COLOURS[m.level]! * 4 + c]!) as Probe["rgb"], mode: "hue" }] : []));
       const probes = [...provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, params.has("creature"), packet), ...stressed].map((p) => {
         const got = renderer.readPixel(p.sx, p.sy);
-        return { name: p.name, expected: p.rgb, got, ok: probePasses(p, got[0], got[1], got[2]) };
+        return { name: p.name, expected: heldTo(p, got[0], got[1], got[2]), got, ok: probePasses(p, got[0], got[1], got[2]) };
       });
       times.sort((x, y) => x - y);
       const misplaced = view.misplaced(app.ui.frame);

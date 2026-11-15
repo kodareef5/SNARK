@@ -28,7 +28,7 @@ import { donePage, progressText, startPage } from "./devicetext.ts";
 import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
 import { groundSize } from "./render/terrain.ts";
 import type { Thing } from "./render/scene.ts";
-import { probePasses, provingProbes } from "./selfcheck.ts";
+import { heldTo, probePasses, provingProbes } from "./selfcheck.ts";
 import { stressThings } from "./stress.ts";
 
 /** The terrain flight runs on a server of its own, on the 8 km map (tools/device.ts --terrain); the others on the proving ground. */
@@ -858,7 +858,7 @@ export class DeviceRun {
     const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true, scene.packet).filter((q) => q.sx >= 0 && q.sx < 1 && q.sy >= 0 && q.sy < 1);
     this.report.probes = shown.map((q) => {
       const got = read(q.sx, q.sy);
-      return { name: q.name, ok: probePasses(q, got[0], got[1], got[2]), expected: q.rgb, got };
+      return { name: q.name, ok: probePasses(q, got[0], got[1], got[2]), expected: heldTo(q, got[0], got[1], got[2]), got };
     });
     this.stage = "hashes";
     this.report.stage = "hashes";
