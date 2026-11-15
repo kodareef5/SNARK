@@ -10,9 +10,12 @@
 //   knocked_out   standing, going down, lying, and swallowing a berry as it lies
 //   lying         two birds knocked out, close: one seen from its belly, one from its back
 //   dead          two corpses six seconds after death, one killed standing and one killed knocked out, by a live bird
-//   held          a survivor holding one in both arms, from her front left, and one crouched holding another behind her
-//   held_side     the same survivor side on through a long lens, to see the bird clear of her chest
-//   held_back     from behind her right shoulder, to see her hands under it
+//   held          a survivor holding one in both arms, from her front right, and one crouched holding another behind her
+//   held_side     the same survivor from her right through a long lens, to see the bird held clear of her chest
+//   held_left     and from her left
+//   held_top      from above her right shoulder, where the bird's back meets her chest
+//   held_back     from behind her, to see her hands under it
+//   held_crouch   the crouched one from her left: the bird held out in front of her knees
 //   held_eye      what she sees of it from her own eyes, looking ahead
 //
 //   bun assets/source/core/creatures/dodo/ref/world/snap.ts [shot ...] [--tier medium|ultra]
@@ -34,7 +37,7 @@ import { encodePng } from "../../../../../../../tools/snap/png.ts";
 const [W, H] = [1280, 720];
 /** A grassy patch beyond the plaza with no tree or rock between it and a camera 26 m to its south. */
 const [CX, CZ] = [160, 360];
-const SHOTS = ["2m", "6m", "20m", "profile", "dyes", "young", "knocked_out", "lying", "dead", "held", "held_side", "held_back", "held_eye", "held_crouch", "held_left", "held_top"] as const;
+const SHOTS = ["2m", "6m", "20m", "profile", "dyes", "young", "knocked_out", "lying", "dead", "held", "held_side", "held_left", "held_top", "held_back", "held_crouch", "held_eye"] as const;
 type Shot = (typeof SHOTS)[number];
 
 const args = process.argv.slice(2);
@@ -161,9 +164,9 @@ function scene(view: ProvingView, shot: Shot): void {
     // She faces -Z, so her right is +X.
     holding(view, tick, eye ? [[0, 0, 0, false]] : [[0, 0, Math.PI, false], [-1.5, 1.3, Math.PI - 0.6, true]], eye);
     if (shot === "held") aim(view, 1.1, 1.35, -1.9, -0.25, 0.95, 0.2, 0.8);
-    else if ((shot as string) === "held_crouch") aim(view, -1.5 + 2.4, 0.8, 1.3 - 0.9, -1.5, 0.7, 1.3, 0.5);
-    else if ((shot as string) === "held_left") aim(view, -3.6, 1.2, -0.25, 0, 1.2, -0.25, 0.3);
-    else if ((shot as string) === "held_top") aim(view, 0.45, 2.6, 0.25, 0, 1.2, -0.2, 0.6);
+    else if (shot === "held_crouch") aim(view, 0.9, 0.8, 0.4, -1.5, 0.7, 1.3, 0.5);
+    else if (shot === "held_left") aim(view, -3.6, 1.2, -0.25, 0, 1.2, -0.25, 0.3);
+    else if (shot === "held_top") aim(view, 0.45, 2.6, 0.25, 0, 1.2, -0.2, 0.6);
     else if (shot === "held_side") aim(view, 3.6, 1.1, -0.25, 0, 1.1, -0.25, 0.4);
     else if (shot === "held_back") aim(view, 0.75, 1.95, 0.9, 0, 1.0, -0.35, 0.8);
     else {
