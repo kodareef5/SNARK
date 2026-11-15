@@ -447,7 +447,7 @@ def head_down(p, least=0.0):
 
 RADIUS = {n: rig.LIMBS[n][1] for n in LEADING}
 # The fingers stand on their claws in STANCE, 10 mm up, which the ground must leave as it is.
-RADIUS.update({"web_1": 0.008, "web_2": 0.008, "web_3": 0.008, "fingers": 0.005, "pteroid": 0.02})
+RADIUS.update({"web_1": 0.025, "web_2": 0.025, "web_3": 0.025, "fingers": 0.005, "pteroid": 0.02})
 WING_ORDER = ["upper_arm", "forearm", "pteroid", "web_1", "hand", "fingers", "web_2", "wing_1", "wing_2", "web_3",
               "wing_3", "wing_4"]
 
@@ -615,6 +615,17 @@ GLIDE = captured(lambda c: c.glide(0))
 # Lying out cold
 # =====================================================================================================================
 
+# The wings as LIE spreads them, before the ground lays them down. A wing's extra yaw + swings that bone back.
+LIE_WINGS = {
+    "l": dict(fold=0.06, flap=-20.0, sweep=-4.0, curl=-4.0,
+              extra={"forearm": (0.0, -12.0, 0.0), "hand": (0.0, 10.0, 0.0), "wing_1": (0.0, 16.0, 0.0),
+                     "wing_2": (0.0, 8.0, 0.0), "wing_3": (0.0, 6.0, 0.0)}),
+    "r": dict(fold=0.14, flap=-24.0, sweep=-12.0, curl=-4.0,
+              extra={"forearm": (0.0, -18.0, 0.0), "hand": (0.0, 16.0, 0.0), "wing_1": (0.0, 26.0, 0.0),
+                     "wing_2": (0.0, 10.0, 0.0), "wing_3": (0.0, 8.0, 0.0)}),
+}
+
+
 def lie():
     """Out cold on its belly: the wings spread loose on the ground, the neck laid forward along it, the head on its
     left cheek with the crest flat, the legs trailing behind with the soles up."""
@@ -624,13 +635,8 @@ def lie():
     p.rot("spine", pitch=-2.0, yaw=-3.0, roll=-3.0)
     p.rot("chest", pitch=-3.0, yaw=-4.0, roll=-3.0)
     p.rot("tail", pitch=12.0, yaw=-8.0)
-    # A wing's extra yaw + swings that bone back.
-    set_wing(p, "l", fold=0.06, flap=-20.0, sweep=-4.0, curl=-4.0,
-             extra={"forearm": (0.0, -12.0, 0.0), "hand": (0.0, 10.0, 0.0), "wing_1": (0.0, 16.0, 0.0),
-                    "wing_2": (0.0, 8.0, 0.0), "wing_3": (0.0, 6.0, 0.0)})
-    set_wing(p, "r", fold=0.14, flap=-24.0, sweep=-12.0, curl=-4.0,
-             extra={"forearm": (0.0, -18.0, 0.0), "hand": (0.0, 16.0, 0.0), "wing_1": (0.0, 26.0, 0.0),
-                    "wing_2": (0.0, 10.0, 0.0), "wing_3": (0.0, 8.0, 0.0)})
+    for s in SIDES:
+        set_wing(p, s, **LIE_WINGS[s])
     for s, x, z in (("l", 0.30, -1.00), ("r", -0.20, -1.04)):
         p.foot[s] = Vector((x, 0.0, z))
         p.foot_turn[s] = p.turn["pelvis"] @ q(roll=-20.0 if s == "l" else 12.0)
@@ -642,6 +648,21 @@ def lie():
 
 
 LIE = lie()
+
+
+def mirrored_pose(p):
+    """The same pose on the other side of the animal."""
+    out = p.copy()
+    for n in rig.DEFORM:
+        out.turn[rig._mirror_name(n)] = mirror_q(p.turn[n])
+    out.body = mirror_v(p.body, "r")
+    for s in SIDES:
+        o = "r" if s == "l" else "l"
+        out.foot[o], out.knee[o] = mirror_v(p.foot[s], "r"), mirror_v(p.knee[s], "r")
+        out.foot_turn[o] = mirror_q(p.foot_turn[s])
+        out.reach[o] = None if p.reach[s] is None else (mirror_v(p.reach[s][0], "r"), mirror_q(p.reach[s][1]))
+        out.hold[o] = p.hold[s]
+    return out
 
 
 def free_hand(p, s):
@@ -858,26 +879,34 @@ def gathered(p, fold, flap, sweep=0.0, curl=0.0):
 
 
 def torpor_out():
-    """It comes round: the head stirs, lifts, wobbles and drops back; lifts again and holds; the wings drag in
-    along the ground, rise over the back and fold; the hands come down in front, it pushes up onto them in two goes,
-    sinking back once, gets its feet under it and sits up into the crouch, unsteady; then a shake of the head and a
-    shrug of the folded wings, and it is itself."""
+    """It comes round: the head stirs, lifts off the ground, wobbles and drops back; lifts again and holds; the wings
+    drag in along the ground, rise a little and fold over the back; the hands come down in front and it pushes up
+    onto them in two goes, sinking back once, gets its feet under it and sits up into the crouch, unsteady; then a
+    shake of the head and a shrug of the folded wings, and it is itself."""
     stir = LIE.copy()
-    aim_neck(stir, LIE_HEAD + Vector((0.04, 0.28, -0.12)), Vector((0.0, 1.0, 0.0)), q(pitch=-10.0, yaw=-14.0, roll=30.0))
+    aim_neck(stir, LIE_HEAD + Vector((0.06, 0.30, -0.16)), Vector((0.0, 1.0, 0.0)), q(pitch=-14.0, yaw=-16.0, roll=34.0))
     settle(stir, 0.0, {"l": 1.0, "r": 1.0})
 
-    up_ = stir.copy()
+    drag = stir.copy()
+    drag.rot("chest", pitch=4.0)
+    for s in SIDES:
+        set_wing(drag, s, **dict(LIE_WINGS[s], fold=0.24, flap=-16.0, sweep=-16.0,
+                                 extra=dict(LIE_WINGS[s]["extra"], hand=(0.0, 16.0, 0.0), wing_1=(0.0, 30.0, 0.0))))
+    aim_neck(drag, LIE_HEAD + Vector((0.10, 0.42, -0.20)), Vector((0.0, 1.0, 0.0)), q(pitch=-10.0, yaw=-10.0, roll=20.0))
+    settle(drag, 0.0, {"l": 1.0, "r": 1.0})
+
+    up_ = drag.copy()
     up_.body = Vector((0.0, 0.24, -0.44))
-    up_.turn["pelvis"] = q(pitch=6.0, roll=-4.0)
+    up_.turn["pelvis"] = q(pitch=8.0, roll=-4.0)
     up_.turn["spine"] = q(pitch=-2.0)
     up_.turn["chest"] = q(pitch=-2.0)
-    gathered(up_, 0.3, 28.0, sweep=-6.0, curl=-8.0)
+    gathered(up_, 0.3, 14.0, sweep=-6.0, curl=-6.0)
     aim_neck(up_, (0.0, 0.80, 0.46), Vector((0.0, 0.3, -1.0)), q(pitch=-8.0, roll=6.0))
 
     tuck = up_.copy()
     tuck.body = Vector((0.0, 0.26, -0.44))
-    tuck.turn["pelvis"] = q(pitch=14.0)
-    gathered(tuck, 0.75, 6.0)
+    tuck.turn["pelvis"] = q(pitch=16.0)
+    gathered(tuck, 0.75, 8.0)
 
     push = STANCE.copy()
     push.body = Vector((0.0, 0.30, -0.42))
@@ -888,38 +917,42 @@ def torpor_out():
     for s in SIDES:
         push.foot[s] = STANCE.foot[s] + Vector((0.0, 0.0, -0.12))
 
-    poses = [LIE, stir, up_, tuck, push, STANCE]
+    poses = [LIE, stir, drag, up_, tuck, push, STANCE]
     timing = {
-        "neck": Keys([(0, 0.0), (5, 0.0), (9, 0.8), (12, 0.6), (15, 0.05), (21, 1.0), (31, 2.0), (44, 3.0),
-                      (52, 4.0), (60, 5.0)]),
-        "head": Keys([(0, 0.0), (5, 0.0), (10, 0.9), (13, 0.7), (16, 0.1), (22, 1.0), (32, 2.0), (45, 3.0),
-                      (53, 4.0), (60, 5.0)]),
-        "body": Keys([(0, 0.0), (20, 1.0), (28, 1.8), (34, 2.0), (38, 3.0), (43, 3.7), (46, 3.35), (52, 4.0),
-                      (60, 5.0)]),
-        "tail": Keys([(0, 0.0), (22, 1.0), (36, 3.0), (54, 4.0), (62, 5.0)]),
-        "wing_l": Keys([(0, 0.0), (20, 1.0), (30, 2.0), (36, 3.0), (41, 4.0)]),
-        "wing_r": Keys([(0, 0.0), (18, 1.0), (28, 2.0), (34, 3.0), (39, 4.0)]),
-        "leg_l": Keys([(0, 0.0), (36, 3.0), (46, 4.0), (56, 5.0)]),
-        "leg_r": Keys([(0, 0.0), (34, 3.0), (44, 4.0), (54, 5.0)]),
+        "neck": Keys([(0, 0.0), (6, 0.0), (11, 0.9), (14, 0.8), (18, 0.05), (21, 0.0), (27, 1.0), (32, 2.0),
+                      (40, 3.0), (46, 4.0), (55, 5.0), (63, 6.0)]),
+        "head": Keys([(0, 0.0), (7, 0.0), (12, 0.9), (15, 0.8), (19, 0.05), (22, 0.0), (28, 1.0), (33, 2.0),
+                      (41, 3.0), (47, 4.0), (56, 5.0), (64, 6.0)]),
+        "body": Keys([(0, 0.0), (20, 1.0), (30, 2.0), (38, 3.0), (43, 4.0), (47, 4.6), (50, 4.3), (56, 5.0),
+                      (63, 6.0)]),
+        "tail": Keys([(0, 0.0), (22, 1.0), (32, 2.0), (42, 4.0), (58, 5.0), (66, 6.0)]),
+        "wing_r": Keys([(0, 0.0), (20, 1.0), (30, 2.0), (37, 3.0), (42, 4.0), (48, 5.0)]),
+        "wing_l": Keys([(0, 0.0), (22, 1.0), (33, 2.0), (40, 3.0), (45, 4.0), (51, 5.0)]),
+        "leg_r": Keys([(0, 0.0), (38, 4.0), (48, 5.0), (56, 6.0)]),
+        "leg_l": Keys([(0, 0.0), (40, 4.0), (50, 5.0), (58, 6.0)]),
     }
-    shake = Keys([(0, 0.0), (60, 0.0), (62, 1.0), (70, 0.0)])
-    shrug = Keys([(0, 0.0), (63, 0.0), (66, 1.0), (70, -0.3), (73, 0.0)])
+    wobble = Keys([(0, 0.0), (9, 0.0), (11, 1.0), (13, -0.8), (15, 0.4), (17, 0.0), (52, 0.0), (55, 1.0), (58, -0.7),
+                   (61, 0.3), (64, 0.0)])
+    shake = Keys([(0, 0.0), (64, 0.0), (66, 1.0), (72, 0.0)])
+    shrug = Keys([(0, 0.0), (66, 0.0), (69, 1.0), (72, -0.3), (74, 0.0)])
 
     def extra(f, p):
-        sh = shake(f) * math.sin(2.0 * math.pi * (f - 60) / 4.0)
-        head_by(p, yaw=10.0 * sh, roll=16.0 * sh)
+        sh = shake(f) * math.sin(2.0 * math.pi * (f - 64) / 4.0)
+        w = wobble(f)
+        head_by(p, yaw=10.0 * sh + 6.0 * w, roll=16.0 * sh - 8.0 * w)
+        sway_by(p, roll=3.0 * w if f > 40 else 0.0)
         p.rot("chest", pitch=1.5 * shrug(f))
         for s in SIDES:
             p.rot("wing_1_" + s, roll=(-4.0 if s == "l" else 4.0) * shrug(f))
             # The hands come down where the folding wings put them, and step to where the crouch plants them.
-            start = 37.0 if s == "r" else 39.0
+            start = 44.0 if s == "r" else 47.0
             if f >= start:
-                take_hold(p, s, STANCE.reach[s], smooth((f - start - 3.0) / 10.0))
+                take_hold(p, s, STANCE.reach[s], smooth((f - start - 2.0) / 10.0))
                 p.hold[s] = smooth((f - start) / 3.0)
             else:
                 p.reach[s], p.hold[s] = None, 0.0
 
-    lay = lambda f: {s: 1.0 - smooth((f - (16 if s == "r" else 18)) / 8.0) for s in SIDES}
+    lay = lambda f: {s: 1.0 - smooth((f - (30 if s == "r" else 33)) / 6.0) for s in SIDES}
     return run(75, poses, timing, extra, lay=lay)
 
 
@@ -931,26 +964,29 @@ LIMP = 24  # the frame of `death` and of `death_air` at which the body goes limp
 
 
 def dead():
-    """Dead on its right side: the right wing spread under it along the ground, the left wing half folded over the
-    flank, the neck stretched out on the ground, the head on its cheek with the beak gaping, the legs loose."""
+    """Dead, fallen forward and over onto its right side: the right wing spread under it along the ground, the left
+    swept back along its side, the neck flung out straight along the ground and the head rolled past its cheek with
+    the beak gaping, the legs trailing."""
     p = Pose()
-    p.body = Vector((0.0, 0.3, -0.5))
-    p.turn["pelvis"] = q(pitch=-4.0, yaw=-8.0, roll=-62.0)
-    p.rot("spine", roll=-4.0, yaw=3.0)
-    p.rot("chest", roll=-6.0, pitch=-4.0)
-    p.rot("tail", pitch=-10.0, yaw=12.0)
-    set_wing(p, "r", fold=0.08, flap=-18.0, sweep=-10.0,
-             extra={"forearm": (0.0, -8.0, 0.0), "hand": (0.0, 12.0, 0.0), "wing_1": (0.0, 20.0, 0.0),
-                    "wing_2": (0.0, 8.0, 0.0)})
-    set_wing(p, "l", fold=0.42, flap=-30.0, sweep=-12.0, curl=-6.0)
-    for s, foot, knee in (("l", (0.10, 0.25, -0.98), (0.4, 0.8, -0.7)), ("r", (-0.30, 0.0, -0.90), (-0.6, 0.3, -0.6))):
+    p.body = Vector((0.0, 0.25, -0.42))
+    p.turn["pelvis"] = q(pitch=-8.0, yaw=-10.0, roll=-26.0)
+    p.rot("spine", roll=-4.0, yaw=4.0)
+    p.rot("chest", roll=-6.0, pitch=-4.0, yaw=6.0)
+    p.rot("tail", pitch=-6.0, yaw=14.0)
+    set_wing(p, "r", fold=0.16, flap=-22.0, sweep=-16.0, curl=-6.0,
+             extra={"forearm": (0.0, -14.0, 0.0), "hand": (0.0, 14.0, 0.0), "wing_1": (0.0, 22.0, 0.0),
+                    "wing_2": (0.0, 10.0, 0.0)})
+    set_wing(p, "l", fold=0.1, flap=-14.0, sweep=-20.0, curl=-6.0,
+             extra={"forearm": (0.0, -16.0, 0.0), "hand": (0.0, 18.0, 0.0), "wing_1": (0.0, 26.0, 0.0),
+                    "wing_2": (0.0, 12.0, 0.0), "wing_3": (0.0, 8.0, 0.0)})
+    for s, foot, knee in (("l", (0.12, 0.0, -1.02), (0.5, 0.6, -0.7)), ("r", (-0.34, 0.0, -0.96), (-0.6, 0.5, -0.7))):
         p.foot[s] = Vector(foot)
-        p.foot_turn[s] = p.turn["pelvis"] @ q(pitch=-30.0)
+        p.foot_turn[s] = p.turn["pelvis"] @ q(roll=10.0)
         p.knee[s] = Vector(knee)
     settle(p)
-    aim_neck(p, (-0.22, 0.10, 0.62), Vector((-0.3, 0.6, 0.6)), q(pitch=-4.0, yaw=-30.0, roll=-78.0))
+    aim_neck(p, (-0.30, 0.12, 0.74), Vector((0.6, 0.6, 0.0)), q(pitch=-6.0, yaw=14.0, roll=-104.0))
     p.rot("jaw", pitch=-0.45 * rig.BEAK_OPEN)
-    return settle(p, 0.0, {"l": 0.0, "r": 1.0})
+    return settle(p, 0.0, {"l": 1.0, "r": 1.0})
 
 
 DEAD = dead()
@@ -1004,7 +1040,7 @@ def death():
         p.rot("wing_1_l", roll=-6.0 * shudder(f))
         p.rot("forearm_l", roll=-3.0 * shudder(f))
 
-    lay = lambda f: {"l": 0.0, "r": smooth((f - 14.0) / 8.0)}
+    lay = lambda f: {"l": smooth((f - 16.0) / 8.0), "r": smooth((f - 14.0) / 8.0)}
     return run(48, poses, timing, extra, lay=lay)
 
 
@@ -1012,31 +1048,29 @@ def death():
 # torpor_fall and death_air: limp in the air
 # =====================================================================================================================
 
-def limp_in_air(roll=0.0, beak=0.15, spread=0.0):
-    """Limp in the air as it falls: the body belly down and nose down, the wind of the fall pushing the wings up
-    into a V and the finger tips up behind, the neck reaching forward with the head hanging from it, the legs
-    dangling. The lowest point is a little over the clip's ground, where the body lands (D494)."""
-    p = GLIDE.copy()
-    p.body = Vector((0.0, 0.92, -0.62))
-    p.turn["pelvis"] = q(pitch=-18.0, roll=roll)
-    p.rot("spine", pitch=4.0)
-    p.rot("chest", pitch=4.0)
-    p.rot("tail", pitch=-14.0)
+def limp_aloft(base, wings, bow, beak=0.15, roll=0.0, lift=0.07):
+    """Limp in the air as it falls, shaped as it will lie when it lands: `base` lifted `lift` off the clip's ground,
+    the wings spread as `wings` spreads them and laid out level as on the ground, then lifted a little at the
+    shoulder by the wind of the fall with the finger tips turned up; the head lolling nearly as it will lie."""
+    p = base.copy()
+    p.body.y += lift
+    p.turn["pelvis"] = q(roll=roll) @ p.turn["pelvis"]
     for s in SIDES:
         sign = 1.0 if s == "l" else -1.0
-        set_wing(p, s, fold=0.12 + 0.04 * sign * spread, flap=48.0 - 4.0 * sign * spread, sweep=-10.0, twist=-8.0,
-                 curl=-14.0, extra={"forearm": (0.0, -6.0, -6.0), "hand": (0.0, 6.0, -4.0)})
-        W, J = fk(p)
-        hip = Vector(ta(J["thigh_" + s]))
-        p.foot[s] = hip + Vector((0.06 * sign, -0.48, -0.08))
-        p.foot_turn[s] = q(pitch=78.0, roll=-8.0 * sign)
-        p.knee[s] = hip + Vector((0.12 * sign, -0.2, 0.5))
-    aim_neck(p, (0.0, 0.62, 0.42), Vector((0.0, 1.0, -0.3)), q(pitch=-42.0, roll=-6.0))
+        set_wing(p, s, **wings[s])
+        lay_wing(p, s, 1.0, lift)
+        p.rot("upper_arm_" + s, roll=-6.0 * sign)
+        for n, up_ in (("wing_2_", 4.0), ("wing_3_", 6.0), ("wing_4_", 8.0)):
+            p.rot(n + s, roll=-up_ * sign)
+        p.foot[s] = base.foot[s] + Vector((0.0, lift, 0.0))
+    W, J = fk(base)
+    aim_neck(p, Vector(ta(J["skull"])) + Vector((0.0, lift - 0.02, 0.03)), bow,
+             q(pitch=-8.0) @ Quaternion().slerp(W["skull"], 0.8))
     p.rot("jaw", pitch=-beak * rig.BEAK_OPEN)
     return settle(p, None)
 
 
-FALLING = limp_in_air()
+FALLING = limp_aloft(LIE, LIE_WINGS, LIE_BOW)
 
 
 def flutter(f, n, p, size=1.0, phase=0.0):
@@ -1054,26 +1088,27 @@ def flutter(f, n, p, size=1.0, phase=0.0):
 
 
 def torpor_fall():
-    """Knocked out in flight and falling until it lands: limp, the wings pushed up into a V and shaking in the wind,
-    the body turning slowly, the head swinging under the neck, the legs trailing in the wind."""
+    """Knocked out in flight and falling until it lands: limp, belly down, the wings spread as it will lie but
+    lifted and shaken by the wind of the fall, the body rocking slowly, the head lolling, the legs trailing. Every
+    frame is close to the lie, which the engine switches to as it lands (creature.ts: steady)."""
     n = 40
     out = []
     for f in range(n):
         a = 2.0 * math.pi * f / n
         p = FALLING.copy()
-        sway_by(p, roll=6.0 * math.sin(a), yaw=4.0 * math.sin(a + 1.0), pitch=3.0 * math.sin(2 * a))
-        head_by(p, pitch=6.0 * math.sin(a + 2.0), yaw=12.0 * math.sin(a + 1.6), roll=10.0 * math.sin(a + 0.6))
+        sway_by(p, roll=4.0 * math.sin(a), yaw=2.0 * math.sin(a + 1.0), pitch=2.0 * math.sin(2 * a))
+        head_by(p, pitch=5.0 * math.sin(a + 2.0), yaw=8.0 * math.sin(a + 1.6), roll=12.0 * math.sin(a + 0.6))
         flutter(f, n, p)
         for s in SIDES:
-            p.foot[s] += Vector((0.0, 0.02, -0.05)) * math.sin(a + (0.0 if s == "l" else 2.0))
+            p.foot[s] += Vector((0.0, 0.02, -0.04)) * math.sin(a + (0.0 if s == "l" else 2.0))
         out.append(settle(p, None))
     return out
 
 
 def death_air():
     """Killed in flight: a jolt, the wings beating down once hard and the head thrown back with the beak gaping;
-    then it goes slack, the wings pushed up by the wind of the fall as the head drops and the body tips nose down
-    and over a little to its left; limp by LIMP, held so as it falls, and laid from there where it lands."""
+    then it goes slack, the wings lifted by the wind of the fall as the head drops and the body sags and rolls a
+    little to its left; limp by LIMP, held so as it falls, and laid from there where it lands."""
     struck = GLIDE.copy()
     struck.body = Vector((0.0, 0.78, -0.60))
     struck.turn["pelvis"] = q(pitch=8.0)
@@ -1081,7 +1116,10 @@ def death_air():
         set_wing(struck, s, fold=0.04, flap=-24.0, sweep=6.0, curl=10.0)
     aim_neck(struck, (0.0, 1.38, 0.50), Vector((0.0, -0.4, 1.0)), q(pitch=26.0))
     struck.rot("jaw", pitch=-0.8 * rig.BEAK_OPEN)
-    limp = limp_in_air(roll=10.0, beak=0.45, spread=1.0)
+    bow = mirror_v(LIE_BOW, "r")
+    limp = limp_aloft(mirrored_pose(LIE), {"l": LIE_WINGS["r"], "r": LIE_WINGS["l"]}, bow, beak=0.5, roll=6.0)
+    aim_neck(limp, Vector(ta(fk(limp)[1]["skull"])) + Vector((0.0, -0.03, -0.02)), bow,
+             q(pitch=-20.0, yaw=24.0) @ fk(limp)[0]["skull"])
     poses = [GLIDE, struck, limp]
     timing = {
         "body": Keys([(0, 0.0), (3, 1.0), (LIMP - 4, 1.9), (LIMP, 2.0)]),

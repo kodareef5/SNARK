@@ -327,8 +327,13 @@ def main():
             save_jpeg(row[::-1], os.path.join(out, f"still_{clip}_{f}.jpg"))
             obj = skinned()
             if obj.get("parts"):
+                low = {}
+                for name in obj["parts"]:
+                    verts, tris = triangles(obj, [name])
+                    if tris:
+                        low[name] = round(min(verts[i].z for t in tris for i in t) * 100, 1)
                 print("preview: still:", {s: crossing(obj, [f"membrane_{s}"]) for s in "lr"},
-                      "under", round(-min(v.z for v in triangles(obj)[0]) * 100, 1), "cm")
+                      "lowest cm", sorted(low.items(), key=lambda kv: kv[1])[:6])
             chosen = []
         if "strip" in opts:
             # --strip CLIP:VIEW[:EVERY], frames of one view in rows of six, large.
