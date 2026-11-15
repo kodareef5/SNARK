@@ -6,9 +6,14 @@ const paths = reportPaths(); const root = paths.folder;
 const read = (name: string): any => JSON.parse(readFileSync(join(root, name), "utf8"));
 const html = (value: unknown): string => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const configFile = join(paths.source, "ruins/proof.json");
-const config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, "utf8")) : { previous: "ruins3" };
+const config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, "utf8")) : { previous: `ruins${Math.max(1, Number(basename(root).replace("ruins", "")) - 1)}` };
 copyFileSync(join("var/maps", basename(paths.mapFile, ".snmap"), "stats.json"), join(root, "build.json"));
 const g = read("generation.json"); const build = read("build.json"); const samples = existsSync(join(root, "samples.json")) ? read("samples.json") : { samples: [] };
+if (existsSync(join(root, "chunks.json"))) {
+  build.staticMaxChunkBeforePacking ??= build.staticMaxChunk;
+  build.staticMaxChunk = read("chunks.json").maximum;
+  writeFileSync(join(root, "build.json"), JSON.stringify(build, null, 2) + "\n");
+}
 const oldFile = join(paths.source, "reports", config.previous, "build.json");
 const old = existsSync(oldFile) ? JSON.parse(readFileSync(oldFile, "utf8")) : {};
 const views = (existsSync(join(root, "views.json")) ? read("views.json") : []) as { name: string; baseline?: string }[];
@@ -18,6 +23,19 @@ const licenceFile = join(root, "references/licences.json");
 const references: { file: string; page: string; licence: string; author: string }[] = existsSync(licenceFile) ? JSON.parse(readFileSync(licenceFile, "utf8")) : [];
 const diagnostics: { title: string; note: string; images: { file: string; caption: string }[] }[] = existsSync(join(root, "diagnostics.json")) ? read("diagnostics.json") : [];
 const comparison = read("baseline-kinds.json");
+const buildings = read("buildings.json") as import("./ruins.ts").RuinRecord[];
+const floorCounts: Record<number, number> = {};
+for (const r of buildings) for (const route of r.routes) floorCounts[route.floors] = (floorCounts[route.floors] ?? 0) + 1;
+writeFileSync(join(root, "slopes.json"), JSON.stringify({
+  buildingFlights: g.kinds["core:zruin_flight_concrete"] ?? 0,
+  flight: { width: 2, run: 5.5, rise: 4, degrees: Math.atan2(4, 5.5) * 180 / Math.PI, landingGap: 0 },
+  ramp: { run: 4, riseQuantum: .25, maxRise: 3, maxDegrees: Math.atan2(3, 4) * 180 / Math.PI },
+  stairsByFloors: floorCounts,
+  highBuildings: buildings.filter((r) => r.routes.some((s) => s.floors >= 12)).map((r) => ({ part: r.part, name: r.name, floors: Math.max(...r.routes.map((s) => s.floors)), refuges: r.rooms.filter((s) => s.kind === "refuge").length, exits: r.escapes.length })),
+  refugeCircuits: buildings.reduce((n, r) => n + r.rooms.filter((s) => s.kind === "refuge").length, 0),
+  bidirectionalExits: buildings.reduce((n, r) => n + r.escapes.filter((s) => s.bidirectional).length, 0),
+  slopedKinds: Object.fromEntries(Object.entries(g.kinds).filter(([k]) => /_flight_|_ramp\d+_|_zpitch\d+_|_plate\d+_|_front60_|_mound_/.test(k))),
+}, null, 2) + "\n");
 const csv = (rows: unknown[][]): string => rows.map((r) => r.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(",")).join("\n") + "\n";
 writeFileSync(join(root, "pieces-by-kind.csv"), csv([["kind", "before_buildings", "before_pieces", "before_mean", "after_buildings", "after_pieces", "after_mean", "after_max"], ...[...new Set([...Object.keys(comparison.byKind), ...Object.keys(g.piecesByKind)])].sort().map((kind) => {
   const a = comparison.byKind[kind] ?? { buildings: 0, pieces: 0 }; const b = g.piecesByKind[kind] ?? { buildings: 0, pieces: 0, max: 0 };

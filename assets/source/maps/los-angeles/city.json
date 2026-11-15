@@ -63,7 +63,7 @@
     "seaNavd88": 0.79,
     "sea_source": "No sea in the frame; heights are over mean sea level at NOAA CO-OPS station 9410840 Santa Monica, 16 km south-west, 1983-2001 epoch: 1.594 m above station datum, NAVD88 at 0.802",
     "minY": 0,
-    "report": "ruins4",
+    "report": "ruins5",
     "easy_around_spawns_m": 400,
     "places": [
       {"name": "Griffith Park", "at": [-118.3000, 34.1250], "why": "a city park of 17 km2 with the Observatory and the Greek Theatre in it, mapped as a park, not a neighbourhood"},

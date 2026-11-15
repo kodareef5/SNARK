@@ -1125,9 +1125,10 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
         const cover = (i: number): number => Math.min(h, i + 1) - Math.max(l, i);
         let i0 = Math.floor(l);
         let i1 = Math.ceil(h) - 1;
-        while (i0 < i1 && cover(i0) < TAKES) i0++;
-        while (i1 > i0 && cover(i1) < TAKES) i1--;
-        if (i0 === i1 && cover(i0) < TAKES && cover(i0 + 1) > cover(i0)) i0 = i1 = i0 + 1;
+        const best = cover(i0) >= cover(i1) ? i0 : i1;
+        while (i0 <= i1 && cover(i0) < TAKES) i0++;
+        while (i1 >= i0 && cover(i1) < TAKES) i1--;
+        if (i0 > i1) i0 = i1 = best;
         spans[b * 6 + ax] = i0;
         spans[b * 6 + ax + 3] = i1;
       }

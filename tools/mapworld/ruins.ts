@@ -4,7 +4,7 @@ import { RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruin
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
 import { accessPlanner, gradeApproaches, type Approach } from "./ruin-access.ts";
-import { clearCirculation } from "./ruin-clearance.ts";
+import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
 import { contextualize } from "./ruin-context.ts";
 import { joinFrontages } from "./ruin-frontage.ts";
 import { obstacleIndex, obstructs } from "./ruin-obstacles.ts";
@@ -111,9 +111,13 @@ export function makeRuins(site: Site): StaticPiece[] {
     const base = Math.max(.5, Math.round((samples[Math.floor(samples.length / 2)] ?? site.groundAt(original.x, original.z)) * 16) / 16);
     const frame = bridgeHoles(original, corridors(original), base, rule.height);
     let built: Mason | null = null; let detail = 0; let approaches: Approach[] = [];
-    for (; detail < 4; detail++) {
+    const target = rule.recipe === "tower" && rule.height >= v.circulation.tallAbove ? v.circulation.tall : rule.recipe === "tower" && rule.height >= v.circulation.towerAbove ? v.circulation.tower : v.circulation.ordinary;
+    const levels = [...new Set([Math.min(target, v.budgets.maxPlayableFloors), ...[12, 8].filter((n) => n < target && n <= v.budgets.maxPlayableFloors)])];
+    const attempts = [...levels.map((playable) => ({ detail: 0, playable })), ...[1, 2, 3].map((detail) => ({ detail, playable: Math.max(1, Math.floor(v.circulation.ordinary / 2 ** detail)) }))];
+    for (const attempt of attempts) {
+      detail = attempt.detail;
       const m = new Mason(frame, base);
-      const playable = Math.max(1, Math.floor(v.budgets.maxPlayableFloors / 2 ** detail));
+      const playable = attempt.playable;
       const r = detail === 3 ? { ...rule, height: Math.min(rule.height, 8), holes: .4, wall: 0 } : rule;
       layout(m, r, { seed: f.building.id ^ v.seed, playable, detail }, detail === 3 ? undefined : p.named?.layout);
       reserveRoutes(m); compactWalls(m);
@@ -146,12 +150,49 @@ export function makeRuins(site: Site): StaticPiece[] {
       form: rule.formName ?? rule.recipe, collapse: rule.collapse ?? "shear", rooms: built.rooms, falls: built.falls, exposure: rule.event?.exposure, shelter: rule.event?.shelter, party: rule.party,
       blocks: built.pieces.length, detail, approaches, entries: built.entries, escapes: built.escapes, wings: built.wings, routes: built.routes, provisional: rule.provisional, modifiers: rule.matched, lore: p.facts.research?.lore ?? null, kind: p.facts.kind, sourceHeight: p.facts.height, heightFrom: p.facts.heightFrom, kindFrom: p.facts.kindFrom, researchFrom: p.facts.researchFrom ?? null });
   }
-  const clearance = clearCirculation(pieces, records, infrastructureCount, assemblies);
+  const clearance = clearCirculation(pieces, records, infrastructureCount, assemblies, bridges.records);
+  if (reconcileRubble(pieces, records)) {
+    const more = clearCirculation(pieces, records, records[0]?.firstPiece ?? pieces.length, assemblies, bridges.records);
+    for (const [kind, n] of Object.entries(more)) clearance[kind] = (clearance[kind] ?? 0) + n;
+  }
   for (const r of records) gradeApproaches(site, r.approaches, -1);
+  for (const r of records) gradeApproaches(site, r.approaches.map((a) => ({ street: a.door, door: a.core, core: a.core, ramp: 1 })), -1);
+  for (const r of records) for (const a of r.approaches) {
+    const length = Math.hypot(a.core.x - a.door.x, a.core.z - a.door.z);
+    for (let d = 0; d <= Math.ceil(length); d++) {
+      const t = d / Math.max(1, Math.ceil(length)); const x = a.door.x + (a.core.x - a.door.x) * t; const z = a.door.z + (a.core.z - a.door.z) * t;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        const i = (Math.round((size - z) / 2) + dz) * site.ground.n + Math.round((size - x) / 2) + dx;
+        site.ground.height[i] = Math.min(a.core.y, site.ground.height[i]!);
+      }
+    }
+  }
   for (const r of records) for (const room of r.rooms) if (room.kind !== "rubble" && room.points[0]!.y === r.y) {
     for (const p of room.points) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
       const i = (Math.round((size - p.z) / 2) + dz) * site.ground.n + Math.round((size - p.x) / 2) + dx;
       site.ground.height[i] = Math.min(r.y, site.ground.height[i]!);
+    }
+  }
+  for (const r of records) for (const stair of r.routes) {
+    const a = stair.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+    const x = stair.x - 1.5 * c - 3.25 * s; const z = stair.z + 1.5 * s - 3.25 * c;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const i = (Math.round((size - z) / 2) + dz) * site.ground.n + Math.round((size - x) / 2) + dx;
+      site.ground.height[i] = Math.min(stair.y, site.ground.height[i]!);
+    }
+  }
+  // A lower neighbour's rooms can cut the ground under a door and its corridor after both were planned: floor it again,
+  // unless the floor would stand in the neighbour's rooms.
+  const roomsNear = (x: number, z: number, self: RuinRecord): RuinRecord["rooms"] => records.filter((o) => o !== self && Math.abs(o.x - x) < 80 && Math.abs(o.z - z) < 80).flatMap((o) => o.rooms.filter((room) => room.kind !== "rubble"));
+  for (const r of records) for (const a of r.approaches) {
+    const length = Math.hypot(a.core.x - a.door.x, a.core.z - a.door.z); const yaw = Math.atan2(a.core.x - a.door.x, a.core.z - a.door.z) * 180 / Math.PI;
+    for (let d = 0; d <= length; d += 2) {
+      const t = length ? d / length : 0; const x = a.door.x + (a.core.x - a.door.x) * t; const z = a.door.z + (a.core.z - a.door.z) * t;
+      const p = { kind: "core:zruin_floor4_concrete", x, y: a.core.y - .2, z, yaw };
+      if (site.groundAt(x, z) >= a.core.y - .4 || counts[ckey(p)]! >= v.budgets.maxChunk) continue;
+      if (pieces.slice(r.firstPiece, r.firstPiece + r.blocks).some((q) => q.kind === p.kind && Math.abs(q.x - x) < .5 && Math.abs(q.z - z) < .5)) continue;
+      if (roomsNear(x, z, r).some((room) => obstructs(p, room.points))) continue;
+      pieces.push(p); counts[ckey(p)]!++;
     }
   }
   counts.fill(0); for (const key of Object.keys(usedKinds)) delete usedKinds[key];
@@ -186,6 +227,19 @@ export function makeRuins(site: Site): StaticPiece[] {
   for (const bridge of bridges.records) for (const route of bridge.access) site.growthRoutes.push({ points: route.points, width: 3 });
   const obstacles = obstacleIndex(pieces);
   const acceptProp = (m: Mason): boolean => {
+    for (const room of m.rooms) if (room.kind === "street-gap") for (let segment = 1; segment < room.points.length; segment++) {
+      const from = room.points[segment - 1]!; const to = room.points[segment]!; const length = Math.hypot(to.x - from.x, to.z - from.z);
+      for (let d = 0; d <= Math.ceil(length); d++) {
+        const t = d / Math.max(1, Math.ceil(length)); const p = { x: from.x + (to.x - from.x) * t, z: from.z + (to.z - from.z) * t, y: from.y + (to.y - from.y) * t };
+        const near = propCorridors({ ...m.frame, x: p.x, z: p.z, width: 16, depth: 16 });
+        if (near.some((r) => {
+          if (p.y < r.low - 2 || p.y > r.high + 2 || Math.abs(p.y - r.low - .5) < .12) return false;
+          const dx = r.b[0] - r.a[0]; const dz = r.b[1] - r.a[1];
+          const t = Math.max(0, Math.min(1, ((p.x - r.a[0]) * dx + (p.z - r.a[1]) * dz) / (dx * dx + dz * dz || 1)));
+          return Math.hypot(p.x - r.a[0] - dx * t, p.z - r.a[1] - dz * t) < 5 + r.width / 2;
+        })) return false;
+      }
+    }
     if (m.rooms.some((r) => obstacles.blocked(r.points) || m.pieces.some((p) => obstructs(p, r.points)))) return false;
     for (const p of m.pieces) {
       const [w, h, d] = RUIN_SHAPES[p.kind.split("_")[1] as RuinShape];
@@ -373,7 +427,8 @@ function makeStreetPieces(site: Site, v: ReturnType<typeof vocabulary>, accept: 
   const out: Record<string, number> = {}; const size = (site.ground.n - 1) * 2; const spacing = v.street.spacing;
   const at = (x: number, z: number): number => Math.round((size - z) / 2) * site.ground.n + Math.round((size - x) / 2);
   const road = (surface: number | undefined): boolean => surface === S.STREET || surface === S.HIGHWAY;
-  const clusters: { x: number; z: number; name: string; points: { x: number; y: number; z: number }[] }[] = [];
+  const clusters: { id: string; x: number; y: number; z: number; yaw: number; name: string; points: { x: number; y: number; z: number }[] }[] = [];
+  const remnants: { id: string; assembly: string; origin: [number, number, number]; facing: number }[] = [];
   const clusterBins = new Map<number, { x: number; z: number }[]>();
   for (let z = 40; z < size - 40; z += v.street.clusterSpacing) for (let x = 40; x < size - 40; x += v.street.clusterSpacing) {
     const surface = site.ground.surface[at(x, z)]; const h = hash3(x, z, v.seed + 141);
@@ -384,12 +439,14 @@ function makeStreetPieces(site: Site, v: ReturnType<typeof vocabulary>, accept: 
     const name = names[h % names.length]!; const yaw = vertical ? 90 : 0; const a = yaw * Math.PI / 180;
     const m = new Mason({ x, z, yaw, c: Math.cos(a), s: Math.sin(a), width: 36, depth: 20, rings: [] }, site.groundAt(x, z));
     assembly(m, { recipe: "street", height: 0, finish: "rust", feature: "", holes: 0, wall: 0, bay: 8, matched: [], provisional: false, assemblies: v.assemblies }, name, 0, 0, 0);
-    const points = (v.assemblies[name]!.passage ?? []).map(([u, v]) => { const [x, z] = m.point(u, v); return { x, y: site.groundAt(x, z), z }; });
-    if (points.some((p) => Math.abs(p.y - m.base) > .25 || site.ground.surface[at(p.x, p.z)] === S.FLOOR)) continue;
+    const points = (v.assemblies[name]!.passage ?? []).map(([u, v]) => { const [x, z] = m.point(u, v); return { x, y: m.base, z }; });
+    if (points.some((p) => Math.abs(site.groundAt(p.x, p.z) - m.base) > .25 || site.ground.surface[at(p.x, p.z)] === S.FLOOR)) continue;
     m.rooms.push({ kind: "street-gap", points });
     if (m.pieces.some((p) => site.ground.surface[at(p.x, p.z)] === S.FLOOR || site.groundAt(p.x, p.z) < .1 || Math.abs(site.groundAt(p.x, p.z) - m.base) > 1)) continue;
     if (accept(m)) {
-      out[name] = (out[name] ?? 0) + 1; clusters.push({ x, z, name, points });
+      out[name] = (out[name] ?? 0) + 1; clusters.push({ id: `cluster:${x}:${z}`, x, y: m.base, z, yaw, name, points });
+      gradeApproaches(site, points.slice(1).map((p, i) => ({ street: points[i]!, door: p, core: p, ramp: 1 })), -1);
+      remnants.push({ id: `cluster:${x}:${z}`, assembly: name, origin: [x, m.base, z], facing: yaw });
       const k = Math.floor(x / 32) + Math.floor(z / 32) * 1024;
       if (!clusterBins.has(k)) clusterBins.set(k, []); clusterBins.get(k)!.push({ x, z });
     }
@@ -413,9 +470,10 @@ function makeStreetPieces(site: Site, v: ReturnType<typeof vocabulary>, accept: 
     const m = new Mason(frame, site.groundAt(x, z));
     assembly(m, { recipe: "street", height: 0, finish: "rust", feature: "", holes: 0, wall: 0, bay: 8, matched: [], provisional: false, assemblies: v.assemblies }, name, 0, 0, 0);
     if (m.pieces.some((p) => { const j = at(p.x, p.z); return site.ground.surface[j] === S.FLOOR || site.groundAt(p.x, p.z) < .1; })) continue;
-    m.cover(0, 0, 9); if (accept(m)) out[name] = (out[name] ?? 0) + 1;
+    m.cover(0, 0, 9); if (accept(m)) { out[name] = (out[name] ?? 0) + 1; remnants.push({ id: `edge:${x}:${z}`, assembly: name, origin: [x, m.base, z], facing: yaw }); }
   }
   const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "street-clusters.json"), JSON.stringify(clusters) + "\n");
+  writeFileSync(join(folder, "remnants.json"), JSON.stringify(remnants) + "\n");
   return out;
 }

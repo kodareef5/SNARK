@@ -20,11 +20,12 @@
     "hotel": {
       "shell": "masonry",
       "inside": "rooms",
-      "roof": "stepped",
-      "front": "deco",
+      "roof": "terrace",
+      "front": "hotel-porch",
       "windowEvery": 2,
       "plan": "block",
-      "marker": "deco-crown"
+      "marker": "hotel-sign",
+      "terrace": 1
     },
     "office": {
       "shell": "curtain",
@@ -34,7 +35,8 @@
       "windowEvery": 3,
       "plan": "block",
       "marker": "office-services",
-      "terrace": 1
+      "terrace": 1,
+      "setbacks": 2
     },
     "garage": {
       "shell": "open",
@@ -132,6 +134,14 @@
       "front": "porch",
       "windowEvery": 3,
       "plan": "block"
+    },
+    "older-block": {
+      "shell": "masonry",
+      "inside": "rooms",
+      "roof": "pitched",
+      "front": "balconies",
+      "windowEvery": 2,
+      "plan": "block"
     }
   },
   "choices": [
@@ -182,7 +192,8 @@
           "hostel"
         ]
       },
-      "form": "hotel"
+      "form": "hotel",
+      "finish": "limestone"
     },
     {
       "id": "hotel fallback",
@@ -191,7 +202,8 @@
           "hotel"
         ]
       },
-      "form": "hotel"
+      "form": "hotel",
+      "finish": "limestone"
     },
     {
       "id": "office curtain wall",
@@ -231,7 +243,8 @@
           "hotel"
         ]
       },
-      "form": "hotel"
+      "form": "hotel",
+      "finish": "limestone"
     },
     {
       "id": "parking only has open bands",
@@ -441,6 +454,20 @@
         ]
       },
       "finish": "clay"
+    },
+    {
+      "id": "older low residential pitched roofs",
+      "when": {
+        "kind": [
+          "apartment_block",
+          "house",
+          "apartments",
+          "residential"
+        ],
+        "builtBefore": 1940,
+        "heightBelow": 24
+      },
+      "form": "older-block"
     }
   ],
   "assemblies": {
@@ -1182,7 +1209,7 @@
         [
           "zsign",
           3,
-          5,
+          3.9,
           0,
           "clay"
         ]
@@ -1551,6 +1578,72 @@
           -8
         ]
       ]
+    },
+    "hotel-sign": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "zpanel8",
+          0,
+          2,
+          0,
+          "finish"
+        ],
+        [
+          "zsign",
+          -2.5,
+          4.5,
+          0,
+          "blue"
+        ],
+        [
+          "zsign",
+          0,
+          4.5,
+          0,
+          "blue"
+        ],
+        [
+          "zsign",
+          2.5,
+          4.5,
+          0,
+          "blue"
+        ]
+      ]
+    },
+    "hotel-porch": {
+      "role": "front",
+      "parts": [
+        [
+          "zroof16",
+          0,
+          3.5,
+          -2,
+          "finish"
+        ],
+        [
+          "fin4",
+          -6,
+          2,
+          -4,
+          "finish"
+        ],
+        [
+          "fin4",
+          6,
+          2,
+          -4,
+          "finish"
+        ],
+        [
+          "trim8",
+          0,
+          4.15,
+          -4,
+          "clay"
+        ]
+      ]
     }
   },
   "street": {
@@ -1615,7 +1708,15 @@
     "pancake": {
       "radius": 0.65,
       "retain": 0.72,
-      "layers": 5
+      "layers": 5,
+      "plates": [
+        "plate15",
+        "plate4",
+        "plate15",
+        "plate30",
+        "plate4",
+        "plate30"
+      ]
     },
     "lost-top": {
       "radius": 0.55,
@@ -1630,12 +1731,16 @@
     "facade": {
       "radius": 0.6,
       "retain": 0.72,
-      "layers": 3
+      "layers": 3,
+      "front": "front60"
     },
     "hanging": {
       "radius": 0.55,
       "retain": 0.72,
-      "layers": 3
+      "layers": 3,
+      "plates": [
+        "plate30"
+      ]
     }
   },
   "interiors": {
@@ -1849,10 +1954,25 @@
         3,
         6
       ]
+    },
+    "canopyBase": {
+      "core:tree": 0.28,
+      "core:oak": 0.25,
+      "core:fig": 0.25,
+      "core:banyan": 0.15,
+      "core:palm": 0.65,
+      "core:mangrove": 0.1
     }
   },
   "frontage": {
     "gap": 6,
     "angle": 8
+  },
+  "circulation": {
+    "ordinary": 8,
+    "tower": 12,
+    "tall": 16,
+    "towerAbove": 48,
+    "tallAbove": 128
   }
 }

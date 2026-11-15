@@ -9,8 +9,9 @@ export interface Recipe {
   bay: number; height: number; retain: number; holes: number; wall: number; accent: RuinFinish; feature: string; play: string;
 }
 interface Modifier { match: string; accent?: RuinFinish; finish?: RuinFinish; feature?: string; retain?: number; holes?: number; meaning: string; }
-export interface Form { plan?: string; marker?: string; terrace?: number; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
+export interface Form { plan?: string; marker?: string; terrace?: number; setbacks?: number; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
 export interface Assembly { role: string; clearance?: string; passage?: [number, number][]; parts: [RuinShape, number, number, number, RuinFinish | "finish", number?][]; }
+export interface Damage { radius: number; retain: number; layers: number; plates?: RuinShape[]; front?: RuinShape; }
 interface Choice { id: string; when: { kind?: string[]; recipe?: string[]; district?: string[]; name?: string; areaAbove?: number; areaBelow?: number; heightAbove?: number; heightBelow?: number; waterBelow?: number; waterAbove?: number; builtBefore?: number; neighboursAbove?: number; trades?: string[] }; form?: string; finish?: RuinFinish; collapse?: string[]; }
 export interface Composition { operations: ({ op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal" | "ring" | "dome" | "pyramid" | "wheel" | "vault" | "lattice"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; form?: Form; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number } & Round)[]; }
 /**
@@ -23,12 +24,13 @@ export interface Composition { operations: ({ op: "stack" | "parts" | "front" | 
  */
 export interface Round { at?: [number, number]; radius?: number; radii?: [number, number]; heights?: number[]; y?: number; drum?: number; rise?: number; below?: number; shape?: RuinShape; arc?: [number, number]; half?: [number, number]; turn?: number; cabins?: number; tip?: number; profile?: number; every?: number; decks?: number[]; }
 export interface Vocabulary {
+  circulation: { ordinary: number; tower: number; tall: number; towerAbove: number; tallAbove: number };
   sightlines?: { place: string; from: [number, number]; length: number; width: number }[];
   event: { travel: [number, number]; reach: number; shelter: number; cell: number; bands: { below: number; modes: string[] }[] };
-  growth: { zones: Record<string, { bare?: number; kinds?: Record<string, number> }>; roofChance: number; lowAroundPlace: Record<string, number>; canopy: Record<string, [number, number]> };
+  growth: { zones: Record<string, { bare?: number; kinds?: Record<string, number> }>; roofChance: number; lowAroundPlace: Record<string, number>; canopy: Record<string, [number, number]>; canopyBase: Record<string, number> };
   frontage: { gap: number; angle: number };
   interiors: Record<string, { divider: RuinShape | null; back: RuinShape | null; parts: Assembly["parts"] }>;
-  damage: Record<string, { radius: number; retain: number; layers: number }>;
+  damage: Record<string, Damage>;
   compositions: Record<string, Composition>;
   forms: Record<string, Form>; choices: Choice[]; assemblies: Record<string, Assembly>;
   street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[]; clusterSpacing: number; clusterChance: number; junctionAssemblies: string[]; edgeAssemblies: string[]; yardClusters: string[] };
@@ -45,7 +47,7 @@ export interface Rule {
   recipe: string; height: number; finish: RuinFinish; feature: string; holes: number; wall: number; bay: number;
   compositions?: Record<string, Composition>;
   interiors?: Vocabulary["interiors"];
-  damage?: { radius: number; retain: number; layers: number };
+  damage?: Damage;
   form?: Form; formName?: string; collapse?: string; assemblies?: Record<string, Assembly>;
   infill?: RuinFinish;
   matched: string[]; provisional: boolean;

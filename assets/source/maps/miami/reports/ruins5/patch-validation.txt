@@ -1,0 +1,8 @@
+The proposed coordinator changes were tested in temporary copies of the catalogue and scene tests, with paths redirected to this checkout and the generated catalogue page. The live files outside the map/content seam were not changed. The mapworld tests also ran, including flight returns, roof bounds, dropped-plate climbing, steep-frame sliding and the far-cell regression.
+
+bun test v1.4.3 (c6da4a4d3)
+
+ 40 pass
+ 0 fail
+ 17882 expect() calls
+Ran 40 tests across 3 files. [1025.00ms]
