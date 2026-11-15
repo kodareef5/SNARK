@@ -3,10 +3,11 @@
 // throwaway servers on the proving ground in one cluster folder, plays the trip and stops them; the client must be built
 // (`bun run build`). With `--url ws://host:port/ws` it plays against servers that are running, from the one named:
 //   bun run cluster-trip -- --url ws://localhost:8798/ws [--to Tampa] [--name Courier]
-// It holds: the agent lists the other server; a server that is not there is refused; the survivor arrives with what it carries,
-// slot for slot, and its level; it cannot be played meanwhile on the server it left; the cluster's ledgers balance; and it
-// comes back with the same things, at the map's spawn point as every arrival is and not where it left from. It exits 1 if any
-// of that fails. `--dev` servers only: it types cheats, and again after each arrival, since an arrival is a new session.
+// It holds: the agent lists the other server; a server that is not there is refused; the survivor walks to an obelisk's
+// terminal and leaves there; it arrives with what it carries, slot for slot, and its level, and rises where it chose, at a
+// spawn point where its tribe has no bed; it cannot be played meanwhile on the server it left; the cluster's ledgers balance;
+// and it comes back with the same things and rises at the bed it set down at home. It exits 1 if any of that fails. `--dev`
+// servers only: it types cheats, and again after each arrival, since an arrival is a new session.
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -136,17 +137,18 @@ try {
   hold("the agent offers servers and travel", tools.includes("servers") && tools.includes("travel"));
   let s = await joined(a);
   hold("the survivor is in the world on the first server", s.self !== undefined, brief(s.self ?? s));
-  // A survivor new on a throwaway server stands at the spawn point, where every arrival is put.
+  // A survivor new on a throwaway server stands at the first spawn point, where an arrival with no bed rises.
   const spawned = value("--url") === undefined ? s.self : null;
 
   for (const line of ["enablecheats", "kit tools"]) console.log(`  ${line}:`, brief(await a.tool("console", { line }), 120));
   const tree = ((await a.tool("observe", { radius: 48 })).tree ?? [])[0];
   if (tree) console.log("  harvest:", brief(await a.tool("harvest", { id: tree[0], count: 5, wait_s: 45 }), 160));
-  // It leaves from somewhere that is not where it spawned, so coming back to where it stood means something.
+  // It leaves from somewhere that is not where it spawned, with a bed of its own there to rise at when it comes back.
   console.log("  walk:", brief(await a.tool("walk_to", { x: s.self.x + 9, z: s.self.z + 7, wait_s: 30 }), 120));
   s = await a.tool("status");
   const before = carried(s);
-  const stood = s.self;
+  const bedFrom = s.self;
+  console.log("  bed:", brief(await a.tool("console", { line: "place bed" }), 120));
   hold("it carries something to take along", (s.inventory ?? []).length > 0, brief(s.inventory, 200));
 
   const list = await a.tool("servers");
@@ -158,7 +160,8 @@ try {
   hold("a server that is not there is refused, and the survivor stays", nowhere.state === "refused" && (await a.tool("status")).self !== undefined, brief(nowhere, 140));
 
   const out = await a.tool("travel", { to: String(others.find((o) => o.name === to)?.world ?? to) });
-  hold(`it arrives on ${to}`, out.state === "done" && out.self !== undefined, brief({ state: out.state, arrived: out.arrived, reason: out.reason }));
+  hold(`it walks to an obelisk's terminal and arrives on ${to}`, out.state === "done" && out.self !== undefined, brief({ state: out.state, arrived: out.arrived, rose_at: out.rose_at, reason: out.reason }));
+  hold("having no bed there, it rises at a spawn point", typeof out.rose_at === "string" && out.rose_at !== "", brief(out.rose_at));
   hold("with everything it carried, slot for slot, and its level", carried(out) === before, carried(out) === before ? "" : `there ${carried(out).slice(0, 240)} | before ${before.slice(0, 240)}`);
 
   const twin = await play(url, name, home);
@@ -174,10 +177,10 @@ try {
   const back = await a.tool("travel", { to: String(list.world ?? list.here) });
   hold(`it comes back to ${list.here}`, back.state === "done" && back.self !== undefined, brief({ state: back.state, arrived: back.arrived, reason: back.reason }));
   hold("with the same things and level", carried(back) === before, carried(back) === before ? "" : `now ${carried(back).slice(0, 240)}`);
-  // Every arrival is at the map's spawn point, home included: coming back where it left could put it inside a base.
+  // It rises where it chose, at the bed it set down at home, never where it stood when it left.
   const off = (p: any, q: any): number => (p && q ? Math.hypot(p.x - q.x, p.z - q.z) : Infinity);
-  hold("not to where it stood when it left", off(back.self, stood) > 5, `${off(back.self, stood).toFixed(1)} m from where it left`);
-  if (spawned) hold("but to the spawn point, where it first stood", off(back.self, spawned) <= 4, `${off(back.self, spawned).toFixed(1)} m from it`);
+  hold("it rises where it chose: at its bed at home", back.rose_at !== out.rose_at && off(back.self, bedFrom) <= 4.5, `at ${brief(back.rose_at)}, ${off(back.self, bedFrom).toFixed(1)} m from where it set the bed down`);
+  if (spawned) hold("and not at a spawn point", off(back.self, spawned) > 5, `${off(back.self, spawned).toFixed(1)} m from the first`);
   // A new session on the first server: cheats are asked for again.
   await a.tool("console", { line: "enablecheats" });
   const home2 = await a.tool("console", { line: "cluster audit" });

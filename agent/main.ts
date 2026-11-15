@@ -11,13 +11,13 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import type { ClusterList } from "../client/core/travel.ts";
-import { CMD_TRAVEL, KEY_BYTES, REJECT_CONTENT, REJECT_DENIED, REJECT_FULL, REJECT_KICKED, REJECT_NAME, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION } from "../shared/net/protocol.ts";
+import { CMD_RESPAWN, CMD_TRAVEL, KEY_BYTES, SESSION_ALIVE, REJECT_CONTENT, REJECT_DENIED, REJECT_FULL, REJECT_KICKED, REJECT_NAME, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION } from "../shared/net/protocol.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../shared/world/mapfile.ts";
 import { Mcp, type Answer, type ToolHost } from "./mcp.ts";
 import { connect } from "./socket.ts";
 import { Agent, INSTRUCTIONS, toolDefs } from "./tools.ts";
-import { TRAVEL_DEFS, serverNamed, socketOf } from "./travel.ts";
+import { TRAVEL_DEFS, nearestTerminal, riseAt, serverNamed, socketOf } from "./travel.ts";
 
 export interface Args {
   url: string;
@@ -102,6 +102,8 @@ async function main(): Promise<void> {
   let trip: { ticket: Uint8Array; from: string; to: string; refused: string } | null = null;
   /** The cluster as the server last listed it for a trip. */
   let cluster: ClusterList | null = null;
+  /** The map's spawn points: the spawn screen lists them first, then the tribe's beds. */
+  let spawns = 1;
 
   const enter = async (): Promise<void> => {
     joining = true;
@@ -116,6 +118,7 @@ async function main(): Promise<void> {
       // It names its map's file, which holds the ground and where the trees and rocks stand.
       const named = (await (await get("map.json")).json()) as { file: string };
       const map = parseMap(new Uint8Array(await (await get(named.file)).arrayBuffer()));
+      spawns = map.spawns.length;
       const hf = mapHeightfield(map);
       const ticket = trip && trip.refused === "" ? trip.ticket : null;
       const session = new ClientSession(connect(url), {
@@ -188,7 +191,10 @@ async function main(): Promise<void> {
     if (typeof list === "string") return refused(list);
     return { state: "done", here: list.name, world: list.world, servers: list.servers.map((s) => ({ name: s.name, world: s.world, map: s.map, players: s.players, max: s.max, ...(s.why === "" ? {} : { cannot_go: s.why }) })) };
   };
-  /** Asks to leave for a server, then waits to stand on it, or to be given back where it left from. */
+  /**
+   * Walks to the nearest obelisk's terminal, asks there to leave for a server, then waits to arrive on it and rises where it
+   * chose, or to be given back where it left from.
+   */
   const travel = async (a: Record<string, unknown>): Promise<Answer> => {
     const leaving = agent;
     if (!leaving || leaving.session.state !== "active") return refused(down);
@@ -197,11 +203,20 @@ async function main(): Promise<void> {
     const to = serverNamed(list, typeof a.to === "string" ? a.to : "");
     if (!to) return refused(`to must name a server of the cluster: ${list.servers.map((s) => s.name).join(", ") || "there is no other running"}`);
     if (to.why !== "") return refused(to.why);
+    const me = leaving.session;
+    const at = me.world ? nearestTerminal(me.world.structs, me.registry, me.own.x, me.own.z) : null;
+    if (!at) return refused("no obelisk's terminal is in sight: walk toward an obelisk, which stands taller than anything near it");
+    if (Math.hypot(me.own.x - at.x, me.own.z - at.z) > 1.5) await leaving.call("walk_to", { x: at.x, z: at.z, wait_s: 90 });
+    if (Math.hypot(me.own.x - at.x, me.own.z - at.z) > 3) return { ...((await leaving.call("status", {})) ?? {}), state: "blocked", reason: "could not reach the obelisk's terminal" };
     cluster = list;
     trip = null;
+    const want = typeof a.rise_at === "string" ? a.rise_at : "";
     /** The trip as the loop above has it by now. */
     const under = (): typeof trip => trip;
-    leaving.session.command(CMD_TRAVEL, (w) => w.u16(to.world));
+    leaving.session.command(CMD_TRAVEL, (w) => {
+      w.u16(to.world);
+      w.u32(at.ref >>> 0);
+    });
     const asked = performance.now();
     for (;;) {
       await Bun.sleep(100);
@@ -213,12 +228,24 @@ async function main(): Promise<void> {
         continue;
       }
       if (agent && agent !== leaving && agent.session.state === "active") {
+        const here = agent;
+        // An arrival is shown the spawn screen and rises where it chooses, as a player picks a place on it.
+        let rose = "";
+        for (let i = 0; i < 50 && going.refused === "" && here.session.sessionState !== SESSION_ALIVE && here.session.respawnPoints.length === 0; i++) await Bun.sleep(100);
+        if (going.refused === "" && here.session.arriving) {
+          const places = here.session.respawnPoints;
+          const named = riseAt(places, spawns, want);
+          const index = named >= 0 ? named : riseAt(places, spawns);
+          rose = places[index]?.name ?? "";
+          here.session.command(CMD_RESPAWN, (w) => w.u8(index));
+          for (let i = 0; i < 50 && here.session.sessionState !== SESSION_ALIVE; i++) await Bun.sleep(100);
+        }
         // What it carries is told just after the welcome; the answer waits for it, a few seconds at most.
-        for (let i = 0; i < 30 && !agent.session.inventory; i++) await Bun.sleep(100);
+        for (let i = 0; i < 30 && !here.session.inventory; i++) await Bun.sleep(100);
         const turned = going.refused;
         trip = null;
-        const now = (await agent.call("status", {})) ?? {};
-        return turned === "" ? { ...now, state: "done", left: list.name, arrived: to.name, map: to.map } : { ...now, state: "blocked", reason: `${to.name} turned the survivor away: ${turned}`, back_on: list.name };
+        const now = (await here.call("status", {})) ?? {};
+        return turned === "" ? { ...now, state: "done", left: list.name, arrived: to.name, map: to.map, rose_at: rose } : { ...now, state: "blocked", reason: `${to.name} turned the survivor away: ${turned}`, back_on: list.name };
       }
       if (waited > 120_000) return { state: "blocked", reason: `left ${list.name} and has not arrived: ${down}` };
     }
