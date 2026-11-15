@@ -155,6 +155,8 @@ export interface Registry {
   /** Per item that can be made: the ingredients as pairs of item and count, and how many one crafting makes. Null for everything else. */
   readonly recipeOf: readonly (Uint16Array | null)[];
   readonly recipeMakes: Uint16Array;
+  /** Per item: the station it is made at (a structure's content index), or 0 for one made in the hands. */
+  readonly craftAt: Uint16Array;
   /** A thrown weapon: metres per second off the hand, ticks until it goes off, and how far its blast reaches. */
   readonly throwSpeed: Float32Array;
   readonly fuseTicks: Uint16Array;
@@ -380,6 +382,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.craft.count !== undefined) positive(d, "craft.count", d.craft.count, 1000);
         positive(d, "craft.seconds", d.craft.seconds, 86400);
         if (!Array.isArray(d.craft.needs) || d.craft.needs.length === 0) errors.push(`${d.id}: craft needs at least one ingredient`);
+        if (d.craft.level !== undefined) positive(d, "craft.level", d.craft.level, 1000);
       }
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
@@ -418,6 +421,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
   errors.push(...refFaults(input));
   const shapes = new Map(input.flatMap((d) => (d.type === "shape" ? [[d.id, d] as const] : [])));
   const crafted = new Set(input.flatMap((d) => (d.type === "item" && d.craft ? [d.id] : [])));
+  // A station's recipes take from its slots and put the product there, so a station something is made at must have some.
+  const stationSlots = new Map(input.flatMap((d) => (d.type === "structure" && d.class === "station" ? [[d.id, d.slots ?? 0] as const] : [])));
+  for (const d of input) if (d.type === "item" && d.craft?.at !== undefined && stationSlots.get(d.craft.at) === 0) errors.push(`${d.id}: it is made at "${d.craft.at}", which has no slots to make it from`);
   const noAmmo = new Set(input.flatMap((d) => (d.type === "item" && !d.ammo ? [d.id] : [])));
   const taught = new Map<string, string>();
   const young = new Map<string, string>();
@@ -515,6 +521,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const cookTicks = new Uint32Array(n);
   const recipeOf: (Uint16Array | null)[] = new Array(n).fill(null);
   const recipeMakes = new Uint16Array(n);
+  const craftAt = new Uint16Array(n);
   const partStart = new Uint32Array(n + 1);
   const partBox: number[] = [];
   const throwSpeed = new Float32Array(n);
@@ -686,6 +693,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "item" && d.craft) {
       recipeOf[index.get(d.id)!] = Uint16Array.from(d.craft.needs.flatMap((need) => [index.get(need.item)!, need.count]));
       recipeMakes[index.get(d.id)!] = d.craft.count ?? 1;
+      if (d.craft.at !== undefined) craftAt[index.get(d.id)!] = index.get(d.craft.at)!;
     }
   }
   // An open door maps back to the closed door's item.
@@ -699,7 +707,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, craftAt, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
