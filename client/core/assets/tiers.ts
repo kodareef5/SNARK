@@ -87,7 +87,7 @@ const mass = (to: number, size: number): CityLevel => ({ to, gap: -1, least: 0, 
 export const TIERS: readonly Tier[] = [
   {
     name: "lowpoly", texture: 0, textureShare: 0, view: 256, bones: 8192, threshold: 0.44, finest: 1, instanced: 160, pixelRatio: 1, gpuBytes: 96 * MB, uploadBytes: 0.5 * MB, diskBytes: 256 * MB,
-    lit: false, split: 0, reach: { bases: 1024, city: 1024, trees: 500, rocks: 0, bushes: 0 }, fade: 0.1, city: { levels: [boxes(340), lattice(600), mass(Infinity, 8)] }, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 0, size: 0, distance: 0, taps: 0, blend: 0, everyOther: false }, touch: null, clouds: 0, water: "flat",
+    lit: false, split: 0, reach: { bases: 1024, city: 2048, trees: 500, rocks: 0, bushes: 0 }, fade: 0.1, city: { levels: [boxes(340), lattice(600), mass(Infinity, 8)] }, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 0, size: 0, distance: 0, taps: 0, blend: 0, everyOther: false }, touch: null, clouds: 0, water: "flat",
   },
   {
     name: "medium", texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,

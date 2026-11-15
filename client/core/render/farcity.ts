@@ -263,7 +263,7 @@ export class FarCity {
         return (tile.held.some((h) => h !== null) ? 1e6 : 0) + this.off(tile, cam);
       };
       work.sort((a, b) => key(a) - key(b));
-      // A chunk at a time, so no frame takes more than the budget and one chunk's making.
+      // A chunk or a tile's putting together at a time, so no frame takes more than the budget and one of those.
       const start = clock();
       let made = 0;
       let k = 0;
@@ -275,7 +275,9 @@ export class FarCity {
           this.piece(c, level, tile);
           made++;
         }
+        if (made > 0 && clock() - start >= this.makeMs) break;
         this.make(p, tile, level);
+        made++;
       }
       stats.makeMs = clock() - start;
       stats.made = k;
