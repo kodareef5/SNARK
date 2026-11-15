@@ -653,7 +653,7 @@ def heads_of(name, trunks, lobes, shade, spacing, roof=False, **kw):
         if length(sub(parent.at(t)[0], target)) > 0.3:
             twig_to(parent, t, add(target, mul(c.axis, c.under * 0.6)), rng, thick=max(0.02, min(0.05, c.r * 0.03)))
     small = [canopy.Ball(b.centre, b.r * INNER, b.squash, b.floor, b.lobe) for b in balls]
-    deeper = hd.place(small, shade, f"{name} inner", spacing * INNER_GAP, tiers=(99.0, 99.0), size=INNER_SIZE, **kw)
+    deeper = hd.place(small, shade, f"{name} inner", spacing * INNER_GAP, tiers=(99.0, 99.0), **{**kw, "size": INNER_SIZE})
     # Under the crown the outer heads are sparse and the sky shows between them, as it should: no inner head hangs there.
     if not roof:
         deeper = [c for c in deeper if c.normal[1] > -0.35]

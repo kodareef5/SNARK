@@ -61,8 +61,10 @@ ORDERS = {"orders": [
 SPECS = {b["name"]: b for b in BANYANS}
 # How far apart the heads of leaves stand over the roof (heads.py), as the fig's; on the coarser levels they are
 # gathered into so many against the finest's count, or so many in all.
-SPACING = 2.6
+SPACING = 2.2
 GATHERED = {2: 0.45, 3: 34, 4: 11}
+# The share of each level's sprays a head of the roof carries: it has many heads, and its sprays cost a pixel as much as any.
+SPRAYS = 0.75
 # The flat levels draw only the pillars this thick or more.
 FAR_PILLAR = 0.25
 
@@ -249,7 +251,7 @@ def banyan(name, lod):
     rng = rng_for(name, "level", lod)
     beams, pillars, stub, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
-    heads, _ = bl.heads_of(name, beams, lobes, shade, SPACING, roof=True, under=1.1, tall=(0.32, 0.5), low=(0.2, 0.3), lean=0.15)
+    heads, _ = bl.heads_of(name, beams, lobes, shade, SPACING, roof=True, under=1.05, tall=(0.34, 0.52), low=(0.2, 0.3), lean=0.15, size=(0.95, 1.4))
     if lod in (2, 3):
         heads = bl.gathered(heads, GATHERED[lod], name)
     wall = trunk_wall(spec)
@@ -280,7 +282,7 @@ def banyan(name, lod):
     if spec.get("car") and lod <= 2:
         car(m, lod)
     if lod <= 3:
-        bl.head_crown(m, heads, lod, rng, ATLAS, figs.CROWN, shade)
+        bl.head_crown(m, heads, lod, rng, ATLAS, figs.CROWN, shade, SPRAYS)
         if lod <= 1:
             figs.curtains(m, spec["name"], beams, lobes, lod, count=spec["curtains"], reach=(2.0, 5.0))
     else:

@@ -237,7 +237,7 @@ def fig(name, lod):
     rng = rng_for(name, "level", lod)
     limbs, stub, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
-    heads, _ = bl.heads_of(name, limbs, lobes, shade, SPACING)
+    heads, _ = bl.heads_of(name, limbs, lobes, shade, SPACING, roof=True, under=1.15)
     if lod in (2, 3):
         heads = bl.gathered(heads, GATHERED[lod], name)
     ribbons = wall(spec)
