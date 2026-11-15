@@ -271,13 +271,13 @@ export interface StructureDef extends Named {
    * sparkpowder). Omitted, it burns every item by the item's own `fuel`, as a campfire does.
    */
   readonly burns?: readonly { readonly item: string; readonly seconds: number }[];
-  /** False for a fire that does not cook what has `cooks` (M1). Omitted, it cooks. A stub until S1. */
+  /** False for a fire that does not cook what has `cooks` (M1). Omitted, it cooks. */
   readonly cooks?: boolean;
   /** How many times as long things keep in it, as a species' `keeps` (M6). A stub until S3. */
   readonly keeps?: number;
   /** Its jobs run only while it burns (M5). A stub until S2. */
   readonly powered?: boolean;
-  /** It is not lit below the map's sea level (M8). A stub until S1. */
+  /** It is not lit while its foot is below the map's sea level (M8). */
   readonly dry?: boolean;
 }
 
@@ -308,7 +308,7 @@ export interface ItemDef extends Named {
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
   /** Seconds one of it keeps a fire going. */
   readonly fuel?: number;
-  /** When one piece of it has burnt out in a fire, the fire gets one of this, as wood leaves charcoal (M4). A stub until S1. */
+  /** When one piece of it has burnt out in a fire, the fire gets one of this, as wood leaves charcoal (M4); with no room it is lost. */
   readonly burnsInto?: string;
   /** The species it fits and the armor it gives the creature that wears it (the reference's rating). */
   readonly saddle?: { readonly fits: string; readonly armor: number };
@@ -396,7 +396,7 @@ export interface CraftFacet {
   readonly level?: number;
   /**
    * Made by the fire it is `at` while that burns and its ingredients lie in it, with no job, engram or experience
-   * (planning/reference/stations-plan.md, M3). Only at a station that `lights`. A stub until S1.
+   * (planning/reference/stations-plan.md, M3). Only at a station that `lights`.
    */
   readonly fired?: boolean;
 }

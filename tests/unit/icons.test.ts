@@ -141,7 +141,8 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
   // A build without pictures shows every swatch as before.
   expect(frame(false, false).frame.find(KEY_INV_SLOT + 1)!.kind).toBe(K_PANEL);
   // The crafting list puts the pick's picture beside its row, on whichever page that is, and no other: no other item has one.
-  const made = reg.defs.flatMap((d, k) => (d?.type === "item" && (d as ItemDef).craft ? [k] : []));
+  // What is made in the hands, as the making tab lists it: what is made at a station (the forge's ingot, S1) is not.
+  const made = reg.defs.flatMap((d, k) => (d?.type === "item" && (d as ItemDef).craft && reg.craftAt[k] === 0 ? [k] : []));
   const key = KEY_CHAR_RECIPE_PICTURE + made.indexOf(id("core:pick"));
   const pages = Array.from({ length: frame(true, true).sheet.pages }, (_, page) => frame(true, true, page).frame);
   const page = pages.find((f) => f.find(key) !== null)!;

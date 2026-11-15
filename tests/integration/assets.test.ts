@@ -126,7 +126,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was 98e00881 until the oil rock's, crystal's, obsidian rock's and clam's grey boxes (content/items/nodes.ts) numbered
   // the meshes after them on (43a2ef65 with that alone) and the proving ground listed eleven of them off the plaza's west
   // and east edges; without those four kinds it is that again.
-  expect(hash).toBe("f63e1c05");
+  // It was f63e1c05 until the refining forge's grey boxes (content/items/stations.ts, S1) numbered the meshes after them on;
+  // without the forge, its item and engram and the two recipes fired at it it is that again.
+  expect(hash).toBe("c3caa7a5");
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -134,5 +136,6 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   const saddled = frames(true);
   expect([...saddled.drawn].filter((id) => !drawn.has(id))).toEqual([WORN]);
   // It was bf22a69 until the four resource nodes and their grey boxes, as above; without those four kinds it is that again.
-  expect(saddled.hash).toBe("e968ac75");
+  // It was e968ac75 until the refining forge's grey boxes, as above; without the forge it is that again.
+  expect(saddled.hash).toBe("3d6315c1");
 });

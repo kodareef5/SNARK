@@ -307,10 +307,14 @@ export class Progression {
     else this.deadlines.push(job.doneAt, DEADLINE_CRAFT, rec.pid, job.doneAt);
   }
 
-  /** How `item` is made, or null if it is not. */
+  /**
+   * How `item` is made by a job, or null if it is not. What a fire makes by itself (`craft.fired`, the forge's ingots) is
+   * made by no job: refused in the hand, at the station and from a blueprint, and a loaded job of it is dropped
+   * (planning/reference/stations-plan.md, S1).
+   */
   private craftOf(item: number): CraftFacet | null {
     const def = this.world.reg.defs[item];
-    return def?.type === "item" && def.craft ? def.craft : null;
+    return def?.type === "item" && def.craft && !def.craft.fired ? def.craft : null;
   }
 
   /** Whether a unit can start: the ingredients are there, and for one from a blueprint of quality `bp`, that blueprint. */

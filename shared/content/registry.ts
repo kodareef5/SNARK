@@ -258,13 +258,13 @@ export interface Registry {
   readonly stationBase: Uint16Array;
   /** Per structure that names its own fuel (`burns`): the ticks one of each item burns in it, 0 for what it does not take. Null where it burns every item's own fuel (fuelTicks). */
   readonly stationFuel: readonly (Uint32Array | null)[];
-  /** S1, per structure: 0 for a fire that does not cook (`cooks: false`), else 1. */
+  /** Per structure: 0 for a fire that does not cook (`cooks: false`), else 1. */
   readonly stationCooks: Uint8Array;
   /** S3, per structure: how many times as long things keep in it, 1 where not given. */
   readonly structKeeps: Float32Array;
-  /** S1, per item made by a fire by itself (`craft.fired`): the station's base kind, else 0. */
+  /** Per item made by a fire by itself (`craft.fired`): the station's base kind, else 0. */
   readonly firedAt: Uint16Array;
-  /** S1, per item: what one piece leaves in the fire when it has burnt out (0 for nothing). */
+  /** Per item: what one piece leaves in the fire when it has burnt out (0 for nothing). */
   readonly burnsInto: Uint16Array;
   /** S2 and S1, per structure: 1 if its jobs run only while it burns, and 1 if it is not lit below sea level. */
   readonly powered: Uint8Array;
@@ -932,7 +932,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
       recipeOf[index.get(d.id)!] = Uint16Array.from(d.craft.needs.flatMap((need) => [index.get(need.item)!, need.count]));
       recipeMakes[index.get(d.id)!] = d.craft.count ?? 1;
       if (d.craft.at !== undefined) craftAt[index.get(d.id)!] = index.get(d.craft.at)!;
-      if (d.blueprint !== false) blueprints[index.get(d.id)!] = 1;
+      // What a fire makes by itself is made from no blueprint.
+      if (d.blueprint !== false && !d.craft.fired) blueprints[index.get(d.id)!] = 1;
     }
   }
   // An open door maps back to the closed door's item.

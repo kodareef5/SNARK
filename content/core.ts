@@ -43,7 +43,10 @@ const GEAR: Def[] = [
   { type: "item", class: "resource", id: id("hide"), stack: 200, weight: 0.01, color: 227 },
   { type: "item", class: "resource", id: id("chitin"), stack: 100, weight: 0.05, color: 9 },
   { type: "item", class: "resource", id: id("ore"), stack: 300, weight: 1, label: "metal ore", color: 4 },
-  { type: "item", class: "resource", id: id("ingot"), stack: 300, weight: 1, label: "metal ingot", color: 2 },
+  // ark.wiki.gg Metal Ingot and Refining Forge: "2 pieces of Metal can be smelted to create a Metal Ingot", 20 s each at the
+  // refining forge, which makes it by itself while it burns and ore lies in it (fired, planning/reference/stations-plan.md,
+  // S1): no engram, no hand recipe, no experience (neither page gives any).
+  { type: "item", class: "resource", id: id("ingot"), stack: 300, weight: 1, label: "metal ingot", color: 2, craft: { needs: [{ item: id("ore"), count: 2 }], seconds: 20, xp: 0, at: id("forge"), fired: true } },
   { type: "item", class: "resource", id: id("gunpowder"), stack: 100, weight: 0.1, color: 11 },
   // Eaten, 8 health and 40 torpor over 8 seconds ("Increases your health, but puts you to sleep", ark.wiki.gg, Narcotic,
   // 2026-11-15).
@@ -238,9 +241,9 @@ const MAKING: Def[] = [
   ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]]),
   ...making("narcotic", "Narcotic", 6, 6, 1, 4, [["narcoberry", 5], ["meat", 1]]),
   // The metal ingot has no engram and is not made in the hand, as in ARK, where the refining forge makes it (by the user,
-  // 2026-11-15, on planning/reference/stations-plan.md's question 2: no rename, no refund). The forge's recipe is S1's; until
-  // then ingots come from what is given. A save that knew the engram "Smelting" loads without it, and a job of ingots it was
-  // making is dropped (server/progression.ts). Its recipe's old id still reads as the ingot.
+  // 2026-11-15, on planning/reference/stations-plan.md's question 2: no rename, no refund); the forge refines it (S1, in
+  // GEAR above). A save that knew the engram "Smelting" loads without it, and a job of ingots it was making is dropped
+  // (server/progression.ts). Its recipe's old id still reads as the ingot.
   { type: "rename", id: id("make-ingot"), to: [id("ingot")] },
   ...making("gunpowder", "Gunpowder", 21, 2, 1, 2, [["flint", 1], ["stone", 1], ["wood", 1]]),
   // Each piece of an armor tier has its own engram, at the tier's level and cost. They were one engram for all five once,
@@ -399,7 +402,8 @@ const ALL: readonly Def[] = [
   { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: minutes(10), eat: { food: 1.5, water: 0.2 }, color: 8 },
   { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 10 }, use: { adds: [{ stat: "health", amount: -5 }] }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 }, spoilsInto: "core:spoiled_meat" },
   { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 20, health: 8 }, color: 3, label: "cooked meat", spoilsInto: "core:spoiled_meat" },
-  { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
+  // A piece burns 30 s in a campfire or forge and leaves one charcoal when it has burnt out (ark.wiki.gg Charcoal, Campfire).
+  { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30, burnsInto: "core:charcoal" },
   { type: "item", class: "resource", id: "core:thatch", stack: 200, weight: 0.02, color: 18, fuel: 7.5 },
   { type: "item", class: "resource", id: "core:flint", stack: 100, weight: 0.05, color: 4 },
   { type: "item", class: "weapon", id: "core:pick", stack: 1, weight: 1, color: 2, tool: { on: "stone", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 16, type: "melee", torpor: 0.5, uses: 60, mesh: "core:pick", hold: "tool" } },

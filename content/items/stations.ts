@@ -42,4 +42,38 @@ export const STATIONS: readonly Def[] = [
     craft: { needs: [{ item: "core:flint", count: 2 }, { item: "core:stone", count: 1 }], seconds: 1, xp: 0.24, count: 2, at: "core:mortar" },
   },
   { type: "engram", id: "core:engram-sparkpowder", label: "Sparkpowder", level: 6, cost: 3, item: "core:sparkpowder" },
+
+  // The refining forge (planning/reference/stations-plan.md, S1). ark.wiki.gg/wiki/Refining_Forge: 2,500 health, 24 slots,
+  // decays in 16 days, damaged as wood; the item weighs 4 and stacks to 100; 125 stone, 5 flint, 65 hide, 20 wood and 40
+  // fiber for 74.4 xp (its seconds are not given: 5, as DEV135 chooses for a station); level 20, 21 engram points, after
+  // the campfire. It burns the campfire's fuels at their own times (thatch 7.5 s, wood 30, sparkpowder 60), so it names
+  // none of its own; it is lit and put out as a campfire is, and cooks nothing. "Gasoline and Metal Ingots can smelt at
+  // the same time, with both timers running simultaneously": each is fired at it, in a lane of its own (the ingot in
+  // content/core.ts, gasoline in content/items/resources.ts). It "cannot be sitting on a foundation submerged in water".
+  // Its size is the box its art was modelled to (Decided 7, D520).
+  { type: "shape", id: "core:shape_forge", role: "thing", boxes: [{ at: [0, 0, 0], half: [0.6, 0.85, 0.6] }] },
+  { type: "structure", class: "station", id: "core:forge", mesh: "shape", shape: "core:shape_forge", half: [0.6, 0.85, 0.6], color: 5, hp: 2500, material: "core:mat_wood", decayDays: 16, slots: 24, lights: "core:forge_lit", cooks: false, dry: true },
+  { type: "structure", class: "station", id: "core:forge_lit", mesh: "shape", shape: "core:shape_forge", half: [0.6, 0.85, 0.6], color: 8, hp: 2500, material: "core:mat_wood", decayDays: 16, slots: 24, lights: "core:forge", lit: true, cooks: false, dry: true },
+  {
+    type: "item",
+    class: "structure",
+    id: "core:piece_forge",
+    stack: 100,
+    weight: 4,
+    label: "refining forge",
+    color: 5,
+    places: ["core:forge"],
+    craft: {
+      needs: [
+        { item: "core:stone", count: 125 },
+        { item: "core:flint", count: 5 },
+        { item: "core:hide", count: 65 },
+        { item: "core:wood", count: 20 },
+        { item: "core:fiber", count: 40 },
+      ],
+      seconds: 5,
+      xp: 74.4,
+    },
+  },
+  { type: "engram", id: "core:engram-piece_forge", label: "Refining forge", level: 20, cost: 21, item: "core:piece_forge", requires: ["core:engram-piece_campfire"] },
 ];
