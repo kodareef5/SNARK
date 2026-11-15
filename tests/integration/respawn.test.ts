@@ -5,7 +5,8 @@ import type { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_RESPAWN, REJECT_FULL, RESULT_INVALID, RESULT_OK, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
-import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
+import { freeAt, freePlace } from "../../server/place.ts";
+import { capsuleFree, groundStands, groundUnder } from "../../shared/world/collide.ts";
 import { SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0 } from "../../shared/world/proving.ts";
 
 test("a bed is risen from on the bed, whoever stands under it, and not at all once it is built over", () => {
@@ -104,4 +105,27 @@ test("a survivor saved on a slope before bodies stood on their lower sphere come
   const ents = h.world.ents;
   expect(Math.hypot(ents.x[e]! - SLOPE.x, ents.z[e]! - SLOPE.z)).toBeLessThan(0.01);
   expect(ents.y[e]!).toBeGreaterThan(rec.y + 0.03);
+});
+
+test("a body brought back on ground too steep to stand on, or moved out of a piece built over it there, is set on the nearest ground it stands on, not where it would slide", () => {
+  const h = new Harness();
+  const ada = h.join("ada");
+  h.run(400);
+  const p = h.reg.move[h.reg.index.get("core:survivor")!]!;
+  const ents = h.world.ents;
+  // Partway up the 60 degree strip, 5 m above the plaza.
+  const [sx, sz] = [SLOPE_X0 + SLOPE_WIDTH * 5 + SLOPE_WIDTH / 2, SLOPE_Z0 + 3];
+  const stands = (x: number, z: number): boolean => (groundUnder(h.world.hf, x, z, p.radius), groundStands(p.slopeCos));
+  expect(stands(sx, sz)).toBe(false);
+  h.say(ada, "suicide");
+  expect(h.server.revive(h.client(ada)!, sx, sz, 0)).toBe(true);
+  const e = h.client(ada)!.ent;
+  expect([stands(ents.x[e]!, ents.z[e]!), Math.hypot(ents.x[e]! - sx, ents.z[e]! - sz) < 6]).toEqual([true, true]);
+  expect(Math.abs(ents.y[e]! - groundUnder(h.world.hf, ents.x[e]!, ents.z[e]!, p.radius))).toBeLessThan(0.001);
+  // A block of its team over a spot at the strip's foot: the way out of it is up the strip, but it is set on the plaza.
+  const [bx, bz] = [sx, SLOPE_Z0 + 0.6];
+  h.world.structs.add(h.reg.index.get("core:block")!, bx, 1, bz, 0, 7, 1000);
+  const y = groundUnder(h.world.hf, bx, bz, p.radius);
+  expect(freePlace(h.world, bx, y, bz, p.radius, p.height, 7, p.stepUp, p.slopeCos)).toBe(true);
+  expect([stands(freeAt.x, freeAt.z), freeAt.z < SLOPE_Z0]).toEqual([true, true]);
 });
