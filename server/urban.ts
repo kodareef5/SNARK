@@ -15,7 +15,7 @@ import { F_ALIVE, F_GROUNDED, F_PLAYER } from '../shared/sim/entities.ts';
 import { stepVehicleBody, vehicleDoor, withVehicleDoor } from '../shared/sim/vehicle-body.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import type { VehicleDefinition, VehicleState } from '../shared/sim/vehicle.ts';
-import { capsuleFree, groundUnder } from '../shared/world/collide.ts';
+import { groundUnder } from '../shared/world/collide.ts';
 import type { Connection } from '../shared/net/transport.ts';
 import type { Items } from './items.ts';
 import type { VehicleContacts } from './vehicle-contacts.ts';
@@ -23,6 +23,7 @@ import type { Creatures } from './creatures.ts';
 import type { Client, GameServer } from './game.ts';
 import { Occupancy, type OccupancyAction, type OccupancyApproval, type OccupancyEffect } from './occupancy.ts';
 import type { EntityRecord, Records } from './records.ts';
+import { Seating, type Point } from './seating.ts';
 import type { ServerWorld } from './world.ts';
 
 interface UrbanContext {
@@ -40,7 +41,6 @@ interface UrbanContext {
 }
 interface HostSeat { entity: number; handle: number; definition: VehicleDefinition; last: Point }
 interface Scope { epoch: number; request: number; connection: Connection | null }
-interface Point { x: number; y: number; z: number }
 export interface UrbanIncident { action: number; tick: number; offender: number; victim: number; vehicle: number }
 /** Seat tables are pruned as hosts disappear and actors go idle; these only bound a pathological world. */
 const MAX_HOSTS = 1 << 16;
@@ -82,18 +82,11 @@ export class Urban {
   private readonly motion = createMountMotion();
   private readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly rests = new Map<string, Float32Array>();
-  /** The farthest any body or vehicle reaches from its origin across the ground, for finding what is near a point. */
-  private readonly reach: number;
+  private readonly seating: Seating;
 
   constructor(ctx: UrbanContext) {
     this.ctx = ctx;
-    const reg = ctx.world.reg;
-    let reach = 0;
-    for (let k = 0; k < reg.defs.length; k++) {
-      const v = reg.vehicle[k];
-      reach = Math.max(reach, reg.bodyRadius[k] ?? 0, v ? Math.hypot(v.spec.halfWidth, v.spec.halfLength) : 0);
-    }
-    this.reach = reach;
+    this.seating = new Seating(ctx.world, ctx.records);
     for (const rig of ctx.rigs) if (rig.rest.length === HUMAN_BONES * 3) this.rests.set(rig.id, Float32Array.from(rig.rest));
     this.occupancy = new Occupancy({
       actor: pid => {
@@ -254,7 +247,7 @@ export class Urban {
       const point = { x, y: Math.max(origin.y, groundUnder(world.hf, x, z, p.radius)), z };
       for (const stance of [STANCE_STAND, STANCE_CROUCH, STANCE_PRONE]) {
         const height = stanceHeight(p, stance);
-        if (!this.free(point, actor, [actor], 0, height) || !this.corridor(origin, point, actor, [actor], 0, height)) continue;
+        if (!this.seating.free(point, actor, [actor], 0, height) || !this.seating.corridor(origin, point, actor, [actor], 0, height)) continue;
         ents.setPosition(e, point.x, point.y, point.z); ents.stance[e] = stance;
         return;
       }
@@ -268,32 +261,21 @@ export class Urban {
    * anywhere round the hull, each reached from the hull's middle through nothing but the vehicle itself. False when
    * there is nowhere; the body then stays crouched where it is. */
   private standBeside(e: number, host: HostSeat): boolean {
-    const { world } = this.ctx, ents = world.ents, actor = ents.pid[e]!, p = world.reg.move[ents.kind[e]!]!;
+    const { world } = this.ctx, ents = world.ents, p = world.reg.move[ents.kind[e]!]!;
     const state = this.state(host.entity), spec = host.definition.spec, out = [0, 0, 0];
-    const ground = (x: number, z: number): number => Math.max(state.y - state.rideOffset, groundUnder(world.hf, x, z, p.radius));
-    vehiclePoint(state, [0, 0, 0], out);
-    const from = { x: out[0]!, y: ground(out[0]!, out[2]!), z: out[2]! };
-    const spots: [number, number][] = [];
+    const at = (x: number, z: number): Point => {
+      vehiclePoint(state, [x, 0, z], out);
+      return { x: out[0]!, y: Math.max(state.y - state.rideOffset, groundUnder(world.hf, out[0]!, out[2]!, p.radius)), z: out[2]! };
+    };
+    const spots: Point[] = [];
     for (const seat of host.definition.seats) {
       const side = seat.entry[0] >= 0 ? 1 : -1, x = side * Math.max(Math.abs(seat.entry[0]), spec.halfWidth + p.radius + 0.08);
-      spots.push([x, seat.entry[2]], [x + side * 1.1, seat.entry[2]]);
+      spots.push(at(x, seat.entry[2]), at(x + side * 1.1, seat.entry[2]));
     }
     // Then round the hull: its sides, its ends and its corners, just clear of it.
     const w = spec.halfWidth + p.radius + 0.1, l = spec.halfLength + p.radius + 0.1;
-    for (const [x, z] of [[w, 0], [-w, 0], [0, l], [0, -l], [w, l], [-w, l], [w, -l], [-w, -l], [w, l / 2], [-w, l / 2], [w, -l / 2], [-w, -l / 2]] as const) spots.push([x, z]);
-    for (const [x, z] of spots) {
-      vehiclePoint(state, [x, 0, z], out);
-      const point = { x: out[0]!, y: ground(out[0]!, out[2]!), z: out[2]! };
-      for (const stance of [STANCE_STAND, STANCE_CROUCH, STANCE_PRONE]) {
-        const height = stanceHeight(p, stance);
-        if (!this.free(point, actor, [actor], 0, height) || !this.corridor(from, point, actor, [actor], ents.pid[host.entity]!, height)) continue;
-        ents.setPosition(e, point.x, point.y, point.z);
-        ents.stance[e] = stance;
-        return true;
-      }
-    }
-    ents.stance[e] = STANCE_CROUCH;
-    return false;
+    for (const [x, z] of [[w, 0], [-w, 0], [0, l], [0, -l], [w, l], [-w, l], [w, -l], [-w, -l], [w, l / 2], [-w, l / 2], [w, -l / 2], [-w, -l / 2]] as const) spots.push(at(x, z));
+    return this.seating.standAt(e, at(0, 0), spots, ents.pid[host.entity]!);
   }
 
   /** Seats are not saved. Before a seated body leaves the world, and for everyone as the server stops, its seat is freed
@@ -318,7 +300,7 @@ export class Urban {
   settle(e: number): void {
     const { world, records } = this.ctx, ents = world.ents, p = world.reg.move[ents.kind[e]!];
     if (!p || this.occupancy.seatOf(ents.pid[e]!)) return;
-    const pad = p.radius + this.reach;
+    const pad = p.radius + this.seating.reach;
     const x0 = Math.max(0, Math.floor((ents.x[e]! - pad) / CHUNK_SIZE)), x1 = Math.min(world.dims.chunksX - 1, Math.floor((ents.x[e]! + pad) / CHUNK_SIZE));
     const z0 = Math.max(0, Math.floor((ents.z[e]! - pad) / CHUNK_SIZE)), z1 = Math.min(world.dims.chunksZ - 1, Math.floor((ents.z[e]! + pad) / CHUNK_SIZE));
     for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) for (let car = ents.chunkHead[cz * world.dims.chunksX + cx]!; car >= 0; car = ents.next[car]!) {
@@ -520,10 +502,7 @@ export class Urban {
     }
   }
 
-  private entity(pid: number): number {
-    const e = this.ctx.records.entOf.get(pid), ents = this.ctx.world.ents;
-    return e !== undefined && ents.pid[e] === pid && (ents.flags[e]! & F_ALIVE) !== 0 ? e : -1;
-  }
+  private entity(pid: number): number { return this.seating.entity(pid); }
   private client(pid: number): Client | null { return this.ctx.game.clients.find(c => c?.pid === pid && c.ent >= 0) ?? null; }
   private scope(pid: number): Scope {
     const connection = this.client(pid)?.conn ?? null;
@@ -555,36 +534,6 @@ export class Urban {
     return { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!,
       vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[e]!, pitchRate: ents.vehiclePitchRate[e]!, rollRate: ents.vehicleRollRate[e]!, groundPitch: ents.vehicleGroundPitch[e]!, groundRoll: ents.vehicleGroundRoll[e]!, rideOffset: ents.vehicleRideOffset[e]!, rideVelocity: ents.vehicleRideVelocity[e]!, steering: ents.steering[e]!, wheelAngle: ents.wheelAngle[e]!, fuel: ents.fuel[e]!, gear: ents.vehicleGear[e]!, engineRpm: ents.vehicleRpm[e]!, shiftTime: ents.vehicleShiftTime[e]!, payloadMass: ents.vehiclePayloadMass[e]! };
   }
-  private free(p: Point, actor: number, ignored: readonly number[], ignoredHost = 0, height?: number): boolean {
-    const { world, records } = this.ctx, ents = world.ents;
-    const ae = this.entity(actor), move = ae >= 0 ? world.reg.move[ents.kind[ae]!] : null;
-    if (!move || !capsuleFree(world, p.x, p.y, p.z, move.radius, height ?? move.height)) return false;
-    // Seat corridors may cross their own chassis, never another live body or car: those in the chunks within reach.
-    const pad = move.radius + this.reach;
-    const x0 = Math.max(0, Math.floor((p.x - pad) / CHUNK_SIZE)), x1 = Math.min(world.dims.chunksX - 1, Math.floor((p.x + pad) / CHUNK_SIZE));
-    const z0 = Math.max(0, Math.floor((p.z - pad) / CHUNK_SIZE)), z1 = Math.min(world.dims.chunksZ - 1, Math.floor((p.z + pad) / CHUNK_SIZE));
-    for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
-      const pid = ents.pid[e]!;
-      if (pid === 0 || records.entOf.get(pid) !== e || ignored.includes(pid) || pid === ignoredHost || (ents.flags[e]! & F_ALIVE) === 0) continue;
-      if (p.y >= ents.y[e]! + world.reg.bodyHeight[ents.kind[e]!]! || p.y + (height ?? move.height) <= ents.y[e]!) continue;
-      const vehicle = world.reg.vehicle[ents.kind[e]!];
-      const dx = p.x - ents.x[e]!, dz = p.z - ents.z[e]!;
-      if (vehicle) {
-        const a = ents.vehicleYaw[e]!, co = Math.cos(a), sn = Math.sin(a);
-        const x = Math.max(0, Math.abs(co * dx - sn * dz) - vehicle.spec.halfWidth);
-        const z = Math.max(0, Math.abs(sn * dx + co * dz) - vehicle.spec.halfLength);
-        if (x * x + z * z < move.radius * move.radius) return false;
-      } else if (dx * dx + dz * dz < (move.radius + world.reg.bodyRadius[ents.kind[e]!]!) ** 2) return false;
-    }
-    return true;
-  }
-  private corridor(a: Point, b: Point, actor: number, ignored: readonly number[], ignoredHost = 0, height?: number): boolean {
-    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) / 0.1));
-    if (n > 64) return false;
-    for (let i = 0; i <= n; i++) if (!this.free({ x: a.x + (b.x - a.x) * i / n,
-      y: a.y + (b.y - a.y) * i / n, z: a.z + (b.z - a.z) * i / n }, actor, ignored, ignoredHost, height)) return false;
-    return true;
-  }
   private check(action: Readonly<OccupancyAction>): OccupancyApproval {
     const { world, game } = this.ctx, ents = world.ents;
     const host = this.hosts.get(action.host), ae = this.entity(action.actor);
@@ -611,16 +560,17 @@ export class Urban {
     const start = { x: ents.x[ae]!, y: action.kind === 'exit' ? entry.y : ents.y[ae]!, z: ents.z[ae]! };
     // Within reach of the door: 2 m across the ground, and no more than a step above or below it.
     if (action.kind !== 'exit' && (Math.hypot(start.x - entry.x, start.z - entry.z) > 2 || Math.abs(start.y - entry.y) > 1.2)) return { ok: false, reason: 'too-far' };
-    if (!this.free(entry, action.actor, ignored)) return { ok: false, reason: 'door-blocked' };
-    if (!this.corridor(start, entry, action.actor, ignored, action.kind === 'exit' ? action.host : 0)) return { ok: false, reason: 'corridor-blocked' };
+    const seating = this.seating;
+    if (!seating.free(entry, action.actor, ignored)) return { ok: false, reason: 'door-blocked' };
+    if (!seating.corridor(start, entry, action.actor, ignored, action.kind === 'exit' ? action.host : 0)) return { ok: false, reason: 'corridor-blocked' };
     vehiclePoint(state, seat.anchor, out);
-    if (!this.corridor(entry, { x: out[0]!, y: entry.y, z: out[2]! }, action.actor, ignored, action.host)) return { ok: false, reason: 'seat-blocked' };
+    if (!seating.corridor(entry, { x: out[0]!, y: entry.y, z: out[2]! }, action.actor, ignored, action.host)) return { ok: false, reason: 'seat-blocked' };
     if (action.kind === 'enter') return { ok: true };
     const landed = action.victim || action.actor;
     for (const offset of [0, 0.8, -0.8, 1.4, -1.4]) {
       vehiclePoint(state, [seat.entry[0] + (seat.entry[0] >= 0 ? 1.1 : -1.1), 0, seat.entry[2] + offset], out);
       const landing = { x: out[0]!, y: Math.max(state.y, groundUnder(world.hf, out[0]!, out[2]!, move.radius)), z: out[2]!, yaw: state.yaw };
-      if (this.free(landing, landed, [landed]) && this.corridor(entry, landing, landed, ignored, action.host)) return { ok: true, landing };
+      if (seating.free(landing, landed, [landed]) && seating.corridor(entry, landing, landed, ignored, action.host)) return { ok: true, landing };
     }
     return { ok: false, reason: 'landing-blocked' };
   }

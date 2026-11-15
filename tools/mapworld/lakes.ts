@@ -42,7 +42,7 @@ export interface Lakes {
 
 interface Feature {
   readonly geometry: { readonly type: string; readonly coordinates: unknown };
-  readonly properties: { readonly id: string; readonly name?: string | null; readonly mtfcc?: string; readonly above_sea_m: number };
+  readonly properties: { readonly id: string; readonly name?: string | null; readonly mtfcc?: string; readonly above_sea_m: number; readonly intermittent?: boolean };
 }
 
 /** TIGER's short names, written out. */
@@ -67,6 +67,11 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
   const bodies: Lakes["bodies"] = [];
   const made: Lakes["made"][number][] = [];
   for (const f of features) {
+    // Water mapped as dry most of the year (a desert's detention basin or wash) stays the ground it is.
+    if (f.properties.intermittent) {
+      made.push({ id: f.properties.id, name: f.properties.name ?? "", water: 0, bank: 0, surfaces: [], left: "mapped intermittent: dry most of the year" });
+      continue;
+    }
     const polygons = (f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates) as number[][][][];
     const at: number[] = [];
     for (const rings of polygons) {

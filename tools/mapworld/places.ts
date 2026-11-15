@@ -26,7 +26,7 @@ export interface Region {
 }
 
 const SAND = new Set<number>([S.BEACH, S.DUNE]);
-const OPEN = new Set<number>([S.OPEN, S.GREEN, S.COURT, S.STREET, S.YARD, S.DUNE, S.BEACH, S.CANOPY]);
+const OPEN = new Set<number>([S.OPEN, S.GREEN, S.COURT, S.STREET, S.YARD, S.DUNE, S.BEACH, S.CANOPY, S.DESERT, S.PAVED]);
 // The beds of the sea and of lakes are under water, and a spawn point by a lake keeps clear of its shallows.
 const BLOCKING = new Set<number>([S.HEAP, S.WALL, S.POOL, S.FORD, S.DECK, S.MARSH, S.MANGROVE, S.SHALLOW, S.FLAT, S.DEEP, S.CHANNEL]);
 
@@ -176,7 +176,7 @@ export function placeRegions(ground: Ground, size: number, spawns: readonly Spaw
     }
   };
   cells(64, (s) => SAND.has(s) || s === S.WET_SAND, 2000, (x, z, area) => out.push({ spawns: "core:spawns_beach", count: Math.max(2, Math.min(8, Math.round(area / 3000))), x, z, radius: Math.round(Math.max(30, Math.min(90, Math.sqrt(area / Math.PI) * 1.3))) }));
-  cells(192, (s) => s === S.CANOPY || s === S.GREEN || s === S.MANGROVE, 25000, (x, z, area) => out.push({ spawns: "core:spawns_jungle", count: Math.max(2, Math.min(9, Math.round(area / 10000))), x, z, radius: 160 }));
+  cells(192, (s) => s === S.CANOPY || s === S.GREEN || s === S.MANGROVE || s === S.DESERT, 25000, (x, z, area) => out.push({ spawns: "core:spawns_jungle", count: Math.max(2, Math.min(9, Math.round(area / 10000))), x, z, radius: 160 }));
   cells(192, (s) => s === S.HEAP || s === S.FLOOR || s === S.SPILL || s === S.COURT, 40000, (x, z) => out.push({ spawns: "core:spawns_jungle", count: 2, x, z, radius: 150 }));
   // ARK's spawn points stand in easy zones. Where a map has no beach by one, the regions round it take the beach's table.
   const easy = out.filter((r) => r.spawns === "core:spawns_beach");

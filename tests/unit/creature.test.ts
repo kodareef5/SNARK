@@ -226,7 +226,7 @@ function overClips(a: CreatureAnim, from: number, states: readonly AnimState[], 
 test("a flyer hovers at no speed, flaps at its flying speed and fast at its sprint, on one beat, and glides looking down and dives looking further down", () => {
   expect([flyer.flies, flyer.beat, flyer.flyAt, flyer.fastAt]).toEqual([true, 30, 6, 16]);
   const u = (T + SEED) / flyer.beat - Math.floor((T + SEED) / flyer.beat);
-  const hover = frameOf("hover", u * 27);
+  const hover = frameOf("hover", u * flyer.rig.clips.get("hover")!.frames);
   const fly = frameOf("fly", u * 30);
   expect(posed(flyer, state((s) => (s.speed = 0)), T).rot).toEqual(hover);
   expect(posed(flyer, state((s) => (s.speed = 3)), T).rot).toEqual(fly);

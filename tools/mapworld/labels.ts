@@ -9,7 +9,8 @@ export interface BuildingLabel {
   levels: number | null; address: string | null; use: string; primary_use: string; uses: Record<string, number>;
   area_m2: number; e: number; n: number;
 }
-export interface PublicPlace { name: string | null; kind: string; e: number; n: number; in_footprint: number | null; }
+/** `facing` is the compass bearing a board's face looks toward, where OpenStreetMap gives its direction. */
+export interface PublicPlace { name: string | null; kind: string; e: number; n: number; in_footprint: number | null; facing?: number; }
 export interface Research {
   style?: string; era?: string; materials?: string[]; built?: number; character?: string[]; lore?: string; fame?: string;
   features?: string[]; ruin?: string; estimated?: string[]; sources?: string[];

@@ -1,0 +1,57 @@
+**Improved, but not excellent yet. Glide passes; fly is close.** The largest remaining problems are the launch’s timing, the hover’s recovery silhouette, and the folded wings hiding ground support.
+
+Frame numbers are zero-based animation frames, not column numbers. These sheets establish pose and spacing problems; they do not establish a single-frame playback pop.
+
+**`fly` — Reads as steady cruising; earlier #1 partly landed, #2 landed, and #3 was correctly preserved.**
+
+1. **Frames 8–18:** The body response is stronger, but the chest still looks carried between the wings more than actively driving them. Give the shoulder/chest action a clearer load and release relative to the pelvis; increasing the entire animal’s bob again would be less useful.
+2. **Frames 20–26:** The elbow-led recovery reads without excessive finger curl. The silhouette remains sound at both player sizes. No new wince here.
+
+**`fly_fast` — Reads as a shallower, quicker flight cycle, but the sprint attitude remains weak; #1 misses the intended distinction, #2 partly lands, and #3 lands.**
+
+1. **Frames 0–17:** The head remains conspicuously above the chest on a curved neck. The numerical forward displacement has not produced a convincingly forward-reaching animal. Flatten the visible neck profile and carry the head farther along the body’s direction.
+2. **Frames 0–2 and 15–17:** The upper stroke still gives much the same upright wing shape as cruising. The reduced excursion helps, but at 90 and 36 pixels the pose contributes little sprint identity; cadence will still do most of the work.
+
+**`hover` — Clearly reads as hovering/braking; #1 lands, #2 overshoots visually, and #3 partly lands.**
+
+1. **Frames 18–24, worst at 20–22:** From below, the outer wings become two needles attached to a short, angular centre. At 36 pixels, much of the membrane effectively disappears. The backward recovery is now clear, but its combination of fold and twist sacrifices too much readable wing area. Preserve some visible membrane width through that return.
+2. **Frames 6–16:** The chest and feet now participate, but the torso still looks rather comfortable supporting this animal and rider. The next improvement should be clearer shoulder effort and delayed body response, not larger dangling-foot motion.
+
+**`glide` — Reads convincingly as soaring; #1, #2 and #3 all land.**
+
+1. **Frames 15–27:** The correction now happens and finishes; **30–45** provides a useful quiet interval.
+2. **Frames 63–75:** The held downward look reads as attention rather than wandering. The broad silhouette survives both distances. I would leave this clip alone.
+
+**`dive` — Now reads as a swept dive posture; #1 and #2 land, and #3 produces a substantially better small silhouette.**
+
+1. **Frames 0–28:** The remaining weakness is the side-view neck: the wings commit backward while the head retains a raised, cruising carriage. Bring the neck and head into the same streamlined intention. Pitching the beak down alone does not achieve that.
+2. The narrowed span and trailing points are successful. I would not sweep the wings farther back merely to exaggerate the improvement.
+
+**`take_off` — Now has credible ground support and release order, but still lacks a fully convincing vault; #1 and #2 land, while #3 and #4 partly land.**
+
+1. **Frames 0–6:** The fixed ground reveals a real improvement: the hands remain down while the body extends, and the feet leave first. I do not see the former wholesale contact float. The supplied no-fade playback condition matters here.
+2. **Frames 6–11:** The body’s rise gains speed **after hand release**, while the wings are still deploying; the first downstroke starts around **16**. The pelvis keys confirm that spacing. This is the remaining “being lifted” impression: put the acceleration into the supported push, then let the airborne rise slow until the wings supply another impulse.
+3. **Frames 8 → 10 → 12 → 14:** Deployment still has a bottleneck—open pockets, a narrowing tall U, then a much wider V. The old collapse is greatly reduced, but the projected opening still hitches. **Frames 30–32** also inherit hover’s thin, angular underside silhouette.
+
+**`land` — Reads as landing and folding, but the weight still arrives less clearly than the folded pose; #1 partly lands, #2 lands, #3 misses visually, and #4 lands subtly.**
+
+1. **Frames 0–6:** The deeper compression helps, but the wings dominate the event. Make the chest’s continuing travel over the planted feet more legible.
+2. **Frames 18–26:** It already looks parked around 18; the subsequent hand contact and shoulder settlement barely register. Give the arms a visible catch, yield and arrest before the final resting shape settles.
+3. **Frames 10–16:** The previous disappear/reopen reversal is corrected. **Frames 18–35:** The broad folded membrane blades still obscure what is actually supporting the animal.
+
+**`walk` — Reads as walking, but still shuffles visually at distance; #1 and #2 partly land, #3 remains unresolved, and #4 is the right fix but cannot be verified from these stills.**
+
+1. **Frames 0–3 and 10–13:** The stronger transfer helps in front view. In side and three-quarter views, however, the large folded membrane assembly still attracts more attention than the supporting hand.
+2. **Frames 2–9 and 12–19:** Clearance is clearer, but the impression remains “lifting a whole blade” rather than lifting a hand beneath a gathered wing. Separate the supporting knuckle, folded finger and hanging membrane in silhouette. More body roll will not solve that.
+3. I see no defensible new claim of planted-foot skating here.
+
+**`idle` — Reads as watchful rest; #1 lands, #2 still misses at player scale, and #3 leaves the requested readable weight shift unresolved.**
+
+1. **Frames 96–108:** The asymmetry exists, but the visible event is mainly a change in the folded finger’s spikes. The shoulder itself does not hunch and settle clearly enough at 90 pixels. Transfer some weight onto the opposite arm so the shrug has a visible bodily cause.
+2. **Frames 12–54:** Keep the look holds. The clack’s timing remains too sparsely sampled to grade; it does not need to read at 36 pixels.
+
+If only three more changes were allowed, I would make these, in order:
+
+1. **Re-time the take-off’s world-space body trajectory.** Deliver upward speed before hand release, decelerate during deployment, and visibly reconnect lift to the first downstroke.
+2. **Rework the folded-wing membrane shape.** Expose the supporting hands and feet, gather the broad blades, and separate the long fingers from the ground contacts. This improves walk, idle, landing and launch together.
+3. **Repair hover’s recovery silhouette, including its use in take-off.** Keep the successful backward/inward return while retaining enough membrane area to read as a pterosaur throughout the sky-facing cycle.

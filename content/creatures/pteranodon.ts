@@ -112,8 +112,9 @@ export const PTERANODON: readonly Def[] = [
   PTERANODON_EGG,
   PTERANODON_EGG_FERTILE,
   // ARK's Pteranodon Saddle: armour 25, weight 20, learned at level 38 for 15 points, made in the hands in 10 s for 43
-  // experience from 230 hide, 125 fiber and 75 chitin (or keratin, which this build lacks).
-  { type: "item", class: "saddle", id: "core:saddle_pteranodon", stack: 1, weight: 20, label: "pteranodon saddle", color: 3, saddle: { fits: "core:pteranodon", armor: 25 } },
+  // experience from 230 hide, 125 fiber and 75 chitin (or keratin, which this build lacks). One seat, the rider's, on the
+  // rig's `seat` socket over the shoulders (assets/source/core/creatures/pteranodon/rig.py), got onto and off from its left.
+  { type: "item", class: "saddle", id: "core:saddle_pteranodon", stack: 1, weight: 20, label: "pteranodon saddle", color: 3, saddle: { fits: "core:pteranodon", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 1, -0.2], entry: [1.35, 0, -0.2] }] } },
   crafting("core:saddle_pteranodon", { needs: [{ item: "core:hide", count: 230 }, { item: "core:fiber", count: 125 }, { item: "core:chitin", count: 75 }], seconds: 10, xp: 43 }),
   { type: "engram", id: "core:engram-saddle_pteranodon", label: "Pteranodon saddle", level: 38, cost: 15, item: "core:saddle_pteranodon" },
 ];

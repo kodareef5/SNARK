@@ -11,6 +11,9 @@ const SIDE = 0.55;
 const RISE = 0.25;
 /** Gap kept between the camera and the obstacle, so the near plane does not cut into a wall. */
 const CLEAR = 0.3;
+/** Milliseconds the camera takes to go from one view to the next, and the furthest (metres) it eases rather than cuts. */
+const EASE_MS = 350;
+const EASE_REACH = 15;
 /** The vehicle's own motion, and how far back (metres) the boom holds the camera at rest: its size's, not one number for all. */
 export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: number; boom?: number }
 
@@ -24,11 +27,17 @@ export class Viewpoint {
   private readonly target = new Float64Array(3);
   private readonly targetVelocity = new Float64Array(3);
   private boom = 6;
+  /** Where the camera was last placed, and while easing, where the ease began and the milliseconds it has left. */
+  private placed = false;
+  private readonly last = new Float64Array(3);
+  private readonly easeFrom = new Float64Array(3);
+  private easing = 0;
 
   /** A centred chase view. Mouse look wins; only a moving driver's idle view gently follows the car. Returns look yaw. */
   placeVehicle(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, heading: number, speed: number, dt: number, follow = true, motion?: VehicleCameraMotion): number {
     const elapsed = Math.max(0, Math.min(100, dt));
-    const reset = !this.vehicleLook || (motion?.id ?? -1) !== this.vehicleId || Math.hypot(ex - this.target[0]!, ey - this.target[1]!, ez - this.target[2]!) > 10;
+    const switched = !this.vehicleLook || (motion?.id ?? -1) !== this.vehicleId;
+    const reset = switched || Math.hypot(ex - this.target[0]!, ey - this.target[1]!, ez - this.target[2]!) > 10;
     if (reset || Math.abs(angle(yaw - this.lastYaw)) > 0.00001 || Math.abs(pitch - this.lastPitch) > 0.00001) this.lookIdle = 0;
     else this.lookIdle += elapsed;
     if (follow && speed > 1 && this.lookIdle > 1200) yaw += angle(heading - yaw) * (1 - Math.exp(-elapsed / 1800));
@@ -61,12 +70,51 @@ export class Viewpoint {
     cam.x = ex + dx * k;
     cam.y = ey + dy * k;
     cam.z = ez + dz * k;
+    this.ease(cam, world, ex, ey, ez, switched, elapsed);
     return yaw;
   }
 
-  /** The eye is at (ex, ey, ez). `yaw` and `pitch` are radians. */
-  place(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number): void {
+  /**
+   * The eye is at (ex, ey, ez). `yaw` and `pitch` are radians. Coming from a chase view (getting off or out), the camera
+   * eases over `dt` ms from where it was.
+   */
+  place(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, dt = 0): void {
+    const switched = this.vehicleLook;
     this.vehicleLook = false;
+    this.put(cam, world, ex, ey, ez, yaw, pitch);
+    this.ease(cam, world, ex, ey, ez, switched, Math.max(0, Math.min(100, dt)));
+  }
+
+  /**
+   * After a change between the eye's view and a chase view, or between hosts, the camera goes from where it was to where
+   * it is placed over EASE_MS rather than at once, and is kept on the near side of anything solid on the way.
+   */
+  private ease(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, switched: boolean, dt: number): void {
+    const from = this.easeFrom;
+    if (switched && this.placed && Math.hypot(cam.x - this.last[0]!, cam.y - this.last[1]!, cam.z - this.last[2]!) < EASE_REACH) {
+      this.easing = EASE_MS;
+      from.set(this.last);
+    }
+    if (this.easing > 0) {
+      this.easing = Math.max(0, this.easing - dt);
+      const t = 1 - this.easing / EASE_MS, s = t * t * (3 - 2 * t);
+      let dx = from[0]! + (cam.x - from[0]!) * s - ex, dy = from[1]! + (cam.y - from[1]!) * s - ey, dz = from[2]! + (cam.z - from[2]!) * s - ez;
+      const length = Math.hypot(dx, dy, dz);
+      if (world && length > 1e-6 && castWorld(world, ex, ey, ez, dx / length, dy / length, dz / length, length + CLEAR) !== HIT_NONE) {
+        const k = Math.max(0, rayHit.t - CLEAR) / length;
+        dx *= k; dy *= k; dz *= k;
+      }
+      cam.x = ex + dx;
+      cam.y = ey + dy;
+      cam.z = ez + dz;
+    }
+    this.last[0] = cam.x;
+    this.last[1] = cam.y;
+    this.last[2] = cam.z;
+    this.placed = true;
+  }
+
+  private put(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number): void {
     cam.yaw = yaw;
     cam.pitch = pitch;
     cam.x = ex;

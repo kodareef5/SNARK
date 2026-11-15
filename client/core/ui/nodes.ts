@@ -1,5 +1,6 @@
 // A screen is a flat list of nodes, each with an explicit rectangle on a virtual canvas 720 units high. All layout is decided
 // in core, so it can be tested in Bun without a browser. A node's key stays the same from frame to frame.
+// Node objects are reused by list position, not key. Copy keys and values needed beyond the current frame.
 
 import { STYLES, LINE_HEIGHT, CHAR_ADVANCE } from "./style.ts";
 

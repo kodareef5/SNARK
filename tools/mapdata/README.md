@@ -21,8 +21,8 @@ install and give byte-identical layers on 3.12. Run every Python tool with `-I`:
 | Step | Tool | Writes |
 | --- | --- | --- |
 | frame | `frame.py` | `map.json`: the local Transverse Mercator square round `city.json`'s centre, its corners, grid and coastal model |
-| fetch | `fetch.py [tiger dem nlcd fema bathymetry osm]` | `raw/` (ignored), `downloads.json` (request, source, licence line, bytes, SHA-256, time per file), `dem_selection.json`, `blocks/*.overpassql` |
-| prepare | `prepare.py` | `base/` vectors, 2 m layers, land cover, succession (`biome.png`), drowned streets, lakes above the sea (`perched_water.*`), `stats.json` |
+| fetch | `fetch.py [tiger dem nlcd fema bathymetry osm]` | `raw/` (ignored), `downloads.json` (request, source, licence line, bytes, SHA-256, time per file), `dem_selection.json`, `blocks/*.overpassql` (`features`: building parts, water, pools, fountains, runways, wheels, with their shapes) |
+| prepare | `prepare.py` | `base/` vectors, 2 m layers, land cover, succession (`biome.png`, desert 10 where `dry_classes` lie), drowned streets, lakes above the sea (`perched_water.*`, with OpenStreetMap's water on the ground and each one's kind), an airfield's paving (`paved.geojson`, roads.png 6), `stats.json` |
 | attributes | `bun tools/mapworld/fetch-attributes.ts <name>` | `base/buildings_attributes.json`; `city.ts` records the download |
 | split | `split.py` | With `footprints.split_by_osm`: USA Structures footprints holding rows of attached buildings cut into OpenStreetMap's outlines, and the buildings it lacks added |
 | future | `future.py` | `base/future_changes.geojson`, `bridge_gaps.png` (a span takes every carriageway of its road), `wrecks.png`, tunnels in `roads.png` |
@@ -38,13 +38,19 @@ The settings `city.json` holds, beyond the sources: `height_zero_m` (the height 
 unless the ground stands over 555 m), `tiger.counties` (a frame may span counties), `dem.fill` (older lidar projects
 used only where the newest has no ground), `footprints.split_by_osm`, `split_cover` and `split_remainder_m2` (a
 footprint this large that OpenStreetMap only partly draws is cut into its buildings and the remainder),
+`split_taller_first` (where OpenStreetMap's buildings overlap the taller is cut first, each piece is labelled by its
+own building alone, and a tower drawn within a larger building takes that host's name), `split_by_parts` (a footprint
+whose ground-standing building parts stand a quarter over its known height is cut into them and its podium),
+`succession.dry_classes` (NLCD classes that stay desert, not green; the world is then `dryGround`),
 `succession.perched_above_sea_m` (2 m) and `flood_below_navd88_m` (null for none), `world` (`sea: false` for a frame
 with no sea, `seaNavd88`, `minY`, `report`, `yard_districts`, `container_district`, extra district seeds as `places`,
 places to `drop`, `styles`, `spawn_places` with what each faces and, where OpenStreetMap has no point, an `at`,
-`easy_around_spawns_m`, and `obelisks`), `ruins` (`rules_from`, `blocks_per_footprint`) and `future` (spans by road,
-wrecks by position). A frame with no sea leaves out `bathymetry`. Spawn point names are held to the 48 bytes the
-choosing list carries. The named places'
-compositions are `ruins/compositions.json` with `ruins/places.json`, written by hand.
+`easy_around_spawns_m`, and `obelisks`), `ruins` (`rules_from`, `blocks_per_footprint`, and `budgets` over the
+reference's) and `future` (spans by road, wrecks by position). A frame with no sea leaves out `bathymetry`. Spawn point
+names are held to the 48 bytes the choosing list carries. The named places' compositions are
+`ruins/compositions.json` with `ruins/places.json`, written by hand; a place may name its OpenStreetMap building
+(`osm_way`, a relation's id negated) and `vocabulary.py` writes the footprint the split cut from it, since split ids move
+whenever the split does.
 
 `fetch.py` asks one thing of one server at a time and waits longer after each refusal. The elevation source is
 `"kind": "tnm"` (a USGS 3DEP project found through The National Map's product API) or `"kind": "noaa-vrt"` (a NOAA
