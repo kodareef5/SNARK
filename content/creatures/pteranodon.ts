@@ -52,8 +52,9 @@ export const PTERANODON: readonly Def[] = [
     stamina: { sprint: 0, regen: 8, jump: 6, walk: 0.025 },
     // 600 units a second flying, a sprint of 1,650 wild and 1,897.5 tamed. 0.325 stamina a second flying or hovering (the
     // page; hovering is given no rate), 6 sprinting, 90 a barrel roll and 40 a grab, and none back for 10 s after it flies.
-    // A roll every 7 s. Chosen, as ARK publishes none: the acceleration, the turn in the air and the roll's burst.
-    fly: { speed: 6, sprintMul: 2.75, tamedSprintMul: 3.1625, accel: 12, turn: 120, stamina: { fly: 0.325, sprint: 6, roll: 90, grab: 40 }, wait: 10, roll: { burst: 10, every: 7 } },
+    // A roll every 7 s, doing 50 to all it hits. Chosen, as ARK publishes none: the acceleration, the turn in the air and the
+    // roll's burst.
+    fly: { speed: 6, sprintMul: 2.75, tamedSprintMul: 3.1625, accel: 12, turn: 120, stamina: { fly: 0.325, sprint: 6, roll: 90, grab: 40 }, wait: 10, roll: { burst: 10, every: 7, damage: 50 } },
     // It lifts at most 50 of drag weight, within 500 units below it: of ours the dodo and a survivor.
     grab: { drag: 50, reach: 5 },
     // Its bite: 18, every 0.67 s, for 5 stamina. Chosen until the model measures it: a reach of 1.6 m past its body, landing

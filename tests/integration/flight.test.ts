@@ -159,7 +159,8 @@ test("sprinted until spent, it is put down unhurt with its rider on it, gets not
   let low = Infinity;
   for (let t = 0; t < 40000 && ents.mode[e] === MODE_FLYER; t += 100) {
     h.run(100, (now) => {
-      pilot.yaw = Math.PI + (now - start) / 2500;
+      // 0.8 radians a second, so the circle clears the pool to the west, whose water would throw its rider off.
+      pilot.yaw = Math.PI + (now - start) / 1250;
       if (spentAt < 0 && (ents.mflags[e]! & MF_WINDED) !== 0) spentAt = now - start;
       if (ents.mode[e] === MODE_FLYER) low = Math.min(low, ents.stamina[e]!);
     });

@@ -61,7 +61,7 @@ import {
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
-import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
+import { FISTS, actionOut, biteCost, stepAction } from "../shared/sim/weapon.ts";
 import { stepAim } from "../shared/sim/aim.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
@@ -158,6 +158,8 @@ export const DID_STRIKE = 1;
 export const DID_BITE = 8;
 export const DID_FIRE = 2;
 export const DID_RELOAD = 4;
+/** The flyer it drives began a barrel roll. */
+export const DID_ROLL = 16;
 
 /** Read every argument and check r.overflow before acting. Returns a RESULT code. */
 export type CommandHandler = (c: Client, r: BitReader) => number;
@@ -390,6 +392,8 @@ export class GameServer {
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
   onLand: ((c: Client, speed: number) => void) | null = null;
   onMountLand: ((e: number, speed: number) => void) | null = null;
+  /** A driven flyer `e` took off, set down from flight or began a barrel roll this tick, as stepOut still says. */
+  onMountFlight: ((e: number) => void) | null = null;
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -506,11 +510,14 @@ export class GameServer {
           if (jaws) {
             stepAction(b, c.heldButtons, c.pressed, jaws);
             if (actionOut.strike) c.did = DID_BITE;
+            biteCost(b, world.reg.biteStamina[b.kind]!);
           }
+          if (stepOut.rolled) c.did |= DID_ROLL;
         }
         ents.storeBody(e, b);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
+        if (driving && (stepOut.tookOff || stepOut.setDown || stepOut.rolled)) this.onMountFlight?.(e);
         if (stepOut.landSpeed > 0) {
           if (driving) this.onMountLand?.(e, stepOut.landSpeed);
           else this.onLand?.(c, stepOut.landSpeed);
