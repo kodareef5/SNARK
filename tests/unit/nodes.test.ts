@@ -390,7 +390,7 @@ test("a live oak, young or elder, stops a body at its trunk alone, which a swing
 });
 
 /** A survivor walking at a node of `form` standing alone on level ground, from eight sides. */
-function walkAt(form: number): { climbed: number; rose: number; reached: number } {
+function walkAt(form: number): { climbed: number; rose: number; reached: number; tallest: number } {
   const w = flatWorld(2);
   const nodes = new StructureStore(w.dims, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
   const [cx, cz] = [32, 32];
@@ -408,15 +408,18 @@ function walkAt(form: number): { climbed: number; rose: number; reached: number 
     const b = new Body();
     [b.x, b.y, b.z, b.grounded] = [cx - Math.sin(a) * 6, 0, cz - Math.cos(a) * 6, true];
     // Where it stands at the stone: as near as it comes on the ground, before it climbs if it does.
-    let [standX, standZ, closest, rose] = [b.x, b.z, Infinity, 0];
+    let [standX, standZ, closest, rose, stood] = [b.x, b.z, Infinity, 0, false];
     for (let t = 0; t < 120; t++) {
       stepBody(world, b, 0, 127, Math.round((side * 65536) / 8) & 0xffff, 0, 0, p, TICK_DT);
       if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`in ${forms.mesh[form]} from side ${side}`);
       const near = Math.hypot(b.x - cx, b.z - cz);
       rose = Math.max(rose, b.y);
+      // It climbs a stone if it comes to stand on it. Slid along a box's corner, a body may be lifted a step and fall
+      // back, which is the step's way at any corner and not a climb.
+      if (b.grounded && b.y > 0.05) stood = true;
       if (rose < 0.05 && near < closest) [standX, standZ, closest] = [b.x, b.z, near];
     }
-    if (rose > 0.05) climbed++;
+    if (stood) climbed++;
     highest = Math.max(highest, rose);
     // From there, a swing at the middle of its first box meets it within a pick's reach.
     const eye = stanceEye(p, STANCE_STAND);
@@ -427,11 +430,50 @@ function walkAt(form: number): { climbed: number; rose: number; reached: number 
   }
   // It never stands higher than the stone's boxes reach.
   expect(highest).toBeLessThanOrEqual(tallest + 0.01);
-  return { climbed, rose: highest, reached };
+  return { climbed, rose: highest, reached, tallest };
 }
 
-test("a survivor walks over a low slab and is stopped by a tall boulder as their boxes say, and a pick's swing meets every stone and broken base from where it stands", () => {
-  const climbs = new Map<string, number[]>();
+/**
+ * Of a stone of `form` standing taller than a survivor's waist, the lowest of its boxes, in metres over the ground, and
+ * how tall it stands; 0 and its height where it is no taller than the waist.
+ */
+function lowestOfTall(form: number): [number, number] {
+  const box = forms.parts.box;
+  const tops: number[] = [];
+  for (let b = forms.parts.start[form]! * 6; b < forms.parts.start[form + 1]! * 6; b += 6) tops.push(box[b + 1]! + box[b + 4]!);
+  const tallest = Math.max(...tops);
+  return [tallest > WAIST ? Math.min(...tops) : 0, tallest];
+}
+
+/** A survivor's waist, and the least a box of a stone taller than it may rise: more than a step of 0.5 m, with room. */
+const WAIST = 1;
+const NO_LEDGE = 0.6;
+
+test("no stone taller than a survivor's waist has a box that rises a step or less from the ground, at any size, and the low slabs are walked onto", () => {
+  // Every size of every stone: its sides rise more than a step at once, so it is jumped onto, as in the reference game,
+  // and not walked up. A walk is stopped by a box that rises more than the step (0.5 m) once the step-up holds to it;
+  // today's step-up still climbs about 0.7 m head on, and up to 0.86 m at a corner between boxes, so some of the
+  // smaller tall stones are walked up yet.
+  let tall = 0;
+  for (const id of ["core:rock", "core:rubble", "core:metal_rock"]) {
+    const k = kind(id);
+    for (let form = forms.first[k]!; form < forms.first[k]! + forms.sums[k]!.length * forms.steps[k]!; form++) {
+      const [lowest] = lowestOfTall(form);
+      if (lowest === 0) continue;
+      tall++;
+      expect([forms.mesh[form], lowest >= NO_LEDGE]).toEqual([forms.mesh[form], true]);
+    }
+  }
+  expect(tall).toBeGreaterThan(100);
+  // The low slabs, no taller than the waist at any size, are walked onto from every side, at their least and most.
+  for (const mesh of ["core:rock_4", "core:rock_5"]) {
+    const k = kind("core:rock");
+    const v = forms.mesh.indexOf(mesh) - forms.first[k]!;
+    for (const step of [0, forms.steps[k]! - 1]) expect([mesh, step, walkAt(forms.first[k]! + v + step).climbed]).toEqual([mesh, step, 8]);
+  }
+});
+
+test("a pick's swing meets every stone and broken base from where a survivor stands at it, and the tallest boulders at their largest are walked onto from no side", () => {
   for (const id of ["core:rock", "core:rubble", "core:metal_rock"]) {
     const k = kind(id);
     const steps = forms.steps[k]!;
@@ -441,15 +483,12 @@ test("a survivor walks over a low slab and is stopped by a tall boulder as their
         for (const f of [form, forms.left[form]!]) {
           const { climbed, reached } = walkAt(f);
           expect([forms.mesh[f], reached]).toEqual([forms.mesh[f], 8]);
-          climbs.set(`${forms.mesh[f]} ${step === 0 ? "least" : "most"}`, [climbed]);
+          // Every boulder whose boxes rise more than today's step-up climbs is walked onto from no side.
+          if (lowestOfTall(f)[0] > 0.9) expect([forms.mesh[f], step, climbed]).toEqual([forms.mesh[f], step, 0]);
         }
       }
     }
   }
-  // The low slabs are walked onto from every side, and the tall boulders at their largest from none. A body climbs a
-  // stone wherever its boxes rise by little more than a step at a time, so it walks up most of the rest from some side.
-  for (const low of ["core:rock_4", "core:rock_5", "core:rubble_3"]) expect([climbs.get(`${low} least`), climbs.get(`${low} most`)]).toEqual([[8], [8]]);
-  for (const tall of ["core:rock_2", "core:rock_6"]) expect(climbs.get(`${tall} most`)).toEqual([0]);
 });
 
 test("a used-up rock leaves its broken base, which bodies and rays meet as its own boxes say, and the rock as it was grows back", () => {
