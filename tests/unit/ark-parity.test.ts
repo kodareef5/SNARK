@@ -49,6 +49,15 @@ test("what a survivor gets of eating each food is its infobox's (Raw Meat, Cooke
   expect([eaten("narcotic"), reg.doseTorpor[at("narcotic")], reg.doseSeconds[at("narcotic")]]).toEqual([[0, 0, 8, 0], 40, 8]);
 });
 
+test("a campfire has 100 health and decays in 2 days, lit or not; the mortar in 16 days (Campfire, Mortar and Pestle)", () => {
+  expect([reg.maxHp[at("campfire")], reg.decayDays[at("campfire")], reg.maxHp[at("campfire_lit")], reg.decayDays[at("campfire_lit")]]).toEqual([100, 2, 100, 2]);
+  expect([reg.maxHp[at("mortar")], reg.decayDays[at("mortar")]]).toEqual([1000, 16]);
+});
+
+test("sparkpowder burns 60 s as fuel, beside thatch's 7.5 and wood's 30 (Sparkpowder, Campfire)", () => {
+  expect([reg.fuelTicks[at("sparkpowder")], reg.fuelTicks[at("thatch")], reg.fuelTicks[at("wood")]].map((t) => t! / TICK_RATE)).toEqual([60, 7.5, 30]);
+});
+
 test("a flame arrow burns for 22 a second for 8 seconds, as fire (Flame Arrow)", () => {
   expect(reg.defs[at("burning")]).toMatchObject({ seconds: 8, health: -22, damage: "fire" });
   expect(reg.ammoBuff[at("arrow_flame")]).toBe(at("burning"));
