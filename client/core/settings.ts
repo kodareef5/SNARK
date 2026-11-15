@@ -6,6 +6,12 @@ import { DEFAULT_TIER, offeredTiers, type Tier } from "./assets/tiers.ts";
 export class Settings {
   /** How much detail is drawn (client/core/assets/tiers.ts). */
   tier: Tier["name"] = DEFAULT_TIER;
+  /**
+   * "Steady frame: automatic": under the tier chosen, the game may draw the far shadows every other frame, fewer pixels,
+   * shadows and far trees less far, and at the last no sun shadows, to keep 60 frames a second (client/core/governor.ts).
+   * It never changes the tier. Off draws the tier exactly.
+   */
+  steady = true;
   /** A touch-first device, which draws a tier as its touch rule says and is offered the tiers it allows (tiers.ts). The shell sets it. */
   touchFirst = false;
   /** The byte budget of a snapshot the server is asked for, one of SNAPSHOT_BYTES. A server may allow less. */
@@ -57,6 +63,7 @@ export const SETTING_ROWS: readonly SettingRow[] = [
       const [list, at] = [offeredTiers(s.touchFirst), offeredTiers(s.touchFirst).findIndex((t) => t.name === s.tier)];
       s.tier = (at < 0 ? list.at(-1)! : list[clamp(at + by, 0, list.length - 1)]!).name;
     } },
+  { label: "Steady frame", value: (s) => (s.steady ? "automatic" : "off"), step: (s) => void (s.steady = !s.steady) },
   { label: "Connection", value: (s) => `${Math.round((s.snapshotBytes * TICK_RATE) / 1000)} KB/s`, step: (s, by) => void (s.snapshotBytes = SNAPSHOT_BYTES[clamp(SNAPSHOT_BYTES.indexOf(s.snapshotBytes) + by, 0, SNAPSHOT_BYTES.length - 1)]!) },
 ];
 

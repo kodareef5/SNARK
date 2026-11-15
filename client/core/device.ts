@@ -3,8 +3,8 @@
 // simulation's hashes. Then the quick look asks the GPU questions round 8 leans on (devicegpu.ts) and measures each
 // graphics tier in three light scenes; the load ladder adds bodies, building pieces, triangles and draws a rung at a time
 // until frames break, then texture memory, sampled as it is drawn, until the device refuses it; the soak turns through a
-// heavy scene for ten minutes; the terrain flight, on a server of its own, flies over its 8 km map and then stands far
-// bases round the middle a rung at a time. What it adds is in devicescene.ts, and the table and pages it shows in
+// heavy scene for ten minutes, and the governed soak the same with the governor on (governor.ts); the terrain flight,
+// on a server of its own, flies over its 8 km map and then stands far bases round the middle a rung at a time. What it adds is in devicescene.ts, and the table and pages it shows in
 // devicetext.ts. What only a browser can say comes from the shell (client/shell/device.ts).
 
 import { HumanAnim } from "../../shared/anim/pose.ts";
@@ -32,8 +32,8 @@ import { heldTo, probePasses, provingProbes } from "./selfcheck.ts";
 import { stressThings } from "./stress.ts";
 
 /** The terrain flight runs on a server of its own, on the 8 km map (tools/device.ts --terrain); the others on the proving ground. */
-export type Mode = "quick" | "ladder" | "soak" | "terrain";
-export const MODES: readonly Mode[] = ["quick", "ladder", "soak", "terrain"];
+export type Mode = "quick" | "ladder" | "soak" | "governed" | "terrain";
+export const MODES: readonly Mode[] = ["quick", "ladder", "soak", "governed", "terrain"];
 
 /**
  * The quick look's scenes: the proving ground as the self-check sees it; with the stress meshes; turned round to the
@@ -224,8 +224,14 @@ export interface SoakReport {
   wood: boolean;
   cascades: number;
   minutesWanted: number;
-  /** Each minute's frames, with `long` the frames of LONG display intervals or more while the page was shown, and `mat` the most draws with materials in one. */
-  minutes: { minute: number; frames: number; frameMs: Spread; long: number; buildMs: number; drawMs: number; missed: number; mat: number }[];
+  /**
+   * Each minute's frames, with `long` the frames of LONG display intervals or more while the page was shown, and `mat`
+   * the most draws with materials in one. In a governed soak, the governor's level at the minute's end and the deepest
+   * in it, and the steps it took in it.
+   */
+  minutes: { minute: number; frames: number; frameMs: Spread; long: number; buildMs: number; drawMs: number; missed: number; mat: number; level?: number; most?: number; steps?: string[] }[];
+  /** With the governor on: every step it took, ms from the soak's start. */
+  governed?: { at: number; level: number; name: string; why: string }[];
   /** Times the page was hidden, and how long in all. The soak's clock stops while it is. */
   hidden: number;
   hiddenMs: number;
@@ -721,6 +727,10 @@ export class DeviceRun {
   /** The soak's amounts, clock and minute under way. */
   private readonly soakFrom: { load: Omit<Load, "tier" | "yaw">; from: string };
   private soakMs = 0;
+  /** In a governed soak: when it began measuring, the governor's steps before it, and its deepest level this minute. */
+  private soakAt = 0;
+  private governedFrom = 0;
+  private most = 0;
   private hiddenAt = -1;
   /** From the page being hidden until the first frame after it is shown again: the soak's clock leaves that time out. */
   private away = false;
@@ -914,13 +924,15 @@ export class DeviceRun {
       this.stage = "terrain";
       return this.takeOff(0);
     }
-    if (this.mode === "soak") {
+    if (this.mode === "soak" || this.mode === "governed") {
       // On the terrain map the soak turns through its wood among the far bases, with nothing else added.
       const tier = this.soakTier();
       const wood = this.side.terrainMap;
       const load = wood ? { stress: false, bodies: 0, pieces: 0, near: 0, far: 0 } : this.soakFrom.load;
       const from = wood ? `the terrain map's wood and ${FAR_CHUNKS.at(-1)} far base chunks round its middle, nothing else` : this.soakFrom.from;
-      this.report.soak = { tier: tier.name, load, from, wood, cascades: tier.lit ? tier.shadows.cascades : 0, minutesWanted: this.timing.soakMs / 60000, minutes: [], hidden: 0, hiddenMs: 0 };
+      this.report.soak = { tier: tier.name, load, from, wood, cascades: tier.lit ? tier.shadows.cascades : 0, minutesWanted: this.timing.soakMs / 60000, minutes: [], hidden: 0, hiddenMs: 0, ...(this.mode === "governed" ? { governed: [] } : {}) };
+      // The governed soak lets the governor act; it is held at the tier everywhere else on this page.
+      if (this.mode === "governed") [this.side.app.governor.held, this.side.app.ui.settings.steady, this.governedFrom] = [null, true, this.side.app.governor.moved];
       this.stage = "soak";
       this.report.stage = "soak";
       this.apply({ ...load, tier, yaw: 0 });
@@ -1334,6 +1346,7 @@ export class DeviceRun {
     if (!this.measuring) {
       if (this.still < STILL && now - this.at < this.timing.settleMs * 2) return false;
       this.measuring = true;
+      this.soakAt = now;
       for (const list of Object.values(this.samples)) list.length = 0;
       this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
       return false;
@@ -1346,6 +1359,7 @@ export class DeviceRun {
       return false;
     }
     this.soakMs += gap;
+    this.most = Math.max(this.most, this.side.app.governor.level);
     this.side.app.controls.yaw = ((this.soakMs / 60000) * 2 * Math.PI) % (2 * Math.PI);
     if (this.fly) this.fly.yaw = this.side.app.controls.yaw;
     const s = this.samples;
@@ -1356,7 +1370,12 @@ export class DeviceRun {
     const minute = report.minutes.length;
     if (this.soakMs < (minute + 1) * 60000 && this.soakMs < this.timing.soakMs) return false;
     const long = s.frame.filter((g) => g >= this.side.display * LONG).length;
-    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase), mat: Math.max(0, ...s.textured) });
+    const g = this.side.app.governor;
+    const taken = report.governed ? g.steps.slice(Math.max(0, g.steps.length - (g.moved - this.governedFrom))).map((x) => ({ ...x, at: Math.round(x.at - this.soakAt) })) : [];
+    report.governed?.push(...taken);
+    this.governedFrom = g.moved;
+    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase), mat: Math.max(0, ...s.textured), ...(report.governed ? { level: g.level, most: Math.max(this.most, g.level), steps: taken.map((x) => `${x.level}: ${x.name} (${x.why})`) } : {}) });
+    this.most = g.level;
     for (const list of Object.values(s)) list.length = 0;
     this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
     if (this.soakMs >= this.timing.soakMs) this.end();
@@ -1446,6 +1465,7 @@ export class DeviceRun {
 
   private end(): void {
     this.side.frames?.stop();
+    this.side.app.governor.held = 0;
     this.placeFar(0);
     this.fly = null;
     this.apply(bare(tierOf(DEFAULT_TIER), 0));

@@ -85,7 +85,7 @@ async function boot(): Promise<void> {
   app.debug = app.stress || params.has("debug");
   app.steer = !selfcheck && !device;
   app.plainSky = selfcheck;
-  app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
+  [app.ui.settings.touchFirst, app.dpr] = [matchMedia("(pointer: coarse)").matches, devicePixelRatio];
   app.address((name) => params.get(name), selfcheck || bench !== null || device !== null);
   const clock = (renderer.passes = device ? null : new PassClock(renderer.gl, bench !== null && params.has("passes")));
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
@@ -147,6 +147,7 @@ async function boot(): Promise<void> {
       app.pressure();
     }
     const [ours, gpu] = [performance.now() - t0, clock?.take() ?? []];
+    app.drawn(packet, ours, gpu);
     device?.frame(now, packet, t0, built);
     if (frames === 30) loser?.loseContext();
     if (frames === 45) loser?.restoreContext();

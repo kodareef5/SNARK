@@ -51,7 +51,7 @@ function onThis(g: Record<string, unknown>): string {
   return `${identify(nav.userAgent ?? "", nav.maxTouchPoints ?? 0)}, ${screen.width ?? "?"} by ${screen.height ?? "?"} at ${g.devicePixelRatio ?? "?"}x`;
 }
 
-const TESTS: Readonly<Record<Mode, string>> = { quick: "Quick look, about 3 minutes", ladder: "Load ladder, about 5 minutes", soak: "Soak, 10 minutes", terrain: "Terrain flight, about 3 minutes" };
+const TESTS: Readonly<Record<Mode, string>> = { quick: "Quick look, about 3 minutes", ladder: "Load ladder, about 5 minutes", soak: "Soak, 10 minutes", governed: "Soak with the governor on, 10 minutes", terrain: "Terrain flight, about 3 minutes" };
 const buttons = (modes: readonly Mode[]): string => modes.map((m) => `<button data-mode="${m}" style="display:block;width:100%;max-width:26em;margin:10px 0;padding:14px;font:inherit;font-size:17px;border-radius:10px;border:0;background:#2a6;color:#fff">${TESTS[m]}</button>`).join("");
 
 /** What a page shows before a test: the device it takes itself to be on, and the tests to tap. */
@@ -202,10 +202,14 @@ function soakLines(r: DeviceReport): string[] {
   const s = r.soak!;
   const l = s.load;
   const what = s.wood ? "" : `${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near, ${l.far} far${l.stress ? ", the stress meshes" : ""}, `;
-  const out = [`soak      ${s.tier}: ${what}turning once a minute (${s.from}), ${s.cascades > 0 ? `shadows on in ${s.cascades} cascades` : "no shadows"}; ${s.minutes.length} of ${s.minutesWanted} minutes`];
-  const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5, 5];
-  out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "mat", "long", "miss"], widths));
-  for (const m of s.minutes) out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat ?? "?"), String(m.long ?? "?"), String(m.missed)], widths));
+  const out = [`soak      ${s.tier}: ${what}turning once a minute (${s.from}), ${s.cascades > 0 ? `shadows on in ${s.cascades} cascades` : "no shadows"}${s.governed ? ", the governor on" : ""}; ${s.minutes.length} of ${s.minutesWanted} minutes`];
+  const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5, 5, 6];
+  out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "mat", "long", "miss", ...(s.governed ? ["level"] : [])], widths));
+  for (const m of s.minutes) {
+    out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat ?? "?"), String(m.long ?? "?"), String(m.missed), ...(s.governed ? [`${m.level ?? "?"}${m.most !== m.level ? ` (${m.most})` : ""}`] : [])], widths));
+    for (const step of m.steps ?? []) out.push(`          to ${step}`);
+  }
+  if (s.governed) out.push("level: the governor's at the minute's end, and the deepest in it in brackets where deeper; its steps under the minute");
   out.push(`mat: the most draws with materials in a frame. long: frames of ${LONG} display intervals or more while the page was shown;`);
   out.push("time it was hidden is left out, a stall is not");
   const [first, final] = [s.minutes[0], s.minutes.at(-1)];

@@ -122,6 +122,11 @@ test("the graphics setting steps through the tiers and stops at either end", () 
     expect(forTouch(tier, false)).toBe(tier);
   }
   expect(forTouch(tierOf("lowpoly"), true)).toBe(tierOf("lowpoly"));
+  // Steady frame is automatic unless turned off.
+  const steady = SETTING_ROWS.find((r) => r.label === "Steady frame")!;
+  expect(steady.value(s)).toBe("automatic");
+  steady.step(s, 1);
+  expect([steady.value(s), s.steady]).toEqual(["off", false]);
 });
 
 test("the settings screen says what is kept of the assets between visits, and asks for all of them when told", () => {
