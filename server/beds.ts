@@ -258,6 +258,8 @@ export class Beds {
     rec.dead = true;
     records.dirty.add(rec.pid);
     game.kill(c);
+    // Its inventory is a new one now, so the whole of it is sent again, as after a death.
+    c.sentInv = -1;
     c.why = CHOOSE_TRAVEL;
     c.sentPlaces = -1;
     this.saved.dirty = true;

@@ -210,7 +210,8 @@ test("she travels from the bed at home to the one at her outpost: all she carrie
   const t = h.world.structs.chunks[Math.floor(home / 65536)]!;
   expect(bags.length).toBe(1);
   expect([bags[0]!.inv!.used(), Math.hypot(bags[0]!.x - t.x[home & 0xffff]!, bags[0]!.z - t.z[home & 0xffff]!) < 0.05, bags[0]!.inv!.total(id("stone"))]).toEqual([carried, true, 40]);
-  expect([h.host.items.inv(rec).used(), h.host.items.audit()]).toEqual([0, []]);
+  // Her own screen shows her carrying nothing.
+  expect([h.host.items.inv(rec).used(), ada.inventory!.used(), h.host.items.audit()]).toEqual([0, 0, []]);
   expect(rise(h, ada, "Outpost")).toBe(RESULT_OK);
   h.run(200);
   const o = h.world.structs.chunks[Math.floor(outpost / 65536)]!;

@@ -3,6 +3,7 @@
 import { expect, test } from "bun:test";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { play, type Play } from "../fixtures/agent.ts";
+import { flatGround } from "../fixtures/arena.ts";
 
 /** Runs the world until the running task ends. Returns the metres the body moved on the server and every place it was. */
 function follow(p: Play, seconds = 60): { walked: number; trail: [number, number][] } {
@@ -239,7 +240,7 @@ test("health falling and death each stop the task, and the survivor wakes again"
   await p.typed("suicide");
   expect(await p.call("status", { wait_s: 5 })).toMatchObject({ state: "danger", reason: "you died", self: { alive: false }, choosing: { why: "died" } });
   p.run(2500);
-  const { choosing } = (await p.call("status")) as { choosing: { places: unknown[][] } };
+  const { choosing } = (await p.call("status")) as unknown as { choosing: { places: unknown[][] } };
   expect(choosing.places[0]!.slice(0, 3)).toEqual([0, p.h.world.spawns[0]!.name, "spawn point"]);
   expect(await p.call("rise", { place: 0 })).toMatchObject({ state: "done", rose_at: p.h.world.spawns[0]!.name });
   expect(await p.call("status")).toMatchObject({ self: { alive: true, x: 256, z: 240, health: [100, 100] } });
@@ -313,4 +314,53 @@ test("a dodo, wild or tame, is picked up and put down, a tame one is ordered, an
   expect(p.rec.inv!.used()).toBe(had + 1);
   p.run(300);
   expect((await rows(p, "egg")).map((r) => r[0])).toEqual(eggs.slice(1).map((r) => r[0]));
+});
+
+test("beds as a player has them: it builds two, names them, dies and rises at one, travels to the other leaving what it carried, and rises once at a sleeping bag", async () => {
+  const p = play();
+  const g = flatGround(p.h, 40, 40);
+  await p.typed("enablecheats");
+  await p.typed(`tp ${g.x + 10} ${g.z + 6}`);
+  for (const [item, n] of [["piece_foundation_wood", 2], ["piece_bed", 2]] as const) await p.typed(`give ${item} ${n}`);
+  // A simple bed is refused on the ground, and goes on a foundation.
+  expect(await p.call("place", { item: "piece_bed", x: g.x + 10, z: g.z + 12 })).toMatchObject({ state: "blocked" });
+  const a = (await p.call("place", { item: "piece_foundation_wood", x: g.x + 10, z: g.z + 12 })) as unknown as { id: string };
+  const home = (await p.call("place", { item: "piece_bed", on: a.id })) as unknown as { state: string; id: string };
+  expect(home).toMatchObject({ state: "done", placed: "bed" });
+  const b = (await p.call("place", { item: "piece_foundation_wood", x: g.x + 30, z: g.z + 30 })) as unknown as { id: string };
+  const outpost = (await p.call("place", { item: "piece_bed", on: b.id })) as unknown as { id: string };
+  expect(await p.call("bed", { id: home.id, do: "name", name: "Home" })).toMatchObject({ state: "done" });
+  expect(await p.call("bed", { id: outpost.id, do: "name", name: "Outpost" })).toMatchObject({ state: "done" });
+
+  // It dies and rises at Home, by its name.
+  await p.typed("suicide");
+  const dead = (await p.call("status", { wait_s: 2 })) as unknown as { choosing: { why: string; places: unknown[][] } };
+  expect([dead.choosing.why, dead.choosing.places.slice(-2).map((r) => r.slice(1, 3))]).toEqual(["died", [["Home", "bed"], ["Outpost", "bed"]]]);
+  expect(await p.call("rise", { place: "Home" })).toMatchObject({ state: "done", rose_at: "Home" });
+  // Home now waits five minutes.
+  await p.typed("suicide");
+  const waiting = (await p.call("status", { wait_s: 2 })) as unknown as { choosing: { places: unknown[][] } };
+  expect(waiting.choosing.places.find((r) => r[1] === "Home")![5]).toBeGreaterThan(280);
+  expect(await p.call("rise", { place: "Home" })).toMatchObject({ state: "blocked" });
+  expect(await p.call("rise", { place: "Outpost" })).toMatchObject({ state: "done" });
+
+  // From Outpost it travels to Home once Home is ready, with stone it carries: the stone stays at Outpost, in a bag.
+  p.h.host.fixtures.find(Number(home.id.slice(1)))!.readyAt = 0;
+  await p.typed("give stone 30");
+  expect(await p.call("bed", { id: outpost.id, do: "travel" })).toMatchObject({ state: "done" });
+  const travelling = (await p.call("status", { wait_s: 1 })) as unknown as { self: { alive: boolean }; choosing: { why: string; places: unknown[][] } };
+  expect([travelling.self.alive, travelling.choosing.why, travelling.choosing.places.map((r) => r[1])]).toEqual([false, "travelling from a bed", ["Outpost", "Home"]]);
+  expect(await p.call("rise", { place: "Home" })).toMatchObject({ state: "done", rose_at: "Home" });
+  expect(await p.call("status")).toMatchObject({ inventory: [] });
+  const bags = [...p.h.host.records.byPid.values()].filter((r) => r.kind === p.id("bag") && (r.inv?.total(p.id("stone")) ?? 0) === 30);
+  expect([bags.length, Math.round(bags[0]!.x), Math.round(bags[0]!.z), p.h.host.items.audit()]).toEqual([1, Math.round(g.x + 30), Math.round(g.z + 30), []]);
+
+  // A sleeping bag on the ground: risen at once, and gone.
+  await p.typed("give piece_sleeping_bag 1");
+  const bag = (await p.call("place", { item: "piece_sleeping_bag", x: g.x + 6, z: g.z + 14 })) as unknown as { id: string };
+  await p.typed("suicide");
+  await p.call("status", { wait_s: 2 });
+  expect(await p.call("rise", { place: "hide sleeping bag" })).toMatchObject({ state: "done" });
+  const ref = Number(bag.id.slice(1));
+  expect(p.h.world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]).toBe(0);
 });

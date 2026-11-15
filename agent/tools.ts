@@ -10,7 +10,7 @@ import { STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { Inventory } from "../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../shared/sim/vitals.ts";
 import { NO_PIN, STRUCT_NAME, STRUCT_TRAVEL } from "../shared/world/upkeep.ts";
-import { ON_TOP, ROLE_THING } from "../shared/world/snap.ts";
+import { ON_TOP, ROLE_FOUNDATION, ROLE_THING } from "../shared/world/snap.ts";
 import { Found } from "../shared/world/structures.ts";
 import { Commands, resultWords } from "./commands.ts";
 import { Controller, type Target } from "./controller.ts";
@@ -54,7 +54,7 @@ const DEFS: ToolDef[] = [
   { name: "craft", description: "Make an item you know the engram for, from what you carry.", inputSchema: { type: "object", properties: { recipe: { type: "string", description: "The item, such as hatchet." }, count: { type: "integer", description: "1 to 100. Default 1." }, learn: { type: "boolean", description: "Spend engram points to learn it first if you do not know it." }, wait_s: { ...wait, description: `${wait.description} Default 20.` } }, required: ["recipe"] } },
   { name: "eat", description: "Eat or drink something you carry.", inputSchema: { type: "object", properties: { item: { type: "string", description: "Left out: the first thing you carry that can be eaten." } } } },
   { name: "say", description: "Say a line of chat. Five at once, then one every two seconds.", inputSchema: { type: "object", properties: { channel: { type: "string", enum: ["global", "local", "tribe"], description: "Everyone, those within 60 m, or your tribe." }, text: { type: "string", description: `At most ${MAX_CHAT_CHARS} characters.` } }, required: ["channel", "text"] } },
-  { name: "place", description: "Set down a thing built that stands by itself, such as a bed, a sleeping bag, a box or a campfire, from what you carry: on the ground at x and z, or on a floor or foundation of your tribe's given by its id. You walk near it first. The answer gives the new thing's id.", inputSchema: { type: "object", properties: { item: { type: "string", description: "What you carry to set down, such as simple bed." }, x: { type: "number" }, z: { type: "number" }, on: { type: "string", description: "A floor or foundation of your tribe's to set it on. Without x and z, its middle." }, facing: { type: "number", description: "Degrees, 0 to 360. Default 0." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["item"] } },
+  { name: "place", description: "Set down a foundation, or a thing built that stands by itself, such as a bed, a sleeping bag, a box or a campfire, from what you carry: on the ground at x and z, or on a floor or foundation of your tribe's given by its id. A simple bed goes only on a floor or foundation. You walk to stand three metres south of the place first. The answer gives the new thing's id.", inputSchema: { type: "object", properties: { item: { type: "string", description: "What you carry to set down, such as simple bed." }, x: { type: "number" }, z: { type: "number" }, on: { type: "string", description: "A floor or foundation of your tribe's to set it on. Without x and z, its middle." }, facing: { type: "number", description: "Degrees, 0 to 360. Default 0." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["item"] } },
   { name: "bed", description: "Walk to a bed or sleeping bag of your tribe and name it (as your tribe sees it when choosing where to rise), or travel from it to another of your tribe's beds: you leave your body there and choose where to rise with rise.", inputSchema: { type: "object", properties: { id: thing, do: { type: "string", enum: ["name", "travel"] }, name: { type: "string", description: `For name: at most ${MAX_NAME_BYTES} letters.` }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["id", "do"] } },
   { name: "rise", description: "While you have no body, after a death or travelling from a bed: rise at one of the places status lists under choosing, by its number or its name. A place that still waits refuses until it is ready.", inputSchema: { type: "object", properties: { place: { description: "A number or a name from status's choosing.", oneOf: [{ type: "integer" }, { type: "string" }] } }, required: ["place"] } },
   { name: "status", description: "How you are and how the running task is doing: place, vitals, what you carry, the box you have open, what you are making, and chat heard since you last asked.", inputSchema: { type: "object", properties: { wait_s: { ...wait, description: "Seconds to wait for the running task to end before answering, 0 to 50. Default 0." } } } },
@@ -485,19 +485,20 @@ export class Agent implements ToolHost {
     const forms = reg.places[item];
     if (!forms || forms.length === 0) throw new Bad(`${this.nameOf(item)} is not something built`);
     const kind = forms[0]!;
-    if (reg.role[kind] !== ROLE_THING) throw new Bad(`${this.nameOf(item)} joins other pieces, and only a thing that stands by itself can be placed with this`);
+    const ground = reg.role[kind] === ROLE_FOUNDATION;
+    if (reg.role[kind] !== ROLE_THING && !ground) throw new Bad(`${this.nameOf(item)} joins other pieces, and only a foundation or a thing that stands by itself can be placed with this`);
     const floor = a.on === undefined ? null : this.target({ id: a.on });
-    if (floor && floor.ref < 0) throw new Bad(`${floor.id} is not something built`);
+    if (floor && (floor.ref < 0 || ground)) throw new Bad(ground ? "a foundation goes on open ground: give x and z" : `${floor.id} is not something built`);
     const x = floor && a.x === undefined ? floor.x : amount(a, "x", 0, world.hf.sizeX, 0);
     const z = floor && a.z === undefined ? floor.z : amount(a, "z", 0, world.hf.sizeZ, 0);
     const yaw = Math.round((amount(a, "facing", 0, 360, 0) / 360) * YAW_UNITS) & (YAW_UNITS - 1);
     if (this.controller.busy) throw new Bad(`${this.controller.busy} is still running: cancel it, or wait for it with status`);
     const inv = s.inventory;
     if (!inv || inv.total(item) === 0) return refused(`you carry no ${this.nameOf(item)}`);
-    // Near enough that the place is in reach of the eye, and not on it.
-    const g = this.controller.place(x, z);
-    if (Math.hypot(s.own.x - x, s.own.z - z) > 4) {
-      this.controller.walkTo(this.now, g, 2.5);
+    // Near enough that the place is in reach of the eye, and not in its way: three metres south of it.
+    const away = Math.hypot(s.own.x - x, s.own.z - z);
+    if (away < 2.4 || away > 4.5) {
+      this.controller.walkTo(this.now, this.controller.place(x, z - 3), 0.6);
       const walked = await this.finish(amount(a, "wait_s", 0, 50, 25));
       if (walked.state !== "done") return walked;
     }
