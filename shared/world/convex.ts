@@ -1,6 +1,7 @@
 // Convex parts: a piece's form as the hull of a few corners, for ramps, sloped roofs and triangles. A part's corners are set by
 // the same whole-number frame vectors the piece is placed by, so pieces that share corners share faces at every yaw. An upright
-// capsule meets a part by the separating-axis test, and a ray by clipping it against the part's planes.
+// capsule meets a part by the separating-axis test, and a ray by clipping it against the part's planes. For placing, a part
+// meets a box or another part by the same test, as two solids.
 
 import { HALF_SIDE, frameAxes, sixtyOf } from "./frame.ts";
 
