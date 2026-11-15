@@ -1,12 +1,13 @@
 // The terrain's pictures (D253): the whole map at every fourth sample and a window round the camera. A twin of what
 // the shell does with them, the rows it copies and the vertex fetch of the pinned terrain text, gives every tile the
-// map's own samples; fine tiles never read past their window; the window follows within the upload allowance.
+// map's own samples; fine tiles never read past their window; the window follows within the upload allowance. A tile's
+// mesh puts its ground before its skirts, which the shell draws behind it.
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { FramePacket, PASS_FAR, PASS_NEAR, SOURCE_MAP, SOURCE_WINDOW, TILE_QUADS } from "../../client/core/render/packet.ts";
-import { COARSE, TerrainLod, WINDOW, WINDOW_MOVE, coarseGround, groundSize, type GroundBudget } from "../../client/core/render/terrain.ts";
+import { COARSE, TerrainLod, WINDOW, WINDOW_MOVE, coarseGround, groundSize, tileMesh, type GroundBudget } from "../../client/core/render/terrain.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 
@@ -257,4 +258,20 @@ test("a refill goes in bands within the allowance; tiles read the window drawn u
     [1, 256, 128, -1, 0, 0, 0, 0, 256],
     [1, 256, 128, -1, 0, 0, 0, 0, 256],
   ]);
+});
+
+test("a tile's mesh is its ground, then skirts that hang from the ground's border vertices, so the shell can draw the skirts apart, behind the ground", () => {
+  const { vertices, indices, ground } = tileMesh();
+  const row = TILE_QUADS + 1;
+  const dropped = (v: number): boolean => vertices[v * 4 + 2] === 1;
+  const border = (v: number): boolean => [vertices[v * 4], vertices[v * 4 + 1]].some((c) => c === 0 || c === TILE_QUADS);
+  expect([ground, indices.length - ground]).toEqual([TILE_QUADS * TILE_QUADS * 6, 4 * TILE_QUADS * 6]);
+  const odd: number[] = [];
+  for (let k = 0; k < indices.length; k += 3) {
+    const corners = [indices[k]!, indices[k + 1]!, indices[k + 2]!];
+    // A skirt's corners lie on the border, and those not dropped are the ground's own vertices there.
+    const fits = k < ground ? corners.every((v) => v < row * row) : corners.every(border) && corners.some(dropped) && corners.every((v) => dropped(v) || v < row * row);
+    if (!fits) odd.push(k);
+  }
+  expect(odd).toEqual([]);
 });

@@ -1,12 +1,12 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { SKY_SIZE, theSky } from "../core/render/sky.ts";
 import { NEUTRAL, skinMode } from "../core/render/surface.ts";
-import { coarseGround, groundSize, type GroundSize } from "../core/render/terrain.ts";
+import { SKIRT_BEHIND, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../core/assets/tiers.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
@@ -83,7 +83,9 @@ export class GlRenderer {
   private transient!: WebGLBuffer;
   private tileVao!: WebGLVertexArrayObject;
   private tileBuffer!: WebGLBuffer;
+  /** The tile mesh's indices, and those of its ground, which come before its skirts'. */
   private tileIndexCount = 0;
+  private tileGround = 0;
   private readonly tileData = new Float32Array(1024 * 6);
   /** The frame block, bound to the point every lit program's block "Frame" reads. */
   private frame!: WebGLBuffer;
@@ -161,38 +163,17 @@ export class GlRenderer {
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, (this.frame = gl.createBuffer()!));
     gl.bufferData(gl.UNIFORM_BUFFER, FRAME_FLOATS * 4, gl.DYNAMIC_DRAW);
 
-    // The terrain is one 32 x 32 grid with a skirt, drawn once per tile.
-    const row = TILE_QUADS + 1;
-    const verts: number[] = [];
-    const index: number[] = [];
-    for (let z = 0; z < row; z++) for (let x = 0; x < row; x++) verts.push(x, z, 0, 0);
-    for (let z = 0; z < TILE_QUADS; z++) {
-      for (let x = 0; x < TILE_QUADS; x++) {
-        const a = z * row + x;
-        // Same split and colour corner as the collision surface and the reference rasterizer.
-        index.push(a + row + 1, a + 1, a, a + row, a + row + 1, a);
-      }
-    }
-    // The skirt repeats the border vertices and drops them, which hides gaps between tiles of different detail.
-    const edge = (x: number, z: number): number => (verts.push(x, z, 1, 0), verts.length / 4 - 1);
-    for (let i = 0; i < TILE_QUADS; i++) {
-      for (const [x0, z0, x1, z1] of [[i, 0, i + 1, 0], [i, TILE_QUADS, i + 1, TILE_QUADS], [0, i, 0, i + 1], [TILE_QUADS, i, TILE_QUADS, i + 1]] as const) {
-        const a = z0 * row + x0;
-        const b = z1 * row + x1;
-        const c = edge(x0, z0);
-        const d = edge(x1, z1);
-        index.push(a, b, c, b, d, c);
-      }
-    }
-    this.tileIndexCount = index.length;
+    // The terrain is one tile's mesh (terrain.ts), drawn once per tile. Its skirts are drawn behind the ground.
+    const mesh = tileMesh();
+    [this.tileIndexCount, this.tileGround] = [mesh.indices.length, mesh.ground];
     this.tileVao = gl.createVertexArray()!;
     gl.bindVertexArray(this.tileVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ARRAY_BUFFER, Uint8Array.from(verts), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh.vertices, gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribIPointer(0, 4, gl.UNSIGNED_BYTE, 4, 0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, Uint16Array.from(index), gl.STATIC_DRAW);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.indices, gl.STATIC_DRAW);
     this.tileBuffer = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.tileBuffer);
     gl.enableVertexAttribArray(1);
@@ -551,8 +532,12 @@ export class GlRenderer {
       gl.bindVertexArray(this.tileVao);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.tileBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, n * 6), gl.DYNAMIC_DRAW);
-      gl.drawElementsInstanced(gl.TRIANGLES, this.tileIndexCount, gl.UNSIGNED_SHORT, 0, n);
-      this.drawCalls++;
+      gl.drawElementsInstanced(gl.TRIANGLES, this.tileGround, gl.UNSIGNED_SHORT, 0, n);
+      gl.enable(gl.POLYGON_OFFSET_FILL);
+      gl.polygonOffset(0, SKIRT_BEHIND);
+      gl.drawElementsInstanced(gl.TRIANGLES, this.tileIndexCount - this.tileGround, gl.UNSIGNED_SHORT, this.tileGround * 2, n);
+      gl.disable(gl.POLYGON_OFFSET_FILL);
+      this.drawCalls += 2;
     }
   }
 
