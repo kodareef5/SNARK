@@ -67,6 +67,23 @@ export const MAX_CASTERS = 4096;
 /** The depth range a draw is in (`drawPass`): the near one, which `split` ends, or the far one. */
 export const PASS_NEAR = 0;
 export const PASS_FAR = 1;
+/**
+ * The steps a frame is drawn in, in this order, which is the order of its draws: near opaque, far opaque, then the
+ * dome (at `skyAt`), far see-through, near see-through, and the viewer's body over a depth clear. The opaque steps are
+ * numbered as their ranges are.
+ */
+export const STEP_NEAR = PASS_NEAR;
+export const STEP_FAR = PASS_FAR;
+export const STEP_FAR_SEE = 2;
+export const STEP_NEAR_SEE = 3;
+export const STEP_BODY = 4;
+
+/** The step draw `d` is drawn in. */
+export function stepOf(p: FramePacket, d: number): number {
+  const flags = p.drawFlags[d]!;
+  if ((flags & DRAW_NEAR) !== 0) return STEP_BODY;
+  return (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - p.drawPass[d]! : p.drawPass[d]!;
+}
 /** `tilePass` bits: 1 << PASS_NEAR for a tile drawn in the near range, 1 << PASS_FAR in the far, and TILE_CASTS << k casting into cascade k. */
 export const TILE_CASTS = 4;
 /** The pair of textures a tile reads its heights and tints from (`tileSource`): the whole map's, or the window's round the camera. */
@@ -79,7 +96,11 @@ export const SOURCE_WINDOW = 1;
  * and of length 1, colours are linear light, and lengths are metres.
  */
 export const FRAME = {
-  /** fSun: the way to the sun, stepped every 0.05 degrees of its travel, and how strongly it casts, 0 to 1. */
+  /**
+   * fSun: the way the sun's light comes from, stepped every 0.05 degrees of its travel and held 2 degrees up through
+   * twilight, when it carries the afterglow; and how strongly it casts, 0 to 1. Where the sun is, for its disc and for
+   * the sky table, is fTrueSun (sky.ts `trueSun`), the moon's direction turned round.
+   */
   sun: 0,
   casting: 3,
   /** fSunColor: the sun's light at the ground, and the exposure all light is multiplied by. */
@@ -117,6 +138,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp mat4 fCascades[${MAX_CASCADES}];
 };
 #define fSkyScale fSkyAbove.w
+#define fTrueSun (-fMoon.xyz)
 `;
 
 export interface BufferUpload {

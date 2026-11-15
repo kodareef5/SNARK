@@ -1,0 +1,130 @@
+{
+  "dawn": {
+    "toward": {
+      "heading": 89.13,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    },
+    "away": {
+      "heading": 269.13,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "morning": {
+    "toward": {
+      "heading": 83.39,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    },
+    "away": {
+      "heading": 263.39,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "noon": {
+    "toward": {
+      "heading": 0,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    },
+    "away": {
+      "heading": 180,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "afternoon": {
+    "toward": {
+      "heading": 287.53,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    },
+    "away": {
+      "heading": 107.52999999999997,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "golden": {
+    "toward": {
+      "heading": 273.46,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    },
+    "away": {
+      "heading": 93.45999999999998,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "sunset": {
+    "toward": {
+      "heading": 270,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    },
+    "away": {
+      "heading": 90,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "dusk": {
+    "toward": {
+      "heading": 266.54,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    },
+    "away": {
+      "heading": 86.54000000000002,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "night": {
+    "toward": {
+      "heading": 0,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    },
+    "away": {
+      "heading": 180,
+      "elevation": 10,
+      "horizontalFOV": 100,
+      "width": 1280,
+      "height": 720
+    }
+  }
+}

@@ -2,7 +2,7 @@
 // card as bright as low poly shows it.
 import { expect, test } from "bun:test";
 import { FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { KNEE, cardTakes, SKY_SIZE, aroundOf, domeLight, elevationOf, flatCard, heightOf, hourOfSun, luminance, decodeTexel, encodeTexel, sampleSky, shownSky, skyFrame, sunDirection, sunHeight, sunTravel, texelAt, theSky, tone } from "../../client/core/render/sky.ts";
+import { KNEE, cardTakes, SKY_SIZE, aroundOf, domeLight, elevationOf, flatCard, heightOf, hourOfSun, luminance, decodeTexel, encodeTexel, sampleSky, shownSky, skyFrame, trueSun, sunDirection, sunHeight, sunTravel, texelAt, theSky, tone } from "../../client/core/render/sky.ts";
 import { linearToSrgb } from "../../client/core/render/surface.ts";
 import { SkyBuilder } from "../../tools/sky/build.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
@@ -94,7 +94,7 @@ test("a grey card facing up in the open, lit as surfaces are, shows within 3 ste
     const lum = (at: number): number => luminance([f[at]!, f[at + 1]!, f[at + 2]!]);
     const sun = [f[F.sun]!, f[F.sun + 1]!, f[F.sun + 2]!];
     const bySun = cardTakes([0, 1, 0], [0, 1, 0], sun);
-    const byMoon = cardTakes([0, 1, 0], [0, 1, 0], sun.map((v) => -v));
+    const byMoon = cardTakes([0, 1, 0], [0, 1, 0], [f[F.moon]!, f[F.moon + 1]!, f[F.moon + 2]!]);
     const light = lum(F.sunColor) * bySun.light + lum(F.moonColor) * byMoon.light + lum(F.skyAbove) * bySun.sky;
     const shows = 255 * linearToSrgb(light * f[F.exposure]!);
     worst = Math.max(worst, Math.abs(shows - flatCard(hour)));
@@ -169,4 +169,64 @@ test("on a lit tier the scene fills the frame block's sky for its hour, and on l
   for (const at of [F.sun, F.sunColor, F.moon, F.moonColor, F.skyAbove, F.skyBelow]) for (let k = 0; k < 4; k++) expect(p.frame[at + k]).toBe(f[at + k]!);
   const low = sceneWorld({}, tierOf("lowpoly"));
   expect(low.frame(100, false).frame[F.exposure]).toBe(0);
+});
+
+test("through twilight the sun's slot carries the afterglow from 2 degrees up toward the sunken sun, never brighter than the sky above, gone 12 degrees down, casting nothing", () => {
+  const lum = (f: Float32Array, at: number): number => luminance([f[at]!, f[at + 1]!, f[at + 2]!]);
+  const dusk = frameAt(hourOfSun(-8, true));
+  const sun = [-dusk[F.moon]!, -dusk[F.moon + 1]!, -dusk[F.moon + 2]!];
+  expect((Math.asin(dusk[F.sun + 1]!) * 180) / Math.PI).toBeCloseTo(2, 5);
+  expect(Math.atan2(dusk[F.sun + 2]!, dusk[F.sun]!)).toBeCloseTo(Math.atan2(sun[2]!, sun[0]!), 5);
+  expect(lum(dusk, F.sunColor)).toBeGreaterThan(0.05 * lum(dusk, F.skyAbove));
+  expect(lum(dusk, F.sunColor)).toBeLessThanOrEqual(lum(dusk, F.skyAbove));
+  expect(dusk[F.casting]).toBe(0);
+  // The glow is the dome's colour low toward the sun: warm.
+  expect(dusk[F.sunColor]!).toBeGreaterThan(dusk[F.sunColor + 2]!);
+  const late = frameAt(hourOfSun(-12.5, true));
+  expect(lum(late, F.sunColor)).toBeLessThan(0.01 * lum(late, F.skyAbove));
+  // By day the slot is the sun itself.
+  const day = frameAt(10);
+  const s = [0, 0, 0];
+  sunDirection(10, s);
+  for (let k = 0; k < 3; k++) expect(day[F.sun + k]).toBeCloseTo(s[k]!, 6);
+});
+
+test("at dusk the dome is brightest low toward fTrueSun, 8 degrees down, and read by the held fSun it would be another sky", () => {
+  const f = frameAt(hourOfSun(-8, true));
+  const sun = [0, 0, 0];
+  trueSun(f, sun);
+  expect((Math.asin(sun[1]!) * 180) / Math.PI).toBeCloseTo(-8, 1);
+  let most = -1, at = [0, 0];
+  const c = [0, 0, 0];
+  for (let e = 0; e <= 30; e += 0.5) {
+    for (let a = 0; a < 360; a += 2) {
+      const r = (a * Math.PI) / 180, u = (e * Math.PI) / 180;
+      domeLight(sky.table, sun, [Math.cos(u) * Math.cos(r), Math.sin(u), Math.cos(u) * Math.sin(r)], c);
+      const y = luminance(c);
+      if (y > most) [most, at] = [y, [e, a]];
+    }
+  }
+  const toward = (Math.atan2(sun[2]!, sun[0]!) * 180) / Math.PI;
+  expect(at[0]!).toBeLessThan(5);
+  expect(Math.abs((((at[1]! - toward) % 360) + 540) % 360 - 180)).toBeLessThan(6);
+  const held = [f[F.sun]!, f[F.sun + 1]!, f[F.sun + 2]!];
+  const zenith = [0, 0, 0], wrong = [0, 0, 0];
+  domeLight(sky.table, sun, [0, 1, 0], zenith);
+  domeLight(sky.table, held, [0, 1, 0], wrong);
+  expect(luminance(wrong)).toBeGreaterThan(1.5 * luminance(zenith));
+});
+
+test("at noon a grey card sunlit and seen head on shows 128, and one in its own shade 70 (D155)", () => {
+  const f = frameAt(12);
+  const v = (at: number): number[] => [f[at]!, f[at + 1]!, f[at + 2]!];
+  const l = v(F.sun);
+  const head = cardTakes(l, l, l);
+  const up = 0.5 + 0.5 * l[1]!;
+  const sun = v(F.sunColor), above = v(F.skyAbove), below = v(F.skyBelow);
+  const on = [0, 1, 2].map((k) => sun[k]! * head.light + (above[k]! * up + below[k]! * (1 - up)) * head.sky);
+  for (const c of on) expect(255 * linearToSrgb(c * f[F.exposure]!)).toBeCloseTo(128, 1);
+  const n = [-l[0]!, 0, -l[2]!].map((x, _, a) => x / Math.hypot(a[0]!, a[2]!));
+  const shade = cardTakes(n, n, l);
+  const shaded = [0, 1, 2].map((k) => ((above[k]! + below[k]!) / 2) * shade.sky * f[F.exposure]!);
+  expect(255 * linearToSrgb(luminance(shaded))).toBeCloseTo(70, 0);
 });

@@ -10,6 +10,7 @@ from here.
 | `snap.ts`, `snap/` | `bun run snap` | Software rasterizer: a frame packet to a PNG |
 | `probe.ts` | `bun run probe` | The single browser launch: Chrome headless, self-check report |
 | `probe-textured.ts` | `bun run probe -- --textured` | For each texture variant the GPU takes: test cards of every BC7 mode, BC5 and ASTC block kind through the shell's own upload path, read back against our decoders, and a thatch house drawn by the shell against the software rasterizer, with its pictures saved to `planning/reference/round7-pictures/` |
+| `probe-lit.ts`, `probe-lit/` | `bun run probe -- --lit` | The frames core builds at the lit tiers, drawn by the shell and held to the software rasterizer and to each check's own measures: a check is a file under `probe-lit/` and a line in the tool. The depth check reads the depth buffer's bits, the far range keeping 0.3 m of sea over ground 2 km off, the near range in front of the far, and the seam between them dry and under the sea |
 | `dev.ts` | `bun run dev` | Server plus client rebuild on change |
 | `build-client.ts` | `bun run build` | Bundle the shell, copy the page, write the core pack |
 | `pack/` | `bun tools/pack/build.ts` | glTF import, pack writer, graybox meshes |

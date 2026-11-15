@@ -23,7 +23,7 @@ import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials } from "./characters.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod } from "./terrain.ts";
@@ -83,6 +83,8 @@ const RUN_TRIANGLES = 4096;
 const HIDDEN = 0xffff;
 /** The one run of a level drawn flat: no material, and all its indices. */
 const FLAT: readonly number[] = [-1, 0, 0];
+const NEAR = 1 << PASS_NEAR;
+const FAR = 1 << PASS_FAR;
 
 /** A mesh stood somewhere by itself, with no entity or structure behind it. `level` is the level it was last drawn at, or -1. */
 export interface Thing {
@@ -173,9 +175,28 @@ export class Scene {
   /** Per mesh and cell, as `counts` and `cursor` are per mesh, for a chunk of nodes. */
   private cellCounts = new Uint32Array(0);
   private cellCursor = new Uint32Array(0);
-  /** Per mesh counted in `counts`, the square of how far off the nearest instance is. */
+  /** Per mesh counted in `counts`, the square of how far off the nearest instance is, and how far along the view they all lie. */
   private readonly nearest: Float32Array;
+  private readonly from: Float32Array;
+  private readonly to: Float32Array;
+  /** The depth ranges of each draw made so far, a bit each by PASS_, and how many draws are in both. */
+  private readonly passOf = new Uint8Array(MAX_DRAWS);
+  private doubled = 0;
+  /**
+   * For putting the draws in order: the packet's columns of draws, room for one of them as made and as ordered, each
+   * draw's step in each range, where each step begins, and the draw and range each place in the order takes.
+   */
+  private readonly columns: (Uint8Array | Uint16Array | Uint32Array | Float32Array)[];
+  private readonly scratch = [new Float64Array(MAX_DRAWS * 3), new Float64Array(MAX_DRAWS * 3)] as const;
+  private readonly steps = new Int8Array(MAX_DRAWS * 2);
+  private readonly starts = new Int32Array(STEP_BODY + 2);
+  private readonly source = new Uint16Array(MAX_DRAWS);
+  private readonly sourcePass = new Uint8Array(MAX_DRAWS);
+  /** The farthest any body's posed vertex gets from where its first bone puts its origin, short of its own mesh and offset. */
+  private readonly bodySlack: number;
   private readonly transient: InstanceWriter;
+  private readonly transientF32: Float32Array;
+  private readonly transientU16: Uint16Array;
   private readonly waterMesh: number;
   private readonly beamMesh: number;
   /** Places to mark with a beam, x, y, z each. The app sets them before build(). */
@@ -196,7 +217,8 @@ export class Scene {
   private readonly bodyOrder = new Uint32Array(MAX_VIEW);
   private readonly mountState = new AnimState();
   private readonly state = new AnimState();
-  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags);
+  /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). */
+  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, NEAR);
   /** Linear RGB of the open sky and of deep water. */
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
@@ -240,8 +262,18 @@ export class Scene {
     this.counts = new Uint32Array(table.count);
     this.cursor = new Uint32Array(table.count);
     this.nearest = new Float32Array(table.count);
+    this.from = new Float32Array(table.count);
+    this.to = new Float32Array(table.count);
     this.transient = new InstanceWriter(this.packet.transient);
+    const t = this.packet.transient;
+    this.transientF32 = new Float32Array(t.buffer, t.byteOffset, t.byteLength >> 2);
+    this.transientU16 = new Uint16Array(t.buffer, t.byteOffset, t.byteLength >> 1);
     this.characters = new Characters(reg, pack, this.assets);
+    const p = this.packet as unknown as Record<string, unknown>;
+    this.columns = Object.keys(p).filter((k) => k.startsWith("draw") && k !== "drawPass" && ArrayBuffer.isView(p[k])).map((k) => p[k] as Uint8Array);
+    let reach = 0;
+    for (let k = 1; k < reg.defs.length; k++) if (this.characters.has(k)) reach = Math.max(reach, this.characters.reach(k));
+    this.bodySlack = reach * 2;
 
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
@@ -260,10 +292,13 @@ export class Scene {
   build(cam: Camera, remote: RemoteSample | null): FramePacket {
     const p = this.packet;
     p.beginFrame();
+    this.doubled = 0;
+    cam.split = p.split = this.assets.tier.split;
     cam.update();
     this.assets.begin(this.now, this.viewHeight, cam.fovY);
     p.tier = this.assets.tier;
-    p.viewProj.set(cam.viewProj);
+    p.viewProj.set(cam.split > 0 ? cam.ranges[PASS_NEAR] : cam.viewProj);
+    p.farViewProj.set(cam.ranges[PASS_FAR]);
     p.nearViewProj.set(cam.nearViewProj);
     p.camX = cam.x;
     p.camY = cam.y;
@@ -299,8 +334,63 @@ export class Scene {
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody);
+    this.order();
     this.assets.end(p, this.now);
     return p;
+  }
+
+  /**
+   * Puts the draws in the order of the steps they are drawn in (packet.ts), each in the ranges `passOf` gives it, so a
+   * draw in both is listed twice. With one range they stay as they were made, all in the near range.
+   */
+  private order(): void {
+    const p = this.packet;
+    const n = p.drawCount;
+    if (p.split <= 0) {
+      p.drawPass.fill(PASS_NEAR, 0, n);
+      p.skyAt = n;
+      return;
+    }
+    // Each draw's step in each range, -1 where it is not drawn in that range, as stepOf will find it.
+    const steps = this.steps;
+    const starts = this.starts.fill(0);
+    for (let d = 0; d < n; d++) {
+      const flags = p.drawFlags[d]!;
+      for (let range = PASS_NEAR; range <= PASS_FAR; range++) {
+        let s = (this.passOf[d]! & (1 << range)) === 0 ? -1 : (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - range : range;
+        if ((flags & DRAW_NEAR) !== 0) s = range === PASS_NEAR ? STEP_BODY : -1;
+        steps[d * 2 + range] = s;
+        if (s >= 0) starts[s + 1]!++;
+      }
+    }
+    for (let s = 1; s < starts.length; s++) starts[s]! += starts[s - 1]!;
+    const total = starts[STEP_BODY + 1]!;
+    p.skyAt = starts[STEP_FAR_SEE]!;
+    const source = this.source;
+    const pass = this.sourcePass;
+    let moved = total !== n;
+    for (let d = 0; d < n; d++) {
+      for (let range = PASS_NEAR; range <= PASS_FAR; range++) {
+        const s = steps[d * 2 + range]!;
+        if (s < 0) continue;
+        const at = starts[s]!++;
+        source[at] = d;
+        pass[at] = range;
+        moved ||= at !== d;
+      }
+    }
+    if (moved) {
+      // By way of float64 copies, since JavaScriptCore is many times slower at one loop that writes typed arrays of several kinds.
+      const [from, to] = this.scratch;
+      for (const a of this.columns) {
+        const w = a.length / MAX_DRAWS;
+        from.set(a.subarray(0, n * w));
+        for (let k = 0; k < total; k++) for (let j = 0; j < w; j++) to[k * w + j] = from[source[k]! * w + j]!;
+        a.set(to.subarray(0, total * w));
+      }
+    }
+    p.drawPass.set(pass.subarray(0, total));
+    p.drawCount = total;
   }
 
   private bodies(cam: Camera, remote: RemoteSample | null): void {
@@ -404,14 +494,16 @@ export class Scene {
     // Then the shots in the air.
     this.shots?.draw(ch, p, cam, this.shotTick);
     if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson);
+    const from = p.drawCount;
     ch.flush(p, this.transient, false, this.drawBody);
+    if (cam.split > 0) this.bodyPasses(cam, from);
   }
 
   private showFalling(cam: Camera, f: Falling): void {
     const p = this.packet;
     this.counts.fill(0);
-    for (let i = 0; i < f.count; i++) this.tally(this.meshOfKind[f.kind[i]!]!, f.x[i]! - cam.x, f.y[i]! - cam.y, f.z[i]! - cam.z);
-    const total = this.drawTallied(p.transientCount);
+    for (let i = 0; i < f.count; i++) this.tally(cam, this.meshOfKind[f.kind[i]!]!, f.x[i]! - cam.x, f.y[i]! - cam.y, f.z[i]! - cam.z);
+    const total = this.drawTallied(cam, p.transientCount);
     for (let i = 0; i < f.count; i++) {
       const kind = f.kind[i]!;
       const at = this.cursor[this.meshOfKind[kind]!]!++;
@@ -425,9 +517,12 @@ export class Scene {
     const p = this.packet;
     const g = this.ghost;
     const first = p.transientCount;
-    this.transient.set(first, g.x - cam.x, g.y - cam.y, g.z - cam.z, g.yaw, g.color);
+    const [x, y, z] = [g.x - cam.x, g.y - cam.y, g.z - cam.z];
+    this.transient.set(first, x, y, z, g.yaw, g.color);
     p.transientIds[first] = 0;
-    this.draw(this.meshOfKind[g.kind]!, 0, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_BLEND);
+    const mesh = this.meshOfKind[g.kind]!;
+    const r = this.radiusOfMesh[mesh]!;
+    this.draw(mesh, 0, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_BLEND, cam.passes(x - r, y - r, z - r, x + r, y + r, z + r));
     p.transientCount = first + 1;
   }
 
@@ -450,7 +545,7 @@ export class Scene {
       this.transient.set(first, x, y, z, 0, 0);
       p.transientIds[first] = 0;
       const d = p.drawCount;
-      this.draw(t.mesh, wanted, TRANSIENT_BUFFER, first, 1, 0, 0, 0);
+      this.draw(t.mesh, wanted, TRANSIENT_BUFFER, first, 1, 0, 0, 0, 0, cam.passes(x - r, y - r, z - r, x + r, y + r, z + r));
       // What was drawn, which is coarser than what was wanted until that has come.
       t.level = p.drawCount > d ? p.drawLod[d]! : -1;
       wanted = -1;
@@ -462,13 +557,19 @@ export class Scene {
     const p = this.packet;
     const first = p.transientCount;
     let n = 0;
+    let from = Infinity;
+    let to = -Infinity;
+    const r = this.radiusOfMesh[this.beamMesh]!;
     for (let i = 0; i + 2 < this.beams.length && n < 16; i += 3) {
-      this.transient.set(first + n, this.beams[i]! - cam.x, this.beams[i + 1]! - cam.y, this.beams[i + 2]! - cam.z, 0, BEAM_COLOR);
+      const [x, y, z] = [this.beams[i]! - cam.x, this.beams[i + 1]! - cam.y, this.beams[i + 2]! - cam.z];
+      this.transient.set(first + n, x, y, z, 0, BEAM_COLOR);
       p.transientIds[first + n] = 0;
+      from = Math.min(from, cam.depth(x, y, z) - r);
+      to = Math.max(to, cam.depth(x, y, z) + r);
       n++;
     }
     p.dropped += Math.floor(this.beams.length / 3) - n;
-    this.draw(this.beamMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0);
+    this.draw(this.beamMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, 0, cam.passesOf(from, to));
     p.transientCount = first + n;
   }
 
@@ -479,6 +580,11 @@ export class Scene {
     const first = p.transientCount;
     let n = 0;
     const half = WATER_TILE / 2;
+    // The box round every tile drawn, for its depth ranges.
+    let x0 = Infinity;
+    let z0 = Infinity;
+    let x1 = -Infinity;
+    let z1 = -Infinity;
     for (let tz = 0; tz * WATER_TILE < hf.sizeZ; tz++) {
       for (let tx = 0; tx * WATER_TILE < hf.sizeX; tx++) {
         const x = tx * WATER_TILE + half - cam.x;
@@ -492,10 +598,11 @@ export class Scene {
         this.transient.set(first + n, x, y, z, 0, WATER_COLOR);
         p.transientIds[first + n] = 0;
         n++;
+        [x0, z0, x1, z1] = [Math.min(x0, x - half), Math.min(z0, z - half), Math.max(x1, x + half), Math.max(z1, z + half)];
       }
     }
     if (n === 0) return;
-    this.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, DRAW_BLEND);
+    this.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, DRAW_BLEND, cam.passes(x0, sea - cam.y - 0.1, z0, x1, sea - cam.y + 0.1, z1));
     p.transientCount = first + n;
   }
 
@@ -546,15 +653,16 @@ export class Scene {
         p.uploads.push({ buffer: id, data: batch.data, slots: batch.slots });
         batch.uploaded = true;
       }
+      const passes = cam.passes(ax, ay, az, bx, by, bz);
       if (batch.cells > 1) {
-        this.nodeRanges(cam, batch, id, dist, x0, z0);
+        this.nodeRanges(cam, batch, id, dist, x0, z0, passes);
         continue;
       }
       for (let r = 0; r < batch.ranges.length; r += 3) {
         const mesh = batch.ranges[r]!;
         const lod = (batch.level[r / 3] = this.assets.choose(this.assets.table.error[mesh]!, dist, batch.level[r / 3]!));
         this.assets.wantTextured(mesh, lod, dist);
-        this.draw(mesh, lod, id, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z);
+        this.draw(mesh, lod, id, batch.ranges[r + 1]!, batch.ranges[r + 2]!, x0 - cam.x, -cam.y, z0 - cam.z, 0, passes);
       }
     }
   }
@@ -562,9 +670,9 @@ export class Scene {
   /**
    * Draws a chunk of nodes `dist` metres off. A mesh's level is chosen as if every node of it were its kind's largest. Where
    * the chunk's nearest and farthest points ask for the same level, each mesh is one draw; otherwise each cell takes the level
-   * its own nearest point asks for.
+   * its own nearest point asks for. Every draw of the chunk is in the depth ranges `passes`.
    */
-  private nodeRanges(cam: Camera, b: ChunkBatch, id: number, dist: number, x0: number, z0: number): void {
+  private nodeRanges(cam: Camera, b: ChunkBatch, id: number, dist: number, x0: number, z0: number, passes: number): void {
     const cells = b.cells;
     const first = b.cellFirst!;
     const box = b.cellBox!;
@@ -583,7 +691,7 @@ export class Scene {
         b.level[q] = near;
         levels.fill(near, q * cells, (q + 1) * cells);
         this.assets.wantTextured(mesh, near, dist / reach);
-        this.draw(mesh, near, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, DRAW_SIZED);
+        this.draw(mesh, near, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, DRAW_SIZED, passes);
         continue;
       }
       b.level[q] = -1;
@@ -617,7 +725,7 @@ export class Scene {
       }
       for (let k = 0; k < runs.length; k += 6) {
         this.assets.wantTextured(mesh, runs[k + 2]!, runs[k + 4]!);
-        this.draw(mesh, runs[k + 2]!, id, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, DRAW_SIZED);
+        this.draw(mesh, runs[k + 2]!, id, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, DRAW_SIZED, passes);
       }
     }
   }
@@ -736,11 +844,11 @@ export class Scene {
       const z = remote.z[i]! - cam.z;
       // Culled entries are left out of the counts. The second pass repeats the test.
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
-      this.tally(mesh, x, y, z);
+      this.tally(cam, mesh, x, y, z);
       visible++;
     }
     if (visible === 0) return;
-    const total = this.drawTallied(p.transientCount);
+    const total = this.drawTallied(cam, p.transientCount);
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
       if (bodies.has(kind) || this.pitched[kind] !== 0) continue;
@@ -758,10 +866,17 @@ export class Scene {
     p.transientCount = total;
   }
 
-  /** Counts an instance of `mesh` that is (x, y, z) from the camera, and keeps how near the nearest of them is. */
-  private tally(mesh: number, x: number, y: number, z: number): void {
+  /** Counts an instance of `mesh` that is (x, y, z) from the camera, and keeps how near the nearest of them is and how far along the view they lie. */
+  private tally(cam: Camera, mesh: number, x: number, y: number, z: number): void {
     const far = x * x + y * y + z * z;
-    if (this.counts[mesh] === 0 || far < this.nearest[mesh]!) this.nearest[mesh] = far;
+    const along = cam.depth(x, y, z);
+    const r = this.radiusOfMesh[mesh]!;
+    if (this.counts[mesh] === 0) [this.nearest[mesh], this.from[mesh], this.to[mesh]] = [far, along - r, along + r];
+    else {
+      if (far < this.nearest[mesh]!) this.nearest[mesh] = far;
+      if (along - r < this.from[mesh]!) this.from[mesh] = along - r;
+      if (along + r > this.to[mesh]!) this.to[mesh] = along + r;
+    }
     this.counts[mesh]!++;
   }
 
@@ -769,13 +884,13 @@ export class Scene {
    * Draws what was tallied, the instances of each mesh together, from transient instance `total` on. Returns where
    * they end. They are drawn at their finest however far off, so only their materials are told how near they are.
    */
-  private drawTallied(total: number): number {
+  private drawTallied(cam: Camera, total: number): number {
     const counts = this.counts;
     for (let m = 0; m < counts.length; m++) {
       this.cursor[m] = total;
       if (counts[m]! > 0) {
         showMaterials(this.assets, m, Math.sqrt(this.nearest[m]!));
-        this.draw(m, 0, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0);
+        this.draw(m, 0, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0, 0, cam.passesOf(this.from[m]!, this.to[m]!));
       }
       total += counts[m]!;
     }
@@ -784,12 +899,14 @@ export class Scene {
 
   /**
    * Draws `count` instances of a mesh at the level the card has nearest to `wanted`: one draw for each of the level's
-   * sections when the card has everything its materials take, and otherwise one flat draw of the whole of it.
+   * sections when the card has everything its materials take, and otherwise one flat draw of the whole of it. `passes`
+   * are the depth ranges it is drawn in (Camera.passes), and a draw in both takes the room of two.
    */
-  private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags = 0): void {
+  private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number): void {
     const p = this.packet;
     const n = p.drawCount;
-    if (n === MAX_DRAWS) {
+    const copies = passes === (NEAR | FAR) ? 2 : 1;
+    if (n + this.doubled + copies > MAX_DRAWS) {
       p.dropped++;
       return;
     }
@@ -810,7 +927,7 @@ export class Scene {
     const runs = ready ? sections[lod]! : FLAT;
     const draws = runs.length / 3;
     // A mesh the frame has no room for all of is left out whole.
-    if (n + draws > MAX_DRAWS) {
+    if (n + this.doubled + draws * copies > MAX_DRAWS) {
       p.dropped++;
       return;
     }
@@ -818,6 +935,7 @@ export class Scene {
     for (let k = 0; k < draws; k++) {
       const d = n + k;
       const material = runs[k * 3]!;
+      this.passOf[d] = passes;
       p.drawMesh[d] = mesh;
       p.drawLod[d] = lod;
       p.drawSlot[d] = slot;
@@ -834,8 +952,56 @@ export class Scene {
       p.drawIndexCount[d] = runs[k * 3 + 2]!;
     }
     p.drawCount = n + draws;
+    this.doubled += draws * (copies - 1);
     const tris = this.trisOfMesh[mesh]!;
-    p.triangles += tris[lod]! * count;
+    p.triangles += tris[lod]! * count * copies;
+  }
+
+  /**
+   * The depth ranges of the characters' draws from `from` on, which are drawn on bones. Each instance is placed by its
+   * first bone, and nothing of it reaches farther from where that bone puts its origin than its mesh, its offset and
+   * `bodySlack`, stretched as the bone stretches. A draw found to be in both takes the room of two, or stays near.
+   */
+  private bodyPasses(cam: Camera, from: number): void {
+    const p = this.packet;
+    const b = p.bones;
+    const f32 = this.transientF32;
+    const u16 = this.transientU16;
+    const [fx, fy, fz] = [cam.viewProj[3]!, cam.viewProj[7]!, cam.viewProj[11]!];
+    for (let d = from; d < p.drawCount; d++) {
+      const first = p.drawFirst[d]!;
+      // The sections of a level are drawn from the same instances.
+      if (d > from && first === p.drawFirst[d - 1] && p.drawMesh[d] === p.drawMesh[d - 1]) {
+        this.passOf[d] = this.passOf[d - 1]!;
+        continue;
+      }
+      const r = this.radiusOfMesh[p.drawMesh[d]!]! + this.bodySlack;
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = first; i < first + p.drawInstances[d]!; i++) {
+        const o = u16[i * 10 + 6]! * BONE_FLOATS;
+        const w = fx * b[o + 3]! + fy * b[o + 7]! + fz * b[o + 11]!;
+        const gx = fx * b[o]! + fy * b[o + 4]! + fz * b[o + 8]!;
+        const gy = fx * b[o + 1]! + fy * b[o + 5]! + fz * b[o + 9]!;
+        const gz = fx * b[o + 2]! + fy * b[o + 6]! + fz * b[o + 10]!;
+        const reach = Math.sqrt(gx * gx + gy * gy + gz * gz) * (r + Math.hypot(f32[i * 5]!, f32[i * 5 + 1]!, f32[i * 5 + 2]!));
+        if (w - reach < lo) lo = w - reach;
+        if (w + reach > hi) hi = w + reach;
+      }
+      let passes = cam.passesOf(lo, hi);
+      if (passes === (NEAR | FAR)) {
+        let sections = 1;
+        while (d + sections < p.drawCount && p.drawFirst[d + sections] === first && p.drawMesh[d + sections] === p.drawMesh[d]) sections++;
+        if (p.drawCount + this.doubled + sections > MAX_DRAWS) {
+          p.dropped++;
+          passes = NEAR;
+        } else {
+          this.doubled += sections;
+          p.triangles += this.trisOfMesh[p.drawMesh[d]!]![p.drawLod[d]!]! * p.drawInstances[d]!;
+        }
+      }
+      this.passOf[d] = passes;
+    }
   }
 }
 

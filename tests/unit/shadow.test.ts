@@ -1,15 +1,16 @@
 // Sun shadow cascades as numbers: the splits and spheres, the squares snapped in a light space fixed to the world, which
 // casters a cascade takes and at which level, and the farthest cascade drawn every other frame.
 import { expect, test } from "bun:test";
+import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { Cascades, DEPTH_STEPS, MAX_REACH, SPLIT_BLEND, casterLevel, reach, sliceSphere, splitDepths, sunCasts, type ShadowSetup } from "../../client/core/render/shadow.ts";
+import { Cascades, DEPTH_STEPS, MAX_REACH, casterLevel, reach, sliceSphere, splitDepths, sunCasts, type ShadowSetup } from "../../client/core/render/shadow.ts";
 import { Rng } from "../../shared/rng.ts";
 
-const MEDIUM: ShadowSetup = { cascades: 2, size: 2048, distance: 64, everyOther: false };
-const HIGH: ShadowSetup = { cascades: 3, size: 2048, distance: 128, everyOther: false };
-const ULTRA: ShadowSetup = { cascades: 4, size: 2048, distance: 192, everyOther: false };
+const MEDIUM: ShadowSetup = tierOf("medium").shadows;
+const HIGH: ShadowSetup = tierOf("high").shadows;
+const ULTRA: ShadowSetup = tierOf("ultra").shadows;
 /** Medium on a phone, as the lighting design has it: the farther cascade every other frame. */
-const PHONE: ShadowSetup = { cascades: 2, size: 1024, distance: 48, everyOther: true };
+const PHONE: ShadowSetup = { ...MEDIUM, size: 1024, distance: 48, everyOther: true };
 const SETUPS = [MEDIUM, HIGH, ULTRA, PHONE];
 const f32 = Math.fround;
 
@@ -66,7 +67,7 @@ test("splits blend even and logarithmic spacing as the lighting design tabulates
   const out = new Float64Array(5);
   const want = [[0.25, 9.6, 64], [0.25, 8.1, 26.4, 128], [0.25, 6.0, 15.8, 47.2, 192]];
   [MEDIUM, HIGH, ULTRA].forEach((s, t) => {
-    splitDepths(0.25, s.distance, s.cascades, SPLIT_BLEND[s.cascades]!, out);
+    splitDepths(0.25, s.distance, s.cascades, s.blend, out);
     want[t]!.forEach((d, k) => expect(Math.abs(out[k]! - d)).toBeLessThan(0.05));
   });
 });
