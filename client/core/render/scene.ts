@@ -429,7 +429,7 @@ export class Scene {
             for (let j = 0; j < remote.count && !found; j++) {
               if (remote.id[j] !== on) continue;
               const ms = this.mountState;
-              ms.unpack(remote.anim[j]!);
+              ms.unpack(remote.anim[j]!, remote.cue[j]!);
               ms.seed = bodySeed(on);
               found = ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at);
               yaw = remote.yaw[j]!;
@@ -474,7 +474,7 @@ export class Scene {
       for (let k = 0; k < n; k++) {
         const i = from[k]!;
         const kind = remote.kind[i]!;
-        st.unpack(remote.anim[i]!);
+        st.unpack(remote.anim[i]!, remote.cue[i]!);
         st.seed = bodySeed(remote.id[i]!);
         const look = remote.hasLook[i] !== 0 ? remote.look : null;
         const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;

@@ -193,6 +193,29 @@ test("history costs what is awake, not what exists", () => {
   expect(history.bytes).toBeLessThan(4 * 1024 * 1024);
 });
 
+test("a body's cues are remembered as they were at each tick, while it has had any in the window", () => {
+  const ents = new EntityStore({ chunksX: 1, chunksZ: 1 }, 8);
+  const [a, b] = [ents.create(1, 5, 0, 5, 0), ents.create(1, 6, 0, 6, 0)];
+  // One wakes already knocked out, as a creature loaded so does.
+  ents.cue[b] = 1;
+  const history = new History(ents);
+  history.track(a);
+  history.track(b);
+  for (let tick = 1; tick <= 24; tick++) {
+    if (tick === 20 || tick === 23) {
+      ents.cue[a] = tick === 20 ? 0x1234 : 0;
+      history.cued(a);
+    }
+    history.record(tick);
+  }
+  const past = new Past();
+  const at = (tick: number, e: number): number => (history.at(tick, e, past) ? past.cue : -1);
+  expect([19, 20, 22, 23, 24].map((t) => at(t, a))).toEqual([0, 0x1234, 0x1234, 0, 0]);
+  expect([10, 24].map((t) => at(t, b))).toEqual([1, 1]);
+  for (let tick = 25; tick <= 60; tick++) history.record(tick);
+  expect([at(50, a), at(50, b)]).toEqual([0, 1]);
+});
+
 test("what a client draws of a remote body is what the server would test a shot against", () => {
   // At ada's render time, the body she draws must be where history has it at that tick, in the same pose.
   for (const link of [{ latencyMs: 20 }, { latencyMs: 110, jitterMs: 10 }]) {

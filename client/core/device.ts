@@ -6,6 +6,7 @@
 // pages it shows in devicetext.ts. What only a browser can say comes from the shell (client/shell/device.ts).
 
 import { HumanAnim } from "../../shared/anim/pose.ts";
+import { creatureAnims } from "../../shared/anim/creature.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -348,7 +349,8 @@ export function formatsOf(extensions: readonly string[]): string[] {
 export function deviceScenarios(reg: Registry, pack: Pack): [string, () => string][] {
   const anim = new HumanAnim(pack.clips);
   const rigs = buildRigs(pack.header.rigs, pack.clips);
-  return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(rigs.values())], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)], ["node", () => nodeHash(reg)]];
+  const creatures = creatureAnims(reg, (d) => rigs.get(d.mesh)).filter((a) => a !== null);
+  return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(creatures)], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)], ["node", () => nodeHash(reg)]];
 }
 
 /** What a step shows. The pieces are the server's to build; the rest is added on the page. */

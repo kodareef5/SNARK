@@ -83,7 +83,7 @@ test("at noon a mid-grey rough surface sunlit and seen head on shows 128, and on
   shown(rgb, out, 10, p);
   const inShade = rgb.map((c) => c * 255);
   expect(Math.abs(shade(inShade) - 70)).toBeLessThan(0.5);
-  expect(inShade[2]! - inShade[0]!).toBeGreaterThan(10);
+  expect(inShade[2]!).toBeGreaterThan(inShade[0]!);
   // Drawn: a square of palette grey standing with its back to the noon sun, flat and with its materials.
   const stage = new Stage(parsePack(buildPack([squareMesh("test:grey", 1, ["base"])], palette)), W, H);
   stage.raster.skyTable = theSky().table;

@@ -1121,7 +1121,7 @@ export class GameServer {
     for (let k = 0; k < n; k++) {
       const i = Math.floor(ids[k]! / MAX_VIEW);
       rank[k] = ids[k]! % MAX_VIEW;
-      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!);
+      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!);
       cur.urgent[k] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
     }
     this.aroundTick[chunk] = T;

@@ -4,6 +4,7 @@ import { Found } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, FramePacket, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
+import { lit, shown } from "../../client/core/render/surface.ts";
 import { NODE_BUFFERS, bodySeed, type OwnBody } from "../../client/core/render/scene.ts";
 import { Viewpoint } from "../../client/core/viewpoint.ts";
 import { Pose } from "../../shared/anim/clip.ts";
@@ -247,11 +248,14 @@ test("a body with bones is drawn where its skeleton is, standing and running", (
       expect(raster.pickKind[at]).toBe(PICK_ENTITY);
       expect(raster.pickId[at]).toBe(101);
     }
-    // The chest shows skin in the plain look's tone, which is warm, so red is over green and green over blue, though
-    // less than in the sun, since the chest is in the noon sky's bluer shade.
+    // The chest shows skin in the plain look's tone, which is warm: its red against its blue is half again what a grey
+    // standing in the same light, facing the camera, shows.
     const chest = px(boneCentre(view, 0, B_UPPER_CHEST)) * 4;
-    expect(raster.color[chest]!).toBeGreaterThan(raster.color[chest + 1]! * 1.05);
-    expect(raster.color[chest + 1]!).toBeGreaterThan(raster.color[chest + 2]! * 1.05);
+    const facing = [-Math.sin(view.cam.yaw), 0, -Math.cos(view.cam.yaw)];
+    const grey = [0, 0, 0];
+    lit(grey, [0.2159, 0.2159, 0.2159], [1, 1, 0], facing, facing, packet.frame, [0, 0, 0]);
+    shown(grey, grey, 3, packet);
+    expect(raster.color[chest]! / raster.color[chest + 2]!).toBeGreaterThan((grey[0]! / grey[2]!) * 1.5);
     // Its six meshes (five slots and its hair) are drawn with bones and without the checker. The grazer beside it is still one rigid box.
     const skinned = [...packet.drawFlags.subarray(0, packet.drawCount)].filter((f) => (f & DRAW_SKINNED) !== 0);
     expect(skinned.length).toBe(6);

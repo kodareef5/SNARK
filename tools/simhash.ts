@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { CORE_CONTENT } from "../content/core.ts";
 import { authoredClips } from "../shared/anim/authored.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
+import { creatureAnims, type CreatureAnim } from "../shared/anim/creature.ts";
 import { buildRigs, type Rig } from "../shared/anim/rigs.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { parsePack } from "../shared/pack/pack.ts";
@@ -16,6 +17,7 @@ import type { Heightfield } from "../shared/world/heightfield.ts";
 import type { StructureStore } from "../shared/world/structures.ts";
 import { SOURCE, readPacks } from "./art/source.ts";
 import { buildPack } from "./pack/write.ts";
+import { birdAnim } from "../tests/fixtures/bird.ts";
 
 export { FIXED_TUNING } from "../shared/sim/scenarios.ts";
 
@@ -51,8 +53,14 @@ export function sourceRigs(): Map<string, Rig> {
   return buildRigs(pack.header.rigs, pack.clips);
 }
 
+/** What each modelled species plays on those rigs, and the bird of the tests (tests/fixtures/bird.ts) on its own. */
+export function sourceAnims(): CreatureAnim[] {
+  const rigs = sourceRigs();
+  return [...creatureAnims(core(), (d) => rigs.get(d.mesh)).filter((a) => a !== null), birdAnim()];
+}
+
 export function creatureHash(): string {
-  return scenarios.creatureHash(sourceRigs().values());
+  return scenarios.creatureHash(sourceAnims());
 }
 
 export function hullHash(): string {

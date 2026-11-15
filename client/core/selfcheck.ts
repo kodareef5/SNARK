@@ -19,8 +19,11 @@ export interface Probe {
   sy: number;
   /** Expected colour, 0..255: as the frame lights it, or before lighting on low poly. */
   rgb: [number, number, number];
-  /** "exact" matches within a few levels. "hue" matches the colour direction at any brightness. */
-  mode: "exact" | "hue";
+  /**
+   * "exact" matches within a few levels. "hue" matches the colour direction at any brightness, and "lit" at a
+   * brightness within LIT_BRIGHTNESS times either way.
+   */
+  mode: "exact" | "hue" | "lit";
 }
 
 /**
@@ -55,31 +58,33 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   };
   [at[0], at[1], at[2]] = [0.5, 0.03, 0];
   const probes: Probe[] = [{ name: "sky", sx: 0.5, sy: 0.03, rgb: sky(), mode: "exact" }];
+  // On a lit frame the twins say how bright each is too, the checker and a body's facing aside.
+  const hue: Probe["mode"] = p.lit ? "lit" : "hue";
   // The plaza is level, and far nearer than the fog.
   [at[0], at[1]] = [0.5, 0.97];
-  probes.push({ name: "plaza", sx: 0.5, sy: 0.97, rgb: color(1, [0, 1, 0]), mode: "hue" });
+  probes.push({ name: "plaza", sx: 0.5, sy: 0.97, rgb: color(1, [0, 1, 0]), mode: hue });
   const block = reg.defs[reg.index.get("core:block") ?? 0];
   // South face of the block at (253, 1, 262).
   if (block && block.type === "structure" && cam.project(253, 1, 260.99, at)) {
-    probes.push({ name: "block", sx: at[0]!, sy: at[1]!, rgb: color(block.color, [0, 0, -1]), mode: "hue" });
+    probes.push({ name: "block", sx: at[0]!, sy: at[1]!, rgb: color(block.color, [0, 0, -1]), mode: hue });
   }
   if (cam.project(232, hf.heightAt(232, 296), 296, at)) {
     // The slope is one plane there: its normal from the heights a sample either side.
     const [dx, dz] = [hf.heightAt(232 + hf.cell, 296) - hf.heightAt(232 - hf.cell, 296), hf.heightAt(232, 296 + hf.cell) - hf.heightAt(232, 296 - hf.cell)];
     const n = [-dx, 2 * hf.cell, -dz].map((c, _, all) => c / Math.hypot(...all));
-    probes.push({ name: "slope", sx: at[0]!, sy: at[1]!, rgb: color(hf.tint[Math.round(296 / hf.cell) * hf.nx + Math.round(232 / hf.cell)]!, n), mode: "hue" });
+    probes.push({ name: "slope", sx: at[0]!, sy: at[1]!, rgb: color(hf.tint[Math.round(296 / hf.cell) * hf.nx + Math.round(232 / hf.cell)]!, n), mode: hue });
   }
   // The probe server stands a grazer at a known spot in a colour not its species' own, which checks the entity path and the colour regions.
   const grazer = reg.defs[reg.index.get("core:grazer") ?? 0];
   if (withCreature && grazer && grazer.type === "species" && cam.project(PROBE_CREATURE.x, hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z) + grazer.height / 2, PROBE_CREATURE.z, at)) {
-    probes.push({ name: "creature", sx: at[0]!, sy: at[1]!, rgb: color(PROBE_CREATURE.color), mode: "hue" });
+    probes.push({ name: "creature", sx: at[0]!, sy: at[1]!, rgb: color(PROBE_CREATURE.color), mode: hue });
   }
   // The chest of the survivor body is where expected only if bones reach the GPU, and skin-coloured only if its look's
   // colour regions do. The chest is on the body's axis, so its facing does not matter.
   const survivor = reg.defs[reg.index.get("core:survivor") ?? 0];
   const chest = HUMAN.rest[B_CHEST * 3 + 1]! + HUMAN.capA[B_CHEST * 3 + 1]!;
   if (withCreature && survivor && survivor.type === "species" && cam.project(PROBE_BODY.x, hf.heightAt(PROBE_BODY.x, PROBE_BODY.z) + chest, PROBE_BODY.z, at)) {
-    probes.push({ name: "body", sx: at[0]!, sy: at[1]!, rgb: color(SKIN_BASE + defaultLook()[LOOK_SKIN]!), mode: "hue" });
+    probes.push({ name: "body", sx: at[0]!, sy: at[1]!, rgb: color(SKIN_BASE + defaultLook()[LOOK_SKIN]!), mode: hue });
   }
   return probes;
 }
@@ -89,7 +94,15 @@ export function probePasses(p: Probe, r: number, g: number, b: number): boolean 
   const got = Math.hypot(r, g, b);
   const want = Math.hypot(p.rgb[0], p.rgb[1], p.rgb[2]);
   if (got < 40) return false; // Black means nothing was drawn or lighting is broken.
+  if (p.mode === "lit" && (got > want * LIT_BRIGHTNESS || got * LIT_BRIGHTNESS < want)) return false;
   // Lighting and the checker scale brightness, so only the direction of the colour must hold.
   const dot = (r * p.rgb[0] + g * p.rgb[1] + b * p.rgb[2]) / (got * want);
   return dot > 0.995;
 }
+
+/**
+ * How far a "lit" probe may be from the twins' brightness: the checker darkens to 0.82 of it, and a body's chest
+ * faces the camera only roughly. A skin in the noon sky's bluish shade is near grey, and this tells it from the
+ * ground behind it, which is lit by the sun.
+ */
+const LIT_BRIGHTNESS = 1.5;

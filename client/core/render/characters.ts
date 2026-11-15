@@ -8,9 +8,9 @@ import { HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
 import { HumanAnim, advanceHuman, humanPose, type AnimState } from "../../../shared/anim/pose.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
-import { advanceCreature, creaturePose } from "../../../shared/anim/creature.ts";
+import { CreatureAnim, advanceCreature, creaturePose } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
-import { buildRigs, type Rig } from "../../../shared/anim/rigs.ts";
+import { buildRigs } from "../../../shared/anim/rigs.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
@@ -30,10 +30,10 @@ const PLAIN = defaultLook();
 
 /** The meshes on one rig: one sex of a species, or the whole of a species modelled without sexes. */
 interface Creature {
-  rig: Rig;
+  /** What it plays on its rig. */
+  anim: CreatureAnim;
   mesh: number;
   color: number;
-  runAt: number;
   /** How far each level of its mesh lies from the finest, in metres. */
   error: readonly number[];
 }
@@ -171,7 +171,7 @@ export class Characters {
       if (d?.type !== "species" || d.skeleton === undefined || d.skeleton === HUMAN.id) return null;
       const rig = rigs.get(bind.id(d.id, "rig"));
       const mesh = bind.own(d.id, "body");
-      return rig && mesh >= 0 ? { rig, mesh, color: d.color, runAt: reg.runAt[i]!, error: table.error[mesh]! } : null;
+      return rig && mesh >= 0 ? { anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), mesh, color: d.color, error: table.error[mesh]! } : null;
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -183,7 +183,7 @@ export class Characters {
       }
       return bodies.length > 0 ? { sets: bodies, color: d.color } : null;
     });
-    this.dead = new Corpses(this.creatures, reg.birthScale);
+    this.dead = new Corpses(this.creatures.map((c) => c?.anim ?? null), reg.birthScale);
   }
 
   /** The gait of the body with this id, kept from frame to frame. */
@@ -206,28 +206,29 @@ export class Characters {
 
   /** The farthest any part of a body of this kind gets from its origin, for culling. */
   reach(kind: number): number {
-    return this.creatures[kind]?.rig.reach ?? BODY_RADIUS;
+    return this.creatures[kind]?.anim.rig.reach ?? BODY_RADIUS;
   }
 
   /** The bones a body of this kind takes when it is posed. */
   bones(kind: number): number {
-    return this.creatures[kind]?.rig.bones ?? HUMAN_BONES;
+    return this.creatures[kind]?.anim.rig.bones ?? HUMAN_BONES;
   }
 
   /** Writes the seat socket's position to `out` for a creature at (x, y, z) facing `yaw` radians. False for a kind without a seat. */
   seat(kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, out: number[]): boolean {
     const c = this.creatures[kind];
-    const socket = c?.rig.sockets.get("seat");
-    if (!c || !socket) return false;
+    const rig = c?.anim.rig;
+    const socket = rig?.sockets.get("seat");
+    if (!c || !rig || !socket) return false;
     // The mount's legs are where they will be drawn: its gait, found by its mesh and clock, if that body was drawn here.
     const id = this.bySeed.get(c.mesh * 1024 + st.seed);
     let g = id === undefined ? undefined : this.gaits.get(id);
     const p = this.packet;
-    if (g && p && Math.abs(g.x - x - p.camX) < 3 && Math.abs(g.z - z - p.camZ) < 3) advanceCreature(c.rig, g, st, tick, c.runAt, x + p.camX, z + p.camZ, yaw, 1);
+    if (g && p && Math.abs(g.x - x - p.camX) < 3 && Math.abs(g.z - z - p.camZ) < 3) advanceCreature(c.anim, g, st, tick, x + p.camX, z + p.camZ, yaw, 1);
     else g = undefined;
-    creaturePose(c.rig, st, tick, c.runAt, c.rig.a, g ?? null);
-    solve(c.rig, c.rig.a, c.rig.solved);
-    boneToModel(c.rig.solved, socket.bone, socket.x, socket.y, socket.z, out);
+    creaturePose(c.anim, st, tick, rig.a, g ?? null);
+    solve(rig, rig.a, rig.solved);
+    boneToModel(rig.solved, socket.bone, socket.x, socket.y, socket.z, out);
     const s = Math.sin(yaw);
     const co = Math.cos(yaw);
     const [mx, my, mz] = [out[0]!, out[1]!, out[2]!];
@@ -238,16 +239,16 @@ export class Characters {
   }
 
   private addCreature(p: FramePacket, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean): boolean {
-    const rig = c.rig;
+    const rig = c.anim.rig;
     const first = this.room(p, rigid ? 1 : rig.bones, 1);
     if (first < 0) return false;
     if (rigid) writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size);
     else {
       this.packet = p;
       const g = this.gaitOf(id);
-      advanceCreature(rig, g, st, tick, c.runAt, x + p.camX, z + p.camZ, yaw, size);
+      advanceCreature(c.anim, g, st, tick, x + p.camX, z + p.camZ, yaw, size);
       this.bySeed.set(c.mesh * 1024 + st.seed, id);
-      creaturePose(rig, st, tick, c.runAt, rig.a, g);
+      creaturePose(c.anim, st, tick, rig.a, g);
       solve(rig, rig.a, rig.solved);
       writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
       this.posed++;
@@ -284,11 +285,11 @@ export class Characters {
       const y = d.y - cam.y;
       const z = d.z - cam.z;
       // A ragdoll may roll from where it died: its root bone says how far.
-      const r = (c.rig.reach + Math.abs(d.solved.pos[0]!) + Math.abs(d.solved.pos[2]!)) * d.size;
+      const r = (c.anim.rig.reach + Math.abs(d.solved.pos[0]!) + Math.abs(d.solved.pos[2]!)) * d.size;
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
-      const first = this.room(p, c.rig.bones, 1);
+      const first = this.room(p, c.anim.rig.bones, 1);
       if (first < 0) return;
-      writeBones(p.bones, first * BONE_FLOATS, d.solved, c.rig.rest, null, x, y, z, d.yaw, d.size);
+      writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
       this.queueCreature(c, first, x, y, z, d.colors, 0, d.id, d.size, false);
     }
   }

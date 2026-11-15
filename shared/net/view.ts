@@ -5,11 +5,11 @@
 //   count varint, then per op in ascending id order:
 //     id gap varint: this id minus the previous id (first: id + 1), so always >= 1
 //     op 2 bits: 0 update, 1 create, 2 remove, 3 remove because it died
-//     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, then its appearance:
+//     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][22], then its appearance:
 //             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
-//             [motion? 1][12] [look? 1][6] [action? 1][14]
+//             [motion? 1][12] [look? 1][6] [action? 1][14 [cues? 1][22]]: the action is sent again with a change of cues
 //
 // Appearance is sent only on create. A change bumps the entity's revision, and the next delta then sends a create for it again.
 // Only a remove is sent whatever it costs. Every other op waits its turn when a snapshot is full.
@@ -21,7 +21,7 @@
 // word it has not acknowledged (`Told`), and has more to say of one until it has: an update that changes nothing where a
 // body is back as the baseline has it, a remove where the baseline never had it.
 
-import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK } from "../anim/pose.ts";
+import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK, CUE_BITS } from "../anim/pose.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { WORLD_MIN_Y } from "../coords.ts";
 import { GEAR_COUNT } from "../sim/entities.ts";
@@ -44,7 +44,7 @@ const OP_DIED = 3;
 
 const ANIM_BITS = ANIM_MOTION_BITS + ANIM_LOOK_BITS + ANIM_ACTION_BITS;
 const LOOK_MASK = (1 << ANIM_LOOK_BITS) - 1;
-const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 4 + 16 + 4 + 48 + 3;
+const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 1 + 4 + 16 + 4 + 48 + 3;
 /** In bytes. */
 export const MAX_NAME_LENGTH = 72;
 
@@ -118,14 +118,15 @@ export class SentView {
   /** 10-bit yaw. */
   yaw = new Uint16Array(VIEW_START);
   flags = new Uint8Array(VIEW_START);
-  /** Packed as `AnimState.pack` does. */
+  /** Packed as `AnimState.pack` and `AnimState.packCue` do. */
   anim = new Uint32Array(VIEW_START);
+  cue = new Uint32Array(VIEW_START);
   /** Appearance revision, 4 bits. A change makes the next delta send a create. */
   rev = new Uint8Array(VIEW_START);
   /** Not sent. 1 for an entity whose changes go before the others when a snapshot cannot carry them all: a player, or a mount one drives. */
   urgent = new Uint8Array(VIEW_START);
 
-  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0): boolean {
+  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0, cue = 0): boolean {
     const n = this.count;
     if (n === this.cap && !this.grow()) return false;
     this.id[n] = id;
@@ -137,13 +138,14 @@ export class SentView {
     this.yaw[n] = yaw;
     this.flags[n] = flags;
     this.anim[n] = anim;
+    this.cue[n] = cue;
     this.rev[n] = rev;
     this.count = n + 1;
     return true;
   }
 
   copyFrom(o: SentView, i: number): boolean {
-    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!);
+    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!, o.cue[i]!);
   }
 
   /** Doubles the columns. False when they are at MAX_VIEW. */
@@ -159,6 +161,7 @@ export class SentView {
     this.yaw = wider(this.yaw, cap);
     this.flags = wider(this.flags, cap);
     this.anim = wider(this.anim, cap);
+    this.cue = wider(this.cue, cap);
     this.rev = wider(this.rev, cap);
     this.urgent = wider(this.urgent, cap);
     return true;
@@ -474,7 +477,7 @@ function same(ring: ViewRing<SentView>, told: Told, s: number, v: SentView, j: n
   const was = ring.find(told.at[s]!);
   if (!was) return false;
   const i = told.ix[s]!;
-  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j];
+  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.cue[i] === v.cue[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j];
 }
 
 /**
@@ -591,7 +594,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       opKind[n] = K_CREATE;
       opCur[n] = j;
       opId[n] = cid;
-      bits = createBits(looks, cid);
+      bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0);
       last = cid + 1;
     } else {
       opBase[n] = i;
@@ -599,7 +602,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
         // Deferred, it leaves the client the entry it has.
         opKind[n] = K_REPLACE;
-        bits = createBits(looks, cid);
+        bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0);
         last = cid + 1;
       } else {
         const dx = cur.qx[j]! - base!.qx[i]!;
@@ -607,7 +610,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         const dz = cur.qz[j]! - base!.qz[i]!;
         const moved = dx !== 0 || dy !== 0 || dz !== 0;
         const changed = cur.anim[j]! ^ base!.anim[i]!;
-        if (!moved && changed === 0 && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
+        const cued = cur.cue[j] !== base!.cue[i];
+        if (!moved && changed === 0 && !cued && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
           if (th < 0) {
             opKind[n] = K_KEEP;
             i++;
@@ -634,7 +638,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         if (base!.flags[i] !== cur.flags[j]) bits += 4;
         if ((changed & ANIM_MOTION_MASK) !== 0) bits += ANIM_MOTION_BITS;
         if (((changed >>> ANIM_LOOK_SHIFT) & LOOK_MASK) !== 0) bits += ANIM_LOOK_BITS;
-        if (changed >>> ANIM_ACTION_SHIFT !== 0) bits += ANIM_ACTION_BITS;
+        if (changed >>> ANIM_ACTION_SHIFT !== 0 || cued) bits += ANIM_ACTION_BITS + 1 + (cued ? CUE_BITS : 0);
         last = cid + 1;
       }
       opId[n] = cid;
@@ -724,6 +728,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       w.bits(cur.yaw[ci]!, 10);
       w.bits(cur.flags[ci]!, 4);
       w.bits(cur.anim[ci]!, ANIM_BITS);
+      w.bool(cur.cue[ci] !== 0);
+      if (cur.cue[ci] !== 0) w.bits(cur.cue[ci]!, CUE_BITS);
       w.bits(cur.rev[ci]!, 4);
       w.varint(looks.level[id]!);
       const c0 = id * 6;
@@ -767,6 +773,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         w.bits(cur.qz[ci]!, 22);
       }
       const changed = cur.anim[ci]! ^ base!.anim[bi]!;
+      const cued = cur.cue[ci] !== base!.cue[bi];
       let v = 0;
       let n = 1;
       if (cur.yaw[ci] !== base!.yaw[bi]) {
@@ -788,11 +795,16 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         v = 1 | (((cur.anim[ci]! >>> ANIM_LOOK_SHIFT) & LOOK_MASK) << 1);
         n = 1 + ANIM_LOOK_BITS;
       }
-      if (changed >>> ANIM_ACTION_SHIFT !== 0) {
+      const acting = changed >>> ANIM_ACTION_SHIFT !== 0 || cued;
+      if (acting) {
         v |= (1 | ((cur.anim[ci]! >>> ANIM_ACTION_SHIFT) << 1)) << n;
         n += 1 + ANIM_ACTION_BITS;
       } else n++;
       w.bits(v, n);
+      if (acting) {
+        w.bool(cued);
+        if (cued) w.bits(cur.cue[ci]!, CUE_BITS);
+      }
       next.copyFrom(cur, ci);
     }
   }
@@ -861,6 +873,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const yaw = r.bits(10);
       const flags = r.bits(4);
       const anim = r.bits(ANIM_BITS);
+      const cue = r.bool() ? r.bits(CUE_BITS) : 0;
       const rev = r.bits(4);
       const level = r.varint();
       if (r.bool()) for (let q = 0; q < 6; q++) scratchColors[q] = r.u8();
@@ -882,7 +895,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const span = young ? r.u32() : 0;
       const grown = young ? r.u32() : 0;
       if (present) i++;
-      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim)) return false;
+      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim, 0, cue)) return false;
       next.appear(rev, level, scratchColors, 0, name, look, gear);
       next.belong(team, seat, span, grown);
       if (drawn) drawn.copyFrom(next, next.count - 1);
@@ -909,8 +922,12 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       let anim = base!.anim[i]!;
       if (r.bool()) anim = (anim & ~ANIM_MOTION_MASK) | r.bits(ANIM_MOTION_BITS);
       if (r.bool()) anim = (anim & ~(LOOK_MASK << ANIM_LOOK_SHIFT)) | (r.bits(ANIM_LOOK_BITS) << ANIM_LOOK_SHIFT);
-      if (r.bool()) anim = (anim & ((1 << ANIM_ACTION_SHIFT) - 1)) | (r.bits(ANIM_ACTION_BITS) << ANIM_ACTION_SHIFT);
-      if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0)) return false;
+      let cue = base!.cue[i]!;
+      if (r.bool()) {
+        anim = (anim & ((1 << ANIM_ACTION_SHIFT) - 1)) | (r.bits(ANIM_ACTION_BITS) << ANIM_ACTION_SHIFT);
+        if (r.bool()) cue = r.bits(CUE_BITS);
+      }
+      if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0, 0, cue)) return false;
       next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!);
       next.belong(base!.team[i]!, base!.seat[i]!, base!.span[i]!, base!.grown[i]!);
       if (drawn) drawn.copyFrom(next, next.count - 1);

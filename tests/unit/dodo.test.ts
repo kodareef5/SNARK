@@ -119,13 +119,14 @@ test("the bird as modelled: its peck reaches as far as its beak does on the tick
   const rig = buildRigs(pack.header.rigs, pack.clips).get("core:dodo")!;
   const bite = dodo.bite!;
   // The attack is the peck, one peck long, and on the tick the bite lands the beak is at its furthest.
-  expect([rig.attack?.frames, bite.ticks]).toEqual([15, 15]);
+  const attack = rig.clips.get("attack");
+  expect([attack?.frames, bite.ticks]).toEqual([15, 15]);
   const pose = new Pose(rig.bones);
   const tip = rig.sockets.get("beak_tip")!;
   const at = [0, 0, 0];
   const forward: number[] = [];
-  for (let f = 0; f < rig.attack!.frames; f++) {
-    sampleClip(rig.attack!, f, pose);
+  for (let f = 0; f < attack!.frames; f++) {
+    sampleClip(attack!, f, pose);
     solve(rig, pose, rig.solved);
     boneToModel(rig.solved, tip.bone, tip.x, tip.y, tip.z, at);
     forward.push(at[2]!);

@@ -29,6 +29,22 @@ export const DIR_STEPS = 16;
 /** Steps of `AnimState.pitch` from level to straight up. */
 export const PITCH_STEPS = 31;
 
+/**
+ * A creature's cues (shared/anim/creature.ts), sent beside the pose state as one word: knocked out in bit 0, then a CUE_
+ * for what its whole body goes through and the low byte of its first tick, then a LAYER_ for what plays over that and
+ * the low byte of its first tick. The server clears a cue before its start can be counted twice.
+ */
+export const CUE_BITS = 22;
+export const CUE_NONE = 0;
+export const CUE_STARTLE = 1;
+export const CUE_LAND = 2;
+/** Going down when knocked out, getting up when not. */
+export const CUE_TORPOR = 3;
+export const LAYER_NONE = 0;
+export const LAYER_FLINCH = 1;
+export const LAYER_EAT = 2;
+export const CUE_OUT = 1;
+
 /** Everything a pose depends on besides the tick, as whole numbers. */
 export class AnimState {
   mode = MODE_WALK;
@@ -45,11 +61,24 @@ export class AnimState {
   actionStart = 0;
   /** Ticks added to the clock so that bodies are out of step. Not replicated. It comes from the entity's index (bodySeed). */
   seed = 0;
+  /** A creature's cues, as the word CUE_BITS describes. */
+  out = false;
+  cue = CUE_NONE;
+  cueStart = 0;
+  layer = LAYER_NONE;
+  layerStart = 0;
 
-  /** Everything but the seed as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
+  /** Everything but the seed and the cues as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
   pack(): number {
     const motion = this.speed | (this.dir << 4) | (this.stance << 8) | (this.mode === MODE_SWIM ? 1 << 10 : 0) | (this.grounded ? 0 : 1 << 11);
     return (motion | ((this.pitch & 63) << ANIM_LOOK_SHIFT) | (this.action << ANIM_ACTION_SHIFT) | ((this.actionStart & 255) << (ANIM_ACTION_SHIFT + 6))) >>> 0;
+  }
+
+  /** The cues as one word. A cue that is none stores a start of 0. */
+  packCue(): number {
+    const cue = this.cue === CUE_NONE ? 0 : (this.cue << 1) | ((this.cueStart & 255) << 4);
+    const layer = this.layer === LAYER_NONE ? 0 : (this.layer << 12) | ((this.layerStart & 255) << 14);
+    return (this.out ? CUE_OUT : 0) | cue | layer;
   }
 
   /** ACT_NONE stores a start of 0. */
@@ -58,7 +87,16 @@ export class AnimState {
     this.actionStart = act === ACT_NONE ? 0 : start & 255;
   }
 
-  unpack(word: number): void {
+  unpackCue(cue: number): void {
+    this.out = (cue & CUE_OUT) !== 0;
+    this.cue = (cue >>> 1) & 7;
+    this.cueStart = (cue >>> 4) & 255;
+    this.layer = (cue >>> 12) & 3;
+    this.layerStart = (cue >>> 14) & 255;
+  }
+
+  unpack(word: number, cue = 0): void {
+    this.unpackCue(cue);
     this.speed = word & 15;
     this.dir = (word >>> 4) & 15;
     this.stance = (word >>> 8) & 3;

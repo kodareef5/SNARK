@@ -261,7 +261,8 @@ export class Atmosphere {
 
   /**
    * The sky's light seen from the eye in a direction (x, y, z, y up, length 1) with the sun in direction `sun`, per unit
-   * of sunlight. Below the horizon the ray ends on the ground, which is left black.
+   * of sunlight, into out[0..2]; and with out[3..5] there, the part of it sunlight scattered once by haze gives, the
+   * bright glow round the sun. Below the horizon the ray ends on the ground, which is left black.
    */
   sky(dir: ArrayLike<number>, sun: ArrayLike<number>, out: Float64Array | number[]): void {
     const a = this.air;
@@ -273,7 +274,7 @@ export class Atmosphere {
     const cos = vx * ux + vy * uy + vz * uz;
     const pr = rayleighPhase(cos);
     const pm = miePhase(a.mieG, cos);
-    let or = 0, og = 0, ob = 0, qr = 1, qg = 1, qb = 1;
+    let or = 0, og = 0, ob = 0, qr = 1, qg = 1, qb = 1, hr = 0, hg = 0, hb = 0;
     // Steps grow with distance: the air thins with height, and the light comes mostly from near the eye.
     let t0 = 0;
     for (let k = 0; k < VIEW_STEPS; k++) {
@@ -294,6 +295,9 @@ export class Atmosphere {
       or += (qr * sr * (1 - xr)) / this.eR;
       og += (qg * sg * (1 - xg)) / this.eG;
       ob += (qb * sb * (1 - xb)) / this.eB;
+      hr += (qr * this.tR * this.sM * pm * (1 - xr)) / this.eR;
+      hg += (qg * this.tG * this.sM * pm * (1 - xg)) / this.eG;
+      hb += (qb * this.tB * this.sM * pm * (1 - xb)) / this.eB;
       qr *= xr;
       qg *= xg;
       qb *= xb;
@@ -301,6 +305,11 @@ export class Atmosphere {
     out[0] = or;
     out[1] = og;
     out[2] = ob;
+    if (out.length >= 6) {
+      out[3] = hr;
+      out[4] = hg;
+      out[5] = hb;
+    }
   }
 
   /** Sunlight reaching the eye straight from a sun at the given cosine from straight up, per unit arriving at the top. */
