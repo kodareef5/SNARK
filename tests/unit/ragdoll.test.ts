@@ -1,7 +1,7 @@
 // A body that dies goes limp (shared/anim/ragdoll.ts, client/core/ragdoll.ts): from its death clip with no jump, to rest
 // on a slope within three seconds with no joint past its limit and nothing under the ground or inside a structure,
-// falling again when the floor it lies on is taken away, the same every time. A client draws one only where the server
-// said the body died.
+// falling again when the floor it lies on is taken away, the same every time. A client draws the bodies the server sends,
+// and each lies alike for every client and for the server.
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,12 +10,16 @@ import { Pose, sampleClip } from "../../shared/anim/clip.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
 import { buildRig, buildRigs, type Rig } from "../../shared/anim/rigs.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
-import { AnimState } from "../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_OUT } from "../../shared/anim/pose.ts";
+import { Fall, layCorpse, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
+import { creatureAnims } from "../../shared/anim/creature.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import { Corpses, type Corpse } from "../../client/core/ragdoll.ts";
+import { RemoteSample } from "../../client/core/session.ts";
 import type { CreatureAsset } from "../../tools/art/spec.ts";
 import { convertCreature } from "../../tools/pack/creature.ts";
 import { readGltf } from "../../tools/pack/gltf.ts";
@@ -204,16 +208,16 @@ test("the same fall gives the same rest, to the bit", () => {
   expect(Array.from(a.q)).toEqual(Array.from(b.q));
 });
 
-test("a client draws a body the server says died falling and lying, near or far in its view, and nothing of one that only left it", () => {
+test("a client draws a dead creature's body where it lies: one it saw die plays its clip and goes limp at its asset's frame, one come upon is laid to rest at once, and one that only left makes none", () => {
   const view = provingView(64, 36);
   const { scene, remote, hf } = view;
-  const ch = scene.characters as unknown as { dead: { list: { id: number; solved: Solved; ragdoll: Ragdoll | null }[] } };
+  const ch = scene.characters as unknown as { dead: { list: Corpse[] } };
   const kind = reg.index.get("core:raptor")!;
   const cam = new Camera();
   [cam.x, cam.z] = [240, 236];
   cam.y = hf.heightAt(cam.x, cam.z) + 2;
-  const put = (n: number, id: number, x: number, z: number): void => {
-    [remote.id[n], remote.kind[n], remote.x[n], remote.z[n], remote.yaw[n], remote.flags[n]] = [id, kind, x, z, 0.5, 1];
+  const put = (n: number, id: number, x: number, z: number, cue = 0): void => {
+    [remote.id[n], remote.kind[n], remote.x[n], remote.z[n], remote.yaw[n], remote.flags[n], remote.cue[n], remote.span[n], remote.grown[n]] = [id, kind, x, z, 0.5, 1, cue, 0, 0];
     remote.y[n] = hf.heightAt(x, z);
     remote.anim[n] = new AnimState().pack();
   };
@@ -225,29 +229,75 @@ test("a client draws a body the server says died falling and lying, near or far 
     scene.build(cam, remote);
     tick += 0.5;
   };
-  // Sorted by id, as a view is: one near that will leave the view, and one 200 m off that will die.
+  // Sorted by id, as a view is: one near that will leave the view, one 200 m off that will die, and a body that has lain
+  // there since before this client came.
   put(0, 11, 250, 250);
   put(1, 12, 440, 250);
+  put(2, 14, 246, 252, CUE_DEAD);
+  remote.count = 3;
+  frame();
+  frame();
+  const old = ch.dead.list.find((c) => c.id === 14)!;
+  expect([old.watched, old.settling, old.fall!.still]).toEqual([false, false, true]);
+  // The far one dies, as the snapshot drawn now says: its entity goes and its body's comes where it stood.
+  died.set(12, tick);
+  put(1, 13, 440, 250, CUE_DEAD);
+  put(2, 14, 246, 252, CUE_DEAD);
+  frame();
+  // The near one only leaves: no body.
+  put(0, 13, 440, 250, CUE_DEAD);
+  put(1, 14, 246, 252, CUE_DEAD);
   remote.count = 2;
   frame();
-  frame();
-  // The far one dies, as the snapshot drawn now says.
-  died.set(12, tick);
-  remote.count = 1;
-  frame();
-  expect(ch.dead.list.map((c) => c.id)).toEqual([12]);
-  // The near one only leaves: no corpse.
-  remote.count = 0;
-  frame();
-  expect(ch.dead.list.length).toBe(1);
+  expect(ch.dead.list.map((c) => [c.id, c.watched])).toEqual([[14, false], [13, true]]);
   // It plays its death clip and goes limp at the frame its asset gives: drawn on that frame, it is the clip's pose.
   const rig = rigs.get("core:raptor")!;
-  const corpse = ch.dead.list[0]!;
-  while (!corpse.ragdoll) frame();
+  const corpse = ch.dead.list.find((c) => c.id === 13)!;
+  while (!corpse.limp) frame();
   const clip = dying(rig, rig.ragdoll!.limp);
   let off = 0;
   for (let k = 0; k < clip.pos.length; k++) off = Math.max(off, Math.abs(clip.pos[k]! - corpse.solved.pos[k]!));
   expect(off).toBeLessThan(1e-5);
-  for (let f = 0; f < 3 * 60 && corpse.ragdoll.awake; f++) frame();
-  expect(corpse.ragdoll.awake).toBe(false);
+  for (let f = 0; f < 3 * 60 && !corpse.fall!.still; f++) frame();
+  expect(corpse.fall!.ragdoll.awake).toBe(false);
+  // A body no longer sent is forgotten.
+  remote.count = 1;
+  frame();
+  expect(ch.dead.list.map((c) => c.id)).toEqual([13]);
+});
+
+test("a body lies the same, to the bit, for a client that saw it fall, one that came later, and the server that judges blows on it", () => {
+  const view = provingView(64, 36);
+  const { hf, structs, nodes } = view;
+  const world = { hf, structs, nodes: nodes.store };
+  const anims = creatureAnims(reg, (d) => rigs.get(d.mesh));
+  for (const [id, x, z, yaw, out] of [["core:raptor", 252.3, 247.1, 2.2, false], ["core:dodo", 247.9, 251.4, 4.1, false], ["core:parasaur", 244.2, 255.8, 0.7, true]] as const) {
+    const kind = reg.index.get(id)!;
+    const sample = (alive: boolean, tick: number): RemoteSample => {
+      const r = new RemoteSample();
+      r.count = 1;
+      [r.id[0], r.kind[0], r.x[0], r.y[0], r.z[0], r.yaw[0], r.flags[0]] = [alive ? 20 : 21, kind, x, hf.heightAt(x, z), z, yaw, 1];
+      r.cue[0] = (alive ? 0 : CUE_DEAD) | (out ? CUE_OUT : 0);
+      r.anim[0] = new AnimState().pack();
+      r.tick = tick;
+      if (!alive) r.died = new Map([[20, Math.floor(tick)]]);
+      return r;
+    };
+    // One client watches it die and fall, a frame each sixtieth of a second; the other comes upon it ten seconds on.
+    const saw = new Corpses(anims);
+    let tick = 300;
+    saw.update(sample(true, tick), world, x, z, new Map());
+    for (let f = 0; f < 12 * 60; f++) saw.update(sample(false, (tick += 0.5)), world, x, z, new Map());
+    const came = new Corpses(anims);
+    came.update(sample(false, tick), world, x, z, new Map());
+    const [a, b] = [saw.list[0]!, came.list[0]!];
+    expect([id, a.watched, b.watched, a.fall!.still, b.fall!.still]).toEqual([id, true, false, true, true]);
+    expect([id, Array.from(a.solved.pos), Array.from(a.solved.rot)]).toEqual([id, Array.from(b.solved.pos), Array.from(b.solved.rot)]);
+    // The server lays it from what it sends and steps it a tick at a time, as the server's Corpses does.
+    const pose = new Solved(rigs.get(id)!.bones);
+    const fall = new Fall(layCorpse(anims[kind]!, out, wireX(x), wireY(hf.heightAt(x, z)), wireX(z), wireYaw(yaw), 1, pose)!);
+    while (!fall.still) fall.tick(world);
+    fall.ragdoll.pose(pose);
+    expect([id, Array.from(pose.pos), Array.from(pose.rot)]).toEqual([id, Array.from(b.solved.pos), Array.from(b.solved.rot)]);
+  }
 });

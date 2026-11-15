@@ -87,7 +87,7 @@ test("a body's layer reaches what its cues ask for over a moment, and one coming
   expect(layerWanted(st)).toBe(2 * STAGE);
   st.dead = true;
   st.decay = 1;
-  expect([layerWanted(st), corpseWanted(undefined), corpseWanted(CUE_DEAD | (2 << CUE_DECAY_SHIFT))]).toEqual([4 * STAGE, 3 * STAGE, 5 * STAGE]);
+  expect([layerWanted(st), corpseWanted(0), corpseWanted(2)]).toEqual([4 * STAGE, 3 * STAGE, 5 * STAGE]);
   const layers = new Layers();
   // Seen before, unhurt, then struck to stage 2: it grows at LAYER_RATE stages a second.
   expect(layers.level(1, 0, 0, true)).toBe(0);
@@ -125,9 +125,10 @@ test("only a hurt or dead body is drawn with its layer, on a lit tier, and a fra
   // The hurt one and the corpse each have a draw of their own at their level.
   expect(hides(some.w, some.p)).toEqual([[0, 1], [2 * STAGE, 1], [4 * STAGE, 1]]);
   expect(some.w.raster.color).not.toEqual(plain.w.raster.color);
-  // On low poly nothing is drawn with materials, and a hurt body is drawn as an unhurt one is.
+  // On low poly nothing is drawn with a layer, and a hurt body is drawn as an unhurt one is.
   const low = scene(true, [0, hurt, rotting], "lowpoly");
-  const lowPlain = scene(true, [0, 0, 0], "lowpoly");
-  expect([low.p.drawCount, [...low.p.drawLayer.subarray(0, low.p.drawCount)].every((l) => l === 0)]).toEqual([lowPlain.p.drawCount, true]);
-  expect(low.w.raster.color).toEqual(lowPlain.w.raster.color);
+  expect([...low.p.drawLayer.subarray(0, low.p.drawCount)].every((l) => l === 0)).toBe(true);
+  const [lowHurt, lowPlain] = [scene(true, [0, hurt, 0], "lowpoly"), scene(true, [0, 0, 0], "lowpoly")];
+  expect(lowHurt.p.drawCount).toBe(lowPlain.p.drawCount);
+  expect(lowHurt.w.raster.color).toEqual(lowPlain.w.raster.color);
 });

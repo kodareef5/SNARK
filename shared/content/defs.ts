@@ -58,7 +58,13 @@ export interface SpeciesDef extends Named {
   readonly fists?: number;
   /** Torpor a bare-handed strike gives, as a multiple of the damage it does. Defaults to none. */
   readonly fistsTorpor?: number;
-  readonly drops?: readonly { readonly item: string; readonly min: number; readonly max: number }[];
+  /**
+   * What its body gives to the blows that harvest it (server/corpses.ts). Each roll gives `min` to `max` of one drop,
+   * picked by `weight` (1 where not given). A tool whose `tool.on` is a drop's `favoured` picks that drop half as often again.
+   */
+  readonly drops?: readonly { readonly item: string; readonly min: number; readonly max: number; readonly weight?: number; readonly favoured?: string }[];
+  /** The harvest damage its grown body takes before it is used up, and the harvest damage of each roll. */
+  readonly corpse?: { readonly health: number; readonly roll: number };
   /** Per stat: [base, gain per wild point, gain per tamed point]. */
   readonly stats?: { readonly [S in StatName]?: StatCurve };
   /** Multiplier on each type of damage it takes. 1 where not given. */

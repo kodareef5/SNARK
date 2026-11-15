@@ -10,7 +10,6 @@ import { youngScale } from "../shared/sim/breeding.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
-import { Rng } from "../shared/rng.ts";
 import { stanceEye } from "../shared/sim/character.ts";
 import { DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
@@ -19,6 +18,7 @@ import { W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
 import { Found } from "../shared/world/structures.ts";
 import type { Buffs } from "./buffs.ts";
+import type { Corpses } from "./corpses.ts";
 import type { Creatures } from "./creatures.ts";
 import { V_HEALTH, V_TORPOR } from "../shared/sim/vitals.ts";
 import { DID_FIRE, DID_RELOAD, DID_BITE, DID_STRIKE, type Client, type GameServer } from "./game.ts";
@@ -127,7 +127,6 @@ export class Combat {
   private spare = -1;
   private readonly human: Uint8Array;
   private readonly anims: (CreatureAnim | null)[];
-  private readonly rng: Rng;
   private readonly dir = [0, 0, 0];
   private readonly st = new AnimState();
   private readonly near = new Int32Array(MAX_NEAR);
@@ -151,6 +150,8 @@ export class Combat {
   onHarm: ((victim: EntityRecord, points: number) => void) | null = null;
   /** Called for a structure that was harmed and still stands. */
   onStructureHurt: ((ref: number) => void) | null = null;
+  /** The bodies of dead creatures, which a survivor's swing harvests. */
+  corpses: Corpses | null = null;
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
   private readonly inBlast = new Found(256);
   private readonly found: number[] = [];
@@ -173,7 +174,6 @@ export class Combat {
     this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
     // A creature whose skeleton came with its model is hit on that rig's capsules, as posed.
     this.anims = ctx.world.anims;
-    this.rng = new Rng(seed);
     this.dose = reg.index.get("core:tranquilized") ?? 0;
   }
 
@@ -232,6 +232,9 @@ export class Combat {
     this.spare = rider ? (this.ctx.records.entOf.get(rider.pid) ?? -1) : -1;
     const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH);
     this.spare = -1;
+    // A dead creature's body nearer than any living one and anything built. Only a survivor's swing harvests one yet.
+    const corpses = this.corpses;
+    const body = corpses && c ? corpses.cast(ox, oy, oz, d[0]!, d[1]!, d[2]!, target >= 0 ? this.t : what === HIT_NONE ? reach : worldT) : -1;
     const src = this.src;
     src.by = rec;
     src.x = ox;
@@ -246,7 +249,11 @@ export class Combat {
     src.torporOver = src.torporSeconds = 0;
     src.buff = 0;
     const wears = item !== 0 && reg.uses[item]! > 0;
-    if (target >= 0) {
+    if (body >= 0) {
+      // Harvest damage is the blow's damage as the attacker's melee and the weapon's quality make it, times the server's rule.
+      corpses!.struck(rec, body, src.base * src.quality * src.attack * this.ctx.rules.num("PlayerHarvestingDamageMultiplier"), item);
+      if (wears) items.wear(rec, slot, 1);
+    } else if (target >= 0) {
       const t = this.t;
       this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
       if (wears) items.wear(rec, slot, 1);
@@ -885,11 +892,11 @@ export class Combat {
 
   /**
    * A body's health reached zero and `by` (a pid, or 0) did it. Called before the body leaves the world. The killer gets
-   * the XP, and the drops unless it is wild: a wild creature carries nothing off, as in ARK.
+   * the XP. What a creature's body gives is had by harvesting it (server/corpses.ts), whoever killed it.
    */
   killed(rec: EntityRecord, by: number): void {
     this.died = true;
-    const { world, records, items, progression, game } = this.ctx;
+    const { world, records, progression, game } = this.ctx;
     const killer = by !== 0 ? records.byPid.get(by) : undefined;
     if (!killer || killer === rec || killer.dead) return;
     const reg = world.reg;
@@ -899,11 +906,6 @@ export class Combat {
     const xp = progression.addXp(killer, base, XP_KILL);
     const rider = this.riderOf?.(killer) ?? null;
     if (rider) progression.addXp(rider, base / 2, XP_KILL);
-    const wild = killer.team === 0 && killer.kind !== this.survivor;
-    for (const drop of wild ? [] : (def.drops ?? [])) {
-      const n = drop.min + this.rng.int(drop.max - drop.min + 1);
-      if (n > 0) items.mint(killer, reg.index.get(drop.item)!, n, 0, 0, -1, "kill");
-    }
     const kc = this.clientOf(killer.pid);
     if (kc) {
       const w = game.begin(S_EVENT);

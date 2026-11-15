@@ -24,7 +24,7 @@ import type { Camera } from "./camera.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
-import { Layers, corpseCues, corpseWanted, layerWanted } from "./layers.ts";
+import { Layers, corpseWanted, layerWanted } from "./layers.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
@@ -454,7 +454,7 @@ export class Characters {
    */
   corpses(p: FramePacket, cam: Camera, remote: RemoteSample, world: CollisionWorld): void {
     this.dead.update(remote, world, cam.x, cam.z, this.gaits);
-    const cues = this.dead.list.length > 0 && this.assets.tier.lit ? corpseCues(remote) : null;
+    const lit = this.assets.tier.lit;
     for (const d of this.dead.list) {
       const c = this.creatures[d.kind]!;
       const x = d.x - cam.x;
@@ -466,7 +466,7 @@ export class Characters {
       const first = this.room(p, c.anim.rig.bones, 1);
       if (first < 0) return;
       writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
-      this.queueCreature(c, first, x, y, z, d.colors, 0, d.id, d.size, false, false, cues ? this.layers.level(d.id, corpseWanted(cues.get(d.id)), remote.tick, true) : 0);
+      this.queueCreature(c, first, x, y, z, d.colors, 0, d.id, d.size, false, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
     }
   }
 

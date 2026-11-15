@@ -29,7 +29,9 @@ export const PARASAUR: readonly Def[] = [
     // The reference game's times, in seconds.
     breeds: { egg: "core:egg_parasaur", incubate: 5142, mature: 95238 },
     feces: "core:feces_medium",
-    drops: [{ item: "core:hide", min: 8, max: 16 }, { item: "core:meat", min: 8, max: 14 }],
+    // Chosen, near what it gave before bodies were harvested: 12 hide and 11 meat in all on average.
+    corpse: { health: 230, roll: 10 },
+    drops: [{ item: "core:hide", min: 1, max: 1, weight: 12, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, weight: 11, favoured: "stone" }],
     zones: { head: 1.5 },
     killXp: 6,
     torporDrain: 0.3,

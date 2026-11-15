@@ -105,6 +105,12 @@ export class EntityRecord {
    * (server/breeding.ts, server/eggs.ts).
    */
   egg: { species: number; span: number; hatchAt: number; carrier: number } | null = null;
+  /**
+   * For a creature's body (server/corpses.ts): the species it was (a content index), the harvest damage it takes in all and
+   * what is left of that, its size as its entity's span, whether it was young and whether it died knocked out, and the ticks
+   * its whole time lasts.
+   */
+  corpse: { species: number; max: number; left: number; span: number; young: boolean; out: boolean; life: number } | null = null;
   /** For a bed, the tick from which a survivor may next respawn at it. */
   readyAt = 0;
   /** For a burning fire: its state as of tick `at` (shared/sim/station.ts), and the tick of its deadline. Null when it is out. */

@@ -1,9 +1,8 @@
 // A body's hurt and decay layer as it is drawn (surface.ts `wounded`): the level its cues ask for, which a body in view
 // reaches over a moment, so that a wound spreads from where it starts rather than appearing whole.
 
-import { CUE_DEAD, CUE_DECAY_SHIFT, STAGE_WORST, type AnimState } from "../../../shared/anim/pose.ts";
+import { STAGE_WORST, type AnimState } from "../../../shared/anim/pose.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
-import type { RemoteSample } from "../session.ts";
 import { LAYER_LEVELS, LAYER_STAGES } from "./surface.ts";
 
 /** Stages a second a body's layer moves toward what its cues ask for. */
@@ -18,18 +17,9 @@ export function layerWanted(st: AnimState): number {
   return (st.dead ? STAGE_WORST + st.decay : st.hurt) * STAGE;
 }
 
-/** The same for a corpse whose cue word is `cue`: freshly dead where it has none. */
-export function corpseWanted(cue: number | undefined): number {
-  return (STAGE_WORST + (cue !== undefined && (cue & CUE_DEAD) !== 0 ? (cue >>> CUE_DECAY_SHIFT) & 3 : 0)) * STAGE;
-}
-
-const dead = new Map<number, number>();
-
-/** The cue word of each body in view that is a corpse, by id. The map is the same one each call. */
-export function corpseCues(remote: RemoteSample): ReadonlyMap<number, number> {
-  dead.clear();
-  for (let i = 0; i < remote.count; i++) if ((remote.cue[i]! & CUE_DEAD) !== 0) dead.set(remote.id[i]!, remote.cue[i]!);
-  return dead;
+/** The same for a corpse at decay stage `decay`. */
+export function corpseWanted(decay: number): number {
+  return (STAGE_WORST + decay) * STAGE;
 }
 
 export class Layers {

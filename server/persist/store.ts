@@ -67,6 +67,8 @@ const COMP_PROGRESSION = 4;
 const COMP_BUFFS = 19;
 /** The slots of its inventory that stand for a record (Inventory.ref): each slot and that record's pid. */
 const COMP_REFS = 20;
+/** A creature's body (EntityRecord.corpse). A build without bodies has no core:corpse either, so it never passes over one. */
+const COMP_CORPSE = 21;
 /** The most bytes of one part that a save holds. */
 const MAX_PART = 1 << 20;
 /** The most slots a converted COMP_INVENTORY may be laid out in. */
@@ -377,7 +379,7 @@ export class WorldStore {
     const hasBreed = rec.mating || rec.mateReadyAt !== 0 || rec.grown !== 0 || rec.egg !== null;
     let refs = 0;
     for (let slot = 0; inv?.ref && slot < inv.cap; slot++) if (inv.item[slot] !== 0 && inv.ref[slot] !== 0) refs++;
-    w.varint((refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + rec.extra.size);
+    w.varint((refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + (rec.corpse ? 1 : 0) + rec.extra.size);
     if (rec.buffs.length > 0) {
       c.reset();
       c.varint(rec.buffs.length);
@@ -507,6 +509,18 @@ export class WorldStore {
         c.uint53(inv.ref![slot]!);
       }
       this.part(COMP_REFS);
+    }
+    if (rec.corpse) {
+      const b = rec.corpse;
+      c.reset();
+      c.varint(this.toSaved[b.species]!);
+      c.f64(b.max);
+      c.f64(b.left);
+      c.varint(b.span);
+      c.bool(b.young);
+      c.bool(b.out);
+      c.uint53(b.life);
+      this.part(COMP_CORPSE);
     }
     const v = rec.vitals;
     if (v) {
@@ -737,6 +751,9 @@ export class WorldStore {
           }
         } else if (component === COMP_REFS) {
           for (let k = c.varint(); k > 0 && !c.overflow; k--) refs.push(c.varint(), c.uint53());
+        } else if (component === COMP_CORPSE) {
+          // A body of a species this build lacks keeps 0, and Corpses lets it go with what it held.
+          rec.corpse = { species: this.toRuntime[c.varint()] ?? 0, max: c.f64(), left: c.f64(), span: c.varint(), young: c.bool(), out: c.bool(), life: c.uint53() };
         } else rec.extra.set(component, blob);
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }

@@ -16,7 +16,9 @@ export const GRAZER: readonly Def[] = [
     jumpSpeed: 5,
     food: { max: 400, perHour: 12 },
     keeps: 4,
-    drops: [{ item: "core:hide", min: 4, max: 9 }, { item: "core:meat", min: 3, max: 6 }],
+    // Chosen, near what it gave before bodies were harvested: 6.5 hide and 4.5 meat in all on average.
+    corpse: { health: 110, roll: 10 },
+    drops: [{ item: "core:hide", min: 1, max: 1, weight: 6.5, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, weight: 4.5, favoured: "stone" }],
     takes: { bullet: 0.7 },
     killXp: 4,
     // Once down it stays down for minutes.

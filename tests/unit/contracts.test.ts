@@ -67,9 +67,11 @@ test("the new columns change nothing for content that does not use them", () => 
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual([0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
-    expect(reg.youngItem[i]).toBe(0);
-    // Eggs and feces lie on the ground for a time; nothing else declares one yet.
-    if (!(d.type === "item" && (d.class === "egg" || d.class === "feces"))) expect(reg.decomposeTicks[i]).toBe(0);
+    // Prime meat (content/corpses.ts) is what the young give in place of raw meat.
+    if (d.id !== "core:meat") expect(reg.youngItem[i]).toBe(0);
+    // Eggs, feces and prime meat lie on the ground for a time; nothing else declares one yet.
+    const prime = d.id === "core:meat_prime" || d.id === "core:meat_prime_cooked";
+    if (!(d.type === "item" && (d.class === "egg" || d.class === "feces")) && !prime) expect(reg.decomposeTicks[i]).toBe(0);
   }
 });
 
@@ -95,11 +97,9 @@ test("every species that lays an egg leaves feces, and its egg is an item, ferti
 });
 
 test("prime meat from the young: an item given in place of another, and only one for each", () => {
+  expect(reg.youngItem[at("core:meat")]).toBe(at("core:meat_prime"));
   const prime: Def = { type: "item", class: "consumable", id: "test:prime", stack: 40, eat: { food: 50 }, youngFor: "core:meat" };
-  const made = compileContent([...CORE_CONTENT, prime]);
-  expect(made.errors).toEqual([]);
-  expect(made.registry!.youngItem[made.registry!.index.get("core:meat")!]).toBe(made.registry!.index.get("test:prime")!);
-  expect(compileContent([...CORE_CONTENT, prime, { ...prime, id: "test:prime2" } as Def]).errors).toEqual(['test:prime2: test:prime is already given in place of "core:meat"']);
+  expect(compileContent([...CORE_CONTENT, prime]).errors).toEqual(['test:prime: core:meat_prime is already given in place of "core:meat"']);
 });
 
 test("the dodo's numbers: runs at 95.55 units a second tamed, weighs 25 to a carrier, may be carried, lays in place of 13% of its feces, and its egg is the extra small one, 11 cm tall", () => {

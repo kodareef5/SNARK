@@ -10,6 +10,15 @@ export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
+/**
+ * The length of (x, y, z), exactly rounded at each step, so the same on every engine and processor. Math.hypot is not: it
+ * may scale, compensate or fuse a multiply and an add, and JavaScriptCore on an Apple processor and on an Intel one
+ * disagree in its last bit. Without Math.hypot's care for overflow, which lengths in metres and pixels never need.
+ */
+export function len3(x: number, y: number, z: number): number {
+  return Math.sqrt(x * x + y * y + z * z);
+}
+
 /** detSin and detCos have an absolute error below 1e-9. */
 export function detSin(x: number): number {
   let t = x * INV_TAU;

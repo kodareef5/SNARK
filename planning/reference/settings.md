@@ -23,7 +23,7 @@ may change a setting without a restart.
 | `XPMultiplier` | 1 | Experience gained by survivors and tames. Higher is more. Each gain is also multiplied by its source's own multiplier. | yes |
 | `TamingSpeedMultiplier` | 1 | What each piece of food is worth to a creature being tamed. Higher is faster. | yes |
 | `HarvestAmountMultiplier` | 1 | What each harvesting blow yields. Higher is more. | yes |
-| `HarvestHealthMultiplier` | 1 | Health of trees, rocks and bushes. Higher takes more blows and gives more in all. | no |
+| `HarvestHealthMultiplier` | 1 | Health of trees, rocks, bushes and bodies. Higher takes more blows and gives more in all. | no |
 | `ResourcesRespawnPeriodMultiplier` | 1 | Time before a harvested node grows back. Lower is sooner. | no |
 | `ItemStackSizeMultiplier` | 1 | Stack sizes. What stacks to 1 is left alone. | no; clients are told |
 | `DayCycleSpeedScale` | 1 | Speed of the game clock through the whole day. Higher is faster; about 0.035 is a day as long as a real one. | no; clients are told |
@@ -131,13 +131,13 @@ may change a setting without a restart.
 | `EngramEntryAutoUnlocks` | none | An engram learned without asking at a level: `(EngramClassName="…",LevelToAutoUnlock=0)`. | no; clients are told |
 | `bAutoUnlockAllEngrams` | False | Every engram is learned as its level is reached. | no; clients are told |
 | `bOnlyAllowSpecifiedEngrams` | False | Only the engrams named in OverrideNamedEngramEntries are offered. | no; clients are told |
-| `PlayerHarvestingDamageMultiplier` | 1 | What a survivor's blow does to a tree or a rock. Higher fells it sooner. | yes |
+| `PlayerHarvestingDamageMultiplier` | 1 | What a survivor's blow does to a tree, a rock or a body. Higher uses it up sooner. | yes |
 | `HarvestResourceItemAmountClassMultipliers` | none | Yield of one resource: `(ClassName="core:thatch",Multiplier=2.0)`. | yes |
 | `ResourceNoReplenishRadiusPlayers` | 1 | How far from a survivor nodes will not grow back. Higher is further. | yes |
 | `ResourceNoReplenishRadiusStructures` | 1 | How far from a foundation or pillar nodes will not grow back. Higher is further. | yes |
 | `GlobalSpoilingTimeMultiplier` | 1 | How long things keep before they spoil. Higher is longer. *ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied.* | no |
 | `GlobalItemDecompositionTimeMultiplier` | 1 | How long a dropped bag lies. Higher is longer. | yes |
-| `GlobalCorpseDecompositionTimeMultiplier` | 1 | How long what a dead survivor leaves lies. Higher is longer. | yes |
+| `GlobalCorpseDecompositionTimeMultiplier` | 1 | How long a creature's body and what a dead survivor leaves lie. Higher is longer. | yes |
 | `UseCorpseLifeSpanMultiplier` | 1 | The same again, as a second factor. *How it overlaps the one above is not explained; they are multiplied.* | yes |
 | `FuelConsumptionIntervalMultiplier` | 1 | How long a piece of fuel burns. Higher is longer. *Direction taken from the name; the reference gives none.* | no |
 | `ConfigOverrideItemCraftingCosts` | none | What a thing is made of: `(ItemClassString="core:hatchet",BaseCraftingResourceRequirements=((ResourceItemTypeString="core:thatch",BaseResourceRequirement=1.0,bCraftingRequireExactResourceType=false),…))`. | no; clients are told |

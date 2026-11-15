@@ -409,7 +409,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   death.offMount = (c) => (riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
-  const corpses = new Corpses({ world, game, records, items, deadlines, rules }, (opts.seed ?? 1) + 103);
+  const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death }, (opts.seed ?? 1) + 103);
+  death.corpses = combat.corpses = corpses;
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
   const eggs = new Eggs({ world, game, records, items, rules, deadlines, creatures, breeding, place: (rec) => death.place(rec) });
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
@@ -467,9 +468,18 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   combat.onThrow = (c, rec, item, quality) => projectiles.lob(c, rec, item, quality);
   // The killer is credited before death.die, which may delete the record.
+  const dying = new Set<number>();
   survival.onDeath = (rec, cause, by) => {
-    // Removing the body touches its vitals again. It must die only once.
-    if (rec.dead) return;
+    // Removing the body touches its vitals again, and so does setting down what dies held. It must die only once.
+    if (rec.dead || dying.has(rec.pid)) return;
+    dying.add(rec.pid);
+    try {
+      died(rec, cause, by);
+    } finally {
+      dying.delete(rec.pid);
+    }
+  };
+  const died = (rec: EntityRecord, cause: number, by: number): void => {
     if (bus.n[DEATH] !== 0) {
       // The killer is whoever struck last, or gave the buff that did it. A kill by a ridden creature is credited to its rider.
       const killer = by !== 0 ? records.byPid.get(by) : undefined;

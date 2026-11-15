@@ -10,6 +10,7 @@ import { Inventory } from "../shared/sim/items.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { TICK_RATE, chunkCx, chunkCz } from "../shared/coords.ts";
 import { castWorld, lookDirection, rayBox, rayHit, HIT_NONE, HIT_STRUCTURE } from "../shared/world/ray.ts";
+import type { Corpses } from "./corpses.ts";
 import type { Creatures } from "./creatures.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
@@ -63,12 +64,16 @@ export class Death {
   offMount: ((c: Client) => void) | null = null;
   onRide: ((c: Client, e: number) => number) | null = null;
   onShut: ((rec: EntityRecord) => void) | null = null;
+  /** Where a creature's body goes when it dies. Without it the creature leaves a cache of what it carried. */
+  corpses: Corpses | null = null;
   /** Ref of the structure the last target() call hit, or -1. */
   private struck = -1;
   private readonly ctx: DeathContext;
   private readonly survivor: number;
   private readonly cache: number;
   private readonly bag: number;
+  /** The record kind of a creature's body, or -1. */
+  private readonly corpse: number;
   private readonly dir = [0, 0, 0];
   private readonly w = new BitWriter(64);
 
@@ -78,6 +83,7 @@ export class Death {
     this.survivor = reg.index.get("core:survivor")!;
     this.cache = reg.index.get("core:cache")!;
     this.bag = reg.index.get("core:bag") ?? this.cache;
+    this.corpse = reg.index.get("core:corpse") ?? -1;
   }
 
   /** Per survivor pid, the pids of the bags and spill caches it has lying, oldest first. */
@@ -173,6 +179,45 @@ export class Death {
     return true;
   }
 
+  /**
+   * Mints `n` of `item` into a bag at the feet of `rec`, whose harvest gave more than it could hold: the bag it last left
+   * there while that has room, else new ones. Returns how many went in.
+   */
+  overflow(rec: EntityRecord, item: number, n: number): number {
+    const { world, records, items } = this.ctx;
+    const e = records.entOf.get(rec.pid);
+    if (e === undefined) return 0;
+    const ents = world.ents;
+    const x = ents.x[e]!;
+    const y = ents.y[e]!;
+    const z = ents.z[e]!;
+    let given = 0;
+    const last = this.lying(rec.pid, this.bag, x, y, z, 2);
+    if (last) {
+      given += items.mint(last, item, n, 0, 0, -1, "harvest");
+      if (given > 0) this.renew(last);
+    }
+    // A bag of ten stacks holds a 50x server's blow: four new ones are more than enough.
+    for (let k = 0; k < 4 && given < n; k++) {
+      const bag = records.create(this.bag, "bag");
+      bag.x = x;
+      bag.z = z;
+      const ground = world.hf.heightAt(x, z);
+      bag.y = ground > y ? ground : y;
+      bag.expiresAt = world.tick + this.lifetime(this.bag);
+      const got = items.mint(bag, item, n - given, 0, 0, -1, "harvest");
+      if (got === 0) {
+        records.delete(bag.pid);
+        break;
+      }
+      given += got;
+      this.lie(rec.pid, bag);
+      records.dirty.add(bag.pid);
+      this.place(bag);
+    }
+    return given;
+  }
+
   private clientOf(pid: number): Client | null {
     for (const c of this.ctx.game.clients) if (c?.active && c.pid === pid) return c;
     return null;
@@ -191,6 +236,7 @@ export class Death {
         rec.y = ents.y[e]!;
         rec.z = ents.z[e]!;
       }
+      // Its body took what it carried, if Corpses gave it one (fell). Else a cache does.
       this.leave(rec);
       // Anything that could not be left is burned through the ledger.
       if (rec.inv) items.burnAll(rec);
@@ -198,6 +244,7 @@ export class Death {
         persistence?.detach(rec.pid);
         this.ctx.creatures.remove(e);
       }
+      this.corpses?.raise(rec.pid);
       survival.forget(rec.pid);
       records.delete(rec.pid);
       this.count++;
@@ -252,8 +299,8 @@ export class Death {
   }
 
   /**
-   * A dead creature's body keeps what it carried and its saddle, for anyone to take, as in the reference. Here the body is a
-   * cache where it fell, which lies as long as a survivor's. One that carried nothing leaves nothing.
+   * A dead creature's body keeps what it carried and its saddle, for anyone to take, as in the reference (server/corpses.ts).
+   * One that has no body leaves a cache of them where it fell instead, which lies as long as a survivor's.
    */
   private leave(rec: EntityRecord): void {
     const { world, records, items } = this.ctx;
@@ -335,11 +382,16 @@ export class Death {
       deadlines.push(rec.expiresAt, DEADLINE_DESPAWN, rec.pid, rec.expiresAt);
       records.dirty.add(rec.pid);
     }
+    this.corpses?.retime(cacheWas, cacheIs);
   }
 
-  /** Called when the record is made and again when a save is loaded. */
+  /** Called when the record is made and again when a save is loaded. A creature's body is Corpses' to place. */
   place(cache: EntityRecord): void {
     const { world, records, deadlines } = this.ctx;
+    if (cache.kind === this.corpse && this.corpses) {
+      this.corpses.restore(cache);
+      return;
+    }
     const ents = world.ents;
     // Its time runs whether or not it gets a body, or a record made with the store full would never go.
     if (cache.expiresAt > 0) deadlines.push(cache.expiresAt, DEADLINE_DESPAWN, cache.pid, cache.expiresAt);
@@ -412,7 +464,7 @@ export class Death {
           const dz = box.z - ents.z[c.ent]!;
           if (dx * dx + dy * dy + dz * dz > (REACH + 2.5) * (REACH + 2.5) || !this.allowed(c, box)) this.close(c);
         } else if (!box || e === undefined || c.ent < 0) this.close(c);
-        else if ((ents.flags[e]! & F_PROP) !== 0 && items.inv(box).used() === 0) this.remove(box);
+        else if ((ents.flags[e]! & F_PROP) !== 0 && box.kind !== this.corpse && items.inv(box).used() === 0) this.remove(box);
         // A creature that woke up closes unless canOpen allows it.
         else if (!this.allowed(c, box)) this.close(c);
         else {
@@ -453,7 +505,9 @@ export class Death {
           // A young creature's box is scaled as the client draws it.
           const size = ents.grown[i] !== 0 && (ents.flags[i]! & F_PROP) === 0 ? youngScale(reg.birthScale[ents.kind[i]!]!, ents.span[i]!, ents.grown[i]!, world.tick) : 1;
           const r = reg.bodyRadius[ents.kind[i]!]! * size;
-          const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[ents.kind[i]!]! * size, ents.z[i]! + r);
+          // A creature's body is met where it lies, as a blow meets it.
+          const body = this.corpses?.at(i);
+          const t = body ? this.corpses!.hit(i, ox, oy, oz, d[0]!, d[1]!, d[2]!, best) : rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[ents.kind[i]!]! * size, ents.z[i]! + r);
           if (t < best) {
             best = t;
             hit = i;

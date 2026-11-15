@@ -117,6 +117,7 @@ const SPECIES = {
   fists: f("number"),
   fistsTorpor: f("number", "the torpor of a bare-handed strike"),
   drops: f("list", "DeathHarvestingComponent", { refs: { "[].item": "item" }, open: true }),
+  corpse: f("facet", "DeathHarvestingComponent's health and damage per roll"),
   stats: f("facet", "MaxStatusValues and the per-level gains"),
   takes: f("facet", "DamageTypeAdjusters"),
   zones: f("facet"),
@@ -375,7 +376,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "keeps", "fists", "bite", "drops", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "keeps", "fists", "bite", "drops", "corpse", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },
