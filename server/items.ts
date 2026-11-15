@@ -4,7 +4,7 @@
 
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
-import { GEAR_SLOTS, Inventory, QUALITY_MUL, carried, moveSlot, type ItemTable } from "../shared/sim/items.ts";
+import { FLAG_BLUEPRINT, GEAR_SLOTS, Inventory, QUALITY_MUL, carried, moveSlot, type ItemTable } from "../shared/sim/items.ts";
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -71,7 +71,7 @@ export class Items {
       const grown = new Inventory(inv.cap + GEAR_SLOTS, inv.cap);
       for (let s = 0; s < inv.cap; s++) {
         if (inv.item[s] === 0) continue;
-        grown.set(s, inv.item[s]!, inv.count[s]!, inv.quality[s]!, inv.dur[s]!, inv.spoilAt[s]!);
+        grown.set(s, inv.item[s]!, inv.count[s]!, inv.quality[s]!, inv.dur[s]!, inv.spoilAt[s]!, inv.flags[s]!);
         grown.setRef(s, inv.refOf(s));
       }
       inv = rec.inv = grown;
@@ -155,19 +155,20 @@ export class Items {
   /**
    * Returns how many fit, which is how many it created. `at` is the tick it happens at. When given, the inventory is not
    * settled first. `why` says where the stack comes from, for a module that is asked about it: it may make it smaller
-   * or larger, or refuse it.
+   * or larger, or refuse it. `flags` (FLAG_ bits) makes blueprints, one a slot, of an item that may be one (Registry.blueprints).
    */
-  mint(rec: EntityRecord, item: number, n: number, quality = 0, dur = 0, at = -1, why = ""): number {
+  mint(rec: EntityRecord, item: number, n: number, quality = 0, dur = 0, at = -1, why = "", flags = 0): number {
     if (!this.isItem(item) || !(n > 0) || !Number.isInteger(n)) return 0;
+    if ((flags & FLAG_BLUEPRINT) !== 0 && this.reg.blueprints[item] === 0) return 0;
     if (this.bus.n[ITEM_GAIN] !== 0) {
       const asked = { pid: rec.pid, item: this.reg.ids[item]!, why, n };
       if (this.bus.before(ITEM_GAIN, asked) !== "") return 0;
       n = Math.floor(Number(asked.n));
       if (!(n > 0)) return 0;
     }
-    // 0 means new, with all its uses.
-    if (dur === 0) dur = this.maxDur(item, quality);
-    const made = n - (at < 0 ? this.inv(rec) : rec.inv!).add(item, n, quality, dur, at < 0 ? this.world.tick : at, this.table);
+    // 0 means new, with all its uses. A blueprint has none to wear.
+    if (dur === 0 && flags === 0) dur = this.maxDur(item, quality);
+    const made = n - (at < 0 ? this.inv(rec) : rec.inv!).add(item, n, quality, flags === 0 ? dur : 0, at < 0 ? this.world.tick : at, this.table, 0, flags);
     if (made > 0) {
       this.minted[item] = this.minted[item]! + made;
       this.dirty = true;
@@ -196,10 +197,13 @@ export class Items {
     return slot;
   }
 
-  /** Returns false, changing nothing, if the slot holds fewer than `n`. `raw` skips settling the inventory first. */
+  /**
+   * Returns false, changing nothing, if the slot holds fewer than `n`. `raw` skips settling the inventory first. A blueprint is
+   * never eaten, used or fed, so only a raw burn, of what empties a whole inventory, takes one.
+   */
   burn(rec: EntityRecord, slot: number, n: number, raw = false): boolean {
     const inv = raw ? rec.inv! : this.inv(rec);
-    if (slot >= inv.cap || !(n > 0) || inv.count[slot]! < n) return false;
+    if (slot >= inv.cap || !(n > 0) || inv.count[slot]! < n || (!raw && inv.flags[slot] !== 0)) return false;
     const item = inv.item[slot]!;
     const ref = inv.refOf(slot);
     // Loaded rounds and an attachment are burned with the weapon.
@@ -219,7 +223,7 @@ export class Items {
    */
   load(rec: EntityRecord, slot: number, ammo: number, clip: number): number {
     const inv = this.inv(rec);
-    if (slot >= inv.cap || inv.item[slot] === 0) return -1;
+    if (slot >= inv.cap || inv.item[slot] === 0 || inv.flags[slot] !== 0) return -1;
     if (inv.ammo[slot] !== ammo && inv.loaded[slot]! > 0 && !this.unload(rec, slot)) return -1;
     const want = clip - (inv.ammo[slot] === ammo ? inv.loaded[slot]! : 0);
     const n = Math.min(want, inv.total(ammo));
@@ -258,7 +262,7 @@ export class Items {
   /** Fits the item in `from` to the weapon in `slot`. An attachment already fitted comes off into `from`. False unless `from` holds exactly one. */
   attach(rec: EntityRecord, slot: number, from: number): boolean {
     const inv = this.inv(rec);
-    if (slot >= inv.cap || from >= inv.cap || slot === from || inv.item[slot] === 0 || inv.count[from] !== 1) return false;
+    if (slot >= inv.cap || from >= inv.cap || slot === from || inv.item[slot] === 0 || inv.count[from] !== 1 || inv.flags[slot] !== 0 || inv.flags[from] !== 0) return false;
     const fitted = inv.item[from]!;
     const old = inv.attach[slot]!;
     inv.set(from, old, old === 0 ? 0 : 1, 0, 0, 0);
@@ -308,7 +312,7 @@ export class Items {
     if (inv.ref) {
       // Last slots first, as Inventory.take goes, one slot at a time so that what each stood for goes with it.
       for (let s = inv.cap - 1; s >= 0 && n > 0; s--) {
-        if (inv.item[s] !== item) continue;
+        if (inv.item[s] !== item || inv.flags[s] !== 0) continue;
         const k = Math.min(n, inv.count[s]!);
         this.burn(rec, s, k, true);
         n -= k;
@@ -324,7 +328,7 @@ export class Items {
 
   burnAll(rec: EntityRecord): void {
     const inv = this.inv(rec);
-    for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0) this.burn(rec, s, inv.count[s]!);
+    for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0) this.burn(rec, s, inv.count[s]!, true);
   }
 
   /** Within one record or across two. Returns how many moved. */
@@ -337,7 +341,7 @@ export class Items {
     return moved;
   }
 
-  /** Moves `n` of an item to another record, wherever it fits. All or nothing. */
+  /** Moves `n` of an item to another record, wherever it fits. All or nothing. Blueprints of it stay. */
   give(from: EntityRecord, to: EntityRecord, item: number, n: number): boolean {
     if (from === to || !(n > 0) || !Number.isInteger(n)) return false;
     const src = this.inv(from);
@@ -346,7 +350,7 @@ export class Items {
     // Each stack keeps its spoil time, scaled if the other keeps things longer, and an unstackable item keeps its rounds and attachment.
     const tick = this.world.tick;
     for (let s = src.cap - 1; s >= 0 && n > 0; s--) {
-      if (src.item[s] !== item) continue;
+      if (src.item[s] !== item || src.flags[s] !== 0) continue;
       const k = Math.min(n, src.count[s]!);
       const spoilAt = carried(src.spoilAt[s]!, tick, src.keep, dst.keep);
       if (this.table.stack[item] === 1) {
@@ -364,15 +368,15 @@ export class Items {
     return true;
   }
 
-  /** Counts the whole world: stacks, rounds loaded in weapons, and attachments fitted to them. */
+  /** Counts the whole world as the ledger does: stacks and blueprints, rounds loaded in weapons, and attachments fitted to them. */
   total(item: number): number {
     let n = 0;
     for (const rec of this.records.byPid.values()) {
       const inv = rec.inv;
       if (!inv) continue;
-      n += inv.total(item);
       for (let s = 0; s < inv.cap; s++) {
         if (inv.item[s] === 0) continue;
+        if (inv.item[s] === item) n += inv.count[s]!;
         if (inv.ammo[s] === item) n += inv.loaded[s]!;
         if (inv.attach[s] === item) n++;
       }

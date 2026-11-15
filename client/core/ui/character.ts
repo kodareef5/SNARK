@@ -43,10 +43,10 @@ function ofType(reg: Registry, type: string): number[] {
   return out;
 }
 
-/** The items that can be made, in content order. */
+/** The items that can be made in the hands, in content order. What is made at a station is listed beside it (station.ts). */
 function craftable(reg: Registry): number[] {
   const out: number[] = [];
-  reg.defs.forEach((d, k) => d?.type === "item" && d.craft && out.push(k));
+  reg.defs.forEach((d, k) => d?.type === "item" && d.craft && reg.craftAt[k] === 0 && out.push(k));
   return out;
 }
 

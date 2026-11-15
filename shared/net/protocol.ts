@@ -196,7 +196,13 @@ export const CMD_TAKE = 28;
  * elsewhere, and with no station open.
  */
 export const CMD_CRAFT_AT = 29;
-/** Protocol 12, reserved for crafting from a blueprint (items-plan.md, task E): own slot varint, count u8. Refused until it is built. */
+/**
+ * Protocol 12. Crafting from a blueprint: box 1 bit (BOX_), slot varint, count u8. The blueprint lies in the inventory the
+ * item is made from: the session's own (BOX_SELF) for an item made in the hands, the station it has open (BOX_OPEN) for one
+ * made at a station, where the job is queued as CMD_CRAFT_AT's is. No engram is needed; the ingredients are the blueprint's
+ * quality's, and what is made is of its quality or above. Refused for a slot that holds no blueprint and for the wrong
+ * station (INVALID), and without the ingredients (SHORT).
+ */
 export const CMD_CRAFT_BLUEPRINT = 30;
 
 /** The only boxes a slot command can address. No ids travel. */
@@ -242,7 +248,10 @@ export const OWN_VITALS = 2;
  * bit for "it holds something", then if so: ammunition item u16, rounds u8, attachment item u16.
  */
 export const OWN_SLOTS = 3;
-/** A slot's flags. Protocol 12 sends them; nothing sets one until blueprints are built (items-plan.md, task E). */
+/**
+ * A slot's flags, protocol 12. The slot holds a blueprint of its item: one alone, at its quality, crafted from
+ * (CMD_CRAFT_BLUEPRINT) and never spent. Stacks join only at the same quality and flags (shared/sim/items.ts FLAG_BLUEPRINT).
+ */
 export const SLOT_BLUEPRINT = 1;
 
 /** open 1 bit, and if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */

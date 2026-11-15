@@ -9,6 +9,56 @@ export const GEAR_SLOTS = HOTBAR_SLOTS + ARMOR_SLOTS;
 /** Lowest first. QUALITY_MUL multiplies the values in an item's definition. */
 export const QUALITY_NAMES: readonly string[] = ["primitive", "ramshackle", "apprentice", "journeyman", "mastercraft", "ascendant"];
 export const QUALITY_MUL: readonly number[] = [1, 1.2, 1.45, 1.75, 2.1, 2.6];
+/**
+ * ARK's Item Quality table (ark.wiki.gg Item_Quality, 2026-11-15), one column a tier. RATING is the Random Multiplier
+ * Threshold: an item rated at least that is of the tier, so a loot roll's rating gives its tier (shared/sim/loot.ts).
+ * CRAFT_XP multiplies the experience for making an item of the tier. COST is the Crafting Resources Requirements
+ * Multiplier of a blueprint's cost (blueprintCost).
+ */
+export const QUALITY_RATING: readonly number[] = [1, 1.25, 2.5, 4.5, 7, 10];
+export const QUALITY_CRAFT_XP: readonly number[] = [1, 2, 3, 4, 5, 6];
+export const QUALITY_COST: readonly number[] = [1, 1.33, 1.67, 2, 2.5, 3.5];
+
+/** A slot's flags (Inventory.flags), as OWN_SLOTS sends them. The bit is the protocol's SLOT_BLUEPRINT. */
+export const FLAG_BLUEPRINT = 1;
+/** Kilograms a blueprint weighs, whatever it makes. Chosen: the wiki gives no weight for one. */
+export const BLUEPRINT_KG = 0.1;
+
+/** The tier of an item rated `rating`: the highest whose threshold it reaches, and primitive below them all. */
+export function qualityOfRating(rating: number): number {
+  let q = 0;
+  while (q + 1 < QUALITY_RATING.length && rating >= QUALITY_RATING[q + 1]!) q++;
+  return q;
+}
+
+/**
+ * What a blueprint of quality `q` asks of an ingredient its engram asks `base` of. ARK's cost is BC + BC * IR * RS * CM * 0.3
+ * (ark.wiki.gg Item_Quality, 2026-11-15), with the item rating IR and the item's rating scale RS. SNARK's tiers are fixed
+ * (DEV19), so IR is the tier's threshold, and RS is 1, which is chosen: the wiki gives no value. A primitive blueprint asks
+ * what the engram does, also chosen. Rounded up: an ingredient is whole.
+ */
+export function blueprintCost(base: number, q: number): number {
+  if (q <= 0) return base;
+  const tier = Math.min(q, QUALITY_RATING.length - 1);
+  return Math.ceil(base * (1 + QUALITY_RATING[tier]! * QUALITY_COST[tier]! * 0.3) - 1e-9);
+}
+
+/**
+ * The quality of an item crafted from a blueprint of quality `q` by a survivor whose Crafting Skill is `skill` (1 is 100%),
+ * with `draw` uniform in [0, 1). ARK gives a blueprint's product a Crafted Skill Bonus drawn from 0 to Crafting Skill / 20,
+ * which raises only what the blueprint adds over the item's base: a 150% blueprint with a 10% bonus makes 155%
+ * (ark.wiki.gg Crafting_Skill, 2026-11-15). Under DEV19 a tier has one multiplier, so the product's multiplier is the
+ * blueprint's raised that way, and its tier the highest whose multiplier that reaches: never less than the blueprint's.
+ * `scale` multiplies the bonus, as ARK's CraftingSkillBonusMultiplier does.
+ */
+export function craftedQuality(q: number, skill: number, draw: number, scale = 1): number {
+  if (q <= 0) return 0;
+  const bonus = draw * Math.max(0, skill / 20) * scale;
+  const mul = 1 + (QUALITY_MUL[q]! - 1) * (1 + bonus);
+  let out = q;
+  while (out + 1 < QUALITY_MUL.length && mul >= QUALITY_MUL[out + 1]! - 1e-9) out++;
+  return out;
+}
 
 /** Indexed by content index. */
 export interface ItemTable {
@@ -31,6 +81,8 @@ export class Inventory {
   readonly count: Uint16Array;
   readonly quality: Uint8Array;
   readonly dur: Uint16Array;
+  /** FLAG_ bits. A blueprint (FLAG_BLUEPRINT) of an item lies alone in its slot, never spoils, and is never spent. */
+  readonly flags: Uint8Array;
   /** Tick at which the stack's top item spoils. 0 for a stack that does not. */
   readonly spoilAt: Uint32Array;
   /** For a weapon: the ammunition it takes (content index, 0 for none yet) and the rounds in it. The ledger counts those rounds as items. */
@@ -56,6 +108,7 @@ export class Inventory {
     this.count = new Uint16Array(cap);
     this.quality = new Uint8Array(cap);
     this.dur = new Uint16Array(cap);
+    this.flags = new Uint8Array(cap);
     this.spoilAt = new Uint32Array(cap);
     this.ammo = new Uint16Array(cap);
     this.loaded = new Uint8Array(cap);
@@ -74,12 +127,13 @@ export class Inventory {
   }
 
   /** Count 0 or item 0 empties the slot. Also clears ammo, loaded and attach, which setGear sets. */
-  set(slot: number, item: number, count: number, quality: number, dur: number, spoilAt: number): void {
+  set(slot: number, item: number, count: number, quality: number, dur: number, spoilAt: number, flags = 0): void {
     const empty = item === 0 || count === 0;
     this.item[slot] = empty ? 0 : item;
     this.count[slot] = empty ? 0 : count;
     this.quality[slot] = empty ? 0 : quality;
     this.dur[slot] = empty ? 0 : dur;
+    this.flags[slot] = empty ? 0 : flags;
     this.spoilAt[slot] = empty ? 0 : spoilAt;
     this.ammo[slot] = 0;
     this.loaded[slot] = 0;
@@ -120,10 +174,17 @@ export class Inventory {
     }
   }
 
+  /** How many of an item there are to spend. A blueprint is not one of them. */
   total(item: number): number {
     let n = 0;
-    for (let s = 0; s < this.cap; s++) if (this.item[s] === item) n += this.count[s]!;
+    for (let s = 0; s < this.cap; s++) if (this.item[s] === item && this.flags[s] === 0) n += this.count[s]!;
     return n;
+  }
+
+  /** A slot holding a blueprint of `item` at quality `q`, or -1. */
+  blueprint(item: number, q: number): number {
+    for (let s = 0; s < this.cap; s++) if (this.item[s] === item && (this.flags[s]! & FLAG_BLUEPRINT) !== 0 && this.quality[s] === q) return s;
+    return -1;
   }
 
   used(): number {
@@ -136,7 +197,7 @@ export class Inventory {
     let kg = 0;
     for (let s = 0; s < this.cap; s++) {
       if (this.item[s] === 0) continue;
-      kg += t.weight[this.item[s]!]! * this.count[s]!;
+      kg += ((this.flags[s]! & FLAG_BLUEPRINT) !== 0 ? BLUEPRINT_KG : t.weight[this.item[s]!]!) * this.count[s]!;
       if (this.loaded[s]! > 0) kg += t.weight[this.ammo[s]!]! * this.loaded[s]!;
       if (this.attach[s] !== 0) kg += t.weight[this.attach[s]!]!;
     }
@@ -144,13 +205,13 @@ export class Inventory {
   }
 
   /** Counts the bag only. */
-  room(item: number, quality: number, t: ItemTable): number {
-    const stack = t.stack[item]!;
+  room(item: number, quality: number, t: ItemTable, flags = 0): number {
+    const stack = stackOf(item, flags, t);
     let n = 0;
     for (let s = 0; s < this.bag; s++) {
       if (this.item[s] === 0) n += stack;
       // A stack may hold more than a stack limit that has since shrunk. It then has no room, not negative room.
-      else if (stack > this.count[s]! && this.item[s] === item && this.quality[s] === quality) n += stack - this.count[s]!;
+      else if (stack > this.count[s]! && this.item[s] === item && this.quality[s] === quality && this.flags[s] === flags) n += stack - this.count[s]!;
     }
     return n;
   }
@@ -158,16 +219,17 @@ export class Inventory {
   /**
    * Fills the bag only, matching stacks before empty slots. Returns how many did not fit. New items start their spoil clock at
    * `now`. Transferred items bring theirs as `spoilAt`, and a stack they join becomes as old as its oldest part, so moving food
-   * never makes it fresher.
+   * never makes it fresher. Stacks join only at the same quality and flags. A blueprint (`flags`) takes a slot of its own and
+   * never spoils.
    */
-  add(item: number, n: number, quality: number, dur: number, now: number, t: ItemTable, spoilAt = 0): number {
-    const stack = t.stack[item]!;
-    if (stack === 0) return n;
-    const spoil = t.spoilTicks[item]!;
+  add(item: number, n: number, quality: number, dur: number, now: number, t: ItemTable, spoilAt = 0, flags = 0): number {
+    if (t.stack[item] === 0) return n;
+    const stack = stackOf(item, flags, t);
+    const spoil = flags !== 0 ? 0 : t.spoilTicks[item]!;
     const clock = spoil === 0 ? 0 : spoilAt > 0 ? spoilAt : clock32(now + Math.round(spoil * this.keep));
     if (stack > 1) {
       for (let s = 0; s < this.bag && n > 0; s++) {
-        if (this.item[s] !== item || this.quality[s] !== quality) continue;
+        if (this.item[s] !== item || this.quality[s] !== quality || this.flags[s] !== flags) continue;
         const fit = Math.min(n, stack - this.count[s]!);
         if (fit <= 0) continue;
         this.count[s] = this.count[s]! + fit;
@@ -179,7 +241,7 @@ export class Inventory {
     for (let s = 0; s < this.bag && n > 0; s++) {
       if (this.item[s] !== 0) continue;
       const fit = Math.min(n, stack);
-      this.set(s, item, fit, quality, dur, clock);
+      this.set(s, item, fit, quality, dur, clock, flags);
       n -= fit;
     }
     return n;
@@ -191,11 +253,11 @@ export class Inventory {
     return -1;
   }
 
-  /** Last slots first. All or nothing. */
+  /** Last slots first. All or nothing. A blueprint is never taken. */
   take(item: number, n: number): boolean {
     if (this.total(item) < n) return false;
     for (let s = this.cap - 1; s >= 0 && n > 0; s--) {
-      if (this.item[s] !== item) continue;
+      if (this.item[s] !== item || this.flags[s] !== 0) continue;
       const k = Math.min(n, this.count[s]!);
       this.remove(s, k);
       n -= k;
@@ -226,6 +288,11 @@ export class Inventory {
   }
 }
 
+/** The largest stack of `item` with these flags: a blueprint lies alone. */
+export function stackOf(item: number, flags: number, t: ItemTable): number {
+  return (flags & FLAG_BLUEPRINT) !== 0 ? 1 : t.stack[item]!;
+}
+
 /** A spoil clock holds 32 bits. */
 function clock32(at: number): number {
   return at > 0xffffffff ? 0xffffffff : at;
@@ -252,12 +319,13 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   if (item === 0) return 0;
   if (n === 0 || n > have) n = have;
   const other = b.item[sb]!;
+  const flags = a.flags[sa]!;
   // An armor slot takes only its own kind of piece, and an item swapped back must fit its slot too.
-  if (!fitsSlot(b, sb, item, t) || (other !== 0 && other !== item && !fitsSlot(a, sa, other, t))) return 0;
+  if (!fitsSlot(b, sb, item, t, flags) || (other !== 0 && (other !== item || b.flags[sb] !== flags) && !fitsSlot(a, sa, other, t, b.flags[sb]!))) return 0;
   const sp = carried(a.spoilAt[sa]!, now, a.keep, b.keep);
   const ref = a.refOf(sa);
   if (other === 0) {
-    b.set(sb, item, n, a.quality[sa]!, a.dur[sa]!, sp);
+    b.set(sb, item, n, a.quality[sa]!, a.dur[sa]!, sp, flags);
     // A weapon moved whole keeps its rounds and attachment, and a one of a kind what it stands for.
     if (n === have) {
       b.setGear(sb, a.ammo[sa]!, a.loaded[sa]!, a.attach[sa]!);
@@ -266,8 +334,8 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
     a.remove(sa, n);
     return n;
   }
-  const stack = t.stack[item]!;
-  if (other === item && stack > 1 && b.quality[sb] === a.quality[sa]) {
+  const stack = stackOf(item, flags, t);
+  if (other === item && stack > 1 && b.quality[sb] === a.quality[sa] && b.flags[sb] === flags) {
     const fit = Math.min(n, stack - b.count[sb]!);
     if (fit <= 0) return 0;
     // The joined stack spoils as its older part would have.
@@ -284,17 +352,21 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   const loaded = a.loaded[sa]!;
   const attach = a.attach[sa]!;
   const otherRef = b.refOf(sb);
-  a.set(sa, other, b.count[sb]!, b.quality[sb]!, b.dur[sb]!, carried(b.spoilAt[sb]!, now, b.keep, a.keep));
+  a.set(sa, other, b.count[sb]!, b.quality[sb]!, b.dur[sb]!, carried(b.spoilAt[sb]!, now, b.keep, a.keep), b.flags[sb]!);
   a.setGear(sa, b.ammo[sb]!, b.loaded[sb]!, b.attach[sb]!);
   a.setRef(sa, otherRef);
-  b.set(sb, item, have, q, d, sp);
+  b.set(sb, item, have, q, d, sp, flags);
   b.setGear(sb, ammo, loaded, attach);
   b.setRef(sb, ref);
   return have;
 }
 
-/** Any slot takes any item, except that an armor slot takes only its own kind of piece. */
-export function fitsSlot(inv: Inventory, slot: number, item: number, t: ItemTable): boolean {
+/**
+ * Any slot takes any item, except that an armor slot takes only its own kind of piece, and a blueprint (`flags`) lies only in
+ * the bag: it is never held or worn. Chosen: the wiki gives a blueprint no use but crafting from it.
+ */
+export function fitsSlot(inv: Inventory, slot: number, item: number, t: ItemTable, flags = 0): boolean {
+  if ((flags & FLAG_BLUEPRINT) !== 0 && slot >= inv.bag) return false;
   const armor = inv.armor;
   return armor < 0 || slot < armor || t.wearSlot[item] === slot - armor;
 }

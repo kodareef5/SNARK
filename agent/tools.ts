@@ -422,6 +422,8 @@ export class Agent implements ToolHost {
     const waitMs = amount(a, "wait_s", 0, 50, 20) * 1000;
     const needs = reg.recipeOf[item];
     if (!needs) return refused(`${this.nameOf(item)} cannot be made`);
+    // What is made at a station is made from what lies in it, never in the hands.
+    if (reg.craftAt[item] !== 0) return refused(`${this.nameOf(item)} is made at a ${this.nameOf(reg.craftAt[item]!)}, from what lies in it, not in the hands`);
     const recipe: Record<string, number> = {};
     for (let k = 0; k + 1 < needs.length; k += 2) recipe[this.nameOf(needs[k]!)] = needs[k + 1]!;
     const engram = reg.defs.findIndex((d) => d?.type === "engram" && d.item === reg.ids[item]);
@@ -476,7 +478,7 @@ export class Agent implements ToolHost {
       // Onto a stack of the same item with room, else into the first empty slot.
       const stack = s.registry.stack[item]!;
       to = -1;
-      for (let k = 0; k < dst.bag && to < 0; k++) if (dst.item[k] === item && dst.quality[k] === src.quality[slot] && dst.count[k]! < stack) to = k;
+      for (let k = 0; k < dst.bag && to < 0; k++) if (dst.item[k] === item && dst.quality[k] === src.quality[slot] && dst.flags[k] === src.flags[slot] && dst.flags[k] === 0 && dst.count[k]! < stack) to = k;
       if (to < 0) to = dst.free();
       if (to < 0) return refused("there is no room there");
     }

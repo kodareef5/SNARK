@@ -3,8 +3,8 @@
 
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, CMD_USE } from "../../../shared/net/protocol.ts";
-import { ARMOR_SLOTS, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, type Inventory } from "../../../shared/sim/items.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, CMD_USE, CMD_CRAFT_BLUEPRINT } from "../../../shared/net/protocol.ts";
+import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, blueprintCost, type Inventory } from "../../../shared/sim/items.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import { StationPanel } from "./station.ts";
@@ -51,6 +51,19 @@ const ARMOR_LABELS: readonly string[] = ["head", "torso", "hands", "legs", "feet
 const CELL = 42;
 const GAP = 3;
 const PAD = 12;
+
+/** The button that makes one from the picked-up blueprint. */
+export const KEY_INV_CRAFT = 297;
+/** A slot's colour by quality: none for primitive, then green, blue, purple, gold and cyan, as ARK's tiers read. */
+const QUALITY_TINT: readonly number[] = [-1, 0x3f7a42, 0x31579a, 0x6c4290, 0x8f7426, 0x2b8790];
+
+/** The info line of a blueprint: its quality, what it makes, and what making one takes at that quality. */
+export function blueprintInfo(reg: Registry, item: number, q: number): string {
+  const needs = reg.recipeOf[item];
+  const cost: string[] = [];
+  for (let k = 0; needs && k + 1 < needs.length; k += 2) cost.push(`${blueprintCost(needs[k + 1]!, q)} ${itemLabel(reg, needs[k]!)}`);
+  return `${QUALITY_NAMES[q] ?? ""} ${itemLabel(reg, item)} blueprint: ${cost.join(", ")}`;
+}
 
 export function itemLabel(reg: Registry, item: number): string {
   const def = reg.defs[item] as ItemDef | null;
@@ -129,6 +142,15 @@ export class InventoryScreen {
     }
     if (kind === 0 && (key === KEY_OPEN_PAGE || key === KEY_OPEN_PAGE + 2)) {
       this.page = Math.max(0, Math.min(this.pages - 1, this.page + (key === KEY_OPEN_PAGE ? -1 : 1)));
+      return;
+    }
+    if (kind === 0 && key === KEY_INV_CRAFT) {
+      // One made from the picked-up blueprint, where it lies: the server says if that is not where it is made.
+      const bp = this.box(session, this.heldBox);
+      const from = this.held;
+      const which = this.heldBox;
+      this.held = -1;
+      if (bp && from >= 0 && (bp.flags[from]! & FLAG_BLUEPRINT) !== 0) session.command(CMD_CRAFT_BLUEPRINT, (w) => (w.bits(which, 1), w.varint(from), w.u8(1)));
       return;
     }
     if (kind === 0 && key >= KEY_INV_ACTION && key < KEY_INV_ACTION + ACTIONS.length) {
@@ -239,6 +261,9 @@ export class InventoryScreen {
         if (inHand && cell.style === S_SLOT) cell.tint = 0x5a6a7a;
         const item = inv.item[s]!;
         if (item === 0) continue;
+        // Quality shows as the cell's colour, and a blueprint as "BP" where a count would be.
+        const bp = (inv.flags[s]! & FLAG_BLUEPRINT) !== 0;
+        if (inv.quality[s]! > 0 && cell.style === S_SLOT && !inHand) cell.tint = QUALITY_TINT[inv.quality[s]!] ?? -1;
         const def = reg.defs[item] as ItemDef | null;
         // The item's picture fills the slot where it has one. Else its colour and the first letters of its name stand in.
         if (!f.picture(key + 1, x + 2, yy + 2, CELL - 4, CELL - 4, S_SLOT_TEXT, reg.ids[item]!)) {
@@ -248,7 +273,7 @@ export class InventoryScreen {
           swatch.text = itemLabel(reg, item).slice(0, 4);
         }
         // A stack shows its count. A weapon shows its loaded rounds.
-        const number = inv.count[s]! > 1 ? String(inv.count[s]) : def?.weapon?.ammo ? String(inv.loaded[s]) : "";
+        const number = bp ? "BP" : inv.count[s]! > 1 ? String(inv.count[s]) : def?.weapon?.ammo ? String(inv.loaded[s]) : "";
         f.text(key + 2, x + 2, yy + CELL - lineHeight(S_SLOT_TEXT), CELL - 4, S_SLOT_TEXT, number);
       }
     };
@@ -354,7 +379,18 @@ export class InventoryScreen {
       // A vessel holds its water as its durability (server/use.ts).
       const holds = (reg.defs[item] as ItemDef | null)?.use?.holds;
       if (holds) info += `  water ${inv.dur[shown]}/${holds.water}`;
+      // Quality is named, and a blueprint says what one making from it takes.
+      const q = inv.quality[shown]!;
+      if (q > 0 && !info.startsWith(QUALITY_NAMES[q]!)) info = `${QUALITY_NAMES[q]} ${info}`;
+      if ((inv.flags[shown]! & FLAG_BLUEPRINT) !== 0) info = blueprintInfo(reg, item, q);
     }
-    f.text(KEY_INV_INFO, x0 + PAD, y + ownH - PAD - infoH, w - PAD * 2, S_LABEL, info.slice(0, Math.floor((w - PAD * 2) / 7.2)));
+    // A picked-up blueprint can be made from, in the bag or in the station it belongs to.
+    const craftW = this.held >= 0 && heldInv && (heldInv.flags[this.held]! & FLAG_BLUEPRINT) !== 0 ? 64 : 0;
+    if (craftW > 0) {
+      const b = f.add(KEY_INV_CRAFT, K_BUTTON, x0 + w - PAD - craftW, y + ownH - PAD - infoH - 2, craftW, infoH + 2, S_BUTTON);
+      b.text = "Craft";
+      b.interactive = true;
+    }
+    f.text(KEY_INV_INFO, x0 + PAD, y + ownH - PAD - infoH, w - PAD * 2 - craftW, S_LABEL, info.slice(0, Math.floor((w - PAD * 2 - craftW) / 7.2)));
   }
 }
