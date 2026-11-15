@@ -105,5 +105,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // box of feces lying (b504d298 with that alone), and wild creatures wandered at their walking speed, not at 90/127 of
   // it, so the scene's raptor, parasaur and grazer walk further between frames (ebea25a9 with that alone). It was 47b0fc09
   // until the pack held the mortar and pestle's grey box (content/items/stations.ts); without it and sparkpowder it is that again.
-  expect(hash.toString(16)).toBe("afc8210d");
+  // It was afc8210d until the pack held the smoke and poison clouds' boxes, which are never drawn (render/clouds.ts); without
+  // the two grenades, their clouds and the poison's buff (content/items/explosives.ts) it is that again.
+  expect(hash.toString(16)).toBe("fff88e25");
 });

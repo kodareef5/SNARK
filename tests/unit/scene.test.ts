@@ -389,8 +389,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // those alone) and the grey box of feces lying (3294409758 with that alone). The draws, the triangles and the uploads
   // are as they were. It was 4244515908 until Miami's ruin blocks took mesh numbers of their own, then 1069497684 until
   // the pack held the mortar and pestle's grey box (content/items/stations.ts); without it and sparkpowder it is that again.
-  // It was 543691550 until the sloped statics' grey boxes (content/slopes.ts) took mesh numbers; without them it is that again.
-  expect(hash).toBe(1029300077);
+  // It was 543691550 until the pack held the smoke and poison clouds' boxes, which are never drawn (render/clouds.ts draws
+  // a cloud as puffs); without the two grenades, their clouds and the poison's buff (content/items/explosives.ts) it is that again.
+  // It was 828002586 until the sloped statics' grey boxes (content/slopes.ts) took mesh numbers; without them it is that again.
+  expect(hash).toBe(1878996973);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

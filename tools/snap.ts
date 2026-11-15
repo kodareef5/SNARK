@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 
@@ -895,7 +895,8 @@ if (import.meta.main) {
   }
   if (args.includes("--fight")) {
     // A survivor faces a dummy in flak six metres off. --fight takes "punch" or "club" (up close, as the blow lands), "bow" or
-    // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air) or "rifle" (the round's tracer).
+    // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air), "rifle" (the round's tracer) or
+    // "shotgun" (a shell's ten tracers).
     const what = arg("fight") ?? "bow";
     const close = what === "punch" || what === "club";
     const sling = what === "slingshot" || what === "slung";
@@ -911,17 +912,18 @@ if (import.meta.main) {
       for (const part of ["hat", "shirt", "gloves", "pants", "boots"]) dress(hh.host, drec, hh.reg.index.get(`core:flak_${part}`)!);
       hh.host.refreshBody(drec);
       const k = (name: string): number => hh.reg.index.get(`core:${name}`)!;
-      const weapon = what === "rifle" ? "rifle" : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : "bow";
+      const gun = what === "rifle" || what === "shotgun";
+      const weapon = gun ? what : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : "bow";
       if (weapon !== "") {
         hh.host.items.mint(rec, k(weapon), 1);
-        if (weapon !== "club") hh.host.items.mint(rec, k(weapon === "rifle" ? "round_rifle" : sling ? "stone" : "arrow_stone"), 20);
+        if (weapon !== "club") hh.host.items.mint(rec, k(gun ? `round_${weapon}` : sling ? "stone" : "arrow_stone"), 20);
         run(200);
         const inv = s.inventory!;
         const from = inv.item.indexOf(k(weapon));
         s.command(CMD_MOVE, (wr) => (wr.bits(BOX_SELF, 1), wr.varint(from), wr.bits(BOX_SELF, 1), wr.varint(inv.hotbar), wr.u16(0), wr.u16(k(weapon))));
         run(150);
         s.command(CMD_SELECT, (wr) => wr.u8(0));
-        run(weapon === "rifle" ? 5400 : 1500);
+        run(gun ? 5400 : 1500);
       }
       app.view.thirdPerson = args.includes("--third");
       app.controls.yaw = args.includes("--third") ? 0.5 : 0;
@@ -929,7 +931,7 @@ if (import.meta.main) {
       run(200);
       app.controls.mouseButton(0, true);
       if (close) run(260);
-      else if (what === "rifle") run(1000 / 60);
+      else if (gun) run(1000 / 60);
       else {
         run(1400);
         if (what === "loosed" || what === "slung") {
@@ -1199,6 +1201,15 @@ if (import.meta.main) {
     // --cone DEGREES: the crosshair opened to a held weapon's cone (shared/sim/aim.ts).
     const cone = arg("cone");
     if (cone !== undefined) hud.cone = Math.tan((Number(cone) * Math.PI) / 180) / Math.tan(cam.fovY / 2);
+    // --sight scope|holo|dot: a scope's reticle, a holo-scope's tint and red crosshair, or a laser's dot below the middle
+    // (weapons-plan.md, M10). The view is not zoomed.
+    const sight = arg("sight");
+    if (sight === "scope") hud.scope = true;
+    else if (sight === "holo") [hud.holo, hud.tint, hud.crossTint] = [true, 0.22, 0xff3a30];
+    else if (sight === "dot") {
+      hud.dots[0] = { u: 0.5, v: 0.58, alpha: 1 };
+      hud.dotCount = 1;
+    }
     [1, 0.6, 0.8, 0.45].forEach((v, i) => (hud.vitals[i]!.fraction = v));
     hud.markers.push({ kind: "creature", u: mapU(view.hf, 259), v: mapV(view.hf, 254) }, { kind: "self", u: mapU(view.hf, cam.x), v: mapV(view.hf, cam.z) });
     ui.frame.images[IMAGE_MINIMAP] = { width: MINIMAP_SIZE, height: MINIMAP_SIZE, data: minimapImage(view.hf, view.pack.palette, MINIMAP_SIZE), version: 1 };

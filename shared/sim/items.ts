@@ -21,6 +21,12 @@ export const QUALITY_COST: readonly number[] = [1, 1.33, 1.67, 2, 2.5, 3.5];
 
 /** A slot's flags (Inventory.flags), as OWN_SLOTS sends them. The bit is the protocol's SLOT_BLUEPRINT. */
 export const FLAG_BLUEPRINT = 1;
+/**
+ * The weapon's attachment is switched on (planning/reference/weapons-plan.md, M10): a flashlight or a laser, toggled by
+ * BTN_MOD on the slot in hand. The bit is the protocol's SLOT_ON. Only the slot in hand is ever on: moving the weapon, or
+ * taking another thing in hand, switches it off, as ARK's flashlight must be switched on again (server/items.ts).
+ */
+export const FLAG_ON = 2;
 /** Kilograms a blueprint weighs, whatever it makes. Chosen: the wiki gives no weight for one. */
 export const BLUEPRINT_KG = 0.1;
 
@@ -81,7 +87,10 @@ export class Inventory {
   readonly count: Uint16Array;
   readonly quality: Uint8Array;
   readonly dur: Uint16Array;
-  /** FLAG_ bits. A blueprint (FLAG_BLUEPRINT) of an item lies alone in its slot, never spoils, and is never spent. */
+  /**
+   * FLAG_ bits. A blueprint (FLAG_BLUEPRINT) of an item lies alone in its slot, never spoils, and is never spent. A weapon
+   * whose attachment is switched on has FLAG_ON, which changes nothing of how the slot is counted, spent or stacked.
+   */
   readonly flags: Uint8Array;
   /** Tick at which the stack's top item spoils. 0 for a stack that does not. */
   readonly spoilAt: Uint32Array;
@@ -164,6 +173,11 @@ export class Inventory {
     this.mod[slot] = ++this.version;
   }
 
+  setFlags(slot: number, flags: number): void {
+    this.flags[slot] = flags;
+    this.mod[slot] = ++this.version;
+  }
+
   /** The caller has checked the slot holds `n`. */
   remove(slot: number, n: number): void {
     const left = this.count[slot]! - n;
@@ -177,7 +191,7 @@ export class Inventory {
   /** How many of an item there are to spend. A blueprint is not one of them. */
   total(item: number): number {
     let n = 0;
-    for (let s = 0; s < this.cap; s++) if (this.item[s] === item && this.flags[s] === 0) n += this.count[s]!;
+    for (let s = 0; s < this.cap; s++) if (this.item[s] === item && (this.flags[s]! & FLAG_BLUEPRINT) === 0) n += this.count[s]!;
     return n;
   }
 
@@ -257,7 +271,7 @@ export class Inventory {
   take(item: number, n: number): boolean {
     if (this.total(item) < n) return false;
     for (let s = this.cap - 1; s >= 0 && n > 0; s--) {
-      if (this.item[s] !== item || this.flags[s] !== 0) continue;
+      if (this.item[s] !== item || (this.flags[s]! & FLAG_BLUEPRINT) !== 0) continue;
       const k = Math.min(n, this.count[s]!);
       this.remove(s, k);
       n -= k;
@@ -319,7 +333,8 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   if (item === 0) return 0;
   if (n === 0 || n > have) n = have;
   const other = b.item[sb]!;
-  const flags = a.flags[sa]!;
+  // A weapon moved is no longer the thing in hand, so its attachment goes off (FLAG_ON).
+  const flags = a.flags[sa]! & ~FLAG_ON;
   // An armor slot takes only its own kind of piece, and an item swapped back must fit its slot too.
   if (!fitsSlot(b, sb, item, t, flags) || (other !== 0 && (other !== item || b.flags[sb] !== flags) && !fitsSlot(a, sa, other, t, b.flags[sb]!))) return 0;
   const sp = carried(a.spoilAt[sa]!, now, a.keep, b.keep);
@@ -352,7 +367,7 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   const loaded = a.loaded[sa]!;
   const attach = a.attach[sa]!;
   const otherRef = b.refOf(sb);
-  a.set(sa, other, b.count[sb]!, b.quality[sb]!, b.dur[sb]!, carried(b.spoilAt[sb]!, now, b.keep, a.keep), b.flags[sb]!);
+  a.set(sa, other, b.count[sb]!, b.quality[sb]!, b.dur[sb]!, carried(b.spoilAt[sb]!, now, b.keep, a.keep), b.flags[sb]! & ~FLAG_ON);
   a.setGear(sa, b.ammo[sb]!, b.loaded[sb]!, b.attach[sb]!);
   a.setRef(sa, otherRef);
   b.set(sb, item, have, q, d, sp, flags);
