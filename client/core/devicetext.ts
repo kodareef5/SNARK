@@ -3,6 +3,7 @@
 
 import type { Axis, DeviceReport, GpuInfo, Mode, PhaseReport, TerrainRung } from "./device.ts";
 import { AXES, FLIGHT_TIER_COUNT, LONG, MODES, RUNGS, formatsOf } from "./device.ts";
+import { TIERS } from "./assets/tiers.ts";
 import { FRAME_BLOCK_BYTES } from "./devicegpu.ts";
 import { FAR_FROM } from "./render/camera.ts";
 import { UNIT } from "./render/programs.ts";
@@ -74,7 +75,27 @@ const row = (cells: string[], widths = WIDTHS): string => cells.map((c, i) => (i
 
 function phaseRow(p: PhaseReport, tier = p.tier): string {
   const line = row([tier, p.scene, p.canvas.join("x"), `${secs(p.settleMs)}${p.settled ? "" : "!"}`, String(p.frameMs.median), String(p.frameMs.p95), String(p.frameMs.p99), String(p.frameMs.worst), String(p.buildMs.median), String(p.drawMs.median), p.gpuMs == null ? "-" : String(p.gpuMs), count(p.drawCalls), count(p.triangles), count(p.textured), String(p.dropped), String(p.skipped), String(p.lost), mb(p.fetched), String(p.failed), String(p.missed)]);
-  return p.fellTo ? `${line}  fell to ${p.fellTo}` : line;
+  const failed = [p.failedHow ? `fetches failed: ${p.failedHow}` : "", p.refused > 0 ? `${p.refused} uploads the card refused` : ""].filter((w) => w !== "").join("; ");
+  return `${line}${p.fellTo ? `  fell to ${p.fellTo}` : ""}${failed ? `  ${failed}` : ""}`;
+}
+
+/**
+ * The tiers that drew with materials, and those that have materials but drew none. A draw counts as with materials only
+ * once the card holds them, so a tier that has them and drew none never had its textures arrive or taken.
+ */
+export function materialsLacking(r: DeviceReport): { drawn: string[]; lacking: string[] } {
+  const shown = [...r.phases, ...(r.ladder?.rungs ?? [])].map((p) => ("textured" in p ? { tier: p.tier, mat: p.textured } : { tier: p.tier, mat: p.mat }));
+  if (r.soak && !r.soak.wood) shown.push({ tier: r.soak.tier, mat: Math.max(0, ...r.soak.minutes.map((m) => m.mat ?? 0)) });
+  const drawn = [...new Set(shown.filter((p) => p.mat > 0).map((p) => p.tier))];
+  const textured = new Set<string>(TIERS.filter((t) => t.texture > 0).map((t) => t.name));
+  return { drawn, lacking: [...new Set(shown.map((p) => p.tier))].filter((t) => textured.has(t) && !drawn.includes(t)) };
+}
+
+function materialsLine(r: DeviceReport): string {
+  const { drawn, lacking } = materialsLacking(r);
+  const made = drawn.length === 0 ? "" : r.texturesMade > 0 ? `drawn on ${drawn.join(", ")}: the renderer made ${r.texturesMade} textures` : `drawn on ${drawn.join(", ")}, but the renderer made no textures`;
+  const lack = lacking.length === 0 ? "" : `none drawn on ${lacking.join(", ")}, which have them: a lack, as their textures never arrived or the card refused them`;
+  return [made, lack].filter((w) => w !== "").join("; ") || "none asked for: no tier with materials ran";
 }
 
 /** The ladder for each tier: per axis the most that held the display's rate, and the first that did not, with why. */
@@ -225,7 +246,8 @@ export function deviceTable(r: DeviceReport): string[] {
   out.push(`display   ${r.idleFrameMs ?? "?"} ms between frames with nothing drawn; wake lock ${r.wakeLock}`);
   out.push(...linkLines(r));
   const load = r.load;
-  if (load) out.push(`load      first frame ${secs(load.firstFrameMs)} s, full detail ${secs(load.fullDetailMs)} s${load.settled ? "" : " (not reached)"}; page ${mb(load.pageBytes)} MB, assets ${mb(load.assetBytes)} MB, ${mb(load.diskBytes)} MB from disk, ${load.failed} fetches failed; asset cache in ${load.cache}`);
+  if (load) out.push(`load      first frame ${secs(load.firstFrameMs)} s, full detail ${secs(load.fullDetailMs)} s${load.settled ? "" : " (not reached)"}; page ${mb(load.pageBytes)} MB, assets ${mb(load.assetBytes)} MB, ${mb(load.diskBytes)} MB from disk, ${load.failed} fetches failed${load.failedHow ? ` (${load.failedHow})` : ""}, ${load.refused} uploads the card refused; asset cache in ${load.cache}`);
+  if (r.served) out.push(`files     the server's files ${r.served}: the run fetched from something else than it started with`);
   if (r.probes) {
     const wrong = r.probes.filter((p) => !p.ok);
     out.push(`picture   ${r.probes.length - wrong.length} of ${r.probes.length} probes right (${r.probes.map((p) => p.name).join(" ")})${wrong.map((p) => `; ${p.name} is ${p.got.join(",")}, not ${p.expected.join(",")}`).join("")}`);
@@ -234,10 +256,7 @@ export function deviceTable(r: DeviceReport): string[] {
     const differ = r.hashes.filter((h) => h.got !== h.want);
     out.push(`hashes    ${r.hashes.length - differ.length} of ${r.hashes.length} as the server's${differ.map((h) => `; ${h.name} ${h.got}, server ${h.want ?? "?"}`).join("")}; ${r.hashes.map((h) => `${h.name} ${h.ms} ms`).join(", ")}`);
   }
-  const shown = [...r.phases, ...(r.ladder?.rungs ?? [])].map((p) => ("textured" in p ? { tier: p.tier, mat: p.textured } : { tier: p.tier, mat: p.mat }));
-  const soaked = r.soak?.minutes.some((m) => (m.mat ?? 0) > 0) ? [r.soak.tier] : [];
-  const asked = [...new Set([...shown.filter((p) => p.mat > 0).map((p) => p.tier), ...soaked])];
-  out.push(`materials ${asked.length === 0 ? "none asked for" : r.texturesMade > 0 ? `drawn on ${asked.join(", ")}: the renderer made ${r.texturesMade} textures` : `asked for on ${asked.join(", ")}, but the renderer made no textures, so drawn flat`}`);
+  out.push(`materials ${materialsLine(r)}`);
   if (r.phases.length > 0) {
     out.push(`tiers run ${[...new Set(r.phases.map((p) => p.tier))].join(", ")}`);
     out.push("");

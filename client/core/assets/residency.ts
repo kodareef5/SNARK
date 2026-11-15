@@ -95,7 +95,11 @@ export class Residency {
   waiting = 0;
   /** Requests under way. */
   flying = 0;
-  readonly stats = { requests: 0, cancelled: 0, failed: 0, dead: 0, evicted: 0, wasted: 0, fetched: 0, cached: 0, uploaded: 0, used: 0, skipped: 0, shrunk: 0 };
+  /**
+   * Requests that failed are `failed` (to be asked again) or `dead` (given up), and by kind `failNet`, `failHash` and
+   * `failRange`, with the HTTP status of the last on the network, 0 for no answer. `refused` counts uploads the card refused.
+   */
+  readonly stats = { requests: 0, cancelled: 0, failed: 0, dead: 0, failNet: 0, failHash: 0, failRange: 0, lastStatus: 0, refused: 0, evicted: 0, wasted: 0, fetched: 0, cached: 0, uploaded: 0, used: 0, skipped: 0, shrunk: 0 };
 
   private readonly manifest: Manifest;
   private readonly boot: Pack;
@@ -376,6 +380,12 @@ export class Residency {
         continue;
       }
       this.undo(slot);
+      if (a.fail === FAIL_HASH) this.stats.failHash++;
+      else if (a.fail === FAIL_RANGE) this.stats.failRange++;
+      else {
+        this.stats.failNet++;
+        this.stats.lastStatus = a.status ?? 0;
+      }
       if (a.fail === FAIL_RANGE || (a.fail === FAIL_HASH && this.rehashed[slot] === 1)) {
         // The manifest is wrong about it, or its bytes are wrong twice. Asking again would change nothing.
         this.stats.dead++;
@@ -648,6 +658,7 @@ export class Residency {
 
   /** The graphics card could not take a level or a surface it was sent. */
   failed(slot: number): void {
+    this.stats.refused++;
     if (this.state[slot] !== RESIDENT) return;
     if (this.inBoot[slot] === 0) this.unlink(slot);
     this.state[slot] = ABSENT;
@@ -656,6 +667,7 @@ export class Residency {
 
   /** The graphics card could not take a texture it was sent, and has dropped all it had of it. `texture` is as in `texUploads`. */
   failedTexture(texture: number): void {
+    this.stats.refused++;
     this.letGo(texture);
   }
 

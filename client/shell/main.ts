@@ -11,6 +11,7 @@ import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
 import { LEVEL_COLOURS, SKY_COLOR } from "../../shared/pack/palette.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
+import { fetchBytes, fetchJson, fetchText } from "../core/fetched.ts";
 import { probePasses, provingProbes, type Probe } from "../core/selfcheck.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
@@ -51,12 +52,12 @@ async function boot(): Promise<void> {
   const reg = compileContent(CORE_CONTENT).registry!;
   // The server names its map's file. It is fetched whole, while the assets are, since the renderer draws the ground from it.
   const mapBytes = (async () => {
-    const named = (await (await fetch("map.json")).json()) as { file: string };
-    return (await fetch(named.file)).arrayBuffer();
+    const named = (await fetchJson(fetch, "map.json")) as { file: string };
+    return fetchBytes(fetch, named.file);
   })();
   // The manifest says where every level of every mesh is. The boot pack is fetched whole, and the rest as it is wanted.
-  const manifest = parseManifest(await (await fetch("assets/manifest.json")).text());
-  const pack = parsePack(new Uint8Array(await (await fetch(`assets/${manifest.files[manifest.boot]!.name}`)).arrayBuffer()));
+  const manifest = parseManifest(await fetchText(fetch, "assets/manifest.json"));
+  const pack = parsePack(new Uint8Array(await fetchBytes(fetch, `assets/${manifest.files[manifest.boot]!.name}`)));
   const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
   const map = parseMap(new Uint8Array(await mapBytes));
   const hf = mapHeightfield(map);

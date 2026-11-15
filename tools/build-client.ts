@@ -30,11 +30,12 @@ export function brotli(bytes: Uint8Array, quick: boolean): Uint8Array {
 
 /**
  * With `stress`, the stress meshes and cards are built as well, three of the meshes listed wrongly, for the page at ?stress=1
- * to draw. With `quick`, the Brotli copies are made quickly and not as small as they can be.
+ * to draw. With `quick`, the Brotli copies are made quickly and not as small as they can be. `dist` is where it all goes,
+ * client/dist if not given.
  */
-export async function buildClient(opts: { stress?: boolean; quick?: boolean } = {}): Promise<{ jsBytes: number; packBytes: number }> {
+export async function buildClient(opts: { stress?: boolean; quick?: boolean; dist?: string } = {}): Promise<{ jsBytes: number; packBytes: number }> {
   const root = resolve(import.meta.dir, "..");
-  const dist = join(root, "client/dist");
+  const dist = opts.dist ?? join(root, "client/dist");
   rmSync(join(dist, "assets"), { recursive: true, force: true });
   mkdirSync(join(dist, "assets"), { recursive: true });
   // Workers and worklets run in their own threads, so each is bundled as a separate file.

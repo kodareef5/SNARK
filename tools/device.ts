@@ -4,23 +4,28 @@
 // load ladder, and a soak. With --terrain the server is on the bench's 8 km map instead, with the far nodes' bench's
 // wood, and the page offers the terrain flight (D253), which ends with far bases (D257) and the wood (D259), and a soak
 // through the wood (`--self soak --terrain`). It posts its report after every step; each run is kept in
-// .cache/device/ and printed as a table when it is done. With --self the local headless Chrome opens the link and runs a
+// .cache/device/ and printed as a table when it is done. The server serves a client of its own, built into a temporary
+// folder as it starts and removed as it stops, so a build in this checkout cannot take files from under a phone; each
+// report says if what it serves changed all the same. With --self the local headless Chrome opens the link and runs a
 // test without a tap, which must finish: `--self` for the quick look, `--self ladder`, `--self soak` (with
-// --soak-minutes n) or `--self terrain`, the test that the probe works, not part of the check. --port n, and --minutes n
-// before it stops by itself (30). CHROME and CLOUDFLARED name the programs.
+// --soak-minutes n) or `--self terrain`, the test that the probe works, not part of the check. With `--texfmt astc` the
+// page takes that texture variant, with `--assetnet 500,0,0` its asset fetches go over a made-up link (delay ms, KB/s,
+// % lost), and with `--rebuild` a plain build of client/dist starts once the page has the game, as `bun run build` in
+// another terminal would. --port n, and --minutes n before it stops by itself (30). CHROME and CLOUDFLARED name the
+// programs.
 //
 // While the tunnel is up anyone may reach the server. The short path has four letters nobody is told and closes after
 // 64 wrong guesses, the probe's routes need a 128-bit token, joining needs a random password, and cheats are off. What a
 // page may change is the size of the base in front of it, up to BASE_MOST pieces.
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { TIERS } from "../client/core/assets/tiers.ts";
 import { AXES, FAR_CHUNKS, FLIGHT_TIER_COUNT, MEMORY_MB, MODES, deviceScenarios, scenesOf, type DeviceReport, type Mode } from "../client/core/device.ts";
 import { BASE_MOST, WOOD, basePieces, crowdScene } from "../client/core/devicescene.ts";
-import { deviceTable } from "../client/core/devicetext.ts";
+import { deviceTable, materialsLacking } from "../client/core/devicetext.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { startServer } from "../server/main.ts";
 import { loadConfig } from "../server/settings/config.ts";
@@ -62,6 +67,8 @@ export interface DeviceOptions {
   base(n: number): number;
   /** What the server has held back so far, which each report's answer tells the page. */
   held(): { skipped: number; overflows: number };
+  /** What has changed of the files the server serves since it started, or "" for nothing. */
+  changed?(): string;
 }
 
 interface Run {
@@ -70,6 +77,25 @@ interface Run {
   stage: string;
   last: DeviceReport;
   told: boolean;
+}
+
+/** Each file under `dir`, by its path there, with its size and when it was written. */
+export function servedFiles(dir: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const name of readdirSync(dir, { recursive: true }) as string[]) {
+    const s = statSync(join(dir, name), { throwIfNoEntry: false });
+    if (s?.isFile()) out.set(name, `${s.size} ${s.mtimeMs}`);
+  }
+  return out;
+}
+
+/** What differs between two looks at the same files, the first few named, or "" if nothing. */
+export function filesChanged(before: Map<string, string>, now: Map<string, string>): string {
+  const gone = [...before.keys()].filter((name) => !now.has(name));
+  const added = [...now.keys()].filter((name) => !before.has(name));
+  const rewritten = [...before.keys()].filter((name) => now.has(name) && now.get(name) !== before.get(name));
+  const list = (names: string[], how: string): string => (names.length === 0 ? "" : `${names.length} ${how} (${names.slice(0, 3).join(", ")}${names.length > 3 ? ", ..." : ""})`);
+  return [list(gone, "gone"), list(rewritten, "rewritten"), list(added, "new")].filter((x) => x !== "").join(", ");
 }
 
 /** The device probe's requests: the short path, and the token's ping, hashes, base and reports. Null for any other. */
@@ -83,6 +109,7 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
   const seen = new Set<string>();
   let posts = 0;
   let wrong = 0;
+  let moved = "";
   const answer = (text: string, status = 200): Response => new Response(text, { status, headers: { "cache-control": "no-store" } });
   const json = (value: unknown): Response => Response.json(value, { headers: { "cache-control": "no-store" } });
 
@@ -116,6 +143,12 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
     }
     // Posts are sent in order. One older than what is kept changes nothing.
     if (report.seq <= run.seq) return json(o.held());
+    // A page that fetches from files changed under it measures something else than it was given.
+    const changed = o.changed?.() ?? "";
+    if (changed) {
+      if (!moved) o.say(`the files this server serves changed while it ran: ${(moved = changed)}`);
+      report.served = `changed while the server ran: ${changed}`;
+    }
     run.seq = report.seq;
     run.last = report;
     try {
@@ -177,6 +210,12 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   for (const p of r.probes ?? []) if (!p.ok) out.push(`probe ${p.name} is wrong`);
   for (const h of r.hashes ?? []) if (h.got !== h.want) out.push(`hash ${h.name} differs from the server's`);
   if (r.link.missed > 0) out.push(`${r.link.missed} snapshots missed on this machine's own link`);
+  if (r.served) out.push(`the server's files ${r.served}`);
+  // On this machine's own link nothing fails to arrive, and its card takes every upload.
+  if (r.load && r.load.failed + r.load.refused > 0) out.push(`loading: ${r.load.failed} fetches failed${r.load.failedHow ? ` (${r.load.failedHow})` : ""}, ${r.load.refused} uploads the card refused`);
+  for (const p of [...r.phases, ...(r.again ? [r.again] : [])]) if (p.failed + p.refused > 0) out.push(`${p.tier} ${p.scene}: ${p.failed} fetches failed${p.failedHow ? ` (${p.failedHow})` : ""}, ${p.refused} uploads the card refused`);
+  for (const g of r.ladder?.rungs ?? []) if (g.failed + g.refused > 0) out.push(`${g.tier} ${g.axis} ${g.n}: ${g.invalid}`);
+  for (const t of materialsLacking(r).lacking) out.push(`nothing was drawn with its materials on ${t}, which has them`);
   if (mode === "quick") {
     if (!r.again) out.push("no again");
     for (const t of TIERS) if (r.phases.filter((p) => p.tier === t.name).length !== scenesOf(t).length) out.push(`tier ${t.name} did not run every scene`);
@@ -218,7 +257,6 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
       if (g.nodeDraws === 0) out.push(`wood ${g.tier}: no far trees, rocks or bushes were drawn`);
     }
   }
-  if (mode === "soak" && r.soak && !r.soak.wood && TIERS.find((t) => t.name === r.soak!.tier)!.texture > 0 && !r.soak.minutes.some((m) => m.mat > 0)) out.push(`the soak drew nothing with materials on ${r.soak.tier}, which has them`);
   return out;
 }
 
@@ -243,6 +281,10 @@ if (import.meta.main) {
   const mode = MODES.find((m) => m === value("--self")) ?? "quick";
   const soakMinutes = Number(value("--soak-minutes") ?? 10);
   const tunnel = process.argv.includes("--tunnel");
+  const rebuild = self && process.argv.includes("--rebuild");
+  // Only what a page's address may hold.
+  const texfmt = /^[a-z0-9]{1,8}$/.exec(value("--texfmt") ?? "")?.[0];
+  const assetnet = /^[\d.]+(,[\d.]+){0,2}$/.exec(value("--assetnet") ?? "")?.[0];
   const terrain = mode === "terrain" || process.argv.includes("--terrain");
   const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find((p) => p && existsSync(p));
   const cloudflared = process.env.CLOUDFLARED ?? Bun.which("cloudflared") ?? "/opt/homebrew/bin/cloudflared";
@@ -255,8 +297,10 @@ if (import.meta.main) {
     process.exit(2);
   }
 
-  await buildClient({ stress: true });
-  const dist = resolve(import.meta.dir, "../client/dist");
+  const dist = realpathSync(mkdtempSync(join(tmpdir(), "snark-device-client-")));
+  process.on("exit", () => rmSync(dist, { recursive: true, force: true }));
+  await buildClient({ stress: true, dist });
+  const servedAtStart = servedFiles(dist);
   const manifest = parseManifest(readFileSync(join(dist, "assets/manifest.json"), "utf8"));
   const pack = parsePack(new Uint8Array(readFileSync(join(dist, "assets", manifest.files[manifest.boot]!.name))));
   const expected = Object.fromEntries(deviceScenarios(compileContent(CORE_CONTENT).registry!, pack).map(([name, run]) => [name, run()]));
@@ -296,7 +340,18 @@ if (import.meta.main) {
     }
     return built.length;
   };
-  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,soak" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }) });
+  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,soak" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }), changed: () => filesChanged(servedAtStart, servedFiles(dist)) });
+  // With --rebuild, once a page has the game, another process builds client/dist as a person might in another terminal.
+  let builder: ReturnType<typeof Bun.spawn> | null = null;
+  let besideDone: Promise<unknown> = Promise.resolve();
+  const routes = (req: Request, url: URL): Response | Promise<Response> | null => {
+    if (rebuild && !builder && url.pathname === "/ws") {
+      say("a plain build of client/dist began beside the run, as `bun run build` in another terminal would");
+      builder = Bun.spawn(["bun", "tools/build-client.ts"], { cwd: resolve(import.meta.dir, ".."), stdout: "ignore", stderr: "ignore" });
+      besideDone = builder.exited.then((code) => say(`the build beside the run ended with ${code}`));
+    }
+    return probe.routes(req, url);
+  };
   const { rules } = loadConfig({ gus: `[ServerSettings]\nServerPassword=${password}\n` });
   // For the terrain flight, the bench's 8 km of hills as a map file, with no water, the far nodes' bench's wood, and one
   // spawn point in the middle.
@@ -304,7 +359,7 @@ if (import.meta.main) {
   const mapDir = hills ? mkdtempSync(join(tmpdir(), "snark-device-map-")) : "";
   if (hills) writeFileSync(join(mapDir, "hills.snmap"), writeMap({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [WOOD], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
   // The fixed scene of the boot probe, where nothing wakes, and behind the spawn point the crowd scene's thatch and bodies.
-  server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", probeScene: true, config: rules, routes: probe.routes, ...(hills ? { map: join(mapDir, "hills.snmap") } : {}) });
+  server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", clientDir: dist, probeScene: true, config: rules, routes, ...(hills ? { map: join(mapDir, "hills.snmap") } : {}) });
   const running = server;
   const scene = terrain ? { bodies: [], floor: { x: 0, z: 0 }, pieces: [] } : crowdScene();
   const world = running.host.world;
@@ -324,7 +379,7 @@ if (import.meta.main) {
     running.stop();
     if (mapDir) rmSync(mapDir, { recursive: true, force: true });
   };
-  process.on("exit", () => child?.kill());
+  process.on("exit", () => (child?.kill(), builder?.kill()));
   stopOnSignals(stop);
   const minutes = Number(value("--minutes") ?? 30);
   setTimeout(() => {
@@ -379,12 +434,14 @@ if (import.meta.main) {
   if (self) {
     const profile = mkdtempSync(join(tmpdir(), "snark-device-"));
     // A phone's shape: a narrow window three device pixels to the CSS pixel. The test starts without a tap.
-    const link = `${base0}/?device=${token}&password=${password}${tests}&mode=${mode}&minutes=${soakMinutes}`;
+    const link = `${base0}/?device=${token}&password=${password}${tests}&mode=${mode}&minutes=${soakMinutes}${texfmt ? `&texfmt=${texfmt}` : ""}${assetnet ? `&assetnet=${assetnet}` : ""}`;
     const browser = Bun.spawn([chrome!, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=430,932", "--force-device-scale-factor=3", `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
     const limit = (mode === "soak" ? soakMinutes + 5 : mode === "ladder" ? 20 : mode === "terrain" ? 8 : 6) * 60000;
     const got = await Promise.race([whole, new Promise<null>((r) => setTimeout(() => r(null), limit))]);
     browser.kill();
     await browser.exited;
+    // A build stopped half way would leave client/dist without its assets.
+    await besideDone;
     rmSync(profile, { recursive: true, force: true });
     const missing = got ? lacking(got.report, mode) : [`no finished report within ${limit / 60000} minutes`];
     stop();

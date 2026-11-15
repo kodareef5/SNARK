@@ -3,11 +3,11 @@
 
 import { expect, test } from "bun:test";
 import { TIERS } from "../../client/core/assets/tiers.ts";
-import { AXES, LadderPlan, RUNGS, featuresOf, formatsOf, gpuOf, judgeRung, newReport, soakLoad, spread, type PhaseReport, type RungReport, type Within } from "../../client/core/device.ts";
+import { AXES, LadderPlan, RUNGS, failedHow, featuresOf, formatsOf, gpuOf, judgeRung, newReport, soakLoad, spread, type PhaseReport, type RungReport, type Within } from "../../client/core/device.ts";
 import { BASE_MOST, TextureMemory, basePieces, bodySpots, crowdScene, farBases, farSpots } from "../../client/core/devicescene.ts";
 import { fakeGl } from "../fixtures/gl.ts";
 import { farRegistry } from "../fixtures/farworld.ts";
-import { deviceTable, escape, identify, limitsLine } from "../../client/core/devicetext.ts";
+import { deviceTable, escape, identify, limitsLine, materialsLacking } from "../../client/core/devicetext.ts";
 import { farPart } from "../../client/core/render/far.ts";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -106,8 +106,9 @@ test("the ladder climbs each axis of each tier the device takes until a rung bre
   expect(climb(16384, () => false, "medium draws 512").at(-1)).toBe("medium draws 512");
 });
 
-test("a rung holds by its frames only when it drew all it was given, settled, fetched what it asked for and kept its tier", () => {
-  const phase = (o: Partial<PhaseReport> = {}): PhaseReport => ({ tier: "medium", scene: "plain", ratio: 1, canvas: [1, 1], settleMs: 500, settled: true, frames: 90, frameMs: { median: 16.7, p95: 17, p99: 18, worst: 20 }, buildMs: spread([1]), drawMs: spread([0.5]), gpuMs: null, gpuOff: null, drawCalls: 50, triangles: 1000, textured: 0, bones: 0, dropped: 0, skipped: 0, fetched: 0, failed: 0, missed: 0, lost: 0, fellTo: null, ...o });
+const phase = (o: Partial<PhaseReport> = {}): PhaseReport => ({ tier: "medium", scene: "plain", ratio: 1, canvas: [1, 1], settleMs: 500, settled: true, frames: 90, frameMs: { median: 16.7, p95: 17, p99: 18, worst: 20 }, buildMs: spread([1]), drawMs: spread([0.5]), gpuMs: null, gpuOff: null, drawCalls: 50, triangles: 1000, textured: 0, bones: 0, dropped: 0, skipped: 0, fetched: 0, failed: 0, failedHow: "", refused: 0, missed: 0, lost: 0, fellTo: null, ...o });
+
+test("a rung holds by its frames only when it drew all it was given, settled, fetched what it asked for, had its uploads taken and kept its tier", () => {
   expect(judgeRung(phase(), 16.7)).toEqual({ held: true, limit: "", invalid: "" });
   expect(judgeRung(phase({ frameMs: { median: 33.3, p95: 34, p99: 35, worst: 40 } }), 16.7)).toEqual({ held: false, limit: "the GPU", invalid: "" });
   expect(judgeRung(phase({ frameMs: { median: 33.3, p95: 34, p99: 35, worst: 40 }, buildMs: spread([30]) }), 16.7)).toEqual({ held: false, limit: "our code", invalid: "" });
@@ -117,13 +118,19 @@ test("a rung holds by its frames only when it drew all it was given, settled, fe
   expect(invalid({ dropped: 600 })).toBe("600 things dropped");
   expect(invalid({ skipped: 2 })).toBe("2 draws skipped");
   expect(invalid({ failed: 1 })).toBe("1 fetches failed");
+  // Fetches that failed say how, and uploads the card refused are told apart from them.
+  const how = failedHow({ net: 14, hash: 1, range: 0, status: 404, refused: 2 });
+  expect(how).toBe("14 on the network, the last answered 404; 1 with the wrong hash");
+  expect(failedHow({ net: 2, hash: 0, range: 1, status: 0, refused: 0 })).toBe("2 on the network, the last with no answer; 1 past the file's end");
+  expect(invalid({ failed: 15, failedHow: how, refused: 2 })).toBe("15 fetches failed (14 on the network, the last answered 404; 1 with the wrong hash), 2 uploads the card refused");
+  expect(invalid({ refused: 3 })).toBe("3 uploads the card refused");
   expect(invalid({ fellTo: "lowpoly" })).toBe("the game fell to lowpoly");
   expect(invalid({ settled: false })).toBe("never settled");
   expect(judgeRung(phase({ settled: false }), 16.7)).toMatchObject({ held: false, limit: "" });
 });
 
 test("the soak takes half of what the ladder held on its tier, a rung down, or its own amounts without a ladder", () => {
-  const rung = (axis: RungReport["axis"], n: number, held: boolean): RungReport => ({ tier: "high", axis, n, held, limit: "", invalid: "", canvas: [], settled: true, frameMs: spread([]), buildMs: 0, drawMs: 0, calls: 0, tris: 0, bones: 0, mat: 0, fetched: 0, missed: 0 });
+  const rung = (axis: RungReport["axis"], n: number, held: boolean): RungReport => ({ tier: "high", axis, n, held, limit: "", invalid: "", canvas: [], settled: true, frameMs: spread([]), buildMs: 0, drawMs: 0, calls: 0, tris: 0, bones: 0, mat: 0, fetched: 0, failed: 0, refused: 0, missed: 0 });
   const ladder = [rung("bodies", 400, true), rung("bodies", 800, false), rung("pieces", 4096, true), rung("triangles", 64, true), rung("draws", 256, false)];
   expect(soakLoad(ladder, "high")).toEqual({ load: { stress: true, bodies: 200, pieces: 2048, near: 32, far: 0 }, from: "half what the ladder held on high" });
   expect(soakLoad(null, "high").from).toBe("defaults");
@@ -207,5 +214,13 @@ test("texture memory grows a megabyte at a time on a spare unit, and says when t
 test("a report with nothing in it yet still reads as a table", () => {
   const lines = deviceTable(newReport("0123456789abcdef", "ladder"));
   expect(lines[0]).toBe("SNARK device report 0123456789abcdef, ladder: stopped at starting");
-  expect(lines).toContain("materials none asked for");
+  expect(lines).toContain("materials none asked for: no tier with materials ran");
+});
+
+test("a tier that has materials and drew none of them is said to lack them, plainly; low poly has none to lack", () => {
+  const r = newReport("0123456789abcdef");
+  r.phases = [phase({ tier: "lowpoly" }), phase({ tier: "medium", scene: "plain" }), phase({ tier: "medium", scene: "crowd", textured: 10 }), phase({ tier: "high" })];
+  r.texturesMade = 40;
+  expect(materialsLacking(r)).toEqual({ drawn: ["medium"], lacking: ["high"] });
+  expect(deviceTable(r)).toContain("materials drawn on medium: the renderer made 40 textures; none drawn on high, which have them: a lack, as their textures never arrived or the card refused them");
 });

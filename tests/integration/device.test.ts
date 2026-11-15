@@ -2,14 +2,14 @@
 // which the internet can reach while a tunnel is up.
 
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
-import { DeviceProbe, MEMORY_MB, deviceScenarios, newReport, type DeviceBrowser, type DeviceReport, type RendererLike, type Timing } from "../../client/core/device.ts";
+import { DeviceProbe, MEMORY_MB, deviceScenarios, newReport, spread, type DeviceBrowser, type DeviceReport, type RendererLike, type RungReport, type Timing } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
 import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
-import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, lacking } from "../../tools/device.ts";
+import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, filesChanged, lacking, servedFiles } from "../../tools/device.ts";
 import { fakeGl } from "../fixtures/gl.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -168,8 +168,8 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect(page.text.startsWith("<div")).toBe(true);
   expect(page.text).toContain("Done.</b> Sent.");
   expect(page.text).toContain("tiers run lowpoly, medium, high");
-  // The fake draws nothing, so the pictures and the far blocks' edge read wrong.
-  expect(lacking(r).filter((line) => !/^(probe |gpu far edge)/.test(line))).toEqual(["tier ultra did not run every scene"]);
+  // The fake draws nothing, so the pictures and the far blocks' edge read wrong; and the harness fetches no textures.
+  expect(lacking(r).filter((line) => !/^(probe |gpu far edge)/.test(line))).toEqual(["nothing was drawn with its materials on medium, which has them", "nothing was drawn with its materials on high, which has them", "tier ultra did not run every scene"]);
   expect(card.gl.invalid).toEqual([]);
   expect([air.length > 0, air.every(([haze, detail]) => haze === 0 && detail === 0), app.scene!.plainSky]).toEqual([true, true, false]);
 
@@ -345,6 +345,24 @@ test("a page the browser reloads in the middle of a run shows and sends what it 
   expect([await other.before(), other.report.reloadedDuring]).toEqual([true, null]);
 });
 
+test("a soak tapped on a page the browser reloaded during a ladder takes half of what that ladder held, and runs", async () => {
+  const rung = (axis: RungReport["axis"], n: number): RungReport => ({ tier: "high", axis, n, held: true, limit: "", invalid: "", canvas: [], settled: true, frameMs: spread([16.7]), buildMs: 1, drawMs: 1, calls: 0, tris: 0, bones: 0, mat: 0, fetched: 0, failed: 0, refused: 0, missed: 0 });
+  const ladder = { display: 16.7, rungs: [rung("bodies", 400), rung("pieces", 64), rung("triangles", 8), rung("draws", 256)], memory: null };
+  const saved = JSON.stringify({ token: TOKEN, report: { ...newReport("0011223344556677", "ladder"), seq: 70, stage: "memory 2048 MB", ladder } });
+  const { h, pack, app, expected } = client();
+  const { b, posts } = browser({ saved, clock: () => h.now, expected });
+  const probe = new DeviceProbe(TOKEN, b, { ...TIMING, soakMs: 1000 });
+  const going = probe.before();
+  await settle();
+  probe.start("soak");
+  expect(await going).toBe(true);
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, renderer().r);
+  await run(probe, h, app, renderer().r, 60000);
+  const r = probe.report;
+  expect([r.mode, r.done, r.errors, r.reloadedDuring, r.soak?.from, r.soak?.load.bodies, r.soak?.minutes.length]).toEqual(["soak", true, [], null, "half what the ladder held on high", 200, 1]);
+  expect(posts.filter((p) => p.run === "0011223344556677").map((p) => p.done)).toEqual([true]);
+});
+
 test("a run whose frames stop ends, saying why, and one whose game never starts ends too", async () => {
   const { h, pack, app } = client();
   let clock = 0;
@@ -449,6 +467,32 @@ test("a report is kept in its folder under a name of the server's making, newer 
   expect((await ask(path, post({ ...report, run: "eeeeeeeeeeeeeeee" })))!.status).toBe(429);
   expect(readdirSync(dir).length).toBe(MAX_RUNS);
   expect(existsSync(join(dir, "..", "escape"))).toBe(false);
+});
+
+test("a report posted after the files the server serves changed under it says what changed, and the run lacks for it", async () => {
+  const files = join(dir, "dist");
+  mkdirSync(join(files, "assets"), { recursive: true });
+  for (const name of ["index.html", "main.js", "assets/manifest.json", "assets/core.tex.astc.0123456789abcdef.sntx"]) writeFileSync(join(files, name), name);
+  const before = servedFiles(files);
+  expect([...before.keys()].sort()).toEqual(["assets/core.tex.astc.0123456789abcdef.sntx", "assets/manifest.json", "index.html", "main.js"]);
+  const said: string[] = [];
+  const { routes } = deviceRoutes({ dir: join(dir, "served"), token: TOKEN, code: "bqzk", password: "secret", expected: {}, say: (line) => said.push(line), base: () => 0, held: () => ({ skipped: 0, overflows: 0 }), changed: () => filesChanged(before, servedFiles(files)) });
+  const send = async (report: DeviceReport): Promise<DeviceReport> => {
+    const req = new Request(`http://127.0.0.1/__device/report?token=${TOKEN}`, post(report));
+    expect((await routes(req, new URL(req.url)))!.status).toBe(200);
+    return JSON.parse(readFileSync(join(dir, "served", readdirSync(join(dir, "served"))[0]!), "utf8")) as DeviceReport;
+  };
+  const report = { ...newReport("abababababababab", "ladder"), seq: 1, stage: "medium bodies 25" };
+  expect((await send(report)).served).toBeUndefined();
+  // As a build does: its assets folder taken away, then written again.
+  rmSync(join(files, "assets"), { recursive: true });
+  const kept = await send({ ...report, seq: 2, stage: "medium triangles 8" });
+  expect(kept.served).toBe("changed while the server ran: 2 gone (assets/core.tex.astc.0123456789abcdef.sntx, assets/manifest.json)");
+  expect(said).toContain("the files this server serves changed while it ran: 2 gone (assets/core.tex.astc.0123456789abcdef.sntx, assets/manifest.json)");
+  expect(lacking(kept, "ladder")).toContain("the server's files changed while the server ran: 2 gone (assets/core.tex.astc.0123456789abcdef.sntx, assets/manifest.json)");
+  expect(deviceTable(kept)).toContain("files     the server's files changed while the server ran: 2 gone (assets/core.tex.astc.0123456789abcdef.sntx, assets/manifest.json): the run fetched from something else than it started with");
+  writeFileSync(join(files, "main.js"), "another build");
+  expect(filesChanged(before, servedFiles(files))).toBe("2 gone (assets/core.tex.astc.0123456789abcdef.sntx, assets/manifest.json), 1 rewritten (main.js)");
 });
 
 test("a report's table holds no control characters once cleaned, so a hostile one cannot drive the terminal", () => {

@@ -66,6 +66,8 @@ export interface AssetArrival {
   /** Bytes that came over the network, and bytes that came from the disk cache, as they are stored. */
   fetched: number;
   cached: number;
+  /** For a request that failed on the network, the HTTP status the server answered, or 0 for no answer. */
+  status?: number;
 }
 
 export interface AssetPort {

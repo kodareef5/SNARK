@@ -155,9 +155,14 @@ export interface PhaseReport {
   /** Totals over the measured frames, as the frame packet counted them. */
   dropped: number;
   skipped: number;
-  /** While the step settled and ran: bytes fetched over the network, asset requests that failed, and snapshots missed. */
+  /**
+   * While the step settled and ran: bytes fetched over the network, asset requests that failed and how (failedHow),
+   * uploads the graphics card refused, and snapshots missed.
+   */
   fetched: number;
   failed: number;
+  failedHow: string;
+  refused: number;
   missed: number;
   /** Times the graphics context was lost, and the tier the game fell to for want of memory, if it did. */
   lost: number;
@@ -185,6 +190,8 @@ export interface RungReport {
   bones: number;
   mat: number;
   fetched: number;
+  failed: number;
+  refused: number;
   missed: number;
 }
 
@@ -359,8 +366,10 @@ export interface DeviceReport {
     pageBytes: number;
     assetBytes: number;
     diskBytes: number;
-    /** Asset requests that failed by then. */
+    /** Asset requests that failed by then, how, and uploads the graphics card refused. */
     failed: number;
+    failedHow: string;
+    refused: number;
     /** Where the asset worker keeps parts between visits: "disk", "memory" or "none". */
     cache: string;
   } | null;
@@ -382,6 +391,8 @@ export interface DeviceReport {
   errors: string[];
   /** Set when the page found its own run unfinished as it loaded: the browser had reloaded it, most likely after a crash. */
   reloadedDuring: string | null;
+  /** Set by the server (tools/device.ts) when the files it serves changed while it ran: what changed. */
+  served?: string;
 }
 
 export function newReport(run: string, mode: Mode = "quick"): DeviceReport {
@@ -524,13 +535,30 @@ export function rungLoad(tier: Tier, axis: Axis, n: number): Load {
   return load;
 }
 
+/** Counts of what failed: fetches by kind, the HTTP status the last on the network was answered with (0 for none), and uploads the card refused. */
+export interface Failures {
+  net: number;
+  hash: number;
+  range: number;
+  status: number;
+  refused: number;
+}
+
+/** Fetches that failed, by kind, in words: "3 on the network, the last answered 404; 1 with the wrong hash". */
+export function failedHow(f: Failures): string {
+  const net = f.net > 0 ? `${f.net} on the network, the last ${f.status > 0 ? `answered ${f.status}` : "with no answer"}` : "";
+  return [net, f.hash > 0 ? `${f.hash} with the wrong hash` : "", f.range > 0 ? `${f.range} past the file's end` : ""].filter((w) => w !== "").join("; ");
+}
+
 /**
  * A rung's verdict (D246). A lost context is a result. Otherwise its frames count only if it drew everything it was
- * given, settled, fetched all it asked for and kept its tier; if not, it is invalid and neither held nor broke.
+ * given, settled, fetched all it asked for, had every upload taken and kept its tier; if not, it is invalid and
+ * neither held nor broke.
  */
 export function judgeRung(p: PhaseReport, display: number): { held: boolean; limit: string; invalid: string } {
   if (p.lost > 0) return { held: false, limit: "lost", invalid: "" };
-  const why = [p.dropped > 0 ? `${p.dropped} things dropped` : "", p.skipped > 0 ? `${p.skipped} draws skipped` : "", p.failed > 0 ? `${p.failed} fetches failed` : "", p.fellTo ? `the game fell to ${p.fellTo}` : "", p.settled ? "" : "never settled"];
+  const failed = p.failed > 0 ? `${p.failed} fetches failed${p.failedHow ? ` (${p.failedHow})` : ""}` : "";
+  const why = [p.dropped > 0 ? `${p.dropped} things dropped` : "", p.skipped > 0 ? `${p.skipped} draws skipped` : "", failed, p.refused > 0 ? `${p.refused} uploads the card refused` : "", p.fellTo ? `the game fell to ${p.fellTo}` : "", p.settled ? "" : "never settled"];
   const invalid = why.filter((w) => w !== "").join(", ");
   if (invalid) return { held: false, limit: "", invalid };
   const held = p.frameMs.median <= display * HOLD_MEDIAN && p.frameMs.p95 <= display * HOLD_P95;
@@ -640,7 +668,7 @@ export class DeviceRun {
   private lostCount = 0;
   private lostAt = 0;
   private fetchedAt = 0;
-  private failedAt = 0;
+  private failedAt: Failures = { net: 0, hash: 0, range: 0, status: 0, refused: 0 };
   private dropped = 0;
   private skipped = 0;
   private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[], bones: [] as number[], gpu: [] as number[], gpuOff: [] as number[] };
@@ -783,7 +811,7 @@ export class DeviceRun {
     if (!this.report.load) {
       this.apply(bare(tierOf(DEFAULT_TIER), 0));
       this.report.stage = "loading";
-      this.report.load = { firstFrameMs: tenth(now - side.bootAt), fullDetailMs: 0, settled: false, pageBytes: 0, assetBytes: 0, diskBytes: 0, failed: 0, cache: "" };
+      this.report.load = { firstFrameMs: tenth(now - side.bootAt), fullDetailMs: 0, settled: false, pageBytes: 0, assetBytes: 0, diskBytes: 0, failed: 0, failedHow: "", refused: 0, cache: "" };
       this.at = now;
       return true;
     }
@@ -795,7 +823,8 @@ export class DeviceRun {
     load.pageBytes = side.pageBytes();
     load.assetBytes = r.stats.fetched;
     load.diskBytes = r.stats.cached;
-    load.failed = this.failures();
+    const f = this.failures();
+    [load.failed, load.failedHow, load.refused] = [f.net + f.hash + f.range, failedHow(f), f.refused];
     load.cache = r.cache?.mode ?? "none";
     // The probes look at the proving ground, which the terrain server's map is not.
     this.stage = this.side.terrainMap ? "hashes" : "probes";
@@ -924,7 +953,7 @@ export class DeviceRun {
       this.next(phase);
     } else {
       const { held, limit, invalid } = judgeRung(phase, this.side.display);
-      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, invalid, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, fetched: phase.fetched, missed: phase.missed });
+      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, invalid, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, fetched: phase.fetched, failed: phase.failed, refused: phase.refused, missed: phase.missed });
       this.nextRung(held, phase.lost > 0);
     }
     return true;
@@ -952,7 +981,7 @@ export class DeviceRun {
       tier: load.tier.name, scene: this.step!.scene ?? "plain", ratio: this.ratio(), canvas: this.canvas, settleMs: this.settleMs, settled: this.settled, frames: s.frame.length,
       frameMs: spread(s.frame), buildMs: spread(s.build), drawMs: spread(s.draw), gpuMs: s.gpu.length > 0 ? spread(s.gpu).median : null, gpuOff: s.gpuOff.length > 0 ? spread(s.gpuOff).median : null,
       drawCalls: spread(s.calls).median, triangles: spread(s.tris).median, textured: spread(s.textured).median, bones: spread(s.bones).median,
-      dropped: this.dropped, skipped: this.skipped, fetched: app.scene!.assets.residency.stats.fetched - this.fetchedAt, failed: this.failures() - this.failedAt, missed: this.missedSince(this.stepBase),
+      dropped: this.dropped, skipped: this.skipped, fetched: app.scene!.assets.residency.stats.fetched - this.fetchedAt, ...this.failedSince(), missed: this.missedSince(this.stepBase),
       lost: this.lostCount - this.lostAt, fellTo: app.ui.settings.tier === load.tier.name ? null : app.ui.settings.tier,
     };
   }
@@ -1345,10 +1374,17 @@ export class DeviceRun {
     return (this.stress = made.things.filter((t) => !wrong.has(t.mesh)));
   }
 
-  /** Asset requests that failed, to be asked again or given up. */
-  private failures(): number {
-    const stats = this.side.app.scene!.assets.residency.stats;
-    return stats.failed + stats.dead;
+  /** Asset requests that failed, to be asked again or given up, by kind, and uploads the card refused, since the game began. */
+  private failures(): Failures {
+    const s = this.side.app.scene!.assets.residency.stats;
+    return { net: s.failNet, hash: s.failHash, range: s.failRange, status: s.lastStatus, refused: s.refused };
+  }
+
+  /** What failed since the step began. */
+  private failedSince(): { failed: number; failedHow: string; refused: number } {
+    const [now, at] = [this.failures(), this.failedAt];
+    const f = { net: now.net - at.net, hash: now.hash - at.hash, range: now.range - at.range, status: now.status, refused: now.refused - at.refused };
+    return { failed: f.net + f.hash + f.range, failedHow: failedHow(f), refused: f.refused };
   }
 
   /** Snapshots the server ticked through since `from` that this page did not get. */
@@ -1588,7 +1624,7 @@ export class DeviceProbe {
       display: this.report.idleFrameMs ?? 16.7,
       terrainMap: this.offered.includes("terrain"),
     };
-    this.run = new DeviceRun(this.report, this.side, this.mode ?? "quick", this.timing);
+    this.run = new DeviceRun(this.report, this.side, this.mode ?? "quick", this.timing, false, this.held);
   }
 
   /** After each frame is handed to WebGL. The frame began at `t0` and was built by `built`, on the clock of `now()`. */

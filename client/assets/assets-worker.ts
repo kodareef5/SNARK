@@ -185,21 +185,21 @@ async function open(stored: Uint8Array, part: AssetPart): Promise<Uint8Array<Arr
 }
 
 /** Fetches parts that follow one another in a file with one range, past the browser's cache if `fresh`. Each comes back as stored. */
-async function fetchRun(url: string, parts: readonly AssetPart[], signal: AbortSignal, fresh = false): Promise<{ data: Uint8Array[] | null; fail: number; fetched: number }> {
+async function fetchRun(url: string, parts: readonly AssetPart[], signal: AbortSignal, fresh = false): Promise<{ data: Uint8Array[] | null; fail: number; fetched: number; status: number }> {
   const [delay = 0, rate = 0, loss = 0] = net;
   if (delay > 0) await wait(delay);
-  if (Math.random() * 100 < loss) return { data: null, fail: FAIL_NET, fetched: 0 };
+  if (Math.random() * 100 < loss) return { data: null, fail: FAIL_NET, fetched: 0, status: 0 };
   const from = parts[0]!.offset;
   const length = parts.reduce((sum, p) => sum + p.length, 0);
   const res = await fetch(url, { headers: { range: `bytes=${from}-${from + length - 1}` }, signal, cache: fresh ? "reload" : "default" });
-  if (res.status === 416) return { data: null, fail: FAIL_RANGE, fetched: 0 };
-  if (!res.ok) return { data: null, fail: FAIL_NET, fetched: 0 };
+  if (res.status === 416) return { data: null, fail: FAIL_RANGE, fetched: 0, status: 416 };
+  if (!res.ok) return { data: null, fail: FAIL_NET, fetched: 0, status: res.status };
   let data = new Uint8Array(await res.arrayBuffer());
   // A server that does not do ranges sends the whole file.
   if (res.status === 200) data = data.slice(from, from + length);
   if (rate > 0) await wait(data.length / rate);
-  if (data.length !== length) return { data: null, fail: FAIL_NET, fetched: data.length };
-  return { data: parts.map((p) => data.slice(p.offset - from, p.offset - from + p.length)), fail: 0, fetched: data.length };
+  if (data.length !== length) return { data: null, fail: FAIL_NET, fetched: data.length, status: res.status };
+  return { data: parts.map((p) => data.slice(p.offset - from, p.offset - from + p.length)), fail: 0, fetched: data.length, status: res.status };
 }
 
 /**
@@ -213,6 +213,7 @@ async function answer(a: Ask): Promise<void> {
   let cached = 0;
   let fetched = 0;
   let fail = 0;
+  let status = 0;
   if (!a.fresh) {
     for (let k = 0; k < a.parts.length; k++) {
       const p = a.parts[k]!;
@@ -240,9 +241,10 @@ async function answer(a: Ask): Promise<void> {
       let end = k + 1;
       while (end < a.parts.length && !out[end] && a.parts[end]!.offset === a.parts[end - 1]!.offset + a.parts[end - 1]!.length) end++;
       const run = a.parts.slice(k, end);
-      const got = await fetchRun(a.url, run, stop.signal, a.fresh).catch(() => ({ data: null, fail: FAIL_NET, fetched: 0 }));
+      const got = await fetchRun(a.url, run, stop.signal, a.fresh).catch(() => ({ data: null, fail: FAIL_NET, fetched: 0, status: 0 }));
       fetched += got.fetched;
       fail = got.fail;
+      status = got.status;
       for (let j = 0; got.data && j < run.length; j++) {
         const stored = got.data[j]!;
         out[k + j] = await open(stored, run[j]!);
@@ -262,7 +264,7 @@ async function answer(a: Ask): Promise<void> {
   if (under.get(a.slot) !== stop) return;
   under.delete(a.slot);
   if (fail !== 0) {
-    scope.postMessage({ slot: a.slot, data: null, fail, fetched, cached });
+    scope.postMessage({ slot: a.slot, data: null, fail, fetched, cached, status });
     return;
   }
   const data = new Uint8Array(out.reduce((sum, d) => sum + d!.length, 0));
