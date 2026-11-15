@@ -14,6 +14,7 @@ import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
+import { Entangle } from "./entangle.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
 import { Carry } from "./carry.ts";
 import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
@@ -168,6 +169,7 @@ export interface Host {
   readonly stations: Stations;
   readonly taming: Taming;
   readonly riding: Riding;
+  readonly entangle: Entangle;
   readonly breeding: Breeding;
   readonly tactical: Tactical;
   /** The creature packages' modules, each still doing nothing. */
@@ -412,7 +414,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   // Its tribe may open a tamed creature while it is awake. Closing it reschedules its meal, because its food may have changed.
   death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
   death.onShut = (rec) => taming.meal(rec);
-  const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec) });
+  // A hit's buff goes through entangling, which reads the bola's fields (weapons-plan.md, M6); a bola'd body is not mounted.
+  const entangle = new Entangle({ world, game, records, buffs });
+  combat.entangle = (victim, buff, by) => void entangle.give(victim, buff, by);
+  const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec), tangled: (rec) => entangle.tangled(rec) });
   // The use button gets off a mount, and sets down what is in the arms.
   death.riding = (c) => riding.riding(c) || carry.holding(c) >= 0;
   death.offMount = (c) => (riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
@@ -475,7 +480,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
-  combat.onThrow = (c, rec, item, quality) => projectiles.lob(c, rec, item, quality);
+  // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
+  combat.onThrow = (c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality));
   const clouds = new Clouds({ world, records, buffs, rules });
   projectiles.onCloud = (item, x, y, z, by) => clouds.make(item, x, y, z, by);
   // The killer is credited before death.die, which may delete the record.
@@ -800,6 +806,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       else if (kind === DEADLINE_FECES) feces.due(pid, stamp);
     });
     refreshInventories();
+    // Struggling, and the grace after a bola, once the buffs that came due have ended.
+    entangle.step(tick);
     death.step();
     // Riders move with their mounts before combat aims at either.
     riding.step();
@@ -1067,6 +1075,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     stations,
     taming,
     riding,
+    entangle,
     breeding,
     tactical,
     corpses,

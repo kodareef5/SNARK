@@ -101,6 +101,8 @@ export interface Source {
   /** Seconds torporOver is spread over, and a buff the hit gives (a content index, or 0). */
   torporSeconds: number;
   buff: number;
+  /** The share of its damage a round keeps at the distance it hit from (`falloff`, shared/sim/damage.ts). 1 where not given. */
+  far?: number;
 }
 
 /** One resolved blow, for tests, the console and measurement. */
@@ -142,6 +144,8 @@ export class Combat {
   onFire: ((c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number) => void) | null = null;
   /** A thrown item left `c`'s hand. `draw` is how long a charged throw was held, 0 to 1, and 1 for any other. */
   onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number, draw: number) => void) | null = null;
+  /** Gives a hit's buff, reading its bola fields (server/entangle.ts). Unset, the buff is given as it is. `by` is a pid or 0. */
+  entangle: ((victim: EntityRecord, buff: number, by: number) => void) | null = null;
   /** Hits landed on structures. `lastStructure` holds the last one, and its `left` is 0 if the structure is gone. */
   structureHits = 0;
   /** The rider of a mount, or null. A rider also gets half the XP its mount earns by a kill. */
@@ -637,6 +641,7 @@ export class Combat {
     hit.type = src.type;
     hit.quality = src.quality;
     hit.draw = src.draw;
+    hit.far = src.far ?? 1;
     hit.attack = src.attack * (by ? buffs.dealtOf(by) : 1);
     hit.resist = buffs.takenOf(victim);
     hit.torporInstant = src.torporInstant;
@@ -705,7 +710,10 @@ export class Combat {
       const from = by ? by.pid : 0;
       if (harm.torpor > 0) survival.add(victim, V_TORPOR, harm.torpor);
       if (harm.torporOver > 0 && src.torporSeconds > 0 && this.dose !== 0) buffs.give(victim, this.dose, from, src.torporSeconds, harm.torporOver / src.torporSeconds);
-      if (src.buff !== 0) buffs.give(victim, src.buff, from);
+      if (src.buff !== 0) {
+        if (this.entangle) this.entangle(victim, src.buff, from);
+        else buffs.give(victim, src.buff, from);
+      }
     }
 
     const game = this.ctx.game;
@@ -755,6 +763,7 @@ export class Combat {
     hit.type = src.type;
     hit.quality = src.quality;
     hit.draw = src.draw;
+    hit.far = src.far ?? 1;
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
     hit.takes = takes[src.type]!;
     // A structure is spared as its owning tribe would be.

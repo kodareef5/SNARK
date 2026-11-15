@@ -22,6 +22,17 @@ export const WEAR_PER_USE = 16;
  */
 export const DRAW_MIN = 0.5;
 
+/**
+ * The share of its damage a round keeps `metres` from where it left: all of it out to `full`, falling evenly to none at
+ * `none`, and none beyond. A round whose `none` is 0 does not fall off. ARK's shotgun "lacks any sort of long-range
+ * capabilities" (Shotgun); its numbers are ours (DEV142).
+ */
+export function falloff(metres: number, full: number, none: number): number {
+  if (!(none > 0) || metres <= full) return 1;
+  if (metres >= none) return 0;
+  return (none - metres) / (none - full);
+}
+
 /** The input. Set every field. `resetHit` puts each at no effect. */
 export const hit = {
   /** At primitive quality. */
@@ -33,6 +44,8 @@ export const hit = {
   draw: 1,
   /** The attacker's melee stat for a blow, and its buffs. */
   attack: 1,
+  /** The share of its damage a round keeps at the distance it hit from, 0 to 1 (`falloff`). 1 for anything that does not fall off. */
+  far: 1,
   /** The victim species' multiplier for this type. */
   takes: 1,
   /** The multiplier of the zone hit. */
@@ -60,14 +73,14 @@ export const harm = {
 export function resetHit(): void {
   hit.base = 0;
   hit.type = DMG_MELEE;
-  hit.quality = hit.draw = hit.attack = hit.takes = hit.zone = hit.resist = hit.rule = 1;
+  hit.quality = hit.draw = hit.attack = hit.far = hit.takes = hit.zone = hit.resist = hit.rule = 1;
   hit.armor = 0;
   hit.torporInstant = hit.torporOver = 0;
 }
 
 export function resolveDamage(): void {
   const draw = hit.draw >= 1 ? 1 : DRAW_MIN + (1 - DRAW_MIN) * (hit.draw > 0 ? hit.draw : 0);
-  const raw = hit.base * hit.quality * draw * hit.attack * hit.takes * hit.zone * hit.resist * hit.rule;
+  const raw = hit.base * hit.quality * draw * hit.attack * hit.far * hit.takes * hit.zone * hit.resist * hit.rule;
   const armor = hit.armor > 0 ? hit.armor : 0;
   const through = raw > 0 ? (raw * 100) / (100 + armor) : 0;
   harm.health = through;
