@@ -16,9 +16,9 @@ export const RUIN_SHAPES = {
 
 export const RUIN_FINISHES = {
   concrete: { color: 100, material: "core:mat_stone", hp: 16000 },
-  limestone: { color: 104, material: "core:mat_stone", hp: 12000 },
-  rose: { color: 113, material: "core:mat_stone", hp: 10000 },
-  mint: { color: 135, material: "core:mat_stone", hp: 10000 },
+  limestone: { color: 10, material: "core:mat_stone", hp: 12000 },
+  rose: { color: 81, material: "core:mat_stone", hp: 10000 },
+  mint: { color: 75, material: "core:mat_stone", hp: 10000 },
   clay: { color: 183, material: "core:mat_stone", hp: 9000 },
   steel: { color: 89, material: "core:mat_metal", hp: 20000 },
   rust: { color: 179, material: "core:mat_metal", hp: 8000 },

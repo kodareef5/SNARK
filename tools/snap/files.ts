@@ -95,7 +95,7 @@ export function corePack(source: string = SOURCE): Uint8Array {
   if (resolve(source) === resolve(SOURCE)) return buildCorePack();
   const art = readPacks(source);
   const made = [...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes()];
-  return buildPack(withArt(made, art.meshes), defaultPalette(), [...art.clips, ...authoredClips()], art.rigs);
+  return buildPack(withArt(made, art.meshes), defaultPalette(), [...art.clips, ...authoredClips()], art.rigs, art.details);
 }
 
 export interface GameFiles {

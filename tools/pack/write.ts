@@ -5,6 +5,7 @@ import {
   CLIP_ROOT_BYTES, MOST_SECTIONS, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
   setTexture, textureOf, type Pack, type PackHeader, type PackLod, type PackMaterial, type PackMesh, type PackRig, type PackTexture,
 } from "../../shared/pack/pack.ts";
+import type { PackDetails } from "../../shared/pack/details.ts";
 import { TEXTURE_ROLES, stepOf } from "../../shared/pack/texture.ts";
 import { surfaceError } from "./error.ts";
 import { decodeSkin, decodeSurface, encodeSkin, encodeSurface, tangentsOf, uvRange } from "./surface.ts";
@@ -162,11 +163,18 @@ function inSections(lod: SourceLod, place: readonly number[]): { indices: Uint32
   return { indices, sections };
 }
 
-export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = []): Uint8Array {
+/** Small details as a build carries them: the header's numbers, whose atlas offset is set when written, and the atlas. */
+export interface SourceDetails {
+  header: PackDetails;
+  atlas: Uint8Array;
+}
+
+export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = [], details: SourceDetails | null = null): Uint8Array {
   const blob = new PackBlob();
   const append = (bytes: Uint8Array): number => blob.append(bytes);
 
   const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: [...rigs].sort(byId), clips: [] };
+  if (details) header.details = { ...details.header, atlas: { ...details.header.atlas, offset: append(details.atlas) } };
   const sorted = [...meshes].sort(byId);
   const { materials, textures } = pool(sorted);
   if (materials.length > 0) header.materials = materials;

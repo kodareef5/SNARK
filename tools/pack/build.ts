@@ -140,7 +140,7 @@ export function withArt(made: readonly SourceMesh[], art: readonly SourceMesh[])
 
 export function buildCorePack(extra: SourceMesh[] = []): Uint8Array {
   const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes()];
-  return buildPack([...withArt(made, coreArt().meshes), ...extra], defaultPalette(), coreClips(), coreArt().rigs);
+  return buildPack([...withArt(made, coreArt().meshes), ...extra], defaultPalette(), coreClips(), coreArt().rigs, coreArt().details);
 }
 
 /** Every .glb under assets/source, imported. What the import had to say of each is printed. */

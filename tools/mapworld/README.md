@@ -51,7 +51,7 @@ worktree paths. `labels.ts` imports a replacement join, resolves missing values
 from comparable neighbours, and attaches research by an unambiguous name or an
 explicit footprint ID. The old square survey supplies no geometry or height.
 The build writes its complete label and placement audits to
-`assets/source/maps/miami/reports/ruins1/`.
+`assets/source/maps/miami/reports/ruins2/`.
 
 The library is `content/miami-ruins.ts`. Dimensions in `RUIN_SHAPES` are full
 metres; the export turns them into half extents. Facade shapes use the listed
@@ -79,9 +79,11 @@ Add future research to `blocks/research.json`; its schema and scope are beside i
 bun tools/mapworld/build.ts miami
 bun test ./tools/mapworld/ruins.test.ts
 bun tools/mapworld/ruin-walk.ts --all
+bun tools/mapworld/bridge-walk.ts
+bun tools/mapworld/access-walk.ts
 bun tools/mapworld/walk.ts var/maps/miami.snmap
 bun tools/mapworld/server-bench.ts
-lockf -t 7200 /tmp/snark-render.lock bun tools/mapworld/views.ts var/maps/miami.snmap assets/source/maps/miami/reports/ruins1/views.json assets/source/maps/miami/reports/ruins1 medium
+lockf -t 7200 /tmp/snark-render.lock bun tools/mapworld/views.ts var/maps/miami.snmap assets/source/maps/miami/reports/ruins2/views.json assets/source/maps/miami/reports/ruins2 medium
 bun tools/mapworld/ruin-report.ts
 lockf -t 3600 /tmp/snark-check.lock bun run check
 ```
@@ -99,9 +101,27 @@ near chunk window to the game scene. The generic `snap` harness lacks that
 stream and can overflow its draw list when given the complete city. Each
 camera's dropped draw counts are recorded in `rendering.json`.
 
-Open `reports/ruins1/index.html` for the game pictures, side by side references,
+Open `reports/ruins2/index.html` for the game pictures, side by side references,
 category counts by district, all block counts and a searchable named-building
 inventory. `generation.json` records every reduced or rejected part, chunk
 budgets and a static digest. `labels.json` records all inferred values and the
 original neighbour IDs. `places.json` explains each positioned feature's fate;
 point-only piers and bridge spans require geometry before a deck can be built.
+
+Round two adds `ways.ts` for clipped bridge and pier paths and water cuts,
+`bridges.ts` for connected deck profiles, supports and station stairs, and
+`ruin-access.ts` for graded street approaches. Deck elevations are gameplay
+settlements, recorded per way, not surveyed elevations. The four authored gap
+masks remain authoritative. `bridge-walk.ts` walks every surviving deck run,
+climbs station access both ways and swims the recorded water crossings.
+`access-walk.ts` walks every emitted street approach in and out with terrain,
+statics and vegetation collision. `ruin-walk.ts` also tests the independent
+roof drop routes.
+
+Reviewed label changes belong in `blocks/height-corrections.json`, with original
+values, replacements, sources and reasons. `labels.py` reapplies that ledger
+after the spatial join. `blocks/height-review.json` records the review of all
+73 original height/storey conflicts. Do not infer a correction from the ratio
+alone. The large generated label, building, bridge and circulation inventories
+are ignored; small summaries, comparison pictures and `ruins/REPORT_2.md` are
+the reviewable records.

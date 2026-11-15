@@ -18,7 +18,7 @@ import { BODY_REACH } from "../../../shared/anim/zones.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import type { Assets } from "../assets/assets.ts";
-import { Corpses } from "../ragdoll.ts";
+import { Corpses, type Corpse } from "../ragdoll.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
@@ -267,6 +267,16 @@ export class Characters {
   /** Whether content of this kind is drawn here rather than as a rigid mesh. */
   has(kind: number): boolean {
     return this.kinds[kind] != null || this.creatures[kind] != null;
+  }
+
+  /** What a creature of this kind plays, or null for a kind not drawn on a rig of its own. */
+  creature(kind: number): CreatureAnim | null {
+    return this.creatures[kind]?.anim ?? null;
+  }
+
+  /** Bodies that died and lie or fall where they died, as they are drawn. */
+  get fallen(): readonly Corpse[] {
+    return this.dead.list;
   }
 
   /** Whether this kind is on the humanoid skeleton. */
