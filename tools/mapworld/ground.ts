@@ -52,6 +52,8 @@ export interface World {
   readonly stepY: number;
   readonly districts: readonly District[];
   readonly spawns: readonly { name: string; at: [number, number]; face: [number, number]; ground: "sand" | "open" }[];
+  /** Whether each footprint is raised into a heap of rubble (heaps.ts), the stand-in for block ruins. On unless false. */
+  readonly heaps?: boolean;
 }
 
 export interface Ground {
@@ -267,13 +269,19 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     water,
   });
   const PART_SURFACE: Record<number, number> = { [PART_HEAP]: S.HEAP, [PART_SPILL]: S.SPILL, [PART_WALL]: S.WALL, [PART_FLOOR]: S.FLOOR, [PART_POOL]: S.POOL, [PART_COURT]: S.COURT };
+  // The heaps are a stand-in until ruins are built of blocks: with them off, each footprint is left as its bare slab.
+  const raise = world.heaps !== false;
   for (let i = 0; i < N; i++) {
     const p = heaps.part[i]!;
     if (p === 0 || water[i]) continue;
+    if (!raise) {
+      if (p !== PART_SPILL && p !== PART_COURT) surface[i] = S.FLOOR;
+      continue;
+    }
     height[i] = height[i]! + heaps.lift[i]!;
     surface[i] = PART_SURFACE[p]!;
   }
-  log(`ground: ${heaps.ruins.length} ruins, the tallest crest ${Math.max(...heaps.ruins.map((r) => r.crest)).toFixed(1)} m`);
+  log(raise ? `ground: ${heaps.ruins.length} ruins raised as heaps, the tallest crest ${Math.max(...heaps.ruins.map((r) => r.crest)).toFixed(1)} m` : `ground: ${heaps.ruins.length} footprints left as bare slabs`);
 
   // Streets the sea has come into stand under a hand's depth of water at their edges and a knee's in the middle.
   const dry = distanceField((i) => flooded[i] === 0, n, n);

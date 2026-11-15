@@ -122,7 +122,7 @@ export function makeHeaps(input: HeapInput): Heaps {
     const round = (4 * Math.PI * b.area) / (b.perimeter * b.perimeter);
     const storeys = storeysOf(b, d.tall);
     const kind = d.industrial && round > 0.8 && b.area > 150 && b.area < 6000 ? RUIN_TANK : b.area > 4000 && storeys < 6 ? RUIN_HALL : RUIN_HEAP;
-    const crest = kind === RUIN_HEAP ? Math.min(30, 0.8 + 0.5 * storeys) : kind === RUIN_HALL ? 2 + 2 * rand3(b.id, 5, 0) : 2.6;
+    const crest = kind === RUIN_HEAP ? Math.min(20, 0.8 + 0.35 * storeys) : kind === RUIN_HALL ? 2 + 2 * rand3(b.id, 5, 0) : 2.6;
     const r = ruins.length;
     ruins.push({ building: b, kind, storeys, crest, district: d.index });
     reach.push(kind === RUIN_HEAP ? 1.5 + 0.5 * crest : 3);
@@ -175,7 +175,7 @@ export function makeHeaps(input: HeapInput): Heaps {
       }
     }
     // A tower's core and lower floors still stand out of its heap, in the building's own outline, broken off unevenly.
-    const stub = storeys > 18 && core >= 0 ? crest * (0.3 + 0.5 * rand3(b.id, 6, 0)) : 0;
+    const stub = storeys > 18 && core >= 0 ? crest * (0.3 + 0.4 * rand3(b.id, 6, 0)) : 0;
     const coreDepth = Math.max(4, 0.3 * Math.sqrt(deepest) * cell);
     for (let j = 0; j < wh; j++) {
       for (let i = 0; i < ww; i++) {

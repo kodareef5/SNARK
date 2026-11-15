@@ -25,15 +25,17 @@ const at = (): [number, number, number] => {
   return [ents.x[e]!, ents.y[e]!, ents.z[e]!];
 };
 let failed = 0;
+// Read through a call, since a command changes it behind the type checker's back.
+const state = (): number => s.sessionState;
 for (let i = 0; i < map.spawns.length; i++) {
   const p = map.spawns[i]!;
   if (i > 0) {
     h.say(s, "suicide", 500);
-    if (s.sessionState !== SESSION_DEAD) throw new Error("the survivor did not die");
+    if (state() !== SESSION_DEAD) throw new Error("the survivor did not die");
     h.run(12000);
     s.command(CMD_RESPAWN, (w) => w.u8(i));
     h.run(1500);
-    if (s.sessionState !== SESSION_ALIVE) throw new Error(`no respawn at ${p.name}`);
+    if (state() !== SESSION_ALIVE) throw new Error(`no respawn at ${p.name}`);
   }
   const [x0, y0, z0] = at();
   const off = Math.hypot(x0 - p.x, z0 - p.z);

@@ -17,6 +17,7 @@ import { Base } from "./base.ts";
 import { makeGround, S, type World } from "./ground.ts";
 import { makeNodes, ZONE_CELL } from "./nodes.ts";
 import { placeRegions, placeSpawns } from "./places.ts";
+import { STATIC_LAYERS, siteOf } from "./statics.ts";
 import { makeTint } from "./tint.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -40,6 +41,13 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     const [e, no] = base.tm.forward(lon, lat);
     return [(e + half) / 2, (half - no) / 2];
   };
+  // Pieces other modules set down on the ground as built (statics.ts): none yet, the ruin generator's later.
+  const site = siteOf(world, ground, size);
+  const statics = STATIC_LAYERS.flatMap((layer) => {
+    const pieces = layer.make(site);
+    lap(`${pieces.length} static pieces of ${layer.name}`);
+    return pieces;
+  });
   const spawns = placeSpawns(ground, world, toSample, size);
   const regions = placeRegions(ground, size);
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
@@ -73,6 +81,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const lines = (rows: readonly unknown[]): string => `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
   put("spawns.json", lines(spawns));
   put("regions.json", lines(regions));
+  if (statics.length > 0) put("statics.json", lines(statics));
   lap(`layers in ${layers}`);
 
   const map = readLayers(layers);
