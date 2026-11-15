@@ -108,7 +108,7 @@ const LAND_RANGE = 60;
 const LAND_TRIES = 6;
 const OPEN_SKY = 60;
 /** Metres out it looks for land from the water, ring by ring. */
-const SHORE_RINGS = [20, 40, 80, 160, 320, 640] as const;
+const SHORE_RINGS = [20, 40, 60, 80, 120, 160, 240, 320, 480, 640] as const;
 /** It lets its jump go within DROP_NEAR metres of where it lands, slowing from SLOW_NEAR. */
 const DROP_NEAR = 2.5;
 const SLOW_NEAR = 15;
@@ -122,6 +122,8 @@ const FLEE_UP = 15;
 const CLIMB_MAX = 0.87;
 const DIVE_MAX = 0.61;
 const STOOP_MAX = 1.3;
+/** Metres short of its prey that a stooping flyer stops looking for what is in its way. */
+const STOOP_SHORT = 1.5;
 /** It looks AHEAD_SECONDS along its course at its speed, and never less than AHEAD_MIN metres. */
 const AHEAD_SECONDS = 2.5;
 const AHEAD_MIN = 12;
@@ -409,8 +411,7 @@ export class Behavior {
     if (!this.reg.flies[this.world.ents.kind[e]!]) return false;
     if (this.mind[e] === MIND_HUNT) this.rest(e, this.world.tick, 0);
     this.flight(e).down = true;
-    this.move[e] = 0;
-    this.buttons[e] = 0;
+    this.alight(e);
     return true;
   }
 
@@ -951,10 +952,8 @@ export class Behavior {
     const f = this.flight(e);
     const mode = ents.mode[e]!;
     if (f.down) {
-      if (mode !== MODE_WALK) {
-        this.move[e] = 0;
-        this.buttons[e] = 0;
-      } else if (turn) this.stroll(e, tick);
+      if (mode !== MODE_WALK) this.alight(e);
+      else if (turn) this.stroll(e, tick);
       return;
     }
     if (mode === MODE_SWIM && f.phase !== PHASE_APPROACH && !this.landing(e, f, tick)) this.cruise(f, tick);
@@ -1140,8 +1139,9 @@ export class Behavior {
       this.lose(e);
     }
     if (this.leader[e]! < 0) {
+      if (f.down) return this.alight(e);
       this.move[e] = 0;
-      this.buttons[e] = flying && !f.down ? BTN_JUMP : 0;
+      this.buttons[e] = flying ? BTN_JUMP : 0;
       this.pitch[e] = 0;
       if (flying) this.look[e] = ents.yaw[e]!;
       return;
@@ -1159,15 +1159,18 @@ export class Behavior {
       return this.pilot(e, f, tick, bx, by, bz, d > FOLLOW_AIR_RUN, 2, false, d < SLOW_NEAR);
     }
     if (flying) {
-      if (f.down || flat < SET_DOWN) {
-        this.move[e] = 0;
-        this.buttons[e] = 0;
-        return;
-      }
+      if (f.down || flat < SET_DOWN) return this.alight(e);
       return this.pilot(e, f, tick, ents.x[whom]!, -Infinity, ents.z[whom]!, flat > FOLLOW_AIR_RUN, CRUISE_LOW, false, flat < 2 * SET_DOWN);
     }
     if (!f.down && flat > TAKE_WING) return this.pilot(e, f, tick, ents.x[whom]!, -Infinity, ents.z[whom]!, true, CRUISE_LOW);
     this.go(e, tick, turn);
+  }
+
+  /** In the air it brakes to a stop and then lets its jump go, so that it comes straight down where it is. */
+  private alight(e: number): void {
+    const ents = this.world.ents;
+    this.move[e] = 0;
+    this.buttons[e] = ents.mode[e] === MODE_FLYER && Math.hypot(ents.vx[e]!, ents.vz[e]!) > 0.3 ? BTN_JUMP | BTN_BRAKE : 0;
   }
 
   /** Holds still in the air, facing `yaw`. */
@@ -1234,9 +1237,9 @@ export class Behavior {
     const my = y + p.height * 0.5;
     const roofed = f.over && !this.clear(x, y + p.height, z, 0, Math.PI / 2, ROOF);
     if (roofed && pitch > 0) pitch = 0;
-    // What is ahead along its course, no further than where it is going.
-    const look = Math.min(ahead, Math.hypot(flat, ty - y) + 1);
-    if (!this.clear(x, my, z, yaw, pitch, look)) {
+    // What is ahead along its course, no further than where it is going, and short of prey, which stands on the ground.
+    const look = Math.min(ahead, Math.hypot(flat, ty - y) + (direct ? -STOOP_SHORT : 1));
+    if (look > STOOP_SHORT && !this.clear(x, my, z, yaw, pitch, look)) {
       if (!roofed && this.clear(x, my, z, yaw, CLIMB_MAX, look)) pitch = CLIMB_MAX;
       else {
         const was = yaw;
