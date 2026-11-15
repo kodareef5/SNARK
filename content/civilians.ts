@@ -1,4 +1,4 @@
-import type { SpeciesDef } from "../../shared/content/defs.ts";
+import type { SpeciesDef } from "../shared/content/defs.ts";
 
 /** A real humanoid creature using the existing survivor art and equipment slots. */
 export const CIVILIAN: SpeciesDef = {
