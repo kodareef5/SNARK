@@ -1,4 +1,5 @@
-// The core asset pack, built once per test process, and a pack like it whose art does not change.
+// The core asset pack, built once by the check for every test file or once in a process run alone, and a pack like
+// it whose art does not change.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
