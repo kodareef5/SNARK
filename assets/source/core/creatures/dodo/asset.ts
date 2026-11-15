@@ -70,6 +70,8 @@ export default {
       packed: "tex/dodo_packed.png",
       regions: "tex/dodo_regions.png",
       height: "tex/dodo_height.png",
+      hurt: "tex/dodo_hurt.png",
+      decay: "tex/dodo_decay.png",
     },
     dodo_cards: {
       base: "tex/dodo_cards_base.png",
@@ -77,6 +79,8 @@ export default {
       packed: "tex/dodo_cards_packed.png",
       regions: "tex/dodo_cards_regions.png",
       height: "tex/dodo_cards_height.png",
+      hurt: "tex/dodo_cards_hurt.png",
+      decay: "tex/dodo_cards_decay.png",
       twoSided: true,
       cutout: true,
     },
@@ -121,8 +125,10 @@ export default {
     // Only level 0 is the model's; the build makes the rest. Estimated to be first drawn about 84, 46, 19, 8, 3 and
     // 1 pixels tall on medium. Level 6 is the triangle bird: round body, neck at the front, big head and beak.
     triangles: [8500, 3500, 2000, 900, 400, 160, 72],
-    // dodo at 2,048 and dodo_cards at 512: 27.0 MB in the rgba variant, 15.6 MB in bc and astc.
-    texture: { top: 2048, megabytes: 28 },
+    // dodo at 2,048 and dodo_cards at 512: 27.0 MB in the rgba variant, 15.6 MB in bc and astc. Their hurt and decay
+    // layers, each 256, add 0.67 MB to the rgba variant and 0.17 to the others, and are on the card only while a dodo in
+    // view is hurt or dead.
+    texture: { top: 2048, megabytes: 28, layer: 256 },
   },
   // The first level drawn under about 48 pixels tall: on medium `--check` has level 1 first drawn 50 px tall and level 2
   // 22 px.
