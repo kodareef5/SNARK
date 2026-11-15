@@ -1,0 +1,7 @@
+Repainted `contour`, `contour_plain`, and `down`: elongated vanes, visible grey shafts, shorter quills, feathered tipping, and airy fluff. Flight and tail remain unchanged.
+
+All ten textures pass export checks. Reviewed at 32 pixels on grass and sand.
+
+[Preview](preview.png) · [Game-size comparison](preview_round2_comparison.png) · [REPORT_2.md](REPORT_2.md)
+
+Painted with built-in imagegen; [prompts retained](generation_prompts_round2.json).

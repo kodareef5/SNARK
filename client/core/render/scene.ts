@@ -8,6 +8,7 @@ import { Assets } from "../assets/assets.ts";
 import type { AssetPort } from "../assets/port.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "../../../shared/pack/pack.ts";
+import { atlasBytes } from "../../../shared/pack/details.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
@@ -18,6 +19,7 @@ import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
 import { AnimState, CUE_DEAD, CUE_HELD, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortU32 } from "../../../shared/sort.ts";
+import { Details } from "../details/details.ts";
 import type { Falling } from "../rubble.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
@@ -28,7 +30,7 @@ import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./f
 import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
 import { FarNodes, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
@@ -247,6 +249,8 @@ export class Scene {
   /** The piece shown where it would be built. kind is 0 for none, x, y, z are metres, yaw is in wire units, color is a palette index. */
   readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
   readonly characters: Characters;
+  /** Small details: feathers knocked loose, dust thrown up. */
+  readonly details: Details;
   /** A bag of one stack, drawn as its item lying (dropped.ts). */
   private readonly dropped: Dropped;
   /** Null draws no body for the viewer. The app sets it before build(). */
@@ -375,6 +379,8 @@ export class Scene {
     this.transientF32 = new Float32Array(t.buffer, t.byteOffset, t.byteLength >> 2);
     this.transientU16 = new Uint16Array(t.buffer, t.byteOffset, t.byteLength >> 1);
     this.characters = new Characters(reg, pack, this.assets);
+    this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind));
+    if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.dropped = new Dropped(reg, bind);
     const p = this.packet as unknown as Record<string, unknown>;
     this.columns = Object.keys(p).filter((k) => k.startsWith("draw") && k !== "drawPass" && ArrayBuffer.isView(p[k])).map((k) => p[k] as Uint8Array);
@@ -466,6 +472,7 @@ export class Scene {
     if (this.ghost.kind !== 0) this.showGhost(cam);
     if (this.things.length > 0) this.showThings(cam);
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
+    this.showDetails(cam, remote);
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
     this.order();
@@ -649,6 +656,25 @@ export class Scene {
     }
     p.drawPass.set(pass.subarray(0, total));
     p.drawCount = total;
+  }
+
+  /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
+  private showDetails(cam: Camera, remote: RemoteSample | null): void {
+    const p = this.packet;
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? [], this.own, this.world.hf, this.assets.tier, this.now);
+    for (const [first, count, flags] of [[0, cut, DRAW_CUTOUT], [cut, p.detailCount - cut, DRAW_BLEND]] as const) {
+      const d = p.drawCount;
+      if (count === 0) continue;
+      if (d + this.doubled + 1 > MAX_DRAWS) {
+        p.dropped++;
+        continue;
+      }
+      [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [0, 0, 0, 0, first, count, DRAW_DETAILS | flags];
+      p.drawOffset.fill(0, d * 3, d * 3 + 3);
+      this.passOf[d] = NEAR;
+      p.drawCount = d + 1;
+      p.triangles += count * 2;
+    }
   }
 
   /** Bases as blocks to the tier's reach, faded over the last of it, in place of chunks the near store does not hold whole. */
