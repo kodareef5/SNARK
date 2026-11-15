@@ -367,3 +367,60 @@ test("through the server: the panel's button lights the oven and its line change
     h.host.shutdown();
   }
 });
+
+test("on S2's fabricator: off with no gasoline the button is greyed; turned on from the panel it burns 15:00, polymer is made from its slots, and a unit under way when it is turned off shows as needing fuel", () => {
+  const core = coreRegistry();
+  const h = new Harness({}, 1, 60, { dev: true, startingCreatures: 0 }, core);
+  try {
+    const s = h.join("ada");
+    h.run(400);
+    const at = flatGround(h, 30, 30);
+    h.say(s, "enablecheats");
+    h.say(s, `tp ${at.x + 10} ${at.z + 10}`);
+    h.say(s, "addxp 10000000");
+    const me = h.host.records.byPid.get(h.client(s)!.pid)!;
+    const [off, on, polymer] = [id(core, "fabricator"), id(core, "fabricator_lit"), id(core, "polymer")];
+    const ref = h.world.structs.add(off, at.x + 11, at.y + 0.65, at.z + 10, 0, me.team, 2500);
+    const rec = h.host.fixtures.ensure(ref);
+    me.engrams.push(id(core, "engram-polymer"));
+    me.progVersion++;
+    h.host.items.mint(rec, id(core, "obsidian"), 4);
+    h.host.items.mint(rec, id(core, "paste"), 4);
+    let code = -1;
+    s.onResult = (seq, c) => void (seq !== 0 && (code = c));
+    s.command(P.CMD_STRUCT, (w: BitWriter) => (w.u32(ref), w.u8(STRUCT_USE), w.u16(NO_PIN)));
+    h.run(300);
+    const screen = new InventoryScreen();
+    const f = new UiFrame();
+    const build = (): UiFrame => {
+      f.begin(16 / 9);
+      screen.build(f, s, s.registry, null);
+      return f;
+    };
+    const rowOf = (item: number): number => {
+      for (let n = 0; n < 12; n++) if (f.find(row(n))?.text.startsWith(`${(s.registry.defs[item] as { label?: string }).label}:`)) return n;
+      return -1;
+    };
+    build();
+    const p = rowOf(polymer);
+    expect([code, text(f, KEY_STATION_FIRE), text(f, KEY_STATION_LIGHT), f.find(KEY_STATION_LIGHT)!.interactive, text(f, row(p, RECIPE_STATUS))]).toEqual([P.RESULT_OK, "off: no gasoline in it", "Turn on", false, "must be on, with fuel"]);
+    h.host.items.mint(rec, id(core, "gasoline"), 1);
+    h.run(300);
+    build();
+    expect(f.find(KEY_STATION_LIGHT)!.interactive).toBe(true);
+    screen.pointer(0, KEY_STATION_LIGHT, 0, s);
+    h.run(300);
+    build();
+    expect([code, s.station!.kind, text(f, KEY_STATION_LIGHT), text(f, row(p, RECIPE_STATUS))]).toEqual([P.RESULT_OK, on, "Turn off", "can make 2"]);
+    expect(text(f, KEY_STATION_FIRE)).toMatch(/^burns for 1[45]:\d\d$/);
+    // One polymer asked for, and turned off in the same moment: the unit pauses with its 2 s left, and the gasoline is lost.
+    screen.pointer(0, row(p, RECIPE_MAKE), 0, s);
+    screen.pointer(0, KEY_STATION_LIGHT, 0, s);
+    h.run(300);
+    build();
+    expect([s.station!.kind, rec.inv!.total(id(core, "gasoline")), text(f, KEY_STATION_FIRE), text(f, KEY_STATION_JOB)]).toEqual([off, 0, "off: no gasoline in it", "making polymer x1: needs fuel, 2 s left"]);
+    expect(h.host.items.audit()).toEqual([]);
+  } finally {
+    h.host.shutdown();
+  }
+});
