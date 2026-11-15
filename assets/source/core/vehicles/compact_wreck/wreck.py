@@ -25,27 +25,34 @@ for o in parts:
     o.vertex_groups.clear()
 bpy.data.objects.remove(rig)
 
-# Blender's frame: the car faces -Y, +Z up, the driver's side +X. The door's hinge is the contract's pivot.
-hinge = Vector((0.84, -0.65, 0.76))
-bpy.data.objects["door_left"].data.transform(Matrix.Translation(hinge) @ Matrix.Rotation(-0.32, 4, "Z") @ Matrix.Translation(-hinge))
+
+def joined(objs, name):
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.object.join()
+    out = bpy.context.view_layer.objects.active
+    out.name = name
+    return out
+
+
+# The front wheels left turned. Blender's frame: the car faces -Y, +Z up, the driver's side +X.
 for o in parts:
     if o.name.startswith("wheel_front"):
-        # The front wheels left turned.
         c = Vector((0.78 if o.name.endswith("left") else -0.78, -1.25, 0.30))
         o.data.transform(Matrix.Translation(c) @ Matrix.Rotation(0.22, 4, "Z") @ Matrix.Translation(-c))
-
-bpy.ops.object.select_all(action="DESELECT")
+# The tipped one with its doors shut; the other with the driver's door ajar on its hinge, the contract's pivot.
+copies = []
 for o in parts:
-    o.select_set(True)
-bpy.context.view_layer.objects.active = parts[0]
-bpy.ops.object.join()
-car = bpy.context.view_layer.objects.active
-car.name = "compact_wreck"
-
-tipped = car.copy()
-tipped.data = car.data.copy()
-tipped.name = "compact_wreck_tipped"
-bpy.context.scene.collection.objects.link(tipped)
+    c = o.copy()
+    c.data = o.data.copy()
+    bpy.context.scene.collection.objects.link(c)
+    copies.append(c)
+tipped = joined(copies, "compact_wreck_tipped")
+hinge = Vector((0.84, -0.65, 0.76))
+bpy.data.objects["door_left"].data.transform(Matrix.Translation(hinge) @ Matrix.Rotation(-0.32, 4, "Z") @ Matrix.Translation(-hinge))
+car = joined(parts, "compact_wreck")
 
 # Sunk 7 cm on its rims, down 1.5 degrees at the nose and 2 to the passenger's side.
 car.data.transform(Matrix.Translation((0, 0, -0.07)) @ Matrix.Rotation(math.radians(1.5), 4, "X") @ Matrix.Rotation(math.radians(-2.0), 4, "Y"))

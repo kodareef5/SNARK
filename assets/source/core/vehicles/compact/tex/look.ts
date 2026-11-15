@@ -32,8 +32,8 @@ const index = pack.meshIndex.get(COMPACT.id)!;
 const rig = buildRig(pack.header.rigs[pack.header.meshes[index]!.rig!]!, pack.clips)!;
 const materials = materialsOf(asset);
 const textures = (pack.header.textures ?? []).map((t) => rgbaOf(materials.find((m) => t.id === `${m.id}/${t.role}`)!, t.role, t.top, null));
-// Wall blue paint, tan leather, silver alloys.
-const COLORS = [5, 128, 15, 0, 0, 0];
+// Blue paint, tan leather, silver alloys: asset.ts's samples.
+const COLORS = [41, 220, 91, 0, 0, 0];
 const STAGES = Array.from({ length: LAYER_STAGES + 1 }, (_, s) => (s * LAYER_LEVELS) / LAYER_STAGES);
 const BACKGROUND = [0.84, 0.83, 0.81] as const;
 

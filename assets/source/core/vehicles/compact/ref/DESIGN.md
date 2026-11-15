@@ -93,3 +93,19 @@ The finest level is the model's; the rest are made from it. Levels 0 and 1 are
 drawn with materials, the rest flat, each triangle in the palette colour its
 pictures give it and the paint in region 0, so a car keeps its colour to the
 horizon. The check prints where each tier first draws each level.
+
+| Level | Triangles | Error | Low poly | Medium | High | Ultra | Drawn |
+| --- | ---: | ---: | --- | --- | --- | --- | --- |
+| 0 | 27,380 | 0 | never | 0 m | 0 m | 0 m | materials |
+| 1 | 14,000 | 0.2 cm | 0 m | 8 m, 154 px | 12 m, 98 px | 21 m, 56 px | materials |
+| 2 | 6,000 | 1.0 cm | 17 m, 68 px | 34 m, 34 px | 54 m, 21 px | 94 m, 12 px | flat |
+| 3 | 2,400 | 2.3 cm | 41 m, 29 px | 81 m, 14 px | 127 m, 9 px | 223 m, 5 px | flat |
+| 4 | 960 | 5.4 cm | 94 m, 12 px | 188 m, 6 px | 295 m, 4 px | 516 m, 2 px | flat |
+| 5 | 480 | 10.5 cm | 184 m, 6 px | 368 m, 3 px | 579 m, 2 px | 1,013 m, 1 px | flat |
+
+Where each tier first draws each level, and how tall the car then stands on a
+1,080-row screen. Its textures are 60 MB in the largest variant (the rgba one),
+each layer 512 across and on the card only while a car in view is hurt or dead.
+
+`tex/look.ts --out DIR` draws every stage of the hurt and decay layer, both doors
+open, and the driver's view out through the windscreen, as the game draws them.

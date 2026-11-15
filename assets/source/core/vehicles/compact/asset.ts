@@ -31,9 +31,9 @@ export default {
   // The paint is region 0, as a creature's body is: the species' colour set is what a car rolls. The upholstery and
   // the wheels' alloy are regions 1 and 2. `sample` is what the review sheet dyes them.
   regions: [
-    { name: "Paint", sample: 5 },
-    { name: "Upholstery", sample: 128 },
-    { name: "Wheels", sample: 15 },
+    { name: "Paint", sample: 41 },
+    { name: "Upholstery", sample: 220 },
+    { name: "Wheels", sample: 91 },
   ],
   // body: the painted panels and the shut lines. trim: tyres, alloys, lamps, grilles, rubber, chrome and black plastic.
   // cabin: the glass, whose inside is cut out so it is seen through from within, and everything inside.
