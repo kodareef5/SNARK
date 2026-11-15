@@ -6,19 +6,15 @@
 import { expect, test } from "bun:test";
 import { AnimState, CUE_LAND, CUE_TAKEOFF } from "../../shared/anim/pose.ts";
 import { CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_FOLLOW, ORDER_LAND, ORDER_STAY, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
-import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { MODE_FLYER, MODE_SWIM, MODE_WALK } from "../../shared/sim/character.ts";
 import { F_ALIVE, F_GROUNDED } from "../../shared/sim/entities.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { Rng } from "../../shared/rng.ts";
 import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
-import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import { writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
 import { GROUND_FREE, groundAt } from "../../shared/world/path.ts";
 import type { HostOptions } from "../../server/host.ts";
-import { building } from "../fixtures/cityworld.ts";
-import { flatMap } from "../fixtures/map.ts";
+import { coast } from "../fixtures/coast.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const TICKS = 30;
@@ -135,27 +131,6 @@ test("left 20 minutes, 100 wild pteranodons over the proving ground fly and land
   expect([w.longestUp < 240, w.longestDown <= 61, w.highest < 90]).toEqual([true, true, true]);
   h.host.shutdown();
 }, 60_000);
-
-/**
- * A coast of 6 by 6 chunks: sea to the west, a beach rising to flat land at 2 m, and frame towers of 4 to 48 storeys (16 to
- * 192 m) east of the beach, the city fixture's buildings of the Miami ruin kit, open between their floors.
- */
-function coast(): Uint8Array<ArrayBuffer> {
-  const chunks = 6;
-  const side = (chunks * CHUNK_SIZE) / TERRAIN_CELL + 1;
-  const heights = new Uint16Array(side * side);
-  for (let j = 0; j < side; j++) {
-    for (let i = 0; i < side; i++) {
-      const x = i * TERRAIN_CELL;
-      const y = x < 90 ? -6 : x < 130 ? -6 + ((x - 90) / 40) * 8 : 2;
-      heights[j * side + i] = Math.round((y + 32) * 256);
-    }
-  }
-  const statics: MapStatic[] = [];
-  const rng = new Rng(12);
-  for (const x of [176, 216, 256, 296, 336]) for (const z of [96, 144, 192, 240, 288]) statics.push(...building(x, z, 2, 4 + rng.int(45), 2, rng.int(4) * 16384));
-  return writeMap(flatMap(chunks, { id: "test:coast", seaLevel: 0, heights, statics, spawns: [{ name: "Beach", x: 120, z: 192, yaw: 0 }] }));
-}
 
 test("left 20 minutes, 100 wild pteranodons over a coast of frame towers to 192 m go round and over them and land on the beach and the streets, never inside anything, stuck or in the sea", () => {
   const { h } = watched([[64, 64], [320, 64], [64, 320], [320, 320]], { map: coast() });
