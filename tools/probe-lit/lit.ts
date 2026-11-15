@@ -33,7 +33,7 @@ interface Picture {
   color: Uint8ClampedArray;
   depth: Float32Array;
   pickKind: Uint8Array;
-  pickId: Uint32Array;
+  pickId: Float64Array;
 }
 
 const pictures: Picture[] = [];

@@ -78,7 +78,7 @@ function settle(w: World, shot: Shot, raster: Rasterizer): FramePacket {
 interface Picture {
   color: Uint8Array;
   kind: Uint8Array;
-  id: Uint32Array;
+  id: Float64Array;
   depth: Float32Array;
 }
 
