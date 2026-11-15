@@ -650,11 +650,11 @@ export class Rasterizer {
       poly[i * 7 + 6] = (m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) / w;
     }
 
-    const bright = (AMBIENT + DIFFUSE * Math.max(0, nx * p.sun[0]! + ny * p.sun[1]! + nz * p.sun[2]!)) * p.light;
+    const light = (AMBIENT + DIFFUSE * Math.max(0, nx * p.sun[0]! + ny * p.sun[1]! + nz * p.sun[2]!)) * p.light;
     const pal = this.pack.palette;
-    const r = pal[colorIndex * 4]! * bright;
-    const g = pal[colorIndex * 4 + 1]! * bright;
-    const b = pal[colorIndex * 4 + 2]! * bright;
+    const r = pal[colorIndex * 4]! * light;
+    const g = pal[colorIndex * 4 + 1]! * light;
+    const b = pal[colorIndex * 4 + 2]! * light;
     // The checker samples the world position, pushed slightly behind the face.
     const sx = p.camX - nx * CHECK_INSET;
     const sy = p.camY - ny * CHECK_INSET;

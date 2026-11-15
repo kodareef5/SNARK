@@ -53,9 +53,9 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
     shown(rgb, out, 0, p);
     return rgb.map((c) => Math.round(c * 255)) as [number, number, number];
   };
-  // The plaza is level, and far nearer than the fog.
   [at[0], at[1], at[2]] = [0.5, 0.03, 0];
   const probes: Probe[] = [{ name: "sky", sx: 0.5, sy: 0.03, rgb: sky(), mode: "exact" }];
+  // The plaza is level, and far nearer than the fog.
   [at[0], at[1]] = [0.5, 0.97];
   probes.push({ name: "plaza", sx: 0.5, sy: 0.97, rgb: color(1, [0, 1, 0]), mode: "hue" });
   const block = reg.defs[reg.index.get("core:block") ?? 0];

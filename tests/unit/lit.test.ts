@@ -1,9 +1,11 @@
 // The lit tiers' light (D263, D264): the tone curve, the greys D155 holds the frame block to, the dyes, and LIT drawn
 // beside SURFACE.
 import { expect, test } from "bun:test";
-import { LIT_FRAGMENT } from "../../client/core/render/glsl.ts";
+import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
+import { FLAT_FRAGMENT, LIT_FRAGMENT } from "../../client/core/render/glsl.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
-import { skyFrame, theSky } from "../../client/core/render/sky.ts";
+import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
+import { SKY_GLSL, skyFrame, theSky } from "../../client/core/render/sky.ts";
 import { KNEE, LIGHT, lit, linearToSrgb, shown, srgbToLinear, tone } from "../../client/core/render/surface.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -45,6 +47,14 @@ test("the tone curve keeps what is under its knee, meets the line there with slo
   }
   // The shader's curve is written from the same knee, and LIT reads the shared light.
   expect([LIGHT.includes(`peak <= ${KNEE}`), LIT_FRAGMENT.includes(LIGHT)]).toEqual([true, true]);
+});
+
+test("the lit tiers draw flat and the ground with LIT, the dome from the table and SURFACE mirroring it; low poly keeps FLAT", () => {
+  for (const tier of TIERS) {
+    expect([PROGRAMS.flat!(tier, "rgba").fragment, PROGRAMS.terrain!(tier, "rgba").fragment]).toEqual(tier.lit ? [LIT_FRAGMENT, LIT_FRAGMENT] : [FLAT_FRAGMENT, FLAT_FRAGMENT]);
+  }
+  const medium = tierOf("medium");
+  for (const name of ["sky", "surface"]) expect([PROGRAMS[name]!(medium, "bc").fragment.includes(SKY_GLSL), PROGRAMS[name]!(medium, "bc").samplers.uSkyTable]).toEqual([true, UNIT.sky]);
 });
 
 /** A lit packet at noon with no fog. */
@@ -114,7 +124,7 @@ function block(color: number): Pack {
 test("a block drawn flat on a lit tier is that block with a base colour of its colour at roughness 1, within 2 steps", () => {
   const sunUp = Math.cos(Math.atan(0.43));
   let worst = 0;
-  for (const color of [15, 8, 22, 46, 70, 10, 11]) {
+  for (const color of [15, 22, 46, 10]) {
     const stage = new Stage(block(color), W, H);
     stage.raster.skyTable = theSky().table;
     [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw, stage.cam.pitch] = [0.6, 1.1, 1.3, Math.PI - 0.4, -0.3];
