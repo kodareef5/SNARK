@@ -160,6 +160,12 @@ test("pieces take their materials by name: one of the asset's own, one that seve
     const made = built();
     convertPieces({ ...asset, spec: { ...spec, flat: 2 } }, { post: join(root, "post.glb") }, made);
     expect([made.faults, made.meshes[0]!.flat, made.meshes[0]!.lods.map((l) => l.uvs !== undefined)]).toEqual([[], 2, [true, true, false, false, false]]);
+    // A level its script brings follows the made ones as its last, in its own flat colour, taking the last budget.
+    writeFileSync(join(root, "far.glb"), tubeGlb(true));
+    const far = built();
+    convertPieces({ ...asset, spec: { ...spec, flat: 2, budgets: { triangles: [512, 256, 128, 64, 32, 4] } } }, { post: join(root, "far.glb") }, far);
+    const lods = far.meshes[0]!.lods;
+    expect([far.faults, lods.map((l) => l.indices.length / 3 <= 4), [...new Set(lods.at(-1)!.colors)]]).toEqual([[], [false, false, false, false, false, true], [nearestColour(palette, 32, 64, 96)]]);
     // A shared material that does not say how far it tiles could differ from one asset to the next.
     const loose = built();
     convertPieces({ ...asset, spec: { ...spec, materials: { hide: { ...hide, tiles: undefined } } } }, { post: join(root, "post.glb") }, loose);

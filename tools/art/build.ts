@@ -127,9 +127,11 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
   const palette = defaultPalette();
   const pictured = described(asset, palette, out);
   const maps = new Map<string, MaterialMaps[]>();
+  const brought = new Map<string, number>();
   for (const p of spec.pieces) {
     const report = importGlb(readFileSync(files[p.object]!), p.id, palette, { flat: (name) => pictured.get(name)?.flat });
     out.warnings.push(...report.warnings.map((w) => `${p.id}: ${w}`));
+    brought.set(p.id, report.levels - 1);
     if (!report.mesh.flat || pictured.size === 0) {
       out.meshes.push(report.mesh);
       continue;
@@ -141,10 +143,14 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
   measureSpans(out.meshes);
   out.meshes = out.meshes.map((mesh) => {
     out.faults.push(...surfaceFaults(mesh));
-    // Asked for, a piece's levels are made from its finest as a creature's are. Otherwise it keeps its own.
+    // Asked for, a piece's levels are made from its finest as a creature's are, and any its script brought follow them
+    // as its last, each taking the last of the budgets. Otherwise it keeps its own.
     const errors = spec.pieces.find((p) => p.id === mesh.id)?.errors;
     if (spec.flat === undefined || !maps.has(mesh.id)) return withStated(mesh, errors, out.faults);
-    return withStated(withSurfaceLevels({ ...mesh, lods: [mesh.lods[0]!] }, { budgets: spec.budgets.triangles.slice(1), flat: spec.flat, maps: maps.get(mesh.id)!, palette }), errors, out.faults);
+    const own = mesh.lods.slice(1, 1 + brought.get(mesh.id)!);
+    const budgets = spec.budgets.triangles.slice(1, spec.budgets.triangles.length - own.length);
+    const made = withSurfaceLevels({ ...mesh, lods: [mesh.lods[0]!] }, { budgets, flat: spec.flat, maps: maps.get(mesh.id)!, palette });
+    return withStated({ ...made, lods: [...made.lods, ...own] }, errors, out.faults);
   });
   for (const mesh of out.meshes) out.lines.push(`${mesh.id.padEnd(28)} triangles ${triangles(mesh)}`);
 }
