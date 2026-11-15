@@ -25,7 +25,7 @@ const REGIONS = [
   { name: "Forehead, Neck and Feet", colors: even(0xc4983c, 0xaa7c30, 0xb5a03e, 0xc47a3e, 0x7d7a44, 0x666c70, 0xb98576) },
   // umber-charcoal, sooty, chestnut, peat brown, slate, ash; white. The sooty is given as the palette's next nearest
   // to it (0x2c2a28), since the umber-charcoal takes the nearest.
-  { name: "Head", colors: [...even(0x3b302a, 0x24282a, 0x6b3b25, 0x5a4636, 0x4e555b, 0x8e8b85), rare(0xe9e6dd)] },
+  { name: "Head", colors: [...even(0x433324, 0x24282a, 0x6b3b25, 0x5a4636, 0x4e555b, 0x8e8b85), rare(0xe9e6dd)] },
   // cream, pale buff, ash white, rust, pale olive, pale blue-grey, sooty
   { name: "Wings and Patterning", colors: even(0xe6dcc4, 0xd9c49a, 0xd3d3cc, 0xa8573a, 0xb9b68a, 0xa9b6c2, 0x2f2d2b) },
 ];
