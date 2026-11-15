@@ -62,11 +62,13 @@ TRIANGLES = [16000, 7000, 3200, 1400, 600, 240, 64]
 # The saddle's own levels when it is drawn as a second mesh (ref/DESIGN.md, "The saddle"): pad, cantle, harness,
 # grips, rests, halter and reins.
 SADDLE_TRIANGLES = [2400, 1000, 400, 120]
-FLAT_FROM = 3  # estimate; `bun run art -- core:pteranodon --check` prints where each level is drawn
+# An estimate. A flyer is 7 m wide and 1.5 m tall, so judge `flat` by the span seen from below (the first level drawn
+# under about 48 px across), not by the height `bun run art -- core:pteranodon --check` prints.
+FLAT_FROM = 3
 
 # Materials: the Blender material names the model uses, which asset.ts gives pictures. Base and normal at `size`;
-# packed map and region masks one size under. In the largest variant (rgba) the bare animal's two take 32.0 MB and the
-# saddle's 8.0; asset.ts: budgets.texture allows 40 for the animal.
+# packed map and region masks one size under. Measured with shared/pack/texture.ts textureBytes: the animal's two take
+# 48.0 MB in the rgba variant and 29.3 in bc and astc; the saddle's 12.0 and 3.7.
 MATERIALS = {
     # Opaque, one-sided: the closed surface of the body. Fuzz of head, neck, torso and upper limbs; the horn of the
     # beak, skull cap and crest with its band; eyes; the inside of the mouth; arms, hands, legs, feet and claws. A
@@ -80,7 +82,7 @@ SADDLE_MATERIALS = {
     # The saddle's hide, plaited fibre, bent wood and chitin, on one layout.
     "pteranodon_saddle": {"size": 1024, "two_sided": False, "cutout": False},
 }
-TEXTURE_MEGABYTES = 40
+TEXTURE_MEGABYTES = 48  # the animal; the saddle, a worn mesh, has its own 12
 
 # The six colour regions, by index, under ARK's names and in its order. Where each lies is in ref/DESIGN.md. They are
 # painted in each material's region map in these colours (tools/art/spec.ts); black is never dyed: eyes, claws, the
@@ -161,8 +163,8 @@ SOCKETS = {
     # On the ground under the ball of each foot and under each hand in STANCE: footsteps, dust, planted-foot targets.
     "foot_l":      ("toes_l", (0.210, 0.457, -1.191)),
     "foot_r":      ("toes_r", (-0.210, 0.457, -1.191)),
-    "hand_l":      ("fingers_l", (1.546, 0.979, 0.109)),
-    "hand_r":      ("fingers_r", (-1.546, 0.979, 0.109)),
+    "hand_l":      ("fingers_l", (1.554, 0.950, 0.110)),
+    "hand_r":      ("fingers_r", (-1.554, 0.950, 0.110)),
 }
 
 # The seated rider, as the human seated pose must put the survivor (FL2's clip), relative to `seat` in the animal's

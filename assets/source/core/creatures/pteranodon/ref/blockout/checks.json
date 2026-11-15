@@ -2,10 +2,10 @@
  "stance": {
   "membrane_l_into_body": 0,
   "finger_l_into_body": 0,
-  "membrane_l_self": 205,
+  "membrane_l_self": 146,
   "membrane_r_into_body": 0,
   "finger_r_into_body": 0,
-  "membrane_r_self": 205,
+  "membrane_r_self": 146,
   "wings_into_each_other": 0,
   "rider_intrusion_cm": 0.0,
   "rider_intrusion_part": "",
@@ -18,10 +18,10 @@
  "air_quarter_folded": {
   "membrane_l_into_body": 0,
   "finger_l_into_body": 0,
-  "membrane_l_self": 47,
+  "membrane_l_self": 43,
   "membrane_r_into_body": 0,
   "finger_r_into_body": 0,
-  "membrane_r_self": 47,
+  "membrane_r_self": 43,
   "wings_into_each_other": 0,
   "rider_intrusion_cm": 0.0,
   "rider_intrusion_part": "",
@@ -34,10 +34,10 @@
  "air_tucked": {
   "membrane_l_into_body": 0,
   "finger_l_into_body": 0,
-  "membrane_l_self": 351,
+  "membrane_l_self": 264,
   "membrane_r_into_body": 0,
   "finger_r_into_body": 0,
-  "membrane_r_self": 351,
+  "membrane_r_self": 264,
   "wings_into_each_other": 0,
   "rider_intrusion_cm": 0.0,
   "rider_intrusion_part": "",
@@ -47,20 +47,20 @@
    -0.2
   ]
  },
- "air_three_quarter_folded": {
-  "membrane_l_into_body": 56,
+ "landing_three_quarter_folded": {
+  "membrane_l_into_body": 45,
   "finger_l_into_body": 0,
-  "membrane_l_self": 59,
-  "membrane_r_into_body": 56,
+  "membrane_l_self": 66,
+  "membrane_r_into_body": 45,
   "finger_r_into_body": 0,
-  "membrane_r_self": 59,
-  "wings_into_each_other": 0,
+  "membrane_r_self": 66,
+  "wings_into_each_other": 36,
   "rider_intrusion_cm": 0.0,
   "rider_intrusion_part": "",
   "seat": [
-   0.0,
-   1.0,
-   -0.2
+   -0.0,
+   1.143,
+   -0.356
   ]
  },
  "rest": {
@@ -103,7 +103,7 @@
   "finger_r_into_body": 0,
   "membrane_r_self": 0,
   "wings_into_each_other": 0,
-  "rider_intrusion_cm": 2.7,
+  "rider_intrusion_cm": 2.6,
   "rider_intrusion_part": "membrane_l",
   "seat": [
    0.0,
@@ -258,10 +258,10 @@
  "call_stance": {
   "membrane_l_into_body": 0,
   "finger_l_into_body": 0,
-  "membrane_l_self": 205,
+  "membrane_l_self": 146,
   "membrane_r_into_body": 0,
   "finger_r_into_body": 0,
-  "membrane_r_self": 205,
+  "membrane_r_self": 146,
   "wings_into_each_other": 0,
   "rider_intrusion_cm": 0.0,
   "rider_intrusion_part": "",
