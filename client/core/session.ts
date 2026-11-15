@@ -81,6 +81,7 @@ import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel } from "../../shared/sim/vehicle-body.ts";
 import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -149,12 +150,17 @@ export class RemoteSample {
   /** The bodies the server said died, by id, with the tick of the snapshot that said so. Kept for a few seconds. */
   died: ReadonlyMap<number, number> = new Map();
   readonly id = new Uint32Array(MAX_VIEW);
+  readonly gen = new Uint16Array(MAX_VIEW);
   readonly kind = new Uint16Array(MAX_VIEW);
   readonly x = new Float32Array(MAX_VIEW);
   readonly y = new Float32Array(MAX_VIEW);
   readonly z = new Float32Array(MAX_VIEW);
   /** Radians. */
   readonly yaw = new Float32Array(MAX_VIEW);
+  readonly vehiclePitch = new Float32Array(MAX_VIEW);
+  readonly vehicleRoll = new Float32Array(MAX_VIEW);
+  readonly steering = new Float32Array(MAX_VIEW);
+  readonly wheelAngle = new Float32Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
   readonly level = new Uint16Array(MAX_VIEW);
   /** Six colour regions per entity. Zero means the species' own colour. */
@@ -173,6 +179,8 @@ export class RemoteSample {
   /** Each 0 for none: the owning team, the entity it sits on plus one, the ticks its growing takes, and the tick it will be grown. */
   readonly team = new Uint32Array(MAX_VIEW);
   readonly seat = new Uint32Array(MAX_VIEW);
+  readonly seatSlot = new Uint8Array(MAX_VIEW);
+  readonly seatGen = new Uint16Array(MAX_VIEW);
   readonly span = new Uint32Array(MAX_VIEW);
   readonly grown = new Uint32Array(MAX_VIEW);
 }
@@ -586,6 +594,7 @@ export class ClientSession {
       while (i < na && a!.id[i]! < id) i++;
       const n = out.count++;
       out.id[n] = id;
+      out.gen[n] = b.gen[j]!;
       out.kind[n] = b.kind[j]!;
       out.flags[n] = b.flags[j]!;
       out.level[n] = b.level[j]!;
@@ -599,9 +608,24 @@ export class ClientSession {
       for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
       out.team[n] = b.team[j]!;
       out.seat[n] = b.seat[j]!;
+      out.seatSlot[n] = b.seatSlot[j]!;
+      out.seatGen[n] = b.seatGen[j]!;
       out.span[n] = b.span[j]!;
       out.grown[n] = b.grown[j]!;
+      const vehiclePose = b.vehiclePose[j]!;
+      out.vehiclePitch[n] = unpackVehiclePitch(vehiclePose);
+      out.vehicleRoll[n] = unpackVehicleRoll(vehiclePose);
+      out.steering[n] = unpackVehicleSteering(vehiclePose);
+      out.wheelAngle[n] = unpackVehicleWheel(b.vehicleWheel[j]!);
       if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
+        const oldPose = a!.vehiclePose[i]!;
+        out.vehiclePitch[n] = unpackVehiclePitch(oldPose) + (out.vehiclePitch[n]! - unpackVehiclePitch(oldPose)) * k;
+        out.vehicleRoll[n] = unpackVehicleRoll(oldPose) + (out.vehicleRoll[n]! - unpackVehicleRoll(oldPose)) * k;
+        out.steering[n] = unpackVehicleSteering(oldPose) + (out.steering[n]! - unpackVehicleSteering(oldPose)) * k;
+        const oldWheel = unpackVehicleWheel(a!.vehicleWheel[i]!);
+        let wheelTurn = out.wheelAngle[n]! - oldWheel;
+        wheelTurn -= Math.floor((wheelTurn + TAU / 2) / TAU) * TAU;
+        out.wheelAngle[n] = oldWheel + wheelTurn * k;
         out.x[n] = dequantX(a!.qx[i]! + (b.qx[j]! - a!.qx[i]!) * k);
         out.y[n] = dequantY(a!.qy[i]! + (b.qy[j]! - a!.qy[i]!) * k);
         out.z[n] = dequantX(a!.qz[i]! + (b.qz[j]! - a!.qz[i]!) * k);
@@ -665,11 +689,14 @@ export class ClientSession {
     const inp = this.inputs;
     const buttons = inp.buttons[i]!;
     // The body steps with the move parameters of the kind the server last sent: its own species, or its mount's once tamed.
-    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
+    const vehicle = this.registry.vehicle[this.own.kind];
+    if (vehicle) stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT);
+    else if (this.own.seatSlot !== 2) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
+    else this.own.yaw = inp.yaw[i]!;
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
       const jaws = this.registry.weapon[this.own.kind];
-      if (jaws) {
+      if (jaws && !vehicle) {
         const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
         stepAction(this.own, buttons, buttons & ~was, jaws);
       }

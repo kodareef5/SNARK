@@ -158,9 +158,17 @@ async function boot(): Promise<void> {
       });
       times.sort((x, y) => x - y);
       const misplaced = view.misplaced(app.ui.frame);
+      const urban = params.has("urban") ? (() => {
+        const drawn = Array.from(packet.drawMesh.subarray(0, packet.drawCount), index => manifest.meshes[index]?.id ?? "");
+        const vehicles = drawn.filter(id => id.startsWith("urban:compact"));
+        const humans = drawn.filter(id => id.startsWith("core:human"));
+        const seats = Array.from(app.remote.seatSlot.subarray(0, app.remote.count)).filter(slot => slot > 0);
+        return { vehicles, humans, seats, ownKind: reg.ids[session.own.kind], ok: vehicles.length > 0 && humans.length > 0 && seats.length > 0 && renderer.errors === 0 };
+      })() : null;
       const report = {
         // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
+        ok: (voiceListen || probes.every((p) => p.ok)) && (!urban || urban.ok) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
+        ...(urban ? { urban } : {}),
         rocks: rocks.map((m) => [m.level, m.drawn]),
         restored,
         assets: { ...app.scene?.assets.residency.stats, kept: port.cache },

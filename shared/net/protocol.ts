@@ -37,7 +37,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -448,6 +448,17 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u8(b.actTicks);
   w.u8(b.rounds);
   w.u8(b.reloadTo);
+  w.bool(b.vehicle);
+  if (b.vehicle) {
+    w.f32(b.vehicleYaw);
+    w.f32(b.vehiclePitch);
+    w.f32(b.vehicleRoll);
+    w.f32(b.steering);
+    w.f32(b.wheelAngle);
+    w.f32(b.fuel);
+  }
+  w.varint(b.seat);
+  if (b.seat !== 0) { w.u8(b.seatSlot); w.bits(b.seatGen, 12); }
 }
 
 export function readBody(r: BitReader, b: Body): void {
@@ -472,6 +483,16 @@ export function readBody(r: BitReader, b: Body): void {
   b.actTicks = r.u8();
   b.rounds = r.u8();
   b.reloadTo = r.u8();
+  b.vehicle = r.bool();
+  b.vehicleYaw = b.vehicle ? r.f32() : 0;
+  b.vehiclePitch = b.vehicle ? r.f32() : 0;
+  b.vehicleRoll = b.vehicle ? r.f32() : 0;
+  b.steering = b.vehicle ? r.f32() : 0;
+  b.wheelAngle = b.vehicle ? r.f32() : 0;
+  b.fuel = b.vehicle ? r.f32() : 0;
+  b.seat = r.varint();
+  b.seatSlot = b.seat !== 0 ? r.u8() : 0;
+  b.seatGen = b.seat !== 0 ? r.bits(12) : 0;
 }
 
 /** `key` must be KEY_BYTES long. */

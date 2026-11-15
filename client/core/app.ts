@@ -33,7 +33,8 @@ import { BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "..
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
-import { handleIndex } from "../../shared/ids.ts";
+import { handleGen, handleIndex } from "../../shared/ids.ts";
+import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS } from "../../shared/sim/items.ts";
 import { Viewpoint } from "./viewpoint.ts";
@@ -110,6 +111,7 @@ export class App {
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
   private readonly aim = [0, 0, 0];
+  private readonly seatAt = [0, 0, 0];
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
 
   /** The session's registry. It is content as written until the welcome, then as the server tuned it. */
@@ -409,6 +411,8 @@ export class App {
     const ox = s.own.x;
     const oy = s.own.y + eye;
     const oz = s.own.z;
+    if (s.driving >= 0 && this.reg.vehicle[s.bodyKind]) return "E  exit vehicle";
+    if (s.own.seatSlot === 2) return "E  exit passenger seat";
     if (this.holding >= 0) return "E  set down   click  throw";
     lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
     const struck = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, REACH);
@@ -427,6 +431,23 @@ export class App {
       }
     }
     if (hit >= 0) {
+      // The server also treats using an occupant as using its vehicle, useful when a person fills the doorway.
+      if (r.seatSlot[hit] !== 0) for (let j = 0; j < r.count; j++) {
+        if (r.id[j] === r.seat[hit]! - 1 && r.gen[j] === r.seatGen[hit] && this.reg.vehicle[r.kind[j]!]) { hit = j; break; }
+      }
+      const car = this.reg.vehicle[r.kind[hit]!];
+      if (car) {
+        const frame = { x: r.x[hit]!, y: r.y[hit]!, z: r.z[hit]!, yaw: r.yaw[hit]!, pitch: r.vehiclePitch[hit]!, roll: r.vehicleRoll[hit]! };
+        let slot = 0, near = Infinity;
+        for (let j = 0; j < car.seats.length; j++) {
+          vehiclePoint(frame, car.seats[j]!.entry, this.seatAt);
+          const d = Math.hypot(ox - this.seatAt[0]!, oz - this.seatAt[2]!);
+          if (d < near) { near = d; slot = j; }
+        }
+        let occupied = false;
+        for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === slot + 1) occupied = true;
+        return occupied ? car.seats[slot]!.driver ? "E  carjack driver" : "Passenger seat occupied" : car.seats[slot]!.driver ? "E  enter driver seat" : "E  enter passenger seat";
+      }
       if ((r.flags[hit]! & VIEW_FLAG_PROP) !== 0) {
         // On a prop, a nonzero grown tick marks a fertilised egg. An egg that is an item is taken up.
         const left = waitWords(Math.max(0, Math.ceil((r.grown[hit]! - s.serverTick) / TICK_RATE)));
@@ -557,6 +578,7 @@ export class App {
       this.ui.frame.images[IMAGE_MAP] = chart.full.image;
     }
     hud.status = this.debug ? this.scene.assets.line() : "";
+    session.sampleRemote(this.remote);
 
     // The eye interpolates between the last two predicted ticks, so motion is smooth at any frame rate.
     const cam = this.cam;
@@ -572,13 +594,26 @@ export class App {
     const bx = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX;
     const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
     const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
+    const car = this.reg.vehicle[session.bodyKind];
+    const carYaw = session.ownPrev.vehicleYaw + Math.atan2(Math.sin(session.own.vehicleYaw - session.ownPrev.vehicleYaw), Math.cos(session.own.vehicleYaw - session.ownPrev.vehicleYaw)) * a;
+    const passenger = alive && session.own.seatSlot === 2 && session.own.seat > 0;
     // A server rule can forbid third person. A rider still sees its mount from behind.
     if (!session.thirdPerson) this.view.thirdPerson = false;
     // A session without a living body looks from the eye.
     const third = this.view.thirdPerson;
     if (!alive) this.view.thirdPerson = false;
     else if (session.driving >= 0) this.view.thirdPerson = true;
-    this.view.place(cam, world, bx, by + eye, bz, c.yaw, c.pitch);
+    if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + 1, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt);
+    else if (passenger) {
+      let px = bx, py = by + eye, pz = bz, heading = c.yaw;
+      for (let i = 0; i < this.remote.count; i++) {
+        const r = this.remote;
+        if (r.id[i] !== session.own.seat - 1 || r.gen[i] !== session.own.seatGen) continue;
+        px = r.x[i]!; py = r.y[i]! + 1; pz = r.z[i]!; heading = r.yaw[i]!;
+        break;
+      }
+      this.view.placeVehicle(cam, world, px, py, pz, c.yaw, c.pitch, heading, 0, dt, false);
+    } else this.view.place(cam, world, bx, by + eye, bz, c.yaw, c.pitch);
     this.view.thirdPerson = third;
     cam.aspect = aspect;
     // Aiming narrows the view in proportion to the player's setting, more through a scope. The mouse slows to match.
@@ -601,8 +636,11 @@ export class App {
     body.z = bz;
     body.yaw = c.yaw;
     body.tick = session.tickClock;
-    body.firstPerson = !third;
+    body.firstPerson = !third && !passenger;
     body.id = handleIndex(session.ownHandle);
+    body.generation = handleGen(session.ownHandle);
+    body.vehicle = undefined;
+    body.attachment = passenger ? { host: session.own.seat - 1, slot: session.own.seatSlot, generation: session.own.seatGen } : undefined;
     body.look = session.ownLook;
     const inv = session.inventory;
     body.gear.fill(0);
@@ -622,7 +660,13 @@ export class App {
     const riding = alive && session.driving >= 0;
     if (riding) {
       body.kind = session.bodyKind;
-      body.yaw = (session.own.yaw / 65536) * TAU;
+      body.yaw = car ? carYaw : (session.own.yaw / 65536) * TAU;
+      if (car) body.vehicle = {
+        pitch: session.ownPrev.vehiclePitch + (session.own.vehiclePitch - session.ownPrev.vehiclePitch) * a,
+        roll: session.ownPrev.vehicleRoll + (session.own.vehicleRoll - session.ownPrev.vehicleRoll) * a,
+        steering: session.ownPrev.steering + (session.own.steering - session.ownPrev.steering) * a,
+        wheelAngle: session.ownPrev.wheelAngle + Math.atan2(Math.sin(session.own.wheelAngle - session.ownPrev.wheelAngle), Math.cos(session.own.wheelAngle - session.ownPrev.wheelAngle)) * a,
+      };
       body.firstPerson = false;
       body.id = session.driving;
       body.look = null;
@@ -637,6 +681,7 @@ export class App {
       const r = this.remote;
       for (let i = 0; i < r.count; i++) {
         if (r.id[i] !== session.driving) continue;
+        body.generation = r.gen[i]!;
         body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
         body.state.unpackCue(r.cue[i]!);
       }
@@ -644,7 +689,6 @@ export class App {
     this.scene.skip = riding ? session.driving : -1;
     this.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
-    session.sampleRemote(this.remote);
     this.shots.absorb(session, world, nowMs);
     this.shots.step(world, this.remote, session.tickClock, nowMs);
     this.scene.shotTick = session.tickClock;
@@ -674,6 +718,7 @@ export class App {
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
+    if (alive && car) hud.ammo = `${Math.round(Math.hypot(session.own.vx, session.own.vz) * 3.6)} km/h   Fuel ${Math.round(session.own.fuel / car.spec.fuelCapacity * 100)}%   W/S drive   A/D steer   Space brake   E exit`;
     this.listen(hud);
     const ghost = this.scene.ghost;
     ghost.kind = 0;

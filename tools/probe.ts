@@ -7,7 +7,7 @@
 // --textured holds the shell's textures and materials to our decoders and the software rasterizer (tools/probe-textured.ts).
 // --lit holds what the shell draws at the lit tiers to the rasterizer and to each check under tools/probe-lit/ (tools/probe-lit.ts).
 
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/main.ts";
@@ -15,6 +15,7 @@ import { buildClient } from "./build-client.ts";
 import { litProbe } from "./probe-lit.ts";
 import { texturedProbe } from "./probe-textured.ts";
 
+const integrated = process.argv.includes("--integrated");
 const CANDIDATES = [
   process.env.CHROME,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -30,7 +31,7 @@ if (!chrome) {
 }
 
 // The lit probe builds the core pack itself and needs no client.
-if (!process.argv.includes("--lit")) await buildClient({ stress: process.argv.includes("--stress") });
+if (!integrated && !process.argv.includes("--lit")) await buildClient({ stress: process.argv.includes("--stress") });
 for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe]] as const) {
   if (!process.argv.includes(flag)) continue;
   const passed = await run(chrome);
@@ -38,12 +39,18 @@ for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe]] a
   process.exit(passed ? 0 : 1);
 }
 const server = startServer({ dev: true, port: 0, probeScene: true });
+if (integrated) {
+  const h = server.host, s = h.world.spawn;
+  const car = h.spawnVehicle("urban:compact", s.x - 6, s.z + 9);
+  const driver = h.spawnCreature("urban:civilian", s.x - 6 + 1.25, s.z + 9.12, 1);
+  if (car < 0 || driver < 0 || h.urban.seatNpc(driver, car) !== 0) throw new Error("integrated probe could not seat the native civilian");
+}
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
 // Unless --no-voice is given, the page talks to itself through the server. VOICE_FLAGS give Chrome a fake microphone, grant it
 // without a prompt, and let sound start without a gesture.
-const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}${process.argv.includes("--slow") ? "&assetnet=300,1500,2" : ""}${process.argv.includes("--stress") ? "&stress=1" : ""}`;
+const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${integrated ? "&urban=1&tier=lowpoly" : ""}${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}${process.argv.includes("--slow") ? "&assetnet=300,1500,2" : ""}${process.argv.includes("--stress") ? "&stress=1" : ""}`;
 const VOICE_FLAGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
-const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: "ignore" });
+const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", integrated ? "--window-size=800,600" : "--window-size=1280,720", ...(integrated ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--remote-debugging-port=0"] : []), ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: integrated ? Bun.file(join(profile, "chrome.log")) : "ignore" });
 
 const timeout = new Promise<null>((r) => setTimeout(() => r(null), 30000));
 const report = (await Promise.race([server.nextSelfcheck(), timeout])) as { ok?: boolean } | null;
@@ -57,6 +64,23 @@ if (report && process.argv.includes("--voice")) {
   await listener.exited;
   rmSync(profile2, { recursive: true, force: true });
 }
+if (integrated && existsSync(join(profile, "DevToolsActivePort"))) {
+  const port = Number(readFileSync(join(profile, "DevToolsActivePort"), "utf8").split("\n")[0]);
+  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as {type:string;webSocketDebuggerUrl:string}[];
+  const page = targets.find(t => t.type === "page")!;
+  if (!report) console.error("integrated probe page:", JSON.stringify(page));
+  const screenshot = await new Promise<string>((resolve,reject) => {
+    const ws = new WebSocket(page.webSocketDebuggerUrl);
+    const timer = setTimeout(() => {ws.close();reject(new Error("screenshot timeout"));},5000);
+    ws.onopen = () => ws.send(JSON.stringify({id:1,method:"Page.captureScreenshot",params:{format:"png"}}));
+    ws.onmessage = event => {const result=JSON.parse(String(event.data));if(result.id===1){clearTimeout(timer);ws.close();result.result?.data?resolve(result.result.data):reject(new Error(JSON.stringify(result.error)));}};
+    ws.onerror = () => {clearTimeout(timer);reject(new Error("screenshot socket failed"));};
+  });
+  const dir = join(import.meta.dir,"../artifacts/urban-integrated"); mkdirSync(dir,{recursive:true});
+  writeFileSync(join(dir,"browser.png"),Buffer.from(screenshot,"base64"));
+  writeFileSync(join(dir,"probe.json"),JSON.stringify(report,null,2)+"\n");
+}
+if (integrated && !report) console.error(readFileSync(join(profile, "chrome.log"), "utf8").slice(-6000));
 browser.kill();
 await browser.exited;
 let again: { ok?: boolean; assets?: { fetched: number; cached: number } } | null | undefined;

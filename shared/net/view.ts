@@ -8,6 +8,8 @@
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], then its appearance:
 //             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
+//     Vehicle creates include [vehicle? 1][pose u32, wheel u16]; updates include [changed? 1][pose u32, wheel u16].
+//     A present seat includes its slot u8 and parent generation12, preventing attachment to a recycled entity.
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
 //             [motion? 1][12] [look? 1][6] [action? 1][14 [cues? 1][31]]: the action is sent again with a change of cues
 //
@@ -44,7 +46,7 @@ const OP_DIED = 3;
 
 const ANIM_BITS = ANIM_MOTION_BITS + ANIM_LOOK_BITS + ANIM_ACTION_BITS;
 const LOOK_MASK = (1 << ANIM_LOOK_BITS) - 1;
-const CREATE_BITS = 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 1 + 4 + 16 + 4 + 48 + 3;
+const CREATE_BITS = 1 + 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 1 + 4 + 16 + 4 + 48 + 3;
 /** In bytes. */
 export const MAX_NAME_LENGTH = 72;
 
@@ -58,6 +60,8 @@ export interface Looks {
   readonly gear: (Uint16Array | null)[];
   readonly team: Uint32Array;
   readonly seat: Uint32Array;
+  readonly seatSlot?: Uint8Array;
+  readonly seatGen?: Uint16Array;
   readonly span: Uint32Array;
   readonly grown: Uint32Array;
   /** The generation of the last body at each index that died (EntityStore.died), so its remove says so. */
@@ -68,7 +72,7 @@ export interface Looks {
 function createBits(v: Looks, id: number): number {
   const name = v.name[id]!;
   // The optional fields: a look, gear, a team, a seat, an age.
-  const look = (v.look[id] ? LOOK_BYTES * 8 : 0) + (v.gear[id] ? GEAR_COUNT * 16 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 40 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
+  const look = (v.look[id] ? LOOK_BYTES * 8 : 0) + (v.gear[id] ? GEAR_COUNT * 16 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 60 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
   if (name === "") return CREATE_BITS + look;
   let bytes = 1;
   for (let i = 0; i < name.length; i++) {
@@ -121,12 +125,14 @@ export class SentView {
   /** Packed as `AnimState.pack` and `AnimState.packCue` do. */
   anim = new Uint32Array(VIEW_START);
   cue = new Uint32Array(VIEW_START);
+  vehiclePose = new Uint32Array(VIEW_START);
+  vehicleWheel = new Uint16Array(VIEW_START);
   /** Appearance revision, 4 bits. A change makes the next delta send a create. */
   rev = new Uint8Array(VIEW_START);
   /** Not sent. 1 for an entity whose changes go before the others when a snapshot cannot carry them all: a player, or a mount one drives. */
   urgent = new Uint8Array(VIEW_START);
 
-  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0, cue = 0): boolean {
+  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0, cue = 0, vehiclePose = 0, vehicleWheel = 0): boolean {
     const n = this.count;
     if (n === this.cap && !this.grow()) return false;
     this.id[n] = id;
@@ -139,13 +145,15 @@ export class SentView {
     this.flags[n] = flags;
     this.anim[n] = anim;
     this.cue[n] = cue;
+    this.vehiclePose[n] = vehiclePose;
+    this.vehicleWheel[n] = vehicleWheel;
     this.rev[n] = rev;
     this.count = n + 1;
     return true;
   }
 
   copyFrom(o: SentView, i: number): boolean {
-    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!, o.cue[i]!);
+    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!, o.cue[i]!, o.vehiclePose[i]!, o.vehicleWheel[i]!);
   }
 
   /** Doubles the columns. False when they are at MAX_VIEW. */
@@ -162,6 +170,8 @@ export class SentView {
     this.flags = wider(this.flags, cap);
     this.anim = wider(this.anim, cap);
     this.cue = wider(this.cue, cap);
+    this.vehiclePose = wider(this.vehiclePose, cap);
+    this.vehicleWheel = wider(this.vehicleWheel, cap);
     this.rev = wider(this.rev, cap);
     this.urgent = wider(this.urgent, cap);
     return true;
@@ -180,6 +190,8 @@ export class EntityView extends SentView {
   /** As in `EntityStore`, each 0 for none. */
   team = new Uint32Array(VIEW_START);
   seat = new Uint32Array(VIEW_START);
+  seatSlot = new Uint8Array(VIEW_START);
+  seatGen = new Uint16Array(VIEW_START);
   span = new Uint32Array(VIEW_START);
   grown = new Uint32Array(VIEW_START);
 
@@ -195,16 +207,20 @@ export class EntityView extends SentView {
     }
     this.team = wider(this.team, cap);
     this.seat = wider(this.seat, cap);
+    this.seatSlot = wider(this.seatSlot, cap);
+    this.seatGen = wider(this.seatGen, cap);
     this.span = wider(this.span, cap);
     this.grown = wider(this.grown, cap);
     return true;
   }
 
   /** For the entry just pushed. Call it after `appear`, which zeroes these fields. */
-  belong(team: number, seat: number, span: number, grown: number): void {
+  belong(team: number, seat: number, span: number, grown: number, seatSlot = 0, seatGen = 0): void {
     const n = this.count - 1;
     this.team[n] = team;
     this.seat[n] = seat;
+    this.seatSlot[n] = seatSlot;
+    this.seatGen[n] = seatGen;
     this.span[n] = span;
     this.grown[n] = grown;
   }
@@ -218,13 +234,13 @@ export class EntityView extends SentView {
     this.name[n] = name;
     this.look[n] = look;
     this.gear[n] = gear;
-    this.team[n] = this.seat[n] = this.span[n] = this.grown[n] = 0;
+    this.team[n] = this.seat[n] = this.seatSlot[n] = this.seatGen[n] = this.span[n] = this.grown[n] = 0;
   }
 
   override copyFrom(o: EntityView, i: number): boolean {
     if (!super.copyFrom(o, i)) return false;
     this.appear(o.rev[i]!, o.level[i]!, o.colors, i * 6, o.name[i]!, o.look[i]!, o.gear[i]!);
-    this.belong(o.team[i]!, o.seat[i]!, o.span[i]!, o.grown[i]!);
+    this.belong(o.team[i]!, o.seat[i]!, o.span[i]!, o.grown[i]!, o.seatSlot[i]!, o.seatGen[i]!);
     return true;
   }
 }
@@ -477,7 +493,7 @@ function same(ring: ViewRing<SentView>, told: Told, s: number, v: SentView, j: n
   const was = ring.find(told.at[s]!);
   if (!was) return false;
   const i = told.ix[s]!;
-  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.cue[i] === v.cue[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j];
+  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.cue[i] === v.cue[j] && was.vehiclePose[i] === v.vehiclePose[j] && was.vehicleWheel[i] === v.vehicleWheel[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j];
 }
 
 /**
@@ -594,7 +610,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       opKind[n] = K_CREATE;
       opCur[n] = j;
       opId[n] = cid;
-      bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0);
+      bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? 48 : 0);
       last = cid + 1;
     } else {
       opBase[n] = i;
@@ -602,7 +618,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
         // Deferred, it leaves the client the entry it has.
         opKind[n] = K_REPLACE;
-        bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0);
+        bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? 48 : 0);
         last = cid + 1;
       } else {
         const dx = cur.qx[j]! - base!.qx[i]!;
@@ -611,7 +627,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         const moved = dx !== 0 || dy !== 0 || dz !== 0;
         const changed = cur.anim[j]! ^ base!.anim[i]!;
         const cued = cur.cue[j] !== base!.cue[i];
-        if (!moved && changed === 0 && !cued && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
+        const vehicleChanged = cur.vehiclePose[j] !== base!.vehiclePose[i] || cur.vehicleWheel[j] !== base!.vehicleWheel[i];
+        if (!moved && changed === 0 && !cued && !vehicleChanged && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
           if (th < 0) {
             opKind[n] = K_KEEP;
             i++;
@@ -631,8 +648,9 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
           // As the baseline has it, but the client may show what it was told since. An update with no parts says so.
         }
         opKind[n] = K_UPDATE;
-        // The id gap, the op, and one bit for each of the six parts that may follow.
-        bits = varintBits(cid + 1 - last) + 2 + 6;
+        // The id gap, the op, and one bit for each of the seven parts that may follow.
+        bits = varintBits(cid + 1 - last) + 2 + 7;
+        if (vehicleChanged) bits += 48;
         if (moved) bits += dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127 ? 25 : 65;
         if (base!.yaw[i] !== cur.yaw[j]) bits += 10;
         if (base!.flags[i] !== cur.flags[j]) bits += 4;
@@ -730,6 +748,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       w.bits(cur.anim[ci]!, ANIM_BITS);
       w.bool(cur.cue[ci] !== 0);
       if (cur.cue[ci] !== 0) w.bits(cur.cue[ci]!, CUE_BITS);
+      w.bool(cur.vehiclePose[ci] !== 0);
+      if (cur.vehiclePose[ci] !== 0) { w.u32(cur.vehiclePose[ci]!); w.u16(cur.vehicleWheel[ci]!); }
       w.bits(cur.rev[ci]!, 4);
       w.varint(looks.level[id]!);
       const c0 = id * 6;
@@ -750,7 +770,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       w.bool(looks.team[id] !== 0);
       if (looks.team[id] !== 0) w.varint(looks.team[id]!);
       w.bool(looks.seat[id] !== 0);
-      if (looks.seat[id] !== 0) w.varint(looks.seat[id]!);
+      if (looks.seat[id] !== 0) { w.varint(looks.seat[id]!); w.u8(looks.seatSlot?.[id] ?? 0); w.bits(looks.seatGen?.[id] ?? 0, 12); }
       const young = looks.span[id] !== 0 || looks.grown[id] !== 0;
       w.bool(young);
       if (young) {
@@ -805,6 +825,9 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         w.bool(cued);
         if (cued) w.bits(cur.cue[ci]!, CUE_BITS);
       }
+      const vehicleChanged = cur.vehiclePose[ci] !== base!.vehiclePose[bi] || cur.vehicleWheel[ci] !== base!.vehicleWheel[bi];
+      w.bool(vehicleChanged);
+      if (vehicleChanged) { w.u32(cur.vehiclePose[ci]!); w.u16(cur.vehicleWheel[ci]!); }
       next.copyFrom(cur, ci);
     }
   }
@@ -874,6 +897,9 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const flags = r.bits(4);
       const anim = r.bits(ANIM_BITS);
       const cue = r.bool() ? r.bits(CUE_BITS) : 0;
+      const vehicle = r.bool();
+      const vehiclePose = vehicle ? r.u32() : 0;
+      const vehicleWheel = vehicle ? r.u16() : 0;
       const rev = r.bits(4);
       const level = r.varint();
       if (r.bool()) for (let q = 0; q < 6; q++) scratchColors[q] = r.u8();
@@ -891,13 +917,15 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       }
       const team = r.bool() ? r.varint() : 0;
       const seat = r.bool() ? r.varint() : 0;
+      const seatSlot = seat !== 0 ? r.u8() : 0;
+      const seatGen = seat !== 0 ? r.bits(12) : 0;
       const young = r.bool();
       const span = young ? r.u32() : 0;
       const grown = young ? r.u32() : 0;
       if (present) i++;
-      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim, 0, cue)) return false;
+      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim, 0, cue, vehiclePose, vehicleWheel)) return false;
       next.appear(rev, level, scratchColors, 0, name, look, gear);
-      next.belong(team, seat, span, grown);
+      next.belong(team, seat, span, grown, seatSlot, seatGen);
       if (drawn) drawn.copyFrom(next, next.count - 1);
     } else if (op === OP_UPDATE) {
       if (!present) return false;
@@ -927,9 +955,12 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
         anim = (anim & ((1 << ANIM_ACTION_SHIFT) - 1)) | (r.bits(ANIM_ACTION_BITS) << ANIM_ACTION_SHIFT);
         if (r.bool()) cue = r.bits(CUE_BITS);
       }
-      if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0, 0, cue)) return false;
+      const vehicleChanged = r.bool();
+      const vehiclePose = vehicleChanged ? r.u32() : base!.vehiclePose[i]!;
+      const vehicleWheel = vehicleChanged ? r.u16() : base!.vehicleWheel[i]!;
+      if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0, 0, cue, vehiclePose, vehicleWheel)) return false;
       next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!);
-      next.belong(base!.team[i]!, base!.seat[i]!, base!.span[i]!, base!.grown[i]!);
+      next.belong(base!.team[i]!, base!.seat[i]!, base!.span[i]!, base!.grown[i]!, base!.seatSlot[i]!, base!.seatGen[i]!);
       if (drawn) drawn.copyFrom(next, next.count - 1);
       i++;
     } else return false;

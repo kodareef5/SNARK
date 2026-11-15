@@ -1,6 +1,7 @@
 // Dense indices are assigned in id order, so every process that loads the same definitions gets the same indices and hash.
 // Index 0 is reserved. It marks an empty structure slot and stands in for content that no longer exists.
 
+import { validateVehicleSpec, type VehicleDefinition } from "../sim/vehicle.ts";
 import { BIRTH_SCALE } from "../sim/breeding.ts";
 import type { TameParams } from "../sim/taming.ts";
 import { TICK_RATE } from "../coords.ts";
@@ -60,6 +61,7 @@ export interface Registry {
   readonly halfZ: Float32Array;
   /** Null for everything that is not a species. */
   readonly move: readonly (MoveParams | null)[];
+  readonly vehicle: readonly (VehicleDefinition | null)[];
   /** Item columns, zero for content that is not an item. See shared/sim/items.ts. */
   readonly stack: Uint16Array;
   readonly weight: Float32Array;
@@ -255,6 +257,19 @@ export function compileContent(all: readonly Def[]): CompileResult {
     }
     if (d.type === "species" && d.tag !== undefined && !TAG.test(d.tag)) errors.push(`${d.id}: tag "${d.tag}" must be one word of lower-case letters, digits and "_"`);
     if (d.type === "species") {
+      if (d.vehicle) {
+        try {
+          validateVehicleSpec(d.vehicle.spec);
+          if (d.vehicle.id !== d.id || d.vehicle.seats.length < 1 || d.vehicle.seats.length > 255) throw new Error("invalid vehicle identity or seats");
+          const names = new Set<string>();
+          let drivers = 0;
+          for (const seat of d.vehicle.seats) {
+            if (!seat.id || names.has(seat.id) || seat.anchor.length !== 3 || seat.entry.length !== 3 || ![...seat.anchor, ...seat.entry].every(Number.isFinite)) throw new Error("invalid vehicle seat");
+            names.add(seat.id); if (seat.driver) drivers++;
+          }
+          if (drivers !== 1) throw new Error("a vehicle must have one driver seat");
+        } catch { errors.push(`${d.id}: invalid wheel specification or seats`); }
+      }
       positive(d, "radius", d.radius, 8);
       positive(d, "height", d.height, 32);
       positive(d, "walkSpeed", d.walkSpeed, 40);
@@ -266,7 +281,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       // The pack decides which skeletons exist, so only an empty name is an error here.
       if (d.skeleton !== undefined && d.skeleton.length === 0) errors.push(`${d.id}: a skeleton must be named`);
       if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0 && (d.stamina.walk ?? 0) >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
-      if (d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
+      if (d.class !== "vehicle" && d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
       if (!(d.eyeHeight > 0 && d.eyeHeight <= d.height)) errors.push(`${d.id}: eyeHeight must be within the body`);
       for (const [name, st] of [["crouch", d.crouch], ["prone", d.prone]] as const) {
         if (st && !(st.height > 0 && st.height <= d.height && st.eye > 0 && st.eye <= st.height && st.speed > 0 && st.speed <= 1)) errors.push(`${d.id}: ${name} needs 0 < eye <= height <= the body's height and 0 < speed <= 1`);
@@ -488,6 +503,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const halfY = new Float32Array(n);
   const halfZ = new Float32Array(n);
   const move: (MoveParams | null)[] = new Array(n).fill(null);
+  const vehicle: (VehicleDefinition | null)[] = new Array(n).fill(null);
   const stack = new Uint16Array(n);
   const weight = new Float32Array(n);
   const spoilTicks = new Uint32Array(n);
@@ -607,6 +623,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     } else if (d.type === "species" || d.type === "prop") {
       if (d.type === "species") {
         move[i] = moveParams(d);
+        vehicle[i] = d.vehicle ?? null;
         tamedMove[i] = d.tamedSprintMul === undefined ? move[i] : { ...move[i]!, sprintMul: d.tamedSprintMul };
         damage[i] = d.fists ?? 8;
         meleeTorpor[i] = d.fistsTorpor ?? 0;
@@ -738,7 +755,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;

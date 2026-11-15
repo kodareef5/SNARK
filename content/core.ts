@@ -12,6 +12,8 @@ import { KNOCKOUT } from "./knockout.ts";
 import { MAPS } from "./maps.ts";
 import { RUIN_BLOCKS } from "./miami-ruins.ts";
 import { SPAWNS } from "./spawns.ts";
+import { COMPACT_SPECIES } from "./urban/compact.ts";
+import { CIVILIAN } from "./urban/civilian.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
 const id = (name: string): string => `core:${name}`;
@@ -394,6 +396,8 @@ const ALL: readonly Def[] = [
   { type: "structure", class: "static", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
   ...BUILDING_CONTENT,
   ...CREATURES,
+  COMPACT_SPECIES,
+  CIVILIAN,
   ...SPAWNS,
   ...KNOCKOUT,
   ...CORPSES,

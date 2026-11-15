@@ -435,7 +435,8 @@ function describe(m: OverheadModel, session: ClientSession, remote: RemoteSample
   const team = session.tribe.team;
   m.owner = remote.team[i] === 0 ? OWNER_WILD : team !== 0 && remote.team[i] === team ? OWNER_TRIBE : OWNER_OTHER;
   m.title = named ? remote.name[i]! : species.charAt(0).toUpperCase() + species.slice(1);
-  m.line = `${named ? `${species}  ` : ""}level ${remote.level[i]}`;
+  const vehicle = reg.vehicle[remote.kind[i]!];
+  m.line = vehicle ? "Vehicle · driver and passenger seats" : `${named ? `${species}  ` : ""}level ${remote.level[i]}`;
   // How far a young one has grown shows to its tribe, and on one nobody has claimed.
   if (remote.grown[i] !== 0 && m.owner !== OWNER_OTHER) {
     const tick = Math.floor(remote.tick);
@@ -448,6 +449,7 @@ function describe(m: OverheadModel, session: ClientSession, remote: RemoteSample
   if (!told || told.id !== remote.id[i]) return;
   if (m.owner === OWNER_OTHER && told.tribe !== "") m.tribe = `of ${told.tribe}`;
   addBar(m, BAR_HEALTH, told.health);
+  if (vehicle) return;
   addBar(m, BAR_FOOD, told.food);
   addBar(m, BAR_TORPOR, told.torpor);
   addBar(m, BAR_TAMING, told.taming);

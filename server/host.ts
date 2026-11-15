@@ -14,6 +14,7 @@ import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
+import { Urban } from "./urban.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
 import { Carry } from "./carry.ts";
 import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
@@ -167,6 +168,7 @@ export interface Host {
   readonly stations: Stations;
   readonly taming: Taming;
   readonly riding: Riding;
+  readonly urban: Urban;
   readonly breeding: Breeding;
   readonly tactical: Tactical;
   /** The creature packages' modules, each still doing nothing. */
@@ -207,6 +209,8 @@ export interface Host {
   readonly dev: boolean;
   /** `id` is a content id. Returns the entity index, or -1. */
   spawnCreature(id: string, x: number, z: number, level: number, why?: string): number;
+  /** Creates a normal vehicle record/entity; ownerTeam is legal title, separate from its driver. */
+  spawnVehicle(id: string, x: number, z: number, ownerTeam?: number, yaw?: number): number;
   /** Recomputes a body's vitals' maxima, movement modifiers, level and gear. Call it after changing its stat points or what it carries. */
   refreshBody(rec: EntityRecord): void;
   /** Run a console line as the operator, or as `client`. Returns what it printed. */
@@ -366,7 +370,21 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const spawnCreature = (id: string, x: number, z: number, level: number, why = "wild"): number => {
     const kind = reg.index.get(id);
     const e = kind === undefined ? -1 : creatures.spawn(kind, x, z, level, why);
+    if (e >= 0 && reg.vehicle[kind!]) urban.register(e);
     if (e >= 0 && persistence) persistence.attach(records.byPid.get(world.ents.pid[e]!)!, e);
+    return e;
+  };
+  const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0): number => {
+    const kind = reg.index.get(id);
+    if (kind === undefined || !reg.vehicle[kind] || !Number.isSafeInteger(ownerTeam) || ownerTeam < 0 || !Number.isFinite(yaw)) return -1;
+    const e = spawnCreature(id, x, z, 1, "admin");
+    if (e < 0) return e;
+    const rec = records.byPid.get(world.ents.pid[e]!)!;
+    rec.team = ownerTeam; rec.yaw = Math.round(yaw / (2 * Math.PI) * 65536) & 65535;
+    world.ents.yaw[e] = rec.yaw; world.ents.vehicleYaw[e] = Math.fround(yaw);
+    records.dirty.add(rec.pid);
+    items.inv(rec);
+    refreshBody(rec);
     return e;
   };
   const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules, bus });
@@ -410,9 +428,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
   death.onShut = (rec) => taming.meal(rec);
   const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec) });
+  const urban = new Urban({ world, game, records, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec) });
   // The use button gets off a mount, and sets down what is in the arms.
-  death.riding = (c) => riding.riding(c) || carry.holding(c) >= 0;
-  death.offMount = (c) => (riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
+  death.riding = (c) => urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
+  death.offMount = (c) => (urban.riding(c) ? urban.dismount(c) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
   const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death }, (opts.seed ?? 1) + 103);
@@ -424,6 +443,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const hurt = new Hurt({ world, records, survival });
   taming.bred = (rec) => breeding.subject(rec);
   death.onRide = (c, e) => {
+    if (carry.holding(c) < 0) {
+      const vehicle = urban.mount(c, e);
+      if (vehicle >= 0) return vehicle;
+    }
     const rec = records.byPid.get(world.ents.pid[e]!);
     // The use button claims an unclaimed young creature.
     if (rec && breeding.unclaimed(rec)) return breeding.claim(c, rec);
@@ -439,7 +462,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   // A held creature's peck spares its carrier and is credited to it, as a mount's bite is to its rider.
   combat.riderOf = (mount) => {
     const e = records.entOf.get(mount.pid);
-    return e === undefined ? null : (riding.riderOf(e) ?? carry.carrierOf(e));
+    return e === undefined ? null : (urban.riderOf(e) ?? riding.riderOf(e) ?? carry.carrierOf(e));
   };
   combat.onHarm = (victim, points) => {
     taming.harmed(victim, points);
@@ -616,6 +639,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
         const e = creatures.adopt(rec);
         if (e >= 0) {
           persistence!.attach(rec, e);
+          if (reg.vehicle[rec.kind]) urban.register(e);
           inventoryChanged.add(rec);
         }
       }
@@ -767,7 +791,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
   };
-  game.onBeforeStep = refreshInventories;
+  game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); };
   game.onStep = (tick) => {
     for (const c of game.clients) {
       if (!c?.active) continue;
@@ -797,6 +821,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     refreshInventories();
     death.step();
     // Riders move with their mounts before combat aims at either.
+    urban.step();
     riding.step();
     carry.step(tick);
     // Combat resolves this tick's swings and shots now that every body has moved.
@@ -955,7 +980,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const e = records.entOf.get(rec.pid);
     if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
     // A mount's load includes what its rider carries, and a survivor's half of what a creature in its arms carries.
-    const rider = riding.riderOf(e);
+    const rider = urban.riderOf(e) ?? riding.riderOf(e);
     const arms = carry.heldBy(rec.pid);
     const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0) + (arms >= 0 ? carry.load(rec) : 0);
     // A creature in someone's arms weighs on them.
@@ -1061,6 +1086,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     stations,
     taming,
     riding,
+    urban,
     breeding,
     tactical,
     corpses,
@@ -1095,6 +1121,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     passed: [...tuned.passed, ...spawns.passed],
     dev: opts.dev ?? false,
     spawnCreature,
+    spawnVehicle,
     refreshBody,
     exec: (line, client) => con.exec({ host, client: client ?? null }, line),
     idle: () => persistence?.idle(),

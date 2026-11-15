@@ -1,0 +1,7 @@
+Use case: photorealistic-natural
+Asset type: square seamless base-color/albedo texture for an original compact hatchback game model.
+Primary request: a flat orthographic macro scan of gently weathered desaturated sea-green automotive enamel, covering the entire image. Fine subtle irregular paint grain, very sparse shallow hairline scratches and tiny dusty flecks; still sound attractive maintained paint, no large rust or chipped areas.
+Color palette: muted medium sea-green teal, approximately RGB 76, 135, 126, small natural variation.
+Lighting: perfectly even neutral diffuse scan, no baked shadows, no reflections, no highlights, no directional lighting and no large brightness gradient. This is a material image, not an object photograph.
+Composition: one uniform square material tile edge to edge, seamless repeat in both directions, microdetail at a useful scale for a car body panel. 1024 by 1024 pixels.
+Constraints: no text, no logo, no watermark, no car, no panel borders, no handles, no objects, no decorative shapes. Opaque background. Original material only.

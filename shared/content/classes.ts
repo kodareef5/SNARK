@@ -95,6 +95,7 @@ const ITEM = {
 } satisfies Fields<ItemDef>;
 
 const SPECIES = {
+  vehicle: f("facet"),
   mesh: f("text"),
   skeleton: f("text"),
   color: f("number"),
@@ -390,6 +391,8 @@ row("species/creature", "species", SPECIES, {
   },
   doc: "A wild thing that may be tamed, ridden and bred.",
 });
+row("species/civilian", "species", SPECIES, { parent: "species", ark: "a humanoid creature", shelf: "civilians", must: [...BODY, "skeleton", "stats"], may: ["equips", "slots", "crouch", "prone", "strafe", "turn", "swimSpeed", "stamina", "food", "fists", "fistsTorpor", "takes", "zones", "killXp", "temper", "sight", "leash", "torporDrain", "still", "drops", "mass"], slots: HUMAN_SLOTS, doc: "An AI-controlled human using the current survivor body, equipment and creature systems." });
+row("species/vehicle", "species", SPECIES, { parent: "species", ark: "a wheeled mount", shelf: "vehicles", must: [...BODY, "vehicle", "stats"], may: ["skeleton", "slots", "keeps", "still", "takes", "mass", "fists", "stamina", "swimSpeed", "strafe", "drag", "carriable"], slots: { body: mesh("must", "{mesh}", "box"), rig: { asset: "rig", need: "must", from: "{mesh}", fallback: ["rigid"] }, icon }, doc: "A vehicle with wheel physics, inventory, ownership and named seats." });
 row("species/target", "species", SPECIES, { parent: "species", ark: "none, ours", shelf: "targets", must: [...BODY, "skeleton", "still"], may: ["stats", "equips", "slots", "zones", "takes", "torporDrain", "crouch", "prone", "stamina", "fists", "food", "drops", "killXp"], slots: HUMAN_SLOTS, doc: "A human-shaped body that stands where it is put, to be practised on. A creature that must stand still is a creature that says so." });
 
 const BUILT = ["mesh", "color", "half", "hp"] as const;

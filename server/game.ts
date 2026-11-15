@@ -55,7 +55,8 @@ import {
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
-import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
+import { BTN_JUMP, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
+import { stepVehicleBody, packVehiclePose, quantVehicleWheel } from "../shared/sim/vehicle-body.ts";
 import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
@@ -473,8 +474,17 @@ export class GameServer {
       const e = driving ? c.drive : c.ent;
       if (e >= 0) {
         ents.loadBody(e, b);
-        // A survivor's tamed numbers are its own. A body that is driven is a tame's.
-        stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
+        const vehicle = world.reg.vehicle[b.kind];
+        const parent = ents.seat[e]! - 1;
+        const passenger = !driving && parent >= 0 && ents.seatSlot[e] !== 0 &&
+          ents.gen[parent] === ents.seatGen[e] && !!world.reg.vehicle[ents.kind[parent]!];
+        if (vehicle) {
+          const quiet = c.closed || T - c.inputAt > INPUT_HOLD_TICKS;
+          stepVehicleBody(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? BTN_JUMP : c.heldButtons, vehicle, TICK_DT);
+        } else if (!passenger) {
+          // A survivor's tamed numbers are its own. A body that is driven is a tame's.
+          stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
+        } else { b.yaw = c.heldYaw; stepOut.landSpeed = 0; }
         if (!driving) {
           // Hits are resolved later, once every body has moved.
           stepAction(b, c.heldButtons, c.pressed, world.reg.weapon[b.held] ?? FISTS);
@@ -1142,7 +1152,7 @@ export class GameServer {
     for (let k = 0; k < n; k++) {
       const i = Math.floor(ids[k]! / MAX_VIEW);
       rank[k] = ids[k]! % MAX_VIEW;
-      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!);
+      cur.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6, (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!, ents.vehicle[i] ? packVehiclePose(ents.vehiclePitch[i]!, ents.vehicleRoll[i]!, ents.steering[i]!) : 0, ents.vehicle[i] ? quantVehicleWheel(ents.wheelAngle[i]!) : 0);
       cur.urgent[k] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
     }
     this.aroundTick[chunk] = T;
