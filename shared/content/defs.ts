@@ -208,6 +208,8 @@ export interface ItemDef extends Named {
   readonly spoilHours?: number;
   /** In-game hours one lies on the ground before it is gone (the reference's "decomposes in"). Omitted, as long as any dropped stack. */
   readonly decomposeHours?: number;
+  /** A young body gives this in place of the item named, as a young creature gives prime meat in place of meat. */
+  readonly youngFor?: string;
   /** What eating one restores, in points. */
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
   /** Seconds one of it keeps a fire going. */

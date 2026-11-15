@@ -66,8 +66,16 @@ test("the new columns change nothing for content that does not use them", () => 
     if (d.type === "species" && d.tamedSprintMul === undefined) expect(reg.tamedMove[i]).toBe(reg.move[i]);
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual([0, 0, 0, 0, 0]);
     if (d.id !== "core:egg_dodo") expect(reg.drawSize[i]).toBe(1);
-    expect([reg.meleeTorpor[i], reg.feces[i], reg.propItem[i], reg.decomposeTicks[i]]).toEqual([0, 0, 0, 0]);
+    expect([reg.meleeTorpor[i], reg.feces[i], reg.propItem[i], reg.decomposeTicks[i], reg.youngItem[i]]).toEqual([0, 0, 0, 0, 0]);
   }
+});
+
+test("prime meat from the young: an item given in place of another, and only one for each", () => {
+  const prime: Def = { type: "item", class: "consumable", id: "test:prime", stack: 40, eat: { food: 50 }, youngFor: "core:meat" };
+  const made = compileContent([...CORE_CONTENT, prime]);
+  expect(made.errors).toEqual([]);
+  expect(made.registry!.youngItem[made.registry!.index.get("core:meat")!]).toBe(made.registry!.index.get("test:prime")!);
+  expect(compileContent([...CORE_CONTENT, prime, { ...prime, id: "test:prime2" } as Def]).errors).toEqual(['test:prime2: test:prime is already given in place of "core:meat"']);
 });
 
 test("the dodo's numbers: runs at 95.55 units a second tamed, weighs 25 to a carrier, may be carried, lays in place of 13% of its feces, and its egg is drawn small", () => {

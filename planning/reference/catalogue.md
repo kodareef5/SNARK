@@ -29,8 +29,8 @@ share a `tag`.
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
 | `item` | PrimalItem | a group |  |  |  |
-| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `fuel`, `spoilHours`, `spoilsInto` | 11 |
-| `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel` | 5 |
+| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `fuel`, `spoilHours`, `spoilsInto`, `youngFor` | 11 |
+| `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel`, `youngFor` | 5 |
 | `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `tool` | 8 |
 | `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 7 |
 | `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 4 |
@@ -82,9 +82,9 @@ Asset slots:
 - `item/dye`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/artifact`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 
-ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `decomposeHours` is the time a dropped item decomposes in; `eat` is UseItemAddCharacterStatusValues; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `craft` is BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is it may drop as a blueprint.
+ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `decomposeHours` is the time a dropped item decomposes in; `youngFor` is prime meat from the young in place of raw meat; `eat` is UseItemAddCharacterStatusValues; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `craft` is BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is it may drop as a blueprint.
 
-What names what: `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item/ammo`; `weapon.fits[]` names a `item/attachment`; `ammo.buff` names a `buff`; `places[]` names a `structure`; `craft.needs[].item` names a `item`; `craft.at` names a `structure/station`; `spoilsInto` names a `item`.
+What names what: `youngFor` names a `item`; `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item/ammo`; `weapon.fits[]` names a `item/attachment`; `ammo.buff` names a `buff`; `places[]` names a `structure`; `craft.needs[].item` names a `item`; `craft.at` names a `structure/station`; `spoilsInto` names a `item`.
 
 Packs may add to: `weapon`, `places`.
 

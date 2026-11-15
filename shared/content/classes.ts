@@ -72,6 +72,7 @@ const ITEM = {
   weight: f("number", "BaseItemWeight"),
   spoilHours: f("number", "SpoilingTime"),
   decomposeHours: f("number", "the time a dropped item decomposes in"),
+  youngFor: f("text", "prime meat from the young in place of raw meat", { refs: { "": "item" } }),
   eat: f("facet", "UseItemAddCharacterStatusValues"),
   fuel: f("number"),
   saddle: f("facet", "equipment type DinoSaddle", { refs: { fits: "species/creature" } }),
@@ -338,8 +339,8 @@ function row<T extends Record<string, Field>>(id: string, type: ClassRow["type"]
 const ANY_ITEM = ["weight", "label", "color", "craft", "description", "folder", "blueprint", "decomposeHours"] as const;
 
 row("item", "item", ITEM, { abstract: true, ark: "PrimalItem", shelf: "items", doc: "Anything that is carried." });
-row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours", "spoilsInto"], slots: ITEM_SLOTS, doc: "A material: gathered, stacked, and spent in crafting." });
-row("item/consumable", "item", ITEM, { parent: "item", ark: "PrimalItemConsumable_", shelf: "items/consumables", must: ["stack"], may: [...ANY_ITEM, "eat", "dose", "spoilHours", "spoilsInto", "cooks", "fuel"], any: ["eat", "dose"], slots: ITEM_SLOTS, doc: "Something eaten, drunk or fed for what it does to a body." });
+row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours", "spoilsInto", "youngFor"], slots: ITEM_SLOTS, doc: "A material: gathered, stacked, and spent in crafting." });
+row("item/consumable", "item", ITEM, { parent: "item", ark: "PrimalItemConsumable_", shelf: "items/consumables", must: ["stack"], may: [...ANY_ITEM, "eat", "dose", "spoilHours", "spoilsInto", "cooks", "fuel", "youngFor"], any: ["eat", "dose"], slots: ITEM_SLOTS, doc: "Something eaten, drunk or fed for what it does to a body." });
 row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool"], slots: { held: mesh("must", "{weapon.mesh}", "none"), ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool." });
 row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: "items/ammo", must: ["stack", "ammo"], may: ANY_ITEM, slots: { shot: mesh("may", "{ammo.mesh}", "core:tracer"), ...ITEM_SLOTS }, doc: "What a bow or gun fires." });
 row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it." });
