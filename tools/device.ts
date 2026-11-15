@@ -4,7 +4,8 @@
 // load ladder, a soak, and the soak with the governor on. With --terrain the server is on the bench's 8 km map instead,
 // with the far nodes' bench's wood and a stand of elder oaks, and the page offers the terrain flight (D253), which ends
 // with far bases (D257) and the wood (D259), the tree order, for which the server stands the body in each wood and
-// counts the page's view with wood.ts in the background, and a soak through the wood (`--self soak --terrain`). It posts its report after every step; each
+// counts the page's view with wood.ts in the background, and a soak through the wood (`--self soak --terrain`); with
+// `--terrain --map <file.snmap>` the flight is over that map, a city's far city among its rows (`--map var/maps/miami.snmap`). It posts its report after every step; each
 // run is kept in .cache/device/ and printed as a table when it is done. The server serves a client of its own, built
 // into a temporary folder as it starts and removed as it stops, so a build in this checkout cannot take files from under
 // a phone; each report says if what it serves changed all the same. With --self the local headless Chrome opens the
@@ -286,11 +287,13 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
         if (t && !g) out.push(`the tree order has no rung for the ${wood} wood on ${tier}`);
         if (g?.invalid) out.push(`trees ${wood} ${tier}: invalid, ${g.invalid}`);
         if (g && g.orders.some((o) => (!o.small && o.frames === 0) || o.reads.length < 2)) out.push(`trees ${wood} ${tier}: an order lacks its frames`);
+        if (g && !g.invalid && !(g.budget && g.budget.frames > 0)) out.push(`trees ${wood} ${tier}: the budget's windows lack their frames`);
       }
     }
     if (t?.counted) out.push(`trees: ${t.counted}`);
     if (t && (!t.surface || t.surface.slope === null)) out.push(`trees: no cost of a layer${t.surface?.note ? `, ${t.surface.note}` : ""}`);
     if (t && !t.verdict) out.push("trees: no verdict");
+    if (t && !t.budget) out.push("trees: no line on the budget");
   }
   return out;
 }
@@ -438,12 +441,15 @@ if (import.meta.main) {
   };
   const { rules } = loadConfig({ gus: `[ServerSettings]\nServerPassword=${password}\n` });
   // For the terrain flight, the bench's 8 km of hills as a map file, with no water, the far nodes' bench's wood with the
-  // elders' stand, and one spawn point in the middle.
-  const hills = terrain ? benchHills() : null;
+  // elders' stand, and one spawn point in the middle; or with --map, that map, such as a city's (its far city in the
+  // flight's rows).
+  const given = terrain ? value("--map") : undefined;
+  const hills = terrain && !given ? benchHills() : null;
   const mapDir = hills ? mkdtempSync(join(tmpdir(), "snark-device-map-")) : "";
   if (hills) writeFileSync(join(mapDir, "hills.snmap"), writeMap({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [terrainWood(hills.dims)], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
+  const mapFile = given ? resolve(given) : hills ? join(mapDir, "hills.snmap") : null;
   // The fixed scene of the boot probe, where nothing wakes, and behind the spawn point the crowd scene's thatch and bodies.
-  server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", clientDir: dist, probeScene: true, config: rules, routes, ...(hills ? { map: join(mapDir, "hills.snmap") } : {}) });
+  server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", clientDir: dist, probeScene: true, config: rules, routes, ...(mapFile ? { map: mapFile } : {}) });
   const running = server;
   const scene = terrain ? { bodies: [], floor: { x: 0, z: 0 }, pieces: [] } : crowdScene();
   const world = running.host.world;

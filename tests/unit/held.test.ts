@@ -84,7 +84,8 @@ test("a held piece is put on the prop bone of its hand, every vertex of every le
     const file = packOf(out);
     const manifest = splitPack(file, "t").manifest;
     expect(manifest.meshes.map((m) => [m.id, m.skeleton, m.bone])).toEqual([["t:stick", HUMAN.id, B_PROP_L], ["t:stick/dropped", undefined, undefined]]);
-    expect(checkAsset(left, parsePack(file)).faults).toEqual([]);
+    // A straight stick is not a left-hand piece: the left hand holds a bow, its limbs along Y.
+    expect(checkAsset(left, parsePack(file)).faults).toEqual(["t:stick: held in the left hand, its limbs do not run along Y: it spans 3.0, 8.0, 50.0 cm across x, y and z"]);
     expect(out.lines[1]).toMatch(/^t:stick\/dropped +triangles +12 +12 $/);
     expect(out.lines[0]).toMatch(/held on prop_l$/);
   });
@@ -155,8 +156,12 @@ test("the grip and the length of a held piece, and the ground under a lying one,
   // Held backwards, or longest across.
   expect(heldFaults(stick([0, 0, -0.2]), "prop_r")).toEqual(["t:stick: its length does not run along +Z: it spans 3.0, 8.0, 50.0 cm across x, y and z, from -45.0 to 5.0 cm along z"]);
   expect(heldFaults(stick([0, 0, 0], [0.3, 0.02, 0.05]), "prop_r")[0]).toMatch(/its length does not run along \+Z/);
-  // In the other hand, or off the human skeleton.
-  expect(heldFaults(stick([0, 0, 0.2]), "prop_l")).toEqual(["t:stick: 24 vertices are not on the prop bone of the hand it is held in (prop_l, bone 26)"]);
+  // In the other hand, or off the human skeleton. The left hand holds a bow: limbs along Y either side of the grip, whichever
+  // way it reaches, and a stick along +Z is not one.
+  expect(heldFaults(stick([0, 0, 0.2]), "prop_l")).toEqual(["t:stick: 24 vertices are not on the prop bone of the hand it is held in (prop_l, bone 26)", "t:stick: held in the left hand, its limbs do not run along Y: it spans 3.0, 8.0, 50.0 cm across x, y and z"]);
+  const bow = (at: readonly [number, number, number]): SourceMesh => heldOn({ id: "t:bow", lods: [box([0.03, 0.6, 0.02], at)] }, "prop_l");
+  expect([heldFaults(bow([0, 0, 0]), "prop_l"), heldFaults(bow([0, 0.4, 0]), "prop_l")]).toEqual([[], []]);
+  expect(heldFaults(bow([0, 0, 0]), "prop_r")[1]).toMatch(/its length does not run along \+Z/);
   expect(heldFaults({ ...stick([0, 0, 0.2]), skeleton: "dodo" }, "prop_r")).toEqual(["t:stick: it is held, and is not on the human skeleton"]);
   const ground = lying(stick([0, 0, 0.2]), "t:stick/dropped");
   expect(lyingFaults(ground)).toEqual([]);

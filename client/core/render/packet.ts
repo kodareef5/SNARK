@@ -18,7 +18,7 @@ export const MAX_WATER_TILES = 256;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
 /**
- * DRAW_ flags, a bit each of `drawFlags`, which holds 16. Bits 1 to 2048 are taken; the next flag takes 4096, then 8192, up
+ * DRAW_ flags, a bit each of `drawFlags`, which holds 16. Bits 1 to 4096 are taken; the next flag takes 8192, then 16384, up
  * to 32768. A blended draw is see-through. It comes after everything opaque, shows both faces and writes no depth.
  */
 export const DRAW_BLEND = 1;
@@ -79,6 +79,8 @@ export const DETAIL = { middle: 0, along: 3, across: 6, floor: 9, colourA: 10, c
 /** The flags of a particle, in its misc word's second byte over its shape (FLAT_SHAPES): lit, and lit as a puff of something. */
 export const DETAIL_LIT = 8;
 export const DETAIL_PUFF = 16;
+/** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
+export const DRAW_RANGED = 4096;
 export const ATLAS_REGION = 4;
 /**
  * The far nodes' meshes as a float texture ATLAS_WIDTH texels wide, a row a mesh: in its first texel its reach and its

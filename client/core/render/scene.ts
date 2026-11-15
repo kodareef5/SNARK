@@ -25,11 +25,14 @@ import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
+import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
-import { FarNodes, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
+import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budget.ts";
+import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
+import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
@@ -48,6 +51,8 @@ export interface RenderWorld {
   readonly far?: FarSource;
   /** Trees, rocks and bushes past the near node field (farnodes.ts). */
   readonly farNodes?: FarNodeSource;
+  /** The map's own buildings past the near rows (farcity.ts). */
+  readonly city?: CitySource;
 }
 
 /** The viewer's own body, which is not among the remote entities. */
@@ -94,6 +99,8 @@ const BEAM_MESH = "core:beam";
 const BEAM_COLOR = 8;
 /** A draw costs about what drawing this many more triangles does. Nodes in neighbouring cells share a draw when that saves more. */
 const RUN_TRIANGLES = 4096;
+/** Numbers a run of cells of nodes takes in `runs` (nodeRanges). */
+const RUN = 9;
 /** A node form with nothing to draw: what is left of a used-up node whose mesh no pack has. */
 const HIDDEN = 0xffff;
 /** The one run of a level drawn flat: no material, and all its indices. */
@@ -133,6 +140,14 @@ interface ChunkBatch {
   cellBox: Float32Array | null;
   /** Per range and cell, the level it was last drawn at, or -1. */
   cellLevel: Int8Array | null;
+  /**
+   * For a tree's crown, per range and per range and cell as `level` and `cellLevel`: the level it was last drawn at, or
+   * -1, and the thinning of its leaves (budget.ts), or 255.
+   */
+  crown: Int8Array;
+  thin: Uint8Array;
+  cellCrown: Int8Array | null;
+  cellThin: Uint8Array | null;
   /**
    * Per range, and per range and cell, the largest size of the kinds of its nodes, as a multiple of the modelled size. Two
    * kinds may grow as one mesh at different sizes (the young live oak and the elder), and each is drawn by its own.
@@ -200,8 +215,16 @@ export class Scene {
   readonly assets: Assets;
   private readonly trisOfMesh: readonly (readonly number[])[];
   private readonly radiusOfMesh: Float32Array;
-  /** Per material, the flags of a draw with it. */
+  /** Per material, the flags of a draw with it, and 1 for bark: a tree's trunk and limbs. */
   private readonly materialFlags: Uint8Array;
+  private readonly barkOf: Uint8Array;
+  /** What a frame may spend, what it has, and the squeeze crowns near are drawn at (budget.ts). */
+  readonly budget = new FrameBudget();
+  /** Per mesh, 1 for a standing tree's, whose crown gives to the budget and whose trunk does not. */
+  private readonly treeOf: Uint8Array;
+  /** Per mesh and level, the triangles of its sections drawn with bark and of its cut-out ones. */
+  private readonly trunkTris: number[][];
+  private readonly leafTris: number[][];
   private readonly world: RenderWorld;
   private readonly batches = new Map<number, ChunkBatch>();
   private readonly counts: Uint32Array;
@@ -248,6 +271,8 @@ export class Scene {
   readonly characters: Characters;
   /** Small details: feathers knocked loose, dust thrown up. */
   readonly details: Details;
+  /** Smoke and gas: each prop/cloud drawn as puffs over its reach, with the details (clouds.ts). */
+  readonly clouds: Clouds;
   /** A bag of one stack, drawn as its item lying (dropped.ts). */
   private readonly dropped: Dropped;
   /** Null draws no body for the viewer. The app sets it before build(). */
@@ -269,6 +294,8 @@ export class Scene {
   private readonly far: FarBlocks | null;
   /** Nodes past the near node field, given a source of them. */
   readonly nodesFar: FarNodes | null;
+  /** The map's own buildings where the near store does not hold their chunks whole, given a source of them. */
+  readonly city: FarCity | null;
   /** Sun shadows: the cascades fitted this frame. */
   readonly cascades = new Cascades();
   /** Whether anything casts this frame, how far the true sun climbs (its unit vector's y), and frames fitted, for a cascade drawn every other frame. */
@@ -324,6 +351,8 @@ export class Scene {
   /** Linear RGB of the open sky and of deep water. */
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
+  /** The nearest and farthest depth the clouds' puffs reach this frame. */
+  private readonly cloudRange = [0, 0];
 
   /** With `stream`, `pack` is the boot pack and other levels are asked of the port as they are wanted. */
   constructor(world: RenderWorld, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort }) {
@@ -352,6 +381,7 @@ export class Scene {
     this.sizeOfForm = forms.size;
     this.mostOfForm = forms.most;
     this.reachOfMesh = new Float32Array(table.count).fill(1);
+    this.treeOf = new Uint8Array(table.count);
     for (let f = 1; f < forms.count; f++) {
       const kind = forms.kind[f]!;
       // A variant whose mesh no pack has yet stands as its kind's own mesh. What is left of a used-up node is not drawn.
@@ -359,11 +389,18 @@ export class Scene {
       const mesh = own >= 0 ? own : forms.depleted[f] === 1 ? HIDDEN : this.meshOfKind[kind]!;
       this.meshOfForm[f] = mesh;
       this.colorOfForm[f] = this.colorOfKind[kind]!;
-      if (mesh !== HIDDEN) this.reachOfMesh[mesh] = Math.max(this.reachOfMesh[mesh]!, forms.most[f]! / SIZE_UNITS);
+      if (mesh === HIDDEN) continue;
+      this.reachOfMesh[mesh] = Math.max(this.reachOfMesh[mesh]!, forms.most[f]! / SIZE_UNITS);
+      const def = reg.defs[kind];
+      if (def?.type === "node" && familyOf(def) === 0 && forms.depleted[f] === 0) this.treeOf[mesh] = 1;
     }
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
     this.materialFlags = Uint8Array.from(table.materials, (m) => DRAW_TEXTURED | ((m.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((m.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0));
+    this.barkOf = Uint8Array.from(table.materials, (m) => (m.id.endsWith("bark") ? 1 : 0));
+    const part = (keep: (material: number) => boolean) => table.sections.map((levels) => levels.map((runs) => runs.reduce((n, _, k) => (k % 3 === 0 && keep(runs[k]!) ? n + runs[k + 2]! / 3 : n), 0)));
+    this.trunkTris = part((m) => this.barkOf[m] === 1);
+    this.leafTris = part((m) => (this.materialFlags[m]! & DRAW_CUTOUT) !== 0);
     this.counts = new Uint32Array(table.count);
     this.cursor = new Uint32Array(table.count);
     this.nearest = new Float32Array(table.count);
@@ -376,6 +413,7 @@ export class Scene {
     this.characters = new Characters(reg, pack, this.assets);
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind));
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
+    this.clouds = new Clouds(reg, pack.header.details, pack.palette);
     this.dropped = new Dropped(reg, bind);
     const p = this.packet as unknown as Record<string, unknown>;
     this.columns = Object.keys(p).filter((k) => k.startsWith("draw") && k !== "drawPass" && ArrayBuffer.isView(p[k])).map((k) => p[k] as Uint8Array);
@@ -385,7 +423,8 @@ export class Scene {
 
     const far = table.find(FAR_MESH);
     const shown = (k: number): number => (this.meshOfKind[k] === missing ? -1 : this.meshOfKind[k]!);
-    this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown)) : null;
+    this.city = world.city && far >= 0 ? new FarCity(world.city, world.dims, world.hf, far, pack.header.meshes[far]!) : null;
+    this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown), this.city) : null;
     const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.bootLevel(mesh, table.tris[mesh]!.length - 1);
     const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last };
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
@@ -406,6 +445,7 @@ export class Scene {
     this.terrain.reset();
     this.far?.reset();
     this.nodesFar?.reset();
+    this.city?.reset();
     this.cascades.clear();
   }
 
@@ -416,6 +456,7 @@ export class Scene {
     cam.split = p.split = this.assets.tier.split;
     cam.update();
     this.assets.begin(this.now, this.viewHeight, cam.fovY);
+    this.budget.begin(this.assets.tier);
     p.tier = this.assets.tier;
     p.lit = p.tier.lit;
     p.viewProj.set(cam.split > 0 ? cam.ranges[PASS_NEAR] : cam.viewProj);
@@ -452,6 +493,7 @@ export class Scene {
     this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.castBox : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
+    if (this.city) this.farCity(cam);
     if (this.far) this.farBlocks(cam);
     if (this.nodesFar) this.farNodes(cam);
     if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
@@ -468,6 +510,8 @@ export class Scene {
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
     this.order();
+    // The frame's count, from which the next frame's crowns near take their squeeze.
+    this.budget.end(this.now, p.triangles, p.drawCount);
     this.assets.end(p, this.now);
     return p;
   }
@@ -654,18 +698,24 @@ export class Scene {
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? [], this.own, this.world.hf, this.assets.tier, this.now);
-    for (const [first, count, flags] of [[0, cut, DRAW_CUTOUT], [cut, p.detailCount - cut, DRAW_BLEND]] as const) {
+    // The clouds' puffs after them, in the depth ranges they reach, as they may be seen from far off (clouds.ts).
+    const seen = p.detailCount;
+    const solid = this.clouds.write(p, cam, remote, this.cloudRange);
+    const far = seen < p.detailCount ? cam.passesOf(this.cloudRange[0]!, this.cloudRange[1]!) : NEAR;
+    for (const [first, count, flags, passes] of [[0, cut, DRAW_CUTOUT, NEAR], [cut, seen - cut, DRAW_BLEND, NEAR], [seen, solid, DRAW_CUTOUT, far], [seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far]] as const) {
       const d = p.drawCount;
       if (count === 0) continue;
-      if (d + this.doubled + 1 > MAX_DRAWS) {
+      const copies = passes === (NEAR | FAR) ? 2 : 1;
+      if (d + this.doubled + copies > MAX_DRAWS) {
         p.dropped++;
         continue;
       }
       [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [0, 0, 0, 0, first, count, DRAW_DETAILS | flags];
       p.drawOffset.fill(0, d * 3, d * 3 + 3);
-      this.passOf[d] = NEAR;
+      this.passOf[d] = passes;
+      this.doubled += copies - 1;
       p.drawCount = d + 1;
-      p.triangles += count * 2;
+      p.triangles += count * 2 * copies;
     }
   }
 
@@ -694,6 +744,33 @@ export class Scene {
     p.drawCount = d + 1;
     this.doubled += copies - 1;
     p.triangles += triangles * copies;
+  };
+
+  /** The map's buildings to the tier's reach, in place of chunks the near store does not hold whole, faded over the last of it. */
+  private farCity(cam: Camera): void {
+    const p = this.packet;
+    const tier = this.assets.tier;
+    p.frame[FRAME.fade] = tier.fade;
+    this.city!.update(p, this.assets.residency, cam, tier.city.levels, tier.reach.city, tier.fade, this.world.structs, this.world.far?.cells ?? null);
+    this.city!.draw(cam, tier.reach.city, this.drawCity);
+  }
+
+  /** A run of a far city tile's chunks at one of its levels: one instance, gone or come at `fade` (farcity.ts). */
+  private readonly drawCity = (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number): void => {
+    const p = this.packet;
+    const d = p.drawCount;
+    const copies = passes === (NEAR | FAR) ? 2 : 1;
+    if (d + this.doubled + copies > MAX_DRAWS) {
+      p.dropped++;
+      return;
+    }
+    [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [this.city!.mesh, 0, slot, CITY_BUFFER, 0, 1, DRAW_RANGED];
+    [p.drawFirstIndex[d], p.drawIndexCount[d], p.drawFade[d]] = [firstIndex, indexCount, fade];
+    p.drawOffset.set([ox, oy, oz], d * 3);
+    this.passOf[d] = passes;
+    p.drawCount = d + 1;
+    this.doubled += copies - 1;
+    p.triangles += (indexCount / 3) * copies;
   };
 
   /** Trees, rocks and bushes past the near node field, each kind to its reach at its last level, faded over the last of it. */
@@ -1013,7 +1090,7 @@ export class Scene {
         continue;
       }
       // Until the near store holds it whole, a chunk the far feed has cells of is drawn as blocks.
-      if (base === 0 && this.far?.isFar(chunk)) continue;
+      if (base === 0 && (this.far?.isFar(chunk) || this.city?.isFar(chunk))) continue;
       let batch = this.batches.get(id);
       if (!batch || batch.shape !== t.shape) batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf);
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
@@ -1059,37 +1136,46 @@ export class Scene {
    * farthest points ask for the same level and all of it is short of the tier's hand-over band, each mesh is one draw;
    * otherwise each cell takes the level the nearest of its nodes asks for, measured to its trunk. A cell all past the band
    * is left to the far store, and one that reaches into it fades out over it as the far store's draw fades in (hand.ts).
-   * Every draw of the chunk is in the depth ranges `passes`.
+   * A tree's crown is chosen at the budget's squeeze, as if it stood farther off, and its leaves thinned by it; its trunk,
+   * and any other node, at the squeeze's later scale for cover (budget.ts). Every draw of the chunk is in the depth
+   * ranges `passes`.
    */
   private nodeRanges(cam: Camera, b: ChunkBatch, id: number, dist: number, x0: number, z0: number, passes: number): void {
     const [from, to] = this.assets.tier.nodes.band;
     const cells = b.cells;
     const first = b.cellFirst!;
     const box = b.cellBox!;
-    const levels = b.cellLevel!;
+    const [levels, crowns, thins] = [b.cellLevel!, b.cellCrown!, b.cellThin!];
     const fx = Math.max(Math.abs(b.minX - cam.x), Math.abs(b.maxX - cam.x));
     const fy = Math.max(Math.abs(b.minY - cam.y), Math.abs(b.maxY - cam.y));
     const fz = Math.max(Math.abs(b.minZ - cam.z), Math.abs(b.maxZ - cam.z));
     const far = Math.sqrt(fx * fx + fy * fy + fz * fz);
     const [ox, oy, oz] = [x0 - cam.x, -cam.y, z0 - cam.z];
+    const squeeze = this.budget.squeeze;
+    const [scale, cover] = [crownScale(squeeze), coverScale(squeeze)];
     for (let r = 0, q = 0; r < b.ranges.length; r += 3, q++) {
       const mesh = b.ranges[r]!;
       const errors = this.assets.table.error[mesh]!;
       const reach = b.reach![q]!;
-      const near = this.assets.choose(errors, dist / reach, b.level[q]!);
-      if (far <= from && near === this.assets.choose(errors, far / reach, b.level[q]!)) {
-        b.level[q] = near;
+      const tree = this.treeOf[mesh] === 1;
+      const near = this.assets.choose(errors, (dist * cover) / reach, b.level[q]!);
+      const crown = tree ? this.assets.choose(errors, (dist * scale) / reach, b.crown[q]!) : near;
+      if (far <= from && near === this.assets.choose(errors, (far * cover) / reach, b.level[q]!) && (!tree || crown === this.assets.choose(errors, (far * scale) / reach, b.crown[q]!))) {
+        [b.level[q], b.crown[q], b.thin[q]] = [near, crown, tree ? thinning(squeeze, dist, to, b.thin[q]!) : 0];
         levels.fill(near, q * cells, (q + 1) * cells);
+        crowns.fill(crown, q * cells, (q + 1) * cells);
+        thins.fill(b.thin[q]!, q * cells, (q + 1) * cells);
         this.assets.wantTextured(mesh, near, dist / reach);
-        this.draw(mesh, near, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, DRAW_SIZED, passes);
+        if (crown !== near) this.assets.wantTextured(mesh, crown, dist / reach);
+        this.draw(mesh, near, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, DRAW_SIZED, passes, 0, 0, crown, leavesAt(b.thin[q]!));
         continue;
       }
-      b.level[q] = -1;
-      // Runs of neighbouring cells, each drawn at the finest level any of its cells asks for. A cell joins the run before it
-      // when they ask for the same level, or for levels one apart and drawing the coarser at the finer costs fewer
-      // triangles than a draw does. So no node is drawn more than one level finer than its own cell asks. A run fades
-      // over the band where a cell of it reaches into it, which keeps every pixel of a node short of it.
-      const tris = this.trisOfMesh[mesh]!;
+      [b.level[q], b.crown[q], b.thin[q]] = [-1, -1, 255];
+      // Runs of neighbouring cells, each drawn at the finest level any of its cells asks for, and its crown and leaves at
+      // the finest and fullest. A cell joins the run before it when they ask for the same levels, or for levels one apart
+      // and drawing the coarser at the finer costs fewer triangles than a draw does. So no node is drawn more than one
+      // level finer than its own cell asks. A run fades over the band where a cell of it reaches into it, which keeps
+      // every pixel of a node short of it.
       const runs = this.runs;
       runs.length = 0;
       for (let c = 0; c < cells; c++) {
@@ -1104,25 +1190,42 @@ export class Scene {
         if (d >= to) continue;
         const most = Math.hypot(Math.max(Math.abs(box[k]! - cam.x), Math.abs(box[k + 3]! - cam.x)), Math.max(Math.abs(box[k + 1]! - cam.y), Math.abs(box[k + 4]! - cam.y)), Math.max(Math.abs(box[k + 2]! - cam.z), Math.abs(box[k + 5]! - cam.z)));
         const hand = most > from ? HAND_NEAR : 0;
-        const seen = d / b.cellReach![q * cells + c]!;
-        const level = (levels[q * cells + c] = this.assets.choose(errors, seen, levels[q * cells + c]!));
-        // A run is its first and end instance, its level, the coarsest level a cell of it asked for, its nearest distance, and its hand-over.
-        const last = runs.length - 6;
+        const qc = q * cells + c;
+        const seen = d / b.cellReach![qc]!;
+        const level = (levels[qc] = this.assets.choose(errors, seen * cover, levels[qc]!));
+        const crown = (crowns[qc] = tree ? this.assets.choose(errors, seen * scale, crowns[qc]!) : level);
+        const thin = (thins[qc] = tree ? thinning(squeeze, d, to, thins[qc]!) : 0);
+        // A run is its first and end instance, its level and the coarsest a cell of it asked for, its nearest distance,
+        // its hand-over, its crown's level and the coarsest a cell asked for, and its least thinning.
+        const last = runs.length - RUN;
         if (last >= 0 && runs[last + 1] === first[at]) {
           const [finer, coarser] = [Math.min(runs[last + 2]!, level), Math.max(runs[last + 3]!, level)];
-          const coarse = level > runs[last + 2]! ? n : level < runs[last + 2]! ? runs[last + 1]! - runs[last]! : 0;
-          if (coarser - finer <= 1 && coarse * ((tris[finer] ?? 0) - (tris[coarser] ?? 0)) <= RUN_TRIANGLES) {
+          const [crownFiner, crownCoarser] = [Math.min(runs[last + 6]!, crown), Math.max(runs[last + 7]!, crown)];
+          const fuller = Math.min(runs[last + 8]!, thin);
+          const had = runs[last + 1]! - runs[last]!;
+          const more = had * (this.cost(mesh, finer, crownFiner, fuller) - this.cost(mesh, runs[last + 2]!, runs[last + 6]!, runs[last + 8]!)) + n * (this.cost(mesh, finer, crownFiner, fuller) - this.cost(mesh, level, crown, thin));
+          if (coarser - finer <= 1 && crownCoarser - crownFiner <= 1 && more <= RUN_TRIANGLES) {
             [runs[last + 1], runs[last + 2], runs[last + 3], runs[last + 4], runs[last + 5]] = [first[at + 1]!, finer, coarser, Math.min(runs[last + 4]!, seen), runs[last + 5]! | hand];
+            [runs[last + 6], runs[last + 7], runs[last + 8]] = [crownFiner, crownCoarser, fuller];
             continue;
           }
         }
-        runs.push(first[at]!, first[at + 1]!, level, level, seen, hand);
+        runs.push(first[at]!, first[at + 1]!, level, level, seen, hand, crown, crown, thin);
       }
-      for (let k = 0; k < runs.length; k += 6) {
+      for (let k = 0; k < runs.length; k += RUN) {
         this.assets.wantTextured(mesh, runs[k + 2]!, runs[k + 4]!);
-        this.draw(mesh, runs[k + 2]!, id, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, DRAW_SIZED, passes, runs[k + 5]!);
+        if (runs[k + 6] !== runs[k + 2]) this.assets.wantTextured(mesh, runs[k + 6]!, runs[k + 4]!);
+        this.draw(mesh, runs[k + 2]!, id, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, DRAW_SIZED, passes, runs[k + 5]!, 0, runs[k + 6]!, leavesAt(runs[k + 8]!));
       }
     }
+  }
+
+  /** The triangles of one node of `mesh` drawn at `level`, its crown at `crown` and its leaves at a thinning (budget.ts). */
+  private cost(mesh: number, level: number, crown: number, thin: number): number {
+    const tris = this.trisOfMesh[mesh]!;
+    if (crown === level && thin === 0) return tris[level] ?? 0;
+    const [trunk, leaf] = [this.trunkTris[mesh]![crown] ?? 0, this.leafTris[mesh]![crown] ?? 0];
+    return (this.trunkTris[mesh]![level] ?? 0) + (tris[crown] ?? 0) - trunk - leaf * (1 - leavesAt(thin));
   }
 
   /**
@@ -1171,6 +1274,10 @@ export class Scene {
       cellFirst: cells > 1 ? new Uint32Array(n * (cells + 1)) : null,
       cellBox: cells > 1 ? new Float32Array(n * cells * 6) : null,
       cellLevel: cells > 1 ? new Int8Array(n * cells).fill(-1) : null,
+      crown: new Int8Array(n).fill(-1),
+      thin: new Uint8Array(n).fill(255),
+      cellCrown: cells > 1 ? new Int8Array(n * cells).fill(-1) : null,
+      cellThin: cells > 1 ? new Uint8Array(n * cells).fill(255) : null,
       reach: cells > 1 ? new Float32Array(n) : null,
       cellReach: cells > 1 ? new Float32Array(n * cells) : null,
       minX: Infinity,
@@ -1238,7 +1345,8 @@ export class Scene {
     let visible = 0;
     const bodies = this.characters;
     for (let i = 0; i < remote.count; i++) {
-      if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0) continue;
+      // A cloud has no mesh of its own: it is puffs among the details (clouds.ts).
+      if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0 || this.clouds.kinds[remote.kind[i]!] !== 0) continue;
       // A bag of one stack is drawn as its item, where the item has a lying mesh.
       const lies = this.dropped.item(remote.kind[i]!, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[remote.kind[i]!]!;
@@ -1255,7 +1363,7 @@ export class Scene {
     const total = this.drawTallied(cam, p.transientCount);
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
-      if (bodies.has(kind) || this.pitched[kind] !== 0) continue;
+      if (bodies.has(kind) || this.pitched[kind] !== 0 || this.clouds.kinds[kind] !== 0) continue;
       const lies = this.dropped.item(kind, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!;
       const r = this.radiusOfMesh[mesh]!;
@@ -1308,9 +1416,11 @@ export class Scene {
    * Draws `count` instances of a mesh at the level the card has nearest to `wanted`: one draw for each of the level's
    * sections when the card has everything its materials take, and otherwise one flat draw of the whole of it. `passes`
    * are the depth ranges it is drawn in (Camera.passes), and a draw in both takes the room of two. A section whose
-   * material has its layer on the card draws it at `layer`.
+   * material has its layer on the card draws it at `layer`. A tree's crown may be drawn at a level of its own, `crown`,
+   * and its cut-out leaves at a share, the first of them (tools/pack/sprays.ts): its bark from the level wanted and the
+   * rest from the crown's, while both are drawn with their materials, else all of it at the crown's.
    */
-  private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand = 0, layer = 0): void {
+  private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand = 0, layer = 0, crown = wanted, leaves = 1): void {
     const p = this.packet;
     const n = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -1318,35 +1428,36 @@ export class Scene {
       p.dropped++;
       return;
     }
-    let lod = this.assets.level(mesh, wanted);
+    let lod = this.drawable(mesh, wanted, flags);
     if (lod < 0) {
       p.skipped++;
       return;
     }
     const sections = this.assets.table.sections[mesh]!;
-    // What is see-through is drawn flat.
-    const solid = (flags & DRAW_BLEND) === 0;
-    let ready = solid && this.assets.textured(mesh, lod);
-    // While the level wanted cannot be drawn with its materials, a finer one that can is drawn in its place, so that a
-    // thing does not turn flat on its way from one level to the next.
-    if (solid && !ready && sections[wanted < sections.length ? wanted : sections.length - 1]!.length > 0) {
-      for (let l = lod - 1; l >= 0 && !ready; l--) if ((ready = this.assets.textured(mesh, l))) lod = l;
+    let runs = this.ready ? sections[lod]! : FLAT;
+    // The crown's level and its runs; where that level is drawn flat, it draws the whole tree.
+    let [top, over] = [lod, runs];
+    if ((crown !== wanted || leaves < 1) && this.ready) {
+      const c = this.drawable(mesh, Math.max(crown, lod), flags);
+      if (c >= 0) [lod, runs, top, over] = this.ready ? [lod, runs, c, sections[c]!] : [c, FLAT, c, FLAT];
     }
-    const runs = ready ? sections[lod]! : FLAT;
-    const draws = runs.length / 3;
+    const parts = this.parts(over, runs, top !== lod, leaves);
+    const draws = parts.length / 4;
     // A mesh the frame has no room for all of is left out whole.
     if (n + this.doubled + draws * copies > MAX_DRAWS) {
       p.dropped++;
       return;
     }
     const slot = this.assets.residency.slot(mesh, lod);
+    const topSlot = top === lod ? slot : this.assets.residency.slot(mesh, top);
+    let [tris, crowns] = [0, 0];
     for (let k = 0; k < draws; k++) {
       const d = n + k;
-      const material = runs[k * 3]!;
+      const [material, trunk, from, indices] = [parts[k * 4]!, parts[k * 4 + 1] === 1, parts[k * 4 + 2]!, parts[k * 4 + 3]!];
       this.passOf[d] = passes;
       p.drawMesh[d] = mesh;
-      p.drawLod[d] = lod;
-      p.drawSlot[d] = slot;
+      p.drawLod[d] = trunk ? lod : top;
+      p.drawSlot[d] = trunk ? slot : topSlot;
       p.drawBuffer[d] = buffer;
       p.drawFirst[d] = first;
       p.drawInstances[d] = count;
@@ -1356,15 +1467,59 @@ export class Scene {
       p.drawFlags[d] = material < 0 ? flags : flags | this.materialFlags[material]!;
       p.drawHand[d] = hand;
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer : 0;
+      const made = material < 0 ? this.trisOfMesh[mesh]![top]! : indices / 3;
+      tris += made;
+      if (material < 0 || this.barkOf[material] === 0) crowns += made;
       if (material < 0) continue;
       p.drawMaterial[d] = material;
-      p.drawFirstIndex[d] = runs[k * 3 + 1]!;
-      p.drawIndexCount[d] = runs[k * 3 + 2]!;
+      p.drawFirstIndex[d] = from;
+      p.drawIndexCount[d] = indices;
     }
     p.drawCount = n + draws;
     this.doubled += draws * (copies - 1);
-    const tris = this.trisOfMesh[mesh]!;
-    p.triangles += tris[lod]! * count * copies;
+    p.triangles += tris * count * copies;
+    if (this.treeOf[mesh] === 1) this.budget.crowns += crowns * count * copies;
+  }
+
+  /** Scratch for the draws of a level, four numbers each: material, 1 if from the trunk's level, first index, indices. */
+  private readonly drawParts: number[] = [];
+
+  /**
+   * The draws of a level's runs `over`: with `split`, a bark run from the trunk's `runs` in its place; cut-out runs to
+   * the first `leaves` of their triangles, and none where that is none.
+   */
+  private parts(over: readonly number[], runs: readonly number[], split: boolean, leaves: number): readonly number[] {
+    const out = this.drawParts;
+    out.length = 0;
+    for (let k = 0; k < over.length; k += 3) {
+      const material = over[k]!;
+      let [trunk, from, indices] = [0, over[k + 1]!, over[k + 2]!];
+      if (split && material >= 0 && this.barkOf[material] === 1) for (let j = 0; j < runs.length; j += 3) if (runs[j] === material) [trunk, from, indices] = [1, runs[j + 1]!, runs[j + 2]!];
+      if (leaves < 1 && material >= 0 && (this.materialFlags[material]! & DRAW_CUTOUT) !== 0) indices = Math.floor((indices / 3) * leaves) * 3;
+      if (material < 0 || indices > 0) out.push(material, trunk, from, indices);
+    }
+    return out;
+  }
+
+  /** Whether the level `drawable` last gave is drawn with its materials. */
+  private ready = false;
+
+  /**
+   * The level of a mesh to draw for `wanted`, or -1: the nearest held, and while that cannot be drawn with its materials
+   * a finer one that can, so that a thing does not turn flat on its way from one level to the next. What is see-through
+   * is drawn flat. Sets `ready`.
+   */
+  private drawable(mesh: number, wanted: number, flags: number): number {
+    let lod = this.assets.level(mesh, wanted);
+    this.ready = false;
+    if (lod < 0) return -1;
+    const sections = this.assets.table.sections[mesh]!;
+    const solid = (flags & DRAW_BLEND) === 0;
+    this.ready = solid && this.assets.textured(mesh, lod);
+    if (solid && !this.ready && sections[wanted < sections.length ? wanted : sections.length - 1]!.length > 0) {
+      for (let l = lod - 1; l >= 0 && !this.ready; l--) if ((this.ready = this.assets.textured(mesh, l))) lod = l;
+    }
+    return lod;
   }
 
   /**

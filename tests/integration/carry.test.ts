@@ -156,7 +156,7 @@ test("the use key picks up a dodo of her tribe; she, two watchers and one who jo
   expect(h.host.items.audit()).toEqual([]);
 });
 
-test("only a carriable creature of her tribe, awake, in reach and in sight, is picked up, and not while she lies down or is in the water; a client that asks by command gets the same answers", () => {
+test("only a carriable creature, wild or of her tribe, awake, in reach and in sight, is picked up, and not while she lies down or is in the water; a client that asks by command gets the same answers", () => {
   const { h, sessions, recs, at } = yard(["ada", "bob"]);
   const [ada, bob] = sessions as [ClientSession, ClientSession];
   const ents = h.world.ents;
@@ -165,18 +165,25 @@ test("only a carriable creature of her tribe, awake, in reach and in sight, is p
   const bobs = creature(h, recs[1]!, at.x + 1.5, at.z + 1.5);
   const far = creature(h, recs[0]!, at.x, at.z + 7);
   const big = creature(h, recs[0]!, at.x - 3, at.z - 2, "core:parasaur");
-  expect(carry(h, ada, CARRY_PICK_UP, wild.e)).toBe(RESULT_NOT_YOURS);
   expect(carry(h, ada, CARRY_PICK_UP, bobs.e)).toBe(RESULT_NOT_YOURS);
   expect(carry(h, ada, CARRY_PICK_UP, far.e)).toBe(RESULT_FAR);
   expect(carry(h, ada, CARRY_PICK_UP, big.e)).toBe(RESULT_INVALID);
   expect(carry(h, ada, CARRY_PICK_UP, h.ent(bob))).toBe(RESULT_INVALID);
   expect(carry(h, ada, CARRY_PICK_UP, 0xfffffff)).toBe(RESULT_INVALID);
-  // The use key on someone else's or a wild one does what it did before: nothing.
-  look(h, ada, wild.e);
-  press(h, ada, BTN_USE);
+  // The use key on someone else's does what it did before: nothing.
   look(h, ada, bobs.e);
   press(h, ada, BTN_USE);
   expect(h.host.carry.picked).toBe(0);
+  // A wild one is anybody's to pick up, by the key or by command, stays wild, and is nobody else's while it is held.
+  look(h, ada, wild.e);
+  press(h, ada, BTN_USE);
+  expect(h.host.carry.picked).toBe(1);
+  expect(carry(h, bob, CARRY_PICK_UP, wild.e)).toBe(RESULT_BUSY);
+  h.run(200);
+  expect(carry(h, ada, CARRY_DROP)).toBe(RESULT_OK);
+  expect(carry(h, ada, CARRY_PICK_UP, wild.e)).toBe(RESULT_OK);
+  expect(carry(h, ada, CARRY_DROP)).toBe(RESULT_OK);
+  expect(wild.rec.team).toBe(0);
   // Knocked out, hers is not picked up; lying down, she picks up nothing.
   h.host.survival.add(mine.rec, V_TORPOR, mine.rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
   h.run(100);

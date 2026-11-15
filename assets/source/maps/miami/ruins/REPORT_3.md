@@ -64,10 +64,10 @@ A place: add a composition, then one footprint entry in [places.json](places.jso
 Build with the existing command:
 
 ```sh
-lockf -t 7200 /tmp/snark-render.lock bun tools/mapworld/build.ts miami
+bun tools/mapworld/build.ts miami
 ```
 
-Run all movement proofs serially with `bun tools/mapworld/verify.ts var/maps/miami.snmap`. Generate cameras with `proof-views.ts`, render with `views.ts` under the render lock, then make the gallery and small CSV inventories with `ruin-report.ts`. The [tool README](../../../../../tools/mapworld/README.md) has the complete commands. Every command exits. No long-lived server was started.
+Run all movement proofs serially with `bun tools/mapworld/verify.ts var/maps/miami.snmap`. Generate cameras with `proof-views.ts`, render with `views.ts`, then make the gallery and small CSV inventories with `ruin-report.ts`. The [tool README](../../../../../tools/mapworld/README.md) has the complete commands. Every command exits. No long-lived server was started.
 
 ## Reuse by the second city
 

@@ -10,11 +10,12 @@ import { youngScale } from "../shared/sim/breeding.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
-import { stanceEye } from "../shared/sim/character.ts";
+import { BTN_MOD, stanceEye } from "../shared/sim/character.ts";
 import { DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
-import { ARMOR_SLOTS, QUALITY_MUL } from "../shared/sim/items.ts";
-import { W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
+import { ARMOR_SLOTS, FLAG_ON, QUALITY_MUL } from "../shared/sim/items.ts";
+import { TICK_RATE } from "../shared/coords.ts";
+import { W_BOW, W_GUN, W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
 import { Found } from "../shared/world/structures.ts";
 import type { Buffs } from "./buffs.ts";
@@ -44,6 +45,11 @@ const CHUNK_REACH = CHUNK_METRES * Math.SQRT1_2;
 /** How many times a saddle's rating counts against a blow, an arrow or a round, and against an explosion. ARK's. */
 const SADDLE_DIRECT = 4;
 const SADDLE_BLAST = 1;
+/**
+ * A flashlight that is on spends a use of its weapon every this many ticks of the world's clock. ARK's flashlight "will
+ * use the durability of the weapon" (Flashlight Attachment) at a rate no page gives: a use a minute is ours (DEV145).
+ */
+export const LIGHT_WEAR_TICKS = 60 * TICK_RATE;
 
 export interface CombatContext {
   readonly world: ServerWorld;
@@ -101,6 +107,10 @@ export interface Source {
   /** Seconds torporOver is spread over, and a buff the hit gives (a content index, or 0). */
   torporSeconds: number;
   buff: number;
+  /** From a weapon with a silencer: a survivor it hits is not shown the side it came from (Silencer Attachment). */
+  silenced?: boolean;
+  /** The share of its damage a round keeps at the distance it hit from (`falloff`, shared/sim/damage.ts). 1 where not given. */
+  far?: number;
 }
 
 /** One resolved blow, for tests, the console and measurement. */
@@ -132,7 +142,7 @@ export class Combat {
   private readonly near = new Int32Array(MAX_NEAR);
   private readonly nearT = new Float32Array(MAX_NEAR);
   private readonly past = new Past();
-  private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, silenced: false };
   /** Content index of the tranquilized buff. Each hit with torpor over time gives one, carrying its strength. */
   private readonly dose: number;
   /** Where the last `castBodies` hit: the zone, and the distance along the ray. */
@@ -140,8 +150,10 @@ export class Combat {
   t = 0;
   /** A shot left `c`'s weapon. `draw` is 0 to 1. */
   onFire: ((c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number) => void) | null = null;
-  /** A thrown item left `c`'s hand. */
-  onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number) => void) | null = null;
+  /** A thrown item left `c`'s hand. `draw` is how long a charged throw was held, 0 to 1, and 1 for any other. */
+  onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number, draw: number) => void) | null = null;
+  /** Gives a hit's buff, reading its bola fields (server/entangle.ts). Unset, the buff is given as it is. `by` is a pid or 0. */
+  entangle: ((victim: EntityRecord, buff: number, by: number) => void) | null = null;
   /** Hits landed on structures. `lastStructure` holds the last one, and its `left` is 0 if the structure is gone. */
   structureHits = 0;
   /** The rider of a mount, or null. A rider also gets half the XP its mount earns by a kill. */
@@ -180,9 +192,12 @@ export class Combat {
   /** Call once a tick, after every body has stepped. */
   step(): void {
     const now = this.ctx.world.tick;
+    const wears = now % LIGHT_WEAR_TICKS === 0;
     for (const c of this.ctx.game.clients) {
       if (!c?.active) continue;
       this.measure(c, now);
+      // N switches the attachment of the weapon in hand, on foot (weapons-plan.md, M10). A rider's hands are on the reins.
+      if (c.ent >= 0 && c.drive < 0 && ((c.pressed & BTN_MOD) !== 0 || wears)) this.attachments(c, (c.pressed & BTN_MOD) !== 0, wears);
       if (c.did === 0 || c.ent < 0) continue;
       if ((c.did & DID_RELOAD) !== 0) this.reload(c);
       if ((c.did & DID_STRIKE) !== 0) this.strike(c);
@@ -195,6 +210,18 @@ export class Combat {
   private heldSlot(rec: EntityRecord): number {
     const inv = this.ctx.items.inv(rec);
     return inv.hotbar >= 0 && rec.held >= 0 && inv.item[inv.hotbar + rec.held] !== 0 ? inv.hotbar + rec.held : -1;
+  }
+
+  /** `toggle`: N was pressed. `wear`: a flashlight on spends a use now (LIGHT_WEAR_TICKS). */
+  private attachments(c: Client, toggle: boolean, wear: boolean): void {
+    const { records, items } = this.ctx;
+    const rec = records.byPid.get(c.pid);
+    if (!rec || rec.dead) return;
+    const slot = this.heldSlot(rec);
+    if (slot < 0) return;
+    if (toggle) items.toggle(rec, slot);
+    const inv = items.inv(rec);
+    if (wear && !toggle && (inv.flags[slot]! & FLAG_ON) !== 0 && items.attachmentOf(inv, slot) === "light" && this.ctx.world.reg.uses[inv.item[slot]!]! > 0) items.wear(rec, slot, 1);
   }
 
   bite(e: number): void {
@@ -214,11 +241,16 @@ export class Combat {
     const reg = world.reg;
     const kind = ents.kind[e]!;
     // It swings the held item if that is a melee weapon and not worn out, else its bare hands. A creature has only its own body.
+    // A bow or gun with a blow strikes with it (weapons-plan.md, M4): ARK's "Melee attack of any Ranged Weapon", 10 and
+    // 14 torpor (Base Damage), as the melee stat and the weapon's quality make it, as a melee weapon's is.
     const inv = c ? items.inv(rec) : null;
     const slot = inv ? this.heldSlot(rec) : -1;
     let item = inv && slot >= 0 ? inv.item[slot]! : 0;
-    if (inv && item !== 0 && (reg.weapon[item]?.kind !== W_MELEE || (reg.uses[item]! > 0 && inv.dur[slot]! === 0))) item = 0;
-    const reach = reg.reach[item !== 0 ? item : kind]!;
+    const held = item !== 0 ? reg.weapon[item]?.kind : undefined;
+    const blow = (held === W_BOW || held === W_GUN) && reg.blowDamage[item]! > 0;
+    if (inv && item !== 0 && ((held !== W_MELEE && !blow) || (reg.uses[item]! > 0 && inv.dur[slot]! === 0))) item = 0;
+    const butt = blow && item !== 0;
+    const reach = butt ? reg.blowReach[item]! : reg.reach[item !== 0 ? item : kind]!;
     const d = this.dir;
     lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
     const ox = ents.x[e]!;
@@ -240,12 +272,12 @@ export class Combat {
     src.x = ox;
     src.z = oz;
     src.item = item;
-    src.base = reg.damage[item !== 0 ? item : kind]!;
-    src.type = item !== 0 ? reg.damageType[item]! : DMG_MELEE;
+    src.base = butt ? reg.blowDamage[item]! : reg.damage[item !== 0 ? item : kind]!;
+    src.type = item !== 0 && !butt ? reg.damageType[item]! : DMG_MELEE;
     src.quality = inv && item !== 0 ? (QUALITY_MUL[inv.quality[slot]!] ?? 1) : 1;
     src.draw = 1;
     src.attack = statOf(reg.defs[kind] as SpeciesDef, rec.genome, STAT_MELEE, 1);
-    src.torporInstant = reg.meleeTorpor[item !== 0 ? item : kind]!;
+    src.torporInstant = butt ? reg.blowTorpor[item]! : reg.meleeTorpor[item !== 0 ? item : kind]!;
     src.torporOver = src.torporSeconds = 0;
     src.buff = 0;
     const wears = item !== 0 && reg.uses[item]! > 0;
@@ -268,7 +300,10 @@ export class Combat {
     const slot = this.heldSlot(rec);
     const params = slot >= 0 ? world.reg.weapon[items.inv(rec).item[slot]!] : null;
     const ammo = slot >= 0 ? this.ammoFor(rec, slot) : 0;
-    if (params && ammo !== 0) items.load(rec, slot, ammo, params.clip);
+    // A round at a time loads one more than it holds of that kind, as the action step counted (weapons-plan.md, M4).
+    const inv = items.inv(rec);
+    const upTo = params?.reloadEach ? Math.min(params.clip, (slot >= 0 && inv.ammo[slot] === ammo ? inv.loaded[slot]! : 0) + 1) : (params?.clip ?? 0);
+    if (params && ammo !== 0) items.load(rec, slot, ammo, upTo);
     // The weapon's count overrides what the action step assumed.
     world.ents.rounds[c.ent] = slot >= 0 ? items.inv(rec).loaded[slot]! : 0;
   }
@@ -299,7 +334,7 @@ export class Combat {
     const item = inv.item[slot]!;
     const quality = inv.quality[slot]!;
     if (!items.burn(rec, slot, 1)) return;
-    this.onThrow?.(c, rec, item, quality);
+    this.onThrow?.(c, rec, item, quality, c.drawn);
   }
 
   /**
@@ -629,6 +664,7 @@ export class Combat {
     hit.type = src.type;
     hit.quality = src.quality;
     hit.draw = src.draw;
+    hit.far = src.far ?? 1;
     hit.attack = src.attack * (by ? buffs.dealtOf(by) : 1);
     hit.resist = buffs.takenOf(victim);
     hit.torporInstant = src.torporInstant;
@@ -697,7 +733,10 @@ export class Combat {
       const from = by ? by.pid : 0;
       if (harm.torpor > 0) survival.add(victim, V_TORPOR, harm.torpor);
       if (harm.torporOver > 0 && src.torporSeconds > 0 && this.dose !== 0) buffs.give(victim, this.dose, from, src.torporSeconds, harm.torporOver / src.torporSeconds);
-      if (src.buff !== 0) buffs.give(victim, src.buff, from);
+      if (src.buff !== 0) {
+        if (this.entangle) this.entangle(victim, src.buff, from);
+        else buffs.give(victim, src.buff, from);
+      }
     }
 
     const game = this.ctx.game;
@@ -719,9 +758,12 @@ export class Combat {
       const w = game.begin(S_EVENT);
       w.u8(killed ? EVENT_DEATH : EVENT_HURT);
       w.u16(shown);
-      // The side it came from, in 256ths of a turn.
-      w.u8(Math.round((Math.atan2(ax - vx, az - vz) / (Math.PI * 2)) * 256) & 255);
+      // The side it came from, in 256ths of a turn, unless the shot was silenced: "Players hit by a silenced weapon will not
+      // be shown the direction the bullet came from" (Silencer Attachment). Then the side is not sent at all.
+      const side = src.silenced !== true;
+      w.u8(side ? Math.round((Math.atan2(ax - vx, az - vz) / (Math.PI * 2)) * 256) & 255 : 0);
       w.bits(zone, 4);
+      w.bool(side);
       if (killed) {
         w.string(!by ? "someone" : by.name !== "" ? by.name.slice(0, 24) : speciesLabel(reg.ids[by.kind]!));
         w.u16(item);
@@ -745,6 +787,7 @@ export class Combat {
     hit.type = src.type;
     hit.quality = src.quality;
     hit.draw = src.draw;
+    hit.far = src.far ?? 1;
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
     hit.takes = takes[src.type]!;
     // A structure is spared as its owning tribe would be.

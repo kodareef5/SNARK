@@ -82,6 +82,7 @@ import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/tr
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
+import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
@@ -92,6 +93,8 @@ import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 import { CMD_FAR, RESULT_BUSY, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
+import type { CitySource } from "./render/farcity.ts";
+import type { CityStatics } from "../../shared/world/city.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
 
@@ -112,6 +115,8 @@ export interface SessionOptions {
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
+  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts). */
+  city?(registry: Registry): CityStatics | null;
 }
 
 /** Null if the tuning does not parse or the derived content does not compile. */
@@ -170,6 +175,8 @@ export class RemoteSample {
   readonly hasLook = new Uint8Array(MAX_VIEW);
   /** GEAR_COUNT content indices each, 0 for nothing. */
   readonly gear = new Uint16Array(MAX_VIEW * GEAR_COUNT);
+  /** 1 while the laser in its hand is on (the gear's "on" bit). */
+  readonly on = new Uint8Array(MAX_VIEW);
   /** Each 0 for none: the owning team, the entity it sits on plus one, the ticks its growing takes, and the tick it will be grown. */
   readonly team = new Uint32Array(MAX_VIEW);
   readonly seat = new Uint32Array(MAX_VIEW);
@@ -230,8 +237,11 @@ export interface CombatEvent {
   kill: boolean;
   /** Armor stopped some of it. */
   blocked: boolean;
-  /** The side harm came from, as a facing in 256ths of a turn. */
+  /** The side harm came from, as a facing in 256ths of a turn, if `side`; a silenced shot's is not told (Silencer Attachment). */
   bearing: number;
+  side: boolean;
+  /** A shot from a weapon with a silencer: no flash is drawn. */
+  silenced: boolean;
   /** Who killed this body, or what this body killed. */
   name: string;
   /** The killing item's content index (0 for bare hands), and the range in metres. For a blast, `far` is its reach. */
@@ -242,13 +252,17 @@ export interface CombatEvent {
   xp: number;
   /**
    * For a shot, (x, y, z) is the origin and `item` the ammunition. If it `flies`, (vx, vy, vz) is its
-   * velocity and `back` the ticks since it left. If not, (vx, vy, vz) is where it ended.
+   * velocity and `back` the ticks since it left. If not, (vx, vy, vz) is where it ended; for a shot of more than one ray
+   * (`rays`, a shotgun's pellets) it is the aim's yaw and pitch in wire units and its cone in degrees, and each ray is
+   * shotDir(`seed`, k, ...) of shared/sim/aim.ts.
    */
   flies: boolean;
   vx: number;
   vy: number;
   vz: number;
   back: number;
+  rays: number;
+  seed: number;
 }
 
 /** A predicted shot of this client's own, from its eye. yaw and pitch are in input units. */
@@ -256,10 +270,15 @@ export interface LocalShot {
   x: number;
   y: number;
   z: number;
+  /** Where the shot was pointed, with its kick and sway, in wire units, and its cone in degrees and seed (shared/sim/aim.ts). */
   yaw: number;
   pitch: number;
+  cone: number;
+  seed: number;
   draw: number;
   ammo: number;
+  /** The weapon's content index: its rays a shot are shotRays of it and the ammunition. */
+  weapon: number;
 }
 
 export interface TextLine {
@@ -272,7 +291,7 @@ export class ClientSession {
   /** Reject reason from the server, or a negative local reason. */
   closeReason = 0;
 
-  world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource }) | null = null;
+  world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
@@ -596,6 +615,7 @@ export class ClientSession {
       const gear = b.gear[j]!;
       if (gear) out.gear.set(gear, n * GEAR_COUNT);
       else out.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
+      out.on[n] = b.on[j]!;
       for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
       out.team[n] = b.team[j]!;
       out.seat[n] = b.seat[j]!;
@@ -679,14 +699,18 @@ export class ClientSession {
     }
     // The action step takes the same buttons as the server's, and those that went down since the tick before.
     const before = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
-    stepAction(this.own, buttons, buttons & ~before, this.registry.weapon[this.own.held] ?? FISTS);
+    const w = this.registry.weapon[this.own.held] ?? FISTS;
+    stepAction(this.own, buttons, buttons & ~before, w);
+    stepAim(this.own, w, t);
     // A replay after a correction steps old ticks again, so a shot is noted only on a tick's first step.
     if (actionOut.fire && t > this.firedTick) {
       this.firedTick = t;
       const inv = this.inventory;
       const slot = inv && inv.hotbar >= 0 && this.held >= 0 ? inv.hotbar + this.held : -1;
       const ammo = slot >= 0 ? inv!.ammo[slot]! : 0;
-      if (ammo !== 0 && this.fired.length < 16) this.fired.push({ x: this.own.x, y: this.own.y + stanceEye(this.move!, this.own.stance), z: this.own.z, yaw: inp.yaw[i]!, pitch: inp.pitch[i]!, draw: actionOut.draw, ammo });
+      // It leaves where the server will send it: the look with its kick, sway and cone, from the same body and seed.
+      aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]!, inp.pitch[i]!, scopeFitted(this.registry, inv, slot), this.ownHandle, t);
+      if (ammo !== 0 && this.fired.length < 16) this.fired.push({ x: this.own.x, y: this.own.y + stanceEye(this.move!, this.own.stance), z: this.own.z, yaw: shotAim.yaw, pitch: shotAim.pitch, cone: shotAim.cone, seed: aimSeed(this.ownHandle, t), draw: actionOut.draw, ammo, weapon: inv!.item[slot]! });
     }
     this.bodies[t & (HISTORY - 1)]!.copy(this.own);
     this.bodyTick[t & (HISTORY - 1)] = t;
@@ -979,7 +1003,7 @@ export class ClientSession {
 
   private event(r: BitReader): void {
     const kind = r.u8();
-    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0 };
+    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0 };
     if (kind === EVENT_SHOT) {
       ev.x = r.f32();
       ev.y = r.f32();
@@ -990,6 +1014,10 @@ export class ClientSession {
       ev.vy = r.f32();
       ev.vz = r.f32();
       if (ev.flies) ev.back = r.u8();
+      // Protocol 13: rays and seed (W3), and whether its weapon has a silencer (W7).
+      ev.rays = r.u8();
+      ev.seed = r.u32();
+      ev.silenced = r.bool();
     } else if (kind === EVENT_BLAST) {
       ev.x = r.f32();
       ev.y = r.f32();
@@ -1007,6 +1035,8 @@ export class ClientSession {
       ev.damage = r.u16();
       ev.bearing = r.u8();
       ev.zone = r.bits(4);
+      // Protocol 13: whether the side is shown. A silenced shot's is not.
+      ev.side = r.bool();
       if (kind === EVENT_DEATH) {
         ev.kill = true;
         ev.name = r.string(EVENT_NAME_BYTES);
@@ -1073,7 +1103,9 @@ export class ClientSession {
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
-    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes };
+    const statics = this.opts.city?.(reg) ?? null;
+    const city = statics && statics.count > 0 ? { city: { statics, complete: far.complete } } : {};
+    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...city };
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);

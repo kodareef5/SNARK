@@ -3,7 +3,7 @@
 import type { Def, NodeDef, NodeVariant } from "../shared/content/defs.ts";
 import { BUILDING_CONTENT } from "./building.ts";
 import { CORPSES } from "./corpses.ts";
-import { crafted, crafting } from "./craft.ts";
+import { crafted, crafting, making } from "./craft.ts";
 import { CREATURES } from "./creatures/index.ts";
 import { EGGS } from "./eggs.ts";
 import { FOODS } from "./foods.ts";
@@ -36,9 +36,6 @@ const ARMOR: Def[] = ARMOR_TIERS.flatMap((t) =>
   ARMOR_PIECES.map((p): Def => ({ type: "item", class: "armor", id: id(`${t.tier}_${p.name}`), stack: 1, weight: t.weight, label: `${t.tier} ${p.label}`, color: t.colors[0], wear: { slot: p.slot, armor: t.armor, uses: t.uses, set: t.set, colors: t.colors } })),
 );
 
-const ATTACHMENTS = [id("scope"), id("silencer"), id("flashlight"), id("laser")];
-const ARROWS = [id("arrow_stone"), id("arrow_tranq"), id("arrow_flame")];
-
 const GEAR: Def[] = [
   { type: "item", class: "resource", id: id("hide"), stack: 200, weight: 0.01, color: 227 },
   { type: "item", class: "resource", id: id("chitin"), stack: 100, weight: 0.05, color: 9 },
@@ -48,37 +45,10 @@ const GEAR: Def[] = [
   { type: "item", class: "consumable", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, dose: { torpor: 40, seconds: 8 } },
 
   { type: "item", class: "weapon", id: id("spear"), stack: 1, weight: 2, color: 3, weapon: { kind: "melee", damage: 30, type: "pierce", reach: 3, uses: 20, mesh: id("spear"), hold: "spear" } },
-  // A bow does a quarter of the arrow's damage undrawn and all of it after 1.2 s of draw.
-  { type: "item", class: "weapon", id: id("bow"), stack: 1, weight: 4, color: 3, weapon: { kind: "bow", ammo: ARROWS, power: 1, reload: 0.66, draw: 1.2, uses: 50, mesh: id("bow"), hold: "bow" } },
-  // A stone arrow from a crossbow does 95.
-  { type: "item", class: "weapon", id: id("crossbow"), stack: 1, weight: 6, color: 4, weapon: { kind: "gun", ammo: ARROWS, power: 95 / 55, reload: 2.6, uses: 100, wet: true, mesh: id("crossbow"), hold: "rifle" } },
-  { type: "item", class: "weapon", id: id("rifle"), stack: 1, weight: 9, label: "long rifle", color: 228, weapon: { kind: "gun", ammo: [id("round_rifle"), id("dart_tranq"), id("dart_shock")], power: 1, reload: 4.5, uses: 70, fits: ATTACHMENTS, mesh: id("rifle"), hold: "rifle" } },
-  { type: "item", class: "weapon", id: id("pistol"), stack: 1, weight: 3, color: 2, weapon: { kind: "gun", ammo: [id("round_pistol")], power: 1, clip: 6, reload: 2.2, interval: 0.35, uses: 60, fits: ATTACHMENTS, mesh: id("pistol"), hold: "pistol" } },
-  { type: "item", class: "weapon", id: id("grenade"), stack: 10, weight: 1, color: 7, weapon: { kind: "thrown", damage: 788, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" } },
-
-  { type: "item", class: "ammo", id: id("arrow_stone"), stack: 100, weight: 0.2, label: "stone arrow", color: 15, ammo: { damage: 55, type: "pierce", speed: 70, gravity: 9.81, recover: 0.5, mesh: id("arrow") } },
-  { type: "item", class: "ammo", id: id("arrow_tranq"), stack: 100, weight: 0.2, label: "tranquilizer arrow", color: 9, ammo: { damage: 20, type: "pierce", speed: 70, gravity: 9.81, torpor: { instant: 2, over: 2.5, seconds: 5 }, mesh: id("arrow") } },
-  { type: "item", class: "ammo", id: id("arrow_flame"), stack: 100, weight: 0.2, label: "flame arrow", color: 3, ammo: { damage: 55, type: "fire", speed: 70, gravity: 9.81, buff: id("burning"), mesh: id("arrow") } },
-  { type: "item", class: "ammo", id: id("round_rifle"), stack: 100, weight: 0.1, label: "rifle round", color: 6, ammo: { damage: 280, type: "bullet" } },
-  { type: "item", class: "ammo", id: id("round_pistol"), stack: 100, weight: 0.05, label: "pistol round", color: 6, ammo: { damage: 100, type: "bullet" } },
-  { type: "item", class: "ammo", id: id("dart_tranq"), stack: 100, weight: 0.2, label: "tranquilizer dart", color: 9, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 6, over: 2.5, seconds: 5 }, mesh: id("dart") } },
-  { type: "item", class: "ammo", id: id("dart_shock"), stack: 100, weight: 0.2, label: "shock dart", color: 6, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 12, over: 5, seconds: 5 }, buff: id("stunned"), mesh: id("dart") } },
-
-  { type: "item", class: "attachment", id: id("scope"), stack: 1, weight: 0.5, color: 11, attachment: "scope" },
-  { type: "item", class: "attachment", id: id("silencer"), stack: 1, weight: 0.5, color: 11, attachment: "silencer" },
-  { type: "item", class: "attachment", id: id("flashlight"), stack: 1, weight: 0.5, color: 6, attachment: "light" },
-  { type: "item", class: "attachment", id: id("laser"), stack: 1, weight: 0.5, color: 8, attachment: "laser" },
   ...ARMOR,
 ];
 
 type Needs = readonly (readonly [item: string, count: number])[];
-/** How one thing is made, and the engram that unlocks it. */
-function making(name: string, label: string, level: number, cost: number, count: number, seconds: number, needs: Needs): Def[] {
-  return [
-    crafting(id(name), { needs: needs.map(([item, n]) => ({ item: id(item), count: n })), seconds, xp: Math.max(1, Math.round(level / 3)), count }),
-    { type: "engram", id: id(`engram-${name}`), label, level, cost, item: id(name) },
-  ];
-}
 
 /** level and cost are the tier engram's level and points. */
 const ARMOR_MAKING: Readonly<Record<string, { level: number; cost: number; needs: Readonly<Record<string, Needs>> }>> = {
@@ -259,24 +229,8 @@ const NODES: NodeDef[] = [
 const MAKING: Def[] = [
   ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]]),
   ...making("narcotic", "Narcotic", 6, 6, 1, 4, [["narcoberry", 5], ["meat", 1]]),
-  ...making("bow", "Bow", 10, 11, 1, 6, [["wood", 15], ["fiber", 50]]),
-  ...making("arrow_stone", "Stone arrow", 10, 0, 2, 2, [["thatch", 2], ["fiber", 2], ["flint", 1]]),
   ...making("ingot", "Smelting", 20, 6, 1, 6, [["ore", 2], ["wood", 1]]),
-  ...making("arrow_tranq", "Tranquilizer arrow", 21, 8, 1, 3, [["arrow_stone", 1], ["narcotic", 1]]),
   ...making("gunpowder", "Gunpowder", 21, 2, 1, 2, [["flint", 1], ["stone", 1], ["wood", 1]]),
-  ...making("crossbow", "Crossbow", 25, 12, 1, 10, [["ingot", 7], ["wood", 10], ["fiber", 35]]),
-  ...making("flashlight", "Flashlight attachment", 25, 13, 1, 6, [["ingot", 20], ["stone", 10]]),
-  ...making("scope", "Scope attachment", 30, 13, 1, 6, [["ingot", 40], ["stone", 20]]),
-  ...making("arrow_flame", "Flame arrow", 31, 15, 2, 3, [["arrow_stone", 2], ["thatch", 4], ["fiber", 3], ["gunpowder", 1]]),
-  ...making("pistol", "Pistol", 34, 15, 1, 12, [["ingot", 60], ["wood", 5], ["hide", 15]]),
-  ...making("round_pistol", "Pistol round", 34, 6, 1, 2, [["ingot", 1], ["gunpowder", 6]]),
-  ...making("rifle", "Long rifle", 35, 18, 1, 15, [["ingot", 95], ["wood", 20], ["hide", 25]]),
-  ...making("round_rifle", "Rifle round", 35, 6, 1, 2, [["ingot", 2], ["gunpowder", 12]]),
-  ...making("silencer", "Silencer attachment", 36, 13, 1, 6, [["ingot", 50], ["chitin", 20]]),
-  ...making("grenade", "Grenade", 42, 20, 1, 8, [["fiber", 15], ["stone", 20], ["gunpowder", 30], ["hide", 5], ["ingot", 2]]),
-  ...making("laser", "Laser attachment", 50, 24, 1, 6, [["ingot", 50], ["stone", 40]]),
-  ...making("dart_tranq", "Tranquilizer dart", 62, 30, 1, 4, [["narcotic", 3], ["ingot", 2]]),
-  ...making("dart_shock", "Shock dart", 96, 60, 1, 4, [["narcotic", 6], ["ingot", 4], ["gunpowder", 4]]),
   // Each piece of an armor tier has its own engram, at the tier's level and cost. They were one engram for all five once,
   // and a save that knew the set knows every piece.
   ...ARMOR_TIERS.flatMap((t): Def[] => {

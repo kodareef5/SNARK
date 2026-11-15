@@ -14,6 +14,7 @@ import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
+import { Entangle } from "./entangle.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
 import { Carry } from "./carry.ts";
 import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
@@ -47,6 +48,7 @@ import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
 import { Projectiles } from "./projectiles.ts";
+import { Clouds } from "./clouds.ts";
 import type { ModuleDef } from "./api/module.ts";
 import { Bus, event } from "./events/bus.ts";
 import { Modules } from "./events/modules.ts";
@@ -72,7 +74,7 @@ import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
-import { ARMOR_SLOTS } from "../shared/sim/items.ts";
+import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 
 export interface HostOptions {
@@ -167,6 +169,7 @@ export interface Host {
   readonly stations: Stations;
   readonly taming: Taming;
   readonly riding: Riding;
+  readonly entangle: Entangle;
   readonly breeding: Breeding;
   readonly tactical: Tactical;
   /** The creature packages' modules, each still doing nothing. */
@@ -193,6 +196,8 @@ export interface Host {
   /** The setting values a loaded save's timers were computed under. Null for a new world. */
   readonly loadedUnder: Record<string, number> | null;
   readonly projectiles: Projectiles;
+  /** Smoke and gas where grenades went off (W5). */
+  readonly clouds: Clouds;
   readonly progression: Progression;
   /** Null for a world whose map has no resource nodes. */
   readonly harvest: Harvest | null;
@@ -409,7 +414,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   // Its tribe may open a tamed creature while it is awake. Closing it reschedules its meal, because its food may have changed.
   death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
   death.onShut = (rec) => taming.meal(rec);
-  const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec) });
+  // A hit's buff goes through entangling, which reads the bola's fields (weapons-plan.md, M6); a bola'd body is not mounted.
+  const entangle = new Entangle({ world, game, records, buffs });
+  combat.entangle = (victim, buff, by) => void entangle.give(victim, buff, by);
+  const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec), tangled: (rec) => entangle.tangled(rec) });
   // The use button gets off a mount, and sets down what is in the arms.
   death.riding = (c) => riding.riding(c) || carry.holding(c) >= 0;
   death.offMount = (c) => (riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
@@ -472,7 +480,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
-  combat.onThrow = (c, rec, item, quality) => projectiles.lob(c, rec, item, quality);
+  // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
+  combat.onThrow = (c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality));
+  const clouds = new Clouds({ world, records, buffs, rules });
+  projectiles.onCloud = (item, x, y, z, by) => clouds.make(item, x, y, z, by);
   // The killer is credited before death.die, which may delete the record.
   const dying = new Set<number>();
   survival.onDeath = (rec, cause, by) => {
@@ -795,6 +806,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       else if (kind === DEADLINE_FECES) feces.due(pid, stamp);
     });
     refreshInventories();
+    // Struggling, and the grace after a bola, once the buffs that came due have ended.
+    entangle.step(tick);
     death.step();
     // Riders move with their mounts before combat aims at either.
     riding.step();
@@ -802,6 +815,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat.step();
     projectiles.step();
+    clouds.step();
     creatures.step(tick);
     spawner?.step(tick);
     build.step();
@@ -985,6 +999,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       gear[GEAR_HELD] = item;
       for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
       ents.setGear(e, gear);
+      // Only the thing in hand has its attachment on, and taking another in hand switches it off: "it does require you to
+      // press N each time you switch" (Flashlight Attachment). Others see a laser on (weapons-plan.md, M10).
+      const before = inHand.get(rec.pid);
+      items.switchOff(rec, before === undefined || before === slot ? slot : -1);
+      ents.setOn(e, slot >= 0 && (inv.flags[slot]! & FLAG_ON) !== 0 && items.attachmentOf(inv, slot) === "laser");
       // A worn-out weapon counts as holding no rounds and takes none.
       const params = reg.weapon[item] ?? FISTS;
       const works = slot >= 0 && params.clip > 0 && inv.dur[slot]! > 0;
@@ -1061,6 +1080,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     stations,
     taming,
     riding,
+    entangle,
     breeding,
     tactical,
     corpses,
@@ -1082,6 +1102,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     readLive,
     loadedUnder,
     projectiles,
+    clouds,
     progression,
     harvest,
     deadlines,

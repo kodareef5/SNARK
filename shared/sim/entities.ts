@@ -91,6 +91,9 @@ export class EntityStore {
   actTicks: Uint8Array;
   rounds: Uint8Array;
   reloadTo: Uint8Array;
+  /** Aim state (Body.bloom, Body.kick): 0 until planning/reference/weapons-plan.md's W1 steps them. */
+  bloom: Uint8Array;
+  kick: Uint8Array;
   /** HOLD_*, for the pose. Set with its gear. */
   hold: Uint8Array;
   /** 1 while a session's inputs drive it (a mount). */
@@ -111,6 +114,11 @@ export class EntityStore {
   readonly look: (Uint8Array | null)[];
   /** Content indices: GEAR_HELD, then one per armor slot. Replaced, never changed in place. */
   readonly gear: (Uint16Array | null)[];
+  /**
+   * 1 while the laser on the item in hand is switched on: the create's gear "on" bit (protocol 13; weapons-plan.md, M10).
+   * A flashlight's is kept on its owner's books and not sent, as nothing draws it until there are local lights (D436).
+   */
+  on: Uint8Array;
   rev: Uint8Array;
 
   /** Chunk the entity is linked into, or -1. */
@@ -158,6 +166,8 @@ export class EntityStore {
     this.actTicks = new Uint8Array(cap);
     this.rounds = new Uint8Array(cap);
     this.reloadTo = new Uint8Array(cap);
+    this.bloom = new Uint8Array(cap);
+    this.kick = new Uint8Array(cap);
     this.hold = new Uint8Array(cap);
     this.driven = new Uint8Array(cap);
     this.team = new Uint32Array(cap);
@@ -169,6 +179,7 @@ export class EntityStore {
     this.name = new Array<string>(cap).fill("");
     this.look = new Array<Uint8Array | null>(cap).fill(null);
     this.gear = new Array<Uint16Array | null>(cap).fill(null);
+    this.on = new Uint8Array(cap);
     this.rev = new Uint8Array(cap);
     this.chunk = new Int32Array(cap).fill(-1);
     this.chunkHead = new Int32Array(chunkCount(dims)).fill(-1);
@@ -219,6 +230,8 @@ export class EntityStore {
     this.actTicks[i] = 0;
     this.rounds[i] = 0;
     this.reloadTo[i] = 0;
+    this.bloom[i] = 0;
+    this.kick[i] = 0;
     this.hold[i] = 0;
     this.driven[i] = 0;
     this.team[i] = 0;
@@ -230,6 +243,7 @@ export class EntityStore {
     this.name[i] = "";
     this.look[i] = null;
     this.gear[i] = null;
+    this.on[i] = 0;
     this.rev[i] = (this.rev[i]! + 1) & 15;
     this.link(i, chunkAt(this.dims, x, z));
     return i;
@@ -266,6 +280,8 @@ export class EntityStore {
     this.actTicks = wider(this.actTicks, cap);
     this.rounds = wider(this.rounds, cap);
     this.reloadTo = wider(this.reloadTo, cap);
+    this.bloom = wider(this.bloom, cap);
+    this.kick = wider(this.kick, cap);
     this.hold = wider(this.hold, cap);
     this.driven = wider(this.driven, cap);
     this.team = wider(this.team, cap);
@@ -279,6 +295,7 @@ export class EntityStore {
       this.look.push(null);
       this.gear.push(null);
     }
+    this.on = wider(this.on, cap);
     this.rev = wider(this.rev, cap);
     this.chunk = wider(this.chunk, cap, -1);
     this.next = wider(this.next, cap, -1);
@@ -345,6 +362,13 @@ export class EntityStore {
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
+  /** Whether the laser in hand is on. A change is sent as a new create, as the gear is. */
+  setOn(i: number, on: boolean): void {
+    if ((this.on[i] !== 0) === on) return;
+    this.on[i] = on ? 1 : 0;
+    this.rev[i] = (this.rev[i]! + 1) & 15;
+  }
+
   /** Brings `anim[i]` up to date. Call it after changing velocity, facing, pitch, mode, stance or act. */
   pose(i: number, tick = 0): void {
     posed.mode = this.mode[i]!;
@@ -377,6 +401,8 @@ export class EntityStore {
     b.actTicks = this.actTicks[i]!;
     b.rounds = this.rounds[i]!;
     b.reloadTo = this.reloadTo[i]!;
+    b.bloom = this.bloom[i]!;
+    b.kick = this.kick[i]!;
   }
 
   /** Returns true if the entity changed chunk. */
@@ -393,6 +419,8 @@ export class EntityStore {
     this.act[i] = b.act;
     this.actTicks[i] = b.actTicks;
     this.rounds[i] = b.rounds;
+    this.bloom[i] = b.bloom;
+    this.kick[i] = b.kick;
     return this.setPosition(i, b.x, b.y, b.z);
   }
 

@@ -5,7 +5,7 @@ The builder reads `assets/source/maps/<name>/base/`, `map.json` and
 packs `var/maps/<name>.snmap`. Run one build or rasterizer batch at a time:
 
 ```sh
-lockf -t 7200 /tmp/snark-render.lock bun tools/mapworld/build.ts <name>
+bun tools/mapworld/build.ts <name>
 bun tools/mapworld/walk.ts var/maps/<name>.snmap
 bun tools/mapworld/ruin-walk.ts var/maps/<name>.snmap --all
 bun tools/mapworld/access-walk.ts var/maps/<name>.snmap
@@ -14,15 +14,16 @@ bun tools/mapworld/room-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/server-bench.ts var/maps/<name>.snmap
 bun tools/mapworld/verify.ts var/maps/<name>.snmap
 bun tools/mapworld/proof-views.ts var/maps/<name>.snmap
-lockf -t 7200 /tmp/snark-render.lock bun tools/mapworld/views.ts var/maps/<name>.snmap <views.json> <output-folder> medium
+bun tools/mapworld/views.ts var/maps/<name>.snmap <views.json> <output-folder> medium
 bun tools/mapworld/ruin-report.ts var/maps/<name>.snmap
 bun test ./tools/mapworld/ruins.test.ts
-lockf -t 3600 /tmp/snark-check.lock bun run check
+bun run check
 ```
 
 `world.ruins.report` chooses the report folder. `world.ruins.yardDistricts`
 chooses working container yards. `world.bridgeGapLayer` names the authored
-break mask, and `map.bathymetry` names the coastal raster relative to `base/`.
+break mask, and `map.bathymetry` names the coastal raster relative to `base/`
+(left out, the one GeoTIFF in `base/bathymetry` is used).
 CLI tools require a map argument. No city names or named compositions live in
 these modules.
 

@@ -179,6 +179,14 @@ function terrainLines(r: DeviceReport): string[] {
   out.push("over the other, which D253 holds under 2. draw and gpu: medians with rows/without, our code's ms handing the frame to");
   out.push("WebGL and the GPU's by timer query. jumps: frames until each jump's window was in (! for not before the next); coarser:");
   out.push("tiles drawn a level coarser a frame while it came");
+  const cities = t.flights.filter((f) => f.city);
+  if (cities.length > 0) {
+    out.push("city      the map's own buildings past the near rows (far city): medians a frame, the worst ms making its tiles, frames");
+    out.push("          with a tile in view and reach not yet made, and for each jump the frames until none was (! for not before the next)");
+    const cw = [8, 6, 9, 7, 7, 20];
+    out.push(row(["tier", "draws", "k tris", "make", "unseen", "jumps"], cw));
+    for (const f of cities) out.push(row([f.tier, String(f.city!.draws), String(f.city!.triangles), String(f.city!.makeWorst), String(f.city!.unseenFrames), f.city!.fills.map((x) => (x < 0 ? "!" : String(x))).join(" ")], cw));
+  }
   if (t.far.length === 0) return out;
   out.push(`far       bases as blocks at medium in chunks within 2 km of the map's middle, the camera 30 m up turning once round in 2 s; a rung holds as the ladder's do`);
   const fw = [8, 8, 7, 6, 6, 6, 6, 6, 6, 5, 6];
@@ -210,15 +218,19 @@ function treesLines(r: DeviceReport): string[] {
   out.push(row(["wood", "tier", "order", "frames", "median", "p95", "mean", "windows", "read", "windows", "gpu"], widths));
   for (const g of t.rungs) {
     for (const o of g.orders) out.push(row([g.wood, g.tier, `${o.order}${o.small ? "¼" : ""}`, String(o.frames), String(o.frameMs.median), String(o.frameMs.p95), String(o.meanMs), o.means.join("/"), String(o.readMs), o.reads.join("/"), n(o.gpuMs)], widths));
+    const b = g.budget;
+    if (b) out.push(row([g.wood, g.tier, "budget", String(b.frames), String(b.frameMs.median), String(b.frameMs.p95), String(b.meanMs), b.means.join("/"), "-", "-", n(b.gpuMs)], widths));
     const c = t.counts.find((x) => x.wood === g.wood && x.tier === g.tier);
     const counted = c ? `${c.cut} cut-out layers a pixel, ${c.front} in front of the nearest opaque, ${c.old} as made, ${c.first} in front of the ground` : "not counted";
     out.push(`          ${g.wood} ${g.tier} at ${g.at.map(Math.round).join(", ")}, canvas ${g.canvas.join("x")}, ${count(g.calls)} draws, ${count(g.tris)} triangles; ${g.invalid ? `invalid: ${g.invalid}; ` : ""}${counted}`);
+    if (b) out.push(`          the budget: ${count(b.tris)} triangles of ${count(b.allowed)}, crowns near ${count(b.crowns)}, ${count(b.draws)} draws, squeeze ${b.squeeze} (most ${b.most})`);
     if (g.verdict) out.push(`          ${g.verdict}`);
   }
   out.push("median, p95, mean: ms between frames, the mean of each window after; read: ms from handing a frame to WebGL to a pixel of it read");
   out.push("back, median, each window's after; gpu: by timer query; ¼: at half the pixel ratio, read back only. The counts are of the");
-  out.push("same view (wood.ts), in layers a pixel");
+  out.push("same view (wood.ts), in layers a pixel. budget: drawn as the frame's budget draws it, its cut-outs last; every other row whole");
   out.push(`verdict   ${t.verdict || "not judged"}`);
+  if (t.budget) out.push(`budget    ${t.budget}`);
   return out;
 }
 
