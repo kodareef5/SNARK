@@ -1,10 +1,15 @@
 // Far trees, rocks and bushes on a GPU (D259, D260), a check of tools/probe-lit.ts. A forested hillside of the core
 // content's kinds, seen at medium and at low poly from 30 m and 150 m over the canopy and at the edge of reach: far
 // node pixels are held to the software rasterizer. Trees at medium's reach must keep the same share of their pixels
-// through the dither as in the rasterizer, within 5%. With the camera still and the near field moved by a chunk, the
-// GPU's picture must not change where the chunk's nodes go from far to near. After a lost context the tiles come back.
-// With PROBE_PICTURES naming a folder, sheets are written there: the views in the rasterizer and on the GPU, hazed as a
-// player sees them, and a walk into a wood across the join.
+// through the dither as in the rasterizer, within 5%.
+//
+// The hand-over (render/hand.ts): a chunk changes hands where play has it, as the body steps over a chunk border, the
+// camera at its eye. With the camera still, the GPU's picture must not change where the chunk's nodes are, on medium and
+// on low poly; and walking over the border a metre a frame, the step over it must change no more of the nodes' pixels
+// than the steps either side do. Each has a control with the band past the near field, as it was before the band, which
+// must show the chunk pop. After a lost context the tiles come back. With PROBE_PICTURES naming a folder, sheets are
+// written there: the views in the rasterizer and on the GPU, hazed as a player sees them, the hand-overs, and a walk into
+// a wood across the join.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -56,8 +61,12 @@ const made = {
   held: [] as Held[],
   /** The edge: frames with no far trees, with them unfaded, and faded, and the rasterizer's pictures of the last two. */
   edge: { key: "", frames: [-1, -1, -1], full: null as Picture | null, faded: null as Picture | null },
-  /** The hand-over: the frame with a chunk far and the frame with it near, the camera still, and the rasterizer's of the first. */
-  hand: { key: "", frames: [-1, -1], pic: null as Picture | null },
+  /**
+   * The hand-overs: the frame before the body steps over a border and the frame after, the camera still, and the
+   * rasterizer's pictures of them; then frames a metre apart walking over it, with what the rasterizer drew where. A
+   * control has the band past the near field.
+   */
+  hands: [] as { name: string; control: boolean; key: string; frames: number[]; pics: Picture[]; walk: number[]; kinds: Uint8Array[] }[],
   /** The sheets: each view hazed as a player sees it, on the GPU; and the walk, on the GPU, with which pixels were far. */
   views: [] as { key: string; frame: number; name: string; plain: Picture }[],
   walk: { key: "", frames: [] as number[], far: [] as Uint8Array[] },
@@ -65,6 +74,10 @@ const made = {
 
 /** A meadow round where the body stands, to 250 m east of it, where nothing grows; the wood begins past it. */
 const meadow = (x: number): boolean => x > AT.x - 150 && x < AT.x + 250;
+/** The chunk border the body steps over, the first east of AT: the chunk the near field takes is 192 to 256 m ahead, in the wood. */
+const BORDER = Math.ceil(AT.x / CHUNK_SIZE) * CHUNK_SIZE;
+/** The steps of the walk over the border: where the body and the camera stand. The border is between the fourth and the fifth. */
+const STEPS = [-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5];
 
 function worldFor(tier: Tier, bytes: Uint8Array): NodeWorld {
   const place = (dims: MapDims, hf: Heightfield, forms: NodeForms, kinds: number[]): NodeSource => scatterNodes(dims, hf, 0xbe7c, 96, forms, (x) => (meadow(x) ? null : kinds));
@@ -210,21 +223,32 @@ export const nodesCheck: LitCheck = {
     made.edge.key = edge.key;
     shots.push(edge);
 
-    // The hand-over: the camera still a chunk ahead of the body, the near field moved a chunk east, so the chunk 132 to
-    // 196 m ahead of the camera, within every kind's reach, goes near.
-    w.scene.assets.tier = medium;
-    const hand = new Shot("nodes-hand", W, H, w.hf, bytes);
-    w.scene.resetUploads();
-    aim(w, AT.x + CHUNK_SIZE, AT.z, 6, 220, 24);
-    for (const [k, x] of [[0, AT.x], [1, AT.x + CHUNK_SIZE]] as const) {
-      w.stand(x, AT.z);
-      frame(w, hand, false);
-      const p = frame(w, hand, true);
-      made.hand.frames[k] = hand.frames.length - 1;
-      if (k === 0) made.hand.pic = picture(w, p);
+    // The hand-overs, on medium and low poly, and with the band past the near field as the control.
+    for (const [name, tier, control] of [["medium", medium, false], ["low poly", tierOf("lowpoly"), false], ["medium, the band past the near field", { ...medium, nodes: { ...medium.nodes, band: [10000, 10001] as const } }, true]] as const) {
+      const hw = worldFor(tier, bytes);
+      hw.scene.plainSky = true;
+      const shot = new Shot(`nodes-hand-${made.hands.length}`, W, H, hw.hf, bytes);
+      const hand = { name, control, key: shot.key, frames: [] as number[], pics: [] as Picture[], walk: [] as number[], kinds: [] as Uint8Array[] };
+      // The camera still at the eye over the border, the body half a metre short of it and then half a metre past it.
+      aim(hw, BORDER, AT.z, 1.7, 224, 24);
+      for (const x of [BORDER - 0.5, BORDER + 0.5]) {
+        hw.stand(x, AT.z);
+        frame(hw, shot, false);
+        const p = frame(hw, shot, true);
+        hand.frames.push(shot.frames.length - 1);
+        hand.pics.push(picture(hw, p));
+      }
+      // Walking over it a metre a frame, the camera at the body's eye.
+      for (const step of STEPS) {
+        hw.stand(BORDER + step, AT.z);
+        aim(hw, BORDER + step, AT.z, 1.7, 224, 24);
+        frame(hw, shot, true);
+        hand.walk.push(shot.frames.length - 1);
+        hand.kinds.push(hw.raster.pickKind.slice());
+      }
+      made.hands.push(hand);
+      shots.push(shot);
     }
-    made.hand.key = hand.key;
-    shots.push(hand);
 
     // A walk across the meadow into the wood, hazed: 300 m at 3 m a frame, the near field following the body.
     const walk = new Shot("nodes-walk", W, H, w.hf, bytes);
@@ -292,22 +316,35 @@ export const nodesCheck: LitCheck = {
       lines.push(`trees at medium's reach: the GPU keeps ${(gpuShare * 100).toFixed(1)}% of their ${region} pixels, the rasterizer ${(rasterShare * 100).toFixed(1)}% of ${count(e.full!)}  ${pass ? "ok" : "FAIL"}`);
     }
 
-    const [before, after] = made.hand.frames.map((f) => back.pixels(made.hand.key, f));
-    if (!before || !after) {
-      lines.push("the hand-over: NO PICTURE");
-      ok = false;
-    } else {
-      // Pixels of nodes the rasterizer drew far before, which the GPU must show the same once they are near.
+    // Node pixels: where the rasterizer drew a node in either picture.
+    const node = (kind: number): boolean => kind === PICK_FAR || kind === PICK_STRUCTURE;
+    for (const h of made.hands) {
+      const [before, after] = h.frames.map((f) => back.pixels(h.key, f));
+      const walk = h.walk.map((f) => back.pixels(h.key, f));
+      if (!before || !after || walk.some((p) => !p)) {
+        lines.push(`${h.name}, the hand-over: NO PICTURE`);
+        ok = false;
+        continue;
+      }
+      // The camera still: what of the nodes' pixels the body's step over the border changed.
       let [n, changed] = [0, 0];
-      const pic = made.hand.pic!;
       for (let at = 0; at < W * H; at++) {
-        if (pic.kind[at] !== PICK_FAR && pic.kind[at] !== PICK_STRUCTURE) continue;
+        if (!node(h.pics[0]!.kind[at]!) && !node(h.pics[1]!.kind[at]!)) continue;
         n++;
         if (off(before, after, at) > SAME) changed++;
       }
-      const pass = n > 2000 && changed <= n * MOST_OFF;
+      // Walking: what of them each step changed, the step over the border the fourth.
+      const steps = walk.slice(1).map((p, k) => {
+        let moved = 0;
+        for (let at = 0; at < W * H; at++) if ((node(h.kinds[k]![at]!) || node(h.kinds[k + 1]![at]!)) && off(walk[k]!, p!, at) > SAME) moved++;
+        return moved;
+      });
+      const over = steps[3]!;
+      const others = Math.max(...steps.filter((_, k) => k !== 3));
+      // A chunk that pops changes most of what it shows, and changes it in the one step; the rest change by the camera's metre.
+      const pass = h.control ? n > 2000 && changed > n * 0.25 && over > others * 1.5 : n > 2000 && changed <= n * MOST_OFF && over <= others * 1.25 + n * MOST_OFF;
       ok &&= pass;
-      lines.push(`a chunk handed from far to near, the camera still: ${changed} of ${n} node pixels changed on the GPU by more than ${SAME}  ${pass ? "ok" : "FAIL"}`);
+      lines.push(`${h.name}: a chunk handed from far to near as the body steps over a border, the camera still at its eye: ${changed} of ${n} node pixels changed on the GPU by more than ${SAME}; walking over it a metre a frame, the step over the border changed ${over} and the most of the others ${others}${h.control ? ", the pop the check must see" : ""}  ${pass ? "ok" : "FAIL"}`);
     }
 
     const folder = process.env.PROBE_PICTURES;
@@ -326,8 +363,16 @@ export const nodesCheck: LitCheck = {
       });
       writeFileSync(join(folder, "f3-walk.png"), sheet(walk));
       writeFileSync(join(folder, "f3-edge.png"), sheet([[e.full!.color, full ?? blank], [e.faded!.color, faded ?? blank]]));
-      writeFileSync(join(folder, "f3-hand.png"), sheet([[before ?? blank, after ?? blank, tinted(before ?? blank, made.hand.pic!.kind.map((k) => (k === PICK_FAR ? 1 : 0)))]]));
-      lines.push(`pictures in ${folder}: f3-views.png (by row ${made.views.map((v) => v.name).join("; ")}; the rasterizer, the GPU with a plain sky, the GPU hazed), f3-walk.png (every 36 m of a walk east across the meadow into the wood, the GPU, and the same with far nodes tinted), f3-edge.png (trees at medium's reach unfaded and faded, rasterizer and GPU), f3-hand.png (a chunk far, then near, then far tinted)`);
+      // Each hand-over: before the step, after it, where they differ by more than SAME in white, and before with far pixels tinted.
+      const hands = made.hands.map((h) => {
+        const [before, after] = h.frames.map((f) => back.pixels(h.key, f) ?? blank) as [Uint8Array, Uint8Array];
+        const differ = new Uint8Array(W * H * 4).fill(255);
+        for (let at = 0; at < W * H; at++) if (off(before, after, at) <= SAME) differ.fill(0, at * 4, at * 4 + 3);
+        return [before, after, differ, tinted(before, h.pics[0]!.kind.map((k) => (k === PICK_FAR ? 1 : 0)))];
+      });
+      writeFileSync(join(folder, "f3-hand.png"), sheet(hands));
+      writeFileSync(join(folder, "f3-step.png"), sheet(made.hands.map((h) => h.walk.slice(2, 6).map((f) => back.pixels(h.key, f) ?? blank))));
+      lines.push(`pictures in ${folder}: f3-views.png (by row ${made.views.map((v) => v.name).join("; ")}; the rasterizer, the GPU with a plain sky, the GPU hazed), f3-walk.png (every 36 m of a walk east across the meadow into the wood, the GPU, and the same with far nodes tinted), f3-edge.png (trees at medium's reach unfaded and faded, rasterizer and GPU), f3-hand.png (by row ${made.hands.map((h) => h.name).join("; ")}: before the body's step over the border, after it, where they differ, and before with far pixels tinted), f3-step.png (the same rows, the walk's four steps about the border)`);
     }
     return { ok, lines };
   },
