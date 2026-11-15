@@ -2,14 +2,14 @@
 
 | File | Provides |
 | --- | --- |
-| `world.ts` | A flat world, the proving ground, and a sealed room builder |
+| `world.ts` | The core registry, compiled once per test process; a flat world, the proving ground, and a sealed room builder |
 | `map.ts` | Maps to write as files: flat ground of any size, and a small one with one of everything a file can hold |
 | `net.ts` | `Harness`: a host, a lossy virtual-time network, and client sessions with scripted pilots |
 | `arena.ts` | Level, dry, empty ground of a given size near the spawn point |
 | `build.ts` | Survivors set up to build: cheats, strength, and sixty of every wooden piece in the hotbar |
 | `gather.ts` | Finding a resource node and standing a survivor in reach of it |
 | `agent.ts` | An agent that plays on the harness: its tools called over the protocol while virtual time runs |
-| `pack.ts` | The core asset pack, built once per test process |
+| `pack.ts` | The core asset pack: built once by `bun run check` for every test file, or once per test process run alone |
 | `glb.ts` | A glTF binary file written in code, standing in for a Blender export |
 | `crash-child.ts` | A process that trades items and commits until it is killed |
 
