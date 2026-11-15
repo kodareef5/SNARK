@@ -12,7 +12,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, REJECT_PASSWORD, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, REJECT_PASSWORD, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -28,10 +28,10 @@ import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
 import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { Falling } from "./rubble.ts";
-import { BTN_SECONDARY } from "../../shared/sim/character.ts";
+import { BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
-import { FISTS } from "../../shared/sim/weapon.ts";
-import { AnimState } from "../../shared/anim/pose.ts";
+import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
+import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS } from "../../shared/sim/items.ts";
@@ -60,6 +60,8 @@ const STRUCT_HOLD_MS = 350;
 const NAME_RANGE = 30;
 /** A bit of the replicated entity flags. */
 const VIEW_FLAG_PROP = 8;
+/** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
+const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
 
 /** Initial vertical field of view, in radians. AIM_FOV and SCOPE_FOV multiply the player's setting while aiming. */
 const BASE_FOV = 1.2217;
@@ -135,6 +137,8 @@ export class App {
   private nowMs = 0;
   /** Entity index of the tribe's creature under the crosshair, or -1. */
   lookedAt = -1;
+  /** Entity index of the creature in the arms of the viewer's own body, as the last frame's remote sample says, or -1. */
+  holding = -1;
   /** useDownAt is when the use key went down, or -1. aimed is the ref of the player-built structure under the crosshair, or -1. */
   private useDownAt = -1;
   aimed = -1;
@@ -261,6 +265,8 @@ export class App {
       if (down && !repeat && this.session.thirdPerson) this.view.thirdPerson = !this.view.thirdPerson;
       return true;
     }
+    // Arms round a creature do not lie down with it.
+    if (code === "KeyX" && down && this.holding >= 0) return true;
     return this.controls.key(code, down);
   }
 
@@ -268,6 +274,11 @@ export class App {
     if (!this.ui.wantsPointerLock) return;
     if (button === 0 && this.builder.active) {
       if (down) this.builder.place(this.session, this.reg);
+      return;
+    }
+    // The button that would strike throws what is in the arms, where the body looks.
+    if (button === 0 && down && this.holding >= 0) {
+      this.session.command(CMD_CARRY, (w) => w.u8(CARRY_THROW));
       return;
     }
     this.controls.mouseButton(button, down);
@@ -309,6 +320,15 @@ export class App {
     return r.grown[i] !== 0 && (r.flags[i]! & VIEW_FLAG_PROP) === 0 ? youngScale(this.reg.birthScale[r.kind[i]!]!, r.span[i]!, r.grown[i]!, r.tick) : 1;
   }
 
+  /** The entity index of the creature the server shows in the arms of the viewer's own body, or -1. */
+  private heldInArms(): number {
+    const r = this.remote;
+    const seat = handleIndex(this.session.ownHandle) + 1;
+    if (this.session.ownHandle === 0) return -1;
+    for (let i = 0; i < r.count; i++) if (r.seat[i] === seat && (r.cue[i]! & CUE_HELD) !== 0) return r.id[i]!;
+    return -1;
+  }
+
   /** Names the entity under the crosshair within NAME_RANGE, and sets lookedAt. */
   private who(world: CollisionWorld, eye: number): string {
     const s = this.session;
@@ -321,6 +341,8 @@ export class App {
     let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, NAME_RANGE) === HIT_NONE ? NAME_RANGE : rayHit.t;
     let hit = -1;
     for (let i = 0; i < r.count; i++) {
+      // What is in someone's arms is no mark: the server takes nothing held for what the use key or a blow is aimed at.
+      if ((r.cue[i]! & CUE_HELD) !== 0) continue;
       const size = this.sizeOf(i);
       const rad = this.reg.bodyRadius[r.kind[i]!]! * size;
       const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + this.reg.bodyHeight[r.kind[i]!]! * size, r.z[i]! + rad);
@@ -361,12 +383,15 @@ export class App {
     const ox = s.own.x;
     const oy = s.own.y + eye;
     const oz = s.own.z;
+    if (this.holding >= 0) return "E  set down   click  throw";
     lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
     const struck = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, REACH);
     let best = struck === HIT_NONE ? REACH : rayHit.t;
     const node = struck === HIT_NODE ? rayHit.ref : -1;
     let hit = -1;
     for (let i = 0; i < r.count; i++) {
+      // What is in someone's arms is no mark: the server takes nothing held for what the use key or a blow is aimed at.
+      if ((r.cue[i]! & CUE_HELD) !== 0) continue;
       const size = this.sizeOf(i);
       const rad = this.reg.bodyRadius[r.kind[i]!]! * size;
       const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + this.reg.bodyHeight[r.kind[i]!]! * size, r.z[i]! + rad);
@@ -385,6 +410,8 @@ export class App {
         const id = this.reg.ids[r.kind[hit]!] ?? "";
         return `E  take the young ${id.slice(id.indexOf(":") + 1)}`;
       }
+      // A small creature of the tribe, awake, is picked up. F still opens it.
+      if (this.reg.carriable[r.kind[hit]!] === 1 && s.tribe.team !== 0 && r.team[hit] === s.tribe.team && (r.cue[hit]! & CUE_OUT) === 0) return `E  pick up ${r.name[hit]}`;
       return "";
     }
     if (node < 0 || !s.nodeField) return "";
@@ -470,7 +497,8 @@ export class App {
       return null;
     }
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
-    if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, c.buttons);
+    this.holding = this.heldInArms();
+    if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons);
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
     const world = session.world;
     if (session.state !== "active" || !world) {
@@ -555,8 +583,8 @@ export class App {
     body.state.grounded = session.own.grounded;
     body.state.stance = session.own.stance;
     body.state.setMotion(session.own.vx, session.own.vz, c.yaw, c.pitch);
-    // The action comes from the prediction, so a swing shows the moment it is asked for.
-    body.state.setAction(session.own.act, (this.reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
+    // The action comes from the prediction, so a swing shows the moment it is asked for. Arms full hold what is in them.
+    body.state.setAction(session.own.act, this.holding >= 0 ? HOLD_CARRY : (this.reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
     body.state.seed = bodySeed(body.id);
     // While riding, the mount is the body it predicts, drawn from the prediction and always from outside.
     // Its own body is then one more remote body, where the server has it on the seat.

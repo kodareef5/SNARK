@@ -6,7 +6,9 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { Pose } from "../../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
-import { HumanAnim, advanceHuman, humanPose, type AnimState } from "../../../shared/anim/pose.ts";
+import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
+import { handsAt } from "../../../shared/anim/hold.ts";
+import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { CreatureAnim, advanceCreature, creaturePose } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
@@ -93,6 +95,8 @@ class Stride extends Gait {
 
 /** Frames a body may go undrawn before its gait is forgotten. */
 const FORGET_GAIT = 600;
+/** Numbers kept for each held creature posed in a frame (Characters.inArms). */
+const HELD_FIELDS = 9;
 
 export class Characters {
   readonly anim: HumanAnim;
@@ -147,6 +151,17 @@ export class Characters {
   private packet: FramePacket | null = null;
   /** Bodies that died, as their death clips and ragdolls pose them. */
   private readonly dead: Corpses;
+  /**
+   * This frame: whose arms each held creature is in, by id; the point between the palms of each survivor posed holding one,
+   * camera-relative, by id; and the held creatures posed, each its first bone, its bones, its place, facing, size and kind.
+   */
+  private readonly carriedBy = new Map<number, number>();
+  private readonly palms = new Map<number, Float64Array>();
+  private readonly palmPool: Float64Array[] = [];
+  private readonly inArms: number[] = [];
+  private placed = false;
+  /** The point between the palms of a survivor standing and crouched, from its clips, for a held creature not yet put right. */
+  private readonly cradled: Float64Array[] = [];
 
   constructor(reg: Registry, pack: Pack, assets: Assets) {
     const { table, bind } = assets;
@@ -209,6 +224,16 @@ export class Characters {
       return bodies.length > 0 ? { sets: bodies, color: d.color } : null;
     });
     this.dead = new Corpses(this.creatures.map((c) => c?.anim ?? null), reg.birthScale);
+    const st = new AnimState();
+    for (const stance of [0, 1]) {
+      st.stance = stance;
+      st.setAction(ACT_NONE, HOLD_CARRY, 0);
+      humanPose(this.anim, st, 0, this.pose);
+      solve(HUMAN, this.pose, this.solved);
+      const at = new Float64Array(3);
+      handsAt(this.solved, at);
+      this.cradled.push(at);
+    }
   }
 
   /** The gait of the body with this id, kept from frame to frame. */
@@ -263,7 +288,54 @@ export class Characters {
     return true;
   }
 
-  private addCreature(p: FramePacket, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean, unseen: boolean): boolean {
+  /**
+   * Writes to `out` where the creature `id`, of `kind`, goes in the arms of the survivor `carrier`, of `carrierKind`, at
+   * (x, y, z) facing `yaw` radians: as near as a survivor of its stance holds one. Once its carrier is posed this frame it
+   * is put right, to where the palms are drawn. False for a pair that is not drawn so.
+   */
+  heldAt(id: number, kind: number, carrier: number, carrierKind: number, x: number, y: number, z: number, yaw: number, st: AnimState, out: number[]): boolean {
+    const at = this.creatures[kind]?.anim.holdAt;
+    if (!at || !this.kinds[carrierKind]) return false;
+    this.carriedBy.set(id, carrier);
+    const palms = this.cradled[st.stance === 1 ? 1 : 0]!;
+    const mx = palms[0]! - at[0]!;
+    const mz = palms[2]! - at[2]!;
+    const s = Math.sin(yaw);
+    const co = Math.cos(yaw);
+    out[0] = x + co * mx + s * mz;
+    out[1] = y + palms[1]! - at[1]!;
+    out[2] = z + co * mz - s * mx;
+    return true;
+  }
+
+  /**
+   * Moves each held creature posed this frame from where it was placed to where its carrier's palms are drawn, if its
+   * carrier was posed. Once a frame, before the bones are used.
+   */
+  private placeHeld(p: FramePacket): void {
+    if (this.placed) return;
+    this.placed = true;
+    const list = this.inArms;
+    for (let k = 0; k < list.length; k += HELD_FIELDS) {
+      const palms = this.palms.get(list[k + 7]!);
+      const at = this.creatures[list[k + 8]!]?.anim.holdAt;
+      if (!palms || !at) continue;
+      const yaw = list[k + 5]!;
+      const size = list[k + 6]!;
+      const s = Math.sin(yaw);
+      const co = Math.cos(yaw);
+      const dx = palms[0]! - (co * at[0]! + s * at[2]!) * size - list[k + 2]!;
+      const dy = palms[1]! - at[1]! * size - list[k + 3]!;
+      const dz = palms[2]! - (co * at[2]! - s * at[0]!) * size - list[k + 4]!;
+      for (let b = 0, o = list[k]! * BONE_FLOATS; b < list[k + 1]!; b++, o += BONE_FLOATS) {
+        p.bones[o + 3]! += dx;
+        p.bones[o + 7]! += dy;
+        p.bones[o + 11]! += dz;
+      }
+    }
+  }
+
+  private addCreature(p: FramePacket, kind: number, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean, unseen: boolean): boolean {
     const rig = c.anim.rig;
     const first = this.room(p, rigid ? 1 : rig.bones, 1, !unseen);
     if (first < 0) return false;
@@ -278,6 +350,8 @@ export class Characters {
       writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
       this.posed++;
     }
+    const carrier = st.held ? this.carriedBy.get(id) : undefined;
+    if (carrier !== undefined) this.inArms.push(first, rigid ? 1 : rig.bones, x, y, z, yaw, size, carrier, kind);
     this.queueCreature(c, first, x, y, z, colors, colorAt, id, size, rigid, unseen);
     return true;
   }
@@ -335,6 +409,11 @@ export class Characters {
   begin(): void {
     this.count = 0;
     this.posed = 0;
+    for (const at of this.palms.values()) this.palmPool.push(at);
+    this.palms.clear();
+    this.carriedBy.clear();
+    this.inArms.length = 0;
+    this.placed = false;
     // Ids of bodies long gone would otherwise be kept for good.
     if (this.last.size > 4096) this.last.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const [id, g] of this.gaits) if (this.frame - g.seen > FORGET_GAIT) this.gaits.delete(id);
@@ -358,7 +437,7 @@ export class Characters {
    */
   add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1, rigid = false, unseen = false): boolean {
     const creature = this.creatures[kind];
-    if (creature) return this.addCreature(p, creature, x, y, z, yaw, st, tick, colors, colorAt, id, size, rigid, unseen);
+    if (creature) return this.addCreature(p, kind, creature, x, y, z, yaw, st, tick, colors, colorAt, id, size, rigid, unseen);
     const k = this.kinds[kind];
     if (!k) return false;
     const first = this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
@@ -383,6 +462,20 @@ export class Characters {
       solve(HUMAN, this.pose, this.solved, set.rest, scales);
       writeBones(p.bones, first * BONE_FLOATS, this.solved, set.rest, scales, x, y, z, yaw);
       this.posed++;
+      if (st.action >>> 3 === HOLD_CARRY) {
+        // Where the palms are drawn, for the creature in them.
+        const at = this.palmPool.pop() ?? new Float64Array(3);
+        handsAt(this.solved, at);
+        const s = Math.sin(yaw);
+        const co = Math.cos(yaw);
+        const [mx, my, mz] = [at[0]!, at[1]!, at[2]!];
+        at[0] = x + co * mx + s * mz;
+        at[1] = y + my;
+        at[2] = z + co * mz - s * mx;
+        const was = this.palms.get(id);
+        if (was) this.palmPool.push(was);
+        this.palms.set(id, at);
+      }
     }
     // The viewer's own body is as fine as the tier draws anything.
     const far = own ? 0 : Math.sqrt(x * x + y * y + z * z);
@@ -492,6 +585,7 @@ export class Characters {
    * instances that only cast, which no draw takes.
    */
   flush(p: FramePacket, writer: InstanceWriter, own: boolean, draw: DrawFn, cast: CastFn | null = null): void {
+    this.placeHeld(p);
     this.group(p, writer, own ? OWN : SEEN, draw, cast, DRAW_SKINNED | DRAW_PLAIN | (own ? DRAW_NEAR : 0));
     if (own && cast) this.group(p, writer, CASTS, null, cast, DRAW_SKINNED | DRAW_PLAIN);
   }

@@ -41,7 +41,7 @@ import { DEADLINE_NODE, Harvest } from "./harvest.ts";
 import { DEADLINE_CRAFT, Progression } from "./progression.ts";
 import { stanceEye } from "../shared/sim/character.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
-import { ACT_EQUIP, ACT_NONE, FISTS } from "../shared/sim/weapon.ts";
+import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
 import { Items } from "./items.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
@@ -401,12 +401,13 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
   death.onShut = (rec) => taming.meal(rec);
   const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec) });
-  death.riding = (c) => riding.riding(c);
-  death.offMount = (c) => riding.dismount(c);
+  // The use button gets off a mount, and sets down what is in the arms.
+  death.riding = (c) => riding.riding(c) || carry.holding(c) >= 0;
+  death.offMount = (c) => (riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
   const corpses = new Corpses({ world, game, records, items, deadlines, rules }, (opts.seed ?? 1) + 103);
-  const carry = new Carry({ world, game, records, items, survival, creatures });
+  const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
   const feces = new Feces({ world, records, items, deadlines, rules }, (opts.seed ?? 1) + 107);
   const eggs = new Eggs({ world, game, records, items });
   const overhead = new Overhead({ world, records, breeding });
@@ -416,14 +417,19 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const rec = records.byPid.get(world.ents.pid[e]!);
     // The use button claims an unclaimed young creature.
     if (rec && breeding.unclaimed(rec)) return breeding.claim(c, rec);
+    // Nobody rides, takes or opens what is in someone's arms. A small creature of the session's tribe is picked up.
+    if (carry.held(e)) return RESULT_BUSY;
+    const taken = carry.use(c, e);
+    if (taken >= 0) return taken;
     // Only a saddled, grown, awake creature of the session's tribe can be ridden. -1 passes the press on.
     if (rules.on("bDisableDinoRiding")) return -1;
     if (!rec || rec.keyHash !== null || rec.saddle === 0 || rec.out || rec.grown !== 0 || !tribes.may(records.byPid.get(c.pid), rec.team)) return -1;
     return riding.mount(c, e);
   };
+  // A held creature's peck spares its carrier and is credited to it, as a mount's bite is to its rider.
   combat.riderOf = (mount) => {
     const e = records.entOf.get(mount.pid);
-    return e === undefined ? null : riding.riderOf(e);
+    return e === undefined ? null : (riding.riderOf(e) ?? carry.carrierOf(e));
   };
   combat.onHarm = (victim, points) => {
     taming.harmed(victim, points);
@@ -468,6 +474,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       const struck = combat.blow.victim === rec.pid;
       bus.after(DEATH, { victim: rec.pid, kind: reg.ids[rec.kind]!, cause: CAUSE_WORDS[cause] ?? "", killer: killer ? killer.pid : 0, rider: rider ? rider.pid : 0, credit: !killer ? 0 : killer.kind === survivor ? killer.pid : rider ? rider.pid : 0, team: rec.team, item: struck && combat.blow.item !== 0 ? reg.ids[combat.blow.item]! : "", far: struck ? combat.blow.far : 0 });
     }
+    // What a carrier held is set down while its body is still there to set it down by, and what dies held is let go.
+    carry.release(rec.pid);
     combat.killed(rec, by);
     // A creature may eat of what its kill left it.
     const taker = by !== 0 ? records.byPid.get(by) : undefined;
@@ -684,6 +692,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     if (c.entered) joined(c);
   };
   game.onBodyGone = (c) => {
+    carry.release(c.pid);
     // Out of the world, a survivor neither eats nor drowns.
     const gone = records.byPid.get(c.pid);
     if (gone) survival.suspend(gone, true);
@@ -902,9 +911,13 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     survival.init(rec);
     const e = records.entOf.get(rec.pid);
     if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
-    // A mount's load includes what its rider carries.
+    // A mount's load includes what its rider carries, and a survivor's half of what a creature in its arms carries.
     const rider = riding.riderOf(e);
-    const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0);
+    const arms = carry.heldBy(rec.pid);
+    const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0) + (arms >= 0 ? carry.load(rec) : 0);
+    // A creature in someone's arms weighs on them.
+    const carrier = carry.carrierOf(e);
+    if (carrier && carrier !== rec) refreshBody(carrier);
     // A young creature carries a share of a grown one's capacity, so its load is scaled up.
     const strength = youngShare(growthStep(rec.span, rec.grown, world.tick));
     refreshMods(reg, world.ents, e, rec.genome, load / strength, buffs.speedOf(rec), buffs.rooted(rec), rec.out, creatures.swimGain);
@@ -914,6 +927,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const inv = rec.inv;
     if (inv && inv.hotbar >= 0) {
       const ents = world.ents;
+      // Arms round a creature hold nothing else: what is chosen stays put away until it is set down.
+      if (arms >= 0 && rec.held >= 0) {
+        rec.held = -1;
+        records.dirty.add(rec.pid);
+      }
       const slot = rec.held >= 0 && inv.item[inv.hotbar + rec.held] !== 0 ? inv.hotbar + rec.held : -1;
       const item = slot >= 0 ? inv.item[slot]! : 0;
       const was = ents.gear[e]?.[GEAR_HELD] ?? 0;
@@ -925,7 +943,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       const works = slot >= 0 && params.clip > 0 && inv.dur[slot]! > 0;
       const loaded = works ? inv.loaded[slot]! : 0;
       const ammo = works ? combat.ammoFor(rec, slot) : 0;
-      ents.hold[e] = params.hold;
+      ents.hold[e] = arms >= 0 ? HOLD_CARRY : params.hold;
       ents.rounds[e] = loaded;
       ents.reloadTo[e] = works ? Math.min(params.clip, (ammo === inv.ammo[slot] ? loaded : 0) + (ammo !== 0 ? inv.total(ammo) : 0)) : 0;
       // A change of held item stops its action and starts the equip delay.
@@ -1036,6 +1054,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       bus.after(SERVER_STOP, { why: "stopped" });
       bus.flush();
       if (!persistence) return;
+      // A creature in someone's arms is saved standing where it is set down, not where the arms had it.
+      carry.releaseAll();
       // Every body that can have moved is saved where it stands.
       for (let r = 0; r < world.history.rows; r++) {
         const pid = world.ents.pid[world.history.tracked(r)]!;
