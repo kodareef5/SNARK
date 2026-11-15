@@ -96,6 +96,9 @@ test("a part that cannot be had: the wrong hash is asked for twice, a range past
   expect(asks(bad[2]!.mesh).length).toBeGreaterThanOrEqual(6);
   expect(asks(bad[2]!.mesh).length).toBeLessThanOrEqual(8);
   expect(w.r.stats.dead).toBe(2);
+  // Each failure is counted by its kind, so a report can say which it was.
+  const { failHash, failRange, failNet } = w.r.stats;
+  expect([failHash, failRange, failNet >= asks(bad[2]!.mesh).length - 1, failNet <= asks(bad[2]!.mesh).length]).toEqual([2, 1, true, true]);
   // Each is drawn all the while at the next level down, which could be had.
   expect([...w.wanted]).toEqual([0, 0, 0]);
   expect([...w.drawn]).toEqual([1, 1, 1]);
