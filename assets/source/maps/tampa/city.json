@@ -1,0 +1,65 @@
+{
+  "name": "tampa",
+  "label": "Tampa",
+  "centre": [-82.469, 27.9445],
+  "size_m": 8128,
+  "chunk_m": 64,
+  "spacing_m": 2,
+  "tiger": {
+    "year": 2025,
+    "county": "12057",
+    "layers": ["roads", "areawater"],
+    "source": "Census TIGER/Line 2025, Hillsborough County, FL",
+    "licence": "https://creativecommons.org/publicdomain/zero/1.0/ (catalog.data.gov); \"These products are free to use in a product or publication, however acknowledgement must be given to the U.S. Census Bureau as the source.\""
+  },
+  "dem": {
+    "kind": "tnm",
+    "project": "FL_HillsboroughPinellas_B24",
+    "dataset": "Original Product Resolution (OPR) Digital Elevation Model (DEM)",
+    "z_to_m": 0.30480060960121924,
+    "source": "USGS 3DEP Original Product Resolution DEM, FL_HillsboroughPinellas_B24 (lidar flown 2025-01-08 to 2025-01-30, published 2026-11-02)",
+    "licence": "USGS public domain. Access constraints: \"None.\" Credit: \"Acknowledgement of the USGS 3D Elevation Program would be appreciated in products derived from these data.\""
+  },
+  "nlcd": {
+    "url": "https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/ows",
+    "coverage": "NLCD_2021_Land_Cover_L48",
+    "file": "nlcd2021.tif",
+    "source": "USGS / MRLC NLCD 2021 Land Cover (CONUS)",
+    "licence": "Public domain (USGS)"
+  },
+  "footprints": {
+    "service": "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/USA_Structures_View/FeatureServer/0",
+    "source": "FEMA / ORNL USA Structures",
+    "licence": "CC BY 4.0, as the Esri-hosted delivery item declares; a U.S. government work per catalog.data.gov. Attribution: Oak Ridge National Laboratory (ORNL); Federal Emergency Management Agency (FEMA) Geospatial Response Office."
+  },
+  "bathymetry": {
+    "url": "https://www.ngdc.noaa.gov/thredds/ncss/grid/regional/tampa_bay_13_navd88_2014.nc",
+    "file": "tampa-navd88.tif",
+    "margin_deg": 0.006,
+    "source": "NOAA NCEI Tampa Bay, Florida 1/3 arc-second NAVD 88 Coastal Digital Elevation Model (gov.noaa.ngdc.mgg.dem:5163, issued 2014-09-11)",
+    "licence": "\"Produced by the NOAA National Centers for Environmental Information. Not subject to copyright protection within the United States.\" catalog.data.gov: CC0 1.0. \"Not to be used for navigation.\""
+  },
+  "osm": {
+    "servers": ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"],
+    "source": "OpenStreetMap contributors, through the Overpass API",
+    "licence": "Open Database License (ODbL) 1.0, (c) OpenStreetMap contributors"
+  },
+  "roads": {
+    "widths_m": {"S1100": 22, "S1200": 14, "S1400": 8, "S1630": 7, "S1640": 5, "S1710": 3, "S1720": 3, "S1740": 4},
+    "other_width_m": 6,
+    "tunnel_name": "tunl"
+  },
+  "succession": {
+    "sand_ribbon": null,
+    "flood_below_navd88_m": 0.55,
+    "flood_within_m": 300
+  },
+  "canopy": {
+    "rule": "succession",
+    "share_of_vegetation": 0.62
+  },
+  "future": {
+    "spans": [],
+    "wrecks": []
+  }
+}

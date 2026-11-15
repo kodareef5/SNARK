@@ -1,0 +1,4 @@
+# Kept: city.json and map.json, the base layers, the labels, the world build's settings, reports and pictures.
+# Left out: the downloads (SOURCES.md and downloads.json say how to fetch them again).
+raw/
+checks/
