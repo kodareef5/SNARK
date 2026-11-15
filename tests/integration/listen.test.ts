@@ -6,13 +6,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer, type ServerOptions } from "../../server/main.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 
 // A built client, as far as a server needs one: the manifest and the boot file it names.
 const dir = mkdtempSync(join(tmpdir(), "snark-listen-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
-const { files, manifest } = splitPack(buildCorePack(), "core");
+const { files, manifest } = splitPack(corePackBytes(), "core");
 mkdirSync(join(dir, "assets"));
 writeFileSync(join(dir, "assets", manifest.files[manifest.boot]!.name), files[manifest.boot]!.bytes);
 writeFileSync(join(dir, "assets/manifest.json"), JSON.stringify(manifest));

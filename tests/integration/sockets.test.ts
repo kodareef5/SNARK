@@ -5,14 +5,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { originAllowed, startServer } from "../../server/main.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 
 test("a page on another site may not open a socket, the server's own page and a program that is no browser may, and an operator lists the rest", async () => {
   // A client folder with what the server reads of it: the manifest and the boot pack.
   const dir = mkdtempSync(join(tmpdir(), "snark-sockets-"));
   mkdirSync(join(dir, "assets"));
-  const { files, manifest } = splitPack(buildCorePack(), "core");
+  const { files, manifest } = splitPack(corePackBytes(), "core");
   writeFileSync(join(dir, "assets", manifest.files[manifest.boot]!.name), files[manifest.boot]!.bytes);
   writeFileSync(join(dir, "assets/manifest.json"), JSON.stringify(manifest));
   const log = console.log;

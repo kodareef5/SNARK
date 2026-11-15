@@ -9,7 +9,7 @@ import { Builder, GHOST_OK } from "../../client/core/build.ts";
 import { KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { KEY_PIN_PANEL, KEY_STRUCT_BUTTON } from "../../client/core/ui/structure.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { FOUNDATION_THICK } from "../../content/building.ts";
@@ -388,7 +388,7 @@ test("a vault whose floor goes comes down whole, onto whatever is under it, with
 
 test("in the whole client: a box is named with the key that opens it; another tribe's, locked with a PIN, asks for the PIN once and is given it after that", () => {
   const h = new Harness({}, 1, 60, { dev: true });
-  const pack = parsePack(buildCorePack());
+  const pack = parsePack(corePackBytes());
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
   run(600);

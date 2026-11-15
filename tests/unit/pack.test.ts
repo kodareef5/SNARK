@@ -10,6 +10,7 @@ import { importGlb } from "../../tools/pack/glb.ts";
 import { manifestOf, partHash } from "../../tools/pack/manifest.ts";
 import { buildPack, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
 import { sampleGlb } from "../fixtures/glb.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 
 test("a glTF export becomes a pack mesh with levels of detail, colour regions and a collider", () => {
   const palette = defaultPalette();
@@ -43,7 +44,7 @@ test("a glTF export becomes a pack mesh with levels of detail, colour regions an
 });
 
 test("the core pack has a mesh for every graybox definition and rejects damaged files", () => {
-  const file = buildCorePack();
+  const file = corePackBytes();
   const pack = parsePack(file);
   for (const id of [MISSING_MESH, "core:wall", "core:grazer", "core:slab"]) expect(pack.meshIndex.has(id)).toBe(true);
   const wall = pack.header.meshes[pack.meshIndex.get("core:wall")!]!;
@@ -64,7 +65,7 @@ test("the core pack has a mesh for every graybox definition and rejects damaged 
 });
 
 test("the pack carries bodies cut into slots, each vertex on one bone, and the clips that move them", () => {
-  const pack = parsePack(buildCorePack());
+  const pack = parsePack(corePackBytes());
   // The mannequin is the skeleton's own capsules. Each modelled body is on its own rig, at three levels of detail.
   for (const [base, rig, levels] of [["core:mannequin", undefined, 1], ["core:human_m", "human_m", 3], ["core:human_f", "human_f", 3]] as const) {
     let triangles = 0;
@@ -174,7 +175,7 @@ function asVersion2(file: Uint8Array): Uint8Array {
 }
 
 test("a version 2 pack is still read, and the clips hash the same with or without meshes", () => {
-  const file = buildCorePack();
+  const file = corePackBytes();
   const [now, old] = [parsePack(file), parsePack(asVersion2(file))];
   const body = old.header.meshes[old.meshIndex.get("core:human_f/torso")!]!;
   expect(body.lods.map((l) => [l.indexBytes, l.error])).toEqual([[2, NaN], [2, NaN], [2, NaN]]);
@@ -191,7 +192,7 @@ test("a version 2 pack is still read, and the clips hash the same with or withou
 });
 
 test("the manifest lists every level with the bytes that hold it, and reads back as it was written", () => {
-  const file = buildCorePack();
+  const file = corePackBytes();
   const pack = parsePack(file);
   const manifest = manifestOf("core.snpk", file);
   const text = JSON.stringify(manifest);

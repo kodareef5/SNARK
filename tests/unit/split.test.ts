@@ -2,14 +2,14 @@
 import { expect, test } from "bun:test";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { lodIndices, lodVertices, parsePack } from "../../shared/pack/pack.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 import { BOOT_LEVEL_BYTES, splitPack } from "../../tools/pack/split.ts";
 import { LEVEL_COLOURS, stressMeshes, stressSet } from "../../tools/pack/stress.ts";
 
 test("a split pack holds every level once, byte for byte, with the coarsest of each mesh in the boot file", () => {
-  const whole = buildCorePack();
+  const whole = corePackBytes();
   const pack = parsePack(whole);
   const { files, manifest } = splitPack(whole, "core");
   expect(files.map((f) => [f.name, f.role])).toEqual([["core.boot.snpk", "boot"], ["core.mesh.snpk", "mesh"]]);

@@ -1,8 +1,8 @@
 // `bun run check`, the one command every change must pass. It enforces the rules that keep this project fast to change.
 // Raising a budget or widening an allow-list is a decision. Record it in planning/decisions.md in the same change.
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { cpus, loadavg } from "node:os";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { dynamicLoads, stripComments } from "./policy.ts";
 
@@ -163,8 +163,8 @@ function checkPolicy(): void {
   console.log(`  assets size  ${assetLines}/${ASSETS_MAX_LINES} lines`);
 }
 
-async function run(cmd: string[], quiet: boolean): Promise<{ ok: boolean; out: string }> {
-  const proc = Bun.spawn(cmd, { cwd: ROOT, stdout: quiet ? "pipe" : "inherit", stderr: quiet ? "pipe" : "inherit" });
+async function run(cmd: string[], quiet: boolean, env: Record<string, string | undefined> = process.env): Promise<{ ok: boolean; out: string }> {
+  const proc = Bun.spawn(cmd, { cwd: ROOT, env, stdout: quiet ? "pipe" : "inherit", stderr: quiet ? "pipe" : "inherit" });
   const out = quiet ? (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text()) : "";
   return { ok: (await proc.exited) === 0, out };
 }
@@ -178,6 +178,20 @@ async function checkTypes(): Promise<void> {
   });
 }
 
+/** The core pack, built here once for the test files instead of once in each of a hundred (tests/fixtures/pack.ts). */
+async function sharedPack(dir: string): Promise<Record<string, string>> {
+  try {
+    const { CORE_PACK_FILE } = await import("../tests/fixtures/pack.ts");
+    const { buildCorePack } = await import("./pack/build.ts");
+    const file = join(dir, "core.snpk");
+    writeFileSync(file, buildCorePack());
+    return { [CORE_PACK_FILE]: file };
+  } catch {
+    // Then each test file builds its own, and says what is wrong.
+    return {};
+  }
+}
+
 async function checkTests(): Promise<void> {
   const hasTests = walk(join(ROOT, "tests")).some((f) => f.endsWith(".test.ts"));
   if (!hasTests) return;
@@ -185,7 +199,13 @@ async function checkTests(): Promise<void> {
   // A busy machine can make a one-second test take five, so a test is called hung at 20 s, and later in step with the load
   // when more work waits than there are cores, up to two minutes.
   const hung = Math.round(20000 * Math.min(6, Math.max(1, loadavg()[0]! / cpus().length)));
-  const r = await run(["bun", "test", "--parallel", "--timeout", String(hung)], true);
+  const dir = mkdtempSync(join(tmpdir(), "snark-check-"));
+  let r: { ok: boolean; out: string };
+  try {
+    r = await run(["bun", "test", "--parallel", "--timeout", String(hung)], true, { ...process.env, ...(await sharedPack(dir)) });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
   if (!r.ok) fail(`tests failed:\n${r.out.trim()}`);
   else console.log("  " + (r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim()).join(", ")));
 }

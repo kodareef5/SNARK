@@ -1,5 +1,6 @@
 // The core asset pack, built once per test process, and a pack like it whose art does not change.
 
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
@@ -12,12 +13,28 @@ import { mannequinMeshes } from "../../tools/pack/mannequin.ts";
 import { weaponMeshes } from "../../tools/pack/weapons.ts";
 import { buildPack } from "../../tools/pack/write.ts";
 
+/** Where `bun run check` wrote buildCorePack() once for every test file. Unset, each process builds its own. */
+export const CORE_PACK_FILE = "SNARK_CORE_PACK";
+
+let bytes: Uint8Array | null = null;
 let pack: Pack | null = null;
 let anim: HumanAnim | null = null;
 let frozen: Pack | null = null;
 
+function built(): Uint8Array {
+  if (bytes) return bytes;
+  const file = process.env[CORE_PACK_FILE];
+  const read = file ? readFileSync(file) : null;
+  return (bytes = read ? new Uint8Array(read.buffer, read.byteOffset, read.byteLength) : buildCorePack());
+}
+
+/** buildCorePack(), a copy of its own for each caller. */
+export function corePackBytes(): Uint8Array {
+  return built().slice();
+}
+
 export function corePack(): Pack {
-  return (pack ??= parsePack(buildCorePack()));
+  return (pack ??= parsePack(built()));
 }
 
 export function coreAnim(): HumanAnim {

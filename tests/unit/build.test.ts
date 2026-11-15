@@ -3,10 +3,10 @@
 import { expect, test } from "bun:test";
 import { brotliDecompressSync } from "node:zlib";
 import { brotli } from "../../tools/build-client.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 
 test("the quick Brotli copy reads back the same as the best one, and is a little larger for far less work", () => {
-  const bytes = buildCorePack().subarray(0, 32 * 1024);
+  const bytes = corePackBytes().subarray(0, 32 * 1024);
   const best = brotli(bytes, false);
   const quick = brotli(bytes, true);
   expect(Buffer.compare(brotliDecompressSync(best), bytes)).toBe(0);

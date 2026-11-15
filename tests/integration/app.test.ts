@@ -8,11 +8,11 @@ import { KEY_SETTINGS_MIC } from "../../client/core/ui/settings.ts";
 import { BTN_MELEE } from "../../shared/sim/character.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 
-const pack = parsePack(buildCorePack());
+const pack = parsePack(corePackBytes());
 
 /** A whole client on the harness's virtual clock. */
 function client(h: Harness, name: string): App {
