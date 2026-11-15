@@ -23,7 +23,6 @@ import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
 import { VoiceIo } from "../voice/voice.ts";
 import { UiView } from "./ui.ts";
-import { VehicleAudio } from "./vehicle-audio.ts";
 import { VehicleSelfcheck } from "../core/vehicle-selfcheck.ts";
 import { probeProgress } from "../core/diagnostics.ts";
 
@@ -93,12 +92,9 @@ async function boot(): Promise<void> {
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
   const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`);
-  const vehicleAudio = new VehicleAudio();
   app.voice = voice;
-  addEventListener("pointerdown", () => { voice.unlock(); vehicleAudio.unlock(); });
-  addEventListener("keydown", () => { voice.unlock(); vehicleAudio.unlock(); });
-  document.addEventListener("visibilitychange", () => { if (document.hidden) vehicleAudio.mute(); });
-  addEventListener("pagehide", () => vehicleAudio.dispose());
+  addEventListener("pointerdown", () => voice.unlock());
+  addEventListener("keydown", () => voice.unlock());
   /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */
   const voiceCheck = selfcheck && params.get("voice") === "1";
   /** With ?voice=listen it only listens to another page, and reports whose voice it played. */
@@ -132,7 +128,6 @@ async function boot(): Promise<void> {
     if (voiceCheck && voice.report.status === "listening") voice.talk(true);
     if (app.scene) app.scene.assets.format = renderer.format;
     const packet = app.frame(now, cssWidth, cssHeight);
-    vehicleAudio.update(app.vehicleTelemetry, !document.hidden && session.state === "active");
     drivingCheck?.observe(app);
     view.apply(app.ui.frame, cssHeight);
     if (!packet) return;
@@ -169,7 +164,7 @@ async function boot(): Promise<void> {
     if (progress.advance(performance.now() - t0, port.cache.used, selfcheck, voiced, voice.report.played, !drive || drive.finished)) {
       const report = selfcheckReport(app, pack, manifest, hf, packet, {
         has: name => params.has(name), voiced, voiceListen, voice: voice.report,
-        driveCheck, drive, audio: vehicleAudio.report, restored, misplaced: view.misplaced(app.ui.frame),
+        driveCheck, drive, restored, misplaced: view.misplaced(app.ui.frame),
         cache: port.cache, userAgent: navigator.userAgent, width, height, times: progress.times, renderer,
       });
       document.title = report.ok ? "SNARK self-check passed" : "SNARK self-check FAILED";

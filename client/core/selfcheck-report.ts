@@ -34,7 +34,6 @@ export interface SelfcheckObservations {
   voice: { played: number; odd: number; errors: number; heard: readonly string[] };
   driveCheck: boolean;
   drive: VehicleSelfcheck["data"] | undefined;
-  audio: object;
   restored: number;
   misplaced: number;
   cache: AssetPort["cache"];
@@ -67,7 +66,7 @@ export function selfcheckReport(app: App, pack: Pack, manifest: Manifest, hf: He
     const vehicles = drawn.filter(id => id.startsWith("core:compact"));
     const humans = drawn.filter(id => id.startsWith("core:human"));
     const seats = Array.from(app.remote.seatSlot.subarray(0, app.remote.count)).filter(slot => slot > 0);
-    const driving = drive ? { ...drive, ownKind: reg.ids[session.own.kind], audio: { ...o.audio }, ok: !drive.timedOut && drive.maxSpeed > 3 && drive.hud && session.driving >= 0 } : null;
+    const driving = drive ? { ...drive, ownKind: reg.ids[session.own.kind], ok: !drive.timedOut && drive.maxSpeed > 3 && drive.hud && session.driving >= 0 } : null;
     return { vehicles, humans, seats, ownKind: reg.ids[session.own.kind], ...(driving ? { driving } : {}), ok: vehicles.length > 0 && humans.length > 0 && seats.length > 0 && renderer.errors === 0 && (!driving || driving.ok) };
   })() : null;
   return {
