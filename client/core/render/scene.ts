@@ -76,7 +76,8 @@ export const NODE_BUFFERS = 1 << 20;
  * finely as those at his feet. Neighbouring cells of one level are one draw, so a chunk off in the distance is still one
  * draw for each mesh. Chosen on a wood with every slot filled (tools/bench/nodes.ts): by the chunk, 4.2 M triangles and
  * 96 draws a frame; by these cells, 3.5 M and 141 (3.4 M and 203 were cells never joined at the cost of a draw); by cells
- * of 8 m, 3.4 M and 154.
+ * of 8 m, 3.4 M and 154. Measured to the nodes' trunks and not their crowns, these cells give 3.3 M and 135, and 8 m ones
+ * 3.3 M and 147.
  */
 export const NODE_CELLS = 4;
 
@@ -979,7 +980,7 @@ export class Scene {
   /**
    * Draws a chunk of nodes `dist` metres off. A mesh's level is chosen as if every node of it were its kind's largest. Where
    * the chunk's nearest and farthest points ask for the same level, each mesh is one draw; otherwise each cell takes the level
-   * its own nearest point asks for. Every draw of the chunk is in the depth ranges `passes`.
+   * the nearest of its nodes asks for, measured to its trunk. Every draw of the chunk is in the depth ranges `passes`.
    */
   private nodeRanges(cam: Camera, b: ChunkBatch, id: number, dist: number, x0: number, z0: number, passes: number): void {
     const cells = b.cells;
@@ -1127,13 +1128,15 @@ export class Scene {
       if (hi > b.maxY) b.maxY = hi;
       if (z + r > b.maxZ) b.maxZ = z + r;
       if (!box) continue;
+      // A cell's level is chosen by how far its nodes stand, at their trunks. Measured to their crowns, a live oak's 15 m
+      // of limbs drew every oak of the cell as finely as one by the camera.
       const at = (this.cursor[mesh]! * cells + cell) * 6;
-      box[at] = Math.min(box[at]!, x - r);
+      box[at] = Math.min(box[at]!, x);
       box[at + 1] = Math.min(box[at + 1]!, lo);
-      box[at + 2] = Math.min(box[at + 2]!, z - r);
-      box[at + 3] = Math.max(box[at + 3]!, x + r);
+      box[at + 2] = Math.min(box[at + 2]!, z);
+      box[at + 3] = Math.max(box[at + 3]!, x);
       box[at + 4] = Math.max(box[at + 4]!, hi);
-      box[at + 5] = Math.max(box[at + 5]!, z + r);
+      box[at + 5] = Math.max(box[at + 5]!, z);
     }
     this.batches.set(id, b);
     return b;
