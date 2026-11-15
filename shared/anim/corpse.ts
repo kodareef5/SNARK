@@ -2,6 +2,10 @@
 // harvest it, and on each client, which draws it, whether that client saw it fall or came later. It goes limp as its death
 // clip has it at the frame its asset gives, or as it lay if it died knocked out, at the place and facing its entity is sent
 // with, and its ragdoll is stepped a whole tick at a time. Only the world it lies on can make two of them differ.
+//
+// One that died off the ground, in the air or in the water, first falls or sinks to where it comes to rest. Only the
+// server works that out (server/corpses.ts); its entity is sent where it is with the FALLING pose word, and the ragdoll is
+// laid where it landed, which every client is then sent.
 
 import { TICK_RATE, WORLD_MIN_Y } from "../coords.ts";
 import { TAU } from "../math/scalar.ts";
@@ -22,6 +26,19 @@ const YAW_STEPS = 1024;
 
 const st = new AnimState();
 const before = new Map<number, Solved>();
+
+/** The pose word of a body's entity while it falls or sinks: off the ground and nothing else. One that lies has 0. */
+export const FALLING = (() => {
+  const s = new AnimState();
+  s.grounded = false;
+  return s.pack();
+})();
+
+/** Whether a body's pose word says it still falls. */
+export function bodyFalls(anim: number): boolean {
+  st.unpack(anim, 0);
+  return !st.grounded;
+}
 
 export function corpseSize(span: number): number {
   return span === 0 ? 1 : span / SIZE_UNITS;

@@ -6,7 +6,7 @@ import { AnimState, bodySeed } from "../shared/anim/pose.ts";
 import { boneToModel, solve } from "../shared/anim/skeleton.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { TEXT_NOTICE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, SESSION_ALIVE } from "../shared/net/protocol.ts";
-import { Body, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../shared/sim/character.ts";
+import { Body, MODE_FLYER, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../shared/sim/character.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -111,6 +111,9 @@ export class Riding {
     game.release(c);
     game.bus.after(RIDE_DISMOUNT, { pid: c.pid, mount: ride.pid });
     const rec = this.removeRider(e, ride);
+    // A flyer let go of in the air stops flying and falls, hurt once as any fall is (ASE 203.1).
+    const ents = this.ctx.world.ents;
+    if (rec?.pid === ride.pid && ents.mode[e] === MODE_FLYER) ents.mode[e] = MODE_WALK;
     if (c.ent >= 0) {
       // The mount has moved this tick since its rider was pinned.
       if (rec?.pid === ride.pid) this.note(ride, e);

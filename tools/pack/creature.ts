@@ -3,8 +3,8 @@
 
 import type { Clip } from "../../shared/anim/clip.ts";
 import type { PackRig } from "../../shared/pack/pack.ts";
-import { REGION_BASE, REGION_COUNT } from "../../shared/pack/palette.ts";
-import { ZONES, type CreatureAsset } from "../art/spec.ts";
+import { REGION_BASE, REGION_COUNT, defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
+import { ZONES, type CreatureAsset, type MaterialSpec } from "../art/spec.ts";
 import { convertClips, type ClipSpec } from "./anim.ts";
 import { nodeParents, readAccessor, restMatrices, type Gltf } from "./gltf.ts";
 import { fourHeaviest } from "./surface.ts";
@@ -14,6 +14,26 @@ import type { SourceLod, SourceMesh } from "./write.ts";
 export const MOST_BONES = 127;
 export const MOST_WEIGHTS = 4;
 
+/** The mesh a saddle item is drawn as on its creature (CreatureAsset.worn), and the creature's whole model as it is saddled. */
+export const wornId = (item: string): string => `${item}/worn`;
+export const saddledId = (creature: string): string => `${creature}/saddled`;
+
+/**
+ * The meshes a creature asset makes besides its bare body, each with its levels' plan: a worn saddle's and the saddled
+ * model's own, in that order, by mesh id. Their materials are named as the body's are, all in one list for the asset.
+ */
+export function extraMeshes(id: string, spec: CreatureAsset): { id: string; materials: Readonly<Record<string, MaterialSpec>>; budgets: CreatureAsset["budgets"]; flat?: number }[] {
+  const worn = (spec.worn ?? []).map((w) => ({ id: wornId(w.item), materials: w.materials ?? {}, budgets: w.budgets, flat: w.flat }));
+  const s = spec.saddled;
+  // The saddled model is the creature again, so it takes the body's materials where it gives none of its own.
+  return s ? [...worn, { id: saddledId(id), materials: { ...spec.materials, ...s.materials }, budgets: s.budgets, flat: s.flat ?? spec.flat }] : worn;
+}
+
+/** The levels' plan of a mesh a creature asset makes: the body's, or a worn saddle's or the saddled model's own. */
+export function planOf(id: string, spec: CreatureAsset, mesh: string): { materials: Readonly<Record<string, MaterialSpec>>; budgets: CreatureAsset["budgets"]; flat?: number } {
+  return extraMeshes(id, spec).find((m) => m.id === mesh) ?? { materials: spec.materials ?? {}, budgets: spec.budgets, flat: spec.flat };
+}
+
 export interface ConvertedCreature {
   rig: PackRig;
   /**
@@ -22,6 +42,11 @@ export interface ConvertedCreature {
    * section is the place of its material among the asset's `materials`.
    */
   mesh: SourceMesh;
+  /**
+   * The saddles worn on it and the saddled model, as `extraMeshes` lists them, each read as the body is: on the same
+   * skeleton and rig, made on the same bones. One whose materials have pictures is its finest level alone.
+   */
+  extra: SourceMesh[];
   clips: Clip[];
   /** Counted over every level: vertices, those no joint weighs on, those more than MOST_WEIGHTS do, and those more than one does. */
   weights: { vertices: number; none: number; over: number; shared: number };
@@ -102,8 +127,14 @@ export function withMotion(rig: PackRig, spec: CreatureAsset, clips: readonly Cl
   return out;
 }
 
-/** `id` is the id of the rig, and of the mesh. */
-export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): ConvertedCreature {
+type Level = { positions: number[]; colors: number[]; bones: number[]; indices: number[]; uvs: number[]; normals: number[]; tangents: number[]; joints: number[]; weights: number[]; sections: number[]; loose: number[] };
+
+/**
+ * `id` is the id of the rig, and of the mesh. Mesh objects that the asset's `worn` and `saddled` name are read into
+ * meshes of their own and are not the bare body's. `palette` gives the flat colour of a worn saddle's or the saddled
+ * model's material that is not one of the regions and has no pictures: the nearest to its base colour.
+ */
+export function convertCreature(g: Gltf, id: string, spec: CreatureAsset, palette: Uint8Array = defaultPalette()): ConvertedCreature {
   const skeleton = spec.skeleton;
   const nodes = g.json.nodes ?? [];
   const parentNode = nodeParents(g);
@@ -160,19 +191,38 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
 
   // Every primitive of every skinned mesh of a level goes into one mesh. A vertex follows the one joint that weighs most on it.
   const materials = spec.regions.map((r) => r.material);
-  // With pictures the finest level alone is read, with its surface: a primitive is a section, drawn with its material.
-  const pictured = Object.keys(spec.materials ?? {});
-  const levels: { positions: number[]; colors: number[]; bones: number[]; indices: number[]; uvs: number[]; normals: number[]; tangents: number[]; joints: number[]; weights: number[]; sections: number[]; loose: number[] }[] = [];
-  const weights = { vertices: 0, none: 0, over: 0, shared: 0 };
+  // Each mesh object makes the bare body, a saddle worn on it, or the creature as it is saddled: parts[0] and on.
+  const extra = extraMeshes(id, spec);
+  const parts = [{ id, materials: spec.materials ?? {} }, ...extra].map((m) => ({
+    ...m,
+    // With pictures the finest level alone is read, with its surface: a primitive is a section, drawn with its material.
+    pictured: Object.keys(m.materials),
+    levels: [] as Level[],
+    weights: { vertices: 0, none: 0, over: 0, shared: 0 },
+  }));
+  const objects = [...(spec.worn ?? []).map((w) => [w.object]), spec.saddled?.objects ?? []];
+  const named = objects.flat();
+  for (const [k, w] of (spec.worn ?? []).entries()) if ((spec.worn ?? []).findIndex((o) => o.item === w.item) !== k) faults.push(`worn: the saddle "${w.item}" is named twice`);
+  for (const [k, o] of named.entries()) if (named.indexOf(o) !== k) faults.push(`the mesh object "${o}" is named twice among the worn saddles and the saddled model`);
+  /** The part a mesh object makes, by its name less its level. */
+  const partOf = (name: string): number => 1 + objects.findIndex((list) => list.includes(name.replace(/_LOD\d$/i, "")));
+  /** A worn saddle's or the saddled model's material that is not a region is its own colour, the palette's nearest. */
+  const ownColour = (material: number | undefined): number => {
+    const base = g.json.materials?.[material ?? -1]?.pbrMetallicRoughness?.baseColorFactor ?? [0.8, 0.8, 0.8, 1];
+    const [r, gr, b] = base.slice(0, 3).map((c) => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055));
+    return nearestColour(palette, r!, gr!, b!);
+  };
   let passed = 0;
   for (const node of nodes) {
     if (node.mesh === undefined || node.skin === undefined) continue;
     const at = Number(/_LOD(\d)$/i.exec(node.name ?? "")?.[1] ?? 0);
+    const part = parts[partOf(node.name ?? "")]!;
+    const { pictured, weights } = part;
     if (pictured.length > 0 && at > 0) {
       passed++;
       continue;
     }
-    const level = (levels[at] ??= { positions: [], colors: [], bones: [], indices: [], uvs: [], normals: [], tangents: [], joints: [], weights: [], sections: [], loose: [] });
+    const level = (part.levels[at] ??= { positions: [], colors: [], bones: [], indices: [], uvs: [], normals: [], tangents: [], joints: [], weights: [], sections: [], loose: [] });
     const { positions, colors, bones, indices } = level;
     for (const prim of g.json.meshes![node.mesh]!.primitives) {
       const a = prim.attributes;
@@ -181,16 +231,20 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
       const weight = readAccessor(g, a.WEIGHTS_0!);
       const more = a.WEIGHTS_1 === undefined ? null : readAccessor(g, a.WEIGHTS_1);
       const material = g.json.materials?.[prim.material ?? -1]?.name ?? "";
-      let region = materials.indexOf(material);
+      const region = materials.indexOf(material);
       const section = pictured.indexOf(material);
       // Cards drawn with a cutout material: plumage, hair, loose tips.
-      const loose = spec.materials?.[material]?.cutout ? 1 : 0;
+      const loose = part.materials[material]?.cutout ? 1 : 0;
+      // A colour region, or for a saddle a colour of its own.
+      let flat = 0;
       if (pictured.length > 0) {
-        if (section < 0) faults.push(`material "${material}" has no pictures in asset.ts`);
+        if (section < 0) faults.push(`${part === parts[0] ? "" : `${part.id}: `}material "${material}" has no pictures in asset.ts`);
         if (a.TEXCOORD_0 === undefined || a.NORMAL === undefined) throw new Error(`${g.path}: material "${material}" is on faces with no texture coordinates or no normals`);
-      } else if (region < 0 || region >= REGION_COUNT) {
+      } else if (region >= 0 && region < REGION_COUNT) flat = REGION_BASE + region;
+      else if (part !== parts[0]) flat = ownColour(prim.material);
+      else {
         warnings.push(`material "${material}" is not one of the regions: read as the first`);
-        region = 0;
+        flat = REGION_BASE;
       }
       const uv = pictured.length > 0 ? readAccessor(g, a.TEXCOORD_0!) : null;
       const normal = uv && readAccessor(g, a.NORMAL!);
@@ -215,7 +269,7 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
         if (count > MOST_WEIGHTS) weights.over++;
         if (!uv || !normal) {
           bones.push(boneOfNode.get(skin.joints[joints.data[v * 4 + best]!]!) ?? 0);
-          colors.push(REGION_BASE + region);
+          colors.push(flat);
           continue;
         }
         // Joints that are left out weigh on the bone above them, so two of a vertex's joints may be one bone.
@@ -235,14 +289,23 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
     }
   }
   if (passed > 0) warnings.push(`${passed} mesh objects are levels of the model's own, which a creature with pictures does not keep: its levels are made from its finest`);
-  const fine = levels[0];
+  const fine = parts[0]!.levels[0];
   if (!fine || fine.positions.length === 0) throw new Error(`${g.path}: no skinned mesh`);
-  for (let l = 0; l < levels.length; l++) {
-    if (!levels[l]) throw new Error(`${g.path}: levels of detail must be consecutive, and there is no level ${l}`);
-    if (levels[l]!.positions.length / 3 > 65535) throw new Error(`${g.path}: too many vertices for one mesh`);
+  for (const [k, part] of parts.entries()) {
+    const { levels, weights } = part;
+    const of = k === 0 ? "" : `${part.id}: `;
+    if (k > 0 && levels.length === 0) {
+      faults.push(`${of}the model has no skinned mesh object named ${objects[k - 1]!.map((o) => `"${o}"`).join(" or ")}`);
+      continue;
+    }
+    for (let l = 0; l < levels.length; l++) {
+      if (!levels[l]) throw new Error(`${g.path}: ${of}levels of detail must be consecutive, and there is no level ${l}`);
+      if (levels[l]!.positions.length / 3 > 65535) throw new Error(`${g.path}: ${of}too many vertices for one mesh`);
+    }
+    if (weights.none > 0) faults.push(`${of}${weights.none} vertices that no joint weighs on`);
+    if (weights.over > 0) faults.push(`${of}${weights.over} vertices with more than ${MOST_WEIGHTS} joints weighing on them`);
   }
-  if (weights.none > 0) faults.push(`${weights.none} vertices that no joint weighs on`);
-  if (weights.over > 0) faults.push(`${weights.over} vertices with more than ${MOST_WEIGHTS} joints weighing on them`);
+  const weights = parts[0]!.weights;
   const { positions, bones } = fine;
 
   const vertsOf = (covers: readonly string[]): number[] => {
@@ -309,13 +372,16 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
   warnings.push(...made.warnings);
   for (const c of spec.clips) if (!made.clips.some((m) => m.id === `${id}/${c.name}`)) faults.push(`clip "${c.name}" was not made`);
   const rig = withMotion({ id, skeleton: skeleton.id, rest: rest.map((v) => +v.toFixed(5)), names, parent, caps, sockets }, spec, made.clips, faults);
-  const lods = levels.map((l): SourceLod => {
-    const lod: SourceLod = { positions: Float32Array.from(l.positions), colors: Uint8Array.from(l.colors), indices: Uint32Array.from(l.indices), bones: Uint8Array.from(l.bones) };
-    if (pictured.length === 0) return lod;
-    Object.assign(lod, { uvs: Float32Array.from(l.uvs), normals: Float32Array.from(l.normals), joints: Uint8Array.from(l.joints), weights: Float32Array.from(l.weights), sections: Uint8Array.from(l.sections) });
-    // Tangents are kept only where every part of the model has them.
-    if (l.tangents.length === l.colors.length * 4) lod.tangents = Float32Array.from(l.tangents);
-    return lod;
+  const meshes = parts.filter((p) => p.levels.length > 0).map((p): SourceMesh => {
+    const lods = p.levels.map((l): SourceLod => {
+      const lod: SourceLod = { positions: Float32Array.from(l.positions), colors: Uint8Array.from(l.colors), indices: Uint32Array.from(l.indices), bones: Uint8Array.from(l.bones) };
+      if (p.pictured.length === 0) return lod;
+      Object.assign(lod, { uvs: Float32Array.from(l.uvs), normals: Float32Array.from(l.normals), joints: Uint8Array.from(l.joints), weights: Float32Array.from(l.weights), sections: Uint8Array.from(l.sections) });
+      // Tangents are kept only where every part of the model has them.
+      if (l.tangents.length === l.colors.length * 4) lod.tangents = Float32Array.from(l.tangents);
+      return lod;
+    });
+    return { id: p.id, skeleton: skeleton.id, rig: id, lods };
   });
-  return { rig, mesh: { id, skeleton: skeleton.id, rig: id, lods }, clips: made.clips, weights, warnings, faults };
+  return { rig, mesh: meshes[0]!, extra: meshes.slice(1), clips: made.clips, weights, warnings, faults };
 }

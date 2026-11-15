@@ -29,7 +29,9 @@ export function materialsOf(asset: Asset): Material[] {
   if (spec.kind === "sky") return [{ name: "sky", id: `${asset.id}/sky`, spec: { base: spec.moon, regions: { mask: spec.low, mask2: spec.high }, data: true }, dir: asset.dir }];
   if (spec.kind === "water") return [{ name: "waves", id: `${asset.id}/waves`, spec: { regions: { mask: spec.long, mask2: spec.short }, data: true }, dir: asset.dir }];
   if (spec.kind !== "creature" && spec.kind !== "pieces") return [];
-  return Object.entries(spec.materials ?? {}).map(([name, m]) => ({ name, id: m.id ?? `${asset.id}/${name}`, spec: m, dir: m.dir ?? asset.dir }));
+  // A creature's worn saddles and its saddled model name their materials as its body does, in the one list.
+  const named: Readonly<Record<string, MaterialSpec>> = spec.kind === "creature" ? Object.assign({}, spec.materials, ...(spec.worn ?? []).map((w) => w.materials ?? {}), spec.saddled?.materials) : (spec.materials ?? {});
+  return Object.entries(named).map(([name, m]) => ({ name, id: m.id ?? `${asset.id}/${name}`, spec: m, dir: m.dir ?? asset.dir }));
 }
 
 /** The picture files of a material, by what each is. A packed map of layers and masks made by hand are several. */
