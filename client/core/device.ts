@@ -52,7 +52,7 @@ export interface Timing {
   /** A phase or rung is measured this long once what it shows has settled. */
   measureMs: number;
   rungMs: number;
-  /** How long a step may take to settle, and loading to reach full detail, before the run goes on without. */
+  /** How long a step may take to settle, or a held amount of texture memory to be sampled, and loading to reach full detail, before the run goes on without. */
   settleMs: number;
   loadMs: number;
   /** How long the soak turns, and how long a held amount of texture memory is watched. */

@@ -48,13 +48,18 @@ function browser(opts: { saved?: string; clock?: () => number; expected?: Record
   return { b, posts, page, asked };
 }
 
-/** A renderer of a phone that takes textures 2,048 wide at most and `room` megabytes of them. It draws nothing, and its canvas is what a test says. */
+/**
+ * A renderer of a phone that takes textures 2,048 wide at most and `room` megabytes of them. It draws nothing, and its
+ * canvas is what a test says. `spent` is the time its draws would take a GPU, 0.1 ms each, for a page's clock to add.
+ */
 function renderer(room = 300) {
   const heard = new Map<string, () => void>();
-  let [tiles, error] = [0, 0];
+  let [tiles, error, spent] = [0, 0, 0];
   const gl = fakeGl({
     params: { 0x0d33: 2048 },
     with: {
+      drawArrays: () => void (spent += 0.1),
+      drawElements: () => void (spent += 0.1),
       getSupportedExtensions: () => ["WEBGL_compressed_texture_astc"],
       deleteTexture: () => void tiles--,
       texStorage2D: () => void (++tiles > room && (error = 0x0505)),
@@ -69,7 +74,7 @@ function renderer(room = 300) {
     drawCalls: 50,
     readPixel: () => [0, 0, 0],
   };
-  return { r, gl, fire: (type: string) => heard.get(type)!(), tiles: () => tiles };
+  return { r, gl, fire: (type: string) => heard.get(type)!(), tiles: () => tiles, spent: () => spent };
 }
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -112,7 +117,8 @@ function client() {
 
 test("a page shows which device it is on and the tests, starts nothing until one is tapped, then runs the quick look and posts after every step", async () => {
   const { h, pack, app, expected } = client();
-  const { b, posts, page } = browser({ clock: () => h.now, expected });
+  const card = renderer();
+  const { b, posts, page } = browser({ clock: () => h.now + card.spent(), expected });
   const probe = new DeviceProbe(TOKEN, b, TIMING);
   const going = probe.before();
   await settle();
@@ -122,7 +128,7 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect(posts.length).toBe(0);
   probe.start("quick");
   expect(await going).toBe(true);
-  const { r: gpu } = renderer();
+  const gpu = card.r;
   probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
   const yaw = new Map<string, number>();
   const split = new Map<string, number>();
@@ -198,7 +204,7 @@ test("the soak counts a long frame while the page is shown as a stall, and leave
   const { h, pack, app, expected } = client();
   let offset = 0;
   const { b } = browser({ clock: () => h.now + offset, expected, mode: "soak" });
-  const probe = new DeviceProbe(TOKEN, b, { ...TIMING, soakMs: 8000 });
+  const probe = new DeviceProbe(TOKEN, b, { ...TIMING, soakMs: 5000 });
   await probe.before();
   const { r: gpu } = renderer();
   probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
@@ -206,12 +212,12 @@ test("the soak counts a long frame while the page is shown as a stall, and leave
   const each = (): void => {
     if (probe.report.stage !== "soak") return;
     // Hidden for 5 s, then shown; later a stall of 2.5 s with the page shown all the while.
-    if (++frames === 120) {
+    if (++frames === 60) {
       probe.visible(false);
       offset += 5000;
       probe.visible(true);
     }
-    if (frames === 240) offset += 2500;
+    if (frames === 120) offset += 2500;
   };
   await run(probe, h, app, gpu, 60000, { each, clock: (now) => now + offset });
   const s = probe.report.soak!;
@@ -220,9 +226,9 @@ test("the soak counts a long frame while the page is shown as a stall, and leave
   expect(m.frameMs.worst).toBeGreaterThanOrEqual(2500);
   expect(m.frameMs.worst).toBeLessThan(3000);
   expect(m.long).toBe(1);
-  // The stall took its share of the soak's 8 s, so fewer frames were drawn in it; the hidden 5 s took none.
-  expect(m.frames).toBeGreaterThan((8000 - 2600) / 16.7 - 2);
-  expect(m.frames).toBeLessThan((8000 - 2400) / 16.7 + 2);
+  // The stall took its share of the soak's 5 s, so fewer frames were drawn in it; the hidden 5 s took none.
+  expect(m.frames).toBeGreaterThan((5000 - 2600) / 16.7 - 2);
+  expect(m.frames).toBeLessThan((5000 - 2400) / 16.7 + 2);
   expect(deviceTable(probe.report).some((line) => /^1 +\d+ +16\.7 +16\.7 +16\.7 +25\d\d\.\d +[\d.]+ +[\d.]+ +\d+ +1 +0$/.test(line))).toBe(true);
 });
 
@@ -230,7 +236,7 @@ test("a rung that did not draw all it was given, or never settled, is invalid: n
   const { h, pack, app, expected } = client();
   // A display the harness keeps up with, so every rung would hold on its frames alone.
   const { b } = browser({ clock: () => h.now, expected, mode: "ladder" });
-  const probe = new DeviceProbe(TOKEN, b, TIMING);
+  const probe = new DeviceProbe(TOKEN, b, { ...TIMING, settleMs: 300 });
   await probe.before();
   const card = renderer(300);
   probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, card.r);

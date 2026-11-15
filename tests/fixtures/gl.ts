@@ -74,7 +74,8 @@ export function fakeGl(o: FakeOptions = {}): FakeGl & { units: Map<number, Map<n
     clearDepth: set(GL.DEPTH_CLEAR_VALUE),
     blendFuncSeparate: (a: number, b: number, c: number, d: number) => [GL.BLEND_SRC_RGB, GL.BLEND_DST_RGB, GL.BLEND_SRC_ALPHA, GL.BLEND_DST_ALPHA].forEach((n, i) => state.set(n, [a, b, c, d][i])),
     blendEquationSeparate: (a: number, b: number) => void (state.set(GL.BLEND_EQUATION_RGB, a), state.set(GL.BLEND_EQUATION_ALPHA, b)),
-    readPixels: (_x: number, _y: number, w: number, h: number, _f: number, _t: number, out: Uint8Array) => (o.read ? o.read(out, w, h) : out.forEach((_, i) => (out[i] = i % 4 === 3 ? 255 : 128))),
+    // 128, 128, 128, 255 as one little-endian word a pixel.
+    readPixels: (_x: number, _y: number, w: number, h: number, _f: number, _t: number, out: Uint8Array) => (o.read ? o.read(out, w, h) : new Uint32Array(out.buffer, out.byteOffset, out.length >> 2).fill(0xff808080)),
     ...o.with,
   };
   const extra = { units, boundOn, state, lose: () => void (lost = true) };
