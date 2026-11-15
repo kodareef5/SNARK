@@ -54,6 +54,8 @@ export interface HotbarCell {
   /** 0xRRGGBB, or -1 for an empty slot. */
   tint: number;
   number: string;
+  /** The item's content id, which its picture is found by (ui/hud.ts). */
+  id?: string;
 }
 
 export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg: Registry, palette: Uint8Array): void {
@@ -71,8 +73,10 @@ export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg
       cell.label = "";
       cell.tint = -1;
       cell.number = "";
+      cell.id = "";
       continue;
     }
+    cell.id = def.id;
     const name = def.label ?? def.id.slice(def.id.indexOf(":") + 1);
     const c = (def.color ?? 15) * 4;
     cell.label = name.slice(0, 4);
@@ -232,6 +236,24 @@ export class HudModel {
   /** A word across the top such as "SPECTATING" or "DEAD", or "". */
   banner = "";
   crosshair = true;
+  /**
+   * The held weapon's cone about the crosshair, as a share of half the view's height (the tangent of the cone over that of
+   * half the field of view), or -1 for nothing held that has one.
+   */
+  cone = -1;
+  /**
+   * Looking through a scope: its reticle in place of the crosshair (Scope Attachment: "based on the German Post design").
+   * The view of a holo-scope fitted: its crosshair shows even unaimed and even where the rules hide the crosshair
+   * (`holo`), coloured by what it is on (`crossTint`, 0xRRGGBB, or -1 for the crosshair's own colour), and aimed through it
+   * the view takes a green night tint of opacity `tint` (Holo-Scope Attachment).
+   */
+  scope = false;
+  holo = false;
+  crossTint = -1;
+  tint = 0;
+  /** Laser dots on the screen (client/core/render/laser.ts), as fractions of it. Only the first `dotCount` are current. */
+  readonly dots: { u: number; v: number; alpha: number }[] = [];
+  dotCount = 0;
   prompt = "";
   /** Empty for a body that has no hotbar. `held` is the slot in hand, or -1. */
   readonly hotbar: HotbarCell[] = [];

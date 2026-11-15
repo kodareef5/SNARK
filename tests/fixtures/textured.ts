@@ -6,7 +6,7 @@
 import type { Clip } from "../../shared/anim/clip.ts";
 import { MATERIAL_TWO_SIDED, type PackMaterial, type PackRig, type PackTexture } from "../../shared/pack/pack.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
-import type { TextureRole } from "../../shared/pack/texture.ts";
+import type { MapRole } from "../../shared/pack/texture.ts";
 import type { Picture } from "../../tools/pack/image.ts";
 import { spanOf } from "../../tools/pack/surface.ts";
 import { buildPack, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
@@ -91,7 +91,7 @@ const linear = (byte: number): number => (byte / 255 <= 0.04045 ? byte / 255 / 1
  * in the red of the second mask. The lowest eighth is dyed at half strength. The normals ripple, and the packed map
  * holds occlusion, roughness and metalness.
  */
-export function tubePictures(): Record<TextureRole, Picture> {
+export function tubePictures(): Record<MapRole, Picture> {
   const size = TUBE_PIXELS;
   const horn = size * (1 - HIDE);
   const made = (pixel: (x: number, y: number) => number[]): Picture => {

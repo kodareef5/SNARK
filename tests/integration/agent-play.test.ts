@@ -21,8 +21,8 @@ function follow(p: Play, seconds = 60): { walked: number; trail: [number, number
 
 test("walk_to rounds the 24 m wall by a way no more than 1.3 times the best, and one task runs at a time", async () => {
   const p = play();
-  expect((await p.ask("tools/list"))!.result.tools.map((t: { name: string }) => t.name)).toEqual(["observe", "walk_to", "harvest", "open", "move_item", "craft", "eat", "say", "status", "cancel", "console"]);
-  expect((await play({}, {}).ask("tools/list"))!.result.tools.length).toBe(10);
+  expect((await p.ask("tools/list"))!.result.tools.map((t: { name: string }) => t.name)).toEqual(["observe", "walk_to", "harvest", "open", "attack", "pick_up", "put_down", "order", "move_item", "craft", "eat", "say", "status", "cancel", "console"]);
+  expect((await play({}, {}).ask("tools/list"))!.result.tools.length).toBe(14);
   await p.typed("enablecheats");
   await p.typed("tp 288 258");
   // The wall runs from x 276 to 300 at z 262, so the best way is round either end: twice 12.6 m.
@@ -242,4 +242,72 @@ test("health falling and death each stop the task, and the survivor wakes again"
   expect(await p.call("status")).toMatchObject({ self: { alive: true, x: 256, z: 240, health: [100, 100] } });
   expect(c.deaths).toBe(1);
   expect(await p.call("walk_to", { x: 250, z: 246 })).toMatchObject({ state: "done" });
+});
+
+/** The rows observe lists under a name: id, name, x, z, metres away, direction, then what else is known. */
+const rows = async (p: Play, name: string): Promise<unknown[][]> => ((await p.call("observe", { radius: 16 }))[name] as unknown[][] | undefined) ?? [];
+
+test("attack knocks a dodo out with bare hands and then kills it, and the dead one is listed and harvested", async () => {
+  const p = play();
+  for (const line of ["enablecheats", "destroywilddinos", "spawn dodo 1"]) expect((await p.call("console", { line })).state).toBe("done");
+  p.run(300);
+  const dodo = (await rows(p, "creature")).find((c) => c[1] === "dodo")!;
+  const id = dodo[0] as string;
+  expect(dodo.slice(6)).toEqual(["level 1", "wild"]);
+  expect((await p.call("attack", { id: "n19.2" })).state).toBe("refused");
+  expect((await p.call("attack", { id, until: "soon" })).state).toBe("refused");
+  expect((await p.call("harvest", { id })).state).toBe("refused");
+
+  // Three punches put a level 1 dodo to sleep. It runs from the first, and is followed.
+  expect(await p.call("attack", { id, until: "out", wait_s: 50 })).toMatchObject({ state: "done", task: "attack", target: "knocked out" });
+  expect((await rows(p, "creature")).find((c) => c[0] === id)!.slice(6)).toEqual(["level 1", "wild", "knocked out"]);
+  expect(p.h.world.ents.flags[Number(id.slice(1))]! & 1).toBe(1);
+
+  // Until it is dead, which is the default: it leaves the creatures, and a dead dodo lies where it was.
+  expect(await p.call("attack", { id, wait_s: 50 })).toMatchObject({ state: "done", task: "attack", target: "gone" });
+  expect((await rows(p, "creature")).some((c) => c[1] === "dodo")).toBe(false);
+  const body = (await rows(p, "body"))[0]!;
+  expect(body[1]).toBe("dead dodo");
+  const had = p.rec.inv!.used();
+  const got = await p.call("harvest", { id: body[0], wait_s: 50 });
+  expect(got).toMatchObject({ state: "done", task: "attack", target: "gone" });
+  expect(Object.values(got.gathered as Record<string, number>).reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
+  expect(p.rec.inv!.used()).toBeGreaterThan(had);
+  expect(await rows(p, "body")).toEqual([]);
+});
+
+test("a dodo, wild or tame, is picked up and put down, a tame one is ordered, and an egg is taken up", async () => {
+  const p = play();
+  for (const line of ["enablecheats", "destroywilddinos", "spawn dodo 1"]) expect((await p.call("console", { line })).state).toBe("done");
+  p.run(300);
+  const id = (await rows(p, "creature"))[0]![0] as string;
+  const e = Number(id.slice(1));
+  const rec = p.h.host.records.byPid.get(p.h.world.ents.pid[e]!)!;
+  // A wild one is picked up and set down as a tame one is. Tamed, as forcetame tames the one looked at, it is hers to order.
+  expect(await p.call("pick_up", { id })).toMatchObject({ state: "done", holding: "dodo" });
+  p.run(300);
+  expect(await p.call("put_down")).toMatchObject({ state: "done", set_down: true });
+  expect(p.h.host.taming.give(rec, p.rec, 0, "forced")).toBe(true);
+  p.run(300);
+  expect((await rows(p, "creature"))[0]!.slice(6)).toEqual(["level 1", "yours"]);
+  expect(await p.call("pick_up", { id })).toMatchObject({ state: "done", holding: "dodo" });
+  p.run(300);
+  expect((await rows(p, "creature"))[0]!.slice(6)).toEqual(["level 1", "yours", "carried"]);
+  expect(await p.call("put_down")).toMatchObject({ state: "done", set_down: true });
+  expect((await p.call("put_down")).state).toBe("blocked");
+  expect(await p.call("order", { id, order: "follow" })).toEqual({ state: "done", ordered: "follow", who: id });
+  expect(await p.call("order", { order: "passive" })).toEqual({ state: "done", ordered: "passive", who: "every tribe creature in earshot" });
+  for (const bad of [{ id, order: "dance" }, { id, order: "attack" }, { id: "n19.2", order: "stay" }, {}]) expect((await p.call("order", bad)).state).toBe("refused");
+
+  // An egg laid beside it is taken into the bag.
+  rec.genome!.female = true;
+  (p.h.host.breeding as unknown as { lay(mother: typeof rec, father: typeof rec, e: number): void }).lay(rec, rec, e);
+  p.run(300);
+  // A clutch may be more than one egg: the one taken is gone from the ground and in the bag.
+  const eggs = await rows(p, "egg");
+  const had = p.rec.inv!.used();
+  expect((await p.call("pick_up", { id: eggs[0]![0] })).state).toBe("done");
+  expect(p.rec.inv!.used()).toBe(had + 1);
+  p.run(300);
+  expect((await rows(p, "egg")).map((r) => r[0])).toEqual(eggs.slice(1).map((r) => r[0]));
 });

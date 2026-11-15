@@ -47,7 +47,39 @@ test("a shot is judged no further back than the round trip the server measured, 
   const held = c.lastSnapshot;
   for (let k = 0; k < 15; k++) tick(held, 2);
   expect([h.world.tick - c.ackTick, back()]).toEqual([15, 2 + REWIND_SLACK]);
+  // Asking for a whole snapshot is not a new connection. It cannot erase the short round trip before a shot.
+  for (let k = 0; k < 3; k++) {
+    tick(0, 0);
+    expect([c.ackTick, combat.lag(c), c.strikes]).toEqual([0, 1, 0]);
+    tick(h.world.tick - 14, 15);
+    expect([combat.lag(c), back(), c.strikes]).toEqual([1, 2 + REWIND_SLACK, 0]);
+  }
   // A line that is nine ticks long for seconds on end is a long line, and is judged as bea's is.
   for (let k = 0; k < 200; k++) tick(c.lastSnapshot - 8, 2);
   expect([combat.lag(c), back()]).toEqual([9, 11]);
+  h.host.shutdown();
+});
+
+test("a reconnect and a reused client slot measure their new line independently", () => {
+  const h = new Harness({ maxClients: 1 }, 1, 60, { startingCreatures: 0 });
+  const first = h.join("ada");
+  h.run(1500);
+  const c = h.client(first)!;
+  expect(h.host.combat.lag(c)).toBe(1);
+  h.ends[0]!.close();
+  h.run(100);
+  const returned = h.join("ada", { latencyMs: 150 });
+  h.run(1200);
+  expect(h.client(returned)).toBe(c);
+  expect(h.host.combat.lag(c)).toBeGreaterThanOrEqual(9);
+  expect(h.host.combat.lag(c)).toBeLessThanOrEqual(10);
+  h.ends[1]!.close();
+  h.run(5500);
+  const next = h.join("bea");
+  h.run(1200);
+  const fresh = h.client(next)!;
+  expect(fresh.id).toBe(c.id);
+  expect(fresh).not.toBe(c);
+  expect(h.host.combat.lag(fresh)).toBe(1);
+  h.host.shutdown();
 });

@@ -1,9 +1,10 @@
 // The ground of a map from its base layers: the land of the elevation model, the bed of the coastal model under the water
-// the shoreline survey marks, bridges standing as causeways or fallen into fords, the authored broken spans and drowned
-// streets, the wrecks, and the ruins of every building (heaps.ts). Heights are metres above the sea.
+// the shoreline survey marks, water passages under mapped bridges, authored broken spans and drowned streets.
+// Footprints reserve the city floor; statics supply its ruins. Heights are metres above the sea.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { cutBridgeWater, pathsOf, readWays } from "./ways.ts";
 import type { Base } from "./base.ts";
 import { makeHeaps, readBuildings, PART_COURT, PART_FLOOR, PART_HEAP, PART_POOL, PART_SPILL, PART_WALL, type Heaps } from "./heaps.ts";
 import { blur, distanceField, fbm, fillPolygon, hash3, regions, share } from "./raster.ts";
@@ -45,6 +46,9 @@ export interface District {
 }
 
 export interface World {
+  readonly bridgeGapLayer?: string;
+  readonly containerDistrict?: string;
+  readonly ruins?: { report: string; yardDistricts: string[] };
   readonly id: string;
   readonly label: string;
   readonly seaNavd88: number;
@@ -54,6 +58,7 @@ export interface World {
   readonly spawns: readonly { name: string; at: [number, number]; face: [number, number]; ground: "sand" | "open" }[];
   /** Whether each footprint is raised into a heap of rubble (heaps.ts), the stand-in for block ruins. On unless false. */
   readonly heaps?: boolean;
+  readonly containerHeaps?: boolean;
 }
 
 export interface Ground {
@@ -69,7 +74,9 @@ export interface Ground {
   readonly container: Uint8Array;
   /** Metres from each sample to the nearest real beach. */
   readonly sand: Float32Array;
-  readonly bridges: { standing: number; fords: number; gaps: number };
+  readonly water: Uint8Array;
+  readonly gaps: Uint8Array;
+  readonly bridges: { standing: number; fords: number; gaps: number; cutSamples: number };
 }
 
 export function makeGround(base: Base, world: World, log: (line: string) => void): Ground {
@@ -83,7 +90,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const biome = base.bytes("biome");
   const canopy = base.bytes("painted_canopy");
   const flooded = base.bytes("flooded_streets");
-  const gaps = base.bytes("bridge_gaps");
+  const gaps = world.bridgeGapLayer ? base.bytes(world.bridgeGapLayer) : new Uint8Array(base.n * base.n);
   const wrecks = base.bytes("wrecks");
   const dem = base.elevation();
   const bathy = blur(base.bathymetry(), n, n, 2, 3);
@@ -145,100 +152,106 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   }
   log(`ground: land and bed, ${pools} samples of marsh pool`);
 
-  // Bridges: a long one stands as a causeway on its piers, a short one has fallen into a ford, and a marked span is gone.
-  const span = (i: number): boolean => water[i] === 1 && (roads[i] === 3 || roads[i] === 5 || gaps[i] === 1);
-  const { label, count } = regions(span, n, n);
-  const box = Array.from({ length: count + 1 }, () => [Infinity, -Infinity, Infinity, -Infinity, 0]);
-  for (let i = 0; i < N; i++) {
-    const l = label[i]!;
-    if (!l) continue;
-    const c = i % n;
-    const r = (i - c) / n;
-    const bx = box[l]!;
-    bx[0] = Math.min(bx[0]!, c);
-    bx[1] = Math.max(bx[1]!, c);
-    bx[2] = Math.min(bx[2]!, r);
-    bx[3] = Math.max(bx[3]!, r);
-    bx[4]!++;
-  }
-  const length = box.map((bx) => (bx[4]! > 0 ? Math.hypot(bx[1]! - bx[0]!, bx[3]! - bx[2]!) * cell : 0));
-  const standing = (l: number): boolean => length[l]! >= 120 && box[l]![4]! >= 30;
-  // Walk out along each standing bridge from the land at its ends, carrying the height it left the land at.
-  const along = new Float32Array(N).fill(Infinity);
-  const from = new Float32Array(N);
-  const queue = new Int32Array(N);
-  let head = 0;
-  let tail = 0;
-  for (let i = 0; i < N; i++) {
-    const l = label[i]!;
-    if (!l || !standing(l) || gaps[i]) continue;
-    const c = i % n;
-    const r = (i - c) / n;
-    let sum = 0;
-    let m = 0;
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
+  const ways = readWays(base.folder);
+  let decks = 0; let fords = 0; let gapCount = 0; let cutSamples = 0;
+  if (ways.length === 0) {
+    // Bridges: a long one stands as a causeway on its piers, a short one has fallen into a ford, and a marked span is gone.
+    const span = (i: number): boolean => water[i] === 1 && (roads[i] === 3 || roads[i] === 5 || gaps[i] === 1);
+    const { label, count } = regions(span, n, n);
+    const box = Array.from({ length: count + 1 }, () => [Infinity, -Infinity, Infinity, -Infinity, 0]);
+    for (let i = 0; i < N; i++) {
+      const l = label[i]!;
+      if (!l) continue;
+      const c = i % n;
+      const r = (i - c) / n;
+      const bx = box[l]!;
+      bx[0] = Math.min(bx[0]!, c);
+      bx[1] = Math.max(bx[1]!, c);
+      bx[2] = Math.min(bx[2]!, r);
+      bx[3] = Math.max(bx[3]!, r);
+      bx[4]!++;
+    }
+    const length = box.map((bx) => (bx[4]! > 0 ? Math.hypot(bx[1]! - bx[0]!, bx[3]! - bx[2]!) * cell : 0));
+    const standing = (l: number): boolean => length[l]! >= 120 && box[l]![4]! >= 30;
+    // Walk out along each standing bridge from the land at its ends, carrying the height it left the land at.
+    const along = new Float32Array(N).fill(Infinity);
+    const from = new Float32Array(N);
+    const queue = new Int32Array(N);
+    let head = 0;
+    let tail = 0;
+    for (let i = 0; i < N; i++) {
+      const l = label[i]!;
+      if (!l || !standing(l) || gaps[i]) continue;
+      const c = i % n;
+      const r = (i - c) / n;
+      let sum = 0;
+      let m = 0;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const j = (r + dr) * n + c + dc;
+          if (r + dr < 0 || r + dr >= n || c + dc < 0 || c + dc >= n || water[j]) continue;
+          sum += height[j]!;
+          m++;
+        }
+      }
+      if (m === 0) continue;
+      along[i] = 0;
+      from[i] = Math.max(0.6, sum / m);
+      queue[tail++] = i;
+    }
+    while (head < tail) {
+      const i = queue[head++]!;
+      const c = i % n;
+      const r = (i - c) / n;
+      for (const [dc, dr, step] of [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]] as const) {
+        if (r + dr < 0 || r + dr >= n || c + dc < 0 || c + dc >= n) continue;
         const j = (r + dr) * n + c + dc;
-        if (r + dr < 0 || r + dr >= n || c + dc < 0 || c + dc >= n || water[j]) continue;
-        sum += height[j]!;
-        m++;
+        if (label[j] !== label[i] || gaps[j]) continue;
+        const d = along[i]! + step * cell;
+        if (d < along[j]!) {
+          along[j] = d;
+          from[j] = from[i]!;
+          queue[tail++] = j;
+        }
       }
     }
-    if (m === 0) continue;
-    along[i] = 0;
-    from[i] = Math.max(0.6, sum / m);
-    queue[tail++] = i;
-  }
-  while (head < tail) {
-    const i = queue[head++]!;
-    const c = i % n;
-    const r = (i - c) / n;
-    for (const [dc, dr, step] of [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]] as const) {
-      if (r + dr < 0 || r + dr >= n || c + dc < 0 || c + dc >= n) continue;
-      const j = (r + dr) * n + c + dc;
-      if (label[j] !== label[i] || gaps[j]) continue;
-      const d = along[i]! + step * cell;
-      if (d < along[j]!) {
-        along[j] = d;
-        from[j] = from[i]!;
-        queue[tail++] = j;
+    for (let i = 0; i < N; i++) {
+      const l = label[i]!;
+      if (!l || gaps[i]) continue;
+      const c = i % n;
+      const r = (i - c) / n;
+      if (standing(l) && along[i]! < Infinity) {
+        const rise = Math.min(5.5, 1.2 + length[l]! / 160);
+        height[i] = from[i]! + Math.min(rise, along[i]! * 0.06);
+        surface[i] = S.DECK;
+        decks++;
+      } else if (!standing(l)) {
+        height[i] = -0.45 + 0.25 * fbm(c * cell, r * cell, 4, 31);
+        surface[i] = S.FORD;
+        fords++;
       }
     }
-  }
-  let decks = 0;
-  let fords = 0;
-  for (let i = 0; i < N; i++) {
-    const l = label[i]!;
-    if (!l || gaps[i]) continue;
-    const c = i % n;
-    const r = (i - c) / n;
-    if (standing(l) && along[i]! < Infinity) {
-      const rise = Math.min(5.5, 1.2 + length[l]! / 160);
-      height[i] = from[i]! + Math.min(rise, along[i]! * 0.06);
-      surface[i] = S.DECK;
-      decks++;
-    } else if (!standing(l)) {
-      height[i] = -0.45 + 0.25 * fbm(c * cell, r * cell, 4, 31);
-      surface[i] = S.FORD;
-      fords++;
+    // At a broken span the deck has slumped into the water from each end, and the middle is open.
+    const deckNear = new Int32Array(N);
+    const toDeck = distanceField((i) => surface[i] === S.DECK, n, n, deckNear);
+    for (let i = 0; i < N; i++) {
+      if (!gaps[i] || !water[i]) continue;
+      gapCount++;
+      const j = deckNear[i]!;
+      if (j < 0) continue;
+      const slump = height[j]! - Math.sqrt(toDeck[i]!) * cell * 0.9;
+      if (slump > height[i]!) {
+        height[i] = slump;
+        surface[i] = S.FORD;
+      }
     }
+    log(`ground: ${count} bridge pieces, ${decks} deck samples standing, ${fords} fallen into fords, ${gapCount} samples of broken span`);
+
+  } else {
+    cutSamples = cutBridgeWater(pathsOf(ways, half).paths, height, water, n);
+    for (let i = 0; i < N; i++) if (gaps[i] && water[i]) gapCount++;
+    log(`ground: static bridge beds, ${cutSamples} samples cut, ${gapCount} authored gap samples retained`);
   }
-  // At a broken span the deck has slumped into the water from each end, and the middle is open.
-  const deckNear = new Int32Array(N);
-  const toDeck = distanceField((i) => surface[i] === S.DECK, n, n, deckNear);
-  let gapCount = 0;
-  for (let i = 0; i < N; i++) {
-    if (!gaps[i] || !water[i]) continue;
-    gapCount++;
-    const j = deckNear[i]!;
-    if (j < 0) continue;
-    const slump = height[j]! - Math.sqrt(toDeck[i]!) * cell * 0.9;
-    if (slump > height[i]!) {
-      height[i] = slump;
-      surface[i] = S.FORD;
-    }
-  }
-  log(`ground: ${count} bridge pieces, ${decks} deck samples standing, ${fords} fallen into fords, ${gapCount} samples of broken span`);
 
   // Districts, by their rings, a later one over an earlier.
   const district = new Uint8Array(N);
@@ -340,9 +353,9 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   }
   // The port's yards are rows of containers along the island, one or two high, some gone, with lanes between.
   const container = new Uint8Array(N);
-  const port = world.districts.findIndex((d) => d.name === "The Port") + 1;
+  const port = world.districts.findIndex((d) => d.name === world.containerDistrict) + 1;
   let stacks = 0;
-  if (port > 0) {
+  if (port > 0 && world.containerHeaps !== false) {
     const ring = world.districts[port - 1]!.ring.map(([lon, lat]) => base.tm.forward(lon, lat));
     const angle = Math.atan2(ring[1]![1] - ring[0]![1], ring[1]![0] - ring[0]![0]);
     const [ca, sa] = [Math.cos(angle), Math.sin(angle)];
@@ -367,5 +380,5 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     }
   }
   log(`ground: ${Math.round(stacks * 4)} square metres of container stacks`);
-  return { n, height, surface, district, heaps, shore, container, sand, bridges: { standing: decks, fords, gaps: gapCount } };
+  return { n, height, surface, district, heaps, shore, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples } };
 }

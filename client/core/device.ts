@@ -4,8 +4,11 @@
 // graphics tier in three light scenes; the load ladder adds bodies, building pieces, triangles and draws a rung at a time
 // until frames break, then texture memory, sampled as it is drawn, until the device refuses it; the soak turns through a
 // heavy scene for ten minutes, and the governed soak the same with the governor on (governor.ts); the terrain flight,
-// on a server of its own, flies over its 8 km map and then stands far bases round the middle a rung at a time. What it adds is in devicescene.ts, and the table and pages it shows in
-// devicetext.ts. What only a browser can say comes from the shell (client/shell/device.ts).
+// on a server of its own, flies over its 8 km map and then stands far bases round the middle a rung at a time; the tree
+// order, on the same server, draws a young wood and a stand of elder oaks with their cut-outs drawn last, as made and
+// first, and sets the time each takes against what the server counts of the same view. What it adds is in
+// devicescene.ts, and the table and pages it shows in devicetext.ts. What only a browser can say comes from the shell
+// (client/shell/device.ts).
 
 import { HumanAnim } from "../../shared/anim/pose.ts";
 import { creatureAnims } from "../../shared/anim/creature.ts";
@@ -21,20 +24,22 @@ import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { FarCells, writeFar } from "../../shared/world/tactical.ts";
 import type { App } from "./app.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
-import { FrameTimer, GpuQuestions, type Gl2, type GpuReport } from "./devicegpu.ts";
+import { FrameTimer, GPU_PLAN, GpuQuestions, type Gl2, type GpuReport, type PassTime } from "./devicegpu.ts";
 import { BodyCopies, LOOK, TextureMemory, farBases, farSpots, rocks } from "./devicescene.ts";
+import { CITY_BUFFER } from "./render/farcity.ts";
 import { FAR_NODE_BUFFERS } from "./render/farnodes.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
 import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
 import { groundSize } from "./render/terrain.ts";
-import type { Thing } from "./render/scene.ts";
+import { CUTOUTS, type Cutouts, type Thing } from "./render/scene.ts";
 import { effectsOff } from "./passes.ts";
 import { heldTo, probePasses, provingProbes } from "./selfcheck.ts";
 import { stressThings } from "./stress.ts";
 
-/** The terrain flight runs on a server of its own, on the 8 km map (tools/device.ts --terrain); the others on the proving ground. */
-export type Mode = "quick" | "ladder" | "soak" | "governed" | "terrain";
-export const MODES: readonly Mode[] = ["quick", "ladder", "soak", "governed", "terrain"];
+/** The terrain flight and the tree order run on a server of their own, on the 8 km map (tools/device.ts --terrain); the others on the proving ground. */
+export type Mode = "quick" | "ladder" | "soak" | "governed" | "terrain" | "trees";
+export const MODES: readonly Mode[] = ["quick", "ladder", "soak", "governed", "terrain", "trees"];
+const TERRAIN_ONLY: readonly Mode[] = ["terrain", "trees"];
 
 /**
  * The quick look's scenes: the proving ground as the self-check sees it; with the stress meshes; turned round to the
@@ -69,8 +74,10 @@ export interface Timing {
   /** How long the terrain flight flies on each tier, and how often it jumps. */
   flightMs: number;
   teleportMs: number;
+  /** A window of the tree order: one turn of the camera. */
+  turnMs: number;
 }
-export const TIMING: Timing = { measureMs: 5000, rungMs: 1500, settleMs: 10000, loadMs: 60000, soakMs: 600000, holdMs: 1500, flightMs: 60000, teleportMs: 10000 };
+export const TIMING: Timing = { measureMs: 5000, rungMs: 1500, settleMs: 10000, loadMs: 60000, soakMs: 600000, holdMs: 1500, flightMs: 60000, teleportMs: 10000, turnMs: 2000 };
 /** The terrain flight: its tiers, how fast and how high it flies, how fast it turns, and the least jump. */
 const FLIGHT_TIERS = ["medium", "lowpoly"];
 export const FLIGHT_TIER_COUNT = FLIGHT_TIERS.length;
@@ -89,6 +96,40 @@ const FAR_UP = 30;
 const FAR_TURN_MS = 2000;
 /** The wood's rungs, one a tier the device takes, are seen from eye height. */
 const EYE_UP = 1.7;
+/**
+ * The tree order (trees design, phase 1): on medium and high, each wood by the spot the server stands the body at, the
+ * young wood at the map's middle and the elders' stand (devicescene.ts STAND). Each order, and the cut-outs left out,
+ * is drawn whole in a window of a turn twice, in the order of FRAME_WINDOWS so a phone warming over the rung weighs on
+ * each alike, and the wood as the frame's budget draws it (render/budget.ts) first and last; then again in READ_WINDOWS,
+ * each frame read back, with drawn first and none again at half the tier's pixel ratio, a quarter of its pixels, where
+ * the cut-outs' fragments cost a quarter as much and the rest of them as much. Every window but the budget's draws the
+ * wood whole, as its distance asks.
+ */
+export const TREE_TIERS: readonly string[] = ["medium", "high"];
+export const WOODS = ["young", "elder"] as const;
+export type Wood = (typeof WOODS)[number];
+const FRAME_WINDOWS: readonly { order: Cutouts; budget: boolean }[] = [
+  { order: "last", budget: true },
+  ...(["last", "made", "first", "none", "none", "first", "made", "last"] as const).map((order) => ({ order, budget: false })),
+  { order: "last", budget: true },
+];
+const READ_WINDOWS: readonly { order: Cutouts; small: boolean }[] = [
+  ...(["last", "first", "none", "made"] as const).map((order) => ({ order, small: false })),
+  ...(["first", "none", "none", "first"] as const).map((order) => ({ order, small: true })),
+  ...(["made", "none", "first", "last", "last", "first", "none"] as const).map((order) => ({ order, small: false })),
+];
+/**
+ * Frames left out after the order changes, after the canvas does, and after the budget is turned on or off, for its
+ * squeeze to settle and what it draws to come; how long the page waits for the server's counts after its last rung,
+ * asking this often.
+ */
+const SWITCH_FRAMES = 3;
+const RESIZE_FRAMES = 8;
+const BUDGET_FRAMES = 150;
+const COUNT_WAIT_MS = 300000;
+const COUNT_ASK_MS = 3000;
+/** How near its spot, in metres, the body must be for the rung to begin: within a chunk, so the near store holds the wood round it. */
+const STAND_NEAR = 32;
 /** Frames in a row with nothing on its way and nothing waiting to go on the graphics card: settled then. */
 const STILL = 30;
 /**
@@ -255,6 +296,12 @@ export interface FlightReport {
   /** For each jump, frames until the new window was in (-1 if not before the next), and the mean of TerrainLod.coarser over those frames. */
   fills: number[];
   coarser: number;
+  /**
+   * On a map with a city of its own (render/farcity.ts): medians of its draws and thousands of triangles, the worst ms
+   * spent making its tiles in a frame, frames with a tile in view and reach not yet made, and for each jump the frames
+   * until none was (-1 if not before the next).
+   */
+  city?: { draws: number; triangles: number; makeWorst: number; unseenFrames: number; fills: number[] };
 }
 
 /** A rung on the terrain map, held or not as a ladder's rung is. */
@@ -302,6 +349,98 @@ export interface TerrainReport {
   flights: FlightReport[];
   far: FarRung[];
   wood: WoodRung[];
+}
+
+/**
+ * What the server counts of a view of a wood on a tier (wood.ts), in layers a pixel of the screen: every cut-out
+ * fragment, and those the GPU cannot reject when the cut-outs are drawn last (in front of the nearest opaque surface),
+ * as made (in front of the opaque drawn before them) and first (in front of the ground).
+ */
+export interface LayerCount {
+  wood: Wood;
+  tier: string;
+  cut: number;
+  front: number;
+  old: number;
+  first: number;
+}
+
+/** The server's answer to a view the page asks it to count. */
+export interface LayerAnswer {
+  state: "counting" | "done" | "failed";
+  counts?: LayerCount[];
+  why?: string;
+}
+
+/** One order of the tree order's rung: its frames as the page measures them, and its frames read back. */
+export interface OrderTime {
+  order: Cutouts;
+  /** Drawn at a quarter of the pixels, on this canvas, where it is read back alone. */
+  small: boolean;
+  canvas: number[];
+  frames: number;
+  frameMs: Spread;
+  /** The mean between frames, which a GPU-bound device's frames come at: of both its windows, and of each. */
+  meanMs: number;
+  means: number[];
+  /** From handing a frame to WebGL to a pixel of it read back: the mean of its windows' medians, and each window's. */
+  readMs: number;
+  reads: number[];
+  /** The GPU's ms a frame by timer query, median, or null without. */
+  gpuMs: number | null;
+}
+
+/** A wood drawn as the frame's budget draws it (render/budget.ts), its cut-outs last: its frames, and what the budget did. */
+export interface BudgetTime {
+  frames: number;
+  frameMs: Spread;
+  meanMs: number;
+  means: number[];
+  gpuMs: number | null;
+  /** Medians a frame: triangles, of them crowns near's, and draws; the squeeze's median and most; and the tier's triangles. */
+  tris: number;
+  crowns: number;
+  draws: number;
+  squeeze: number;
+  most: number;
+  allowed: number;
+}
+
+/** A wood on a tier, drawn in each order, and as the frame's budget draws it. */
+export interface OrderRung {
+  wood: Wood;
+  tier: string;
+  /** Where the camera stood, x and z, and the canvas. */
+  at: number[];
+  canvas: number[];
+  settleMs: number;
+  settled: boolean;
+  /** Why its frames do not stand for the wood, as a ladder's rung is judged; empty if they do. */
+  invalid: string;
+  /** Medians: draw calls, triangles and draws with materials. */
+  calls: number;
+  tris: number;
+  mat: number;
+  orders: OrderTime[];
+  budget: BudgetTime | null;
+  /** The times set against what the counts predict, once the counts are in. */
+  verdict: string;
+}
+
+/** The tree order (trees design, phase 1): does the GPU skip cut-out pixels an opaque surface drawn before them hides? */
+export interface TreesReport {
+  /** The view the server counts: the page's CSS pixels and its field of view's height in degrees. */
+  view: number[];
+  /** The full-screen SURFACE pass's time a megapixel (the quick look's): a lit layer, beside what a counted cut-out layer costs in the wood. */
+  surface: PassTime | null;
+  counts: LayerCount[];
+  /** Empty once counted, or why there are no counts. */
+  counted: string;
+  rungs: OrderRung[];
+  /** One line: whether the hidden cut-out pixels were skipped. */
+  verdict: string;
+  /** One line: each wood and tier as the frame's budget draws it, against drawn whole. */
+  budget?: string;
 }
 
 export interface DeviceInfo {
@@ -400,6 +539,7 @@ export interface DeviceReport {
   ladder: { display: number; rungs: RungReport[]; memory: MemoryReport | null } | null;
   soak: SoakReport | null;
   terrain: TerrainReport | null;
+  trees: TreesReport | null;
   /** The quick look's answers to what round 8's depth, sky and shadows lean on (devicegpu.ts). */
   gpuTests: GpuReport | null;
   skipped: string[];
@@ -418,7 +558,7 @@ export function newReport(run: string, mode: Mode = "quick"): DeviceReport {
   return {
     run, mode, seq: 0, stage: "starting", done: false, device: null, gpu: null, idleFrameMs: null, wakeLock: "not asked",
     link: { httpMs: null, gameMs: null, snapshots: 0, missed: 0, missedLoading: 0, missedHidden: 0, server: null, longestGapMs: 0, bytesIn: 0, clockJumps: 0, corrections: 0, undecodable: 0 },
-    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, terrain: null, gpuTests: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
+    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, terrain: null, trees: null, gpuTests: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
   };
 }
 
@@ -533,6 +673,8 @@ export interface Load {
   noWood?: boolean;
   /** With noShadows, shadows and none by turns, frame by frame. */
   byTurns?: boolean;
+  /** At half the tier's pixel ratio, a quarter of its pixels. */
+  small?: boolean;
 }
 
 interface Step {
@@ -616,6 +758,110 @@ export class LadderPlan {
   }
 }
 
+/** Shares of what the counts predict at or over which the GPU skipped the hidden pixels, and at or under which it did not. */
+const SKIPPED = 0.5;
+const NOT_SKIPPED = 0.2;
+/** A predicted difference under this, in ms, or under three standard errors of what it is set against, is too small to judge. */
+const SMALLEST_MS = 0.5;
+const ERRORS = 3;
+
+/** The standard error of an order's read time, from how its windows' medians spread, no less than their rounding. */
+function readError(o: OrderTime): number {
+  const n = o.reads.length;
+  if (n < 2) return Infinity;
+  const m = o.reads.reduce((a, b) => a + b, 0) / n;
+  return Math.max(0.03, Math.sqrt(o.reads.reduce((a, x) => a + (x - m) ** 2, 0) / (n - 1) / n));
+}
+
+/** What a rung of the tree order says: the line, and whether the GPU skipped the hidden pixels (null where it is not judged). */
+export interface OrderJudged {
+  line: string;
+  skipped: boolean | null;
+  judged: boolean;
+  /**
+   * What the cut-outs cost drawn first against none drawn, and of it their fragments; drawn first against last, and as
+   * made against last: measured and predicted ms.
+   */
+  cost: number;
+  fragments: number;
+  measured: number;
+  predicted: number;
+  saved: number;
+  saving: number;
+  /** One standard error of the measured difference and of the prediction, and whether the rung was timed and counted. */
+  measuredError: number;
+  predictedError: number;
+  priced: boolean;
+}
+
+/**
+ * A rung of the tree order judged against the server's count of its view. Drawn first, every cut-out fragment the
+ * ground leaves is shaded. What that costs over drawing none, less what it costs at a quarter of the pixels, is what
+ * shading them costs, their vertices and tiles left out, and over the count of them it prices a counted layer on this
+ * device, in this wood. Drawn last, a GPU that skips what an opaque surface drawn before hides shades only those in front
+ * of the nearest one, so at that price the counts say how much less it should take; one that shades them all takes as
+ * long. The frames read back say how much less it took.
+ */
+export function orderVerdict(rung: OrderRung, count: LayerCount | undefined): OrderJudged {
+  const of = (o: Cutouts, small = false): OrderTime | undefined => rung.orders.find((x) => x.order === o && x.small === small);
+  const [last, made, first, bare, firstQ, bareQ] = [of("last"), of("made"), of("first"), of("none"), of("first", true), of("none", true)];
+  const none = (line: string): OrderJudged => ({ line, skipped: null, judged: false, cost: 0, fragments: 0, measured: 0, predicted: 0, saved: 0, saving: 0, measuredError: 0, predictedError: 0, priced: false });
+  if (rung.invalid) return none(`not judged: invalid, ${rung.invalid}`);
+  if (!last || !made || !first || !bare || !firstQ || !bareQ) return none("not judged: an order was not drawn");
+  if (rung.mat === 0) return none("not judged: nothing was drawn with its materials, so nothing was cut out");
+  if (!count || !(count.first > count.front)) return none("not judged: the server did not count this view");
+  const pixels = (c: number[]): number => (c[0] ?? 0) * (c[1] ?? 0);
+  const q = pixels(firstQ.canvas) / Math.max(1, pixels(first.canvas));
+  if (!(q > 0 && q < 0.5)) return none(`not judged: the canvas was not made smaller (${firstQ.canvas.join("x")} against ${first.canvas.join("x")})`);
+  const cost = first.readMs - bare.readMs;
+  const costQ = firstQ.readMs - bareQ.readMs;
+  const fragments = (cost - costQ) / (1 - q);
+  const layer = Math.max(0, fragments) / count.first;
+  const [measured, predicted] = [first.readMs - last.readMs, (count.first - count.front) * layer];
+  const [saved, saving] = [made.readMs - last.readMs, (count.old - count.front) * layer];
+  // How far each may be off: the measured difference by its two orders' windows, the prediction by the four it is priced from.
+  const e = (o: OrderTime): number => readError(o) ** 2;
+  const measuredError = Math.sqrt(e(first) + e(last));
+  const predictedError = (Math.sqrt(e(first) + e(bare) + e(firstQ) + e(bareQ)) / (1 - q)) * ((count.first - count.front) / count.first);
+  const error = Math.sqrt(measuredError ** 2 + predictedError ** 2);
+  const share = predicted >= 0.01 ? measured / predicted : 0;
+  const too = !(predicted >= Math.max(SMALLEST_MS, ERRORS * error));
+  const skipped = too ? null : share >= SKIPPED ? true : share <= NOT_SKIPPED ? false : null;
+  const word = too ? `too small to tell beside ${ERRORS} standard errors, ${(ERRORS * error).toFixed(2)} ms` : skipped === true ? "skipped" : skipped === false ? "not skipped" : "partly skipped";
+  const ms = (x: number): string => `${x >= 0 ? "+" : ""}${x.toFixed(2)}`;
+  const mp = pixels(first.canvas) / 1e6;
+  const line = `drawn first the cut-outs cost ${ms(cost)} ms over none and ${ms(costQ)} at ${Math.round(q * 100)}% of the pixels, so ${ms(fragments)} shading them, ${(layer / mp).toFixed(3)} ms a counted layer a megapixel; first against last ${ms(measured)} +-${measuredError.toFixed(2)} ms read back, ${ms(predicted)} +-${predictedError.toFixed(2)} predicted if hidden pixels are skipped${predicted >= 0.01 ? ` (${Math.round(share * 100)}%)` : ""}; made against last ${ms(saved)}, ${ms(saving)} predicted: ${word}`;
+  return { line, skipped, judged: !too, cost, fragments, measured, predicted, saved, saving, measuredError, predictedError, priced: true };
+}
+
+/** The tree order's verdict in a line, from the rung that predicts the most: whether the GPU skipped the hidden cut-out pixels. */
+export function treesVerdict(t: TreesReport): string {
+  const judged = t.rungs.map((g) => ({ g, v: orderVerdict(g, t.counts.find((c) => c.wood === g.wood && c.tier === g.tier)) }));
+  const best = judged.filter((x) => x.v.judged).sort((a, b) => b.v.predicted - a.v.predicted)[0];
+  // With none judged, the rung whose cut-outs cost most to shade says how small the difference is.
+  const most = judged.filter((x) => x.v.priced).sort((a, b) => b.v.fragments - a.v.fragments)[0];
+  if (!best && most) {
+    const { g, v } = most;
+    return `too small to tell: ${g.wood === "elder" ? "the elder oaks'" : "the young wood's"} cut-outs on ${g.tier} cost ${v.cost.toFixed(1)} ms drawn first, ${v.fragments.toFixed(1)} of it shading them; drawn last they took ${v.measured.toFixed(1)} +-${v.measuredError.toFixed(1)} ms less, where skipping what an opaque surface drawn before hides would save ${v.predicted.toFixed(1)} +-${v.predictedError.toFixed(1)}`;
+  }
+  if (!best) return `not judged: ${t.counted || judged.map((x) => `${x.g.wood} ${x.g.tier} ${x.v.line.replace(/^not judged: /, "")}`).join("; ") || "no rung ran"}`;
+  const { g, v } = best;
+  const where = `${g.wood === "elder" ? "the elder oaks'" : "the young wood's"} cut-outs on ${g.tier}`;
+  const word = v.skipped === true ? "skipped" : v.skipped === false ? "not skipped" : "partly skipped";
+  return `${word}: ${where} cost ${v.cost.toFixed(1)} ms drawn first, ${v.fragments.toFixed(1)} of it shading them; drawn last they took ${v.measured.toFixed(1)} ms less, where the counts predict ${v.predicted.toFixed(1)} ms less if the GPU skips what an opaque surface drawn before hides; drawn last saves ${v.saved.toFixed(1)} ms of ${v.saving.toFixed(1)} predicted against the order they were made in`;
+}
+
+/** Each wood and tier as the frame's budget draws it, against drawn whole with its cut-outs last, in a line. */
+export function budgetVerdict(t: TreesReport): string {
+  const m = (x: number): string => `${(x / 1e6).toFixed(1)} M`;
+  const lines = t.rungs.flatMap((g) => {
+    const [b, whole] = [g.budget, g.orders.find((o) => o.order === "last" && !o.small)];
+    if (!b || !whole || g.invalid) return [];
+    return [`the ${g.wood} wood on ${g.tier} ${b.meanMs} ms a frame at ${m(b.tris)} triangles of ${m(b.allowed)}, crowns near ${m(b.crowns)}, squeeze ${b.squeeze} (most ${b.most}), against ${whole.meanMs} ms at ${m(g.tris)} drawn whole`];
+  });
+  return lines.length > 0 ? `the budget: ${lines.join("; ")}` : "the budget: no rung drew its windows";
+}
+
 /** Half of what the ladder held on `tier` for each axis, a rung down, or `fallback` where it did not climb. */
 export function soakLoad(rungs: readonly RungReport[] | null, tier: string): { load: Omit<Load, "tier" | "yaw">; from: string } {
   const fallback = { stress: true, bodies: 200, pieces: 1024, near: 16, far: 512 };
@@ -648,17 +894,21 @@ export interface DeviceSide {
   base(n: number): Promise<number | null>;
   /** Texture memory for the ladder's last step, in the renderer's variant. Null where the renderer gives none. */
   memory: TextureMemory | null;
-  /** The GPU questions, made when the quick look comes to them, once the canvas has its size. Null where the renderer gives none. */
-  questions: (() => GpuQuestions) | null;
+  /** The GPU questions, or those named, made when a test comes to them, once the canvas has its size. Null where the renderer gives none. */
+  questions: ((only?: readonly string[]) => GpuQuestions) | null;
   /** The GPU's time for whole frames where the browser has timer queries; null where the renderer gives none. */
   frames: FrameTimer | null;
   /** The display's interval between frames, which a rung holds or not. */
   display: number;
   /** Whether the page's server is the terrain flight's, on its 8 km map, where the soak turns through the wood. */
   terrainMap: boolean;
+  /** Asks the server to stand the body at the tree order's spot `k` (WOODS). Resolves with where, x and z, or null if it would not. */
+  stand(k: number): Promise<number[] | null>;
+  /** Asks the server to count the view `w` by `h` CSS pixels, `fov` degrees high, or how its count goes. Null for no answer. */
+  layers(w: number, h: number, fov: number): Promise<LayerAnswer | null>;
 }
 
-type Stage = "load" | "probes" | "hashes" | "gpu" | "steps" | "memory" | "soak" | "terrain" | "done";
+type Stage = "load" | "probes" | "hashes" | "gpu" | "steps" | "memory" | "soak" | "terrain" | "trees" | "done";
 
 export class DeviceRun {
   readonly report: DeviceReport;
@@ -721,7 +971,7 @@ export class DeviceRun {
   /** Where the terrain flight puts the camera, if it does. */
   private fly: { x: number; y: number; z: number; yaw: number; pitch: number } | null = null;
   /** The terrain flight under way: its tier, clock, heading, jumps, and the jump whose window is awaited. */
-  private flight: { tier: number; ms: number; heading: number; jumps: number; wait: { frames: number; coarser: number } | null; fills: number[]; coarser: number[]; rows: boolean[]; gpu: { ms: number; tag: boolean }[] } | null = null;
+  private flight: { tier: number; ms: number; heading: number; jumps: number; wait: { frames: number; coarser: number } | null; fills: number[]; coarser: number[]; rows: boolean[]; gpu: { ms: number; tag: boolean }[]; city: { draws: number[]; triangles: number[]; make: number[]; unseen: number; wait: number; fills: number[] } } | null = null;
   /** The terrain rung under way: its index, whether it is the wood's, and its frames' far draws and GPU times. */
   private rungs: { k: number; wood: boolean; draws: number[]; gpu: number[] } | null = null;
   /** The chunks far bases may stand in, the cells of each kind, and how many stand. */
@@ -729,6 +979,14 @@ export class DeviceRun {
   private wrapped: object | null = null;
   /** The quick look's GPU questions, while they are asked. */
   private questions: GpuQuestions | null = null;
+  /** The SURFACE pass's cost, for the tree order. */
+  private surface: PassTime | null = null;
+  /**
+   * The tree order under way: its rungs, the one under way, its spot once the server stood the body there, the window
+   * under way and when it began, the frames still to leave out, each window's frame gaps, reads and GPU times, the budget
+   * windows' frames' triangles, crowns near, draws and squeezes, and the server's count and when it was last asked.
+   */
+  private trees: { plan: { tier: Tier; wood: number }[]; k: number; at: number[] | null; window: number; windowAt: number; skip: number; gaps: number[][]; reads: number[][]; gpu: number[][]; canvases: number[][]; budget: { tris: number[]; crowns: number[]; draws: number[]; squeeze: number[] }; answer: LayerAnswer | null; askedAt: number; waitFrom: number } | null = null;
   /** The soak's amounts, clock and minute under way. */
   private readonly soakFrom: { load: Omit<Load, "tier" | "yaw">; from: string };
   private soakMs = 0;
@@ -782,6 +1040,7 @@ export class DeviceRun {
     else if (this.stage === "memory") news = this.memory(now, gap);
     else if (this.stage === "soak") news = this.soak(now, gap, p, buildMs, drawMs);
     else if (this.stage === "terrain") news = this.rungs ? this.rungFrame(now, gap, p, buildMs, drawMs, drawCalls) : this.terrain(now, gap, p, drawMs);
+    else if (this.stage === "trees") news = this.treeFrame(now, gap, p, buildMs, drawMs, drawCalls);
     if (news) this.sync();
     return news;
   }
@@ -795,6 +1054,14 @@ export class DeviceRun {
     this.away = true;
     this.report.hidden.push(this.report.stage);
     if (this.stage === "steps") this.show();
+    // A rung of the tree order settles and is measured again.
+    if (this.stage === "trees") [this.measuring, this.at] = [false, -1];
+  }
+
+  /** Whether the frame drawn next is to be read back once it is handed to WebGL: in the tree order's second half. */
+  get fencing(): boolean {
+    const t = this.trees;
+    return this.stage === "trees" && this.measuring && t !== null && t.k < t.plan.length && t.window >= FRAME_WINDOWS.length;
   }
 
   /** The page is shown again: the frames' stopping until now does not count. */
@@ -893,12 +1160,15 @@ export class DeviceRun {
     return true;
   }
 
-  /** The quick look asks the GPU questions first, where the renderer gives them. The other tests begin at once. */
+  /**
+   * The quick look asks the GPU questions first, where the renderer gives them, and the tree order the SURFACE pass's
+   * cost alone. The other tests begin at once.
+   */
   private ask(): void {
     const make = this.side.questions;
-    if (this.mode !== "quick" || !make) return this.begin();
-    this.questions = make();
-    this.report.gpuTests = this.questions.report;
+    if ((this.mode !== "quick" && this.mode !== "trees") || !make) return this.begin();
+    this.questions = make(this.mode === "trees" ? ["surface"] : undefined);
+    if (this.mode === "quick") this.report.gpuTests = this.questions.report;
     this.stage = "gpu";
     this.report.stage = "gpu questions";
   }
@@ -908,6 +1178,7 @@ export class DeviceRun {
     const q = this.questions!;
     const was = q.stage;
     if (q.frame()) {
+      if (this.mode === "trees") this.surface = q.report.passes.find((x) => x.name === "surface") ?? null;
       this.questions = null;
       this.begin();
       return true;
@@ -929,6 +1200,7 @@ export class DeviceRun {
       this.stage = "terrain";
       return this.takeOff(0);
     }
+    if (this.mode === "trees") return this.treesBegin();
     if (this.mode === "soak" || this.mode === "governed") {
       // On the terrain map the soak turns through its wood among the far bases, with nothing else added.
       const tier = this.soakTier();
@@ -1076,10 +1348,10 @@ export class DeviceRun {
       const t = scene.assets.tier;
       const l = this.drawn;
       this.shadowless = l?.noShadows === true && t.shadows.cascades > 0 && (!l.byTurns || !this.shadowless);
-      const change = (l?.oneRange && t.split > 0 ? 1 : 0) | (this.shadowless ? 2 : 0) | (l?.noWood ? 4 : 0);
+      const change = (l?.oneRange && t.split > 0 ? 1 : 0) | (this.shadowless ? 2 : 0) | (l?.noWood ? 4 : 0) | (l?.small ? 8 : 0);
       if (change !== 0) {
         const mine = copies.get(t) ?? copies.set(t, new Map()).get(t)!;
-        const copy = mine.get(change) ?? { ...t, ...(change & 1 ? { split: 0 } : {}), ...(change & 2 ? { shadows: { ...t.shadows, cascades: 0 } } : {}), ...(change & 4 ? { reach: { ...t.reach, trees: 0, rocks: 0, bushes: 0 } } : {}) };
+        const copy = mine.get(change) ?? { ...t, ...(change & 1 ? { split: 0 } : {}), ...(change & 2 ? { shadows: { ...t.shadows, cascades: 0 } } : {}), ...(change & 4 ? { reach: { ...t.reach, trees: 0, rocks: 0, bushes: 0 } } : {}), ...(change & 8 ? { pixelRatio: (t.pixelRatio > 0 ? t.pixelRatio : this.side.dpr) / 2 } : {}) };
         scene.assets.tier = mine.set(change, copy).get(change)!;
       }
       // The flight moves the camera as it builds; the body stays where the server has it.
@@ -1097,7 +1369,7 @@ export class DeviceRun {
     const name = FLIGHT_TIERS[k];
     if (name === undefined) return this.terrainRung(0);
     this.apply({ ...bare(tierOf(name), 0), noWood: true });
-    this.flight = { tier: k, ms: 0, heading: 0, jumps: 0, wait: null, fills: [], coarser: [], rows: [], gpu: [] };
+    this.flight = { tier: k, ms: 0, heading: 0, jumps: 0, wait: null, fills: [], coarser: [], rows: [], gpu: [], city: { draws: [], triangles: [], make: [], unseen: 0, wait: -1, fills: [] } };
     this.place(this.spot(0));
     [this.measuring, this.at] = [false, -1];
     this.report.stage = `terrain ${name}`;
@@ -1146,6 +1418,27 @@ export class DeviceRun {
     s.draw.push(drawMs);
     f.rows.push(rows);
     f.gpu.push(...(this.side.frames?.take() ?? []));
+    const city = this.side.app.scene!.city;
+    if (city) {
+      let [draws, triangles] = [0, 0];
+      for (let d = 0; d < p.drawCount; d++) {
+        if (p.drawBuffer[d] !== CITY_BUFFER) continue;
+        draws++;
+        triangles += p.drawIndexCount[d]! / 3;
+      }
+      const c = f.city;
+      c.draws.push(draws);
+      c.triangles.push(triangles / 1000);
+      c.make.push(city.stats.makeMs);
+      if (city.stats.unseen > 0) c.unseen++;
+      if (c.wait >= 0) {
+        c.wait++;
+        if (city.stats.unseen === 0) {
+          c.fills.push(c.wait);
+          c.wait = -1;
+        }
+      }
+    }
     // The jump's new window is in once the window drawn lies near where one round the camera, as it was for this frame,
     // would: held inside the map, so a spot near its edge counts too.
     const hf = this.side.hf;
@@ -1167,10 +1460,15 @@ export class DeviceRun {
       f.jumps++;
       if (f.wait) f.fills.push(-1);
       f.wait = { frames: 0, coarser: 0 };
+      if (f.city.wait >= 0) f.city.fills.push(-1);
+      f.city.wait = 0;
       this.place(this.spot(f.jumps));
     } else this.place({ x: this.fly!.x + Math.sin(f.heading) * FLIGHT_SPEED * (gap / 1000), z: this.fly!.z + Math.cos(f.heading) * FLIGHT_SPEED * (gap / 1000) });
     if (f.ms < this.timing.flightMs) return false;
     if (f.wait) f.fills.push(-1);
+    if (f.city.wait >= 0) f.city.fills.push(-1);
+    const c = f.city;
+    const drawn = c.draws.length > 0 ? { draws: spread(c.draws).median, triangles: spread(c.triangles).median, makeWorst: spread(c.make).worst, unseenFrames: c.unseen, fills: c.fills } : null;
     const pick = (list: number[], with_: boolean): number[] => list.filter((_, i) => f.rows[i] === with_);
     const gpu = (tag: boolean): number | null => (this.side.frames?.on ? spread(f.gpu.filter((x) => x.tag === tag).map((x) => x.ms)).median : null);
     const windowed = pick(s.frame, true);
@@ -1179,6 +1477,7 @@ export class DeviceRun {
       windowFrames: windowed.length, windowWorst: spread(windowed).worst, plainMedian: spread(pick(s.frame, false)).median,
       drawWindow: spread(pick(s.draw, true)).median, drawPlain: spread(pick(s.draw, false)).median, gpuWindow: gpu(true), gpuPlain: gpu(false),
       fills: f.fills, coarser: tenth(f.coarser.reduce((a, b) => a + b, 0) / Math.max(1, f.coarser.length)),
+      ...(drawn ? { city: drawn } : {}),
     });
     this.takeOff(f.tier + 1);
     return true;
@@ -1272,6 +1571,183 @@ export class DeviceRun {
     this.terrainRung(g.k + 1);
     return true;
   }
+  /**
+   * The tree order begins: the server is asked to count the view the page draws, which it does while the rungs run,
+   * and the first wood is stood in. Its rungs are each tier of TREE_TIERS the device takes, each wood on it.
+   */
+  private treesBegin(): void {
+    const cam = this.side.app.cam;
+    const rows = this.side.app.scene!.viewHeight;
+    const view = [Math.round(rows * cam.aspect), Math.round(rows), Math.round((cam.fovY * 180) / Math.PI)];
+    const plan = takes(this.side.maxTexture).filter((t) => TREE_TIERS.includes(t.name)).flatMap((tier) => WOODS.map((_, wood) => ({ tier, wood })));
+    this.report.trees = { view, surface: this.surface, counts: [], counted: "not counted yet", rungs: [], verdict: "" };
+    this.trees = { plan, k: -1, at: null, window: 0, windowAt: 0, skip: 0, gaps: [], reads: [], gpu: [], canvases: [], budget: { tris: [], crowns: [], draws: [], squeeze: [] }, answer: null, askedAt: 0, waitFrom: -1 };
+    this.stage = "trees";
+    this.askCount(this.last);
+    this.treeRung(0);
+  }
+
+  private askCount(now: number): void {
+    const t = this.trees!;
+    const [w, h, fov] = this.report.trees!.view as [number, number, number];
+    t.askedAt = now;
+    void this.side.layers(w, h, fov).then((a) => void (a && this.trees === t && (t.answer = a)));
+  }
+
+  /** The tree order's `k`th rung: the server stands the body in its wood, where the camera stands at eye height once it has. */
+  private treeRung(k: number): void {
+    const t = this.trees!;
+    const step = t.plan[k];
+    t.k = k;
+    this.side.app.scene!.cutouts = "last";
+    this.side.app.scene!.budget.on = true;
+    [this.measuring, this.at] = [false, -1];
+    if (!step) {
+      this.fly = null;
+      this.apply(bare(tierOf(DEFAULT_TIER), 0));
+      this.report.stage = "trees counting";
+      return;
+    }
+    const load = bare(step.tier, 0);
+    this.step = { kind: "rung", load };
+    this.apply(load);
+    t.at = null;
+    this.asking = true;
+    void this.side.stand(step.wood).then((at) => {
+      this.asking = false;
+      if (this.trees !== t || t.k !== k) return;
+      if (!at) return void (this.report.errors.length < 10 && this.report.errors.push(`${this.report.stage}: the server would not stand the body in the wood`));
+      t.at = at;
+      this.fly = { x: at[0]!, y: this.side.hf.heightAt(at[0]!, at[1]!) + EYE_UP, z: at[1]!, yaw: 0, pitch: 0 };
+    });
+    this.report.stage = `trees ${step.tier.name} ${WOODS[step.wood]}`;
+  }
+
+  /** The window `t.window` begins, a turn from heading 0 in its order and size, once the frames after the change are left out. */
+  private treeWindow(now: number): void {
+    const t = this.trees!;
+    const w = t.window;
+    const read = w - FRAME_WINDOWS.length;
+    const { order, small, budget } = read >= 0 ? { ...READ_WINDOWS[read]!, budget: false } : { ...FRAME_WINDOWS[w]!, small: false };
+    const scene = this.side.app.scene!;
+    const resized = (this.drawn?.small === true) !== small;
+    const switched = scene.budget.on !== budget;
+    scene.cutouts = order;
+    scene.budget.on = budget;
+    this.drawn = { ...this.step!.load, small };
+    [t.windowAt, t.skip] = [now, switched ? BUDGET_FRAMES : resized ? RESIZE_FRAMES : SWITCH_FRAMES];
+    if (read >= 0) [t.reads[read], t.canvases[read]] = [[], []];
+    else [t.gaps[w], t.gpu[w]] = [[], []];
+    const step = t.plan[t.k]!;
+    this.report.stage = `trees ${step.tier.name} ${WOODS[step.wood]} ${budget ? "as the budget draws it" : order}${small ? " at a quarter of the pixels" : ""}${read >= 0 ? " read back" : ""}`;
+  }
+
+  /**
+   * A frame of the tree order: the camera turning; settled with the body in the wood, then a window of frames for each
+   * order, and again with each frame read back. After the last rung it waits for the server's counts.
+   */
+  private treeFrame(now: number, gap: number, p: FramePacket, buildMs: number, drawMs: number, drawCalls: number): boolean {
+    const t = this.trees!;
+    if (t.k >= t.plan.length) return this.treeCounts(now);
+    const frames = this.side.frames;
+    frames?.tick(true);
+    if (this.at < 0) this.at = now;
+    if (this.fly) this.fly.yaw = ((2 * Math.PI * (now - (this.measuring ? t.windowAt : this.at))) / this.timing.turnMs) % (2 * Math.PI);
+    if (!this.measuring) {
+      const own = this.side.app.session.own;
+      const there = t.at !== null && Math.hypot(own.x - t.at[0]!, own.z - t.at[1]!) < STAND_NEAR;
+      if ((!there || this.still < STILL) && now - this.at < this.settleFor(now)) return false;
+      if (!there) {
+        const step = t.plan[t.k]!;
+        this.report.trees!.rungs.push({ wood: WOODS[step.wood], tier: step.tier.name, at: t.at ?? [], canvas: this.canvas, settleMs: tenth(now - this.at), settled: false, invalid: "the body was not stood in the wood", calls: 0, tris: 0, mat: 0, orders: [], budget: null, verdict: "" });
+        this.treeRung(t.k + 1);
+        return true;
+      }
+      this.measuring = true;
+      this.settleMs = tenth(now - this.at);
+      this.settled = this.still >= STILL;
+      for (const list of Object.values(this.samples)) list.length = 0;
+      this.dropped = this.skipped = 0;
+      [t.gaps, t.reads, t.gpu, t.canvases, t.window] = [[], [], [], [], 0];
+      t.budget = { tris: [], crowns: [], draws: [], squeeze: [] };
+      this.treeWindow(now);
+      frames?.take();
+      return false;
+    }
+    const w = t.window;
+    const timed = frames?.take() ?? [];
+    if (t.skip > 0) {
+      t.skip--;
+      t.windowAt = now;
+      return false;
+    }
+    if (w >= FRAME_WINDOWS.length) {
+      t.reads[w - FRAME_WINDOWS.length]!.push(drawMs);
+      t.canvases[w - FRAME_WINDOWS.length] = this.canvas;
+    } else {
+      t.gaps[w]!.push(gap);
+      t.gpu[w]!.push(...timed.map((x) => x.ms));
+      // The budget's frames are counted apart from those drawn whole.
+      const b = this.side.app.scene!.budget;
+      if (!FRAME_WINDOWS[w]!.budget) this.sample(gap, buildMs, drawMs, drawCalls, p);
+      else [t.budget.tris.push(p.triangles), t.budget.crowns.push(b.last.crowns), t.budget.draws.push(p.drawCount), t.budget.squeeze.push(b.squeeze)];
+    }
+    if (now - t.windowAt < this.timing.turnMs) return false;
+    if (++t.window < FRAME_WINDOWS.length + READ_WINDOWS.length) {
+      this.treeWindow(now);
+      return false;
+    }
+    this.treeResult();
+    this.treeRung(t.k + 1);
+    return true;
+  }
+
+  /** The rung's frames, each order's from its windows, judged as a ladder's rung is for whether they stand for the wood. */
+  private treeResult(): void {
+    const t = this.trees!;
+    const step = t.plan[t.k]!;
+    const phase = this.result();
+    const { limit, invalid } = judgeRung(phase, this.side.display);
+    const mean = (xs: readonly number[]): number => (xs.length === 0 ? 0 : tenth(xs.reduce((a, b) => a + b, 0) / xs.length));
+    const time = (order: Cutouts, small: boolean): OrderTime => {
+      const at = small ? [] : FRAME_WINDOWS.flatMap((o, i) => (o.order === order && !o.budget ? [i] : []));
+      const read = READ_WINDOWS.flatMap((x, i) => (x.order === order && x.small === small ? [i] : []));
+      const gaps = at.flatMap((i) => t.gaps[i] ?? []);
+      const reads = read.map((i) => t.reads[i] ?? []);
+      const gpu = at.flatMap((i) => t.gpu[i] ?? []);
+      return { order, small, canvas: small ? (t.canvases[read[0]!] ?? []) : phase.canvas, frames: gaps.length, frameMs: spread(gaps), meanMs: mean(gaps), means: at.map((i) => mean(t.gaps[i] ?? [])), readMs: mean(reads.map((r) => spread(r).median)), reads: reads.map((r) => spread(r).median), gpuMs: gpu.length > 0 ? spread(gpu).median : null };
+    };
+    const orders = [...CUTOUTS.map((order) => time(order, false)), time("first", true), time("none", true)];
+    const at = FRAME_WINDOWS.flatMap((o, i) => (o.budget ? [i] : []));
+    const gaps = at.flatMap((i) => t.gaps[i] ?? []);
+    const gpu = at.flatMap((i) => t.gpu[i] ?? []);
+    const b = t.budget;
+    const budget: BudgetTime = { frames: gaps.length, frameMs: spread(gaps), meanMs: mean(gaps), means: at.map((i) => mean(t.gaps[i] ?? [])), gpuMs: gpu.length > 0 ? spread(gpu).median : null, tris: Math.round(spread(b.tris).median), crowns: Math.round(spread(b.crowns).median), draws: Math.round(spread(b.draws).median), squeeze: spread(b.squeeze).median, most: spread(b.squeeze).worst, allowed: step.tier.budget.triangles };
+    this.report.trees!.rungs.push({ wood: WOODS[step.wood], tier: step.tier.name, at: t.at ?? [], canvas: phase.canvas, settleMs: phase.settleMs, settled: phase.settled, invalid: limit === "lost" ? "the graphics context was lost" : invalid, calls: phase.drawCalls, tris: phase.triangles, mat: phase.textured, orders, budget, verdict: "" });
+  }
+
+  /** After the last rung: the server's counts, asked for until they come or COUNT_WAIT_MS has passed, and the verdict. */
+  private treeCounts(now: number): boolean {
+    const t = this.trees!;
+    const r = this.report.trees!;
+    if (t.waitFrom < 0) t.waitFrom = now;
+    const a = t.answer;
+    const waited = now - t.waitFrom;
+    if (!a || a.state === "counting") {
+      if (waited < COUNT_WAIT_MS) {
+        if (now - t.askedAt >= COUNT_ASK_MS) this.askCount(now);
+        return false;
+      }
+      r.counted = a ? `the server was still counting after ${Math.round(waited / 1000)} s` : "the server did not answer";
+    } else if (a.state === "failed") r.counted = `the server could not count: ${a.why ?? "no reason given"}`;
+    else [r.counts, r.counted] = [a.counts ?? [], ""];
+    for (const g of r.rungs) g.verdict = orderVerdict(g, r.counts.find((c) => c.wood === g.wood && c.tier === g.tier)).line;
+    r.verdict = treesVerdict(r);
+    r.budget = budgetVerdict(r);
+    this.end();
+    return true;
+  }
+
   /** Begins the step under way afresh. */
   private show(): void {
     this.measuring = false;
@@ -1471,6 +1947,8 @@ export class DeviceRun {
 
   private end(): void {
     this.side.frames?.stop();
+    this.side.app.scene!.cutouts = "last";
+    this.side.app.scene!.budget.on = true;
     this.side.app.governor.held = 0;
     this.side.app.off = effectsOff(null);
     this.placeFar(0);
@@ -1572,7 +2050,7 @@ export class DeviceProbe {
     } catch {}
     this.recovered = saved !== null && saved.token === token && saved.report?.done === false;
     const named = (browser.query("tests") ?? "").split(",");
-    this.offered = MODES.filter((m) => (named[0] === "" ? m !== "terrain" : named.includes(m)));
+    this.offered = MODES.filter((m) => (named[0] === "" ? !TERRAIN_ONLY.includes(m) : named.includes(m)));
     this.report = this.recovered ? saved!.report! : newReport(browser.id);
     if (this.recovered) this.report.reloadedDuring = this.report.stage;
   }
@@ -1663,10 +2141,12 @@ export class DeviceProbe {
       bodies: new BodyCopies(side.app.session, side.hf),
       base: (n) => this.within(() => b.fetch(`base/${n}`, "").then((res) => (res.ok ? (res.json() as Promise<{ pieces: number }>) : null)).then((r) => r?.pieces ?? null), 20000, null),
       memory: new TextureMemory(gl, create, gpu.variant),
-      questions: () => new GpuQuestions(gl, create, () => b.now(), gpu.variant, [gl.drawingBufferWidth, gl.drawingBufferHeight]),
+      questions: (only) => new GpuQuestions(gl, create, () => b.now(), gpu.variant, [gl.drawingBufferWidth, gl.drawingBufferHeight], only ? { ...GPU_PLAN, only } : GPU_PLAN),
       frames: new FrameTimer(gl),
       display: this.report.idleFrameMs ?? 16.7,
       terrainMap: this.offered.includes("terrain"),
+      stand: (k) => this.within(() => b.fetch(`stand/${k}`, "").then((res) => (res.ok ? (res.json() as Promise<number[] | null>) : null)), 20000, null),
+      layers: (w, h, fov) => this.within(() => b.fetch(`layers/${w}/${h}/${fov}`, "").then((res) => (res.ok ? (res.json() as Promise<LayerAnswer | null>) : null)), 10000, null),
     };
     this.run = new DeviceRun(this.report, this.side, this.mode ?? "quick", this.timing, false, this.held);
   }
@@ -1676,6 +2156,8 @@ export class DeviceProbe {
     const run = this.run;
     const r = this.renderer!;
     if (!run || this.finished) return;
+    // In the tree order's second half the frame is read back, so its time to WebGL takes in the GPU's.
+    if (run.fencing) r.readPixel(0.5, 0.5);
     if (run.frame(now, p, built - t0, this.b.now() - built, r.drawCalls, [r.gl.drawingBufferWidth, r.gl.drawingBufferHeight], (x, y) => r.readPixel(x, y))) this.post();
     if (this.report.done) this.finish();
     else if (now - this.progressAt > 500) {

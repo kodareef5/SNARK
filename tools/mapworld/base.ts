@@ -1,13 +1,14 @@
 // The registered layers a map is made from (assets/source/maps/<name>/base, described by its VALUES.md), read north up as
 // the pictures hold them: index row * side + column, row 0 at the north and column 0 at the west.
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readGrey } from "../map/png.ts";
 import { TransverseMercator } from "./geo.ts";
 import { readFloatTiff, type FloatRaster } from "./tiff.ts";
 
 export interface MapInfo {
+  readonly bathymetry?: string;
   readonly size_m: number;
   readonly chunks: number;
   readonly grid_samples: number;
@@ -45,9 +46,13 @@ export class Base {
     return out;
   }
 
-  /** The coastal elevation model resampled to each sample, bilinearly, in NAVD88 metres. */
+  /** The coastal elevation model map.json names, else the one GeoTIFF in base/bathymetry, resampled to each sample, bilinearly, in NAVD88 metres. */
   bathymetry(): Float32Array {
-    const tif = readFloatTiff(new Uint8Array(readFileSync(join(this.folder, "base", "bathymetry", "miami-navd88.tif"))));
+    const folder = join(this.folder, "base", "bathymetry");
+    const named = this.info.bathymetry;
+    const tifs = named ? [] : readdirSync(folder).filter((f) => f.endsWith(".tif"));
+    if (!named && tifs.length !== 1) throw new Error(`${folder} should hold one coastal elevation model, or map.json name one, and holds ${tifs.length}`);
+    const tif = readFloatTiff(new Uint8Array(readFileSync(named ? join(this.folder, "base", named) : join(folder, tifs[0]!))));
     const n = this.n;
     const out = new Float32Array(n * n);
     // Longitude and latitude are found every 64 m and taken between: the projection bends far less than a sample over that.

@@ -1,45 +1,84 @@
-# Map world tools
+# Building a city map
 
-Turn a painted map's base layers into a playable map file. Bun and TypeScript,
-no dependency; the map file format and its folder of layers are the engine's
-(`tools/map.ts`, `planning/reference/maps.md`), and nothing here changes them.
+The builder reads `assets/source/maps/<name>/base/`, `map.json` and
+`world/world.json`. It writes generated layers below `var/maps/<name>/` and
+packs `var/maps/<name>.snmap`. Run one build or rasterizer batch at a time:
 
 ```sh
-bun tools/mapworld/build.ts miami                    # base/ to var/maps/miami/layers and var/maps/miami.snmap
-bun server/main.ts --dev --map var/maps/miami.snmap --port 8788
-bun tools/mapworld/walk.ts var/maps/miami.snmap      # a headless client at every spawn point, walking
-bun tools/mapworld/pictures.ts var/maps/miami.snmap <folder> [zoom] [col,row ...]   # the map screen's relief
-bun tools/mapworld/views.ts var/maps/miami.snmap assets/source/maps/miami/reports/world1/views.json <folder> medium
-bun run snap -- --map var/maps/miami.snmap --graphics medium --pos x,y,z --yaw d --pitch d
-bun tools/mapworld/fetch-attributes.ts miami         # once: heights and uses of the footprints (network)
+bun tools/mapworld/build.ts <name>
+bun tools/mapworld/walk.ts var/maps/<name>.snmap
+bun tools/mapworld/ruin-walk.ts var/maps/<name>.snmap --all
+bun tools/mapworld/access-walk.ts var/maps/<name>.snmap
+bun tools/mapworld/bridge-walk.ts var/maps/<name>.snmap
+bun tools/mapworld/room-walk.ts var/maps/<name>.snmap
+bun tools/mapworld/server-bench.ts var/maps/<name>.snmap
+bun tools/mapworld/verify.ts var/maps/<name>.snmap
+bun tools/mapworld/proof-views.ts var/maps/<name>.snmap
+bun tools/mapworld/views.ts var/maps/<name>.snmap <views.json> <output-folder> medium
+bun tools/mapworld/ruin-report.ts var/maps/<name>.snmap
+bun test ./tools/mapworld/ruins.test.ts
+bun run check
 ```
 
-The server needs `client/dist` (`bun run build`) as it always does. The map
-file is regenerable and lives under `var/`, which git ignores; its inputs are
-`assets/source/maps/<name>/base/` and `assets/source/maps/<name>/world/world.json`.
+`world.ruins.report` chooses the report folder. `world.ruins.yardDistricts`
+chooses working container yards. `world.bridgeGapLayer` names the authored
+break mask, and `map.bathymetry` names the coastal raster relative to `base/`
+(left out, the one GeoTIFF in `base/bathymetry` is used).
+CLI tools require a map argument. No city names or named compositions live in
+these modules.
 
-| File | What it does |
-| --- | --- |
-| `build.ts` | Runs the steps below, writes the folder of layers and the map file, prints the numbers and writes them to `var/maps/<name>/stats.json` |
-| `base.ts` | Reads `base/` north up, the elevation model in NAVD88 metres, and the coastal model resampled to the grid |
-| `geo.ts`, `tiff.ts` | Transverse Mercator both ways; a reader of single-band float GeoTIFFs (deflate, floating-point predictor) |
-| `raster.ts` | Distance fields with nearest sites, regions, box blurs, polygon fill, hashes and value noise |
-| `ground.ts` | Heights above the sea: land, beds that wade in from a beach and drop off a seawall, bridges standing or fallen, broken spans, drowned streets, wrecks, the ruins, container rows; and what each sample is |
-| `heaps.ts` | The stand-in ruins: a heap per footprint, by surveyed height where there is one. `"heaps": false` in `world.json` leaves each footprint a bare slab |
-| `tint.ts` | One palette index a sample, by ground and by the district a ruin stood in |
-| `nodes.ts` | Two zoned node layers at 4 m: trees and plants, and stones |
-| `places.ts` | Spawn points set on the nearest fit ground to where `world.json` names them, and spawn regions found from the ground |
-| `statics.ts` | The slot for layers of static pieces, such as a ruin generator's blocks |
-| `walk.ts`, `views.ts`, `pictures.ts` | Proof: the walk, the rasterizer's pictures with the asset files read once, the map screen's relief |
+`statics.ts` is the seam. A `StaticLayer.make(site)` returns kind, centre and yaw
+for each box. The site exposes footprints, district data, ground samples and
+plant clearing masks. The ground builder leaves the footprints bare when
+`world.heaps` is false. Resource nodes are placed after all static layers.
 
-## A layer of statics
+The first input for each footprint is `blocks/labels.json`. Supplied heights
+win over levels and research. Missing values use supplied neighbours, then the
+map's district and area rules. `blocks/research.json` accepts era, style,
+materials and lore keyed by footprint id. Historical square surveys enrich by
+unambiguous name only. `blocks/ways.json` supplies bridge and pier geometry.
 
-A module exports a `StaticLayer` (`statics.ts`): a name and `make(site)`, which
-returns pieces `{ kind, x, y, z, yaw }` in engine metres and degrees. The site
-holds the world file, the ground as built (heights, what each sample is, the
-districts) and every footprint with its rings, area, surveyed height and use,
-its district, and what the heaps took it to be, with `toEngine` and `groundAt`.
-Add the layer to `STATIC_LAYERS`; the build runs each in order after the
-ground and writes their pieces into `statics.json`. Shapes come from hashes of
-footprint ids, as the heaps' do, so a rebuild gives the same bytes. Set
-`"heaps": false` when the blocks stand.
+The shared box kit is `content/ruins.ts`. Dimensions are full metres. Add a
+shape there, its palette/material variants, then use its name in an assembly.
+Existing kinds keep their ids; new shape names sort after the original kit.
+The compatibility content module remains so the core pack needs no new import.
+
+`ruins/vocabulary.json` is the per-map grammar:
+
+- `categories` and `recipes` settle broad building use and retained height.
+- `forms` give plan, shell, interior, front, roof and window rhythm.
+- `interiors` give divider, back wall and furnishing parts. Hotels use full
+  partitions and beds; offices use low dividers; storage halls stay open.
+- `choices` are ordered rules over kind, recipe, district, height, water
+  distance, known construction year, trades and nearby footprint count.
+  Each match can change form or the seeded distribution of collapse modes.
+  Names can match a regular expression and floor area can bound a choice.
+- `damage` gives collapse radius, retained top and pancake layer count.
+- `assemblies` list shape, local x/y/z, finish and optional yaw. They carry a
+  role and optional clearance note. Fronts, wrecks, signs and street remnants
+  all use this interpreter.
+- `compositions` combine regional stacks, towers, bowls, portals, ribs and
+  explicit parts. `ruins/places.json` attaches a composition to a footprint.
+
+To add a rule, append one readable choice. To add a named place, add a
+composition and one footprint entry. No generator branch is needed. A new
+structural method belongs in `ruin-layouts.ts`; it can then serve any map.
+
+Floors merge only complete equal-height rectangles. Facade panels merge only
+collinear adjacent spans. Stair and escape holes stay open. Upper tower masses
+use tall panels above a playable lookout level. Rooms have two openings onto
+reserved corridors. Optional caps and fins yield to circulation. The street
+assembly pass checks every certified street approach and bridge corridor.
+Atomic building admission enforces both chunk and city piece budgets.
+
+After admission, circulation removes conflicting overhangs from neighbouring
+buildings. Street grading reserves enough width for its slopes and rejects
+crossings with incompatible levels. Bridge decks constrain the final ground.
+`verify.ts` runs all six proofs in sequence and exits; it opens no server socket.
+
+Large inventories are generated, not committed. Keep counts, test summaries,
+cameras, selection records and the rasterizer images. The report tool makes a
+comparison gallery using `ruins/proof.json` and optional `ruins/captions.json`.
+Line-ups isolate exact packed pieces by their recorded range, with one camera,
+light and ground plane. They are diagnostic views, not replacements for the
+required city streets and interiors.

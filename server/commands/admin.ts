@@ -2,6 +2,8 @@ import { parseNumber } from "../../shared/console.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { MODE_FLY, MODE_GHOST, MODE_WALK } from "../../shared/sim/character.ts";
 import { Genome, POINT_CAP, STAT_NAMES } from "../../shared/sim/genome.ts";
+import { FLAG_BLUEPRINT, QUALITY_NAMES } from "../../shared/sim/items.ts";
+import { lootCommands } from "./loot.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
 import { placeFree } from "../place.ts";
 import { named, type Console, type ConsoleCommand } from "../console.ts";
@@ -120,8 +122,8 @@ export function addAdminCommands(con: Console): void {
     },
     {
       name: "give",
-      usage: "<item> [count]",
-      help: "Create items in your inventory. The item may be named without its pack: spear for core:spear.",
+      usage: "<item> [count] [quality] [bp]",
+      help: `Create items in your inventory. The item may be named without its pack: spear for core:spear. The quality is a name or its number from 0: ${QUALITY_NAMES.join(", ")}. bp makes each a blueprint of the item.`,
       admin: true,
       run(ctx, args) {
         const c = ctx.client;
@@ -132,8 +134,20 @@ export function addAdminCommands(con: Console): void {
         if (typeof item === "string") return item;
         const count = args[1] === undefined ? 1 : parseNumber(args[1]);
         if (!Number.isInteger(count) || count < 1 || count > 10000) return "count must be a whole number from 1 to 10000";
-        const made = ctx.host.items.mint(rec, item, count, 0, 0, -1, "given");
-        return made === count ? `gave ${made} ${reg.ids[item]}` : `gave ${made} ${reg.ids[item]}; ${count - made} did not fit`;
+        // What follows the count is a quality, "bp", or both.
+        let quality = 0;
+        let bp = false;
+        for (const word of args.slice(2)) {
+          const w = word.toLowerCase();
+          const q = QUALITY_NAMES.indexOf(w) >= 0 ? QUALITY_NAMES.indexOf(w) : /^\d+$/.test(w) ? Number(w) : -1;
+          if (w === "bp") bp = true;
+          else if (q >= 0 && q < QUALITY_NAMES.length) quality = q;
+          else return `"${word}" is no quality (${QUALITY_NAMES.map((n, i) => `${i} ${n}`).join(", ")}) and not bp`;
+        }
+        if (bp && reg.blueprints[item] === 0) return `${reg.ids[item]} cannot be a blueprint: only an item that is crafted can`;
+        const made = ctx.host.items.mint(rec, item, count, quality, 0, -1, "given", bp ? FLAG_BLUEPRINT : 0);
+        const what = `${reg.ids[item]}${bp ? " blueprint" : ""}${quality > 0 || bp ? ` (${QUALITY_NAMES[quality]})` : ""}`;
+        return made === count ? `gave ${made} ${what}` : `gave ${made} ${what}; ${count - made} did not fit`;
       },
     },
     {
@@ -252,5 +266,5 @@ export function addAdminCommands(con: Console): void {
       },
     },
   ];
-  con.add(...commands);
+  con.add(...commands, ...lootCommands());
 }

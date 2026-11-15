@@ -38,6 +38,7 @@
 
 import type { Clip, ClipSet } from "../anim/clip.ts";
 import { hashBytes, hashString } from "../hash.ts";
+import { ATLAS_MOST, CELL, atlasBytes, type PackDetails } from "./details.ts";
 import { stepOf, type TextureRole } from "./texture.ts";
 
 export const PACK_MAGIC = 0x4b504e53; // "SNPK" little-endian
@@ -86,11 +87,10 @@ export interface PackMaterial {
   mask: number;
   mask2: number;
   /**
-   * Layers laid over the base colour as the body is hurt (the cue word's hurt stage) and as its corpse decays, each a
-   * texture index. Absent for none, and nothing draws them yet.
+   * What the surface turns to as the body is hurt (the cue word's hurt stage) and as its corpse decays: one texture of
+   * role "layer" made from the asset's hurt and decay pictures (tools/pack/image.ts `layerPicture`). Absent for none.
    */
-  hurt?: number;
-  decay?: number;
+  layer?: number;
   /** Multiplied over the base colour, linear 0..1. */
   tint: [number, number, number];
   /** The mean linear brightness of the base colour where the masks mark a region. A region's colour is divided by it, so the dyed surface averages that colour. */
@@ -101,6 +101,16 @@ export interface PackMaterial {
   cutoff: number;
   /** Metres of surface across one whole texture, measured when the pack was made. */
   span: number;
+}
+
+/** The texture a material names in a role, -1 for none. */
+export const textureOf = (m: PackMaterial, role: TextureRole): number => (role === "layer" ? (m.layer ?? -1) : m[role]);
+
+/** Names `t` in a role; a material with no layer leaves the field out, as packs before layers did. */
+export function setTexture(m: PackMaterial, role: TextureRole, t: number): void {
+  if (role !== "layer") m[role] = t;
+  else if (t >= 0) m.layer = t;
+  else delete m.layer;
 }
 
 /** A texture a material names. Its pixels are in the texture files, not in the pack. */
@@ -169,6 +179,8 @@ export interface PackHeader {
   clips: PackClip[];
   materials?: PackMaterial[];
   textures?: PackTexture[];
+  /** Small details: their atlas, effects and cue sheets (shared/pack/details.ts). The boot file carries them. */
+  details?: PackDetails;
 }
 
 export interface Pack {
@@ -206,7 +218,7 @@ export function parsePack(file: Uint8Array): Pack {
   for (const t of textures) if (stepOf(t.top) < 0) throw new Error(`pack: texture ${t.id} is ${t.top} pixels across`);
   for (const m of materials) {
     m.mask2 ??= -1;
-    for (const t of [m.base, m.normal, m.mro, m.mask, m.mask2, m.hurt ?? -1, m.decay ?? -1]) if (!(t >= -1 && t < textures.length)) throw new Error(`pack: material ${m.id} names a texture that is not there`);
+    for (const t of [m.base, m.normal, m.mro, m.mask, m.mask2, m.layer ?? -1]) if (!(t >= -1 && t < textures.length)) throw new Error(`pack: material ${m.id} names a texture that is not there`);
   }
   header.meshes.forEach((m, i) => {
     meshIndex.set(m.id, i);
@@ -236,6 +248,9 @@ export function parsePack(file: Uint8Array): Pack {
     }
   });
   if (header.paletteOffset + 1024 > blob.length) throw new Error("pack: palette outside the file");
+  const d = header.details;
+  if (d && !(d.atlas.side >= CELL && d.atlas.side <= ATLAS_MOST && (d.atlas.side & (d.atlas.side - 1)) === 0)) throw new Error(`pack: the details atlas is ${d.atlas.side} pixels across`);
+  if (d && d.atlas.offset + atlasBytes(d.atlas.side) > blob.length) throw new Error("pack: the details atlas is outside the file");
   header.rigs ??= [];
   header.clips ??= [];
   return { header, blob, blobAt: 12 + jsonLength, palette: blob.subarray(header.paletteOffset, header.paletteOffset + 1024), meshIndex, clips: decodeClips(header.clips, blob) };
@@ -268,6 +283,12 @@ function decodeClips(list: readonly PackClip[], blob: Uint8Array): ClipSet {
     return { id: c.id, bones: c.bones, frames: c.frames, loop: c.loop, rot, root };
   });
   return { clips, index, hash };
+}
+
+/** The details atlas, every mip largest first, as a view into the pack; empty for a pack without details. */
+export function detailsAtlas(pack: Pack): Uint8Array {
+  const d = pack.header.details;
+  return d ? pack.blob.subarray(d.atlas.offset, d.atlas.offset + atlasBytes(d.atlas.side)) : new Uint8Array(0);
 }
 
 /** lodVertices and lodIndices return views into the pack. Indices are little-endian, `indexBytes` each. */

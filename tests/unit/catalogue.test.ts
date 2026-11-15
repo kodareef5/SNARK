@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
 import { CLASSES, FIELDS, classFaults, classOf, defFaults, type Field } from "../../shared/content/classes.ts";
@@ -20,8 +21,8 @@ import { ITEMS } from "../../content/items/index.ts";
 import { CATALOGUE_PAGE, cataloguePage } from "../../tools/catalogue.ts";
 
 // What the creature files bring is counted apart, so a new creature moves no number here, and so is what the files of
-// the creature features and of the item program (content/items) bring, so that those built side by side do not each move
-// the same numbers.
+// the creature features and of the item and weapons programs (content/items) bring, so that those built side by side do
+// not each move the same numbers.
 const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS, ...ITEMS];
 const ofCreatures = new Set([...CREATURES, ...FEATURES_CONTENT].map((d) => `${d.type} ${d.id}`));
 const rest = CORE_CONTENT.filter((d) => !ofCreatures.has(`${d.type} ${d.id}`));
@@ -39,12 +40,10 @@ test("the core pack's definitions fall into the classes, each passing its row, a
   expect(counts).toEqual({
     "item/resource": 11,
     "item/consumable": 4,
-    "item/weapon": 8,
-    "item/ammo": 7,
-    "item/attachment": 4,
+    "item/weapon": 3,
     "item/armor": 20,
     "item/structure": 27,
-    engram: 70,
+    engram: 54,
     levels: 1,
     "species/survivor": 1,
     "species/target": 1,
@@ -52,7 +51,7 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "structure/container": 3,
     "structure/station": 2,
     "structure/bed": 1,
-    "structure/static": 8,
+    "structure/static": 8 + RUIN_BLOCKS.length,
     shape: 14,
     material: 4,
     node: 14,
@@ -60,10 +59,10 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "prop/projectile": 2,
     buff: 7,
     spawns: 4,
-    map: 1,
-    rename: 74,
+    map: 2,
+    rename: 58,
   });
-  expect(rest.length).toBe(323);
+  expect(rest.length).toBe(276 + RUIN_BLOCKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
@@ -123,6 +122,7 @@ const STUBS: ContentPack = {
     { id: "stub:relic", type: "item", class: "artifact", stack: 1 },
     { id: "stub:spikes", type: "structure", class: "defence", mesh: "box", color: 3, half: [0.5, 0.5, 0.5], hp: 300 },
     { id: "stub:crate", type: "prop", class: "crate", mesh: "box", color: 6, radius: 0.5, height: 1, slots: 20 },
+    { id: "stub:smoke", type: "prop", class: "cloud", mesh: "box", color: 2, radius: 4.5, height: 3 },
     { id: "stub:poison", type: "damage", label: "poison", torpor: 2, trueShare: 1 },
     { id: "stub:drop", type: "loot", sets: { min: 1, max: 2 }, from: [{ min: 1, max: 3, entries: [{ items: ["core:stone", "stub:relic"], min: 1, max: 20, quality: [1, 3], blueprint: 0.25 }] }] },
     { id: "stub:beach", type: "spawns", entries: [{ group: ["core:parasaur"], weight: 3 }, { name: "Alphas", group: ["stub:alpha", "core:raptor"], chances: [1, 0.5], offsets: [[0, 2], [0, -2]], weight: 0.1 }], limits: [{ species: "stub:alpha", share: 0.05 }] },

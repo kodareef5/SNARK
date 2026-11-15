@@ -3,8 +3,10 @@ import { expect, test } from "bun:test";
 import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, parsePack, type Pack, type PackLod, type PackMaterial } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import type { TextureRole } from "../../shared/pack/texture.ts";
 import { Rng } from "../../shared/rng.ts";
 import { importGlb } from "../../tools/pack/glb.ts";
+import type { Picture } from "../../tools/pack/image.ts";
 import { manifestOf, partHash } from "../../tools/pack/manifest.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { stressMeshes } from "../../tools/pack/stress.ts";
@@ -166,7 +168,8 @@ test("the tube comes out of a pack as it went in, and what a flat client reads o
   // There is a picture for each texture, of the size it says. The two masks give a pixel to one region at most, wholly
   // or by half. Each of the four regions has three sixteenths of the pixels, since the top quarter is never dyed.
   const pictures = tubePictures();
-  expect(mesh.textures!.map((t) => [t.id, pictures[t.role].width, pictures[t.role].data.length])).toEqual(mesh.textures!.map((t) => [`${TUBE}/${t.role}`, t.top, t.top * t.top * 4]));
+  const of = (role: TextureRole): Picture => (pictures as Partial<Record<TextureRole, Picture>>)[role]!;
+  expect(mesh.textures!.map((t) => [t.id, of(t.role).width, of(t.role).data.length])).toEqual(mesh.textures!.map((t) => [`${TUBE}/${t.role}`, t.top, t.top * t.top * 4]));
   const weights = Array.from({ length: TUBE_PIXELS * TUBE_PIXELS }, (_, p) => [...pictures.mask.data.subarray(p * 4, p * 4 + 3), ...pictures.mask2.data.subarray(p * 4, p * 4 + 3)]);
   expect([...new Set(weights.map((w) => w.filter((c) => c > 0).join()))].sort()).toEqual(["", "128", "255"]);
   expect([0, 1, 2, 3, 4, 5].map((k) => weights.filter((w) => w[k]! > 0).length)).toEqual([...new Array<number>(TUBE_REGIONS).fill((TUBE_PIXELS * TUBE_PIXELS * 3) / 16), 0, 0]);

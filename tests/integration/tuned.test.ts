@@ -173,8 +173,8 @@ test("engrams and levels are the server's: its level table and the tames', the m
   expect(shown()).toEqual([1, 0, 5]);
   h.say(ada, "addxp 5");
   expect([shown(), ada.progress.engrams, me.engrams, learn("waterskin")]).toEqual([[2, 5, 10], [id("engram-waterskin")], [], RESULT_INVALID]);
-  h.say(ada, "give fiber 20");
-  h.say(ada, "give thatch 5");
+  h.say(ada, "give hide 4");
+  h.say(ada, "give fiber 12");
   expect(craft("waterskin")).toBe(RESULT_OK);
   // Level 3 is at thirty. A level gives at most 65,535 points, even though the file says 70000. With her five that
   // is more than sixteen bits hold, and the client still gets the whole number.
@@ -312,7 +312,7 @@ test("what a client shows by the server's leave: the body from behind, the cross
   };
   /** Fakes a hit event and a death marker on the client. */
   const stir = (): void => {
-    s.events.push({ kind: EVENT_HIT, x: s.own.x, y: s.own.y + 1, z: s.own.z + 3, zone: 2, damage: 9, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0 });
+    s.events.push({ kind: EVENT_HIT, x: s.own.x, y: s.own.y + 1, z: s.own.z + 3, zone: 2, damage: 9, kill: false, blocked: false, bearing: 0, side: true, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0 });
     if (s.markers.length === 0) s.markers.push({ kind: MARKER_DEATH, x: s.own.x + 20, y: s.own.y, z: s.own.z, tick: 1 });
     run(34);
   };

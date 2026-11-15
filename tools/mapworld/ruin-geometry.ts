@@ -1,0 +1,175 @@
+import { RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import type { Footprint, Site, StaticPiece } from "./statics.ts";
+
+export type Point = readonly [number, number];
+export interface Tile { u: number; v: number; i: number; j: number; }
+export interface Frame {
+  x: number; z: number; yaw: number; c: number; s: number; rings: Point[][];
+  width: number; depth: number;
+}
+export function inRing(u: number, v: number, ring: readonly Point[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i]!; const b = ring[j]!;
+    if ((a[1] > v) !== (b[1] > v) && u < ((b[0] - a[0]) * (v - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+export const inside = (f: Frame, u: number, v: number): boolean => inRing(u, v, f.rings[0]!) && !f.rings.slice(1).some((r) => inRing(u, v, r));
+
+export function frameOf(f: Footprint, site: Site): Frame {
+  const rings = f.building.rings.map((r) => r.map(([e, n]) => site.toEngine(e!, n!)));
+  const ring = rings[0]!;
+  let yaw = 0; let longest = 0;
+  for (let i = 1; i < ring.length; i++) {
+    const dx = ring[i]![0] - ring[i - 1]![0]; const dz = ring[i]![1] - ring[i - 1]![1];
+    if (dx * dx + dz * dz > longest) { longest = dx * dx + dz * dz; yaw = Math.atan2(-dz, dx); }
+  }
+  // Canonical half-turn keeps neighbouring rectangles' fronts consistent.
+  yaw = ((yaw % Math.PI) + Math.PI) % Math.PI;
+  const c = Math.cos(yaw); const s = Math.sin(yaw);
+  const raw = rings.map((r) => r.map(([x, z]) => [x * c - z * s, x * s + z * c] as Point));
+  const us = raw[0]!.map((p) => p[0]); const vs = raw[0]!.map((p) => p[1]);
+  const loU = Math.min(...us); const hiU = Math.max(...us); const loV = Math.min(...vs); const hiV = Math.max(...vs);
+  const u = (loU + hiU) / 2; const v = (loV + hiV) / 2;
+  return { x: u * c + v * s, z: -u * s + v * c, yaw: yaw * 180 / Math.PI, c, s,
+    width: hiU - loU, depth: hiV - loV, rings: raw.map((r) => r.map(([x, z]) => [x - u, z - v])) };
+}
+export const worldPoint = (f: Frame, u: number, v: number): Point => [f.x + u * f.c + v * f.s, f.z - u * f.s + v * f.c];
+
+export function tilesOf(f: Frame, bay: number): Tile[] {
+  const out: Tile[] = [];
+  const cols = Math.floor(f.width / bay); const rows = Math.floor(f.depth / bay);
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const u = (i - (cols - 1) / 2) * bay; const v = (j - (rows - 1) / 2) * bay;
+    const h = bay / 2 - .02;
+    // Sample edges as well as corners, and reject even small courtyards wholly enclosed by a tile.
+    if (![-h, 0, h].every((x) => [-h, 0, h].every((z) => inside(f, u + x, v + z)))) continue;
+    if (f.rings.slice(1).some((r) => r.some(([x, z]) => Math.abs(x - u) < h && Math.abs(z - v) < h))) continue;
+    out.push({ u, v, i, j });
+  }
+  return out;
+}
+export const tileKey = (i: number, j: number): string => `${i},${j}`;
+export const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
+interface Entry { x: number; y: number; z: number; yaw: number; coreX: number; coreZ: number; crossing?: boolean; }
+
+export class Mason {
+  readonly pieces: StaticPiece[] = [];
+  readonly clear: { x: number; z: number; radius: number }[] = [];
+  readonly routes: { x: number; y: number; z: number; yaw: number; floors: number }[] = [];
+  readonly entries: Entry[] = [];
+  readonly alternatives: { entry: Entry; support: Point; path: { x: number; y: number; z: number }[] }[] = [];
+  readonly escapes: { points: { x: number; y: number; z: number }[] }[] = [];
+  readonly rooms: { kind: string; points: { x: number; y: number; z: number }[] }[] = [];
+  readonly falls: { mode: string; u: number; v: number }[] = [];
+  readonly wings: { tiles: number; height: number; u: number; v: number }[] = [];
+  readonly frame: Frame;
+  readonly base: number;
+  constructor(frame: Frame, base: number) { this.frame = frame; this.base = base; }
+  point(u: number, v: number): Point { return worldPoint(this.frame, u, v); }
+  put(shape: RuinShape, u: number, y: number, v: number, finish: RuinFinish = "concrete", turn = 0): void {
+    const [x, z] = worldPoint(this.frame, u, v);
+    this.pieces.push({ kind: ruinKind(shape, finish), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 });
+  }
+  cover(u: number, v: number, radius: number): void {
+    const [x, z] = worldPoint(this.frame, u, v); this.clear.push({ x, z, radius });
+  }
+  floor(t: Point, y: number, bay: number): void { this.put(bay === 16 ? "floor16" : bay === 8 ? "floor8" : "floor4", t[0], y - .2, t[1]); }
+  post(u: number, bottom: number, v: number, height: number): void {
+    for (let y = 0; y < height - .01;) {
+      const h = height - y >= 16 ? 16 : height - y >= 8 ? 8 : 4;
+      this.put(h === 16 ? "pier16" : h === 8 ? "pier8" : "pier4", u, bottom + y + h / 2, v);
+      y += h;
+    }
+  }
+  escape(t: Tile, floors: number, core: Tile): void {
+    const dir = floors % 2 === 0 ? -1 : 1;
+    const near = t.u < core.u ? 1 : -1;
+    const corners = [[near * 2, dir * 2], [-near * 2, dir * 2], [-near * 2, -dir * 2], [near * 2, -dir * 2]];
+    const points: { x: number; y: number; z: number }[] = [];
+    for (const [u, v] of [[core.u + (floors % 2 === 0 ? -1.5 : 1.5), core.v + dir * 5.5], [t.u + near * 2, t.v + dir * 5.5]]) {
+      const [x, z] = this.point(u!, v!); points.push({ x, y: this.base + floors * 4, z });
+    }
+    for (let step = 0; step <= floors * 2; step++) {
+      const [du, dv] = corners[step % 4]!; const y = floors * 4 - step * 2;
+      const u = t.u + du!; const v = t.v + dv!;
+      this.floor([u, v], y, 4); const [x, z] = this.point(u, v); points.push({ x, y: this.base + y, z });
+    }
+    this.escapes.push({ points }); this.cover(t.u, t.v, 16);
+  }
+  stairs(t: Tile, floors: number): void {
+    // Banyan prop roots reach beyond their planting cell into the stair approach.
+    this.cover(t.u, t.v, 20);
+    this.floor([t.u, t.v], 0, 8);
+    for (let f = 0; f < floors; f++) {
+      const dir = f % 2 === 0 ? 1 : -1;
+      const u = t.u + (f % 2 === 0 ? -1.5 : 1.5);
+      for (let n = 0; n < 11; n++) this.put("step", u, f * 4 + (n + 1) * (4 / 11) - .2, t.v + dir * (-2.5 + n * .5));
+      this.put("landing", t.u, (f + 1) * 4 - .2, t.v + dir * 3.25);
+    }
+    const [x, z] = worldPoint(this.frame, t.u, t.v);
+    this.routes.push({ x, y: this.base, z, yaw: this.frame.yaw, floors });
+  }
+}
+
+export function pieceRadius(p: StaticPiece): number {
+  const name = p.kind.split("_")[1] as RuinShape;
+  const shape = RUIN_SHAPES[name];
+  return shape ? Math.hypot(shape[0], shape[2]) / 2 : 0;
+}
+
+export function compactWalls(m: Mason): void {
+  const candidates = new Map<string, number>(); const removed = new Set<number>();
+  const output = m.pieces;
+  for (let i = 0; i < output.length; i++) {
+    const p = output[i]!;
+    const shape = p.kind.split("_")[1]; if (shape !== "zpanel8" && shape !== "zshaft8") continue;
+    const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+    const u = p.x * c - p.z * s; const v = p.x * s + p.z * c;
+    const key = (at: number): string => `${p.kind},${p.y.toFixed(3)},${p.yaw.toFixed(3)},${at.toFixed(3)},${v.toFixed(3)}`;
+    const previous = candidates.get(key(u - 8)) ?? candidates.get(key(u + 8));
+    if (previous !== undefined && !removed.has(previous)) {
+      const q = output[previous]!;
+      output[i] = { ...p, kind: p.kind.replace(shape, shape === "zpanel8" ? "zpanel16" : "zshaft16"), x: (p.x + q.x) / 2, z: (p.z + q.z) / 2 };
+      removed.add(previous);
+    } else candidates.set(key(u), i);
+  }
+  if (removed.size) { const kept = output.filter((_, i) => !removed.has(i)); output.length = 0; for (const p of kept) output.push(p); }
+}
+
+export function reserveRoutes(m: Mason): number {
+  const paths = [...m.rooms.filter((r) => r.kind !== "rubble"), ...m.escapes].map((r) => r.points);
+  const entryPaths = m.entries.filter((e) => e.crossing).map((e) => [{ x: e.x, y: e.y, z: e.z }, { x: e.coreX, y: e.y, z: e.coreZ }]);
+  for (const r of m.routes) {
+    const a = r.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+    const point = (u: number, y: number, v: number): { x: number; y: number; z: number } => ({ x: r.x + u * c + v * s, y: r.y + y, z: r.z - u * s + v * c });
+    for (let f = 0; f < r.floors; f++) {
+      const dir = f % 2 === 0 ? 1 : -1; const u = f % 2 === 0 ? -1.5 : 1.5;
+      paths.push([point(u, f * 4, -dir * 3.25), point(u, (f + 1) * 4, dir * 3.25), point(-u, (f + 1) * 4, dir * 3.25)]);
+    }
+    const dir = r.floors % 2 === 0 ? -1 : 1;
+    paths.push([point(dir * 1.5, r.floors * 4, dir * 3.25), point(dir * 1.5, r.floors * 4, dir * 5.5)]);
+  }
+  const removable = new Set(["fin4", "fin8", "fin16", "crown", "zcore", "zroof8", "zroof16", "zbalcony", "sill8", "sill4"]);
+  const before = m.pieces.length;
+  const kept = m.pieces.filter((p) => {
+    const name = p.kind.split("_")[1] as RuinShape;
+    if (["step", "landing", "floor4", "floor8", "floor16"].includes(name)) return true;
+    if (!removable.has(name) && !entryPaths.length) return true;
+    const [w, h, d] = RUIN_SHAPES[name]; const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+    for (const points of [...(removable.has(name) ? paths : []), ...entryPaths]) for (let i = 1; i < points.length; i++) {
+      const from = points[i - 1]!; const to = points[i]!; const length = Math.hypot(to.x - from.x, to.z - from.z);
+      if (Math.min(from.y, to.y) + .4 >= p.y + h / 2 || Math.max(from.y, to.y) + 2.2 <= p.y - h / 2) continue;
+      if (Math.min(from.x, to.x) - w - d > p.x || Math.max(from.x, to.x) + w + d < p.x || Math.min(from.z, to.z) - w - d > p.z || Math.max(from.z, to.z) + w + d < p.z) continue;
+      for (let n = 0; n <= Math.ceil(length * 2); n++) {
+        const t = n / Math.max(1, Math.ceil(length * 2)); const y = from.y + (to.y - from.y) * t;
+        if (p.y + h / 2 <= y + .4 || p.y - h / 2 >= y + 2.2) continue;
+        const dx = from.x + (to.x - from.x) * t - p.x; const dz = from.z + (to.z - from.z) * t - p.z;
+        if (Math.abs(dx * c - dz * s) < w / 2 + .5 && Math.abs(dx * s + dz * c) < d / 2 + .5) return false;
+      }
+    }
+    return true;
+  });
+  m.pieces.length = 0; for (const p of kept) m.pieces.push(p); return before - kept.length;
+}

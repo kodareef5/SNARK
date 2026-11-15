@@ -40,7 +40,28 @@ export const NEUTRAL: Readonly<Record<TextureRole, readonly [number, number, num
   mro: [255, 255, 0, 255],
   mask: [0, 0, 0, 0],
   mask2: [0, 0, 0, 0],
+  layer: [0, 0, 0, 0],
 };
+
+/**
+ * A body's layer is drawn at a level from 0 to 1: the three hurt stages, a sixth each, then a corpse's three decay
+ * stages after the fresh corpse at a half. A draw carries it in LAYER_LEVELS steps (packet.ts `drawLayer`), so a body
+ * moving from one stage to the next is drawn through sixteen steps between.
+ */
+export const LAYER_STAGES = 6;
+export const LAYER_LEVELS = LAYER_STAGES * 16;
+/**
+ * A texel of the layer fades in over the inverse of this share of the level, a little under a quarter of a stage, once
+ * the level passes it: so a hurt texel of alpha 191, 106 or 21 is whole by stages 1, 2 and 3, and a decay texel so by decay's.
+ */
+const LAYER_EDGE = 26;
+/** A corpse fully decayed is this much toward grey, a little warm, and this much darker. */
+const DULL = 0.55;
+const DULL_TINT = [1.04, 0.97, 0.86] as const;
+const DARKEN = 0.3;
+/** A fresh wound is wet: its roughness goes to this, drying as the corpse decays. */
+const WET = 0.32;
+const LUMA = [0.2126, 0.7152, 0.0722] as const;
 
 type Numbers = ArrayLike<number>;
 type Out = number[] | Float32Array | Float64Array;
@@ -72,6 +93,21 @@ export function dyed(out: Out, base: Numbers, tint: Numbers, dyes: Numbers, mask
     const dye = undyed + mask[0]! * dyes[c]! + mask[1]! * dyes[3 + c]! + mask[2]! * dyes[6 + c]! + mask2[0]! * dyes[9 + c]! + mask2[1]! * dyes[12 + c]! + mask2[2]! * dyes[15 + c]!;
     out[c] = base[c]! * tint[c]! * dye;
   }
+}
+
+/**
+ * The dyed colour `albedo` and the packed map `mro` as a body's layer leaves them at `level` (LAYER_STAGES). `layer` is
+ * the layer sampled: its colour as light, and in alpha how soon it shows, 1 at once and 0 never. A texel shows once
+ * the level passes 1 less its alpha, fading in over a quarter stage; it takes the place of the dyed colour and is wet
+ * while the body is fresh. A corpse's decay dulls and darkens all of it.
+ */
+export function wounded(albedo: Out, mro: Out, layer: Numbers, level: number): void {
+  const shows = Math.min(Math.max((level - 1 + layer[3]!) * LAYER_EDGE, 0), 1);
+  const decay = Math.min(Math.max(level * 2 - 1, 0), 1);
+  for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! + (layer[c]! - albedo[c]!) * shows;
+  const grey = albedo[0]! * LUMA[0] + albedo[1]! * LUMA[1] + albedo[2]! * LUMA[2];
+  for (let c = 0; c < 3; c++) albedo[c] = (albedo[c]! + (grey * DULL_TINT[c]! - albedo[c]!) * decay * DULL) * (1 - decay * DARKEN);
+  mro[1] = mro[1]! + (WET - mro[1]!) * shows * (1 - decay);
 }
 
 /**
@@ -382,9 +418,11 @@ vec3 skyFrom(vec3 r) {
  * alpha to coverage to take as samples. The rasterizer tests each pixel's middle, so the two differ only along a cut.
  * `air` is the sky table's lookup, which smooth surfaces mirror, and the air (atmosphere.ts AIR). The sun's shadow is
  * looked up off the surface along the mesh's normal, turned to the side seen. A node's draw first drops what its
- * hand-over between the near store and the far one says (hand.ts).
+ * hand-over between the near store and the far one says (hand.ts). With `layered` it draws a body's hurt and decay
+ * layer as `wounded` has it, at `uLevel`; without, its text is the one every unhurt body is drawn with.
  */
-export function surfaceFragment(format: TextureFormat, air: string): string {
+export function surfaceFragment(format: TextureFormat, air: string, layered = false): string {
+  const albedo = "dyed(base.rgb, mask, mask2)";
   return `#version 300 es
 precision highp float;
 precision highp sampler2D;
@@ -395,11 +433,11 @@ flat in mat3 vDye, vDye2;
 uniform sampler2D uBase, uNormal, uMro, uMask, uMask2;
 uniform vec3 uTint;
 uniform float uCutoff;
-out vec4 o;
+${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
 ${LIGHT}${HAND_GLSL}${SHADOW_GLSL}${air}vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
   return base * uTint * (1.0 - dot(mask + mask2, vec3(1.0)) + vDye * mask + vDye2 * mask2);
 }
-vec3 bumped(vec2 b) {
+${layered ? WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -416,6 +454,19 @@ void main() {
   vec3 v = -normalize(vRel);
   vec3 n = bumped(bump);
   float shade = sunShadow(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal));
-  o = vec4(shown(lit(dyed(base.rgb, mask, mask2), mro, n, v, skyFrom(reflect(-v, n)), shade), vRel), cover);
+${layered ? `  vec3 albedo = wounded(${albedo}, mro);\n` : ""}  o = vec4(shown(lit(${layered ? "albedo" : albedo}, mro, n, v, skyFrom(reflect(-v, n)), shade), vRel), cover);
 }`;
 }
+
+/** `wounded` as GLSL, reading the layer on its unit at the draw's level. */
+const WOUNDED = `vec3 wounded(vec3 albedo, inout vec3 mro) {
+  vec4 layer = texture(uLayer, vUv);
+  float shows = clamp((uLevel - 1.0 + layer.a) * ${f(LAYER_EDGE)}, 0.0, 1.0);
+  float decay = clamp(uLevel * 2.0 - 1.0, 0.0, 1.0);
+  albedo = mix(albedo, layer.rgb, shows);
+  float grey = dot(albedo, vec3(${LUMA.map(f).join(", ")}));
+  albedo = mix(albedo, grey * vec3(${DULL_TINT.map(f).join(", ")}), decay * ${f(DULL)}) * (1.0 - decay * ${f(DARKEN)});
+  mro.g = mix(mro.g, ${f(WET)}, shows * (1.0 - decay));
+  return albedo;
+}
+`;

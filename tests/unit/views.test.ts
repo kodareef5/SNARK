@@ -27,8 +27,8 @@ const W = 240;
 const H = 135;
 const EXAMPLE = join(import.meta.dir, "../../tools/blender/example");
 
-/** One pixel of each role: a tan base colour, a normal straight out, rough and not metal, and no region. */
-const PIXEL: Record<TextureRole, readonly number[]> = { base: [190, 150, 100, 255], normal: [128, 128], mro: [255, 200, 0, 255], mask: [0, 0, 0, 0], mask2: [0, 0, 0, 0] };
+/** One pixel of each role: a tan base colour, a normal straight out, rough and not metal, no region, and a layer that shows red from the first. */
+const PIXEL: Record<TextureRole, readonly number[]> = { base: [190, 150, 100, 255], normal: [128, 128], mro: [255, 200, 0, 255], mask: [0, 0, 0, 0], mask2: [0, 0, 0, 0], layer: [150, 20, 20, 255] };
 
 /** The core pack split as a build splits it, each of its textures 64 pixels of one colour, so no large picture is read. */
 function smallFiles(): GameFiles {
@@ -59,8 +59,9 @@ test("a snapshot on a tier with textures draws the house with its materials once
     expect([frames > 1, p.assetUploads.length + p.texUploads.length, view.scene.assets.residency.flying]).toEqual([true, 0, 0]);
     const draws = [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & DRAW_TEXTURED) !== 0);
     textured[tier] = draws.length;
-    // What is drawn with materials is the building pieces, whose packs have pictures.
-    for (const d of draws) expect(files.manifest.meshes[p.drawMesh[d]!]!.id).toMatch(/_(thatch|wood|stone)$/);
+    // What is drawn with materials is the building pieces, whose packs have pictures, and the broadleaf trees behind the
+    // house, whose crowns keep their pictures to their fourth level.
+    for (const d of draws) expect(files.manifest.meshes[p.drawMesh[d]!]!.id).toMatch(/_(thatch|wood|stone)$|^core:(tree|oak|fig|banyan|mangrove)_\d+$/);
     pictures[tier] = view.raster.color.slice();
   }
   expect(textured.lowpoly).toBe(0);

@@ -10,6 +10,7 @@
 
 import type { Building, Ruin } from "./heaps.ts";
 import type { District, Ground, World } from "./ground.ts";
+import { RUINS } from "./ruins.ts";
 
 /** A piece as statics.json takes it: a content id, its centre in engine metres, and its turn in degrees from north toward +x. */
 export interface StaticPiece {
@@ -29,6 +30,7 @@ export interface Footprint {
 }
 
 export interface Site {
+  readonly source: string;
   readonly world: World;
   readonly ground: Ground;
   readonly footprints: readonly Footprint[];
@@ -36,6 +38,8 @@ export interface Site {
   toEngine(e: number, n: number): [number, number];
   /** The ground's height in metres above the sea at engine x and z, between samples. */
   groundAt(x: number, z: number): number;
+  readonly clearPlants: Uint8Array;
+  readonly lowPlants: Uint8Array;
 }
 
 export interface StaticLayer {
@@ -43,16 +47,18 @@ export interface StaticLayer {
   make(site: Site): StaticPiece[];
 }
 
-/** The layers a build sets down, in order. None yet: the heaps stand in for the ruins. */
-export const STATIC_LAYERS: readonly StaticLayer[] = [];
+export const STATIC_LAYERS: readonly StaticLayer[] = [RUINS];
 
-export function siteOf(world: World, ground: Ground, size: number): Site {
+export function siteOf(world: World, ground: Ground, size: number, source: string): Site {
   const n = ground.n;
   const half = size / 2;
   const at = (c: number, r: number): number => ground.height[Math.min(n - 1, Math.max(0, r)) * n + Math.min(n - 1, Math.max(0, c))]!;
   return {
+    source,
     world,
     ground,
+    clearPlants: new Uint8Array(((n - 1) / 2) ** 2),
+    lowPlants: new Uint8Array(((n - 1) / 2) ** 2),
     footprints: ground.heaps.ruins.map((ruin) => ({ building: ruin.building, ruin, district: world.districts[ruin.district - 1] ?? null })),
     toEngine: (e, no) => [half - e, half + no],
     groundAt(x, z) {

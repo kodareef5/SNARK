@@ -1,7 +1,7 @@
 // What a check of the lit probe (tools/probe-lit.ts) makes and is given back: shots of frames as core built them, and
 // the pixels the page read of them.
 
-import { ATLAS_WIDTH, BONE_FLOATS, MAX_CASTERS, MAX_DRAWS, MAX_TILES, type FramePacket } from "../../client/core/render/packet.ts";
+import { ATLAS_WIDTH, BONE_FLOATS, DETAIL_FLOATS, MAX_CASTERS, MAX_DRAWS, MAX_TILES, type FramePacket } from "../../client/core/render/packet.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -73,6 +73,7 @@ function used(p: FramePacket, name: string, length: number): number {
   if (name === "transientIds") return p.transientCount;
   if (name === "bones") return p.boneCount * BONE_FLOATS;
   if (name === "atlas") return p.atlasRows * ATLAS_WIDTH * 4;
+  if (name === "details" || name === "detailWords") return p.detailCount * DETAIL_FLOATS;
   return length;
 }
 

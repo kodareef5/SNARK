@@ -23,12 +23,12 @@ const picture = (name: string, more: Partial<MaterialSpec> = {}): MaterialSpec =
  * its error off (1,080 rows, a 70 degree view, 0.22 px), and the other tiers scale that; the engine takes errors at the
  * kind's largest size, about 1.2 times the modelled. A tree's finest level is for the tree being chopped and its
  * neighbours, to 14 m. A palm's second level carries it to 55 m, and its flat levels take over where it stands 55 and
- * then 20 pixels tall. A broadleaf tree's crown is one opaque surface with a fringe of cut-out leaves on the levels with
- * pictures; its second level stops at 40 m, and its flat ones begin where it stands 140 and then 24 pixels tall: the
- * first flat level is the same surface over gathered masses in three greens, which a wood's crowns read as from there.
- * On every tier the near store hands a tree to the far layer before it is drawn at its fourth level (D352: 152 to 184 m
- * on medium), so a broadleaf tree's far level meets its third. A stump's levels change at 8 m, 25 m and 60 m. The check
- * prints where each tier draws each.
+ * then 20 pixels tall. A broadleaf tree's crown is heads of leaves with cut-out sprays radiating from them (broadleaf.py)
+ * on its first three levels; its second level stops at 40 m, and its third and fourth begin where it stands 140 and then
+ * 24 pixels tall: the third is its heads gathered into a few dozen rounder ones, still with pictures and without sprays,
+ * the fourth the same in three flat greens. On every tier the near store hands a tree to the far layer before it is
+ * drawn at its fourth level (D352: 152 to 184 m on medium), so a broadleaf tree's far level meets its third, and is made
+ * to its fourth. A stump's levels change at 8 m, 25 m and 60 m. The check prints where each tier draws each.
  *
  * A tree's last level (far.py) is the far layer's, a few solids it draws out to kilometres. Its error of 0.6 m keeps the
  * near store and the shadow casters off it inside 2 km.
@@ -41,6 +41,8 @@ const tree = (object: string, height: number): number[] => [
   FAR,
 ];
 const STUMP = at([8, 25, 60]);
+// The broadleaf trees' cut-out leaves warmed: the sky fills a crown's shade with blue, and the concepts' shade is a deep warm olive.
+const LEAVES_TINT = [0.96, 1.0, 0.72] as const;
 
 /** The trees, by object name, and how tall each stands in metres. Each leaves a stump, `<name>_depleted`. */
 const PIECES: Record<string, number> = {
@@ -67,15 +69,15 @@ export default {
     royal_frond: picture("royal_frond", { cutout: true }),
     coconut_frond: picture("coconut_frond", { cutout: true }),
     oak_bark: picture("oak_bark", { tiles: 2 }),
-    oak_leaves: picture("oak_leaves", { cutout: true }),
-    oak_crown: picture("oak_crown"),
+    oak_leaves: picture("oak_leaves", { cutout: true, tint: LEAVES_TINT }),
+    oak_crown: picture("oak_crown", { tint: LEAVES_TINT }),
     stump_cuts: picture("stump_cuts"),
     fig_bark: picture("fig_bark", { tiles: 2 }),
-    fig_leaves: picture("fig_leaves", { cutout: true }),
+    fig_leaves: picture("fig_leaves", { cutout: true, tint: LEAVES_TINT }),
     fig_crown: picture("fig_crown"),
     mangrove_bark: picture("mangrove_bark", { tiles: 2 }),
     mangrove_crown: picture("mangrove_crown"),
-    mangrove_leaves: picture("mangrove_leaves", { cutout: true }),
+    mangrove_leaves: picture("mangrove_leaves", { cutout: true, tint: LEAVES_TINT }),
   }).filter(([name]) => ONLY.length === 0 || ONLY.some((k) => USES[k]!.includes(name)))),
-  budgets: { triangles: [60000, 16000, 3000, 1000, 400, 16], texture: { top: 2048, megabytes: 240 } },
+  budgets: { triangles: [125000, 60000, 8000, 2200, 450, 16], texture: { top: 2048, megabytes: 240 } },
 } satisfies PiecesAsset;

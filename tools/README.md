@@ -6,7 +6,7 @@ from here.
 | Tool | Command | Purpose |
 | --- | --- | --- |
 | `check.ts` | `bun run check` | The gate: policy rules, zone type checks, tests, time budget |
-| `bench.ts` | `bun run bench` | Measurements at the sizing target against budgets |
+| `bench.ts` | `bun run bench` | Measurements at the sizing target against budgets. `-- --parts` adds the comparison of our part compression with zlib and Brotli, which takes minutes |
 | `snap.ts`, `snap/` | `bun run snap` | Software rasterizer: a frame packet to a PNG |
 | `probe.ts` | `bun run probe` | The single browser launch: Chrome headless, self-check report |
 | `probe-textured.ts` | `bun run probe -- --textured` | For each texture variant the GPU takes: test cards of every BC7 mode, BC5 and ASTC block kind through the shell's own upload path, read back against our decoders, and a thatch house drawn by the shell against the software rasterizer, with its pictures saved to `planning/reference/round7-pictures/` |

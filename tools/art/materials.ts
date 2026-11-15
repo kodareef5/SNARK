@@ -7,7 +7,7 @@ import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type
 import { REGION_BASE, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, STEP0_SIZE, stepSize, type TextureRole } from "../../shared/pack/texture.ts";
 import type { TextureSource } from "../pack/encode.ts";
-import { baseMips, packMro, packedMips, readPicture, type Picture } from "../pack/image.ts";
+import { baseMips, layerPicture, packMro, packedMips, readPicture, type Picture } from "../pack/image.ts";
 import { checkMasks, maskMips, readMasks, readRegions } from "../pack/mask.ts";
 import { materialMips, type MaterialMaps } from "../pack/texture.ts";
 import { findAssets, type Asset } from "./assets.ts";
@@ -34,8 +34,8 @@ export function materialsOf(asset: Asset): Material[] {
 
 /** The picture files of a material, by what each is. A packed map of layers and masks made by hand are several. */
 export function pictureFiles(m: Material): Record<string, string> {
-  const { base, normal, packed, regions, height, small } = m.spec;
-  const out: Record<string, string | undefined> = { base, normal, height, "small base": small?.base, "small normal": small?.normal };
+  const { base, normal, packed, regions, height, small, hurt, decay } = m.spec;
+  const out: Record<string, string | undefined> = { base, normal, height, "small base": small?.base, "small normal": small?.normal, hurt, decay };
   if (typeof packed === "string") out.packed = packed;
   else if (packed) Object.assign(out, { occlusion: packed.occlusion, roughness: packed.roughness, metal: packed.metal });
   if (typeof regions === "string") out.regions = regions;
@@ -54,6 +54,7 @@ export function readMaps(m: Material, roles?: readonly TextureRole[]): MaterialM
   if (want("normal") || want("mro")) out.normal = read("normal");
   if (want("mro")) out.mro = files.occlusion !== undefined ? packMro(read("occlusion")!, read("roughness")!, read("metal")) : read("packed");
   if (want("mask") || want("mask2")) Object.assign(out, { regions: read("regions"), mask: read("mask"), mask2: read("mask2") });
+  if (want("layer")) Object.assign(out, { hurt: read("hurt"), decay: read("decay") });
   for (const key of Object.keys(out) as (keyof MaterialMaps)[]) if (!out[key]) delete out[key];
   return out;
 }
@@ -77,9 +78,10 @@ export interface Described {
 
 /**
  * Reads a material's pictures and says what the pack holds of it. Base colour and normal are stored as large as they
- * come, up to `top`, and the packed map and the masks one size under the base colour.
+ * come, up to `top`, the packed map and the masks one size under the base colour, and the layer its pictures make as
+ * large as they are up to `layer`. The layer comes after the five maps.
  */
-export function describe(m: Material, top: number, palette: Uint8Array): Described {
+export function describe(m: Material, top: number, palette: Uint8Array, layer = top): Described {
   if (m.spec.data) return describeData(m);
   const faults: string[] = [];
   const maps = readMaps(m);
@@ -105,6 +107,13 @@ export function describe(m: Material, top: number, palette: Uint8Array): Describ
   if (masks) tops.mask = Math.min(1 << (masks.mask.length - 1), under);
   if (masks?.mask2) tops.mask2 = tops.mask;
   const textures = (Object.keys(tops) as TextureRole[]).sort().map((role): PackTexture => ({ id: `${m.id}/${role}`, role, top: tops[role]! }));
+  const layered = maps.hurt ?? maps.decay;
+  if (layered) {
+    if (maps.hurt && maps.decay && maps.hurt.width !== maps.decay.width) throw new Error(`${m.id}: its hurt and decay pictures are not one size`);
+    textures.push({ id: `${m.id}/layer`, role: "layer", top: Math.max(STEP0_SIZE, Math.min(sideOf(layered), most, layer)) });
+    const { hidden } = layerPicture(maps.hurt, maps.decay);
+    if (hidden > 0) faults.push(`${m.id}: ${hidden} texels of its decay picture lie under its hurt picture's, where only the hurt picture shows`);
+  }
   const place = (role: TextureRole): number => textures.findIndex((t) => t.role === role);
   const tint = (m.spec.tint ?? [1, 1, 1]).slice(0, 3) as [number, number, number];
   const cutout = m.spec.cutout !== undefined && m.spec.cutout !== false;
@@ -130,6 +139,7 @@ export function describe(m: Material, top: number, palette: Uint8Array): Describ
     id: m.id, base: place("base"), normal: place("normal"), mro: place("mro"), mask: place("mask"), mask2: place("mask2"), tint, grey, emissive: 0,
     flags: (m.spec.twoSided ? MATERIAL_TWO_SIDED : 0) | (cutout ? MATERIAL_CUTOUT : 0), cutoff: cutout ? (m.spec.cutout === true ? 0.5 : (m.spec.cutout as number)) : 0, span: m.spec.tiles ?? 0,
   };
+  if (layered) material.layer = place("layer");
   if (m.spec.id !== undefined && !m.spec.tiles) faults.push(`${m.id}: a material several assets share says how far it tiles, so that it is the same on all of them`);
 
   // Flat, it is the region that dyes half of it or more, the colour its asset gives it, or its base colour's mean as light.

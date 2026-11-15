@@ -53,6 +53,9 @@ regions, materials, clips, the feet and the stride of each gait, its ragdoll,
 the triangle and texture budgets, and the first level drawn flat. Every field
 is described in `tools/art/spec.ts`.
 
+Its small details (feathers knocked loose, dust when it falls) are a sheet in its folder, `cues.json`, and a few
+pictures: [DETAILS.md](DETAILS.md) says how.
+
 ### Rest a chain with slack
 
 A chain a solver places by its end (a neck to a head, a leg to a foot) must not rest straight at full length. Straight, the end cannot move away at all, and moving it 2 mm closer bends the joints 8 to 9 degrees in a direction nothing decides. The dodo's neck rests that way (0.1817 m of reach on 0.1818 m of bone), and its animators each worked round it in their own file. Changing the rest pose afterwards was measured and refused: it moved the neck's surface about a centimetre in clips already approved and the head up to 6 cm in others. So give a new rig's chains a bent rest with about 5% of slack before anyone animates on it.
@@ -176,6 +179,49 @@ it. `--check` and the sheet print each stated error beside the one measured on
 its points, and where each level is first drawn on each tier and how tall the
 piece then stands on a 1,080-row screen, so a reader can judge the claim by
 looking.
+
+## An item
+
+An item's art is a pieces asset, one piece an item, each with the id its
+class's slots name (`shared/content/classes.ts`): the held mesh is a weapon's
+`weapon.mesh` (`#held`), and its lying mesh is `<id>/dropped` (`#dropped`).
+A piece whose id is one of the boxes `tools/pack/weapons.ts` draws takes that
+box's place. `tools/blender/example/demo/items/mallet/` is the example:
+`bun run art -- --source tools/blender/example demo:mallet`.
+
+```
+pieces: [{ id: "core:pick", object: "pick", hold: "prop_r", dropped: "auto", icon: { around: 0.8, above: 0.4 } }]
+```
+
+- `hold: "prop_r"` or `"prop_l"`: the piece is held in that hand. It is put
+  on the human skeleton, every vertex of every level on that hand's prop bone,
+  and the character renderer draws it there as it draws the boxes, for any
+  item whose class gives it a held slot. Model it as the hand holds it: the
+  grip at the origin, its length along the engine's +Z and its top along +Y.
+  Blender's +Z is the engine's +Y and its -Y the engine's +Z, so in Blender
+  the length runs along -Y and the top is up. The check fails a held piece
+  whose bounds miss the origin by more than a centimetre on any axis, or whose
+  longest extent is not along +Z, reaching further forward than back. The left
+  hand holds a bow as the boxes do: its limbs along Y either side of the grip,
+  shooting along +X, and the check holds a `prop_l` piece to its longest extent
+  along Y instead.
+- `dropped`: how it lies on the ground, where a bag of that one stack would
+  be. `"auto"` lays the held piece down (`tools/pack/lying.ts`): turned a
+  quarter turn so the thinnest axis of its bounds points up and its broadest
+  side is down, resting on y = 0 and centred over the origin across x and z,
+  every level by the same turn. The name of another object in the scene gives
+  a lying piece of its own, converted as it is: model it resting on y = 0
+  about the origin. Either way it is rigid, and the check fails one whose
+  finest level is more than 2 mm off the ground. A dropped bag that holds one
+  stack is drawn as that item lying, in a turn of its own, and a bag of more,
+  or of an item with no lying mesh, as the bag.
+- `icon`: the view its inventory picture is drawn from, where the usual
+  three-quarter view with its length on the diagonal does not suit it: angles
+  in radians round and above, `roll` about the view, and `zoom` past the
+  framing that fits it.
+
+Its materials, levels and budgets are any piece's. Seen closer than anything
+else in first person, a held piece is worth its finest level.
 
 ## Trees, rocks and bushes
 

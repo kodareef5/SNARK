@@ -1,0 +1,587 @@
+{
+  "radius_pixels": 240.64,
+  "disc_surface_radius_mm": 1750,
+  "height_range_mm": [
+    0,
+    240.0
+  ],
+  "targets": [
+    [
+      140,
+      146,
+      72
+    ],
+    [
+      108,
+      120,
+      64
+    ],
+    [
+      76,
+      90,
+      58
+    ],
+    [
+      82,
+      92,
+      70
+    ],
+    [
+      48,
+      60,
+      42
+    ]
+  ],
+  "regions": [
+    {
+      "index": 0,
+      "group": 0,
+      "xywh": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.03512808690388661,
+        -0.11837969874447035
+      ],
+      "mean_rgb": [
+        140.00096745822339,
+        146.00022537379067,
+        71.99738346525946
+      ],
+      "roughness_mean": 0.42777350810641296,
+      "height_mm": [
+        35.01440480530096,
+        145.59523006521897
+      ],
+      "colour_grade": {
+        "method": "per-channel monotonic rational LUT on round-2 uint8 RGB",
+        "knees_rgb": [
+          32.0,
+          53.0,
+          26.0
+        ],
+        "ceiling_rgb": [
+          180.0,
+          178.0,
+          90.0
+        ],
+        "parameters_rgb": [
+          0.36782578152441103,
+          0.48037406176941033,
+          0.6166932482721963
+        ],
+        "protected_luminance_max": 45,
+        "engine_tint_baked_in": false
+      }
+    },
+    {
+      "index": 1,
+      "group": 0,
+      "xywh": [
+        512,
+        0,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.06860189342424325,
+        -0.08531283228747978
+      ],
+      "mean_rgb": [
+        139.9996976693052,
+        145.9963830255057,
+        72.00405123131047
+      ],
+      "roughness_mean": 0.4284710955313329,
+      "height_mm": [
+        34.60096851159405,
+        152.92776501547644
+      ],
+      "colour_grade": {
+        "method": "per-channel monotonic rational LUT on round-2 uint8 RGB",
+        "knees_rgb": [
+          32.0,
+          53.0,
+          26.0
+        ],
+        "ceiling_rgb": [
+          180.0,
+          178.0,
+          90.0
+        ],
+        "parameters_rgb": [
+          0.3680485338725995,
+          0.48093841642228863,
+          0.6167960479887074
+        ],
+        "protected_luminance_max": 45,
+        "engine_tint_baked_in": false
+      }
+    },
+    {
+      "index": 2,
+      "group": 0,
+      "xywh": [
+        1024,
+        0,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.019956898911623666,
+        -0.08323566087627814
+      ],
+      "mean_rgb": [
+        139.99680628847844,
+        145.99923043095868,
+        72.0011983289358
+      ],
+      "roughness_mean": 0.4282972342567754,
+      "height_mm": [
+        33.67264190269137,
+        145.91402135349847
+      ],
+      "colour_grade": {
+        "method": "per-channel monotonic rational LUT on round-2 uint8 RGB",
+        "knees_rgb": [
+          32.0,
+          53.0,
+          26.0
+        ],
+        "ceiling_rgb": [
+          180.0,
+          178.0,
+          90.0
+        ],
+        "parameters_rgb": [
+          0.3642453422650196,
+          0.4762843068261787,
+          0.6134706134706129
+        ],
+        "protected_luminance_max": 45,
+        "engine_tint_baked_in": false
+      }
+    },
+    {
+      "index": 3,
+      "group": 0,
+      "xywh": [
+        1536,
+        0,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.050814454659574876,
+        -0.1296997491713653
+      ],
+      "mean_rgb": [
+        140.00031882145998,
+        145.99859828496042,
+        72.00259454705365
+      ],
+      "roughness_mean": 0.42853116086102383,
+      "height_mm": [
+        36.07244356260139,
+        143.20507849246388
+      ],
+      "colour_grade": {
+        "method": "per-channel monotonic rational LUT on round-2 uint8 RGB",
+        "knees_rgb": [
+          32.0,
+          53.0,
+          26.0
+        ],
+        "ceiling_rgb": [
+          180.0,
+          178.0,
+          90.0
+        ],
+        "parameters_rgb": [
+          0.3636303014137099,
+          0.47243589743589764,
+          0.6089108910891083
+        ],
+        "protected_luminance_max": 45,
+        "engine_tint_baked_in": false
+      }
+    },
+    {
+      "index": 4,
+      "group": 1,
+      "xywh": [
+        0,
+        512,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.026553052369240604,
+        -0.1025620206372634
+      ],
+      "mean_rgb": [
+        107.99766930518909,
+        119.99958223394898,
+        64.00115985048373
+      ],
+      "roughness_mean": 0.49720142118736427,
+      "height_mm": [
+        34.44012436207768,
+        147.36872223081176
+      ],
+      "colour_grade": {
+        "method": "per-channel monotonic rational LUT on round-2 uint8 RGB",
+        "knees_rgb": [
+          32.0,
+          52.0,
+          34.0
+        ],
+        "ceiling_rgb": [
+          165.0,
+          160.0,
+          85.0
+        ],
+        "parameters_rgb": [
+          0.36412315930388117,
+          0.26803069053708495,
+          0.5671296296296284
+        ],
+        "protected_luminance_max": 45,
+        "engine_tint_baked_in": false
+      }
+    },
+    {
+      "index": 5,
+      "group": 1,
+      "xywh": [
+        512,
+        512,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.034251837283054476,
+        -0.09389814846192014
+      ],
+      "mean_rgb": [
+        107.99676231310467,
+        120.00086301671064,
+        64.00617854001759
+      ],
+      "roughness_mean": 0.49805024797105824,
+      "height_mm": [
+        33.02035765670187,
+        146.73652296919443
+      ],
+      "colour_grade": {
+        "method": "per-channel monotonic rational LUT on round-2 uint8 RGB",
+        "knees_rgb": [
+          32.0,
+          52.0,
+          34.0
+        ],
+        "ceiling_rgb": [
+          165.0,
+          160.0,
+          85.0
+        ],
+        "parameters_rgb": [
+          0.3707965733282186,
+          0.27056451612903176,
+          0.5671296296296284
+        ],
+        "protected_luminance_max": 45,
+        "engine_tint_baked_in": false
+      }
+    },
+    {
+      "index": 6,
+      "group": 1,
+      "xywh": [
+        1024,
+        512,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.02582506273827312,
+        -0.1352080284733909
+      ],
+      "mean_rgb": [
+        108.00110488126649,
+        119.9980870712401,
+        63.99862576956904
+      ],
+      "roughness_mean": 0.49823796177111535,
+      "height_mm": [
+        33.22678170661387,
+        146.66579114305196
+      ],
+      "colour_grade": {
+        "method": "per-channel monotonic rational LUT on round-2 uint8 RGB",
+        "knees_rgb": [
+          32.0,
+          52.0,
+          34.0
+        ],
+        "ceiling_rgb": [
+          165.0,
+          160.0,
+          85.0
+        ],
+        "parameters_rgb": [
+          0.3636363636363631,
+          0.26229508196721374,
+          0.5539358600583102
+        ],
+        "protected_luminance_max": 45,
+        "engine_tint_baked_in": false
+      }
+    },
+    {
+      "index": 7,
+      "group": 1,
+      "xywh": [
+        1536,
+        512,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.024423864276666207,
+        -0.1169927917659658
+      ],
+      "mean_rgb": [
+        107.99932387862796,
+        120.00008795074758,
+        64.00288588390501
+      ],
+      "roughness_mean": 0.4985448138713932,
+      "height_mm": [
+        34.146483145514665,
+        151.98235876618676
+      ],
+      "colour_grade": {
+        "method": "per-channel monotonic rational LUT on round-2 uint8 RGB",
+        "knees_rgb": [
+          32.0,
+          52.0,
+          34.0
+        ],
+        "ceiling_rgb": [
+          165.0,
+          160.0,
+          85.0
+        ],
+        "parameters_rgb": [
+          0.3605769230769229,
+          0.2572631578947362,
+          0.5526315789473697
+        ],
+        "protected_luminance_max": 45,
+        "engine_tint_baked_in": false
+      }
+    },
+    {
+      "index": 8,
+      "group": 2,
+      "xywh": [
+        0,
+        1024,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.03739912588758432,
+        -0.09404772758349564
+      ],
+      "mean_rgb": [
+        75.98996262093227,
+        89.99335971855761,
+        58.005656332453825
+      ],
+      "roughness_mean": 0.5976160871447715,
+      "height_mm": [
+        42.11601995368562,
+        150.65742376228147
+      ]
+    },
+    {
+      "index": 9,
+      "group": 2,
+      "xywh": [
+        512,
+        1024,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.020299711295151256,
+        -0.08623641617353
+      ],
+      "mean_rgb": [
+        75.98988566402815,
+        89.99206244503078,
+        57.99835092348285
+      ],
+      "roughness_mean": 0.5982353003661315,
+      "height_mm": [
+        42.55428629792759,
+        148.21513103566397
+      ]
+    },
+    {
+      "index": 10,
+      "group": 2,
+      "xywh": [
+        1024,
+        1024,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.04695480235070948,
+        -0.11504152277774572
+      ],
+      "mean_rgb": [
+        75.98953935795954,
+        89.99336521547933,
+        58.003265171503955
+      ],
+      "roughness_mean": 0.5975513266707949,
+      "height_mm": [
+        42.58312178220496,
+        148.8446839972264
+      ]
+    },
+    {
+      "index": 11,
+      "group": 2,
+      "xywh": [
+        1536,
+        1024,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        -0.04728597099083379,
+        -0.10872576305932961
+      ],
+      "mean_rgb": [
+        75.98858289357959,
+        89.99364555848724,
+        58.00040677220756
+      ],
+      "roughness_mean": 0.5990750342407344,
+      "height_mm": [
+        36.89563276817677,
+        146.27998471971333
+      ]
+    },
+    {
+      "index": 12,
+      "group": 3,
+      "xywh": [
+        0,
+        1536,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        0.0063104911299383115,
+        0.017434034025052586
+      ],
+      "mean_rgb": [
+        81.99809806508355,
+        92.000736587511,
+        70.01595206684257
+      ],
+      "roughness_mean": 0.7878632072217007,
+      "height_mm": [
+        48.499108608228546,
+        128.59815815037868
+      ]
+    },
+    {
+      "index": 13,
+      "group": 3,
+      "xywh": [
+        512,
+        1536,
+        512,
+        512
+      ],
+      "periodic": false,
+      "pitch_mm": 7.272273936170214,
+      "removed_log_luminance_plane": [
+        0.0023005847484035002,
+        0.0017219462136531468
+      ],
+      "mean_rgb": [
+        82.00409520668426,
+        91.99854331574318,
+        70.01179089709763
+      ],
+      "roughness_mean": 0.7877134021123063,
+      "height_mm": [
+        49.41796797241786,
+        131.42605918579397
+      ]
+    },
+    {
+      "index": 14,
+      "group": 4,
+      "xywh": [
+        1024,
+        1536,
+        1024,
+        512
+      ],
+      "periodic": true,
+      "pitch_mm": 4.6875,
+      "removed_log_luminance_plane": [
+        0.0,
+        0.0
+      ],
+      "mean_rgb": [
+        47.99951171875,
+        59.999210357666016,
+        41.99932861328125
+      ],
+      "roughness_mean": 0.6835070975366454,
+      "height_mm": [
+        43.79594031774926,
+        124.18267526686296
+      ]
+    }
+  ]
+}

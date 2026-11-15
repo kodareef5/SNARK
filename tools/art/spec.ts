@@ -5,7 +5,7 @@
 import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
 import type { ClipSpec } from "../pack/anim.ts";
 
-export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset;
+export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset | DetailsAsset;
 
 /** The zones a hit can land in. Content multiplies damage by zone (SpeciesDef.zones). */
 export const ZONES = { head: ZONE_HEAD, torso: ZONE_TORSO, armL: ZONE_ARM_L, armR: ZONE_ARM_R, handL: ZONE_HAND_L, handR: ZONE_HAND_R, legL: ZONE_LEG_L, legR: ZONE_LEG_R, footL: ZONE_FOOT_L, footR: ZONE_FOOT_R } as const;
@@ -94,8 +94,12 @@ export interface MaterialSpec {
   /** Kept for the record. `--check` holds the normal map against it. */
   readonly height?: string;
   /**
-   * Layers over the base colour on the same layout: wounds that show as a creature is hurt, and the wear of its corpse
-   * as it decays. Not read yet.
+   * What the surface turns to, on the same layout, sRGB with alpha: `hurt` as the living creature loses health, `decay`
+   * as its corpse rots. The colour takes the place of the dyed colour where it shows and is never dyed. Alpha is how
+   * soon a texel shows over that picture's three steps: 255 from the first, falling through each third to the next
+   * step, 0 never. A corpse shows the whole hurt picture from the start; where the hurt picture has alpha, the decay
+   * picture is passed over. Both make one texture (tools/pack/image.ts `layerPicture`), stored no wider than
+   * `TextureBudget.layer`.
    */
   readonly hurt?: string;
   readonly decay?: string;
@@ -132,10 +136,14 @@ export function shared(dir: string, id: string, spec: MaterialSpec): MaterialSpe
   return { ...spec, id, dir };
 }
 
-/** The side in pixels of the largest base colour and normal map, and the most megabytes all of an asset's maps may take in one variant. */
+/**
+ * The side in pixels of the largest base colour and normal map, and the most megabytes all of an asset's maps may take
+ * in one variant. `layer` is the widest a material's hurt and decay layer is stored, the base colour's side where not given.
+ */
 export interface TextureBudget {
   readonly top: number;
   readonly megabytes: number;
+  readonly layer?: number;
 }
 
 export interface CreatureClip {
@@ -335,4 +343,12 @@ export interface WaterAsset {
   readonly kind: "water";
   readonly long: string;
   readonly short: string;
+}
+
+/**
+ * The small details' pack (shared/pack/details.ts): every asset's detail pictures in one atlas, the shared effects in
+ * this folder's effects.json, and every creature's cues.json. No Blender. assets/source/DETAILS.md says how to write them.
+ */
+export interface DetailsAsset {
+  readonly kind: "details";
 }

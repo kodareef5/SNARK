@@ -37,7 +37,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -191,11 +191,18 @@ export const CARRY_THROW = 2;
 /** Protocol 11. Takes into the bag what lies in the world at an entity index u32: an egg. */
 export const CMD_TAKE = 28;
 /**
- * Protocol 12, reserved for crafting at a station (planning/reference/items-plan.md, task D): item u16, count u8, made at the
- * station the session has open, from that station's inventory. Refused until it is built.
+ * Protocol 12. Crafting at a station: item u16, count u8. Queued on the station the session has open, made from what lies in
+ * it and put there; the session's survivor must know the engram, and gets the experience. Refused for an item made
+ * elsewhere, and with no station open.
  */
 export const CMD_CRAFT_AT = 29;
-/** Protocol 12, reserved for crafting from a blueprint (items-plan.md, task E): own slot varint, count u8. Refused until it is built. */
+/**
+ * Protocol 12. Crafting from a blueprint: box 1 bit (BOX_), slot varint, count u8. The blueprint lies in the inventory the
+ * item is made from: the session's own (BOX_SELF) for an item made in the hands, the station it has open (BOX_OPEN) for one
+ * made at a station, where the job is queued as CMD_CRAFT_AT's is. No engram is needed; the ingredients are the blueprint's
+ * quality's, and what is made is of its quality or above. Refused for a slot that holds no blueprint and for the wrong
+ * station (INVALID), and without the ingredients (SHORT).
+ */
 export const CMD_CRAFT_BLUEPRINT = 30;
 
 /** The only boxes a slot command can address. No ids travel. */
@@ -241,8 +248,16 @@ export const OWN_VITALS = 2;
  * bit for "it holds something", then if so: ammunition item u16, rounds u8, attachment item u16.
  */
 export const OWN_SLOTS = 3;
-/** A slot's flags. Protocol 12 sends them; nothing sets one until blueprints are built (items-plan.md, task E). */
+/**
+ * A slot's flags, protocol 12. The slot holds a blueprint of its item: one alone, at its quality, crafted from
+ * (CMD_CRAFT_BLUEPRINT) and never spent. Stacks join only at the same quality and flags (shared/sim/items.ts FLAG_BLUEPRINT).
+ */
 export const SLOT_BLUEPRINT = 1;
+/**
+ * A slot's flags, protocol 13 (planning/reference/weapons-plan.md, M10): the weapon's attachment, a flashlight or a laser, is
+ * switched on (shared/sim/items.ts FLAG_ON). Only the weapon in hand is ever on.
+ */
+export const SLOT_ON = 2;
 
 /** open 1 bit, and if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */
 export const OWN_OPEN = 4;
@@ -295,7 +310,10 @@ export const OWN_SUBJECT = 14;
  * effectiveness (10 bits each), its pair's mating progress (1 bit, 10 bits), its tribe's name (1 bit, string).
  */
 export const OWN_OVERHEAD = 15;
-/** Protocol 12, reserved for the open station's queue (items-plan.md, task D): count u8, then per job: item u16, units left u8, done tick u32. */
+/**
+ * Protocol 12. The open station's queue, sent when it changes: the station's kind u16 (0 when what is open is no longer a
+ * station, and nothing follows but a count of 0), count u8, then per job: item u16, units left u8, done tick u32.
+ */
 export const OWN_STATION = 16;
 
 export const MARKER_DEATH = 1;
@@ -303,7 +321,8 @@ export const MARKER_DEATH = 1;
 /**
  * Kinds of S_EVENT, each after a u8 naming it.
  * HIT, to the attacker: position (3 x f32), zone 4 bits, damage u16, killed 1 bit, armor stopped some 1 bit.
- * HURT, to the victim: damage u16, the side it came from (u8, 256ths of a turn, as a facing), zone 4 bits.
+ * HURT, to the victim: damage u16, the side it came from (u8, 256ths of a turn, as a facing), zone 4 bits, and from protocol 13
+ *   whether the side is shown 1 bit (0 for a silenced shot, whose side is then sent as 0: planning/reference/weapons-plan.md, M10).
  * DEATH, to the victim: the HURT fields, then killer name string, weapon content index u16 (0 for bare hands), distance u16 (tenths of a metre).
  * KILL, to the killer: victim name string, its level u16, experience gained u16 (tenths).
  */
@@ -315,7 +334,10 @@ export const EVENT_DEATH = 3;
 export const EVENT_KILL = 4;
 /**
  * SHOT, to other clients nearby: origin (3 x f32), ammunition content index u16, flies 1 bit, then 3 x f32. For a shot that
- * flies they are its velocity, followed by the ticks since it left u8. Otherwise they are where it ended.
+ * flies they are its velocity, followed by the ticks since it left u8. Otherwise they are where it ended. From protocol 13
+ * three more follow: rays u8 (1: the shot is the one ray above), seed u32 (0: the seed a shot of many rays is cast from, W3
+ * of planning/reference/weapons-plan.md), each sent as what it means today and read past, and silenced 1 bit (its weapon has
+ * a silencer, and no flash is drawn: M10).
  */
 export const EVENT_SHOT = 5;
 /** BLAST, to clients nearby: position (3 x f32), reach f32 in metres. */
@@ -412,7 +434,10 @@ export class InputBuffer {
   }
 }
 
-/** 344 bits: position and velocity exactly, then the rest of the predicted state. */
+/**
+ * 360 bits: position and velocity exactly, then the rest of the predicted state. Protocol 13 added the aim's bloom and the
+ * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them).
+ */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);
   w.f32(b.y);
@@ -435,6 +460,8 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u8(b.actTicks);
   w.u8(b.rounds);
   w.u8(b.reloadTo);
+  w.u8(b.bloom);
+  w.u8(b.kick);
 }
 
 export function readBody(r: BitReader, b: Body): void {
@@ -459,6 +486,8 @@ export function readBody(r: BitReader, b: Body): void {
   b.actTicks = r.u8();
   b.rounds = r.u8();
   b.reloadTo = r.u8();
+  b.bloom = r.u8();
+  b.kick = r.u8();
 }
 
 /** `key` must be KEY_BYTES long. */

@@ -1,0 +1,5 @@
+# The fig's heads, round 2: warmer and greener
+
+Read your `REPORT.md` and `BRIEF.md` first. Round 1 is on the figs and banyans in the game and its structure holds: the heads read as clumps of leaves. Its colour does not. Measured on the game's own pictures at 10:00 with the sun behind the viewer, the fig's crown has a brightest tenth of about (133, 141, 109) and a middle of (61, 73, 58), saturation about 0.2; the concept (`../../ref/concept/broadleaf/fig_lineup.png`, `banyan_lineup.png`) has (135, 137, 75) and (58, 62, 42), saturation 0.45. The sky fills the crown's shade with blue, so the painted colour must be warmer and more saturated than it would be under white light to read as the concept's olive and yellow-green. Brightness is about right.
+
+Shift every population warmer and greener, keeping its value: sun heads near (108, 122, 50), middle (82, 100, 44), shade (60, 78, 40), undersides (80, 92, 54), interior (34, 48, 28); young growth up to about (168, 172, 70). Keep everything else exactly as it is: the leaves, their scale, the folds, the layout, relief, heights, normals and roughness. Rerun your checks, update `REPORT.md`, and remove what you supersede.

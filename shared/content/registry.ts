@@ -10,6 +10,7 @@ import { COLOR_REGIONS, STAT_NAMES, type ColorSet } from "../sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
 import { ZONE_COUNT } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
+import { lootFaults } from "../sim/loot.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
 import { hullOf, hullTable, type HullDef } from "../world/convex.ts";
 import type { PartTable } from "../world/structures.ts";
@@ -152,9 +153,15 @@ export interface Registry {
   readonly fuelTicks: Uint32Array;
   readonly cooksInto: Uint16Array;
   readonly cookTicks: Uint32Array;
+  /** Per item: what it becomes when it spoils (ItemDef.spoilsInto), or 0 for nothing. */
+  readonly spoilsInto: Uint16Array;
   /** Per item that can be made: the ingredients as pairs of item and count, and how many one crafting makes. Null for everything else. */
   readonly recipeOf: readonly (Uint16Array | null)[];
   readonly recipeMakes: Uint16Array;
+  /** Per item: the station it is made at (a structure's content index), or 0 for one made in the hands. */
+  readonly craftAt: Uint16Array;
+  /** Per item: 1 if it may be a blueprint (ItemDef.blueprint), which takes a craft facet. */
+  readonly blueprints: Uint8Array;
   /** A thrown weapon: metres per second off the hand, ticks until it goes off, and how far its blast reaches. */
   readonly throwSpeed: Float32Array;
   readonly fuseTicks: Uint16Array;
@@ -184,6 +191,31 @@ export interface Registry {
    */
   readonly decomposeTicks: Uint32Array;
   readonly youngItem: Uint16Array;
+  // The columns of planning/reference/weapons-plan.md. The blow's are read (W2); the rest are compiled and read by nothing until the project named builds them.
+  /** A bow's or gun's blow (W2): its damage at primitive quality (0 for none), torpor as a multiple of it, and reach in metres. */
+  readonly blowDamage: Float32Array;
+  readonly blowTorpor: Float32Array;
+  readonly blowReach: Float32Array;
+  /** W6, per weapon: what its damage is multiplied by against a structure. 1 for everything. */
+  readonly structureMul: Float32Array;
+  /** W5, per thrown weapon that bursts into a cloud: the prop/cloud (0 for none), the ticks it lasts, and its buff (0 for none). */
+  readonly cloudProp: Uint16Array;
+  readonly cloudTicks: Uint32Array;
+  readonly cloudBuff: Uint16Array;
+  /**
+   * W3, per ammunition: rays a round sends (1 for everything but shot), and the metres its damage falls off from and to (0
+   * and 0 for none). `weaponPellets` is a gun's own count in place of its round's, 0 where it has none (shotRays).
+   */
+  readonly ammoPellets: Uint8Array;
+  readonly weaponPellets: Uint8Array;
+  readonly ammoFalloffFull: Float32Array;
+  readonly ammoFalloffNone: Float32Array;
+  /** W6, per ammunition: the reach of the blast where it ends (0 for none), and the share of armor it goes through. */
+  readonly ammoBlast: Float32Array;
+  readonly ammoPierce: Float32Array;
+  /** M9, per ammunition: the reach of the light it carries (0 for none) and its palette colour. */
+  readonly ammoLight: Float32Array;
+  readonly ammoLightColor: Uint8Array;
 }
 
 /** Default reach of bare hands and of a melee weapon, in metres. */
@@ -195,6 +227,9 @@ const MAX_ACT_TICKS = 250;
 export const MAX_BURN_SECONDS = 30 * 86400;
 /** The longest an item may keep before it spoils, in game hours. The spoil clock holds this with room to spare. */
 export const MAX_SPOIL_HOURS = 1e6;
+/** The stats a use may change at once, and the ones it may change over time, which buffs carry (server/use.ts). */
+export const USE_AT_ONCE: readonly string[] = ["health", "stamina", "oxygen", "food", "water", "torpidity"];
+export const USE_OVER_TIME: readonly string[] = ["health", "torpidity"];
 export const MAX_NODE_HITS = 10000;
 export const MAX_LEVELS = 10000;
 /** Stamina per second of sprinting, per second of rest, and per jump, where a species does not say. */
@@ -290,7 +325,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.eggChance !== undefined && !(d.eggChance >= 0 && d.eggChance <= 1)) errors.push(`${d.id}: eggChance must be from 0 to 1`);
       if (d.fistsTorpor !== undefined && !(d.fistsTorpor >= 0)) errors.push(`${d.id}: fistsTorpor must not be negative`);
     } else if (d.type === "prop") {
-      positive(d, "radius", d.radius, 8);
+      // A cloud's radius is its reach, not a body's (server/clouds.ts).
+      positive(d, "radius", d.radius, d.class === "cloud" ? 32 : 8);
       positive(d, "height", d.height, 32);
       if (d.size !== undefined) positive(d, "size", d.size, 8);
     } else if (d.type === "node") {
@@ -342,12 +378,16 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (z.count !== undefined && !(Number.isInteger(z.count) && z.count >= 0 && z.count <= 65535)) errors.push(`${d.id}: a zone holds a whole number of creatures from 0 to 65,535`);
         if ((z.spawns === undefined) !== (z.count === undefined)) errors.push(`${d.id}: a zone that names spawns says how many it holds, and only such a zone does`);
       }
+    } else if (d.type === "loot") {
+      errors.push(...lootFaults(d));
     } else if (d.type === "material") {
       for (const [type, v] of Object.entries(d.takes)) {
         if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);
       }
     } else if (d.type === "buff") {
       if (d.seconds !== undefined) positive(d, "seconds", d.seconds, 86400);
+      if (d.survivorSeconds !== undefined) positive(d, "survivorSeconds", d.survivorSeconds, 86400);
+      if (d.after === d.id) errors.push(`${d.id}: after must name another buff`);
       for (const [name, v] of [["speed", d.speed], ["dealt", d.dealt], ["taken", d.taken]] as const) {
         if (v !== undefined && !(v >= 0 && v <= 100)) errors.push(`${d.id}: ${name} must be from 0 to 100`);
       }
@@ -380,6 +420,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.craft.count !== undefined) positive(d, "craft.count", d.craft.count, 1000);
         positive(d, "craft.seconds", d.craft.seconds, 86400);
         if (!Array.isArray(d.craft.needs) || d.craft.needs.length === 0) errors.push(`${d.id}: craft needs at least one ingredient`);
+        if (d.craft.level !== undefined) positive(d, "craft.level", d.craft.level, 1000);
       }
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
@@ -391,7 +432,11 @@ export function compileContent(all: readonly Def[]): CompileResult {
       const w = d.weapon;
       if (w) {
         positive(d, "weapon.uses", w.uses, 60000);
-        if ((w.kind === "melee" || w.kind === "thrown") && !(w.damage! > 0 && w.type)) errors.push(`${d.id}: a ${w.kind} weapon needs damage and a type`);
+        // A thrown weapon with an ammo facet of its own flies and hits with that facet's damage, which may be none (the bola);
+        // one that bursts into a cloud may do no harm of its own (smoke, poison: W5).
+        if ((w.kind === "melee" || (w.kind === "thrown" && !d.ammo && !w.cloud)) && !(w.damage! > 0 && w.type)) errors.push(`${d.id}: a ${w.kind} weapon needs damage and a type`);
+        if (d.ammo && !(w.kind === "thrown" && d.ammo.speed !== undefined)) errors.push(`${d.id}: a weapon with an ammo facet of its own is thrown, and flies at its ammo.speed`);
+        if (d.ammo && w.fuse !== undefined) errors.push(`${d.id}: a thrown weapon that flies and hits has no fuse`);
         if ((w.kind === "bow" || w.kind === "gun") && !(w.ammo && w.ammo.length > 0)) errors.push(`${d.id}: a ${w.kind} needs the ammunition it takes`);
         if (w.kind === "bow" && !(w.draw! > 0)) errors.push(`${d.id}: a bow needs a draw time`);
         if (w.clip !== undefined && !(Number.isInteger(w.clip) && w.clip >= 1 && w.clip <= 255)) errors.push(`${d.id}: weapon.clip must be a whole number from 1 to 255`);
@@ -399,14 +444,63 @@ export function compileContent(all: readonly Def[]): CompileResult {
         for (const [name, v] of [["reload", w.reload], ["draw", w.draw], ["interval", w.interval]] as const) {
           if (v !== undefined && !(v > 0 && v * TICK_RATE <= MAX_ACT_TICKS)) errors.push(`${d.id}: weapon.${name} must be above 0 and at most ${MAX_ACT_TICKS / TICK_RATE} seconds`);
         }
+        // The stubs of planning/reference/weapons-plan.md are checked before anything reads them.
+        if ((w.auto || w.reloadEach || w.spread || w.recoil || w.melee) && w.kind !== "bow" && w.kind !== "gun") errors.push(`${d.id}: weapon.auto, reloadEach, spread, recoil and melee are a bow's or gun's`);
+        if (w.draw !== undefined && w.kind !== "bow" && w.kind !== "thrown") errors.push(`${d.id}: weapon.draw is a bow's, or a thrown weapon's that is charged`);
+        // A round at a time counts the round under way past its reload once it is the last, within a byte (shared/sim/weapon.ts).
+        if (w.reloadEach && !((w.reload ?? 0) * TICK_RATE <= MAX_ACT_TICKS / 2)) errors.push(`${d.id}: weapon.reload of a round at a time must be at most ${Math.floor((MAX_ACT_TICKS / 2 / TICK_RATE) * 10) / 10} seconds`);
+        if (w.melee) {
+          positive(d, "weapon.melee.damage", w.melee.damage, 60000);
+          if (w.melee.torpor !== undefined && !(w.melee.torpor >= 0)) errors.push(`${d.id}: weapon.melee.torpor must not be negative`);
+          if (w.melee.reach !== undefined) positive(d, "weapon.melee.reach", w.melee.reach, 100);
+          if (w.melee.interval !== undefined && !(w.melee.interval > 0 && w.melee.interval * TICK_RATE <= MAX_ACT_TICKS)) errors.push(`${d.id}: weapon.melee.interval must be above 0 and at most ${MAX_ACT_TICKS / TICK_RATE} seconds`);
+        }
+        const sp = w.spread;
+        if (sp && ![sp.hip, sp.aim, sp.move ?? 0, sp.bloom ?? 0, sp.recover ?? 0, sp.sway ?? 0].every((v) => v >= 0 && v <= 90)) errors.push(`${d.id}: weapon.spread is in degrees from 0 to 90`);
+        if (sp && (sp.bloom ?? 0) > 0 && !((sp.recover ?? 0) > 0)) errors.push(`${d.id}: weapon.spread that blooms must recover`);
+        if (w.recoil && !(w.recoil.kick >= 0 && w.recoil.kick <= 90 && w.recoil.recover >= 0)) errors.push(`${d.id}: weapon.recoil.kick is in degrees from 0 to 90, and its recovery not negative`);
+        if (w.recoil && w.recoil.kick > 0 && !(w.recoil.recover > 0)) errors.push(`${d.id}: weapon.recoil that kicks must recover`);
+        if (w.structures !== undefined && !(w.structures >= 0)) errors.push(`${d.id}: weapon.structures must not be negative`);
+        if (w.pellets !== undefined && !(w.kind === "gun" && Number.isInteger(w.pellets) && w.pellets >= 1 && w.pellets <= 255)) errors.push(`${d.id}: weapon.pellets is a gun's, a whole number from 1 to 255`);
+        if (w.cloud) {
+          if (w.kind !== "thrown") errors.push(`${d.id}: only a thrown weapon bursts into a cloud`);
+          positive(d, "weapon.cloud.seconds", w.cloud.seconds, MAX_BURN_SECONDS);
+        }
       }
       if (d.ammo && !(d.ammo.damage >= 0)) errors.push(`${d.id}: ammo.damage must not be negative`);
       if (d.ammo?.speed !== undefined && !(d.ammo.speed > 0 && d.ammo.speed <= 1000)) errors.push(`${d.id}: ammo.speed must be above 0 and at most 1000`);
       if (d.ammo?.recover !== undefined && !(d.ammo.recover >= 0 && d.ammo.recover <= 1)) errors.push(`${d.id}: ammo.recover must be from 0 to 1`);
+      const am = d.ammo;
+      if (am?.pellets !== undefined && !(Number.isInteger(am.pellets) && am.pellets >= 1 && am.pellets <= 255)) errors.push(`${d.id}: ammo.pellets must be a whole number from 1 to 255`);
+      if ((am?.pellets ?? 1) > 1 && am?.speed !== undefined) errors.push(`${d.id}: ammo.pellets above 1 is for a round with no speed`);
+      if (am?.falloff && !(am.falloff.full >= 0 && am.falloff.none > am.falloff.full)) errors.push(`${d.id}: ammo.falloff is full from 0 metres or more, and none further than that`);
+      if (am?.blast !== undefined) positive(d, "ammo.blast", am.blast, 100);
+      if (am?.pierce !== undefined && !(am.pierce >= 0 && am.pierce <= 1)) errors.push(`${d.id}: ammo.pierce must be from 0 to 1`);
+      if (am?.light) {
+        positive(d, "ammo.light.reach", am.light.reach, 1000);
+        if (!paletteIndex(am.light.color)) errors.push(`${d.id}: ammo.light.color must be a palette index`);
+      }
       if (d.wear) {
         if (!WEAR_SLOTS.includes(d.wear.slot)) errors.push(`${d.id}: wear.slot must be one of ${WEAR_SLOTS.join(", ")}`);
         if (!(d.wear.armor >= 0)) errors.push(`${d.id}: wear.armor must not be negative`);
         positive(d, "wear.uses", d.wear.uses, 60000);
+      }
+      if (d.spoilsInto !== undefined && (d.spoilsInto === d.id || d.spoilHours === undefined)) errors.push(`${d.id}: spoilsInto names another item, and only something that spoils has it`);
+      // A blueprint crafts what it is of, so only an item that is crafted may be one.
+      if (d.blueprint === true && !d.craft) errors.push(`${d.id}: only an item that is crafted may be a blueprint`);
+      // What using one does (server/use.ts). Over time only health and torpor, which buffs carry; the rest at once.
+      const use = d.use;
+      for (const a of use?.adds ?? []) {
+        const timed = a.seconds !== undefined;
+        if (!(timed ? USE_OVER_TIME : USE_AT_ONCE).includes(a.stat)) errors.push(`${d.id}: use.adds may change ${(timed ? USE_OVER_TIME : USE_AT_ONCE).join(", ")}${timed ? " over time" : ""}, not "${a.stat}"`);
+        if (!(Number.isFinite(a.amount) && a.amount !== 0 && (!timed || a.amount > 0))) errors.push(`${d.id}: use.adds amount must be a number other than 0, and above 0 over time`);
+        if (timed) positive(d, "use.adds seconds", a.seconds!, MAX_BURN_SECONDS);
+      }
+      if (use?.holds) {
+        positive(d, "use.holds.water", use.holds.water, 60000);
+        positive(d, "use.holds.each", use.holds.each, use.holds.water);
+        // The water is held as the slot's durability, which one of a kind has.
+        if (d.stack !== 1 || d.eat || d.dose || d.weapon || d.wear || d.tool) errors.push(`${d.id}: a vessel stacks to 1, wears no durability of its own, and is drunk from, not eaten`);
       }
     }
     if (d.type === "species" || d.type === "structure" || d.type === "prop" || d.type === "node") {
@@ -418,6 +512,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
   errors.push(...refFaults(input));
   const shapes = new Map(input.flatMap((d) => (d.type === "shape" ? [[d.id, d] as const] : [])));
   const crafted = new Set(input.flatMap((d) => (d.type === "item" && d.craft ? [d.id] : [])));
+  // A station's recipes take from its slots and put the product there, so a station something is made at must have some.
+  const stationSlots = new Map(input.flatMap((d) => (d.type === "structure" && d.class === "station" ? [[d.id, d.slots ?? 0] as const] : [])));
+  for (const d of input) if (d.type === "item" && d.craft?.at !== undefined && stationSlots.get(d.craft.at) === 0) errors.push(`${d.id}: it is made at "${d.craft.at}", which has no slots to make it from`);
   const noAmmo = new Set(input.flatMap((d) => (d.type === "item" && !d.ammo ? [d.id] : [])));
   const taught = new Map<string, string>();
   const young = new Map<string, string>();
@@ -513,8 +610,11 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const fuelTicks = new Uint32Array(n);
   const cooksInto = new Uint16Array(n);
   const cookTicks = new Uint32Array(n);
+  const spoilsInto = new Uint16Array(n);
   const recipeOf: (Uint16Array | null)[] = new Array(n).fill(null);
   const recipeMakes = new Uint16Array(n);
+  const craftAt = new Uint16Array(n);
+  const blueprints = new Uint8Array(n);
   const partStart = new Uint32Array(n + 1);
   const partBox: number[] = [];
   const throwSpeed = new Float32Array(n);
@@ -533,6 +633,21 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const propFertile = new Uint16Array(n);
   const decomposeTicks = new Uint32Array(n);
   const youngItem = new Uint16Array(n);
+  const blowDamage = new Float32Array(n);
+  const blowTorpor = new Float32Array(n);
+  const blowReach = new Float32Array(n);
+  const structureMul = new Float32Array(n).fill(1);
+  const cloudProp = new Uint16Array(n);
+  const cloudTicks = new Uint32Array(n);
+  const cloudBuff = new Uint16Array(n);
+  const ammoPellets = new Uint8Array(n).fill(1);
+  const weaponPellets = new Uint8Array(n);
+  const ammoFalloffFull = new Float32Array(n);
+  const ammoFalloffNone = new Float32Array(n);
+  const ammoBlast = new Float32Array(n);
+  const ammoPierce = new Float32Array(n);
+  const ammoLight = new Float32Array(n);
+  const ammoLightColor = new Uint8Array(n);
   const materials = new Map(sorted.flatMap((o) => (o.type === "material" ? [[o.id, o] as const] : [])));
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
@@ -585,8 +700,10 @@ export function compileContent(all: readonly Def[]): CompileResult {
         for (const [group, v] of Object.entries(d.zones ?? {})) for (const z of ZONE_GROUPS[group]!) zones[z] = v;
         zoneMul[i] = zones;
       }
-      bodyRadius[i] = d.radius;
-      bodyHeight[i] = d.height;
+      // A cloud has no body, so nothing aims at it, opens it or meets it; its reach is its definition's (server/clouds.ts).
+      const body = d.type !== "prop" || d.class !== "cloud";
+      bodyRadius[i] = body ? d.radius : 0;
+      bodyHeight[i] = body ? d.height : 0;
       if (d.type === "prop") drawSize[i] = d.size ?? 1;
     } else if (d.type === "item") {
       stack[i] = d.stack;
@@ -605,6 +722,14 @@ export function compileContent(all: readonly Def[]): CompileResult {
         fuseTicks[i] = Math.min(65535, Math.round((d.weapon.fuse ?? 0) * TICK_RATE));
         blast[i] = d.weapon.blast ?? 0;
         meleeTorpor[i] = d.weapon.torpor ?? 0;
+        if (d.weapon.melee) {
+          blowDamage[i] = d.weapon.melee.damage;
+          blowTorpor[i] = d.weapon.melee.torpor ?? 0;
+          blowReach[i] = d.weapon.melee.reach ?? MELEE_REACH;
+        }
+        structureMul[i] = d.weapon.structures ?? 1;
+        weaponPellets[i] = d.weapon.pellets ?? 0;
+        if (d.weapon.cloud) cloudTicks[i] = Math.max(1, Math.round(d.weapon.cloud.seconds * TICK_RATE));
       }
       if (d.ammo) {
         ammoSpeed[i] = d.ammo.speed ?? 0;
@@ -615,6 +740,13 @@ export function compileContent(all: readonly Def[]): CompileResult {
         ammoTorporSeconds[i] = d.ammo.torpor?.seconds ?? 0;
         // Ids are sorted, so a definition's index is its place among them plus one.
         if (d.ammo.buff !== undefined) ammoBuff[i] = sorted.findIndex((o) => o.id === d.ammo!.buff) + 1;
+        ammoPellets[i] = d.ammo.pellets ?? 1;
+        ammoFalloffFull[i] = d.ammo.falloff?.full ?? 0;
+        ammoFalloffNone[i] = d.ammo.falloff?.none ?? 0;
+        ammoBlast[i] = d.ammo.blast ?? 0;
+        ammoPierce[i] = d.ammo.pierce ?? 0;
+        ammoLight[i] = d.ammo.light?.reach ?? 0;
+        ammoLightColor[i] = d.ammo.light?.color ?? 0;
       }
       const hits = d.ammo ?? d.weapon;
       if (hits?.damage !== undefined) {
@@ -667,6 +799,10 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "prop" && d.item !== undefined) propItem[i] = index.get(d.item)!;
     if (d.type === "prop" && d.fertile !== undefined) propFertile[i] = index.get(d.fertile)!;
     if (d.type === "item" && d.youngFor !== undefined) youngItem[index.get(d.youngFor)!] = i;
+    if (d.type === "item" && d.weapon?.cloud) {
+      cloudProp[i] = index.get(d.weapon.cloud.prop)!;
+      if (d.weapon.cloud.buff !== undefined) cloudBuff[i] = index.get(d.weapon.cloud.buff)!;
+    }
     if (d.type === "item" && d.saddle) {
       saddleFits[i] = index.get(d.saddle.fits)!;
       saddleArmor[i] = d.saddle.armor;
@@ -682,10 +818,13 @@ export function compileContent(all: readonly Def[]): CompileResult {
         cooksInto[i] = index.get(d.cooks.into)!;
         cookTicks[i] = Math.max(1, Math.round(d.cooks.seconds * TICK_RATE));
       }
+      if (d.spoilsInto !== undefined) spoilsInto[i] = index.get(d.spoilsInto)!;
     }
     if (d.type === "item" && d.craft) {
       recipeOf[index.get(d.id)!] = Uint16Array.from(d.craft.needs.flatMap((need) => [index.get(need.item)!, need.count]));
       recipeMakes[index.get(d.id)!] = d.craft.count ?? 1;
+      if (d.craft.at !== undefined) craftAt[index.get(d.id)!] = index.get(d.craft.at)!;
+      if (d.blueprint !== false) blueprints[index.get(d.id)!] = 1;
     }
   }
   // An open door maps back to the closed door's item.
@@ -699,7 +838,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
@@ -726,6 +865,16 @@ const WILD_SET = compileColors(new Array(COLOR_REGIONS).fill(WILD_COLORS.map((c)
 /** The ZONE_* ids (shared/anim/human.ts) each body part named in content covers. */
 const ZONE_GROUPS: Readonly<Record<string, readonly number[]>> = { head: [1], torso: [2], arms: [3, 4], hands: [5, 6], legs: [7, 8], feet: [9, 10] };
 
+/**
+ * The rays a shot of `ammo` from `weapon` sends, each tested and landed alone (W3): the gun's own count if it gives one, as
+ * ARK's pump-action fires the double-barrel's shells as 14 pellets in place of 10, else its round's. A round that flies is
+ * always one.
+ */
+export function shotRays(reg: Registry, weapon: number, ammo: number): number {
+  if (reg.ammoSpeed[ammo]! > 0) return 1;
+  return reg.weaponPellets[weapon] || reg.ammoPellets[ammo] || 1;
+}
+
 const HOLDS: Readonly<Record<WeaponFacet["hold"], number>> = { tool: HOLD_TOOL, spear: HOLD_SPEAR, bow: HOLD_BOW, rifle: HOLD_RIFLE, pistol: HOLD_PISTOL };
 
 function weaponParams(w: WeaponFacet): WeaponParams {
@@ -733,7 +882,8 @@ function weaponParams(w: WeaponFacet): WeaponParams {
   const kind = w.kind === "melee" ? W_MELEE : w.kind === "bow" ? W_BOW : w.kind === "gun" ? W_GUN : W_THROWN;
   // A swing, or the pause after a shot. A bow or a single-round gun pauses briefly, because the reload that follows is the wait.
   const swingTicks = ticks(w.interval, kind === W_BOW ? 6 : kind === W_GUN && (w.clip ?? 1) === 1 ? 3 : SWING_TICKS);
-  const drawTicks = kind === W_BOW ? ticks(w.draw, 1) : 0;
+  // A thrown weapon with a draw is a charged throw (W2), held as a bow is drawn.
+  const drawTicks = kind === W_BOW || (kind === W_THROWN && w.draw !== undefined) ? ticks(w.draw, 1) : 0;
   return {
     kind,
     hold: kind === W_THROWN ? HOLD_THROW : (HOLDS[w.hold] ?? HOLD_HANDS),
@@ -745,7 +895,18 @@ function weaponParams(w: WeaponFacet): WeaponParams {
     reloadTicks: kind === W_BOW || kind === W_GUN ? ticks(w.reload, 1) : 0,
     clip: kind === W_BOW || kind === W_GUN ? (w.clip ?? 1) : 0,
     wet: w.wet ?? (kind === W_MELEE),
+    // Fire modes and the blow (planning/reference/weapons-plan.md, M4), only where the facet says.
+    ...(w.auto ? { auto: true } : {}),
+    ...(w.reloadEach ? { reloadEach: true } : {}),
+    ...(w.melee ? blowParams(ticks(w.melee.interval, SWING_TICKS)) : {}),
+    ...(w.spread ? { coneHip: w.spread.hip, coneAim: w.spread.aim, coneMove: w.spread.move ?? 0, coneBloom: w.spread.bloom ?? 0, coneRecover: (w.spread.recover ?? 0) / TICK_RATE, coneSway: w.spread.sway ?? 0 } : {}),
+    ...(w.recoil ? { recoilKick: w.recoil.kick, recoilRecover: w.recoil.recover / TICK_RATE } : {}),
   };
+}
+
+/** A gun's blow (W2): a swing of `ticks` that lands a third of the way through, as a melee weapon's does. */
+function blowParams(ticks: number): { meleeTicks: number; meleeStrikeTick: number } {
+  return { meleeTicks: ticks, meleeStrikeTick: Math.max(1, Math.min(ticks - 1, Math.round(ticks / 3))) };
 }
 
 function moveParams(d: SpeciesDef): MoveParams {

@@ -1,7 +1,11 @@
 // Nothing steps a fire. A lit one is a record with a `fire` and one deadline, the tick its fuel runs out, and
 // shared/sim/station.ts advances it when someone opens it or the deadline comes. Lit and out are the row's kind.
+//
+// Crafting at a station is a job on the station's record (Progression.craftAt): its ingredients come from the station's
+// slots and its product lands there. A session that has a station open is told its queue (sendStation).
 
-import { RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../shared/net/protocol.ts";
+import { OWN_STATION, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../shared/net/protocol.ts";
+import type { Client, GameServer } from "./game.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { burn, type Hearth } from "../shared/sim/station.ts";
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
@@ -169,4 +173,29 @@ export class Stations {
     rec.fire.due = 0;
     this.items.inv(rec);
   }
+}
+
+/** What each session was last told of its open station: the station's record id and its progVersion. */
+const told = new WeakMap<Client, string>();
+
+/**
+ * Tells the session the queue of the station it has open (OWN_STATION) when the station or its queue changed: the station's
+ * kind, then its jobs. Kind 0 once, when what it has open is no longer a station.
+ */
+export function sendStation(game: GameServer, c: Client, open: EntityRecord | null): void {
+  const def = open ? game.world.reg.defs[open.kind] : null;
+  const station = open && open.at >= 0 && def?.type === "structure" && def.class === "station" ? open : null;
+  const now = station ? `${station.pid}:${station.progVersion}` : "";
+  if (now === (told.get(c) ?? "")) return;
+  told.set(c, now);
+  const w = game.beginOwn(OWN_STATION);
+  w.u16(station ? station.kind : 0);
+  const jobs = station ? station.jobs : [];
+  w.u8(jobs.length);
+  for (const j of jobs) {
+    w.u16(j.item);
+    w.u8(j.left > 255 ? 255 : j.left);
+    w.u32(j.doneAt);
+  }
+  game.endOwn(c);
 }

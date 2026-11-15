@@ -1,21 +1,23 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_PULLED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
+import { MOST_LOD } from "../core/render/detailtext.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
-import { NEUTRAL, skinMode } from "../core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, skinMode } from "../core/render/surface.ts";
 import { SKIRT_BEHIND, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../core/assets/tiers.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
-import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
-import { TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
+import { CELL, mipOffset } from "../../shared/pack/details.ts";
+import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
+import { MAP_ROLES, TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 
 interface Program {
@@ -84,7 +86,7 @@ export class GlRenderer {
   /** The copy of each texture drawn with, by its index in the manifest, and a copy being filled. */
   readonly textures = new Map<number, WebGLTexture>();
   private readonly making = new Map<number, WebGLTexture>();
-  /** What units 4 to 8 hold, as far as this frame has bound them. */
+  /** What units 4 to 8 and the layer's hold, as far as this frame has bound them. */
   private readonly bound: (WebGLTexture | null)[] = [];
   private blending = false;
   private culling = false;
@@ -95,6 +97,10 @@ export class GlRenderer {
   private readonly buffers = new Map<number, WebGLBuffer>();
   private transient!: WebGLBuffer;
   private tileVao!: WebGLVertexArrayObject;
+  /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
+  private detailAtlas: WebGLTexture | null = null;
+  private detailVao!: WebGLVertexArrayObject;
+  private detailBuffer!: WebGLBuffer;
   private tileBuffer!: WebGLBuffer;
   /** The tile mesh's indices, and those of its ground, which come before its skirts'. */
   private tileIndexCount = 0;
@@ -202,8 +208,47 @@ export class GlRenderer {
     gl.enableVertexAttribArray(2);
     gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 24, 16);
     gl.vertexAttribDivisor(2, 1);
+    // A particle is a card of four corners drawn from the vertex's index, its numbers as packet.ts DETAIL lays them out.
+    this.detailVao = gl.createVertexArray()!;
+    gl.bindVertexArray(this.detailVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, (this.detailBuffer = gl.createBuffer()!));
+    for (let a = 0; a < 7; a++) {
+      gl.enableVertexAttribArray(a);
+      gl.vertexAttribDivisor(a, 1);
+    }
     gl.bindVertexArray(null);
+    const d = this.pack.header.details;
+    if (d) {
+      gl.activeTexture(gl.TEXTURE0 + UNIT.details);
+      gl.bindTexture(gl.TEXTURE_2D, (this.detailAtlas = gl.createTexture()));
+      const atlas = detailsAtlas(this.pack);
+      for (let level = 0, side = d.atlas.side; side >= 1; level++, side >>= 1) gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA8, side, side, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlas.subarray(mipOffset(d.atlas.side, level), mipOffset(d.atlas.side, level + 1)));
+      for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_MAX_LOD, MOST_LOD]] as const) gl.texParameterf(gl.TEXTURE_2D, name, value);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
     gl.enable(gl.DEPTH_TEST);
+  }
+
+  /** A draw of small details: its run of the frame's particles, cut out with the opaque or blended, with the atlas on its unit. */
+  private details(p: FramePacket, d: number): void {
+    const gl = this.gl;
+    const blend = (p.drawFlags[d]! & DRAW_BLEND) !== 0;
+    const prog = this.use("details", p);
+    this.set(blend, false, !blend);
+    gl.uniform1f(prog.uniform("uBlend"), blend ? 1 : 0);
+    gl.uniform1f(prog.uniform("uCells"), (this.pack.header.details?.atlas.side ?? CELL) / CELL);
+    gl.activeTexture(gl.TEXTURE0 + UNIT.details);
+    gl.bindTexture(gl.TEXTURE_2D, this.detailAtlas);
+    gl.bindVertexArray(this.detailVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.detailBuffer);
+    const [stride, at] = [DETAIL_FLOATS * 4, p.drawFirst[d]! * DETAIL_FLOATS * 4];
+    for (let a = 0; a < 4; a++) gl.vertexAttribPointer(a, a === 3 ? 1 : 3, gl.FLOAT, false, stride, at + a * 12);
+    gl.vertexAttribPointer(4, 4, gl.UNSIGNED_BYTE, true, stride, at + 40);
+    gl.vertexAttribPointer(5, 4, gl.UNSIGNED_BYTE, true, stride, at + 44);
+    gl.vertexAttribIPointer(6, 4, gl.UNSIGNED_BYTE, stride, at + 48);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, p.drawInstances[d]!);
+    this.held.length = 0;
+    this.drawCalls++;
   }
 
   /** One vertex array for a level of detail. Instance attributes are pointed per draw. */
@@ -280,7 +325,7 @@ export class GlRenderer {
    */
   private fill(u: TextureUpload): void {
     const gl = this.gl;
-    const internal = FORMATS[u.format][u.role === "base" ? 0 : u.role === "normal" ? 1 : 2]!;
+    const internal = FORMATS[u.format][u.role === "base" || u.role === "layer" ? 0 : u.role === "normal" ? 1 : 2]!;
     let copy = this.making.get(u.slot);
     gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
     if (u.size === 1 && u.row === 0) {
@@ -317,6 +362,8 @@ export class GlRenderer {
     const text = PROGRAMS[name]!(tier, this.format, this.shadowLookup === "hard");
     const key = name + text.defines + text.vertex + text.fragment;
     made.set(name, (prog = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!));
+    // A hurt body's program is made with the surface program, so the first one hurt in view waits on no compile.
+    if (name === "surface") this.program("surfaceLayer", tier);
     return prog;
   }
 
@@ -361,19 +408,23 @@ export class GlRenderer {
     return prog;
   }
 
-  /** Material `m` of a textured draw or caster of `mesh`: its tint, grey and cutoff, what the mesh's texture coordinates span, and its maps on their five units. */
-  private material(prog: Program, m: number, mesh: number, cutout: boolean): void {
+  /**
+   * Material `m` of a textured draw or caster of `mesh`: its tint, grey and cutoff, what the mesh's texture coordinates
+   * span, and its maps on their five units; and for a draw with a layer at `level`, the layer and the level.
+   */
+  private material(prog: Program, m: number, mesh: number, cutout: boolean, level = 0): void {
     const gl = this.gl;
     const mat = this.materials[m]!;
     gl.uniform3fv(prog.uniform("uTint"), mat.tint);
     gl.uniform1f(prog.uniform("uGrey"), mat.grey);
     gl.uniform1f(prog.uniform("uCutoff"), cutout ? mat.cutoff : 0);
     gl.uniform4fv(prog.uniform("uUv"), this.uv, mesh * 4, 4);
-    this.maps(mat);
+    if (level > 0) gl.uniform1f(prog.uniform("uLevel"), level / LAYER_LEVELS);
+    this.maps(mat, level > 0);
   }
 
-  /** A material's maps on their five units, or the neutral pixel of each it lacks or has not been sent. */
-  private maps(mat: PackMaterial | undefined): void {
+  /** A material's maps on their five units, or the neutral pixel of each it lacks or has not been sent; with `layer`, its layer on its unit too. */
+  private maps(mat: PackMaterial | undefined, layer = false): void {
     const gl = this.gl;
     if (this.neutral.length === 0) {
       gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
@@ -381,16 +432,16 @@ export class GlRenderer {
       this.neutral = TEXTURE_ROLES.map((role) => {
         const t = gl.createTexture()!;
         gl.bindTexture(gl.TEXTURE_2D, t);
-        gl.texImage2D(gl.TEXTURE_2D, 0, role === "base" ? gl.SRGB8_ALPHA8 : gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, Uint8Array.from(NEUTRAL[role]));
+        gl.texImage2D(gl.TEXTURE_2D, 0, role === "base" || role === "layer" ? gl.SRGB8_ALPHA8 : gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, Uint8Array.from(NEUTRAL[role]));
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         return t;
       });
     }
-    for (let r = 0; r < TEXTURE_ROLES.length; r++) {
-      const t = mat?.[TEXTURE_ROLES[r]!] ?? -1;
+    for (let r = 0; r < (layer ? TEXTURE_ROLES.length : MAP_ROLES.length); r++) {
+      const t = mat ? textureOf(mat, TEXTURE_ROLES[r]!) : -1;
       const texture = (t >= 0 && this.textures.get(t)) || this.neutral[r]!;
       if (this.bound[r] === texture) continue;
-      gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r);
+      gl.activeTexture(gl.TEXTURE0 + (r < MAP_ROLES.length ? UNIT.maps + r : UNIT.layer));
       gl.bindTexture(gl.TEXTURE_2D, (this.bound[r] = texture));
     }
   }
@@ -452,6 +503,10 @@ export class GlRenderer {
       gl.bufferData(gl.ARRAY_BUFFER, p.transient.subarray(0, p.transientCount * INSTANCE_BYTES), gl.DYNAMIC_DRAW);
     }
 
+    if (p.detailCount > 0) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.detailBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, p.details.subarray(0, p.detailCount * DETAIL_FLOATS), gl.DYNAMIC_DRAW);
+    }
     if (p.atlasRows > 0) {
       gl.activeTexture(gl.TEXTURE0 + UNIT.atlas);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ATLAS_WIDTH, p.atlasRows, gl.RGBA, gl.FLOAT, p.atlas);
@@ -472,6 +527,10 @@ export class GlRenderer {
       const s = stepOf(p, d);
       while (step < s) this.step(p, ++step);
       const flags = p.drawFlags[d]!;
+      if ((flags & DRAW_DETAILS) !== 0) {
+        this.details(p, d);
+        continue;
+      }
       const textured = (flags & DRAW_TEXTURED) !== 0;
       const lod = this.levels.get(p.drawSlot[d]!);
       const buffer = this.instances(p.drawBuffer[d]!);
@@ -481,7 +540,8 @@ export class GlRenderer {
       const fade = p.drawFade[d]!;
       const water = (flags & DRAW_WATER) !== 0;
       const hand = p.drawHand[d]!;
-      const prog = this.use(textured ? "surface" : (flags & DRAW_PULLED) !== 0 ? "pulled" : fade > 0 || hand !== 0 ? "far" : water ? "water" : blend && p.split > 0 ? "seeThrough" : "flat", p);
+      const layer = p.drawLayer[d]!;
+      const prog = this.use(textured ? (layer > 0 ? "surfaceLayer" : "surface") : (flags & DRAW_PULLED) !== 0 ? "pulled" : fade !== 0 || hand !== 0 ? "far" : water ? "water" : blend && p.split > 0 ? "seeThrough" : "flat", p);
       this.set(blend, !blend && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
       gl.uniform1f(prog.uniform("uSkin"), skinMode(flags, textured && lod.skin));
       const fades = prog.uniform("uHand");
@@ -489,7 +549,7 @@ export class GlRenderer {
         gl.uniform1f(prog.uniform("uFade"), fade);
         gl.uniform1f(fades, hand);
       }
-      if (textured) this.material(prog, p.drawMaterial[d]!, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0);
+      if (textured) this.material(prog, p.drawMaterial[d]!, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer);
       else if (water) this.maps(this.materials[p.drawMaterial[d]!]);
       else {
         gl.uniform1f(prog.uniform("uSolid"), (flags & DRAW_PLAIN) !== 0 ? 2 : 1);
@@ -497,7 +557,7 @@ export class GlRenderer {
         if (prog.alpha !== alpha) gl.uniform1f(prog.uniform("uAlpha"), (prog.alpha = alpha));
       }
       this.bind(prog, lod, buffer, p.drawMesh[d]!, p.drawFirst[d]!, p.drawOffset, d);
-      if (textured) gl.drawElementsInstanced(gl.TRIANGLES, p.drawIndexCount[d]!, lod.type, p.drawFirstIndex[d]! * lod.indexBytes, p.drawInstances[d]!);
+      if (textured || (flags & DRAW_RANGED) !== 0) gl.drawElementsInstanced(gl.TRIANGLES, p.drawIndexCount[d]!, lod.type, p.drawFirstIndex[d]! * lod.indexBytes, p.drawInstances[d]!);
       else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.drawInstances[d]!);
       this.drawCalls++;
     }

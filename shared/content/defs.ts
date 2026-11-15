@@ -235,8 +235,14 @@ export interface ItemDef extends Named {
   readonly weapon?: WeaponFacet;
   readonly ammo?: AmmoFacet;
   readonly wear?: WearFacet;
-  /** A weapon lists the attachment items it takes in `fits`. */
-  readonly attachment?: "scope" | "silencer" | "light" | "laser";
+  /**
+   * A weapon lists the attachment items it takes in `fits`. What each does (planning/reference/weapons-plan.md, M10): a
+   * scope zooms about 3 times with a reticle and sways the weapons that sway; a holo-scope zooms about 1.25 times with a
+   * night tint and a crosshair coloured by what it is on (its view is built; no item is one until the fabricator's wave);
+   * a silencer hides the shot's flash and, from a survivor it hits, its side; a light and a laser are switched on and off
+   * (FLAG_ON), the laser drawing a dot where the weapon points and the light waiting for local lights (D436).
+   */
+  readonly attachment?: "scope" | "silencer" | "light" | "laser" | "holo";
   /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
   readonly places?: readonly string[];
   /** How it is made. An item without this cannot be crafted. */
@@ -245,24 +251,35 @@ export interface ItemDef extends Named {
   readonly description?: string;
   /** Where it sits in the inventory and crafting lists: "Structures/Wood". */
   readonly folder?: string;
-  /** The item a spoiled one becomes. */
+  /** The item a spoiled one becomes, one for one, as ARK's meat becomes spoiled meat (server/items.ts). Omitted, it is gone. */
   readonly spoilsInto?: string;
-  /** It may be found as a blueprint: a copy that crafts it a limited number of times. */
+  /**
+   * Whether it may be a blueprint: a slot flagged FLAG_BLUEPRINT (shared/sim/items.ts) that crafts it at the blueprint's
+   * quality, from the blueprint's own ingredients, with no engram and at any level, as often as wanted, and is never used up
+   * (ark.wiki.gg Blueprint, 2026-11-15: unlimited uses, except ARK's fishing rod and Tek blueprints, 3 each). Omitted, an
+   * item that is crafted may be one; false keeps it from ever being one; only an item with `craft` may be.
+   */
   readonly blueprint?: boolean;
   /** What using one does beyond what eating gives (planning/reference/items-plan.md, task C). */
   readonly use?: UseFacet;
 }
 
 /**
- * What using an item does to the body that uses it, as ARK's UseItemAddCharacterStatusValues and the buffs a consumable gives.
- * A stub until task C of planning/reference/items-plan.md builds it.
+ * What using an item does to the body that uses it, as ARK's UseItemAddCharacterStatusValues and the buffs a consumable gives
+ * (server/use.ts). Using one burns it, after what eating it gives, unless it is a vessel, which is kept.
  */
 export interface UseFacet {
-  /** A stat changed by `amount`: at once, or spread over `seconds`. */
+  /**
+   * A stat changed by `amount`: at once (health, stamina, oxygen, food, water, torpidity), or spread over `seconds`
+   * (health and torpidity only, and only adding, carried by a buff as a meal's health and a dose's torpor are).
+   */
   readonly adds?: readonly { readonly stat: StatName; readonly amount: number; readonly seconds?: number }[];
   /** Buffs given on use. */
   readonly buffs?: readonly string[];
-  /** A vessel that holds water: `water` points when full, `each` drunk a use, filled again standing in water. */
+  /**
+   * A vessel that holds water: `water` points when full, `each` drunk a use, filled again by a use while standing in water
+   * and not swimming. It stacks to 1 and holds its water as the slot's durability. Made, it is empty.
+   */
   readonly holds?: { readonly water: number; readonly each: number };
 }
 
@@ -275,8 +292,10 @@ export interface CraftFacet {
   readonly xp: number;
   /** How many one crafting makes. One, where not given. */
   readonly count?: number;
-  // Stubs, read by nothing yet.
-  /** The station it is made at. Omitted, it is made in the hands. */
+  /**
+   * The station it is made at: only there, from what lies in the station, and the product lands there. Omitted, it is made
+   * in the hands from the survivor's own inventory.
+   */
   readonly at?: string;
   /** The level below which it cannot be made, engram or no. */
   readonly level?: number;
@@ -303,7 +322,10 @@ export interface WeaponFacet {
   readonly power?: number;
   /** Rounds it holds. Defaults to 1. */
   readonly clip?: number;
-  /** Seconds to reload (for a bow, to nock the next arrow), to draw a bow fully, and between two shots or swings. */
+  /**
+   * Seconds to reload (for a bow, to nock the next arrow), to draw a bow fully, and between two shots or swings. A thrown
+   * weapon with a draw is a charged throw: held as a bow is drawn, it leaves on release, its draw how long it was held.
+   */
   readonly reload?: number;
   readonly draw?: number;
   readonly interval?: number;
@@ -320,6 +342,43 @@ export interface WeaponFacet {
   /** Mesh held in the hand, and how the body holds it. */
   readonly mesh?: string;
   readonly hold: "tool" | "bow" | "rifle" | "pistol" | "spear";
+  // Fire modes and the blow (planning/reference/weapons-plan.md, M4, built by W2). Omitted, a weapon fires once a press,
+  // reloads its whole clip in one go and strikes with bare hands.
+  /** Holding the primary button fires again every `interval`, as ARK's fabricated pistol and assault rifle do. */
+  readonly auto?: boolean;
+  /**
+   * A reload loads one round each `reload` seconds (at most 4) until full, and a press of the primary button ends it after
+   * the round under way, firing then if the button is still down.
+   */
+  readonly reloadEach?: boolean;
+  /**
+   * A bow's or gun's blow with the melee button: damage at primitive quality, torpor as a multiple of it, reach in metres
+   * (2.6 where not given), and the seconds a blow takes (a swing's where not given). ARK's is 10 and 14 torpor (Base Damage).
+   */
+  readonly melee?: { readonly damage: number; readonly torpor?: number; readonly reach?: number; readonly interval?: number };
+  // Where a shot goes (planning/reference/weapons-plan.md, M1 and M2, built by W1). Omitted, a shot goes along the look.
+  /**
+   * The cone a shot leaves within (shared/sim/aim.ts), as half angles in degrees: from the hip and aimed at rest, what a
+   * sprint adds, what each shot adds, and the degrees a second it narrows back; and the degrees the aim sways through a
+   * scope, standing. Our own numbers, as ARK publishes none (DEV128, DEV130).
+   */
+  readonly spread?: { readonly hip: number; readonly aim: number; readonly move?: number; readonly bloom?: number; readonly recover?: number; readonly sway?: number };
+  /** The degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick (DEV129). */
+  readonly recoil?: { readonly kick: number; readonly recover: number };
+  /**
+   * A gun's rays a shot, in place of its round's `ammo.pellets` (W3): ARK's pump-action fires the same shells as the
+   * double-barrel, 14 pellets to its 10 (Pump-Action Shotgun). Omitted, a shot sends its round's.
+   */
+  readonly pellets?: number;
+  // Stubs of the same plan: declared, checked and compiled, and read by nothing until the project named builds them
+  // (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
+  /** W6: what its damage is multiplied by against a structure. 1 where not given. ARK's grenade is 4.5 (Table of explosives). */
+  readonly structures?: number;
+  /**
+   * W5: thrown, it bursts into a cloud: the prop/cloud it makes, the seconds the cloud lasts, and the buff it gives the bodies
+   * inside it (none for smoke). The cloud reaches as far as its prop's radius.
+   */
+  readonly cloud?: { readonly prop: string; readonly seconds: number; readonly buff?: string };
 }
 
 export interface AmmoFacet {
@@ -335,6 +394,27 @@ export interface AmmoFacet {
   /** Chance, 0 to 1, that a spent one can be picked up again. */
   readonly recover?: number;
   readonly mesh?: string;
+  /**
+   * A weapon loaded with it takes no attachment: loading it puts the one fitted in the bag, and nothing is fitted while it
+   * is loaded. ARK's darts: loaded with them the Longneck "cannot use any attachments" (Longneck Rifle).
+   */
+  readonly bare?: boolean;
+  // Shot (planning/reference/weapons-plan.md, M3, built by W3). Omitted, a round is one ray and keeps its damage at any range.
+  /**
+   * Rays one round with no speed sends, each inside its gun's cone and tested and landed alone, as a shotgun's pellets
+   * ("Each pellet fired from a Shotgun has an individual collision check", Shotgun). The round's damage is a pellet's.
+   * 1 where not given; a gun's `weapon.pellets` takes its place.
+   */
+  readonly pellets?: number;
+  /** Its damage falls evenly from all of it at `full` metres to none at `none` (shared/sim/damage.ts `falloff`). */
+  readonly falloff?: { readonly full: number; readonly none: number };
+  // Stubs of the same plan, as the weapon facet's are. Omitted, a round does what all do today.
+  /** W6: where it ends it goes off as a grenade does, reaching this many metres. The blast is the whole of its damage. */
+  readonly blast?: number;
+  /** W6: the share of armor, 0 to 1, it goes through (the metal arrow's "-90% armor bypass" is 0.9). */
+  readonly pierce?: number;
+  /** A light it carries while it flies: reach in metres and a palette colour. Rendering's to build (M9); a flare's until then is a bright mesh. */
+  readonly light?: { readonly reach: number; readonly color: number };
 }
 
 export interface WearFacet {
@@ -439,7 +519,7 @@ export interface LevelsDef extends Named {
 /** An entity that stands in the world but does not move or live, such as an item cache. Its record can hold an inventory. */
 export interface PropDef extends Named {
   readonly type: "prop";
-  readonly class: "container" | "projectile" | "egg" | "crate";
+  readonly class: "container" | "projectile" | "egg" | "crate" | "cloud";
   readonly id: string;
   readonly mesh: string;
   readonly color: number;
@@ -487,6 +567,16 @@ export interface BuffDef extends Named {
   readonly immune?: boolean;
   /** A beneficial buff, shown apart from harmful ones. */
   readonly good?: boolean;
+  // The bola's fields (planning/reference/weapons-plan.md, M6), read where a hit gives the buff (server/entangle.ts).
+  /** The species it takes, the survivor's among them if it takes survivors; omitted, any. ARK's bola names its list (Bola). */
+  readonly only?: readonly string[];
+  /** Seconds it lasts on a survivor, in place of `seconds` (the bola's 25 against a creature's 30). */
+  readonly survivorSeconds?: number;
+  /**
+   * A buff given as it ends, if the body is one that buff takes, and while that one lasts this one is not given again:
+   * the bola's 10 s of grace (patch 240.5).
+   */
+  readonly after?: string;
 }
 
 /** A type of harm. A stub: the five the engine knows are named in code (`DamageType`). */
@@ -508,13 +598,19 @@ export interface LootEntry {
   readonly weight?: number;
   readonly min: number;
   readonly max: number;
-  /** Lowest and highest quality, as multiples of primitive. */
+  /**
+   * Lowest and highest quality as ARK's item rating (MinQuality, MaxQuality): the tier is the highest whose threshold the
+   * rating drawn reaches (QUALITY_RATING, shared/sim/items.ts). Omitted, primitive.
+   */
   readonly quality?: readonly [number, number];
-  /** Chance, 0 to 1, that it comes as a blueprint. */
+  /** Chance, 0 to 1, that it comes as a single blueprint, for an item that may be one (ChanceToBeBlueprintOverride). */
   readonly blueprint?: number;
 }
 
-/** Sets of items to draw from: what a crate holds, what a body leaves. A stub until loot is built. */
+/**
+ * Sets of items to draw from: what a crate holds, what a body leaves (shared/sim/loot.ts rolls one, and the console's `loot`
+ * mints a roll). Nothing in the world opens one yet: crates and fishing wait for map zones.
+ */
 export interface LootDef extends Named {
   readonly type: "loot";
   readonly id: string;

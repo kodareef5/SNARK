@@ -2,6 +2,7 @@
 // controller only decides which way to look and which buttons are down, and the session sends that like any client's input.
 
 import { ownIndex, type ClientSession, type RemoteSample } from "../client/core/session.ts";
+import { CUE_OUT } from "../shared/anim/pose.ts";
 import type { NodeDef } from "../shared/content/defs.ts";
 import { PI, TAU } from "../shared/math/scalar.ts";
 import { BOX_SELF, CMD_CLOSE, CMD_MOVE, CMD_RESPAWN, CMD_SELECT, CMD_STRUCT, RESULT_OK, SESSION_ALIVE, SESSION_DEAD } from "../shared/net/protocol.ts";
@@ -41,7 +42,7 @@ export interface Target {
 }
 
 interface Task {
-  kind: "walk_to" | "harvest" | "open";
+  kind: "walk_to" | "harvest" | "open" | "attack";
   target: Target;
   phase: Phase;
   /** Where it walks to, and how near that it stops. The target's middle, unless a place to stand by it was chosen. */
@@ -53,6 +54,8 @@ interface Task {
   item: number;
   count: number;
   tool: number;
+  /** Attack: it ends once the body is knocked out, not only once it is gone. */
+  out: boolean;
   /** Open: the PIN to give. */
   pin: number;
   /** A step within the phase, for the phases that are a few things in a row. */
@@ -61,8 +64,9 @@ interface Task {
   /** The command a step waits on, and the time before which it sends no other. */
   seq: number;
   hold: number;
-  /** When the phase began. */
+  /** When the phase began, and when the task did. */
   since: number;
+  began: number;
 }
 
 /** Radians a second it turns, and how nearly it must face its heading before it walks. */
@@ -219,6 +223,14 @@ export class Controller {
     this.begin(now, { kind: "harvest", target, item, count, tool, phase: "waiting" });
   }
 
+  /**
+   * Starts striking a body with `tool` in hand, or with what is held, or bare hands: a creature until it is gone from
+   * sight (dead, most often) or, with `out`, knocked out; a dead one until it is used up, or `count` more of `item` are carried.
+   */
+  attack(now: number, target: Target, item: number, count: number, tool: number, out: boolean): void {
+    this.begin(now, { kind: "attack", target, item, count, tool, out, phase: "waiting" });
+  }
+
   /** Starts opening a box, a door or a bag. `pin` is NO_PIN for none. */
   open(now: number, target: Target, pin: number): void {
     const reg = this.session.registry;
@@ -272,7 +284,7 @@ export class Controller {
     const t = this.task;
     if (!t) return {};
     const b = this.session.own;
-    return { task: t.kind, doing: t.phase, left_m: Math.round(Math.max(0, Math.hypot(t.gx - b.x, t.gz - b.z) - t.stop) * 10) / 10, ...(t.kind === "harvest" ? { gathered: this.gathered() } : {}) };
+    return { task: t.kind, doing: t.phase, left_m: Math.round(Math.max(0, Math.hypot(t.gx - b.x, t.gz - b.z) - t.stop) * 10) / 10, ...(t.kind === "harvest" || t.kind === "attack" ? { gathered: this.gathered() } : {}) };
   }
 
   /** What threatens the survivor now, in words. */
@@ -298,13 +310,16 @@ export class Controller {
     if (now >= this.watchAt) {
       this.watchAt = now + WATCH_MS;
       const fresh = this.watch(now);
-      if (fresh.length > 0 && this.task) this.end({ state: "danger", reason: fresh.join("; ") });
+      const fought = this.task?.kind === "attack" ? `(${this.task.target.id})` : null;
+      // A fight is not ended by the thing fought being near, nor by a blow taken while two thirds of health are left.
+      const stop = fought === null ? fresh : fresh.filter((w) => !w.includes(fought) && !(w.startsWith("your health is falling") && this.healthLeft() > 2 / 3));
+      if (stop.length > 0 && this.task) this.end({ state: "danger", reason: stop.join("; ") });
     }
     const t = this.task;
     if (!t || s.sessionState !== SESSION_ALIVE) return;
     const b = s.own;
     if ((b.mflags & MF_OUT) !== 0) return this.end({ state: "danger", reason: "you are knocked out" });
-    if (t.target.entity >= 0 && !this.follow(t.target)) return this.end({ state: "blocked", reason: `${t.target.id} is no longer in sight` });
+    if (t.target.entity >= 0 && !this.follow(t.target)) return this.end(t.kind === "attack" && t.phase === "swinging" ? { state: "done", target: "gone" } : { state: "blocked", reason: `${t.target.id} is no longer in sight` });
     if (!t.stood) {
       t.gx = t.target.x;
       t.gz = t.target.z;
@@ -313,13 +328,13 @@ export class Controller {
     else if (t.phase === "walking") this.walk(now, dt, t);
     else if (t.phase === "approaching") this.approach(now, dt, t);
     else if (t.phase === "facing") this.face(now, dt, t);
-    else if (t.phase === "swinging") this.swing(now, t);
+    else if (t.phase === "swinging") this.swing(now, dt, t);
     else this.use(now, t);
     if (now < this.jumpUntil) this.buttons |= BTN_JUMP;
   }
 
   private begin(now: number, task: Partial<Task> & Pick<Task, "kind" | "target">): void {
-    this.task = { phase: "walking", gx: task.target.x, gz: task.target.z, stop: 0, stood: false, item: 0, count: 0, tool: 0, pin: NO_PIN, step: 0, tries: 0, seq: 0, hold: 0, since: now, ...task };
+    this.task = { phase: "walking", gx: task.target.x, gz: task.target.z, stop: 0, stood: false, item: 0, count: 0, tool: 0, out: false, pin: NO_PIN, step: 0, tries: 0, seq: 0, hold: 0, since: now, began: now, ...task };
     this.ended = null;
     this.planned = false;
     this.plans = this.replans = this.stuck = 0;
@@ -338,7 +353,7 @@ export class Controller {
     if (!t) return;
     const b = this.session.own;
     this.task = null;
-    this.ended = { ...answer, task: t.kind, at: [Math.round(b.x * 10) / 10, Math.round(b.z * 10) / 10], ...(t.kind === "harvest" ? { gathered: this.gathered() } : {}) };
+    this.ended = { ...answer, task: t.kind, at: [Math.round(b.x * 10) / 10, Math.round(b.z * 10) / 10], ...(t.kind === "harvest" || t.kind === "attack" ? { gathered: this.gathered() } : {}) };
   }
 
   private phase(now: number, t: Task, phase: Phase): void {
@@ -594,8 +609,8 @@ export class Controller {
       }
       return;
     }
-    // A bush is picked with the use button. A tree or a rock is struck, from as far as what is in hand reaches.
-    const byHand = (reg.defs[t.target.kind] as NodeDef).material === undefined;
+    // A bush is picked with the use button. A tree, a rock or a body is struck, from as far as what is in hand reaches.
+    const byHand = t.kind !== "attack" && (reg.defs[t.target.kind] as NodeDef).material === undefined;
     t.stop = t.target.half + (byHand ? 1.5 : this.reach() - 1.1);
     this.phase(now, t, "walking");
   }
@@ -627,6 +642,7 @@ export class Controller {
     this.pitch += within(want - this.pitch, TURN * dt);
     if (Math.abs(left) > 0.005 || Math.abs(want - this.pitch) > 0.005) return;
     if (t.kind === "open") return this.phase(now, t, "using");
+    if (t.kind === "attack") return this.phase(now, t, "swinging");
     // The same ray the server will cast, from the same eye.
     const byHand = (s.registry.defs[g.kind] as NodeDef).material === undefined;
     lookDirection(Math.round((this.yaw / TAU) * 65536) & 0xffff, Math.round((this.pitch / (PI / 2)) * 16384), this.dir);
@@ -646,7 +662,36 @@ export class Controller {
     this.end({ state: "blocked", reason: hit === HIT_NODE ? "another tree, rock or bush is in the way of it" : "it cannot be reached from here" });
   }
 
-  private swing(now: number, t: Task): void {
+  /** The share of its health the survivor has left. 1 before its vitals are known. */
+  private healthLeft(): number {
+    const s = this.session;
+    return s.hasVitals && s.vitals.max[V_HEALTH]! > 0 ? s.vitals.at(V_HEALTH, s.serverTick) / s.vitals.max[V_HEALTH]! : 1;
+  }
+
+  /** Striking a body: it keeps facing it, goes after it when it moves off, and stops once it is out, or enough has been gathered. */
+  private strike(now: number, dt: number, t: Task): void {
+    const s = this.session;
+    const b = s.own;
+    const g = t.target;
+    const r = this.remote;
+    let cue = 0;
+    for (let i = 0; i < r.count; i++) if (r.id[i] === g.entity) cue = r.cue[i]!;
+    if (t.out && (cue & CUE_OUT) !== 0) return this.end({ state: "done", target: "knocked out" });
+    if (t.count > 0 && (s.inventory?.total(t.item) ?? 0) - (this.had.get(t.item) ?? 0) >= t.count) return this.end({ state: "done", target: "still there" });
+    if (now - t.began > HARVEST_MS) return this.end({ state: "blocked", reason: "a minute has passed" });
+    const flat = Math.hypot(g.x - b.x, g.z - b.z);
+    if (flat > t.stop + 0.6) {
+      this.planned = false;
+      return this.phase(now, t, "walking");
+    }
+    const left = flat < 0.05 ? 0 : this.turn(dt, Math.atan2(g.x - b.x, g.z - b.z));
+    const want = within(Math.atan2(g.y + g.up / 2 - (b.y + stanceEye(this.move(), b.stance)), Math.max(flat, 0.05)), 1.5);
+    this.pitch += within(want - this.pitch, TURN * dt);
+    if (Math.abs(left) < 0.2) this.buttons |= BTN_PRIMARY;
+  }
+
+  private swing(now: number, dt: number, t: Task): void {
+    if (t.kind === "attack") return this.strike(now, dt, t);
     const s = this.session;
     const g = t.target;
     const inv = s.inventory;

@@ -31,22 +31,38 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
     const ib = st.ink & 255;
     if (n.kind === K_IMAGE) {
       const image = f.images[n.image];
-      if (!image) continue;
+      // A picture in a file that a tool has not filled is not drawn, as a browser has not fetched it yet.
+      if (!image || image.data.length < image.width * image.height * 4) continue;
       const x0 = Math.round(n.x * scale);
       const y0 = Math.round(n.y * scale);
       const w = Math.round(n.w * scale);
       const h = Math.round(n.h * scale);
+      // The part of the image shown: all of it, or the source rectangle. Shrunk, each pixel is the mean of what it covers.
+      const [sx, sy, sw, sh] = n.sw > 0 ? [n.sx, n.sy, n.sw, n.sh] : [0, 0, image.width, image.height];
       for (let py = 0; py < h; py++) {
         for (let px = 0; px < w; px++) {
           const dx = x0 + px;
           const dy = y0 + py;
           if (dx < 0 || dy < 0 || dx >= width || dy >= height) continue;
-          const s = (Math.floor((py * image.height) / h) * image.width + Math.floor((px * image.width) / w)) * 4;
+          const [u0, v0] = [sx + Math.floor((px * sw) / w), sy + Math.floor((py * sh) / h)];
+          const [u1, v1] = [Math.max(u0 + 1, sx + Math.floor(((px + 1) * sw) / w)), Math.max(v0 + 1, sy + Math.floor(((py + 1) * sh) / h))];
+          let [r, g, b, a] = [0, 0, 0, 0];
+          for (let v = v0; v < v1; v++) {
+            for (let u = u0; u < u1; u++) {
+              const s = (v * image.width + u) * 4;
+              const k = image.data[s + 3]! / 255;
+              r += image.data[s]! * k;
+              g += image.data[s + 1]! * k;
+              b += image.data[s + 2]! * k;
+              a += k;
+            }
+          }
+          if (a === 0) continue;
           const o = (dy * width + dx) * 4;
-          const a = image.data[s + 3]! / 255;
-          color[o] = color[o]! + (image.data[s]! - color[o]!) * a;
-          color[o + 1] = color[o + 1]! + (image.data[s + 1]! - color[o + 1]!) * a;
-          color[o + 2] = color[o + 2]! + (image.data[s + 2]! - color[o + 2]!) * a;
+          const cover = a / ((u1 - u0) * (v1 - v0));
+          color[o] = color[o]! + (r / a - color[o]!) * cover;
+          color[o + 1] = color[o + 1]! + (g / a - color[o + 1]!) * cover;
+          color[o + 2] = color[o + 2]! + (b / a - color[o + 2]!) * cover;
           color[o + 3] = 255;
         }
       }

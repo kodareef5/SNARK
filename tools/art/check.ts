@@ -7,15 +7,20 @@ import { Pose, sampleClip, type Clip } from "../../shared/anim/clip.ts";
 import { buildRig, type Rig } from "../../shared/anim/rigs.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
 import { Solved, boneToModel, rayZones, solve, zoneHit } from "../../shared/anim/skeleton.ts";
+import { HUMAN } from "../../shared/anim/human.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
-import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
+import { MAP_ROLES } from "../../shared/pack/texture.ts";
+import { dirname } from "node:path";
+import { detailInputs } from "../pack/details.ts";
 import { SLOW_MOST, slowSurfaceError, surfaceError } from "../pack/error.ts";
+import { boundsOf } from "../pack/lying.ts";
 import { spanOf } from "../pack/surface.ts";
 import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import type { Asset } from "./assets.ts";
-import type { CreatureAsset } from "./spec.ts";
+import { HOLD_BONES } from "./build.ts";
+import type { CreatureAsset, PieceSpec } from "./spec.ts";
 import { measureTextures, type MaterialFacts } from "./textures.ts";
 
 /** A level's distance and height on screen are worked out for this tier, on a screen this many pixels high with this field of view. */
@@ -39,6 +44,13 @@ const STILL = 1e-4;
 const STILL_SHARE = 0.25;
 /** Texel density is remarked on when one material on one mesh has this many times the pixels to a metre of another. */
 const DENSITY = 2;
+/**
+ * Metres a held piece's bounds may miss the origin by, its grip, on any axis: a hand closes round a haft of a centimetre
+ * or two, so a grip that far off still sits in the palm. Chosen.
+ */
+export const GRIP_SLACK = 0.01;
+/** Metres a lying piece's lowest point may be from y = 0. Chosen: under what shows against the ground. */
+export const REST_SLACK = 0.002;
 
 export interface LevelFacts {
   triangles: number;
@@ -314,7 +326,7 @@ function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], f
     out.materials = (mesh.materials ?? []).flatMap((m, k) => {
       if (!(fine.sections ? fine.sections.includes(k) : k === 0)) return [];
       const span = spanOf(fine, k);
-      const widest = Math.max(0, ...TEXTURE_ROLES.map((role) => mesh.textures?.[m[role]]?.top ?? 0));
+      const widest = Math.max(0, ...MAP_ROLES.map((role) => mesh.textures?.[m[role]]?.top ?? 0));
       return [{ id: m.id, span, texels: widest / span }];
     });
   }
@@ -565,12 +577,28 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
   const report: Report = { id: asset.id, kind: asset.spec.kind, meshes: [], clips: [], gaits: [], textures: [], megabytes: { textures: 0, budget: null }, pictures, notes: [], faults: [] };
   const meshes = unpackMeshes(pack);
   const spec = asset.spec;
+  if (spec.kind === "details") {
+    const d = pack.header.details;
+    if (!d) report.faults.push("the pack holds no details");
+    else if (d.inputs !== detailInputs(dirname(dirname(asset.dir)))) report.faults.push("the pack is older than the sheets and pictures it is made from: build it again");
+    else report.notes.push(`${d.pictures.length} pictures in a ${d.atlas.side} atlas, ${d.effects.length} effects, ${d.sheets.length} cue sheets`);
+    return report;
+  }
   if (spec.kind === "creature") checkCreature(asset, spec, pack, meshes, report);
   else if (spec.kind === "pieces") {
     for (const piece of spec.pieces) {
       const mesh = meshes.find((m) => m.id === piece.id);
       if (mesh) report.meshes.push(measureMesh(mesh, pack, spec.budgets.triangles, report.faults, undefined, piece.errors));
       else report.faults.push(`${piece.id}: not in the pack`);
+      if (mesh && piece.hold) report.faults.push(...heldFaults(mesh, piece.hold));
+      if (piece.dropped === undefined) continue;
+      const lying = meshes.find((m) => m.id === `${piece.id}/dropped`);
+      if (!lying) {
+        report.faults.push(`${piece.id}/dropped: not in the pack`);
+        continue;
+      }
+      report.meshes.push(measureMesh(lying, pack, spec.budgets.triangles, report.faults));
+      report.faults.push(...lyingFaults(lying));
     }
   } else if (spec.kind !== "sky" && spec.kind !== "water") {
     // Bodies are cut by slot, so every mesh ends at a cut. Their surfaces are counted and not judged.
@@ -588,6 +616,44 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
     report.notes.push(`texel density runs from ${least.texels.toFixed(0)} pixels a metre (${least.id} on ${least.mesh}) to ${most.texels.toFixed(0)} (${most.id} on ${most.mesh}), more than ${DENSITY} times apart`);
   }
   return report;
+}
+
+/**
+ * What is wrong with a held piece (tools/art/spec.ts, PieceSpec): it is on the human skeleton, every vertex on the prop
+ * bone of its hand; its grip, the origin, is within its bounds; and in the right hand its length runs along +Z, its
+ * longest extent and reaching further forward than back, while in the left hand, a bow's, its limbs run along Y.
+ */
+export function heldFaults(mesh: SourceMesh, hold: NonNullable<PieceSpec["hold"]>): string[] {
+  const faults: string[] = [];
+  const bone = HOLD_BONES[hold];
+  if (mesh.skeleton !== HUMAN.id) faults.push(`${mesh.id}: it is held, and is not on the human skeleton`);
+  const off = mesh.lods.reduce((n, lod) => n + (lod.bones ? lod.bones.filter((b) => b !== bone).length : lod.positions.length / 3), 0);
+  if (off > 0) faults.push(`${mesh.id}: ${off} vertices are not on the prop bone of the hand it is held in (${hold}, bone ${bone})`);
+  const [lo, hi] = boundsOf(mesh.lods[0]!);
+  const missed = [0, 1, 2].map((k) => Math.max(lo[k]!, -hi[k]!, 0));
+  if (missed.some((m) => m > GRIP_SLACK)) faults.push(`${mesh.id}: its grip, the origin, lies ${cm(Math.max(...missed))} cm outside it, and a held piece is modelled with its grip at the origin (within ${cm(GRIP_SLACK)} cm)`);
+  const size = [0, 1, 2].map((k) => hi[k]! - lo[k]!);
+  const across = `it spans ${size.map((v) => cm(v)).join(", ")} cm across x, y and z`;
+  if (hold === "prop_l") {
+    // The left hand holds a bow as tools/pack/weapons.ts draws one: its limbs along Y, either side of the grip, and it
+    // shoots along +X. Its longest extent is along Y; which way it reaches is the bow's own.
+    if (size[1]! < size[0]! || size[1]! < size[2]!) faults.push(`${mesh.id}: held in the left hand, its limbs do not run along Y: ${across}`);
+  } else if (size[2]! < size[0]! || size[2]! < size[1]! || hi[2]! < -lo[2]!) {
+    faults.push(`${mesh.id}: its length does not run along +Z: ${across}, from ${cm(lo[2]!)} to ${cm(hi[2]!)} cm along z`);
+  }
+  return faults;
+}
+
+/**
+ * What is wrong with a piece as it lies on the ground: it is on no bones, and its finest level rests on y = 0. A coarser
+ * level lies where its shape puts it, and how far that is from the finest is its error.
+ */
+export function lyingFaults(mesh: SourceMesh): string[] {
+  const faults: string[] = [];
+  if (mesh.skeleton !== undefined) faults.push(`${mesh.id}: a lying piece is on the skeleton ${mesh.skeleton}, and lies rigid`);
+  const low = boundsOf(mesh.lods[0]!)[0][1]!;
+  if (Math.abs(low) > REST_SLACK) faults.push(`${mesh.id}: its lowest point is at ${cm(low)} cm, and a lying piece rests on y = 0 (within ${cm(REST_SLACK)} cm)`);
+  return faults;
 }
 
 const cm = (metres: number): string => (metres * 100).toFixed(1);

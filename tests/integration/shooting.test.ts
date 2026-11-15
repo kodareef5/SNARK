@@ -24,7 +24,7 @@ import { TICK_DT } from "../../shared/coords.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT, EVENT_HIT, EVENT_SHOT } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
+import { BTN_PRIMARY, BTN_SECONDARY, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { DRAW_SPEED_MIN, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
 import { ACT_HOLD, ACT_NONE } from "../../shared/sim/weapon.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -76,10 +76,14 @@ function range(deep: number, link = {}, registry = reg) {
   return { h, s, pilot, rec, at, dummy, arm };
 }
 
-/** Aims from the shooter's eye at a point `far` metres north and `height` above the ground. */
+/**
+ * Aims from the shooter's eye at a point `far` metres north and `height` above the ground, with the aim button held: a long
+ * gun or crossbow aimed and still goes where it looks (shared/sim/aim.ts; DEV128).
+ */
 function aim(pilot: Pilot, far: number, height: number, side = 0): void {
   pilot.yaw = Math.atan2(side, far);
   pilot.pitch = Math.atan2(height - EYE, Math.hypot(far, side));
+  pilot.buttons |= BTN_SECONDARY;
 }
 
 function pull(h: Harness, pilot: Pilot, ms = 400): void {
@@ -172,12 +176,12 @@ test("an arrow flies and falls: aimed above its mark by its drop it lands on it,
   aim(pilot, 30, 1.66 + drop(30, 1));
   loose(h, pilot, 45);
   expect([combat.last.zone, combat.last.damage]).toEqual([ZONE_HEAD, 165]);
-  // Damage runs from a quarter undrawn to all of it at 36 ticks of draw, so half drawn is about five eighths.
+  // Damage runs from half undrawn (Bow, patch 190.0) to all of it at 36 ticks of draw, so half drawn is about three quarters.
   aim(pilot, 30, 1.25 + drop(30, 0.5));
   loose(h, pilot, 19.5);
   expect(combat.last.zone).toBe(ZONE_TORSO);
-  expect(combat.last.damage).toBeGreaterThan(55 * (0.25 + (0.75 * 17) / 36) - 0.01);
-  expect(combat.last.damage).toBeLessThan(55 * (0.25 + (0.75 * 20) / 36) + 0.01);
+  expect(combat.last.damage).toBeGreaterThan(55 * (0.5 + (0.5 * 17) / 36) - 0.01);
+  expect(combat.last.damage).toBeLessThan(55 * (0.5 + (0.5 * 20) / 36) + 0.01);
   // A draw of four ticks is too short to fire.
   const fired = shots.fired;
   loose(h, pilot, 4);
@@ -239,9 +243,15 @@ test("an arrow that misses stands where it landed about half the time, is seen b
   expect(h.host.items.audit()).toEqual([]);
 });
 
+/**
+ * The core content with every weapon's cone and kick taken off, so a test of the rewind or the lead is not one of the cone
+ * as well (that is tests/integration/accuracy.test.ts).
+ */
+const steady = compileContent(CORE_CONTENT.map((d): Def => (d.type === "item" && (d as ItemDef).weapon?.spread ? { ...(d as ItemDef), weapon: { ...(d as ItemDef).weapon!, spread: undefined, recoil: undefined } } : d))).registry!;
+
 /** Bob strafes across the range while Ada, `latencyMs` from the server each way, aims at where she sees him. */
 function strafing(latencyMs: number, sprint = true) {
-  const h = new Harness({}, 1, 60, { dev: true });
+  const h = new Harness({}, 1, 60, { dev: true }, steady);
   const ada = h.join("ada", { latencyMs });
   const bob = h.join("bob", { latencyMs: 20 });
   h.run(600);
@@ -309,7 +319,8 @@ test("lag compensation: at every latency within the cap, a shot aimed at the bod
     let moving = 0;
     // The pistol holds six rounds, so the twelve shots include a reload.
     for (let n = 0; n < 12; n++) {
-      if (inv.loaded[inv.hotbar] === 0) h.run(2600, frame());
+      // It reloads in 3.33 s (Simple Pistol).
+      if (inv.loaded[inv.hotbar] === 0) h.run(3800, frame());
       const before = combat.hits;
       if (speedOf(h, bob) > 4) moving++;
       pa.buttons |= BTN_PRIMARY;

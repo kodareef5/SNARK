@@ -7,7 +7,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import type { FarNodeSource } from "../../client/core/render/farnodes.ts";
-import { DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_CUTOUT, DRAW_TEXTURED, stepOf, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
@@ -17,7 +17,7 @@ import { compileContent, type Registry } from "../../shared/content/registry.ts"
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
-import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
+import { MAP_ROLES } from "../../shared/pack/texture.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../../shared/sim/entities.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
@@ -123,14 +123,27 @@ export function sceneRegistry(): Registry {
 }
 
 /**
- * The boot file, the mesh file and the rgba texture file, with their manifest. The tube's pictures are `pixels`
- * across, which tests leave at 64 and the benchmark raises. Built once per process for each size.
+ * The tube's hurt and decay pictures: on the left of its hide a red mark that shows from the first hurt stage, then
+ * the band beside it at the second and the next at the third; on the right a pale patch that shows at the first decay
+ * stage.
  */
-export function sceneSet(pixels = 64): SceneSet {
-  const made = sets.get(pixels);
+export function tubeLayers(size: number): { hurt: Picture; decay: Picture } {
+  const hurt = picture(size, (x) => (x < size / 4 ? [140, 10, 12, 255] : x < (size * 3) / 8 ? [140, 10, 12, 150] : x < size / 2 ? [140, 10, 12, 60] : [0, 0, 0, 0]));
+  const decay = picture(size, (x) => (x >= (size * 3) / 4 ? [225, 215, 190, 255] : [0, 0, 0, 0]));
+  return { hurt, decay };
+}
+
+/**
+ * The boot file, the mesh file and the rgba texture file, with their manifest. The tube's pictures are `pixels`
+ * across, which tests leave at 64 and the benchmark raises. Built once per process for each size. With `layered` its
+ * hide has a hurt and decay layer (`tubeLayers`).
+ */
+export function sceneSet(pixels = 64, layered = false): SceneSet {
+  const made = sets.get(pixels * 2 + (layered ? 1 : 0));
   if (made) return made;
   const tube = tubeMesh();
   for (const t of tube.textures!) t.top = pixels;
+  if (layered) tube.materials![0]!.layer = tube.textures!.push({ id: `${TUBE}/layer`, role: "layer", top: pixels }) - 1;
   // Drawn flat, the tube's horn is the palette colour the build finds nearest its pictures (D154), not the fixture's yellow.
   for (const lod of tube.lods) lod.colors = lod.colors.map((c) => (c === 6 ? HORN : c));
   const meshes = [...grayboxMeshes(DEFS), ...mannequinMeshes(), ...weaponMeshes(), tube, panelMesh(), clubMesh()];
@@ -138,13 +151,13 @@ export function sceneSet(pixels = 64): SceneSet {
   // Planks in two browns, with every fourth square of them clear.
   const planks = picture(64, (x, y) => (((x >> 3) + (y >> 3)) & 3) === 0 ? [150, 110, 70, 0] : (x >> 3) & 1 ? [170, 125, 80, 255] : [120, 85, 55, 255]);
   const pictures = tubePictures();
-  for (const role of TEXTURE_ROLES) pictures[role] = enlarged(pictures[role], pixels / pictures[role].width);
-  const mips: Record<string, ReturnType<typeof materialMips>> = { [TUBE]: materialMips(pictures), [PANEL]: materialMips({ base: planks }) };
+  for (const role of MAP_ROLES) pictures[role] = enlarged(pictures[role], pixels / pictures[role].width);
+  const mips: Record<string, ReturnType<typeof materialMips>> = { [TUBE]: materialMips({ ...pictures, ...(layered ? tubeLayers(pixels) : {}) }), [PANEL]: materialMips({ base: planks }) };
   const file = writeTextureFile("rgba", manifest.textures!.map((t) => rgbaTexture(t.role, mips[t.id.slice(0, t.id.lastIndexOf("/"))]![t.role]!)));
   manifest.textures!.forEach((t, i) => (t.in.rgba = { file: files.length, ...file.placed[i]! }));
   files.push({ name: "scene.tex.rgba.sntx", role: "tex", bytes: file.bytes });
   manifest.files.push({ name: "scene.tex.rgba.sntx", bytes: file.bytes.length, role: "tex", format: "rgba" });
-  sets.set(pixels, { files, manifest });
+  sets.set(pixels * 2 + (layered ? 1 : 0), { files, manifest });
   return { files, manifest };
 }
 
@@ -201,8 +214,9 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
     },
     /**
      * One frame, `ms` after the last. Throws if the card is sent anything out of order, if a draw is of a level, a
-     * surface or a material's base colour or masks that the card does not hold, or if a level drawn with materials is
-     * not drawn once for each of its sections, in their order.
+     * surface or a material's base colour or masks that the card does not hold, if a level drawn with materials is not
+     * drawn once for each of its sections, in their order but for its cut-out ones (which the scene may leave out), or
+     * if a cut-out draw comes before an opaque one of its step while the scene draws them last.
      */
     frame(ms = 100, draw = true): FramePacket {
       now += ms;
@@ -210,20 +224,28 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
       scene.now = now;
       const p = scene.build(cam, remote);
       card.take(p);
+      const levels = new Map<string, { sections: number; drawn: number[] }>();
+      const cutIn = new Set<number>();
       for (let d = 0; d < p.drawCount; d++) {
         const slot = p.drawSlot[d]!;
         if (!card.held.has(slot)) throw new Error(`draw ${d} is of a level the card does not hold`);
+        const cut = (p.drawFlags[d]! & DRAW_CUTOUT) !== 0;
+        if (cut) cutIn.add(stepOf(p, d));
+        else if (scene.cutouts === "last" && cutIn.has(stepOf(p, d))) throw new Error(`draw ${d} is opaque and comes after a cut-out draw of its step`);
         if ((p.drawFlags[d]! & DRAW_TEXTURED) === 0) continue;
         const runs = manifest.meshes[p.drawMesh[d]!]!.levels[p.drawLod[d]!]!.sections ?? [];
         if (runs.length === 0 || !card.surfaces.has(slot)) throw new Error(`draw ${d} is textured, and the card does not hold its level's surface`);
-        const first = d;
-        for (let k = 0; k < runs.length; k += 3) {
-          d = first + k / 3;
-          const m = manifest.materials![runs[k]!]!;
-          const same = [p.drawSlot, p.drawBuffer, p.drawFirst, p.drawInstances].every((of) => of[d] === of[first]) && (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
-          if (d >= p.drawCount || !same || p.drawMaterial[d] !== runs[k] || p.drawFirstIndex[d] !== runs[k + 1] || p.drawIndexCount[d] !== runs[k + 2]) throw new Error(`draw ${d} is not section ${k / 3} of its level`);
-          if ([m.base, m.mask, m.mask2].some((t) => t >= 0 && !card.textures.has(t))) throw new Error(`draw ${d} is with ${m.id}, whose textures the card does not hold`);
-        }
+        let k = 0;
+        while (k < runs.length && (p.drawMaterial[d] !== runs[k] || p.drawFirstIndex[d] !== runs[k + 1] || p.drawIndexCount[d] !== runs[k + 2])) k += 3;
+        if (k >= runs.length) throw new Error(`draw ${d} is of no section of its level`);
+        const m = manifest.materials![runs[k]!]!;
+        if ([m.base, m.mask, m.mask2].some((t) => t >= 0 && !card.textures.has(t))) throw new Error(`draw ${d} is with ${m.id}, whose textures the card does not hold`);
+        const key = [slot, p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawPass[d]].join();
+        const level = levels.get(key) ?? levels.set(key, { sections: runs.length / 3, drawn: [] }).get(key)!;
+        level.drawn.push(k / 3 + (cut && scene.cutouts === "last" ? runs.length : 0) - (cut && scene.cutouts === "first" ? runs.length : 0));
+      }
+      for (const [key, { sections, drawn }] of levels) {
+        if ((drawn.length !== sections && scene.cutouts !== "none") || drawn.some((k, i) => i > 0 && k <= drawn[i - 1]!)) throw new Error(`the level drawn as ${key} is not drawn once for each of its sections, in order`);
       }
       if (draw) raster.render(p);
       return p;
