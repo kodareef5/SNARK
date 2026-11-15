@@ -1,0 +1,128 @@
+{
+  "asset": "core/creatures/raptor",
+  "review": "../ref/sound",
+  "about": "A fast feathered hunting dinosaur the size of a person; it chirps and screeches to its pack.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p2820",
+          "models": [
+            "moss"
+          ],
+          "seed": 2820,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A feathered hunting dinosaur gives sharp chirping barks and clicking trills, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p2830",
+          "models": [
+            "moss"
+          ],
+          "seed": 2830,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A feathered predator dinosaur shrieks a sharp piercing screech, three separate screeches with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p2840",
+          "models": [
+            "moss"
+          ],
+          "seed": 2840,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A feathered predator dinosaur yelps and squeals in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p2850",
+          "models": [
+            "moss"
+          ],
+          "seed": 2850,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A feathered predator dinosaur gives a weak gurgling dying screech that fades, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 60,
+      "level": -18,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p2860",
+          "models": [
+            "moss"
+          ],
+          "seed": 2860,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A predator dinosaur snarls and snaps its jaws shut in a fast bite, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 36,
+      "level": -24,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p2870",
+          "models": [
+            "moss"
+          ],
+          "seed": 2870,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Quick light footsteps of a running clawed animal on earth: fast scratchy taps, separate bursts. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

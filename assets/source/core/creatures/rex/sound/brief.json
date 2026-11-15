@@ -1,0 +1,148 @@
+{
+  "asset": "core/creatures/rex",
+  "review": "../ref/sound",
+  "about": "The apex predator: a towering two-legged meat-eating dinosaur whose roar carries for a mile and whose steps shake the ground.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 150,
+      "level": -16,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p2880",
+          "models": [
+            "moss"
+          ],
+          "seed": 2880,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 150,
+      "level": -16,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p2890",
+          "models": [
+            "moss"
+          ],
+          "seed": 2890,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A gigantic predator dinosaur roars an enormous deep thunderous roar, two separate roars with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 150,
+      "level": -16,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p2900",
+          "models": [
+            "moss"
+          ],
+          "seed": 2900,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A gigantic predator dinosaur bellows in pain with a deep angry roar, three separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 150,
+      "level": -16,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p2910",
+          "models": [
+            "moss"
+          ],
+          "seed": 2910,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A gigantic dinosaur gives a long deep dying groan that fades into a rattle, one time. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 150,
+      "level": -14,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p2920",
+          "models": [
+            "moss"
+          ],
+          "seed": 2920,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A gigantic predator snaps its huge jaws shut with a deep snarl, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 90,
+      "level": -20,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p2930",
+          "models": [
+            "moss"
+          ],
+          "seed": 2930,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Enormous footsteps of a giant animal: deep booming ground-shaking thuds, slow and well spaced. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "roar": {
+      "kind": "voice",
+      "range": 150,
+      "level": -16,
+      "vary": 0.5,
+      "want": "a challenge roar",
+      "prompts": [
+        {
+          "id": "p2940",
+          "models": [
+            "moss"
+          ],
+          "seed": 2940,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A gigantic predator dinosaur bellows a huge long challenging roar that echoes, two separate roars with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

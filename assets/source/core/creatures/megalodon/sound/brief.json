@@ -1,0 +1,128 @@
+{
+  "asset": "core/creatures/megalodon",
+  "review": "../ref/sound",
+  "about": "A giant shark of the open sea; heard as surges of water and the crunch of its jaws.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 80,
+      "level": -18,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p3140",
+          "models": [
+            "moss"
+          ],
+          "seed": 3140,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Underwater: a giant shark swims past, a deep surging whoosh of water and a low rumble, three separate passes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 80,
+      "level": -18,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p3150",
+          "models": [
+            "moss"
+          ],
+          "seed": 3150,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Underwater: a giant shark thrashes suddenly, a violent churning surge of water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 80,
+      "level": -18,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p3160",
+          "models": [
+            "moss"
+          ],
+          "seed": 3160,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Underwater: a giant shark is struck and thrashes, muffled churning water, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 80,
+      "level": -18,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p3170",
+          "models": [
+            "moss"
+          ],
+          "seed": 3170,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Underwater: a giant shark's thrashing slows and fades into stillness, one time. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 80,
+      "level": -16,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p3180",
+          "models": [
+            "moss"
+          ],
+          "seed": 3180,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant shark bites: a huge crunching snap of jaws and churning splash, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 48,
+      "level": -22,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p3190",
+          "models": [
+            "moss"
+          ],
+          "seed": 3190,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Underwater: a large fish tail sweeps the water, soft deep swooshes, several separate strokes. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "sounds": {
+    "splash/in/small": {
+      "range": 30, "level": -20, "vary": 1.0,
+      "takes": [
+        {"file": "takes/splash/in/small/moss-pt-1330-01970.wav", "from": "moss", "start": 0.05, "end": 0.685},
+        {"file": "takes/splash/in/small/moss-pt-1330-00000.wav", "from": "moss", "start": 0.0, "end": 0.368}
+      ]
+    },
+    "splash/in/large": {
+      "range": 45, "level": -16, "vary": 0.8,
+      "takes": [
+        {"file": "takes/splash/in/large/moss-pt-1340-04180.wav", "from": "moss", "start": 0.05, "end": 1.355},
+        {"file": "takes/splash/in/large/moss-pt-1340-06650.wav", "from": "moss", "start": 0.05, "end": 0.67}
+      ]
+    },
+    "splash/out": {
+      "range": 30, "level": -22, "vary": 0.8,
+      "takes": [
+        {"file": "takes/splash/out/moss-pt-1350-04860.wav", "from": "moss", "start": 0.05, "end": 2.783}
+      ]
+    },
+    "swim/stroke": {
+      "range": 25, "level": -24, "vary": 1.0,
+      "takes": [
+        {"file": "takes/swim/stroke/moss-pt-1361-06808.wav", "from": "moss", "start": 0.05, "end": 0.542},
+        {"file": "takes/swim/stroke/moss-pt-1360-03357.wav", "from": "moss", "start": 0.05, "end": 0.571},
+        {"file": "takes/swim/stroke/moss-pt-1361-02498.wav", "from": "moss", "start": 0.05, "end": 0.577},
+        {"file": "takes/swim/stroke/moss-pt-1360-03892.wav", "from": "moss", "start": 0.05, "end": 0.513}
+      ]
+    },
+    "thump/small": {
+      "range": 25, "level": -22, "vary": 1.0,
+      "takes": [
+        {"file": "takes/thump/small/moss-pt-1370-06440.wav", "from": "moss", "start": 0.05, "end": 0.255},
+        {"file": "takes/thump/small/moss-pt-1370-00000.wav", "from": "moss", "start": 0.0, "end": 0.295}
+      ]
+    },
+    "thump/medium": {
+      "range": 35, "level": -18, "vary": 0.8,
+      "takes": [
+        {"file": "takes/thump/medium/moss-pt-1380-00455.wav", "from": "moss", "start": 0.05, "end": 0.605}
+      ]
+    },
+    "thump/large": {
+      "range": 60, "level": -14, "vary": 0.6,
+      "takes": [
+        {"file": "takes/thump/large/moss-pt-1390-02005.wav", "from": "moss", "start": 0.05, "end": 1.245},
+        {"file": "takes/thump/large/moss-pt-1390-00000.wav", "from": "moss", "start": 0.0, "end": 1.16}
+      ]
+    },
+    "bubbles": {
+      "range": 15, "level": -26, "vary": 1.0,
+      "takes": [
+        {"file": "takes/bubbles/moss-pt-1400-02175.wav", "from": "moss", "start": 0.05, "end": 3.957}
+      ]
+    }
+  }
+}

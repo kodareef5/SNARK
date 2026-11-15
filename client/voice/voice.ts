@@ -45,9 +45,12 @@ export class VoiceIo implements VoicePort {
   private gain = 1;
   private version = -1;
   private readonly url: string;
+  /** The page's audio context, where the page has one to share. */
+  private readonly shared: (() => AudioContext) | null;
 
-  constructor(url: string) {
+  constructor(url: string, shared: (() => AudioContext) | null = null) {
     this.url = url;
+    this.shared = shared;
   }
 
   static get supported(): boolean {
@@ -71,7 +74,7 @@ export class VoiceIo implements VoicePort {
 
   private async open(slot: number, token: Uint8Array): Promise<void> {
     if (!this.worker) {
-      const ctx = (this.ctx = new AudioContext({ latencyHint: "interactive" }));
+      const ctx = (this.ctx = this.shared?.() ?? new AudioContext({ latencyHint: "interactive" }));
       await ctx.audioWorklet.addModule("voice-playback.js");
       const out = new AudioWorkletNode(ctx, "snark-playback", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
       out.connect(ctx.destination);

@@ -23,6 +23,8 @@ import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
 import { VoiceIo } from "../voice/voice.ts";
+import { SoundIo } from "../sound/sound.ts";
+import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
 
 const params = new URLSearchParams(location.search);
@@ -88,10 +90,13 @@ async function boot(): Promise<void> {
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
-  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`);
+  // The world's sounds and the voices share one audio context.
+  const sound = SoundIo.supported ? new SoundIo(app.ui.settings.touchFirst) : null;
+  app.sound = sound;
+  if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
+  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`, sound ? () => sound.shared() : null);
   app.voice = voice;
-  addEventListener("pointerdown", () => voice.unlock());
-  addEventListener("keydown", () => voice.unlock());
+  for (const gesture of ["pointerdown", "pointerup", "keydown"]) addEventListener(gesture, () => (voice.unlock(), sound?.unlock()));
   /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */
   const voiceCheck = selfcheck && params.get("voice") === "1";
   /** With ?voice=listen it only listens to another page, and reports whose voice it played. */
@@ -146,6 +151,11 @@ async function boot(): Promise<void> {
     app.drawn(packet, ours, gpu);
     device?.frame(now, packet, t0, built);
     if (frames === 30) loser?.loseContext();
+    // The self-check asks for a call and listens for it leaving the volume.
+    if (selfcheck && sound && frames >= 0) {
+      if (frames === 30) app.ui.local?.("sound call");
+      sound.listen();
+    }
     if (frames === 45) loser?.restoreContext();
     times.push(performance.now() - t0);
     const r = app.scene!.assets.residency;
@@ -174,11 +184,12 @@ async function boot(): Promise<void> {
       const misplaced = view.misplaced(app.ui.frame);
       const report = {
         // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
+        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level) && (!app.sounds?.library.index.has("core:dodo/sound/call") || sound!.peak > 0.001),
         rocks: rocks.map((m) => [m.level, m.drawn]),
         restored,
         assets: { ...app.scene?.assets.residency.stats, kept: port.cache },
         ...(voiced ? { voice: voice.report } : {}),
+        ...(app.sounds ? { sound: { line: app.sounds.line(), peak: sound!.peak } } : {}),
         userAgent: navigator.userAgent,
         renderer: renderer.rendererName,
         textures: { format: renderer.format, takes: renderer.formats, errors: renderer.errors },

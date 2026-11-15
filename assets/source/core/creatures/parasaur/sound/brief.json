@@ -1,0 +1,128 @@
+{
+  "asset": "core/creatures/parasaur",
+  "review": "../ref/sound",
+  "about": "A tall crested plant-eating dinosaur that walks on two or four legs; it honks through its hollow crest to warn the herd.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p2760",
+          "models": [
+            "moss"
+          ],
+          "seed": 2760,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large crested dinosaur gives deep resonant honking calls through a hollow crest, like a low foghorn trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p2770",
+          "models": [
+            "moss"
+          ],
+          "seed": 2770,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large crested dinosaur blares a loud alarmed trumpeting honk, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p2780",
+          "models": [
+            "moss"
+          ],
+          "seed": 2780,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large herbivore dinosaur bellows in pain, short hurt honks, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p2790",
+          "models": [
+            "moss"
+          ],
+          "seed": 2790,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large herbivore dinosaur lets out a long fading mournful dying moan, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 60,
+      "level": -18,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p2800",
+          "models": [
+            "moss"
+          ],
+          "seed": 2800,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large herbivore dinosaur snorts and lunges with a heavy grunt, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 36,
+      "level": -24,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p2810",
+          "models": [
+            "moss"
+          ],
+          "seed": 2810,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Heavy footsteps of a large two-ton animal walking slowly on earth: deep padded thuds, well spaced. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}
