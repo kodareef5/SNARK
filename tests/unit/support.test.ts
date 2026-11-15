@@ -3,8 +3,9 @@
 import { expect, test } from "bun:test";
 import { FOUNDATION_THICK, WALL_HEIGHT } from "../../content/building.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
-import { poseAt, units, type Pose } from "../../shared/world/snap.ts";
+import { floorTop, poseAt, units, type Pose } from "../../shared/world/snap.ts";
 import { CEILING_REACH, LOAD_REACH, Support } from "../../shared/world/support.ts";
+import { TRIANGLE_HALF, hullWorld } from "../fixtures/hulls.ts";
 import { flatWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
@@ -134,4 +135,24 @@ test("held by walls: two floors out from the wall and not a third; walls on a fl
   support.standsRef(out2);
   expect(support.visited).toBeLessThan(12);
   expect(units(1)).toBe(U);
+});
+
+test("a thing stands on a floor of convex parts where its foot is on the part's top under its middle, level or sloped", () => {
+  const w = hullWorld();
+  const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
+  const box = w.kind("core:storage_box");
+  const half = units(0.3125);
+  const set = (ref: number, x: number, z: number, y = floorTop(w.structs, w.reg, ref, units(x), units(z))): boolean => support.stands(box, units(x), y + half, units(z), 0);
+  // On a triangle foundation, and not off it over the square about its corner, at the same height.
+  const tri = w.structs.add(w.kind("test:triangle"), 100, TRIANGLE_HALF, 100, 0, 7, 1);
+  expect(set(tri, 101.5, 100.8)).toBe(true);
+  expect(set(tri, 99.2, 99.2, units(2 * TRIANGLE_HALF))).toBe(false);
+  // A sloped roof slab held on a pillar: a thing come down on its slope stands there, and not at the height of its peak.
+  const pillar = w.structs.add(w.kind("core:pillar_stone"), 150, WALL_HEIGHT / 2 - 0.125, 150, 0, 7, 1);
+  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  expect(poseAt(w.structs, w.reg, pillar, w.kind("test:roof"), 0, 0, pose)).toBe(true);
+  const roof = w.structs.add(w.kind("test:roof"), pose.x / U, pose.y / U, pose.z / U, pose.yaw, 7, 1);
+  expect(support.standsRef(roof)).toBe(true);
+  expect([set(roof, 150.4, 149), set(roof, 149, 151.2)]).toEqual([true, true]);
+  expect(set(roof, 150.4, 149, pose.y + units(w.reg.halfY[w.kind("test:roof")]!))).toBe(false);
 });
