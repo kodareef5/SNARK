@@ -14,8 +14,12 @@ export const AMMO: readonly Def[] = [
   { type: "item", class: "ammo", id: id("arrow_stone"), stack: 100, weight: 0.2, label: "stone arrow", color: 15, ammo: { damage: 55, type: "pierce", speed: 70, gravity: 9.81, recover: 0.5, mesh: id("arrow") } },
   { type: "item", class: "ammo", id: id("arrow_tranq"), stack: 100, weight: 0.2, label: "tranquilizer arrow", color: 9, ammo: { damage: 20, type: "pierce", speed: 70, gravity: 9.81, torpor: { instant: 2, over: 2.5, seconds: 5 }, mesh: id("arrow") } },
   { type: "item", class: "ammo", id: id("arrow_flame"), stack: 100, weight: 0.2, label: "flame arrow", color: 3, ammo: { damage: 55, type: "fire", speed: 70, gravity: 9.81, buff: id("burning"), mesh: id("arrow") } },
+  // ark.wiki.gg, Simple Rifle Ammo, Simple Bullet, Tranquilizer Dart and Shocking Tranquilizer Dart, infoboxes and Utility,
+  // 2026-11-15: rounds weigh 0.1 and darts 0.2, each stacking to 100; the rifle's round does 280 and the pistol's 100
+  // (Longneck Rifle, Simple Pistol); a dart does 26, the tranquilizer dart adding six times that in torpor at once and 2.5
+  // times over 5 s, the shocking one twelve times and five times (Tranquilizer Comparison Table, Utility).
   { type: "item", class: "ammo", id: id("round_rifle"), stack: 100, weight: 0.1, label: "rifle round", color: 6, ammo: { damage: 280, type: "bullet" } },
-  { type: "item", class: "ammo", id: id("round_pistol"), stack: 100, weight: 0.05, label: "pistol round", color: 6, ammo: { damage: 100, type: "bullet" } },
+  { type: "item", class: "ammo", id: id("round_pistol"), stack: 100, weight: 0.1, label: "pistol round", color: 6, ammo: { damage: 100, type: "bullet" } },
   { type: "item", class: "ammo", id: id("dart_tranq"), stack: 100, weight: 0.2, label: "tranquilizer dart", color: 9, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 6, over: 2.5, seconds: 5 }, mesh: id("dart") } },
   { type: "item", class: "ammo", id: id("dart_shock"), stack: 100, weight: 0.2, label: "shock dart", color: 6, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 12, over: 5, seconds: 5 }, buff: id("stunned"), mesh: id("dart") } },
 
@@ -34,10 +38,15 @@ export const AMMO: readonly Def[] = [
   ...making("flashlight", "Flashlight attachment", 25, 13, 1, 6, [["ingot", 20], ["stone", 10]]),
   ...making("scope", "Scope attachment", 30, 13, 1, 6, [["ingot", 40], ["stone", 20]]),
   ...making("arrow_flame", "Flame arrow", 26, 15, 1, 1, [["arrow_stone", 1], ["gunpowder", 1]], 0.2),
-  ...making("round_pistol", "Pistol round", 34, 6, 1, 2, [["ingot", 1], ["gunpowder", 6]]),
-  ...making("round_rifle", "Rifle round", 35, 6, 1, 2, [["ingot", 2], ["gunpowder", 12]]),
+  // Rounds and darts, from their infoboxes on 2026-11-15: requiredlevel, engrampoints, ingredients, craftingNr (two rounds a
+  // crafting), craftingtime where given and the Crafting XP shown. ARK makes the rounds and the tranquilizer dart at the
+  // smithy and the shocking dart at the fabricator, neither built: they are made in the hand until they are (DEV126). The
+  // rifle round's page gives no craftingtime (DEV125). The shocking dart's 3 bio toxin, 2 ingots and a tranquilizer dart
+  // wait for bio toxin, which comes from a creature: its recipe is still ours (DEV129).
+  ...making("round_pistol", "Pistol round", 34, 6, 2, 1, [["ingot", 1], ["gunpowder", 6]], 1.6),
+  ...making("round_rifle", "Rifle round", 35, 6, 2, 2, [["ingot", 2], ["gunpowder", 12]], 3.2),
   ...making("silencer", "Silencer attachment", 36, 13, 1, 6, [["ingot", 50], ["chitin", 20]]),
   ...making("laser", "Laser attachment", 50, 24, 1, 6, [["ingot", 50], ["stone", 40]]),
-  ...making("dart_tranq", "Tranquilizer dart", 62, 30, 1, 4, [["narcotic", 3], ["ingot", 2]]),
-  ...making("dart_shock", "Shock dart", 96, 60, 1, 4, [["narcotic", 6], ["ingot", 4], ["gunpowder", 4]]),
+  ...making("dart_tranq", "Tranquilizer dart", 62, 30, 1, 1, [["narcotic", 3], ["ingot", 2], ["round_rifle", 1]], 0.2),
+  ...making("dart_shock", "Shock dart", 96, 30, 1, 1, [["narcotic", 6], ["ingot", 4], ["gunpowder", 4]], 0.2),
 ];

@@ -66,3 +66,18 @@ test("a flame arrow is a stone arrow and one more thing, at level 26, in 1 s; gu
   // DEV128: ARK's is 1 stone arrow and 1 propellant, Scorched Earth's.
   expect([made("arrow_flame"), engram("arrow_flame")]).toEqual([{ needs: "1 arrow_stone, 1 gunpowder", seconds: 1, xp: 0.2, count: 1, at: "hand" }, [26, 15]]);
 });
+
+test("rounds weigh 0.1 and come two a crafting: the pistol's in 1 s for 1.6 experience, the rifle's for 3.2 (Simple Bullet, Simple Rifle Ammo)", () => {
+  expect([carried("round_pistol"), carried("round_rifle")]).toEqual([[0.1, 100], [0.1, 100]]);
+  expect([made("round_pistol"), engram("round_pistol")]).toEqual([{ needs: "1 ingot, 6 gunpowder", seconds: 1, xp: 1.6, count: 2, at: "hand" }, [34, 6]]);
+  // The page gives no crafting time (DEV125).
+  expect([made("round_rifle"), engram("round_rifle")]).toEqual([{ needs: "2 ingot, 12 gunpowder", seconds: 2, xp: 3.2, count: 2, at: "hand" }, [35, 6]]);
+});
+
+test("a tranquilizer dart takes a rifle round; both darts take 1 s, give 0.2 experience and cost 30 points (Tranquilizer Dart, Shocking Tranquilizer Dart)", () => {
+  expect([carried("dart_tranq"), carried("dart_shock"), reg.damage[at("dart_tranq")], reg.damage[at("dart_shock")]]).toEqual([[0.2, 100], [0.2, 100], 26, 26]);
+  expect([reg.ammoTorpor[at("dart_tranq")], reg.ammoTorporOver[at("dart_tranq")], reg.ammoTorpor[at("dart_shock")], reg.ammoTorporOver[at("dart_shock")]]).toEqual([6, 2.5, 12, 5]);
+  expect([made("dart_tranq"), engram("dart_tranq")]).toEqual([{ needs: "3 narcotic, 2 ingot, 1 round_rifle", seconds: 1, xp: 0.2, count: 1, at: "hand" }, [62, 30]]);
+  // DEV129: ARK's is 3 bio toxin, 2 ingots and a tranquilizer dart, at the fabricator.
+  expect([made("dart_shock"), engram("dart_shock")]).toEqual([{ needs: "6 narcotic, 4 ingot, 4 gunpowder", seconds: 1, xp: 0.2, count: 1, at: "hand" }, [96, 30]]);
+});
