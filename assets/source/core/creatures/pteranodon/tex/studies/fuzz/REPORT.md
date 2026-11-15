@@ -1,59 +1,65 @@
-The velvet fuzz study delivers `fuzz`, `fuzz_face`, and `mantle_edge`: fifteen aligned 2048 × 2048 maps, plus generated sources, an aligned patch library, deterministic build scripts, measurements, and visual checks. All authored files are inside this study folder.
+Round 4 delivery, responding to **FEEDBACK_3.md**: visible pale strand tips and darker roots return at 0.5 m, while the egg remains calm at 1.5 m. The new drawing uses straighter, occasionally crossing filaments. Broad lock shading stays subdued. The mantle has unequal dark reaches and fewer pale overlaps, with individual shafts thinning out through the transition. Names, spans, 2048-square layers, top-to-bottom lie, region IDs and encoded height ranges are unchanged. All five `fuzz_face` pictures are pixel-identical to `fuzz`; its half-sized span and height range supply the shorter physical scale.
 
-The source was made with the built-in image generation tool. The final prompt and untouched result are [source/prompt_fuzz_concept.txt](source/prompt_fuzz_concept.txt) and [source/fuzz_concept.png](source/fuzz_concept.png). It uses our `ref/concept/head_side.png` as its only reference image. I also inspected `head_front.png` and `saddle_detail.png`. The tool returned 1254-square originals, despite the requested larger resolution. The final maps synthesize a larger field from native detail; they are not a single enlarged 1254 image. The two earlier sources and their exact prompts are retained, with hashes and provenance in [source/manifest.json](source/manifest.json).
+The main evidence is the [rounds 2 / 3 / 4 game comparison](checks/round2_round3_round4_fuzz.png), shown at native screen pixels, and the [concept comparison](checks/concept_at_scale.png). I inspected both 0.5 m views and the 1.5 m view beside the two reviewed deliveries, then the neck at 1,000 and 2,000 px/m. At 0.5 m the new pile has distinct light shafts over darker gaps, rather than round 3's faint scratches. At 1.5 m it has fine grain over form shading, without round 2's cauliflower-sized clumps. At 5 m it is an even tone. The previous deliveries are retained in `checks/round2_baseline/` and `checks/round3_baseline/`; the previous report is preserved as [REPORT_round3.md](source/REPORT_round3.md).
 
-The first, finer source became too uniform at the animal's density. The final source retains coherent little wavy locks. The build reduces it to 80%, removes broad lighting, and quilts irregular source patches with minimum-error overlap cuts. It closes both wraps before deriving the maps. The seed, source positions, horizontal flips, and sample edge curves are recorded in `synthesis.json`. There is no grid of repeated tuft stamps.
+The new original, [fuzz_strands_round4.png](source/fuzz_strands_round4.png), was generated with the **built-in imagegen tool**, using our concept neck, the straight round 3 trial and round 2's articulated fur as references. Its [exact prompt](source/prompt_fuzz_strands_round4.txt), untouched 1254-square original, reference list and SHA-256 are recorded in [manifest.json](source/manifest.json). No outside references or Blender were used.
 
-| Set | Tile span / density | Target filament length | Encoded black-to-white height | Actual delivered relief range | Region mean, linear |
-|---|---|---|---|---|---|
-| `fuzz` | 0.5 m / 4096 px per m | 4–8 mm | 0.80 mm | 0.4534 mm | 5: 0.4999998 |
-| `fuzz_face` | 0.25 m / 8192 px per m | 2–4 mm | 0.40 mm | 0.2267 mm | 5: 0.4999998 |
-| `mantle_edge` | 0.5 m / 4096 px per m | 4–8 mm | 0.80 mm | 0.4618 mm | 0: 0.5000015; 5: 0.5000021 |
+`build.py` scales the source to 78%, removes broad illumination and synthesizes the tile from irregular patches. Patch widths now range from 240–510 pixels and heights from 270–520, with independent samples, small rotations, unequal scale and no mirroring. The source already lies down the image, so the previous 12.07-degree correction is removed. No periodic warping is added. The [native comparison](checks/round2_round3_round4_fuzz_native.png), full half-offset and 3×3 proofs show irregular changes in lie, without the old regular 170-pixel columns. A local check over sixteen 512-pixel crops finds maximum correlation at horizontal lags 140–200 pixels of **0.082**, compared with **0.216** in round 3. This supports visual inspection; it is not a perceptual pass score. Details are in [column_check.json](checks/column_check.json), reproduced by `check.py`.
 
-All sets tile in both axes, are opaque, and lie from top toward bottom. The body and face use identical pixel morphology at half the physical span and half the relief. This deliberately keeps their character identical while halving physical strand length. The specified egg radii are in `study.json`; its `form` and `radii` are flat properties, as required by the actual `look.ts` reader.
+Fine strand value and lock value remain separate: the former has gain 2.3, the latter 0.3, split at a 6-pixel Gaussian sigma. Relief is shallow and comes from the aligned source, with most strand definition in the base. [Original / delivered base / relit](checks/original_base_relit.png) shows the generated shaft drawing retained at matching physical scale.
 
-The length figures are the intended physical calibration of the generated fine filaments, not a measurement of every generated strand. Overlapping filaments create longer visible locks and flows. Height describes the shallow exposed pile surface, not the full length of a filament lying along it.
+| Supporting comparison | Round 2 | Round 3 | Round 4 |
+|---|---:|---:|---:|
+| Base 0.5 mm band standard deviation, linear | 0.04282 | 0.02473 | 0.06167 |
+| Base 5 mm band standard deviation, linear | 0.01956 | 0.00111 | 0.00170 |
+| Game 0.5 m interior texture band | 0.04461 | 0.01635 | 0.04027 |
+| Game 1.5 m interior texture band | 0.02252 | 0.01144 | 0.01212 |
+
+The game measurements use identical camera crops with broad shading removed; definitions are in `check.py` and values in [round4_comparison.json](checks/round4_comparison.json). Close-view texture contrast is about 90% of round 2 and 2.46× round 3. At 1.5 m it is only about 6% above round 3. These support the requested balance without claiming that equal contrast means equal material character.
+
+| Set | Span / study density | Encoded height / actual relief | Mean grey, linear |
+|---|---|---|---|
+| `fuzz` | 0.5 m / 4096 px/m | 0.80 / 0.1832 mm | region 5: 0.499974 |
+| `fuzz_face` | 0.25 m / 8192 px/m | 0.40 / 0.0916 mm | region 5: 0.499974 |
+| `mantle_edge` | 0.5 m / 4096 px/m | 0.80 / 0.1832 mm | region 0: 0.499969; region 5: 0.499980 |
+
+Body filaments remain visually calibrated around 6–12 mm, with gently marked groups around 12–30 mm; face dimensions are half these. These are visual ranges, not segmentation measurements of every generated shaft. `build.py --scale NUMBER --direction-deg NUMBER` retains the painter's controls.
 
 | Pictures, for each set | How made |
 |---|---|
-| `*_base.png` | Edited from the generated photographic source by script: neutralized, broad illumination removed, synthesized into a periodic field, and each region normalized to 0.50 linear. The fine value drawing remains in this layer. The mantle adds faint aligned pigment drawing on its edge filaments. RGB, 8-bit sRGB. |
-| `*_height.png` | Computed as restrained, smoothed filament relief plus a gentle pile bed. The mantle's additional edge fibres enter this same height. Greyscale, 16-bit PNG, with unused range left as headroom. |
-| `*_normal.png` | Computed from the delivered, quantized height with wrapped central differences and the physical span and height range. OpenGL convention, +Y toward the image top. RGB, 8-bit. |
-| `*_packed.png` | Computed from height: restrained local concavity occlusion, slightly varying dry roughness, zero metalness. Linear RGB. Occlusion 0.949–1; roughness 0.882–0.933. |
-| `*_regions.png` | Computed categorical IDs. Body and face are solid yellow. Mantle is red above and yellow below, with separately labelled curved filaments through the transition. Exactly pure region colours, no antialiasing. |
+| `*_base.png` | Generated drawing processed by script: neutral extraction, broad-light removal, irregular synthesis, separate value bands and per-region mean normalization. RGB 8-bit sRGB. |
+| `*_height.png` | Computed fine shaft relief and weak soft bed from the same aligned source; 16-bit greyscale. |
+| `*_normal.png` | Computed from delivered quantized height at physical scale, with wrapped central derivatives and OpenGL +Y up. |
+| `*_packed.png` | Computed restrained height concavity occlusion, dry roughness and zero metalness. AO 0.980–1.000; roughness 0.855–0.867. |
+| `*_regions.png` | Computed categorical yellow body/face; red and yellow mantle. No blended region pixels. |
 
-The main mantle transition is about **17.6 mm** wide by the 5–95% row-coverage measure, including its gentle wavering. Its thin curved filaments follow the source's local orientation and share pigment, height and region assignment. A smaller second transition lies approximately 26 pixels inside the top wrap, so the top and bottom rows meet without an artificial colour jump. Nine pixel transitions occur across the left/right join, within the natural fringe. Neither dye is baked into the base.
+For the mantle, 24 irregularly placed dark lock fields have reaches of 10–30 mm; 11 pale fields reach about 6–20 mm into the dark. These are overlapping placement fields, not a count of visible locks. Width and reach vary independently. Each field controls the proportion of source-aligned shafts carrying its colour, fading toward its ends. Moving the entire contour made solid teeth in an intermediate trial; the delivered construction instead leaves the other colour between the shafts. The main boundary wanders 32.4 mm peak to peak; its local 5–95% mixed band is 30.3 mm wide. A quieter edge closes the wrap. There is no pigment-driven height step. I inspected the final [mantle comparison](checks/round2_round3_round4_mantle_edge.png): varying fine reaches at 0.5 m and a softer, gently irregular band at 1.5 m.
 
-`elements/` contains four 256-square patches of different locks, each with all five aligned layers and its source box. These cover 62.5 mm at the body scale. They are rectangular painting sources, not standalone seamless tiles or individual hair cutouts. `elements/elements.json` records their scale and use. The entire generated source and full tile also remain reusable. `build.py --scale NUMBER --direction-deg NUMBER` controls source feature size and lie before synthesis; the delivered default is `1` and `0`. Re-run the checks after changing either.
+All six reusable painting patches were refreshed, each with five aligned layers. All 30 crops match their parent pixels exactly; boxes and physical spans are in [elements.json](elements/elements.json), verification in [validation.json](elements/validation.json). They are rectangular painting patches, not seamless isolated cutouts.
 
-Rebuild and check from the pteranodon folder:
+Checks completed: all three sets through the actual game renderer in design, loud, dark and pale dyes; extra hot-pink and near-black views through 20 m; exact-scale game-shader planes; Python unlit and two-light proofs in five dyes; study, animal and tenth-density proofs; half-offset and 3×3 repeats; original/base/relit and concept comparisons; patch alignment; and both Python and engine numerical checks. The [face comparison](checks/face_at_scale.png) checks the same character at its smaller scale. `compare_game.ts` uses the game's palette, rgba mips, shader and noon sky; the enlarged head reference is labelled, and the saddle neck is native at nominal 2,000 px/m.
+
+| Final numerical check | Result |
+|---|---|
+| Dimensions / height encoding | Fifteen 2048-square maps; height 16-bit |
+| Neutrality / invalid region pixels / metalness | Exact R=G=B / zero / zero |
+| Largest quarter-mean spread | 1.902% in mantle; body/face 0.031%; limit 2% |
+| Maximum absolute base/light correlation, 32 directions | 0.0597; check limit 0.06 |
+| Game height/normal correlation | X 0.99951; Y 0.99316 |
+| Normal maximum length error | 0.00480 |
+| Game continuous-layer seam ratios | 0.909–1.054; limit 1.3 |
+| Whole-tile internal shift correlation outside local neighbourhood | Below 0.022 |
+
+Full results: [measurements.json](measurements.json), [engine_measurements.json](engine_measurements.json). Rebuild from the pteranodon folder:
 
 ```sh
 python3 tex/studies/fuzz/build.py
-python3 tex/studies/fuzz/check.py
+bun tex/studies/fuzz/compare_game.ts
 bun tex/studies/look.ts tex/studies/fuzz
+python3 tex/studies/fuzz/check.py
 bun tex/studies/fuzz/check_game.ts
 ```
 
-The last script uses the game's actual image readers, seam measurement and height/normal correlation. It also creates an extra copy of the shared look renderer under `checks/`, changing only dye rows and the far distance to 20 m. It does not edit the shared renderer.
+Remaining differences: the concept's painted shafts are broader and more loosely grouped, especially in the enlarged head crop; the delivered pile remains denser and more uniform. The full-size neutral base is deliberately stronger than the previous delivery and reads more graphic before filtering. Near-black still hides fine value drawing. The egg's poles pinch the UVs and expose the secondary mantle wrap. Surface maps do not supply silhouette hairs; the animal still needs its direction field. I do not claim that the result is indistinguishable from the painting.
 
-All numerical checks passed. Details are in [measurements.json](measurements.json) and [engine_measurements.json](engine_measurements.json).
-
-| Check | Final result |
-|---|---|
-| Map size and height format | All main maps 2048 square; all height PNGs genuinely 16-bit |
-| Neutral base | R = G = B in every pixel |
-| Quarter mean spread | At most 0.097%, relative to mean; limit 2% |
-| Base versus light caught by normals | Maximum absolute correlation 0.0278 across 32 sampled directions |
-| Game height/normal agreement | At least 0.9990 across and down |
-| Normal unit length | Mean 1.000414; maximum deviation 0.00554 from 8-bit quantization |
-| Game wrap ratios, all continuous layers | 0.922–1.043; below 1.3 |
-| Invalid region pixels / metalness | Zero / zero |
-
-I inspected the game's three final contact sheets in `checks/look/`: two views/lights at 0.5 m, then 1.5 m and 5 m, in design, loud, dark and pale dyes. I also inspected the extra hot-pink and near-black sheets in `checks/look_extra/`, including the 20 m boundary. At 0.5 m the material has visible flowing fine pile; at 1.5 m it quiets down; at 5 m it is an even tone. Hot pink preserves the strand pattern. The mantle has a fine fibrous fringe close up and a clean colour boundary at 20 m.
-
-The Python checks include full-resolution unlit and two-direction relit pictures in ivory/charcoal, pink/lime, lime/blue, near-black and near-white. They also include actual-density and one-tenth-density reductions, full-resolution half offsets, 3 × 3 repeats, [concept_at_scale.png](checks/concept_at_scale.png), and [original_base_relit.png](checks/original_base_relit.png). The latter compares source, delivered base and relit set at the same scale. The source's strand drawing survives in the base. I did not find a continuous wrap line or an obvious repeated tuft motif in the offset/repeat views.
-
-Where it still falls short: near-black in the game's shadowed view suppresses most of the finest drawing; it is less tactile there than the ivory or pink version. The concept's neck has stronger large lock grouping and form lighting than this flat study, so the match is closest in strand character rather than an exact duplication of its pictured neck. A few generated flows read as longer connected locks; individual filament length has not been exhaustively segmented and measured. These maps give shallow surface relief, not actual silhouette fuzz. The shared egg preview pinches its UVs at the pole and shows a narrow join in the second mantle view; the flat maps pass wrap checks, but the final animal still needs its own direction field and UV review.
-
-Elapsed work: approximately 16 minutes, including three image generations, source/edge revisions, map building, numerical checks, and game-renderer review. The final map build itself takes roughly 7 seconds on this machine; previews take longer. No external reference images were searched or downloaded, and Blender was not used.
+Elapsed: about 10 minutes from baseline capture through generation, build iterations and final checks, plus the initial reread; timestamps are in [round4_timing.json](source/round4_timing.json). Final build: 15.8 seconds. All project writes stayed inside this study folder.

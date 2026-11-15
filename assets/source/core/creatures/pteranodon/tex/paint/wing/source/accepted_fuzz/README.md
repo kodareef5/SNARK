@@ -1,0 +1,1 @@
+Accepted wing fuzz inputs, pinned for the vein-only review. These files are byte-identical to the shared fuzz study read by the accepted wing build (the shared study subsequently changed). Originals and generation prompts remain in tex/studies/fuzz/source/. Kept here so regenerating this revision preserves the approved arm and finger treatment.
