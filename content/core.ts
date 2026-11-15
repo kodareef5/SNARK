@@ -7,6 +7,7 @@ import { crafted, crafting } from "./craft.ts";
 import { CREATURES } from "./creatures/index.ts";
 import { EGGS } from "./eggs.ts";
 import { FOODS } from "./foods.ts";
+import { ITEMS } from "./items/index.ts";
 import { KNOCKOUT } from "./knockout.ts";
 import { MAPS } from "./maps.ts";
 import { SPAWNS } from "./spawns.ts";
@@ -397,6 +398,7 @@ const ALL: readonly Def[] = [
   ...CORPSES,
   ...EGGS,
   ...FOODS,
+  ...ITEMS,
   ...MAPS,
   { type: "prop", class: "projectile", id: "core:grenade_live", mesh: "core:grenade_thrown", color: 7, radius: 0.08, height: 0.12 },
   // Holds everything a survivor carried when it died.
@@ -420,7 +422,6 @@ const ALL: readonly Def[] = [
   { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: minutes(10), eat: { food: 4, water: 2 }, color: 8 },
   { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 } },
   { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 35, health: 8 }, color: 3, label: "cooked meat" },
-  { type: "item", class: "consumable", id: "core:waterskin", stack: 1, weight: 1, eat: { water: 60 }, label: "water skin", color: 14 },
   { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
   { type: "item", class: "resource", id: "core:thatch", stack: 200, weight: 0.02, color: 18, fuel: 7.5 },
   { type: "item", class: "resource", id: "core:flint", stack: 100, weight: 0.05, color: 4 },
@@ -432,10 +433,8 @@ const ALL: readonly Def[] = [
 
   crafting("core:pick", { needs: [{ item: "core:stone", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
   crafting("core:hatchet", { needs: [{ item: "core:flint", count: 1 }, { item: "core:wood", count: 1 }, { item: "core:thatch", count: 10 }], seconds: 2, xp: 2 }),
-  crafting("core:waterskin", { needs: [{ item: "core:fiber", count: 20 }, { item: "core:thatch", count: 5 }], seconds: 4, xp: 3 }),
   { type: "engram", id: "core:engram-pick", label: "Stone pick", level: 1, cost: 0, item: "core:pick" },
   { type: "engram", id: "core:engram-hatchet", label: "Stone hatchet", level: 2, cost: 3, item: "core:hatchet" },
-  { type: "engram", id: "core:engram-waterskin", label: "Water skin", level: 3, cost: 6, item: "core:waterskin" },
   ...MAKING,
   LEVELS,
 ];
