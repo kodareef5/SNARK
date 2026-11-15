@@ -12,10 +12,16 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { FEATURES } from "../../shared/features.ts";
 import { CORE_PACK } from "../../content/core.ts";
 import { CREATURES } from "../../content/creatures/index.ts";
+import { CORPSES } from "../../content/corpses.ts";
+import { EGGS } from "../../content/eggs.ts";
+import { FOODS } from "../../content/foods.ts";
+import { KNOCKOUT } from "../../content/knockout.ts";
 import { CATALOGUE_PAGE, cataloguePage } from "../../tools/catalogue.ts";
 
-// What the creature files bring is counted apart, so a new creature moves no number here.
-const ofCreatures = new Set(CREATURES.map((d) => `${d.type} ${d.id}`));
+// What the creature files bring is counted apart, so a new creature moves no number here, and so is what the files of
+// the creature features bring, so that those built side by side do not each move the same numbers.
+const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS];
+const ofCreatures = new Set([...CREATURES, ...FEATURES_CONTENT].map((d) => `${d.type} ${d.id}`));
 const rest = CORE_CONTENT.filter((d) => !ofCreatures.has(`${d.type} ${d.id}`));
 const classes = CORE_CONTENT.map(classOf);
 
@@ -56,10 +62,10 @@ test("the core pack's definitions fall into the classes, each passing its row, a
   });
   expect(rest.length).toBe(324);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
-  expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length);
+  expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
   for (const d of CREATURES) brought[classOf(d)] = (brought[classOf(d)] ?? 0) + 1;
-  expect(Object.keys(brought).filter((c) => !["species/creature", "prop/egg", "item/saddle", "engram", "rename"].includes(c))).toEqual([]);
+  expect(Object.keys(brought).filter((c) => !["species/creature", "prop/egg", "item/egg", "item/saddle", "engram", "rename"].includes(c))).toEqual([]);
   const files = readdirSync(join(import.meta.dir, "../../content/creatures")).filter((f) => f !== "index.ts");
   expect(brought["species/creature"], "every file in content/creatures has one species and is listed in index.ts").toBe(files.length);
   expect(CORE_CONTENT.flatMap(defFaults)).toEqual([]);
@@ -108,6 +114,7 @@ const STUBS: ContentPack = {
   requires: ["core"],
   defs: [
     { id: "stub:egg", type: "item", class: "egg", stack: 100, eat: { food: 10 }, spoilHours: 48, spoilsInto: "core:stone" },
+    { id: "stub:dung", type: "item", class: "feces", stack: 100, weight: 0.1, spoilHours: 48, decomposeHours: 12 },
     { id: "stub:shield", type: "item", class: "shield", stack: 1, description: "Blocks.", folder: "Armor/Shields", blueprint: true, craft: { needs: [{ item: "core:wood", count: 20 }], seconds: 8, xp: 4, at: "core:campfire", level: 80 } },
     { id: "stub:hat", type: "item", class: "costume", stack: 1 },
     { id: "stub:skin", type: "item", class: "skin", stack: 1 },

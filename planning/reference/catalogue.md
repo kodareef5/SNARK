@@ -10,7 +10,7 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 39 classes: 25 built, 4 partly built, and 10 stubs that
+There are 40 classes: 25 built, 4 partly built, and 11 stubs that
 wait for a feature. The core pack holds 260 definitions, and 77 renames of ids
 that are no longer defined.
 
@@ -39,6 +39,7 @@ share a `tag`.
 | `item/saddle` | PrimalItemArmor_, DinoSaddle | built | `stack`, `saddle` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 2 |
 | `item/structure` | PrimalItemStructure_ | built | `stack`, `places` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 27 |
 | `item/egg` | PrimalItemConsumable_Egg_ | stub: eggs | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `eat`, `spoilHours`, `spoilsInto` | 0 |
+| `item/feces` | the feces items, small to massive | stub: eggs | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `spoilHours`, `spoilsInto`, `fuel` | 0 |
 | `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 0 |
 | `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 0 |
 | `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 0 |
@@ -56,6 +57,7 @@ share a `tag`.
 - **`item/saddle`** on shelf `items/saddles`. Worn by a tamed creature so that it can be ridden.
 - **`item/structure`** on shelf `items/structures`. Set down as a structure.
 - **`item/egg`** on shelf `items/eggs`. An egg in the hand. Today an egg is a prop that lies where it was laid.
+- **`item/feces`** on shelf `items/feces`. What a creature leaves when it defecates, a size for each kind of creature.
 - **`item/shield`** on shelf `items/shields`. Held in the other hand to block.
 - **`item/costume`** on shelf `items/costumes`. Worn for its look alone.
 - **`item/skin`** on shelf `items/skins`. Changes the look of the item it is put on.
@@ -73,6 +75,7 @@ Asset slots:
 - `item/saddle`: `#worn` mesh, may, from `{id}/worn`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/structure`: `#preview` mesh, may, from `{id}/preview`, else `#mesh`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/egg`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/feces`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/shield`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/costume`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/skin`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
@@ -133,7 +136,7 @@ Asset slots:
 
 ARK's names: `keeps` is GetSpoilingTimeMultiplier of its inventory; `fistsTorpor` is the torpor of a bare-handed strike; `drops` is DeathHarvestingComponent; `stats` is MaxStatusValues and the per-level gains; `takes` is DamageTypeAdjusters; `bite` is AttackInfos; `taming` is RequiredTameAffinity; `eats` is DinoSettings food effectiveness; `breeds` is EggItemsToSpawn, BabyAgeSpeed; `tag` is DinoNameTag; `regions` is the ColorSetDefinitions of RandomColorSetsMale, PreventColorizationRegions; `alarm` is the herd that flees with a creature when it is hurt; `tamedSprintMul` is the tamed running speed; `drag` is drag weight; `mass` is mass; `carriable` is picked up and thrown by a player; `feces` is the creature's feces item; `eggChance` is the chance of an egg in place of feces; `variant` is a child blueprint's kind; `attacks` is AttackInfos; `loot` is DeathInventoryTemplates; `saddle` is SaddleItemClass; `buffs` is DefaultBuffs; `boss` is bIsBossDino.
 
-What names what: `drops[].item` names a `item`; `eats[].item` names a `item`; `breeds.egg` names a `prop/egg`; `feces` names a `item`; `loot` names a `loot`; `saddle` names a `item/saddle`; `buffs[]` names a `buff`.
+What names what: `drops[].item` names a `item`; `eats[].item` names a `item`; `breeds.egg` names a `prop/egg`; `feces` names a `item/feces`; `loot` names a `loot`; `saddle` names a `item/saddle`; `buffs[]` names a `buff`.
 
 Packs may add to: `drops`, `eats`, `buffs`.
 
@@ -336,7 +339,7 @@ built.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built).
 - **Skins, dyes, costumes and shields.** `item/shield`, `item/costume`, `item/skin`, `item/dye`.
 - **Bosses, artifacts and what a boss unlocks.** `item/artifact`, `species.variant`, `species.boss`, `engram.from`.
-- **Eggs as items that are carried, kept and eaten.** `item/egg`.
+- **Eggs as items that are carried, kept and eaten.** `item/egg`, `item/feces`.
 
 ## The core pack by class
 

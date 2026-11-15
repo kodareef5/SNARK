@@ -98,23 +98,24 @@ test("the dodo's egg item and the tames' 88 levels are ready to be joined", () =
   expect(compileContent(CORE_CONTENT.map((d): Def => (d === levels ? { ...levels, tame: { xp: TAME_XP } } as Def : d))).errors).toEqual([]);
 });
 
-test("a feces item, melee and fist torpor and a size compile where named, and are checked", () => {
+test("a feces item, and melee and fist torpor, compile where named, and are checked", () => {
   const dodo = CORE_CONTENT.find((d) => d.id === "core:dodo")!;
   const survivor = CORE_CONTENT.find((d) => d.id === "core:survivor")!;
   const pick = CORE_CONTENT.find((d) => d.id === "core:pick")!;
-  const swap = (pairs: [Def, Def][]): Def[] => CORE_CONTENT.map((d) => pairs.find(([from]) => from === d)?.[1] ?? d);
+  const dung: Def = { type: "item", class: "feces", id: "test:dung", stack: 100 };
+  const swap = (pairs: [Def, Def][]): Def[] => [...CORE_CONTENT.map((d) => pairs.find(([from]) => from === d)?.[1] ?? d), dung];
   const pickWeapon = (pick as Extract<Def, { type: "item" }>).weapon!;
   const made = compileContent(swap([
-    [dodo, { ...dodo, feces: "core:thatch" } as Def],
+    [dodo, { ...dodo, feces: "test:dung" } as Def],
     [survivor, { ...survivor, fistsTorpor: 1.5 } as Def],
     [pick, { ...pick, weapon: { ...pickWeapon, torpor: 2 } } as Def],
   ]));
   expect(made.errors).toEqual([]);
   const r = made.registry!;
-  expect([r.feces[r.index.get("core:dodo")!], r.meleeTorpor[r.index.get("core:survivor")!], r.meleeTorpor[r.index.get("core:pick")!]]).toEqual([r.index.get("core:thatch")!, 1.5, 2]);
-  expect(compileContent(swap([[dodo, { ...dodo, feces: "core:nothing", eggChance: 2, alarm: -1 } as Def]])).errors).toEqual([
+  expect([r.feces[r.index.get("core:dodo")!], r.meleeTorpor[r.index.get("core:survivor")!], r.meleeTorpor[r.index.get("core:pick")!]]).toEqual([r.index.get("test:dung")!, 1.5, 2]);
+  expect(compileContent(swap([[dodo, { ...dodo, feces: "core:thatch", eggChance: 2, alarm: -1 } as Def]])).errors).toEqual([
     "core:dodo: alarm must be in (0, 1000], got -1",
     "core:dodo: eggChance must be from 0 to 1",
-    'core:dodo: "core:nothing" is not an item',
+    'core:dodo: "core:thatch" is not an item/feces',
   ]);
 });
