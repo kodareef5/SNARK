@@ -35,7 +35,7 @@ import { NodeField } from "../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_SPAWN, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { findAssets } from "./art/assets.ts";
-import { buildCorePack } from "./pack/build.ts";
+import { corePackBytes } from "../tests/fixtures/pack.ts";
 import { splitPack } from "./pack/split.ts";
 import { HudModel, mapU, mapV } from "../client/core/hud.ts";
 import { IMAGE_MINIMAP, MINIMAP_SIZE } from "../client/core/ui/hud.ts";
@@ -217,9 +217,9 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   const hf = buildProvingHeightfield();
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   populateProving(structs, hf, reg);
-  const split = !net ? null : files ? { files: files.files.map((bytes) => ({ bytes })), manifest: files.manifest } : splitPack(buildCorePack(), "core");
+  const split = !net ? null : files ? { files: files.files.map((bytes) => ({ bytes })), manifest: files.manifest } : splitPack(corePackBytes(), "core");
   const port = split ? new FakeNet(split.files.map((f) => f.bytes), net) : null;
-  const pack = parsePack(split ? split.files[0]!.bytes : buildCorePack());
+  const pack = parsePack(split ? split.files[0]!.bytes : corePackBytes());
   // Fills every chunk's nodes, as a client near each would have them.
   const nodes = new NodeField(PROVING_DIMS, reg, provingNodes(hf, reg));
   nodes.retain(0, 64, 1, () => false);
@@ -636,7 +636,7 @@ export function looksScene(view: ProvingView, facing: number): void {
 /** A whole client against a whole server in this process, drawn with its interface. `setup` steers it before the picture is taken. */
 export function clientPicture(width: number, height: number, look: Uint8Array | null, setup: (app: App, run: (ms: number) => void, h: Harness) => void): Uint8ClampedArray {
   const h = new Harness({}, 1, 60, { dev: true });
-  const pack = parsePack(buildCorePack());
+  const pack = parsePack(corePackBytes());
   const app = new App(h.join("ada", {}, { manual: true, look }), h.reg, pack);
   let packet = app.frame(0, width, height);
   const run = (ms: number): void => h.run(ms, (now) => (packet = app.frame(now, width, height)));

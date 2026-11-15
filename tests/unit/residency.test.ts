@@ -6,7 +6,7 @@ import { IN_FLIGHT, OVERFLOW, SMALL_LANES, SMALL_PART } from "../../client/core/
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { stressSet } from "../../tools/pack/stress.ts";
 import { FakeNet, type NetOptions } from "../fixtures/assetnet.ts";
 import { stressThings } from "../../client/core/stress.ts";
@@ -268,7 +268,7 @@ test("asked to keep everything, the library asks the port for every level outsid
 
 test("the stress scene hangs three rocks ahead at distances that ask for three levels, and keeps the rest to the sides", () => {
   const flat = { heightAt: () => 0 } as unknown as Heightfield;
-  const core = new Assets(REG, parsePack(buildCorePack()));
+  const core = new Assets(REG, parsePack(corePackBytes()));
   expect(stressThings(core, flat, { x: 0, z: 0 }, 1.6)).toEqual({ things: [], marks: [] });
 
   const assets = new Assets(REG, BOOT, SET.manifest, new FakeNet(SET.files.map((f) => f.bytes)));

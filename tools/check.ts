@@ -1,8 +1,8 @@
 // `bun run check`, the one command every change must pass. It enforces the rules that keep this project fast to change.
 // Raising a budget or widening an allow-list is a decision. Record it in planning/decisions.md in the same change.
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { cpus, loadavg } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { dynamicLoads, stripComments } from "./policy.ts";
 
@@ -163,31 +163,69 @@ function checkPolicy(): void {
   console.log(`  assets size  ${assetLines}/${ASSETS_MAX_LINES} lines`);
 }
 
-async function run(cmd: string[], quiet: boolean): Promise<{ ok: boolean; out: string }> {
-  const proc = Bun.spawn(cmd, { cwd: ROOT, stdout: quiet ? "pipe" : "inherit", stderr: quiet ? "pipe" : "inherit" });
+/** `cpu` is the CPU-seconds of the process and of the processes it waited for. */
+async function run(cmd: string[], quiet: boolean, env: Record<string, string | undefined> = process.env): Promise<{ ok: boolean; out: string; cpu: number }> {
+  const proc = Bun.spawn(cmd, { cwd: ROOT, env, stdout: quiet ? "pipe" : "inherit", stderr: quiet ? "pipe" : "inherit" });
   const out = quiet ? (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text()) : "";
-  return { ok: (await proc.exited) === 0, out };
+  const ok = (await proc.exited) === 0;
+  const used = proc.resourceUsage()?.cpuTime;
+  return { ok, out, cpu: used ? Number(used.user + used.system) / 1e6 : 0 };
 }
 
 async function checkTypes(): Promise<void> {
   const tsc = join(ROOT, "node_modules/.bin/tsc");
   const zones = ZONES.filter((z) => walk(join(ROOT, z.dir)).some((f) => f.endsWith(".ts")));
-  const results = await Promise.all(zones.map((z) => run([tsc, "-p", join(z.dir, "tsconfig.json")], true)));
+  // Each zone keeps what it last found in .cache, and checks again only the files a change can reach.
+  const kept = (z: Zone): string => join(ROOT, ".cache/tsc", `${z.dir.replaceAll("/", "-")}.tsbuildinfo`);
+  const results = await Promise.all(zones.map((z) => run([tsc, "-p", join(z.dir, "tsconfig.json"), "--incremental", "--tsBuildInfoFile", kept(z)], true)));
   results.forEach((r, i) => {
     if (!r.ok) fail(`type check failed in ${zones[i]!.dir}:\n${r.out.trim()}`);
   });
 }
 
-async function checkTests(): Promise<void> {
-  const hasTests = walk(join(ROOT, "tests")).some((f) => f.endsWith(".test.ts"));
+/** The core pack, built here once for the test files instead of once in each of a hundred (tests/fixtures/pack.ts). */
+async function sharedPack(dir: string): Promise<Record<string, string>> {
+  try {
+    const { CORE_PACK_FILE } = await import("../tests/fixtures/pack.ts");
+    const { buildCorePack } = await import("./pack/build.ts");
+    const file = join(dir, "core.snpk");
+    writeFileSync(file, buildCorePack());
+    return { [CORE_PACK_FILE]: file };
+  } catch {
+    // Then each test file builds its own, and says what is wrong.
+    return {};
+  }
+}
+
+/** Each test file's milliseconds in the last check that passed, as `bun test --timings` reads them. */
+const TEST_TIMES = join(ROOT, ".cache/test-times.json");
+
+function keepTimes(junit: string): void {
+  const files: Record<string, number> = {};
+  for (const m of junit.matchAll(/<testsuite name="([^"]+)"[^>]*? time="([\d.]+)"/g)) files[m[1]!] = Math.round(Number(m[2]) * 1000);
+  mkdirSync(dirname(TEST_TIMES), { recursive: true });
+  // Whole or not at all, for a check started beside this one.
+  writeFileSync(`${TEST_TIMES}.${process.pid}`, JSON.stringify({ version: 1, files }));
+  renameSync(`${TEST_TIMES}.${process.pid}`, TEST_TIMES);
+}
+
+const hasTests = walk(join(ROOT, "tests")).some((f) => f.endsWith(".test.ts"));
+
+/** Runs every test, with `env` from sharedPack, leaving a report in `dir`. */
+async function checkTests(dir: string, env: Record<string, string>): Promise<void> {
   if (!hasTests) return;
   // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
   // A busy machine can make a one-second test take five, so a test is called hung at 20 s, and later in step with the load
   // when more work waits than there are cores, up to two minutes.
   const hung = Math.round(20000 * Math.min(6, Math.max(1, loadavg()[0]! / cpus().length)));
-  const r = await run(["bun", "test", "--parallel", "--timeout", String(hung)], true);
+  const report = join(dir, "junit.xml");
+  // The slowest files start first, by their times in the last check, or the last of them may start when the rest are done.
+  const timed = existsSync(TEST_TIMES) ? ["--timings", TEST_TIMES] : [];
+  const r = await run(["bun", "test", "--parallel", "--timeout", String(hung), ...timed, "--reporter=junit", `--reporter-outfile=${report}`], true, { ...process.env, ...env });
+  if (r.ok) keepTimes(readFileSync(report, "utf8"));
   if (!r.ok) fail(`tests failed:\n${r.out.trim()}`);
-  else console.log("  " + (r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim()).join(", ")));
+  // CPU-seconds move far less with the machine's load than the clock does, so a slow change shows on a busy day too.
+  else console.log("  " + [...r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim()), `${r.cpu.toFixed(0)} CPU-seconds`].join(", "));
 }
 
 const t0 = performance.now();
@@ -197,8 +235,18 @@ const step = async (name: string, fn: () => void | Promise<void>) => {
   console.log(`${name.padEnd(12)} ${((performance.now() - t) / 1000).toFixed(2)}s`);
 };
 
-await step("policy", checkPolicy);
-await Promise.all([step("types", checkTypes), step("tests", checkTests)]);
+const dir = mkdtempSync(join(tmpdir(), "snark-check-"));
+try {
+  let env: Record<string, string> = {};
+  if (hasTests) await step("pack", async () => void (env = await sharedPack(dir)));
+  const types = step("types", checkTypes);
+  const tests = step("tests", () => checkTests(dir, env));
+  // The type check and the tests have started in processes of their own; the policy runs here beside them.
+  await step("policy", checkPolicy);
+  await Promise.all([types, tests]);
+} finally {
+  rmSync(dir, { recursive: true, force: true });
+}
 
 const seconds = (performance.now() - t0) / 1000;
 // With more work waiting than there are cores, the clock times the neighbours and not the tests, so the budget is not counted.

@@ -7,7 +7,7 @@ import { BUILDING_CONTENT } from "../../content/building.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { DOOR_WIDTH, FOUNDATION_THICK, RISE, WALL_HEIGHT } from "../../content/building.ts";
 import { NO_TARGET } from "../../server/build.ts";
@@ -475,7 +475,7 @@ test("pieces are made as anything is: an engram at the reference's level, at its
 
 test("in the whole client: the piece in hand is drawn where it would go, the button sets it down and is no blow, and the screen says what is wrong", () => {
   const h = new Harness({}, 1, 60, { dev: true });
-  const pack = parsePack(buildCorePack());
+  const pack = parsePack(corePackBytes());
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);
   const run = (ms: number) => {
     let packet = null;
@@ -661,7 +661,7 @@ test("nothing is built that nothing would hold up; and when what held a piece go
 
 test("a house that comes down: whoever watches is told of it as a few removals and sees its pieces fall from where it began; whoever comes later finds it simply gone", () => {
   const h = new Harness({}, 1, 60, { dev: true });
-  const pack = parsePack(buildCorePack());
+  const pack = parsePack(corePackBytes());
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);
   // Bob is a bare session with no app to consume its rubble list, so the list keeps every removal he was sent.
   const bob = h.join("bob");

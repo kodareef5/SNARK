@@ -17,7 +17,7 @@ import { CMD_CRAFT, CMD_LEARN, EVENT_HIT, MARKER_DEATH, REJECT_CONTENT, REJECT_P
 import { CH_RELIABLE } from "../../shared/net/transport.ts";
 import { BTN_SPRINT } from "../../shared/sim/character.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { nodesOf, standFacing } from "../fixtures/gather.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -25,7 +25,7 @@ import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
-const pack = parsePack(buildCorePack());
+const pack = parsePack(corePackBytes());
 
 /** The section headers are added for the caller. */
 function rulesOf(server: string[] = [], mode: string[] = []) {

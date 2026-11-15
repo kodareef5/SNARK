@@ -15,7 +15,7 @@ import { checkAsset } from "../../tools/art/check.ts";
 import { materialsOf, mipsOf } from "../../tools/art/materials.ts";
 import { drawSheet, type SheetCell } from "../../tools/art/sheet.ts";
 import { encodePng, readPicture } from "../../tools/pack/image.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import type { Asset } from "../../tools/art/assets.ts";
@@ -32,7 +32,7 @@ const PIXEL: Record<TextureRole, readonly number[]> = { base: [190, 150, 100, 25
 
 /** The core pack split as a build splits it, each of its textures 64 pixels of one colour, so no large picture is read. */
 function smallFiles(): GameFiles {
-  return splitWithTextures(buildCorePack(), (t) => ({
+  return splitWithTextures(corePackBytes(), (t) => ({
     role: t.role,
     top: 64,
     pictures: Array.from({ length: 7 }, (_, k) => {

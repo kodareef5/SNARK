@@ -18,7 +18,7 @@ import { F_PROP } from "../../shared/sim/entities.ts";
 import type { Inventory } from "../../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH } from "../../shared/sim/vitals.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-death-"));
@@ -322,7 +322,7 @@ test("a starving creature dies on its tick with nobody in the world, and kill an
 
 test("the prompt under the crosshair names what the use key would open, and only then", () => {
   const h = new Harness({}, 1, 60, { dev: true });
-  const app = new App(h.join("ada", {}, { manual: true }), h.reg, parsePack(buildCorePack()));
+  const app = new App(h.join("ada", {}, { manual: true }), h.reg, parsePack(corePackBytes()));
   const run = (ms: number) => h.run(ms, (now) => app.frame(now, 1280, 720));
   run(500);
   const box = h.host.records.create(h.reg.index.get("core:cache")!, "old cache");

@@ -61,28 +61,30 @@ export function decodePng(file: Uint8Array, name = "picture"): Picture {
   const pixel = (channels * depth) >> 3;
   const stride = width * pixel;
   if (raw.length !== (stride + 1) * height) throw new Error(`${name}: image data is ${raw.length} bytes, expected ${(stride + 1) * height}`);
+  // A loop for each filter, so a byte does only its own filter's work. Above the first row is zeros, and so is left of
+  // the first pixel. The bytes wrap at 256 as they are stored.
   const bytes = new Uint8Array(stride * height);
+  const zeros = new Uint8Array(stride);
   for (let y = 0; y < height; y++) {
     const filter = raw[y * (stride + 1)]!;
     const src = y * (stride + 1) + 1;
-    const dst = y * stride;
-    for (let x = 0; x < stride; x++) {
-      const a = x >= pixel ? bytes[dst + x - pixel]! : 0;
-      const b = y > 0 ? bytes[dst + x - stride]! : 0;
-      const c = x >= pixel && y > 0 ? bytes[dst + x - stride - pixel]! : 0;
-      let predict = 0;
-      if (filter === 1) predict = a;
-      else if (filter === 2) predict = b;
-      else if (filter === 3) predict = (a + b) >> 1;
-      else if (filter === 4) {
-        const p = a + b - c;
-        const pa = Math.abs(p - a);
-        const pb = Math.abs(p - b);
-        const pc = Math.abs(p - c);
-        predict = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+    const row = bytes.subarray(y * stride, (y + 1) * stride);
+    const above = y > 0 ? bytes.subarray((y - 1) * stride, y * stride) : zeros;
+    if (filter === 1) for (let x = 0; x < stride; x++) row[x] = raw[src + x]! + (x >= pixel ? row[x - pixel]! : 0);
+    else if (filter === 2) for (let x = 0; x < stride; x++) row[x] = raw[src + x]! + above[x]!;
+    else if (filter === 3) for (let x = 0; x < stride; x++) row[x] = raw[src + x]! + (((x >= pixel ? row[x - pixel]! : 0) + above[x]!) >> 1);
+    else if (filter === 4) {
+      for (let x = 0; x < stride; x++) {
+        const a = x >= pixel ? row[x - pixel]! : 0;
+        const b = above[x]!;
+        const c = x >= pixel ? above[x - pixel]! : 0;
+        // Paeth: whichever of a, b and c is nearest a + b - c.
+        const pa = Math.abs(b - c);
+        const pb = Math.abs(a - c);
+        const pc = Math.abs(a + b - c - c);
+        row[x] = raw[src + x]! + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c);
       }
-      bytes[dst + x] = (raw[src + x]! + predict) & 255;
-    }
+    } else row.set(raw.subarray(src, src + stride));
   }
   if (depth === 8) return { width, height, channels, depth, data: bytes };
   const data = new Uint16Array(width * height * channels);

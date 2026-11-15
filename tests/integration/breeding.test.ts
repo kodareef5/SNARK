@@ -9,7 +9,7 @@ import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { DEV_CONFIG } from "../../server/main.ts";
 import { loadConfigFolder } from "../../server/settings/config.ts";
@@ -523,7 +523,7 @@ test("a development server reads a folder of its own, with taming, hatching and 
 
 test("a whole client, looking at an egg, is told when it will hatch; looking at what hatched, that it is there to take; and taking it with the use key, is asked its name", () => {
   const h = new Harness({}, 1, 60, { dev: true });
-  const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true }), h.reg, parsePack(buildCorePack()));
+  const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true }), h.reg, parsePack(corePackBytes()));
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
   const say = (line: string): void => (app.session.text(line), run(300));
   run(500);

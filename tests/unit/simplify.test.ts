@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
 import { FEWEST, simplify, withLevels } from "../../tools/pack/simplify.ts";
@@ -112,7 +112,7 @@ test("a mesh with one level gets more only if it has the triangles for them, and
   expect(packed.lods[4]!.error).toBeCloseTo(round.lods[4]!.error!, 4);
 
   // A creature converted from a model as it came has one level of its own, so the rest are ours.
-  const core = parsePack(buildCorePack());
+  const core = parsePack(corePackBytes());
   for (const { id, spec } of CREATURE_ASSETS) {
     if (!("raw" in spec.source)) continue;
     const mesh = core.header.meshes[core.meshIndex.get(id)!]!;

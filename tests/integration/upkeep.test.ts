@@ -16,7 +16,7 @@ import type { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_PLACE, CMD_SELECT, RESULT_DAMAGED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { ACT_REACH, REPAIR_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_PICKUP, STRUCT_REPAIR, cost, refundOf, repairCostOf } from "../../shared/world/upkeep.ts";
-import { buildCorePack } from "../../tools/pack/build.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { PIECES, STOCK, builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -256,7 +256,7 @@ test("what its tribe has not come near decays: anyone may take it down then, a p
 
 test("in the whole client: a piece looked at is named with how whole it is; the use key held on it lists what can be done, and a digit does it", () => {
   const h = new Harness({}, 1, 60, { dev: true });
-  const pack = parsePack(buildCorePack());
+  const pack = parsePack(corePackBytes());
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
   run(600);
