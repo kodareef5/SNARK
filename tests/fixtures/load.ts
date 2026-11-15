@@ -4,7 +4,7 @@
 
 import { cpus, loadavg } from "node:os";
 
-/** `ms` stretched by the machine's load. */
-export function underLoad(ms: number): number {
-  return ms * Math.min(6, Math.max(1, loadavg()[0]! / cpus().length));
+/** `ms` stretched by the machine's load, and by `joining`, work about to start that the average does not hold yet. */
+export function underLoad(ms: number, joining = 0): number {
+  return ms * Math.min(6, Math.max(1, (loadavg()[0]! + joining) / cpus().length));
 }

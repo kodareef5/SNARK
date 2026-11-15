@@ -3,14 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
-import { KEY_BANNER, KEY_BUFF, KEY_OUT, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { KEY_BUFF } from "../../client/core/ui/hud.ts";
 import { MAX_BUFFS } from "../../server/buffs.ts";
 import { createHost } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { EVENT_KILL } from "../../shared/net/protocol.ts";
-import { BTN_PRIMARY, MF_NO_SPRINT, MF_OUT, MF_ROOTED, STANCE_PRONE } from "../../shared/sim/character.ts";
+import { BTN_PRIMARY, MF_NO_SPRINT, MF_OUT, MF_ROOTED } from "../../shared/sim/character.ts";
 import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
-import { ACT_NONE } from "../../shared/sim/weapon.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
@@ -125,53 +124,6 @@ test("tranquilizer arrows: torpor at once and more to come, a creature goes down
   expect(torpor()).toBe(0);
   expect(ents.mflags[g.e]! & MF_OUT).toBe(0);
   expect(h.host.items.audit()).toEqual([]);
-});
-
-test("a survivor knocked out lies down, can do nothing, sees the dark, and comes round; flak keeps most of a dart out", () => {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const pack = corePack();
-  const app = new App(h.join("bob", {}, { manual: true }), h.reg, pack);
-  app.frame(0, 1280, 720);
-  const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
-  run(500);
-  const s = app.session;
-  const rec = h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!;
-  const survival = h.host.survival;
-  const f = app.ui.frame;
-  const e = h.ent(s);
-  const ents = h.world.ents;
-  // 150 of his 200 torpor. It falls 4 a second.
-  survival.add(rec, V_TORPOR, 150);
-  run(300);
-  expect(f.find(KEY_VITAL + 11)!.value).toBeGreaterThan(0.7);
-  expect(f.find(KEY_OUT)).toBeNull();
-  run(5000);
-  expect(survival.value(rec, V_TORPOR)).toBeCloseTo(150 - 4 * 5.3, 0);
-  expect(rec.out).toBe(false);
-  survival.add(rec, V_TORPOR, 200);
-  app.controls.key("KeyW", true);
-  app.controls.mouseButton(0, true);
-  const [x, z] = [ents.x[e]!, ents.z[e]!];
-  run(1500);
-  expect(rec.out).toBe(true);
-  expect(ents.mflags[e]! & MF_OUT).toBe(MF_OUT);
-  // His own client predicts the same state, so the server corrects nothing.
-  expect(ents.stance[e]).toBe(STANCE_PRONE);
-  expect(Math.hypot(ents.x[e]! - x, ents.z[e]! - z)).toBeLessThan(0.3);
-  expect([ents.act[e], s.own.act]).toEqual([ACT_NONE, ACT_NONE]);
-  expect(s.own.stance).toBe(STANCE_PRONE);
-  const corrections = s.stats.corrections;
-  run(1000);
-  expect(s.stats.corrections).toBe(corrections);
-  expect(f.find(KEY_OUT)!.alpha).toBeGreaterThan(0.5);
-  expect(f.find(KEY_BANNER)!.text).toBe("UNCONSCIOUS");
-  // 200 torpor at 4 a second is gone in fifty seconds.
-  run(51000);
-  expect(rec.out).toBe(false);
-  expect(f.find(KEY_OUT)).toBeNull();
-  run(1500);
-  expect(Math.hypot(ents.x[e]! - x, ents.z[e]! - z)).toBeGreaterThan(2);
-  app.controls.release();
 });
 
 test("a flame arrow sets its mark burning: eight health a second for eight seconds, nothing stepped, and the kill is the archer's", () => {

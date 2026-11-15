@@ -12,6 +12,7 @@
 | `pack.ts` | The core asset pack: built once by `bun run check` for every test file, or once per test process run alone |
 | `glb.ts` | A glTF binary file written in code, standing in for a Blender export |
 | `crash-child.ts` | A process that trades items and commits until it is killed |
+| `device.ts` | The device probe's page on the harness: a browser and a phone's GPU made of numbers, a client to watch, a run until done |
 | `load.ts` | `underLoad(ms)`: a wall-clock limit for a test that times its own work, stretched with the machine's load as the check's hung-test limit is |
 
 Fixtures are deterministic: seeded randomness, virtual clocks, generated data.

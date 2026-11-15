@@ -229,8 +229,10 @@ async function checkTests(dir: string, env: Record<string, string>): Promise<voi
   if (!hasTests) return;
   // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
   // A busy machine can make a one-second test take five, so a test is called hung at 20 s, and later in step with the load
-  // when more work waits than there are cores, up to two minutes.
-  const hung = Math.round(underLoad(20000));
+  // when more work waits than there are cores, up to two minutes. The load is counted with the check's own workers in it,
+  // a worker a core, which the minute's average does not yet hold when the check starts: on a machine already half busy
+  // they take it past its cores, and a test of three seconds alone has taken twenty.
+  const hung = Math.round(underLoad(20000, cpus().length));
   const report = join(dir, "junit.xml");
   // The slowest files start first, by their times in the last check, or the last of them may start when the rest are done.
   const timed = existsSync(TEST_TIMES) ? ["--timings", TEST_TIMES] : [];
