@@ -95,6 +95,10 @@ of Art and others): `reports/ruins2/access-test.json`.
     client sees but has no spawn-point views. On the medium tier the city reaches 2,048 m, so from the middle of
     Hillsborough Bay (2.6 km) downtown is not drawn; on high it is (`reports/world1/farcity/`).
 
+19. **A second map definition fails the catalogue.** Adding `core:tampa` to `content/maps.ts` breaks two tests until
+    the counts in `tests/unit/catalogue.test.ts` are raised and `planning/reference/catalogue.md` is made again
+    (`bun run catalogue`).
+
 What carried over unchanged: the ground, colour, nodes, spawn regions, bridges and piers from `ways.json`, campuses in
 wings, stairs and roof escapes, the far city, and the map file and server, at 1.8 times Miami's blocks.
 
