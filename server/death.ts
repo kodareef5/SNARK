@@ -5,7 +5,7 @@ import { BitWriter } from "../shared/net/codec.ts";
 import { MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../shared/sim/character.ts";
 import { leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
-import { F_PROP } from "../shared/sim/entities.ts";
+import { F_PROP, GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { TICK_RATE, chunkCx, chunkCz } from "../shared/coords.ts";
@@ -76,6 +76,9 @@ export class Death {
   private readonly corpse: number;
   private readonly dir = [0, 0, 0];
   private readonly w = new BitWriter(64);
+  /** Per lying bag's pid, the inventory, and its version, that its gear was last set from (show). */
+  private readonly shown = new Map<number, { inv: Inventory | null; version: number }>();
+  private readonly gear = new Uint16Array(GEAR_COUNT);
 
   constructor(ctx: DeathContext) {
     this.ctx = ctx;
@@ -115,6 +118,28 @@ export class Death {
       if (old) this.remove(old);
     }
     list.push(made.pid);
+  }
+
+  /**
+   * A bag that holds one stack shows it: the item in hand of its gear is that stack's item, and a client draws the item
+   * lying in place of the bag (client/core/render/dropped.ts). Gear already replicates, so nothing new is sent. A bag of
+   * more stacks, or of none, shows nothing and is drawn as a bag. Shown again whenever its inventory changes (step).
+   */
+  private show(bag: EntityRecord): void {
+    const e = this.ctx.records.entOf.get(bag.pid);
+    if (e === undefined) {
+      this.shown.delete(bag.pid);
+      return;
+    }
+    const inv = bag.inv;
+    this.shown.set(bag.pid, { inv, version: inv ? inv.version : -1 });
+    let item = 0;
+    if (inv && inv.used() === 1) for (let s = 0; s < inv.cap && item === 0; s++) item = inv.item[s]!;
+    const ents = this.ctx.world.ents;
+    // A bag that never showed a stack has no gear to send.
+    if (item === 0 && !ents.gear[e]) return;
+    this.gear[GEAR_HELD] = item;
+    ents.setGear(e, this.gear);
   }
 
   /** Starts a lying container's time again, so that what was just put in it lies as long as anything else. */
@@ -158,6 +183,7 @@ export class Death {
       if (to < 0) to = inv.free();
       if (to >= 0 && items.move(rec, slot, last, to, n) > 0) {
         this.renew(last);
+        this.show(last);
         return true;
       }
     }
@@ -195,7 +221,10 @@ export class Death {
     const last = this.lying(rec.pid, this.bag, x, y, z, 2);
     if (last) {
       given += items.mint(last, item, n, 0, 0, -1, "harvest");
-      if (given > 0) this.renew(last);
+      if (given > 0) {
+        this.renew(last);
+        this.show(last);
+      }
     }
     // A bag of ten stacks holds a 50x server's blow: four new ones are more than enough.
     for (let k = 0; k < 4 && given < n; k++) {
@@ -402,6 +431,7 @@ export class Death {
     ents.pid[e] = cache.pid;
     ents.setLook(e, 0, null, cache.name);
     records.entOf.set(cache.pid, e);
+    if (cache.kind === this.bag && this.bag !== this.cache) this.show(cache);
   }
 
   /** A deadline whose stamp no longer matches expiresAt is stale and is ignored. */
@@ -418,6 +448,7 @@ export class Death {
     const e = records.entOf.get(cache.pid);
     if (e !== undefined) world.ents.destroy(e);
     records.delete(cache.pid);
+    this.shown.delete(cache.pid);
   }
 
   /**
@@ -475,6 +506,12 @@ export class Death {
         }
       }
       if (c.ent >= 0 && (c.pressed & BTN_USE) !== 0 && !records.byPid.get(c.pid)?.out) this.use(c);
+    }
+    // A bag taken from, put into or emptied shows what it now holds.
+    for (const [pid, was] of this.shown) {
+      const bag = records.byPid.get(pid);
+      if (!bag || !records.entOf.has(pid)) this.shown.delete(pid);
+      else if (bag.inv !== was.inv || (bag.inv ? bag.inv.version : -1) !== was.version) this.show(bag);
     }
   }
 
