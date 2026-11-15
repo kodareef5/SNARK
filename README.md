@@ -100,7 +100,7 @@ a page served over TLS: start the server with `--cert cert.pem --key key.pem`.
 
 | Command | What it does |
 | --- | --- |
-| `bun run check` | Policy rules, type checks for every zone, and all tests. About nine seconds today; fails above 20 s |
+| `bun run check` | Policy rules, type checks for every zone, and all tests. About 22 seconds on a quiet 32-thread machine; fails above 45 s |
 | `bun run bench` | Builds the sizing target (8 km, 500,000 structures, 2.6 million resource nodes, 30,000 creatures, 100 players) and holds each measurement to a budget. `-- --config config/boosted-50x` holds a boosted server to the same budgets |
 | `bun run settings` | Writes the settings reference from the catalogue. The check fails if it is stale |
 | `bun run snap` | Draws the proving ground to `artifacts/snap.png` with a software rasterizer. No browser. `-- --ui` draws the interface over it; `-- --poses N` a line-up of bodies in motion; `-- --fight bow` a survivor mid-fight as its own client shows it; `-- --creatures` the modelled creatures, with `--young` each at four ages beside its egg |

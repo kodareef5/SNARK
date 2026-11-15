@@ -38,20 +38,23 @@ const DRAWN_BY = ["icons.ts", "../snap/raster.ts", "../snap.ts"];
 
 /**
  * The view a picture is drawn from: degrees round from the mesh's front (+Z) toward its left and above it, as
- * ModelView takes them, degrees the picture is turned anticlockwise, and how many times nearer than the framing that
- * fits it. `PieceSpec.icon` (tools/art/spec.ts) gives one in radians; `framingOf` turns it into this.
+ * ModelView takes them, degrees the picture is turned anticlockwise, how many times nearer than the framing that
+ * fits it, and where the middle of the picture moves to, right and up in the turned picture, as shares of the half side
+ * of the framing that fits it: with a zoom, the part of a long thing to show. `PieceSpec.icon` (tools/art/spec.ts) gives
+ * one in radians; `framingOf` turns it into this.
  */
 export interface IconFraming {
   around: number;
   above: number;
   roll?: number;
   zoom?: number;
+  shift?: readonly [number, number];
 }
 
 /** What a piece's asset says of its picture, in radians, as tools/art/spec.ts has it. */
-export function framingOf(icon: { around: number; above: number; roll?: number; zoom?: number }): IconFraming {
+export function framingOf(icon: { around: number; above: number; roll?: number; zoom?: number; shift?: readonly [number, number] }): IconFraming {
   const deg = 180 / Math.PI;
-  return { around: icon.around * deg, above: icon.above * deg, ...(icon.roll !== undefined ? { roll: icon.roll * deg } : {}), ...(icon.zoom !== undefined ? { zoom: icon.zoom } : {}) };
+  return { around: icon.around * deg, above: icon.above * deg, ...(icon.roll !== undefined ? { roll: icon.roll * deg } : {}), ...(icon.zoom !== undefined ? { zoom: icon.zoom } : {}), ...(icon.shift !== undefined ? { shift: icon.shift } : {}) };
 }
 
 /** An item that has a picture: the id its `#icon` slot names, and the mesh it is drawn from. */
@@ -118,12 +121,15 @@ export interface IconShot {
   roll: number;
   centre: [number, number, number];
   radius: number;
+  /** How many times nearer the picture is than the framing that fits (ModelShot.zoom). */
+  zoom: number;
 }
 
 /**
  * The usual three-quarter view of a mesh, fitted to its points: seen from across its longest axis and a little above,
  * and, when it is long, turned so that axis runs from the bottom left to the top right, its far end from the origin at
- * the top. A held item is modelled from its grip, so its head is up. `framing` takes the place of the view where given.
+ * the top. A held item is modelled from its grip, so its head is up. `framing` takes the place of the view where given,
+ * and its shift moves the point looked at across the picture, after the fit.
  */
 export function iconShot(pack: Pack, mesh: number, framing: IconFraming | null = null): IconShot {
   const m = pack.header.meshes[mesh]!;
@@ -162,9 +168,16 @@ export function iconShot(pack: Pack, mesh: number, framing: IconFraming | null =
     const [mr, mu] = [mx * c + my * s, -mx * s + my * c];
     for (let a = 0; a < 3; a++) centre[a] = centre[a]! + right[a]! * mr + up[a]! * mu;
     // The picture's half side is the radius over cos(FOV / 2) where it is looked at.
-    radius = (Math.max(x1 - x0, y1 - y0, 1e-3) / 2 / (1 - 2 * MARGIN)) * Math.cos(FOV / 2) / (framing?.zoom ?? 1);
+    radius = (Math.max(x1 - x0, y1 - y0, 1e-3) / 2 / (1 - 2 * MARGIN)) * Math.cos(FOV / 2);
   }
-  return { around, above, roll, centre, radius };
+  if (framing?.shift) {
+    // The half side of the framing that fits, and the shift in the turned picture back in right and up.
+    const half = radius / Math.cos(FOV / 2);
+    const [mx, my] = [framing.shift[0] * half, framing.shift[1] * half];
+    const [mr, mu] = [mx * c + my * s, -mx * s + my * c];
+    for (let a = 0; a < 3; a++) centre[a] = centre[a]! + right[a]! * mr + up[a]! * mu;
+  }
+  return { around, above, roll, centre, radius, zoom: framing?.zoom ?? 1 };
 }
 
 /** A texture of the pack in the rgba variant, by its place in the pack's list, or null where there is none. */
@@ -215,7 +228,7 @@ export class IconPainter {
       this.view.texture(t, tex.role, tex.pictures);
       this.sent.add(t);
     }
-    this.view.draw({ mesh, level: 0, around: shot.around, above: shot.above, centre: shot.centre, radius: shot.radius, rig: null, colors, textured });
+    this.view.draw({ mesh, level: 0, around: shot.around, above: shot.above, centre: shot.centre, radius: shot.radius, ...(shot.zoom !== 1 ? { zoom: shot.zoom } : {}), rig: null, colors, textured });
     return this.shrink(shot.roll);
   }
 

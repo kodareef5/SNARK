@@ -3,7 +3,7 @@
 // written in code.
 import { expect, test } from "bun:test";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { cpus, loadavg, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial } from "../../shared/pack/pack.ts";
@@ -17,6 +17,7 @@ import { encodePng, readPicture, type Picture } from "../../tools/pack/image.ts"
 import { splitPack } from "../../tools/pack/split.ts";
 import { tangentsOf } from "../../tools/pack/surface.ts";
 import { buildPack, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
+import { underLoad } from "../fixtures/load.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { tubeGlb, tubeMesh, tubePictures } from "../fixtures/textured.ts";
 
@@ -188,9 +189,8 @@ test("every texture the game's packs name has its pictures listed for the textur
   const named = corePack().header.textures ?? [];
   const t0 = performance.now();
   const sources = await gameTextures();
-  // Reading a picture would take seconds; listing takes a tenth of one. With more work waiting than cores, the clock times
-  // the neighbours, so the limit stretches with the load as tools/check.ts stretches its hung-test limit, up to six times.
-  expect(performance.now() - t0).toBeLessThan(500 * Math.min(6, Math.max(1, loadavg()[0]! / cpus().length)));
+  // Reading a picture would take seconds; listing takes a tenth of one. The limit stretches with the machine's load.
+  expect(performance.now() - t0).toBeLessThan(underLoad(500));
   expect(named.length).toBeGreaterThan(0);
   for (const t of named) expect([t.id, sources.find((s) => s.id === t.id)?.role, sources.find((s) => s.id === t.id)?.top]).toEqual([t.id, t.role, t.top]);
   // The examples are in no game pack, and theirs are found the same way.
