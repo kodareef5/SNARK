@@ -1,0 +1,17 @@
+{
+  "started_utc": "2026-11-14T23:57:36.036330+00:00",
+  "workflow": "Built-in repaint, native-size checks after each change, reproducible local build",
+  "baseline": "iterations/round-3-baseline",
+  "finished_utc": "2026-11-15T00:06:02.129631+00:00",
+  "elapsed_seconds": 506,
+  "generation_attempts": 4,
+  "successful_generation_calls": 3,
+  "failed_generation_calls": 1,
+  "failure": "Final shoreline-only edit: HTTP 401 token_revoked; no image returned",
+  "review_rounds": 3,
+  "total_successful_generation_calls": 8,
+  "total_review_rounds": 10,
+  "selected_original": "originals/round-08.png",
+  "validation": "iterations/round-10-refinement/validation.json",
+  "remaining_issue": "Some central and eastern shoreline lobes remain simplified and rounded; final targeted edit was blocked by image-service authentication."
+}

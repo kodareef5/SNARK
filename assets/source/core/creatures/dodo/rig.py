@@ -55,8 +55,12 @@ WATERLINE = round(0.75 * STANDING_HEIGHT, 3)
 # stands when it is first drawn. Estimated from the block-out's errors: level 1 from about 84 px tall, level 2 from 46,
 # level 3 from 19, level 4 from 8, then 3 and 1. The textured levels stop where the bird stands about 48 px tall
 # (about 11 m on a 1080-row screen), so FLAT_FROM is 2. `bun run art -- core:dodo --check` prints the real heights;
-# move FLAT_FROM to the first level drawn under about 48 px. Level 6 is the triangle bird.
-TRIANGLES = [6000, 3500, 2000, 900, 400, 160, 48]
+# move FLAT_FROM to the first level drawn under about 48 px. Level 6 is the triangle bird: at 48 triangles it kept
+# either the beak or the legs, at 72 both.
+# Level 0 is model.py's, 8,500 not 6,000: the feather cards that break its outline (tufts over the body, shaggy
+# trousers, mane, hood edge, tail, wing fingers) are closed leaves that cost both their sides, about 2,400 of it, and
+# the face, beak and feet are where it is looked at from close up. The real mesh draws level 1 from about 68 px tall.
+TRIANGLES = [8500, 3500, 2000, 900, 400, 160, 72]
 FLAT_FROM = 2
 
 # Materials: the Blender material names the model uses, which asset.ts gives pictures. Base and normal at `size`,
@@ -526,7 +530,8 @@ class Clip:
             self._rotate(f, "lid_" + side, bird_rotation(pitch=-LIDS_SHUT * shut))
 
     def throat(self, f, swell):
-        """0 at rest, 1 the pouch dropped full."""
+        """0 at rest. On the model, positive values draw the pouch up and back into the neck, negative ones drop it
+        away from the neck."""
         self._rotate(f, "throat", bird_rotation(pitch=-THROAT_SWELL * swell))
 
     def hood(self, f, ruffle):

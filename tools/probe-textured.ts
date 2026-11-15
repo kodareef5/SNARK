@@ -35,6 +35,7 @@ import type { TextureFormat, TextureRole } from "../shared/pack/texture.ts";
 import { Rng } from "../shared/rng.ts";
 import { PROVING_DIMS, PROVING_SPAWN, buildProvingHeightfield } from "../shared/world/proving.ts";
 import { StructureStore } from "../shared/world/structures.ts";
+import { nodeForms } from "../shared/world/nodes.ts";
 import { FakeNet } from "../tests/fixtures/assetnet.ts";
 import { PINNED, builtBlocks } from "../tests/fixtures/astc.ts";
 import { card, randomBc5, randomBc7 } from "../tests/fixtures/bc.ts";
@@ -313,9 +314,17 @@ function house(manifest: Manifest, files: Uint8Array[], format: TextureFormat, t
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const ground = hf.heightAt(HOUSE[0], HOUSE[1]);
   placeHouse(structs, (id) => reg.index.get(id)!, ground);
+  // Rocks, a tree and a bush about the house, each at a size of its kind and turned, so that sized draws are held to the
+  // rasterizer with the rest.
+  const forms = nodeForms(reg);
+  const nodes = new StructureStore(PROVING_DIMS, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
+  for (const [kind, dx, dz, step] of [["core:rock", -5.5, 2, 15], ["core:rock", 4.5, -1, 0], ["core:tree", -6, -4, 9], ["core:bush", 5, 3, 12]] as const) {
+    const [x, z] = [HOUSE[0] + dx, HOUSE[1] + dz];
+    nodes.add(forms.first[reg.index.get(kind)!]! + step, x, hf.heightAt(x, z), z, step * 4099, 0, 1);
+  }
   const pack = parsePack(files[manifest.boot]!);
   const port = new FakeNet(files);
-  const scene = new Scene({ dims: PROVING_DIMS, hf, structs }, reg, pack, { manifest, port });
+  const scene = new Scene({ dims: PROVING_DIMS, hf, structs, nodes }, reg, pack, { manifest, port });
   const tier = tierOf(tierName);
   scene.assets.tier = tier;
   scene.assets.format = format;

@@ -1,0 +1,590 @@
+{
+  "space": "sRGB IEC 61966-2-1, D65",
+  "measurement": "channel-wise median; linear luminance converted to neutral sRGB",
+  "keys": [
+    {
+      "key": "dawn",
+      "open_target": 59,
+      "shade_target": 35,
+      "zenith": [
+        54,
+        78,
+        123
+      ],
+      "zenith_equiv": 78.22,
+      "sky30_away": [
+        105,
+        128,
+        175
+      ],
+      "sky30_away_equiv": 127.86,
+      "horizon_toward": [
+        197,
+        155,
+        145
+      ],
+      "horizon_toward_equiv": 164.47,
+      "horizon_away": [
+        160,
+        158,
+        177
+      ],
+      "horizon_away_equiv": 159.89,
+      "card_open": [
+        53,
+        59,
+        74
+      ],
+      "card_open_equiv": 59.04,
+      "card_shade": [
+        25,
+        35,
+        52
+      ],
+      "card_shade_equiv": 34.71,
+      "cloud_lit": [
+        134,
+        140,
+        160
+      ],
+      "cloud_lit_equiv": 140.34,
+      "cloud_shade": [
+        105,
+        123,
+        157
+      ],
+      "cloud_shade_equiv": 122.41,
+      "away_card_open": [
+        53,
+        59,
+        74
+      ],
+      "away_card_open_equiv": 59.04,
+      "away_card_shade": [
+        25,
+        35,
+        52
+      ],
+      "away_card_shade_equiv": 34.71,
+      "raw_toward_card_equiv": [
+        86.43,
+        57.14
+      ],
+      "raw_away_card_equiv": [
+        84.07,
+        52.97
+      ]
+    },
+    {
+      "key": "morning",
+      "open_target": 91,
+      "shade_target": 70,
+      "zenith": [
+        45,
+        108,
+        176
+      ],
+      "zenith_equiv": 106.02,
+      "sky30_away": [
+        128,
+        174,
+        217
+      ],
+      "sky30_away_equiv": 169.38,
+      "horizon_toward": [
+        211,
+        214,
+        205
+      ],
+      "horizon_toward_equiv": 212.73,
+      "horizon_away": [
+        199,
+        217,
+        223
+      ],
+      "horizon_away_equiv": 213.79,
+      "card_open": [
+        99,
+        90,
+        76
+      ],
+      "card_open_equiv": 91.11,
+      "card_shade": [
+        56,
+        71,
+        89
+      ],
+      "card_shade_equiv": 69.68,
+      "cloud_lit": [
+        180,
+        192,
+        197
+      ],
+      "cloud_lit_equiv": 189.9,
+      "cloud_shade": [
+        149,
+        179,
+        201
+      ],
+      "cloud_shade_equiv": 174.96,
+      "away_card_open": [
+        99,
+        90,
+        77
+      ],
+      "away_card_open_equiv": 91.16,
+      "away_card_shade": [
+        56,
+        71,
+        90
+      ],
+      "away_card_shade_equiv": 69.78,
+      "raw_toward_card_equiv": [
+        146.79,
+        93.03
+      ],
+      "raw_away_card_equiv": [
+        128.29,
+        86.21
+      ]
+    },
+    {
+      "key": "noon",
+      "open_target": 123,
+      "shade_target": 70,
+      "zenith": [
+        29,
+        86,
+        161
+      ],
+      "zenith_equiv": 86.82,
+      "sky30_away": [
+        150,
+        190,
+        230
+      ],
+      "sky30_away_equiv": 185.87,
+      "horizon_toward": [
+        220,
+        233,
+        225
+      ],
+      "horizon_toward_equiv": 229.74,
+      "horizon_away": [
+        213,
+        234,
+        233
+      ],
+      "horizon_away_equiv": 229.67,
+      "card_open": [
+        127,
+        123,
+        116
+      ],
+      "card_open_equiv": 123.38,
+      "card_shade": [
+        55,
+        71,
+        94
+      ],
+      "card_shade_equiv": 70.01,
+      "cloud_lit": [
+        251,
+        242,
+        231
+      ],
+      "cloud_lit_equiv": 243.19,
+      "cloud_shade": [
+        202,
+        206,
+        224
+      ],
+      "cloud_shade_equiv": 206.53,
+      "away_card_open": [
+        127,
+        123,
+        116
+      ],
+      "away_card_open_equiv": 123.38,
+      "away_card_shade": [
+        55,
+        71,
+        94
+      ],
+      "away_card_shade_equiv": 70.01,
+      "raw_toward_card_equiv": [
+        154.15,
+        122.29
+      ],
+      "raw_away_card_equiv": [
+        159.08,
+        108.52
+      ]
+    },
+    {
+      "key": "afternoon",
+      "open_target": 111,
+      "shade_target": 70,
+      "zenith": [
+        53,
+        109,
+        174
+      ],
+      "zenith_equiv": 107.16,
+      "sky30_away": [
+        136,
+        170,
+        210
+      ],
+      "sky30_away_equiv": 166.99,
+      "horizon_toward": [
+        224,
+        201,
+        166
+      ],
+      "horizon_toward_equiv": 203.99,
+      "horizon_away": [
+        214,
+        208,
+        196
+      ],
+      "horizon_away_equiv": 208.47,
+      "card_open": [
+        119,
+        110,
+        97
+      ],
+      "card_open_equiv": 111.13,
+      "card_shade": [
+        53,
+        71,
+        94
+      ],
+      "card_shade_equiv": 69.7,
+      "cloud_lit": [
+        179,
+        181,
+        187
+      ],
+      "cloud_lit_equiv": 181.02,
+      "cloud_shade": [
+        153,
+        170,
+        192
+      ],
+      "cloud_shade_equiv": 168.33,
+      "away_card_open": [
+        119,
+        110,
+        97
+      ],
+      "away_card_open_equiv": 111.13,
+      "away_card_shade": [
+        53,
+        71,
+        94
+      ],
+      "away_card_shade_equiv": 69.7,
+      "raw_toward_card_equiv": [
+        130.94,
+        93.27
+      ],
+      "raw_away_card_equiv": [
+        119.52,
+        85.15
+      ]
+    },
+    {
+      "key": "golden-hour",
+      "open_target": 64,
+      "shade_target": 55,
+      "zenith": [
+        48,
+        78,
+        125
+      ],
+      "zenith_equiv": 77.69,
+      "sky30_away": [
+        126,
+        141,
+        176
+      ],
+      "sky30_away_equiv": 140.96,
+      "horizon_toward": [
+        222,
+        154,
+        94
+      ],
+      "horizon_toward_equiv": 168.56,
+      "horizon_away": [
+        155,
+        156,
+        179
+      ],
+      "horizon_away_equiv": 157.6,
+      "card_open": [
+        76,
+        61,
+        47
+      ],
+      "card_open_equiv": 63.7,
+      "card_shade": [
+        39,
+        56,
+        78
+      ],
+      "card_shade_equiv": 54.92,
+      "cloud_lit": [
+        170,
+        142,
+        116
+      ],
+      "cloud_lit_equiv": 146.94,
+      "cloud_shade": [
+        139,
+        131,
+        131
+      ],
+      "cloud_shade_equiv": 132.75,
+      "away_card_open": [
+        76,
+        62,
+        47
+      ],
+      "away_card_open_equiv": 64.38,
+      "away_card_shade": [
+        39,
+        56,
+        77
+      ],
+      "away_card_shade_equiv": 54.81,
+      "raw_toward_card_equiv": [
+        89.98,
+        65.04
+      ],
+      "raw_away_card_equiv": [
+        95.65,
+        68.47
+      ]
+    },
+    {
+      "key": "sunset",
+      "open_target": 49,
+      "shade_target": 29,
+      "zenith": [
+        48,
+        56,
+        102
+      ],
+      "zenith_equiv": 59.3,
+      "sky30_away": [
+        107,
+        97,
+        145
+      ],
+      "sky30_away_equiv": 103.56,
+      "horizon_toward": [
+        215,
+        104,
+        65
+      ],
+      "horizon_toward_equiv": 136.28,
+      "horizon_away": [
+        95,
+        111,
+        153
+      ],
+      "horizon_away_equiv": 111.67,
+      "card_open": [
+        61,
+        46,
+        41
+      ],
+      "card_open_equiv": 49.3,
+      "card_shade": [
+        20,
+        29,
+        44
+      ],
+      "card_shade_equiv": 28.72,
+      "cloud_lit": [
+        153,
+        98,
+        98
+      ],
+      "cloud_lit_equiv": 112.6,
+      "cloud_shade": [
+        124,
+        94,
+        120
+      ],
+      "cloud_shade_equiv": 103.3,
+      "away_card_open": [
+        61,
+        46,
+        41
+      ],
+      "away_card_open_equiv": 49.3,
+      "away_card_shade": [
+        20,
+        29,
+        44
+      ],
+      "away_card_shade_equiv": 28.72,
+      "raw_toward_card_equiv": [
+        76.21,
+        48.25
+      ],
+      "raw_away_card_equiv": [
+        74.04,
+        46.89
+      ]
+    },
+    {
+      "key": "dusk",
+      "open_target": 36,
+      "shade_target": 21,
+      "zenith": [
+        16,
+        29,
+        58
+      ],
+      "zenith_equiv": 29.94,
+      "sky30_away": [
+        47,
+        51,
+        91
+      ],
+      "sky30_away_equiv": 54.29,
+      "horizon_toward": [
+        139,
+        68,
+        53
+      ],
+      "horizon_toward_equiv": 88.53,
+      "horizon_away": [
+        45,
+        56,
+        90
+      ],
+      "horizon_away_equiv": 57.24,
+      "card_open": [
+        36,
+        35,
+        45
+      ],
+      "card_open_equiv": 36.03,
+      "card_shade": [
+        15,
+        21,
+        32
+      ],
+      "card_shade_equiv": 20.85,
+      "cloud_lit": [
+        81,
+        66,
+        86
+      ],
+      "cloud_lit_equiv": 71.09,
+      "cloud_shade": [
+        74,
+        62,
+        86
+      ],
+      "cloud_shade_equiv": 66.76,
+      "away_card_open": [
+        36,
+        35,
+        45
+      ],
+      "away_card_open_equiv": 36.03,
+      "away_card_shade": [
+        15,
+        21,
+        32
+      ],
+      "away_card_shade_equiv": 20.85,
+      "raw_toward_card_equiv": [
+        67.98,
+        43.21
+      ],
+      "raw_away_card_equiv": [
+        64.98,
+        42.93
+      ]
+    },
+    {
+      "key": "night",
+      "open_target": 36,
+      "shade_target": 21,
+      "zenith": [
+        9,
+        19,
+        38
+      ],
+      "zenith_equiv": 19.26,
+      "sky30_away": [
+        18,
+        36,
+        67
+      ],
+      "sky30_away_equiv": 36.37,
+      "horizon_toward": [
+        42,
+        66,
+        101
+      ],
+      "horizon_toward_equiv": 65.26,
+      "horizon_away": [
+        36,
+        56,
+        88
+      ],
+      "horizon_away_equiv": 55.65,
+      "card_open": [
+        31,
+        36,
+        45
+      ],
+      "card_open_equiv": 35.74,
+      "card_shade": [
+        14,
+        21,
+        32
+      ],
+      "card_shade_equiv": 20.69,
+      "cloud_lit": [
+        39,
+        51,
+        74
+      ],
+      "cloud_lit_equiv": 50.86,
+      "cloud_shade": [
+        29,
+        43,
+        68
+      ],
+      "cloud_shade_equiv": 42.91,
+      "away_card_open": [
+        31,
+        36,
+        45
+      ],
+      "away_card_open_equiv": 35.74,
+      "away_card_shade": [
+        14,
+        21,
+        32
+      ],
+      "away_card_shade_equiv": 20.69,
+      "raw_toward_card_equiv": [
+        64.19,
+        41.58
+      ],
+      "raw_away_card_equiv": [
+        63.12,
+        41.58
+      ]
+    }
+  ]
+}

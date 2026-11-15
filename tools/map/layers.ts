@@ -6,7 +6,7 @@ import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCount, chunkCx, chunkCz } from "..
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { MapZone } from "../../shared/content/defs.ts";
-import type { MapData, MapSpawn, MapStatic, NodeList, NodeScatter } from "../../shared/world/mapfile.ts";
+import type { MapData, MapSpawn, MapStatic, NodeLayer as Layer } from "../../shared/world/mapfile.ts";
 import { readGrey, writeGrey } from "./png.ts";
 
 /** A listed node's place in its chunk is a u16 of this many steps a metre. */
@@ -21,7 +21,8 @@ interface Place {
 type Piece = Place & { kind: string; y: number };
 type Node = Place & { kind: string };
 type Spawn = Place & { name: string };
-type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>; allow?: string } | { list: Node[] };
+type Zone = { kinds: Record<string, number>; bare?: number };
+type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>; allow?: string } | { seed: number; perChunk: number; zones: Zone[]; zone: string } | { list: Node[] };
 type Region = { spawns: string; count: number; x: number; z: number; radius?: number; half?: [number, number] };
 
 const toYaw = (degrees = 0): number => Math.round((degrees / 360) * YAW_UNITS) & (YAW_UNITS - 1);
@@ -60,15 +61,23 @@ export function readLayers(folder: string): MapData {
   const nz = sizeZ / TERRAIN_CELL + 1;
   const heights = need(picture("heights", 16, nx, nz), "heights.png or heights.u16");
 
-  const nodes = (json<NodeLayer[]>("nodes.json") ?? []).map((layer): NodeScatter | NodeList => {
+  /** An 8-bit picture of a whole number of metres a pixel, in sample order, and its metres a pixel. */
+  const squares = (name: string): { cell: number; pixels: Uint8Array } => {
+    const image = readGrey(need(file(name), name), name);
+    const cell = sizeX / image.width;
+    if (image.height * cell !== sizeZ || image.data.BYTES_PER_ELEMENT !== 1) throw new Error(`${name} is ${image.width} by ${image.height}, which is not this map at a whole number of metres a pixel in 8 bits`);
+    return { cell, pixels: image.data.reverse() as Uint8Array };
+  };
+  const nodes = (json<NodeLayer[]>("nodes.json") ?? []).map((layer): Layer => {
+    if ("zones" in layer) {
+      const { cell, pixels } = squares(layer.zone);
+      return { seed: layer.seed, perChunk: layer.perChunk, zones: layer.zones.map((z) => ({ bare: z.bare ?? 0, kinds: Object.entries(z.kinds) })), zoneCell: cell, zone: pixels };
+    }
     if (!("list" in layer)) {
       const scatter = { seed: layer.seed, perChunk: layer.perChunk, kinds: Object.entries(layer.kinds) };
       if (layer.allow === undefined) return { ...scatter, allowCell: 0, allow: null };
-      const image = readGrey(need(file(layer.allow), layer.allow), layer.allow);
-      const cell = sizeX / image.width;
-      if (image.height * cell !== sizeZ || image.data.BYTES_PER_ELEMENT !== 1) throw new Error(`${layer.allow} is ${image.width} by ${image.height}, which is not this map at a whole number of metres a pixel in 8 bits`);
-      const allow = new Uint8Array(Math.ceil(image.data.length / 8));
-      const pixels = image.data.reverse();
+      const { cell, pixels } = squares(layer.allow);
+      const allow = new Uint8Array(Math.ceil(pixels.length / 8));
       for (let bit = 0; bit < pixels.length; bit++) if (pixels[bit]! >= 128) allow[bit >> 3]! |= 1 << (bit & 7);
       return { ...scatter, allowCell: cell, allow };
     }
@@ -131,6 +140,12 @@ export function writeLayers(map: MapData, folder: string): void {
         }
       }
       return { list };
+    }
+    if ("zone" in layer) {
+      const wide = (chunksX * CHUNK_SIZE) / layer.zoneCell;
+      const high = (chunksZ * CHUNK_SIZE) / layer.zoneCell;
+      put(`zones-${i}.png`, writeGrey(wide, high, layer.zone.slice().reverse()));
+      return { seed: layer.seed, perChunk: layer.perChunk, zones: layer.zones.map((z) => ({ kinds: Object.fromEntries(z.kinds), ...(z.bare > 0 ? { bare: z.bare } : {}) })), zone: `zones-${i}.png` };
     }
     const scatter = { seed: layer.seed, perChunk: layer.perChunk, kinds: Object.fromEntries(layer.kinds) };
     if (!layer.allow) return scatter;

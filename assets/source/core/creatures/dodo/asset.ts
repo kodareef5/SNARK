@@ -7,24 +7,27 @@ import type { CreatureAsset } from "../../../../../tools/art/spec.ts";
 export default {
   kind: "creature",
   // Run in this order in one Blender session. rig.py makes the armature "dodo" and a block-out mesh; model.py drops
-  // the block-out for the real mesh, in the two materials below; each clips file adds the actions it owns. The asset
-  // builds once all five scripts and the pictures exist. Until then a maker runs tools/blender/build.py with a job
-  // that names the scripts so far and no "out" (nothing is written), and rig.py's own checks (rig.find().finish).
+  // the block-out for the real mesh, in the two materials below; each clips file adds the actions it owns.
+  // `bun run art -- core:dodo` builds it.
   source: { scripts: ["rig.py", "model.py", "clips_move.py", "clips_act.py", "clips_life.py"] },
   scale: 1,
   // 29 deforming bones. The five ctl_* bones are Blender controls whose effect is baked into the others.
   skeleton: { id: "dodo", root: "pelvis", drop: /^ctl_/, bones: 32 },
-  // Head and the top of the neck take three times the damage (content: SpeciesDef.zones). The content author fits
-  // the rest of the damage and the ragdoll from these.
+  // ARK's dodo takes three times the damage to its head and the top bone of its neck, and once everywhere else
+  // (content: SpeciesDef.zones). Each capsule is fitted to the vertices of the bones it covers when the asset is built;
+  // the body, the tail, the skull and the toes run along their vertices' own longest axis, since no two joints lie along
+  // them. The folded wing lies flush with the flank, as far out as the body, so it has no capsule and a hit there is the
+  // body's, as ARK counts it. `bun tools/fit-zones.ts core:dodo` measures where each zone is hit against where it is drawn.
   zones: [
-    { zone: "head", on: "skull", from: "skull", to: "jaw", covers: ["skull", "jaw", "throat", "lid_l", "lid_r", "hood"] },
+    { zone: "head", on: "skull", covers: ["skull", "jaw", "throat", "lid_l", "lid_r", "hood"] },
     { zone: "head", on: "neck_4", from: "neck_4", to: "skull", covers: ["neck_4"] },
     { zone: "torso", on: "neck_2", from: "neck_1", to: "neck_4", covers: ["neck_1", "neck_2", "neck_3"] },
-    { zone: "torso", on: "pelvis", from: "tail_1", to: "chest", covers: ["pelvis", "belly", "chest", "tail_1", "tail_2", "thigh_l", "thigh_r", "shin_l", "shin_r"] },
-    { zone: "armL", on: "wing_upper_l", from: "wing_upper_l", to: "wing_hand_l", covers: ["wing_upper_l", "wing_lower_l", "wing_hand_l"] },
-    { zone: "armR", on: "wing_upper_r", from: "wing_upper_r", to: "wing_hand_r", covers: ["wing_upper_r", "wing_lower_r", "wing_hand_r"] },
-    { zone: "legL", on: "shank_l", from: "shank_l", to: "toes_l", covers: ["shank_l", "toes_l"] },
-    { zone: "legR", on: "shank_r", from: "shank_r", to: "toes_r", covers: ["shank_r", "toes_r"] },
+    { zone: "torso", on: "pelvis", covers: ["pelvis", "belly", "chest"] },
+    { zone: "torso", on: "tail_1", covers: ["tail_1", "tail_2"] },
+    { zone: "legL", on: "shank_l", from: "shank_l", to: "toes_l", covers: ["shank_l"] },
+    { zone: "legR", on: "shank_r", from: "shank_r", to: "toes_r", covers: ["shank_r"] },
+    { zone: "footL", on: "toes_l", covers: ["toes_l"] },
+    { zone: "footR", on: "toes_r", covers: ["toes_r"] },
   ],
   // Measured from each bone's joint at rest (rig.py: SOCKETS gives the same points in the bird's frame). What each is
   // for is ref/FUNCTIONS.md's; no system reads one yet.
@@ -57,21 +60,15 @@ export default {
     { name: "Head", material: "head", sample: DODO_DYES[4]! },
     { name: "Wings and Patterning", material: "wings_patterning", sample: DODO_DYES[5]! },
   ],
-  // The model's two materials (rig.py: MATERIALS says which parts are on which). The pictures are D4's, in tex/.
+  // The model's two materials (rig.py: MATERIALS says which parts are on which). Until the painted pictures are in tex/
+  // each has only its region map, baked from the model's own regions (ref/bakes/), and is drawn white under its dyes.
+  // When they land they are base, normal, packed, regions and height in tex/, named as ref/DESIGN.md says.
   materials: {
     dodo: {
-      base: "tex/dodo_base.png",
-      normal: "tex/dodo_normal.png",
-      packed: "tex/dodo_packed.png",
-      regions: "tex/dodo_regions.png",
-      height: "tex/dodo_height.png",
+      regions: "ref/bakes/dodo_regions.png",
     },
     dodo_cards: {
-      base: "tex/dodo_cards_base.png",
-      normal: "tex/dodo_cards_normal.png",
-      packed: "tex/dodo_cards_packed.png",
-      regions: "tex/dodo_cards_regions.png",
-      height: "tex/dodo_cards_height.png",
+      regions: "ref/bakes/dodo_cards_regions.png",
       twoSided: true,
       cutout: true,
     },
@@ -84,10 +81,13 @@ export default {
     { name: "idle_peck", source: "idle_peck", loop: false },
     { name: "walk", source: "walk", loop: true },
     { name: "run", source: "run", loop: true },
+    { name: "turn", source: "turn", loop: false },
     { name: "swim", source: "swim", loop: true },
     { name: "swim_idle", source: "swim_idle", loop: true },
     { name: "fall", source: "fall", loop: true },
-    { name: "peck", source: "peck", loop: false },
+    { name: "land", source: "land", loop: false },
+    // The peck is its one attack, under the name the engine plays an attack by (shared/anim/rigs.ts).
+    { name: "attack", source: "peck", loop: false },
     { name: "flinch", source: "flinch", loop: false },
     { name: "held", source: "held", loop: true },
     { name: "carried", source: "carried", loop: true },
@@ -101,30 +101,36 @@ export default {
   ],
   // The ball of each foot: the joint that stays put on the ground.
   feet: ["toes_l", "toes_r"],
-  // Metres a turn of the clip: walk 16 frames at 0.65 m/s, run 12 frames at the wild 1.365 m/s.
-  gaits: { walk: { stride: 0.35 }, run: { stride: 0.55 } },
+  // Metres a turn of the clip: walk 16 frames at 0.65 m/s, run 12 frames at the wild 1.365 m/s (ARK's 65 and 136.5
+  // units a second). `--check` finds the feet hold best at these. The swim has no ground: its 20 frames at the 3 m/s it
+  // swims at.
+  gaits: {
+    walk: { stride: 0.35 },
+    run: { stride: 0.55 },
+    swim: { stride: 2, stated: "it paddles in water, with no ground to hold a foot to; played at its swimming speed, 3 m/s" },
+  },
   budgets: {
     // Only level 0 is the model's; the build makes the rest. Estimated to be first drawn about 84, 46, 19, 8, 3 and
     // 1 pixels tall on medium. Level 6 is the triangle bird: round body, neck at the front, big head and beak.
-    triangles: [6000, 3500, 2000, 900, 400, 160, 48],
+    triangles: [8500, 3500, 2000, 900, 400, 160, 72],
     // dodo at 2,048 and dodo_cards at 512: 27.0 MB in the rgba variant, 15.6 MB in bc and astc.
     texture: { top: 2048, megabytes: 28 },
   },
-  // The first level drawn under about 48 pixels tall. `--check` prints where each level of the real mesh is first
-  // drawn; move this to the first one under 48 px once model.py exists.
+  // The first level drawn under about 48 pixels tall: on medium `--check` has level 1 first drawn 50 px tall and level 2
+  // 22 px.
   flat: 2,
-  // Goes limp at the last frame of the death clip until `limp` names the frame it begins to fall. `--check` prints how far
-  // the clips bend each joint, which each limit should be a little past.
+  // The death clip has it down on its side by frame 27 and still from 30, so it goes limp at 27, as it comes to rest,
+  // and the ragdoll lays it on whatever ground is there. The body and the head are its bodies, as the sample dinosaurs'
+  // are without their neck: the neck, wings, legs and tail stay as the clip left them against the body. Measured on
+  // tests/unit/ragdoll.test.ts's slope and floor: with the neck, the legs or the tail as bodies too it shivered for 4 to 8
+  // seconds before it slept, and with the head's twist past the 65 degrees the clips turn it, the floor took over 3. Like
+  // this it slept within 2.1 seconds on the slope and 2.7 on the floor, where its round body rolls a little on its side
+  // before the head stops it.
   ragdoll: {
+    limp: 27,
     bodies: [
-      { bone: "pelvis", mass: 0.7 },
-      { bone: "neck_2", mass: 0.06, swing: 35, twist: 20 },
-      { bone: "neck_4", mass: 0.04, swing: 35, twist: 20 },
-      { bone: "skull", mass: 0.08, swing: 40, twist: 25 },
-      { bone: "wing_upper_l", mass: 0.02, swing: 80, twist: 30 },
-      { bone: "wing_upper_r", mass: 0.02, swing: 80, twist: 30 },
-      { bone: "shank_l", mass: 0.03, swing: 70, twist: 10 },
-      { bone: "shank_r", mass: 0.03, swing: 70, twist: 10 },
+      { bone: "pelvis", mass: 0.86 },
+      { bone: "skull", mass: 0.08, swing: 100, twist: 50 },
     ],
   },
 } satisfies CreatureAsset;

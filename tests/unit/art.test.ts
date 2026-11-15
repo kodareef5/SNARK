@@ -13,6 +13,7 @@ import { checkAsset, measureSurface } from "../../tools/art/check.ts";
 import { readPacks } from "../../tools/art/source.ts";
 import type { CreatureAsset } from "../../tools/art/spec.ts";
 import { withArt } from "../../tools/pack/build.ts";
+import { fitCapsule } from "../../tools/pack/creature.ts";
 import { readPng } from "../../tools/pack/png-read.ts";
 import { boxMesh, buildPack, type SourceLod } from "../../tools/pack/write.ts";
 import { ASSETS } from "../fixtures/assets.ts";
@@ -228,4 +229,30 @@ test("the pack build takes every pack it finds, refuses the same id from two, an
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("a hit capsule runs between the joints its zone names, or, naming none, along its vertices' own longest axis", () => {
+  // A rod half a metre long, rising along (0.8, 0.6, 0) from (0, 1, 0), its surface 5 cm from its axis.
+  const along = [0.8, 0.6, 0];
+  const round = [[-0.6, 0.8, 0], [0, 0, 1]];
+  const positions: number[] = [];
+  for (let i = 0; i <= 40; i++) {
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      for (let c = 0; c < 3; c++) positions.push([0, 1, 0][c]! + (i / 40) * 0.5 * along[c]! + 0.05 * (Math.cos(a) * round[0]![c]! + Math.sin(a) * round[1]![c]!));
+    }
+  }
+  const verts = Array.from({ length: positions.length / 3 }, (_, v) => v);
+  const own = fitCapsule(positions, verts, null, null)!;
+  const d = [0, 1, 2].map((c) => own.b[c]! - own.a[c]!);
+  const length = Math.hypot(d[0]!, d[1]!, d[2]!);
+  expect(Math.abs(d[0]! * along[0]! + d[1]! * along[1]!) / length).toBeCloseTo(1, 6);
+  expect(own.radius).toBeCloseTo(0.05, 6);
+  // Its middle is the rod's, and its round ends reach about as far as the rod does.
+  expect([0, 1, 2].map((c) => (own.a[c]! + own.b[c]!) / 2)).toEqual([expect.closeTo(0.2, 2), expect.closeTo(1.15, 2), expect.closeTo(0, 6)]);
+  expect(length + 2 * own.radius * 0.6).toBeGreaterThan(0.45);
+  // Two joints that lie 10 cm off the rod give a capsule along their line, made wide enough to hold the rod.
+  const off = fitCapsule(positions, verts, [-0.06, 1.08, 0], [0.34, 1.38, 0])!;
+  expect(off.radius).toBeGreaterThan(0.12);
+  expect(fitCapsule(positions, [], null, null)).toBeNull();
 });

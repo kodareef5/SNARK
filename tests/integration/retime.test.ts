@@ -19,6 +19,7 @@ import { nodesOf } from "../fixtures/gather.ts";
 import { listener } from "../fixtures/module.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import type { NodeDef } from "../../shared/content/defs.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -216,9 +217,10 @@ test("a rule changed while the server runs: a female's wait, a pair part way thr
 });
 
 test("the rules that are read as a thing begins: how soon a node grows back, how fast a body hungers, thirsts, mends and wakes, and how much oxygen quickens a swimmer", () => {
-  const plain = world([], [], {}, "ada");
+  // A node grows back an hour after it is used up; here the plain world brings that to 0.08 of it, and the tuned to a quarter of that.
+  const plain = world(["ResourcesRespawnPeriodMultiplier=0.08"], [], {}, "ada");
   const tuned = world(
-    ["ResourcesRespawnPeriodMultiplier=0.25", "PlayerCharacterFoodDrainMultiplier=2", "PlayerCharacterWaterDrainMultiplier=3", "PlayerCharacterHealthRecoveryMultiplier=4", "DinoCharacterFoodDrainMultiplier=5", "DinoCharacterHealthRecoveryMultiplier=6", "OxygenSwimSpeedStatMultiplier=3"],
+    ["ResourcesRespawnPeriodMultiplier=0.02", "PlayerCharacterFoodDrainMultiplier=2", "PlayerCharacterWaterDrainMultiplier=3", "PlayerCharacterHealthRecoveryMultiplier=4", "DinoCharacterFoodDrainMultiplier=5", "DinoCharacterHealthRecoveryMultiplier=6", "OxygenSwimSpeedStatMultiplier=3"],
     ["WildDinoCharacterFoodDrainMultiplier=0.5", "TamedDinoCharacterFoodDrainMultiplier=2", "WildDinoTorporDrainMultiplier=7", "TamedDinoTorporDrainMultiplier=0.5"],
     {},
     "ada",
@@ -261,7 +263,8 @@ test("the rules that are read as a thing begins: how soon a node grows back, how
     while (table.kind[tree.index] === 0 && h.world.tick < used + 3 * GAME_HOUR_TICKS) h.run(1000);
     return Math.round((h.world.tick - used) / 30) * 30;
   };
-  expect([regrow(plain), regrow(tuned)]).toEqual([2 * GAME_HOUR_TICKS, GAME_HOUR_TICKS / 2]);
+  const hour = (reg.defs[reg.index.get("core:tree")!] as NodeDef).respawnHours * GAME_HOUR_TICKS;
+  expect([regrow(plain), regrow(tuned)]).toEqual([Math.round((hour * 0.08) / 30) * 30, Math.round((hour * 0.02) / 30) * 30]);
 });
 
 test("a world saved under one set of files and loaded under another is brought to the new ones once: eggs, young, waits, what lies, what spoils, what burns, what grows back, and the rates of bodies", () => {

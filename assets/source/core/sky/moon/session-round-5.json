@@ -1,0 +1,24 @@
+{
+  "started_utc": "2026-11-15T00:21:33+00:00",
+  "baseline": "iterations/round-4-baseline/moon.png",
+  "base_original": "originals/round-08.png",
+  "workflow": "Built-in image edits, selectively composited over the exact round-three base; compare 512,32,48 after each local change.",
+  "timing_note": "Tracked from the first clock-tool reading; initial file discovery preceded this reading.",
+  "finished_utc": "2026-11-15T00:34:35.899936+00:00",
+  "elapsed_seconds": 783,
+  "generation_attempts": 3,
+  "successful_generation_calls": 3,
+  "failed_generation_calls": 0,
+  "review_stages": 3,
+  "total_successful_generation_calls": 17,
+  "total_review_stages": 19,
+  "selected_originals": [
+    "originals/round-08.png",
+    "originals/round-15.png",
+    "originals/round-16.png",
+    "originals/round-17.png"
+  ],
+  "selected_review": "iterations/round-19-local-rays",
+  "validation": "iterations/round-19-local-rays/validation.json",
+  "delivery_sha256": "5d55bf2b6fc3779fab556e8d7d8d36775876e891500ef303b30ccac5c4559af5"
+}

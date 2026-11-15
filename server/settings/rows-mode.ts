@@ -53,7 +53,7 @@ m.under("Harvesting")
   .f("PlayerHarvestingDamageMultiplier", 1, "What a survivor's blow does to a tree or a rock. Higher fells it sooner.", live({ live: true }))
   .s("HarvestResourceItemAmountClassMultipliers", "Yield of one resource: `(ClassName=\"core:thatch\",Multiplier=2.0)`.", live({ live: true }))
   .f("ResourceNoReplenishRadiusPlayers", 1, "How far from a survivor nodes will not grow back. Higher is further.", live({ live: true }))
-  .f("ResourceNoReplenishRadiusStructures", 1, "How far from something built nodes will not grow back. Higher is further.", plan("regrowth"))
+  .f("ResourceNoReplenishRadiusStructures", 1, "How far from a foundation or pillar nodes will not grow back. Higher is further.", live({ live: true }))
   .f("DinoHarvestingDamageMultiplier", 3.2, "What a tamed creature's blow does to a tree or a rock.", plan("dinoHarvest"));
 
 m.under("Items")

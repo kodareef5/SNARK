@@ -24,6 +24,7 @@ test("a map unpacked into a folder of layers and built from it again is the same
     "3 static pieces",
     "40 node slots a chunk, scattered where a picture of 4 m a pixel allows: core:tree x4, core:rock x1",
     "3 listed nodes",
+    "30 node slots a chunk, by zones of 16 m: 1 core:palm x1, bare x2; 2 core:fig x1, core:fern x2",
     "spawn points: Shore (20, 30.5), Çà et là (100, 150)",
     "spawn regions: 12 of core:spawns_beach at (30, 60.5), 0 of test:elsewhere at (100, 150)",
     "not in the core content: test:elsewhere",
@@ -57,7 +58,7 @@ test("layers written by hand: pictures are north up, a raw layer reads like its 
   expect([map.tint[32 * 33], map.tint.reduce((sum, v) => sum + v, 0)]).toEqual([9, 9]);
   expect([map.statics, map.spawns]).toEqual([[{ kind: "core:crate", x: 10, y: 20.5, z: 30, yaw: 49152 }], [{ name: "Here", x: 32, z: 32, yaw: 0 }]]);
   const nodes = mapNodes(map, hf, coreRegistry())!;
-  const spot: NodeSpot = { kind: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  const spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
   let rocks = 0;
   for (let i = 0; i < 200; i++) {
     nodes.at(0, i, spot);

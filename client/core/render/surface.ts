@@ -7,7 +7,8 @@
 // Directions are in the world and of length 1. Colours are linear, 0 to 1, until `shown`.
 
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
-import { BONES_PER_ROW, DRAW_ONE_BONE, DRAW_SKINNED, type FramePacket } from "./packet.ts";
+import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
+import { BONES_PER_ROW, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, type FramePacket } from "./packet.ts";
 
 /**
  * How strong the sun and the sky's light are. At these a mid-grey surface (128 of 255) that is fully rough and not
@@ -152,11 +153,13 @@ export function shown(out: Out, light: Numbers, dist: number, p: FramePacket): v
 }
 
 /**
- * How a draw's vertices are placed, which is `uSkin`: 0 a rigid mesh turned by its yaw, 1 each vertex on its own bone,
- * 2 all on the instance's first bone, 3 each on up to four bones by its skin entry. `entries` says the level has those.
+ * How a draw's vertices are placed, which is `uSkin`: 0 a rigid mesh turned by its yaw, -1 the same at the size its instance
+ * carries (DRAW_SIZED), 1 each vertex on its own bone, 2 all on the instance's first bone, 3 each on up to four bones by its
+ * skin entry. `entries` says the level has those.
  */
 export function skinMode(flags: number, entries: boolean): number {
-  return (flags & DRAW_SKINNED) === 0 ? 0 : (flags & DRAW_ONE_BONE) !== 0 ? 2 : entries ? 3 : 1;
+  if ((flags & DRAW_SKINNED) === 0) return (flags & DRAW_SIZED) !== 0 ? -1 : 0;
+  return (flags & DRAW_ONE_BONE) !== 0 ? 2 : entries ? 3 : 1;
 }
 
 /** A number as GLSL writes it. */
@@ -212,12 +215,12 @@ void main() {
     float a = iYaw * 6.283185307;
     float s = sin(a), c = cos(a);
     mat3 r = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
-    p = r * l + iPos + uOffset;
+    p = r * (uSkin < -0.5 ? l * (float(iRegB.y) / ${f(SIZE_UNITS)}) : l) + iPos + uOffset;
     n = r * aNormal;
     t = r * aTangent.xyz;
   }
   vDye = mat3(dye(iRegA.x), dye(iRegA.y), dye(iRegA.z));
-  vDye2 = mat3(dye(iRegA.w), dye(iRegB.x), dye(iRegB.y));
+  vDye2 = mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 ? 0u : iRegB.y));
   vRel = p;
   vNormal = normalize(n);
   vTangent = vec4(normalize(t), aTangent.w);

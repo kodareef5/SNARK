@@ -16,8 +16,6 @@ export const NIGHT_SUN = Math.sin((-2 * Math.PI) / 180);
 export const KEPT_MARGIN = 1 / 16;
 /** Steps of a 16-bit depth map. */
 export const DEPTH_STEPS = 65535;
-/** The practical split's blend of logarithmic against even spacing, by the number of cascades. */
-export const SPLIT_BLEND: readonly number[] = [0, 0.8, 0.8, 0.85, 0.9];
 
 /** The camera the cascades are fitted to: world position, turn as `Camera` has it, and lens. A `Camera` is one. */
 export interface ShadowView {
@@ -31,13 +29,15 @@ export interface ShadowView {
   readonly near: number;
 }
 
-/** A tier's shadows. */
+/** A tier's shadows. A Tier's `shadows` is one. */
 export interface ShadowSetup {
   readonly cascades: number;
   /** Texels a side of each cascade's map. */
   readonly size: number;
   /** The view depth at which the farthest cascade ends, in metres. */
   readonly distance: number;
+  /** The practical split's blend of logarithmic against even spacing. */
+  readonly blend: number;
   /** The farthest cascade is drawn every other frame. */
   readonly everyOther: boolean;
 }
@@ -175,7 +175,7 @@ export class Cascades {
       this.sun[2] = sz;
     }
     this.count = n;
-    splitDepths(view.near, setup.distance, n, SPLIT_BLEND[n]!, this.splits);
+    splitDepths(view.near, setup.distance, n, setup.blend, this.splits);
     const cp = Math.cos(view.pitch);
     const fx = Math.sin(view.yaw) * cp;
     const fy = Math.sin(view.pitch);

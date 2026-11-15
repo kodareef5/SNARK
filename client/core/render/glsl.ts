@@ -2,6 +2,7 @@
 // low poly has always been drawn with, and a test pins its hash so that it stays so. A WebGL2 shell compiles it as is.
 
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
+import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { BONES_PER_ROW } from "./packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
 
@@ -59,6 +60,7 @@ void main() {
   } else {
     float t = iYaw * 6.283185307;
     float s = sin(t), c = cos(t);
+    if (uSkin < -0.5) l *= float(iRegB.y) / ${SIZE_UNITS.toFixed(1)};
     p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
   }
   uint i = aColor;

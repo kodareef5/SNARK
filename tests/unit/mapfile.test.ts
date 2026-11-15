@@ -1,14 +1,14 @@
 import { expect, test } from "bun:test";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
-import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapData, type NodeScatter } from "../../shared/world/mapfile.ts";
-import { scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
+import { mapHeightfield, mapNodes, parseMap, placeStatics, writeMap, type MapData, type NodeScatter, type NodeZoned } from "../../shared/world/mapfile.ts";
+import { nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { busyMap, flatMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
-const spot = (): NodeSpot => ({ kind: 0, x: 0, y: 0, z: 0, yaw: 0 });
+const spot = (): NodeSpot => ({ kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 });
 
 test("a map written to a file is read back whole, and the same map is the same bytes", () => {
   const map = busyMap();
@@ -39,7 +39,9 @@ test("a file that is damaged, foreign or unplayable is refused, and the reason s
   expect(() => parseMap(file.subarray(0, file.length - 9))).toThrow("map: the file is damaged");
   expect(() => parseMap(new Uint8Array(100))).toThrow("map: this is not a map file");
   expect(() => parseMap(file.subarray(0, 20))).toThrow("map: this is not a map file");
-  expect(() => parseMap(rehashed((view) => view.setUint16(4, 2, true)))).toThrow("map: version 2 is not one this build reads");
+  expect(() => parseMap(rehashed((view) => view.setUint16(4, 3, true)))).toThrow("map: version 3 is not one this build reads");
+  // A file of the version before zoned nodes is read as it was.
+  expect(parseMap(rehashed((view) => view.setUint16(4, 1, true))).heights).toEqual(parseMap(file).heights);
   expect(() => parseMap(rehashed((view) => view.setFloat32(16, 4, true)))).toThrow("map: its samples are 4 m apart");
   expect(() => parseMap(rehashed((view) => view.setUint16(12, 2, true)))).toThrow("map: it has 1089 heights and 1089 tints, and its size takes 2145 of each");
   // The first section's length, made to reach past the end of the file.
@@ -65,11 +67,12 @@ test("a map's nodes are its layers one after another: scattered where the map al
   const map = parseMap(writeMap(busyMap()));
   const hf = mapHeightfield(map);
   const nodes = mapNodes(map, hf, reg)!;
-  expect(nodes.perChunk).toBe(42);
+  expect(nodes.perChunk).toBe(72);
   const tree = reg.index.get("core:tree")!;
   const rock = reg.index.get("core:rock")!;
   const bush = reg.index.get("core:bush")!;
-  const plain = scatterNodes(map.dims, hf, 77, 40, [tree, tree, tree, tree, rock], reg.halfY, (x) => x >= 64);
+  const kinds = [tree, tree, tree, tree, rock];
+  const plain = scatterNodes(map.dims, hf, 77, 40, nodeForms(reg), (x) => (x >= 64 ? kinds : null));
   const a = spot();
   const b = spot();
   let scattered = 0;
@@ -86,13 +89,45 @@ test("a map's nodes are its layers one after another: scattered where the map al
     nodes.at(chunk, 40 + slot, a);
     return a.kind === 0 ? [0] : [a.kind, a.x, a.y, a.z, a.yaw];
   };
-  const standing = (kind: number, x: number, z: number, yaw: number): number[] => [kind, x, hf.heightAt(x, z) + reg.halfY[kind]!, z, yaw];
+  const standing = (kind: number, x: number, z: number, yaw: number): number[] => [kind, x, hf.heightAt(x, z), z, yaw];
   expect(listed(0, 0)).toEqual(standing(bush, 1, 2, 0));
   expect(listed(0, 1)).toEqual(standing(rock, 40000 / 1024, 3 / 1024, 16384));
   expect(listed(2, 0)).toEqual(standing(bush, 7 / 1024, CHUNK_SIZE + 65535 / 1024, 65535));
-  expect([listed(0, 2), listed(1, 0), listed(2, 1), listed(5, 0)]).toEqual([[0], [0], [0], [0]]);
-  nodes.at(3, 42, a);
+  expect([listed(1, 0), listed(2, 1), listed(5, 0)]).toEqual([[0], [0], [0]]);
+  nodes.at(3, 41, a);
   expect(a.kind).toBe(0);
+
+  // The zoned layer: each node is of a kind its square's zone grows, bare ground takes its share, and a square of no zone grows
+  // nothing. It is the scatter with the zone's kinds at each place.
+  const zoned = map.nodes[2] as NodeZoned;
+  const [palm, fig, fern] = ["core:palm", "core:fig", "core:fern"].map((id) => reg.index.get(id)!);
+  const zones = [null, [palm!, 0, 0], [fig!, fern!, fern!]];
+  const same = scatterNodes(map.dims, hf, 78, 30, nodeForms(reg), (x, z) => zones[zoned.zone[Math.floor(z / 16) * 8 + Math.floor(x / 16)]!]!);
+  const grown = new Map<number, number>();
+  let tried = 0;
+  for (let chunk = 0; chunk < 6; chunk++) {
+    for (let i = 0; i < 30; i++) {
+      nodes.at(chunk, 42 + i, a);
+      same.at(chunk, i, b);
+      expect(a).toEqual(b);
+      if (a.kind === 0) continue;
+      const square = zoned.zone[Math.floor(a.z / 16) * 8 + Math.floor(a.x / 16)]!;
+      expect(square === 1 ? [palm] : [fig, fern]).toContain(a.kind);
+      grown.set(a.kind, (grown.get(a.kind) ?? 0) + 1);
+      tried++;
+    }
+  }
+  expect(tried).toBeGreaterThan(40);
+  expect([grown.get(palm!)! > 5, grown.get(fig!)! > 5, grown.get(fern!)! > grown.get(fig!)!]).toEqual([true, true, true]);
+});
+
+test("zoned nodes are refused where a square names a zone the layer lacks, or the squares do not cover the map", () => {
+  const zoned = busyMap().nodes[2] as NodeZoned;
+  const refused = (layer: Partial<NodeZoned>): (() => void) => () => void writeMap({ ...busyMap(), nodes: [{ ...zoned, ...layer }] });
+  expect(refused({ zone: zoned.zone.map((z) => (z === 2 ? 3 : z)) })).toThrow("map: a square is in a zone the list of zones does not have");
+  expect(refused({ zoneCell: 32 })).toThrow("map: the zones of zoned nodes are not a byte per square");
+  expect(refused({ zones: [] })).toThrow("map: zoned nodes need");
+  expect(refused({ zones: [{ bare: 0, kinds: [] }, zoned.zones[1]!] })).toThrow("map: zoned nodes need");
 });
 
 test("a map's static pieces are set down in the file's order, and a piece the content lacks stops the load", () => {

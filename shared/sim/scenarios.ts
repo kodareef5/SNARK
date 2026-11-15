@@ -18,6 +18,7 @@ import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, stepBody } from "./character.t
 import type { Heightfield } from "../world/heightfield.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../world/proving.ts";
 import { castWorld, lookDirection, rayHit } from "../world/ray.ts";
+import { NodeField, nodeForms, scatterNodes, type NodeSpot } from "../world/nodes.ts";
 import { StructureStore } from "../world/structures.ts";
 import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../world/snap.ts";
 
@@ -358,6 +359,121 @@ export function creatureHash(rigs: Iterable<Rig>): string {
           n++;
         }
       }
+    }
+  }
+  return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+const STAND_IN_YIELD = [{ item: "core:fiber", min: 1, max: 1 }];
+
+/**
+ * Node kinds standing in for the art: several variants of different weights, boxes off their middles, sizes over a wide range,
+ * and what is left once used up, for the kind and for one variant. Their meshes are the tests' (tests/fixtures/nodes.ts).
+ */
+export const VARIANT_NODES: readonly Def[] = [
+  {
+    type: "node",
+    id: "test:palm",
+    mesh: "box",
+    color: 3,
+    half: [0.2, 3, 0.2],
+    hits: 5,
+    respawnHours: 1,
+    material: "wood",
+    yields: STAND_IN_YIELD,
+    xp: 1,
+    size: [0.6, 1.7],
+    variants: [
+      { mesh: "test:palm_1", boxes: [{ at: [0, 3, 0], half: [0.2, 3, 0.2] }] },
+      { mesh: "test:palm_2", weight: 3, boxes: [{ at: [0, 1.5, 0], half: [0.25, 1.5, 0.25] }, { at: [0.8, 4, 0.3], half: [0.2, 1, 0.2] }] },
+      { mesh: "test:palm_3", weight: 2, boxes: [{ at: [-0.3, 2, 0.1], half: [0.3, 2, 0.15] }], depleted: { mesh: "test:palm_3_depleted", boxes: [{ at: [-0.3, 0.4, 0.1], half: [0.3, 0.4, 0.15] }] } },
+    ],
+    depleted: { mesh: "test:palm_depleted", boxes: [{ at: [0, 0.3, 0], half: [0.25, 0.3, 0.25] }] },
+  },
+  {
+    type: "node",
+    id: "test:boulder",
+    mesh: "box",
+    color: 15,
+    half: [1, 0.7, 0.8],
+    hits: 5,
+    respawnHours: 1,
+    material: "stone",
+    yields: STAND_IN_YIELD,
+    xp: 1,
+    size: [0.5, 2.5],
+    variants: [
+      { mesh: "test:boulder_1", boxes: [{ at: [0, 0.5, 0], half: [1.2, 0.5, 0.7] }, { at: [0.4, 1.3, 0], half: [0.6, 0.3, 0.5] }] },
+      { mesh: "test:boulder_2", boxes: [{ at: [0.2, 0.8, -0.3], half: [0.9, 0.8, 1.1] }] },
+    ],
+  },
+  { type: "node", id: "test:shrub", mesh: "box", color: 16, half: [0.6, 0.5, 0.6], soft: true, hits: 2, respawnHours: 1, yields: STAND_IN_YIELD, xp: 0.5, size: [0.7, 1.4], depleted: { mesh: "test:shrub_depleted" } },
+];
+
+/**
+ * With the definitions of `base` and VARIANT_NODES: those kinds scattered over the proving ground, each node's kind, form (its
+ * variant and size), place and turn hashed; then a seventh of them used up, and bodies walking among the rest and the stumps
+ * and casting rays at them. Equal on both engines means every client grows the same forest the server does and meets it alike.
+ */
+export function nodeHash(base: Registry): string {
+  const { registry: reg, errors } = compileContent([...base.defs.filter((d): d is Def => d !== null), ...VARIANT_NODES]);
+  if (!reg) throw new Error(errors.join("\n"));
+  const hf = buildProvingHeightfield();
+  const [palm, boulder, shrub] = ["test:palm", "test:boulder", "test:shrub"].map((id) => reg.index.get(id)!);
+  const kinds = [palm!, palm!, boulder!, shrub!, 0];
+  const source = scatterNodes(PROVING_DIMS, hf, 0x7ee5, 96, nodeForms(reg), (x, z) => (Math.max(Math.abs(x - 256), Math.abs(z - 256)) > 60 ? kinds : null));
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9747b28c;
+  const f = new Float64Array(10);
+  const bytes = new Uint8Array(f.buffer);
+  const add = (n: number): void => {
+    for (let k = 0; k < n * 8; k++) {
+      h1 = Math.imul(h1 ^ bytes[k]!, 0x01000193);
+      h2 = Math.imul(h2 + bytes[k]!, 0x85ebca6b) ^ (h2 >>> 13);
+    }
+  };
+  const spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  const chunks = PROVING_DIMS.chunksX * PROVING_DIMS.chunksZ;
+  for (let c = 0; c < chunks; c++) {
+    for (let i = 0; i < source.perChunk; i++) {
+      source.at(c, i, spot);
+      f[0] = spot.kind;
+      if (spot.kind === 0) {
+        add(1);
+        continue;
+      }
+      [f[1], f[2], f[3], f[4], f[5]] = [spot.form, spot.x, spot.y, spot.z, spot.yaw];
+      add(6);
+    }
+  }
+  const field = new NodeField(PROVING_DIMS, reg, source);
+  field.retain(27, 8, 1, (chunk, i) => (chunk * 96 + i) % 7 === 0);
+  const world = { hf, structs: new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), nodes: field.store };
+  const rng = new Rng(4417);
+  const moves = ["core:survivor", "core:raptor", "core:parasaur"].map((id) => reg.move[reg.index.get(id)!]!);
+  const bodies = Array.from({ length: 24 }, () => {
+    const b = new Body();
+    b.x = 256 + rng.range(-190, 190);
+    b.z = 256 + rng.range(-190, 190);
+    b.y = hf.heightAt(b.x, b.z) + 3;
+    return b;
+  });
+  const input = bodies.map(() => [0, 127, 0, 0]);
+  const d = [0, 0, 0];
+  for (let t = 0; t < 400; t++) {
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i]!;
+      const inp = input[i]!;
+      if (rng.int(20) === 0) {
+        inp[0] = rng.int(255) - 127;
+        inp[2] = rng.int(65536);
+        inp[3] = rng.int(4);
+      }
+      stepBody(world, b, inp[0]!, inp[1]!, inp[2]!, 0, inp[3]!, moves[i % moves.length]!, TICK_DT);
+      lookDirection(inp[2]!, (i * 911 + t * 37) % 8000 - 4000, d);
+      f[0] = castWorld(world, b.x, b.y + 1.5, b.z, d[0]!, d[1]!, d[2]!, 40);
+      [f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9]] = [rayHit.t, rayHit.ref, rayHit.nx, rayHit.ny, rayHit.nz, b.x, b.y, b.z, b.grounded ? 1 : 0];
+      add(10);
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");

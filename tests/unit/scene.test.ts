@@ -3,13 +3,14 @@
 import { expect, test } from "bun:test";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import type { AssetRequest } from "../../client/core/assets/port.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, SIZE_REGION, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import type { OwnBody } from "../../client/core/render/scene.ts";
 import { Falling } from "../../client/core/rubble.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { PICK_ENTITY, PICK_STRUCTURE } from "../../tools/snap/raster.ts";
+import { SIZE_UNITS } from "../../shared/world/nodes.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
@@ -269,7 +270,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // in hands, a rigid creature, an arrow where it landed, the viewer's own body, beams, a ghost, falling pieces and loose things.
   for (let i = 0; i < 10; i++) structs.add(kind(PANEL), 22 + i * 2, 0, 34, 0, 0, 1);
   for (let i = 0; i < 6; i++) structs.add(kind(i % 2 ? "core:wall" : "core:foundation"), 58 + i * 3, 1.5, 40, 16384 * i, 0, 1);
-  for (let i = 0; i < 4; i++) nodes.add(kind(i % 2 ? "core:tree" : "core:rock"), 20 + i * 9, 2, 46, 0, 0, 1);
+  // Nodes stand on their base, each at a size of its kind and turned.
+  for (let i = 0; i < 4; i++) nodes.add(w.form(i % 2 ? "core:tree" : "core:rock", i * 5), 20 + i * 9, 0, 46, i * 9000, 0, 1);
   for (let i = 0; i < 8; i++) w.place(TUBE, 24 + i * 2.5, 23 + i * 5, { colors: [8, 7, 14, 6], yaw: i });
   [remote.span[3], remote.grown[3]] = [1000, 800];
   w.place("core:survivor", 30, 24, { held: CLUB });
@@ -318,8 +320,43 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
-  // turned from down to up: negating that column of its bone gives that hash again.
-  expect(hash).toBe(57387346);
+  // turned from down to up: negating that column of its bone gives that hash again. It was 57387346 until draw flags took
+  // 16 bits each, and hashed a byte each it was that still; then 2089007614 until the nodes here were turned and sized,
+  // stood on their bases and were drawn sized, and seven more kinds' grey boxes numbered the meshes after the tree's on;
+  // then 1755989135 until three more kinds' grey boxes did the same, and 3019125801 until the dodo was drawn as its
+  // model, so that its grey box left this pack.
+  expect(hash).toBe(946480213);
+});
+
+test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
+  /** Pieces turned several ways, drawn again as sized draws whose instances carry `size`, and what the rasterizer made of each. */
+  const pictures = (tier: Partial<Tier>, size: number): [Uint8ClampedArray, Uint8ClampedArray, number] => {
+    const [plain, sized] = [sceneWorld({}, tier), sceneWorld({}, tier)];
+    for (const w of [plain, sized]) for (let i = 0; i < 3; i++) w.structs.add(w.kind(PANEL), 30 + i * 2, 0, 26, FACING + i * 7000, 0, 1);
+    let flagged = 0;
+    for (let f = 0; f < 8; f++) {
+      plain.frame();
+      const p = sized.frame(100, false);
+      for (const u of p.uploads) for (let i = 0; i * INSTANCE_BYTES < u.data.length; i++) u.data[i * INSTANCE_BYTES + 14 + SIZE_REGION] = size;
+      for (let d = 0; d < p.drawCount; d++) {
+        if (p.drawBuffer[d] === TRANSIENT_BUFFER || (p.drawFlags[d]! & DRAW_SKINNED) !== 0) continue;
+        p.drawFlags[d]! |= DRAW_SIZED;
+        flagged++;
+      }
+      sized.raster.render(p);
+    }
+    expect(flagged).toBeGreaterThanOrEqual(8);
+    const covered = (w: World): number => w.raster.pickKind.filter((k) => k === PICK_STRUCTURE).length;
+    expect(covered(plain)).toBeGreaterThan(600);
+    return [plain.raster.color, sized.raster.color, covered(sized) / covered(plain)];
+  };
+  for (const tier of [{}, tierOf("lowpoly")]) {
+    const [plain, same] = pictures(tier, SIZE_UNITS);
+    expect(same).toEqual(plain);
+    const [, larger, grown] = pictures(tier, SIZE_UNITS * 1.5);
+    expect(larger).not.toEqual(plain);
+    expect(grown).toBeGreaterThan(1.5);
+  }
 });
 
 test("a body is drawn at every level its mesh has, eight of them as well as five", () => {

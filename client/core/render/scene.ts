@@ -1,5 +1,6 @@
 // Structures are drawn per chunk and per mesh as instanced batches. A chunk's instance buffer is rebuilt only when a
-// piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn.
+// piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn. Resource nodes are drawn
+// the same way, each as the mesh of its form (shared/world/nodes.ts) at its size.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
@@ -10,6 +11,7 @@ import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
+import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
@@ -21,8 +23,9 @@ import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials } from "./characters.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
-import { NIGHT_LIGHT, UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
+import { flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod } from "./terrain.ts";
 
 export interface RenderWorld {
@@ -57,6 +60,15 @@ export interface OwnBody {
 
 /** Instance buffers of the node store are numbered from here, clear of chunk indices. */
 export const NODE_BUFFERS = 1 << 20;
+/**
+ * A chunk of nodes is cut into this many cells a side, 16 m across, and a mesh's nodes in it are drawn by cell, each cell
+ * at the level its own distance asks for, so the plants at the far side of a chunk a player stands in are not drawn as
+ * finely as those at his feet. Neighbouring cells of one level are one draw, so a chunk off in the distance is still one
+ * draw for each mesh. Chosen on a wood with every slot filled (tools/bench/nodes.ts): by the chunk, 4.2 M triangles and
+ * 96 draws a frame; by these cells, 3.5 M and 141 (3.4 M and 203 were cells never joined at the cost of a draw); by cells
+ * of 8 m, 3.4 M and 154.
+ */
+export const NODE_CELLS = 4;
 
 /** Metres a rider's feet hang below its seat. Matches server/riding.ts. */
 const SEAT_DROP = 0.55;
@@ -65,6 +77,10 @@ const WATER_MESH = "core:water";
 const BEAM_MESH = "core:beam";
 /** Palette colour of the beam over a place of death. */
 const BEAM_COLOR = 8;
+/** A draw costs about what drawing this many more triangles does. Nodes in neighbouring cells share a draw when that saves more. */
+const RUN_TRIANGLES = 4096;
+/** A node form with nothing to draw: what is left of a used-up node whose mesh no pack has. */
+const HIDDEN = 0xffff;
 /** The one run of a level drawn flat: no material, and all its indices. */
 const FLAT: readonly number[] = [-1, 0, 0];
 const NEAR = 1 << PASS_NEAR;
@@ -88,6 +104,14 @@ interface ChunkBatch {
   ranges: number[];
   /** The level each range was last drawn at, or -1. */
   level: Int8Array;
+  /** Cells a range's instances are sorted into, in order: 1, or for nodes NODE_CELLS squared. */
+  cells: number;
+  /** Per range, the first instance of each cell and the end of the last. Null with one cell. */
+  cellFirst: Uint32Array | null;
+  /** Per range and cell: the box that holds its instances, x, y, z least then most, in metres. */
+  cellBox: Float32Array | null;
+  /** Per range and cell, the level it was last drawn at, or -1. */
+  cellLevel: Int8Array | null;
   minX: number;
   minY: number;
   minZ: number;
@@ -116,6 +140,15 @@ export class Scene {
   readonly meshOfKind: Uint16Array;
   /** Region 0 colour per content index. */
   readonly colorOfKind: Uint8Array;
+  /** Per node form, its pack mesh or HIDDEN, its region 0 colour, and its size in SIZE_UNITS. */
+  private readonly meshOfForm: Uint16Array;
+  private readonly colorOfForm: Uint8Array;
+  private readonly sizeOfForm: Uint8Array;
+  /**
+   * Per mesh, the largest size a node draws it at, as a multiple of its modelled size, or 1. A node mesh's level and textures
+   * are chosen for its distance divided by this, as if every node of it were that size.
+   */
+  private readonly reachOfMesh: Float32Array;
   /** 1 for kinds drawn with their pitch as well as their yaw. */
   private readonly pitched: Uint8Array;
   /** Per species. The size a newborn is drawn at, as a share of a grown one. */
@@ -135,6 +168,13 @@ export class Scene {
   private readonly batches = new Map<number, ChunkBatch>();
   private readonly counts: Uint32Array;
   private readonly cursor: Uint32Array;
+  /** Scratch for the runs of cells a mesh of a chunk of nodes is drawn in. */
+  private readonly runs: number[] = [];
+  /** Cells a chunk of nodes is cut into along each side, to choose levels by. NODE_CELLS, or 1 to choose them by the chunk. */
+  nodeCells = NODE_CELLS;
+  /** Per mesh and cell, as `counts` and `cursor` are per mesh, for a chunk of nodes. */
+  private cellCounts = new Uint32Array(0);
+  private cellCursor = new Uint32Array(0);
   /** Per mesh counted in `counts`, the square of how far off the nearest instance is, and how far along the view they all lie. */
   private readonly nearest: Float32Array;
   private readonly from: Float32Array;
@@ -202,6 +242,20 @@ export class Scene {
       this.meshOfKind[k] = mesh >= 0 ? mesh : missing;
       this.colorOfKind[k] = d.color;
     }
+    const forms = nodeForms(reg);
+    this.meshOfForm = new Uint16Array(forms.count).fill(HIDDEN);
+    this.colorOfForm = new Uint8Array(forms.count);
+    this.sizeOfForm = forms.size;
+    this.reachOfMesh = new Float32Array(table.count).fill(1);
+    for (let f = 1; f < forms.count; f++) {
+      const kind = forms.kind[f]!;
+      // A variant whose mesh no pack has yet stands as its kind's own mesh. What is left of a used-up node is not drawn.
+      const own = forms.mesh[f] === "" ? -1 : table.find(forms.mesh[f]!);
+      const mesh = own >= 0 ? own : forms.depleted[f] === 1 ? HIDDEN : this.meshOfKind[kind]!;
+      this.meshOfForm[f] = mesh;
+      this.colorOfForm[f] = this.colorOfKind[kind]!;
+      if (mesh !== HIDDEN) this.reachOfMesh[mesh] = Math.max(this.reachOfMesh[mesh]!, forms.most[f]! / SIZE_UNITS);
+    }
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
     this.materialFlags = Uint8Array.from(table.materials, (m) => DRAW_TEXTURED | ((m.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((m.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0));
@@ -250,16 +304,9 @@ export class Scene {
     p.camY = cam.y;
     p.camZ = cam.z;
     // The sun rises at six, peaks at noon and sets at eighteen. At night the light comes from a fixed moon and is dimmer.
-    const up = Math.sin(((this.hour - 6) / 12) * Math.PI);
-    const around = Math.cos(((this.hour - 6) / 12) * Math.PI);
-    const dusk = Math.max(0, Math.min(1, (up + 0.1) / 0.4));
-    p.light = NIGHT_LIGHT + (1 - NIGHT_LIGHT) * dusk * dusk * (3 - 2 * dusk);
-    const sx = up > 0.15 ? around * 0.6 : 0.3;
-    const sy = up > 0.15 ? up : 0.8;
-    const sl = Math.hypot(sx, sy, 0.43);
-    p.sun[0] = sx / sl;
-    p.sun[1] = sy / sl;
-    p.sun[2] = 0.43 / sl;
+    p.light = flatLight(this.hour, p.sun);
+    // Lit tiers take their light from the sky table.
+    if (p.tier.lit) skyFrame(this.hour, theSky(), p.frame);
 
     // Under water the view is short and the fog is the water's colour, dimmed.
     const sea = this.world.hf.seaLevel;
@@ -276,8 +323,8 @@ export class Scene {
     this.terrain.select(cam, p, this.viewDistance);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
-    this.structures(cam, this.world.structs, 0);
-    if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS);
+    this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
+    if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
     if (remote) this.entities(cam, remote);
     this.bodies(cam, remote);
     if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
@@ -559,8 +606,11 @@ export class Scene {
     p.transientCount = first + n;
   }
 
-  /** Chunk `c` of the store uses instance buffer `base + c`. */
-  private structures(cam: Camera, store: StructureStore, base: number): void {
+  /**
+   * Chunk `c` of the store uses instance buffer `base + c`. A slot's kind is drawn as `meshOf` and `colorOf` say, and at the
+   * size `sizeOf` says if it is given.
+   */
+  private structures(cam: Camera, store: StructureStore, base: number, meshOf: Uint16Array, colorOf: Uint8Array, sizeOf: Uint8Array | null): void {
     const p = this.packet;
     const world = this.world;
     const chunks = store.chunks;
@@ -584,7 +634,7 @@ export class Scene {
         continue;
       }
       let batch = this.batches.get(id);
-      if (!batch || batch.shape !== t.shape) batch = this.rebuild(store, chunk, id, batch);
+      if (!batch || batch.shape !== t.shape) batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf);
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
       const ax = batch.minX - cam.x;
@@ -604,6 +654,10 @@ export class Scene {
         batch.uploaded = true;
       }
       const passes = cam.passes(ax, ay, az, bx, by, bz);
+      if (batch.cells > 1) {
+        this.nodeRanges(cam, batch, id, dist, x0, z0, passes);
+        continue;
+      }
       for (let r = 0; r < batch.ranges.length; r += 3) {
         const mesh = batch.ranges[r]!;
         const lod = (batch.level[r / 3] = this.assets.choose(this.assets.table.error[mesh]!, dist, batch.level[r / 3]!));
@@ -613,41 +667,164 @@ export class Scene {
     }
   }
 
-  private rebuild(store: StructureStore, chunk: number, id: number, old: ChunkBatch | undefined): ChunkBatch {
+  /**
+   * Draws a chunk of nodes `dist` metres off. A mesh's level is chosen as if every node of it were its kind's largest. Where
+   * the chunk's nearest and farthest points ask for the same level, each mesh is one draw; otherwise each cell takes the level
+   * its own nearest point asks for. Every draw of the chunk is in the depth ranges `passes`.
+   */
+  private nodeRanges(cam: Camera, b: ChunkBatch, id: number, dist: number, x0: number, z0: number, passes: number): void {
+    const cells = b.cells;
+    const first = b.cellFirst!;
+    const box = b.cellBox!;
+    const levels = b.cellLevel!;
+    const fx = Math.max(Math.abs(b.minX - cam.x), Math.abs(b.maxX - cam.x));
+    const fy = Math.max(Math.abs(b.minY - cam.y), Math.abs(b.maxY - cam.y));
+    const fz = Math.max(Math.abs(b.minZ - cam.z), Math.abs(b.maxZ - cam.z));
+    const far = Math.sqrt(fx * fx + fy * fy + fz * fz);
+    const [ox, oy, oz] = [x0 - cam.x, -cam.y, z0 - cam.z];
+    for (let r = 0, q = 0; r < b.ranges.length; r += 3, q++) {
+      const mesh = b.ranges[r]!;
+      const errors = this.assets.table.error[mesh]!;
+      const reach = this.reachOfMesh[mesh]!;
+      const near = this.assets.choose(errors, dist / reach, b.level[q]!);
+      if (near === this.assets.choose(errors, far / reach, b.level[q]!)) {
+        b.level[q] = near;
+        levels.fill(near, q * cells, (q + 1) * cells);
+        this.assets.wantTextured(mesh, near, dist / reach);
+        this.draw(mesh, near, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, DRAW_SIZED, passes);
+        continue;
+      }
+      b.level[q] = -1;
+      // Runs of neighbouring cells, each drawn at the finest level any of its cells asks for. A cell joins the run before it
+      // when they ask for the same level, or for levels one apart and drawing the coarser at the finer costs fewer triangles
+      // than a draw does. So no node is drawn more than one level finer than its own cell asks.
+      const tris = this.trisOfMesh[mesh]!;
+      const runs = this.runs;
+      runs.length = 0;
+      for (let c = 0; c < cells; c++) {
+        const at = q * (cells + 1) + c;
+        const n = first[at + 1]! - first[at]!;
+        if (n === 0) continue;
+        const k = (q * cells + c) * 6;
+        const dx = Math.max(box[k]! - cam.x, cam.x - box[k + 3]!, 0);
+        const dy = Math.max(box[k + 1]! - cam.y, cam.y - box[k + 4]!, 0);
+        const dz = Math.max(box[k + 2]! - cam.z, cam.z - box[k + 5]!, 0);
+        const seen = Math.sqrt(dx * dx + dy * dy + dz * dz) / reach;
+        const level = (levels[q * cells + c] = this.assets.choose(errors, seen, levels[q * cells + c]!));
+        // A run is its first and end instance, its level, the coarsest level a cell of it asked for, its nearest distance, and how many of it asked for that coarsest.
+        const last = runs.length - 6;
+        if (last >= 0 && runs[last + 1] === first[at]) {
+          const [finer, coarser] = [Math.min(runs[last + 2]!, level), Math.max(runs[last + 3]!, level)];
+          const coarse = level > runs[last + 2]! ? n : level < runs[last + 2]! ? runs[last + 1]! - runs[last]! : 0;
+          if (coarser - finer <= 1 && coarse * ((tris[finer] ?? 0) - (tris[coarser] ?? 0)) <= RUN_TRIANGLES) {
+            [runs[last + 1], runs[last + 2], runs[last + 3], runs[last + 4]] = [first[at + 1]!, finer, coarser, Math.min(runs[last + 4]!, seen)];
+            continue;
+          }
+        }
+        runs.push(first[at]!, first[at + 1]!, level, level, seen, 0);
+      }
+      for (let k = 0; k < runs.length; k += 6) {
+        this.assets.wantTextured(mesh, runs[k + 2]!, runs[k + 4]!);
+        this.draw(mesh, runs[k + 2]!, id, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, DRAW_SIZED, passes);
+      }
+    }
+  }
+
+  /**
+   * The instances of a chunk of the store, each mesh's together. A chunk of nodes (`sizeOf` given) has each mesh's sorted into
+   * NODE_CELLS squared cells, one row and then the next back the other way, so that neighbouring cells follow one another.
+   */
+  private rebuild(store: StructureStore, chunk: number, id: number, old: ChunkBatch | undefined, meshOf: Uint16Array, colorOf: Uint8Array, sizeOf: Uint8Array | null): ChunkBatch {
     const world = this.world;
     const t = store.chunks[chunk]!;
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
     const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
-    const counts = this.counts.fill(0);
-    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0) counts[this.meshOfKind[t.kind[s]!]!]!++;
+    const side = sizeOf ? this.nodeCells : 1;
+    const cells = side * side;
+    if (this.cellCounts.length < this.counts.length * cells) {
+      this.cellCounts = new Uint32Array(this.counts.length * cells);
+      this.cellCursor = new Uint32Array(this.counts.length * cells);
+    }
+    const cellOf = (x: number, z: number): number => {
+      const i = Math.min(side - 1, Math.max(0, Math.floor(((x - x0) * side) / CHUNK_SIZE)));
+      const j = Math.min(side - 1, Math.max(0, Math.floor(((z - z0) * side) / CHUNK_SIZE)));
+      return j * side + (j & 1 ? side - 1 - i : i);
+    };
+    const counts = this.cellCounts.fill(0, 0, this.counts.length * cells);
+    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && meshOf[t.kind[s]!] !== HIDDEN) counts[meshOf[t.kind[s]!]! * cells + cellOf(t.x[s]!, t.z[s]!)]!++;
     const ranges: number[] = [];
     let total = 0;
-    for (let m = 0; m < counts.length; m++) {
-      this.cursor[m] = total;
-      if (counts[m]! > 0) ranges.push(m, total, counts[m]!);
-      total += counts[m]!;
+    for (let m = 0; m < this.counts.length; m++) {
+      const from = total;
+      for (let c = 0; c < cells; c++) {
+        this.cellCursor[m * cells + c] = total;
+        total += counts[m * cells + c]!;
+      }
+      if (total > from) ranges.push(m, from, total - from);
     }
+    const n = ranges.length / 3;
     const data = old && old.data.length === total * INSTANCE_BYTES ? old.data : new Uint8Array(total * INSTANCE_BYTES);
     const slots = old && old.slots.length === total ? old.slots : new Uint16Array(total);
     const w = new InstanceWriter(data);
-    const b: ChunkBatch = { shape: t.shape, data, slots, ranges, level: new Int8Array(ranges.length / 3).fill(-1), minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity, uploaded: false };
+    const b: ChunkBatch = {
+      shape: t.shape,
+      data,
+      slots,
+      ranges,
+      level: new Int8Array(n).fill(-1),
+      cells,
+      cellFirst: cells > 1 ? new Uint32Array(n * (cells + 1)) : null,
+      cellBox: cells > 1 ? new Float32Array(n * cells * 6) : null,
+      cellLevel: cells > 1 ? new Int8Array(n * cells).fill(-1) : null,
+      minX: Infinity,
+      minY: Infinity,
+      minZ: Infinity,
+      maxX: -Infinity,
+      maxY: -Infinity,
+      maxZ: -Infinity,
+      uploaded: false,
+    };
+    const box = b.cellBox;
+    if (box) {
+      for (let k = 0; k < box.length; k += 6) box.set([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity], k);
+      for (let q = 0; q < n; q++) {
+        const m = ranges[q * 3]!;
+        for (let c = 0; c < cells; c++) b.cellFirst![q * (cells + 1) + c] = this.cellCursor[m * cells + c]!;
+        b.cellFirst![q * (cells + 1) + cells] = ranges[q * 3 + 1]! + ranges[q * 3 + 2]!;
+        this.cursor[m] = q;
+      }
+    }
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
-      if (kind === 0) continue;
-      const mesh = this.meshOfKind[kind]!;
-      const i = this.cursor[mesh]!++;
+      if (kind === 0 || meshOf[kind] === HIDDEN) continue;
+      const mesh = meshOf[kind]!;
       const x = t.x[s]!;
       const y = t.y[s]!;
       const z = t.z[s]!;
-      w.set(i, x - x0, y, z - z0, t.yaw[s]!, this.colorOfKind[kind]!);
+      const cell = cells > 1 ? cellOf(x, z) : 0;
+      const i = this.cellCursor[mesh * cells + cell]!++;
+      w.set(i, x - x0, y, z - z0, t.yaw[s]!, colorOf[kind]!);
+      if (sizeOf) w.size(i, sizeOf[kind]!);
       slots[i] = s;
-      const r = this.radiusOfMesh[mesh]!;
+      // A node is held by its mesh's own bounds at its size, which for a tall tree are far tighter sideways than a sphere.
+      const k = sizeOf ? sizeOf[kind]! / SIZE_UNITS : 1;
+      const r = sizeOf ? this.assets.table.side[mesh]! * k : this.radiusOfMesh[mesh]!;
+      const lo = sizeOf ? y + this.assets.table.low[mesh]! * k : y - r;
+      const hi = sizeOf ? y + this.assets.table.high[mesh]! * k : y + r;
       if (x - r < b.minX) b.minX = x - r;
-      if (y - r < b.minY) b.minY = y - r;
+      if (lo < b.minY) b.minY = lo;
       if (z - r < b.minZ) b.minZ = z - r;
       if (x + r > b.maxX) b.maxX = x + r;
-      if (y + r > b.maxY) b.maxY = y + r;
+      if (hi > b.maxY) b.maxY = hi;
       if (z + r > b.maxZ) b.maxZ = z + r;
+      if (!box) continue;
+      const at = (this.cursor[mesh]! * cells + cell) * 6;
+      box[at] = Math.min(box[at]!, x - r);
+      box[at + 1] = Math.min(box[at + 1]!, lo);
+      box[at + 2] = Math.min(box[at + 2]!, z - r);
+      box[at + 3] = Math.max(box[at + 3]!, x + r);
+      box[at + 4] = Math.max(box[at + 4]!, hi);
+      box[at + 5] = Math.max(box[at + 5]!, z + r);
     }
     this.batches.set(id, b);
     return b;

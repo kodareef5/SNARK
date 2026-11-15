@@ -1,0 +1,13 @@
+The actions mostly read, but they’re below the stated bar for weight and distinct acting. Flinch and swallowing need the clearest improvements.
+
+- **Peck:** “The bird winds up and jabs downward.” Frame **6 appears to meet the marker in both views**. The strike reads; the recovery feels too tidy. Keep contact fixed, let the chest follow through slightly at **7–8**, and let the heavy head settle last at **10–14**. That gives it an overcommitted, faintly annoyed peck.
+
+- **Flinch, including over walk:** “The bird recoils a little and lifts its wings”—closer to a shrug than being struck. Preserve the delayed recognition at **0–3**, then make **4–6** a sharper neck withdrawal, with the wings following rather than arriving together. Over walk, **6** crowds the head back against the neck: distribute that bend farther down. Keep the feet following the walk; carry the reaction through the upper body.
+
+- **Held:** “A calm bird looks around while someone supports it.” This is the closest to the intended character. At **72–84**, the raised, strongly turned head reads surprisingly alert, and the holder view makes the turn look concentrated beneath the skull. Lower the chin slightly, spread the turn through the neck, and linger in a vacant sideways stare. A small settling of the belly into the arms would sell its weight.
+
+- **Carried:** “A bird hangs with its feet dangling and wings out.” Clear function, but the sustained symmetrical wing spread makes it look posed. Strengthen the existing uneven kick at **6–24** with a small, delayed belly sway around the fixed grip; let one wing droop farther at **36–60**. Aim for a halfhearted adjustment followed by forgetting to struggle.
+
+- **Torpor eating:** “An unconscious bird lifts and moves its head”; swallowing is less certain. The lifts around **8** and **18** look too similar. Make **6–10** clearly the gape, **12–14** the closure, and **16–18** a smaller throat-led gulp, then let the head sink heavily through **20–28**. Keep the eyes shut and body inert.
+
+I see no definite limb-through-body error. The held neck turn deserves the closest inspection; these sampled strips cannot establish playback pops. At **48/20 pixels**, peck survives best and flinch becomes weak—improve its head silhouette before adding facial detail.

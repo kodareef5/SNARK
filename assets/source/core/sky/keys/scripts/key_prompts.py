@@ -1,0 +1,30 @@
+from pathlib import Path
+import json
+ROOT=Path(__file__).resolve().parents[1]
+meta=json.loads((ROOT/'base/points.json').read_text())
+moods={
+'dawn': 'Cleanest light of the day: PALE COOL LUMINOUS CLEAR BLUE overhead, never slate, never gloomy. Luminous pearl and a delicate peach low toward the sun at x=1616, with land still in blue shade. Away side on the left remains pearl with the faintest rose and cool blue shadow. Light air, quiet first light, not fiery sunset.',
+'morning': 'Fresh slightly cool clear azure overhead, luminous pearl/celadon haze at the sea line. Small gold sun at x=1583 y=426. Long warm light and blue shade. Mineral-blue family of the second panel of reference 2. Air feels dew-clear.',
+'noon': 'Hard saturated tropical day. Deep MINERAL BLUE overhead and luminous pearl/celadon sea haze. Keep the blue rich and clear, not electric. Sky at 30 degrees away is pale blue around 150,190,230. Sun at x=1109 y=132. White-gold limestone and turquoise hints in water. Strong brightness gradient from blue ceiling to pale horizon.',
+'afternoon': 'The same tropical mineral-blue day grown warmer and hazier. Softened mineral blue overhead, pale warm pearl low down, a white-gold sun at x=697 y=312. Warm light with cool blue shade. Less severe than noon.',
+'golden': 'The hour players stop to look. BROAD LUMINOUS HONEY/APRICOT warmth fills the entire quarter of sky around the low sun, not a narrow horizon stripe. Sun at x=617 y=466. Gradually turn the warm apricot air into a SOFTER WARMER BLUE overhead. Away on right, quiet blue with restrained rose/pearl low. Warm raking honey on the existing cube planes, blue in their shade. This corrects the narrow warm stripe of reference 2.',
+'sunset': 'Small copper sun bisected by the SEA horizon, centre x=597 y=512. Toward left, copper-orange rim, luminous apricot transition. OVERHEAD STAYS DUSKY CLEAR BLUE, not purple. Violet and a dusty rose atmospheric band belong LOW on the AWAY RIGHT side over the earth blue-grey shadow. Opposite sun, a small moon rising at x=1621 y=512. Ground is low valued blue shade with last copper raking light.',
+'dusk': 'Sun is 8 degrees BELOW horizon: NO SUN DISC. This is luminous twilight, much BRIGHTER THAN NIGHT. Deep clear BLUE zenith, substantially brighter than navy night. Broad afterglow toward LEFT at x=577: ember at sea line, then gold, then pale GREEN-BLUE, then deep blue upward. On RIGHT the rose atmospheric band sits above the earth blue shadow. Moon small at x=1601 y=466. Very few tiny first stars high. The sky is by far the brightest thing over dark but readable land. Do not copy the gloomy dusk in reference 2.',
+'night': 'Readable blue night. Deep marine/ink blue sky, brighter toward the horizon, a quiet silver-blue moon halo at x=1109 y=132. The small moon is 66.73 degrees up. Sparse tiny stars, a few brighter, no milky way or nebula. Grey cube planes catch silver blue light, land quiet blue-grey, low-valued but navigable. No fantasy purple, no teal neon.'
+}
+common='''Use case: lighting-weather. Asset: the {name} production sky mood key for our original tropical survival game.
+Input 1 is the exact equirectangular physical-sky underlay and EDIT TARGET. Input 2 is our own previous style sheet, STYLE REFERENCE ONLY (do not copy its scene). Paint a beautiful lighting-artist colour key over input 1, keeping its projection and geography, guided by its physical brightness directions but with the mood below.
+Output ONE 2048 x 1024 RGB wide 2:1 full 360-degree equirectangular panorama. Horizon at y=512, zenith at y=0; the whole upper half is sky. x=0 and x=2048 join seamlessly. At the zenith all headings are one point, so upper rows are horizontally uniform; no clouds above elevation 65 degrees. Do not turn this into a normal landscape perspective.
+Mood: {mood}
+Hand: Limestone / Lagoon / Ember. Luminous broad quiet paint, smooth layered air with extremely subtle organic paint variation. Economical atmospheric colour key, neither photograph nor cartoon. Just THREE or FOUR VERY FINE translucent broken cirrus filaments below 40 degrees, with huge clean clear-sky areas. No bulky clouds, no cloud ceiling, no uniform diagonal brush scratches. Clouds are accents, not the subject. Keep clear sky around the top centre, the away 30-degree point, and the toward/away 3-degree points. Cloud-free within 4 degrees of each.
+Sun diameter 1.2 degrees, moon 1.5 degrees: only about 7 and 9 pixels tall respectively in this projection, horizontally stretched near the zenith. Broad soft glow, tiny discs. No other bright discs. NO TEXT OR MARKERS.
+Geometry invariant: keep the EXISTING GAME LAND on EXACTLY the same pixels as input 1: all slopes, the level sea line, the three calibration cubes/card, trees, water shapes, checker ground, every silhouette. Only lighting/colour may change. No added vegetation, jungle, mountains, coastline, buildings, scenery, rocks or details. The lower half remains the plain game proving ground. Land is secondary and much darker than the sky. Do not beautify or reconstruct it.''' 
+records=[]
+for k in meta['keys']:
+ p=common.format(name=k['name'].upper(),mood=moods[k['name']])
+ records.append({'name':k['name'],'prompt':p,'references':['underlay/'+k['file'],'style/sheet.png']})
+(ROOT/'reports/key-prompts.json').write_text(json.dumps(records,indent=2))
+with (ROOT/'prompts.md').open('a') as f:
+ f.write('\n\n# Round 2: The registered panorama keys\n\nBuilt-in image tool, one call per key. Input 1: that key’s physical underlay; input 2: our own style sheet. Exact prompts follow. Scripts retain the registered base geometry and perform final projection, exposure and palette corrections.\n')
+ for i,r in enumerate(records,4):
+  f.write(f"\n## {i:02d}: {r['name']} panorama\n\nReferences: "+', '.join(r['references'])+'\n\n```text\n'+r['prompt']+'\n```\n')

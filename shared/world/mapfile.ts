@@ -2,7 +2,7 @@
 // serves it, and each client fetches it, so both stand on the same bytes. Little-endian:
 //
 //   0   "SNMP"
-//   4   u16 version, u16 reserved
+//   4   u16 version (2, and 1 is still read: it had no zoned nodes), u16 reserved
 //   8   u32 hash        FNV-1a of every byte after it
 //   12  u16 chunksX, u16 chunksZ
 //   16  f32 cell        metres between samples, which is 2
@@ -21,6 +21,9 @@
 //               first, set where a node may stand. 0 metres has no bits: a node may stand anywhere.
 //         u8 1, listed: u8 count of kinds, each a content id, then for each chunk a u16 count and 7-byte rows:
 //               u8 kind, u16 x, u16 z in 1/1024 m from the chunk's corner, u16 yaw
+//         u8 2, zoned, scattered as by 0: u32 seed, u16 slots a chunk, u8 count of zones, each a u8 weight of bare ground,
+//               a u8 count of kinds and each a u8 weight and a content id, then u8 metres a square and a byte per square,
+//               row by row from z = 0: the number of its zone counting from 1, or 0 where nothing grows
 //   SPWN  u8 count, then each a string name, i32 x, i32 z in 1/512 m, u16 yaw. The first is where a new survivor arrives.
 //   WILD  where wild creatures live: u16 count, then each a string spawns id, u16 count it holds at 1x, u8 shape (0 a circle,
 //         1 a box), i32 x, i32 z, u32 radius or half width, u32 half depth, in 1/512 m.
@@ -33,10 +36,10 @@ import { CHUNK_SIZE, MAX_CHUNKS_PER_AXIS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y
 import { hashBytes } from "../hash.ts";
 import { BitReader, BitWriter } from "../net/codec.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
-import { scatterNodes, type NodeSource } from "./nodes.ts";
+import { formOf, mix, nodeForms, scatterNodes, type NodeSource } from "./nodes.ts";
 import type { StructureStore } from "./structures.ts";
 
-export const MAP_VERSION = 1;
+export const MAP_VERSION = 2;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 44;
 /** Slots a chunk's nodes may take over every layer (shared/world/nodes.ts). */
@@ -76,6 +79,25 @@ export interface NodeScatter {
   readonly allow: Uint8Array | null;
 }
 
+/** Kinds that grow in a zone, each with its weight, and the weight of bare ground among them. */
+export interface NodeZone {
+  readonly bare: number;
+  readonly kinds: readonly (readonly [id: string, weight: number])[];
+}
+
+/** Nodes scattered by a hash, each square of the map in a zone that says which kinds grow there and how thickly. */
+export interface NodeZoned {
+  readonly seed: number;
+  readonly perChunk: number;
+  readonly zones: readonly NodeZone[];
+  /** Metres a square of `zone`: a whole number that divides a chunk's 64. */
+  readonly zoneCell: number;
+  /** A byte per square, row by row from z = 0: the number of its zone counting from 1, or 0 where nothing grows. */
+  readonly zone: Uint8Array;
+}
+
+export type NodeLayer = NodeScatter | NodeList | NodeZoned;
+
 /** Nodes placed one by one. Chunk `c` holds rows `first[c]` up to `first[c + 1]`, and a row's place among them is its slot. */
 export interface NodeList {
   readonly kinds: readonly string[];
@@ -101,7 +123,7 @@ export interface MapData {
   readonly heights: Uint16Array;
   readonly tint: Uint8Array;
   readonly statics: readonly MapStatic[];
-  readonly nodes: readonly (NodeScatter | NodeList)[];
+  readonly nodes: readonly NodeLayer[];
   /** At least one. The first is where a new survivor arrives. */
   readonly spawns: readonly MapSpawn[];
   /** Spawn regions, each naming a `spawns` definition and the creatures it holds. They are added to those of the map's definition. */
@@ -113,7 +135,7 @@ export interface MapFile extends MapData {
   readonly hash: number;
 }
 
-function slotsOf(layer: NodeScatter | NodeList, chunks: number): number {
+function slotsOf(layer: NodeLayer, chunks: number): number {
   if (!("first" in layer)) return layer.perChunk;
   let most = 0;
   for (let c = 0; c < chunks; c++) most = Math.max(most, layer.first[c + 1]! - layer.first[c]!);
@@ -145,6 +167,14 @@ function check(m: MapData): void {
       const rows = layer.first[chunksX * chunksZ];
       if (layer.first.length !== chunksX * chunksZ + 1 || rows !== layer.kind.length || rows !== layer.x.length || rows !== layer.z.length || rows !== layer.yaw.length) fail("a list of nodes does not match its chunks");
       if (layer.kinds.length > 255 || layer.kind.some((k) => k >= layer.kinds.length)) fail("a listed node is of a kind its list does not name");
+      continue;
+    }
+    if ("zone" in layer) {
+      const cell = layer.zoneCell;
+      const weighed = (z: NodeZone): boolean => whole(z.bare, 0, 255) && whole(z.kinds.length, 0, 255) && z.kinds.every(([, weight]) => whole(weight, 1, 255)) && z.bare + z.kinds.length > 0;
+      if (!whole(layer.perChunk, 1, NODE_SLOTS) || !whole(layer.zones.length, 1, 255) || !layer.zones.every(weighed)) fail("zoned nodes need 1 to 256 slots a chunk and 1 to 255 zones, each of 0 to 255 kinds of weight 1 to 255 and bare ground of weight 0 to 255");
+      if (!whole(cell, 1, CHUNK_SIZE) || CHUNK_SIZE % cell !== 0 || layer.zone.length !== (sizeX / cell) * (sizeZ / cell)) fail("the zones of zoned nodes are not a byte per square of 1, 2, 4, 8, 16, 32 or 64 m");
+      if (layer.zone.some((z) => z > layer.zones.length)) fail("a square is in a zone the list of zones does not have");
       continue;
     }
     const cell = layer.allowCell;
@@ -268,6 +298,23 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   }
   for (const layer of m.nodes) {
     section("NODE", () => {
+      if ("zone" in layer) {
+        o.u8(2);
+        o.u32(layer.seed);
+        o.u16(layer.perChunk);
+        o.u8(layer.zones.length);
+        for (const z of layer.zones) {
+          o.u8(z.bare);
+          o.u8(z.kinds.length);
+          for (const [id, weight] of z.kinds) {
+            o.u8(weight);
+            o.text(id);
+          }
+        }
+        o.u8(layer.zoneCell);
+        o.put(layer.zone);
+        return;
+      }
       if ("first" in layer) {
         o.u8(1);
         o.u8(layer.kinds.length);
@@ -376,8 +423,24 @@ class In {
   }
 }
 
-function readNodes(r: In, dims: MapDims): NodeScatter | NodeList {
-  if (r.u8() === 0) {
+function readNodes(r: In, dims: MapDims): NodeLayer {
+  const type = r.u8();
+  if (type === 2) {
+    const seed = r.u32();
+    const perChunk = r.u16();
+    const zones = Array.from({ length: r.u8() }, (): NodeZone => {
+      const bare = r.u8();
+      const kinds = Array.from({ length: r.u8() }, (): [string, number] => {
+        const weight = r.u8();
+        return [r.text(), weight];
+      });
+      return { bare, kinds };
+    });
+    const zoneCell = r.u8();
+    return { seed, perChunk, zones, zoneCell, zone: r.take(r.bytes.length - r.at) };
+  }
+  if (type > 2) throw new Error(`map: nodes of type ${type} are not ones this build reads`);
+  if (type === 0) {
     const seed = r.u32();
     const perChunk = r.u16();
     const kinds = Array.from({ length: r.u8() }, (): [string, number] => {
@@ -418,7 +481,7 @@ function read(r: In): MapData {
   let heights: Uint16Array | null = null;
   let tint: Uint8Array | null = null;
   const statics: MapStatic[] = [];
-  const nodes: (NodeScatter | NodeList)[] = [];
+  const nodes: NodeLayer[] = [];
   const spawns: MapSpawn[] = [];
   const regions: MapZone[] = [];
   while (r.at < r.bytes.length) {
@@ -465,7 +528,7 @@ export function parseMap(file: Uint8Array): MapFile {
   const r = new In(file);
   if (file.length < HEADER_BYTES || r.u32() !== MAGIC) throw new Error("map: this is not a map file");
   const version = r.u16();
-  if (version !== MAP_VERSION) throw new Error(`map: version ${version} is not one this build reads`);
+  if (version !== MAP_VERSION && version !== 1) throw new Error(`map: version ${version} is not one this build reads`);
   r.at += 2;
   const hash = r.u32();
   if (hash !== hashBytes(file.subarray(12))) throw new Error("map: the file is damaged: its hash is not that of its bytes");
@@ -485,21 +548,34 @@ export function mapHeightfield(map: MapData): Heightfield {
   return hf;
 }
 
-function layerSource(map: MapData, hf: Heightfield, reg: Registry, layer: NodeScatter | NodeList): NodeSource {
-  const dims = map.dims;
+/** Content indices repeated for weight, with 0 for each share of bare ground. A kind this content lacks is left out, and the rest share its slots. */
+function weighed(reg: Registry, kinds: readonly (readonly [id: string, weight: number])[], bare = 0): number[] {
+  const out: number[] = [];
+  for (const [id, weight] of kinds) {
+    const k = reg.index.get(id);
+    if (k !== undefined) for (let i = 0; i < weight; i++) out.push(k);
+  }
+  for (let i = 0; i < bare; i++) out.push(0);
+  return out;
+}
+
+function layerSource(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeLayer): NodeSource {
+  const forms = nodeForms(reg);
+  const wide = (cell: number): number => (dims.chunksX * CHUNK_SIZE) / cell;
+  if ("zone" in layer) {
+    const zones: (readonly number[] | null)[] = [null, ...layer.zones.map((z) => weighed(reg, z.kinds, z.bare))];
+    const { zone, zoneCell: cell } = layer;
+    const across = wide(cell);
+    return scatterNodes(dims, hf, layer.seed, layer.perChunk, forms, (x, z) => zones[zone[Math.floor(z / cell) * across + Math.floor(x / cell)]!]!);
+  }
   if (!("first" in layer)) {
-    // A kind this content lacks is left out, and the rest share its slots.
-    const kinds: number[] = [];
-    for (const [id, weight] of layer.kinds) {
-      const k = reg.index.get(id);
-      if (k !== undefined) for (let i = 0; i < weight; i++) kinds.push(k);
-    }
+    const kinds = weighed(reg, layer.kinds);
     const { allow, allowCell: cell } = layer;
-    if (!allow) return scatterNodes(dims, hf, layer.seed, layer.perChunk, kinds, reg.halfY, () => true);
-    const wide = (dims.chunksX * CHUNK_SIZE) / cell;
-    return scatterNodes(dims, hf, layer.seed, layer.perChunk, kinds, reg.halfY, (x, z) => {
-      const bit = Math.floor(z / cell) * wide + Math.floor(x / cell);
-      return ((allow[bit >> 3]! >> (bit & 7)) & 1) === 1;
+    if (!allow) return scatterNodes(dims, hf, layer.seed, layer.perChunk, forms, () => kinds);
+    const across = wide(cell);
+    return scatterNodes(dims, hf, layer.seed, layer.perChunk, forms, (x, z) => {
+      const bit = Math.floor(z / cell) * across + Math.floor(x / cell);
+      return ((allow[bit >> 3]! >> (bit & 7)) & 1) === 1 ? kinds : null;
     });
   }
   const kinds = layer.kinds.map((id) => reg.index.get(id) ?? 0);
@@ -510,28 +586,35 @@ function layerSource(map: MapData, hf: Heightfield, reg: Registry, layer: NodeSc
       const kind = row < layer.first[chunk + 1]! ? kinds[layer.kind[row]!]! : 0;
       out.kind = kind;
       if (kind === 0) return;
+      // A listed node's variant and size come from its place, as a scattered one's do.
+      out.form = formOf(forms, kind, mix(chunk * 256 + index, layer.x[row]! | (layer.z[row]! << 16), layer.yaw[row]!));
       out.x = chunkCx(dims, chunk) * CHUNK_SIZE + layer.x[row]! / NODE_UNITS;
       out.z = chunkCz(dims, chunk) * CHUNK_SIZE + layer.z[row]! / NODE_UNITS;
-      out.y = hf.heightAt(out.x, out.z) + reg.halfY[kind]!;
+      out.y = hf.heightAt(out.x, out.z);
       out.yaw = layer.yaw[row]!;
+    },
+  };
+}
+
+/** The nodes of `layers` on `hf`, their slots in a chunk one layer's after another's, or null if there are none. */
+export function nodeLayers(dims: MapDims, hf: Heightfield, reg: Registry, layers: readonly NodeLayer[]): NodeSource | null {
+  const sources = layers.map((layer) => layerSource(dims, hf, reg, layer));
+  if (sources.length < 2) return sources[0] ?? null;
+  return {
+    perChunk: sources.reduce((sum, l) => sum + l.perChunk, 0),
+    at(chunk, index, out) {
+      out.kind = 0;
+      for (const l of sources) {
+        if (index < l.perChunk) return l.at(chunk, index, out);
+        index -= l.perChunk;
+      }
     },
   };
 }
 
 /** The map's resource nodes for `hf`, which is its ground, or null if it has none. The server and every client call this. */
 export function mapNodes(map: MapData, hf: Heightfield, reg: Registry): NodeSource | null {
-  const layers = map.nodes.map((layer) => layerSource(map, hf, reg, layer));
-  if (layers.length < 2) return layers[0] ?? null;
-  return {
-    perChunk: layers.reduce((sum, l) => sum + l.perChunk, 0),
-    at(chunk, index, out) {
-      out.kind = 0;
-      for (const l of layers) {
-        if (index < l.perChunk) return l.at(chunk, index, out);
-        index -= l.perChunk;
-      }
-    },
-  };
+  return nodeLayers(map.dims, hf, reg, map.nodes);
 }
 
 /** Server side: sets the map's static pieces down in `structs`. Clients receive them by replication. */

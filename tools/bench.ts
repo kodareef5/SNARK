@@ -24,7 +24,7 @@ import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
 import { BOX_SELF, CMD_MOVE, InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, writeCommand, writeHello, writeInputs } from "../shared/net/protocol.ts";
 import { defaultLook } from "../shared/anim/look.ts";
-import { scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
+import { nodeForms, scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { Rng } from "../shared/rng.ts";
@@ -43,6 +43,7 @@ import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
 import { benchAgent } from "./bench/agent.ts";
 import { benchCollide } from "./bench/collide.ts";
+import { benchDenseWood, benchNodes } from "./bench/nodes.ts";
 import { benchHunt } from "./bench/hunt.ts";
 import { benchSpawn } from "./bench/spawn.ts";
 import { benchLatency } from "./bench/latency.ts";
@@ -196,7 +197,7 @@ const hf = buildTerrain();
 const mapHash = hashBytes(new Uint8Array(hf.heights.buffer, 0, 4096));
 // Trees, rocks and bushes cover the whole map, at 160 slots a chunk, most of them filled.
 const nodeKinds = ["core:tree", "core:tree", "core:tree", "core:rock", "core:rock", "core:bush"].map((id) => reg.index.get(id)!);
-const nodeSource = scatterNodes(DIMS, hf, 0xbe7c, 160, nodeKinds, reg.halfY, () => true);
+const nodeSource = scatterNodes(DIMS, hf, 0xbe7c, 160, nodeForms(reg), () => nodeKinds);
 // The entity store is a server's own: it starts at 4,096 slots and doubles as the world fills, up to the MaxEntities setting.
 // Settings that allow less than these sections put in the world are passed over, or the spawning below would not end.
 const ENTITY_MAX = Math.max(benchRules.num("MaxEntities"), CREATURES + DORMANT_EXTRA + 16384);
@@ -325,7 +326,7 @@ record("process memory (resident)", mb(process.memoryUsage().rss), "MB", 2048);
 // ---------------------------------------------------------------- nodes
 section("Resource nodes: map data plus a sparse overlay");
 {
-  const spot: NodeSpot = { kind: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  const spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
   let onMap = 0;
   t0 = performance.now();
   for (let chunk = 0; chunk < DIMS.chunksX * DIMS.chunksZ; chunk++) {
@@ -1186,6 +1187,8 @@ section("Asset library (headless): 64 rocks of five levels and a 263,169-vertex 
 
 benchAgent(section, record);
 benchCollide(section, record);
+benchNodes(section, record);
+benchDenseWood(section, record);
 benchHunt(section, record);
 benchSpawn(section, record);
 benchLatency(section, record);

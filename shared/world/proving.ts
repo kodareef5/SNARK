@@ -5,7 +5,8 @@ import type { MapDims } from "../coords.ts";
 import type { Registry } from "../content/registry.ts";
 import { Rng } from "../rng.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
-import { scatterNodes, type NodeSource } from "./nodes.ts";
+import { nodeLayers, type NodeLayer } from "./mapfile.ts";
+import type { NodeSource } from "./nodes.ts";
 import type { StructureStore } from "./structures.ts";
 
 export const PROVING_ID = "proving:1";
@@ -176,21 +177,56 @@ export function populateProving(structs: StructureStore, hf: Heightfield, reg: R
   for (let z = 350; z <= 500; z += 50) put(pillar, 256, hf.heightAt(256, z) + 3, z);
 }
 
-/** Node slots per chunk. About a third end up holding a node. */
+/** Node slots per chunk of the first layer, the trees, rocks and bushes it has always had. About a third end up holding a node. */
 export const PROVING_NODES_PER_CHUNK = 96;
+/** And of the second, the other kinds, which grow by the height of the ground. */
+export const PROVING_ZONED_PER_CHUNK = 48;
+const ZONE_CELL = 4;
+/** Metres from the middle, along either axis, where the other kinds begin. */
+const OTHER_KINDS = 130;
 
-/** Trees, rocks and bushes everywhere outside the plaza that is dry and not too steep. */
-export function provingNodes(hf: Heightfield, reg: Registry): NodeSource {
-  const kinds: number[] = [];
-  for (const [id, weight] of [["core:tree", 5], ["core:rock", 3], ["core:bush", 3]] as const) {
-    const k = reg.index.get(id);
-    if (k !== undefined) for (let i = 0; i < weight; i++) kinds.push(k);
+/**
+ * The proving ground's nodes, as its map file holds them. Every node stands 3 m or more beyond the plaza's edge. The first layer
+ * scatters trees, rocks and bushes over all of that, as it always has, so a world saved before the second came keeps every node
+ * where it was and of its kind. The second grows the other kinds from 130 m out, so the woods nearest the plaza are as they
+ * were, by a simple rule: mangroves, palms, palmetto and sea grape by the water, palms, figs, ferns and creeper on the low
+ * ground, and figs, banyans, rubble and metal rocks higher up.
+ */
+export function provingNodeLayers(hf: Heightfield): NodeLayer[] {
+  const side = PROVING_DIMS.chunksX * 64;
+  const beyond = (x: number, z: number): boolean => Math.max(Math.abs(x - CENTER), Math.abs(z - CENTER)) > PLAZA + 3;
+  // A bit is a square metre, set by its middle.
+  const allow = new Uint8Array((side * side) / 8);
+  for (let z = 0; z < side; z++) for (let x = 0; x < side; x++) if (beyond(x + 0.5, z + 0.5)) allow[(z * side + x) >> 3]! |= 1 << (x & 7);
+  const across = side / ZONE_CELL;
+  const zone = new Uint8Array(across * across);
+  for (let j = 0; j < across; j++) {
+    for (let i = 0; i < across; i++) {
+      // A square is in a zone by the ground at its middle.
+      const x = (i + 0.5) * ZONE_CELL;
+      const z = (j + 0.5) * ZONE_CELL;
+      if (Math.max(Math.abs(x - CENTER), Math.abs(z - CENTER)) < OTHER_KINDS) continue;
+      const above = hf.heightAt(x, z) - PROVING_SEA_LEVEL;
+      zone[j * across + i] = above < 2.5 ? 1 : above < 8.5 ? 2 : 3;
+    }
   }
-  const outside = (x: number, z: number): boolean => {
-    const dx = Math.abs(x - CENTER);
-    const dz = Math.abs(z - CENTER);
-    // Nodes start 3 m beyond the plaza's edge, so there is something to gather a short walk from the spawn.
-    return (dx > dz ? dx : dz) > PLAZA + 3;
-  };
-  return scatterNodes(PROVING_DIMS, hf, 0x51ab, PROVING_NODES_PER_CHUNK, kinds, reg.halfY, outside);
+  return [
+    { seed: 0x51ab, perChunk: PROVING_NODES_PER_CHUNK, kinds: [["core:tree", 5], ["core:rock", 3], ["core:bush", 3]], allowCell: 1, allow },
+    {
+      seed: 0x51ac,
+      perChunk: PROVING_ZONED_PER_CHUNK,
+      zones: [
+        { bare: 6, kinds: [["core:mangrove", 4], ["core:palm", 3], ["core:palmetto", 3], ["core:seagrape", 2]] },
+        { bare: 8, kinds: [["core:palm", 3], ["core:fig", 1], ["core:fern", 3], ["core:palmetto", 2], ["core:rubble", 1], ["core:creeper", 1]] },
+        { bare: 8, kinds: [["core:fig", 2], ["core:banyan", 1], ["core:fern", 3], ["core:rubble", 2], ["core:palm", 1], ["core:metal_rock", 1]] },
+      ],
+      zoneCell: ZONE_CELL,
+      zone,
+    },
+  ];
+}
+
+/** The proving ground's nodes on `hf`, which is its ground. */
+export function provingNodes(hf: Heightfield, reg: Registry): NodeSource {
+  return nodeLayers(PROVING_DIMS, hf, reg, provingNodeLayers(hf))!;
 }
