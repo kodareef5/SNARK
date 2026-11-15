@@ -1,16 +1,16 @@
 chunk-report
-{"mapHash":2980314778,"total":2984014,"maximum":999,"cap":999,"passed":true}
+{"mapHash":3644417512,"total":3006090,"maximum":1830,"cap":2000,"passed":true}
 
 ruin-walk
 {
-  "mapHash": 2980314778,
+  "mapHash": 3644417512,
   "includes": "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent stair exits in both directions",
-  "sampledBuildings": 1949,
-  "stairRoutes": 4344,
-  "passed": 4344,
+  "sampledBuildings": 1951,
+  "stairRoutes": 4348,
+  "passed": 4348,
   "failed": 0,
-  "escapeRoutes": 3416,
-  "escapePassed": 3416,
+  "escapeRoutes": 3420,
+  "escapePassed": 3420,
   "escapeFailed": 0,
   "results": [],
   "escapeResults": []
@@ -18,31 +18,31 @@ ruin-walk
 
 room-walk
 {
-  "mapHash": 2980314778,
-  "routes": 19288,
+  "mapHash": 3644417512,
+  "routes": 19520,
   "kinds": {
-    "suites": 6470,
+    "suites": 6554,
     "storage": 1335,
-    "rubble": 167,
-    "refuge": 100,
+    "rubble": 168,
+    "refuge": 106,
     "classrooms": 1533,
-    "rooms": 6004,
+    "rooms": 6144,
     "lobby": 246,
     "wards": 126,
     "shops": 1303,
     "breach": 5,
-    "street-gap": 1999
+    "street-gap": 2000
   },
-  "passed": 19288,
+  "passed": 19520,
   "failed": 0,
   "failures": []
 }
 
 access-walk
 {
-  "mapHash": 2980314778,
-  "routes": 23809,
-  "buildingsWithApproach": 14571,
+  "mapHash": 3644417512,
+  "routes": 23834,
+  "buildingsWithApproach": 14594,
   "coresWithoutStreetApproach": [
     {
       "part": 2000120308,
@@ -169,14 +169,14 @@ access-walk
       "name": null
     }
   ],
-  "passed": 23809,
+  "passed": 23834,
   "failed": 0,
   "failures": []
 }
 
 bridge-walk
 {
-  "mapHash": 2980314778,
+  "mapHash": 3644417512,
   "ways": 1281,
   "built": 1281,
   "deckRuns": 1237,
@@ -189,12 +189,12 @@ bridge-walk
   },
   "passed": 2070,
   "failed": 0,
-  "steps": 729839,
+  "steps": 729495,
   "failures": []
 }
 
 walk
-host on core:san-francisco in 2047 ms, 281 spawn regions; 1427 MB resident, 658 MB of heap
+host on core:san-francisco in 1615 ms, 281 spawn regions; 1563 MB resident, 975 MB of heap
 ok   Golden Gate Bridge Vista Point arrived 0.0 m from its point at y 75.1; walked 3 m to y 75.1, 27 m to y 70.3, 27 m to y 72.8, 27 m to y 75.3
 ok   Presidio Tunnel Tops arrived 0.0 m from its point at y 11.0; walked 27 m to y 10.0, 27 m to y 11.5, 27 m to y 11.5, 27 m to y 11.0
 ok   Marina Green   arrived 0.0 m from its point at y 2.4; walked 27 m to y 2.4, 27 m to y 2.4, 24 m to y 2.4, 27 m to y 2.4
@@ -205,22 +205,23 @@ ok   Embarcadero Plaza arrived 0.0 m from its point at y 2.6; walked 27 m to y 1
 ok   Alamo Square   arrived 0.0 m from its point at y 75.6; walked 27 m to y 75.4, 25 m to y 74.0, 23 m to y 72.7, 27 m to y 75.7
 ok   Lafayette Park arrived 0.0 m from its point at y 113.0; walked 26 m to y 112.5, 27 m to y 111.2, 24 m to y 109.9, 27 m to y 113.4
 ok   Panhandle      arrived 0.0 m from its point at y 71.9; walked 27 m to y 72.5, 22 m to y 73.4, 21 m to y 72.1, 27 m to y 72.0
-1032 wild creatures after 391 s of virtual time; 1477 MB resident, 658 MB of heap, server and client in one process
+1029 wild creatures after 391 s of virtual time; 1555 MB resident, 975 MB of heap, server and client in one process
 
 obelisk-walk
-core:san-francisco: 2984014 static pieces and 248302 standing nodes in the way, 65.3% of samples closed, in 1.1 s
+core:san-francisco: 3006090 static pieces and 256299 standing nodes in the way, 65.4% of samples closed, in 0.9 s
 ok   Marina Green           terminal at 4136.6, 4907.3 facing 74 degrees: from Marina Green, 223 m of way, walked in 48 s to 0.07 m of its front at y 2.6
 ok   Embarcadero            terminal at 568.2, 3550.9 facing 307 degrees: from Embarcadero Plaza, 227 m of way, walked in 50 s to 0.10 m of its front at y 2.4
 ok   Panhandle              terminal at 4904.7, 1189.1 facing 101 degrees: from Panhandle, 182 m of way, walked in 40 s to 0.07 m of its front at y 69.6
-3 of 3 reached in 1.2 s
+3 of 3 reached in 1.0 s
 
 server-bench
 {
-  "milliseconds": 1779.1,
-  "residentMiB": 1188.3,
-  "heapMiB": 468.2,
-  "peakResidentMiB": 1189.5,
-  "mapBytes": 100967026,
+  "milliseconds": 1386.4,
+  "residentMiB": 1211.6,
+  "heapMiB": 580.9,
+  "peakResidentMiB": 1214.4,
+  "mapBytes": 101566434,
   "spawnRegions": 281,
   "scope": "createHost, real pack clips, wild spawner; no HTTP listener, persistence or clients"
 }
+
