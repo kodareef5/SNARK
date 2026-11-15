@@ -104,9 +104,7 @@
   },
   "ruins": {
     "rules_from": "miami",
-    "blocks_per_footprint": 130,
-    "budgets": {"maxPlayableFloors": 4},
-    "budgets_why": "The Strip's towers stand closer than a chunk of 999 pieces holds at eight playable floors each: at eight, 151 footprints were refused and 18 cut to 8 m"
+    "blocks_per_footprint": 130
   },
   "future": {
     "spans_why": "None: no bridge in the frame crosses water",
