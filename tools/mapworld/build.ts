@@ -21,6 +21,8 @@ import { makeNodes, ZONE_CELL } from "./nodes.ts";
 import { placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
 import { STATIC_LAYERS, siteOf } from "./statics.ts";
 import { makeTint } from "./tint.ts";
+import { vocabulary } from "./ruin-vocabulary.ts";
+import { growRuins } from "./ruin-growth.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
@@ -57,19 +59,20 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const tint = makeTint(ground, world);
   lap("colour");
   const spawns = placeSpawns(ground, world, toSample, size);
-  const regions = placeRegions(ground, size);
+  const regions = placeRegions(ground, size, spawns, world.easyAroundSpawns ?? 0);
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
   // so none stands in it or before its terminal.
   const clearings = [...spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2, 16] as const), ...obelisks.map((o) => [(size - o.x) / 2, (size - o.z) / 2, 49] as const)];
-  const nodes = makeNodes(ground, world, (col, row) => site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1);
+  const growth = world.heaps === false ? vocabulary(source).growth : undefined;
+  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1) || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
 
   const layers = join(ROOT, "var/maps", name, "layers");
   rmSync(layers, { recursive: true, force: true });
   mkdirSync(layers, { recursive: true });
   const put = (file: string, data: string | Uint8Array): void => writeFileSync(join(layers, file), data);
-  put("map.json", `${JSON.stringify({ id: world.id, chunks: [chunks, chunks], minY: world.minY, stepY: world.stepY, seaLevel: 0 }, null, 2)}\n`);
+  put("map.json", `${JSON.stringify({ id: world.id, chunks: [chunks, chunks], minY: world.minY, stepY: world.stepY, seaLevel: world.sea === false ? null : 0 }, null, 2)}\n`);
   const heights = new Uint8Array(n * n * 2);
   const view = new DataView(heights.buffer);
   let deepest = Infinity;
@@ -93,7 +96,13 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   if (statics.length > 0) put("statics.json", lines(statics));
   lap(`layers in ${layers}`);
 
-  const map = readLayers(layers);
+  let map = readLayers(layers);
+  if (growth) {
+    const grown = growRuins(map, compiled.registry, site, growth);
+    map = { ...map, nodes: [grown.layer] };
+    writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "growth.json"), JSON.stringify(grown.summary, null, 2) + "\n");
+    lap("growth placed around structures and routes");
+  }
   const bytes = writeMap(map);
   const file = join(ROOT, "var/maps", `${name}.snmap`);
   writeFileSync(`${file}.tmp`, bytes);

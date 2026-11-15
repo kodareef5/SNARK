@@ -1,0 +1,1858 @@
+{
+  "forms": {
+    "house": {
+      "shell": "masonry",
+      "inside": "domestic",
+      "roof": "hip",
+      "front": "porch",
+      "windowEvery": 3,
+      "plan": "block",
+      "marker": "chimney"
+    },
+    "apartment": {
+      "shell": "masonry",
+      "inside": "rooms",
+      "roof": "service",
+      "front": "balconies",
+      "windowEvery": 2,
+      "plan": "block"
+    },
+    "hotel": {
+      "shell": "masonry",
+      "inside": "rooms",
+      "roof": "stepped",
+      "front": "deco",
+      "windowEvery": 2,
+      "plan": "block",
+      "marker": "deco-crown"
+    },
+    "office": {
+      "shell": "curtain",
+      "inside": "suites",
+      "roof": "service",
+      "front": "lobby",
+      "windowEvery": 3,
+      "plan": "block",
+      "marker": "office-services",
+      "terrace": 1
+    },
+    "garage": {
+      "shell": "open",
+      "inside": "parking",
+      "roof": "bare",
+      "front": "ribbon",
+      "windowEvery": 1,
+      "plan": "block",
+      "marker": "parking-sign"
+    },
+    "warehouse": {
+      "shell": "industrial",
+      "inside": "storage",
+      "roof": "monitor",
+      "front": "loading",
+      "windowEvery": 5,
+      "plan": "block"
+    },
+    "school": {
+      "shell": "masonry",
+      "inside": "classrooms",
+      "roof": "flat",
+      "front": "arcade",
+      "windowEvery": 2,
+      "plan": "court",
+      "marker": "school-clock",
+      "terrace": 1
+    },
+    "church": {
+      "shell": "masonry",
+      "inside": "nave",
+      "roof": "nave",
+      "front": "belfry",
+      "windowEvery": 4,
+      "plan": "block"
+    },
+    "station": {
+      "shell": "industrial",
+      "inside": "concourse",
+      "roof": "canopy",
+      "front": "clock",
+      "windowEvery": 3,
+      "plan": "platform"
+    },
+    "hospital": {
+      "shell": "masonry",
+      "inside": "wards",
+      "roof": "service",
+      "front": "ambulance",
+      "windowEvery": 2,
+      "plan": "wards",
+      "marker": "medical-cross",
+      "terrace": 2
+    },
+    "shop": {
+      "shell": "masonry",
+      "inside": "shops",
+      "roof": "flat",
+      "front": "shopfront",
+      "windowEvery": 1,
+      "plan": "row",
+      "marker": "shop-sign"
+    },
+    "civic": {
+      "shell": "masonry",
+      "inside": "suites",
+      "roof": "stepped",
+      "front": "portico",
+      "windowEvery": 3,
+      "plan": "block",
+      "marker": "civic-parapet",
+      "terrace": 1
+    },
+    "hall": {
+      "shell": "industrial",
+      "inside": "concourse",
+      "roof": "monitor",
+      "front": "arcade",
+      "windowEvery": 4,
+      "plan": "block"
+    },
+    "firehouse": {
+      "shell": "masonry",
+      "inside": "storage",
+      "roof": "service",
+      "front": "engine-bays",
+      "windowEvery": 3,
+      "plan": "block",
+      "marker": "hose-tower"
+    },
+    "fabric": {
+      "shell": "masonry",
+      "inside": "suites",
+      "roof": "flat",
+      "front": "porch",
+      "windowEvery": 3,
+      "plan": "block"
+    }
+  },
+  "choices": [
+    {
+      "id": "ordinary masonry",
+      "when": {},
+      "form": "fabric",
+      "collapse": [
+        "shear",
+        "hanging",
+        "burnt"
+      ]
+    },
+    {
+      "id": "domestic rooms",
+      "when": {
+        "recipe": [
+          "house"
+        ]
+      },
+      "form": "house"
+    },
+    {
+      "id": "apartments",
+      "when": {
+        "kind": [
+          "apartment_block",
+          "tower_residential",
+          "apartments"
+        ]
+      },
+      "form": "apartment"
+    },
+    {
+      "id": "apartment fallback",
+      "when": {
+        "recipe": [
+          "apartment"
+        ]
+      },
+      "form": "apartment"
+    },
+    {
+      "id": "hotel corridors",
+      "when": {
+        "kind": [
+          "hotel",
+          "hostel"
+        ]
+      },
+      "form": "hotel"
+    },
+    {
+      "id": "hotel fallback",
+      "when": {
+        "recipe": [
+          "hotel"
+        ]
+      },
+      "form": "hotel"
+    },
+    {
+      "id": "office curtain wall",
+      "when": {
+        "kind": [
+          "office",
+          "tower_office",
+          "bank",
+          "tower"
+        ]
+      },
+      "form": "office"
+    },
+    {
+      "id": "tall unknown",
+      "when": {
+        "recipe": [
+          "tower"
+        ]
+      },
+      "form": "office"
+    },
+    {
+      "id": "residential tower balconies",
+      "when": {
+        "kind": [
+          "tower_residential",
+          "apartment_block"
+        ]
+      },
+      "form": "apartment"
+    },
+    {
+      "id": "tower hotels",
+      "when": {
+        "kind": [
+          "hotel"
+        ]
+      },
+      "form": "hotel"
+    },
+    {
+      "id": "parking only has open bands",
+      "when": {
+        "kind": [
+          "parking_garage"
+        ]
+      },
+      "form": "garage"
+    },
+    {
+      "id": "warehouse sheds",
+      "when": {
+        "recipe": [
+          "shed"
+        ]
+      },
+      "form": "warehouse"
+    },
+    {
+      "id": "civic rooms",
+      "when": {
+        "recipe": [
+          "civic"
+        ]
+      },
+      "form": "civic"
+    },
+    {
+      "id": "school classrooms",
+      "when": {
+        "recipe": [
+          "school"
+        ]
+      },
+      "form": "school"
+    },
+    {
+      "id": "school and university labels",
+      "when": {
+        "kind": [
+          "school",
+          "university",
+          "college",
+          "kindergarten"
+        ]
+      },
+      "form": "school"
+    },
+    {
+      "id": "church nave",
+      "when": {
+        "kind": [
+          "place_of_worship",
+          "church",
+          "cathedral",
+          "chapel"
+        ]
+      },
+      "form": "church"
+    },
+    {
+      "id": "station concourse",
+      "when": {
+        "kind": [
+          "transit_station",
+          "train_station",
+          "station"
+        ]
+      },
+      "form": "station"
+    },
+    {
+      "id": "hospital wards",
+      "when": {
+        "recipe": [
+          "hospital"
+        ]
+      },
+      "form": "hospital"
+    },
+    {
+      "id": "shopping front",
+      "when": {
+        "recipe": [
+          "shop",
+          "mall"
+        ]
+      },
+      "form": "shop"
+    },
+    {
+      "id": "exhibition hall",
+      "when": {
+        "recipe": [
+          "hall",
+          "arena",
+          "theatre"
+        ]
+      },
+      "form": "hall"
+    },
+    {
+      "id": "apparatus bays",
+      "when": {
+        "kind": [
+          "fire_station"
+        ]
+      },
+      "form": "firehouse"
+    },
+    {
+      "id": "coastal failures",
+      "when": {
+        "waterBelow": 90
+      },
+      "collapse": [
+        "pancake",
+        "shear",
+        "facade",
+        "hanging"
+      ]
+    },
+    {
+      "id": "older fabric failed first",
+      "when": {
+        "builtBefore": 1950
+      },
+      "collapse": [
+        "facade",
+        "pancake",
+        "shear"
+      ]
+    },
+    {
+      "id": "inland sheltered fabric",
+      "when": {
+        "waterAbove": 450
+      },
+      "collapse": [
+        "burnt",
+        "hanging",
+        "shear"
+      ]
+    },
+    {
+      "id": "tower fracture",
+      "when": {
+        "heightAbove": 60
+      },
+      "collapse": [
+        "lost-top",
+        "shear",
+        "hanging"
+      ]
+    },
+    {
+      "id": "dense street fire",
+      "when": {
+        "neighboursAbove": 12,
+        "heightBelow": 24
+      },
+      "collapse": [
+        "burnt",
+        "facade"
+      ]
+    },
+    {
+      "id": "trade counters",
+      "when": {
+        "trades": [
+          "shop",
+          "restaurant",
+          "cafe",
+          "retail"
+        ],
+        "heightBelow": 12
+      },
+      "form": "shop"
+    },
+    {
+      "id": "small domestic footprint wins over residential label",
+      "when": {
+        "recipe": [
+          "house"
+        ]
+      },
+      "form": "house"
+    },
+    {
+      "id": "sacred building form",
+      "when": {
+        "kind": [
+          "place_of_worship",
+          "church",
+          "cathedral",
+          "chapel"
+        ]
+      },
+      "form": "church"
+    },
+    {
+      "id": "brick fire service",
+      "when": {
+        "kind": [
+          "fire_station"
+        ]
+      },
+      "finish": "clay"
+    }
+  ],
+  "assemblies": {
+    "porch": {
+      "role": "front",
+      "clearance": "central doorway kept open",
+      "parts": [
+        [
+          "trim8",
+          0,
+          3.1,
+          -1,
+          "finish"
+        ],
+        [
+          "fin4",
+          -3.5,
+          2,
+          -1,
+          "finish"
+        ],
+        [
+          "fin4",
+          3.5,
+          2,
+          -1,
+          "finish"
+        ]
+      ]
+    },
+    "lobby": {
+      "role": "front",
+      "parts": [
+        [
+          "zroof8",
+          0,
+          3.2,
+          -2,
+          "steel"
+        ],
+        [
+          "zsign",
+          3,
+          2.4,
+          -0.4,
+          "blue"
+        ]
+      ]
+    },
+    "deco": {
+      "role": "front",
+      "parts": [
+        [
+          "trim8",
+          0,
+          3.1,
+          -1,
+          "finish"
+        ],
+        [
+          "zsign",
+          3,
+          2.4,
+          -0.4,
+          "clay"
+        ]
+      ]
+    },
+    "shopfront": {
+      "role": "front",
+      "parts": [
+        [
+          "zbalcony",
+          0,
+          3,
+          -1,
+          "rose"
+        ],
+        [
+          "zheader",
+          0,
+          3.5,
+          -0.5,
+          "limestone"
+        ],
+        [
+          "zsign",
+          0,
+          3.5,
+          -0.8,
+          "blue"
+        ]
+      ]
+    },
+    "loading": {
+      "role": "front",
+      "parts": [
+        [
+          "zsign",
+          3,
+          3,
+          -0.4,
+          "rust"
+        ]
+      ]
+    },
+    "arcade": {
+      "role": "front",
+      "parts": [
+        [
+          "zroof8",
+          0,
+          3.2,
+          -1,
+          "finish"
+        ]
+      ]
+    },
+    "portico": {
+      "role": "front",
+      "parts": [
+        [
+          "zroof16",
+          0,
+          8.6,
+          -4,
+          "limestone"
+        ],
+        [
+          "zroof8",
+          0,
+          9.6,
+          -4,
+          "limestone"
+        ],
+        [
+          "fin8",
+          -7,
+          4,
+          -6,
+          "limestone"
+        ],
+        [
+          "fin8",
+          -4,
+          4,
+          -6,
+          "limestone"
+        ],
+        [
+          "fin8",
+          4,
+          4,
+          -6,
+          "limestone"
+        ],
+        [
+          "fin8",
+          7,
+          4,
+          -6,
+          "limestone"
+        ]
+      ]
+    },
+    "ambulance": {
+      "role": "front",
+      "parts": [
+        [
+          "zroof16",
+          0,
+          4,
+          -4,
+          "limestone"
+        ],
+        [
+          "fin4",
+          -7,
+          2,
+          -6,
+          "limestone"
+        ],
+        [
+          "fin4",
+          7,
+          2,
+          -6,
+          "limestone"
+        ],
+        [
+          "zsign",
+          3,
+          3,
+          -4,
+          "rose"
+        ]
+      ]
+    },
+    "clock": {
+      "role": "front",
+      "parts": [
+        [
+          "zsign",
+          3,
+          3,
+          -0.4,
+          "limestone"
+        ],
+        [
+          "trim8",
+          0,
+          3.5,
+          -1,
+          "steel"
+        ]
+      ]
+    },
+    "car": {
+      "role": "street",
+      "parts": [
+        [
+          "zcar",
+          0,
+          0.7,
+          0,
+          "rust"
+        ],
+        [
+          "zcab",
+          -0.2,
+          1.6,
+          0,
+          "steel"
+        ]
+      ]
+    },
+    "bus": {
+      "role": "street",
+      "parts": [
+        [
+          "zbus",
+          0.0,
+          1.4,
+          0.0,
+          "rust",
+          0
+        ],
+        [
+          "zsign",
+          -3.0,
+          1.9,
+          -1.3,
+          "blue",
+          0
+        ],
+        [
+          "zsign",
+          -3.0,
+          1.9,
+          1.3,
+          "blue",
+          0
+        ],
+        [
+          "zsign",
+          0.0,
+          1.9,
+          -1.3,
+          "blue",
+          0
+        ],
+        [
+          "zsign",
+          0.0,
+          1.9,
+          1.3,
+          "blue",
+          0
+        ],
+        [
+          "zsign",
+          3.0,
+          1.9,
+          -1.3,
+          "blue",
+          0
+        ],
+        [
+          "zsign",
+          3.0,
+          1.9,
+          1.3,
+          "blue",
+          0
+        ],
+        [
+          "zcover",
+          -3.0,
+          0.45,
+          0.0,
+          "steel",
+          90
+        ],
+        [
+          "zcover",
+          3.0,
+          0.45,
+          0.0,
+          "steel",
+          90
+        ]
+      ]
+    },
+    "barrier": {
+      "role": "street",
+      "parts": [
+        [
+          "zcover",
+          0,
+          0.55,
+          0,
+          "limestone"
+        ],
+        [
+          "zcover",
+          4,
+          0.55,
+          0,
+          "clay"
+        ]
+      ]
+    },
+    "lamp": {
+      "role": "street",
+      "parts": [
+        [
+          "zpole",
+          0,
+          3,
+          0,
+          "steel"
+        ],
+        [
+          "zsign",
+          0.8,
+          6,
+          0,
+          "limestone"
+        ]
+      ]
+    },
+    "fallen-crane": {
+      "role": "street",
+      "parts": [
+        [
+          "beam16",
+          -8,
+          1.4,
+          -2,
+          "concrete",
+          -6
+        ],
+        [
+          "beam16",
+          -8,
+          1.4,
+          2,
+          "concrete",
+          -6
+        ],
+        [
+          "beam16",
+          8,
+          1.4,
+          -0.4,
+          "concrete",
+          -6
+        ],
+        [
+          "beam16",
+          8,
+          1.4,
+          3.6,
+          "concrete",
+          -6
+        ],
+        [
+          "zcore",
+          -16,
+          2,
+          0,
+          "rust"
+        ],
+        [
+          "beam4",
+          -12,
+          1.4,
+          0,
+          "concrete",
+          90
+        ],
+        [
+          "beam4",
+          -4,
+          1.4,
+          0,
+          "concrete",
+          90
+        ],
+        [
+          "beam4",
+          4,
+          1.4,
+          1.5,
+          "concrete",
+          90
+        ],
+        [
+          "beam4",
+          12,
+          1.4,
+          1.5,
+          "concrete",
+          90
+        ]
+      ],
+      "passage": [
+        [
+          20,
+          -8
+        ],
+        [
+          20,
+          0
+        ],
+        [
+          20,
+          8
+        ],
+        [
+          20,
+          0
+        ],
+        [
+          20,
+          -8
+        ]
+      ]
+    },
+    "medical-cross": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "zcore",
+          0,
+          2,
+          0,
+          "blue"
+        ],
+        [
+          "zcore",
+          0,
+          6,
+          0,
+          "blue"
+        ],
+        [
+          "zroof8",
+          0,
+          8.5,
+          0,
+          "limestone"
+        ],
+        [
+          "fin8",
+          0,
+          9,
+          -2.3,
+          "rose"
+        ],
+        [
+          "zheader",
+          0,
+          9,
+          -2.3,
+          "rose"
+        ]
+      ]
+    },
+    "hose-tower": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "zcore",
+          0,
+          2,
+          0,
+          "clay"
+        ],
+        [
+          "zcore",
+          0,
+          6,
+          0,
+          "clay"
+        ],
+        [
+          "zroof8",
+          0,
+          8.5,
+          0,
+          "steel"
+        ],
+        [
+          "zsign",
+          0,
+          6,
+          -2.1,
+          "steel"
+        ]
+      ]
+    },
+    "school-clock": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "zcore",
+          0,
+          2,
+          0,
+          "limestone"
+        ],
+        [
+          "zcore",
+          0,
+          6,
+          0,
+          "clay"
+        ],
+        [
+          "zsign",
+          0,
+          6,
+          -2.1,
+          "limestone"
+        ],
+        [
+          "zroof8",
+          0,
+          8.5,
+          0,
+          "clay"
+        ],
+        [
+          "zpole",
+          0,
+          12,
+          0,
+          "steel"
+        ]
+      ]
+    },
+    "civic-parapet": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "zroof16",
+          0,
+          0.5,
+          0,
+          "limestone"
+        ],
+        [
+          "zroof8",
+          0,
+          1.5,
+          0,
+          "limestone"
+        ],
+        [
+          "crown",
+          0,
+          4,
+          0,
+          "limestone"
+        ]
+      ]
+    },
+    "deco-crown": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "zheader",
+          0,
+          0.5,
+          0,
+          "finish"
+        ],
+        [
+          "crown",
+          0,
+          2,
+          0,
+          "finish"
+        ],
+        [
+          "fin4",
+          0,
+          5,
+          0,
+          "finish"
+        ]
+      ]
+    },
+    "engine-bays": {
+      "role": "front",
+      "clearance": "engine bay open down the centre",
+      "parts": [
+        [
+          "zheader",
+          0,
+          3.5,
+          -0.5,
+          "clay"
+        ],
+        [
+          "zdoorpost",
+          -5,
+          1.4,
+          -0.5,
+          "clay"
+        ],
+        [
+          "zdoorpost",
+          5,
+          1.4,
+          -0.5,
+          "clay"
+        ],
+        [
+          "zsign",
+          -5,
+          3.5,
+          -0.8,
+          "limestone"
+        ],
+        [
+          "zsign",
+          5,
+          3.5,
+          -0.8,
+          "limestone"
+        ]
+      ]
+    },
+    "office-services": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "zcore",
+          -4,
+          2,
+          0,
+          "steel"
+        ],
+        [
+          "zcore",
+          4,
+          2,
+          0,
+          "steel"
+        ],
+        [
+          "zroof16",
+          0,
+          4.5,
+          0,
+          "blue"
+        ],
+        [
+          "fin8",
+          6,
+          8,
+          1,
+          "steel"
+        ]
+      ]
+    },
+    "shop-sign": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "zheader",
+          0,
+          2,
+          -2,
+          "clay"
+        ],
+        [
+          "zsign",
+          -2,
+          2,
+          -2.2,
+          "limestone"
+        ],
+        [
+          "zsign",
+          2,
+          2,
+          -2.2,
+          "limestone"
+        ],
+        [
+          "fin4",
+          -3,
+          1,
+          0,
+          "steel"
+        ],
+        [
+          "fin4",
+          3,
+          1,
+          0,
+          "steel"
+        ]
+      ]
+    },
+    "chimney": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "zdoorpost",
+          3,
+          2,
+          0,
+          "clay"
+        ],
+        [
+          "zsign",
+          3,
+          5,
+          0,
+          "clay"
+        ]
+      ]
+    },
+    "parking-sign": {
+      "role": "roof identity",
+      "parts": [
+        [
+          "fin8",
+          0,
+          3,
+          0,
+          "steel"
+        ],
+        [
+          "zheader",
+          0,
+          6,
+          0,
+          "blue"
+        ]
+      ]
+    },
+    "pile-up": {
+      "role": "street cluster",
+      "clearance": "Separated wrecks leave a central pedestrian gap; every piece is checked against movement routes.",
+      "parts": [
+        [
+          "zcar",
+          -5,
+          0.7,
+          0,
+          "rust",
+          25
+        ],
+        [
+          "zcab",
+          -5,
+          1.6,
+          0,
+          "steel",
+          25
+        ],
+        [
+          "zcar",
+          -7,
+          0.7,
+          3,
+          "mint",
+          -32
+        ],
+        [
+          "zcab",
+          -7,
+          1.6,
+          3,
+          "steel",
+          -32
+        ],
+        [
+          "zcar",
+          5,
+          0.7,
+          1,
+          "clay",
+          -15
+        ],
+        [
+          "zcab",
+          5,
+          1.6,
+          1,
+          "steel",
+          -15
+        ],
+        [
+          "zwreck",
+          -5,
+          2.3,
+          1,
+          "steel",
+          65
+        ],
+        [
+          "rubble",
+          7,
+          0.35,
+          -1,
+          "concrete",
+          31
+        ]
+      ],
+      "passage": [
+        [
+          0,
+          -8
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          -8
+        ]
+      ]
+    },
+    "slewed-bus": {
+      "role": "street cluster",
+      "parts": [
+        [
+          "zbus",
+          -7.0,
+          1.4,
+          0.0,
+          "clay",
+          28
+        ],
+        [
+          "zsign",
+          -10.25916,
+          1.9,
+          0.26058,
+          "blue",
+          28
+        ],
+        [
+          "zsign",
+          -9.03853,
+          1.9,
+          2.55625,
+          "blue",
+          28
+        ],
+        [
+          "zsign",
+          -7.61031,
+          1.9,
+          -1.14783,
+          "blue",
+          28
+        ],
+        [
+          "zsign",
+          -6.38969,
+          1.9,
+          1.14783,
+          "blue",
+          28
+        ],
+        [
+          "zsign",
+          -4.96147,
+          1.9,
+          -2.55625,
+          "blue",
+          28
+        ],
+        [
+          "zsign",
+          -3.74084,
+          1.9,
+          -0.26058,
+          "blue",
+          28
+        ],
+        [
+          "zcover",
+          -9.64884,
+          0.45,
+          1.40841,
+          "steel",
+          118
+        ],
+        [
+          "zcover",
+          -4.35116,
+          0.45,
+          -1.40841,
+          "steel",
+          118
+        ],
+        [
+          "zcar",
+          5,
+          0.7,
+          2,
+          "rust",
+          -40
+        ],
+        [
+          "zcab",
+          5,
+          1.6,
+          2,
+          "steel",
+          -40
+        ],
+        [
+          "zcover",
+          4,
+          0.55,
+          -3,
+          "limestone",
+          15
+        ]
+      ],
+      "passage": [
+        [
+          0,
+          -8
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          -8
+        ]
+      ]
+    },
+    "barricade-line": {
+      "role": "street cluster",
+      "parts": [
+        [
+          "zcover",
+          -9,
+          0.55,
+          0,
+          "limestone"
+        ],
+        [
+          "zcover",
+          -5,
+          0.55,
+          0,
+          "limestone"
+        ],
+        [
+          "zcover",
+          5,
+          0.55,
+          0,
+          "limestone"
+        ],
+        [
+          "zcover",
+          9,
+          0.55,
+          0,
+          "limestone"
+        ],
+        [
+          "container",
+          -8,
+          1.3,
+          4,
+          "rust",
+          12
+        ]
+      ],
+      "passage": [
+        [
+          0,
+          -8
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          -8
+        ]
+      ]
+    },
+    "spill-mound": {
+      "role": "street cluster",
+      "parts": [
+        [
+          "rubble4",
+          -5,
+          0.55,
+          0,
+          "concrete",
+          12
+        ],
+        [
+          "rubble4",
+          -7,
+          1.2,
+          1,
+          "concrete",
+          43
+        ],
+        [
+          "floor4",
+          -6,
+          1.9,
+          0.5,
+          "concrete",
+          -32
+        ],
+        [
+          "rubble",
+          -3,
+          0.35,
+          -2,
+          "concrete",
+          67
+        ],
+        [
+          "rubble4",
+          5,
+          0.55,
+          2,
+          "concrete",
+          -28
+        ]
+      ],
+      "passage": [
+        [
+          0,
+          -8
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          -8
+        ]
+      ]
+    }
+  },
+  "street": {
+    "spacing": 8,
+    "chance": 0.2,
+    "assemblies": [
+      "car",
+      "car",
+      "car",
+      "bus",
+      "barrier",
+      "lamp"
+    ],
+    "yardAssemblies": [
+      "barrier",
+      "barrier",
+      "barrier",
+      "barrier",
+      "barrier",
+      "barrier",
+      "barrier",
+      "barrier",
+      "car",
+      "car",
+      "car",
+      "car",
+      "car",
+      "car",
+      "car",
+      "car",
+      "bus",
+      "bus",
+      "lamp",
+      "lamp",
+      "lamp",
+      "lamp",
+      "fallen-crane"
+    ],
+    "clusterSpacing": 24,
+    "clusterChance": 0.8,
+    "junctionAssemblies": [
+      "pile-up",
+      "slewed-bus",
+      "barricade-line"
+    ],
+    "edgeAssemblies": [
+      "pile-up",
+      "spill-mound",
+      "slewed-bus"
+    ],
+    "yardClusters": [
+      "fallen-crane",
+      "pile-up"
+    ]
+  },
+  "damage": {
+    "shear": {
+      "radius": 0.5,
+      "retain": 0.72,
+      "layers": 3
+    },
+    "pancake": {
+      "radius": 0.65,
+      "retain": 0.72,
+      "layers": 5
+    },
+    "lost-top": {
+      "radius": 0.55,
+      "retain": 0.72,
+      "layers": 3
+    },
+    "burnt": {
+      "radius": 0.6,
+      "retain": 0.72,
+      "layers": 3
+    },
+    "facade": {
+      "radius": 0.6,
+      "retain": 0.72,
+      "layers": 3
+    },
+    "hanging": {
+      "radius": 0.55,
+      "retain": 0.72,
+      "layers": 3
+    }
+  },
+  "interiors": {
+    "rooms": {
+      "divider": "wall4",
+      "back": "wall8",
+      "parts": [
+        [
+          "zbed",
+          2,
+          0.25,
+          1,
+          "steel"
+        ]
+      ]
+    },
+    "suites": {
+      "divider": "sill4",
+      "back": "wall4",
+      "parts": [
+        [
+          "zcounter",
+          2,
+          0.5,
+          1,
+          "finish"
+        ]
+      ]
+    },
+    "wards": {
+      "divider": "wall4",
+      "back": "wall8",
+      "parts": [
+        [
+          "zbed",
+          2,
+          0.25,
+          1.5,
+          "limestone"
+        ],
+        [
+          "zbed",
+          2,
+          0.25,
+          -1.5,
+          "limestone"
+        ]
+      ]
+    },
+    "domestic": {
+      "divider": "wall4",
+      "back": "wall8",
+      "parts": [
+        [
+          "zbed",
+          2,
+          0.25,
+          1.5,
+          "steel"
+        ],
+        [
+          "zcounter",
+          2,
+          0.5,
+          -1.5,
+          "limestone"
+        ]
+      ]
+    },
+    "classrooms": {
+      "divider": "wall4",
+      "back": "wall8",
+      "parts": [
+        [
+          "zcounter",
+          2,
+          0.5,
+          1.5,
+          "clay"
+        ],
+        [
+          "zcounter",
+          2,
+          0.5,
+          -1,
+          "clay"
+        ]
+      ]
+    },
+    "shops": {
+      "divider": "wall4",
+      "back": "wall8",
+      "parts": [
+        [
+          "zcounter",
+          2,
+          0.5,
+          0,
+          "finish"
+        ]
+      ]
+    },
+    "storage": {
+      "divider": null,
+      "back": null,
+      "parts": [
+        [
+          "zcore",
+          2,
+          2,
+          1.5,
+          "rust"
+        ]
+      ]
+    }
+  },
+  "event": {
+    "travel": [
+      1,
+      0.35
+    ],
+    "reach": 650,
+    "shelter": 0.55,
+    "cell": 192,
+    "bands": [
+      {
+        "below": 0.25,
+        "modes": [
+          "burnt",
+          "hanging"
+        ]
+      },
+      {
+        "below": 0.55,
+        "modes": [
+          "shear",
+          "facade",
+          "hanging"
+        ]
+      },
+      {
+        "below": 1.1,
+        "modes": [
+          "pancake",
+          "shear",
+          "facade"
+        ]
+      }
+    ],
+    "meaning": "A surge arrives from upstream, erodes seaward corners, and loses force inland and behind higher buildings."
+  },
+  "growth": {
+    "zones": {
+      "open ground": {
+        "bare": 5
+      },
+      "ruin": {
+        "bare": 4
+      },
+      "street garden": {
+        "bare": 12,
+        "kinds": {
+          "core:palm": 4,
+          "core:tree": 1,
+          "core:bush": 2,
+          "core:fern": 2
+        }
+      },
+      "plaza": {
+        "bare": 6
+      },
+      "tower ruin": {
+        "bare": 6
+      },
+      "park": {
+        "bare": 5
+      },
+      "spill": {
+        "bare": 4
+      },
+      "yard": {
+        "bare": 12
+      }
+    },
+    "roofChance": 0.16,
+    "lowAroundPlace": {
+      "crane": 160
+    },
+    "canopy": {
+      "core:tree": [
+        5,
+        10
+      ],
+      "core:oak": [
+        8,
+        16
+      ],
+      "core:fig": [
+        8,
+        16
+      ],
+      "core:banyan": [
+        12,
+        20
+      ],
+      "core:palm": [
+        3,
+        18
+      ],
+      "core:mangrove": [
+        3,
+        6
+      ]
+    }
+  },
+  "frontage": {
+    "gap": 6,
+    "angle": 8
+  }
+}
