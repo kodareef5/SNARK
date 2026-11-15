@@ -372,7 +372,7 @@ Reasoned from the rows, in the order a growing world meets them.
 | One thread runs the tick | 2.0 to 2.3 ms of 33.3, 3.5 in combat; the crowd asks first | Snapshot encoding in workers over the typed-array entity store |
 | Bandwidth where bodies crowd | 31.6 to 32.3 KB/s of 34 to 36 | Velocity in snapshots |
 | Draws | 4,096 in the packet; the iPhone held 256 to 2,048 on lit tiers | Far stand-ins (F4); texture arrays before multi-draw (D210) |
-| Shadow casters | 933 of 4,096 in the siege on ultra | Merged casters cached by shape (D267) |
+| Shadow casters | 812 of 4,096 in the siege on ultra (building pieces only since the refining forge, S1) | Merged casters cached by shape (D267) |
 | Garbage collection | A worst tick of 7 to 20 ms once in some hundreds | Less garbage a tick; the simulation in a worker |
 | Textures on a phone | 1.5 GB held, the tab dropped at 2 GB | A smaller card budget on a phone |
 

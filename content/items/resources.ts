@@ -16,9 +16,21 @@ export const RESOURCES: readonly Def[] = [
   { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 13, cost: 3, item: "core:paste" },
 
   // Charcoal: "one Charcoal every time the burning of the current fuel piece has ended" for wood in any fire; no engram.
+  // Wood leaves it (`burnsInto`, content/core.ts), so every fire that burns wood makes it (S1).
   { type: "item", class: "resource", id: "core:charcoal", stack: 100, weight: 0.25, label: "charcoal", color: 11 },
-  // Gasoline: 5 from 6 oil and 5 hide at the refining forge; burns 900 s in the fabricator.
-  { type: "item", class: "resource", id: "core:gasoline", stack: 100, weight: 0.1, label: "gasoline", color: 6 },
+  // Gasoline: 5 from 6 oil and 5 hide at the refining forge, made by the forge itself while it burns (fired, S1), in 10 s:
+  // the forge's refining table, whose two rows agree (6 oil and 5 hide in 10 s; 240 oil and 200 hide in 6 m 40 s). The
+  // Gasoline page's 30 s is unverified (Decided 5, D519). No engram, no experience. Burns 900 s in the fabricator.
+  {
+    type: "item",
+    class: "resource",
+    id: "core:gasoline",
+    stack: 100,
+    weight: 0.1,
+    label: "gasoline",
+    color: 6,
+    craft: { needs: [{ item: "core:oil", count: 6 }, { item: "core:hide", count: 5 }], seconds: 10, xp: 0, count: 5, at: "core:forge", fired: true },
+  },
   // Oil: oil rocks in the ocean and on the snowy coast, and underwater caves.
   { type: "item", class: "resource", id: "core:oil", stack: 100, weight: 0.2, label: "oil", color: 4 },
   // Crystal: crystal formations in mountains and caves.

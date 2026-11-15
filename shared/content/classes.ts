@@ -77,8 +77,8 @@ const ITEM = {
   youngFor: f("text", "prime meat from the young in place of raw meat", { refs: { "": "item" } }),
   eat: f("facet", "UseItemAddCharacterStatusValues"),
   fuel: f("number"),
-  // The stations wave's (planning/reference/stations-plan.md, S0), each read once its project builds it.
-  burnsInto: stub("stations", "text", "the charcoal a fire leaves for each piece of wood burnt out", { refs: { "": "item" } }),
+  // The stations wave's (planning/reference/stations-plan.md, S0, read since S1): what a piece of fuel leaves when it burns out.
+  burnsInto: f("text", "the charcoal a fire leaves for each piece of wood burnt out", { refs: { "": "item" } }),
   saddle: f("facet", "equipment type DinoSaddle", { refs: { fits: "species/creature" } }),
   dose: f("facet", "UseItemAddCharacterStatusValues"),
   cooks: f("facet", "", { refs: { into: "item" } }),
@@ -94,7 +94,7 @@ const ITEM = {
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
-  craft: f("facet", "BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP", { refs: { "needs[].item": "item", at: "structure/station" }, stubs: { fired: "stations" } }),
+  craft: f("facet", "BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP", { refs: { "needs[].item": "item", at: "structure/station" } }),
   description: stub("polish", "text", "ItemDescription"),
   folder: stub("polish", "text", "DefaultFolderPaths"),
   spoilsInto: f("text", "SpoilingItem", { refs: { "": "item" } }),
@@ -104,6 +104,7 @@ const ITEM = {
 } satisfies Fields<ItemDef>;
 
 const SPECIES = {
+  vehicle: f("facet"),
   mesh: f("text"),
   skeleton: f("text"),
   color: f("number"),
@@ -151,10 +152,11 @@ const SPECIES = {
   carriable: f("switch", "picked up and thrown by a player"),
   feces: f("text", "the creature's feces item", { refs: { "": "item/feces" } }),
   eggChance: f("number", "the chance of an egg in place of feces"),
-  // The flyers' contracts (planning/reference/flyers-plan.md, FL0), each read once its package builds it: `fly` by the step.
+  // The flyers' contracts (planning/reference/flyers-plan.md, FL0), each read once its package builds it: `fly` by the step,
+  // `defendsEgg` by the egg rule.
   fly: f("facet", "the flying speed, sprint and stamina, and the barrel roll"),
   grab: stub("flyers", "facet", "the most drag weight a flyer carries"),
-  defendsEgg: stub("flyers", "switch", "a skittish flyer that turns on an egg thief"),
+  defendsEgg: f("switch", "a skittish flyer that turns on an egg thief"),
   riderWeight: f("number", "PassengerWeightMultiplier"),
   missiles: stub("flyers", "number", "the flyers' damage from projectiles that are not bullets"),
   structures: stub("flyers", "number", "the flyers' damage to structures"),
@@ -169,6 +171,7 @@ const SPECIES = {
 } satisfies Fields<SpeciesDef>;
 
 const STRUCTURE = {
+  vehicleSurface: f("facet"),
   mesh: f("text"),
   color: f("number"),
   half: f("vec3"),
@@ -187,13 +190,14 @@ const STRUCTURE = {
   once: f("switch"),
   floor: f("switch"),
   rise: f("vec3"),
-  // The stations wave's (planning/reference/stations-plan.md, S0). `burns` is read (Registry.stationFuel) and `powered`
-  // (Progression, server/power.ts, S2); the rest are stubs, each read once its project builds it.
+  // The stations wave's (planning/reference/stations-plan.md, S0). `burns` is read (Registry.stationFuel), `powered`
+  // (Progression, server/power.ts, S2), `cooks` (the hearth, S1 and S3), `keeps` (server/preserve.ts, S3) and `dry`
+  // (S1); the rest are stubs, each read once its project builds it.
   burns: f("list", "the fuel a station takes and how long each piece burns in it", { refs: { "[].item": "item" } }),
-  cooks: stub("stations", "switch", "whether a lit station cooks raw meat, as a campfire does and a forge does not"),
-  keeps: stub("stations", "number", "GetSpoilingTimeMultiplier of its inventory"),
+  cooks: f("switch", "whether a lit station cooks raw meat, as a campfire does and a forge does not"),
+  keeps: f("number", "GetSpoilingTimeMultiplier of its inventory"),
   powered: f("switch", "bRequiresPower: its crafting runs only while it is on"),
-  dry: stub("stations", "switch", "not lit, or not working, under water"),
+  dry: f("switch", "not lit, or not working, under water"),
 } satisfies Fields<StructureDef>;
 
 const NODE = {
@@ -438,16 +442,18 @@ row("species/creature", "species", SPECIES, {
   },
   doc: "A wild thing that may be tamed, ridden and bred.",
 });
+row("species/civilian", "species", SPECIES, { parent: "species", ark: "a humanoid creature", shelf: "civilians", must: [...BODY, "skeleton", "stats"], may: ["equips", "slots", "crouch", "prone", "strafe", "turn", "swimSpeed", "stamina", "food", "fists", "fistsTorpor", "takes", "zones", "killXp", "temper", "sight", "leash", "torporDrain", "still", "drops", "mass"], slots: HUMAN_SLOTS, doc: "An AI-controlled human using the current survivor body, equipment and creature systems." });
+row("species/vehicle", "species", SPECIES, { parent: "species", ark: "a wheeled mount", shelf: "vehicles", must: [...BODY, "vehicle", "stats"], may: ["skeleton", "slots", "keeps", "still", "takes", "mass", "fists", "stamina", "swimSpeed", "strafe", "drag", "carriable", "regions"], slots: { body: mesh("must", "{mesh}", "box"), rig: { asset: "rig", need: "must", from: "{mesh}", fallback: ["rigid"] }, icon }, doc: "A vehicle with wheel physics, inventory, ownership and named seats." });
 row("species/target", "species", SPECIES, { parent: "species", ark: "none, ours", shelf: "targets", must: [...BODY, "skeleton", "still"], may: ["stats", "equips", "slots", "zones", "takes", "torporDrain", "crouch", "prone", "stamina", "fists", "food", "drops", "killXp"], slots: HUMAN_SLOTS, doc: "A human-shaped body that stands where it is put, to be practised on. A creature that must stand still is a creature that says so." });
 
 const BUILT = ["mesh", "color", "half", "hp"] as const;
-const STRUCTURE_SLOTS = { mesh: mesh("must", "{mesh}", "shape"), destroyed: mesh("may", "{id}/destroyed", "none"), preview: mesh("may", "{id}/preview", "#mesh") };
+const STRUCTURE_SLOTS = { mesh: mesh("must", "{mesh}", "{id}", "shape"), destroyed: mesh("may", "{id}/destroyed", "none"), preview: mesh("may", "{id}/preview", "#mesh") };
 row("structure", "structure", STRUCTURE, { abstract: true, ark: "APrimalStructure", shelf: "structures", doc: "Anything built or standing in the world that is not alive." });
-row("structure/piece", "structure", STRUCTURE, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up." });
+row("structure/piece", "structure", STRUCTURE, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls", "vehicleSurface"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up." });
 row("structure/container", "structure", STRUCTURE, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls", "keeps"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." });
 row("structure/station", "structure", STRUCTURE, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit", "burns", "cooks", "keeps", "powered", "dry"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. An item whose craft names it in `at` is made from what lies in it, for whoever queued it, and lands in it; a lit station and the same station out are one station to that. One that `lights` burns fuel while lit: every item's own `fuel`, or only what it names in `burns`, at its own times. A `powered` one (the fabricator) makes things only while it burns: it takes no job while out, and a unit under way when its fuel runs out waits with its ticks left until it is lit again. A fire makes its `fired` recipes by itself while it burns, and cooks what has `cooks` unless `cooks` is false. How fast it makes things waits: every station makes at the recipe's seconds." });
 row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." });
-row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape"], slots: { mesh: mesh("must", "{mesh}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. With a shape it may be sloped." });
+row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "vehicleSurface"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin." });
 row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." });
 row("shape", "shape", SHAPE, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway", "hulls", "look"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." });
 row("material", "material", MATERIAL, { ark: "StructureSettings and its tier", shelf: "materials", must: ["takes"], may: ["decayDays"], doc: "What each type of damage does to what is built of it, and how long it lasts unvisited." });

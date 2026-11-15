@@ -220,7 +220,7 @@ test("too heavy, it does not take off, and loaded so in the air it is put down u
   expect([ents.mode[e], ents.y[e]! - r.ground() < 0.01, r.health()]).toEqual([MODE_WALK, true, health]);
 });
 
-test("saved flying 30 m up and loaded without its rider, it does not fall: its jump let go, it goes down and sets down unhurt", () => {
+test("saved flying 30 m up and loaded without its rider, it does not fall but stays up there; told to land, it goes down and sets down unhurt", () => {
   const dir = mkdtempSync(join(tmpdir(), "snark-flight-"));
   try {
     const dbPath = join(dir, "world.db");
@@ -236,7 +236,12 @@ test("saved flying 30 m up and loaded without its rider, it does not fall: its j
     const rec = h.host.records.byPid.get(pid)!;
     const ground = (): number => groundUnder(h.world.hf, ents.x[e]!, ents.z[e]!, p.radius);
     expect([ents.mode[e], ents.y[e]! - ground() > 25]).toEqual([MODE_FLYER, true]);
-    // No faster down than its descent, twice its flying speed, and in flight until it touches.
+    // A tame nobody rides that was told nothing stays: in the air it hovers (planning/reference/flyers-plan.md, FL3).
+    const parked = ents.y[e]!;
+    h.run(5000);
+    expect([ents.mode[e], ents.y[e]]).toEqual([MODE_FLYER, parked]);
+    // Told to land: no faster down than its descent, twice its flying speed, and in flight until it touches.
+    expect(h.host.creatures.mind.land(e)).toBe(true);
     let fastest = 0;
     let early = false;
     h.run(8000, () => {

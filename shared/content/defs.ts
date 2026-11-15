@@ -3,6 +3,7 @@
 // `type` is a definition's family. A family with several classes also says which: shared/content/classes.ts has what
 // each class must and may declare.
 
+import type { VehicleDefinition, VehicleSurface } from "../sim/vehicle.ts";
 import type { Feature } from "../features.ts";
 import type { StatCurve, StatName } from "../sim/genome.ts";
 import { hullPoint, type HullDef } from "../world/convex.ts";
@@ -14,7 +15,9 @@ interface Named {
 
 export interface SpeciesDef extends Named {
   readonly type: "species";
-  readonly class: "survivor" | "creature" | "target";
+  readonly class: "survivor" | "creature" | "target" | "vehicle" | "civilian";
+  /** Wheeled movement and named seats; independent of the replaceable body mesh. */
+  readonly vehicle?: VehicleDefinition;
   readonly id: string;
   /** Mesh id in an asset pack, or "box" for a generated graybox. */
   readonly mesh: string;
@@ -228,15 +231,20 @@ export interface ShapeLook {
 }
 
 export interface StructureDef extends Named {
+  /** Grip/resistance of its supporting faces; shared vehicle prediction reads this independently of artwork. */
+  readonly vehicleSurface?: VehicleSurface;
   readonly type: "structure";
   readonly class: "piece" | "container" | "station" | "bed" | "static" | "defence";
   readonly id: string;
-  /** "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. */
+  /**
+   * "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. A mesh of
+   * the pack with a shape is drawn at the shape's origin and walked as its boxes, so its origin may be on the ground under it.
+   */
   readonly mesh: string;
   readonly color: number;
   /** Half extents in metres of the box that holds all of it, centred on the structure's position. Without a shape, this box is its collider. */
   readonly half: readonly [number, number, number];
-  /** A shape id, if it is more than one box. `half` must equal the box that holds the shape. */
+  /** A shape id, if it is more than one box or not centred on its origin. `half` must equal the box that holds the shape. */
   readonly shape?: string;
   readonly hp: number;
   /** A material id. The material says what each type of damage does to it. Omitted, nothing harms it. */
@@ -271,16 +279,20 @@ export interface StructureDef extends Named {
    * sparkpowder). Omitted, it burns every item by the item's own `fuel`, as a campfire does.
    */
   readonly burns?: readonly { readonly item: string; readonly seconds: number }[];
-  /** False for a fire that does not cook what has `cooks` (M1). Omitted, it cooks. A stub until S1. */
+  /** False for a fire that does not cook what has `cooks` (M1), as the forge and the preserving bin do not. Omitted, it cooks. */
   readonly cooks?: boolean;
-  /** How many times as long things keep in it, as a species' `keeps` (M6). A stub until S3. */
+  /**
+   * How many times as long things keep in it, as a species' `keeps` (M6): a feeding trough's 4 always, a preserving bin's
+   * 10 on its lit kind only. A station whose two kinds keep differently has every spoil clock rescaled at the tick it swaps
+   * (server/preserve.ts).
+   */
   readonly keeps?: number;
   /**
    * Its jobs run only while it burns (M5): no job is taken while it is out, and a unit under way when it goes out waits with
    * its ticks left (Job.rest) until it is lit again. Both kinds of a lit pair say it.
    */
   readonly powered?: boolean;
-  /** It is not lit below the map's sea level (M8). A stub until S1. */
+  /** It is not lit while its foot is below the map's sea level (M8). */
   readonly dry?: boolean;
 }
 
@@ -311,7 +323,7 @@ export interface ItemDef extends Named {
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
   /** Seconds one of it keeps a fire going. */
   readonly fuel?: number;
-  /** When one piece of it has burnt out in a fire, the fire gets one of this, as wood leaves charcoal (M4). A stub until S1. */
+  /** When one piece of it has burnt out in a fire, the fire gets one of this, as wood leaves charcoal (M4); with no room it is lost. */
   readonly burnsInto?: string;
   /** The species it fits and the armor it gives the creature that wears it (the reference's rating). */
   readonly saddle?: { readonly fits: string; readonly armor: number };
@@ -399,7 +411,7 @@ export interface CraftFacet {
   readonly level?: number;
   /**
    * Made by the fire it is `at` while that burns and its ingredients lie in it, with no job, engram or experience
-   * (planning/reference/stations-plan.md, M3). Only at a station that `lights`. A stub until S1.
+   * (planning/reference/stations-plan.md, M3). Only at a station that `lights`.
    */
   readonly fired?: boolean;
 }

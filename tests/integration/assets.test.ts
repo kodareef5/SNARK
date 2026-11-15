@@ -128,7 +128,12 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // and east edges; without those four kinds it is that again.
   // It was f63e1c05 until the smithy's and the fabricator's grey boxes (content/items/stations.ts, S2) numbered the meshes
   // after them on; without the two stations, their pieces and polymer's and electronics' recipes it is that again.
-  expect(hash).toBe("e689ff39");
+  // It was e689ff39 until the vehicles' three road pieces' grey boxes (content/vehicles/roads.ts) numbered the meshes after them on; without the roads it is that again.
+  // It was 16e3f3c1 until the preserving bin's grey box (content/items/stations.ts, S3) numbered the meshes after it on;
+  // without the bin, its lit kind, its piece and its engram it is that again.
+  // It was 52c8cbd9 until the refining forge's grey boxes (content/items/stations.ts, S1) numbered the meshes after them on;
+  // without the forge, its item and engram and the two recipes fired at it it is that again.
+  expect(hash).toBe("e73ea001");
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -137,5 +142,8 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   expect([...saddled.drawn].filter((id) => !drawn.has(id))).toEqual([WORN]);
   // It was bf22a69 until the four resource nodes and their grey boxes, as above; without those four kinds it is that again.
   // It was e968ac75 until the smithy's and the fabricator's grey boxes (S2), as above; without them it is that again.
-  expect(saddled.hash).toBe("7d2d1185");
+  // It was 7d2d1185 until the vehicles' three road pieces' grey boxes (content/vehicles/roads.ts) numbered the meshes after them on; without the roads it is that again.
+  // It was e48a2ec9 until the preserving bin's grey box (S3), as above; without the bin it is that again.
+  // It was 32d21d3d until the refining forge's grey boxes (S1), as above; without the forge it is that again.
+  expect(saddled.hash).toBe("c7cb77a9");
 });
