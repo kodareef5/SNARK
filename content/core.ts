@@ -314,7 +314,9 @@ const ALL: readonly Def[] = [
     killXp: 10,
     // Knocked out at 200 torpor, and out for most of a minute.
     torporDrain: 4,
-    stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015], torpidity: [200, 0, 0] },
+    // Crafting Skill is 100% and a point adds 10% (ark.wiki.gg, Human, "Base Stats and Growth", and Crafting Skill,
+    // 2026-11-15); a blueprint's bonus is up to a twentieth of it (D419).
+    stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015], torpidity: [200, 0, 0], crafting: [1, 0, 0.1] },
   },
   // A practice target with a survivor's shape and zones.
   {

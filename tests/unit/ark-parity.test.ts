@@ -5,9 +5,10 @@ import { expect, test } from "bun:test";
 import { Items } from "../../server/items.ts";
 import { Records } from "../../server/records.ts";
 import type { ServerWorld } from "../../server/world.ts";
-import type { BuffDef, ItemDef } from "../../shared/content/defs.ts";
+import type { BuffDef, ItemDef, SpeciesDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { DAMAGE_TYPES } from "../../shared/sim/damage.ts";
+import { Genome, STAT_NAMES, spendPoint, statValue } from "../../shared/sim/genome.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -56,6 +57,19 @@ test("a campfire has 100 health and decays in 2 days, lit or not; the mortar in 
 
 test("sparkpowder burns 60 s as fuel, beside thatch's 7.5 and wood's 30 (Sparkpowder, Campfire)", () => {
   expect([reg.fuelTicks[at("sparkpowder")], reg.fuelTicks[at("thatch")], reg.fuelTicks[at("wood")]].map((t) => t! / TICK_RATE)).toEqual([60, 7.5, 30]);
+});
+
+test("a survivor's Crafting Skill is 100% and a point adds 10%, so 204 points give a blueprint up to 107% more (Human, Crafting Skill)", () => {
+  const survivor = reg.defs[at("survivor")] as SpeciesDef;
+  const crafting = STAT_NAMES.indexOf("crafting");
+  expect(survivor.stats!.crafting).toEqual([1, 0, 0.1]);
+  const g = new Genome();
+  expect(statValue(survivor.stats!.crafting!, g, crafting)).toBe(1);
+  for (let n = 0; n < 10; n++) spendPoint(g, crafting);
+  expect(statValue(survivor.stats!.crafting!, g, crafting)).toBeCloseTo(2, 9);
+  // The page's "highest possible bonus at max level with all 204 points in Crafting Skill is 107%": skill / 20.
+  for (let n = 10; n < 204; n++) spendPoint(g, crafting);
+  expect(statValue(survivor.stats!.crafting!, g, crafting) / 20).toBeCloseTo(1.07, 9);
 });
 
 test("a flame arrow burns for 22 a second for 8 seconds, as fire (Flame Arrow)", () => {
