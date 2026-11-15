@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { cardTakes, domeLight, shownSky, skyFrame, sunDirection, type Sky } from "../../client/core/render/sky.ts";
+import { cardTakes, domeLight, shownSky, skyFrame, slotHeight, sunDirection, type Sky } from "../../client/core/render/sky.ts";
 import { srgbToLinear } from "../../client/core/render/surface.ts";
 import { KEYS } from "./base.ts";
 import { SkyBuilder } from "./build.ts";
@@ -95,7 +95,8 @@ function model(b: SkyBuilder, key: BaseKey, g: Grade, height: number): Record<st
   const l = b.light(height, g);
   const moon = key.lightBy === "moon";
   const light = moon ? l.moon : l.sun;
-  const dir = moon ? [-Math.cos((height * Math.PI) / 180), -Math.sin((height * Math.PI) / 180), 0] : [Math.cos((height * Math.PI) / 180), Math.sin((height * Math.PI) / 180), 0];
+  const lift = (slotHeight(height) * Math.PI) / 180;
+  const dir = moon ? [-Math.cos((height * Math.PI) / 180), -Math.sin((height * Math.PI) / 180), 0] : [Math.cos(lift), Math.sin(lift), 0];
   const side = Math.sign(dir[0]!) || 1;
   const face = (n: number[]): number[] => {
     const t = cardTakes(n, n, dir);
@@ -122,6 +123,7 @@ const BOUNDS: readonly (readonly [number, number])[] = [
   [Math.log(1 / 3), Math.log(2.5)],
   [-Math.log(4), Math.log(4)], [-Math.log(4), Math.log(4)], [-Math.log(4), Math.log(4)],
   [-Math.log(2), Math.log(2)],
+  [-0.5, 0.5],
 ];
 
 function gradeOf(base: Grade, raw: number[], light: boolean): Grade {
@@ -136,6 +138,7 @@ function gradeOf(base: Grade, raw: number[], light: boolean): Grade {
     farHorizon: x[6]!,
     sun: light ? [Math.exp(x[7]!), Math.exp(x[8]!), Math.exp(x[9]!)] : base.sun,
     sky: light ? Math.exp(x[10]!) : base.sky,
+    afterglow: light ? 0.5 + x[11]! : base.afterglow,
   };
 }
 
@@ -194,7 +197,7 @@ export function fit(paint: Record<string, Record<string, number[]>>, names: read
       for (let i = 0; i < x.length; i++) sum += (i < 7 ? 2 : 8) * x[i]! * x[i]!;
       return sum;
     };
-    const start = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const start = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     const best = simplex(cost, start, 0.3, 700);
     cost(best);
     const m = model(b, key, grades[at]!, height);
@@ -208,7 +211,7 @@ const r = (v: number): string => String(+v.toFixed(3));
 
 /** Grades as grade.ts writes them. */
 export function gradesText(grades: readonly Grade[]): string {
-  return grades.map((g) => `  { name: "${g.name}", height: ${g.height}, tint: [${g.tint.map(r).join(", ")}], saturation: ${r(g.saturation)}, horizon: ${r(g.horizon)}, farHorizon: ${r(g.farHorizon)}, glow: ${r(g.glow)}, moonGlow: ${r(g.moonGlow)}, sun: [${g.sun.map(r).join(", ")}], sky: ${r(g.sky)} },`).join("\n");
+  return grades.map((g) => `  { name: "${g.name}", height: ${g.height}, tint: [${g.tint.map(r).join(", ")}], saturation: ${r(g.saturation)}, horizon: ${r(g.horizon)}, farHorizon: ${r(g.farHorizon)}, glow: ${r(g.glow)}, moonGlow: ${r(g.moonGlow)}, sun: [${g.sun.map(r).join(", ")}], sky: ${r(g.sky)}, afterglow: ${r(g.afterglow)} },`).join("\n");
 }
 
 if (import.meta.main) {

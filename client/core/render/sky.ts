@@ -28,8 +28,14 @@ export const KNEE = 0.8;
 export const LIGHT_FLOATS = 13;
 /** The grey card the exposure is set by: 128 of 255, as light. */
 export const CARD = srgbToLinear(128 / 255);
-/** Degrees across the sun's disc, half of it: the sun's light fades over this either side of the horizon, as the disc sets. */
-export const SUN_RADIUS = 0.6;
+/** Half the sun's disc and half the moon's, degrees: each one's light fades over this either side of the horizon as it sets. */
+export const SUN_RADIUS = 1;
+export const MOON_RADIUS = 2;
+/**
+ * Degrees up the sun's slot of the frame block is held while the sun is lower: through twilight it carries the
+ * afterglow, from low over the horizon toward the sunken sun, so a roof is not left black beside a lit wall.
+ */
+export const GLOW_HOLD = 2;
 
 const DEG = Math.PI / 180;
 
@@ -281,10 +287,15 @@ export function luminance(c: Vec): number {
   return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
 }
 
-/** How much of the sun's disc stands above the horizon at a height, 0 to 1. */
-export function discUp(height: number): number {
-  const t = Math.max(0, Math.min(1, (height + SUN_RADIUS) / (2 * SUN_RADIUS)));
+/** How much of a disc of `radius` degrees stands above the horizon at a height, 0 to 1. */
+export function discUp(height: number, radius = SUN_RADIUS): number {
+  const t = Math.max(0, Math.min(1, (height + radius) / (2 * radius)));
   return t * t * (3 - 2 * t);
+}
+
+/** The way the light in the sun's slot comes from with the sun at a height: from the sun, or held GLOW_HOLD degrees up toward it. */
+export function slotHeight(height: number): number {
+  return Math.max(height, GLOW_HOLD);
 }
 
 /**
@@ -327,7 +338,8 @@ export function cardTakes(n: Vec, v: Vec, l: Vec): { light: number; sky: number 
  */
 export function cardExposure(height: number, sun: number, moon: number, above: number): number {
   const s = Math.sin(height * DEG), c = Math.cos(height * DEG);
-  const bySun = cardTakes(UP, UP, [c, s, 0]);
+  const held = slotHeight(height) * DEG;
+  const bySun = cardTakes(UP, UP, [Math.cos(held), Math.sin(held), 0]);
   const byMoon = cardTakes(UP, UP, [-c, -s, 0]);
   return srgbToLinear(cardTarget(height) / 255) / (sun * bySun.light + moon * byMoon.light + above * bySun.sky);
 }
@@ -344,15 +356,23 @@ export function exposureFor(hour: number, lights: Float32Array): number {
   return lightAt(lights, sunHeight(hour)) / lightAt(lights, SUN_TOP);
 }
 
-/** Fills the sky's part of a frame block for an hour: the sun, the moon, their light and the sky's, exposure, and the table's scale. */
+/**
+ * Fills the sky's part of a frame block for an hour: the sun's slot and the moon's, their light and the sky's,
+ * exposure, and the table's scale. The moon stands opposite the sun, so the sun itself, for its disc and for looking
+ * the table up, is minus the moon's direction; the sun's slot is the light from the sun's side, held GLOW_HOLD degrees
+ * up through twilight, when it carries the afterglow and casts nothing.
+ */
 export function skyFrame(hour: number, sky: Sky, frame: Float32Array): void {
   const f = FRAME;
   sunDirection(hour, sunAt);
   const h = sunHeight(hour);
   const noon = lightAt(sky.lights, SUN_TOP);
   frame[f.exposure] = lightAt(sky.lights, h) / noon;
+  const flat = Math.hypot(sunAt[0]!, sunAt[2]!);
+  const held = slotHeight(h) * DEG;
+  const slot = h >= GLOW_HOLD ? sunAt : [(sunAt[0]! / flat) * Math.cos(held), Math.sin(held), (sunAt[2]! / flat) * Math.cos(held)];
   for (let k = 0; k < 3; k++) {
-    frame[f.sun + k] = sunAt[k]!;
+    frame[f.sun + k] = slot[k]!;
     frame[f.moon + k] = -sunAt[k]!;
     frame[f.sunColor + k] = light[k]!;
     frame[f.moonColor + k] = light[3 + k]!;

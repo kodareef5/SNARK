@@ -24,9 +24,11 @@ export interface Grade {
   sun: readonly [number, number, number];
   /** Multiplies the sky's light on surfaces. */
   sky: number;
+  /** How strong the afterglow the sun's slot carries through twilight is, as a share of the sky's light above: 0 to 1. */
+  afterglow: number;
 }
 
-const PHYSICAL = { tint: [1, 1, 1], saturation: 1, horizon: 0, farHorizon: 0, glow: 0, moonGlow: 0, sun: [1, 1, 1], sky: 1 } as const;
+const PHYSICAL = { tint: [1, 1, 1], saturation: 1, horizon: 0, farHorizon: 0, glow: 0, moonGlow: 0, sun: [1, 1, 1], sky: 1, afterglow: 0.5 } as const;
 
 /** The keys of the plan's A2, by height. Dawn (2 degrees) and sunset (0) share heights with the evening and morning, as the table does. */
 export const GRADES: readonly Grade[] = [
@@ -50,7 +52,7 @@ export function gradeAt(height: number, grades: readonly Grade[] = GRADES): Grad
     const f = (height - a.height) / (b.height - a.height);
     const mix = (x: number, y: number): number => x + (y - x) * f;
     const mix3 = (x: readonly number[], y: readonly number[]): [number, number, number] => [mix(x[0]!, y[0]!), mix(x[1]!, y[1]!), mix(x[2]!, y[2]!)];
-    return { name: `${a.name}-${b.name}`, height, tint: mix3(a.tint, b.tint), saturation: mix(a.saturation, b.saturation), horizon: mix(a.horizon, b.horizon), farHorizon: mix(a.farHorizon, b.farHorizon), glow: mix(a.glow, b.glow), moonGlow: mix(a.moonGlow, b.moonGlow), sun: mix3(a.sun, b.sun), sky: mix(a.sky, b.sky) };
+    return { name: `${a.name}-${b.name}`, height, tint: mix3(a.tint, b.tint), saturation: mix(a.saturation, b.saturation), horizon: mix(a.horizon, b.horizon), farHorizon: mix(a.farHorizon, b.farHorizon), glow: mix(a.glow, b.glow), moonGlow: mix(a.moonGlow, b.moonGlow), sun: mix3(a.sun, b.sun), sky: mix(a.sky, b.sky), afterglow: mix(a.afterglow, b.afterglow) };
   }
   return grades[grades.length - 1]!;
 }
