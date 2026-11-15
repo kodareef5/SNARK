@@ -13,6 +13,12 @@ the cycle and the upstroke the rest, so the engine can blend fly, fly_fast and h
 together. The shoulder never lifts more than 40 degrees on the upstroke, the rest of the lift is at the elbow and in
 the finger's curl, and the head pitches no more than 15 degrees above the chest, so a seated rider keeps clear
 (ref/DESIGN.md, "The rider"). Each clip reports how far it stretches the neck, legs and planted arms.
+
+Ground clips start and end on STANCE, its hands planted where rig.py plants them; air clips leave and join the rest
+pose or the beat. A hand goes between the ground and the air through `free_hand`: its planted target is moved to
+where the free arm has the hand, and only there does the arm's reach let go or take hold, so nothing jumps. The neck
+and legs rest nearly straight, so a pose keeps the head a little closer than its rest place (`within_neck`) and the
+feet a little nearer the hips (`trailing`). ref/clips_move/preview.py draws every clip.
 """
 
 import math
@@ -195,14 +201,23 @@ def mrot(r3, side):
     return tuple(r3) if side == LEFT else (r3[0], -r3[1], -r3[2])
 
 
-def wing(fold=0.0, flap=0.0, sweep=0.0, twist=0.0, curl=0.0, via=None):
+def wing(fold=0.0, flap=0.0, sweep=0.0, twist=0.0, curl=0.0, via=None, skip=None):
     """A wing as rig.Clip.wing takes it. With `via`, a fold past that value goes straight from the wing folded that
     far to FOLD instead of on through TUCK: on the ground, from wings raised a quarter folded, the finger stays up
-    and folds onto the arm, where through TUCK it would swing down and back along the body first."""
+    and folds onto the arm, where through TUCK it would swing down and back along the body first. With `skip`
+    (lo, hi), a fold between the two goes straight from one to the other, leaving TUCK out of the way."""
     w = {"fold": fold, "flap": flap, "sweep": sweep, "twist": twist, "curl": curl}
     if via is not None:
         w["via"] = via
+    if skip is not None:
+        w["skip"] = skip
     return w
+
+
+# Near the ground the wings open and fold this way: from FOLD to three quarters through TUCK, then straight to the
+# raised V of a little under a third and on, so the fingers rise and spread above the back and never cross over it,
+# and the skin never swings under the belly as it does through TUCK at three quarters.
+OPEN = (0.3, 0.75)
 
 
 def lift_tuck(p, side):
@@ -210,9 +225,11 @@ def lift_tuck(p, side):
     wing passing through it is turned leading edge down at the shoulder so the finger lies about level. Nothing at
     spread or fully folded, so a planted hand still finds its place."""
     w = p["wing_" + side]
-    fold, via = min(1.0, max(0.0, w["fold"])), w.get("via")
+    fold, via, skip = min(1.0, max(0.0, w["fold"])), w.get("via"), w.get("skip")
     if via is not None and fold > via:
         tucked = math.sin(math.pi * via) * (1.0 - (fold - via) / (1.0 - via))
+    elif skip is not None and skip[0] < fold < skip[1]:
+        tucked = lerp(math.sin(math.pi * skip[0]), math.sin(math.pi * skip[1]), (fold - skip[0]) / (skip[1] - skip[0]))
     else:
         tucked = math.sin(math.pi * fold)
     w["twist"] -= max(0.0, chest_pitch(p) + 8.0) * tucked
@@ -270,11 +287,12 @@ def _mix(a, b, s):
     if a is None or b is None:
         return b if s >= 0.5 else a
     if isinstance(a, dict):
-        if "via" in a or "via" in b:
-            out = _mix({k: v for k, v in a.items() if k != "via"}, {k: v for k, v in b.items() if k != "via"}, s)
-            via = (a if s < 0.5 else b).get("via")
-            if via is not None:
-                out["via"] = via
+        paths = ("via", "skip")
+        if any(k in a or k in b for k in paths):
+            out = _mix({k: v for k, v in a.items() if k not in paths}, {k: v for k, v in b.items() if k not in paths}, s)
+            for k in paths:
+                if (a if s < 0.5 else b).get(k) is not None:
+                    out[k] = (a if s < 0.5 else b)[k]
             return out
         return {k: _mix(a[k] if k in a else _zero(b[k]), b[k] if k in b else _zero(a[k]), s) for k in set(a) | set(b)}
     if isinstance(a, Vector):
@@ -419,9 +437,12 @@ def wing_turns(side, w, extra):
             return Quaternion().slerp(_r.tuck[name], f * 2.0)
         return _r.tuck[name].slerp(_r.fold[name], f * 2.0 - 1.0)
 
+    skip = w.get("skip")
     for name in rig._WING_L:
         if via is not None and fold > via:
             q = along(name, via).slerp(_r.fold[name], (fold - via) / (1.0 - via))
+        elif skip is not None and skip[0] < fold < skip[1]:
+            q = along(name, skip[0]).slerp(along(name, skip[1]), (fold - skip[0]) / (skip[1] - skip[0]))
         else:
             q = along(name, fold)
         m = q.to_matrix()
@@ -823,7 +844,7 @@ def take_off(r):
                 p["foot_rot_" + s] = (lerp(STANCE_FOOT_PITCH - 34.0, 80.0, smooth((t - feet_off) / 7.0)), 0.0, 0.0)
                 knee0 = STANCE_KNEE[s] + (hip(p, s) - hip(off, s))
                 p["knee_" + s] = knee0.lerp(knee_ahead(p, s, p["foot_" + s]), s_)
-            p["wing_" + s] = wing(fold=fold(t), flap=open_flap(t),
+            p["wing_" + s] = wing(fold=fold(t), flap=open_flap(t), skip=OPEN,
                                   curl=-10.0 * smooth((t - open0 - 3.0) / 4) * (1 - smooth((t - stroke0) / 4)))
             lift_tuck(p, s)
             # The hands hold the ground until hands_off, then follow the free arm, which takes over at `free`.
@@ -889,7 +910,7 @@ def land(r):
         for s in "lr":
             p["foot_" + s] = STANCE_FOOT[s] + Vector((0.0, 0.0, skid(t)))
             p["foot_rot_" + s] = (STANCE_FOOT_PITCH + 8.0 * (1.0 - smooth(t / 4.0)), 0.0, 0.0)
-            p["wing_" + s] = wing(fold=fold(t), flap=flap(t), sweep=sweep(t), twist=twist(t))
+            p["wing_" + s] = wing(fold=fold(t), flap=flap(t), sweep=sweep(t), twist=twist(t), skip=OPEN)
             lift_tuck(p, s)
             k = smooth((t - hold) / (down - hold))
             if t < hold - 2.0:
@@ -1133,7 +1154,7 @@ def idle_stretch(r):
         look_head(p, 0.0, pitch=-6.0 * k + 2.0 * sh, lean=lean0 + 8.0 * k, ext=ext0 - 0.02 * k)
         p["beak"] = 0.1 * shake(t)
         for s in "lr":
-            p["wing_" + s] = wing(fold=fold(t), flap=raise_(t) + 6.0 * sh, via=0.32, sweep=-6.0 * k + 2.0 * sh,
+            p["wing_" + s] = wing(fold=fold(t), flap=raise_(t) + 6.0 * sh, skip=OPEN, sweep=-6.0 * k + 2.0 * sh,
                                   twist=5.0 * sh, curl=-8.0 * k + 8.0 * sh)
             lift_tuck(p, s)
             planted = (STANCE_HAND[s], (0.0, 0.0, 0.0))
