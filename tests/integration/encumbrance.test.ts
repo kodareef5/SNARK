@@ -98,3 +98,24 @@ test("a loaded tame starts encumbered after a restart without anyone opening its
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a disconnected rider leaves an empty mount free to move, including when the survivor immediately reconnects", () => {
+  const { h, c, me, e, pet, id, rooted } = yard();
+  try {
+    h.host.items.mint(me, id("stone"), 400);
+    h.run(100);
+    expect(h.host.riding.mount(c, e)).toBe(RESULT_OK);
+    h.run(100);
+    expect(rooted()).toBe(true);
+    h.ends[0]!.close();
+    const again = h.join("ada");
+    h.run(300);
+    expect(h.client(again)).toBe(c);
+    expect(h.host.riding.riderOf(e)).toBeNull();
+    expect(rooted()).toBe(false);
+    expect(h.world.ents.seat[c.ent]).toBe(0);
+    expect(h.host.items.inv(pet).weight(h.host.items.table)).toBe(0);
+  } finally {
+    h.host.shutdown();
+  }
+});
