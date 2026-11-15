@@ -4,7 +4,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { AIR, BREAK, HAZE_DENSITY, HAZE_HEIGHT, LOW, SHADE, SKY_FRAGMENT, SKY_MATERIAL, airFrame, brokenRead, cloudLights, cloudLit, dip, hazeAmount, hazed, viewFade, type CloudLights } from "../../client/core/render/atmosphere.ts";
+import { AIR, BREAK, HAZE_DENSITY, HAZE_HEIGHT, LOW, SHADE, SKY_FRAGMENT, SKY_MATERIAL, STAR_CELLS, STAR_SHARE, airFrame, brokenRead, cloudLights, cloudLit, dip, hazeAmount, hazed, skyHash, viewFade, type CloudLights } from "../../client/core/render/atmosphere.ts";
 import { LIT_FRAGMENT } from "../../client/core/render/glsl.ts";
 import { FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
@@ -157,6 +157,47 @@ test("the low layer's heaps lie differently in every tile and cover as much of t
   expect(correlation(broken, brokenNext)).toBeLessThan(0.45);
   expect(Math.abs(mean(broken) / mean(plain) - 1)).toBeLessThan(0.08);
   expect(BREAK.keep * 0.9).toBeLessThan(BREAK.wear);
+});
+
+test("the stars and the dither come of an even hash: a star in 1 cell in 40, with no more neighbours than chance, placed apart from whether it is there", () => {
+  // Sums for a correlation: n, a, b, ab, aa, bb.
+  const sums = (): number[] => [0, 0, 0, 0, 0, 0];
+  const add = (s: number[], a: number, b: number): void => void [1, a, b, a * b, a * a, b * b].forEach((x, k) => (s[k]! += x));
+  const correlation = ([n, a, b, ab, aa, bb]: number[]): number => (n! * ab! - a! * b!) / Math.sqrt((n! * aa! - a! * a!) * (n! * bb! - b! * b!));
+  const side = STAR_CELLS;
+  const cells = 6 * side * side;
+  const bins = new Array<number>(16).fill(0);
+  const placed = sums();
+  let [stars, pairs, mean] = [0, 0, 0];
+  for (let face = 0; face < 6; face++) {
+    for (let y = 0; y < side; y++) {
+      for (let x = 0; x < side; x++) {
+        const h = skyHash(x, y, face);
+        mean += h / cells;
+        bins[Math.min(15, Math.floor(h * 16))]!++;
+        if (h <= STAR_SHARE && ++stars && x + 1 < side && skyHash(x + 1, y, face) <= STAR_SHARE) pairs++;
+        // Where a star sits in its cell is read 7 on in each whole number.
+        add(placed, h, skyHash(x + 7, y + 7, face + 7));
+      }
+    }
+  }
+  expect(Math.abs(mean - 0.5)).toBeLessThan(0.003);
+  for (const b of bins) expect(Math.abs(b / (cells / 16) - 1)).toBeLessThan(0.06);
+  expect(Math.abs(stars / (cells * STAR_SHARE) - 1)).toBeLessThan(0.06);
+  expect(pairs).toBeLessThan(2 * stars * STAR_SHARE);
+  expect(Math.abs(correlation(placed))).toBeLessThan(0.02);
+  // The dither over a 1080p frame: no lean and no grain from one pixel to the next.
+  const [dither, beside] = [sums(), sums()];
+  for (let y = 0; y < 1080; y++) {
+    for (let x = 0; x < 1920; x++) {
+      const h = skyHash(x, y, 3);
+      add(dither, h, 0);
+      if (x + 1 < 1920) add(beside, h, skyHash(x + 1, y, 3));
+    }
+  }
+  expect(Math.abs(dither[1]! / dither[0]! - 0.5)).toBeLessThan(0.001);
+  expect(Math.abs(correlation(beside))).toBeLessThan(0.01);
+  expect(SKY_FRAGMENT.includes("uint h = v.x * 1664525u + v.y * 22695477u + v.z * 2654435761u;")).toBe(true);
 });
 
 test("LIT, SURFACE and the dome read the air; the dome's text is written from the same numbers", () => {

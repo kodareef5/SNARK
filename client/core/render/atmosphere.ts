@@ -173,9 +173,19 @@ const MOON_TINT = [1, 0.93, 0.78];
 const MOON_GLOW = [0.1, 0.6, 0.2, 3.2];
 const HALO_TINT = [0.82, 0.88, 1];
 /** Stars: cells a side of each face of a cube of directions, the share of cells with a star, and the brightest. */
-const STAR_CELLS = 128;
-const STAR_SHARE = 0.025;
+export const STAR_CELLS = 128;
+export const STAR_SHARE = 0.025;
 const STAR_BRIGHT = 0.9;
+/** The sky's hash: three multipliers to spread a cell's whole numbers, two to mix them. */
+const HASH = [1664525, 22695477, 2654435761, 2246822519, 3266489917];
+
+/** Three whole numbers to 0 to 1, the twin of the dome's GLSL `hash`, of which the stars and the dither are made. */
+export function skyHash(x: number, y: number, z: number): number {
+  let h = (Math.imul(x, HASH[0]!) + Math.imul(y, HASH[1]!) + Math.imul(z, HASH[2]!)) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), HASH[3]!) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), HASH[4]!) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
 /**
  * The moon's light on the clouds, times its luminance: silver-blue and lifted as the night key lifts its sky against
  * its card, so moonlit cloud reads as the art director's light.py has it. The sky's light from straight up, times
@@ -352,9 +362,9 @@ flat in vec2 vTurn;
 uniform sampler2D uMoon, uLow, uHigh;
 out vec4 o;
 ${LIGHT}${AIR}float hash(uvec3 v) {
-  uint h = v.x * 1664525u + v.y * 22695477u + v.z * 2654435761u;
-  h = (h ^ (h >> 15u)) * 2246822519u;
-  h = (h ^ (h >> 13u)) * 3266489917u;
+  uint h = v.x * ${HASH[0]}u + v.y * ${HASH[1]}u + v.z * ${HASH[2]}u;
+  h = (h ^ (h >> 15u)) * ${HASH[3]}u;
+  h = (h ^ (h >> 13u)) * ${HASH[4]}u;
   return float(h ^ (h >> 16u)) / 4294967295.0;
 }
 float hg(float c, float g) {
