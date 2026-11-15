@@ -146,6 +146,13 @@ export class Body {
   actTicks = 0;
   rounds = 0;
   reloadTo = 0;
+  /**
+   * Aim state, protocol 13 (planning/reference/weapons-plan.md, M1 and M2). `bloom` is how far the weapon's cone has
+   * opened, in 255ths of its widest; `kick` is the recoil added to the pitch a shot leaves at, in 16 pitch units. Both
+   * stay 0 until W1 steps them, and neither is saved.
+   */
+  bloom = 0;
+  kick = 0;
 
   copy(o: Body): void {
     this.x = o.x;
@@ -169,6 +176,8 @@ export class Body {
     this.actTicks = o.actTicks;
     this.rounds = o.rounds;
     this.reloadTo = o.reloadTo;
+    this.bloom = o.bloom;
+    this.kick = o.kick;
   }
 
   /** Position, velocity and grounded. */
@@ -192,7 +201,9 @@ export class Body {
       this.act === o.act &&
       this.actTicks === o.actTicks &&
       this.rounds === o.rounds &&
-      this.reloadTo === o.reloadTo
+      this.reloadTo === o.reloadTo &&
+      this.bloom === o.bloom &&
+      this.kick === o.kick
     );
   }
 }

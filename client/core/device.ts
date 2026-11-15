@@ -26,6 +26,7 @@ import type { App } from "./app.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
 import { FrameTimer, GPU_PLAN, GpuQuestions, type Gl2, type GpuReport, type PassTime } from "./devicegpu.ts";
 import { BodyCopies, LOOK, TextureMemory, farBases, farSpots, rocks } from "./devicescene.ts";
+import { CITY_BUFFER } from "./render/farcity.ts";
 import { FAR_NODE_BUFFERS } from "./render/farnodes.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
 import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
@@ -295,6 +296,12 @@ export interface FlightReport {
   /** For each jump, frames until the new window was in (-1 if not before the next), and the mean of TerrainLod.coarser over those frames. */
   fills: number[];
   coarser: number;
+  /**
+   * On a map with a city of its own (render/farcity.ts): medians of its draws and thousands of triangles, the worst ms
+   * spent making its tiles in a frame, frames with a tile in view and reach not yet made, and for each jump the frames
+   * until none was (-1 if not before the next).
+   */
+  city?: { draws: number; triangles: number; makeWorst: number; unseenFrames: number; fills: number[] };
 }
 
 /** A rung on the terrain map, held or not as a ladder's rung is. */
@@ -964,7 +971,7 @@ export class DeviceRun {
   /** Where the terrain flight puts the camera, if it does. */
   private fly: { x: number; y: number; z: number; yaw: number; pitch: number } | null = null;
   /** The terrain flight under way: its tier, clock, heading, jumps, and the jump whose window is awaited. */
-  private flight: { tier: number; ms: number; heading: number; jumps: number; wait: { frames: number; coarser: number } | null; fills: number[]; coarser: number[]; rows: boolean[]; gpu: { ms: number; tag: boolean }[] } | null = null;
+  private flight: { tier: number; ms: number; heading: number; jumps: number; wait: { frames: number; coarser: number } | null; fills: number[]; coarser: number[]; rows: boolean[]; gpu: { ms: number; tag: boolean }[]; city: { draws: number[]; triangles: number[]; make: number[]; unseen: number; wait: number; fills: number[] } } | null = null;
   /** The terrain rung under way: its index, whether it is the wood's, and its frames' far draws and GPU times. */
   private rungs: { k: number; wood: boolean; draws: number[]; gpu: number[] } | null = null;
   /** The chunks far bases may stand in, the cells of each kind, and how many stand. */
@@ -1362,7 +1369,7 @@ export class DeviceRun {
     const name = FLIGHT_TIERS[k];
     if (name === undefined) return this.terrainRung(0);
     this.apply({ ...bare(tierOf(name), 0), noWood: true });
-    this.flight = { tier: k, ms: 0, heading: 0, jumps: 0, wait: null, fills: [], coarser: [], rows: [], gpu: [] };
+    this.flight = { tier: k, ms: 0, heading: 0, jumps: 0, wait: null, fills: [], coarser: [], rows: [], gpu: [], city: { draws: [], triangles: [], make: [], unseen: 0, wait: -1, fills: [] } };
     this.place(this.spot(0));
     [this.measuring, this.at] = [false, -1];
     this.report.stage = `terrain ${name}`;
@@ -1411,6 +1418,27 @@ export class DeviceRun {
     s.draw.push(drawMs);
     f.rows.push(rows);
     f.gpu.push(...(this.side.frames?.take() ?? []));
+    const city = this.side.app.scene!.city;
+    if (city) {
+      let [draws, triangles] = [0, 0];
+      for (let d = 0; d < p.drawCount; d++) {
+        if (p.drawBuffer[d] !== CITY_BUFFER) continue;
+        draws++;
+        triangles += p.drawIndexCount[d]! / 3;
+      }
+      const c = f.city;
+      c.draws.push(draws);
+      c.triangles.push(triangles / 1000);
+      c.make.push(city.stats.makeMs);
+      if (city.stats.unseen > 0) c.unseen++;
+      if (c.wait >= 0) {
+        c.wait++;
+        if (city.stats.unseen === 0) {
+          c.fills.push(c.wait);
+          c.wait = -1;
+        }
+      }
+    }
     // The jump's new window is in once the window drawn lies near where one round the camera, as it was for this frame,
     // would: held inside the map, so a spot near its edge counts too.
     const hf = this.side.hf;
@@ -1432,10 +1460,15 @@ export class DeviceRun {
       f.jumps++;
       if (f.wait) f.fills.push(-1);
       f.wait = { frames: 0, coarser: 0 };
+      if (f.city.wait >= 0) f.city.fills.push(-1);
+      f.city.wait = 0;
       this.place(this.spot(f.jumps));
     } else this.place({ x: this.fly!.x + Math.sin(f.heading) * FLIGHT_SPEED * (gap / 1000), z: this.fly!.z + Math.cos(f.heading) * FLIGHT_SPEED * (gap / 1000) });
     if (f.ms < this.timing.flightMs) return false;
     if (f.wait) f.fills.push(-1);
+    if (f.city.wait >= 0) f.city.fills.push(-1);
+    const c = f.city;
+    const drawn = c.draws.length > 0 ? { draws: spread(c.draws).median, triangles: spread(c.triangles).median, makeWorst: spread(c.make).worst, unseenFrames: c.unseen, fills: c.fills } : null;
     const pick = (list: number[], with_: boolean): number[] => list.filter((_, i) => f.rows[i] === with_);
     const gpu = (tag: boolean): number | null => (this.side.frames?.on ? spread(f.gpu.filter((x) => x.tag === tag).map((x) => x.ms)).median : null);
     const windowed = pick(s.frame, true);
@@ -1444,6 +1477,7 @@ export class DeviceRun {
       windowFrames: windowed.length, windowWorst: spread(windowed).worst, plainMedian: spread(pick(s.frame, false)).median,
       drawWindow: spread(pick(s.draw, true)).median, drawPlain: spread(pick(s.draw, false)).median, gpuWindow: gpu(true), gpuPlain: gpu(false),
       fills: f.fills, coarser: tenth(f.coarser.reduce((a, b) => a + b, 0) / Math.max(1, f.coarser.length)),
+      ...(drawn ? { city: drawn } : {}),
     });
     this.takeOff(f.tier + 1);
     return true;

@@ -442,8 +442,11 @@ export class App {
         const id = this.reg.ids[r.kind[hit]!] ?? "";
         return `E  take the young ${id.slice(id.indexOf(":") + 1)}`;
       }
-      // A small creature of the tribe, awake, is picked up. F still opens it.
-      if (this.reg.carriable[r.kind[hit]!] === 1 && s.tribe.team !== 0 && r.team[hit] === s.tribe.team && (r.cue[hit]! & CUE_OUT) === 0) return `E  pick up ${r.name[hit]}`;
+      // A small creature, wild or the tribe's, awake, is picked up. F still opens it.
+      if (this.reg.carriable[r.kind[hit]!] === 1 && (r.team[hit] === 0 || (s.tribe.team !== 0 && r.team[hit] === s.tribe.team)) && (r.cue[hit]! & CUE_OUT) === 0) {
+        const id = this.reg.ids[r.kind[hit]!] ?? "";
+        return `E  pick up ${r.name[hit] || `the ${id.slice(id.indexOf(":") + 1)}`}`;
+      }
       return "";
     }
     if (node < 0 || !s.nodeField) return "";

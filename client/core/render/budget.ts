@@ -13,11 +13,13 @@ import type { Tier } from "../assets/tiers.ts";
 /**
  * The order, most protected first: the viewer's own body and what it holds; other players and creatures; what a fight
  * shows (shots, hurt layers, and the small details made from cues, client/core/details, which keep their own pool and
- * drop order); what is built; the ground; trunks, stones and bushes; crowns near; far trees and the far city; ambient
- * details. Above crowns near nothing gives to the budget: a body is what a player aims at, what a fight shows says who is
- * hit, walls, trunks, stones and bushes are cover, and the ground is what everything stands on. Far trees and the far
- * city are below crowns near, but give by the governor's first steps, which take their reach in: a reach that grows makes
- * every far tile again, which no frame can do at no cost. Ambient details come last, and take what the frame leaves.
+ * drop order); what is built, far bases too; the ground; trunks, stones and bushes; crowns near; far trees and the far
+ * city; ambient details. Above crowns near only cover gives to the budget, and only once crowns have given much: a body
+ * is what a player aims at, what a fight shows says who is hit, walls, trunks, stones and bushes are cover, and the
+ * ground is what everything stands on. Far trees and the far city are below crowns near but do not give to the squeeze:
+ * a reach that grows makes every far tile again, which no frame can do at no cost. Far trees give by the governor's
+ * second step, which takes their reach in; the far city keeps its levels, as changing them lets go of every tile made
+ * (farcity.ts). Ambient details come last, and take what the frame leaves.
  */
 export const ORDER = ["own", "bodies", "fight", "built", "ground", "cover", "crowns", "far", "ambient"] as const;
 export type Share = (typeof ORDER)[number];
