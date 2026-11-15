@@ -17,7 +17,7 @@ import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_HELD, CUE_OUT, STAGE_WORST } from "../..
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, type BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CARRY_PICK_UP, CARRY_THROW, CMD_CARRY, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_MATE, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_USE, MF_OUT, MF_ROOTED, MODE_SWIM } from "../../shared/sim/character.ts";
+import { BTN_USE, MF_OUT, MF_ROOTED, MODE_SWIM, MODE_WALK } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -598,12 +598,13 @@ test("killing the process at any moment of a harvest loses nothing: each body's 
 // Bodies from the sky (planning/reference/flyers-plan.md, FL7): the pteranodon stand-in and a body with bones, killed,
 // knocked out or bola'd 100 m up. Nothing flies yet, so each is put there and let go.
 
-/** Puts entity `e` `high` metres over the ground under it, still and off the ground. Returns the ground's height. */
+/** Puts entity `e` `high` metres over the ground under it, or over the water, still and off the ground. Returns the ground's height. */
 function aloft(h: Harness, e: number, high: number): number {
   const ents = h.world.ents;
   const ground = h.world.hf.heightAt(ents.x[e]!, ents.z[e]!);
   ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
-  ents.setPosition(e, ents.x[e]!, ground + high, ents.z[e]!);
+  ents.mode[e] = MODE_WALK;
+  ents.setPosition(e, ents.x[e]!, Math.max(ground, h.world.hf.seaLevel) + high, ents.z[e]!);
   ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
   return ground;
 }
@@ -807,6 +808,31 @@ test("a ridden stand-in knocked out 100 m up puts its rider off, falls, lands at
   sv.add(rec, V_TORPOR, -1e9);
   h.run(1000);
   expect([rec.out, (ents.mflags[e]! & MF_OUT) !== 0, seen.length, Math.hypot(ents.x[e]! - x, ents.z[e]! - z) < 1e-3, Math.abs(ents.y[e]! - ground) < 0.01]).toEqual([false, false, 1, true, true]);
+});
+
+test("a stand-in knocked out 100 m over the pool plunges in unhurt, drowns there as ARK's page warns, and its body lies on the bottom", () => {
+  const { h } = camp();
+  const ents = h.world.ents;
+  const sv = h.host.survival;
+  const sea = h.world.hf.seaLevel;
+  const e = h.host.spawnCreature("core:pteranodon", PROVING_POOL.x - 2, PROVING_POOL.z, 1);
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+  h.run(500);
+  const seen = landings(h, rec);
+  aloft(h, e, 100);
+  sv.add(rec, V_TORPOR, rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
+  h.run(5000);
+  // Water takes the fall, so no landing is told, and it plunges 8 m to the bottom. Out cold, it does not swim up.
+  expect([seen.length, ents.mode[e], ents.y[e]! < sea - 1, sv.isSubmerged(rec), sv.value(rec, V_HEALTH)]).toEqual([0, MODE_SWIM, true, true, 210]);
+  const before = new Set(h.host.corpses.bodies.keys());
+  // It drowns, its oxygen gone and then its health, in about 80 s.
+  let k = 0;
+  for (; k < 600 && h.host.records.byPid.has(rec.pid); k++) h.run(1000);
+  const [b] = since(h, before);
+  expect([k > 30, k < 300, b!.out, b!.y < sea - 1]).toEqual([true, true, true, true]);
+  for (let k = 0; k < 60 && b!.drop; k++) h.run(1000);
+  expect([b!.drop, Math.abs(b!.y - h.world.hf.heightAt(b!.x, b!.z)) < 0.3, b!.y < sea - 6]).toEqual([null, true, true]);
 });
 
 test("a ridden stand-in bola'd 100 m up comes down where it was caught with its rider on it, is hurt by the landing and she is not, and stands rooted until its 30 s are out", () => {
